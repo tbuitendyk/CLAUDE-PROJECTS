@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **93e4b5496574 — what the box is serving**, not from the working tree.
+Generated from **ff53f5aa01fe — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -364,7 +364,7 @@ _none_
 
 # Sweep3
 
-## What the controls are called (58)
+## What the controls are called (59)
 
 - `— each says why:`
 - `— no finished stage`
@@ -414,6 +414,7 @@ _none_
 - `start stage 1`
 - `start stage 2`
 - `start stage 3`
+- `start stage 3 will refuse:`
 - `started`
 - `stop`
 - `Sweep — the three stages, live`
@@ -497,10 +498,10 @@ _none_
 - ” deleted.
 - and the saved models and tuning files belonging to them.
 
-## Every word, flat (230)
+## Every word, flat (231)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm at attaches auto band be been belonging best blank Boards3. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry every Every everything evidence exam exist existing fee files finished first fit. forecast forward from gate going greenlight greenlights has here holds is it it. its keep keeps. kept kind kinds lands later launched layout legacy live loaded locked LOGREG market member members minted models name names never new next No no nothing null of on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record remove Removed Retire retrained reused rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe up View vote votes voting way Weekly What while whole why will window with working writes yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm at attaches auto band be been belonging best blank Boards3. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry every Every everything evidence exam exist existing fee files finished first fit. forecast forward from gate going greenlight greenlights has here holds is it it. its keep keeps. kept kind kinds lands later launched layout legacy live loaded locked LOGREG market member members minted models name names never new next No no nothing null of on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record refuse remove Removed Retire retrained reused rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe up View vote votes voting way Weekly What while whole why will window with working writes yet
 ```
 
 ---
