@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **33a3f53f0184 — what the box is serving**, not from the working tree.
+Generated from **77c8b5f76d48 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -364,7 +364,7 @@ _none_
 
 # Sweep3
 
-## What the controls are called (57)
+## What the controls are called (58)
 
 - `— each says why:`
 - `— no finished stage`
@@ -397,6 +397,7 @@ _none_
 - `is going:`
 - `no runs yet`
 - `null set size`
+- `of`
 - `on this box —`
 - `or a new name`
 - `permute`
@@ -892,9 +893,9 @@ _none_
 
 # Boards3
 
-## What the controls are called (72)
+## What the controls are called (75)
 
-- `— stage`
+- `— pick a stage`
 - `agree`
 - `alongside`
 - `Apply`
@@ -946,10 +947,10 @@ _none_
 - `nothing cleared the floors`
 - `nothing here`
 - `of`
-- `open`
 - `order`
 - `read(s) failed, so any panel`
 - `record set`
+- `record set —`
 - `records`
 - `rows`
 - `save notes`
@@ -957,8 +958,11 @@ _none_
 - `Settings, ranked`
 - `Size:`
 - `sort by`
+- `Stage 1`
 - `stage 1 order`
+- `Stage 2`
 - `stage 2 order`
+- `Stage 3`
 - `t`
 - `test $`
 - `test trades`
@@ -971,10 +975,12 @@ _none_
 
 _none_
 
-## Sentences the page prints (25)
+## Sentences the page prints (27)
 
 - Boards3 — the record sets, and what each stage wrote
-- — no record sets on this box yet — start one on Sweep3 —
+- One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
+- stage 2 and stage 1 sections with its parents; picking a stage 2 set fills its stage 1 parent; picking a
+- parent puts the child selections away. Each section can be put away and comes back as you left it.
 - . Its tables appear when it lands.
 - THIS SET DOES NOT MATCH ITS OWN PLAN.
 - unit(s) failed and are missing from every table below — read the numbers accordingly.
@@ -999,10 +1005,10 @@ _none_
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 
-## Every word, flat (206)
+## Every word, flat (223)
 
 ```
-accordingly. actually agree all alongside always-long an and any appear Apply are arm as at averaged avg back band be beat because belong below best board Boards3 BOOST box broken by campaign cannot carried carry chunk cleared coin coins column columns comparable comparisons copy cost could Data data decision declared Delete do DOES each either empty entry every Every exactly exists failed FAILED fingerprint first fixed floors floors. forecast form forward from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it it. Its ITS its joined keep kept lands. lead least LOGREG looks many MATCH may members missing money never no No none. NOT not notes nothing null numbers of of. on once one open opening order Ordered other over OWN own panel per picked PLAN. priced prices Pricing proved ranked rather read reading reads record records Reload reporting result. row rows rule. run save saved score scored SCREEN service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP start stops Sweep3 table tables takes test than that the The their this THIS ties to top trade trades trail training unit units votes votes. vs way. what What when why window window. With with wrote yet
+accordingly. actually agree all alongside always-long an and any appear Apply are arm as at averaged avg away away. back band be beat because belong below best board Boards3 BOOST broken by campaign can cannot carried carry child chunk cleared coin coins column columns comes comparable comparisons copy cost could Data data decision declared Delete do DOES each Each either empty entry every Every exactly exists failed FAILED fills fingerprint first fixed floors floors. forecast form forward from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it it. its Its ITS joined keep kept lands. lead least left LOGREG looks many MATCH may members missing money never No no none. NOT not notes nothing null numbers of of. on once One one opening order Ordered other over OWN own panel parent parents per pick picked picking PLAN. priced prices Pricing proved provenance put puts ranked rather read reading reads record records Reload reporting result. row rows rule. run save saved score scored screen SCREEN section sections selections service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP stops table tables takes test than that the The their THIS this ties to top trade trades trail training unit units votes votes. vs way. what What when whole why window window. with With wrote you
 ```
 
 ---
