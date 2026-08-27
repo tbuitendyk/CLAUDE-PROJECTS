@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **6b2b99c26dae — what the box is serving**, not from the working tree.
+Generated from **e31d4ccae913 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -93,11 +93,11 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Sweep
 
-## What the controls are called (86)
+## What the controls are called (87)
 
+- `— each says why:`
 - `— so out of`
 - `, expect about`
-- `” — runs & greenlights`
 - `” will permanently remove:`
 - `1 time in`
 - `1-in-`
@@ -150,6 +150,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `promote top K`
 - `promote top K is`
 - `Rate`
+- `record set(s) stayed`
 - `Removed`
 - `rows and`
 - `run(s),`
@@ -228,10 +229,8 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `static`
 - `Weekly 8-day`
 
-## Sentences the page prints (29)
+## Sentences the page prints (30)
 
-- Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
-- scans. The campaign's whole chain travels with any greenlight minted from it.
 - Board sweep — wide to FIND (never a result)
 - — everything in this box shapes the slim pass and the promote pass alike
 - universe (blank = all 17 default pairs)
@@ -243,12 +242,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - description — why this run exists (rides in the job heading forever)
 - — worked out from the settings above, against what the box has now
 - No job running.
-- ” is locked — nothing has been deleted.
-- setup(s) on the Trade tab are still deployed. Retire them there first:
-- nothing but the name — this campaign holds no runs, greenlights or setups.
-- This cannot be undone.
-- ” deleted.
-- and the saved models and tuning files belonging to them.
 - rows on disk at about 150 bytes each (
 - per unit).
 - settings searched, each scored on every asset.
@@ -259,11 +252,20 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - The decoded prices the workers hold are larger and are not in it: those grow with how many ASSETS are in the run,
 - not with how many settings.
 - Open it on the Boards section to see what it managed to record
+- Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
+- scans, stage record sets. The campaign's whole chain travels with any greenlight minted from it.
+- ” — runs, record sets & greenlights
+- ” is locked — nothing has been deleted.
+- setup(s) on the Trade tab are still deployed. Retire them there first:
+- nothing but the name — this campaign holds no runs, greenlights or setups.
+- This cannot be undone.
+- ” deleted.
+- and the saved models and tuning files belonging to them.
 
-## Every word, flat (284)
+## Every word, flat (289)
 
 ```
-1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above active adds against agree alike all also always and any are argmax arm asset asset. ASSETS at attaches auto band be beating Beating been belonging below. best between blank Board board board. boards Boards Both box boxes. branch breakout but by bytes Campaign campaign campaigns cannot carry ceiling chain chunk claim contexts copies copy cost cpus Currently Daily data decision decoded default Delete deleted. Deleting deployed. description did directional disk does doubles each end entry ETA Every every everything evidence exam existing exists expect fee figure files FIND finish first for forever free from gate greenlight greenlights grow happens has heading hold holds how however ignores in instead into is it it. its job jobs keeps larger last launched layout legacy list loaded locked luck managed many market MB memory min minted models moving name never new No no not nothing now null of on once ONE one only Open or out own pairs parent pass pass. passes per permanently permute Phase prices promote Promote queue Rate real record refused remove Removed replication result Retire rides rounds row rows run RUN Running running. runs saved scans. score scored sealed search searched second section see sends set Set setting settings settings. setup setups. shape shapes singles slim so start Start static still Stop stops sweep sweeps tab that the The them them. then there thing this This those through time to top Trade trades trail trainings Trainings travels tree triples try tuning two undone. unit units Units universe View way Weekly What what while whole why wide will window with With work worked worker. workers working would yet you zero
+1-day 1-in- 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above active adds against agree alike all also always and any are argmax arm asset asset. ASSETS at attaches auto band be beating Beating been belonging below. best between blank Board board board. boards Boards Both box boxes. branch breakout but by bytes Campaign campaign campaigns cannot carry ceiling chain chunk claim contexts copies copy cost cpus Currently Daily data decision decoded default Delete deleted. Deleting deployed. description did directional disk does doubles each end entry ETA every Every everything evidence exam existing exists expect fee figure files FIND finish first for forever free from gate greenlight greenlights grow happens has heading hold holds how however ignores in instead into is it it. its job jobs keeps larger last launched layout legacy list loaded locked luck managed many market MB memory min minted models moving name never new No no not nothing now null of on once ONE one only Open or out own pairs parent pass pass. passes per permanently permute Phase prices promote Promote queue Rate real record refused remove Removed replication result Retire rides rounds row rows run RUN Running running. runs saved says scans score scored sealed search searched second section see sends set Set sets sets. setting settings settings. setup setups. shape shapes singles slim so stage start Start static stayed still Stop stops sweep sweeps tab that the The them them. then there thing this This those through time to top Trade trades trail trainings Trainings travels tree triples try tuning two undone. unit units Units universe View way Weekly What what while whole why wide will window with With work worked worker. workers working would yet you zero
 ```
 
 ---
@@ -362,33 +364,51 @@ _none_
 
 # Sweep3
 
-## What the controls are called (39)
+## What the controls are called (58)
 
+- `— each says why:`
 - `— no finished stage`
+- `” will permanently remove:`
 - `agree`
 - `all loaded data`
 - `arm`
 - `band % (or auto)`
+- `Campaign — the parent chain name`
+- `Campaign “`
 - `carry forward (0 = all)`
 - `chunk shape`
+- `Currently set:`
 - `d`
 - `decision`
 - `declared:`
+- `Delete campaign…`
+- `Deleting “`
 - `description`
 - `doubles`
 - `end`
 - `entry`
+- `existing campaigns`
 - `fee % each way`
 - `from stage 1 record set`
 - `from stage 2 record set`
 - `gate`
+- `greenlight(s),`
+- `greenlights:`
 - `is going:`
+- `no runs yet`
 - `null set size`
+- `on this box —`
+- `or a new name`
 - `order by`
 - `permute`
 - `record set on this box —`
+- `record set(s) stayed`
+- `Removed`
+- `run(s),`
+- `Set`
 - `settings`
 - `settings ×`
+- `setup(s),`
 - `singles`
 - `start`
 - `start stage 1`
@@ -401,6 +421,7 @@ _none_
 - `trail`
 - `triples`
 - `units`
+- `View tree`
 - `window layout`
 - `with contexts`
 
@@ -452,7 +473,7 @@ _none_
 - `static`
 - `Weekly 8-day`
 
-## Sentences the page prints (10)
+## Sentences the page prints (19)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards3.
@@ -464,11 +485,20 @@ _none_
 - units. Progress above; the set lands on Boards3.
 - carried units.
 - units.
+- Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
+- scans, stage record sets. The campaign's whole chain travels with any greenlight minted from it.
+- ” — runs, record sets & greenlights
+- ” is locked — nothing has been deleted.
+- setup(s) on the Trade tab are still deployed. Retire them there first:
+- nothing but the name — this campaign holds no runs, greenlights or setups.
+- This cannot be undone.
+- ” deleted.
+- and the saved models and tuning files belonging to them.
 
-## Every word, flat (132)
+## Every word, flat (203)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any argmax arm auto band beat best blank Boards3. boost box breakout by carried carry chunk coin contexts Daily data decision declared default description directional doubles Each each end entry every everything evidence exam fee finished forward from gate going is its keep kept lands layout lead legacy live loaded logreg market members names never next no null on once one only or order others over own pairs parent. per permute price Progress rank reads record retrained reused running sealed set settings shape singles size stage Stage stages start started static stop Sweep3 the this three trail train training triples units units. universe vote votes way Weekly What window with writes
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm attaches auto band be beat been belonging best blank Boards3. boost box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description directional doubles Each each end entry every Every everything evidence exam existing fee files finished first forward from gate going greenlight greenlights has holds is it it. its keep kept lands launched layout lead legacy live loaded locked logreg market members minted models name names never new next no nothing null on once one only or order others over own pairs parent parent. passes per permanently permute price Progress rank reads record remove Removed Retire retrained reused rounds run running runs saved says scans sealed set Set sets sets. settings setup setups. shape singles size stage Stage stages start started static stayed still stop Sweep3 sweeps tab the The them them. there this This three to Trade trail train training travels tree triples tuning undone. units units. universe View vote votes way Weekly What while whole why will window with writes yet
 ```
 
 ---
@@ -650,11 +680,9 @@ _none_
 - source: this run's replication rows — written in the second pass, one for every promoted unit and
 - every declared config it scored — totalled once off to the side and served from that saved tally.
 - Open a run to see its board.
-- notes — why this run exists, what it showed, what it cost
 - promote runs.
 - Every null claim on this page is against
 - units.
-- STAMP FAILED — this run cannot be proved comparable to any other
 - A failed unit is missing from every count on this page — the denominator is smaller than the run intended. First:
 - This run held nothing back.
 - Every dollar below is from the window the settings were CHOSEN on, so it flatters itself by construction and cannot say whether anything works out of sample. The null tools are unavailable for this run.
@@ -698,6 +726,8 @@ _none_
 - Accuracy and edge are ACCURACY POINTS, never money.
 - how alike the members are (pairwise agreement) — near-duplicates make an agreement count read higher than the number of independent opinions behind it
 - in the table below (marked ▶).
+- notes — why this run exists, what it showed, what it cost
+- STAMP FAILED — this run cannot be proved comparable to any other
 - , and each record's decision, band and 24/5 were recovered from this run's own unit records, matched in the
 - order both were written down.
 - record(s) could not be matched and show — instead.
@@ -861,7 +891,7 @@ _none_
 
 # Boards3
 
-## What the controls are called (64)
+## What the controls are called (70)
 
 - `— stage`
 - `agree`
@@ -884,6 +914,7 @@ _none_
 - `beat its own null set`
 - `beat its own null set at least, %`
 - `boost`
+- `campaign:`
 - `carried`
 - `chunk shape`
 - `coin`
@@ -892,6 +923,7 @@ _none_
 - `comparisons`
 - `could not read this row's records`
 - `d`
+- `Data fingerprint:`
 - `decision`
 - `Delete record set…`
 - `entry`
@@ -918,27 +950,33 @@ _none_
 - `record set`
 - `records`
 - `rows`
+- `save notes`
 - `setting`
 - `Settings, ranked`
+- `Size:`
 - `sort by`
 - `stage 1 order`
 - `t`
 - `test $`
 - `test trades`
 - `trail`
+- `units`
 - `vs always-long`
+- `What this run actually is`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (15)
+## Sentences the page prints (17)
 
 - Boards3 — the record sets, and what each stage wrote
 - — no record sets on this box yet — start one on Sweep3 —
 - . Its tables appear when it lands.
 - THIS SET DOES NOT MATCH ITS OWN PLAN.
 - unit(s) failed and are missing from every table below — read the numbers accordingly.
+- notes — why this run exists, what it showed, what it cost
+- STAMP FAILED — this run cannot be proved comparable to any other
 - Stage 1 — every unit, scored once (
 - ordered by beat its own null set, ties broken by lead over null set — the fixed rule. No money on
 - this table because stage 1 never prices a trade, and no held-back column because stage 1 never reads that window.
@@ -950,10 +988,10 @@ _none_
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 
-## Every word, flat (142)
+## Every word, flat (164)
 
 ```
-accordingly. agree all alongside always-long and appear Apply are arm at averaged avg back band beat because belong below board Boards3 boost box broken by carried chunk cleared coin coins column comparisons could decision declared Delete DOES each entry every Every failed fixed floors floors. forecast from full fuller gate going held held-back helped here in inventory is it Its ITS its kept lands. lead least logreg many MATCH members missing money never no No NOT not nothing null numbers of on once one open opening order ordered over OWN own per PLAN. priced prices Pricing ranked read reads record records row rows rule. score scored set SET sets setting settings Settings shape sort stage Stage start stops Sweep3 table tables test that the this THIS ties to trade trades trail training unit votes votes. vs what when window window. wrote yet
+accordingly. actually agree all alongside always-long and any appear Apply are arm at averaged avg back band be beat because belong below board Boards3 boost box broken by campaign cannot carried chunk cleared coin coins column comparable comparisons cost could Data decision declared Delete DOES each entry every Every exists failed FAILED fingerprint fixed floors floors. forecast from full fuller gate going held held-back helped here in inventory is it Its ITS its kept lands. lead least logreg many MATCH members missing money never no No NOT not notes nothing null numbers of on once one open opening order ordered other over OWN own per PLAN. priced prices Pricing proved ranked read reads record records row rows rule. run save score scored set SET sets setting settings Settings shape showed Size sort stage Stage STAMP start stops Sweep3 table tables test that the this THIS ties to trade trades trail training unit units votes votes. vs what What when why window window. wrote yet
 ```
 
 ---
