@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **77c8b5f76d48 — what the box is serving**, not from the working tree.
+Generated from **93e4b5496574 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -893,7 +893,7 @@ _none_
 
 # Boards3
 
-## What the controls are called (75)
+## What the controls are called (78)
 
 - `— pick a stage`
 - `agree`
@@ -966,6 +966,9 @@ _none_
 - `t`
 - `test $`
 - `test trades`
+- `the tables are not totalled yet —`
+- `the totalling failed:`
+- `totalling the tables:`
 - `trail`
 - `units`
 - `vs always-long`
@@ -975,7 +978,7 @@ _none_
 
 _none_
 
-## Sentences the page prints (27)
+## Sentences the page prints (30)
 
 - Boards3 — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -984,11 +987,11 @@ _none_
 - . Its tables appear when it lands.
 - THIS SET DOES NOT MATCH ITS OWN PLAN.
 - unit(s) failed and are missing from every table below — read the numbers accordingly.
-- notes — why this run exists, what it showed, what it cost
-- STAMP FAILED — this run cannot be proved comparable to any other
 - THIS SCREEN IS INCOMPLETE.
 - below that looks empty may be missing data rather than reporting none. Reload once the service is back;
 - do not read an empty panel here as a result.
+- notes — why this run exists, what it showed, what it cost
+- STAMP FAILED — this run cannot be proved comparable to any other
 - Stage 1 — every unit's LOGREG members, scored once (
 - Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
 - carry forward takes the top of. With nothing picked: beat its own null set, ties broken by lead over null set —
@@ -1001,14 +1004,17 @@ _none_
 - table: a stage 2 record is training inventory — members and kept votes. Pricing and the held-back window belong
 - to stage 3.
 - Stage 3 — settings priced from the kept votes (
+- — the records are all kept; the totalling can be tried again after a service restart.
+- . This page asks again every few seconds.
+- — building in the background; the tables appear here when it lands.
 - — one row per declared setting, averaged over its coins
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 
-## Every word, flat (223)
+## Every word, flat (237)
 
 ```
-accordingly. actually agree all alongside always-long an and any appear Apply are arm as at averaged avg away away. back band be beat because belong below best board Boards3 BOOST broken by campaign can cannot carried carry child chunk cleared coin coins column columns comes comparable comparisons copy cost could Data data decision declared Delete do DOES each Each either empty entry every Every exactly exists failed FAILED fills fingerprint first fixed floors floors. forecast form forward from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it it. its Its ITS joined keep kept lands. lead least left LOGREG looks many MATCH may members missing money never No no none. NOT not notes nothing null numbers of of. on once One one opening order Ordered other over OWN own panel parent parents per pick picked picking PLAN. priced prices Pricing proved provenance put puts ranked rather read reading reads record records Reload reporting result. row rows rule. run save saved score scored screen SCREEN section sections selections service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP stops table tables takes test than that the The their THIS this ties to top trade trades trail training unit units votes votes. vs way. what What when whole why window window. with With wrote you
+accordingly. actually after again agree all alongside always-long an and any appear Apply are arm as asks at averaged avg away away. back background band be beat because belong below best board Boards3 BOOST broken building by campaign can cannot carried carry child chunk cleared coin coins column columns comes comparable comparisons copy cost could data Data decision declared Delete do DOES each Each either empty entry every Every exactly exists failed FAILED few fills fingerprint first fixed floors floors. forecast form forward from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it it. its Its ITS joined keep kept lands. lead least left LOGREG looks many MATCH may members missing money never No no none. NOT not notes nothing null numbers of of. on once One one opening order Ordered other over OWN own page panel parent parents per pick picked picking PLAN. priced prices Pricing proved provenance put puts ranked rather read reading reads record records Reload reporting restart. result. row rows rule. run save saved score scored screen SCREEN seconds. section sections selections service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP stops table tables takes test than that the The their THIS this This ties to top totalled totalling trade trades trail training tried unit units votes votes. vs way. what What when whole why window window. with With wrote yet you
 ```
 
 ---
