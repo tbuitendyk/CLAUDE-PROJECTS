@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **9febef851edc — what the box is serving**, not from the working tree.
+Generated from **9ba6a131afc7 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -974,7 +974,7 @@ _none_
 
 _none_
 
-## Sentences the page prints (20)
+## Sentences the page prints (21)
 
 - Boards3 — the record sets, and what each stage wrote
 - — no record sets on this box yet — start one on Sweep3 —
@@ -990,17 +990,18 @@ _none_
 - ordered by beat its own null set, ties broken by lead over null set — the fixed rule. No money on
 - this table because stage 1 never prices a trade, and no held-back column because stage 1 never reads that window.
 - Stage 2 — the carried rows, LOGREG joined by BOOST (
-- No money and no null set on this table: a stage 2 record is training inventory — members and kept
-- votes. Pricing, the null set and the held-back window all belong to stage 3.
+- Ordered by forecast score — all members, best first; ties keep their carry order. No money and no
+- null set on this table: a stage 2 record is training inventory — members and kept votes. Pricing, the null set
+- and the held-back window all belong to stage 3.
 - Stage 3 — settings priced from the kept votes (
 - — one row per declared setting, averaged over its coins
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 
-## Every word, flat (186)
+## Every word, flat (193)
 
 ```
-accordingly. actually agree all alongside always-long an and any appear Apply are arm as at averaged avg back band be beat because belong below board Boards3 BOOST box broken by campaign cannot carried chunk cleared coin coins column comparable comparisons copy cost could Data data decision declared Delete do DOES each empty entry every Every exists failed FAILED fingerprint fixed floors floors. forecast form from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it Its ITS its joined kept lands. lead least LOGREG looks many MATCH may members missing money never no No none. NOT not notes nothing null numbers of on once one open opening order ordered other over OWN own panel per PLAN. priced prices Pricing proved ranked rather read reads record records Reload reporting result. row rows rule. run save score scored SCREEN service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP start stops Sweep3 table tables test than that the this THIS ties to trade trades trail training unit units votes votes. vs what What when why window window. wrote yet
+accordingly. actually agree all alongside always-long an and any appear Apply are arm as at averaged avg back band be beat because belong below best board Boards3 BOOST box broken by campaign cannot carried carry chunk cleared coin coins column comparable comparisons copy cost could Data data decision declared Delete do DOES each empty entry every Every exists failed FAILED fingerprint first fixed floors floors. forecast form from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it Its ITS its joined keep kept lands. lead least LOGREG looks many MATCH may members missing money never no No none. NOT not notes nothing null numbers of on once one open opening order order. ordered Ordered other over OWN own panel per PLAN. priced prices Pricing proved ranked rather read reads record records Reload reporting result. row rows rule. run save score scored SCREEN service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP start stops Sweep3 table tables test than that the their this THIS ties to trade trades trail training unit units votes votes. vs what What when why window window. wrote yet
 ```
 
 ---
