@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **e31d4ccae913 — what the box is serving**, not from the working tree.
+Generated from **ef4d0ab6c727 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -416,7 +416,7 @@ _none_
 - `start stage 3`
 - `started`
 - `stop`
-- `Sweep3 — the three stages, live`
+- `Sweep — the three stages, live`
 - `t`
 - `trail`
 - `triples`
@@ -498,7 +498,7 @@ _none_
 ## Every word, flat (203)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm attaches auto band be beat been belonging best blank Boards3. boost box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description directional doubles Each each end entry every Every everything evidence exam existing fee files finished first forward from gate going greenlight greenlights has holds is it it. its keep kept lands launched layout lead legacy live loaded locked logreg market members minted models name names never new next no nothing null on once one only or order others over own pairs parent parent. passes per permanently permute price Progress rank reads record remove Removed Retire retrained reused rounds run running runs saved says scans sealed set Set sets sets. settings setup setups. shape singles size stage Stage stages start started static stayed still stop Sweep3 sweeps tab the The them them. there this This three to Trade trail train training travels tree triples tuning undone. units units. universe View vote votes way Weekly What while whole why will window with writes yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm attaches auto band be beat been belonging best blank Boards3. boost box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description directional doubles Each each end entry every Every everything evidence exam existing fee files finished first forward from gate going greenlight greenlights has holds is it it. its keep kept lands launched layout lead legacy live loaded locked logreg market members minted models name names never new next no nothing null on once one only or order others over own pairs parent parent. passes per permanently permute price Progress rank reads record remove Removed Retire retrained reused rounds run running runs saved says scans sealed set Set sets sets. settings setup setups. shape singles size stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This three to Trade trail train training travels tree triples tuning undone. units units. universe View vote votes way Weekly What while whole why will window with writes yet
 ```
 
 ---
