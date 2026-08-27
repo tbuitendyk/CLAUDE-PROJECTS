@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **49e707970d0b — what the box is serving**, not from the working tree.
+Generated from **6b2b99c26dae — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -861,7 +861,7 @@ _none_
 
 # Boards3
 
-## What the controls are called (63)
+## What the controls are called (64)
 
 - `— stage`
 - `agree`
@@ -893,6 +893,7 @@ _none_
 - `could not read this row's records`
 - `d`
 - `decision`
+- `Delete record set…`
 - `entry`
 - `Every coin of every setting`
 - `forecast score`
@@ -949,10 +950,10 @@ _none_
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 
-## Every word, flat (141)
+## Every word, flat (142)
 
 ```
-accordingly. agree all alongside always-long and appear Apply are arm at averaged avg back band beat because belong below board Boards3 boost box broken by carried chunk cleared coin coins column comparisons could decision declared DOES each entry every Every failed fixed floors floors. forecast from full fuller gate going held held-back helped here in inventory is it Its ITS its kept lands. lead least logreg many MATCH members missing money never no No NOT not nothing null numbers of on once one open opening order ordered over OWN own per PLAN. priced prices Pricing ranked read reads record records row rows rule. score scored set SET sets setting settings Settings shape sort stage Stage start stops Sweep3 table tables test that the this THIS ties to trade trades trail training unit votes votes. vs what when window window. wrote yet
+accordingly. agree all alongside always-long and appear Apply are arm at averaged avg back band beat because belong below board Boards3 boost box broken by carried chunk cleared coin coins column comparisons could decision declared Delete DOES each entry every Every failed fixed floors floors. forecast from full fuller gate going held held-back helped here in inventory is it Its ITS its kept lands. lead least logreg many MATCH members missing money never no No NOT not nothing null numbers of on once one open opening order ordered over OWN own per PLAN. priced prices Pricing ranked read reads record records row rows rule. score scored set SET sets setting settings Settings shape sort stage Stage start stops Sweep3 table tables test that the this THIS ties to trade trades trail training unit votes votes. vs what when window window. wrote yet
 ```
 
 ---
