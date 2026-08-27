@@ -187,6 +187,34 @@ work — the owner reviews decisions in the morning, not at 3am.
     vocabulary, which still asks for it at load); it comes out in the
     post-deploy commit.
 
+## The screens hold their state and show their provenance (owner GO, 2026-08-27 evening)
+
+29. **Sweep3 remembers itself.** Every box and tick is remembered on every
+    change and written back on every draw (the Sweep form's own rule); a
+    launch and a settings copy remember what they set. The progress line
+    carries cycles done of total, percent, time left and time in; stage 3
+    narrates its long kept-votes read. The three start buttons sleep while
+    any stage run is going.
+30. **The section titles carry the provenance, judged live.** Stage 1's
+    title is judged against the stage 1 record set the stage 2 box names;
+    stage 2's against the stage 2 set the stage 3 box names; stage 3 anchors
+    the chain. Green when a section shows the provenance of the section
+    below it, red at the point of break, green again the moment the boxes
+    are set back. The stage 1 reading needs a stage 1 set's launch settings
+    on its listing row, so publicParams now carries universe, geometries,
+    allLoaded and the months; a blank universe box compares through
+    `defaultPairs`, served from the same list the launches read.
+31. **Boards3 is three provenance-linked sections.** One per stage, pickers
+    stage-filtered, each with its own Delete record set…; a stage 3 pick
+    fills the stage 2 and stage 1 sections with its parents, a stage 2 pick
+    fills its stage 1 parent, a parent pick puts the child selections away;
+    folds are remembered, and a fresh child pick opens its whole chain. The
+    description shows per section (bold); the notes box and the settings
+    copy ride the DEEPEST selection — one notes box per page, because the
+    shared notes controls carry literal ids the control reader and Help tab
+    must see. The six new section controls carry literal ids for the same
+    reason.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and

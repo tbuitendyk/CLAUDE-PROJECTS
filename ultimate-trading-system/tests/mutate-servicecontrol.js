@@ -187,6 +187,12 @@ const GUARDS = [
     'theSavedSortOrdersTheTablesAndTheFirstColumnFollows', 'the saved sort saves but the stage 1 table silently ignores it — the screen claims one order and shows another'],
   [path.join(ROOT, 'lib', 'stagework.js'), 'if (r.lead != null) { c.ld += r.lead; c.ldN++; }', '',
     'theStageThreeTablesMatchThePencil', 'lead over null set on the ranked table reads as nothing, silently, for every set'],
+  [path.join(ROOT, 'public', 'construct.js'), 'if (s3sel) { s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }', 'if (false) { s2sel = parentOf(s3sel); s1sel = null; }',
+    'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'a stage 3 pick stops putting its provenance on screen and the sections drift apart'],
+  [path.join(ROOT, 'public', 'construct.js'), 'b3SaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] })', 'b3SaveView({ s1: idv, fold1: true, openS3: [] })',
+    'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'picking a new stage 1 parent leaves stale children selected under it'],
+  [path.join(ROOT, 'public', 'construct.js'), "const s1row = rowOf(v('#s3From2'));", 'const s1row = null;',
+    'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'the stage 1 title stays green whatever the boxes show — the provenance flag stops flagging'],
 ];
 
 const only = process.argv[2] || '';

@@ -73,6 +73,10 @@ function publicParams(d) {
     orderBy: p.orderBy || null, carry: p.carry ?? null, fee: p.fee ?? null,
     campaign: p.campaign || null,
     sizes: p.sizes || null,
+    // what the Sweep3 provenance check reads a stage 1 set by (owner order,
+    // 2026-08-27: the section titles go red at the point of provenance break)
+    universe: p.universe || null, geometries: p.geometries || null,
+    allLoaded: p.allLoaded !== false, startMonth: p.startMonth || null, endMonth: p.endMonth || null,
   };
 }
 

@@ -35,6 +35,11 @@ function vocabulary() {
   })();
 
   return {
+    // The default pairs, served so a screen can compare a blank universe box
+    // against what a launch would actually resolve it to — the same list the
+    // launches read (lib/batch.js DEFAULT_PAIRS), never a copy. No dropdown
+    // is drawn from it; the Sweep3 provenance check reads the values.
+    defaultPairs: require('./batch').DEFAULT_PAIRS.map((p) => ({ value: p, label: p })),
     // What the engine can carry out. Read from the code, complete.
     // The label is DERIVED from the key rather than kept in a second list, so a
     // geometry added to lib/dataset.js reads properly on screen without anybody

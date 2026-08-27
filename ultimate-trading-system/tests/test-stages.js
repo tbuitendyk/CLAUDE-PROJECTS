@@ -483,8 +483,10 @@ module.exports = {
     const screens = require('../lib/screencontrols');
     const body = screens.drawBody('drawSweep3');
     assert.ok(body.includes('restoreSweep3Form()'), 'every draw writes the remembered draft back into the boxes');
-    assert.ok(body.includes("addEventListener('change', rememberSweep3Form)"), 'every change is remembered');
-    assert.ok(body.includes("addEventListener('input', rememberSweep3Form)"), 'typing is remembered too, not only leaving the box');
+    assert.ok(body.includes('rememberSweep3Form(); s3Provenance();'),
+      'every change is remembered AND repaints the provenance colors');
+    assert.ok(body.includes("addEventListener('change', noteSweep3Change)"), 'every change is remembered');
+    assert.ok(body.includes("addEventListener('input', noteSweep3Change)"), 'typing is remembered too, not only leaving the box');
     const fill = ui.slice(ui.indexOf('function fillStageForm('), ui.indexOf('let s3SetsCache'));
     assert.ok(/rememberSweep3Form\(\);/.test(fill),
       'a programmatic fill never fires change, so copy settings must remember what it wrote');
@@ -554,6 +556,37 @@ module.exports = {
       assert.ok(/#s3Uni/.test(s1Block) && /#s3Null1/.test(s1Block), 'the stage 1 fields fill only under stage === 1');
       assert.ok(!/#s3Uni|#s3Null1|#s3Layout/.test(fn.slice(fn.indexOf("doc.stage === 2"))),
         'a stage 2 or 3 set must leave the stage 1 box exactly as it is');
+    }
+    // Boards3 is three provenance-linked sections (owner order, 2026-08-27):
+    // stage-filtered pickers, a child pulling its parents onto the screen, a
+    // parent putting its children away, folds remembered
+    {
+      const body = screens.drawBody('drawBoards3');
+      for (const pin of ['b3Options(1, s1sel)', 'b3Options(2, s2sel)', 'b3Options(3, s3sel)']) {
+        assert.ok(body.includes(pin), `each section's picker offers only its own stage's sets (${pin})`);
+      }
+      assert.ok(body.includes('if (s3sel) { s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }'),
+        'a stage 3 selection must put its whole chain on screen');
+      assert.ok(body.includes('else if (s2sel) { s1sel = parentOf(s2sel); }'),
+        'a stage 2 selection must put its stage 1 parent on screen');
+      assert.ok(body.includes("b3SaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] })"),
+        'picking a stage 1 parent must put the child selections away');
+      assert.ok(body.includes('data-b3fold') && body.includes('fold1: true, fold2: true, fold3: true'),
+        'the sections fold, and a fresh stage 3 pick opens its whole chain');
+      assert.ok(/fold\[stage\]\) \{ mount.innerHTML = '<p class="note">put away/.test(body),
+        'a folded section says it is put away rather than vanishing');
+    }
+    // Sweep3's titles carry the provenance colors, judged live
+    {
+      const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+      for (const id of ['s3H1', 's3H2', 's3H3']) assert.ok(src.includes(`id="${id}"`), `the ${id} title must exist to be painted`);
+      const fn = src.slice(src.indexOf('function s3Provenance('), src.indexOf('async function s3Counts('));
+      assert.ok(/var\(--pos\)/.test(fn) && /var\(--neg\)/.test(fn), 'green normally, red at the point of break');
+      assert.ok(fn.includes("rowOf(v('#s3From2'))") && fn.includes("rowOf(v('#s3From3'))"),
+        'stage 1 is judged against what the stage 2 box names, stage 2 against what the stage 3 box names');
+      const swBody = screens.drawBody('drawSweep3');
+      assert.ok(swBody.includes('s3Provenance()'), 'the colors are wired on the page');
+      assert.ok(swBody.includes("b.disabled = going"), 'the start buttons sleep while a run is going');
     }
     const map = screens.byTab();
     for (const key of ['sweep', 'sweep3']) {

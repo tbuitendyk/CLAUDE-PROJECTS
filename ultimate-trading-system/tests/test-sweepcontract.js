@@ -253,7 +253,7 @@ module.exports = {
       // allow-list is the server's own reply and cannot be restated here. The
       // only literal value in them is the empty placeholder. What these must
       // never be is <input> boxes — test-uicontracts.js pins that.
-      'bPick', 't1null', 'cmpA', 'cmpB', 'b3Pick', 's3From2', 's3From3',
+      'bPick', 't1null', 'cmpA', 'cmpB', 'b3Pick1', 'b3Pick2', 'b3Pick3', 's3From2', 's3From3',
       // same shape: the campaign picker's options are the names the service
       // itself reports, and a NEW name is typed in the box beside it
       'cxCampPick',

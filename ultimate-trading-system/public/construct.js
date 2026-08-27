@@ -3753,6 +3753,13 @@ async function s3Progress() {
   if (!el) return;
   const st = await apiOr('api/stagesets', null);
   if (!st) { el.innerHTML = '<span class="warn">the record-set list could not be read</span>'; return; }
+  // the start buttons sleep while a run is going — one heavy job at a time,
+  // said on the button instead of by a refusal after the press
+  const going = !!st.running;
+  for (const bid of ['s3Go1', 's3Go2', 's3Go3']) {
+    const b = $(`#${bid}`);
+    if (b) { b.disabled = going; b.title = going ? 'a stage run is going — one heavy job at a time. The button wakes when it lands.' : ''; }
+  }
   if (!st.running) {
     el.innerHTML = 'nothing is running';
     if (s3Poll) { clearInterval(s3Poll); s3Poll = null; }
@@ -3775,6 +3782,65 @@ async function s3Progress() {
   const stop = $('#s3Stop');
   if (stop) stop.onclick = async () => { await tryPost(`api/stageset/${st.running}/stop`, {}); s3Progress(); };
   if (!s3Poll) s3Poll = setInterval(s3Progress, 4000);
+}
+
+// GREEN WHEN A SECTION SHOWS THE PROVENANCE OF THE SECTION BELOW IT, RED AT
+// THE POINT OF BREAK (owner order, 2026-08-27). Stage 1's title is judged
+// against the stage 1 record set the stage 2 box names; stage 2's against
+// the stage 2 record set the stage 3 box names; stage 3 anchors the chain.
+// Judged live on every change — set a box back and the title goes green
+// again. A section with nothing below it naming a record set is green.
+function s3Provenance() {
+  const sets = s3SetsCache || [];
+  const rowOf = (id) => sets.find((x) => x.id === id) || null;
+  const paint = (sel, ok, why) => {
+    const h = $(sel);
+    if (!h) return;
+    h.style.color = ok ? 'var(--pos)' : 'var(--neg)';
+    h.title = ok
+      ? 'green: this section shows the provenance of the section below it (or nothing below names a record set yet)'
+      : `red: ${why}. Set the boxes back and this goes green again.`;
+  };
+  const v = (sel) => { const e = $(sel); return e ? e.value : ''; };
+  const c = (sel) => { const e = $(sel); return !!(e && e.checked); };
+
+  const s1row = rowOf(v('#s3From2'));
+  if (!s1row) paint('#s3H1', true);
+  else {
+    const p = s1row.params || {};
+    const defaults = ((VOCAB && VOCAB.defaultPairs) || []).map((o) => String(o.value));
+    const boxUni = (v('#s3Uni') || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+    const wantUni = (boxUni.length ? boxUni : defaults).slice().sort().join(',');
+    const setUni = (p.universe || []).slice().sort().join(',');
+    const sz = p.sizes || {};
+    const geos = p.geometries || [];
+    const mismatch = wantUni !== setUni ? 'the universe no longer matches'
+      : (c('#s3Singles') !== !!sz.singles || c('#s3Doubles') !== !!sz.doubles || c('#s3Triples') !== !!sz.triples) ? 'the singles / doubles / triples ticks no longer match'
+        : (c('#s3PermGeom') !== (geos.length > 1) || (!c('#s3PermGeom') && geos[0] !== v('#s3Geom'))) ? 'the chunk shape no longer matches'
+          : v('#s3Layout') !== (p.windowLayout || '') ? 'the window layout no longer matches'
+            : Number(v('#s3Null1')) !== Number(p.nullN) ? 'the null set size no longer matches'
+              : c('#s3AllData') !== (p.allLoaded !== false) ? 'the all loaded data tick no longer matches'
+                : (!c('#s3AllData') && (v('#s3Start') !== (p.startMonth || '') || v('#s3End') !== (p.endMonth || ''))) ? 'the start / end months no longer match'
+                  : null;
+    paint('#s3H1', !mismatch,
+      `${mismatch} — this section no longer shows the provenance of ${s1row.name}, the record set the stage 2 box reads from`);
+  }
+
+  const s2row = rowOf(v('#s3From3'));
+  if (!s2row) paint('#s3H2', true);
+  else {
+    const par = s2row.parent || {};
+    const carryBox = Number(v('#s3Carry')) || 0;
+    const carryMatch = carryBox === 0
+      ? (par.carry != null && par.of != null ? par.carry === par.of : true)
+      : carryBox === par.carry;
+    const mismatch = v('#s3From2') !== (par.id || '')
+      ? `the stage 1 record set named here is not the one ${s2row.name} was carried out of (${par.name || par.id || 'unrecorded'})`
+      : (!carryMatch ? 'carry forward no longer matches what was carried' : null);
+    paint('#s3H2', !mismatch, `${mismatch} — the stage 3 box reads from ${s2row.name}`);
+  }
+
+  paint('#s3H3', !v('#s3From3') || !!s2row, 'the stage 2 record set named here is not on this box any more');
 }
 
 async function s3Counts() {
@@ -3960,7 +4026,7 @@ async function drawSweep3() {
   ${campaignPanelHtml(camp, names)}
 
   <div class="panel">
-    <h3 style="margin-top:0">Stage 1 — train the LOGREG members once, keep every vote, rank against the null set</h3>
+    <h3 id="s3H1" style="margin-top:0">Stage 1 — train the LOGREG members once, keep every vote, rank against the null set</h3>
     <p class="note" style="margin:.2rem 0 .4rem">every member is a LOGREG forecast — 3 per coin on its own, 4 alongside others — trained with the plain
       argmax fit. No trade, no fee and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.</p>
     <div class="row" style="align-items:flex-end">
@@ -3987,7 +4053,7 @@ async function drawSweep3() {
   </div>
 
   <div class="panel">
-    <h3 style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
+    <h3 id="s3H2" style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 1 record set<select id="s3From2" style="min-width:24rem">${s3SetOptions(sets, 1, null)}</select></label>
       <label class="f" title="the carry takes the top of the parent's table in the sort saved on it — pick the sort on Boards3. The fixed rule (beat its own null set, ties by lead over null set) when none is saved.">carry forward (0 = all)<input id="s3Carry" type="number" value="0" min="0" style="width:5.5rem"></label>
@@ -4003,7 +4069,7 @@ async function drawSweep3() {
   </div>
 
   <div class="panel">
-    <h3 style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
+    <h3 id="s3H3" style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 2 record set<select id="s3From3" style="min-width:24rem">${s3SetOptions(sets, 2, null)}</select></label>
       <label class="f">carry forward (0 = all)<input id="s3Carry3" type="number" value="0" min="0" style="width:5.5rem"></label>
@@ -4074,14 +4140,14 @@ async function drawSweep3() {
     };
     if (!body.universe.length) delete body.universe;
     const got = await tryPost('api/stage1', body);
-    if (got) { say('#s3Out1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards3.`); s3Progress(); }
+    if (got) { rememberSweep3Form(); say('#s3Out1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards3.`); s3Progress(); }
   };
   $('#s3Go2').onclick = async () => {
     const got = await tryPost('api/stage2', {
       from: $('#s3From2').value,
       carry: Number($('#s3Carry').value) || 0, desc: $('#s3Desc2').value,
     });
-    if (got) { say('#s3Out2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); s3Progress(); }
+    if (got) { rememberSweep3Form(); say('#s3Out2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); s3Progress(); }
   };
   $('#s3Go3').onclick = async () => {
     const got = await tryPost('api/stage3', {
@@ -4090,7 +4156,7 @@ async function drawSweep3() {
       nullN: Number($('#s3Null3').value) || 0, desc: $('#s3Desc3').value,
       ...s3BlockParams(),
     });
-    if (got) { say('#s3Out3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); s3Progress(); }
+    if (got) { rememberSweep3Form(); say('#s3Out3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); s3Progress(); }
   };
   for (const id of ['s3Uni', 's3Singles', 's3Doubles', 's3Triples', 's3Geom', 's3PermGeom']) {
     const el = $(`#${id}`); if (el) el.onchange = s3Counts;
@@ -4102,12 +4168,14 @@ async function drawSweep3() {
   // what is in the boxes survives a screen flip: write the remembered draft
   // back BEFORE the counters read the boxes, then remember every change
   restoreSweep3Form();
+  const noteSweep3Change = () => { rememberSweep3Form(); s3Provenance(); };
   for (const e of sweep3Controls()) {
-    e.addEventListener('change', rememberSweep3Form);
-    e.addEventListener('input', rememberSweep3Form);
+    e.addEventListener('change', noteSweep3Change);
+    e.addEventListener('input', noteSweep3Change);
   }
   s3Progress();
   s3Counts();
+  s3Provenance();
 }
 
 // ---- Boards3 ---------------------------------------------------------------
@@ -4136,82 +4204,169 @@ async function drawBoards3() {
   const st = await apiOr('api/stagesets', ({ running: null, sets: [] }));
   const sets = st.sets || [];
   const view = b3View();
-  const picked = sets.find((x) => x.id === view.setId) ? view.setId : (sets[0] ? sets[0].id : null);
-  const running = st.running ? sets.find((x) => x.id === st.running) : null;
+  const rowOf = (id) => sets.find((x) => x.id === id) || null;
+  const parentOf = (id) => { const r = rowOf(id); return r && r.parent ? r.parent.id : null; };
+
+  // ONE SECTION PER STAGE (owner order, 2026-08-27). A child's whole
+  // provenance rides with it: picking a stage 3 record set fills the stage 2
+  // and stage 1 sections with its parents; picking a stage 2 set fills its
+  // stage 1 parent; picking a parent puts the child selections away.
+  let s3sel = (rowOf(view.s3) || {}).stage === 3 ? view.s3 : null;
+  let s2sel = (rowOf(view.s2) || {}).stage === 2 ? view.s2 : null;
+  let s1sel = (rowOf(view.s1) || {}).stage === 1 ? view.s1 : null;
+  if (s3sel) { s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }
+  else if (s2sel) { s1sel = parentOf(s2sel); }
+  if (!s1sel && !s2sel && !s3sel) {
+    // first visit: the newest set of the deepest stage present, chain and all
+    const newest = sets.find((x) => x.stage === 3) || sets.find((x) => x.stage === 2) || sets.find((x) => x.stage === 1);
+    if (newest && newest.stage === 3) { s3sel = newest.id; s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }
+    else if (newest && newest.stage === 2) { s2sel = newest.id; s1sel = parentOf(s2sel); }
+    else if (newest) s1sel = newest.id;
+  }
+  const selOf = { 1: s1sel, 2: s2sel, 3: s3sel };
+  const fold = { 1: view.fold1 !== false, 2: view.fold2 !== false, 3: view.fold3 !== false };
+  const deepest = s3sel ? 3 : (s2sel ? 2 : 1);
+  const running = st.running ? rowOf(st.running) : null;
+
+  // the option lists are shared; the six controls carry LITERAL ids so the
+  // control reader and the Help tab see every one of them (RULE ONE-A: a
+  // list with holes is worse than no list)
+  const b3Options = (stage, sel) => `<option value="">— pick a stage ${stage} record set —</option>`
+    + sets.filter((x) => x.stage === stage).map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
+  const foldBtn = (stage) => `<button data-b3fold="${stage}" title="puts this stage's table away, or brings it back. The last state is remembered.">${fold[stage] ? 'put away' : 'open'}</button>`;
+
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Boards3 — the record sets, and what each stage wrote</h3>
+    <p class="note">One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
+      stage 2 and stage 1 sections with its parents; picking a stage 2 set fills its stage 1 parent; picking a
+      parent puts the child selections away. Each section can be put away and comes back as you left it.</p>
     ${running ? `<p class="note"><b>${esc(running.name)}</b> is going: ${esc(running.progress || '…')}</p>` : ''}
-    <div class="row" style="align-items:flex-end">
-      <label class="f">record set<select id="b3Pick" style="min-width:28rem">${sets.length
-    ? sets.map((x) => `<option value="${esc(x.id)}"${x.id === picked ? ' selected' : ''}>${esc(x.name)} — stage ${x.stage} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('')
-    : '<option value="">— no record sets on this box yet — start one on Sweep3 —</option>'}</select></label>
-      <button id="b3Open">open</button>
-      <button id="b3Delete" class="danger">Delete record set…</button>
-      ${campaignNoteHtml(sets.find((x) => x.id === picked) || null)}
-    </div>
-    <div id="b3Chain"></div>
   </div>
-  <div id="b3Head"></div>
-  <div id="b3Body"></div>`;
-  $('#b3Open').onclick = () => { b3SaveView({ setId: $('#b3Pick').value, openS3: [] }); drawBoards3().then(() => restoreScroll(tab)); };
-  $('#b3Delete').onclick = async () => {
-    const id = $('#b3Pick').value;
-    if (!id) return;
-    const look = await tryPost(`api/stageset/${id}/delete`, {});
-    if (!look) return;
-    if (!look.preview) { alert('Nothing was deleted — the service answered strangely.'); return; }
-    const typed = prompt(`Permanently delete ${look.name} (stage ${look.stage}, ${look.status})?\n\n`
-      + `${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
-      + `${look.desc ? `\n"${look.desc}"` : ''}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
-    if (typed === null) return;
-    if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return; }
-    const done = await tryPost(`api/stageset/${id}/delete`, { confirm: typed.trim() });
-    if (done && done.deleted) {
-      alert(`Deleted ${done.name} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
-      b3SaveView({ setId: null, openS3: [] });
-      drawBoards3().then(() => restoreScroll(tab));
+  <div class="panel">
+    <div class="row" style="align-items:flex-end">
+      ${foldBtn(1)}
+      <h3 style="margin:0">Stage 1</h3>
+      <label class="f">record set<select id="b3Pick1" style="min-width:26rem">${b3Options(1, s1sel)}</select></label>
+      <button id="b3Delete1" class="danger" ${s1sel ? '' : 'disabled'}>Delete record set…</button>
+      ${campaignNoteHtml(rowOf(s1sel))}
+    </div>
+    <div id="b3S1"></div>
+  </div>
+  <div class="panel">
+    <div class="row" style="align-items:flex-end">
+      ${foldBtn(2)}
+      <h3 style="margin:0">Stage 2</h3>
+      <label class="f">record set<select id="b3Pick2" style="min-width:26rem">${b3Options(2, s2sel)}</select></label>
+      <button id="b3Delete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
+      ${campaignNoteHtml(rowOf(s2sel))}
+    </div>
+    <div id="b3S2"></div>
+  </div>
+  <div class="panel">
+    <div class="row" style="align-items:flex-end">
+      ${foldBtn(3)}
+      <h3 style="margin:0">Stage 3</h3>
+      <label class="f">record set<select id="b3Pick3" style="min-width:26rem">${b3Options(3, s3sel)}</select></label>
+      <button id="b3Delete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
+      ${campaignNoteHtml(rowOf(s3sel))}
+    </div>
+    <div id="b3S3"></div>
+  </div>`;
+
+  for (const stage of [1, 2, 3]) {
+    const pick = $(`#b3Pick${stage}`);
+    if (pick) {
+      pick.onchange = () => {
+        const idv = pick.value || null;
+        if (stage === 1) b3SaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] });
+        if (stage === 2) b3SaveView({ s1: idv ? parentOf(idv) : null, s2: idv, s3: null, fold1: true, fold2: true, openS3: [] });
+        if (stage === 3) b3SaveView({ s1: idv ? parentOf(parentOf(idv)) || null : null, s2: idv ? parentOf(idv) : null, s3: idv, fold1: true, fold2: true, fold3: true, openS3: [] });
+        drawBoards3().then(() => restoreScroll(tab));
+      };
     }
-  };
-  if (!picked) return;
-
-  const got = await apiOr(`api/stageset/${picked}`, null);
-  if (!got || !got.set) { $('#b3Body').innerHTML = '<div class="panel empty">this record set could not be read</div>'; return; }
-  const doc = got.set;
-  // The opened set's head, the same structure a saved run gets on Boards and
-  // drawn by the same functions (owner order, 2026-08-27): the description,
-  // the notes, and what this run actually is. The set's plan is served as
-  // counts, so the size line is the set's own equation.
-  $('#b3Head').innerHTML = `${descriptionPanelHtml(doc.desc, true)}
-    ${notesPanelHtml(doc, `
-          <button id="b3CopySettings" title="fill THIS record set's own stage box on Sweep3 with its stored settings — a stage 1 set fills the stage 1 box, a stage 2 set the stage 2 box (its parent picked), a stage 3 set the stage 3 box (its parent picked). The other boxes are left exactly as they are. Nothing launches; the boxes are just set. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>`)}
-    ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}`;
-  wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null);
-  const chain = got.chain || [];
-  const csb3 = $('#b3CopySettings');
-  if (csb3) csb3.onclick = () => {
-    tab = 'sweep3'; localStorage.setItem('cx-tab', tab);
-    draw().then(() => { fillStageForm(doc); });
-  };
-  $('#b3Chain').innerHTML = `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
-    c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,
-    c.plan && c.plan.settings ? `${Number(c.plan.settings).toLocaleString()} settings` : null,
-    c.parent && (c.parent.sortedBy || c.parent.orderBy)
-      ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.sortedBy || (c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set')}`
-      : null,
-    esc(c.status),
-  ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>`;
-  if (doc.status !== 'done' && doc.status !== 'incomplete') {
-    $('#b3Body').innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
-    return;
+    const del = $(`#b3Delete${stage}`);
+    if (del) {
+      del.onclick = async () => {
+        const id = selOf[stage];
+        if (!id) return;
+        const look = await tryPost(`api/stageset/${id}/delete`, {});
+        if (!look) return;
+        if (!look.preview) { alert('Nothing was deleted — the service answered strangely.'); return; }
+        const typed = prompt(`Permanently delete ${look.name} (stage ${look.stage}, ${look.status})?\n\n`
+          + `${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
+          + `${look.desc ? `\n"${look.desc}"` : ''}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
+        if (typed === null) return;
+        if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return; }
+        const done = await tryPost(`api/stageset/${id}/delete`, { confirm: typed.trim() });
+        if (done && done.deleted) {
+          alert(`Deleted ${done.name} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
+          const patch = { [`s${stage}`]: null, openS3: [] };
+          if (stage <= 2) patch.s3 = null;
+          if (stage === 1) patch.s2 = null;
+          b3SaveView(patch);
+          drawBoards3().then(() => restoreScroll(tab));
+        }
+      };
+    }
   }
-  const incomplete = doc.status === 'incomplete'
-    ? `<div class="panel" data-role="incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
-       ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.</div>` : '';
-  if (doc.stage === 1) { await b3DrawStage1(doc, incomplete, view); return; }
-  if (doc.stage === 2) { await b3DrawStage2(doc, incomplete, view); return; }
-  await b3DrawStage3(doc, incomplete, view);
-}
+  document.querySelectorAll('[data-b3fold]').forEach((btn) => {
+    btn.onclick = () => {
+      const sN = Number(btn.dataset.b3fold);
+      b3SaveView({ [`fold${sN}`]: !fold[sN] });
+      drawBoards3().then(() => restoreScroll(tab));
+    };
+  });
 
+  // Each open section renders its set: the description (bold), the notes and
+  // the settings copy on the DEEPEST selection (one notes box per page — the
+  // set you are actually working), What this run actually is, then the
+  // stage's own table. All drawn by the same functions Boards uses.
+  for (const stage of [1, 2, 3]) {
+    const mount = $(`#b3S${stage}`);
+    const sel = selOf[stage];
+    if (!mount) continue;
+    if (!sel) {
+      mount.innerHTML = `<p class="note">${sets.some((x) => x.stage === stage) ? 'nothing picked' : 'no record sets of this stage on this box yet — start one on Sweep3'}</p>`;
+      continue;
+    }
+    if (!fold[stage]) { mount.innerHTML = '<p class="note">put away — press open to bring it back</p>'; continue; }
+    const got = await apiOr(`api/stageset/${sel}`, null);
+    if (!got || !got.set) { mount.innerHTML = '<div class="panel empty">this record set could not be read</div>'; continue; }
+    const doc = got.set;
+    const chain = got.chain || [];
+    const chainLine = stage === deepest && chain.length ? `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
+      c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,
+      c.plan && c.plan.settings ? `${Number(c.plan.settings).toLocaleString()} settings` : null,
+      c.parent && (c.parent.sortedBy || c.parent.orderBy)
+        ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.sortedBy || (c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set')}`
+        : null,
+      esc(c.status),
+    ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
+    mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
+      ${stage === deepest ? notesPanelHtml(doc, `
+          <button id="b3CopySettings" title="fill THIS record set's own stage box on Sweep3 with its stored settings — a stage 1 set fills the stage 1 box, a stage 2 set the stage 2 box (its parent picked), a stage 3 set the stage 3 box (its parent picked). The other boxes are left exactly as they are. Nothing launches; the boxes are just set. The description rides too, into the same stage's description box.">copy settings into the form</button>`) : ''}
+      ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}
+      <div id="b3T${stage}"></div>`;
+    if (stage === deepest) {
+      wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null);
+      const csb3 = $('#b3CopySettings');
+      if (csb3) csb3.onclick = () => {
+        tab = 'sweep3'; localStorage.setItem('cx-tab', tab);
+        draw().then(() => { fillStageForm(doc); });
+      };
+    }
+    if (doc.status !== 'done' && doc.status !== 'incomplete') {
+      $(`#b3T${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
+      continue;
+    }
+    const incomplete = doc.status === 'incomplete'
+      ? `<div class="panel" data-role="incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
+       ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.</div>` : '';
+    if (doc.stage === 1) await b3DrawStage1(doc, incomplete, view, `#b3T${stage}`);
+    else if (doc.stage === 2) await b3DrawStage2(doc, incomplete, view, `#b3T${stage}`);
+    else await b3DrawStage3(doc, incomplete, view, `#b3T${stage}`);
+  }
+}
 const b3td = 'style="padding:.25rem .5rem"';
 const b3td0 = 'style="padding:.25rem .5rem .25rem 0"';
 const b3th = 'style="padding:.3rem .5rem"';
@@ -4237,8 +4392,8 @@ function b3SortBtn(doc, key, firstDir) {
   return ` <button data-b3sortkey="${key}" data-b3sortdir="${firstDir}" style="min-width:2.2rem;padding:0 .25rem"
     title="click to sort the whole table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (A to Z / low to high first)'}; click again to flip it, a third click puts it away. Its number is the sort's priority — first, second, third. The saved order is exactly what carry forward reads at the next stage's launch.">${state}</button>`;
 }
-function b3WireSort(doc) {
-  $('#b3Body').querySelectorAll('[data-b3sortkey]').forEach((btn) => {
+function b3WireSort(doc, root) {
+  $(root).querySelectorAll('[data-b3sortkey]').forEach((btn) => {
     btn.onclick = async () => {
       const key = btn.dataset.b3sortkey;
       const spec = (Array.isArray(doc.sort) ? doc.sort : []).map((s) => ({ ...s }));
@@ -4257,8 +4412,8 @@ function b3WireSort(doc) {
   });
 }
 
-function b3WirePager() {
-  $('#b3Body').querySelectorAll('[data-b3page]').forEach((btn) => {
+function b3WirePager(root) {
+  $(root).querySelectorAll('[data-b3page]').forEach((btn) => {
     btn.onclick = () => {
       const [key, from] = btn.dataset.b3page.split(':');
       if (key === 'S3C') b3SaveView({ coins: { ...(b3View().coins || {}), offset: Number(from) } });
@@ -4268,11 +4423,11 @@ function b3WirePager() {
   });
 }
 
-async function b3DrawStage1(doc, incomplete, view) {
+async function b3DrawStage1(doc, incomplete, view, mount) {
   const from = Math.max(0, Number(view.fromS1) || 0);
   const t = await apiOr(`api/stageset/${doc.id}/stage1?from=${from}&n=100`, null);
   const rows = (t && t.rows) || [];
-  $('#b3Body').innerHTML = `${incomplete}<div class="panel">
+  $(mount).innerHTML = `${incomplete}<div class="panel">
     <h3 style="margin-top:0">Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})</h3>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
@@ -4297,15 +4452,15 @@ async function b3DrawStage1(doc, incomplete, view) {
       the fixed rule. No money on this table because stage 1 never prices a trade, and no held-back column because
       stage 1 never reads that window.</p>
   </div>`;
-  b3WirePager();
-  b3WireSort(doc);
+  b3WirePager(mount);
+  b3WireSort(doc, mount);
 }
 
-async function b3DrawStage2(doc, incomplete, view) {
+async function b3DrawStage2(doc, incomplete, view, mount) {
   const from = Math.max(0, Number(view.fromS2) || 0);
   const t = await apiOr(`api/stageset/${doc.id}/stage2?from=${from}&n=100`, null);
   const rows = (t && t.rows) || [];
-  $('#b3Body').innerHTML = `${incomplete}<div class="panel">
+  $(mount).innerHTML = `${incomplete}<div class="panel">
     <h3 style="margin-top:0">Stage 2 — the carried rows, LOGREG joined by BOOST (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
@@ -4339,11 +4494,11 @@ async function b3DrawStage2(doc, incomplete, view) {
       table: a stage 2 record is training inventory — members and kept votes. Pricing and the held-back window belong
       to stage 3.</p>
   </div>`;
-  b3WirePager();
-  b3WireSort(doc);
+  b3WirePager(mount);
+  b3WireSort(doc, mount);
 }
 
-async function b3DrawStage3(doc, incomplete, view) {
+async function b3DrawStage3(doc, incomplete, view, mount) {
   const from = Math.max(0, Number(view.fromS3R) || 0);
   const coinsQ = view.coins || {};
   const qs = new URLSearchParams({
@@ -4359,7 +4514,7 @@ async function b3DrawStage3(doc, incomplete, view) {
   const cr = (coins && coins.rows) || [];
   const openKeys = new Set(view.openS3 || []);
   const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry].join('|');
-  $('#b3Body').innerHTML = `${incomplete}<div class="panel">
+  $(mount).innerHTML = `${incomplete}<div class="panel">
     <h3 style="margin-top:0">Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
     <p style="margin:.6rem 0 .2rem"><b>Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     <div class="scrollx"><table style="border-collapse:collapse">
@@ -4461,7 +4616,7 @@ async function b3DrawStage3(doc, incomplete, view) {
     drawBoards3().then(() => restoreScroll(tab));
   };
   $('#b3Go').onclick = applyCoins;
-  $('#b3Body').querySelectorAll('[data-b3rec]').forEach((btn) => {
+  $(mount).querySelectorAll('[data-b3rec]').forEach((btn) => {
     btn.onclick = async () => {
       const k = btn.dataset.b3rec;
       const keys = new Set(b3View().openS3 || []);
@@ -4470,10 +4625,10 @@ async function b3DrawStage3(doc, incomplete, view) {
       drawBoards3().then(() => restoreScroll(tab));
     };
   });
-  b3WirePager();
+  b3WirePager(mount);
   // opened records rows, fetched and slotted under their coin row
   for (const k of openKeys) {
-    const tr = $('#b3Body').querySelector(`tr[data-b3key="${CSS.escape(k)}"]`);
+    const tr = $(mount).querySelector(`tr[data-b3key="${CSS.escape(k)}"]`);
     if (!tr) continue;
     const [cellLabel, trade, ctx1, ctx2, geometry] = k.split('|');
     const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry }).toString();

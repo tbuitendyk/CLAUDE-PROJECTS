@@ -39,6 +39,27 @@ const CAMPAIGN_PANEL_CONTROLS = {
     more: 'It tells you exactly how many of each will go before it asks, and you have to type the name back. It refuses outright if any setup made from that campaign is still running on the Trade tab, and names which ones — and it refuses while a stage run is being written, because record sets are never deleted mid-run.',
   },
 };
+// The three Boards3 sections carry the same two controls each — written once
+// here, one entry per literal id, so the six cannot drift apart.
+const B3_SECTION_CONTROLS = (() => {
+  const out = {};
+  const fills = {
+    1: 'Picking one puts the stage 2 and stage 3 selections away — a new parent starts a new chain.',
+    2: 'Picking one fills the stage 1 section with its parent and puts the stage 3 selection away.',
+    3: 'Picking one fills the stage 1 and stage 2 sections with its whole chain, so the provenance is on screen.',
+  };
+  for (const n of [1, 2, 3]) {
+    out[`b3Pick${n}`] = {
+      what: `Which stage ${n} record set this section reads. Only stage ${n} sets are offered.`,
+      more: fills[n],
+    };
+    out[`b3Delete${n}`] = {
+      what: 'Permanently removes the record set picked in this section — its records, kept votes and tables. You are shown what will go, and have to type the record set id back, before anything is deleted.',
+      more: 'It refuses two things, by name: a set another set names as its parent (delete the children first), and any deletion while a stage run is going, because a run may be reading its parent at that moment.',
+    };
+  }
+  return out;
+})();
 const RUN_NOTES_CONTROLS = {
   bNotes: { what: 'Your own notes on this run — what you were trying, what it showed, what it cost.' },
   bNotesSave: {
@@ -528,9 +549,10 @@ window.HELP = {
 
   boards3: {
     title: 'Boards3',
-    intro: 'Where the record sets are read. Pick a set and the page shows its whole chain — which stage 1 the '
-      + 'ranking came from, what carried forward and by which measure, what stage 3 priced — and the tables the '
-      + 'set\'s own stage wrote. No table mixes two stages.',
+    intro: 'Where the record sets are read: one section per stage, the whole provenance on screen. Picking a '
+      + 'stage 3 record set fills the stage 2 and stage 1 sections with its parents; picking a stage 2 set fills '
+      + 'its stage 1 parent; picking a parent puts the child selections away. Each section can be put away and '
+      + 'comes back as you left it. No table mixes two stages.',
     how: [
       ['One table per stage, and the chain always visible',
         'A stage 1 set shows the ranking: every unit under the fixed rule — forecast score, beat its own null '
@@ -546,15 +568,10 @@ window.HELP = {
     ],
     controls: {
       ...RUN_NOTES_CONTROLS,
+      ...B3_SECTION_CONTROLS,
       b3CopySettings: {
         what: 'Fills the open record set\'s own stage box on Sweep3 with the exact settings it used, so you can do it again or change one thing.',
         more: 'A stage 1 set fills the stage 1 box; a stage 2 or stage 3 set fills its own box with its parent record set picked, so pressing start re-runs the same step of the same chain. The other boxes are left alone. The description is not copied — a re-run states its own purpose.',
-      },
-      b3Pick: { what: 'Which record set to read. Every set is listed with its stage, its status and when it was made.' },
-      b3Open: { what: 'Opens the chosen record set and draws its chain and tables below.' },
-      b3Delete: {
-        what: 'Permanently removes the chosen record set — its records, kept votes and tables. You are shown what will go, and have to type the record set id back, before anything is deleted.',
-        more: 'It refuses two things, by name: a set another set names as its parent (delete the children first), and any deletion while a stage run is going, because a run may be reading its parent at that moment.',
       },
       b3MinShare: { what: 'Hides rows whose share of head-to-heads won is below this percent. Empty hides nothing.' },
       b3MinHold: { what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.' },
