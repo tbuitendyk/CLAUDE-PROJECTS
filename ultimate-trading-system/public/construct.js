@@ -3923,8 +3923,8 @@ async function drawSweep3() {
     <h3 style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 1 record set<select id="s3From2" style="min-width:24rem">${s3SetOptions(sets, 1, null)}</select></label>
-      <label class="f">order by<select id="s3Order">${vocabOptions('stageOrder', 'beat')}</select></label>
       <label class="f">carry forward (0 = all)<input id="s3Carry" type="number" value="0" min="0" style="width:5.5rem"></label>
+      <label class="f">order by<select id="s3Order">${vocabOptions('stageOrder', 'beat')}</select></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f" style="flex:1">description<input id="s3Desc2" style="width:100%"></label>
