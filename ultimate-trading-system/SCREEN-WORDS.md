@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **75db9fce19d4 — what the box is serving**, not from the working tree.
+Generated from **74b7598a305d — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -615,7 +615,7 @@ about above accuracy Accuracy ACCURACY across-asset actually admits admits. agai
 
 # Boards2
 
-## What the controls are called (90)
+## What the controls are called (94)
 
 - `… 14 more records …`
 - `… 2,769 more settings …`
@@ -623,9 +623,12 @@ about above accuracy Accuracy ACCURACY across-asset actually admits admits. agai
 - `… 996 more rows …`
 - `… 997 more rows …`
 - `▾ records`
+- `12 of 17`
+- `13 of 17`
 - `41h`
 - `6 — 3 logreg + 3 boost`
 - `65h`
+- `8 of 17`
 - `89h`
 - `active`
 - `ADAUSDT`
@@ -658,6 +661,7 @@ about above accuracy Accuracy ACCURACY across-asset actually admits admits. agai
 - `chunk shape`
 - `coin`
 - `coins`
+- `coins in the money`
 - `comparisons`
 - `d`
 - `Daily 1-day`
@@ -732,10 +736,10 @@ _none_
 - — one row per declared setting, averaged over its coins
 - — one row per coin, its records opening below it
 
-## Every word, flat (148)
+## Every word, flat (149)
 
 ```
-1-day 2-day 3-day 4-day 41h 65h 8-day 89h active ADAUSDT add agree all alongside always-long and Apply argmax arm at auto AVAXUSDT averaged avg back band BCHUSDT beat below board Boards2 boost breakout BTCUSDT by carried chain chunk coin coins comparisons contexts control cross Daily decision declared directional DOGEUSDT drawing entry ETHUSDT Every every example. files fingerprint-checked first forecast from full fuller gate held-back helped how in is it its kept last lead least logreg LTCUSDT many market members more new no Nothing null of off on once one open opening order out over own page per price priced q2/6 ranked read record records row rows S1 S2 S3 score scored set setting settings Settings shape SOLUSDT sort Stage stage stages static stops switched t89h test the The this three tie-break top trades trail training trainings unit units view votes vs way Weekly whole worked works. XRPUSDT yes
+1-day 2-day 3-day 4-day 41h 65h 8-day 89h active ADAUSDT add agree all alongside always-long and Apply argmax arm at auto AVAXUSDT averaged avg back band BCHUSDT beat below board Boards2 boost breakout BTCUSDT by carried chain chunk coin coins comparisons contexts control cross Daily decision declared directional DOGEUSDT drawing entry ETHUSDT Every every example. files fingerprint-checked first forecast from full fuller gate held-back helped how in is it its kept last lead least logreg LTCUSDT many market members money more new no Nothing null of off on once one open opening order out over own page per price priced q2/6 ranked read record records row rows S1 S2 S3 score scored set setting settings Settings shape SOLUSDT sort Stage stage stages static stops switched t89h test the The this three tie-break top trades trail training trainings unit units view votes vs way Weekly whole worked works. XRPUSDT yes
 ```
 
 ---
