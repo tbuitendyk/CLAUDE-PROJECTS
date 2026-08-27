@@ -474,6 +474,29 @@ module.exports = {
     }
   },
 
+  // What is in the Sweep3 boxes survives a screen flip, and the progress
+  // line carries the cycle counts (owner order, 2026-08-27: "not lose the
+  // values loaded to the stage 1/2/3 areas on screen flips ... a decent
+  // progress indicator with total number of cycles and progress").
+  async theSweep3FormAndTheCycleCountsSurviveTheFlip() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const screens = require('../lib/screencontrols');
+    const body = screens.drawBody('drawSweep3');
+    assert.ok(body.includes('restoreSweep3Form()'), 'every draw writes the remembered draft back into the boxes');
+    assert.ok(body.includes("addEventListener('change', rememberSweep3Form)"), 'every change is remembered');
+    assert.ok(body.includes("addEventListener('input', rememberSweep3Form)"), 'typing is remembered too, not only leaving the box');
+    const fill = ui.slice(ui.indexOf('function fillStageForm('), ui.indexOf('let s3SetsCache'));
+    assert.ok(/rememberSweep3Form\(\);/.test(fill),
+      'a programmatic fill never fires change, so copy settings must remember what it wrote');
+    const prog = ui.slice(ui.indexOf('async function s3Progress('), ui.indexOf('async function s3Counts('));
+    assert.ok(/cyclesTotal/.test(prog) && /cyclesWord/.test(prog) && /etaMs/.test(prog),
+      'the progress line must carry the cycle total, the word for a cycle, and how long is left');
+    const lib = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.strictEqual(lib.split('cyclesWord:').length - 1, 3, 'all three launches declare their cycle counts');
+    assert.ok(/reading the kept votes: \$\{pi \+ 1\}\/\$\{parentRecords.length\} units/.test(lib),
+      'the long read before stage 3 dispatch says what it is doing instead of sitting on "writing the plan"');
+  },
+
   // Notes on a record set: refused while it is being written, saved and
   // stamped after, capped at the same length a run's notes are.
   async theRecordSetNotesRefuseWhileWritingAndSaveAfter() {

@@ -117,16 +117,26 @@ async function compute() {
       return m ? Number(m[1]) : null;
     } catch (_) { return null; }               // not running: no group to read
   };
-  const before = new Map(UNITS.map((u) => [u, usage(u)]));
+  // BOTH ENDS OF THE WINDOW ARE READ TOGETHER (owner report, 2026-08-27:
+  // "390% ceiling allowed and yet the service is using 398.2%"). The kernel
+  // enforces the ceiling on this very counter, so a true sustained read can
+  // never sit above it — but this used to read each unit's counter AFTER its
+  // systemctl show call, tens of milliseconds of extra counted time over a
+  // denominator frozen at the half-second sleep, and a service pinned AT its
+  // ceiling displayed a few percent above it. The counters are now read for
+  // every unit in one pass, immediately either side of the sleep, and the
+  // slow systemctl asks happen outside the measured window.
   const t0 = process.hrtime.bigint();
+  const before = new Map(UNITS.map((u) => [u, usage(u)]));
   await new Promise((r) => { setTimeout(r, 500); });
+  const afterAll = new Map(UNITS.map((u) => [u, usage(u)]));
   const windowMs = Number(process.hrtime.bigint() - t0) / 1e6;
 
   const units = [];
   for (const unit of UNITS) {
     const d = await show(unit, ['Description', 'ActiveState', 'SubState', 'ActiveEnterTimestampMonotonic', 'CPUQuotaPerSecUSec', 'MainPID']);
     let cpuPct = null;
-    const after = usage(unit);
+    const after = afterAll.get(unit);
     const a = before.get(unit);
     if (after != null && a != null && windowMs > 0) {
       // usec of processor time over msec of wall time: /1000 aligns the units,

@@ -215,6 +215,28 @@ module.exports = {
 
   // Reachable at both addresses, one handler. The second address is the one
   // used when the trading service is down, which is when this matters.
+  // The kernel enforces the ceiling on the very counter the meter reads, so
+  // a true sustained read can never sit above it — unless the meter's two
+  // ends are read at different distances from its own clock, which is
+  // exactly what happened (owner report, 2026-08-27: 398.2% shown under a
+  // 390% ceiling). Both counter passes must sit immediately either side of
+  // the sleep, with the slow systemctl asks OUTSIDE the measured window.
+  async theMeterReadsBothEndsOfItsWindowTogether() {
+    const src = fs.readFileSync(SVC, 'utf8');
+    const t0At = src.indexOf('const t0 = process.hrtime.bigint();');
+    const beforeAt = src.indexOf('const before = new Map(UNITS.map((u) => [u, usage(u)]));');
+    const afterAt = src.indexOf('const afterAll = new Map(UNITS.map((u) => [u, usage(u)]));');
+    const windowAt = src.indexOf('const windowMs = Number(process.hrtime.bigint() - t0) / 1e6;');
+    const loopAt = src.indexOf("const d = await show(unit, ['Description'");
+    assert.ok(t0At > 0 && beforeAt > 0 && afterAt > 0 && windowAt > 0 && loopAt > 0, 'the compute() window pieces must exist');
+    assert.ok(t0At < beforeAt && beforeAt < afterAt && afterAt < windowAt && windowAt < loopAt,
+      'the counters must be read for every unit in one pass either side of the sleep, before any systemctl ask — '
+      + 'reading a counter after the asks counts their time in the numerator but not the denominator, and a service '
+      + 'pinned at its ceiling displays above it');
+    assert.ok(!/const after = usage\(unit\)/.test(src),
+      'no per-unit counter read inside the show loop — that is the skew this test exists to stop');
+  },
+
   async theSameRequestWorksFromBothAddresses() {
     const { mod, restore } = withFakeSystemctl();
     const srv = mod.server;

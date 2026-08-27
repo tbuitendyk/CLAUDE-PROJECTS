@@ -3759,8 +3759,18 @@ async function s3Progress() {
     return;
   }
   const row = (st.sets || []).find((x) => x.id === st.running);
+  // The whole story on one line: what is going, how far through its cycles,
+  // the percent, and about how long is left (owner order, 2026-08-27) —
+  // refreshed every few seconds by the poll below.
+  const pf = (row && row.perf) || {};
+  const pct = pf.cyclesTotal ? Math.floor(((pf.cyclesDone || 0) / pf.cyclesTotal) * 100) : null;
+  const tail = [
+    pct != null ? `<b>${pct}%</b> of ${Number(pf.cyclesTotal).toLocaleString()} ${esc(pf.cyclesWord || 'cycles')}` : null,
+    pf.etaMs != null ? `about ${msWords(pf.etaMs)} left` : null,
+    pf.elapsedMs ? `${msWords(pf.elapsedMs)} in` : null,
+  ].filter(Boolean).join(' · ');
   el.innerHTML = row
-    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')} <button id="s3Stop" class="danger">stop</button>`
+    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="s3Stop" class="danger">stop</button>`
     : `a stage run is going (${esc(st.running)})`;
   const stop = $('#s3Stop');
   if (stop) stop.onclick = async () => { await tryPost(`api/stageset/${st.running}/stop`, {}); s3Progress(); };
@@ -3889,7 +3899,45 @@ function fillStageForm(doc) {
     setC('#s3PermEntry', cp.entry); setC('#s3PermGate', cp.gate); setC('#s3PermD', cp.dMult); setC('#s3PermT', cp.tHours);
     setC('#s3PermTrail', cp.trail); setC('#s3PermArm', cp.arm); setC('#s3PermAgree', cp.agree);
   }
+  // a programmatic fill never fires 'change', so remember it here — copied
+  // settings must survive a screen flip exactly like typed ones
+  rememberSweep3Form();
   s3Counts();
+}
+
+// WHAT IS IN THE STAGE BOXES SURVIVES A SCREEN FLIP (owner order,
+// 2026-08-27: "not lose the values loaded to the stage 1/2/3 areas on screen
+// flips — that stuff needs to be left as-is"). The same standing rule the
+// Sweep form keeps, by the same mechanism: every box and tick on this page,
+// found by id so a control added tomorrow is covered, remembered on every
+// change and written back on every draw.
+const SWEEP3_FORM_KEY = 'cx-sweep3form';
+const sweep3Controls = () => Array.from(document.querySelectorAll('#view [id^="s3"]'))
+  .filter((e) => e.tagName === 'INPUT' || e.tagName === 'SELECT' || e.tagName === 'TEXTAREA');
+function rememberSweep3Form() {
+  const o = {};
+  for (const e of sweep3Controls()) o[e.id] = e.type === 'checkbox' ? e.checked : e.value;
+  try { localStorage.setItem(SWEEP3_FORM_KEY, JSON.stringify(o)); } catch (_) { /* private window */ }
+}
+function restoreSweep3Form() {
+  let o = null;
+  try { o = JSON.parse(localStorage.getItem(SWEEP3_FORM_KEY) || 'null'); } catch (_) { o = null; }
+  if (!o || typeof o !== 'object') return false;
+  for (const e of sweep3Controls()) {
+    if (!Object.prototype.hasOwnProperty.call(o, e.id)) continue;
+    if (e.type === 'checkbox') e.checked = !!o[e.id];
+    else e.value = o[e.id] == null ? '' : String(o[e.id]);
+  }
+  return true;
+}
+
+// Milliseconds as words for the progress line — '38s', '4m', '2h 05m'.
+function msWords(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
 }
 
 let s3SetsCache = null;
@@ -4050,6 +4098,13 @@ async function drawSweep3() {
   for (const id of ['s3From3', 's3Carry3', 's3Null3', 's3Dec', 's3PermDec', 's3Band', 's3PermBand', 's3Wk', 's3PermWk', 's3Entry', 's3PermEntry',
     's3Gate', 's3PermGate', 's3D', 's3PermD', 's3T', 's3PermT', 's3Trail', 's3PermTrail', 's3Arm', 's3PermArm', 's3Q6', 's3Q8', 's3PermAgree']) {
     const el = $(`#${id}`); if (el) el.onchange = s3Counts;
+  }
+  // what is in the boxes survives a screen flip: write the remembered draft
+  // back BEFORE the counters read the boxes, then remember every change
+  restoreSweep3Form();
+  for (const e of sweep3Controls()) {
+    e.addEventListener('change', rememberSweep3Form);
+    e.addEventListener('input', rememberSweep3Form);
   }
   s3Progress();
   s3Counts();

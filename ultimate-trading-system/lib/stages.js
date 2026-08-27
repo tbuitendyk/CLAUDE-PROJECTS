@@ -233,7 +233,10 @@ function startStage1(params) {
     params: { universe, sizes, geometries, windowLayout, nullN, ...p, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: units.length, unitList: units },
-    perf: { unitsDone: 0, unitsTotal: units.length, elapsedMs: 0, etaMs: null, workers: null },
+    perf: {
+      unitsDone: 0, unitsTotal: units.length, elapsedMs: 0, etaMs: null, workers: null,
+      cyclesDone: 0, cyclesTotal: units.reduce((nn, uu) => nn + (uu.size === 1 ? 3 : 4), 0), cyclesWord: 'trainings',
+    },
     failures: [],
     counts: null,
   };
@@ -275,7 +278,9 @@ function startStage1(params) {
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
-      doc.progress = `stage 1: ${doc.perf.unitsDone}/${units.length} units (${unitKeyOf(u)})`;
+      doc.perf.cyclesDone += u.size === 1 ? 3 : 4;
+      doc.progress = `stage 1: ${doc.perf.unitsDone}/${units.length} units \u00b7 `
+        + `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings (${unitKeyOf(u)})`;
       saveSet(doc);
     });
     if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
@@ -465,7 +470,10 @@ function startStage2(params) {
     params: { ...parent.params, carry: carried.length, from: parent.id, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: carried.length },
-    perf: { unitsDone: 0, unitsTotal: carried.length, elapsedMs: 0, etaMs: null, workers: null },
+    perf: {
+      unitsDone: 0, unitsTotal: carried.length, elapsedMs: 0, etaMs: null, workers: null,
+      cyclesDone: 0, cyclesTotal: carried.reduce((nn, row) => nn + ((parentRecords.get(row.u) || {}).size === 1 ? 3 : 4), 0), cyclesWord: 'trainings',
+    },
     failures: [],
     counts: null,
   };
@@ -545,7 +553,9 @@ function startStage2(params) {
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (carried.length - doc.perf.unitsDone)) : null;
-      doc.progress = `stage 2: ${doc.perf.unitsDone}/${carried.length} carried units`;
+      doc.perf.cyclesDone += rec.size === 1 ? 3 : 4;
+      doc.progress = `stage 2: ${doc.perf.unitsDone}/${carried.length} carried units \u00b7 `
+        + `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings`;
       saveSet(doc);
     });
     if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
@@ -651,7 +661,10 @@ function startStage3(params) {
     },
     seed: seedOf(id),
     plan: { units: parentRecords.length, settings: settings.length, settingLabels: settings.map((s) => s.label) },
-    perf: { unitsDone: 0, unitsTotal: parentRecords.length, elapsedMs: 0, etaMs: null, workers: null },
+    perf: {
+      unitsDone: 0, unitsTotal: parentRecords.length, elapsedMs: 0, etaMs: null, workers: null,
+      cyclesDone: 0, cyclesTotal: parentRecords.length * settings.length * (1 + nullN), cyclesWord: 'pricings',
+    },
     failures: [],
     counts: null,
   };
@@ -670,10 +683,16 @@ function startStage3(params) {
     endMonth: parent.params.endMonth, windowLayout: parent.params.windowLayout,
   };
   (async () => {
-    const payloads = parentRecords.map((rec) => {
+    // Reading every unit's kept votes back out of the store takes real time
+    // on a big set, and a screen that says "writing the plan" through all of
+    // it reads as stuck (owner, 2026-08-27). Say what is actually happening,
+    // as it happens.
+    const payloads = [];
+    for (let pi = 0; pi < parentRecords.length; pi++) {
+      const rec = parentRecords[pi];
       const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
       const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
-      return {
+      payloads.push({
         combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
         geometry: rec.geometry, params: p,
         unit: {
@@ -684,8 +703,12 @@ function startStage3(params) {
         },
         settings, fee, nullN, seed: doc.seed,
         unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
-      };
-    });
+      });
+      if (pi % 5 === 4 || pi === parentRecords.length - 1) {
+        doc.progress = `reading the kept votes: ${pi + 1}/${parentRecords.length} units`;
+        saveSet(doc);
+      }
+    }
     await pool.forEach('s3Unit', payloads, (settled, i) => {
       if (doc.cancelRequested) return;
       const rec = parentRecords[i];
@@ -703,7 +726,9 @@ function startStage3(params) {
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (parentRecords.length - doc.perf.unitsDone)) : null;
-      doc.progress = `stage 3: ${doc.perf.unitsDone}/${parentRecords.length} units × ${settings.length} settings`;
+      doc.perf.cyclesDone = doc.perf.unitsDone * settings.length * (1 + nullN);
+      doc.progress = `stage 3: ${doc.perf.unitsDone}/${parentRecords.length} units · `
+        + `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} pricings`;
       saveSet(doc);
     });
     if (doc.cancelRequested) { finishFail(doc, null, pool); return; }

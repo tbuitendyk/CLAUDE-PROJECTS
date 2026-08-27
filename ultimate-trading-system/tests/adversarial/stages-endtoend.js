@@ -91,6 +91,8 @@ async function waitDone(id, label) {
   const d1 = await waitDone(s1.id, 'stage 1');
   assert.strictEqual(d1.status, 'done', `stage 1 ended ${d1.status}: ${JSON.stringify(d1.failures)}`);
   assert.strictEqual(d1.params.campaign, EXAM_CAMP, 'a real stage 1 launch must stamp the campaign in use');
+  assert.strictEqual(d1.perf.cyclesTotal, 6, 'two singles × 3 members — the cycle count the progress line shows');
+  assert.strictEqual(d1.perf.cyclesDone, 6, 'a finished set has done every cycle it declared');
 
   const ranking = rowstore.readAll(s1.id, 'records');
   const a = ranking.find((r) => r.trade === A);
@@ -132,6 +134,8 @@ async function waitDone(id, label) {
   assert.strictEqual(s3.settings, 14, 'seven holding times × two decisions');
   const d3 = await waitDone(s3.id, 'stage 3');
   assert.strictEqual(d3.status, 'done', `stage 3 ended ${d3.status}: ${JSON.stringify(d3.failures)}`);
+  assert.strictEqual(d3.perf.cyclesTotal, 14 * 2 * 10, '14 settings × 2 units × (1 real + 9 deals) pricings declared');
+  assert.strictEqual(d3.perf.cyclesDone, d3.perf.cyclesTotal, 'a finished set has done every pricing it declared');
   assert.strictEqual(rowstore.count(s3.id, 'records'), 14 * 2, 'one record per setting per unit');
 
   const ranked = stages.stage3Ranked(s3.id, 0, 50);
