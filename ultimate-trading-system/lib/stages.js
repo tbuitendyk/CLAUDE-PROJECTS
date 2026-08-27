@@ -72,6 +72,7 @@ function publicParams(d) {
   return {
     windowLayout: p.windowLayout || null, nullN: p.nullN ?? null,
     orderBy: p.orderBy || null, carry: p.carry ?? null, fee: p.fee ?? null,
+    campaign: p.campaign || null,
   };
 }
 
@@ -227,7 +228,9 @@ function startStage1(params) {
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
-    params: { universe, sizes, geometries, windowLayout, nullN, ...p },
+    // The owner's current campaign name rides on every launch, exactly as it
+    // does on the sweeps (owner order, 2026-08-04; carried here 2026-08-27).
+    params: { universe, sizes, geometries, windowLayout, nullN, ...p, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: units.length, unitList: units },
     perf: { unitsDone: 0, unitsTotal: units.length, elapsedMs: 0, etaMs: null, workers: null },
@@ -358,7 +361,9 @@ function startStage2(params) {
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
     parent: { id: parent.id, name: parent.name, orderBy, carry: carried.length, of: ranking.length },
-    params: { ...parent.params, orderBy, carry: carried.length, from: parent.id },
+    // ...parent.params carries the parent's campaign in; the campaign in use
+    // AT THIS LAUNCH wins, the same rule every other launch follows.
+    params: { ...parent.params, orderBy, carry: carried.length, from: parent.id, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: carried.length },
     perf: { unitsDone: 0, unitsTotal: carried.length, elapsedMs: 0, etaMs: null, workers: null },
@@ -518,6 +523,8 @@ function startStage3(params) {
       cell: params.cell, cellPermute: params.cellPermute || null,
       decision: params.decision || 'argmax', band: params.band ?? 'auto', weekdaysOnly: !!params.weekdaysOnly,
       permuteDecision: !!params.permuteDecision, permuteBand: !!params.permuteBand, permuteWeekdays: !!params.permuteWeekdays,
+      // the campaign in use at THIS launch, not the parent's (same rule as stage 2)
+      campaign: require('./campaign').getCampaign() || null,
     },
     seed: seedOf(id),
     plan: { units: parentRecords.length, settings: settings.length, settingLabels: settings.map((s) => s.label) },
@@ -708,6 +715,20 @@ function deleteSet(id, confirm) {
   return { deleted: true, id: doc.id, name: doc.name, rows, bytes };
 }
 
+// POST-RUN NOTES, the same contract the runs have (owner order, 2026-08-04;
+// carried to record sets 2026-08-27): freely editable once the set has
+// landed, refused while it is being written — the orchestrator saves the doc
+// continuously and a concurrent note write would be silently overwritten.
+function setSetNotes(id, text) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error('unknown record set');
+  if (doc.status === 'running') throw new Error('the record set is still being written — notes save after it finishes');
+  doc.notes = String(text ?? '').slice(0, 20000);
+  doc.notesEditedAt = new Date().toISOString();
+  saveSet(doc);
+  return { id: doc.id, notes: doc.notes, notesEditedAt: doc.notesEditedAt };
+}
+
 // ---- reads for Boards3 ------------------------------------------------------------
 function chainOf(id) {
   const out = [];
@@ -819,4 +840,5 @@ module.exports = {
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
+  setSetNotes,
 };

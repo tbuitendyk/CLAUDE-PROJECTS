@@ -308,6 +308,141 @@ module.exports = {
     assert.deepStrictEqual(norm(merged), norm(one), 'the sharded fold must be the single-pass fold, exactly');
   },
 
+  // ---- the campaign rides the stages (owner GO, 2026-08-27) ----------------
+
+  // The stamp sits on all three launches — pinned in the source because a
+  // real launch is too heavy for this suite (the end-to-end exam launches for
+  // real and checks the stamp rides). Everything downstream of a stamp — the
+  // listing row, the tree, the contents count, the picker — is proved against
+  // stamped documents here.
+  async theCampaignStampSitsOnEveryStageLaunch() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const stamps = src.split("campaign: require('./campaign').getCampaign() || null").length - 1;
+    assert.strictEqual(stamps, 3, `all three stage launches must stamp the campaign in use — found ${stamps} of 3`);
+
+    const campaign = require('../lib/campaign');
+    const stamp = Date.now().toString(36);
+    const name = `camp-test-${stamp}`;
+    const s1 = { id: `s1-test-${stamp}-a`, stage: 1, seq: 999995, name: 'S1 #camp-a', status: 'done', createdAt: '2026-08-27T01:00:00.000Z', desc: 'first', params: { campaign: name, windowLayout: 'reserve61' }, plan: { units: 1 } };
+    const s2 = { id: `s2-test-${stamp}-b`, stage: 2, seq: 999995, name: 'S2 #camp-b', status: 'done', createdAt: '2026-08-27T02:00:00.000Z', parent: { id: s1.id, name: s1.name }, params: { campaign: name, windowLayout: 'reserve61' }, plan: { units: 1 } };
+    const file = (d) => path.join(SETS_DIR, `${d.id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file(s1), JSON.stringify(s1));
+      fs.writeFileSync(file(s2), JSON.stringify(s2));
+      const row = stages.listSets().find((x) => x.id === s1.id);
+      assert.strictEqual(row.params.campaign, name, 'the listing row must carry the campaign');
+      const tree = campaign.campaignTree(name);
+      const ids = tree.runs.map((r) => r.id);
+      assert.ok(ids.includes(s1.id) && ids.includes(s2.id), 'both record sets must be in the campaign tree');
+      const childRow = tree.runs.find((r) => r.id === s2.id);
+      assert.strictEqual(childRow.kind, 'stage 2');
+      assert.strictEqual(childRow.parentRunId, s1.id, 'the tree must link a set to the parent it read');
+      const found = campaign.campaignContents(name);
+      assert.strictEqual(found.counts.stageSets, 2);
+      assert.strictEqual(found.declaredOnly, false, 'a campaign holding record sets holds something');
+      assert.ok(campaign.listCampaignNames().includes(name),
+        'a campaign whose only activity is record sets must still be offered by the picker');
+    } finally {
+      try { fs.rmSync(file(s1), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(file(s2), { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // Deleting a campaign takes its record sets children-first — stage 3 before
+  // 2 before 1 — because a set named as a parent refuses deletion. A set a
+  // FOREIGN campaign's child names stays behind, and the delete says so.
+  async theCampaignDeleteTakesItsRecordSetsChildrenFirst() {
+    const campaign = require('../lib/campaign');
+    const stamp = Date.now().toString(36);
+    const name = `camp-del-${stamp}`;
+    const nameB = `camp-delb-${stamp}`;
+    const wasSet = campaign.getCampaign();
+    const s1 = { id: `s1-test-${stamp}-d1`, stage: 1, seq: 999993, name: 'S1 #cd-1', status: 'done', createdAt: '2026-08-27T01:00:00.000Z', params: { campaign: name }, plan: { units: 1 } };
+    const s2 = { id: `s2-test-${stamp}-d2`, stage: 2, seq: 999993, name: 'S2 #cd-2', status: 'done', createdAt: '2026-08-27T02:00:00.000Z', parent: { id: s1.id, name: s1.name }, params: { campaign: name }, plan: { units: 1 } };
+    const p2 = { id: `s1-test-${stamp}-d3`, stage: 1, seq: 999992, name: 'S1 #cd-3', status: 'done', createdAt: '2026-08-27T03:00:00.000Z', params: { campaign: nameB }, plan: { units: 1 } };
+    const foreign = { id: `s2-test-${stamp}-d4`, stage: 2, seq: 999992, name: 'S2 #cd-4', status: 'done', createdAt: '2026-08-27T04:00:00.000Z', parent: { id: p2.id, name: p2.name }, params: { campaign: `camp-else-${stamp}` }, plan: { units: 1 } };
+    const file = (d) => path.join(SETS_DIR, `${d.id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      for (const d of [s1, s2, p2, foreign]) fs.writeFileSync(file(d), JSON.stringify(d));
+
+      // the clean chain goes whole: child first, then the parent it named
+      const out = campaign.deleteCampaign(name);
+      assert.strictEqual(out.removed.stageSets, 2, 'both record sets of the chain must go');
+      assert.deepStrictEqual(out.leftBehind, [], 'nothing of a self-contained chain stays behind');
+      assert.ok(!fs.existsSync(file(s1)) && !fs.existsSync(file(s2)), 'the set documents must be gone');
+      assert.strictEqual(campaign.getCampaign(), wasSet, 'deleting a campaign that is not in use must not touch the one that is');
+
+      // a parent a FOREIGN campaign's child names is refused, and named
+      const outB = campaign.deleteCampaign(nameB);
+      assert.strictEqual(outB.removed.stageSets, 0, 'the named parent must stay');
+      assert.strictEqual(outB.leftBehind.length, 1, 'and the delete must say so');
+      assert.ok(/S2 #cd-4/.test(outB.leftBehind[0]), 'the reason names the child that protects it');
+      assert.ok(fs.existsSync(file(p2)), 'the protected set document must still be there');
+    } finally {
+      for (const d of [s1, s2, p2, foreign]) { try { fs.rmSync(file(d), { force: true }); } catch (_) { /* fixture */ } }
+    }
+  },
+
+  // Notes on a record set: refused while it is being written, saved and
+  // stamped after, capped at the same length a run's notes are.
+  async theRecordSetNotesRefuseWhileWritingAndSaveAfter() {
+    const stamp = Date.now().toString(36);
+    const doc = { id: `s1-test-${stamp}-n`, stage: 1, seq: 999991, name: 'S1 #notes', status: 'running', createdAt: new Date().toISOString(), plan: { units: 1 } };
+    const file = path.join(SETS_DIR, `${doc.id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      assert.throws(() => stages.setSetNotes(doc.id, 'x'), /still being written/,
+        'the orchestrator saves the doc continuously — a concurrent note write would be silently overwritten');
+      doc.status = 'done';
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const out = stages.setSetNotes(doc.id, 'why this set exists');
+      assert.strictEqual(out.notes, 'why this set exists');
+      assert.ok(out.notesEditedAt, 'the edit stamp is taken on the server');
+      assert.strictEqual(stages.getSet(doc.id).notes, 'why this set exists', 'the note must round-trip the doc');
+      assert.strictEqual(stages.setSetNotes(doc.id, 'x'.repeat(30000)).notes.length, 20000,
+        'notes cap at the same length a run\'s notes do');
+      assert.throws(() => stages.setSetNotes('no-such-set', 'x'), /unknown record set/);
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // The campaign panel and the opened run's head are ONE piece of code drawn
+  // on two screens each (owner order, 2026-08-27: "all formatted the same —
+  // recycle / re-use"). Shared functions cannot drift; this holds both screens
+  // to them, and holds the control reader to seeing the shared controls on
+  // both — which is what obliges the Help tab to describe them on both.
+  async theTwoScreensDrawTheSharedPanelsFromOneFunction() {
+    const screens = require('../lib/screencontrols');
+    for (const fn of ['drawSweep', 'drawSweep3']) {
+      const body = screens.drawBody(fn);
+      assert.ok(body.includes('campaignPanelHtml('), `${fn} must draw the campaign panel from the shared function`);
+      assert.ok(body.includes('wireCampaignPanel('), `${fn} must wire the campaign panel with the shared function`);
+    }
+    for (const fn of ['drawBoards', 'drawBoards3']) {
+      const body = screens.drawBody(fn);
+      for (const shared of ['campaignNoteHtml(', 'descriptionPanelHtml(', 'notesPanelHtml(', 'runIdentityPanelHtml(', 'wireNotesSave(']) {
+        assert.ok(body.includes(shared), `${fn} must draw the opened run's head with ${shared.slice(0, -1)}`);
+      }
+    }
+    const map = screens.byTab();
+    for (const key of ['sweep', 'sweep3']) {
+      const ids = map[key].controls.map((c) => c.id);
+      for (const id of ['cxCampPick', 'cxCamp', 'campSet', 'campTree', 'campDelete']) {
+        assert.ok(ids.includes(id), `${key} must expose the campaign control ${id}`);
+      }
+    }
+    for (const key of ['boards', 'boards3']) {
+      const ids = map[key].controls.map((c) => c.id);
+      for (const id of ['bNotes', 'bNotesSave']) {
+        assert.ok(ids.includes(id), `${key} must expose the notes control ${id}`);
+      }
+    }
+  },
+
   // The votes a stage keeps must round-trip the store byte-exactly at the
   // 4-decimal grain, so a stored vote can never read differently on reload.
   async theKeptVotesRoundTripTheStore() {

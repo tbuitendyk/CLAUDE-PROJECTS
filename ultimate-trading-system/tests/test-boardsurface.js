@@ -37,9 +37,18 @@ module.exports = {
     assert.ok(/MICROSCOPE, not a null test/.test(UI), 'and must say what it cannot tell you');
   },
 
+  // CHANGED 2026-08-27: the notes box and its save are drawn and wired by ONE
+  // pair of functions (notesPanelHtml / wireNotesSave) because two screens
+  // carry them now — Boards for a saved run, Boards3 for a record set. The
+  // properties held here are unchanged; only where they live moved.
   notesAreReadableWritableAndRefusedWhileTheRunComputes() {
     assert.ok(/id="bNotes"/.test(UI), 'the run must carry notes');
-    assert.ok(/\/notes`, \{ text:/.test(UI), 'saved with the single field the endpoint reads');
+    assert.ok(/tryPost\(saveUrl, \{ text: \$\('#bNotes'\)\.value \}\)/.test(UI),
+      'saved with the single field the endpoint reads');
+    assert.ok(/wireNotesSave\(`api\/bracketlab\/\$\{encodeURIComponent\(doc\.id\)\}\/notes`/.test(UI),
+      'the Boards screen must wire the save to its own run\'s notes address');
+    assert.ok(/wireNotesSave\(`api\/stageset\/\$\{encodeURIComponent\(doc\.id\)\}\/notes`/.test(UI),
+      'the Boards3 screen must wire the save to its own record set\'s notes address');
     assert.ok(/doc\.status === 'running' \? 'disabled'/.test(UI),
       'the engine refuses writes while a run computes, so the box must say so rather than failing on save');
     assert.ok(/out\.notes \|\| ''/.test(UI),

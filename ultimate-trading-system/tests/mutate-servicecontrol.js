@@ -171,6 +171,14 @@ const GUARDS = [
     'theDeleteAsksForTheNameBackAndProtectsParents', 'asking what would go deletes it — the preview becomes the act'],
   [path.join(ROOT, 'lib', 'stagework.js'), 'c.beat += add.beat; c.pairs += add.pairs;', 'c.beat += add.beat;',
     'theShardedTallyFoldsToTheSameAnswer', 'the multithreaded totalling quietly drops comparisons and the shares inflate'],
+  [path.join(ROOT, 'lib', 'stages.js'), "campaign: require('./campaign').getCampaign() || null", 'campaign: null',
+    'theCampaignStampSitsOnEveryStageLaunch', 'every stage launch silently drops the campaign stamp and the tree shows none of them'],
+  [path.join(ROOT, 'lib', 'campaign.js'), "for (const s of require('./stages').listSets()) note((s.params || {}).campaign, s.createdAt);", ';',
+    'theCampaignStampSitsOnEveryStageLaunch', 'a campaign whose only activity is record sets vanishes from the picker'],
+  [path.join(ROOT, 'lib', 'campaign.js'), 'sort((a, b) => b.stage - a.stage)', 'sort((a, b) => a.stage - b.stage)',
+    'theCampaignDeleteTakesItsRecordSetsChildrenFirst', 'the campaign delete hits its own parent refusal and leaves every chain behind'],
+  [path.join(ROOT, 'lib', 'stages.js'), "if (doc.status === 'running') throw new Error('the record set is still being written", "if (false) throw new Error('the record set is still being written",
+    'theRecordSetNotesRefuseWhileWritingAndSaveAfter', 'a note written under a running set is silently overwritten by the orchestrator'],
 ];
 
 const only = process.argv[2] || '';

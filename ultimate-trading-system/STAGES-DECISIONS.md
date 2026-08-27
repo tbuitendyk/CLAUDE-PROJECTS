@@ -126,6 +126,40 @@ work — the owner reviews decisions in the morning, not at 3am.
   store is big enough, merged commutatively; a test holds the sharded answer
   equal to the single pass and a mutation guard proves the test bites.
 
+## The campaign and the run head, shared (owner GO, 2026-08-27: "code the
+## campaign interface and back-end on Sweep3 EXACTLY as per the one on Sweep
+## ... the same structure at the top of Boards3 as we have with Boards")
+
+20. **One panel, two screens — by one function, not by two copies.** The
+    campaign panel is one markup function and one wiring function drawn on
+    Sweep and on Sweep3; the opened run's head (the campaign note beside the
+    picker, the description panel, the notes box, "What this run actually
+    is") is one set of functions drawn on Boards and on Boards3. Shared code
+    survives deleting the four redundant tabs and cannot drift — the same
+    reason the Trade page draws its two branches from one path. The word
+    list and the control reader follow named top-level helpers one level
+    deep, so both screens' lists stay true.
+21. **Every stage launch stamps the campaign in use at THAT launch.** A
+    stage 2 or 3 launched under a different campaign than its parent carries
+    its own — the same rule every sweep launch follows (batch stamps the
+    current campaign at fire time).
+22. **The campaign's tree, contents and delete cover record sets.** Tree
+    rows ride in the same table as the runs, kind `stage N`, parent link to
+    the set the launch read. The delete goes children-first (stage 3, then
+    2, then 1), refuses up front while a stage run is being written, and
+    REPORTS any set left behind — a foreign campaign's child naming it as
+    parent — by name, rather than half-lying about what went.
+23. **Record sets take notes exactly like runs**: refused while the set is
+    being written, capped at the same 20,000 characters, stamped
+    server-side. `POST /api/stageset/:id/notes`, `stages.setSetNotes`.
+24. **The settings-copy button on Boards was NOT carried to Boards3.** The
+    owner named the campaign note, the description, the notes and "What this
+    run actually is"; a control that fills the Sweep3 stage boxes from a
+    record set is its own design question and waits for its own order.
+25. **The delete summary and preview on the campaign panel now count
+    `record sets`** on both screens that draw it — the panel is shared, so
+    Sweep shows the line too. A count line appears only when it is not zero.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and

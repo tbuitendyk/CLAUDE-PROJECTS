@@ -34,7 +34,18 @@ const B = 'ZZZE2EBUSDT';   // a fair coin, rule never on
 const SPAN = { fromMonth: '2024-01', toDate: '2024-12-31' };
 
 const made = [];
+// The exam sets a campaign of its own to prove the stamp rides a real launch
+// (owner GO, 2026-08-27), so the box's campaign file is restored verbatim —
+// name, declared list and all — whatever happens.
+const campaign = require('../../lib/campaign');
+const CAMP_FILE = path.join(ROOT, 'data', 'campaign.json');
+const priorCampFile = fs.existsSync(CAMP_FILE) ? fs.readFileSync(CAMP_FILE, 'utf8') : null;
+const EXAM_CAMP = 'ZZZ E2E exam';
 function cleanup() {
+  try {
+    if (priorCampFile === null) fs.rmSync(CAMP_FILE, { force: true });
+    else fs.writeFileSync(CAMP_FILE, priorCampFile);
+  } catch (_) { /* best effort */ }
   for (const f of fs.readdirSync(CACHE)) {
     if (f.startsWith(`${A}-1h-`) || f.startsWith(`${B}-1h-`)) {
       try { fs.unlinkSync(path.join(CACHE, f)); } catch (_) { /* best effort */ }
@@ -73,11 +84,13 @@ async function waitDone(id, label) {
     windowLayout: 'split70', allLoaded: false, startMonth: '2024-01', endMonth: '2024-12',
     nullN: 9, desc: 'adversarial end-to-end',
   };
+  campaign.setCampaign(EXAM_CAMP);
   console.log('stage 1...');
   const s1 = stages.startStage1(p);
   made.push(s1.id);
   const d1 = await waitDone(s1.id, 'stage 1');
   assert.strictEqual(d1.status, 'done', `stage 1 ended ${d1.status}: ${JSON.stringify(d1.failures)}`);
+  assert.strictEqual(d1.params.campaign, EXAM_CAMP, 'a real stage 1 launch must stamp the campaign in use');
 
   const ranking = rowstore.readAll(s1.id, 'records');
   const a = ranking.find((r) => r.trade === A);
@@ -144,6 +157,15 @@ async function waitDone(id, label) {
 
   const chain = stages.chainOf(s3.id);
   assert.deepStrictEqual(chain.map((c) => c.stage), [1, 2, 3], 'the chain walks back to stage 1');
+
+  // the campaign rode all three launches, and the tree reads the whole chain
+  const tr = campaign.campaignTree(EXAM_CAMP);
+  for (const [id, kind] of [[s1.id, 'stage 1'], [s2.id, 'stage 2'], [s3.id, 'stage 3']]) {
+    const row = tr.runs.find((r) => r.id === id);
+    assert.ok(row, `the campaign tree must hold ${id}`);
+    assert.strictEqual(row.kind, kind);
+  }
+  assert.strictEqual(tr.runs.find((r) => r.id === s3.id).parentRunId, s2.id, 'the tree links each set to the parent it read');
 
   console.log('\nEND-TO-END OK: the planted coin outranks the fair coin, the chain holds, every read path answers.');
 })().then(() => { cleanup(); process.exit(0); }).catch((err) => {

@@ -855,6 +855,163 @@ function fillSweepForm(p, description) {
   setV('#swDesc', description == null ? '' : description);
 }
 
+// THE CAMPAIGN PANEL IS ONE PANEL, DRAWN ON TWO SCREENS (owner order,
+// 2026-08-27: "code the campaign interface and back-end on Sweep3 EXACTLY as
+// per the one on Sweep -- go ahead and reuse the code"). One function returns
+// the markup and one wires the buttons, so the two screens cannot drift — the
+// same reason the Trade page draws its two branches from one path. Top-level
+// and called by name, so the word list and the control reader follow it onto
+// BOTH screens (lib/screencontrols.js reads one level of helpers).
+function campaignPanelHtml(camp, names) {
+  return `<div class="panel">
+    <h3 style="margin-top:0">Campaign — the parent chain name</h3>
+    <p class="note">Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
+      scans, stage record sets. The campaign's whole chain travels with any greenlight minted from it.</p>
+    <!-- A <datalist> FILTERS ITS SUGGESTIONS BY WHAT IS ALREADY IN THE BOX, and
+         the box is pre-filled with the current campaign — so opening it showed
+         exactly the one entry that matched, and every other campaign on the box
+         was unreachable without clearing the field first. The list was never
+         short: the service was offering three (owner, 2026-08-18). Two plain
+         controls now: pick an existing campaign, or type a new name. -->
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="every campaign this box has ever stamped on a run, a record set or a greenlight, newest activity first. Picking one switches to it immediately.">existing campaigns<select id="cxCampPick" style="min-width:18rem">
+        <option value="">— ${(names.names || []).length} on this box —</option>
+        ${(names.names || []).map((n) => `<option value="${esc(n)}" ${n === camp.name ? 'selected' : ''}>${esc(n)}</option>`).join('')}
+      </select></label>
+      <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" style="width:18rem"></label>
+      <button id="campSet">Set</button>
+      <button id="campTree" title="shows the runs, record sets and greenlights belonging to the campaign named in the box. Press it again to put them away.">View tree</button>
+      <!-- Same row, same shape as its neighbours: the row is bottom-aligned
+           because the controls to the left are a label above a box. -->
+      <button id="campDelete" class="danger">Delete campaign…</button>
+    </div>
+    <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
+    <div id="campOut"></div></div>`;
+}
+
+// The panel's buttons, wired the same on every screen that draws it. redraw
+// is that screen's own draw, so Set and Delete land back on the page the
+// owner is actually looking at.
+function wireCampaignPanel(redraw) {
+  $('#campSet').onclick = async () => { const out = await tryPost('api/campaign', { name: $('#cxCamp').value }); if (out) redraw(); };
+  const campPick = $('#cxCampPick');
+  if (campPick) campPick.onchange = async () => {
+    if (!campPick.value) return;
+    // WHAT THE USER JUST PICKED WINS, IMMEDIATELY (owner, 2026-08-18).
+    // "View tree" reads #cxCamp, and that box only caught up after the POST
+    // returned and the page re-rendered. Click View tree inside that window
+    // and it fetched the tree of the PREVIOUS campaign — a wrong answer that
+    // looks like a right one, because the tree renders fine, it is just the
+    // wrong campaign's. Reflecting the pick into the box synchronously, BEFORE
+    // the await, closes the window: the control the button reads is correct
+    // from the instant of the click.
+    $('#cxCamp').value = campPick.value;
+    // ...and belt-and-braces: no campaign action at all while the switch is in
+    // flight, so the panel can never be acted on while "Currently set" still
+    // disagrees with the dropdown. The redraw re-renders and re-enables.
+    const tree = $('#campTree'); const set = $('#campSet');
+    if (tree) tree.disabled = true; if (set) set.disabled = true;
+    const out = await tryPost('api/campaign', { name: campPick.value });
+    if (out) redraw();
+    else { if (tree) tree.disabled = false; if (set) set.disabled = false; }
+  };
+  // A TOGGLE (owner, 2026-08-22): the same button that shows a campaign's runs
+  // and greenlights puts them away again.
+  //
+  // What it closes is only ever a tree THIS button opened, for the campaign
+  // named in the box right now. The panel below is shared with "Delete
+  // campaign…", so a blind "if something is showing, clear it" would let a
+  // second press silently wipe a delete warning — and the whole point of that
+  // warning is that it is read before anything is answered. Recording which
+  // campaign's tree is open, and clearing that record wherever the panel is
+  // written by anything else, keeps the two uses of one panel apart.
+  $('#campTree').onclick = async () => {
+    const name = $('#cxCamp').value.trim(); if (!name) { alert('name a campaign'); return; }
+    const box = $('#campOut');
+    if (box.dataset.tree === name) { box.innerHTML = ''; delete box.dataset.tree; return; }
+    const t = await apiOr(`api/campaign-tree?name=${encodeURIComponent(name)}`, null);
+    box.dataset.tree = name;
+    box.innerHTML = t ? `<h3>Campaign “${esc(t.name)}” — runs, record sets &amp; greenlights</h3>
+      <table><thead><tr>${cth('run / record set','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}${cth('derives from','derives','text-align:left')}</tr></thead><tbody>
+      ${(t.runs || []).map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td>
+        <td>${esc((r.startedAt || '').slice(0, 16))}</td><td style="text-align:left" class="muted">${esc(r.parentRunId || '—')}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">no runs yet</td></tr>'}
+      </tbody></table>
+      ${(t.greenlights || []).length ? `<p class="note">greenlights: ${t.greenlights.map((g) => `${esc(g.id)}${g.revoked ? ' (nuked)' : ''}`).join(' · ')}</p>` : ''}` : '<p class="note">tree unavailable</p>';
+  };
+  // DELETING A CAMPAIGN TAKES EVERYTHING UNDER IT, so the owner is told exactly
+  // what that is BEFORE answering — a count after the fact is no use to anyone.
+  // Two steps on purpose: ask the server what is there, show it, then act.
+  $('#campDelete').onclick = async () => {
+    const name = $('#cxCamp').value.trim();
+    if (!name) { alert('name a campaign, or pick one'); return; }
+    const box = $('#campOut');
+    // this panel is no longer showing a tree, so "View tree" must not treat a
+    // press as "put the tree away" and wipe what is written below
+    delete box.dataset.tree;
+    const found = await apiOr(`api/campaign-contents?name=${encodeURIComponent(name)}`, null);
+    if (!found) { box.innerHTML = '<p class="note">could not read what that campaign holds — nothing deleted</p>'; return; }
+
+    // The one thing that stops it.
+    if (found.locked) {
+      // .panel, not .banner: .banner is a Trade-page class and does not exist
+      // here. Styling against a class the page does not define is how a control
+      // ends up looking like plain text (RULE FOUR).
+      box.innerHTML = `<div class="panel" style="border-color:var(--neg)"><b style="color:var(--neg)">“${esc(found.name)}” is locked — nothing has been deleted.</b>
+        <div style="margin-top:.3rem">${found.blocking.length} setup(s) on the Trade tab are still deployed. Retire them there first:</div>
+        <ul style="margin:.3rem 0 0 1.1rem">${found.blocking.map((b) =>
+    `<li>${esc(b.name || b.id)} — <b>${esc(b.state)}</b>${b.channel ? ` (${esc(b.channel)})` : ''}</li>`).join('')}</ul></div>`;
+      return;
+    }
+
+    const c = found.counts;
+    const lines = [
+      ['saved runs', c.runs],
+      ['greenlights', c.greenlights],
+      ['setups (none deployed)', c.setups],
+      ['record sets', c.stageSets],
+      ['saved model files', c.modelFiles],
+      ['tuning files', c.tuningFiles],
+    ].filter(([, n]) => n > 0);
+
+    box.innerHTML = `<div class="panel" style="border-color:var(--warn)"><b style="color:var(--warn)">Deleting “${esc(found.name)}” will permanently remove:</b>
+      ${lines.length ? `<ul style="margin:.3rem 0 0 1.1rem">${lines.map(([what, n]) =>
+    `<li><b>${n}</b> ${esc(what)}</li>`).join('')}</ul>`
+    : '<div style="margin-top:.3rem">nothing but the name — this campaign holds no runs, greenlights or setups.</div>'}
+      <div class="muted" style="margin-top:.4rem">This cannot be undone.</div></div>`;
+
+    // THE LIST HAS TO BE ON SCREEN BEFORE THE BOX APPEARS (owner, 2026-08-22).
+    // prompt() blocks the browser dead, so setting innerHTML on the line above
+    // is not enough: the change was in the page but had never been PAINTED, and
+    // the summary of what was about to be destroyed only became visible once
+    // the answer had already been given and acted on — which is no use to
+    // anyone. Two frames, then a turn of the event loop: the first frame is
+    // scheduled before the paint, the second runs after it, and the timeout
+    // makes sure the paint has actually landed rather than merely been queued.
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))));
+
+    // The name typed back, not an OK button. A campaign holding a season of
+    // work and one holding nothing must not be one keystroke apart.
+    const typed = prompt('Type the campaign name exactly to delete it and everything listed on the page behind this box:'
+      + `\n\n${found.name}\n\n`
+      + 'Hit Cancel to review the campaign contents prior to deleting.');
+    if (typed === null) { box.innerHTML += '<p class="note">cancelled — nothing deleted</p>'; return; }
+    if (typed.trim() !== found.name) {
+      box.innerHTML += '<p class="note">that did not match the name — nothing deleted</p>';
+      return;
+    }
+
+    const out = await tryPost('api/campaign/delete', { name: found.name, confirm: found.name });
+    if (!out) return;                       // tryPost already reported why
+    const r = out.removed || {};
+    box.innerHTML = `<div class="panel"><b>“${esc(out.name)}” deleted.</b>
+      Removed ${r.runs || 0} run(s), ${r.greenlights || 0} greenlight(s), ${r.setups || 0} setup(s),${r.stageSets ? ` ${r.stageSets} record set(s),` : ''}
+      and the saved models and tuning files belonging to them.
+      ${(out.leftBehind || []).length ? `<div style="margin-top:.3rem"><b class="warn">${out.leftBehind.length} record set(s) stayed</b> — each says why: ${out.leftBehind.map((x) => esc(x)).join(' · ')}</div>` : ''}
+      ${out.wasCurrent ? 'It was the campaign in use, so nothing is set now.' : ''}</div>`;
+    redraw();
+  };
+}
+
 async function drawSweep() {
   clearTimeout(sweepPoll); sweepPoll = null;
   const [camp, names, batches] = await Promise.all([
@@ -863,30 +1020,7 @@ async function drawSweep() {
     apiOr('api/batches', ({ batches: [] })),
   ]);
   const running = (batches.batches || batches || []).find((b) => b.status === 'running');
-  $('#view').innerHTML = `<div class="panel">
-    <h3 style="margin-top:0">Campaign — the parent chain name</h3>
-    <p class="note">Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
-      scans. The campaign's whole chain travels with any greenlight minted from it.</p>
-    <!-- A <datalist> FILTERS ITS SUGGESTIONS BY WHAT IS ALREADY IN THE BOX, and
-         the box is pre-filled with the current campaign — so opening it showed
-         exactly the one entry that matched, and every other campaign on the box
-         was unreachable without clearing the field first. The list was never
-         short: the service was offering three (owner, 2026-08-18). Two plain
-         controls now: pick an existing campaign, or type a new name. -->
-    <div class="row" style="align-items:flex-end">
-      <label class="f" title="every campaign this box has ever stamped on a run or a greenlight, newest activity first. Picking one switches to it immediately.">existing campaigns<select id="cxCampPick" style="min-width:18rem">
-        <option value="">— ${(names.names || []).length} on this box —</option>
-        ${(names.names || []).map((n) => `<option value="${esc(n)}" ${n === camp.name ? 'selected' : ''}>${esc(n)}</option>`).join('')}
-      </select></label>
-      <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" style="width:18rem"></label>
-      <button id="campSet">Set</button>
-      <button id="campTree" title="shows the runs and greenlights belonging to the campaign named in the box. Press it again to put them away.">View tree</button>
-      <!-- Same row, same shape as its neighbours: the row is bottom-aligned
-           because the controls to the left are a label above a box. -->
-      <button id="campDelete" class="danger">Delete campaign…</button>
-    </div>
-    <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
-    <div id="campOut"></div></div>
+  $('#view').innerHTML = `${campaignPanelHtml(camp, names)}
   <div class="panel">
     <h3 style="margin-top:0">Board sweep — wide to FIND (never a result)</h3>
     <!-- THE TWO PASSES ARE TWO BOXES (owner order, 2026-08-22). Every control
@@ -1037,121 +1171,7 @@ async function drawSweep() {
       <span id="swMsg" class="note"></span>
     </div></div>
   <div class="panel" id="swProg">${running ? '' : '<span class="muted">No job running.</span>'}</div>`;
-  $('#campSet').onclick = async () => { const out = await tryPost('api/campaign', { name: $('#cxCamp').value }); if (out) drawSweep(); };
-  const campPick = $('#cxCampPick');
-  if (campPick) campPick.onchange = async () => {
-    if (!campPick.value) return;
-    // WHAT THE USER JUST PICKED WINS, IMMEDIATELY (owner, 2026-08-18).
-    // "View tree" reads #cxCamp, and that box only caught up after the POST
-    // returned and drawSweep() re-rendered. Click View tree inside that window
-    // and it fetched the tree of the PREVIOUS campaign — a wrong answer that
-    // looks like a right one, because the tree renders fine, it is just the
-    // wrong campaign's. Reflecting the pick into the box synchronously, BEFORE
-    // the await, closes the window: the control the button reads is correct
-    // from the instant of the click.
-    $('#cxCamp').value = campPick.value;
-    // ...and belt-and-braces: no campaign action at all while the switch is in
-    // flight, so the panel can never be acted on while "Currently set" still
-    // disagrees with the dropdown. drawSweep() re-renders and re-enables.
-    const tree = $('#campTree'); const set = $('#campSet');
-    if (tree) tree.disabled = true; if (set) set.disabled = true;
-    const out = await tryPost('api/campaign', { name: campPick.value });
-    if (out) drawSweep();
-    else { if (tree) tree.disabled = false; if (set) set.disabled = false; }
-  };
-  // A TOGGLE (owner, 2026-08-22): the same button that shows a campaign's runs
-  // and greenlights puts them away again.
-  //
-  // What it closes is only ever a tree THIS button opened, for the campaign
-  // named in the box right now. The panel below is shared with "Delete
-  // campaign…", so a blind "if something is showing, clear it" would let a
-  // second press silently wipe a delete warning — and the whole point of that
-  // warning is that it is read before anything is answered. Recording which
-  // campaign's tree is open, and clearing that record wherever the panel is
-  // written by anything else, keeps the two uses of one panel apart.
-  $('#campTree').onclick = async () => {
-    const name = $('#cxCamp').value.trim(); if (!name) { alert('name a campaign'); return; }
-    const box = $('#campOut');
-    if (box.dataset.tree === name) { box.innerHTML = ''; delete box.dataset.tree; return; }
-    const t = await apiOr(`api/campaign-tree?name=${encodeURIComponent(name)}`, null);
-    box.dataset.tree = name;
-    box.innerHTML = t ? `<h3>Campaign “${esc(t.name)}” — runs &amp; greenlights</h3>
-      <table><thead><tr>${cth('run','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}${cth('derives from','derives','text-align:left')}</tr></thead><tbody>
-      ${(t.runs || []).map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td>
-        <td>${esc((r.startedAt || '').slice(0, 16))}</td><td style="text-align:left" class="muted">${esc(r.parentRunId || '—')}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">no runs yet</td></tr>'}
-      </tbody></table>
-      ${(t.greenlights || []).length ? `<p class="note">greenlights: ${t.greenlights.map((g) => `${esc(g.id)}${g.revoked ? ' (nuked)' : ''}`).join(' · ')}</p>` : ''}` : '<p class="note">tree unavailable</p>';
-  };
-  // DELETING A CAMPAIGN TAKES EVERYTHING UNDER IT, so the owner is told exactly
-  // what that is BEFORE answering — a count after the fact is no use to anyone.
-  // Two steps on purpose: ask the server what is there, show it, then act.
-  $('#campDelete').onclick = async () => {
-    const name = $('#cxCamp').value.trim();
-    if (!name) { alert('name a campaign, or pick one'); return; }
-    const box = $('#campOut');
-    // this panel is no longer showing a tree, so "View tree" must not treat a
-    // press as "put the tree away" and wipe what is written below
-    delete box.dataset.tree;
-    const found = await apiOr(`api/campaign-contents?name=${encodeURIComponent(name)}`, null);
-    if (!found) { box.innerHTML = '<p class="note">could not read what that campaign holds — nothing deleted</p>'; return; }
-
-    // The one thing that stops it.
-    if (found.locked) {
-      // .panel, not .banner: .banner is a Trade-page class and does not exist
-      // here. Styling against a class the page does not define is how a control
-      // ends up looking like plain text (RULE FOUR).
-      box.innerHTML = `<div class="panel" style="border-color:var(--neg)"><b style="color:var(--neg)">“${esc(found.name)}” is locked — nothing has been deleted.</b>
-        <div style="margin-top:.3rem">${found.blocking.length} setup(s) on the Trade tab are still deployed. Retire them there first:</div>
-        <ul style="margin:.3rem 0 0 1.1rem">${found.blocking.map((b) =>
-    `<li>${esc(b.name || b.id)} — <b>${esc(b.state)}</b>${b.channel ? ` (${esc(b.channel)})` : ''}</li>`).join('')}</ul></div>`;
-      return;
-    }
-
-    const c = found.counts;
-    const lines = [
-      ['saved runs', c.runs],
-      ['greenlights', c.greenlights],
-      ['setups (none deployed)', c.setups],
-      ['saved model files', c.modelFiles],
-      ['tuning files', c.tuningFiles],
-    ].filter(([, n]) => n > 0);
-
-    box.innerHTML = `<div class="panel" style="border-color:var(--warn)"><b style="color:var(--warn)">Deleting “${esc(found.name)}” will permanently remove:</b>
-      ${lines.length ? `<ul style="margin:.3rem 0 0 1.1rem">${lines.map(([what, n]) =>
-    `<li><b>${n}</b> ${esc(what)}</li>`).join('')}</ul>`
-    : '<div style="margin-top:.3rem">nothing but the name — this campaign holds no runs, greenlights or setups.</div>'}
-      <div class="muted" style="margin-top:.4rem">This cannot be undone.</div></div>`;
-
-    // THE LIST HAS TO BE ON SCREEN BEFORE THE BOX APPEARS (owner, 2026-08-22).
-    // prompt() blocks the browser dead, so setting innerHTML on the line above
-    // is not enough: the change was in the page but had never been PAINTED, and
-    // the summary of what was about to be destroyed only became visible once
-    // the answer had already been given and acted on — which is no use to
-    // anyone. Two frames, then a turn of the event loop: the first frame is
-    // scheduled before the paint, the second runs after it, and the timeout
-    // makes sure the paint has actually landed rather than merely been queued.
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))));
-
-    // The name typed back, not an OK button. A campaign holding a season of
-    // work and one holding nothing must not be one keystroke apart.
-    const typed = prompt('Type the campaign name exactly to delete it and everything listed on the page behind this box:'
-      + `\n\n${found.name}\n\n`
-      + 'Hit Cancel to review the campaign contents prior to deleting.');
-    if (typed === null) { box.innerHTML += '<p class="note">cancelled — nothing deleted</p>'; return; }
-    if (typed.trim() !== found.name) {
-      box.innerHTML += '<p class="note">that did not match the name — nothing deleted</p>';
-      return;
-    }
-
-    const out = await tryPost('api/campaign/delete', { name: found.name, confirm: found.name });
-    if (!out) return;                       // tryPost already reported why
-    const r = out.removed || {};
-    box.innerHTML = `<div class="panel"><b>“${esc(out.name)}” deleted.</b>
-      Removed ${r.runs || 0} run(s), ${r.greenlights || 0} greenlight(s), ${r.setups || 0} setup(s),
-      and the saved models and tuning files belonging to them.
-      ${out.wasCurrent ? 'It was the campaign in use, so nothing is set now.' : ''}</div>`;
-    drawSweep();
-  };
+  wireCampaignPanel(() => drawSweep());
 
   // Market entry has no gate and no rail distance, and the server REJECTS both
   // rather than ignoring them — a silently ignored parameter is how a declared
@@ -1571,6 +1591,71 @@ function getSelRow(doc) {
   // the local pick is display state until the server confirms
   return doc && doc.selection ? doc.selection : null;
 }
+
+// THE TOP OF AN OPENED RUN IS ONE STRUCTURE, DRAWN ON TWO SCREENS (owner
+// order, 2026-08-27: "the same structure at the top of Boards3 as we have
+// with Boards ... all formatted the same — recycle / re-use whatever
+// code/back-end you need"). Boards draws a saved run's head with these;
+// Boards3 draws a record set's head with the SAME functions, so the two
+// cannot drift apart — the same reason the Trade page draws its two branches
+// from one path. Top-level and called by name, so the word list and the
+// control reader follow them onto both screens.
+function campaignNoteHtml(doc) {
+  return doc ? `<span class="note">campaign: ${esc((doc.params && doc.params.campaign) || '—')} · ${esc(doc.status)} · ${(doc.params && doc.params.windowLayout) || ''}</span>` : '';
+}
+function descriptionPanelHtml(text) {
+  return text ? `<div class="panel note">${esc(text)}</div>` : '';
+}
+// THE BUTTONS LINE UP WITH THE TOP OF THE NOTES BOX (owner order,
+// 2026-08-25; standing RULE FOUR). They used to sit in one row with the
+// captioned box, top-aligned to the ROW — which is the top of the caption,
+// one text line above the box they belong to. The caption sits on its own
+// line (still the box's label, tied by for=), and the box and its buttons
+// share a row whose tops meet by construction, with nothing nudged.
+// extraButtons is the slot for buttons only one screen has (Boards puts its
+// settings-copying button there); the box, the save and the stamp are shared.
+function notesPanelHtml(doc, extraButtons) {
+  return `<div class="panel">
+        <label class="f" for="bNotes">notes — why this run exists, what it showed, what it cost</label>
+        <div class="row" style="align-items:flex-start;margin-top:.15rem">
+          <textarea id="bNotes" rows="3" style="flex:1;font:inherit" ${doc.status === 'running' ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
+          <button id="bNotesSave" ${doc.status === 'running' ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>${extraButtons || ''}
+          <span id="bNotesMsg" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
+        </div>
+      </div>`;
+}
+function runIdentityPanelHtml(sizeLine, dm) {
+  return `<div class="panel"><h3 style="margin-top:0">What this run actually is</h3>
+          ${sizeLine || ''}
+          <!-- dm.overallDigest / dm.symbols / dm.at are what lib/manifest.js
+               actually writes. This read dm.digest, dm.coins, dm.files and
+               dm.utc — four names nothing has ever written — so the fingerprint
+               that decides whether two runs are comparable at all rendered as
+               "—" with no coin or file count and no stamp time, on every run
+               that had one (audit 2026-08-17). -->
+          ${dm ? `<p class="note"><b>Data fingerprint:</b> <code>${esc(String(dm.overallDigest || dm.error || '—')).slice(0, 24)}</code>
+            ${dm.symbols ? `· ${Object.keys(dm.symbols).length} coin(s), ${Object.values(dm.symbols).reduce((a, x) => a + (x.files || 0), 0)} file(s)` : ''}
+            ${dm.at ? `· stamped ${esc(String(dm.at).slice(0, 16))}` : ''}
+            <span title="taken at launch, over every candle file this run read. Two runs are data-comparable exactly when these match — a different fingerprint means the cache moved between the fire times.">(?)</span>
+            ${dm.error ? ' <b class="warn">STAMP FAILED — this run cannot be proved comparable to any other</b>' : ''}</p>` : ''}
+          </div>`;
+}
+// One save wiring for both screens; only the address differs. Re-render from
+// the RESPONSE: the stored value comes back truncated, and the edited stamp
+// is taken on the server, not here. onSaved lets a screen refresh its own
+// cached copy (Boards keeps the opened run's doc in hand).
+function wireNotesSave(saveUrl, onSaved) {
+  const nsave = $('#bNotesSave');
+  if (nsave) nsave.onclick = async () => {
+    const out = await tryPost(saveUrl, { text: $('#bNotes').value });
+    if (out) {
+      $('#bNotes').value = out.notes || '';
+      $('#bNotesMsg').textContent = `saved ${String(out.notesEditedAt || '').slice(0, 16)}`;
+      if (onSaved) onSaved(out);
+    }
+  };
+}
+
 async function drawBoards() {
   const bl = await apiOr('api/batches', ({ }));
   const list = (bl.batches || bl || []).filter((b) => b.kind === 'bracketlab' || b.kind === 'screen' || b.kind === 'walkforward' || b.kind === 'historytuning' || b.kind === 'httwo');
@@ -1835,30 +1920,16 @@ async function drawBoards() {
       <button id="bOpen">Open</button>
       <button id="bResume" ${doc && (doc.status === 'interrupted' || doc.status === 'cancelled') ? '' : 'disabled'} title="carries on a run that stopped, from where it stopped. It scores only the units that have no result yet, then finishes as normal. It refuses if the price files or the engine are not the ones the run started under — half a board scored against a different history is not one board.">Resume run</button>
       <button id="bDelete" class="danger" ${doc ? '' : 'disabled'} title="permanently removes the open run and the model and tuning files that belong to it. It refuses the run that is going right now — stop it first — and any run a greenlight names as its evidence. You are shown exactly what will go before anything is deleted.">Delete run…</button>
-      ${doc ? `<span class="note">campaign: ${esc((doc.params && doc.params.campaign) || '—')} · ${esc(doc.status)} · ${(doc.params && doc.params.windowLayout) || ''}</span>` : ''}
+      ${campaignNoteHtml(doc)}
     </div>
     <div id="bDelOut"></div></div>
     <div id="bBody">${!doc ? '<div class="panel empty">Open a run to see its board.</div>' : `
       ${doc.status === 'interrupted' || doc.status === 'error' ? `<div class="panel" style="border-color:var(--warn)">
         <b style="color:var(--warn)">This run did not finish — ${esc(doc.status)}.</b>
         <div style="margin-top:.3rem">${esc(doc.error || 'no reason was recorded')}</div></div>` : ''}
-      ${doc.description || (doc.params && doc.params.description) ? `<div class="panel note">${esc(doc.description || doc.params.description)}</div>` : ''}
-      ${''/* THE BUTTONS LINE UP WITH THE TOP OF THE NOTES BOX (owner order,
-      2026-08-25; standing RULE FOUR). They used to sit in one row with the
-      captioned box, top-aligned to the ROW — which is the top of the caption,
-      one text line above the box they belong to. The caption now sits on its
-      own line (still the box's label, tied by for=), and the box and its
-      buttons share a row whose tops meet by construction, with nothing
-      nudged. */}
-      <div class="panel">
-        <label class="f" for="bNotes">notes — why this run exists, what it showed, what it cost</label>
-        <div class="row" style="align-items:flex-start;margin-top:.15rem">
-          <textarea id="bNotes" rows="3" style="flex:1;font:inherit" ${doc.status === 'running' ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
-          <button id="bNotesSave" ${doc.status === 'running' ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
-          <button id="bCopySettings" title="fill the Sweep form with THIS run's stored settings — universe, sizes, data range, chunk shape, decision, band, permutes, layout, null boards, trailing, min trades, promote K and the declared config. Nothing launches; the form is just set so a re-run is the same run. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>
-          <span id="bNotesMsg" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
-        </div>
-      </div>
+      ${descriptionPanelHtml(doc.description || (doc.params && doc.params.description))}
+      ${notesPanelHtml(doc, `
+          <button id="bCopySettings" title="fill the Sweep form with THIS run's stored settings — universe, sizes, data range, chunk shape, decision, band, permutes, layout, null boards, trailing, min trades, promote K and the declared config. Nothing launches; the form is just set so a re-run is the same run. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>`)}
       ${(() => {
         // THE RUN'S IDENTITY. plan is the units equation written so it equals
         // itself; dataManifest is the fingerprint of every candle file the run
@@ -1867,27 +1938,14 @@ async function drawBoards() {
         const dm = doc.dataManifest || null;
         const nullBoards = Number((doc.params || {}).labelShiftReps) || 0;
         if (!pl && !dm) return '';
-        return `<div class="panel"><h3 style="margin-top:0">What this run actually is</h3>
+        return runIdentityPanelHtml(pl ? `<p class="note"><b>Size:</b> ${pl.combos} combos × ${pl.branches} branch(es)${nullBoards ? ` × ${nullBoards + 1} boards (1 real + ${nullBoards} null)` : ''}
+            = <b>${pl.units}</b> units · ${pl.slimRuns ?? '—'} slim runs · ${pl.promoteRuns ?? '—'} promote runs.
+            <span title="the multiplicity any null reading here must be read against: one good-looking unit out of this many is not a finding">Every null claim on this page is against ${pl.units} units.</span></p>
           <!-- THE NULL-BOARD FACTOR. This gated on pl.nullBoards, a field
                nothing writes, so the clause never printed — and with the
                default 19 null boards the equation shown was off by a factor of
                20 against the unit count printed beside it. The count that IS
-               recorded is params.labelShiftReps (audit 2026-08-17). -->
-          ${pl ? `<p class="note"><b>Size:</b> ${pl.combos} combos × ${pl.branches} branch(es)${nullBoards ? ` × ${nullBoards + 1} boards (1 real + ${nullBoards} null)` : ''}
-            = <b>${pl.units}</b> units · ${pl.slimRuns ?? '—'} slim runs · ${pl.promoteRuns ?? '—'} promote runs.
-            <span title="the multiplicity any null reading here must be read against: one good-looking unit out of this many is not a finding">Every null claim on this page is against ${pl.units} units.</span></p>` : ''}
-          <!-- dm.overallDigest / dm.symbols / dm.at are what lib/manifest.js
-               actually writes. This read dm.digest, dm.coins, dm.files and
-               dm.utc — four names nothing has ever written — so the fingerprint
-               that decides whether two runs are comparable at all rendered as
-               "—" with no coin or file count and no stamp time, on every run
-               that had one (audit 2026-08-17). -->
-          ${dm ? `<p class="note"><b>Data fingerprint:</b> <code>${esc(String(dm.overallDigest || dm.error || '—')).slice(0, 24)}</code>
-            ${dm.symbols ? `· ${Object.keys(dm.symbols).length} coin(s), ${Object.values(dm.symbols).reduce((a, x) => a + (x.files || 0), 0)} file(s)` : ''}
-            ${dm.at ? `· stamped ${esc(String(dm.at).slice(0, 16))}` : ''}
-            <span title="taken at launch, over every candle file this run read. Two runs are data-comparable exactly when these match — a different fingerprint means the cache moved between the fire times.">(?)</span>
-            ${dm.error ? ' <b class="warn">STAMP FAILED — this run cannot be proved comparable to any other</b>' : ''}</p>` : ''}
-          </div>`;
+               recorded is params.labelShiftReps (audit 2026-08-17). -->` : '', dm);
       })()}
       ${(doc.failures && doc.failures.length) ? `<div class="panel"><b class="warn">${doc.failures.length} unit(s) FAILED</b>
         <p class="note">A failed unit is missing from every count on this page — the denominator is smaller than the run intended. First: <code>${esc(doc.failures[0].key || '')}</code> — ${esc(doc.failures[0].error || '')}</p>
@@ -2180,17 +2238,9 @@ async function drawBoards() {
     pickedRun = null; pickedDoc = null; localStorage.setItem('cx-run', '');
     drawBoards();
   };
-  const nsave = $('#bNotesSave');
-  if (nsave) nsave.onclick = async () => {
-    // re-render from the RESPONSE: the stored value comes back truncated, and
-    // the edited stamp is taken on the server, not here
-    const out = await tryPost(`api/bracketlab/${encodeURIComponent(doc.id)}/notes`, { text: $('#bNotes').value });
-    if (out) {
-      $('#bNotes').value = out.notes || '';
-      $('#bNotesMsg').textContent = `saved ${String(out.notesEditedAt || '').slice(0, 16)}`;
-      if (pickedDoc) { pickedDoc.notes = out.notes; pickedDoc.notesEditedAt = out.notesEditedAt; }
-    }
-  };
+  if (doc) wireNotesSave(`api/bracketlab/${encodeURIComponent(doc.id)}/notes`, (out) => {
+    if (pickedDoc) { pickedDoc.notes = out.notes; pickedDoc.notesEditedAt = out.notesEditedAt; }
+  });
   const csb = $('#bCopySettings');
   if (csb) csb.onclick = () => {
     tab = 'sweep'; localStorage.setItem('cx-tab', tab);
@@ -3778,10 +3828,15 @@ let s3SetsCache = null;
 
 async function drawSweep3() {
   if (s3Poll) { clearInterval(s3Poll); s3Poll = null; }
-  const st = await apiOr('api/stagesets', ({ running: null, sets: [] }));
+  const [st, camp, names] = await Promise.all([
+    apiOr('api/stagesets', ({ running: null, sets: [] })),
+    apiOr('api/campaign', ({ name: '' })),
+    apiOr('api/campaigns', ({ names: [] })),
+  ]);
   const sets = st.sets || [];
   s3SetsCache = sets;
-  $('#view').innerHTML = `<div class="panel">
+  $('#view').innerHTML = `${campaignPanelHtml(camp, names)}
+  <div class="panel">
     <h3 style="margin-top:0">Sweep3 — the three stages, live</h3>
     <p class="note">Each stage writes a record set the next one reads, and every set names its parent. What is
       running, and everything finished, is on Boards3.</p>
@@ -3886,6 +3941,7 @@ async function drawSweep3() {
     <div id="s3Out3"></div>
   </div>`;
 
+  wireCampaignPanel(() => drawSweep3());
   const say = (sel, msg, bad) => { $(sel).innerHTML = `<p class="note${bad ? ' warn' : ''}" style="margin:.4rem 0 0">${msg}</p>`; };
   $('#s3Go1').onclick = async () => {
     const body = {
@@ -3963,9 +4019,11 @@ async function drawBoards3() {
     : '<option value="">— no record sets on this box yet — start one on Sweep3 —</option>'}</select></label>
       <button id="b3Open">open</button>
       <button id="b3Delete" class="danger">Delete record set…</button>
+      ${campaignNoteHtml(sets.find((x) => x.id === picked) || null)}
     </div>
     <div id="b3Chain"></div>
   </div>
+  <div id="b3Head"></div>
   <div id="b3Body"></div>`;
   $('#b3Open').onclick = () => { b3SaveView({ setId: $('#b3Pick').value, openS3: [] }); drawBoards3().then(() => restoreScroll(tab)); };
   $('#b3Delete').onclick = async () => {
@@ -3991,6 +4049,14 @@ async function drawBoards3() {
   const got = await apiOr(`api/stageset/${picked}`, null);
   if (!got || !got.set) { $('#b3Body').innerHTML = '<div class="panel empty">this record set could not be read</div>'; return; }
   const doc = got.set;
+  // The opened set's head, the same structure a saved run gets on Boards and
+  // drawn by the same functions (owner order, 2026-08-27): the description,
+  // the notes, and what this run actually is. The set's plan is served as
+  // counts, so the size line is the set's own equation.
+  $('#b3Head').innerHTML = `${descriptionPanelHtml(doc.desc)}
+    ${notesPanelHtml(doc, '')}
+    ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}`;
+  wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null);
   const chain = got.chain || [];
   $('#b3Chain').innerHTML = `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
     c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,

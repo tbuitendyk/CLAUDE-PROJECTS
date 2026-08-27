@@ -104,6 +104,19 @@ function campaignTree(name) {
         sourceRunId: (g.sourceRun && g.sourceRun.id) || null, revoked: !!g.revoked });
     }
   } catch (_) { /* live modules absent in some test contexts */ }
+  // Stage record sets carry the stamp too (2026-08-27). They ride in the same
+  // list as the runs — same table, same ordering — and the parent link is the
+  // record set the launch read from, so a 1 → 2 → 3 chain reads as one.
+  try {
+    for (const s of require('./stages').listSets()) {
+      if (((s.params || {}).campaign || null) !== name) continue;
+      runs.push({
+        id: s.id, kind: `stage ${s.stage}`, status: s.status,
+        startedAt: s.createdAt || null, label: s.desc || '',
+        parentRunId: (s.parent && s.parent.id) || null,
+      });
+    }
+  } catch (_) { /* stage modules absent in some test contexts */ }
   runs.sort((a, b) => String(a.startedAt).localeCompare(String(b.startedAt)));
   return { name, runs, greenlights };
 }
@@ -122,6 +135,12 @@ function listCampaignNames() {
   } catch (_) { /* none */ }
   try {
     for (const g of require('./live/greenlight').listGreenlights()) note(g.campaign, g.createdUtc);
+  } catch (_) { /* none */ }
+  // Stage record sets are activity too (2026-08-27) — a campaign holding only
+  // record sets must not vanish from the picker, and a stage launch is as
+  // recent as any sweep.
+  try {
+    for (const s of require('./stages').listSets()) note((s.params || {}).campaign, s.createdAt);
   } catch (_) { /* none */ }
   // A declared name with nothing under it yet sorts last rather than being
   // absent. It has no activity stamp, so '' puts it at the bottom.
@@ -184,6 +203,16 @@ function campaignContents(name) {
     }
   } catch (_) { /* live modules absent in some test contexts */ }
 
+  // Stage record sets stamped with this campaign (2026-08-27), counted like
+  // everything else — the owner is told what they hold BEFORE being asked.
+  const stageSets = [];
+  try {
+    for (const s of require('./stages').listSets()) {
+      if (((s.params || {}).campaign || null) !== clean) continue;
+      stageSets.push({ id: s.id, name: s.name, stage: s.stage, status: s.status });
+    }
+  } catch (_) { /* stage modules absent in some test contexts */ }
+
   const active = activeStates();
   const blocking = setups.filter((st) => active.includes(st.state));
 
@@ -198,12 +227,13 @@ function campaignContents(name) {
   return {
     name: clean,
     isCurrent: getCampaign() === clean,
-    declaredOnly: !runs.length && !greenlights.length,
-    runs, greenlights, setups, blocking,
+    declaredOnly: !runs.length && !greenlights.length && !stageSets.length,
+    runs, greenlights, setups, blocking, stageSets,
     counts: {
       runs: runs.length,
       greenlights: greenlights.length,
       setups: setups.length,
+      stageSets: stageSets.length,
       modelFiles,
       tuningFiles,
     },
@@ -230,7 +260,21 @@ function deleteCampaign(name) {
     throw err;
   }
 
-  const removed = { runs: 0, greenlights: 0, setups: 0, modelDirs: 0, tuningDirs: 0 };
+  // THE OTHER THING THAT STOPS IT (2026-08-27): a stage run being written.
+  // Record sets refuse deletion while one is going (a run may be reading its
+  // parent at that moment), so the whole campaign delete refuses UP FRONT
+  // rather than removing half a chain and then hitting the same wall.
+  if (found.stageSets.length) {
+    let going = null;
+    try { going = require('./stages').stageRunning(); } catch (_) { going = null; }
+    if (going) {
+      throw new Error(`the campaign "${found.name}" holds ${found.stageSets.length} record set(s) and a stage run `
+        + `(${going}) is being written right now — record sets are never deleted while one is going. `
+        + 'Wait for it to finish or stop it on the Sweep3 tab; nothing has been deleted.');
+    }
+  }
+
+  const removed = { runs: 0, greenlights: 0, setups: 0, modelDirs: 0, tuningDirs: 0, stageSets: 0 };
   const dataDir = path.join(__dirname, '..', 'data');
 
   // Setups first: they point at the greenlights, so removing them last would
@@ -257,13 +301,27 @@ function deleteCampaign(name) {
     removed.runs += 1;
   }
 
+  // Stage record sets go children-first — stage 3, then 2, then 1 — because a
+  // set another set names as its parent refuses deletion (lib/stages.js), and
+  // inside one campaign the chain runs 1 → 2 → 3. A refusal that still fires
+  // (a child in ANOTHER campaign naming this set as its parent) leaves that
+  // set behind and SAYS SO — a delete that half-lies about what went is the
+  // fault class this file keeps naming.
+  const leftBehind = [];
+  for (const s of [...found.stageSets].sort((a, b) => b.stage - a.stage)) {
+    try {
+      require('./stages').deleteSet(s.id, s.id);
+      removed.stageSets += 1;
+    } catch (err) { leftBehind.push(`${s.name || s.id}: ${err.message}`); }
+  }
+
   // The name itself, and the current selection if this was it.
   const cur = readFile();
   const declared = declaredNames().filter((n) => n !== found.name);
   const stillSet = cur.name === found.name ? '' : (cur.name || '');
   writeFile({ ...cur, name: stillSet, declared, setAt: new Date().toISOString() });
 
-  return { name: found.name, removed, wasCurrent: found.isCurrent };
+  return { name: found.name, removed, leftBehind, wasCurrent: found.isCurrent };
 }
 
 module.exports = {

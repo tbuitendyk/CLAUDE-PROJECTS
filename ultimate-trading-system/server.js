@@ -801,6 +801,10 @@ app.post('/api/stage3', (req, res) => {
   catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.post('/api/stageset/:id/stop', (req, res) => res.json(stages.cancelStage(req.params.id)));
+app.post('/api/stageset/:id/notes', (req, res) => {
+  try { return res.json(stages.setSetNotes(req.params.id, (req.body || {}).text)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.post('/api/stageset/:id/delete', (req, res) => {
   try { return res.json(stages.deleteSet(req.params.id, (req.body || {}).confirm)); }
   catch (err) { return res.status(409).json({ error: err.message }); }

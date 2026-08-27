@@ -17,6 +17,35 @@
 // `what` is one or two sentences: what the control does, in the words on the
 // screen. `more` is optional: the thing that is not obvious, the cost, or the
 // trap.
+
+// SHARED PANELS GET SHARED ENTRIES (owner order, 2026-08-27: the campaign
+// panel and the opened run's head are each ONE piece of code drawn on two
+// screens — Sweep and Sweep3, Boards and Boards3). Their help is written once
+// here and spread into both sections, so the two screens' explanations cannot
+// drift apart any more than their markup can.
+const CAMPAIGN_PANEL_CONTROLS = {
+  cxCampPick: {
+    what: 'Pick a campaign that already exists. Choosing one switches to it straight away.',
+    more: 'A campaign is a name you give a line of work. Every run and record set started while it is set carries that name, so months later you can see which belonged together.',
+  },
+  cxCamp: { what: 'Type a name here to start a new campaign, then press Set.' },
+  campSet: { what: 'Makes the name in the box the campaign in use. From then on, every run and record set started carries it.' },
+  campTree: {
+    what: 'Shows every run, record set and greenlight that belongs to the campaign named in the box, and which one each came from. Press it again to put them away.',
+    more: 'It shows and hides the same panel Delete campaign… writes its summary into. A delete summary is never wiped by pressing this — the second press only puts away a list this button put up.',
+  },
+  campDelete: {
+    what: 'Removes a campaign and everything underneath it — its runs, the saved files those runs produced, its record sets, its greenlights, and any setups made from those greenlights.',
+    more: 'It tells you exactly how many of each will go before it asks, and you have to type the name back. It refuses outright if any setup made from that campaign is still running on the Trade tab, and names which ones — and it refuses while a stage run is being written, because record sets are never deleted mid-run.',
+  },
+};
+const RUN_NOTES_CONTROLS = {
+  bNotes: { what: 'Your own notes on this run — what you were trying, what it showed, what it cost.' },
+  bNotesSave: {
+    what: 'Saves the notes onto the run.',
+    more: 'Only works once the run has finished; nothing can be written to a run while it is still computing.',
+  },
+};
 window.HELP = {
   data: {
     title: 'Data',
@@ -106,20 +135,7 @@ window.HELP = {
         + 'following stops are now in the run and every one of them needs a starting point.'],
     ],
     controls: {
-      cxCampPick: {
-        what: 'Pick a campaign that already exists. Choosing one switches to it straight away.',
-        more: 'A campaign is a name you give a line of work. Every run started while it is set carries that name, so months later you can see which runs belonged together.',
-      },
-      cxCamp: { what: 'Type a name here to start a new campaign, then press Set.' },
-      campSet: { what: 'Makes the name in the box the campaign in use. From then on, every run started carries it.' },
-      campTree: {
-        what: 'Shows every run and every greenlight that belongs to the campaign named in the box, and which run each one came from. Press it again to put them away.',
-        more: 'It shows and hides the same panel Delete campaign… writes its summary into. A delete summary is never wiped by pressing this — the second press only puts away a list this button put up.',
-      },
-      campDelete: {
-        what: 'Removes a campaign and everything underneath it — its runs, the saved files those runs produced, its greenlights, and any setups made from those greenlights.',
-        more: 'It tells you exactly how many of each will go before it asks, and you have to type the name back. It refuses outright if any setup made from that campaign is still running on the Trade tab, and names which ones.',
-      },
+      ...CAMPAIGN_PANEL_CONTROLS,
       swUni: {
         what: 'Which assets to search over. Leave it blank to use all of the ones held.',
         more: 'Write them separated by commas to narrow it down.',
@@ -346,6 +362,7 @@ window.HELP = {
         + 'finished face: a set must match its own plan, written before anything ran.'],
     ],
     controls: {
+      ...CAMPAIGN_PANEL_CONTROLS,
       s3Uni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
       s3Singles: { what: 'Include each coin judged on its own price history alone — 3 members each.' },
       s3Doubles: { what: 'Include each coin judged alongside one other coin — 4 members each, the cross view added.' },
@@ -456,11 +473,7 @@ window.HELP = {
         what: 'Permanently removes the run that is open, together with the model and tuning files that belong only to it. You are shown exactly what will go, and then have to type the run id back, before anything is deleted.',
         more: 'It refuses two things. The run that is going right now — stop it first, so a job cannot be writing a file that is being taken away underneath it. And any run a greenlight names as the evidence it came from, because something on the Trade tab may be standing on that evidence. Neither refusal deletes anything; both say which it is.',
       },
-      bNotes: { what: 'Your own notes on this run — what you were trying, what it showed, what it cost.' },
-      bNotesSave: {
-        what: 'Saves the notes onto the run.',
-        more: 'Only works once the run has finished; nothing can be written to a run while it is still computing.',
-      },
+      ...RUN_NOTES_CONTROLS,
       bCopySettings: {
         what: 'Fills the Sweep tab with the exact settings this run used, so you can do it again or change one thing.',
         more: 'Everything comes across: the assets, the sizes, the date range, the chunk shape, the decision, the band, the permutes, the window layout, the null boards and also try moving stops.',
@@ -523,6 +536,7 @@ window.HELP = {
         + 'tables, because only stage 3 prices it.'],
     ],
     controls: {
+      ...RUN_NOTES_CONTROLS,
       b3Pick: { what: 'Which record set to read. Every set is listed with its stage, its status and when it was made.' },
       b3Open: { what: 'Opens the chosen record set and draws its chain and tables below.' },
       b3Delete: {
