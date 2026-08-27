@@ -15,7 +15,7 @@ module.exports = {
     try {
       assert.strictEqual(campaign.setCampaign('  ltc-drill aug04  '), 'ltc-drill aug04');
       assert.strictEqual(campaign.getCampaign(), 'ltc-drill aug04');
-      assert.throws(() => campaign.setCampaign('x'.repeat(41)), /40 characters/);
+      assert.throws(() => campaign.setCampaign('x'.repeat(61)), /60 characters/);
       assert.throws(() => campaign.setCampaign('bad|name'), /letters, numbers/);
       assert.strictEqual(campaign.setCampaign(''), '');
       assert.strictEqual(campaign.getCampaign(), '');

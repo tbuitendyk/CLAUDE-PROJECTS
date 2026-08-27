@@ -8,12 +8,13 @@ const path = require('path');
 
 const FILE = path.join(__dirname, '..', 'data', 'campaign.json');
 
-// Letters, numbers, spaces, dashes, dots; trimmed; max 40 chars. Anything
-// else is refused loudly — the name rides in ids' company and in every list.
+// Letters, numbers, spaces, dashes, dots; trimmed; max 60 chars (owner order,
+// 2026-08-27, up from 40). Anything else is refused loudly — the name rides
+// in ids' company and in every list.
 function sanitizeCampaign(raw) {
   const s = String(raw ?? '').trim();
   if (s === '') return '';
-  if (s.length > 40) throw new Error('campaign name: 40 characters at most');
+  if (s.length > 60) throw new Error('campaign name: 60 characters at most');
   if (!/^[A-Za-z0-9 ._-]+$/.test(s)) {
     throw new Error('campaign name: letters, numbers, spaces, dots and dashes only');
   }

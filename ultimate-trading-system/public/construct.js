@@ -874,11 +874,11 @@ function campaignPanelHtml(camp, names) {
          short: the service was offering three (owner, 2026-08-18). Two plain
          controls now: pick an existing campaign, or type a new name. -->
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="every campaign this box has ever stamped on a run, a record set or a greenlight, newest activity first. Picking one switches to it immediately.">existing campaigns<select id="cxCampPick" style="min-width:18rem">
+      <label class="f" title="every campaign this box has ever stamped on a run, a record set or a greenlight, newest activity first. Picking one switches to it immediately.">existing campaigns<select id="cxCampPick" style="min-width:26rem">
         <option value="">— ${(names.names || []).length} on this box —</option>
         ${(names.names || []).map((n) => `<option value="${esc(n)}" ${n === camp.name ? 'selected' : ''}>${esc(n)}</option>`).join('')}
       </select></label>
-      <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" style="width:18rem"></label>
+      <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" maxlength="60" style="width:26rem"></label>
       <button id="campSet">Set</button>
       <button id="campTree" title="shows the runs, record sets and greenlights belonging to the campaign named in the box. Press it again to put them away.">View tree</button>
       <!-- Same row, same shape as its neighbours: the row is bottom-aligned
@@ -3835,13 +3835,13 @@ async function drawSweep3() {
   ]);
   const sets = st.sets || [];
   s3SetsCache = sets;
-  $('#view').innerHTML = `${campaignPanelHtml(camp, names)}
-  <div class="panel">
-    <h3 style="margin-top:0">Sweep3 — the three stages, live</h3>
+  $('#view').innerHTML = `<div class="panel">
+    <h3 style="margin-top:0">Sweep — the three stages, live</h3>
     <p class="note">Each stage writes a record set the next one reads, and every set names its parent. What is
       running, and everything finished, is on Boards3.</p>
     <div class="row"><span class="note" id="s3Prog">…</span></div>
   </div>
+  ${campaignPanelHtml(camp, names)}
 
   <div class="panel">
     <h3 style="margin-top:0">Stage 1 — train once, keep every vote, rank against the null set</h3>
