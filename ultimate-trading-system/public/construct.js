@@ -1143,7 +1143,7 @@ async function drawSweep() {
         <label class="c" id="swPermDecArmWrap" title="score EVERY arm distance as its own declared config"><input type="checkbox" id="swPermDecArm"> permute</label>
       </div>
       <div id="swGrpAgree" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. The 6 are 3 views (full / prices / volume) × 2 models (logreg and boost — the view and model columns the inspect button on Boards shows).">agree
+        <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. The 6 are 3 views (full / prices / volume) × 2 models (LOGREG and BOOST — the view and model columns the inspect button on Boards shows).">agree
         <select id="swDecQ6">${vocabOptions('quorumOf6', '2')}</select></label>
         <label class="f" id="swDecQ8Wrap" title="How many of a CONTEXT combo's 8 members must agree. Adding one or two context coins adds a fourth data view — how this coin moves against them — so those committees hold 8 members.">with contexts
         <select id="swDecQ8">${vocabOptions('quorumOf8', '3')}</select></label>
@@ -3497,12 +3497,12 @@ async function drawSweep2() {
       <label class="f" style="flex:1">description<input id="s2Desc1" style="width:100%" ${dead}></label>
       <button id="s2Go1" ${dead}>start stage 1</button>
     </div>
-    <p class="note" style="margin:.4rem 0 0">trains 3 logreg members per coin on its own, 4 alongside others · every vote
+    <p class="note" style="margin:.4rem 0 0">trains 3 LOGREG members per coin on its own, 4 alongside others · every vote
       kept · ordered by beat its own null set, ties by lead over null set · 25,704 units × 3 = 77,112 trainings (worked example)</p>
   </div>
 
   <div class="panel">
-    <h3 style="margin-top:0">Stage 2 — carry the best forward, add the boost members</h3>
+    <h3 style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 1 record set<select id="s2From2" ${dead}>
         <option selected>S1 #7 — 2026-08-24 — 25,704 units, votes kept</option>
@@ -3515,7 +3515,7 @@ async function drawSweep2() {
       <label class="f" style="flex:1">description<input id="s2Desc2" style="width:100%" ${dead}></label>
       <button id="s2Go2" ${dead}>start stage 2</button>
     </div>
-    <p class="note" style="margin:.4rem 0 0">logreg members reused, never retrained · 1,000 carried × 3 boost = 3,000 new
+    <p class="note" style="margin:.4rem 0 0">LOGREG members reused, never retrained · 1,000 carried × 3 BOOST = 3,000 new
       trainings (worked example) · writes S2 #3, naming its parent</p>
   </div>
 
@@ -3634,12 +3634,12 @@ async function drawBoards2() {
         <th style="padding:.3rem .5rem" title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
         <th style="padding:.3rem .5rem" title="how many members vote for this unit now, and what they are">members</th>
         <th style="padding:.3rem .5rem" title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members</th>
-        <th style="padding:.3rem .5rem" title="the same fixed score with every member pooled, boost included">forecast score — all members</th>
-        <th style="padding:.3rem .5rem" title="all-members score minus stage-1-members score — what the boost members bought, before any pricing">fuller board helped?</th></tr></thead>
+        <th style="padding:.3rem .5rem" title="the same fixed score with every member pooled, BOOST included">forecast score — all members</th>
+        <th style="padding:.3rem .5rem" title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?</th></tr></thead>
       <tbody>
-        <tr><td style="padding:.25rem .5rem .25rem 0"><b>LTCUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 logreg + 3 boost</td><td style="padding:.25rem .5rem">96.4</td><td style="padding:.25rem .5rem">103.9</td><td style="padding:.25rem .5rem" class="pos">+7.5</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0"><b>XRPUSDT</b></td><td style="padding:.25rem .5rem">BTCUSDT</td><td style="padding:.25rem .5rem">8 — 4 logreg + 4 boost (contexts add the cross view)</td><td style="padding:.25rem .5rem">91.8</td><td style="padding:.25rem .5rem">90.2</td><td style="padding:.25rem .5rem" class="neg">-1.6</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0"><b>BCHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 logreg + 3 boost</td><td style="padding:.25rem .5rem">24.1</td><td style="padding:.25rem .5rem">27.7</td><td style="padding:.25rem .5rem" class="pos">+3.6</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0"><b>LTCUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 LOGREG + 3 BOOST</td><td style="padding:.25rem .5rem">96.4</td><td style="padding:.25rem .5rem">103.9</td><td style="padding:.25rem .5rem" class="pos">+7.5</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0"><b>XRPUSDT</b></td><td style="padding:.25rem .5rem">BTCUSDT</td><td style="padding:.25rem .5rem">8 — 4 LOGREG + 4 BOOST (contexts add the cross view)</td><td style="padding:.25rem .5rem">91.8</td><td style="padding:.25rem .5rem">90.2</td><td style="padding:.25rem .5rem" class="neg">-1.6</td></tr>
+        <tr><td style="padding:.25rem .5rem .25rem 0"><b>BCHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 LOGREG + 3 BOOST</td><td style="padding:.25rem .5rem">24.1</td><td style="padding:.25rem .5rem">27.7</td><td style="padding:.25rem .5rem" class="pos">+3.6</td></tr>
         <tr><td colspan="6" class="muted" style="padding:.25rem .5rem">… 997 more rows …</td></tr>
       </tbody></table></div>
   </div>
@@ -3844,8 +3844,8 @@ async function drawSweep3() {
   ${campaignPanelHtml(camp, names)}
 
   <div class="panel">
-    <h3 style="margin-top:0">Stage 1 — train the logreg members once, keep every vote, rank against the null set</h3>
-    <p class="note" style="margin:.2rem 0 .4rem">every member is a logreg forecast — 3 per coin on its own, 4 alongside others — trained with the plain
+    <h3 style="margin-top:0">Stage 1 — train the LOGREG members once, keep every vote, rank against the null set</h3>
+    <p class="note" style="margin:.2rem 0 .4rem">every member is a LOGREG forecast — 3 per coin on its own, 4 alongside others — trained with the plain
       argmax fit. No trade, no fee and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.</p>
     <div class="row" style="align-items:flex-end">
       <label class="f">universe (blank = all 17 default pairs)<input id="s3Uni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
@@ -3871,7 +3871,7 @@ async function drawSweep3() {
   </div>
 
   <div class="panel">
-    <h3 style="margin-top:0">Stage 2 — carry the best forward, add the boost members</h3>
+    <h3 style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 1 record set<select id="s3From2" style="min-width:24rem">${s3SetOptions(sets, 1, null)}</select></label>
       <label class="f">order by<select id="s3Order">${vocabOptions('stageOrder', 'beat')}</select></label>
@@ -3881,8 +3881,8 @@ async function drawSweep3() {
       <label class="f" style="flex:1">description<input id="s3Desc2" style="width:100%"></label>
       <button id="s3Go2" class="pri">start stage 2</button>
     </div>
-    <p class="note" style="margin:.4rem 0 0">boost is the second kind of member — a different way of working out a forecast from the same prices.
-      The logreg members are reused, never retrained; only the boost members train (3 per coin on its own, 4 alongside others),
+    <p class="note" style="margin:.4rem 0 0">BOOST is the second kind of member — a different way of working out a forecast from the same prices.
+      The LOGREG members are reused, never retrained; only the BOOST members train (3 per coin on its own, 4 alongside others),
       so a carried unit ends up with both kinds voting side by side.</p>
     <div id="s3Out2"></div>
   </div>
@@ -4108,7 +4108,7 @@ async function b3DrawStage1(doc, incomplete, view) {
   const t = await apiOr(`api/stageset/${doc.id}/stage1?from=${from}&n=100`, null);
   const rows = (t && t.rows) || [];
   $('#b3Body').innerHTML = `${incomplete}<div class="panel">
-    <h3 style="margin-top:0">Stage 1 — every unit's logreg members, scored once (${esc(doc.name)})</h3>
+    <h3 style="margin-top:0">Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})</h3>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under stage 1's fixed rule: beat its own null set, ties broken by lead over null set">order</th>
@@ -4138,7 +4138,7 @@ async function b3DrawStage2(doc, incomplete, view) {
   const t = await apiOr(`api/stageset/${doc.id}/stage2?from=${from}&n=100`, null);
   const rows = (t && t.rows) || [];
   $('#b3Body').innerHTML = `${incomplete}<div class="panel">
-    <h3 style="margin-top:0">Stage 2 — the carried rows, logreg joined by boost (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
+    <h3 style="margin-top:0">Stage 2 — the carried rows, LOGREG joined by BOOST (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place in the carry — the order it went through in">carried</th>
@@ -4148,15 +4148,15 @@ async function b3DrawStage2(doc, incomplete, view) {
         <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape</th>
         <th ${b3th} title="how many members vote for this unit now, and what they are">members</th>
         <th ${b3th} title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members</th>
-        <th ${b3th} title="the same fixed score with every member pooled, boost included">forecast score — all members</th>
-        <th ${b3th} title="all-members score minus stage-1-members score — what the boost members bought, before any pricing">fuller board helped?</th></tr></thead>
+        <th ${b3th} title="the same fixed score with every member pooled, BOOST included">forecast score — all members</th>
+        <th ${b3th} title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${b3td0}>${Number(r.carriedRank).toLocaleString()}</td>
         <td ${b3td}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
         <td ${b3td}>${b3Coin(r)}</td>
         <td ${b3td}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
         <td ${b3td}>${esc(b3Geo(r.geometry))}</td>
-        <td ${b3td}>${r.members} — ${r.logreg} logreg + ${r.boost} boost</td>
+        <td ${b3td}>${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST</td>
         <td ${b3td}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
         <td ${b3td}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
         <td ${b3td}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">nothing here</td></tr>'}</tbody></table></div>

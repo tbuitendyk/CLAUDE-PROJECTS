@@ -226,7 +226,7 @@ window.HELP = {
       swPermDecArm: { what: 'Score every starting point as its own fixed set of settings.' },
       swDecQ6: {
         what: 'How many of the 6 must say the same thing before a trade is taken, for an asset judged on its own.',
-        more: 'The 6 are 3 views (full / prices / volume) × 2 models (logreg and boost). Those names are on the Boards screen: press a Survivor board row\'s inspect button and its view and model columns list them, one line per member.',
+        more: 'The 6 are 3 views (full / prices / volume) × 2 models (LOGREG and BOOST). Those names are on the Boards screen: press a Survivor board row\'s inspect button and its view and model columns list them, one line per member.',
       },
       swDecQ8: { what: 'The same, for an asset judged alongside others — there are 8 to agree rather than 6.' },
       swPermDecAgree: {
@@ -338,16 +338,16 @@ window.HELP = {
     title: 'Sweep3',
     intro: 'The working three-stage system. Each stage writes a record set the next one reads, every set names '
       + 'its parent, and a launch refuses — by name — when the price files no longer match the ones its parent '
-      + 'read. Stage 1 trains and keeps votes, stage 2 adds the boost members to the rows you carry forward, and '
+      + 'read. Stage 1 trains and keeps votes, stage 2 adds the BOOST members to the rows you carry forward, and '
       + 'stage 3 prices settings from the kept votes without training anything.',
     how: [
       ['What each stage does, and what it writes',
-        'Stage 1 trains each unit once — logreg on every view — keeps every vote the members cast on the test and '
+        'Stage 1 trains each unit once — LOGREG on every view — keeps every vote the members cast on the test and '
         + 'held-back windows, and ranks the units by one fixed rule: did the pooled votes beat their own null set, '
         + 'the same votes with the calendar shuffled away, at plain forecasting on the test window. No trade box '
         + 'and no fee exist at stage 1, so there is nothing to guess.\n\n'
         + 'Stage 2 reads a finished stage 1 record set, carries the best rows forward in the against-null-set '
-        + 'order, and trains only the boost members for them. The logreg members are never retrained; after this '
+        + 'order, and trains only the BOOST members for them. The LOGREG members are never retrained; after this '
         + 'a carried unit holds all its members\' votes.\n\n'
         + 'Stage 3 reads a finished stage 2 record set and prices any block of settings from the kept votes: '
         + 'decision, band, 24/5, agree, entry, gate, d, t, trail, arm and the fee are all applied here, as '
@@ -385,11 +385,11 @@ window.HELP = {
       },
       s3Order: { what: 'Which of stage 1\'s two against-null-set results the carry is taken in: beat its own null set — the count — or lead over null set, the tie-break margin.' },
       s3Carry: {
-        what: 'How many rows carry forward into the boost training, best first under order by. 0 carries all of them.',
+        what: 'How many rows carry forward into the BOOST training, best first under order by. 0 carries all of them.',
         more: 'Carry generously: the cut is for shedding the clearly-dead, not for picking winners. Forecast skill is not money — stage 3\'s pricing is the judge.',
       },
       s3Desc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
-      s3Go2: { what: 'Starts stage 2 on the chosen parent. Only the boost members train.' },
+      s3Go2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
       s3From3: { what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever.' },
       s3Fee: {
         what: 'What a trade is assumed to cost, as a percent of the money in the position, charged each way. It lives at this stage because stage 3 is the first place a trade is priced.',
@@ -527,7 +527,7 @@ window.HELP = {
         'A stage 1 set shows the ranking: every unit under the fixed rule — forecast score, beat its own null '
         + 'set, lead over null set — with no money anywhere, because stage 1 never prices a trade. A stage 2 set '
         + 'shows the carried rows: members trained, and the forecast score with the stage 1 members beside the '
-        + 'score with every member, so what the boost members bought is visible before any pricing. A stage 3 '
+        + 'score with every member, so what the BOOST members bought is visible before any pricing. A stage 3 '
         + 'set shows the pricing: the settings ranked against each other with coins in the money beside the '
         + 'averages, and every coin of every setting with floors, a sort, and each row\'s records opening '
         + 'underneath — the decision, band and 24/5 variants that make the row up.\n\n'
