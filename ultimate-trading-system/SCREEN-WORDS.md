@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **74b7598a305d — what the box is serving**, not from the working tree.
+Generated from **49e707970d0b — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -40,8 +40,10 @@ deployed, and that is correct** - until then the owner cannot see it.
 - **Data**
 - **Sweep**
 - **Sweep2**
+- **Sweep3**
 - **Boards**
 - **Boards2**
+- **Boards3**
 - **Verify**
 - **History**
 - **Tune**
@@ -354,6 +356,119 @@ _none_
 
 ```
 1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active add against agree all alongside always and any argmax arithmetic arm auto band beat best blank block boost breakout by carried carry chunk coin contexts control Daily data deals decision declared default description design directional doubles drawing each end entry Every every evidence exam example example. fee for forward from gate in is its keep kept layout lead legacy loaded logreg market members naming never new no Nothing null null-set number of off on once or order ordered others over own page pairs parent per permute price rank record retrained reused S1 S2 S3 same sealed set setting settings shape singles size Stage stage start static Sweep2 switched the this three-stage ties top trail train training trainings trains triples units universe vote votes way Weekly window with worked works. writes
+```
+
+---
+
+# Sweep3
+
+## What the controls are called (39)
+
+- `— no finished stage`
+- `agree`
+- `all loaded data`
+- `arm`
+- `band % (or auto)`
+- `carry forward (0 = all)`
+- `chunk shape`
+- `d`
+- `decision`
+- `declared:`
+- `description`
+- `doubles`
+- `end`
+- `entry`
+- `fee % each way`
+- `from stage 1 record set`
+- `from stage 2 record set`
+- `gate`
+- `is going:`
+- `null set size`
+- `order by`
+- `permute`
+- `record set on this box —`
+- `settings`
+- `settings ×`
+- `singles`
+- `start`
+- `start stage 1`
+- `start stage 2`
+- `start stage 3`
+- `started`
+- `stop`
+- `Sweep3 — the three stages, live`
+- `t`
+- `trail`
+- `triples`
+- `units`
+- `window layout`
+- `with contexts`
+
+## What the dropdowns offer (45)
+
+- `0.25×`
+- `0.5×`
+- `0.75×`
+- `0×`
+- `1.5×`
+- `1/6`
+- `1/8`
+- `1×`
+- `113h`
+- `137h`
+- `161h`
+- `17h`
+- `2/6`
+- `2/8`
+- `2×`
+- `3/6`
+- `3/8`
+- `4/6`
+- `4/8`
+- `41h`
+- `5/6`
+- `5/8`
+- `6/6`
+- `6/8`
+- `61/13/13/13 (sealed exam)`
+- `65h`
+- `7/8`
+- `70/15/15`
+- `8/8`
+- `89h`
+- `active`
+- `always`
+- `argmax`
+- `beat its own null set`
+- `breakout`
+- `Daily 1-day`
+- `Daily 2-day`
+- `Daily 3-day`
+- `Daily 4-day`
+- `directional`
+- `lead over null set`
+- `legacy 80/20 (never evidence)`
+- `market`
+- `static`
+- `Weekly 8-day`
+
+## Sentences the page prints (10)
+
+- Each stage writes a record set the next one reads, and every set names its parent. What is
+- running, and everything finished, is on Boards3.
+- Stage 1 — train once, keep every vote, rank against the null set
+- universe (blank = all 17 default pairs)
+- Stage 2 — carry the best forward, add the boost members
+- logreg members reused, never retrained — only the boost members train (3 per coin on its own, 4 alongside others)
+- Stage 3 — price any settings from the kept votes, no training
+- units. Progress above; the set lands on Boards3.
+- carried units.
+- units.
+
+## Every word, flat (132)
+
+```
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any argmax arm auto band beat best blank Boards3. boost box breakout by carried carry chunk coin contexts Daily data decision declared default description directional doubles Each each end entry every everything evidence exam fee finished forward from gate going is its keep kept lands layout lead legacy live loaded logreg market members names never next no null on once one only or order others over own pairs parent. per permute price Progress rank reads record retrained reused running sealed set settings shape singles size stage Stage stages start started static stop Sweep3 the this three trail train training triples units units. universe vote votes way Weekly What window with writes
 ```
 
 ---
@@ -740,6 +855,104 @@ _none_
 
 ```
 1-day 2-day 3-day 4-day 41h 65h 8-day 89h active ADAUSDT add agree all alongside always-long and Apply argmax arm at auto AVAXUSDT averaged avg back band BCHUSDT beat below board Boards2 boost breakout BTCUSDT by carried chain chunk coin coins comparisons contexts control cross Daily decision declared directional DOGEUSDT drawing entry ETHUSDT Every every example. files fingerprint-checked first forecast from full fuller gate held-back helped how in is it its kept last lead least logreg LTCUSDT many market members money more new no Nothing null of off on once one open opening order out over own page per price priced q2/6 ranked read record records row rows S1 S2 S3 score scored set setting settings Settings shape SOLUSDT sort Stage stage stages static stops switched t89h test the The this three tie-break top trades trail training trainings unit units view votes vs way Weekly whole worked works. XRPUSDT yes
+```
+
+---
+
+# Boards3
+
+## What the controls are called (63)
+
+- `— stage`
+- `agree`
+- `alongside`
+- `Apply`
+- `arm`
+- `at least this many comparisons`
+- `avg held-back`
+- `avg held-back $`
+- `avg held-back at least, $`
+- `avg held-back trades`
+- `avg test $`
+- `avg trades`
+- `avg trades at least`
+- `avg vs always-long`
+- `avg vs always-long $`
+- `avg vs always-long at least, $`
+- `band`
+- `band %`
+- `beat its own null set`
+- `beat its own null set at least, %`
+- `boost`
+- `carried`
+- `chunk shape`
+- `coin`
+- `coins`
+- `coins in the money`
+- `comparisons`
+- `could not read this row's records`
+- `d`
+- `decision`
+- `entry`
+- `Every coin of every setting`
+- `forecast score`
+- `forecast score — all members`
+- `forecast score — stage 1 members`
+- `fuller board helped?`
+- `gate`
+- `h`
+- `held-back $`
+- `held-back stops`
+- `held-back trades`
+- `is`
+- `is going:`
+- `lead over null set`
+- `logreg +`
+- `members`
+- `nothing cleared the floors`
+- `nothing here`
+- `of`
+- `open`
+- `order`
+- `record set`
+- `records`
+- `rows`
+- `setting`
+- `Settings, ranked`
+- `sort by`
+- `stage 1 order`
+- `t`
+- `test $`
+- `test trades`
+- `trail`
+- `vs always-long`
+
+## What the dropdowns offer (0)
+
+_none_
+
+## Sentences the page prints (15)
+
+- Boards3 — the record sets, and what each stage wrote
+- — no record sets on this box yet — start one on Sweep3 —
+- . Its tables appear when it lands.
+- THIS SET DOES NOT MATCH ITS OWN PLAN.
+- unit(s) failed and are missing from every table below — read the numbers accordingly.
+- Stage 1 — every unit, scored once (
+- ordered by beat its own null set, ties broken by lead over null set — the fixed rule. No money on
+- this table because stage 1 never prices a trade, and no held-back column because stage 1 never reads that window.
+- Stage 2 — the carried rows, in full (
+- No money and no null set on this table: a stage 2 record is training inventory — members and kept
+- votes. Pricing, the null set and the held-back window all belong to stage 3.
+- Stage 3 — settings priced from the kept votes (
+- — one row per declared setting, averaged over its coins
+- — one row per coin, its records opening below it
+- row(s) held back by the floors.
+
+## Every word, flat (141)
+
+```
+accordingly. agree all alongside always-long and appear Apply are arm at averaged avg back band beat because belong below board Boards3 boost box broken by carried chunk cleared coin coins column comparisons could decision declared DOES each entry every Every failed fixed floors floors. forecast from full fuller gate going held held-back helped here in inventory is it Its ITS its kept lands. lead least logreg many MATCH members missing money never no No NOT not nothing null numbers of on once one open opening order ordered over OWN own per PLAN. priced prices Pricing ranked read reads record records row rows rule. score scored set SET sets setting settings Settings shape sort stage Stage start stops Sweep3 table tables test that the this THIS ties to trade trades trail training unit votes votes. vs what when window window. wrote yet
 ```
 
 ---

@@ -204,7 +204,8 @@ module.exports = {
     // off Sweep2 again — its compact stage 1 line names logreg and the
     // stage, not the old pass name. Read back out of the generator.
     const ONLY_ON = { slim: ['Boards', 'Sweep'],
-      logreg: ['Boards', 'Boards2', 'Sweep2'], boost: ['Boards', 'Boards2', 'Sweep2'] };
+      logreg: ['Boards', 'Boards2', 'Boards3', 'Sweep2', 'Sweep3'],
+      boost: ['Boards', 'Boards2', 'Boards3', 'Sweep2', 'Sweep3'] };
     const where = {};
     for (const t of tabs()) {
       for (const w of collect(t.fn).words) {
