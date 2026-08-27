@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **51aced40d3dc — what the box is serving**, not from the working tree.
+Generated from **9febef851edc — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -342,12 +342,12 @@ _none_
 - Every control is switched off, and every number is a worked example.
 - Stage 1 — train once, keep every vote, rank against the null set
 - universe (blank = all 17 default pairs)
-- trains 3 logreg members per coin on its own, 4 alongside others · every vote
+- trains 3 LOGREG members per coin on its own, 4 alongside others · every vote
 - kept · ordered by beat its own null set, ties by lead over null set · 25,704 units × 3 = 77,112 trainings (worked example)
-- Stage 2 — carry the best forward, add the boost members
+- Stage 2 — carry the best forward, add the BOOST members
 - S1 #7 — 2026-08-24 — 25,704 units, votes kept
 - S1 #6 — 2026-08-19 — 4,896 units, votes kept
-- logreg members reused, never retrained · 1,000 carried × 3 boost = 3,000 new
+- LOGREG members reused, never retrained · 1,000 carried × 3 BOOST = 3,000 new
 - trainings (worked example) · writes S2 #3, naming its parent
 - Stage 3 — price any settings from the kept votes, no training
 - S2 #3 — top 1,000 of S1 #7 by beat its own null set
@@ -357,7 +357,7 @@ _none_
 ## Every word, flat (143)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active add against agree all alongside always and any argmax arithmetic arm auto band beat best blank block boost breakout by carried carry chunk coin contexts control Daily data deals decision declared default description design directional doubles drawing each end entry Every every evidence exam example example. fee for forward from gate in is its keep kept layout lead legacy loaded logreg market members naming never new no Nothing null null-set number of off on once or order ordered others over own page pairs parent per permute price rank record retrained reused S1 S2 S3 same sealed set setting settings shape singles size Stage stage start static Sweep2 switched the this three-stage ties top trail train training trainings trains triples units universe vote votes way Weekly window with worked works. writes
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h active add against agree all alongside always and any argmax arithmetic arm auto band beat best blank block BOOST breakout by carried carry chunk coin contexts control Daily data deals decision declared default description design directional doubles drawing each end entry Every every evidence exam example example. fee for forward from gate in is its keep kept layout lead legacy loaded LOGREG market members naming never new no Nothing null null-set number of off on once or order ordered others over own page pairs parent per permute price rank record retrained reused S1 S2 S3 same sealed set setting settings shape singles size Stage stage start static Sweep2 switched the this three-stage ties top trail train training trainings trains triples units universe vote votes way Weekly window with worked works. writes
 ```
 
 ---
@@ -477,13 +477,13 @@ _none_
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards3.
-- Stage 1 — train the logreg members once, keep every vote, rank against the null set
-- every member is a logreg forecast — 3 per coin on its own, 4 alongside others — trained with the plain
+- Stage 1 — train the LOGREG members once, keep every vote, rank against the null set
+- every member is a LOGREG forecast — 3 per coin on its own, 4 alongside others — trained with the plain
 - argmax fit. No trade, no fee and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.
 - universe (blank = all 17 default pairs)
-- Stage 2 — carry the best forward, add the boost members
-- boost is the second kind of member — a different way of working out a forecast from the same prices.
-- The logreg members are reused, never retrained; only the boost members train (3 per coin on its own, 4 alongside others),
+- Stage 2 — carry the best forward, add the BOOST members
+- BOOST is the second kind of member — a different way of working out a forecast from the same prices.
+- The LOGREG members are reused, never retrained; only the BOOST members train (3 per coin on its own, 4 alongside others),
 - so a carried unit ends up with both kinds voting side by side.
 - Stage 3 — price any settings from the kept votes, no training
 - units. Progress above; the set lands on Boards3.
@@ -502,7 +502,7 @@ _none_
 ## Every word, flat (234)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm at attaches auto band be beat been belonging best blank Boards3. boost both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry every Every everything evidence exam exist existing fee files finished first fit. forecast forward from gate going greenlight greenlights has here holds is it it. its keep keeps. kept kind kinds lands later launched layout lead legacy live loaded locked logreg market member members minted models name names never new next No no nothing null of on once one only or order others out over own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record remove Removed Retire retrained reused rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe up View vote votes voting way Weekly What while whole why will window with working writes yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm at attaches auto band be beat been belonging best blank Boards3. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry every Every everything evidence exam exist existing fee files finished first fit. forecast forward from gate going greenlight greenlights has here holds is it it. its keep keeps. kept kind kinds lands later launched layout lead legacy live loaded locked LOGREG market member members minted models name names never new next No no nothing null of on once one only or order others out over own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record remove Removed Retire retrained reused rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe up View vote votes voting way Weekly What while whole why will window with working writes yet
 ```
 
 ---
@@ -775,7 +775,7 @@ about above accuracy Accuracy ACCURACY across-asset actually admits admits. agai
 - `12 of 17`
 - `13 of 17`
 - `41h`
-- `6 — 3 logreg + 3 boost`
+- `6 — 3 LOGREG + 3 BOOST`
 - `65h`
 - `8 of 17`
 - `89h`
@@ -880,7 +880,7 @@ _none_
 - Stage 1 — every unit, scored once (S1 #7)
 - no — the first one out, on the tie-break
 - Stage 2 — the carried rows, in full (S2 #3, out of S1 #7)
-- 8 — 4 logreg + 4 boost (contexts add the cross view)
+- 8 — 4 LOGREG + 4 BOOST (contexts add the cross view)
 - Stage 3 — settings priced from the kept votes (S3 #12, out of S2 #3)
 - — one row per declared setting, averaged over its coins
 - — one row per coin, its records opening below it
@@ -888,14 +888,14 @@ _none_
 ## Every word, flat (149)
 
 ```
-1-day 2-day 3-day 4-day 41h 65h 8-day 89h active ADAUSDT add agree all alongside always-long and Apply argmax arm at auto AVAXUSDT averaged avg back band BCHUSDT beat below board Boards2 boost breakout BTCUSDT by carried chain chunk coin coins comparisons contexts control cross Daily decision declared directional DOGEUSDT drawing entry ETHUSDT Every every example. files fingerprint-checked first forecast from full fuller gate held-back helped how in is it its kept last lead least logreg LTCUSDT many market members money more new no Nothing null of off on once one open opening order out over own page per price priced q2/6 ranked read record records row rows S1 S2 S3 score scored set setting settings Settings shape SOLUSDT sort Stage stage stages static stops switched t89h test the The this three tie-break top trades trail training trainings unit units view votes vs way Weekly whole worked works. XRPUSDT yes
+1-day 2-day 3-day 4-day 41h 65h 8-day 89h active ADAUSDT add agree all alongside always-long and Apply argmax arm at auto AVAXUSDT averaged avg back band BCHUSDT beat below board Boards2 BOOST breakout BTCUSDT by carried chain chunk coin coins comparisons contexts control cross Daily decision declared directional DOGEUSDT drawing entry ETHUSDT Every every example. files fingerprint-checked first forecast from full fuller gate held-back helped how in is it its kept last lead least LOGREG LTCUSDT many market members money more new no Nothing null of off on once one open opening order out over own page per price priced q2/6 ranked read record records row rows S1 S2 S3 score scored set setting settings Settings shape SOLUSDT sort Stage stage stages static stops switched t89h test the The this three tie-break top trades trail training trainings unit units view votes vs way Weekly whole worked works. XRPUSDT yes
 ```
 
 ---
 
 # Boards3
 
-## What the controls are called (70)
+## What the controls are called (72)
 
 - `— stage`
 - `agree`
@@ -917,7 +917,7 @@ _none_
 - `band %`
 - `beat its own null set`
 - `beat its own null set at least, %`
-- `boost`
+- `BOOST`
 - `campaign:`
 - `carried`
 - `chunk shape`
@@ -925,6 +925,7 @@ _none_
 - `coins`
 - `coins in the money`
 - `comparisons`
+- `copy settings into the form`
 - `could not read this row's records`
 - `d`
 - `Data fingerprint:`
@@ -944,13 +945,14 @@ _none_
 - `is`
 - `is going:`
 - `lead over null set`
-- `logreg +`
+- `LOGREG +`
 - `members`
 - `nothing cleared the floors`
 - `nothing here`
 - `of`
 - `open`
 - `order`
+- `read(s) failed, so any panel`
 - `record set`
 - `records`
 - `rows`
@@ -972,7 +974,7 @@ _none_
 
 _none_
 
-## Sentences the page prints (17)
+## Sentences the page prints (20)
 
 - Boards3 — the record sets, and what each stage wrote
 - — no record sets on this box yet — start one on Sweep3 —
@@ -981,10 +983,13 @@ _none_
 - unit(s) failed and are missing from every table below — read the numbers accordingly.
 - notes — why this run exists, what it showed, what it cost
 - STAMP FAILED — this run cannot be proved comparable to any other
-- Stage 1 — every unit's logreg members, scored once (
+- THIS SCREEN IS INCOMPLETE.
+- below that looks empty may be missing data rather than reporting none. Reload once the service is back;
+- do not read an empty panel here as a result.
+- Stage 1 — every unit's LOGREG members, scored once (
 - ordered by beat its own null set, ties broken by lead over null set — the fixed rule. No money on
 - this table because stage 1 never prices a trade, and no held-back column because stage 1 never reads that window.
-- Stage 2 — the carried rows, logreg joined by boost (
+- Stage 2 — the carried rows, LOGREG joined by BOOST (
 - No money and no null set on this table: a stage 2 record is training inventory — members and kept
 - votes. Pricing, the null set and the held-back window all belong to stage 3.
 - Stage 3 — settings priced from the kept votes (
@@ -992,10 +997,10 @@ _none_
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 
-## Every word, flat (164)
+## Every word, flat (186)
 
 ```
-accordingly. actually agree all alongside always-long and any appear Apply are arm at averaged avg back band be beat because belong below board Boards3 boost box broken by campaign cannot carried chunk cleared coin coins column comparable comparisons cost could Data decision declared Delete DOES each entry every Every exists failed FAILED fingerprint fixed floors floors. forecast from fuller gate going held held-back helped here in inventory is it Its ITS its joined kept lands. lead least logreg many MATCH members missing money never no No NOT not notes nothing null numbers of on once one open opening order ordered other over OWN own per PLAN. priced prices Pricing proved ranked read reads record records row rows rule. run save score scored set SET sets setting settings Settings shape showed Size sort stage Stage STAMP start stops Sweep3 table tables test that the this THIS ties to trade trades trail training unit units votes votes. vs what What when why window window. wrote yet
+accordingly. actually agree all alongside always-long an and any appear Apply are arm as at averaged avg back band be beat because belong below board Boards3 BOOST box broken by campaign cannot carried chunk cleared coin coins column comparable comparisons copy cost could Data data decision declared Delete do DOES each empty entry every Every exists failed FAILED fingerprint fixed floors floors. forecast form from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it Its ITS its joined kept lands. lead least LOGREG looks many MATCH may members missing money never no No none. NOT not notes nothing null numbers of on once one open opening order ordered other over OWN own panel per PLAN. priced prices Pricing proved ranked rather read reads record records Reload reporting result. row rows rule. run save score scored SCREEN service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP start stops Sweep3 table tables test than that the this THIS ties to trade trades trail training unit units votes votes. vs what What when why window window. wrote yet
 ```
 
 ---
