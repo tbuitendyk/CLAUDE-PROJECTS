@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **c9c02141e9be — what the box is serving**, not from the working tree.
+Generated from **33a3f53f0184 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -364,7 +364,7 @@ _none_
 
 # Sweep3
 
-## What the controls are called (58)
+## What the controls are called (57)
 
 - `— each says why:`
 - `— no finished stage`
@@ -399,7 +399,6 @@ _none_
 - `null set size`
 - `on this box —`
 - `or a new name`
-- `order by`
 - `permute`
 - `record set on this box —`
 - `record set(s) stayed`
@@ -425,7 +424,7 @@ _none_
 - `window layout`
 - `with contexts`
 
-## What the dropdowns offer (45)
+## What the dropdowns offer (43)
 
 - `0.25×`
 - `0.5×`
@@ -460,14 +459,12 @@ _none_
 - `active`
 - `always`
 - `argmax`
-- `beat its own null set`
 - `breakout`
 - `Daily 1-day`
 - `Daily 2-day`
 - `Daily 3-day`
 - `Daily 4-day`
 - `directional`
-- `lead over null set`
 - `legacy 80/20 (never evidence)`
 - `market`
 - `static`
@@ -499,10 +496,10 @@ _none_
 - ” deleted.
 - and the saved models and tuning files belonging to them.
 
-## Every word, flat (234)
+## Every word, flat (230)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm at attaches auto band be beat been belonging best blank Boards3. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry every Every everything evidence exam exist existing fee files finished first fit. forecast forward from gate going greenlight greenlights has here holds is it it. its keep keeps. kept kind kinds lands later launched layout lead legacy live loaded locked LOGREG market member members minted models name names never new next No no nothing null of on once one only or order others out over own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record remove Removed Retire retrained reused rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe up View vote votes voting way Weekly What while whole why will window with working writes yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm at attaches auto band be been belonging best blank Boards3. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry every Every everything evidence exam exist existing fee files finished first fit. forecast forward from gate going greenlight greenlights has here holds is it it. its keep keeps. kept kind kinds lands later launched layout legacy live loaded locked LOGREG market member members minted models name names never new next No no nothing null of on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record remove Removed Retire retrained reused rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe up View vote votes voting way Weekly What while whole why will window with working writes yet
 ```
 
 ---
@@ -974,7 +971,7 @@ _none_
 
 _none_
 
-## Sentences the page prints (21)
+## Sentences the page prints (25)
 
 - Boards3 — the record sets, and what each stage wrote
 - — no record sets on this box yet — start one on Sweep3 —
@@ -987,21 +984,25 @@ _none_
 - below that looks empty may be missing data rather than reporting none. Reload once the service is back;
 - do not read an empty panel here as a result.
 - Stage 1 — every unit's LOGREG members, scored once (
-- ordered by beat its own null set, ties broken by lead over null set — the fixed rule. No money on
-- this table because stage 1 never prices a trade, and no held-back column because stage 1 never reads that window.
+- Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
+- carry forward takes the top of. With nothing picked: beat its own null set, ties broken by lead over null set —
+- the fixed rule. No money on this table because stage 1 never prices a trade, and no held-back column because
+- stage 1 never reads that window.
 - Stage 2 — the carried rows, LOGREG joined by BOOST (
-- Ordered by forecast score — all members, best first; ties keep their carry order. The null set
-- columns are the unit's stage 1 reading, carried with it. No money on this table: a stage 2 record is training
-- inventory — members and kept votes. Pricing and the held-back window belong to stage 3.
+- Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 3
+- carry forward takes the top of. With nothing picked: forecast score — all members, best first; ties keep their
+- carry order either way. The null set columns are the unit's stage 1 reading, carried with it. No money on this
+- table: a stage 2 record is training inventory — members and kept votes. Pricing and the held-back window belong
+- to stage 3.
 - Stage 3 — settings priced from the kept votes (
 - — one row per declared setting, averaged over its coins
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 
-## Every word, flat (198)
+## Every word, flat (206)
 
 ```
-accordingly. actually agree all alongside always-long an and any appear Apply are arm as at averaged avg back band be beat because belong below best board Boards3 BOOST box broken by campaign cannot carried carry chunk cleared coin coins column columns comparable comparisons copy cost could Data data decision declared Delete do DOES each empty entry every Every exists failed FAILED fingerprint first fixed floors floors. forecast form from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it it. Its ITS its joined keep kept lands. lead least LOGREG looks many MATCH may members missing money never no No none. NOT not notes nothing null numbers of on once one open opening order order. ordered Ordered other over OWN own panel per PLAN. priced prices Pricing proved ranked rather read reading reads record records Reload reporting result. row rows rule. run save score scored SCREEN service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP start stops Sweep3 table tables test than that the The their this THIS ties to trade trades trail training unit units votes votes. vs what What when why window window. with wrote yet
+accordingly. actually agree all alongside always-long an and any appear Apply are arm as at averaged avg back band be beat because belong below best board Boards3 BOOST box broken by campaign cannot carried carry chunk cleared coin coins column columns comparable comparisons copy cost could Data data decision declared Delete do DOES each either empty entry every Every exactly exists failed FAILED fingerprint first fixed floors floors. forecast form forward from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it it. Its ITS its joined keep kept lands. lead least LOGREG looks many MATCH may members missing money never no No none. NOT not notes nothing null numbers of of. on once one open opening order Ordered other over OWN own panel per picked PLAN. priced prices Pricing proved ranked rather read reading reads record records Reload reporting result. row rows rule. run save saved score scored SCREEN service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP start stops Sweep3 table tables takes test than that the The their this THIS ties to top trade trades trail training unit units votes votes. vs way. what What when why window window. With with wrote yet
 ```
 
 ---

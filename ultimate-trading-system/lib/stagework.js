@@ -500,21 +500,16 @@ async function s3TallyShardTask({ id, blocks }) {
   return serializeTallyAcc(acc);
 }
 
-// A RELIC WITH ONE DEPLOY LEFT TO LIVE (2026-08-27). The owner replaced the
-// two-way order by with sorts picked on the tables themselves and saved on
-// the set (lib/stages.js SORT_KEYS) — the carry reads the saved sort, so the
-// launch-side ordering menu is gone and NOTHING in this tree reads this list
-// any more. It stays exported for exactly one reason: the word-list
-// generator compiles the SERVED commit's lib/vocabulary.js, and until this
-// commit deploys, that vocabulary still asks for it at load. Delete it in
-// the post-deploy commit, when the served vocabulary no longer names it.
-const S2_ORDERINGS = [
-  { value: 'beat', label: 'beat its own null set' },
-  { value: 'lead', label: 'lead over null set' },
-];
+// S2_ORDERINGS lived here until 2026-08-27: the owner replaced the two-way
+// order by with sorts picked on the tables themselves and saved on the set
+// (lib/stages.js SORT_KEYS) — the carry reads the saved sort, so a separate
+// launch-side ordering menu was a second answer to the same question. The
+// export outlived the control by one deploy (the word-list generator
+// compiles the SERVED commit's vocabulary, which asked for it at load) and
+// came out once the box served a vocabulary without it.
 
 module.exports = {
-  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, S2_ORDERINGS,
+  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   // the arithmetic, exported so the tests can pencil it
   forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks,
