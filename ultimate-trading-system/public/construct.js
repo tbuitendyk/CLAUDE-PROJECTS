@@ -4423,6 +4423,34 @@ function b3WireSort(doc, root) {
   });
 }
 
+// THE RANKED TABLE SORTS BY ONE PICKED COLUMN (owner order, 2026-08-27:
+// "only a single column to select by is sufficient"). Click sorts by the
+// column, click again flips it, a third click puts it away; picking another
+// column simply replaces the pick. Saved on the record set like the stage 1
+// and stage 2 sorts — but nothing carries out of stage 3, so the button
+// promises only what it does: the order of this table.
+function b3RankSortBtn(doc, key, firstDir) {
+  const spec = Array.isArray(doc.sort) ? doc.sort : [];
+  const at = spec.findIndex((s) => s.key === key);
+  const state = at < 0 ? '·' : (spec[at].dir === 'desc' ? '↓' : '↑');
+  return ` <button data-b3ranksort="${key}" data-b3rankdir="${firstDir}" style="min-width:1.6rem;padding:0 .25rem"
+    title="click to sort the whole table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (A to Z / low to high first)'}; click again to flip it, a third click puts it away. One column at a time — picking another column replaces this one. Saved on this record set.">${state}</button>`;
+}
+function b3WireRankSort(doc, root) {
+  $(root).querySelectorAll('[data-b3ranksort]').forEach((btn) => {
+    btn.onclick = async () => {
+      const key = btn.dataset.b3ranksort;
+      const first = btn.dataset.b3rankdir === 'asc' ? 'asc' : 'desc';
+      const cur = (Array.isArray(doc.sort) ? doc.sort : []).find((s) => s.key === key);
+      const spec = !cur ? [{ key, dir: first }]
+        : cur.dir === first ? [{ key, dir: first === 'desc' ? 'asc' : 'desc' }]
+          : [];
+      const out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/sort`, { sort: spec });
+      if (out) drawBoards3().then(() => restoreScroll(tab));
+    };
+  });
+}
+
 function b3WirePager(root) {
   $(root).querySelectorAll('[data-b3page]').forEach((btn) => {
     btn.onclick = () => {
@@ -4547,24 +4575,24 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
     <p style="margin:.6rem 0 .2rem"><b>Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="how the members' votes become a call — priced from the kept votes.">decision</th>
-        <th ${b3th} title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history.">band</th>
-        <th ${b3th} title="whether this setting trades weekdays only.">24/5</th>
-        <th ${b3th} title="how the position is opened.">entry</th>
-        <th ${b3th} title="when a position may be opened at all. A dash means the box does not apply to this setting.">gate</th>
-        <th ${b3th} title="how far from the starting price the opening level sits. A dash means it does not apply.">d</th>
-        <th ${b3th} title="how many hours a position is held before it is closed, if nothing else closed it first.">t</th>
-        <th ${b3th} title="which stop the setting uses. static sits still on the far side of the entry; a dash means it does not apply.">trail</th>
-        <th ${b3th} title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm</th>
-        <th ${b3th} title="how many members must say the same thing before a trade is taken, out of how many there are.">agree</th>
-        <th ${b3th} title="how many coins this setting was priced on.">coins</th>
-        <th ${b3th} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $</th>
-        <th ${b3th} title="the once-only look, on data no ordering ever read">avg held-back $</th>
-        <th ${b3th} title="average entries per coin in the held-back window.">avg held-back trades</th>
-        <th ${b3th} title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $</th>
-        <th ${b3th} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set</th>
-        <th ${b3th} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set</th>
-        <th ${b3th} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money</th></tr></thead>
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="how the members' votes become a call — priced from the kept votes.">decision${b3RankSortBtn(doc, 'decision', 'asc')}</th>
+        <th ${b3th} title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history.">band${b3RankSortBtn(doc, 'bandMode', 'asc')}</th>
+        <th ${b3th} title="whether this setting trades weekdays only.">24/5${b3RankSortBtn(doc, 'weekdaysOnly', 'asc')}</th>
+        <th ${b3th} title="how the position is opened.">entry${b3RankSortBtn(doc, 'entry', 'asc')}</th>
+        <th ${b3th} title="when a position may be opened at all. A dash means the box does not apply to this setting.">gate${b3RankSortBtn(doc, 'gate', 'asc')}</th>
+        <th ${b3th} title="how far from the starting price the opening level sits. A dash means it does not apply.">d${b3RankSortBtn(doc, 'dMult', 'asc')}</th>
+        <th ${b3th} title="how many hours a position is held before it is closed, if nothing else closed it first.">t${b3RankSortBtn(doc, 'tHours', 'asc')}</th>
+        <th ${b3th} title="which stop the setting uses. static sits still on the far side of the entry; a dash means it does not apply.">trail${b3RankSortBtn(doc, 'trailMult', 'asc')}</th>
+        <th ${b3th} title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm${b3RankSortBtn(doc, 'armMult', 'asc')}</th>
+        <th ${b3th} title="how many members must say the same thing before a trade is taken, out of how many there are.">agree${b3RankSortBtn(doc, 'quorum', 'asc')}</th>
+        <th ${b3th} title="how many coins this setting was priced on.">coins${b3RankSortBtn(doc, 'coins', 'desc')}</th>
+        <th ${b3th} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $${b3RankSortBtn(doc, 'avgTest', 'desc')}</th>
+        <th ${b3th} title="the once-only look, on data no ordering ever read">avg held-back $${b3RankSortBtn(doc, 'avgHold', 'desc')}</th>
+        <th ${b3th} title="average entries per coin in the held-back window.">avg held-back trades${b3RankSortBtn(doc, 'avgTrades', 'desc')}</th>
+        <th ${b3th} title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $${b3RankSortBtn(doc, 'avgVsLong', 'desc')}</th>
+        <th ${b3th} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set${b3RankSortBtn(doc, 'beat', 'desc')}</th>
+        <th ${b3th} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set${b3RankSortBtn(doc, 'avgLead', 'desc')}</th>
+        <th ${b3th} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money${b3RankSortBtn(doc, 'coinsInMoney', 'desc')}</th></tr></thead>
       <tbody>${rr.map((r) => `<tr>
         <td ${b3td0}>${esc(r.decision)}</td>
         <td ${b3td}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
@@ -4585,6 +4613,8 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
         <td ${b3td}>${b3Lead(r.avgLead)}</td>
         <td ${b3td}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="18" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${b3Pager((ranked && ranked.total) || 0, from, 100, 'S3R')}
+    <p class="note">Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
+      nothing picked: beat its own null set, best first.</p>
     <p style="margin:.9rem 0 .2rem"><b>Every coin of every setting</b> — one row per coin, its records opening below it</p>
     <div class="row" style="margin:.3rem 0 0">
       <label class="c"><span class="muted">beat its own null set at least, %</span><input id="b3MinShare" type="number" min="0" max="100" step="1" value="${esc(coinsQ.minShare ?? '')}" style="width:5.5rem"></label>
@@ -4610,11 +4640,12 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
       <label class="c"><span class="muted">at least this many comparisons</span><input id="b3MinPairs" type="number" min="0" step="10" value="${esc(coinsQ.minPairs ?? '')}" style="width:5.5rem"></label>
       <button id="b3Go">Apply</button>
     </div>
-    <div class="scrollx"><table style="border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+    <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-b3coinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting</th>
         <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
         <th ${b3th} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set</th>
         <th ${b3th} title="how many head-to-heads the share rests on.">comparisons</th>
+        <th ${b3th} title="average test-window money per record — flattering by construction, because the carry was ordered on that window.">avg test $</th>
         <th ${b3th} title="average held-back money per record.">avg held-back</th>
         <th ${b3th} title="average held-back entries per record.">avg trades</th>
         <th ${b3th} title="average held-back money minus just holding the coin over the same window.">avg vs always-long</th>
@@ -4627,21 +4658,40 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
         <td ${b3td}>${b3Coin(r)} <span class="muted">${esc(b3Geo(r.geometry))}</span></td>
         <td ${b3td}>${b3Share(r.share, r.beat, r.pairs)}</td>
         <td ${b3td}>${Number(r.pairs).toLocaleString()}</td>
+        <td ${b3td}>${b3Money(r.avgTest)}</td>
         <td ${b3td}>${b3Money(r.avgHold)}</td>
         <td ${b3td}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
         <td ${b3td}>${b3Money(r.avgVsLong)}</td>
         <td ${b3td}>${r.rows}</td>
         <td ${b3td}><button data-b3rec="${esc(k)}">${openKeys.has(k) ? '▾ records' : 'records'}</button></td></tr>`;
-  }).join('') || '<tr><td colspan="9" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
+  }).join('') || '<tr><td colspan="10" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${coins && coins.removed ? `<p class="note">${coins.removed.toLocaleString()} row(s) held back by the floors.</p>` : ''}
     ${b3Pager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`;
-  const applyCoins = () => {
+  // THE PAGE MUST NOT MOVE ON Apply (owner order, 2026-08-27): the line of
+  // column headings is measured against the top of the window before the
+  // redraw and put back at exactly that height after it, whatever the new
+  // rows did to the page's length. The nudge is the page moving itself, so
+  // the scroll memory is held shut around it, then told the pegged place.
+  const applyCoins = async () => {
     b3SaveView({ coins: {
       sort: $('#b3Sort').value, minPairs: $('#b3MinPairs').value, minShare: $('#b3MinShare').value,
       minHold: $('#b3MinHold').value, minTrades: $('#b3MinTrades').value, minVsLong: $('#b3MinVsLong').value, offset: 0,
     } });
-    drawBoards3().then(() => restoreScroll(tab));
+    const head = document.querySelector('[data-b3coinhead]');
+    const pegTop = head ? head.getBoundingClientRect().top : null;
+    await drawBoards3();
+    holdScrollMemory();
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      holdScrollMemory();
+      const again = document.querySelector('[data-b3coinhead]');
+      if (pegTop != null && again) {
+        window.scrollBy(0, again.getBoundingClientRect().top - pegTop);
+        rememberScroll(tab);
+      } else {
+        restoreScroll(tab);   // the table did not come back (e.g. totalling) — the old rule
+      }
+    }));
   };
   $('#b3Go').onclick = applyCoins;
   $(mount).querySelectorAll('[data-b3rec]').forEach((btn) => {
@@ -4654,6 +4704,7 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
     };
   });
   b3WirePager(mount);
+  b3WireRankSort(doc, mount);
   // opened records rows, fetched and slotted under their coin row
   for (const k of openKeys) {
     const tr = $(mount).querySelector(`tr[data-b3key="${CSS.escape(k)}"]`);

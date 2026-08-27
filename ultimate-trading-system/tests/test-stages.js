@@ -101,21 +101,21 @@ module.exports = {
     const dir = rowstore.storeDir(id);
     try {
       const w = rowstore.writer(id, 'records');
-      const mk = (si, label, trade, geometry, decision, hold, beat, pairs, vsl, lead) => ({
+      const mk = (si, label, trade, geometry, decision, hold, beat, pairs, vsl, lead, test = 10) => ({
         si, label, decision, bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
         entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65, trailMult: null, armMult: null,
-        quorum: 2, members: 6, pnl: 10, trades: 3,
+        quorum: 2, members: 6, pnl: test, trades: 3,
         holdout: { pnl: hold, trades: 4, stops: 1, vsAlwaysLong: vsl },
         beat, pairs, lead: lead ?? null, u: 0, trade, ctx1: null, ctx2: null, size: 1, geometry,
       });
       // setting 0: coin A twice (two variants: argmax/directional), coin B once
-      w.push(mk(0, 'q2/6 x · argmax auto 24/7', 'AAA', 'daily-4d', 'argmax', 10, 15, 19, 5, 2));
+      w.push(mk(0, 'q2/6 x · argmax auto 24/7', 'AAA', 'daily-4d', 'argmax', 10, 15, 19, 5, 2, 10));
       w.flush();
-      w.push(mk(0, 'q2/6 x · directional auto 24/7', 'AAA', 'daily-4d', 'directional', 30, 10, 19, 6, 4));
-      w.push(mk(0, 'q2/6 x · argmax auto 24/7', 'BBB', 'daily-4d', 'argmax', -4, 3, 19, -2, -1));
+      w.push(mk(0, 'q2/6 x · directional auto 24/7', 'AAA', 'daily-4d', 'directional', 30, 10, 19, 6, 4, 26));
+      w.push(mk(0, 'q2/6 x · argmax auto 24/7', 'BBB', 'daily-4d', 'argmax', -4, 3, 19, -2, -1, -4));
       w.flush();
       // setting 1: one coin, in the money
-      w.push(mk(1, 'q3/6 y · argmax auto 24/7', 'AAA', 'daily-4d', 'argmax', 7, 12, 19, 1, 0.5));
+      w.push(mk(1, 'q3/6 y · argmax auto 24/7', 'AAA', 'daily-4d', 'argmax', 7, 12, 19, 1, 0.5, 9));
       w.close();
 
       const tally = await stages.buildTally({ id });
@@ -130,12 +130,16 @@ module.exports = {
       assert.ok(Math.abs(r0.avgLead - 1) < 1e-12, `per-coin-first lead: expected 1, got ${r0.avgLead}`);
       assert.strictEqual(r0.beat, 28);
       assert.strictEqual(r0.pairs, 57);
+      // avg test $, per coin first (owner order, 2026-08-27): coin A
+      // (10+26)/2 = 18, coin B −4 → ranked (18 − 4) / 2 = 7
+      assert.ok(Math.abs(r0.avgTest - 7) < 1e-12, `per-coin-first test money: expected 7, got ${r0.avgTest}`);
       // every-coin: the two AAA variants of setting 0 group under one row
       const coinA = tally.coins.find((k) => k.trade === 'AAA' && k.cellLabel === 'q2/6 x');
       assert.strictEqual(coinA.rows, 2, 'decision variants are the rows under the coin');
       assert.strictEqual(coinA.beat, 25);
       assert.strictEqual(coinA.pairs, 38);
       assert.ok(Math.abs(coinA.avgHold - 20) < 1e-12);
+      assert.ok(Math.abs(coinA.avgTest - 18) < 1e-12, 'the coin row averages its records’ test money too');
 
       // floors and sort through the serving path
       const tf = path.join(SETS_DIR, `${id}-tally.json.gz`);
@@ -145,6 +149,7 @@ module.exports = {
       assert.strictEqual(coins.removed, 2, 'and the line under the table owns up to both rows held back');
       const sorted = stages.stage3Coins(id, { sort: 'money', minPairs: 10 });
       assert.deepStrictEqual(sorted.rows.map((r) => r.avgHold), [20, 7, -4], 'money sort, whole set, best first');
+      assert.deepStrictEqual(sorted.rows.map((r) => r.avgTest), [18, 9, -4], 'and every served row carries its avg test $');
       const floored = stages.stage3Coins(id, { minVsLong: 0 });
       assert.ok(floored.rows.every((r) => r.avgVsLong >= 0), 'the vs always-long floor holds');
 
@@ -333,6 +338,79 @@ module.exports = {
       return o;
     };
     assert.deepStrictEqual(norm(merged), norm(one), 'the sharded fold must be the single-pass fold, exactly');
+  },
+
+  // The ranked table sorts by ONE picked column, saved on the record set
+  // (owner order, 2026-08-27: "only a single column to select by is
+  // sufficient") — the whole list is ordered before the page is cut, two
+  // columns are refused by sentence, and with nothing picked the table
+  // serves the totalling's own order.
+  async theRankedTableSortsByOnePickedColumn() {
+    const id = `s3-test-${Date.now().toString(36)}-rs`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999987, name: 'S3 #rs', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 3 }, params: { nullN: 9 },
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, tHours, hold, beat) => ({
+        si, label: `q2/6 x t${tHours}h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false,
+        bandPct: 2, entry: 'breakout', gate: 'directional', dMult: 1.5, tHours, trailMult: null, armMult: null,
+        quorum: 2, members: 6, pnl: 10, trades: 3,
+        holdout: { pnl: hold, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      });
+      w.push(mk(0, 17, 30, 3));
+      w.push(mk(1, 65, -4, 8));
+      w.push(mk(2, 41, 12, 5));
+      w.close();
+      await stages.buildTally(doc);
+
+      // nothing picked: the totalling's own order — beat share, best first
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.tHours), [65, 41, 17]);
+      // one column picked: the whole list reorders, and the pick echoes back
+      stages.setSetSort(id, [{ key: 'avgHold', dir: 'desc' }]);
+      const byHold = stages.stage3Ranked(id, 0, 10);
+      assert.deepStrictEqual(byHold.rows.map((r) => r.avgHold), [30, 12, -4], 'the picked column orders the whole table');
+      assert.deepStrictEqual(byHold.sort, [{ key: 'avgHold', dir: 'desc' }], 'the served page says what ordered it');
+      stages.setSetSort(id, [{ key: 'tHours', dir: 'asc' }]);
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.tHours), [17, 41, 65], 'a dial column sorts too');
+      // and the page cut comes AFTER the sort
+      assert.deepStrictEqual(stages.stage3Ranked(id, 1, 1).rows.map((r) => r.tHours), [41], 'page two really is the middle');
+      // refusals, by sentence: two columns, and a column these tables lack
+      assert.throws(() => stages.setSetSort(id, [{ key: 'avgHold', dir: 'desc' }, { key: 'tHours', dir: 'asc' }]),
+        /one column at a time on this table/);
+      assert.throws(() => stages.setSetSort(id, [{ key: 'score3', dir: 'desc' }]),
+        /not a column these tables sort by/, 'a stage 2 column is refused on a stage 3 set');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // A tally of an older shape READS AS ABSENT (owner order, 2026-08-27: the
+  // coins table gained avg test $) — it is never served with dashes where
+  // the new column belongs; the rebuild-on-read door re-totals it instead.
+  async theOldTallyShapeRetotalsItself() {
+    const id = `s3-test-${Date.now().toString(36)}-ov`;
+    const tf = path.join(SETS_DIR, `${id}-tally.json.gz`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: 1, builtAt: 'x', rows: 0, ranked: [], coins: [] })));
+      assert.strictEqual(stages.readTally(id), null, 'an old-shape tally must not be served');
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10), null, 'so the table read falls through to the rebuild door');
+      assert.ok(!stages.ensureTally(id).ready, 'and the door no longer answers ready off the file\'s mere existence');
+      // the shape the totalling writes today IS served
+      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: 2, builtAt: 'x', rows: 0, ranked: [], coins: [] })));
+      const served = stages.stage3Ranked(id, 0, 10);
+      assert.ok(served && served.total === 0, 'the current shape serves');
+    } finally {
+      try { fs.rmSync(tf, { force: true }); } catch (_) { /* fixture */ }
+    }
   },
 
   // ---- the campaign rides the stages (owner GO, 2026-08-27) ----------------
@@ -589,6 +667,22 @@ module.exports = {
       const swBody = screens.drawBody('drawSweep3');
       assert.ok(swBody.includes('s3Provenance()'), 'the colors are wired on the page');
       assert.ok(swBody.includes("b.disabled = going"), 'the start buttons sleep while a run is going');
+    }
+    // The stage 3 tables' newest owner orders (2026-08-27): Apply pegs the
+    // coins heading line where the eye left it; the ranked table sorts by one
+    // picked column through the same saved-sort door; the coins rows carry
+    // their avg test $.
+    {
+      const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+      assert.ok(src.includes('<thead><tr data-b3coinhead'), 'the coins heading line carries the peg mark');
+      assert.ok(src.includes('window.scrollBy(0, again.getBoundingClientRect().top - pegTop);'),
+        'Apply puts the heading line back at exactly the height it was measured at');
+      assert.ok(src.includes('function b3RankSortBtn(') && src.includes("b3WireRankSort(doc, mount);"),
+        'the ranked table columns carry sort buttons and they are wired');
+      assert.ok(src.includes('const spec = !cur ? [{ key, dir: first }]'),
+        'picking another ranked column replaces the pick — never stacks it');
+      assert.ok(src.includes('title="average test-window money per record') && src.includes('${b3Money(r.avgTest)}'),
+        'the every-coin table shows each row-set\'s avg test $');
     }
     const map = screens.byTab();
     for (const key of ['sweep', 'sweep3']) {

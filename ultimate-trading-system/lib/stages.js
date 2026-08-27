@@ -358,6 +358,16 @@ const SORT_KEYS = {
     s1rank: 'n', trade: 's', ctx: 's', geometry: 's', members: 'n',
     score3: 'n', scoreAll: 'n', helped: 'n', beat: 'share', lead: 'n',
   },
+  // Stage 3's ranked table (owner order, 2026-08-27): every column may be
+  // picked, ONE at a time — nothing carries out of stage 3, so the sort is
+  // only how the table reads. Keys are the ranked rows' own field names;
+  // band % sorts numerically with auto sitting last, whichever way it points.
+  3: {
+    decision: 's', bandMode: 'n', weekdaysOnly: 'n', entry: 's', gate: 's',
+    dMult: 'n', tHours: 'n', trailMult: 'n', armMult: 'n', quorum: 'n',
+    coins: 'n', avgTest: 'n', avgHold: 'n', avgTrades: 'n', avgVsLong: 'n',
+    beat: 'share', avgLead: 'n', coinsInMoney: 'n',
+  },
 };
 // The words the screens use for those keys, for the chain line — read the
 // column headings back, never invented.
@@ -367,6 +377,11 @@ const SORT_WORDS = {
   s1rank: 'stage 1 order', members: 'members',
   score3: 'forecast score — stage 1 members', scoreAll: 'forecast score — all members',
   helped: 'fuller board helped?',
+  decision: 'decision', bandMode: 'band', weekdaysOnly: '24/5', entry: 'entry', gate: 'gate',
+  dMult: 'd', tHours: 't', trailMult: 'trail', armMult: 'arm', quorum: 'agree',
+  coins: 'coins', avgTest: 'avg test $', avgHold: 'avg held-back $',
+  avgTrades: 'avg held-back trades', avgVsLong: 'avg vs always-long $',
+  avgLead: 'lead over null set', coinsInMoney: 'coins in the money',
 };
 function sortLabel(spec) {
   return (spec || []).map((s) => `${SORT_WORDS[s.key] || s.key} ${s.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', ');
@@ -376,6 +391,7 @@ function validateSort(stage, spec) {
   if (!keys) throw new Error(`stage ${stage} tables carry no saved sort`);
   if (!Array.isArray(spec)) throw new Error('the sort is a list of up to three columns');
   if (spec.length > 3) throw new Error('three sort priorities at most');
+  if (stage === 3 && spec.length > 1) throw new Error('one column at a time on this table');
   const seen = new Set();
   return spec.map((s) => {
     const key = String((s || {}).key || '');
@@ -422,9 +438,6 @@ function applySort(stage, rows, spec, baseCmp) {
 function setSetSort(id, spec) {
   const doc = getSet(String(id || ''));
   if (!doc) throw new Error('unknown record set');
-  if (doc.stage !== 1 && doc.stage !== 2) {
-    throw new Error('saved sorts live on stage 1 and stage 2 record sets — the stage 3 tables have their own sort by');
-  }
   if (doc.status === 'running') throw new Error('the record set is still being written — the sort saves after it finishes');
   doc.sort = validateSort(doc.stage, Array.isArray(spec) ? spec : []);
   saveSet(doc);
@@ -840,6 +853,12 @@ function storeBudgetFor({ rows, freeBytes = null }) {
         + 'rather than filling the machine. Shrink the block, or clear old record sets first.';
   return { bytes, freeBytes: free, band, share, message };
 }
+// The tally's shape number. Bumped when the tables gain a column the fold
+// must supply (v2: avg test $ on the coins table, owner order 2026-08-27) —
+// an older tally then READS AS ABSENT, so the durable rebuild re-totals it
+// from the kept records with the new column, progress on screen, instead of
+// serving dashes forever where the number belongs.
+const TALLY_V = 2;
 async function buildTally(doc, pool = null, note = null) {
   const id = doc.id;
   const sw = require('./stagework');
@@ -914,6 +933,7 @@ async function buildTally(doc, pool = null, note = null) {
     coins.push({
       cellLabel: k.cellLabel, trade: k.trade, ctx1: k.ctx1, ctx2: k.ctx2, geometry: k.geometry,
       share: k.pairs ? k.beat / k.pairs : null, beat: k.beat, pairs: k.pairs,
+      avgTest: k.testN ? k.test / k.testN : null,
       avgHold: k.holdN ? k.hold / k.holdN : null,
       avgTrades: k.tradesN ? k.trades / k.tradesN : null,
       avgVsLong: k.vsln ? k.vsl / k.vsln : null,
@@ -921,7 +941,7 @@ async function buildTally(doc, pool = null, note = null) {
     });
     acc.perCoin.delete(key);
   }
-  const out = { v: 1, builtAt: new Date().toISOString(), rows: acc.rows, ranked, coins };
+  const out = { v: TALLY_V, builtAt: new Date().toISOString(), rows: acc.rows, ranked, coins };
   // WRITTEN STREAMING, entry by entry. Stringifying a 177,408-setting tally
   // in one piece is a second whole copy of it at the worst moment — part of
   // what put the first totalling over the heap. The stream writes the same
@@ -932,7 +952,7 @@ async function buildTally(doc, pool = null, note = null) {
   gz.pipe(ws);
   const put = (str) => new Promise((resolve) => { if (gz.write(str)) resolve(); else gz.once('drain', resolve); });
   const breathe = (i) => (i % 2000 === 1999 ? new Promise((resolve) => { setImmediate(resolve); }) : null);
-  await put(`{"v":1,"builtAt":${JSON.stringify(out.builtAt)},"rows":${acc.rows},"ranked":[`);
+  await put(`{"v":${TALLY_V},"builtAt":${JSON.stringify(out.builtAt)},"rows":${acc.rows},"ranked":[`);
   for (let i = 0; i < ranked.length; i++) { await put((i ? ',' : '') + JSON.stringify(ranked[i])); const b = breathe(i); if (b) await b; }
   await put('],"coins":[');
   for (let i = 0; i < coins.length; i++) { await put((i ? ',' : '') + JSON.stringify(coins[i])); const b = breathe(i); if (b) await b; }
@@ -952,7 +972,10 @@ async function buildTally(doc, pool = null, note = null) {
 let tallyRun = null;   // { id, done, total, startedAt, error, promise }
 
 function ensureTally(id) {
-  try { if (fs.existsSync(tallyFile(id))) return { ready: true }; } catch (_) { /* fall through */ }
+  // readTally is the arbiter, not the file's existence: a tally of an older
+  // shape sits on disk and still reads as absent, and this is the door the
+  // re-totalling walks in through. The parse happens once — it caches.
+  try { if (readTally(id)) return { ready: true }; } catch (_) { /* fall through */ }
   const doc = getSet(id);
   if (!doc || doc.stage !== 3 || (doc.status !== 'done' && doc.status !== 'incomplete')) return { none: true };
   if (tallyRun) {
@@ -1004,6 +1027,10 @@ function readTally(id) {
   if (tallyInHand.id === id && tallyInHand.tally) return tallyInHand.tally;
   let t = null;
   try { t = JSON.parse(zlib.gunzipSync(fs.readFileSync(tallyFile(id))).toString('utf8')); } catch (_) { t = null; }
+  // A tally of an older shape is not served and not cached — it reads as
+  // absent, and the rebuild-on-read machinery re-totals it with the columns
+  // the screens now show. Serving it would put dashes where numbers belong.
+  if (t && t.v !== TALLY_V) t = null;
   if (t) { tallyInHand.id = id; tallyInHand.tally = t; }
   return t;
 }
@@ -1172,7 +1199,21 @@ function stage3Coins(id, query) {
 function stage3Ranked(id, from, n) {
   const t = readTally(id);
   if (!t) return null;
-  return { total: t.ranked.length, from, rows: t.ranked.slice(from, from + n) };
+  const doc = getSet(id);
+  // The saved sort orders the WHOLE ranked list before the page is cut, so
+  // page one really is the top of everything; the fixed rule the totalling
+  // wrote (beat its own null set, best first) when nothing is picked. The
+  // rows are tagged and untagged around the sort so the cached tally itself
+  // is never reordered.
+  if (doc && Array.isArray(doc.sort) && doc.sort.length) {
+    const tagged = t.ranked.map((r, i) => ({ ...r, _i: i }));
+    const rows = applySort(3, tagged, doc.sort, (a, b) => a._i - b._i);
+    return {
+      total: rows.length, from, sort: doc.sort,
+      rows: rows.slice(from, from + n).map(({ _i, ...r }) => r),
+    };
+  }
+  return { total: t.ranked.length, from, sort: [], rows: t.ranked.slice(from, from + n) };
 }
 
 function stage3CoinRows(id, query) {

@@ -564,8 +564,9 @@ window.HELP = {
         + 'shows the carried rows: members trained, and the forecast score with the stage 1 members beside the '
         + 'score with every member, so what the BOOST members bought is visible before any pricing. A stage 3 '
         + 'set shows the pricing: the settings ranked against each other with coins in the money beside the '
-        + 'averages, and every coin of every setting with floors, a sort, and each row\'s records opening '
-        + 'underneath — the decision, band and 24/5 variants that make the row up.\n\n'
+        + 'averages — sortable by any one column, picked on the column and saved on the record set — and every '
+        + 'coin of every setting with floors, a sort, avg test $ beside the held-back averages, and each row\'s '
+        + 'records opening underneath — the decision, band and 24/5 variants that make the row up.\n\n'
         + 'A set that finished with failed units carries an INCOMPLETE banner: it does not match its own plan, '
         + 'and every table under the banner is missing those units. The held-back window appears only on stage 3 '
         + 'tables, because only stage 3 prices it.'],
@@ -579,7 +580,9 @@ window.HELP = {
       b3MinVsLong: { what: 'Hides rows whose avg vs always-long is below this many dollars. Empty hides nothing.' },
       b3Sort: { what: 'How the every-coin table is ordered. The whole data set is sorted before the page is cut, so page one really is the top of everything.' },
       b3MinPairs: { what: 'Hides rows whose share rests on fewer head-to-heads than this. Zero hides nothing; the line under the table says how many rows the floors held back.' },
-      b3Go: { what: 'Asks again with the sort and floors chosen beside it.' },
+      b3Go: {
+        what: 'Asks again with the sort and floors chosen beside it. The page does not move: the line of column headings stays exactly where it was.',
+      },
     },
   },
 

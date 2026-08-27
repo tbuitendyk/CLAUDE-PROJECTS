@@ -264,6 +264,28 @@ work — the owner reviews decisions in the morning, not at 3am.
     accumulator is now drained as the tables are built: each entry deleted
     the moment its row exists, so the peak is one copy plus flat rows.
 
+38. **Apply holds the page still** (owner order, 2026-08-27: "the page must
+    not move ... the top line of column headings exactly pegged"). The
+    every-coin table's Apply measures where its heading line sits in the
+    window, redraws, and scrolls the difference away — the headings stay
+    exactly where the eye left them, whatever the new rows did to the
+    page's length. The scroll memory is held shut around the nudge (the
+    page moving itself never writes it) and then told the pegged place.
+39. **The ranked table sorts by one picked column** (owner order,
+    2026-08-27: "only a single column to select by is sufficient"). Same
+    door as the stage 1/2 sorts — picked on the column, saved on the
+    record set, the whole list ordered before the page is cut — but capped
+    at ONE on stage 3, and picking another column replaces the pick.
+    Nothing carries out of stage 3, so the sort is only how the table
+    reads, and its buttons promise exactly that.
+40. **The every-coin table shows avg test $, and the tally has a shape
+    number.** The per-coin fold now carries the test-window money, and the
+    tally records shape v2. A tally of an older shape READS AS ABSENT —
+    never served with dashes where the new column belongs — so opening one
+    walks in through the rebuild-on-read door and re-totals it from the
+    kept records, progress on screen, budget-gated as always. The one
+    existing big set re-totals itself once, on first open after deploy.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and

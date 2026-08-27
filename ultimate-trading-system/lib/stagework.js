@@ -436,11 +436,12 @@ function tallyFold(acc, r, blockIdx) {
   let k = acc.perCoin.get(ck);
   if (!k) {
     k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
-      beat: 0, pairs: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0, rows: 0, b: new Set() };
+      beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0, rows: 0, b: new Set() };
     acc.perCoin.set(ck, k);
   }
   k.rows++;
   k.beat += r.beat || 0; k.pairs += r.pairs || 0;
+  k.test += r.pnl || 0; k.testN++;
   if (r.holdout && r.holdout.pnl != null) {
     k.hold += r.holdout.pnl; k.holdN++;
     k.trades += r.holdout.trades || 0; k.tradesN++;
@@ -477,11 +478,12 @@ function mergeTallyAcc(acc, part) {
     let k = acc.perCoin.get(ck);
     if (!k) {
       k = { cellLabel: add.cellLabel, trade: add.trade, ctx1: add.ctx1, ctx2: add.ctx2, geometry: add.geometry,
-        beat: 0, pairs: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0, rows: 0, b: new Set() };
+        beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0, rows: 0, b: new Set() };
       acc.perCoin.set(ck, k);
     }
     k.rows += add.rows;
     k.beat += add.beat; k.pairs += add.pairs;
+    k.test += add.test || 0; k.testN += add.testN || 0;
     k.hold += add.hold; k.holdN += add.holdN;
     k.trades += add.trades; k.tradesN += add.tradesN;
     k.vsl += add.vsl; k.vsln += add.vsln;
