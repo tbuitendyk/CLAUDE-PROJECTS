@@ -193,6 +193,8 @@ const GUARDS = [
     'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'picking a new stage 1 parent leaves stale children selected under it'],
   [path.join(ROOT, 'public', 'construct.js'), "const s1row = rowOf(v('#s3From2'));", 'const s1row = null;',
     'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'the stage 1 title stays green whatever the boxes show — the provenance flag stops flagging'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  try { if (fs.existsSync(tallyFile(id))) return { ready: true }; } catch (_) { /* fall through */ }", '  return { ready: true };',
+    'theTablesRebuildThemselvesWhenOpened', 'a set stranded without its tables reads as ready forever and the stage 3 tables stay empty'],
 ];
 
 const only = process.argv[2] || '';

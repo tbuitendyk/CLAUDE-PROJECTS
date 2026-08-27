@@ -742,14 +742,25 @@ app.get('/api/stageset/:id/stage2', (req, res) => {
   if (!out) return res.status(404).json({ error: 'no such record set' });
   return res.json(out);
 });
+// A finished set whose tables are missing (a restart or a death mid-total)
+// totals itself when opened: these two answer with how far that has got
+// instead of a bare refusal, and the page asks again until the tables land.
 app.get('/api/stageset/:id/ranked', (req, res) => {
   const out = stages.stage3Ranked(req.params.id, Math.max(0, Number(req.query.from) || 0), Math.max(1, Math.min(500, Number(req.query.n) || 100)));
-  if (!out) return res.status(404).json({ error: 'this set has no totalled tables yet' });
+  if (!out) {
+    const t = stages.ensureTally(req.params.id);
+    if (t.totalling || t.waiting || t.failed) return res.json({ totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null });
+    return res.status(404).json({ error: 'this set has no totalled tables yet' });
+  }
   return res.json(out);
 });
 app.get('/api/stageset/:id/coins', (req, res) => {
   const out = stages.stage3Coins(req.params.id, req.query || {});
-  if (!out) return res.status(404).json({ error: 'this set has no totalled tables yet' });
+  if (!out) {
+    const t = stages.ensureTally(req.params.id);
+    if (t.totalling || t.waiting || t.failed) return res.json({ totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null });
+    return res.status(404).json({ error: 'this set has no totalled tables yet' });
+  }
   return res.json(out);
 });
 app.get('/api/stageset/:id/coin-rows', (req, res) => {

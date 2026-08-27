@@ -215,6 +215,29 @@ work — the owner reviews decisions in the morning, not at 3am.
     must see. The six new section controls carry literal ids for the same
     reason.
 
+## The tables total themselves, and memory is part of the design (owner GO,
+## 2026-08-27 night — after the first 177,408-setting totalling died out of
+## memory at 15:26 and left S3 #1 stranded without its tables)
+
+32. **A finished set whose tables are missing totals itself when opened.**
+    The stage 3 table endpoints kick the totalling in the background and
+    answer with its progress (parts done of total, shown with a percent on
+    Boards3, asked again every few seconds); one totalling at a time, it
+    waits while a run is going, a failure is recorded on the set and said
+    on the screen — never retried blind — and launches and deletes refuse
+    while a totalling is reading the store.
+33. **Sharding is memory-gated.** Every tally lane's accumulator carries
+    every setting the store holds, so sharding a 177,408-setting block
+    duplicated a huge accumulator dozens of times — that is what died. The
+    totalling shards only up to SHARD_SETTINGS_LIMIT (5,000 — the drawing's
+    own worked example is 2,772) and runs inline above it; the tally file
+    is written streaming, entry by entry, instead of stringifying the whole
+    thing as a second copy at the worst moment. The run tail reports
+    "totalling the tables: N of M parts" as it goes, on Sweep3's own line.
+34. **Every Boards3 section carries its own settings copy.** Three literal
+    controls, one per stage header, working folded or open; the notes box
+    stays one per page on the deepest selection.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and

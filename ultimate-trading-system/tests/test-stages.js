@@ -546,7 +546,9 @@ module.exports = {
     // named mapping fills the Sweep3 boxes, the fillSweepForm discipline
     {
       const body = screens.drawBody('drawBoards3');
-      assert.ok(body.includes('id="b3CopySettings"'), 'Boards3 must offer copy settings into the form');
+      for (const n of [1, 2, 3]) {
+        assert.ok(body.includes(`id="b3CopySettings${n}"`), `each Boards3 section must offer copy settings into the form (stage ${n})`);
+      }
       assert.ok(body.includes('fillStageForm(doc)'), 'and it must fill through the one named mapping');
       // the mapping fills ONLY the open set's own stage box — a stage 2 set
       // must not touch the stage 1 box (owner order, 2026-08-27)
@@ -600,6 +602,47 @@ module.exports = {
       for (const id of ['bNotes', 'bNotesSave']) {
         assert.ok(ids.includes(id), `${key} must expose the notes control ${id}`);
       }
+    }
+  },
+
+  // A finished stage 3 set whose tables are missing totals itself when its
+  // table is asked for (owner order, 2026-08-27: the durable fix) — with a
+  // progress reading while it goes, and the tables served once it lands.
+  async theTablesRebuildThemselvesWhenOpened() {
+    const stamp = Date.now().toString(36);
+    const id = `s3-test-${stamp}-rb`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999988, name: 'S3 #rb', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 2 }, params: { nullN: 9 },
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, label, decision) => ({
+        si, label, decision, bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+        entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65, trailMult: null, armMult: null,
+        quorum: 2, members: 6, pnl: 10, trades: 3,
+        holdout: { pnl: 7, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat: 6, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      });
+      w.push(mk(0, 'q2/6 x · argmax auto 24/7', 'argmax'));
+      w.push(mk(1, 'q2/6 x · directional auto 24/7', 'directional'));
+      w.close();
+
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10), null, 'no tables yet — the tally file is absent');
+      const kick = stages.ensureTally(id);
+      assert.ok(kick.totalling, 'asking for the tables must start the totalling and say so');
+      await stages.tallyWait();
+      const again = stages.ensureTally(id);
+      assert.deepStrictEqual(again, { ready: true }, 'once it lands the tables read as ready');
+      const ranked = stages.stage3Ranked(id, 0, 10);
+      assert.ok(ranked && ranked.total === 2, 'the rebuilt tables serve exactly what the records hold');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
     }
   },
 

@@ -57,6 +57,10 @@ const B3_SECTION_CONTROLS = (() => {
       what: 'Permanently removes the record set picked in this section — its records, kept votes and tables. You are shown what will go, and have to type the record set id back, before anything is deleted.',
       more: 'It refuses two things, by name: a set another set names as its parent (delete the children first), and any deletion while a stage run is going, because a run may be reading its parent at that moment.',
     };
+    out[`b3CopySettings${n}`] = {
+      what: `Fills the stage ${n} box on Sweep3 with this record set's exact settings and description, so you can do it again or change one thing.`,
+      more: 'Its parent record set is picked where it has one, so pressing start re-runs the same step of the same chain. The other boxes are left exactly as they are; nothing launches. It works whether the section is open or put away.',
+    };
   }
   return out;
 })();
@@ -569,10 +573,6 @@ window.HELP = {
     controls: {
       ...RUN_NOTES_CONTROLS,
       ...B3_SECTION_CONTROLS,
-      b3CopySettings: {
-        what: 'Fills the open record set\'s own stage box on Sweep3 with the exact settings it used, so you can do it again or change one thing.',
-        more: 'A stage 1 set fills the stage 1 box; a stage 2 or stage 3 set fills its own box with its parent record set picked, so pressing start re-runs the same step of the same chain. The other boxes are left alone. The description is not copied — a re-run states its own purpose.',
-      },
       b3MinShare: { what: 'Hides rows whose share of head-to-heads won is below this percent. Empty hides nothing.' },
       b3MinHold: { what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.' },
       b3MinTrades: { what: 'Hides rows whose avg trades is below this. Empty hides nothing.' },

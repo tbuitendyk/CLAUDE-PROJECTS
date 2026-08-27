@@ -4183,6 +4183,7 @@ async function drawSweep3() {
 // floors and sort, and the opened records rows ride localStorage so flipping
 // away and back lands on the same view.
 const BOARDS3_VIEW_KEY = 'cx-boards3-view';
+let b3TallyPoll = null;   // asks again while a set's tables are totalling
 function b3View() {
   try { return JSON.parse(localStorage.getItem(BOARDS3_VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
 }
@@ -4200,6 +4201,7 @@ const b3Coin = (r) => `<b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''
 const b3Geo = (g) => { const v = (HELPVOCAB && HELPVOCAB.geometry) || []; const hit = v.find((o) => o.value === g); return hit ? hit.label : g; };
 
 async function drawBoards3() {
+  if (b3TallyPoll) { clearTimeout(b3TallyPoll); b3TallyPoll = null; }
   if (!HELPVOCAB) HELPVOCAB = await apiOr('api/vocabulary', {});
   const st = await apiOr('api/stagesets', ({ running: null, sets: [] }));
   const sets = st.sets || [];
@@ -4248,6 +4250,7 @@ async function drawBoards3() {
       <h3 style="margin:0">Stage 1</h3>
       <label class="f">record set<select id="b3Pick1" style="min-width:26rem">${b3Options(1, s1sel)}</select></label>
       <button id="b3Delete1" class="danger" ${s1sel ? '' : 'disabled'}>Delete record set…</button>
+      <button id="b3CopySettings1" ${s1sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep3 with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s1sel))}
     </div>
     <div id="b3S1"></div>
@@ -4258,6 +4261,7 @@ async function drawBoards3() {
       <h3 style="margin:0">Stage 2</h3>
       <label class="f">record set<select id="b3Pick2" style="min-width:26rem">${b3Options(2, s2sel)}</select></label>
       <button id="b3Delete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
+      <button id="b3CopySettings2" ${s2sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep3 with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s2sel))}
     </div>
     <div id="b3S2"></div>
@@ -4268,6 +4272,7 @@ async function drawBoards3() {
       <h3 style="margin:0">Stage 3</h3>
       <label class="f">record set<select id="b3Pick3" style="min-width:26rem">${b3Options(3, s3sel)}</select></label>
       <button id="b3Delete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
+      <button id="b3CopySettings3" ${s3sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep3 with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s3sel))}
     </div>
     <div id="b3S3"></div>
@@ -4329,10 +4334,17 @@ async function drawBoards3() {
       mount.innerHTML = `<p class="note">${sets.some((x) => x.stage === stage) ? 'nothing picked' : 'no record sets of this stage on this box yet — start one on Sweep3'}</p>`;
       continue;
     }
-    if (!fold[stage]) { mount.innerHTML = '<p class="note">put away — press open to bring it back</p>'; continue; }
     const got = await apiOr(`api/stageset/${sel}`, null);
     if (!got || !got.set) { mount.innerHTML = '<div class="panel empty">this record set could not be read</div>'; continue; }
     const doc = got.set;
+    // the header's settings copy works folded or open — it reads the set,
+    // not the table
+    const csbN = $(`#b3CopySettings${stage}`);
+    if (csbN) csbN.onclick = () => {
+      tab = 'sweep3'; localStorage.setItem('cx-tab', tab);
+      draw().then(() => { fillStageForm(doc); });
+    };
+    if (!fold[stage]) { mount.innerHTML = '<p class="note">put away — press open to bring it back</p>'; continue; }
     const chain = got.chain || [];
     const chainLine = stage === deepest && chain.length ? `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
       c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,
@@ -4343,18 +4355,10 @@ async function drawBoards3() {
       esc(c.status),
     ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
-      ${stage === deepest ? notesPanelHtml(doc, `
-          <button id="b3CopySettings" title="fill THIS record set's own stage box on Sweep3 with its stored settings — a stage 1 set fills the stage 1 box, a stage 2 set the stage 2 box (its parent picked), a stage 3 set the stage 3 box (its parent picked). The other boxes are left exactly as they are. Nothing launches; the boxes are just set. The description rides too, into the same stage's description box.">copy settings into the form</button>`) : ''}
+      ${stage === deepest ? notesPanelHtml(doc, '') : ''}
       ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}
       <div id="b3T${stage}"></div>`;
-    if (stage === deepest) {
-      wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null);
-      const csb3 = $('#b3CopySettings');
-      if (csb3) csb3.onclick = () => {
-        tab = 'sweep3'; localStorage.setItem('cx-tab', tab);
-        draw().then(() => { fillStageForm(doc); });
-      };
-    }
+    if (stage === deepest) wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null);
     if (doc.status !== 'done' && doc.status !== 'incomplete') {
       $(`#b3T${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
       continue;
@@ -4510,6 +4514,23 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
     apiOr(`api/stageset/${doc.id}/ranked?from=${from}&n=100`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
   ]);
+  // A finished set whose tables are missing totals itself when opened (the
+  // durable fix, owner order 2026-08-27): the service reports how far the
+  // totalling has got, the page shows it plainly and asks again every few
+  // seconds until the tables land. A failure is said, never retried blind.
+  const t = ranked && (ranked.totalling || ranked.waiting || ranked.failed) ? ranked : null;
+  if (t) {
+    const tp = t.totalling;
+    const pct = tp && tp.total ? ` (${Math.floor((tp.done / tp.total) * 100)}%)` : '';
+    $(mount).innerHTML = `${incomplete}<div class="panel">
+      <h3 style="margin-top:0">Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
+      ${t.failed ? `<p class="note"><b class="warn">the totalling failed:</b> ${esc(t.failed)} — the records are all kept; the totalling can be tried again after a service restart.</p>`
+    : t.waiting ? `<p class="note">the tables are not totalled yet — ${esc(t.waiting)}. This page asks again every few seconds.</p>`
+      : `<p class="note">totalling the tables: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} parts` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands.</p>`}
+    </div>`;
+    if (!t.failed) b3TallyPoll = setTimeout(() => { if (tab === 'boards3') drawBoards3().then(() => restoreScroll(tab)); }, 4000);
+    return;
+  }
   const rr = (ranked && ranked.rows) || [];
   const cr = (coins && coins.rows) || [];
   const openKeys = new Set(view.openS3 || []);

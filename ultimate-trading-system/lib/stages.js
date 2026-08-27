@@ -104,6 +104,9 @@ function claimOrRefuse() {
       + 'Wait for it or stop it first.');
   }
   if (activeSet) throw new Error(`stage run ${activeSet.id} is going right now — one heavy job at a time`);
+  if (tallyRun && !tallyRun.error) {
+    throw new Error(`the tables of ${tallyRun.id} are totalling right now — one heavy job at a time. They appear on Boards3 when it lands.`);
+  }
 }
 function cancelStage(id) {
   if (!activeSet || activeSet.id !== id) return { stopped: false, why: 'that set is not running' };
@@ -742,7 +745,13 @@ function startStage3(params) {
     doc.status = okN === parentRecords.length ? 'done' : 'incomplete';
     doc.progress = doc.status === 'incomplete' ? `finished with ${doc.failures.length} unit(s) missing — the set does not match its own plan` : 'totalling the tables';
     saveSet(doc);
-    try { await buildTally(doc, pool); } catch (err) { doc.tallyError = String(err.message || err); }
+    let lastTallySave = 0;
+    const tallyNote = (dn, tn) => {
+      doc.progress = `totalling the tables: ${dn} of ${tn} parts`;
+      const now = Date.now();
+      if (now - lastTallySave > 1000 || dn === tn) { lastTallySave = now; saveSet(doc); }
+    };
+    try { await buildTally(doc, pool, tallyNote); } catch (err) { doc.tallyError = String(err.message || err); }
     doc.progress = doc.status === 'incomplete' ? doc.progress : '';
     doc.finishedAt = new Date().toISOString();
     saveSet(doc);
@@ -758,35 +767,54 @@ function startStage3(params) {
 // every-coin tally uses today.
 const zlib = require('zlib');
 const tallyFile = (id) => path.join(SETS_DIR, `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}-tally.json.gz`);
-async function buildTally(doc, pool = null) {
+// A BLOCK OF 177,408 SETTINGS KILLED THE FIRST TOTALLING (OOM, 2026-08-27):
+// every lane's accumulator carries EVERY setting the store holds, so
+// sharding a huge block duplicates a huge accumulator per lane in flight.
+// Sharding stays for blocks around the design scale (the drawing's own
+// worked example is 2,772 settings); above this bound the totalling runs
+// inline — one accumulator, one streaming pass — which is what fits.
+const SHARD_SETTINGS_LIMIT = 5000;
+async function buildTally(doc, pool = null, note = null) {
   const id = doc.id;
   const sw = require('./stagework');
   const blocks = rowstore.blocksOf(id, 'records') || [];
   const acc = sw.newTallyAcc();
+  const settingsCount = (doc.plan || {}).settings || 0;
   // Sharded across the pool when one is in hand and the store is big enough
   // to be worth it (owner order, 2026-08-27: "yes" to multithreading the
-  // totalling). The fold is ONE rule either way, sums are commutative and
-  // the block sets are unions, so the sharded answer IS the single-pass
-  // answer — a test holds the two equal.
-  if (pool && pool.parallel && blocks.length >= 8) {
+  // totalling) — but never for a block so wide the per-lane accumulators
+  // would not fit (see SHARD_SETTINGS_LIMIT above). The fold is ONE rule
+  // either way, sums are commutative and the block sets are unions, so the
+  // sharded answer IS the single-pass answer — a test holds the two equal.
+  if (pool && pool.parallel && blocks.length >= 8 && settingsCount <= SHARD_SETTINGS_LIMIT) {
     const lanes = Math.max(2, (pool.workers || []).length * 3);
     const per = Math.ceil(blocks.length / lanes);
     const shards = [];
     for (let at = 0; at < blocks.length; at += per) {
       shards.push({ id, blocks: Array.from({ length: Math.min(per, blocks.length - at) }, (_, k) => at + k) });
     }
+    let doneShards = 0;
+    if (note) note(0, shards.length);
     await pool.forEach('s3Tally', shards, (settled) => {
       if (settled.ok && settled.value) sw.mergeTallyAcc(acc, settled.value);
       else if (!settled.ok) throw new Error(`a tally shard failed: ${settled.error}`);
+      doneShards++;
+      if (note) note(doneShards, shards.length);
     });
   } else {
     let at = 0;
+    let lastB = -1;
     const blockOfRow = (rowAt) => {
       let lo = 0; let hi = blocks.length - 1; let ans = 0;
       while (lo <= hi) { const mid = (lo + hi) >> 1; if (blocks[mid].firstRow <= rowAt) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
       return ans;
     };
-    rowstore.each(id, 'records', (r) => { sw.tallyFold(acc, r, blockOfRow(at)); at++; });
+    rowstore.each(id, 'records', (r) => {
+      const b = blockOfRow(at);
+      sw.tallyFold(acc, r, b);
+      at++;
+      if (note && b !== lastB) { lastB = b; note(b + 1, blocks.length); }
+    });
   }
   const ranked = [...acc.perSetting.values()].map((st) => {
     const coins = [...st.perCoin.values()];
@@ -821,9 +849,72 @@ async function buildTally(doc, pool = null) {
     rows: k.rows, b: [...k.b].sort((x, y) => x - y),
   }));
   const out = { v: 1, builtAt: new Date().toISOString(), rows: acc.rows, ranked, coins };
-  atomicWrite(tallyFile(id), zlib.gzipSync(JSON.stringify(out)));
+  // WRITTEN STREAMING, entry by entry. Stringifying a 177,408-setting tally
+  // in one piece is a second whole copy of it at the worst moment — part of
+  // what put the first totalling over the heap. The stream writes the same
+  // bytes without ever holding them all at once.
+  const tmp = `${tallyFile(id)}.tmp${process.pid}-${++tmpSeq}`;
+  const gz = zlib.createGzip();
+  const ws = fs.createWriteStream(tmp);
+  gz.pipe(ws);
+  const put = (str) => new Promise((resolve) => { if (gz.write(str)) resolve(); else gz.once('drain', resolve); });
+  await put(`{"v":1,"builtAt":${JSON.stringify(out.builtAt)},"rows":${acc.rows},"ranked":[`);
+  for (let i = 0; i < ranked.length; i++) await put((i ? ',' : '') + JSON.stringify(ranked[i]));
+  await put('],"coins":[');
+  for (let i = 0; i < coins.length; i++) await put((i ? ',' : '') + JSON.stringify(coins[i]));
+  await put(']}');
+  await new Promise((resolve) => { ws.on('finish', resolve); gz.end(); });
+  fs.renameSync(tmp, tallyFile(id));
   return out;
 }
+// ---- REBUILDING THE TABLES WHEN THEY ARE MISSING (owner order, 2026-08-27:
+// "go with the durable fix but must have good progress indicator"). A
+// restart — or the out-of-memory death that orphaned the first big set —
+// can no longer strand a finished set without its tables: opening it kicks
+// the totalling in the background, the screen shows how far it has got, and
+// the tables appear when it lands. One totalling at a time; it waits its
+// turn while a run is going, and a failure is reported on the set and on
+// the screen rather than retried into the same wall.
+let tallyRun = null;   // { id, done, total, startedAt, error, promise }
+
+function ensureTally(id) {
+  try { if (fs.existsSync(tallyFile(id))) return { ready: true }; } catch (_) { /* fall through */ }
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 3 || (doc.status !== 'done' && doc.status !== 'incomplete')) return { none: true };
+  if (tallyRun) {
+    if (tallyRun.id === id) {
+      return tallyRun.error ? { failed: tallyRun.error } : { totalling: { done: tallyRun.done, total: tallyRun.total } };
+    }
+    if (!tallyRun.error) return { waiting: `the tables of another record set are totalling right now — one totalling at a time` };
+    tallyRun = null;   // a dead attempt for another set does not block this one
+  }
+  if (batch.batchRunning() || activeSet) {
+    return { waiting: 'a run is going — the tables total when the box is free' };
+  }
+  const run = { id, done: 0, total: 0, startedAt: Date.now(), error: null, promise: null };
+  tallyRun = run;
+  run.promise = (async () => {
+    let pool = null;
+    try {
+      const blocks = rowstore.blocksOf(id, 'records') || [];
+      const settingsCount = (doc.plan || {}).settings || 0;
+      if (blocks.length >= 8 && settingsCount <= SHARD_SETTINGS_LIMIT) pool = createPool();
+      await buildTally(doc, pool, (dn, tn) => { run.done = dn; run.total = tn; });
+      if (doc.tallyError) { delete doc.tallyError; saveSet(doc); }
+      if (tallyRun === run) tallyRun = null;
+    } catch (err) {
+      run.error = String(err.message || err);
+      doc.tallyError = run.error;
+      saveSet(doc);
+    } finally {
+      if (pool) pool.abort();
+    }
+  })();
+  return { totalling: { done: 0, total: 0 } };
+}
+// Test hook: settle when the totalling in flight (if any) has finished.
+function tallyWait() { return tallyRun && tallyRun.promise ? tallyRun.promise : Promise.resolve(); }
+
 const tallyInHand = { id: null, tally: null };
 function readTally(id) {
   if (tallyInHand.id === id && tallyInHand.tally) return tallyInHand.tally;
@@ -846,6 +937,9 @@ function deleteSet(id, confirm) {
   if (!doc) throw new Error(`no record set called "${id}"`);
   if (activeSet) {
     throw new Error(`${activeSet.name || activeSet.id} is being written right now — nothing is deleted while a stage run is going`);
+  }
+  if (tallyRun && !tallyRun.error && tallyRun.id === doc.id) {
+    throw new Error(`the tables of ${doc.name} are totalling right now — nothing is deleted while its records are being read`);
   }
   const children = childrenOf(doc.id);
   if (children.length) {
@@ -1018,4 +1112,5 @@ module.exports = {
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetNotes, setSetSort, applySort, validateSort, sortLabel,
+  ensureTally, tallyWait,
 };
