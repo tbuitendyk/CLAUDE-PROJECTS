@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **ff53f5aa01fe — what the box is serving**, not from the working tree.
+Generated from **c0e42b2d5569 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -979,7 +979,7 @@ _none_
 
 _none_
 
-## Sentences the page prints (30)
+## Sentences the page prints (32)
 
 - Boards3 — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -1009,13 +1009,15 @@ _none_
 - . This page asks again every few seconds.
 - — building in the background; the tables appear here when it lands.
 - — one row per declared setting, averaged over its coins
+- Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
+- nothing picked: beat its own null set, best first.
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 
-## Every word, flat (237)
+## Every word, flat (240)
 
 ```
-accordingly. actually after again agree all alongside always-long an and any appear Apply are arm as asks at averaged avg away away. back background band be beat because belong below best board Boards3 BOOST broken building by campaign can cannot carried carry child chunk cleared coin coins column columns comes comparable comparisons copy cost could data Data decision declared Delete do DOES each Each either empty entry every Every exactly exists failed FAILED few fills fingerprint first fixed floors floors. forecast form forward from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it it. its Its ITS joined keep kept lands. lead least left LOGREG looks many MATCH may members missing money never No no none. NOT not notes nothing null numbers of of. on once One one opening order Ordered other over OWN own page panel parent parents per pick picked picking PLAN. priced prices Pricing proved provenance put puts ranked rather read reading reads record records Reload reporting restart. result. row rows rule. run save saved score scored screen SCREEN seconds. section sections selections service set SET sets setting settings Settings shape showed Size so sort stage Stage STAMP stops table tables takes test than that the The their THIS this This ties to top totalled totalling trade trades trail training tried unit units votes votes. vs way. what What when whole why window window. with With wrote yet you
+accordingly. actually after again agree all alongside always-long an and any appear Apply are arm as asks at averaged avg away away. back background band be beat because belong below best board Boards3 BOOST broken building by campaign can cannot carried carry child chunk cleared coin coins column columns comes comparable comparisons copy cost could data Data decision declared Delete do DOES each Each either empty entry every Every exactly exists failed FAILED few fills fingerprint first first. fixed floors floors. forecast form forward from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it it. its Its ITS joined keep kept lands. lead least left LOGREG looks many MATCH may members missing money never No no none. NOT not notes nothing null numbers of of. on once One one opening order Ordered other over OWN own page panel parent parents per pick picked picking PLAN. priced prices Pricing proved provenance put puts ranked rather read reading reads record records Reload reporting restart. result. row rows rule. run save saved score scored screen SCREEN seconds. section sections selections service set SET set. sets setting settings Settings shape showed Size so sort stage Stage STAMP stops table tables takes test than that the The their THIS this This ties time to top totalled totalling trade trades trail training tried unit units votes votes. vs way. what What when whole why window window. with With wrote yet you
 ```
 
 ---
