@@ -153,6 +153,18 @@ const GUARDS = [
     'everyControlsHelpBecomesItsHover', 'the Sweep2 drawing loses every hover that explains what its controls would do'],
   [path.join(ROOT, 'public', 'construct.js'), 'null set size<input id="s2Copies1"', 'copies per unit<input id="s2Copies1"',
     'theNullSetIsNeverCalledCopiesOnTheDrawings', 'the drawing calls the null set copies again and the two prototype screens stop matching'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'if (!diff.same) {', 'if (false) {',
+    'theChainRefusalsNameThemselves', 'a stage launches over changed price files and two histories are quietly mixed into one chain'],
+  [path.join(ROOT, 'lib', 'stagework.js'), 'return [d / c, n / c, u / c];', 'return [d, n, u];',
+    'theForecastScoreMatchesThePencil', 'a unit with more members outscores a better unit with fewer, by arithmetic alone'],
+  [path.join(ROOT, 'lib', 'stagework.js'), 'if (!(sd > 0)) return 0;', 'if (!(sd > 0)) return null;',
+    'theLeadOverTheNullSetMatchesThePencil', 'a null set with no spread turns the tie-break into a hole instead of a zero'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'avgHold: mean((c) => (c.holdN ? c.hold / c.holdN : null)),', 'avgHold: mean((c) => c.hold),',
+    'theStageThreeTablesMatchThePencil', 'a coin with many records outvotes the others and the ranked averages stop being per-coin'],
+  [path.join(ROOT, 'lib', 'stagework.js'), 'for (let k = 1; k < 3; k++) if (a[k] > a[best]) best = k;', 'for (let k = 1; k < 3; k++) if (a[k] >= a[best]) best = k;',
+    'theStoredVoteReadsBackLikeTheLiveOne', 'a stored tie reads back as a different call than the live engine made'],
+  [path.join(ROOT, 'lib', 'stages.js'), "if (!S2_ORDERINGS.some((o) => o.value === orderBy)) {", 'if (false) {',
+    'theChainRefusalsNameThemselves', 'an ordering stage 1 never wrote silently carries by the default instead of refusing'],
 ];
 
 const only = process.argv[2] || '';

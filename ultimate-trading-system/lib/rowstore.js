@@ -142,6 +142,10 @@ function writer(runId, name) {
 
   const api = {
     get count() { return count; },
+    // How many squashed blocks exist right now — the stage stores flush once
+    // per unit and record each unit's own block range from this, so a unit's
+    // rows can be read back without touching any other unit's.
+    get blockCount() { return blocks.length; },
     get columns() { return cols ? cols.slice() : null; },
     push(obj) {
       const keys = Object.keys(obj);

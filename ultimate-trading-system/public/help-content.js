@@ -318,6 +318,97 @@ window.HELP = {
     },
   },
 
+  sweep3: {
+    title: 'Sweep3',
+    intro: 'The working three-stage system. Each stage writes a record set the next one reads, every set names '
+      + 'its parent, and a launch refuses — by name — when the price files no longer match the ones its parent '
+      + 'read. Stage 1 trains and keeps votes, stage 2 adds the boost members to the rows you carry forward, and '
+      + 'stage 3 prices settings from the kept votes without training anything.',
+    how: [
+      ['What each stage does, and what it writes',
+        'Stage 1 trains each unit once — logreg on every view — keeps every vote the members cast on the test and '
+        + 'held-back windows, and ranks the units by one fixed rule: did the pooled votes beat their own null set, '
+        + 'the same votes with the calendar shuffled away, at plain forecasting on the test window. No trade box '
+        + 'and no fee exist at stage 1, so there is nothing to guess.\n\n'
+        + 'Stage 2 reads a finished stage 1 record set, carries the best rows forward in the against-null-set '
+        + 'order, and trains only the boost members for them. The logreg members are never retrained; after this '
+        + 'a carried unit holds all its members\' votes.\n\n'
+        + 'Stage 3 reads a finished stage 2 record set and prices any block of settings from the kept votes: '
+        + 'decision, band, 24/5, agree, entry, gate, d, t, trail, arm and the fee are all applied here, as '
+        + 'arithmetic — test window and held-back window both, with the null set dealt from the same votes and '
+        + 'the same deals used for every setting so any two settings\' shares are comparable. Ask a different '
+        + 'block tomorrow and nothing retrains.'],
+      ['What the launches refuse, and why',
+        'One heavy job at a time: a stage refuses to start while a sweep or another stage run is going. A stage '
+        + 'refuses a parent that is not finished, one written by a different engine release, and one whose price '
+        + 'files no longer fingerprint identically — the refusal names the symbols that changed, and nothing is '
+        + 'ever mixed. A set that finishes with failed units says INCOMPLETE on Boards3 rather than wearing a '
+        + 'finished face: a set must match its own plan, written before anything ran.'],
+    ],
+    controls: {
+      s3Uni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
+      s3Singles: { what: 'Include each coin judged on its own price history alone — 3 members each.' },
+      s3Doubles: { what: 'Include each coin judged alongside one other coin — 4 members each, the cross view added.' },
+      s3Triples: { what: 'Include each coin judged alongside two others — 4 members each.' },
+      s3AllData: { what: 'Use every month of price history that is held, rather than a chosen range. With this ticked, start and end are ignored.' },
+      s3Start: { what: 'First month of price history stage 1 works over.' },
+      s3End: { what: 'Last month of price history stage 1 works over.' },
+      s3Geom: { what: 'How long a stretch of prices each decision looks at, and how often a decision is made — same meaning as on Sweep.' },
+      s3PermGeom: { what: 'Train every chunk shape rather than only the one chosen. A real multiplier of training, so it lives at stage 1 where the training happens.' },
+      s3Layout: { what: 'How the price history is divided between learning, testing and the held-back look — same meaning as on Sweep. The sealed layout is the honest end of a search.' },
+      s3Null1: {
+        what: 'How many shuffled companions make up each unit\'s null set. Each one is the same kept votes with their dates shuffled away, given the same forecast score — no training, ever.',
+        more: 'The ordering IS the against-null-set result: beat its own null set, ties broken by lead over null set. The null set always feeds the pick.',
+      },
+      s3Desc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
+      s3Go1: { what: 'Starts stage 1. Progress shows at the top of this screen, and the finished set lands on Boards3.' },
+      s3From2: {
+        what: 'Which finished stage 1 record set stage 2 carries forward from. A stage 2 set names this parent forever.',
+        more: 'The launch refuses when the price files no longer fingerprint identically to the ones the parent read — a mismatch refuses, it never mixes.',
+      },
+      s3Order: { what: 'Which of stage 1\'s two against-null-set results the carry is taken in: beat its own null set — the count — or lead over null set, the tie-break margin.' },
+      s3Carry: {
+        what: 'How many rows carry forward into the boost training, best first under order by. 0 carries all of them.',
+        more: 'Carry generously: the cut is for shedding the clearly-dead, not for picking winners. Forecast skill is not money — stage 3\'s pricing is the judge.',
+      },
+      s3Desc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
+      s3Go2: { what: 'Starts stage 2 on the chosen parent. Only the boost members train.' },
+      s3From3: { what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever.' },
+      s3Fee: {
+        what: 'What a trade is assumed to cost, as a percent of the money in the position, charged each way. It lives at this stage because stage 3 is the first place a trade is priced.',
+        more: 'directional decisions also use it as their sure-enough bar — the bar is re-tuned from each member\'s kept votes at this fee, arithmetic, never a retrain.',
+      },
+      s3Null3: {
+        what: 'How many null-set deals each setting is read against, dealt from the kept votes — no training.',
+        more: 'The same deals are used for every setting in the block, so any two settings\' shares are always comparable.',
+      },
+      s3Dec: { what: 'The decision to price: argmax takes whichever outcome the votes lean to most; directional acts only when the sureness clears the fee-priced bar.' },
+      s3PermDec: { what: 'Price both ways of deciding, each as its own setting in the block.' },
+      s3Band: { what: 'The size a move must reach to count as a move, for pricing the rails. auto uses the width each unit trained at, worked out from its own history.' },
+      s3PermBand: { what: 'Price every band on the menu as its own setting in the block.' },
+      s3Wk: { what: 'Price this setting on weekday starts only. Weekly chunk shapes always span weekends, so for those units this reads the same either way.' },
+      s3PermWk: { what: 'Price it both ways — weekdays only, and every day.' },
+      s3Entry: { what: 'How the position is opened — same meaning as on Sweep. market carries no gate, d, trail or arm.' },
+      s3PermEntry: { what: 'Price every way of opening as its own setting in the block.' },
+      s3Gate: { what: 'When a position may be opened at all — same meaning as on Sweep.' },
+      s3PermGate: { what: 'Price every gate as its own setting in the block.' },
+      s3D: { what: 'How far from the starting price the opening level sits, as a multiple of the band.' },
+      s3PermD: { what: 'Price every distance as its own setting in the block.' },
+      s3T: { what: 'How many hours a position is held before it is closed, if nothing else closed it first.' },
+      s3PermT: { what: 'Price every holding time as its own setting in the block.' },
+      s3Trail: { what: 'Which stop the setting uses. static sits still on the far side of the entry; the others follow the price behind you.' },
+      s3PermTrail: { what: 'Price every kind of stop, static included, as its own setting in the block.' },
+      s3Arm: { what: 'How far the price must move in your favour before a following stop starts following.' },
+      s3PermArm: { what: 'Price every starting point as its own setting in the block.' },
+      s3Q6: { what: 'How many of a single coin\'s 6 members must say the same thing before a trade is taken.' },
+      s3Q8: { what: 'The same, for a unit judged alongside contexts — 8 members rather than 6.' },
+      s3PermAgree: { what: 'Price every level of agreement as its own setting in the block. It multiplies the block fastest — and here that multiplying is arithmetic, not training.' },
+      s3Desc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
+      s3Go3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards3.' },
+      s3Stop: { what: 'Stops the stage run that is going. Everything already written stays; the set reports itself cancelled.' },
+    },
+  },
+
   boards: {
     title: 'Boards',
     how: [
@@ -410,6 +501,37 @@ window.HELP = {
       b2Sort: { what: 'How the every-coin table is ordered — the same readings as on Boards, named this drawing\'s way: beat its own null set for beat its own copies, setting for configuration.' },
       b2MinPairs: { what: 'Hides rows whose share rests on fewer head-to-heads than this. Zero hides nothing.' },
       b2Go: { what: 'Would ask again with the sort and floors chosen beside it. Switched off on this drawing.' },
+    },
+  },
+
+  boards3: {
+    title: 'Boards3',
+    intro: 'Where the record sets are read. Pick a set and the page shows its whole chain — which stage 1 the '
+      + 'ranking came from, what carried forward and by which measure, what stage 3 priced — and the tables the '
+      + 'set\'s own stage wrote. No table mixes two stages.',
+    how: [
+      ['One table per stage, and the chain always visible',
+        'A stage 1 set shows the ranking: every unit under the fixed rule — forecast score, beat its own null '
+        + 'set, lead over null set — with no money anywhere, because stage 1 never prices a trade. A stage 2 set '
+        + 'shows the carried rows: members trained, and the forecast score with the stage 1 members beside the '
+        + 'score with every member, so what the boost members bought is visible before any pricing. A stage 3 '
+        + 'set shows the pricing: the settings ranked against each other with coins in the money beside the '
+        + 'averages, and every coin of every setting with floors, a sort, and each row\'s records opening '
+        + 'underneath — the decision, band and 24/5 variants that make the row up.\n\n'
+        + 'A set that finished with failed units carries an INCOMPLETE banner: it does not match its own plan, '
+        + 'and every table under the banner is missing those units. The held-back window appears only on stage 3 '
+        + 'tables, because only stage 3 prices it.'],
+    ],
+    controls: {
+      b3Pick: { what: 'Which record set to read. Every set is listed with its stage, its status and when it was made.' },
+      b3Open: { what: 'Opens the chosen record set and draws its chain and tables below.' },
+      b3MinShare: { what: 'Hides rows whose share of head-to-heads won is below this percent. Empty hides nothing.' },
+      b3MinHold: { what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.' },
+      b3MinTrades: { what: 'Hides rows whose avg trades is below this. Empty hides nothing.' },
+      b3MinVsLong: { what: 'Hides rows whose avg vs always-long is below this many dollars. Empty hides nothing.' },
+      b3Sort: { what: 'How the every-coin table is ordered. The whole data set is sorted before the page is cut, so page one really is the top of everything.' },
+      b3MinPairs: { what: 'Hides rows whose share rests on fewer head-to-heads than this. Zero hides nothing; the line under the table says how many rows the floors held back.' },
+      b3Go: { what: 'Asks again with the sort and floors chosen beside it.' },
     },
   },
 

@@ -70,17 +70,6 @@ function servedSource() {
       + 'Re-capture with uts-served-fingerprint.sh — a list generated from the wrong file is worse than none.');
   }
 
-  // The dropdown CHOICES come from the running code rather than from the page,
-  // so they have to be the same running code. If they are not, the list would
-  // offer choices the screen does not, which is the same fault one level down.
-  const vocabRel = 'lib/vocabulary.js';
-  const here = fs.readFileSync(path.join(ROOT, vocabRel), 'utf8');
-  const there = fromCommit(served.commit, vocabRel).toString('utf8');
-  if (here !== there) {
-    throw new Error(`${vocabRel} has changed since the box deployed ${served.commit.slice(0, 12)}, so the choices this `
-      + 'list would offer are not the ones on the screen. Deploy, re-capture, and regenerate.');
-  }
-
   return { from: `${served.commit.slice(0, 12)} — what the box is serving`, src: buf.toString('utf8'), served };
 }
 
@@ -283,9 +272,35 @@ function phrases(text) {
 // The dropdown choices come from the system, not from the page, so they are
 // collected from there - otherwise the list would be missing every option the
 // owner can actually pick.
+//
+// AND THEY COME FROM THE SERVED COMMIT'S OWN CODE (2026-08-27). This used to
+// require the working tree's lib/vocabulary.js and REFUSE whenever it had
+// changed since the deploy — which made every legitimate addition to the
+// choice lists un-deployable under "suite green before deploy": the refusal
+// fired from the moment of the edit until the deploy it was blocking. The
+// choices now load from the same commit the page source loads from, so the
+// list always describes the served screen and the drift window is gone. A
+// --repo run keeps reading the working tree, and says so.
+let vocabularyFn = null;
+function servedVocabulary() {
+  if (vocabularyFn) return vocabularyFn;
+  if (!SERVED.served) {
+    vocabularyFn = require(path.join(ROOT, 'lib', 'vocabulary')).vocabulary;
+    return vocabularyFn;
+  }
+  const Module = require('module');
+  const file = path.join(ROOT, 'lib', 'vocabulary.js');
+  const src = fromCommit(SERVED.served.commit, 'lib/vocabulary.js').toString('utf8');
+  const m = new Module(file, module);
+  m.filename = file;
+  m.paths = Module._nodeModulePaths(path.dirname(file));
+  m._compile(src, file);
+  vocabularyFn = m.exports.vocabulary;
+  return vocabularyFn;
+}
 function optionWords(body) {
   const names = [...new Set([...body.matchAll(/vocabOptions\(\s*'([^']+)'/g)].map((m) => m[1]))];
-  const v = require(path.join(ROOT, 'lib', 'vocabulary')).vocabulary();
+  const v = servedVocabulary()();
   const out = [];
   for (const n of names) for (const o of (v[n] || [])) out.push(o.label);
   return out;

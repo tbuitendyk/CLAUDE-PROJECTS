@@ -528,8 +528,12 @@ $('#themebtn').onclick = () => {
 // *ABSOLUTELY NOTHING* ... we will work off of that to make sure you get the
 // design right before any coding"). Every control on them is disabled and
 // neither asks the service for anything — see drawSweep2/drawBoards2.
-const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['sweep2', 'Sweep2'], ['boards', 'Boards'],
-  ['boards2', 'Boards2'], ['verify', 'Verify'],
+// Sweep3 AND Boards3 ARE THE WORKING three-stage system (owner order,
+// 2026-08-27: "Make Sweep3 and Boards3 ... these are the functional versions
+// fully backed by the new data schema and processing. for now leave the
+// original Sweep, Sweep2, Boards, Boards2 in place.").
+const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['sweep2', 'Sweep2'], ['sweep3', 'Sweep3'],
+  ['boards', 'Boards'], ['boards2', 'Boards2'], ['boards3', 'Boards3'], ['verify', 'Verify'],
   ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight'], ['help', 'Help']];
 let tab = localStorage.getItem('cx-tab') || 'sweep';
 // the working selection: a saved run + its selected row ride across sections
@@ -3676,6 +3680,578 @@ async function drawBoards2() {
   </div>`;
 }
 
+// ---- Sweep3 and Boards3 — the WORKING three-stage system -------------------
+//
+// Owner order, 2026-08-27: "Make Sweep3 and Boards3 ... these are the
+// functional versions fully backed by the new data schema and processing."
+// The layout is the crunched Sweep2/Boards2 drawings, alive: every control
+// here launches or reads real record sets through /api/stage*, and the
+// counts on the cost lines come from the same enumerators the launches run.
+let s3Poll = null;
+
+function s3SetOptions(sets, stage, selected) {
+  const list = sets.filter((x) => x.stage === stage && (x.status === 'done'));
+  if (!list.length) return `<option value="">— no finished stage ${stage} record set on this box —</option>`;
+  return list.map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${x.plan.units.toLocaleString()} units${x.stage === 1 ? ', votes kept' : ''}</option>`).join('');
+}
+
+async function s3Progress() {
+  const el = $('#s3Prog');
+  if (!el) return;
+  const st = await apiOr('api/stagesets', null);
+  if (!st) { el.innerHTML = '<span class="warn">the record-set list could not be read</span>'; return; }
+  if (!st.running) {
+    el.innerHTML = 'nothing is running';
+    if (s3Poll) { clearInterval(s3Poll); s3Poll = null; }
+    return;
+  }
+  const row = (st.sets || []).find((x) => x.id === st.running);
+  el.innerHTML = row
+    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')} <button id="s3Stop" class="danger">stop</button>`
+    : `a stage run is going (${esc(st.running)})`;
+  const stop = $('#s3Stop');
+  if (stop) stop.onclick = async () => { await tryPost(`api/stageset/${st.running}/stop`, {}); s3Progress(); };
+  if (!s3Poll) s3Poll = setInterval(s3Progress, 4000);
+}
+
+async function s3Counts() {
+  const c1 = $('#s3Cost1');
+  if (c1) {
+    const body = {
+      universe: ($('#s3Uni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
+      sizes: { singles: $('#s3Singles').checked, doubles: $('#s3Doubles').checked, triples: $('#s3Triples').checked },
+      geometry: $('#s3Geom').value, permuteGeometry: $('#s3PermGeom').checked,
+    };
+    if (!body.universe.length) delete body.universe;
+    const got = await askPost('api/stage1-count', body, null);
+    c1.innerHTML = got && !got.error
+      ? `${got.units.toLocaleString()} units → ${got.trainings.toLocaleString()} trainings, votes kept for every one · null set is free arithmetic`
+      : `<span class="warn">${esc((got && got.error) || 'the counter could not be asked')}</span>`;
+  }
+  const c3 = $('#s3Count');
+  if (c3) {
+    const got = await askPost('api/stage3-count', s3BlockParams(), null);
+    if (got && !got.error) {
+      const sets = s3SetsCache || [];
+      const parent = sets.find((x) => x.id === $('#s3From3').value);
+      const units = parent ? parent.plan.units : null;
+      const sims = units ? got.settings * units * (1 + (Number($('#s3Null3').value) || 0)) : null;
+      c3.innerHTML = `declared: <b>${got.settings.toLocaleString()} settings</b>${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#s3Null3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`;
+    } else {
+      c3.innerHTML = `<span class="warn">${esc((got && got.error) || 'the counter could not be asked')}</span>`;
+    }
+  }
+}
+
+// The declared cell exactly as the launch will read it. market carries no
+// gate, d, trail or arm — the same rule the old launcher enforces — so those
+// boxes are omitted from the payload rather than silently ignored.
+function s3BlockParams() {
+  const entry = $('#s3Entry').value;
+  const permEntry = $('#s3PermEntry').checked;
+  const cell = { tHours: Number($('#s3T').value), quorumSingles: Number($('#s3Q6').value), quorumContexts: Number($('#s3Q8').value) };
+  if (entry !== 'market' || permEntry) {
+    cell.entry = entry === 'market' ? 'breakout' : entry;
+    cell.gate = $('#s3Gate').value;
+    cell.dMult = Number($('#s3D').value);
+    if ($('#s3Trail').value !== '') { cell.trailMult = Number($('#s3Trail').value); cell.armMult = Number($('#s3Arm').value); }
+    else if ($('#s3PermTrail').checked) { cell.armMult = Number($('#s3Arm').value); }
+  } else {
+    cell.entry = 'market';
+  }
+  if (entry === 'market' && permEntry) cell.entry = 'breakout';
+  return {
+    cell,
+    cellPermute: {
+      entry: permEntry, gate: $('#s3PermGate').checked, dMult: $('#s3PermD').checked,
+      tHours: $('#s3PermT').checked, trail: $('#s3PermTrail').checked, arm: $('#s3PermArm').checked,
+      agree: $('#s3PermAgree').checked,
+    },
+    decision: $('#s3Dec').value, permuteDecision: $('#s3PermDec').checked,
+    band: $('#s3Band').value.trim() === '' ? 'auto' : ($('#s3Band').value.trim() === 'auto' ? 'auto' : Number($('#s3Band').value)),
+    permuteBand: $('#s3PermBand').checked,
+    weekdaysOnly: $('#s3Wk').checked, permuteWeekdays: $('#s3PermWk').checked,
+  };
+}
+
+let s3SetsCache = null;
+
+async function drawSweep3() {
+  if (s3Poll) { clearInterval(s3Poll); s3Poll = null; }
+  const st = await apiOr('api/stagesets', ({ running: null, sets: [] }));
+  const sets = st.sets || [];
+  s3SetsCache = sets;
+  $('#view').innerHTML = `<div class="panel">
+    <h3 style="margin-top:0">Sweep3 — the three stages, live</h3>
+    <p class="note">Each stage writes a record set the next one reads, and every set names its parent. What is
+      running, and everything finished, is on Boards3.</p>
+    <div class="row"><span class="note" id="s3Prog">…</span></div>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin-top:0">Stage 1 — train once, keep every vote, rank against the null set</h3>
+    <div class="row" style="align-items:flex-end">
+      <label class="f">universe (blank = all 17 default pairs)<input id="s3Uni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
+      <label class="c"><input type="checkbox" id="s3Singles" checked> singles</label>
+      <label class="c"><input type="checkbox" id="s3Doubles"> doubles</label>
+      <label class="c"><input type="checkbox" id="s3Triples"> triples</label>
+      <label class="c"><input type="checkbox" id="s3AllData" checked> all loaded data</label>
+      <label class="f">start<input id="s3Start" type="month"></label>
+      <label class="f">end<input id="s3End" type="month"></label>
+    </div>
+    <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f">chunk shape<select id="s3Geom">${vocabOptions('geometry', 'daily-4d')}</select></label>
+      <label class="c"><input type="checkbox" id="s3PermGeom"> permute</label>
+      <label class="f">window layout<select id="s3Layout">${vocabOptions('windowLayout', 'reserve61')}</select></label>
+      <label class="f">null set size<input id="s3Null1" type="number" value="19" min="0" style="width:4.5rem"></label>
+    </div>
+    <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f" style="flex:1">description<input id="s3Desc1" style="width:100%"></label>
+      <button id="s3Go1" class="pri">start stage 1</button>
+    </div>
+    <p class="note" style="margin:.4rem 0 0" id="s3Cost1">…</p>
+    <div id="s3Out1"></div>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin-top:0">Stage 2 — carry the best forward, add the boost members</h3>
+    <div class="row" style="align-items:flex-end">
+      <label class="f">from stage 1 record set<select id="s3From2" style="min-width:24rem">${s3SetOptions(sets, 1, null)}</select></label>
+      <label class="f">order by<select id="s3Order">${vocabOptions('stageOrder', 'beat')}</select></label>
+      <label class="f">carry forward (0 = all)<input id="s3Carry" type="number" value="0" min="0" style="width:5.5rem"></label>
+    </div>
+    <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f" style="flex:1">description<input id="s3Desc2" style="width:100%"></label>
+      <button id="s3Go2" class="pri">start stage 2</button>
+    </div>
+    <p class="note" style="margin:.4rem 0 0">logreg members reused, never retrained — only the boost members train (3 per coin on its own, 4 alongside others)</p>
+    <div id="s3Out2"></div>
+  </div>
+
+  <div class="panel">
+    <h3 style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
+    <div class="row" style="align-items:flex-end">
+      <label class="f">from stage 2 record set<select id="s3From3" style="min-width:24rem">${s3SetOptions(sets, 2, null)}</select></label>
+      <label class="f">fee % each way<input id="s3Fee" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
+      <label class="f">null set size<input id="s3Null3" type="number" value="19" min="0" style="width:4.5rem"></label>
+    </div>
+    <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">decision<select id="s3Dec">${vocabOptions('decision', 'argmax')}</select></label>
+        <label class="c"><input type="checkbox" id="s3PermDec"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">band % (or auto)<input id="s3Band" value="auto" style="width:5rem"></label>
+        <label class="c"><input type="checkbox" id="s3PermBand"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="c"><input type="checkbox" id="s3Wk"> 24/5</label>
+        <label class="c"><input type="checkbox" id="s3PermWk"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">entry<select id="s3Entry">${vocabOptions('entry', 'breakout')}</select></label>
+        <label class="c"><input type="checkbox" id="s3PermEntry"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">gate<select id="s3Gate">${vocabOptions('gate', 'directional')}</select></label>
+        <label class="c"><input type="checkbox" id="s3PermGate"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">d<select id="s3D">${vocabOptions('dMult', '1.5')}</select></label>
+        <label class="c"><input type="checkbox" id="s3PermD"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">t<select id="s3T">${vocabOptions('tHours', '65')}</select></label>
+        <label class="c"><input type="checkbox" id="s3PermT"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">trail<select id="s3Trail">${vocabOptions('trailMult', '')}</select></label>
+        <label class="c"><input type="checkbox" id="s3PermTrail"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">arm<select id="s3Arm">${vocabOptions('armMult', '0')}</select></label>
+        <label class="c"><input type="checkbox" id="s3PermArm"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">agree<select id="s3Q6">${vocabOptions('quorumOf6', '2')}</select></label>
+        <label class="f">with contexts<select id="s3Q8">${vocabOptions('quorumOf8', '3')}</select></label>
+        <label class="c"><input type="checkbox" id="s3PermAgree"> permute</label>
+      </div>
+    </div>
+    <div class="row" style="margin-top:.4rem"><span class="note" id="s3Count">…</span></div>
+    <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f" style="flex:1">description<input id="s3Desc3" style="width:100%"></label>
+      <button id="s3Go3" class="pri">start stage 3</button>
+    </div>
+    <div id="s3Out3"></div>
+  </div>`;
+
+  const say = (sel, msg, bad) => { $(sel).innerHTML = `<p class="note${bad ? ' warn' : ''}" style="margin:.4rem 0 0">${msg}</p>`; };
+  $('#s3Go1').onclick = async () => {
+    const body = {
+      universe: ($('#s3Uni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
+      sizes: { singles: $('#s3Singles').checked, doubles: $('#s3Doubles').checked, triples: $('#s3Triples').checked },
+      geometry: $('#s3Geom').value, permuteGeometry: $('#s3PermGeom').checked,
+      windowLayout: $('#s3Layout').value, allLoaded: $('#s3AllData').checked,
+      startMonth: $('#s3Start').value || undefined, endMonth: $('#s3End').value || undefined,
+      nullN: Number($('#s3Null1').value) || 0, desc: $('#s3Desc1').value,
+    };
+    if (!body.universe.length) delete body.universe;
+    const got = await tryPost('api/stage1', body);
+    if (got) { say('#s3Out1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards3.`); s3Progress(); }
+  };
+  $('#s3Go2').onclick = async () => {
+    const got = await tryPost('api/stage2', {
+      from: $('#s3From2').value, orderBy: $('#s3Order').value,
+      carry: Number($('#s3Carry').value) || 0, desc: $('#s3Desc2').value,
+    });
+    if (got) { say('#s3Out2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); s3Progress(); }
+  };
+  $('#s3Go3').onclick = async () => {
+    const got = await tryPost('api/stage3', {
+      from: $('#s3From3').value, fee: Number($('#s3Fee').value) / 100,
+      nullN: Number($('#s3Null3').value) || 0, desc: $('#s3Desc3').value,
+      ...s3BlockParams(),
+    });
+    if (got) { say('#s3Out3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); s3Progress(); }
+  };
+  for (const id of ['s3Uni', 's3Singles', 's3Doubles', 's3Triples', 's3Geom', 's3PermGeom']) {
+    const el = $(`#${id}`); if (el) el.onchange = s3Counts;
+  }
+  for (const id of ['s3From3', 's3Null3', 's3Dec', 's3PermDec', 's3Band', 's3PermBand', 's3Wk', 's3PermWk', 's3Entry', 's3PermEntry',
+    's3Gate', 's3PermGate', 's3D', 's3PermD', 's3T', 's3PermT', 's3Trail', 's3PermTrail', 's3Arm', 's3PermArm', 's3Q6', 's3Q8', 's3PermAgree']) {
+    const el = $(`#${id}`); if (el) el.onchange = s3Counts;
+  }
+  s3Progress();
+  s3Counts();
+}
+
+// ---- Boards3 ---------------------------------------------------------------
+// WHERE YOU WERE, kept like every other page: the picked set, the every-coin
+// floors and sort, and the opened records rows ride localStorage so flipping
+// away and back lands on the same view.
+const BOARDS3_VIEW_KEY = 'cx-boards3-view';
+function b3View() {
+  try { return JSON.parse(localStorage.getItem(BOARDS3_VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
+}
+function b3SaveView(patch) {
+  try { localStorage.setItem(BOARDS3_VIEW_KEY, JSON.stringify({ ...b3View(), ...patch })); } catch (_) { /* private window */ }
+}
+
+function b3Money(v) { return v == null ? '<span class="muted">—</span>' : `<span class="${v >= 0 ? 'pos' : 'neg'}">${money(v)}</span>`; }
+function b3Share(share, beat, pairs) {
+  if (share == null) return '<span class="muted">—</span>';
+  return `<b class="${share > 0.5 ? 'pos' : ''}">${(share * 100).toFixed(1)}%</b> <span class="muted">${Number(beat).toLocaleString()}/${Number(pairs).toLocaleString()}</span>`;
+}
+const b3Lead = (v) => (v == null ? '<span class="muted">—</span>' : `×${Number(v).toFixed(1)}`);
+const b3Coin = (r) => `<b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''}`;
+const b3Geo = (g) => { const v = (HELPVOCAB && HELPVOCAB.geometry) || []; const hit = v.find((o) => o.value === g); return hit ? hit.label : g; };
+
+async function drawBoards3() {
+  if (!HELPVOCAB) HELPVOCAB = await apiOr('api/vocabulary', {});
+  const st = await apiOr('api/stagesets', ({ running: null, sets: [] }));
+  const sets = st.sets || [];
+  const view = b3View();
+  const picked = sets.find((x) => x.id === view.setId) ? view.setId : (sets[0] ? sets[0].id : null);
+  const running = st.running ? sets.find((x) => x.id === st.running) : null;
+  $('#view').innerHTML = `<div class="panel">
+    <h3 style="margin-top:0">Boards3 — the record sets, and what each stage wrote</h3>
+    ${running ? `<p class="note"><b>${esc(running.name)}</b> is going: ${esc(running.progress || '…')}</p>` : ''}
+    <div class="row" style="align-items:flex-end">
+      <label class="f">record set<select id="b3Pick" style="min-width:28rem">${sets.length
+    ? sets.map((x) => `<option value="${esc(x.id)}"${x.id === picked ? ' selected' : ''}>${esc(x.name)} — stage ${x.stage} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('')
+    : '<option value="">— no record sets on this box yet — start one on Sweep3 —</option>'}</select></label>
+      <button id="b3Open">open</button>
+    </div>
+    <div id="b3Chain"></div>
+  </div>
+  <div id="b3Body"></div>`;
+  $('#b3Open').onclick = () => { b3SaveView({ setId: $('#b3Pick').value, openS3: [] }); drawBoards3().then(() => restoreScroll(tab)); };
+  if (!picked) return;
+
+  const got = await apiOr(`api/stageset/${picked}`, null);
+  if (!got || !got.set) { $('#b3Body').innerHTML = '<div class="panel empty">this record set could not be read</div>'; return; }
+  const doc = got.set;
+  const chain = got.chain || [];
+  $('#b3Chain').innerHTML = `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
+    c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,
+    c.plan && c.plan.settings ? `${Number(c.plan.settings).toLocaleString()} settings` : null,
+    c.parent && c.parent.orderBy ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set'}` : null,
+    esc(c.status),
+  ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>`;
+  if (doc.status !== 'done' && doc.status !== 'incomplete') {
+    $('#b3Body').innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
+    return;
+  }
+  const incomplete = doc.status === 'incomplete'
+    ? `<div class="panel" data-role="incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
+       ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.</div>` : '';
+  if (doc.stage === 1) { await b3DrawStage1(doc, incomplete, view); return; }
+  if (doc.stage === 2) { await b3DrawStage2(doc, incomplete, view); return; }
+  await b3DrawStage3(doc, incomplete, view);
+}
+
+const b3td = 'style="padding:.25rem .5rem"';
+const b3td0 = 'style="padding:.25rem .5rem .25rem 0"';
+const b3th = 'style="padding:.3rem .5rem"';
+
+function b3Pager(total, from, n, key) {
+  if (total <= n) return `<p class="note">${total.toLocaleString()} row(s)</p>`;
+  const page = Math.floor(from / n) + 1;
+  const pages = Math.ceil(total / n);
+  return `<p class="note">${total.toLocaleString()} rows · page ${page} of ${pages}
+    <button data-b3page="${key}:${Math.max(0, from - n)}">prev</button>
+    <button data-b3page="${key}:${Math.min((pages - 1) * n, from + n)}">next</button></p>`;
+}
+function b3WirePager() {
+  $('#b3Body').querySelectorAll('[data-b3page]').forEach((btn) => {
+    btn.onclick = () => {
+      const [key, from] = btn.dataset.b3page.split(':');
+      if (key === 'S3C') b3SaveView({ coins: { ...(b3View().coins || {}), offset: Number(from) } });
+      else b3SaveView({ [`from${key}`]: Number(from) });
+      drawBoards3().then(() => restoreScroll(tab));
+    };
+  });
+}
+
+async function b3DrawStage1(doc, incomplete, view) {
+  const from = Math.max(0, Number(view.fromS1) || 0);
+  const t = await apiOr(`api/stageset/${doc.id}/stage1?from=${from}&n=100`, null);
+  const rows = (t && t.rows) || [];
+  $('#b3Body').innerHTML = `${incomplete}<div class="panel">
+    <h3 style="margin-top:0">Stage 1 — every unit, scored once (${esc(doc.name)})</h3>
+    <div class="scrollx"><table style="border-collapse:collapse">
+      <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under stage 1's fixed rule: beat its own null set, ties broken by lead over null set">order</th>
+        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
+        <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
+        <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape</th>
+        <th ${b3th} title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two null-set columns are what compare across shapes.">forecast score</th>
+        <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own null set</th>
+        <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr>
+        <td ${b3td0}>${Number(r.rank).toLocaleString()}</td>
+        <td ${b3td}>${b3Coin(r)}</td>
+        <td ${b3td}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
+        <td ${b3td}>${esc(b3Geo(r.geometry))}</td>
+        <td ${b3td}>${r.score == null ? '—' : r.score.toFixed(1)}</td>
+        <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+        <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${b3Pager((t && t.total) || 0, from, 100, 'S1')}
+    <p class="note">ordered by beat its own null set, ties broken by lead over null set — the fixed rule. No money on
+      this table because stage 1 never prices a trade, and no held-back column because stage 1 never reads that window.</p>
+  </div>`;
+  b3WirePager();
+}
+
+async function b3DrawStage2(doc, incomplete, view) {
+  const from = Math.max(0, Number(view.fromS2) || 0);
+  const t = await apiOr(`api/stageset/${doc.id}/stage2?from=${from}&n=100`, null);
+  const rows = (t && t.rows) || [];
+  $('#b3Body').innerHTML = `${incomplete}<div class="panel">
+    <h3 style="margin-top:0">Stage 2 — the carried rows, in full (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
+    <div class="scrollx"><table style="border-collapse:collapse">
+      <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place in the carry — the order it went through in">carried</th>
+        <th ${b3th} title="where the same unit ranked at stage 1">stage 1 order</th>
+        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
+        <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
+        <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape</th>
+        <th ${b3th} title="how many members vote for this unit now, and what they are">members</th>
+        <th ${b3th} title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members</th>
+        <th ${b3th} title="the same fixed score with every member pooled, boost included">forecast score — all members</th>
+        <th ${b3th} title="all-members score minus stage-1-members score — what the boost members bought, before any pricing">fuller board helped?</th></tr></thead>
+      <tbody>${rows.map((r) => `<tr>
+        <td ${b3td0}>${Number(r.carriedRank).toLocaleString()}</td>
+        <td ${b3td}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
+        <td ${b3td}>${b3Coin(r)}</td>
+        <td ${b3td}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
+        <td ${b3td}>${esc(b3Geo(r.geometry))}</td>
+        <td ${b3td}>${r.members} — ${r.logreg} logreg + ${r.boost} boost</td>
+        <td ${b3td}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
+        <td ${b3td}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
+        <td ${b3td}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${b3Pager((t && t.total) || 0, from, 100, 'S2')}
+    <p class="note">No money and no null set on this table: a stage 2 record is training inventory — members and kept
+      votes. Pricing, the null set and the held-back window all belong to stage 3.</p>
+  </div>`;
+  b3WirePager();
+}
+
+async function b3DrawStage3(doc, incomplete, view) {
+  const from = Math.max(0, Number(view.fromS3R) || 0);
+  const coinsQ = view.coins || {};
+  const qs = new URLSearchParams({
+    sort: coinsQ.sort || 'share', minPairs: coinsQ.minPairs ?? '', minShare: coinsQ.minShare ?? '',
+    minHold: coinsQ.minHold ?? '', minTrades: coinsQ.minTrades ?? '', minVsLong: coinsQ.minVsLong ?? '',
+    offset: coinsQ.offset || 0, limit: 100,
+  }).toString();
+  const [ranked, coins] = await Promise.all([
+    apiOr(`api/stageset/${doc.id}/ranked?from=${from}&n=100`, null),
+    apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
+  ]);
+  const rr = (ranked && ranked.rows) || [];
+  const cr = (coins && coins.rows) || [];
+  const openKeys = new Set(view.openS3 || []);
+  const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry].join('|');
+  $('#b3Body').innerHTML = `${incomplete}<div class="panel">
+    <h3 style="margin-top:0">Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
+    <p style="margin:.6rem 0 .2rem"><b>Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
+    <div class="scrollx"><table style="border-collapse:collapse">
+      <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="how the members' votes become a call — priced from the kept votes.">decision</th>
+        <th ${b3th} title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history.">band</th>
+        <th ${b3th} title="whether this setting trades weekdays only.">24/5</th>
+        <th ${b3th} title="how the position is opened.">entry</th>
+        <th ${b3th} title="when a position may be opened at all. A dash means the box does not apply to this setting.">gate</th>
+        <th ${b3th} title="how far from the starting price the opening level sits. A dash means it does not apply.">d</th>
+        <th ${b3th} title="how many hours a position is held before it is closed, if nothing else closed it first.">t</th>
+        <th ${b3th} title="which stop the setting uses. static sits still on the far side of the entry; a dash means it does not apply.">trail</th>
+        <th ${b3th} title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm</th>
+        <th ${b3th} title="how many members must say the same thing before a trade is taken, out of how many there are.">agree</th>
+        <th ${b3th} title="how many coins this setting was priced on.">coins</th>
+        <th ${b3th} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money</th>
+        <th ${b3th} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $</th>
+        <th ${b3th} title="the once-only look, on data no ordering ever read">avg held-back $</th>
+        <th ${b3th} title="average entries per coin in the held-back window.">avg held-back trades</th>
+        <th ${b3th} title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $</th>
+        <th ${b3th} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set</th></tr></thead>
+      <tbody>${rr.map((r) => `<tr>
+        <td ${b3td0}>${esc(r.decision)}</td>
+        <td ${b3td}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
+        <td ${b3td}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
+        <td ${b3td}>${esc(r.entry)}</td>
+        <td ${b3td}${r.entry === 'market' ? ' class="muted"' : ''}>${r.entry === 'market' ? '—' : esc(r.gate)}</td>
+        <td ${b3td}${r.dMult == null ? ' class="muted"' : ''}>${r.dMult == null ? '—' : `${r.dMult}×`}</td>
+        <td ${b3td}>${r.tHours}h</td>
+        <td ${b3td}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? (r.entry === 'market' ? '—' : 'static') : `${r.trailMult}×`}</td>
+        <td ${b3td}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? '—' : `${r.armMult}×`}</td>
+        <td ${b3td}>${r.quorum}/${r.members}</td>
+        <td ${b3td}>${r.coins}</td>
+        <td ${b3td}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td>
+        <td ${b3td}>${b3Money(r.avgTest)}</td>
+        <td ${b3td}>${b3Money(r.avgHold)}</td>
+        <td ${b3td}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
+        <td ${b3td}>${b3Money(r.avgVsLong)}</td>
+        <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td></tr>`).join('') || '<tr><td colspan="17" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${b3Pager((ranked && ranked.total) || 0, from, 100, 'S3R')}
+    <p style="margin:.9rem 0 .2rem"><b>Every coin of every setting</b> — one row per coin, its records opening below it</p>
+    <div class="row" style="margin:.3rem 0 0">
+      <label class="c"><span class="muted">beat its own null set at least, %</span><input id="b3MinShare" type="number" min="0" max="100" step="1" value="${esc(coinsQ.minShare ?? '')}" style="width:5.5rem"></label>
+    </div>
+    <div class="row" style="margin:.15rem 0 0">
+      <label class="c"><span class="muted">avg held-back at least, $</span><input id="b3MinHold" type="number" step="1" value="${esc(coinsQ.minHold ?? '')}" style="width:5.5rem"></label>
+    </div>
+    <div class="row" style="margin:.15rem 0 0">
+      <label class="c"><span class="muted">avg trades at least</span><input id="b3MinTrades" type="number" min="0" step="1" value="${esc(coinsQ.minTrades ?? '')}" style="width:5.5rem"></label>
+    </div>
+    <div class="row" style="margin:.15rem 0 0">
+      <label class="c"><span class="muted">avg vs always-long at least, $</span><input id="b3MinVsLong" type="number" step="1" value="${esc(coinsQ.minVsLong ?? '')}" style="width:5.5rem"></label>
+    </div>
+    <div class="row" style="margin:.5rem 0">
+      <label class="c"><span class="muted">sort by</span><select id="b3Sort">
+        <option value="share"${(coinsQ.sort || 'share') === 'share' ? ' selected' : ''}>beat its own null set</option>
+        <option value="pairs"${coinsQ.sort === 'pairs' ? ' selected' : ''}>comparisons</option>
+        <option value="money"${coinsQ.sort === 'money' ? ' selected' : ''}>avg held-back</option>
+        <option value="vslong"${coinsQ.sort === 'vslong' ? ' selected' : ''}>avg vs always-long</option>
+        <option value="coin"${coinsQ.sort === 'coin' ? ' selected' : ''}>coin</option>
+        <option value="setting"${coinsQ.sort === 'setting' ? ' selected' : ''}>setting</option>
+      </select></label>
+      <label class="c"><span class="muted">at least this many comparisons</span><input id="b3MinPairs" type="number" min="0" step="10" value="${esc(coinsQ.minPairs ?? '')}" style="width:5.5rem"></label>
+      <button id="b3Go">Apply</button>
+    </div>
+    <div class="scrollx"><table style="border-collapse:collapse"><thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting</th>
+        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
+        <th ${b3th} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set</th>
+        <th ${b3th} title="how many head-to-heads the share rests on.">comparisons</th>
+        <th ${b3th} title="average held-back money per record.">avg held-back</th>
+        <th ${b3th} title="average held-back entries per record.">avg trades</th>
+        <th ${b3th} title="average held-back money minus just holding the coin over the same window.">avg vs always-long</th>
+        <th ${b3th} title="how many records this row averages — one per decision, band and 24/5 variant of the setting.">rows</th>
+        <th ${b3th} title="opens the records themselves below the row.">records</th></tr></thead>
+      <tbody id="b3CoinBody">${cr.map((r) => {
+    const k = keyOf(r);
+    return `<tr data-b3key="${esc(k)}">
+        <td ${b3td0}>${esc(r.cellLabel)}</td>
+        <td ${b3td}>${b3Coin(r)} <span class="muted">${esc(b3Geo(r.geometry))}</span></td>
+        <td ${b3td}>${b3Share(r.share, r.beat, r.pairs)}</td>
+        <td ${b3td}>${Number(r.pairs).toLocaleString()}</td>
+        <td ${b3td}>${b3Money(r.avgHold)}</td>
+        <td ${b3td}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
+        <td ${b3td}>${b3Money(r.avgVsLong)}</td>
+        <td ${b3td}>${r.rows}</td>
+        <td ${b3td}><button data-b3rec="${esc(k)}">${openKeys.has(k) ? '▾ records' : 'records'}</button></td></tr>`;
+  }).join('') || '<tr><td colspan="9" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
+    ${coins && coins.removed ? `<p class="note">${coins.removed.toLocaleString()} row(s) held back by the floors.</p>` : ''}
+    ${b3Pager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
+  </div>`;
+  const applyCoins = () => {
+    b3SaveView({ coins: {
+      sort: $('#b3Sort').value, minPairs: $('#b3MinPairs').value, minShare: $('#b3MinShare').value,
+      minHold: $('#b3MinHold').value, minTrades: $('#b3MinTrades').value, minVsLong: $('#b3MinVsLong').value, offset: 0,
+    } });
+    drawBoards3().then(() => restoreScroll(tab));
+  };
+  $('#b3Go').onclick = applyCoins;
+  $('#b3Body').querySelectorAll('[data-b3rec]').forEach((btn) => {
+    btn.onclick = async () => {
+      const k = btn.dataset.b3rec;
+      const keys = new Set(b3View().openS3 || []);
+      if (keys.has(k)) { keys.delete(k); } else { keys.add(k); }
+      b3SaveView({ openS3: [...keys] });
+      drawBoards3().then(() => restoreScroll(tab));
+    };
+  });
+  b3WirePager();
+  // opened records rows, fetched and slotted under their coin row
+  for (const k of openKeys) {
+    const tr = $('#b3Body').querySelector(`tr[data-b3key="${CSS.escape(k)}"]`);
+    if (!tr) continue;
+    const [cellLabel, trade, ctx1, ctx2, geometry] = k.split('|');
+    const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry }).toString();
+    const got = await apiOr(`api/stageset/${doc.id}/coin-rows?${q}`, null);
+    const cell = document.createElement('tr');
+    const td = document.createElement('td');
+    td.colSpan = tr.children.length;
+    td.style.padding = '.25rem .5rem .6rem 1.2rem';
+    if (!got || got.indexed === false) {
+      td.innerHTML = `<p class="note warn">could not read this row's records${got && got.why ? ` — ${esc(got.why)}` : ''}</p>`;
+    } else {
+      td.innerHTML = `<div class="scrollx"><table style="border-collapse:collapse">
+        <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
+          <th style="padding:.2rem .5rem .2rem 0" title="how the members' votes became this record's calls">decision</th>
+          <th style="padding:.2rem .5rem" title="the band % (or auto) box as this record priced it. auto is worked out from the coin's own history; band % shows what it worked out to">band</th>
+          <th style="padding:.2rem .5rem" title="whether this record traded weekdays only">24/5</th>
+          <th style="padding:.2rem .5rem" title="how far either side of the current price this record set its two levels, as a percentage of price">band %</th>
+          <th style="padding:.2rem .5rem" title="profit-and-loss on the test window — the window the carry was ordered on">test $</th>
+          <th style="padding:.2rem .5rem" title="entries in the test window">test trades</th>
+          <th style="padding:.2rem .5rem" title="of the head-to-heads between THIS record's held-back money and every null-set deal, the share it won">beat its own null set</th>
+          <th style="padding:.2rem .5rem" title="the once-only look on data no ordering read — the number that counts">held-back $</th>
+          <th style="padding:.2rem .5rem" title="entries in the held-back window">held-back trades</th>
+          <th style="padding:.2rem .5rem" title="how many held-back positions closed at their stop">held-back stops</th>
+          <th style="padding:.2rem .5rem" title="this record's held-back money minus just holding the coin over the same window">vs always-long</th></tr></thead>
+        <tbody>${(got.rows || []).map((r) => {
+    const h = r.holdout || null;
+    return `<tr>
+          <td style="padding:.2rem .5rem .2rem 0">${esc(r.decision)}</td>
+          <td style="padding:.2rem .5rem">${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
+          <td style="padding:.2rem .5rem">${r.weekdaysOnly ? 'yes' : 'no'}</td>
+          <td style="padding:.2rem .5rem">±${r.bandPct != null ? Number(r.bandPct).toFixed(2) : '—'}%</td>
+          <td style="padding:.2rem .5rem">${b3Money(r.pnl)}</td>
+          <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
+          <td style="padding:.2rem .5rem">${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+          <td style="padding:.2rem .5rem">${h ? b3Money(h.pnl) : '<span class="muted">—</span>'}</td>
+          <td style="padding:.2rem .5rem">${h && h.trades != null ? h.trades : '—'}</td>
+          <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>
+          <td style="padding:.2rem .5rem">${h && h.vsAlwaysLong != null ? b3Money(h.vsAlwaysLong) : '<span class="muted">—</span>'}</td></tr>`;
+  }).join('')}</tbody></table></div>`;
+    }
+    cell.appendChild(td);
+    tr.after(cell);
+  }
+}
+
 // draw() RETURNS the section's promise. It used to return undefined while every
 // section function was async, so `draw().then(...)` — which is how "copy settings
 // into the form" waits for the Sweep form to exist before filling it — threw
@@ -3717,6 +4293,8 @@ drawTune = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...
 drawGreenlight = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('greenlight'); return r; })(drawGreenlight);
 drawSweep2 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep2'); return r; })(drawSweep2);
 drawBoards2 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('boards2'); return r; })(drawBoards2);
+drawSweep3 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep3'); return r; })(drawSweep3);
+drawBoards3 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('boards3'); return r; })(drawBoards3);
 
 function draw() {
   renderTabs(); renderStrip();
@@ -3745,14 +4323,16 @@ function draw() {
   const section = tab === 'data' ? drawData()
     : tab === 'sweep' ? drawSweep()
       : tab === 'sweep2' ? drawSweep2()
-        : tab === 'boards' ? drawBoards()
-          : tab === 'boards2' ? drawBoards2()
-            : tab === 'verify' ? drawVerify()
-              : tab === 'history' ? drawHistory()
-                : tab === 'tune' ? drawTune()
-                  : tab === 'greenlight' ? drawGreenlight()
+        : tab === 'sweep3' ? drawSweep3()
+          : tab === 'boards' ? drawBoards()
+            : tab === 'boards2' ? drawBoards2()
+              : tab === 'boards3' ? drawBoards3()
+                : tab === 'verify' ? drawVerify()
+                  : tab === 'history' ? drawHistory()
+                    : tab === 'tune' ? drawTune()
+                      : tab === 'greenlight' ? drawGreenlight()
 
-                    : drawHelp();
+                        : drawHelp();
   // A section that THROWS must say so. Without the rejection arm the promise
   // rejects, the banner never runs, and #view keeps whatever was there — on a
   // first load that is nothing at all, so a hard failure renders as a blank

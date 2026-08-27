@@ -68,7 +68,7 @@ const BASE = `http://127.0.0.1:${PORT}`;
 // The tab lists are the ones the pages themselves declare. Kept here explicitly
 // rather than scraped, so a tab silently disappearing from a page is a failure
 // here rather than an unnoticed omission.
-const CONSTRUCTING_TABS = ['data', 'sweep', 'sweep2', 'boards', 'boards2', 'verify', 'history', 'tune', 'greenlight'];
+const CONSTRUCTING_TABS = ['data', 'sweep', 'sweep2', 'sweep3', 'boards', 'boards2', 'boards3', 'verify', 'history', 'tune', 'greenlight'];
 const TRADING_BRANCHES = ['paper', 'real'];
 const TRADING_SUBS = ['dash', 'configs', 'setups', 'detail', 'live'];
 

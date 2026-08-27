@@ -554,7 +554,7 @@ function gateStatus(currentVersion, batchesDir, recordsDir) {
 module.exports = {
   PLANTED_SYMBOL, PLANTED_LATE_SYMBOL, PLANTED_SYMBOLS, isPlanted,
   PLANTED_SEED, PLANTED_LATE_SEED, PLANTED_LATE_RULE_ON_FRAC,
-  GATE_RULES, plantedSpan, generatePlanted, generatePlantedLate, plantedExists,
+  GATE_RULES, plantedSpan, generatePlanted, generatePlantedLate, generateFabricated, plantedExists,
   gateParams, gateVerdict, gateStatus,
   recordGate, markGateRunDeleted, gateRecordFor, gateRecordsDir,
 };

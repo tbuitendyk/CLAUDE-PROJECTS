@@ -230,6 +230,9 @@ module.exports = {
       // fall back to the default order — the page would CLAIM one ordering and
       // show another, which on a ranked table is a lie about which row won.
       { id: 'bCoinSort', allowed: require('../lib/replication').COIN_SORTS, why: 'lib/replication.js COIN_SORTS' },
+      // the stage pages' own orderings, same fault class as bCoinSort
+      { id: 's3Order', allowed: require('../lib/stagework').S2_ORDERINGS.map((o) => o.value), why: 'lib/stagework.js S2_ORDERINGS — the launch refuses anything else by name' },
+      { id: 'b3Sort', allowed: require('../lib/stages').S3_SORTS, why: 'lib/stages.js S3_SORTS' },
     ];
     for (const c of CHECKED) {
       const offered = optionValues(SWEEP, c.id);
@@ -249,7 +252,7 @@ module.exports = {
       // allow-list is the server's own reply and cannot be restated here. The
       // only literal value in them is the empty placeholder. What these must
       // never be is <input> boxes — test-uicontracts.js pins that.
-      'bPick', 't1null', 'cmpA', 'cmpB',
+      'bPick', 't1null', 'cmpA', 'cmpB', 'b3Pick', 's3From2', 's3From3',
       // same shape: the campaign picker's options are the names the service
       // itself reports, and a NEW name is typed in the box beside it
       'cxCampPick',

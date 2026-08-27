@@ -711,6 +711,97 @@ app.post('/api/abort', (req, res) => {
 
 app.get('/api/batches', (req, res) => res.json({ running: batch.batchRunning(), batches: batch.listBatches() }));
 
+// ---- the three-stage record sets (Sweep3 / Boards3) ---------------------------
+//
+// Launches are plan-first and chained: stage 2 reads a finished stage 1 set,
+// stage 3 a finished stage 2 set, and a launch refuses — by name — when the
+// price files no longer fingerprint identically to the ones the parent read.
+// All the arithmetic lives in lib/stages.js + lib/stagework.js; these routes
+// only validate shapes and put refusals on the wire as plain sentences.
+const stages = require('./lib/stages');
+
+app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets() }));
+
+app.get('/api/stageset/:id', (req, res) => {
+  const doc = stages.getSet(req.params.id);
+  if (!doc) return res.status(404).json({ error: `no record set called "${req.params.id}"` });
+  const { plan, ...rest } = doc;
+  return res.json({
+    set: { ...rest, plan: plan ? { units: plan.units || 0, settings: plan.settings || 0 } : null },
+    chain: stages.chainOf(doc.id),
+  });
+});
+
+app.get('/api/stageset/:id/stage1', (req, res) => {
+  const out = stages.stage1Table(req.params.id, Math.max(0, Number(req.query.from) || 0), Math.max(1, Math.min(500, Number(req.query.n) || 100)));
+  if (!out) return res.status(404).json({ error: 'no such record set' });
+  return res.json(out);
+});
+app.get('/api/stageset/:id/stage2', (req, res) => {
+  const out = stages.stage2Table(req.params.id, Math.max(0, Number(req.query.from) || 0), Math.max(1, Math.min(500, Number(req.query.n) || 100)));
+  if (!out) return res.status(404).json({ error: 'no such record set' });
+  return res.json(out);
+});
+app.get('/api/stageset/:id/ranked', (req, res) => {
+  const out = stages.stage3Ranked(req.params.id, Math.max(0, Number(req.query.from) || 0), Math.max(1, Math.min(500, Number(req.query.n) || 100)));
+  if (!out) return res.status(404).json({ error: 'this set has no totalled tables yet' });
+  return res.json(out);
+});
+app.get('/api/stageset/:id/coins', (req, res) => {
+  const out = stages.stage3Coins(req.params.id, req.query || {});
+  if (!out) return res.status(404).json({ error: 'this set has no totalled tables yet' });
+  return res.json(out);
+});
+app.get('/api/stageset/:id/coin-rows', (req, res) => {
+  try { return res.json(stages.stage3CoinRows(req.params.id, req.query || {})); }
+  catch (err) { return res.status(500).json({ error: err.message }); }
+});
+
+// The counters behind the Sweep3 cost lines — the same enumerators the
+// launches run, so the number on the screen and the number that runs can
+// never be two different numbers.
+app.post('/api/stage1-count', (req, res) => {
+  const b = req.body || {};
+  try {
+    const universe = Array.isArray(b.universe) && b.universe.length ? b.universe.map((s) => String(s).toUpperCase()) : batch.DEFAULT_PAIRS;
+    if (universe.some((p) => !SYMBOL_RE.test(p))) return res.status(400).json({ error: 'universe must be symbols like DOTUSDT' });
+    const geometries = b.permuteGeometry ? Object.keys(require('./lib/dataset').GEOMETRIES) : [b.geometry || 'daily-4d'];
+    const units = stages.unitsFor(universe, {
+      singles: !!(b.sizes || {}).singles, doubles: !!(b.sizes || {}).doubles, triples: !!(b.sizes || {}).triples,
+    }, geometries);
+    const trainings = units.reduce((n, u) => n + (u.size === 1 ? 3 : 4), 0);
+    return res.json({ units: units.length, trainings });
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/stage3-count', (req, res) => {
+  try { return res.json({ settings: stages.settingsFor(req.body || {}).length }); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+
+app.post('/api/stage1', (req, res) => {
+  const b = req.body || {};
+  for (const m of ['startMonth', 'endMonth']) {
+    if (!b.allLoaded && b[m] !== undefined && !/^\d{4}-\d{2}$/.test(String(b[m]))) {
+      return res.status(400).json({ error: `${m} must be YYYY-MM` });
+    }
+  }
+  if (b.universe !== undefined && b.universe !== null
+    && (!Array.isArray(b.universe) || b.universe.some((p) => !SYMBOL_RE.test(String(p).toUpperCase())))) {
+    return res.status(400).json({ error: 'universe must be an array of symbols like DOTUSDT' });
+  }
+  try { return res.json(stages.startStage1(b)); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.post('/api/stage2', (req, res) => {
+  try { return res.json(stages.startStage2(req.body || {})); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.post('/api/stage3', (req, res) => {
+  try { return res.json(stages.startStage3(req.body || {})); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.post('/api/stageset/:id/stop', (req, res) => res.json(stages.cancelStage(req.params.id)));
+
 // ---- owner-operable inspection + null verdicts (read-only over stored data) --
 
 const { inspectDump } = require('./lib/inspect');
