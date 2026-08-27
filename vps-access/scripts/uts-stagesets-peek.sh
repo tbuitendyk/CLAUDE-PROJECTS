@@ -8,6 +8,7 @@ d = json.load(sys.stdin)
 print("running:", d.get("running"))
 for s in d.get("sets", []):
     pf = s.get("perf") or {}
-    print(f"  {s[\"id\"]}  {s[\"name\"]}  stage {s[\"stage\"]}  {s[\"status\"]}  {s.get(\"progress\",\"\")}"
-          f"  cycles {pf.get(\"cyclesDone\")}/{pf.get(\"cyclesTotal\")}  eta {pf.get(\"etaMs\")}")
+    print("  %s  %s  stage %s  %s  %s  cycles %s/%s  etaMs %s" % (
+        s["id"], s["name"], s["stage"], s["status"], s.get("progress", ""),
+        pf.get("cyclesDone"), pf.get("cyclesTotal"), pf.get("etaMs")))
 '
