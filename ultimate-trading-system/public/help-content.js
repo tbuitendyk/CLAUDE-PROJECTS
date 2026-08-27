@@ -240,13 +240,13 @@ window.HELP = {
         + 'training them again, and prices the declared settings — all inside one job, and asking any new question '
         + 'afterwards means running the whole thing again.\n\n'
         + 'The drawing splits that into three stages, each writing a record set the next one reads. Stage 1 trains the '
-        + 'cheap members once for every unit and KEEPS EVERY VOTE they cast, then ranks every unit with one fixed rule — did those votes beat their own calendar-shuffled copies at plain forecasting — so nothing about the ordering is chosen or guessed, and no trade setting exists until stage 3. Stage 2 trains the fuller boards, but only '
+        + 'cheap members once for every unit and KEEPS EVERY VOTE they cast, then ranks every unit with one fixed rule — did those votes beat their own null set, the same votes calendar-shuffled, at plain forecasting — so nothing about the ordering is chosen or guessed, and no trade setting exists until stage 3. Stage 2 trains the fuller boards, but only '
         + 'on the rows you carry forward, and reuses the stage 1 members instead of training them a second time. '
         + 'Stage 3 never trains anything: it prices any setting, or any block of settings, straight from the kept '
         + 'votes — so the question you think of tomorrow costs minutes, not days.\n\n'
         + 'The worked example on the page: the run open on Boards today holds 25,704 units and cost 231,336 trainings. '
         + 'The same work as three stages is 77,112 trainings at stage 1 plus 3,000 at stage 2 — roughly a third — and '
-        + 'every scrambled copy becomes free arithmetic instead of another training.'],
+        + 'every null-set deal becomes free arithmetic instead of another training.'],
     ],
     controls: {
       s2Uni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
@@ -262,8 +262,8 @@ window.HELP = {
       },
       s2Layout: { what: 'How the price history is divided between finding something and testing it — same meaning as on Sweep. The sealed layout is the honest end of a search.' },
       s2Copies1: {
-        what: 'How many calendar-shuffled copies each unit is measured against. Every copy is the same kept votes with their dates shuffled away, given the same forecast score — no training, ever.',
-        more: 'The ordering IS the against-copies result: beat its own copies, ties broken by lead over copies. So the copies always feed the pick — there is no way to deal copies that nothing reads.',
+        what: 'How many shuffled companions make up each unit\'s null set. Each one is the same kept votes with their dates shuffled away, given the same forecast score — no training, ever.',
+        more: 'The ordering IS the against-null-set result: beat its own null set, ties broken by lead over null set. So the null set always feeds the pick — there is no way to deal one that nothing reads.',
       },
       s2Desc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
       s2Go1: { what: 'Would start stage 1. On this drawing it is switched off, like everything else here.' },
@@ -272,7 +272,7 @@ window.HELP = {
         more: 'It refuses a parent built on different price data — the record sets carry fingerprints of the price files and a mismatch refuses rather than mixes.',
       },
       s2Order: {
-        what: 'Which of stage 1\'s two against-copies results the carry is taken in: beat its own copies, or lead over copies — how far above its copies\' typical forecast score the real one sits.',
+        what: 'Which of stage 1\'s two against-null-set results the carry is taken in: beat its own null set — the count — or lead over null set, how far above the null set\'s typical forecast score the real one sits.',
         more: 'Both come from stage 1\'s one fixed rule, on the test window only. There is no money ordering to pick, because stage 1 never prices a trade, and the held-back window is never read here.',
       },
       s2Carry: {
@@ -310,7 +310,7 @@ window.HELP = {
         more: 'Re-pricing the same block at a different fee is arithmetic on the kept votes — never a retrain.',
       },
       s2P3Copies: {
-        what: 'Scrambled companions per setting, dealt from the kept votes.',
+        what: 'How many null-set deals each setting is read against, dealt from the kept votes — no training.',
         more: 'The same deals are used for every setting in the block, so any two settings\' shares are always comparable.',
       },
       s2P3Desc: { what: 'Why this stage 3 exists. Kept on the record set.' },
@@ -407,7 +407,7 @@ window.HELP = {
       b2MinHold: { what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.' },
       b2MinTrades: { what: 'Hides rows whose avg trades is below this. Empty hides nothing.' },
       b2MinVsLong: { what: 'Hides rows whose avg vs always-long is below this many dollars. Empty hides nothing.' },
-      b2Sort: { what: 'How the every-coin table is ordered — the same choices as on Boards, with setting in place of configuration.' },
+      b2Sort: { what: 'How the every-coin table is ordered — the same readings as on Boards, named this drawing\'s way: beat its own null set for beat its own copies, setting for configuration.' },
       b2MinPairs: { what: 'Hides rows whose share rests on fewer head-to-heads than this. Zero hides nothing.' },
       b2Go: { what: 'Would ask again with the sort and floors chosen beside it. Switched off on this drawing.' },
     },

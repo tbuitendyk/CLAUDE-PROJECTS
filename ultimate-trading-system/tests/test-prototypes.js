@@ -76,12 +76,24 @@ module.exports = {
   // is being asked to mark up, so losing one is losing the review.
   async theDrawingCarriesAllThreeStagesAndTheChain() {
     const s2 = drawBody('drawSweep2');
-    for (const bone of ['Stage 1 —', 'Stage 2 —', 'Stage 3 —', 'The rails every stage runs on']) {
+    for (const bone of ['Stage 1 —', 'Stage 2 —', 'Stage 3 —', 'null set size']) {
       assert.ok(s2.includes(bone), `Sweep2 lost "${bone}" — a stage of the proposal is missing from the drawing`);
     }
     const b2 = drawBody('drawBoards2');
     for (const bone of ['The record chain', 'Stage 1 —', 'Stage 2 —', 'Stage 3 —', 'records']) {
       assert.ok(b2.includes(bone), `Boards2 lost "${bone}" — a reading of the proposal is missing from the drawing`);
     }
+  },
+  // The owner renamed the shuffled companions: null set, never copies
+  // (owner order, 2026-08-27: "Don't call those numbers copies. Call them
+  // ... null set size"). One screen saying copies while the other says
+  // null set is the cross-screen drift the house rules exist to stop.
+  async theNullSetIsNeverCalledCopiesOnTheDrawings() {
+    for (const fn of ['drawSweep2', 'drawBoards2']) {
+      const body = drawBody(fn);
+      assert.ok(!/copies per (unit|setting)/.test(body), `${fn} calls the null set copies again`);
+      assert.ok(!/beat its own copies/.test(body), `${fn} still shows a beat its own copies label`);
+    }
+    assert.ok(drawBody('drawSweep2').includes('null set size'), 'the null set size box is gone from Sweep2');
   },
 };

@@ -151,6 +151,8 @@ const GUARDS = [
     'bothPrototypesSayTheyAreDrawings', 'a drawing full of worked examples reads as a report of real numbers'],
   [path.join(ROOT, 'public', 'construct.js'), "drawSweep2 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep2'); return r; })(drawSweep2);", '',
     'everyControlsHelpBecomesItsHover', 'the Sweep2 drawing loses every hover that explains what its controls would do'],
+  [path.join(ROOT, 'public', 'construct.js'), 'null set size<input id="s2Copies1"', 'copies per unit<input id="s2Copies1"',
+    'theNullSetIsNeverCalledCopiesOnTheDrawings', 'the drawing calls the null set copies again and the two prototype screens stop matching'],
 ];
 
 const only = process.argv[2] || '';
