@@ -3784,7 +3784,8 @@ async function s3Counts() {
     if (got && !got.error) {
       const sets = s3SetsCache || [];
       const parent = sets.find((x) => x.id === $('#s3From3').value);
-      const units = parent ? parent.plan.units : null;
+      const carry = Number($('#s3Carry3') && $('#s3Carry3').value) || 0;
+      const units = parent ? (carry > 0 ? Math.min(carry, parent.plan.units) : parent.plan.units) : null;
       const sims = units ? got.settings * units * (1 + (Number($('#s3Null3').value) || 0)) : null;
       c3.innerHTML = `declared: <b>${got.settings.toLocaleString()} settings</b>${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#s3Null3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`;
     } else {
@@ -3826,37 +3827,35 @@ function s3BlockParams() {
 
 // ONE mapping from a record set's stored settings back into the Sweep3
 // boxes — the same discipline fillSweepForm keeps for the sweeps: a second
-// copy of this mapping would be two answers to one question. It fills every
-// box the set's stored settings speak to: the stage 1 box always (later
-// stages carry those settings by inheritance), the stage 2 and stage 3 boxes
-// when the set is of that stage, with the parent boxes set from the chain so
-// a re-run rebuilds the same chain. The description is NOT copied — a re-run
-// states its own purpose.
-function fillStageForm(doc, chain) {
+// copy of this mapping would be two answers to one question. It reads which
+// record set is open on Boards3 and fills THAT stage's box alone (owner
+// order, 2026-08-27: a stage 2 set was filling the stage 1 box too, which
+// read as loading the wrong data). The parent box is picked from the set's
+// own named parent, so pressing start re-runs the same step of the same
+// chain. The description is NOT copied — a re-run states its own purpose.
+function fillStageForm(doc) {
   const p = doc.params || {};
   const setV = (sel, v) => { const el = $(sel); if (el && v !== undefined && v !== null) el.value = String(v); };
   const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
-  setV('#s3Uni', (p.universe || []).join(','));
-  setC('#s3Singles', (p.sizes || {}).singles); setC('#s3Doubles', (p.sizes || {}).doubles); setC('#s3Triples', (p.sizes || {}).triples);
-  setC('#s3AllData', p.allLoaded !== false);
-  setV('#s3Start', p.startMonth || ''); setV('#s3End', p.endMonth || '');
-  const geos = p.geometries || [];
-  if (geos.length) setV('#s3Geom', geos[0]);
-  setC('#s3PermGeom', geos.length > 1);
-  setV('#s3Layout', p.windowLayout || 'reserve61');
-  const s1row = (chain || []).find((c) => c.stage === 1);
-  const s2row = (chain || []).find((c) => c.stage === 2);
-  // stage 3 overwrote the inherited null set size with its own, so stage 1's
-  // comes from the chain, never from this set's own params
-  setV('#s3Null1', doc.stage === 1 ? (p.nullN ?? 19) : (((s1row || {}).params || {}).nullN ?? 19));
-  if (doc.stage >= 2 && s1row) {
-    setV('#s3From2', s1row.id);
-    const s2p = doc.stage === 2 ? p : ((s2row || {}).params || {});
-    setV('#s3Order', s2p.orderBy || 'beat');
-    setV('#s3Carry', s2p.carry ?? 0);
+  if (doc.stage === 1) {
+    setV('#s3Uni', (p.universe || []).join(','));
+    setC('#s3Singles', (p.sizes || {}).singles); setC('#s3Doubles', (p.sizes || {}).doubles); setC('#s3Triples', (p.sizes || {}).triples);
+    setC('#s3AllData', p.allLoaded !== false);
+    setV('#s3Start', p.startMonth || ''); setV('#s3End', p.endMonth || '');
+    const geos = p.geometries || [];
+    if (geos.length) setV('#s3Geom', geos[0]);
+    setC('#s3PermGeom', geos.length > 1);
+    setV('#s3Layout', p.windowLayout || 'reserve61');
+    setV('#s3Null1', p.nullN ?? 19);
+  }
+  if (doc.stage === 2) {
+    if (doc.parent) setV('#s3From2', doc.parent.id);
+    setV('#s3Order', p.orderBy || 'beat');
+    setV('#s3Carry', p.carry ?? 0);
   }
   if (doc.stage === 3) {
-    if (s2row) setV('#s3From3', s2row.id);
+    if (doc.parent) setV('#s3From3', doc.parent.id);
+    setV('#s3Carry3', p.carry ?? 0);
     setV('#s3Fee', p.fee != null ? p.fee * 100 : '');
     setV('#s3Null3', p.nullN ?? 19);
     setV('#s3Dec', p.decision || 'argmax'); setC('#s3PermDec', p.permuteDecision);
@@ -3941,6 +3940,7 @@ async function drawSweep3() {
     <h3 style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 2 record set<select id="s3From3" style="min-width:24rem">${s3SetOptions(sets, 2, null)}</select></label>
+      <label class="f">carry forward (0 = all)<input id="s3Carry3" type="number" value="0" min="0" style="width:5.5rem"></label>
       <label class="f">fee % each way<input id="s3Fee" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
       <label class="f">null set size<input id="s3Null3" type="number" value="19" min="0" style="width:4.5rem"></label>
     </div>
@@ -4020,6 +4020,7 @@ async function drawSweep3() {
   $('#s3Go3').onclick = async () => {
     const got = await tryPost('api/stage3', {
       from: $('#s3From3').value, fee: Number($('#s3Fee').value) / 100,
+      carry: Number($('#s3Carry3').value) || 0,
       nullN: Number($('#s3Null3').value) || 0, desc: $('#s3Desc3').value,
       ...s3BlockParams(),
     });
@@ -4028,7 +4029,7 @@ async function drawSweep3() {
   for (const id of ['s3Uni', 's3Singles', 's3Doubles', 's3Triples', 's3Geom', 's3PermGeom']) {
     const el = $(`#${id}`); if (el) el.onchange = s3Counts;
   }
-  for (const id of ['s3From3', 's3Null3', 's3Dec', 's3PermDec', 's3Band', 's3PermBand', 's3Wk', 's3PermWk', 's3Entry', 's3PermEntry',
+  for (const id of ['s3From3', 's3Carry3', 's3Null3', 's3Dec', 's3PermDec', 's3Band', 's3PermBand', 's3Wk', 's3PermWk', 's3Entry', 's3PermEntry',
     's3Gate', 's3PermGate', 's3D', 's3PermD', 's3T', 's3PermT', 's3Trail', 's3PermTrail', 's3Arm', 's3PermArm', 's3Q6', 's3Q8', 's3PermAgree']) {
     const el = $(`#${id}`); if (el) el.onchange = s3Counts;
   }
@@ -4109,14 +4110,14 @@ async function drawBoards3() {
   // counts, so the size line is the set's own equation.
   $('#b3Head').innerHTML = `${descriptionPanelHtml(doc.desc)}
     ${notesPanelHtml(doc, `
-          <button id="b3CopySettings" title="fill the Sweep3 boxes with THIS record set's stored settings — the stage 1 box always (universe, sizes, data range, chunk shape, window layout, null set size), and the stage 2 and stage 3 boxes when the set is of that stage, with the parent record sets picked so a re-run rebuilds the same chain. Nothing launches; the boxes are just set. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>`)}
+          <button id="b3CopySettings" title="fill THIS record set's own stage box on Sweep3 with its stored settings — a stage 1 set fills the stage 1 box, a stage 2 set the stage 2 box (its parent picked), a stage 3 set the stage 3 box (its parent picked). The other boxes are left exactly as they are. Nothing launches; the boxes are just set. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>`)}
     ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}`;
   wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null);
   const chain = got.chain || [];
   const csb3 = $('#b3CopySettings');
   if (csb3) csb3.onclick = () => {
     tab = 'sweep3'; localStorage.setItem('cx-tab', tab);
-    draw().then(() => { fillStageForm(doc, chain); });
+    draw().then(() => { fillStageForm(doc); });
   };
   $('#b3Chain').innerHTML = `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
     c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,
@@ -4217,8 +4218,9 @@ async function b3DrawStage2(doc, incomplete, view) {
         <td ${b3td}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
         <td ${b3td}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${b3Pager((t && t.total) || 0, from, 100, 'S2')}
-    <p class="note">No money and no null set on this table: a stage 2 record is training inventory — members and kept
-      votes. Pricing, the null set and the held-back window all belong to stage 3.</p>
+    <p class="note">Ordered by forecast score — all members, best first; ties keep their carry order. No money and no
+      null set on this table: a stage 2 record is training inventory — members and kept votes. Pricing, the null set
+      and the held-back window all belong to stage 3.</p>
   </div>`;
   b3WirePager();
 }

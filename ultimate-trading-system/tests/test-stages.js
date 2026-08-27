@@ -236,6 +236,25 @@ module.exports = {
       try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
     }
+    // and the stage 2 table orders by forecast score — all members, best
+    // first, ties keeping their carry order (owner order, 2026-08-27)
+    const id2 = `s2-test-${Date.now().toString(36)}-t`;
+    const dir2 = rowstore.storeDir(id2);
+    const file2 = path.join(SETS_DIR, `${id2}.json`);
+    try {
+      fs.writeFileSync(file2, JSON.stringify({ id: id2, stage: 2, seq: 999990, name: 'S2 #pg', status: 'done', createdAt: new Date().toISOString(), plan: { units: 3 } }));
+      const rec2 = rowstore.writer(id2, 'records');
+      rec2.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'C0', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 4, scoreAll: 5, helped: 1 });
+      rec2.push({ u: 1, carriedRank: 2, s1rank: 2, trade: 'C1', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8, scoreAll: 9, helped: 1 });
+      rec2.push({ u: 2, carriedRank: 3, s1rank: 3, trade: 'C2', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8.5, scoreAll: 9, helped: 0.5 });
+      rec2.close();
+      const t2 = stages.stage2Table(id2, 0, 10);
+      assert.deepStrictEqual(t2.rows.map((r) => r.trade), ['C1', 'C2', 'C0'],
+        'best all-members score first; the tie keeps its carry order');
+    } finally {
+      try { fs.rmSync(dir2, { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(file2, { force: true }); } catch (_) { /* fixture */ }
+    }
   },
 
   // Deleting a record set asks for the name back, refuses a named parent,
@@ -433,7 +452,15 @@ module.exports = {
     {
       const body = screens.drawBody('drawBoards3');
       assert.ok(body.includes('id="b3CopySettings"'), 'Boards3 must offer copy settings into the form');
-      assert.ok(body.includes('fillStageForm(doc, chain)'), 'and it must fill through the one named mapping');
+      assert.ok(body.includes('fillStageForm(doc)'), 'and it must fill through the one named mapping');
+      // the mapping fills ONLY the open set's own stage box — a stage 2 set
+      // must not touch the stage 1 box (owner order, 2026-08-27)
+      const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+      const fn = src.slice(src.indexOf('function fillStageForm('), src.indexOf('let s3SetsCache'));
+      const s1Block = fn.slice(fn.indexOf("doc.stage === 1"), fn.indexOf("doc.stage === 2"));
+      assert.ok(/#s3Uni/.test(s1Block) && /#s3Null1/.test(s1Block), 'the stage 1 fields fill only under stage === 1');
+      assert.ok(!/#s3Uni|#s3Null1|#s3Layout/.test(fn.slice(fn.indexOf("doc.stage === 2"))),
+        'a stage 2 or 3 set must leave the stage 1 box exactly as it is');
     }
     const map = screens.byTab();
     for (const key of ['sweep', 'sweep3']) {

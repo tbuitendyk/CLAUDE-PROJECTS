@@ -506,7 +506,16 @@ function startStage3(params) {
   const nullN = Math.max(0, Math.floor(num(params.nullN, 19)));
   const settings = settingsFor(params);
   if (!settings.length) throw new Error('the block declared no settings');
-  const parentRecords = allRecords(parent.id);
+  // carry forward (owner order, 2026-08-27): 0 prices every carried unit; a
+  // positive count takes the top of the parent in the SAME order its table
+  // shows — forecast score with all members, ties by carry position.
+  const carry = Math.max(0, Math.floor(num(params.carry, 0)));
+  let parentRecords = allRecords(parent.id);
+  if (carry > 0) {
+    parentRecords = parentRecords.slice()
+      .sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank))
+      .slice(0, carry);
+  }
   if (!parentRecords.length) throw new Error(`${parent.name} holds no records — nothing to price`);
 
   const seq = seqFor(3);
@@ -519,7 +528,7 @@ function startStage3(params) {
     engineVersion: ENGINE_VERSION,
     parent: { id: parent.id, name: parent.name },
     params: {
-      ...parent.params, from: parent.id, fee, nullN,
+      ...parent.params, from: parent.id, fee, nullN, carry: carry > 0 ? parentRecords.length : 0,
       cell: params.cell, cellPermute: params.cellPermute || null,
       decision: params.decision || 'argmax', band: params.band ?? 'auto', weekdaysOnly: !!params.weekdaysOnly,
       permuteDecision: !!params.permuteDecision, permuteBand: !!params.permuteBand, permuteWeekdays: !!params.permuteWeekdays,
@@ -766,7 +775,9 @@ function stage1Table(id, from, n) {
 function stage2Table(id, from, n) {
   const doc = getSet(id);
   if (!doc) return null;
-  const rows = allRecords(id).slice().sort((a, b) => a.carriedRank - b.carriedRank);
+  // Best all-members forecast score first (owner order, 2026-08-27); ties by
+  // carry position, so the order is total and two reads page identically.
+  const rows = allRecords(id).slice().sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
   return {
     total: rows.length, from,
     rows: rows.slice(from, from + n).map((r) => ({

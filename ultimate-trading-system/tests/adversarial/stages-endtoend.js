@@ -167,6 +167,24 @@ async function waitDone(id, label) {
   }
   assert.strictEqual(tr.runs.find((r) => r.id === s3.id).parentRunId, s2.id, 'the tree links each set to the parent it read');
 
+  // carry forward at stage 3 takes the TOP of the stage 2 table — the
+  // all-members forecast score order — and prices nothing else
+  console.log('stage 3 with carry forward 1...');
+  const topUnit = recs2.slice().sort((x, y) => ((y.scoreAll ?? -1e9) - (x.scoreAll ?? -1e9)) || (x.carriedRank - y.carriedRank))[0];
+  const s3c = stages.startStage3({
+    from: s2.id, fee: 0.00125, nullN: 9, carry: 1, desc: 'adversarial end-to-end (carry 1)',
+    decision: 'argmax', band: 'auto', weekdaysOnly: false,
+    cell: { entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65, quorumSingles: 2, quorumContexts: 3 },
+  });
+  made.push(s3c.id);
+  const d3c = await waitDone(s3c.id, 'stage 3 (carry 1)');
+  assert.strictEqual(d3c.status, 'done', `stage 3 (carry 1) ended ${d3c.status}: ${JSON.stringify(d3c.failures)}`);
+  assert.strictEqual(d3c.plan.units, 1, 'carry forward 1 must price exactly one unit');
+  assert.strictEqual(d3c.params.carry, 1, 'the carry rides the record');
+  const carried3 = rowstore.readAll(s3c.id, 'records');
+  assert.ok(carried3.length && carried3.every((r) => r.trade === topUnit.trade),
+    'the unit priced must be the top of the stage 2 table, in its own order');
+
   console.log('\nEND-TO-END OK: the planted coin outranks the fair coin, the chain holds, every read path answers.');
 })().then(() => { cleanup(); process.exit(0); }).catch((err) => {
   console.error('\nEND-TO-END FAILED:', err.message);

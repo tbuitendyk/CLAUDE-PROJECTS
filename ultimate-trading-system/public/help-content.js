@@ -391,6 +391,10 @@ window.HELP = {
       s3Desc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
       s3Go2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
       s3From3: { what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever.' },
+      s3Carry3: {
+        what: 'How many of the parent\'s units get priced, best first by forecast score — all members. 0 prices all of them.',
+        more: 'The same order the stage 2 table on Boards3 shows, ties keeping their carry order — so the top of that table is exactly what a count here takes.',
+      },
       s3Fee: {
         what: 'What a trade is assumed to cost, as a percent of the money in the position, charged each way. It lives at this stage because stage 3 is the first place a trade is priced.',
         more: 'directional decisions also use it as their sure-enough bar — the bar is re-tuned from each member\'s kept votes at this fee, arithmetic, never a retrain.',
@@ -538,8 +542,8 @@ window.HELP = {
     controls: {
       ...RUN_NOTES_CONTROLS,
       b3CopySettings: {
-        what: 'Fills the Sweep3 boxes with the exact settings this record set used, so you can do it again or change one thing.',
-        more: 'The stage 1 box is always filled — a later set carries those settings with it. A stage 2 or stage 3 set also fills its own box, with the parent record sets picked, so a re-run rebuilds the same chain. The description is not copied — a re-run states its own purpose.',
+        what: 'Fills the open record set\'s own stage box on Sweep3 with the exact settings it used, so you can do it again or change one thing.',
+        more: 'A stage 1 set fills the stage 1 box; a stage 2 or stage 3 set fills its own box with its parent record set picked, so pressing start re-runs the same step of the same chain. The other boxes are left alone. The description is not copied — a re-run states its own purpose.',
       },
       b3Pick: { what: 'Which record set to read. Every set is listed with its stage, its status and when it was made.' },
       b3Open: { what: 'Opens the chosen record set and draws its chain and tables below.' },

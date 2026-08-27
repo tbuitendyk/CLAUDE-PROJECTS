@@ -179,6 +179,8 @@ const GUARDS = [
     'theCampaignDeleteTakesItsRecordSetsChildrenFirst', 'the campaign delete hits its own parent refusal and leaves every chain behind'],
   [path.join(ROOT, 'lib', 'stages.js'), "if (doc.status === 'running') throw new Error('the record set is still being written", "if (false) throw new Error('the record set is still being written",
     'theRecordSetNotesRefuseWhileWritingAndSaveAfter', 'a note written under a running set is silently overwritten by the orchestrator'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'const rows = allRecords(id).slice().sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));', 'const rows = allRecords(id).slice().sort((a, b) => a.carriedRank - b.carriedRank);',
+    'theStageTablesPageInRecordedOrder', 'the stage 2 table quietly falls back to carry order and the best all-members scores hide down the pages'],
 ];
 
 const only = process.argv[2] || '';
