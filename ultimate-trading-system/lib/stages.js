@@ -972,12 +972,10 @@ async function buildTally(doc, pool = null, note = null) {
 let tallyRun = null;   // { id, done, total, startedAt, error, promise }
 
 function ensureTally(id) {
-  // readTally is the arbiter, not the file's existence: a tally of an older
-  // shape sits on disk and still reads as absent, and this is the door the
-  // re-totalling walks in through. The parse happens once — it caches.
-  try { if (readTally(id)) return { ready: true }; } catch (_) { /* fall through */ }
-  const doc = getSet(id);
-  if (!doc || doc.stage !== 3 || (doc.status !== 'done' && doc.status !== 'incomplete')) return { none: true };
+  // A totalling in flight answers FIRST, before any file is touched (the
+  // third out-of-memory death): the old order consulted readTally on every
+  // poll, and while the stale file was being replaced that meant parsing
+  // the whole of it, over and over, beside the fold.
   if (tallyRun) {
     if (tallyRun.id === id) {
       return tallyRun.error ? { failed: tallyRun.error } : { totalling: { done: tallyRun.done, total: tallyRun.total } };
@@ -985,6 +983,12 @@ function ensureTally(id) {
     if (!tallyRun.error) return { waiting: `the tables of another record set are totalling right now — one totalling at a time` };
     tallyRun = null;   // a dead attempt for another set does not block this one
   }
+  // readTally is the arbiter, not the file's existence: a tally of an older
+  // shape sits on disk and still reads as absent, and this is the door the
+  // re-totalling walks in through. The parse happens once — it remembers.
+  try { if (readTally(id)) return { ready: true }; } catch (_) { /* fall through */ }
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 3 || (doc.status !== 'done' && doc.status !== 'incomplete')) return { none: true };
   if (batch.batchRunning() || activeSet) {
     return { waiting: 'a run is going — the tables total when the box is free' };
   }
@@ -1022,16 +1026,34 @@ function ensureTally(id) {
 // Test hook: settle when the totalling in flight (if any) has finished.
 function tallyWait() { return tallyRun && tallyRun.promise ? tallyRun.promise : Promise.resolve(); }
 
-const tallyInHand = { id: null, tally: null };
+const tallyInHand = { id: null, tally: null, mtimeMs: 0, size: 0, staleId: null, staleMtimeMs: 0, staleSize: 0 };
 function readTally(id) {
-  if (tallyInHand.id === id && tallyInHand.tally) return tallyInHand.tally;
+  // A totalling in flight is about to replace this very file — nothing reads
+  // it meanwhile, least of all the screens' four-second polls.
+  if (tallyRun && tallyRun.id === id && !tallyRun.error) return null;
+  let st = null;
+  try { st = fs.statSync(tallyFile(id)); } catch (_) { return null; }
+  if (tallyInHand.id === id && tallyInHand.tally && tallyInHand.mtimeMs === st.mtimeMs && tallyInHand.size === st.size) {
+    return tallyInHand.tally;
+  }
+  // THE VERDICT ON A FILE IS REMEMBERED, STALE OR SERVED (the third
+  // out-of-memory death, 2026-08-27 23:25): a tally of an older shape used
+  // to be re-parsed on EVERY ask — each poll inflating a hundreds-of-MB
+  // JSON beside the re-total's own accumulator — and the service died at
+  // the heap limit inside JSON.parse within a minute. One parse decides;
+  // a stat answers ever after, until the file itself changes underneath.
+  if (tallyInHand.staleId === id && tallyInHand.staleMtimeMs === st.mtimeMs && tallyInHand.staleSize === st.size) return null;
   let t = null;
   try { t = JSON.parse(zlib.gunzipSync(fs.readFileSync(tallyFile(id))).toString('utf8')); } catch (_) { t = null; }
   // A tally of an older shape is not served and not cached — it reads as
   // absent, and the rebuild-on-read machinery re-totals it with the columns
   // the screens now show. Serving it would put dashes where numbers belong.
   if (t && t.v !== TALLY_V) t = null;
-  if (t) { tallyInHand.id = id; tallyInHand.tally = t; }
+  if (t) {
+    tallyInHand.id = id; tallyInHand.tally = t; tallyInHand.mtimeMs = st.mtimeMs; tallyInHand.size = st.size;
+  } else {
+    tallyInHand.staleId = id; tallyInHand.staleMtimeMs = st.mtimeMs; tallyInHand.staleSize = st.size;
+  }
   return t;
 }
 
@@ -1070,6 +1092,7 @@ function deleteSet(id, confirm) {
   try { fs.rmSync(setFile(doc.id), { force: true }); } catch (_) { /* reported below */ }
   if (recordsInHand.id === doc.id) { recordsInHand.id = null; recordsInHand.rows = null; }
   if (tallyInHand.id === doc.id) { tallyInHand.id = null; tallyInHand.tally = null; }
+  if (tallyInHand.staleId === doc.id) { tallyInHand.staleId = null; }
   return { deleted: true, id: doc.id, name: doc.name, rows, bytes };
 }
 

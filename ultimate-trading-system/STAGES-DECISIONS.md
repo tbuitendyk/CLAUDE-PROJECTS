@@ -286,6 +286,20 @@ work — the owner reviews decisions in the morning, not at 3am.
     kept records, progress on screen, budget-gated as always. The one
     existing big set re-totals itself once, on first open after deploy.
 
+41. **The third out-of-memory death, one hour after #40 shipped — and the
+    fix.** The shape check made readTally re-parse the WHOLE stale tally
+    (hundreds of MB inflated) on every ask, remembering nothing; the
+    screens ask two endpoints every four seconds; the re-total held its
+    "tight" accumulator beside them, and the service died at the heap
+    limit inside JSON.parse within a minute of the kick. Two belts now:
+    the verdict on a file — stale or served — is REMEMBERED against its
+    stat, so one parse decides and a stat answers until the file itself
+    changes; and a totalling in flight answers before any file is touched,
+    in ensureTally and in readTally both, because the file it is replacing
+    is not there to be read. Proved by parse-counting tests and guards on
+    both lines. The budget gate never saw this because the gate prices the
+    fold, not a parse storm the reader itself was causing.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and

@@ -398,17 +398,27 @@ module.exports = {
   async theOldTallyShapeRetotalsItself() {
     const id = `s3-test-${Date.now().toString(36)}-ov`;
     const tf = path.join(SETS_DIR, `${id}-tally.json.gz`);
+    const realGunzip = zlib.gunzipSync;
+    let parses = 0;
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
       fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: 1, builtAt: 'x', rows: 0, ranked: [], coins: [] })));
+      // ONE parse decides, and the verdict is remembered (the third
+      // out-of-memory death, 2026-08-27): re-parsing the stale file on every
+      // ask is what killed the service beside the re-total.
+      zlib.gunzipSync = (...a) => { parses += 1; return realGunzip(...a); };
       assert.strictEqual(stages.readTally(id), null, 'an old-shape tally must not be served');
       assert.strictEqual(stages.stage3Ranked(id, 0, 10), null, 'so the table read falls through to the rebuild door');
       assert.ok(!stages.ensureTally(id).ready, 'and the door no longer answers ready off the file\'s mere existence');
-      // the shape the totalling writes today IS served
-      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: 2, builtAt: 'x', rows: 0, ranked: [], coins: [] })));
+      assert.strictEqual(parses, 1, `one parse decides; a stat answers ever after — got ${parses} parses`);
+      zlib.gunzipSync = realGunzip;
+      // the shape the totalling writes today IS served — the changed file
+      // escapes the remembered verdict
+      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: 2, builtAt: 'xx', rows: 0, ranked: [], coins: [] })));
       const served = stages.stage3Ranked(id, 0, 10);
       assert.ok(served && served.total === 0, 'the current shape serves');
     } finally {
+      zlib.gunzipSync = realGunzip;
       try { fs.rmSync(tf, { force: true }); } catch (_) { /* fixture */ }
     }
   },
@@ -725,9 +735,24 @@ module.exports = {
       w.push(mk(1, 'q2/6 x · directional auto 24/7', 'directional'));
       w.close();
 
-      assert.strictEqual(stages.stage3Ranked(id, 0, 10), null, 'no tables yet — the tally file is absent');
+      // an OLD-SHAPE tally sits on disk — the exact picture after the avg
+      // test $ deploy — and the whole path re-totals it into today's shape
+      const tf = path.join(SETS_DIR, `${id}-tally.json.gz`);
+      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: 1, builtAt: 'x', rows: 0, ranked: [], coins: [] })));
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10), null, 'no tables yet — the tally on disk is of the old shape');
       const kick = stages.ensureTally(id);
       assert.ok(kick.totalling, 'asking for the tables must start the totalling and say so');
+      // while it runs, the file it is replacing is NEVER opened — not even
+      // when it looks changed (the third out-of-memory death was the polls
+      // parsing the whole stale file beside the fold)
+      fs.utimesSync(tf, new Date(), new Date());
+      const realGunzip = zlib.gunzipSync;
+      let parses = 0;
+      zlib.gunzipSync = (...a) => { parses += 1; return realGunzip(...a); };
+      try {
+        assert.strictEqual(stages.readTally(id), null, 'while its totalling runs the file reads as absent');
+        assert.strictEqual(parses, 0, 'and it is never opened — it is about to be replaced');
+      } finally { zlib.gunzipSync = realGunzip; }
       await stages.tallyWait();
       const again = stages.ensureTally(id);
       assert.deepStrictEqual(again, { ready: true }, 'once it lands the tables read as ready');
