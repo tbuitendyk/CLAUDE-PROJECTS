@@ -428,6 +428,13 @@ module.exports = {
         assert.ok(body.includes(shared), `${fn} must draw the opened run's head with ${shared.slice(0, -1)}`);
       }
     }
+    // the settings-copy is basic run functionality and Boards3 keeps it: one
+    // named mapping fills the Sweep3 boxes, the fillSweepForm discipline
+    {
+      const body = screens.drawBody('drawBoards3');
+      assert.ok(body.includes('id="b3CopySettings"'), 'Boards3 must offer copy settings into the form');
+      assert.ok(body.includes('fillStageForm(doc, chain)'), 'and it must fill through the one named mapping');
+    }
     const map = screens.byTab();
     for (const key of ['sweep', 'sweep3']) {
       const ids = map[key].controls.map((c) => c.id);

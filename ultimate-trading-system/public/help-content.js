@@ -537,6 +537,10 @@ window.HELP = {
     ],
     controls: {
       ...RUN_NOTES_CONTROLS,
+      b3CopySettings: {
+        what: 'Fills the Sweep3 boxes with the exact settings this record set used, so you can do it again or change one thing.',
+        more: 'The stage 1 box is always filled — a later set carries those settings with it. A stage 2 or stage 3 set also fills its own box, with the parent record sets picked, so a re-run rebuilds the same chain. The description is not copied — a re-run states its own purpose.',
+      },
       b3Pick: { what: 'Which record set to read. Every set is listed with its stage, its status and when it was made.' },
       b3Open: { what: 'Opens the chosen record set and draws its chain and tables below.' },
       b3Delete: {

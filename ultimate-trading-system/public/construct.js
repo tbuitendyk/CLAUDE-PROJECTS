@@ -3824,6 +3824,56 @@ function s3BlockParams() {
   };
 }
 
+// ONE mapping from a record set's stored settings back into the Sweep3
+// boxes — the same discipline fillSweepForm keeps for the sweeps: a second
+// copy of this mapping would be two answers to one question. It fills every
+// box the set's stored settings speak to: the stage 1 box always (later
+// stages carry those settings by inheritance), the stage 2 and stage 3 boxes
+// when the set is of that stage, with the parent boxes set from the chain so
+// a re-run rebuilds the same chain. The description is NOT copied — a re-run
+// states its own purpose.
+function fillStageForm(doc, chain) {
+  const p = doc.params || {};
+  const setV = (sel, v) => { const el = $(sel); if (el && v !== undefined && v !== null) el.value = String(v); };
+  const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
+  setV('#s3Uni', (p.universe || []).join(','));
+  setC('#s3Singles', (p.sizes || {}).singles); setC('#s3Doubles', (p.sizes || {}).doubles); setC('#s3Triples', (p.sizes || {}).triples);
+  setC('#s3AllData', p.allLoaded !== false);
+  setV('#s3Start', p.startMonth || ''); setV('#s3End', p.endMonth || '');
+  const geos = p.geometries || [];
+  if (geos.length) setV('#s3Geom', geos[0]);
+  setC('#s3PermGeom', geos.length > 1);
+  setV('#s3Layout', p.windowLayout || 'reserve61');
+  const s1row = (chain || []).find((c) => c.stage === 1);
+  const s2row = (chain || []).find((c) => c.stage === 2);
+  // stage 3 overwrote the inherited null set size with its own, so stage 1's
+  // comes from the chain, never from this set's own params
+  setV('#s3Null1', doc.stage === 1 ? (p.nullN ?? 19) : (((s1row || {}).params || {}).nullN ?? 19));
+  if (doc.stage >= 2 && s1row) {
+    setV('#s3From2', s1row.id);
+    const s2p = doc.stage === 2 ? p : ((s2row || {}).params || {});
+    setV('#s3Order', s2p.orderBy || 'beat');
+    setV('#s3Carry', s2p.carry ?? 0);
+  }
+  if (doc.stage === 3) {
+    if (s2row) setV('#s3From3', s2row.id);
+    setV('#s3Fee', p.fee != null ? p.fee * 100 : '');
+    setV('#s3Null3', p.nullN ?? 19);
+    setV('#s3Dec', p.decision || 'argmax'); setC('#s3PermDec', p.permuteDecision);
+    setV('#s3Band', p.band ?? 'auto'); setC('#s3PermBand', p.permuteBand);
+    setC('#s3Wk', p.weekdaysOnly); setC('#s3PermWk', p.permuteWeekdays);
+    const c = p.cell || {};
+    setV('#s3Entry', c.entry); setV('#s3Gate', c.gate); setV('#s3D', c.dMult); setV('#s3T', c.tHours);
+    setV('#s3Trail', c.trailMult == null ? '' : c.trailMult);
+    setV('#s3Arm', c.armMult == null ? '' : c.armMult);
+    setV('#s3Q6', c.quorumSingles); setV('#s3Q8', c.quorumContexts);
+    const cp = p.cellPermute || {};
+    setC('#s3PermEntry', cp.entry); setC('#s3PermGate', cp.gate); setC('#s3PermD', cp.dMult); setC('#s3PermT', cp.tHours);
+    setC('#s3PermTrail', cp.trail); setC('#s3PermArm', cp.arm); setC('#s3PermAgree', cp.agree);
+  }
+  s3Counts();
+}
+
 let s3SetsCache = null;
 
 async function drawSweep3() {
@@ -4058,10 +4108,16 @@ async function drawBoards3() {
   // the notes, and what this run actually is. The set's plan is served as
   // counts, so the size line is the set's own equation.
   $('#b3Head').innerHTML = `${descriptionPanelHtml(doc.desc)}
-    ${notesPanelHtml(doc, '')}
+    ${notesPanelHtml(doc, `
+          <button id="b3CopySettings" title="fill the Sweep3 boxes with THIS record set's stored settings — the stage 1 box always (universe, sizes, data range, chunk shape, window layout, null set size), and the stage 2 and stage 3 boxes when the set is of that stage, with the parent record sets picked so a re-run rebuilds the same chain. Nothing launches; the boxes are just set. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>`)}
     ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}`;
   wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null);
   const chain = got.chain || [];
+  const csb3 = $('#b3CopySettings');
+  if (csb3) csb3.onclick = () => {
+    tab = 'sweep3'; localStorage.setItem('cx-tab', tab);
+    draw().then(() => { fillStageForm(doc, chain); });
+  };
   $('#b3Chain').innerHTML = `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
     c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,
     c.plan && c.plan.settings ? `${Number(c.plan.settings).toLocaleString()} settings` : null,
