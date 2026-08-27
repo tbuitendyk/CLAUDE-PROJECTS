@@ -802,19 +802,14 @@ async function buildTally(doc, pool = null, note = null) {
       if (note) note(doneShards, shards.length);
     });
   } else {
-    let at = 0;
-    let lastB = -1;
-    const blockOfRow = (rowAt) => {
-      let lo = 0; let hi = blocks.length - 1; let ans = 0;
-      while (lo <= hi) { const mid = (lo + hi) >> 1; if (blocks[mid].firstRow <= rowAt) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
-      return ans;
-    };
-    rowstore.each(id, 'records', (r) => {
-      const b = blockOfRow(at);
-      sw.tallyFold(acc, r, b);
-      at++;
-      if (note && b !== lastB) { lastB = b; note(b + 1, blocks.length); }
-    });
+    // Block by block, yielding between blocks: this fold runs on the one
+    // thread the pages share, and "totalling in the background" must be true
+    // there — a synchronous 8.7M-row fold froze every screen for minutes.
+    for (let bi = 0; bi < blocks.length; bi++) {
+      for (const x of rowstore.readBlocks(id, 'records', [bi])) sw.tallyFold(acc, x.row, bi);
+      if (note) note(bi + 1, blocks.length);
+      await new Promise((resolve) => { setImmediate(resolve); });
+    }
   }
   const ranked = [...acc.perSetting.values()].map((st) => {
     const coins = [...st.perCoin.values()];
@@ -858,10 +853,11 @@ async function buildTally(doc, pool = null, note = null) {
   const ws = fs.createWriteStream(tmp);
   gz.pipe(ws);
   const put = (str) => new Promise((resolve) => { if (gz.write(str)) resolve(); else gz.once('drain', resolve); });
+  const breathe = (i) => (i % 2000 === 1999 ? new Promise((resolve) => { setImmediate(resolve); }) : null);
   await put(`{"v":1,"builtAt":${JSON.stringify(out.builtAt)},"rows":${acc.rows},"ranked":[`);
-  for (let i = 0; i < ranked.length; i++) await put((i ? ',' : '') + JSON.stringify(ranked[i]));
+  for (let i = 0; i < ranked.length; i++) { await put((i ? ',' : '') + JSON.stringify(ranked[i])); const b = breathe(i); if (b) await b; }
   await put('],"coins":[');
-  for (let i = 0; i < coins.length; i++) await put((i ? ',' : '') + JSON.stringify(coins[i]));
+  for (let i = 0; i < coins.length; i++) { await put((i ? ',' : '') + JSON.stringify(coins[i])); const b = breathe(i); if (b) await b; }
   await put(']}');
   await new Promise((resolve) => { ws.on('finish', resolve); gz.end(); });
   fs.renameSync(tmp, tallyFile(id));
