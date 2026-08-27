@@ -421,8 +421,14 @@ window.HELP = {
       s3PermTrail: { what: 'Price every kind of stop, static included, as its own setting in the block.' },
       s3Arm: { what: 'How far the price must move in your favour before a following stop starts following.' },
       s3PermArm: { what: 'Price every starting point as its own setting in the block.' },
-      s3Q6: { what: 'How many of a single coin\'s 6 members must say the same thing before a trade is taken.' },
-      s3Q8: { what: 'The same, for a unit judged alongside contexts — 8 members rather than 6.' },
+      s3Q6: {
+        what: 'How many of a single coin\'s 6 members must say the same thing before a trade is taken.',
+        more: 'It is put away when the chosen stage 2 record set holds no coin judged on its own — there is no 6-member vote to agree on.',
+      },
+      s3Q8: {
+        what: 'The same, for a unit judged alongside contexts — 8 members rather than 6.',
+        more: 'It is put away when the chosen stage 2 record set holds no doubles or triples — there is no 8-member vote to agree on.',
+      },
       s3PermAgree: { what: 'Price every level of agreement as its own setting in the block. It multiplies the block fastest — and here that multiplying is arithmetic, not training.' },
       s3Desc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
       s3Go3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards3.' },

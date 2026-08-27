@@ -73,6 +73,7 @@ function publicParams(d) {
     windowLayout: p.windowLayout || null, nullN: p.nullN ?? null,
     orderBy: p.orderBy || null, carry: p.carry ?? null, fee: p.fee ?? null,
     campaign: p.campaign || null,
+    sizes: p.sizes || null,
   };
 }
 
@@ -663,6 +664,7 @@ async function buildTally(doc, pool = null) {
       avgHold: mean((c) => (c.holdN ? c.hold / c.holdN : null)),
       avgTrades: mean((c) => (c.holdN ? c.trades / c.holdN : null)),
       avgVsLong: mean((c) => (c.vsln ? c.vsl / c.vsln : null)),
+      avgLead: mean((c) => (c.ldN ? c.ld / c.ldN : null)),
       beat: [...st.perCoin.values()].reduce((a, c) => a + c.beat, 0),
       pairs: [...st.perCoin.values()].reduce((a, c) => a + c.pairs, 0),
     };
@@ -787,6 +789,7 @@ function stage2Table(id, from, n) {
       logreg: r.specs.filter((s) => s.model === 'logreg').length,
       boost: r.specs.filter((s) => s.model === 'boost').length,
       score3: r.score3, scoreAll: r.scoreAll, helped: r.helped,
+      beat: r.beat, pairs: r.pairs, lead: r.lead,
     })),
   };
 }

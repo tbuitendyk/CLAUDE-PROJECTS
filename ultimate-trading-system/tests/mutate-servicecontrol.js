@@ -181,6 +181,8 @@ const GUARDS = [
     'theRecordSetNotesRefuseWhileWritingAndSaveAfter', 'a note written under a running set is silently overwritten by the orchestrator'],
   [path.join(ROOT, 'lib', 'stages.js'), 'const rows = allRecords(id).slice().sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));', 'const rows = allRecords(id).slice().sort((a, b) => a.carriedRank - b.carriedRank);',
     'theStageTablesPageInRecordedOrder', 'the stage 2 table quietly falls back to carry order and the best all-members scores hide down the pages'],
+  [path.join(ROOT, 'lib', 'stagework.js'), 'if (r.lead != null) { c.ld += r.lead; c.ldN++; }', '',
+    'theStageThreeTablesMatchThePencil', 'lead over null set on the ranked table reads as nothing, silently, for every set'],
 ];
 
 const only = process.argv[2] || '';

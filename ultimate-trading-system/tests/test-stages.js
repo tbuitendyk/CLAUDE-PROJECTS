@@ -101,21 +101,21 @@ module.exports = {
     const dir = rowstore.storeDir(id);
     try {
       const w = rowstore.writer(id, 'records');
-      const mk = (si, label, trade, geometry, decision, hold, beat, pairs, vsl) => ({
+      const mk = (si, label, trade, geometry, decision, hold, beat, pairs, vsl, lead) => ({
         si, label, decision, bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
         entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65, trailMult: null, armMult: null,
         quorum: 2, members: 6, pnl: 10, trades: 3,
         holdout: { pnl: hold, trades: 4, stops: 1, vsAlwaysLong: vsl },
-        beat, pairs, u: 0, trade, ctx1: null, ctx2: null, size: 1, geometry,
+        beat, pairs, lead: lead ?? null, u: 0, trade, ctx1: null, ctx2: null, size: 1, geometry,
       });
       // setting 0: coin A twice (two variants: argmax/directional), coin B once
-      w.push(mk(0, 'q2/6 x · argmax auto 24/7', 'AAA', 'daily-4d', 'argmax', 10, 15, 19, 5));
+      w.push(mk(0, 'q2/6 x · argmax auto 24/7', 'AAA', 'daily-4d', 'argmax', 10, 15, 19, 5, 2));
       w.flush();
-      w.push(mk(0, 'q2/6 x · directional auto 24/7', 'AAA', 'daily-4d', 'directional', 30, 10, 19, 6));
-      w.push(mk(0, 'q2/6 x · argmax auto 24/7', 'BBB', 'daily-4d', 'argmax', -4, 3, 19, -2));
+      w.push(mk(0, 'q2/6 x · directional auto 24/7', 'AAA', 'daily-4d', 'directional', 30, 10, 19, 6, 4));
+      w.push(mk(0, 'q2/6 x · argmax auto 24/7', 'BBB', 'daily-4d', 'argmax', -4, 3, 19, -2, -1));
       w.flush();
       // setting 1: one coin, in the money
-      w.push(mk(1, 'q3/6 y · argmax auto 24/7', 'AAA', 'daily-4d', 'argmax', 7, 12, 19, 1));
+      w.push(mk(1, 'q3/6 y · argmax auto 24/7', 'AAA', 'daily-4d', 'argmax', 7, 12, 19, 1, 0.5));
       w.close();
 
       const tally = await stages.buildTally({ id });
@@ -125,6 +125,9 @@ module.exports = {
       assert.ok(Math.abs(r0.avgHold - 8) < 1e-12, `per-coin-first average: expected 8, got ${r0.avgHold}`);
       assert.strictEqual(r0.coins, 2);
       assert.strictEqual(r0.coinsInMoney, 1, 'coin B lost money on held-back, so 1 of 2');
+      // lead over null set, per coin first: coin A (2+4)/2 = 3, coin B −1;
+      // avgLead = (3 − 1) / 2 = 1
+      assert.ok(Math.abs(r0.avgLead - 1) < 1e-12, `per-coin-first lead: expected 1, got ${r0.avgLead}`);
       assert.strictEqual(r0.beat, 28);
       assert.strictEqual(r0.pairs, 57);
       // every-coin: the two AAA variants of setting 0 group under one row
@@ -244,13 +247,16 @@ module.exports = {
     try {
       fs.writeFileSync(file2, JSON.stringify({ id: id2, stage: 2, seq: 999990, name: 'S2 #pg', status: 'done', createdAt: new Date().toISOString(), plan: { units: 3 } }));
       const rec2 = rowstore.writer(id2, 'records');
-      rec2.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'C0', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 4, scoreAll: 5, helped: 1 });
-      rec2.push({ u: 1, carriedRank: 2, s1rank: 2, trade: 'C1', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8, scoreAll: 9, helped: 1 });
-      rec2.push({ u: 2, carriedRank: 3, s1rank: 3, trade: 'C2', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8.5, scoreAll: 9, helped: 0.5 });
+      rec2.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'C0', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 4, scoreAll: 5, helped: 1, beat: 17, pairs: 19, lead: 2.5 });
+      rec2.push({ u: 1, carriedRank: 2, s1rank: 2, trade: 'C1', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8, scoreAll: 9, helped: 1, beat: 19, pairs: 19, lead: 4 });
+      rec2.push({ u: 2, carriedRank: 3, s1rank: 3, trade: 'C2', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8.5, scoreAll: 9, helped: 0.5, beat: 12, pairs: 19, lead: 1 });
       rec2.close();
       const t2 = stages.stage2Table(id2, 0, 10);
       assert.deepStrictEqual(t2.rows.map((r) => r.trade), ['C1', 'C2', 'C0'],
         'best all-members score first; the tie keeps its carry order');
+      // the unit's stage 1 reading rides along for the table's null set columns
+      assert.deepStrictEqual(t2.rows.map((r) => [r.beat, r.pairs, r.lead]), [[19, 19, 4], [12, 19, 1], [17, 19, 2.5]],
+        'beat its own null set and lead over null set are served with each carried row');
     } finally {
       try { fs.rmSync(dir2, { recursive: true, force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(file2, { force: true }); } catch (_) { /* fixture */ }
@@ -305,7 +311,7 @@ module.exports = {
         entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 17, trailMult: null, armMult: null,
         quorum: 2, members: 6, pnl: i, trades: 1,
         holdout: { pnl: i - 5, trades: 2, stops: 0, vsAlwaysLong: i - 6 },
-        beat: i % 10, pairs: 9, trade: i % 2 ? 'AAA' : 'BBB', ctx1: null, ctx2: null, geometry: 'daily-1d',
+        beat: i % 10, pairs: 9, lead: (i - 4) / 2, trade: i % 2 ? 'AAA' : 'BBB', ctx1: null, ctx2: null, geometry: 'daily-1d',
       });
     }
     const one = sw.newTallyAcc();

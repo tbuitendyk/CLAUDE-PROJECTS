@@ -362,6 +362,7 @@ async function s3UnitTask(task) {
     const tRes = bracketLib.simCell(cell, pick(testChunks, tIdx), pick(testCallsAll, tIdx), maps.trade, geo, bandPct, fee);
     let holdout = null;
     let beat = 0;
+    let lead = null;
     if (holdChunks.length) {
       const holdCallsAll = streamFor(stream.decision, q, -1, 'hold');
       const hRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(holdCallsAll, hIdx), maps.trade, geo, bandPct, fee);
@@ -370,11 +371,16 @@ async function s3UnitTask(task) {
         pnl: hRes.pnl, trades: hRes.trades, stops: hRes.stops,
         vsAlwaysLong: hRes.pnl - hc.alwaysLong,
       };
+      const dealPnls = [];
       for (let d = 0; d < nullN; d++) {
         const dh = streamFor(stream.decision, q, d, 'hold');
         const dRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), maps.trade, geo, bandPct, fee);
+        dealPnls.push(dRes.pnl);
         if (hRes.pnl > dRes.pnl) beat++;
       }
+      // the same one rule stage 1 reads by (decision record #6): how far the
+      // real held-back money sits above the deals' typical, against their spread
+      lead = leadOver(hRes.pnl, dealPnls);
     }
     rows.push({
       si,
@@ -388,7 +394,7 @@ async function s3UnitTask(task) {
       quorum: q, members: memberProbs.length,
       pnl: tRes.pnl, trades: tRes.trades,
       holdout,
-      beat, pairs: holdChunks.length ? nullN : 0,
+      beat, pairs: holdChunks.length ? nullN : 0, lead,
     });
   }
   return { rows, counts: { test: testChunks.length, hold: holdChunks.length } };
@@ -415,7 +421,7 @@ function tallyFold(acc, r, blockIdx) {
     acc.perSetting.set(r.si, s);
   }
   let c = s.perCoin.get(r.trade);
-  if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0 }; s.perCoin.set(r.trade, c); }
+  if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0 }; s.perCoin.set(r.trade, c); }
   c.test += r.pnl || 0; c.testN++;
   if (r.holdout && r.holdout.pnl != null) {
     c.hold += r.holdout.pnl; c.holdN++;
@@ -423,6 +429,7 @@ function tallyFold(acc, r, blockIdx) {
     if (r.holdout.vsAlwaysLong != null) { c.vsl += r.holdout.vsAlwaysLong; c.vsln++; }
   }
   c.beat += r.beat || 0; c.pairs += r.pairs || 0;
+  if (r.lead != null) { c.ld += r.lead; c.ldN++; }
 
   const cellLabel = r.label.split(' · ')[0];
   const ck = `${cellLabel}|${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
@@ -459,10 +466,11 @@ function mergeTallyAcc(acc, part) {
     if (!s) { s = { ...ps, perCoin: new Map() }; delete s.perCoin; s.perCoin = new Map(); acc.perSetting.set(ps.si, s); }
     for (const [trade, add] of ps.perCoin) {
       let c = s.perCoin.get(trade);
-      if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0 }; s.perCoin.set(trade, c); }
+      if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0 }; s.perCoin.set(trade, c); }
       c.test += add.test; c.testN += add.testN; c.hold += add.hold; c.holdN += add.holdN;
       c.trades += add.trades; c.vsl += add.vsl; c.vsln += add.vsln;
       c.beat += add.beat; c.pairs += add.pairs;
+      c.ld += add.ld || 0; c.ldN += add.ldN || 0;
     }
   }
   for (const [ck, add] of part.perCoin) {

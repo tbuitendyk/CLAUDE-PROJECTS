@@ -1603,8 +1603,11 @@ function getSelRow(doc) {
 function campaignNoteHtml(doc) {
   return doc ? `<span class="note">campaign: ${esc((doc.params && doc.params.campaign) || '—')} · ${esc(doc.status)} · ${(doc.params && doc.params.windowLayout) || ''}</span>` : '';
 }
-function descriptionPanelHtml(text) {
-  return text ? `<div class="panel note">${esc(text)}</div>` : '';
+// bold is Boards3's (owner order, 2026-08-27: the description set on Sweep3
+// reads BOLD when its record set is opened); Boards passes nothing and keeps
+// its plain rendering — a deliberate difference, not a drifted one.
+function descriptionPanelHtml(text, bold) {
+  return text ? `<div class="panel note">${bold ? `<b>${esc(text)}</b>` : esc(text)}</div>` : '';
 }
 // THE BUTTONS LINE UP WITH THE TOP OF THE NOTES BOX (owner order,
 // 2026-08-25; standing RULE FOUR). They used to sit in one row with the
@@ -3765,6 +3768,18 @@ async function s3Progress() {
 }
 
 async function s3Counts() {
+  // agree and with contexts follow the chosen parent's own coins (owner
+  // order, 2026-08-27): a chain holding no coin judged on its own has no 6-
+  // member vote to agree on, and one holding no doubles or triples has no
+  // 8-member vote — the box that does not apply is put away, the same rule
+  // Sweep applies to a market entry's gate.
+  {
+    const row = (s3SetsCache || []).find((x) => x.id === ($('#s3From3') && $('#s3From3').value));
+    const sz = (row && row.params && row.params.sizes) || null;
+    const q6 = $('#s3Q6'); const q8 = $('#s3Q8');
+    if (q6 && q6.closest('label')) q6.closest('label').style.display = (!sz || sz.singles) ? '' : 'none';
+    if (q8 && q8.closest('label')) q8.closest('label').style.display = (!sz || sz.doubles || sz.triples) ? '' : 'none';
+  }
   const c1 = $('#s3Cost1');
   if (c1) {
     const body = {
@@ -3832,7 +3847,9 @@ function s3BlockParams() {
 // order, 2026-08-27: a stage 2 set was filling the stage 1 box too, which
 // read as loading the wrong data). The parent box is picked from the set's
 // own named parent, so pressing start re-runs the same step of the same
-// chain. The description is NOT copied — a re-run states its own purpose.
+// chain. The description RIDES TOO (owner order, 2026-08-27: "carry the
+// description field to the Sweep3 section") — into the same stage's
+// description box, ready to be kept or rewritten before the start.
 function fillStageForm(doc) {
   const p = doc.params || {};
   const setV = (sel, v) => { const el = $(sel); if (el && v !== undefined && v !== null) el.value = String(v); };
@@ -3847,15 +3864,18 @@ function fillStageForm(doc) {
     setC('#s3PermGeom', geos.length > 1);
     setV('#s3Layout', p.windowLayout || 'reserve61');
     setV('#s3Null1', p.nullN ?? 19);
+    setV('#s3Desc1', doc.desc || '');
   }
   if (doc.stage === 2) {
     if (doc.parent) setV('#s3From2', doc.parent.id);
     setV('#s3Order', p.orderBy || 'beat');
     setV('#s3Carry', p.carry ?? 0);
+    setV('#s3Desc2', doc.desc || '');
   }
   if (doc.stage === 3) {
     if (doc.parent) setV('#s3From3', doc.parent.id);
     setV('#s3Carry3', p.carry ?? 0);
+    setV('#s3Desc3', doc.desc || '');
     setV('#s3Fee', p.fee != null ? p.fee * 100 : '');
     setV('#s3Null3', p.nullN ?? 19);
     setV('#s3Dec', p.decision || 'argmax'); setC('#s3PermDec', p.permuteDecision);
@@ -4108,7 +4128,7 @@ async function drawBoards3() {
   // drawn by the same functions (owner order, 2026-08-27): the description,
   // the notes, and what this run actually is. The set's plan is served as
   // counts, so the size line is the set's own equation.
-  $('#b3Head').innerHTML = `${descriptionPanelHtml(doc.desc)}
+  $('#b3Head').innerHTML = `${descriptionPanelHtml(doc.desc, true)}
     ${notesPanelHtml(doc, `
           <button id="b3CopySettings" title="fill THIS record set's own stage box on Sweep3 with its stored settings — a stage 1 set fills the stage 1 box, a stage 2 set the stage 2 box (its parent picked), a stage 3 set the stage 3 box (its parent picked). The other boxes are left exactly as they are. Nothing launches; the boxes are just set. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>`)}
     ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}`;
@@ -4206,7 +4226,9 @@ async function b3DrawStage2(doc, incomplete, view) {
         <th ${b3th} title="how many members vote for this unit now, and what they are">members</th>
         <th ${b3th} title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members</th>
         <th ${b3th} title="the same fixed score with every member pooled, BOOST included">forecast score — all members</th>
-        <th ${b3th} title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?</th></tr></thead>
+        <th ${b3th} title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?</th>
+        <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat, as stage 1 read it. Carried with the unit; the BOOST members never face a null set.">beat its own null set</th>
+        <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the stage 1 tie-break, carried with the unit">lead over null set</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${b3td0}>${Number(r.carriedRank).toLocaleString()}</td>
         <td ${b3td}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
@@ -4216,11 +4238,13 @@ async function b3DrawStage2(doc, incomplete, view) {
         <td ${b3td}>${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST</td>
         <td ${b3td}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
         <td ${b3td}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
-        <td ${b3td}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${b3td}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td>
+        <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+        <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="11" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${b3Pager((t && t.total) || 0, from, 100, 'S2')}
-    <p class="note">Ordered by forecast score — all members, best first; ties keep their carry order. No money and no
-      null set on this table: a stage 2 record is training inventory — members and kept votes. Pricing, the null set
-      and the held-back window all belong to stage 3.</p>
+    <p class="note">Ordered by forecast score — all members, best first; ties keep their carry order. The null set
+      columns are the unit's stage 1 reading, carried with it. No money on this table: a stage 2 record is training
+      inventory — members and kept votes. Pricing and the held-back window belong to stage 3.</p>
   </div>`;
   b3WirePager();
 }
@@ -4257,12 +4281,13 @@ async function b3DrawStage3(doc, incomplete, view) {
         <th ${b3th} title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm</th>
         <th ${b3th} title="how many members must say the same thing before a trade is taken, out of how many there are.">agree</th>
         <th ${b3th} title="how many coins this setting was priced on.">coins</th>
-        <th ${b3th} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money</th>
         <th ${b3th} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $</th>
         <th ${b3th} title="the once-only look, on data no ordering ever read">avg held-back $</th>
         <th ${b3th} title="average entries per coin in the held-back window.">avg held-back trades</th>
         <th ${b3th} title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $</th>
-        <th ${b3th} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set</th></tr></thead>
+        <th ${b3th} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set</th>
+        <th ${b3th} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set</th>
+        <th ${b3th} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money</th></tr></thead>
       <tbody>${rr.map((r) => `<tr>
         <td ${b3td0}>${esc(r.decision)}</td>
         <td ${b3td}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
@@ -4275,12 +4300,13 @@ async function b3DrawStage3(doc, incomplete, view) {
         <td ${b3td}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? '—' : `${r.armMult}×`}</td>
         <td ${b3td}>${r.quorum}/${r.members}</td>
         <td ${b3td}>${r.coins}</td>
-        <td ${b3td}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td>
         <td ${b3td}>${b3Money(r.avgTest)}</td>
         <td ${b3td}>${b3Money(r.avgHold)}</td>
         <td ${b3td}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
         <td ${b3td}>${b3Money(r.avgVsLong)}</td>
-        <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td></tr>`).join('') || '<tr><td colspan="17" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+        <td ${b3td}>${b3Lead(r.avgLead)}</td>
+        <td ${b3td}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="18" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${b3Pager((ranked && ranked.total) || 0, from, 100, 'S3R')}
     <p style="margin:.9rem 0 .2rem"><b>Every coin of every setting</b> — one row per coin, its records opening below it</p>
     <div class="row" style="margin:.3rem 0 0">

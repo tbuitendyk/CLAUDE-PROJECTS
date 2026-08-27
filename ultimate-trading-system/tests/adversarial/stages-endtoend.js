@@ -152,6 +152,7 @@ async function waitDone(id, label) {
   assert.strictEqual(detail.shown, 2);
   assert.ok(detail.rows.every((r) => r.holdout && Number.isFinite(r.holdout.pnl)), 'every record priced the held-back window');
   assert.ok(detail.rows.every((r) => r.pairs === 9), 'every record read against its null set');
+  assert.ok(detail.rows.every((r) => Number.isFinite(r.lead)), 'every record carries its lead over null set');
   const decisions = new Set(detail.rows.map((r) => r.decision));
   assert.deepStrictEqual([...decisions].sort(), ['argmax', 'directional'], 'both decisions priced from the same kept votes');
 
