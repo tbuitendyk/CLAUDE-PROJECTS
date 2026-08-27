@@ -525,6 +525,10 @@ window.HELP = {
     controls: {
       b3Pick: { what: 'Which record set to read. Every set is listed with its stage, its status and when it was made.' },
       b3Open: { what: 'Opens the chosen record set and draws its chain and tables below.' },
+      b3Delete: {
+        what: 'Permanently removes the chosen record set — its records, kept votes and tables. You are shown what will go, and have to type the record set id back, before anything is deleted.',
+        more: 'It refuses two things, by name: a set another set names as its parent (delete the children first), and any deletion while a stage run is going, because a run may be reading its parent at that moment.',
+      },
       b3MinShare: { what: 'Hides rows whose share of head-to-heads won is below this percent. Empty hides nothing.' },
       b3MinHold: { what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.' },
       b3MinTrades: { what: 'Hides rows whose avg trades is below this. Empty hides nothing.' },

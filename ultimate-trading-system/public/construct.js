@@ -3962,11 +3962,30 @@ async function drawBoards3() {
     ? sets.map((x) => `<option value="${esc(x.id)}"${x.id === picked ? ' selected' : ''}>${esc(x.name)} — stage ${x.stage} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('')
     : '<option value="">— no record sets on this box yet — start one on Sweep3 —</option>'}</select></label>
       <button id="b3Open">open</button>
+      <button id="b3Delete" class="danger">Delete record set…</button>
     </div>
     <div id="b3Chain"></div>
   </div>
   <div id="b3Body"></div>`;
   $('#b3Open').onclick = () => { b3SaveView({ setId: $('#b3Pick').value, openS3: [] }); drawBoards3().then(() => restoreScroll(tab)); };
+  $('#b3Delete').onclick = async () => {
+    const id = $('#b3Pick').value;
+    if (!id) return;
+    const look = await tryPost(`api/stageset/${id}/delete`, {});
+    if (!look) return;
+    if (!look.preview) { alert('Nothing was deleted — the service answered strangely.'); return; }
+    const typed = prompt(`Permanently delete ${look.name} (stage ${look.stage}, ${look.status})?\n\n`
+      + `${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
+      + `${look.desc ? `\n"${look.desc}"` : ''}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
+    if (typed === null) return;
+    if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return; }
+    const done = await tryPost(`api/stageset/${id}/delete`, { confirm: typed.trim() });
+    if (done && done.deleted) {
+      alert(`Deleted ${done.name} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
+      b3SaveView({ setId: null, openS3: [] });
+      drawBoards3().then(() => restoreScroll(tab));
+    }
+  };
   if (!picked) return;
 
   const got = await apiOr(`api/stageset/${picked}`, null);

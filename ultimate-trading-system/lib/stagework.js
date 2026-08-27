@@ -394,6 +394,104 @@ async function s3UnitTask(task) {
   return { rows, counts: { test: testChunks.length, hold: holdChunks.length } };
 }
 
+// ---- the stage 3 tally, foldable and shardable --------------------------------
+//
+// ONE folding rule for the stage 3 tables, expressed once and used by both
+// the single-pass build and the sharded build (owner order, 2026-08-27:
+// "yes" to multithreading the totalling). Sums are commutative, the block
+// sets are unions, and the finishing sort happens after the merge — so the
+// sharded answer is the single-pass answer, and a test holds the two equal.
+function newTallyAcc() {
+  return { perSetting: new Map(), perCoin: new Map(), rows: 0 };
+}
+function tallyFold(acc, r, blockIdx) {
+  let s = acc.perSetting.get(r.si);
+  if (!s) {
+    s = { si: r.si, label: r.label,
+      decision: r.decision, bandMode: r.bandMode, weekdaysOnly: r.weekdaysOnly,
+      entry: r.entry, gate: r.gate, dMult: r.dMult, tHours: r.tHours, trailMult: r.trailMult, armMult: r.armMult,
+      quorum: r.quorum, members: r.members,
+      perCoin: new Map() };
+    acc.perSetting.set(r.si, s);
+  }
+  let c = s.perCoin.get(r.trade);
+  if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0 }; s.perCoin.set(r.trade, c); }
+  c.test += r.pnl || 0; c.testN++;
+  if (r.holdout && r.holdout.pnl != null) {
+    c.hold += r.holdout.pnl; c.holdN++;
+    c.trades += r.holdout.trades || 0;
+    if (r.holdout.vsAlwaysLong != null) { c.vsl += r.holdout.vsAlwaysLong; c.vsln++; }
+  }
+  c.beat += r.beat || 0; c.pairs += r.pairs || 0;
+
+  const cellLabel = r.label.split(' · ')[0];
+  const ck = `${cellLabel}|${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
+  let k = acc.perCoin.get(ck);
+  if (!k) {
+    k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
+      beat: 0, pairs: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0, rows: 0, b: new Set() };
+    acc.perCoin.set(ck, k);
+  }
+  k.rows++;
+  k.beat += r.beat || 0; k.pairs += r.pairs || 0;
+  if (r.holdout && r.holdout.pnl != null) {
+    k.hold += r.holdout.pnl; k.holdN++;
+    k.trades += r.holdout.trades || 0; k.tradesN++;
+    if (r.holdout.vsAlwaysLong != null) { k.vsl += r.holdout.vsAlwaysLong; k.vsln++; }
+  }
+  k.b.add(blockIdx);
+  acc.rows++;
+}
+// Across-thread shapes: Maps and Sets do not survive the worker boundary, so
+// a shard hands back plain arrays and the merge folds them into the same
+// accumulator shape the single pass builds.
+function serializeTallyAcc(acc) {
+  return {
+    rows: acc.rows,
+    perSetting: [...acc.perSetting.values()].map((s) => ({ ...s, perCoin: [...s.perCoin.entries()] })),
+    perCoin: [...acc.perCoin.entries()].map(([ck, k]) => [ck, { ...k, b: [...k.b] }]),
+  };
+}
+function mergeTallyAcc(acc, part) {
+  acc.rows += part.rows;
+  for (const ps of part.perSetting) {
+    let s = acc.perSetting.get(ps.si);
+    if (!s) { s = { ...ps, perCoin: new Map() }; delete s.perCoin; s.perCoin = new Map(); acc.perSetting.set(ps.si, s); }
+    for (const [trade, add] of ps.perCoin) {
+      let c = s.perCoin.get(trade);
+      if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0 }; s.perCoin.set(trade, c); }
+      c.test += add.test; c.testN += add.testN; c.hold += add.hold; c.holdN += add.holdN;
+      c.trades += add.trades; c.vsl += add.vsl; c.vsln += add.vsln;
+      c.beat += add.beat; c.pairs += add.pairs;
+    }
+  }
+  for (const [ck, add] of part.perCoin) {
+    let k = acc.perCoin.get(ck);
+    if (!k) {
+      k = { cellLabel: add.cellLabel, trade: add.trade, ctx1: add.ctx1, ctx2: add.ctx2, geometry: add.geometry,
+        beat: 0, pairs: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0, rows: 0, b: new Set() };
+      acc.perCoin.set(ck, k);
+    }
+    k.rows += add.rows;
+    k.beat += add.beat; k.pairs += add.pairs;
+    k.hold += add.hold; k.holdN += add.holdN;
+    k.trades += add.trades; k.tradesN += add.tradesN;
+    k.vsl += add.vsl; k.vsln += add.vsln;
+    for (const b of add.b) k.b.add(b);
+  }
+  return acc;
+}
+// TASK: fold one shard of the records store — a list of whole blocks, each
+// read exactly once, each row tagged with the block it came from.
+async function s3TallyShardTask({ id, blocks }) {
+  const rowstore = require('./rowstore');
+  const acc = newTallyAcc();
+  for (const bIdx of blocks) {
+    for (const got of rowstore.readBlocks(id, 'records', [bIdx])) tallyFold(acc, got.row, bIdx);
+  }
+  return serializeTallyAcc(acc);
+}
+
 // The two carry orderings stage 1 writes and stage 2 reads — published here
 // (the engine side) so the dropdown, the launch validation and the contract
 // test all read ONE list (RULE FIVE: menus come from the code that
@@ -404,7 +502,8 @@ const S2_ORDERINGS = [
 ];
 
 module.exports = {
-  s1UnitTask, s2UnitTask, s3UnitTask, S2_ORDERINGS,
+  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, S2_ORDERINGS,
+  newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   // the arithmetic, exported so the tests can pencil it
   forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks,
   probsArr, probsObj,

@@ -165,6 +165,12 @@ const GUARDS = [
     'theStoredVoteReadsBackLikeTheLiveOne', 'a stored tie reads back as a different call than the live engine made'],
   [path.join(ROOT, 'lib', 'stages.js'), "if (!S2_ORDERINGS.some((o) => o.value === orderBy)) {", 'if (false) {',
     'theChainRefusalsNameThemselves', 'an ordering stage 1 never wrote silently carries by the default instead of refusing'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'if (children.length) {', 'if (false) {',
+    'theDeleteAsksForTheNameBackAndProtectsParents', 'a parent another set stands on is deleted and every child\'s chain dangles'],
+  [path.join(ROOT, 'lib', 'stages.js'), "if (String(confirm || '') !== doc.id) {", 'if (false) {',
+    'theDeleteAsksForTheNameBackAndProtectsParents', 'asking what would go deletes it — the preview becomes the act'],
+  [path.join(ROOT, 'lib', 'stagework.js'), 'c.beat += add.beat; c.pairs += add.pairs;', 'c.beat += add.beat;',
+    'theShardedTallyFoldsToTheSameAnswer', 'the multithreaded totalling quietly drops comparisons and the shares inflate'],
 ];
 
 const only = process.argv[2] || '';

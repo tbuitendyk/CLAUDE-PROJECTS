@@ -113,9 +113,21 @@ work — the owner reviews decisions in the morning, not at 3am.
     the pooled-mean rule, the zero-spread lead, the per-coin-first ranked
     averages, the stored-vote tie scan, and the ordering validation.
 
-## Parked (found while building; not in the loop)
+## The parked items, answered (owner, 2026-08-27: "no, yes yes")
 
-- Should the old Sweep launcher refuse to start while a stage job runs? (5)
-- A delete control for record sets with parent protection. (10)
-- Multithreading the stage 3 aggregation pass, if the tally build proves slow
-  on the box.
+- **No** — the old Sweep launcher stays unaware of stage runs. Left exactly
+  as it was; only the stage side refuses.
+- **Yes** — the delete control exists: `Delete record set…` on Boards3,
+  two-step with the set's id typed back, refused by name for a set another
+  set names as its parent and refused outright while any stage run is going
+  (a run may be reading its parent at that moment).
+- **Yes** — the stage 3 totalling is multithreaded: one fold rule
+  (lib/stagework.js), sharded across the worker pool by whole blocks when a
+  store is big enough, merged commutatively; a test holds the sharded answer
+  equal to the single pass and a mutation guard proves the test bites.
+
+## Recorded intent, no action taken
+
+Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and
+boards works properly we'll be removing the 4 redundant tabs." Nothing is
+removed until that confirmation and its own GO.

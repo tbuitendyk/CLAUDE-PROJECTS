@@ -583,7 +583,7 @@ function startStage3(params) {
     doc.status = okN === parentRecords.length ? 'done' : 'incomplete';
     doc.progress = doc.status === 'incomplete' ? `finished with ${doc.failures.length} unit(s) missing — the set does not match its own plan` : 'totalling the tables';
     saveSet(doc);
-    try { buildTally(doc); } catch (err) { doc.tallyError = String(err.message || err); }
+    try { await buildTally(doc, pool); } catch (err) { doc.tallyError = String(err.message || err); }
     doc.progress = doc.status === 'incomplete' ? doc.progress : '';
     doc.finishedAt = new Date().toISOString();
     saveSet(doc);
@@ -599,82 +599,60 @@ function startStage3(params) {
 // every-coin tally uses today.
 const zlib = require('zlib');
 const tallyFile = (id) => path.join(SETS_DIR, `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}-tally.json.gz`);
-function buildTally(doc) {
+async function buildTally(doc, pool = null) {
   const id = doc.id;
+  const sw = require('./stagework');
   const blocks = rowstore.blocksOf(id, 'records') || [];
-  const blockOfRow = (at) => {
-    let lo = 0; let hi = blocks.length - 1; let ans = 0;
-    while (lo <= hi) { const mid = (lo + hi) >> 1; if (blocks[mid].firstRow <= at) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
-    return ans;
-  };
-  const perSetting = new Map();   // si -> { label, parts, perCoin: Map(trade -> sums) }
-  const perCoin = new Map();      // cellLabel|trade|ctx|geometry -> sums + rows + blockSet
-  let at = 0;
-  rowstore.each(id, 'records', (r) => {
-    let s = perSetting.get(r.si);
-    if (!s) {
-      s = { si: r.si, label: r.label,
-        decision: r.decision, bandMode: r.bandMode, weekdaysOnly: r.weekdaysOnly,
-        entry: r.entry, gate: r.gate, dMult: r.dMult, tHours: r.tHours, trailMult: r.trailMult, armMult: r.armMult,
-        quorum: r.quorum, members: r.members,
-        perCoin: new Map() };
-      perSetting.set(r.si, s);
+  const acc = sw.newTallyAcc();
+  // Sharded across the pool when one is in hand and the store is big enough
+  // to be worth it (owner order, 2026-08-27: "yes" to multithreading the
+  // totalling). The fold is ONE rule either way, sums are commutative and
+  // the block sets are unions, so the sharded answer IS the single-pass
+  // answer — a test holds the two equal.
+  if (pool && pool.parallel && blocks.length >= 8) {
+    const lanes = Math.max(2, (pool.workers || []).length * 3);
+    const per = Math.ceil(blocks.length / lanes);
+    const shards = [];
+    for (let at = 0; at < blocks.length; at += per) {
+      shards.push({ id, blocks: Array.from({ length: Math.min(per, blocks.length - at) }, (_, k) => at + k) });
     }
-    let c = s.perCoin.get(r.trade);
-    if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0 }; s.perCoin.set(r.trade, c); }
-    c.test += r.pnl || 0; c.testN++;
-    if (r.holdout && r.holdout.pnl != null) {
-      c.hold += r.holdout.pnl; c.holdN++;
-      c.trades += r.holdout.trades || 0;
-      if (r.holdout.vsAlwaysLong != null) { c.vsl += r.holdout.vsAlwaysLong; c.vsln++; }
-    }
-    c.beat += r.beat || 0; c.pairs += r.pairs || 0;
-
-    // the every-coin key groups the CELL across its decision/band/24-5
-    // variants — those are what the records under a row show, exactly as
-    // the drawing had it
-    const cellLabel = r.label.split(' · ')[0];
-    const ck = `${cellLabel}|${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
-    let k = perCoin.get(ck);
-    if (!k) {
-      k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
-        beat: 0, pairs: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0, rows: 0, b: new Set() };
-      perCoin.set(ck, k);
-    }
-    k.rows++;
-    k.beat += r.beat || 0; k.pairs += r.pairs || 0;
-    if (r.holdout && r.holdout.pnl != null) {
-      k.hold += r.holdout.pnl; k.holdN++;
-      k.trades += r.holdout.trades || 0; k.tradesN++;
-      if (r.holdout.vsAlwaysLong != null) { k.vsl += r.holdout.vsAlwaysLong; k.vsln++; }
-    }
-    k.b.add(blockOfRow(at));
-    at++;
-  });
-  const ranked = [...perSetting.values()].map((s) => {
-    const coins = [...s.perCoin.values()];
+    await pool.forEach('s3Tally', shards, (settled) => {
+      if (settled.ok && settled.value) sw.mergeTallyAcc(acc, settled.value);
+      else if (!settled.ok) throw new Error(`a tally shard failed: ${settled.error}`);
+    });
+  } else {
+    let at = 0;
+    const blockOfRow = (rowAt) => {
+      let lo = 0; let hi = blocks.length - 1; let ans = 0;
+      while (lo <= hi) { const mid = (lo + hi) >> 1; if (blocks[mid].firstRow <= rowAt) { ans = mid; lo = mid + 1; } else hi = mid - 1; }
+      return ans;
+    };
+    rowstore.each(id, 'records', (r) => { sw.tallyFold(acc, r, blockOfRow(at)); at++; });
+  }
+  const ranked = [...acc.perSetting.values()].map((st) => {
+    const coins = [...st.perCoin.values()];
     const mean = (f) => {
       const vals = coins.map(f).filter((v) => v != null);
       return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
     };
     const coinHold = coins.map((c) => (c.holdN ? c.hold / c.holdN : null));
     return {
-      si: s.si, label: s.label,
-      decision: s.decision, bandMode: s.bandMode, weekdaysOnly: s.weekdaysOnly,
-      entry: s.entry, gate: s.gate, dMult: s.dMult, tHours: s.tHours, trailMult: s.trailMult, armMult: s.armMult,
-      quorum: s.quorum, members: s.members,
+      si: st.si, label: st.label,
+      decision: st.decision, bandMode: st.bandMode, weekdaysOnly: st.weekdaysOnly,
+      entry: st.entry, gate: st.gate, dMult: st.dMult, tHours: st.tHours, trailMult: st.trailMult, armMult: st.armMult,
+      quorum: st.quorum, members: st.members,
       coins: coins.length,
       coinsInMoney: coinHold.filter((v) => v != null && v > 0).length,
       avgTest: mean((c) => (c.testN ? c.test / c.testN : null)),
       avgHold: mean((c) => (c.holdN ? c.hold / c.holdN : null)),
       avgTrades: mean((c) => (c.holdN ? c.trades / c.holdN : null)),
       avgVsLong: mean((c) => (c.vsln ? c.vsl / c.vsln : null)),
-      beat: [...s.perCoin.values()].reduce((a, c) => a + c.beat, 0),
-      pairs: [...s.perCoin.values()].reduce((a, c) => a + c.pairs, 0),
+      beat: [...st.perCoin.values()].reduce((a, c) => a + c.beat, 0),
+      pairs: [...st.perCoin.values()].reduce((a, c) => a + c.pairs, 0),
     };
   });
   ranked.sort((a, b) => ((b.pairs ? b.beat / b.pairs : -1) - (a.pairs ? a.beat / a.pairs : -1)) || (a.si - b.si));
-  const coins = [...perCoin.values()].map((k) => ({
+  const coins = [...acc.perCoin.values()].map((k) => ({
     cellLabel: k.cellLabel, trade: k.trade, ctx1: k.ctx1, ctx2: k.ctx2, geometry: k.geometry,
     share: k.pairs ? k.beat / k.pairs : null, beat: k.beat, pairs: k.pairs,
     avgHold: k.holdN ? k.hold / k.holdN : null,
@@ -682,7 +660,7 @@ function buildTally(doc) {
     avgVsLong: k.vsln ? k.vsl / k.vsln : null,
     rows: k.rows, b: [...k.b].sort((x, y) => x - y),
   }));
-  const out = { v: 1, builtAt: new Date().toISOString(), rows: at, ranked, coins };
+  const out = { v: 1, builtAt: new Date().toISOString(), rows: acc.rows, ranked, coins };
   atomicWrite(tallyFile(id), zlib.gzipSync(JSON.stringify(out)));
   return out;
 }
@@ -693,6 +671,41 @@ function readTally(id) {
   try { t = JSON.parse(zlib.gunzipSync(fs.readFileSync(tallyFile(id))).toString('utf8')); } catch (_) { t = null; }
   if (t) { tallyInHand.id = id; tallyInHand.tally = t; }
   return t;
+}
+
+// ---- deleting a record set (owner order, 2026-08-27: "yes" to the parked
+// delete control). Two-step, like deleting a run: asked without the set's
+// own id typed back it only reports what would go; a set another set names
+// as its parent is refused by name; nothing is deleted while any stage run
+// is going, because a run may be reading its parent at that moment.
+function childrenOf(id) {
+  return listSets().filter((x) => x.parent && x.parent.id === id).map((x) => ({ id: x.id, name: x.name }));
+}
+function deleteSet(id, confirm) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error(`no record set called "${id}"`);
+  if (activeSet) {
+    throw new Error(`${activeSet.name || activeSet.id} is being written right now — nothing is deleted while a stage run is going`);
+  }
+  const children = childrenOf(doc.id);
+  if (children.length) {
+    throw new Error(`${doc.name} is the parent of ${children.map((c) => c.name).join(', ')} — a set another set names as its `
+      + 'parent is never deleted. Delete the children first.');
+  }
+  const rows = rowstore.count(doc.id, 'records');
+  const bytes = rowstore.bytes(doc.id);
+  if (String(confirm || '') !== doc.id) {
+    return {
+      preview: true, id: doc.id, name: doc.name, stage: doc.stage, status: doc.status,
+      desc: doc.desc || '', rows, bytes, confirmWith: doc.id,
+    };
+  }
+  rowstore.remove(doc.id);
+  try { fs.rmSync(tallyFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
+  try { fs.rmSync(setFile(doc.id), { force: true }); } catch (_) { /* reported below */ }
+  if (recordsInHand.id === doc.id) { recordsInHand.id = null; recordsInHand.rows = null; }
+  if (tallyInHand.id === doc.id) { tallyInHand.id = null; tallyInHand.tally = null; }
+  return { deleted: true, id: doc.id, name: doc.name, rows, bytes };
 }
 
 // ---- reads for Boards3 ------------------------------------------------------------
@@ -805,5 +818,5 @@ module.exports = {
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, buildTally, readTally, seedOf, S3_SORTS,
+  settingsFor, unitsFor, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
 };

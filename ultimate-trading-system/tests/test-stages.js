@@ -118,7 +118,7 @@ module.exports = {
       w.push(mk(1, 'q3/6 y · argmax auto 24/7', 'AAA', 'daily-4d', 'argmax', 7, 12, 19, 1));
       w.close();
 
-      const tally = stages.buildTally({ id });
+      const tally = await stages.buildTally({ id });
       // ranked: setting 0 → coin A mean hold (10+30)/2 = 20, coin B −4;
       // avgHold = (20 − 4) / 2 = 8; coins 2, in the money 1
       const r0 = tally.ranked.find((r) => r.si === 0);
@@ -236,6 +236,76 @@ module.exports = {
       try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
     }
+  },
+
+  // Deleting a record set asks for the name back, refuses a named parent,
+  // and actually removes the files when confirmed (owner order, 2026-08-27:
+  // "yes" to the delete control).
+  async theDeleteAsksForTheNameBackAndProtectsParents() {
+    const stamp = Date.now().toString(36);
+    const parent = { id: `s1-test-${stamp}-p`, stage: 1, seq: 999996, name: 'S1 #del-p', status: 'done', createdAt: new Date().toISOString(), plan: { units: 1 } };
+    const child = { id: `s2-test-${stamp}-c`, stage: 2, seq: 999996, name: 'S2 #del-c', status: 'done', createdAt: new Date().toISOString(), parent: { id: parent.id, name: parent.name }, plan: { units: 1 } };
+    const file = (d) => path.join(SETS_DIR, `${d.id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file(parent), JSON.stringify(parent));
+      fs.writeFileSync(file(child), JSON.stringify(child));
+      const w = rowstore.writer(child.id, 'records');
+      w.push({ u: 0, si: 0, label: 'x · argmax auto 24/7', trade: 'AAA', geometry: 'daily-1d', beat: 1, pairs: 9 });
+      w.close();
+
+      assert.throws(() => stages.deleteSet(parent.id), /is the parent of .*S2 #del-c/,
+        'a set another set names as its parent must be refused by the child\'s name');
+      const look = stages.deleteSet(child.id);
+      assert.strictEqual(look.preview, true);
+      assert.strictEqual(look.confirmWith, child.id);
+      assert.ok(fs.existsSync(file(child)), 'asking what would go must delete nothing');
+      const wrong = stages.deleteSet(child.id, 'not-the-id');
+      assert.strictEqual(wrong.preview, true, 'a wrong name back deletes nothing');
+      const done = stages.deleteSet(child.id, child.id);
+      assert.strictEqual(done.deleted, true);
+      assert.ok(!fs.existsSync(file(child)), 'the set document must be gone');
+      assert.ok(!fs.existsSync(rowstore.storeDir(child.id)), 'the set\'s rows must be gone');
+      const doneP = stages.deleteSet(parent.id, parent.id);
+      assert.strictEqual(doneP.deleted, true, 'with the child gone the parent may go');
+    } finally {
+      try { fs.rmSync(file(parent), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(file(child), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(rowstore.storeDir(child.id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // The sharded tally folds to the same answer as the single pass: sums are
+  // commutative, block sets are unions, and a test — not a comment — holds
+  // the two equal.
+  async theShardedTallyFoldsToTheSameAnswer() {
+    const rows = [];
+    for (let i = 0; i < 12; i++) {
+      rows.push({
+        si: i % 3, label: `q2/6 x t${i}h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false,
+        entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 17, trailMult: null, armMult: null,
+        quorum: 2, members: 6, pnl: i, trades: 1,
+        holdout: { pnl: i - 5, trades: 2, stops: 0, vsAlwaysLong: i - 6 },
+        beat: i % 10, pairs: 9, trade: i % 2 ? 'AAA' : 'BBB', ctx1: null, ctx2: null, geometry: 'daily-1d',
+      });
+    }
+    const one = sw.newTallyAcc();
+    rows.forEach((r, i) => sw.tallyFold(one, r, Math.floor(i / 4)));
+    const merged = sw.newTallyAcc();
+    for (let shard = 0; shard < 3; shard++) {
+      const part = sw.newTallyAcc();
+      rows.slice(shard * 4, shard * 4 + 4).forEach((r) => sw.tallyFold(part, r, shard));
+      sw.mergeTallyAcc(merged, JSON.parse(JSON.stringify(sw.serializeTallyAcc(part))));
+    }
+    const norm = (acc) => {
+      const o = sw.serializeTallyAcc(acc);
+      o.perSetting.sort((a, b) => a.si - b.si);
+      for (const st of o.perSetting) st.perCoin.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      o.perCoin.sort((a, b) => String(a[0]).localeCompare(String(b[0])));
+      for (const [, k] of o.perCoin) k.b.sort((x, y) => x - y);
+      return o;
+    };
+    assert.deepStrictEqual(norm(merged), norm(one), 'the sharded fold must be the single-pass fold, exactly');
   },
 
   // The votes a stage keeps must round-trip the store byte-exactly at the
