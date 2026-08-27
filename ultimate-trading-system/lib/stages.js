@@ -782,8 +782,10 @@ function stage2Table(id, from, n) {
   const rows = allRecords(id).slice().sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
   return {
     total: rows.length, from,
-    rows: rows.slice(from, from + n).map((r) => ({
-      carriedRank: r.carriedRank, s1rank: r.s1rank,
+    // rank is the row's place under THIS table's own order — sequential, so
+    // it cannot echo the stage 1 order column beside it (owner, 2026-08-27)
+    rows: rows.slice(from, from + n).map((r, i) => ({
+      rank: from + i + 1, s1rank: r.s1rank,
       trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
       members: r.specs.length,
       logreg: r.specs.filter((s) => s.model === 'logreg').length,

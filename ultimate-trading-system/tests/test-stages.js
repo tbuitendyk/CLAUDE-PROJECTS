@@ -254,6 +254,8 @@ module.exports = {
       const t2 = stages.stage2Table(id2, 0, 10);
       assert.deepStrictEqual(t2.rows.map((r) => r.trade), ['C1', 'C2', 'C0'],
         'best all-members score first; the tie keeps its carry order');
+      assert.deepStrictEqual(t2.rows.map((r) => r.rank), [1, 2, 3],
+        'stage 2 order is the table\'s own sequence, never an echo of the stage 1 order');
       // the unit's stage 1 reading rides along for the table's null set columns
       assert.deepStrictEqual(t2.rows.map((r) => [r.beat, r.pairs, r.lead]), [[19, 19, 4], [12, 19, 1], [17, 19, 2.5]],
         'beat its own null set and lead over null set are served with each carried row');

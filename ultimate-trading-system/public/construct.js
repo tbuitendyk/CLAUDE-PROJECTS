@@ -4218,7 +4218,7 @@ async function b3DrawStage2(doc, incomplete, view) {
     <h3 style="margin-top:0">Stage 2 — the carried rows, LOGREG joined by BOOST (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place in the carry — the order it went through in">carried</th>
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the table's own order — forecast score with all members, best first">stage 2 order</th>
         <th ${b3th} title="where the same unit ranked at stage 1">stage 1 order</th>
         <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
         <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
@@ -4230,7 +4230,7 @@ async function b3DrawStage2(doc, incomplete, view) {
         <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat, as stage 1 read it. Carried with the unit; the BOOST members never face a null set.">beat its own null set</th>
         <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the stage 1 tie-break, carried with the unit">lead over null set</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
-        <td ${b3td0}>${Number(r.carriedRank).toLocaleString()}</td>
+        <td ${b3td0}>${Number(r.rank).toLocaleString()}</td>
         <td ${b3td}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
         <td ${b3td}>${b3Coin(r)}</td>
         <td ${b3td}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
