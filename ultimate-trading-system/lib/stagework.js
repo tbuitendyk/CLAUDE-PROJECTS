@@ -25,6 +25,7 @@
 // worlds' numbers quietly disagree.
 const bracketLib = require('./bracket');
 const { buildCombo, splitAndLabel, quorumCall, declaredQuorumFor } = require('./bracketwork');
+const agreement = require('./agreement');
 const { standardizeFit, standardizeApply, tuneAndTrain, trainSoftmax, predict: predictLogreg } = require('./logreg');
 const { trainBoost, predictBoost } = require('./boost');
 const { tuneTau } = require('./pipeline');
@@ -328,14 +329,69 @@ async function s3UnitTask(task) {
     callCache.set(key, out);
     return out;
   };
+  // The members' strengths, sliced and dealt exactly as their calls are, so
+  // a rule that reads how strongly they lean sees the same moments in the
+  // same order as a rule that only counts them.
+  const probCache = new Map();
+  const probsFor = (dealIdx, slice) => {
+    const key = `${dealIdx}|${slice}`;
+    if (probCache.has(key)) return probCache.get(key);
+    const offset = slice === 'hold' ? nTest : 0;
+    const len = slice === 'hold' ? holdChunks.length : nTest;
+    const out = memberProbs.map((mp) => {
+      const arr = new Array(len);
+      for (let i = 0; i < len; i++) arr[i] = mp[offset + i];
+      if (dealIdx >= 0) { const order = deals[dealIdx][slice]; return order.map((k) => arr[k]); }
+      return arr;
+    });
+    probCache.set(key, out);
+    return out;
+  };
+
+  // WHAT THE COMMITTEE ACTUALLY IS, measured on the test slice and never on
+  // the held-back window: which members are independent voices and which are
+  // near-copies of each other. A null-set deal shuffles every member by the
+  // SAME order, so the committee's own structure is untouched by it — the
+  // weights and cutoffs below are worked out once, from the real test slice,
+  // and are correct for the deals too.
+  const models = (unit.members || []).map((m) => (m.spec || {}).model || 'logreg');
+  const families = (unit.members || []).map((m) => (m.spec || {}).view || 'full');
+  const voiceCache = new Map();
+  const voicesFor = (decision) => {
+    if (voiceCache.has(decision)) return voiceCache.get(decision);
+    const v = agreement.voiceGroups(callsFor(decision, -1, 'test'), nTest);
+    voiceCache.set(decision, v);
+    return v;
+  };
+  const cutoffCache = new Map();
+  const cutoffFor = (decision, pct) => {
+    const key = `${decision}|${pct}`;
+    if (cutoffCache.has(key)) return cutoffCache.get(key);
+    const c = agreement.percentileCutoff(callsFor(decision, -1, 'test'), nTest, pct);
+    cutoffCache.set(key, c);
+    return c;
+  };
+  // The rung a share lands on for THIS unit, under this rule.
+  const rungFor = (rule, pct, decision) => {
+    const M = memberProbs.length;
+    const n = rule === 'voices' ? voicesFor(decision).voices
+      : rule === 'families' ? new Set(families).size : M;
+    return Math.max(1, Math.min(n, Math.ceil((pct / 100) * n)));
+  };
+
   const streamCache = new Map();
-  const streamFor = (decision, q, dealIdx, slice) => {
-    const key = `${decision}|${q}|${dealIdx}|${slice}`;
+  const streamFor = (decision, agr, dealIdx, slice) => {
+    const key = `${decision}|${agr.rule}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}|${dealIdx}|${slice}`;
     if (streamCache.has(key)) return streamCache.get(key);
     const calls = callsFor(decision, dealIdx, slice);
-    const len = slice === 'hold' ? holdChunks.length : nTest;
-    const s = new Array(len);
-    for (let i = 0; i < len; i++) s[i] = quorumCall(calls, i, q);
+    const ctx = {
+      calls, models, families,
+      probs: agr.rule === 'conviction' ? probsFor(dealIdx, slice) : null,
+      weights: agr.rule === 'voices' ? voicesFor(decision).weights : null,
+      cutoff: agr.rule === 'unusual' ? cutoffFor(decision, agr.pct) : null,
+    };
+    const level = agr.rule === 'unusual' ? agr.pct : rungFor(agr.rule, agr.pct, decision);
+    const s = agreement.agreementStream(ctx, agr.rule, level, { bothModels: agr.both, persist: agr.persist });
     streamCache.set(key, s);
     return s;
   };
@@ -356,15 +412,20 @@ async function s3UnitTask(task) {
     const bandPct = stream.band === 'auto' ? unit.bandPct : Math.abs(Number(stream.band));
     const tIdx = stream.weekdaysOnly ? wkTest : testChunks.map((_, i) => i);
     const hIdx = stream.weekdaysOnly ? wkHold : holdChunks.map((_, i) => i);
-    const q = declaredQuorumFor(st, memberProbs.length, combo.size);
+    const agr = {
+      rule: st.agreeRule || 'count',
+      pct: Number(st.agreePct) || 50,
+      both: !!st.agreeBoth,
+      persist: Math.max(0, Math.floor(Number(st.agreePersist) || 0)),
+    };
     const cell = { entry: st.entry, gate: st.gate, dMult: st.dMult, tHours: st.tHours, trailMult: st.trailMult ?? null, armMult: st.armMult ?? null };
-    const testCallsAll = streamFor(stream.decision, q, -1, 'test');
+    const testCallsAll = streamFor(stream.decision, agr, -1, 'test');
     const tRes = bracketLib.simCell(cell, pick(testChunks, tIdx), pick(testCallsAll, tIdx), maps.trade, geo, bandPct, fee);
     let holdout = null;
     let beat = 0;
     let lead = null;
     if (holdChunks.length) {
-      const holdCallsAll = streamFor(stream.decision, q, -1, 'hold');
+      const holdCallsAll = streamFor(stream.decision, agr, -1, 'hold');
       const hRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(holdCallsAll, hIdx), maps.trade, geo, bandPct, fee);
       const hc = holdControlsFor(holdChunks, hIdx, st.tHours, stream.weekdaysOnly ? 'wk' : 'all');
       holdout = {
@@ -373,7 +434,7 @@ async function s3UnitTask(task) {
       };
       const dealPnls = [];
       for (let d = 0; d < nullN; d++) {
-        const dh = streamFor(stream.decision, q, d, 'hold');
+        const dh = streamFor(stream.decision, agr, d, 'hold');
         const dRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), maps.trade, geo, bandPct, fee);
         dealPnls.push(dRes.pnl);
         if (hRes.pnl > dRes.pnl) beat++;
@@ -391,7 +452,9 @@ async function s3UnitTask(task) {
       bandPct,
       entry: st.entry, gate: st.gate, dMult: st.dMult ?? null, tHours: st.tHours,
       trailMult: st.trailMult ?? null, armMult: st.armMult ?? null,
-      quorum: q, members: memberProbs.length,
+      agreeRule: agr.rule, agreePct: agr.pct, agreeBoth: agr.both, agreePersist: agr.persist,
+      rung: agr.rule === 'unusual' ? cutoffFor(stream.decision, agr.pct) : rungFor(agr.rule, agr.pct, stream.decision),
+      members: memberProbs.length, voices: voicesFor(stream.decision).voices,
       pnl: tRes.pnl, trades: tRes.trades,
       holdout,
       beat, pairs: holdChunks.length ? nullN : 0, lead,
@@ -416,13 +479,16 @@ function tallyFold(acc, r, blockIdx) {
     s = { si: r.si, label: r.label,
       decision: r.decision, bandMode: r.bandMode, weekdaysOnly: r.weekdaysOnly,
       entry: r.entry, gate: r.gate, dMult: r.dMult, tHours: r.tHours, trailMult: r.trailMult, armMult: r.armMult,
-      quorum: r.quorum, members: r.members,
+      agreeRule: r.agreeRule, agreePct: r.agreePct, agreeBoth: r.agreeBoth, agreePersist: r.agreePersist,
+      members: r.members,
       perCoin: new Map() };
     acc.perSetting.set(r.si, s);
   }
   let c = s.perCoin.get(r.trade);
-  if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0 }; s.perCoin.set(r.trade, c); }
+  if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0 }; s.perCoin.set(r.trade, c); }
   c.test += r.pnl || 0; c.testN++;
+  if (r.rung != null) { c.rung += r.rung; c.rungN++; }
+  if (r.voices != null) { c.voices += r.voices; c.voicesN++; }
   if (r.holdout && r.holdout.pnl != null) {
     c.hold += r.holdout.pnl; c.holdN++;
     c.trades += r.holdout.trades || 0;
@@ -467,11 +533,13 @@ function mergeTallyAcc(acc, part) {
     if (!s) { s = { ...ps, perCoin: new Map() }; delete s.perCoin; s.perCoin = new Map(); acc.perSetting.set(ps.si, s); }
     for (const [trade, add] of ps.perCoin) {
       let c = s.perCoin.get(trade);
-      if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0 }; s.perCoin.set(trade, c); }
+      if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0 }; s.perCoin.set(trade, c); }
       c.test += add.test; c.testN += add.testN; c.hold += add.hold; c.holdN += add.holdN;
       c.trades += add.trades; c.vsl += add.vsl; c.vsln += add.vsln;
       c.beat += add.beat; c.pairs += add.pairs;
       c.ld += add.ld || 0; c.ldN += add.ldN || 0;
+      c.rung += add.rung || 0; c.rungN += add.rungN || 0;
+      c.voices += add.voices || 0; c.voicesN += add.voicesN || 0;
     }
   }
   for (const [ck, add] of part.perCoin) {

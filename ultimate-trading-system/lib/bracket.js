@@ -19,10 +19,16 @@ const { HOUR_MS } = require('./binance');
 // one up keeps it above its first use rather than relying on load order.)
 const { pnlAt, NOTIONAL, feeRate } = require('./paper');
 const { buildChunks, GEOMETRIES } = require('./dataset');
-const { viewIndices } = require('./features');
+const feats = require('./features');
+const { viewIndices } = feats;
 
-const PER_ASSET = (nDays) => nDays + 12;
-const CROSS = 4;
+// Both counts now come from the measurement block itself and are the SAME
+// at every chunk shape (owner loop, 2026-08-28) — the old per-asset count
+// grew with the days in the chunk, which is what let numbers go frozen at
+// the shortest shape.
+const PER_ASSET_N = feats.PER_ASSET;
+const PER_ASSET = () => PER_ASSET_N;
+const CROSS = feats.CROSS;
 
 // View index arrays for each combo size over the composite layouts above.
 // Singles have no cross view (nothing to cross) — callers get null there.
@@ -31,17 +37,17 @@ function comboViews(size, nDays) {
   const two = (view) => viewIndices(view, nDays); // over [P][P][4]
   if (size === 1) {
     const only = (view) => two(view).filter((i) => i < P);
-    return { featureCount: P, views: { full: only('full'), prices: only('prices'), volume: only('volume'), cross: null } };
+    return { featureCount: P, views: { full: only('full'), prices: only('prices'), volume: only('volume'), pricevol: only('pricevol'), cross: null } };
   }
   if (size === 2) {
-    return { featureCount: 2 * P + CROSS, views: { full: two('full'), prices: two('prices'), volume: two('volume'), cross: two('cross') } };
+    return { featureCount: 2 * P + CROSS, views: { full: two('full'), prices: two('prices'), volume: two('volume'), pricevol: two('pricevol'), cross: two('cross') } };
   }
   // triple: AB layout indices as-is, plus the AC context half re-based to
   // sit after the AB vector (AC context block starts at P in its own build).
   const base = 2 * P + CROSS;
   const acPart = (view) => two(view).filter((i) => i >= P).map((i) => base + (i - P));
   const both = (view) => [...two(view), ...acPart(view)];
-  return { featureCount: base + P + CROSS, views: { full: both('full'), prices: both('prices'), volume: both('volume'), cross: both('cross') } };
+  return { featureCount: base + P + CROSS, views: { full: both('full'), prices: both('prices'), volume: both('volume'), pricevol: both('pricevol'), cross: both('cross') } };
 }
 
 // Assemble one combo's chunks. maps = { trade, ctx1?, ctx2? } (forward-filled

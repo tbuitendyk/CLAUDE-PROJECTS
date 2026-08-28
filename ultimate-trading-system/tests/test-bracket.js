@@ -81,20 +81,23 @@ module.exports = {
   },
   async comboLayoutsCompose() {
     const nDays = 3;
-    const P = PER_ASSET(nDays); // 15
+    const P = PER_ASSET(nDays); // 21 — the same at every chunk shape now
+    const X = require('../lib/features').CROSS; // 5
     const s1 = comboViews(1, nDays);
     const s2 = comboViews(2, nDays);
     const s3 = comboViews(3, nDays);
     assert.strictEqual(s1.featureCount, P);
-    assert.strictEqual(s2.featureCount, 2 * P + 4);
-    assert.strictEqual(s3.featureCount, 3 * P + 8);
+    assert.strictEqual(s2.featureCount, 2 * P + X);
+    assert.strictEqual(s3.featureCount, 3 * P + 2 * X);
     assert.strictEqual(s1.views.cross, null); // nothing to cross on a single
-    assert.strictEqual(s2.views.cross.length, 4);
-    assert.strictEqual(s3.views.cross.length, 8); // AB cross + AC cross
+    assert.strictEqual(s2.views.cross.length, X);
+    assert.strictEqual(s3.views.cross.length, 2 * X); // AB cross + AC cross
+    // the fourth reading exists on every combo size (owner order, 2026-08-28)
+    assert.ok(s1.views.pricevol.length > 0 && s2.views.pricevol.length > 0 && s3.views.pricevol.length > 0);
     // full views cover the whole layout exactly once
     assert.strictEqual(s1.views.full.length, P);
-    assert.strictEqual(s3.views.full.length, 3 * P + 8);
-    assert.strictEqual(new Set(s3.views.full).size, 3 * P + 8);
+    assert.strictEqual(s3.views.full.length, 3 * P + 2 * X);
+    assert.strictEqual(new Set(s3.views.full).size, 3 * P + 2 * X);
     // every triple index in range
     for (const i of s3.views.full) assert.ok(i >= 0 && i < s3.featureCount);
   },
@@ -873,7 +876,10 @@ module.exports = {
     // it learns: every promoted seat must be a unique (view, model) pair and
     // specs must carry nothing else.
     const { specsFor } = require('../lib/bracketwork');
-    for (const [size, views] of [[1, 3], [2, 4], [3, 4]]) {
+    // four readings for a coin on its own, five when it is read alongside
+    // others (owner order, 2026-08-28: the fourth reading, so a single has
+    // 8 members too)
+    for (const [size, views] of [[1, 4], [2, 5], [3, 5]]) {
       const prom = specsFor(size, 'promoted');
       assert.strictEqual(prom.length, views * 2, `promoted committee for size ${size}`);
       const keys = new Set(prom.map((s) => `${s.view}|${s.model}`));

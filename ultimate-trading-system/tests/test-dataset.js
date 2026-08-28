@@ -74,14 +74,14 @@ module.exports = {
     assert.deepStrictEqual(chunks.map((c) => c.label), [1, -1, 0]);
     assert.ok(Math.abs(chunks[0].diffPct - 5) < 1e-9);
     assert.ok(Math.abs(chunks[1].diffPct + 5) < 1e-9);
-    assert.strictEqual(chunks[0].x.length, 44); // compressed is the default
+    assert.strictEqual(chunks[0].x.length, 47); // compressed is the default: 21 per asset + 5 cross
     assert.ok(dropped.noLabel >= 1); // tail Mondays can't see their Thursday
   },
   async featureSetSelectsRepresentation() {
     const { trade, compare } = buildFixture();
     const compressed = buildChunks(trade, compare, 2, 'compressed');
     const raw = buildChunks(trade, compare, 2, 'raw');
-    assert.strictEqual(compressed.chunks[0].x.length, 44);
+    assert.strictEqual(compressed.chunks[0].x.length, 47);
     assert.strictEqual(raw.chunks[0].x.length, FEATURE_COUNT); // 1920
     // Same chunks, same labels — only the representation differs.
     assert.deepStrictEqual(compressed.chunks.map((c) => c.label), raw.chunks.map((c) => c.label));
@@ -196,7 +196,7 @@ module.exports = {
     assert.strictEqual(chunks[0].c2, 105); // exit: +42h open
     assert.ok(Math.abs(chunks[0].diffPct - 5) < 1e-9);
     assert.deepStrictEqual(chunks.map((c) => c.label), [1, 0, 0, 0, 0]);
-    assert.strictEqual(chunks[0].x.length, 30); // (1+12)×2 + 4 cross
+    assert.strictEqual(chunks[0].x.length, 47); // 21×2 + 5 cross — the SAME width at every chunk shape now
   },
   async multiDayGeometriesUseTheirOwnOffsets() {
     // daily-3d: entry +73h, exit +114h. Set exit open to 90 -> label -1.
@@ -208,7 +208,7 @@ module.exports = {
     assert.ok(first, 'chunk at the fixture start exists');
     assert.strictEqual(first.label, -1);
     assert.strictEqual(first.c2, 90);
-    assert.strictEqual(first.x.length, 34); // (3+12)×2 + 4 cross
+    assert.strictEqual(first.x.length, 47); // 21×2 + 5 cross — the same width as every other shape
   },
   async weekdayModeKeepsTheRegisteredStarts() {
     // The 24/5 table exactly as specified by the owner: 4 runs/week for 1d,

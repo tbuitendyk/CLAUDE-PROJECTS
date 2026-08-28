@@ -90,7 +90,11 @@ module.exports.menuGridMatchesTheSweepAndRefusesShiftedWindows = async function 
     const res = await unitTask({ combo, branch, stage: 'promoted', params });
     assert.ok(res.memberDump && res.best, 'promoted unit must dump members and pick a best cell');
     const grid = await menuGridTask({ combo, branch, params, dump: res.memberDump });
-    assert.strictEqual(grid.cells.length, 6 * 2, '6 agreement levels x (1 breakout cell + 1 market cell)');
+    // one agreement level per member, times (1 breakout cell + 1 market cell).
+    // Read from the engine's own committee so adding a reading can never
+    // leave a hand-typed number behind (owner loop, 2026-08-28).
+    const seats = require('../lib/bracketwork').specsFor(combo.size, 'promoted').length;
+    assert.strictEqual(grid.cells.length, seats * 2, `${seats} agreement levels x (1 breakout cell + 1 market cell)`);
     const twin = grid.cells.find((c) => c.quorum === res.best.quorum
       && c.entry === (res.best.entry || 'breakout') && c.tHours === res.best.tHours
       && (c.entry === 'market' || c.dMult === res.best.dMult));

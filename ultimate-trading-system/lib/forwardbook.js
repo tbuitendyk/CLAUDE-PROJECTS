@@ -49,6 +49,7 @@ const BOOKS = [
     combo: { trade: 'LTCUSDT', ctx1: 'XRPUSDT', ctx2: 'BCHUSDT', size: 3 },
     branch: { geometry: 'daily-4d', decision: 'argmax', band: 1.69, weekdaysOnly: false },
     stage: 'slim',
+    measurements: 2,
     members: [
       { model: 'logreg', view: 'full' }, { model: 'logreg', view: 'prices' },
       { model: 'logreg', view: 'volume' }, { model: 'logreg', view: 'cross' },
@@ -62,6 +63,7 @@ const BOOKS = [
     combo: { trade: 'XLMUSDT', ctx1: 'DOTUSDT', ctx2: 'TRXUSDT', size: 3 },
     branch: { geometry: 'daily-4d', decision: 'directional', band: 1.61, weekdaysOnly: false },
     stage: 'slim',
+    measurements: 2,
     members: [
       { model: 'logreg', view: 'full' }, { model: 'logreg', view: 'prices' },
       { model: 'logreg', view: 'volume' }, { model: 'logreg', view: 'cross' },
@@ -75,6 +77,7 @@ const BOOKS = [
     combo: { trade: 'XLMUSDT', ctx1: 'DOTUSDT', ctx2: 'TRXUSDT', size: 3 },
     branch: { geometry: 'daily-4d', decision: 'directional', band: 1.61, weekdaysOnly: false },
     stage: 'promoted',
+    measurements: 2,
     members: [
       { model: 'logreg', view: 'full' }, { model: 'boost', view: 'full' },
       { model: 'logreg', view: 'prices' }, { model: 'boost', view: 'prices' },
@@ -88,8 +91,25 @@ const BOOKS = [
 
 // A frozen member list that has silently drifted from what the engine builds
 // is the QC 71 failure mode wearing different clothes. Fail loudly at load.
+//
+// A BOOK NAMES THE MEASUREMENT BLOCK IT WAS FROZEN AGAINST (owner loop,
+// 2026-08-28). The block was rewritten — the numbers a member reads are in
+// different places and several of the old ones no longer exist — so these
+// three books cannot match today's engine and never will. Re-freezing them
+// against the new engine would silently turn each into a DIFFERENT
+// experiment, which is precisely what this check exists to stop, so they are
+// reported as waiting on a deliberate restart instead. A book frozen against
+// the CURRENT block is checked exactly as strictly as before.
+const CURRENT_MEASUREMENTS = require('./features').MEASUREMENTS_VERSION;
+
+function staleBooks() {
+  return BOOKS.filter((b) => (b.measurements || 0) !== CURRENT_MEASUREMENTS)
+    .map((b) => ({ id: b.id, measurements: b.measurements || 0, why: `frozen against measurement block ${b.measurements || 'unknown'}; this box builds ${CURRENT_MEASUREMENTS}` }));
+}
+
 function assertFrozenMembersMatchEngine() {
   for (const b of BOOKS) {
+    if ((b.measurements || 0) !== CURRENT_MEASUREMENTS) continue;   // reported by staleBooks, not silently absorbed
     const built = specsFor(b.combo.size, b.stage);
     const a = JSON.stringify(built.map((s) => ({ model: s.model, view: s.view })));
     const f = JSON.stringify(b.members);
@@ -217,6 +237,7 @@ async function scoreAll(opts = {}) {
 }
 
 module.exports = {
+  staleBooks,
   BOOKS, TRAIN_THROUGH, SCORE_FROM, VERDICT_FLOOR_TRADES,
   scoreBook, scoreAll, assertFrozenMembersMatchEngine, splitFrozen,
 };

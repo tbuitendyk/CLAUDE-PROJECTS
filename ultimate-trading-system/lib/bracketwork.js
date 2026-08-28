@@ -71,7 +71,13 @@ async function getMap(sym, p) {
   return filled;
 }
 
-const slimViewsFor = (size) => (size === 1 ? ['full', 'prices', 'volume'] : ['full', 'prices', 'volume', 'cross']);
+// THE READINGS A MEMBER IS TRAINED ON (owner order, 2026-08-28: add the
+// fourth reading, so a coin judged on its own has 8 members too).
+// 'pricevol' is price and volume TOGETHER — numbers neither narrow reading
+// can express and a straight-line model can never build for itself.
+const slimViewsFor = (size) => (size === 1
+  ? ['full', 'prices', 'volume', 'pricevol']
+  : ['full', 'prices', 'volume', 'pricevol', 'cross']);
 
 // How many members must agree, for THIS committee.
 //

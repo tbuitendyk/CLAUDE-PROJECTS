@@ -24,7 +24,7 @@ const { CONFIG_SCHEMA_VERSION } = require('./version');
 
 const SYMBOL_RE = /^[A-Z0-9]{5,12}$/;
 const MODELS = new Set(['logreg', 'boost']);
-const VIEWS = new Set(['full', 'prices', 'volume', 'cross']);
+const VIEWS = new Set(['full', 'prices', 'volume', 'pricevol', 'cross']);
 const DECISIONS = new Set(['argmax', 'directional']);
 const ENTRIES = new Set(['market', 'breakout']);
 const GATES = new Set(['directional', 'active']);

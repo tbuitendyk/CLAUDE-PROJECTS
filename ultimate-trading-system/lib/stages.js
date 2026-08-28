@@ -21,8 +21,24 @@ const { stampManifest, manifestDiff } = require('./manifest');
 const { GEOMETRIES } = require('./dataset');
 const bracketLib = require('./bracket');
 const batch = require('./batch');
+const agreement = require('./agreement');
+// One training per reading — read from the reading list itself, so adding a
+// reading can never leave a count behind that was typed in by hand.
+// HOW MANY INDEPENDENT VOICES a board really holds (owner loop, 2026-08-28).
+// Members that call the same way almost every time are one voice however
+// differently they were built. Measured on the TEST slice only, and recorded
+// beside the member count so a reading that adds members without adding
+// voices is visible instead of invisible — which is exactly how six members
+// voting as three went unnoticed until the owner found it in the tables.
+function voicesOf(members, nTest) {
+  if (!Array.isArray(members) || !members.length || !nTest) return null;
+  const calls = members.map((m) => (m.probs || []).slice(0, nTest).map(agreement.argmaxCall));
+  return agreement.voiceGroups(calls, nTest).voices;
+}
+const trainingsPerUnit = (size) => require('./bracketwork').slimViewsFor(size === 1 ? 1 : 2).length;
 
 const ENGINE_VERSION = require('../package.json').version;
+const MEASUREMENTS_VERSION = require('./features').MEASUREMENTS_VERSION;
 const SETS_DIR = path.join(__dirname, '..', 'data', 'stagesets');
 
 // ---- set documents -----------------------------------------------------------
@@ -235,6 +251,7 @@ function startStage1(params) {
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
+    measurements: MEASUREMENTS_VERSION,
     // The owner's current campaign name rides on every launch, exactly as it
     // does on the sweeps (owner order, 2026-08-04; carried here 2026-08-27).
     params: { universe, sizes, geometries, windowLayout, nullN, ...p, campaign: require('./campaign').getCampaign() || null },
@@ -242,7 +259,7 @@ function startStage1(params) {
     plan: { units: units.length, unitList: units },
     perf: {
       unitsDone: 0, unitsTotal: units.length, elapsedMs: 0, etaMs: null, workers: null,
-      cyclesDone: 0, cyclesTotal: units.reduce((nn, uu) => nn + (uu.size === 1 ? 3 : 4), 0), cyclesWord: 'trainings',
+      cyclesDone: 0, cyclesTotal: units.reduce((nn, uu) => nn + trainingsPerUnit(uu.size), 0), cyclesWord: 'trainings',
     },
     failures: [],
     counts: null,
@@ -273,6 +290,7 @@ function startStage1(params) {
           u: i, trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size, geometry: u.geometry,
           bandPct: res.bandPct, counts: res.counts, reserve: res.reserve || null,
           specs: res.members.map((m) => ({ ...m.spec, picked: m.picked })),
+          voices: voicesOf(res.members, (res.counts || {}).test || 0),
           score: res.score, beat: res.beat, pairs: res.pairs, lead: res.lead,
           nullScores: res.nullScores,
           blocks: ranges,
@@ -285,7 +303,7 @@ function startStage1(params) {
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
-      doc.perf.cyclesDone += u.size === 1 ? 3 : 4;
+      doc.perf.cyclesDone += trainingsPerUnit(u.size);
       doc.progress = `stage 1: ${doc.perf.unitsDone}/${units.length} units \u00b7 `
         + `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings (${unitKeyOf(u)})`;
       saveSet(doc);
@@ -323,6 +341,15 @@ function parentOrRefuse(fromId, wantStage) {
   if (!parent) throw new Error(`no record set called "${fromId}"`);
   if (parent.stage !== wantStage) throw new Error(`${parent.name || parent.id} is a stage ${parent.stage} set — this launch needs a stage ${wantStage} one`);
   if (parent.status !== 'done') throw new Error(`${parent.name} is ${parent.status} — only a finished set can be read from`);
+  // A set built on an older measurement block can never be a parent: its
+  // members were trained on numbers that no longer exist, in positions that
+  // now hold something else. Refused by name, with what to do about it.
+  const pm = parent.measurements || 0;
+  if (pm !== MEASUREMENTS_VERSION) {
+    throw new Error(`${parent.name || parent.id} was built on measurement block ${pm || 'v2 or older'} and this box builds `
+      + `${MEASUREMENTS_VERSION} — every member in it was trained on numbers that no longer exist. Start a new stage 1; `
+      + 'the old set stays on disk until you delete it.');
+  }
   if (parent.engineVersion && parent.engineVersion !== ENGINE_VERSION) {
     throw new Error(`${parent.name} was written by engine ${parent.engineVersion} and this box runs ${ENGINE_VERSION} — `
       + 'votes kept by one version of the arithmetic cannot be priced by another without saying so');
@@ -481,6 +508,7 @@ function startStage2(params) {
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
+    measurements: MEASUREMENTS_VERSION,
     parent: {
       id: parent.id, name: parent.name, carry: carried.length, of: ranking.length,
       sortedBy: saved ? sortLabel(saved) : 'the fixed rule',
@@ -492,7 +520,7 @@ function startStage2(params) {
     plan: { units: carried.length },
     perf: {
       unitsDone: 0, unitsTotal: carried.length, elapsedMs: 0, etaMs: null, workers: null,
-      cyclesDone: 0, cyclesTotal: carried.reduce((nn, row) => nn + ((parentRecords.get(row.u) || {}).size === 1 ? 3 : 4), 0), cyclesWord: 'trainings',
+      cyclesDone: 0, cyclesTotal: carried.reduce((nn, row) => nn + trainingsPerUnit((parentRecords.get(row.u) || {}).size), 0), cyclesWord: 'trainings',
     },
     failures: [],
     counts: null,
@@ -561,6 +589,8 @@ function startStage2(params) {
           trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
           bandPct: rec.bandPct, counts: rec.counts,
           specs: merged.members.map((m) => ({ ...m.spec, picked: m.picked })),
+          voices: voicesOf(merged.members, merged.ts.test.length),
+          voices3: voicesOf(merged.members.slice(0, rec.specs.length), merged.ts.test.length),
           score3: res.score3, scoreAll: res.scoreAll, helped: res.helped,
           beat: rec.beat, pairs: rec.pairs, lead: rec.lead,
           blocks: ranges,
@@ -573,7 +603,7 @@ function startStage2(params) {
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (carried.length - doc.perf.unitsDone)) : null;
-      doc.perf.cyclesDone += rec.size === 1 ? 3 : 4;
+      doc.perf.cyclesDone += trainingsPerUnit(rec.size);
       doc.progress = `stage 2: ${doc.perf.unitsDone}/${carried.length} carried units \u00b7 `
         + `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings`;
       saveSet(doc);
@@ -593,16 +623,97 @@ function startStage2(params) {
 }
 
 // ---- STAGE 3 --------------------------------------------------------------------
-// The settings block: (decision x band x 24/5 variants) x the declared cell
-// block, agree included — the cell side expanded and validated by the SAME
-// expandDeclared the sweep launcher uses, so a block here can never contain a
-// setting the old path would refuse.
-function settingsFor(params) {
+// ---- THE AGREEMENT DIAL (owner loop, 2026-08-28) --------------------------
+//
+// The old dial was a COUNT, and it needed one number per committee size —
+// which is why settings were named things like "q3/6+4/8": two bars, one of
+// which never applied. The dial is now a SHARE OF THE COMMITTEE, so one
+// number means the same thing whether a coin's committee holds 8 members or
+// 32, and no committee size appears in any name ever again.
+//
+// The menu is chosen so that every whole rung of an 8-member and of a
+// 10-member committee is reachable; shares that land on the same rung for
+// every unit in a run are dropped at launch rather than priced twice.
+const AGREE_PCTS = [10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100];
+const PERSISTS = [0, 1, 2];
+
+// How many members and how many kinds of evidence a unit of this size holds.
+// A coin judged on its own is read four ways; one read alongside others has
+// a fifth reading, the cross-coin one.
+const readingsForSize = (size) => (size === 1 ? 4 : 5);
+const membersForSize = (size) => readingsForSize(size) * 2;
+// The rung a share lands on for a committee of this many.
+const rungFor = (pct, n) => Math.max(1, Math.min(n, Math.ceil((pct / 100) * n)));
+
+// The trade shape's name, without any agreement in it.
+function shapeLabel(cell) {
+  const trailBit = cell.trailMult == null ? '' : ` trail${cell.trailMult}x/arm${cell.armMult}x`;
+  return cell.entry === 'market'
+    ? `market t${cell.tHours}h`
+    : `${cell.gate} d${cell.dMult}x t${cell.tHours}h${trailBit}`;
+}
+function agreeLabel(a) {
+  return `${a.rule} ${a.pct}%${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}`;
+}
+
+// Every agreement setting the block declares, with the shares that cannot be
+// told apart on THIS run's units removed. Shares are only comparable up front
+// for the rules whose rung depends on committee size alone; the voices rule
+// and the unusual rule resolve against each unit's own data at pricing time,
+// so their shares all stand.
+function agreementsFor(params, sizes) {
+  const rules = params.agreePermuteRule
+    ? agreement.AGREE_RULES.slice()
+    : [agreement.AGREE_RULES.includes(params.agreeRule) ? params.agreeRule : 'count'];
+  const pcts = params.agreePermutePct ? AGREE_PCTS.slice() : [Number(params.agreePct) || 50];
+  for (const p of pcts) if (!Number.isFinite(p) || p <= 0 || p > 100) throw new Error(`agreement share must be a percent above 0, not "${p}"`);
+  const boths = params.agreePermuteBoth ? [false, true] : [!!params.agreeBothModels];
+  const persists = params.agreePermutePersist ? PERSISTS.slice() : [Math.max(0, Math.floor(Number(params.agreePersist) || 0))];
+  const seenSizes = (sizes && sizes.length ? sizes : [1]);
+  const out = [];
+  const seen = new Set();
+  for (const rule of rules) {
+    for (const pct of pcts) {
+      // the rungs this share lands on, one per committee size in the run
+      let key = null;
+      if (rule === 'count' || rule === 'conviction') {
+        key = `${rule}|${seenSizes.map((z) => rungFor(pct, membersForSize(z))).join(',')}`;
+      } else if (rule === 'families') {
+        key = `${rule}|${seenSizes.map((z) => rungFor(pct, readingsForSize(z))).join(',')}`;
+      }
+      for (const bothModels of boths) {
+        for (const persist of persists) {
+          const k = key === null ? null : `${key}|${bothModels}|${persist}`;
+          if (k !== null) { if (seen.has(k)) continue; seen.add(k); }
+          out.push({ rule, pct, bothModels, persist });
+        }
+      }
+    }
+  }
+  return out;
+}
+
+// The settings block: (decision x band x 24/5) x (the trade shape) x (the
+// agreement). The trade shape is still expanded and validated by the SAME
+// enumerator the sweep launcher uses, so a block here can never contain a
+// trade the old path would refuse; the agreement dimension is this stage's
+// own, because the old path cannot express any of it.
+function settingsFor(params, sizes = null) {
   const grid = {
     dMults: bracketLib.D_MULTS, tHours: bracketLib.T_HOURS, gates: bracketLib.GATES,
     entries: bracketLib.ENTRIES, trailMults: bracketLib.TRAIL_MULTS, armMults: bracketLib.ARM_MULTS,
   };
-  const cells = batch.expandDeclared(params.cell, params.cellPermute || null, grid);
+  // the shape side only — the agreement never travels through the old
+  // enumerator, so its 'agree' permute is switched off here by construction
+  const shapeCell = { ...(params.cell || {}) };
+  delete shapeCell.quorumSingles;
+  delete shapeCell.quorumContexts;
+  delete shapeCell.quorumRatio;
+  shapeCell.quorum = 1;
+  const shapePermute = { ...(params.cellPermute || {}) };
+  delete shapePermute.agree;
+  const cells = batch.expandDeclared(shapeCell, shapePermute, grid);
+  const agrees = agreementsFor(params, sizes);
   const decisions = params.permuteDecision ? ['argmax', 'directional'] : [params.decision === 'directional' ? 'directional' : 'argmax'];
   const BAND_MENU = ['auto', 3, 5, 8];
   const bands = params.permuteBand ? BAND_MENU : [params.band === 'auto' || params.band === undefined || params.band === '' ? 'auto' : Number(params.band)];
@@ -613,11 +724,14 @@ function settingsFor(params) {
     for (const band of bands) {
       for (const wk of weekdays) {
         for (const cell of cells) {
-          out.push({
-            ...cell,
-            decision, band, weekdaysOnly: wk,
-            label: `${cell.label} · ${decision} ${band === 'auto' ? 'auto' : `${band}%`} ${wk ? '24/5' : '24/7'}`,
-          });
+          for (const a of agrees) {
+            out.push({
+              ...cell, quorum: undefined,
+              agreeRule: a.rule, agreePct: a.pct, agreeBoth: a.bothModels, agreePersist: a.persist,
+              decision, band, weekdaysOnly: wk,
+              label: `${agreeLabel(a)} ${shapeLabel(cell)} \u00b7 ${decision} ${band === 'auto' ? 'auto' : `${band}%`} ${wk ? '24/5' : '24/7'}`,
+            });
+          }
         }
       }
     }
@@ -713,6 +827,7 @@ function startStage3(params) {
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
+    measurements: MEASUREMENTS_VERSION,
     parent: {
       id: parent.id, name: parent.name,
       ...(carry > 0 ? {
@@ -956,7 +1071,10 @@ async function buildTally(doc, pool = null, note = null) {
       si: st.si, label: st.label,
       decision: st.decision, bandMode: st.bandMode, weekdaysOnly: st.weekdaysOnly,
       entry: st.entry, gate: st.gate, dMult: st.dMult, tHours: st.tHours, trailMult: st.trailMult, armMult: st.armMult,
-      quorum: st.quorum, members: st.members,
+      agreeRule: st.agreeRule, agreePct: st.agreePct, agreeBoth: st.agreeBoth, agreePersist: st.agreePersist,
+      members: st.members,
+      avgRung: mean((c) => (c.rungN ? c.rung / c.rungN : null)),
+      avgVoices: mean((c) => (c.voicesN ? c.voices / c.voicesN : null)),
       coins: coinCells.length,
       coinsInMoney: coinHold.filter((v) => v != null && v > 0).length,
       avgTest: mean((c) => (c.testN ? c.test / c.testN : null)),

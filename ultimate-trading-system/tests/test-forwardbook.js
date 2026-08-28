@@ -38,15 +38,27 @@ module.exports.theThreeBooksAreExactlyAsPreRegistered = function () {
 // QC 71's failure mode in different clothes: no error, plausible numbers, wrong
 // experiment. The guard must actually fire.
 module.exports.aDriftedCommitteeIsCaughtNotAbsorbed = function () {
-  fb.assertFrozenMembersMatchEngine();
+  // The three books were frozen against measurement block 2. The block was
+  // rewritten in the owner's loop of 2026-08-28, so they cannot match today's
+  // engine — and re-freezing them would quietly make each a different
+  // experiment. They must be REPORTED as waiting on a deliberate restart.
+  const stale = fb.staleBooks();
+  assert.strictEqual(stale.length, fb.BOOKS.length, 'every book frozen on the old block must be reported, not absorbed');
+  for (const s of stale) assert.ok(/measurement block/.test(s.why), `${s.id} must say why it is stale`);
+  fb.assertFrozenMembersMatchEngine();   // silent while every book is stale
+
+  // and the guard still bites for a book frozen against the CURRENT block
   const book = fb.BOOKS[0];
+  const savedM = book.measurements;
   const saved = book.members;
+  book.measurements = require('../lib/features').MEASUREMENTS_VERSION;
   book.members = saved.slice(0, saved.length - 1);
   let err = null;
   try { fb.assertFrozenMembersMatchEngine(); } catch (e) { err = e; }
   book.members = saved;
+  book.measurements = savedM;
   assert.ok(err && /no longer matches specsFor/.test(err.message),
-    'dropping a member from a frozen committee must throw, naming the mismatch');
+    'dropping a member from a current-block committee must throw, naming the mismatch');
   fb.assertFrozenMembersMatchEngine();
 };
 

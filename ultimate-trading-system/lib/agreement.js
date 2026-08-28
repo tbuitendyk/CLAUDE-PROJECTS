@@ -1,0 +1,186 @@
+// HOW A COMMITTEE'S VOTES BECOME ONE CALL.
+//
+// Built in the owner's loop of 2026-08-28. Until then there was exactly one
+// rule: count how many members say the same thing and trade once the winning
+// side reaches a rung. That count is the weakest possible summary of a
+// committee, and it gets WEAKER as the committee grows, because it cannot
+// tell eleven independent opinions from eleven near-copies. The owner's own
+// tables proved the cost: on 16 of 49 units the six members were three
+// voices counted twice, and the count could not see it.
+//
+// Every rule here is deterministic arithmetic over stored votes. Nothing
+// learns, nothing is fitted at pricing time, and no rule may look at the
+// held-back window (the caller passes the test slice for anything that needs
+// a distribution).
+//
+// 'count' is bit-identical to the old rule ON PURPOSE — results from before
+// this change must stay comparable to results after it.
+
+// A member's strength triple is [down, nothing, up]. This is the net lean:
+// +1 means certain up, -1 certain down, 0 no opinion either way.
+function netLean(p) {
+  const a = Array.isArray(p) ? p : [p.d, p.n, p.u];
+  return (a[2] || 0) - (a[0] || 0);
+}
+
+// The plain argmax call from a strength triple — the same tie rule the
+// engine uses (a later class wins only if it is strictly higher), so a
+// measurement taken here can never disagree with a vote taken there.
+function argmaxCall(p) {
+  const a = Array.isArray(p) ? p : [p.d, p.n, p.u];
+  let best = 0;
+  for (let k = 1; k < 3; k++) if (a[k] > a[best]) best = k;
+  return best - 1;
+}
+
+function assertVote(c) {
+  if (c !== 1 && c !== -1 && c !== 0) {
+    throw new Error(`agreement got a non-vote (${c === undefined ? 'undefined' : typeof c}) — pass call ARRAYS, not member objects`);
+  }
+}
+
+// ---- INDEPENDENT VOICES ---------------------------------------------------
+//
+// Two members that make the same call almost every time are one voice, not
+// two, however differently they were built. Members are grouped greedily: a
+// member joins the first group whose FIRST member it agrees with at or above
+// the threshold, otherwise it starts its own. Each member's weight is one
+// divided by the size of its group, so a group of three doubled copies
+// carries one vote between them, not three.
+//
+// Measured over the moments the caller passes — the test slice, never the
+// held-back window.
+function voiceGroups(callArrays, upTo, threshold = 0.98) {
+  const M = callArrays.length;
+  const n = Math.max(0, Math.min(upTo == null ? (callArrays[0] || []).length : upTo, (callArrays[0] || []).length));
+  const groups = [];
+  for (let m = 0; m < M; m++) {
+    let joined = false;
+    for (const g of groups) {
+      const head = g[0];
+      let same = 0;
+      for (let i = 0; i < n; i++) if (callArrays[m][i] === callArrays[head][i]) same++;
+      if (n > 0 && same / n >= threshold) { g.push(m); joined = true; break; }
+    }
+    if (!joined) groups.push([m]);
+  }
+  const weights = new Array(M).fill(1);
+  for (const g of groups) for (const m of g) weights[m] = 1 / g.length;
+  return { groups, weights, voices: groups.length };
+}
+
+// ---- THE RULES ------------------------------------------------------------
+//
+// Each rule answers ONE question at one moment: does this committee speak,
+// and which way? Every rule returns 1, -1 or 0 (stand aside), and every rule
+// stands aside on a tie, exactly as the plain count always has.
+//
+// levelsFor(rule, members, voices) gives the rungs the sweep may permute
+// over, so the interface offers exactly what the rule can express and never
+// a rung that means nothing.
+const AGREE_RULES = ['count', 'conviction', 'voices', 'families', 'unusual'];
+
+const RULE_WORDS = {
+  count: 'how many members say the same thing',
+  conviction: 'how strongly the members lean, added up',
+  voices: 'how many INDEPENDENT voices say the same thing',
+  families: 'how many different kinds of evidence agree',
+  unusual: 'how unusual this much agreement is for this committee',
+};
+
+// The winning side and its plain counts at one moment.
+function sides(callArrays, i) {
+  let up = 0;
+  let down = 0;
+  for (const calls of callArrays) {
+    const c = calls[i];
+    assertVote(c);
+    if (c === 1) up++;
+    else if (c === -1) down++;
+  }
+  return { up, down, winner: up === down ? 0 : (up > down ? 1 : -1) };
+}
+
+// One moment, one rule. ctx carries whatever the rule needs; see streamFor.
+function agreementAt(ctx, i, rule, level) {
+  const { calls } = ctx;
+  const { up, down, winner } = sides(calls, i);
+  if (!winner) return 0;
+  if (rule === 'count') return Math.max(up, down) >= level ? winner : 0;
+  if (rule === 'voices') {
+    let w = 0;
+    for (let m = 0; m < calls.length; m++) if (calls[m][i] === winner) w += ctx.weights[m];
+    // a rung is only reachable in whole voices; rounding keeps 3 of 3 from
+    // failing on floating-point crumbs
+    return w + 1e-9 >= level ? winner : 0;
+  }
+  if (rule === 'conviction') {
+    let s = 0;
+    for (let m = 0; m < calls.length; m++) s += netLean(ctx.probs[m][i]);
+    if (Math.sign(s) !== winner) return 0;   // the leaning must back the majority
+    return Math.abs(s) + 1e-9 >= level ? winner : 0;
+  }
+  if (rule === 'families') {
+    const seen = new Set();
+    for (let m = 0; m < calls.length; m++) if (calls[m][i] === winner) seen.add(ctx.families[m]);
+    return seen.size >= level ? winner : 0;
+  }
+  if (rule === 'unusual') {
+    return Math.max(up, down) >= ctx.cutoff ? winner : 0;
+  }
+  throw new Error(`"${rule}" is not an agreement rule (${AGREE_RULES.join('/')})`);
+}
+
+// What "unusual" means for THIS committee, worked out from the test slice
+// only. The share is STRICTNESS, exactly as it is for every other rule: 100
+// admits only the very best agreement this committee ever reaches, a small
+// share admits nearly everything. Higher is always stricter, so the dial
+// never changes direction under the owner.
+function percentileCutoff(callArrays, nTest, strictPct) {
+  const counts = [];
+  for (let i = 0; i < nTest; i++) {
+    const { up, down, winner } = sides(callArrays, i);
+    counts.push(winner ? Math.max(up, down) : 0);
+  }
+  if (!counts.length) return callArrays.length + 1;
+  const sorted = counts.slice().sort((a, b) => b - a);
+  const frac = Math.max(0, Math.min(1, (100 - strictPct) / 100));
+  const at = Math.max(0, Math.min(sorted.length - 1, Math.ceil(frac * sorted.length) - 1));
+  return sorted[Math.max(0, at)];
+}
+
+// A whole stream of calls under one rule, with the two modifiers applied.
+//
+//   bothModels — the winning side must contain at least one of each kind of
+//                member (LOGREG and BOOST), so a call can never be one
+//                kind's quirk
+//   persist    — the same call must have stood for this many moments before
+//                it is acted on
+function agreementStream(ctx, rule, level, mods = {}) {
+  const n = ctx.calls[0] ? ctx.calls[0].length : 0;
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let c = agreementAt(ctx, i, rule, level);
+    if (c && mods.bothModels) {
+      const kinds = new Set();
+      for (let m = 0; m < ctx.calls.length; m++) if (ctx.calls[m][i] === c) kinds.add(ctx.models[m]);
+      if (kinds.size < 2) c = 0;
+    }
+    out[i] = c;
+  }
+  const p = Math.max(0, Math.floor(mods.persist || 0));
+  if (!p) return out;
+  const held = new Array(n).fill(0);
+  for (let i = 0; i < n; i++) {
+    if (!out[i]) continue;
+    let ok = true;
+    for (let k = 1; k <= p; k++) { if (i - k < 0 || out[i - k] !== out[i]) { ok = false; break; } }
+    held[i] = ok ? out[i] : 0;
+  }
+  return held;
+}
+
+module.exports = {
+  AGREE_RULES, RULE_WORDS, voiceGroups, argmaxCall, agreementStream, agreementAt,
+  percentileCutoff, netLean, sides,
+};

@@ -56,10 +56,9 @@ const CONFIG = {
   combo: { trade: SYMS[0], ctx1: SYMS[1], ctx2: SYMS[2], size: 3 },
   branch: { geometry: 'daily-4d', decision: 'argmax', band: 0.4, weekdaysOnly: false },
   stage: 'slim',
-  members: [
-    { model: 'logreg', view: 'full' }, { model: 'logreg', view: 'prices' },
-    { model: 'logreg', view: 'volume' }, { model: 'logreg', view: 'cross' },
-  ],
+  // read from the engine, never typed out: a reading added to the committee
+  // must not leave a fixture behind (owner loop, 2026-08-28)
+  members: require('../lib/bracketwork').specsFor(3, 'slim').map((x) => ({ model: x.model, view: x.view })),
   cell: { quorum: 1, entry: 'market', gate: 'directional', dMult: null, tHours: 137, trailMult: null, armMult: null },
   trainThrough: FREEZE,
   configVersion: 'zzzq-v1-test',

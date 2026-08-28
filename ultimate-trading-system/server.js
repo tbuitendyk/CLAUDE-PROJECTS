@@ -780,7 +780,8 @@ app.post('/api/stage1-count', (req, res) => {
     const units = stages.unitsFor(universe, {
       singles: !!(b.sizes || {}).singles, doubles: !!(b.sizes || {}).doubles, triples: !!(b.sizes || {}).triples,
     }, geometries);
-    const trainings = units.reduce((n, u) => n + (u.size === 1 ? 3 : 4), 0);
+    const { slimViewsFor } = require('./lib/bracketwork');
+    const trainings = units.reduce((n, u) => n + slimViewsFor(u.size === 1 ? 1 : 2).length, 0);
     return res.json({ units: units.length, trainings });
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
