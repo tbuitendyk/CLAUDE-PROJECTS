@@ -76,50 +76,55 @@ module.exports = {
   // The settings block is the sweep's own expandDeclared times the decision,
   // band and 24/5 variants — counted by hand for known ticks.
   async theSettingsBlockCountsByHand() {
-    const base = { entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65, quorumSingles: 2, quorumContexts: 3 };
+    const base = { entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65 };
     assert.strictEqual(stages.settingsFor({ cell: base }).length, 1, 'no permute → one setting');
     assert.strictEqual(stages.settingsFor({ cell: base, cellPermute: { tHours: true } }).length, 7, 'seven holding times');
     assert.strictEqual(stages.settingsFor({ cell: base, permuteDecision: true, permuteBand: true, permuteWeekdays: true }).length,
       2 * 4 * 2, 'decision × band menu × 24/5');
-    // the full cell block: breakout gates(3) × d(5) × t(7) × (static + 4 trails × 3 arms)(13)
-    // + market t(7) = 1,372 cells, × 48 agreements with both counts named
-    const full = stages.settingsFor({
+    // the TRADE SHAPE block, on its own: breakout gates(3) × d(5) × t(7) ×
+    // (static + 4 trails × 3 arms)(13) + market t(7) = 1,372 shapes. The
+    // agreement is no longer multiplied in here — it is its own dimension
+    // (owner loop, 2026-08-28), which is what stopped a run declaring 8x the
+    // settings it could ever tell apart.
+    const shapes = stages.settingsFor({
       cell: base,
+      cellPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true },
+    });
+    assert.strictEqual(shapes.length, 1372, 'the shape block must count exactly what the sweep\'s enumerator declares');
+    const labels = new Set(shapes.map((x) => x.label));
+    assert.strictEqual(labels.size, shapes.length, 'every setting carries a distinct name');
+    // and an 'agree' permute on the shape side is IGNORED, never multiplied:
+    // the old enumerator crossed both committee bars here, 48 to a cell
+    const withAgree = stages.settingsFor({
+      cell: { ...base, quorumSingles: 2, quorumContexts: 3 },
       cellPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true, agree: true },
     });
-    assert.strictEqual(full.length, 1372 * 48, 'the block must count exactly what the sweep\'s enumerator declares');
-    const labels = new Set(full.map((s) => s.label));
-    assert.strictEqual(labels.size, full.length, 'every setting carries a distinct name');
+    assert.strictEqual(withAgree.length, 1372, 'the old agree permute must not reach the shape enumerator');
   },
 
-  // A setting's name carries ONLY the agreement bars the priced units hold
-  // a vote for (owner order, 2026-08-27: "on singles there's no with
-  // contexts at all"): the bar a run cannot use is not declared, is not
-  // multiplied by permute agree, and is never named.
-  async theDeclaredAgreementNamesOnlyTheBarsTheUnitsHold() {
-    const single = { trade: 'AAA', ctx1: null, ctx2: null };
-    const double = { trade: 'BBB', ctx1: 'CCC', ctx2: null };
-    const both = { entry: 'market', tHours: 65, quorumSingles: 2, quorumContexts: 3 };
-    assert.deepStrictEqual(stages.cellForUnits(both, [single]), { entry: 'market', tHours: 65, quorumSingles: 2 },
-      'a singles-only run declares no with-contexts bar');
-    assert.deepStrictEqual(stages.cellForUnits(both, [double]), { entry: 'market', tHours: 65, quorumContexts: 3 },
-      'a contexts-only run declares no single-coin bar');
-    assert.deepStrictEqual(stages.cellForUnits(both, [single, double]), both, 'a mixed run keeps both');
-    // the names follow: no label carries a bar that was not declared
-    const labels = stages.settingsFor({ cell: { entry: 'market', tHours: 89, quorumSingles: 1 } }).map((s) => s.label);
-    assert.ok(labels.length && labels.every((l) => l.startsWith('q1/6 market t89h') && !l.includes('/8')),
-      `the label names only the 6-member bar — got ${labels[0]}`);
-    // and permute agree multiplies only the bars that exist: 6 rungs, not 48
-    assert.strictEqual(stages.settingsFor({ cell: { entry: 'market', tHours: 65, quorumSingles: 2 }, cellPermute: { agree: true } }).length, 6,
-      'no inapplicable rungs — a singles-only block is 6 agreements, not 48');
-    // the launch is wired through the same rule — pinned in source because a
-    // real stage 3 launch is too heavy for this suite (the end-to-end exam
-    // launches for real and reads the clean names back off the tables)
-    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    assert.ok(src.includes('const cell = cellForUnits(params.cell, parentRecords);'),
-      'start stage 3 declares through cellForUnits');
-    assert.ok(src.includes('cell, cellPermute: params.cellPermute || null,'),
-      'and the record set keeps the cell as it RAN');
+  // NO COMMITTEE SIZE APPEARS IN A SETTING'S NAME, EVER (owner, 2026-08-27:
+  // "on singles there's no with contexts at all"; owner loop, 2026-08-28: the
+  // dial became a share). The old names carried two bars — one per committee
+  // size — and on a singles-only run the second was named but never applied.
+  async noSettingNameCarriesACommitteeSize() {
+    const all = stages.settingsFor({
+      cell: { entry: 'market', tHours: 89 },
+      agreePermuteRule: true, agreePermutePct: true, agreePermuteBoth: true, agreePermutePersist: true,
+    }, [1]);
+    for (const x of all) {
+      assert.ok(!/\/6|\/8|\/10|q\d/.test(x.label), `a committee size leaked into a name: ${x.label}`);
+      assert.ok(/^(count|conviction|voices|families|unusual) \d+%/.test(x.label), `name must open with the rule and its share: ${x.label}`);
+    }
+    // ONE dial, every committee size: the same share is a legal setting for a
+    // run of coins on their own and for a run read alongside others
+    const singles = stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreeRule: 'count', agreePct: 50 }, [1]);
+    const mixed = stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreeRule: 'count', agreePct: 50 }, [1, 3]);
+    assert.strictEqual(singles.length, 1);
+    assert.strictEqual(mixed.length, 1);
+    assert.strictEqual(singles[0].label, mixed[0].label, 'one share, one name, whatever the committee holds');
+    // every rule reaches the block, and each is named on the setting
+    const rules = new Set(stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreePermuteRule: true }, [1]).map((x) => x.agreeRule));
+    assert.deepStrictEqual([...rules].sort(), ['conviction', 'count', 'families', 'unusual', 'voices']);
   },
 
   // The counter behind the Sweep3 cost line resolves the SAME units the
@@ -135,23 +140,26 @@ module.exports = {
         plan: { units: 2 }, params: { universe: ['AAA', 'BBB', 'CCC'] },
       }));
       const w = rowstore.writer(id, 'records');
-      w.push({ carriedRank: 1, s1rank: 1, trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], scoreAll: 5, score3: 4 });
-      w.push({ carriedRank: 2, s1rank: 2, trade: 'BBB', ctx1: 'CCC', ctx2: null, geometry: 'daily-4d', specs: [], scoreAll: 1, score3: 1 });
+      w.push({ carriedRank: 1, s1rank: 1, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', specs: [], scoreAll: 5, score3: 4 });
+      w.push({ carriedRank: 2, s1rank: 2, trade: 'BBB', ctx1: 'CCC', ctx2: null, size: 2, geometry: 'daily-4d', specs: [], scoreAll: 1, score3: 1 });
       w.close();
-      const b = { from: id, cell: { entry: 'market', tHours: 65, quorumSingles: 2, quorumContexts: 3 }, cellPermute: { agree: true } };
-      // both kinds carried → both bars exist → 6 × 8 agreement rungs
+      const b = { from: id, cell: { entry: 'market', tHours: 65 }, agreePermutePct: true };
+      // BOTH committee sizes carried: a share that lands on a different rung
+      // for 8 members than for 10 is two settings, not one
       const mixed = stages.stage3Declared({ ...b, carry: 0 });
-      assert.strictEqual(mixed.settings, 48, 'a mixed carry declares both bars — 48 agreements');
       assert.strictEqual(mixed.units, 2);
       assert.strictEqual(mixed.coins, 2, 'coins counted from the records the launch prices, not the universe');
-      // carry 1 takes the top by forecast score — all members: the single —
-      // and the with-contexts bar disappears from the count with it
+      // carry 1 takes the top by forecast score — all members: the coin on
+      // its own — so only 8-member rungs remain and the shares that shared a
+      // rung collapse
       const cut = stages.stage3Declared({ ...b, carry: 1 });
-      assert.strictEqual(cut.settings, 6, 'the carry cut a mixed parent to singles — 6 agreements, no /8 rung');
       assert.strictEqual(cut.units, 1);
       assert.strictEqual(cut.coins, 1);
-      // no parent named yet: counted exactly as declared, nothing invented
-      assert.strictEqual(stages.stage3Declared({ cell: b.cell, cellPermute: { agree: true } }).settings, 48);
+      assert.strictEqual(cut.settings, 8, 'twelve shares land on the eight rungs an 8-member committee has');
+      assert.ok(mixed.settings >= cut.settings, 'a mixed run can tell at least as many shares apart');
+      // no parent named yet: counted for a coin on its own, which is the
+      // smallest committee — twelve shares, eight rungs
+      assert.strictEqual(stages.stage3Declared({ cell: b.cell, agreePermutePct: true }).settings, 8);
     } finally {
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
@@ -262,6 +270,7 @@ module.exports = {
       const doc = {
         id, stage: 1, seq: 999998, name: 'S1 #ref', status: 'done',
         createdAt: new Date().toISOString(), engineVersion: require('../package.json').version,
+        measurements: require('../lib/features').MEASUREMENTS_VERSION,
         params: { universe: ['ZZZTESTUSDT'], allLoaded: true, windowLayout: 'reserve61' },
         dataManifest: { overallDigest: 'not-what-the-files-say', symbols: { ZZZTESTUSDT: { digest: 'x' } } },
         plan: { units: 1 },
@@ -292,6 +301,30 @@ module.exports = {
 
   // The stage 1 and stage 2 reading tables page from the stores and keep the
   // recorded order.
+  // S4 OF THE LOOP: a set built on an older measurement block can never be a
+  // parent. Its members were trained on numbers that no longer exist, in
+  // positions that now hold something else — so it is refused BY NAME, with
+  // what to do about it, and nothing of the owner's is deleted to achieve it.
+  async aSetFromAnOlderMeasurementBlockIsRefusedAsAParent() {
+    const id = `s1-test-${Date.now().toString(36)}-old`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({
+        id, stage: 1, seq: 999985, name: 'S1 #old', status: 'done',
+        createdAt: new Date().toISOString(), engineVersion: require('../package.json').version,
+        params: { universe: ['ZZZTESTUSDT'], allLoaded: true }, plan: { units: 1 },
+      }));
+      assert.throws(() => stages.startStage2({ from: id, carry: 0 }),
+        /was built on measurement block .* and this box builds/, 'an unstamped set is an old set and must be refused');
+      assert.throws(() => stages.startStage2({ from: id, carry: 0 }),
+        /Start a new stage 1/, 'and the refusal says what to do instead');
+      assert.ok(fs.existsSync(file), 'refusing a set must never delete it');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
   async theStageTablesPageInRecordedOrder() {
     const id = `s1-test-${Date.now().toString(36)}-t`;
     const dir = rowstore.storeDir(id);

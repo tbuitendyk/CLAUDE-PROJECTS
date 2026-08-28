@@ -479,8 +479,12 @@ function tallyFold(acc, r, blockIdx) {
     s = { si: r.si, label: r.label,
       decision: r.decision, bandMode: r.bandMode, weekdaysOnly: r.weekdaysOnly,
       entry: r.entry, gate: r.gate, dMult: r.dMult, tHours: r.tHours, trailMult: r.trailMult, armMult: r.armMult,
-      agreeRule: r.agreeRule, agreePct: r.agreePct, agreeBoth: r.agreeBoth, agreePersist: r.agreePersist,
-      members: r.members,
+      // null, never undefined: undefined vanishes through the worker boundary
+      // and the sharded fold would then disagree with the single-pass one on a
+      // field neither of them actually used
+      agreeRule: r.agreeRule ?? null, agreePct: r.agreePct ?? null,
+      agreeBoth: r.agreeBoth ?? null, agreePersist: r.agreePersist ?? null,
+      members: r.members ?? null,
       perCoin: new Map() };
     acc.perSetting.set(r.si, s);
   }

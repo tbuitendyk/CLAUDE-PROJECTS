@@ -111,7 +111,7 @@ module.exports.actionableIntentCarriesSchema2AndTheCachedEntryOpen = async funct
   const { maps } = await withData();
   const bar = maps.trade.get(t.startTs + geo.entryOffsetH * HOUR);
   assert.strictEqual(it.decision_price, bar.open, 'decision price = entry candle OPEN from cache');
-  assert.strictEqual(it.per_member.length, 4);
+  assert.strictEqual(it.per_member.length, require('../lib/bracketwork').specsFor(3, 'slim').length);
 };
 
 module.exports.decisionsAreDeterministicAndHashPinsTheMachinery = async function () {

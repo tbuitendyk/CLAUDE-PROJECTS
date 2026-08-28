@@ -760,37 +760,24 @@ function stage3UnitsFor(parent, carry) {
   }
   return { records, savedS2 };
 }
-// THE DECLARED AGREEMENT NAMES ONLY THE BARS THE PRICED UNITS HOLD A VOTE
-// FOR (owner order, 2026-08-27: "on singles there's no with contexts at
-// all"). A coin judged on its own has the 6-member vote; a coin read
-// alongside other coins has the 8-member vote; a bar no priced unit can use
-// is not declared, is not multiplied by permute agree, and is never named
-// in any setting. The decision rides the records the launch actually
-// prices, because the carry can cut a mixed parent down to one kind.
-function cellForUnits(cell, records) {
-  const out = { ...(cell || {}) };
-  if (!records.some((r) => !r.ctx1)) delete out.quorumSingles;
-  if (!records.some((r) => r.ctx1)) delete out.quorumContexts;
-  return out;
-}
 // The counter the cost line asks rides the SAME resolution the launch runs —
 // same records, same carry cut, same declared bars — so the number on the
 // screen and the number that runs can never be two different numbers. When
 // no parent is named yet, the block is counted exactly as declared.
 function stage3Declared(b) {
   const out = { units: null, coins: null };
-  let cell = (b || {}).cell;
+  let sizes = null;
   const parent = getSet(String((b || {}).from || ''));
   if (parent && parent.stage === 2) {
     const carry = Math.max(0, Math.floor(num((b || {}).carry, 0)));
     const { records } = stage3UnitsFor(parent, carry);
     if (records.length) {
-      cell = cellForUnits(cell, records);
+      sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
       out.units = records.length;
       out.coins = new Set(records.map((r) => r.trade)).size;
     }
   }
-  out.settings = settingsFor({ ...(b || {}), cell }).length;
+  out.settings = settingsFor(b || {}, sizes).length;
   return out;
 }
 function startStage3(params) {
@@ -803,12 +790,16 @@ function startStage3(params) {
   const nullN = Math.max(0, Math.floor(num(params.nullN, 19)));
   // carry forward (owner order, 2026-08-27): 0 prices every carried unit; a
   // positive count takes the top of the parent's table. The units come
-  // FIRST because the declared block depends on them — see cellForUnits.
+  // FIRST because the declared block depends on which committee sizes are
+  // actually being priced.
   const carry = Math.max(0, Math.floor(num(params.carry, 0)));
   const { records: parentRecords, savedS2 } = stage3UnitsFor(parent, carry);
   if (!parentRecords.length) throw new Error(`${parent.name} holds no records — nothing to price`);
-  const cell = cellForUnits(params.cell, parentRecords);
-  const settings = settingsFor({ ...params, cell });
+  // The committee sizes actually being priced decide which agreement shares
+  // can be told apart: two shares landing on the same rung for every unit in
+  // the run are one setting, not two.
+  const sizes = [...new Set(parentRecords.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
+  const settings = settingsFor(params, sizes);
   if (!settings.length) throw new Error('the block declared no settings');
 
   // the budget gate: the whole plan is known here, so a block that cannot
@@ -837,8 +828,11 @@ function startStage3(params) {
     },
     params: {
       ...parent.params, from: parent.id, fee, nullN, carry: carry > 0 ? parentRecords.length : 0,
-      // the cell as it RAN — cellForUnits may have put a bar away
-      cell, cellPermute: params.cellPermute || null,
+      cell: params.cell, cellPermute: params.cellPermute || null,
+      agreeRule: params.agreeRule || 'count', agreePct: Number(params.agreePct) || 50,
+      agreeBothModels: !!params.agreeBothModels, agreePersist: Math.max(0, Math.floor(Number(params.agreePersist) || 0)),
+      agreePermuteRule: !!params.agreePermuteRule, agreePermutePct: !!params.agreePermutePct,
+      agreePermuteBoth: !!params.agreePermuteBoth, agreePermutePersist: !!params.agreePermutePersist,
       decision: params.decision || 'argmax', band: params.band ?? 'auto', weekdaysOnly: !!params.weekdaysOnly,
       permuteDecision: !!params.permuteDecision, permuteBand: !!params.permuteBand, permuteWeekdays: !!params.permuteWeekdays,
       // the campaign in use at THIS launch, not the parent's (same rule as stage 2)
@@ -1425,7 +1419,7 @@ module.exports = {
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, cellForUnits, stage3Declared, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, stage3Declared, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetNotes, setSetSort, applySort, validateSort, sortLabel,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
 };

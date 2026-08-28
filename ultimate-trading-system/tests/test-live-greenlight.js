@@ -47,7 +47,7 @@ module.exports.greenlightFreezesTheSelectedRowIntoTheSharedVocabulary = function
   assert.strictEqual(cfg.combo.trade, 'LTCUSDT');
   assert.strictEqual(cfg.branch.band, 1.69, 'band frozen as the resolved NUMBER');
   assert.strictEqual(cfg.stage, 'slim', 'stage derived from committee width (4 @ size 3)');
-  assert.strictEqual(cfg.members.length, 4);
+  assert.strictEqual(cfg.members.length, require('../lib/bracketwork').specsFor(3, 'slim').length);
   assert.strictEqual(cfg.cell.tHours, 137);
   // WAS: trainThrough had to equal the run's fire time. That premise is gone
   // (owner, 2026-08-19) — a rule carries no training window, and inferring one
@@ -68,7 +68,7 @@ module.exports.greenlightRefusalsAreLoudAndSpecific = function () {
     [() => gl.greenlightFromRun(labDoc({ selection: null }), 'best', { name: 'test config', why: 'x' ,}), /select a leader|no selected row/],
     [() => { const d = labDoc(); delete d.selection.declaredCell; return gl.greenlightFromRun(d, 'declared', { name: 'test config', why: 'x' ,}); }, /declared cell/],
     [() => { const d = labDoc(); d.selection.bandPct = undefined; return gl.greenlightFromRun(d, 'best', { name: 'test config', why: 'x' ,}); }, /bandPct/],
-    [() => { const d = labDoc(); d.selection.members = 5; return gl.greenlightFromRun(d, 'best', { name: 'test config', why: 'x' ,}); }, /stage/],
+    [() => { const d = labDoc(); d.selection.members = 7; return gl.greenlightFromRun(d, 'best', { name: 'test config', why: 'x' ,}); }, /stage/],
     // WAS: a run with no startedAt was refused, because the greenlight needed a
     // date to place its training freeze. It needs no date now — a rule carries
     // no training window — so this is no longer a refusal and the case is gone.

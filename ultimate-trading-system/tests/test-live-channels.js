@@ -25,7 +25,7 @@ function labDoc(id) {
     selection: {
       trade: 'LTCUSDT', ctx1: 'XRPUSDT', ctx2: 'BCHUSDT', size: 3,
       geometry: 'daily-4d', decision: 'argmax', bandMode: 1.69, bandPct: 1.69,
-      weekdaysOnly: false, members: 4,
+      weekdaysOnly: false, members: require('../lib/bracketwork').specsFor(3, 'slim').length,
       quorum: 1, entry: 'market', gate: 'directional', dMult: null,
       tHours: 137, trailMult: null, armMult: null,
       pnl: 10, trades: 10, holdout: { pnl: 1, trades: 2 },
