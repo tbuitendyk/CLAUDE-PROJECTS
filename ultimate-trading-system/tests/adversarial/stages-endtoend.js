@@ -91,8 +91,11 @@ async function waitDone(id, label) {
   const d1 = await waitDone(s1.id, 'stage 1');
   assert.strictEqual(d1.status, 'done', `stage 1 ended ${d1.status}: ${JSON.stringify(d1.failures)}`);
   assert.strictEqual(d1.params.campaign, EXAM_CAMP, 'a real stage 1 launch must stamp the campaign in use');
-  assert.strictEqual(d1.perf.cyclesTotal, 6, 'two singles × 3 members — the cycle count the progress line shows');
-  assert.strictEqual(d1.perf.cyclesDone, 6, 'a finished set has done every cycle it declared');
+  // two coins on their own, one training per reading — read from the engine
+  // so adding a reading cannot leave this number behind (owner loop, 2026-08-28)
+  const READS1 = require('../../lib/bracketwork').slimViewsFor(1).length;
+  assert.strictEqual(d1.perf.cyclesTotal, 2 * READS1, `two coins on their own × ${READS1} readings — the cycle count the progress line shows`);
+  assert.strictEqual(d1.perf.cyclesDone, 2 * READS1, 'a finished set has done every cycle it declared');
 
   const ranking = rowstore.readAll(s1.id, 'records');
   const a = ranking.find((r) => r.trade === A);
@@ -115,10 +118,20 @@ async function waitDone(id, label) {
   const recs2 = rowstore.readAll(s2.id, 'records');
   assert.strictEqual(recs2.length, 2);
   for (const r of recs2) {
-    assert.strictEqual(r.specs.length, 6, 'a carried single holds 6 members after stage 2');
-    assert.strictEqual(r.specs.filter((x) => x.model === 'logreg').length, 3);
-    assert.strictEqual(r.specs.filter((x) => x.model === 'boost').length, 3);
+    assert.strictEqual(r.specs.length, READS1 * 2, `a carried coin on its own holds ${READS1 * 2} members after stage 2`);
+    assert.strictEqual(r.specs.filter((x) => x.model === 'logreg').length, READS1);
+    assert.strictEqual(r.specs.filter((x) => x.model === 'boost').length, READS1);
+    // and the committee reports how many of those are INDEPENDENT voices
+    assert.ok(Number.isInteger(r.voices) && r.voices >= 1 && r.voices <= r.specs.length,
+      `a stage 2 record must record its independent voices, got ${r.voices}`);
     assert.ok(Number.isFinite(r.scoreAll) && Number.isFinite(r.score3), 'both forecast scores recorded');
+  }
+  // THE INSTRUMENT ON ITSELF (loop plan S2): a reading that adds members
+  // without adding independent voices has not earned its compute, and this
+  // is where that shows rather than hiding.
+  for (const r of recs2) {
+    console.log(`  ${r.trade}: ${r.specs.length} members, ${r.voices} independent voices`
+      + ` (${r.voices3} before BOOST) on ${r.geometry}`);
   }
   const carriedA = recs2.find((r) => r.trade === A);
   assert.strictEqual(carriedA.carriedRank, 1, 'the carry keeps the stage 1 order');
@@ -127,11 +140,12 @@ async function waitDone(id, label) {
   const s3 = stages.startStage3({
     from: s2.id, fee: 0.00125, nullN: 9, desc: 'adversarial end-to-end',
     decision: 'argmax', band: 'auto', weekdaysOnly: false, permuteDecision: true,
-    cell: { entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65, quorumSingles: 2, quorumContexts: 3 },
+    cell: { entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65 },
     cellPermute: { tHours: true },
+    agreeRule: 'count', agreePct: 50,
   });
   made.push(s3.id);
-  assert.strictEqual(s3.settings, 14, 'seven holding times × two decisions');
+  assert.strictEqual(s3.settings, 14, 'seven holding times × two decisions × one agreement');
   const d3 = await waitDone(s3.id, 'stage 3');
   assert.strictEqual(d3.status, 'done', `stage 3 ended ${d3.status}: ${JSON.stringify(d3.failures)}`);
   assert.strictEqual(d3.perf.cyclesTotal, 14 * 2 * 10, '14 settings × 2 units × (1 real + 9 deals) pricings declared');
@@ -150,11 +164,13 @@ async function waitDone(id, label) {
   const rowA = coins.rows.find((r) => r.trade === A && / t65h/.test(r.cellLabel));
   assert.ok(rowA, 'the t65h cell must have a coin row for the planted coin');
   assert.strictEqual(rowA.rows, 2, 'the two decision variants are the records under the row');
-  // a singles-only run names no with-contexts bar (owner order, 2026-08-27),
-  // even though the launch above declared one — the units decide
-  assert.ok(rowA.cellLabel.startsWith('q2/6 ') && !rowA.cellLabel.includes('/8'),
-    `a singles-only run's setting names only the 6-member bar — got ${rowA.cellLabel}`);
-  assert.strictEqual(d3.params.cell.quorumContexts, undefined, 'the record set keeps the cell as it ran');
+  // NO COMMITTEE SIZE REACHES A NAME (owner, 2026-08-27 and the loop of
+  // 2026-08-28): the name opens with the rule and its share, and carries no
+  // "/6" or "/8" bar for anyone to wonder about
+  assert.ok(/^count 50% /.test(rowA.cellLabel) && !/\/6|\/8/.test(rowA.cellLabel),
+    `the setting must be named by its rule and share alone — got ${rowA.cellLabel}`);
+  assert.strictEqual(d3.params.agreeRule, 'count', 'the record set keeps the agreement it ran');
+  assert.strictEqual(d3.params.agreePct, 50);
   const detail = stages.stage3CoinRows(s3.id, {
     cellLabel: rowA.cellLabel, trade: A, ctx1: '', ctx2: '', geometry: 'daily-1d',
   });

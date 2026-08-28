@@ -785,7 +785,7 @@ module.exports = {
       assert.ok(swBody.includes('s3Provenance()'), 'the colors are wired on the page');
       assert.ok(swBody.includes("b.disabled = going"), 'the start buttons sleep while a run is going');
     }
-    // The stage 3 tables' newest owner orders (2026-08-27): Apply pegs the
+  // The stage 3 tables' newest owner orders (2026-08-27): Apply pegs the
     // coins heading line where the eye left it; the ranked table sorts by one
     // picked column through the same saved-sort door; the coins rows carry
     // their avg test $.
@@ -884,6 +884,92 @@ module.exports = {
   // The budget gate does its arithmetic BEFORE anything runs (owner order,
   // 2026-08-27: warn, flag, stop, with meaningful messages — never a crash
   // or a silent restart because a block was too wide).
+  // A filter the screen offers and the service ignores is worse than no
+  // filter: the owner narrows a table, the table does not narrow, and
+  // nothing says so. Unknown fields are refused BY NAME.
+  async theTableFiltersRefuseAnUnknownFieldByName() {
+    const rows = [
+      { trade: 'ADAUSDT', ctx1: null, score: 5, beat: 9, pairs: 10, lead: 2, voices: 6, rank: 1 },
+      { trade: 'BTCUSDT', ctx1: 'ETHUSDT', score: 1, beat: 2, pairs: 10, lead: -1, voices: 3, rank: 2 },
+    ];
+    assert.strictEqual(stages.applyFilters(1, rows, {}).length, 2, 'no filter set filters nothing');
+    assert.strictEqual(stages.applyFilters(1, rows, { trade: '' }).length, 2, 'an empty box filters nothing, never everything');
+    assert.deepStrictEqual(stages.applyFilters(1, rows, { trade: 'ada' }).map((r) => r.trade), ['ADAUSDT'], 'text matches any part, ignoring case');
+    assert.deepStrictEqual(stages.applyFilters(1, rows, { beatMin: 50 }).map((r) => r.trade), ['ADAUSDT'], 'the share is worked out, not stored');
+    assert.deepStrictEqual(stages.applyFilters(1, rows, { ctx: 'eth' }).map((r) => r.trade), ['BTCUSDT'], 'the context coins read as one piece of text');
+    assert.deepStrictEqual(stages.applyFilters(1, rows, { voicesMin: 5 }).map((r) => r.trade), ['ADAUSDT']);
+    assert.throws(() => stages.applyFilters(1, rows, { nope: 1 }), /is not a filter on the stage 1 table/);
+    assert.throws(() => stages.applyFilters(1, rows, { scoreMin: 'abc' }), /needs a number/);
+    // a stage 2 field is not a stage 1 field — the lists are per table
+    assert.throws(() => stages.applyFilters(1, rows, { scoreAllMin: 1 }), /is not a filter on the stage 1 table/);
+    assert.ok(stages.FILTER_DEFS[2].scoreAllMin && stages.FILTER_DEFS[3].holdMin, 'each stage publishes its own list');
+  },
+
+  // S6 OF THE LOOP — the owner's twelve interface demands, checked in the
+  // source rather than by eye. Every table on Boards3 must carry filters, a
+  // fold and sortable columns, and every filter the screen offers must be a
+  // filter the service actually implements.
+  async everyTableCarriesFiltersAFoldAndSortableColumns() {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const screens = require('../lib/screencontrols');
+    const body = screens.drawBody('drawBoards3');
+    // one shared implementation, not one per table
+    for (const fn of ['function b3FilterGrid(', 'function b3WireFilters(', 'function b3FoldBtn(', 'function b3WireTableFold(']) {
+      assert.ok(src.includes(fn), `the shared table furniture must exist: ${fn}`);
+    }
+    // every one of the four tables asks for all three
+    for (const key of ['S1', 'S2', 'S3R', 'S3C']) {
+      assert.ok(new RegExp(`b3FilterGrid\\('${key}'`).test(src), `the ${key} table must offer filters`);
+    }
+    for (const key of ['S1', 'S2', 'S3R']) {
+      assert.ok(new RegExp(`b3FoldBtn\\('${key}'`).test(src), `the ${key} table must fold`);
+    }
+    // the filters the screen offers are the filters the service implements —
+    // a box the service ignores is worse than no box
+    const defs = require('../lib/stages').FILTER_DEFS;
+    const offered = { S1: 1, S2: 2, S3R: 3 };
+    for (const [key, stage] of Object.entries(offered)) {
+      const at = src.indexOf(`b3FilterGrid('${key}'`);
+      const block = src.slice(at, src.indexOf('])}', at));
+      for (const m of block.matchAll(/\['([a-zA-Z0-9]+)', '[^']*', '(?:text|num|pick)'/g)) {
+        assert.ok(defs[stage][m[1]], `the ${key} table offers a "${m[1]}" filter the service does not implement`);
+      }
+    }
+    // every filter carries hover text, and so does every sort button
+    const grids = [...src.matchAll(/\['[a-zA-Z0-9]+', '[^']*', '(?:text|num|pick)', '([^']*)'/g)];
+    assert.ok(grids.length >= 30, `every filter needs its own hover text — found ${grids.length}`);
+    for (const g of grids) assert.ok(g[1].length > 20, `a filter's hover text says too little: "${g[1]}"`);
+    // the obsolete ordering box is gone and nothing still reaches for it
+    assert.ok(!src.includes("$('#b3Sort')") && !src.includes("$('#b3Go')"),
+      'the every-coin table orders by its columns now — the ordering box and its Apply must be gone');
+    // the start buttons still sleep while a run is going (demand 12)
+    assert.ok(screens.drawBody('drawSweep3').includes('b.disabled = going'), 'the start buttons must sleep while a run is going');
+    assert.ok(body.includes('b3WireFilters(mount)') || src.includes('b3WireFilters(mount)'), 'the filters must be wired, not merely drawn');
+  },
+
+  // The agreement dial is fully exposed on the screen — every rule the engine
+  // can run is choosable, and nothing is reachable only from code (RULE FIVE).
+  async everyAgreementRuleIsReachableFromTheScreen() {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const { vocabulary } = require('../lib/vocabulary');
+    const offered = (vocabulary().agreeRule || []).map((o) => o.value);
+    assert.deepStrictEqual(offered.slice().sort(), require('../lib/agreement').AGREE_RULES.slice().sort(),
+      'the screen must offer exactly the rules the engine implements');
+    for (const id of ['s3AgreeRule', 's3AgreeShare', 's3AgreeBoth', 's3AgreeHold',
+      's3PermAgreeRule', 's3PermAgreeShare', 's3PermAgreeBoth', 's3PermAgreeHold']) {
+      assert.ok(src.includes(`id="${id}"`), `${id} must exist on Sweep3`);
+    }
+    // and the two committee-size boxes it replaced are gone entirely
+    for (const gone of ['s3Q6', 's3Q8', 's3PermAgree"']) {
+      assert.ok(!src.includes(gone), `${gone} belonged to the old per-size bars and must be gone`);
+    }
+    // the launch is sent every one of them
+    for (const field of ['agreeRule:', 'agreePct:', 'agreeBothModels:', 'agreePersist:',
+      'agreePermuteRule:', 'agreePermutePct:', 'agreePermuteBoth:', 'agreePermutePersist:']) {
+      assert.ok(src.includes(field), `the launch payload must carry ${field}`);
+    }
+  },
+
   async theBudgetGateDoesTheArithmeticUpFront() {
     const GB = 1073741824;
     // fits / tight / refuse, with the numbers said in the message

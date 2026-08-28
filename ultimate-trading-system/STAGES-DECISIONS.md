@@ -323,6 +323,65 @@ work — the owner reviews decisions in the morning, not at 3am.
     ranked table's own pager keeps the old restore rule — no order covers
     it, and pegging it uninvited is scope the owner did not ask for.
 
+44. **The measurement block was rebuilt (owner loop, 2026-08-28).** Measured
+    first, on the owner's own coins: at Daily 1-day a coin on its own had 13
+    numbers of which 2 were frozen forever and 3 held one fact — which is why
+    six members voted as three voices there. Five rules now hold at every
+    chunk shape with no special case: count in hours, never days; every
+    window strictly smaller than the chunk; ratios only; zero-volume hours
+    legal; one formula everywhere. The width is the same at every shape (21
+    per asset, 5 cross) where it used to grow with the days. Gone: the
+    day-by-day returns, the last-24-hours return (an exact copy of the last
+    day at EVERY shape), the two day-based volume numbers. New: four quarter
+    returns, three volume numbers over hours, three that use price AND volume
+    together, and three price numbers measured as the most independent of the
+    candidates. `total_ret` is exactly the quarters compounded — proved to
+    sixteen decimal places — which is why it was only ever a FAULT at Daily
+    1-day, where it became an exact duplicate.
+45. **Four families, named by hand, and the fourth reading.** Every number
+    belongs to exactly one family (price / volume / pricevol / cross), listed
+    by exact name — the old classifier guessed from spelling and filed a
+    VOLATILITY comparison as volume for years. The families partition the
+    block; "everything" is their union and is NOT an independent line of
+    evidence, which the voices measurement now says out loud. A coin judged
+    on its own has 8 members, one read alongside others 10.
+46. **Agreement is five rules, not one count.** count (bit-identical to the
+    old rule, proved, so results either side stay comparable), conviction,
+    voices, families, unusual — with both-kinds and hold modifiers. The dial
+    is a SHARE of the committee, so one number means the same thing at 8
+    members or 32 and no committee size appears in a setting's name again.
+    Shares landing on the same rung for every unit in a run are one setting,
+    resolved at launch against the actual units.
+47. **Independent voices, measured and recorded.** Members calling the same
+    way almost always are one voice however differently they were built,
+    measured on the test slice only. Recorded at stage 1 and stage 2 and
+    shown beside the member count, so a reading that adds members without
+    adding voices is visible instead of invisible. On the end-to-end exam at
+    Daily 1-day — the shape that used to give 6 members and 3 voices — the
+    rebuilt committee gives **8 members and 8 voices**, better than the 5 the
+    loop plan committed to in advance.
+48. **Old sets are refused, never mixed, never deleted.** Every set is
+    stamped with its measurement block; a parent from an older one is refused
+    by name with what to do instead. The owner deletes them with the control
+    that already exists.
+49. **The twelve interface demands.** Filters above every table in one
+    aligned grid, refused by name at the service if unknown, applied before
+    the page is cut, with a line owning up to what was held back; a fold per
+    table; every column sortable with its priority number; the obsolete
+    ordering box and its Apply removed from the every-coin table because
+    columns now order it and filters ask again on change; hover text on every
+    filter and column.
+
+## Parked, needing the owner
+
+- **Forward books F1-F3** are frozen experiments on measurement block 2.
+  Re-freezing them against the new engine would silently make each a
+  different experiment, so they declare their block and are reported as
+  awaiting a deliberate restart. The drift guard still bites at full strength
+  for any book on the current block.
+- **The owner's existing S1/S2/S3 record sets** are on the old block and will
+  be refused as parents. Nothing of theirs was deleted.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and
