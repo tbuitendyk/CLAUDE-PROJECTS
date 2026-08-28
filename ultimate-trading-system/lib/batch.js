@@ -2510,7 +2510,7 @@ function startBracketLab(params, opts) {
     // worker thread at the kindest priority, and the saved tally serves every
     // later open instantly. Fire-and-forget: the run is complete either way,
     // and a failed build reports itself the first time the table is opened.
-    try { void (doc.id); } catch (_) { /* the table falls back to a background build on open */ }
+    try { require('./replication').startTotals(doc.id); } catch (_) { /* the table falls back to a background build on open */ }
   })().catch((err) => {
     try { pool.abort(); } catch { /* gone */ }
     if (activePool === pool) activePool = null;

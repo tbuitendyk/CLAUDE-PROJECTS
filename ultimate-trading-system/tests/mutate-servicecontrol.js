@@ -270,10 +270,29 @@ const GUARDS = [
 
 const only = process.argv[2] || '';
 
+// EVERY FILE THIS HARNESS BREAKS IS RESTORED, INCLUDING WHEN IT IS KILLED.
+// It restored on a throw but not on a signal, and being stopped mid-run twice
+// in one sitting left a planted mutation behind in the working tree — once it
+// reached a commit and a deploy before anyone noticed. A held original and a
+// signal handler close that: whatever ends this process, the file goes back.
+const inFlight = new Map();   // path -> original text
+function restoreAll() {
+  for (const [file, orig] of inFlight) {
+    try { fs.writeFileSync(file, orig); } catch (_) { /* best effort on the way out */ }
+  }
+  inFlight.clear();
+}
+for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(sig, () => { restoreAll(); process.exit(130); });
+}
+process.on('exit', restoreAll);
+process.on('uncaughtException', (err) => { restoreAll(); throw err; });
+
 let missed = 0;
 for (const [file, from, to, testName, consequence] of GUARDS) {
   if (only && !testName.toLowerCase().includes(only.toLowerCase())) continue;
   const orig = fs.readFileSync(file, 'utf8');
+  inFlight.set(file, orig);
   const hits = orig.split(from).length - 1;
   if (!hits) {
     console.log(`SKIP  ${testName}\n      the guard this breaks is no longer written that way, so nothing was tested`);
@@ -289,6 +308,7 @@ for (const [file, from, to, testName, consequence] of GUARDS) {
     out = `${err.stdout || ''}${err.stderr || ''}`;
   } finally {
     fs.writeFileSync(file, orig);
+    inFlight.delete(file);
   }
   if (new RegExp(`FAIL[^\\n]*${testName}`).test(out)) {
     console.log(`ok    ${testName}${hits > 1 ? `  (${hits} copies of that guard broken)` : ''}`);

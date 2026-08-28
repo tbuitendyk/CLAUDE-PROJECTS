@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **72871f4fe836 — what the box is serving**, not from the working tree.
+Generated from **8ab98580c693 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -364,15 +364,16 @@ _none_
 
 # Sweep3
 
-## What the controls are called (59)
+## What the controls are called (61)
 
 - `— each says why:`
 - `— no finished stage`
 - `” will permanently remove:`
-- `agree`
+- `agree by`
 - `all loaded data`
 - `arm`
 - `band % (or auto)`
+- `both kinds`
 - `Campaign — the parent chain name`
 - `Campaign “`
 - `carry forward (0 = all)`
@@ -394,6 +395,7 @@ _none_
 - `gate`
 - `greenlight(s),`
 - `greenlights:`
+- `hold`
 - `is going:`
 - `no runs yet`
 - `null set size`
@@ -409,6 +411,7 @@ _none_
 - `settings`
 - `settings ×`
 - `setup(s),`
+- `share`
 - `singles`
 - `start`
 - `start stage 1`
@@ -424,52 +427,57 @@ _none_
 - `units`
 - `View tree`
 - `window layout`
-- `with contexts`
 
-## What the dropdowns offer (43)
+## What the dropdowns offer (49)
 
 - `0.25×`
 - `0.5×`
 - `0.75×`
 - `0×`
+- `1`
 - `1.5×`
-- `1/6`
-- `1/8`
 - `1×`
+- `10%`
+- `100%`
 - `113h`
 - `137h`
 - `161h`
 - `17h`
-- `2/6`
-- `2/8`
+- `2`
 - `2×`
-- `3/6`
-- `3/8`
-- `4/6`
-- `4/8`
+- `20%`
+- `25%`
+- `30%`
+- `40%`
 - `41h`
-- `5/6`
-- `5/8`
-- `6/6`
-- `6/8`
+- `50%`
+- `60%`
 - `61/13/13/13 (sealed exam)`
 - `65h`
-- `7/8`
 - `70/15/15`
-- `8/8`
+- `70%`
+- `75%`
+- `80%`
 - `89h`
+- `90%`
 - `active`
 - `always`
 - `argmax`
 - `breakout`
+- `conviction`
+- `count`
 - `Daily 1-day`
 - `Daily 2-day`
 - `Daily 3-day`
 - `Daily 4-day`
 - `directional`
+- `families`
 - `legacy 80/20 (never evidence)`
 - `market`
+- `off`
 - `static`
+- `unusual`
+- `voices`
 - `Weekly 8-day`
 
 ## Sentences the page prints (23)
@@ -498,10 +506,10 @@ _none_
 - ” deleted.
 - and the saved models and tuning files belonging to them.
 
-## Every word, flat (231)
+## Every word, flat (238)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm at attaches auto band be been belonging best blank Boards3. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin contexts Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry every Every everything evidence exam exist existing fee files finished first fit. forecast forward from gate going greenlight greenlights has here holds is it it. its keep keeps. kept kind kinds lands later launched layout legacy live loaded locked LOGREG market member members minted models name names never new next No no nothing null of on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record refuse remove Removed Retire retrained reused rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe up View vote votes voting way Weekly What while whole why will window with working writes yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm at attaches auto band be been belonging best blank Boards3. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin conviction count Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry every Every everything evidence exam exist existing families fee files finished first fit. forecast forward from gate going greenlight greenlights has here hold holds is it it. its keep keeps. kept kind kinds lands later launched layout legacy live loaded locked LOGREG market member members minted models name names never new next No no nothing null of off on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record refuse remove Removed Retire retrained reused rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape share side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe unusual up View voices vote votes voting way Weekly What while whole why will window with working writes yet
 ```
 
 ---
@@ -633,13 +641,14 @@ _none_
 
 _none_
 
-## Values the screen shows as data (6)
+## Values the screen shows as data (7)
 
 - `boost`
 - `cross`
 - `full`
 - `logreg`
 - `prices`
+- `pricevol`
 - `volume`
 
 ## Sentences the page prints (108)
@@ -753,10 +762,10 @@ _none_
 - one step away it falls apart, so distrust it. Money is TEST-WINDOW money, dollars per $100, the same as the grid
 - below.
 
-## Every word, flat (558)
+## Every word, flat (559)
 
 ```
-about above accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike alike. all alone already always-long an and another answering any anything apart Apply are as asks Asset asset asset. assets at authoritative AVERAGES averages avg away back back. background badge band be beat beat. been before behind being below below. best better board board. boost both box boxes branch button by campaign can cannot capped carried cell cell. changes check checked choices chosen CHOSEN chunk claim clear Click coin coin. coins collapse column Columns combination combos committee comparable comparison comparisons COMPLETE computed config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost could count Counts counts cover cross crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did display distrust divided do dollar dollars down. drives dump each Each earning echoed edge edge. either else empty end engine entries es every Every everything Everything evidence exactly excluded. execution exists fail FAILED failed failures falls far far. feeds fifteen files fingerprint finish finished finishes finishes. first First first-pass first-recorded FIXED flattering flatters floor. for forecasts. form fresh from from. full geometry get go goes gone good got got. graded Greenlight Greenlight. grid grow guess. has held HELD-BACK held-back here higher History honest how If in INCOMPLETE. independent indistinguishable INFERRED Inside inspect instead. intended. into invisible is IS it It it. its itself judge judged keeps kept KEPT. KEY knife last layout least length line list list. little lives load loading logreg look looks looks. made make many marked marking marks match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much named narrowed near-duplicates needle neighbouring Neighbours neighbours never next no none. not notes nothing now null nulls number of of. off older on once once-only one ONE one. ones only ONLY open Open open. opened opens opinions or order ordering other otherwise. out over own p-value page pairwise panel participation pass per per-member permanently permutation permutations permuted pick picked Picking planted plateau Plateau plus POINTS predictability press Press pressed prev price prices profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking rather read reading real real-versus-null record recorded records recover recovered redraws. refresh region register Reload remove removes replication Replication reporting rest result result. Resume retry retry. row rows rows. run run. running runs runs. same sample. save saved say saying says scans score scored scoring SCREEN sealed search SEARCHED second seconds seconds. section section. see SELECT selected selection sentences served service set setting settings setup setups shape share show showed showing shown shows side similar sit sits Size slice slim small smaller so so. sort sortable source STAMP started. starts. statistics stay step still stops stored straight sturdy sturdy. sum survived Survivor sweep Sweep table taken tally. tell test TEST-WINDOW than that That the The their them them. themselves themselves. then These these They they This this THIS those time to together together. Tool tools top top. total totalled Totalled totalling totals touched traded trades Tune unavailable undone. unit units units. unnamed until up verbatim verdict Verify version view volume vote votes votes. vs waits watch way were what What when where whether which while while. whole why widest width will window with without won. works worst written yardstick yet yet. you Your your
+about above accuracy Accuracy ACCURACY across-asset actually admits admits. again against agreement agreement/entry/hold ahead alike alike. all alone already always-long an and another answering any anything apart Apply are as asks Asset asset asset. assets at authoritative AVERAGES averages avg away back back. background badge band be beat beat. been before behind being below below. best better board board. boost both box boxes branch button by campaign can cannot capped carried cell cell. changes check checked choices chosen CHOSEN chunk claim clear Click coin coin. coins collapse column Columns combination combos committee comparable comparison comparisons COMPLETE computed config configs configuration configurations construction construction. CONTEXT context copies copy copy. cost could count Counts counts cover cross crypto data Data dealt dealt-vote decision declared declared-cell Delete deleted deleted. Deleting denominator detail did display distrust divided do dollar dollars down. drives dump each Each earning echoed edge edge. either else empty end engine entries es every Every everything Everything evidence exactly excluded. execution exists fail FAILED failed failures falls far far. feeds fifteen files fingerprint finish finished finishes finishes. first First first-pass first-recorded FIXED flattering flatters floor. for forecasts. form fresh from from. full geometry get go goes gone good got got. graded Greenlight Greenlight. grid grow guess. has held HELD-BACK held-back here higher History honest how If in INCOMPLETE. independent indistinguishable INFERRED Inside inspect instead. intended. into invisible is IS it It it. its itself judge judged keeps kept KEPT. KEY knife last layout least length line list list. little lives load loading logreg look looks looks. made make many marked marking marks match-ups matched matters may means measured measured. members menu Menu MICROSCOPE missing moment money Money money. move moved much named narrowed near-duplicates needle neighbouring Neighbours neighbours never next no none. not notes nothing now null nulls number of of. off older on once once-only one ONE one. ones only ONLY open Open open. opened opens opinions or order ordering other otherwise. out over own p-value page pairwise panel participation pass per per-member permanently permutation permutations permuted pick picked Picking planted plateau Plateau plus POINTS predictability press Press pressed prev price prices pricevol profit-and-loss promote promoted proved purpose. QC-142 QC-7 queued quoted ranked Ranked ranking rather read reading real real-versus-null record recorded records recover recovered redraws. refresh region register Reload remove removes replication Replication reporting rest result result. Resume retry retry. row rows rows. run run. running runs runs. same sample. save saved say saying says scans score scored scoring SCREEN sealed search SEARCHED second seconds seconds. section section. see SELECT selected selection sentences served service set setting settings setup setups shape share show showed showing shown shows side similar sit sits Size slice slim small smaller so so. sort sortable source STAMP started. starts. statistics stay step still stops stored straight sturdy sturdy. sum survived Survivor sweep Sweep table taken tally. tell test TEST-WINDOW than that That the The their them them. themselves themselves. then These these They they This this THIS those time to together together. Tool tools top top. total totalled Totalled totalling totals touched traded trades Tune unavailable undone. unit units units. unnamed until up verbatim verdict Verify version view volume vote votes votes. vs waits watch way were what What when where whether which while while. whole why widest width will window with without won. works worst written yardstick yet yet. you Your your
 ```
 
 ---
@@ -894,28 +903,25 @@ _none_
 
 # Boards3
 
-## What the controls are called (78)
+## What the controls are called (77)
 
 - `— pick a stage`
-- `agree`
+- `+both`
+- `+hold`
+- `agree by`
 - `alongside`
-- `Apply`
 - `arm`
-- `at least this many comparisons`
 - `avg held-back`
 - `avg held-back $`
-- `avg held-back at least, $`
 - `avg held-back trades`
 - `avg test $`
 - `avg trades`
-- `avg trades at least`
 - `avg vs always-long`
 - `avg vs always-long $`
-- `avg vs always-long at least, $`
 - `band`
 - `band %`
 - `beat its own null set`
-- `beat its own null set at least, %`
+- `before BOOST)`
 - `BOOST`
 - `campaign:`
 - `chunk shape`
@@ -940,6 +946,7 @@ _none_
 - `held-back $`
 - `held-back stops`
 - `held-back trades`
+- `independent voices`
 - `is`
 - `is going:`
 - `lead over null set`
@@ -954,11 +961,12 @@ _none_
 - `record set —`
 - `records`
 - `rows`
+- `rung it landed on`
 - `save notes`
 - `setting`
 - `Settings, ranked`
+- `share`
 - `Size:`
-- `sort by`
 - `Stage 1`
 - `stage 1 order`
 - `Stage 2`
@@ -993,31 +1001,31 @@ _none_
 - do not read an empty panel here as a result.
 - notes — why this run exists, what it showed, what it cost
 - STAMP FAILED — this run cannot be proved comparable to any other
-- Stage 1 — every unit's LOGREG members, scored once (
+- put away — press the arrow to bring it back.
 - Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
 - carry forward takes the top of. With nothing picked: beat its own null set, ties broken by lead over null set —
-- the fixed rule. No money on this table because stage 1 never prices a trade, and no held-back column because
-- stage 1 never reads that window.
-- Stage 2 — the carried rows, LOGREG joined by BOOST (
+- the fixed rule. Independent voices below members means some members are near-copies of each other and the
+- committee is smaller than it looks. No money on this table because stage 1 never prices a trade.
 - Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 3
 - carry forward takes the top of. With nothing picked: forecast score — all members, best first; ties keep their
-- carry order either way. The null set columns are the unit's stage 1 reading, carried with it. No money on this
-- table: a stage 2 record is training inventory — members and kept votes. Pricing and the held-back window belong
-- to stage 3.
+- carry order either way. Independent voices below members means some members are near-copies; if the BOOST
+- members added members without adding voices, this is where that shows. No money on this table: a stage 2
+- record is training inventory. Pricing and the held-back window belong to stage 3.
 - Stage 3 — settings priced from the kept votes (
 - — the records are all kept; the totalling can be tried again after a service restart.
 - . This page asks again every few seconds.
 - — building in the background; the tables appear here when it lands.
 - — one row per declared setting, averaged over its coins
 - Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
-- nothing picked: beat its own null set, best first.
+- nothing picked: beat its own null set, best first. Independent voices below members means the committees held
+- near-copies, so the setting rests on fewer real opinions than its member count suggests.
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 
-## Every word, flat (240)
+## Every word, flat (261)
 
 ```
-accordingly. actually after again agree all alongside always-long an and any appear Apply are arm as asks at averaged avg away away. back background band be beat because belong below best board Boards3 BOOST broken building by campaign can cannot carried carry child chunk cleared coin coins column columns comes comparable comparisons copy cost could data Data decision declared Delete do DOES each Each either empty entry every Every exactly exists failed FAILED few fills fingerprint first first. fixed floors floors. forecast form forward from fuller gate going held held-back helped here in INCOMPLETE. into inventory is IS it it. its Its ITS joined keep kept lands. lead least left LOGREG looks many MATCH may members missing money never No no none. NOT not notes nothing null numbers of of. on once One one opening order Ordered other over OWN own page panel parent parents per pick picked picking PLAN. priced prices Pricing proved provenance put puts ranked rather read reading reads record records Reload reporting restart. result. row rows rule. run save saved score scored screen SCREEN seconds. section sections selections service set SET set. sets setting settings Settings shape showed Size so sort stage Stage STAMP stops table tables takes test than that the The their THIS this This ties time to top totalled totalling trade trades trail training tried unit units votes votes. vs way. what What when whole why window window. with With wrote yet you
+accordingly. actually added adding after again agree all alongside always-long an and any appear are arm arrow as asks at averaged avg away away. back back. background band be beat because before belong below best board Boards3 BOOST both bring broken building by campaign can cannot carry child chunk cleared coin coins column columns comes committee committees comparable comparisons copy cost could count data Data decision declared Delete do DOES each Each either empty entry every Every exactly exists failed FAILED few fewer fills fingerprint first first. fixed floors floors. forecast form forward from fuller gate going held held-back helped here hold if in INCOMPLETE. independent Independent into inventory. is IS it it. its Its ITS keep kept landed lands. lead left LOGREG looks looks. MATCH may means member members missing money near-copies never No none. NOT not notes nothing null numbers of of. on once One one opening opinions order Ordered other over OWN own page panel parent parents per pick picked picking PLAN. press priced prices Pricing proved provenance put puts ranked rather read real record records Reload reporting restart. rests result. row rows rule. run rung save saved score screen SCREEN seconds. section sections selections service set SET set. sets setting settings Settings shape share showed shows. Size smaller so some sort stage Stage STAMP stops suggests. table tables takes test than that the their THIS this This ties time to top totalled totalling trade. trades trail training tried unit units voices votes vs way. what What when where whole why window with With without wrote yet you
 ```
 
 ---
