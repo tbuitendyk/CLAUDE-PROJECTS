@@ -1,8 +1,8 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "8ab98580c693ea333c166edef2dbe4966286db3b",
-  "subject": "Tests, guards and the decision record for the rebuilt committee",
-  "capturedAt": "2026-08-28T06:20:00Z",
+  "commit": "ada5f323a8358a1e353d71228aecec44fd86a5a8",
+  "subject": "Restore a line a killed mutation sweep left broken, and stop that happening again",
+  "capturedAt": "2026-08-28T06:40:00Z",
   "files": {
     "public/construct.js": {
       "sha256": "93aa000516684d14215da9fb6485bb2dde50b78434229744b38764fdb6fdd587",
