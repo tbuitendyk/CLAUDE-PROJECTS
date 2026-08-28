@@ -445,15 +445,29 @@ window.HELP = {
       s3PermTrail: { what: 'Price every kind of stop, static included, as its own setting in the block.' },
       s3Arm: { what: 'How far the price must move in your favour before a following stop starts following.' },
       s3PermArm: { what: 'Price every starting point as its own setting in the block.' },
-      s3Q6: {
-        what: 'How many of a single coin\'s 6 members must say the same thing before a trade is taken.',
-        more: 'It is put away when the chosen stage 2 record set holds no coin judged on its own — there is no 6-member vote to agree on. A put-away box is not part of the run at all: no setting is counted for it and no setting\'s name carries it.',
+      s3AgreeRule: {
+        what: 'How the members\' votes become one call.',
+        more: 'count is how many members say the same thing. conviction is how strongly they lean, added up, so eight members barely leaning is not the same as eight certain ones. voices counts only INDEPENDENT members — members that call the same way almost every time share one vote between them. families needs different KINDS of evidence to agree, not just a number of members. unusual asks how rare this much agreement is for this particular committee, which makes one setting mean the same thing on a quarrelsome unit and a unanimous one.',
       },
-      s3Q8: {
-        what: 'The same, for a unit judged alongside contexts — 8 members rather than 6.',
-        more: 'It is put away when the chosen stage 2 record set holds no doubles or triples — there is no 8-member vote to agree on. A put-away box is not part of the run at all: no setting is counted for it and no setting\'s name carries it.',
+      s3PermAgreeRule: { what: 'Price every agree by choice as its own setting in the block.' },
+      s3AgreeShare: {
+        what: 'How demanding the rule is, as a share of the committee.',
+        more: 'Higher is stricter for every rule, so the dial never changes direction under you. A share rather than a count is what lets one number mean the same thing whether a coin\'s committee holds 8 members or 32 — and it is why no committee size appears in a setting\'s name any more.',
       },
-      s3PermAgree: { what: 'Price every level of agreement as its own setting in the block. It multiplies the block fastest — and here that multiplying is arithmetic, not training.' },
+      s3PermAgreeShare: {
+        what: 'Price every share as its own setting in the block.',
+        more: 'Shares that land on the same rung for every unit in the run are counted once, so the block never carries two settings that would price identical trades.',
+      },
+      s3AgreeBoth: {
+        what: 'The winning side must include at least one LOGREG member and one BOOST member.',
+        more: 'Without it a call can be one kind of member\'s quirk, agreed with by its own near-copies.',
+      },
+      s3PermAgreeBoth: { what: 'Price both with and without the both kinds requirement.' },
+      s3AgreeHold: {
+        what: 'How many decision moments in a row the same call must have stood before it is acted on. off acts at once.',
+        more: 'A hold is a plain noise filter: it costs entries and keeps only the calls the committee stayed with.',
+      },
+      s3PermAgreeHold: { what: 'Price every hold as its own setting in the block.' },
       s3Desc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
       s3Go3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards3.' },
       s3Stop: { what: 'Stops the stage run that is going. Everything already written stays; the set reports itself cancelled.' },
@@ -575,18 +589,6 @@ window.HELP = {
     controls: {
       ...RUN_NOTES_CONTROLS,
       ...B3_SECTION_CONTROLS,
-      b3MinShare: { what: 'Hides rows whose share of head-to-heads won is below this percent. Empty hides nothing.' },
-      b3MinHold: { what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.' },
-      b3MinTrades: { what: 'Hides rows whose avg trades is below this. Empty hides nothing.' },
-      b3MinVsLong: { what: 'Hides rows whose avg vs always-long is below this many dollars. Empty hides nothing.' },
-      b3Sort: {
-        what: 'How the every-coin table is ordered. The whole data set is sorted before the page is cut, so page one really is the top of everything.',
-        more: 'The columns sort with one click too — this box and the buttons on the column headings set the same order, and a second click on the same column turns it the other way.',
-      },
-      b3MinPairs: { what: 'Hides rows whose share rests on fewer head-to-heads than this. Zero hides nothing; the line under the table says how many rows the floors held back.' },
-      b3Go: {
-        what: 'Asks again with the sort and floors chosen beside it. The page does not move: the line of column headings stays exactly where it was.',
-      },
     },
   },
 

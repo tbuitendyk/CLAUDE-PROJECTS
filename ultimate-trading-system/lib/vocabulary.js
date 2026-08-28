@@ -67,8 +67,23 @@ function vocabulary() {
     // Committee quorums are a count out of the committee's size, so they are
     // derived rather than listed — a committee of another size gets the right
     // list without anybody adding one.
+    // The two committee-size bars are gone (owner loop, 2026-08-28). The
+    // agreement dial is a SHARE of whatever committee a unit holds, so one
+    // menu serves 8 members and 32 alike and no size ever reaches a name.
+    // Kept as relics for exactly one deploy — the word-list generator
+    // compiles the SERVED commit's vocabulary against these live libraries,
+    // so a removed list breaks the list the rule depends on.
     quorumOf6: asChoices([1, 2, 3, 4, 5, 6], (q) => `${q}/6`),
     quorumOf8: asChoices([1, 2, 3, 4, 5, 6, 7, 8], (q) => `${q}/8`),
+    agreeRule: [
+      { value: 'count', label: 'count' },
+      { value: 'conviction', label: 'conviction' },
+      { value: 'voices', label: 'voices' },
+      { value: 'families', label: 'families' },
+      { value: 'unusual', label: 'unusual' },
+    ],
+    agreeShare: asChoices([10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100], (q) => `${q}%`),
+    agreeHold: asChoices([0, 1, 2], (q) => (q === 0 ? 'off' : `${q}`)),
     windowLayout: [
       { value: 'split70', label: '70/15/15' },
       { value: 'reserve61', label: '61/13/13/13 (sealed exam)' },

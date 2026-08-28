@@ -233,7 +233,11 @@ module.exports = {
       // the stage pages' own orderings, same fault class as bCoinSort.
       // (s3Order left this list 2026-08-27 with the control itself: the carry
       // follows the sort saved on the parent's table now.)
-      { id: 'b3Sort', allowed: require('../lib/stages').S3_SORTS, why: 'lib/stages.js S3_SORTS' },
+      // b3Sort is gone (owner order, 2026-08-28: "remove obsolete ordering
+      // selections as we can do all row ordering by column selections"). The
+      // every-coin table is ordered by clicking its columns, and the values
+      // those clicks send are still the engine's own list — pinned below.
+      { id: 's3AgreeRule', allowed: require('../lib/agreement').AGREE_RULES, why: 'lib/agreement.js AGREE_RULES' },
     ];
     for (const c of CHECKED) {
       const offered = optionValues(SWEEP, c.id);

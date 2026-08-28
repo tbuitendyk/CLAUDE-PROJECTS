@@ -380,9 +380,9 @@ function rankingOf(id) { return rowstore.readAll(id, 'ranking'); }
 // what it takes. One closed list of what may be sorted, per stage; a key not
 // on it is refused by name, never guessed.
 const SORT_KEYS = {
-  1: { trade: 's', ctx: 's', geometry: 's', score: 'n', beat: 'share', lead: 'n' },
+  1: { trade: 's', ctx: 's', geometry: 's', members: 'n', voices: 'n', score: 'n', beat: 'share', lead: 'n' },
   2: {
-    s1rank: 'n', trade: 's', ctx: 's', geometry: 's', members: 'n',
+    s1rank: 'n', trade: 's', ctx: 's', geometry: 's', members: 'n', voices: 'n',
     score3: 'n', scoreAll: 'n', helped: 'n', beat: 'share', lead: 'n',
   },
   // Stage 3's ranked table (owner order, 2026-08-27): every column may be
@@ -391,7 +391,8 @@ const SORT_KEYS = {
   // band % sorts numerically with auto sitting last, whichever way it points.
   3: {
     decision: 's', bandMode: 'n', weekdaysOnly: 'n', entry: 's', gate: 's',
-    dMult: 'n', tHours: 'n', trailMult: 'n', armMult: 'n', quorum: 'n',
+    dMult: 'n', tHours: 'n', trailMult: 'n', armMult: 'n',
+    agreeRule: 's', agreePct: 'n', avgRung: 'n', avgVoices: 'n', members: 'n',
     coins: 'n', avgTest: 'n', avgHold: 'n', avgTrades: 'n', avgVsLong: 'n',
     beat: 'share', avgLead: 'n', coinsInMoney: 'n',
   },
@@ -401,11 +402,12 @@ const SORT_KEYS = {
 const SORT_WORDS = {
   trade: 'coin', ctx: 'alongside', geometry: 'chunk shape', score: 'forecast score',
   beat: 'beat its own null set', lead: 'lead over null set',
-  s1rank: 'stage 1 order', members: 'members',
+  s1rank: 'stage 1 order', members: 'members', voices: 'independent voices',
   score3: 'forecast score — stage 1 members', scoreAll: 'forecast score — all members',
   helped: 'fuller board helped?',
   decision: 'decision', bandMode: 'band', weekdaysOnly: '24/5', entry: 'entry', gate: 'gate',
-  dMult: 'd', tHours: 't', trailMult: 'trail', armMult: 'arm', quorum: 'agree',
+  dMult: 'd', tHours: 't', trailMult: 'trail', armMult: 'arm',
+  agreeRule: 'agree by', agreePct: 'share', avgRung: 'rung it landed on', avgVoices: 'independent voices',
   coins: 'coins', avgTest: 'avg test $', avgHold: 'avg held-back $',
   avgTrades: 'avg held-back trades', avgVsLong: 'avg vs always-long $',
   avgLead: 'lead over null set', coinsInMoney: 'coins in the money',
@@ -460,6 +462,70 @@ function applySort(stage, rows, spec, baseCmp) {
   });
   return out;
 }
+// ---- FILTERS ON THE TABLES (owner order, 2026-08-28) ----------------------
+//
+// One applier for all three tables. Every filter names the field it reads and
+// how it reads it: text matches any part of the value, ignoring case; a floor
+// keeps rows at or above a number; a ceiling keeps rows at or below one. An
+// empty box filters nothing — never everything, which is the way this kind of
+// control usually breaks.
+const FILTER_KINDS = {
+  text: (v, want) => String(v == null ? '' : v).toLowerCase().includes(String(want).toLowerCase()),
+  min: (v, want) => v != null && Number.isFinite(Number(v)) && Number(v) >= Number(want),
+  max: (v, want) => v != null && Number.isFinite(Number(v)) && Number(v) <= Number(want),
+};
+// field name -> how it is read. A key not on the list for that stage is
+// refused by name rather than quietly ignored, so a screen and the service
+// can never disagree about what a filter does.
+const FILTER_DEFS = {
+  1: {
+    trade: ['trade', 'text'], ctx: ['_ctx', 'text'], geometry: ['geometry', 'text'],
+    scoreMin: ['score', 'min'], beatMin: ['_beatPct', 'min'], leadMin: ['lead', 'min'],
+    voicesMin: ['voices', 'min'], rankMax: ['rank', 'max'],
+  },
+  2: {
+    trade: ['trade', 'text'], ctx: ['_ctx', 'text'], geometry: ['geometry', 'text'],
+    membersMin: ['members', 'min'], voicesMin: ['voices', 'min'],
+    score3Min: ['score3', 'min'], scoreAllMin: ['scoreAll', 'min'], helpedMin: ['helped', 'min'],
+    beatMin: ['_beatPct', 'min'], leadMin: ['lead', 'min'], s1rankMax: ['s1rank', 'max'], rankMax: ['rank', 'max'],
+  },
+  3: {
+    decision: ['decision', 'text'], entry: ['entry', 'text'], gate: ['gate', 'text'],
+    rule: ['agreeRule', 'text'], shareMin: ['agreePct', 'min'], shareMax: ['agreePct', 'max'],
+    tMin: ['tHours', 'min'], tMax: ['tHours', 'max'],
+    coinsMin: ['coins', 'min'], testMin: ['avgTest', 'min'], holdMin: ['avgHold', 'min'],
+    tradesMin: ['avgTrades', 'min'], vsLongMin: ['avgVsLong', 'min'],
+    beatMin: ['_beatPct', 'min'], leadMin: ['avgLead', 'min'], inMoneyMin: ['coinsInMoney', 'min'],
+    voicesMin: ['avgVoices', 'min'],
+  },
+};
+// The values a filter may read that are not stored as such: the share a row
+// beat of its null set, and the context coins as one piece of text.
+function withDerived(r) {
+  return {
+    ...r,
+    _ctx: [r.ctx1, r.ctx2].filter(Boolean).join(' + '),
+    _beatPct: r.pairs ? (r.beat / r.pairs) * 100 : null,
+  };
+}
+function applyFilters(stage, rows, filters) {
+  const defs = FILTER_DEFS[stage] || {};
+  const active = [];
+  for (const [key, raw] of Object.entries(filters || {})) {
+    if (raw === '' || raw == null) continue;
+    const def = defs[key];
+    if (!def) throw new Error(`"${key}" is not a filter on the stage ${stage} table (${Object.keys(defs).join('/')})`);
+    const [field, kind] = def;
+    if (kind !== 'text' && !Number.isFinite(Number(raw))) throw new Error(`the ${key} filter needs a number, not "${raw}"`);
+    active.push([field, FILTER_KINDS[kind], raw]);
+  }
+  if (!active.length) return rows;
+  return rows.filter((r) => {
+    const d = withDerived(r);
+    return active.every(([field, test, want]) => test(d[field], want));
+  });
+}
+
 // Saving the sort, the same contract notes have: refused while the set is
 // being written; an empty list puts the saved sort away.
 function setSetSort(id, spec) {
@@ -1282,7 +1348,7 @@ function chainOf(id) {
   return out;
 }
 
-function stage1Table(id, from, n) {
+function stage1Table(id, from, n, filters = null) {
   const doc = getSet(id);
   if (!doc) return null;
   const ranking = rankingOf(id);
@@ -1292,23 +1358,23 @@ function stage1Table(id, from, n) {
     return {
       _i: i, u: row.u,
       trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
+      members: (r.specs || []).length, voices: r.voices ?? null,
       score: row.score, beat: row.beat, pairs: row.pairs, lead: row.lead,
     };
   });
-  // the saved sort orders the whole table; the recorded ranking (the fixed
-  // rule) when none is saved. rank is the row's place under the order SERVED
-  // — sequential, so the first column always reads with the sort in use.
   if (Array.isArray(doc.sort) && doc.sort.length) rows = applySort(1, rows, doc.sort, (a, b) => a._i - b._i);
+  // the place is settled BEFORE the filters, so a filtered table still says
+  // where each row stands in the whole set rather than renumbering itself
+  rows = rows.map((r, i) => ({ ...r, rank: i + 1 }));
+  const of = rows.length;
+  rows = applyFilters(1, rows, filters);
   return {
-    total: rows.length, from, sort: doc.sort || [],
-    rows: rows.slice(from, from + n).map((r, i) => {
-      const { _i, ...rest } = r;
-      return { rank: from + i + 1, ...rest };
-    }),
+    total: rows.length, of, from, sort: doc.sort || [],
+    rows: rows.slice(from, from + n).map(({ _i, ...rest }) => rest),
   };
 }
 
-function stage2Table(id, from, n) {
+function stage2Table(id, from, n, filters = null) {
   const doc = getSet(id);
   if (!doc) return null;
   let rows = allRecords(id).map((r) => ({
@@ -1317,26 +1383,22 @@ function stage2Table(id, from, n) {
     members: r.specs.length,
     logreg: r.specs.filter((s) => s.model === 'logreg').length,
     boost: r.specs.filter((s) => s.model === 'boost').length,
+    voices: r.voices ?? null, voices3: r.voices3 ?? null,
     score3: r.score3, scoreAll: r.scoreAll, helped: r.helped,
     beat: r.beat, pairs: r.pairs, lead: r.lead,
   }));
   // the saved sort orders the whole table; best all-members forecast score
   // first when none is saved. Ties keep their carry position either way, so
-  // the order is total and two reads page identically. rank is sequential
-  // under the order SERVED (owner, 2026-08-27) — never an echo of a stored
-  // column.
+  // the order is total and two reads page identically.
   if (Array.isArray(doc.sort) && doc.sort.length) {
     rows = applySort(2, rows, doc.sort, (a, b) => a.carriedRank - b.carriedRank);
   } else {
     rows.sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
   }
-  return {
-    total: rows.length, from, sort: doc.sort || [],
-    rows: rows.slice(from, from + n).map((r, i) => {
-      const { carriedRank, ...rest } = r;
-      return { rank: from + i + 1, ...rest };
-    }),
-  };
+  rows = rows.map((r, i) => { const { carriedRank, ...rest } = r; return { rank: i + 1, ...rest }; });
+  const of = rows.length;
+  rows = applyFilters(2, rows, filters);
+  return { total: rows.length, of, from, sort: doc.sort || [], rows: rows.slice(from, from + n) };
 }
 
 const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting'];
@@ -1380,7 +1442,7 @@ function stage3Coins(id, query) {
   };
 }
 
-function stage3Ranked(id, from, n) {
+function stage3Ranked(id, from, n, filters = null) {
   const t = readTally(id);
   if (!t) return null;
   const doc = getSet(id);
@@ -1389,15 +1451,20 @@ function stage3Ranked(id, from, n) {
   // wrote (beat its own null set, best first) when nothing is picked. The
   // rows are tagged and untagged around the sort so the cached tally itself
   // is never reordered.
+  let rows;
+  let sort = [];
   if (doc && Array.isArray(doc.sort) && doc.sort.length) {
-    const tagged = t.ranked.map((r, i) => ({ ...r, _i: i }));
-    const rows = applySort(3, tagged, doc.sort, (a, b) => a._i - b._i);
-    return {
-      total: rows.length, from, sort: doc.sort,
-      rows: rows.slice(from, from + n).map(({ _i, ...r }) => r),
-    };
+    sort = doc.sort;
+    rows = applySort(3, t.ranked.map((r, i) => ({ ...r, _i: i })), doc.sort, (a, b) => a._i - b._i);
+  } else {
+    rows = t.ranked.map((r, i) => ({ ...r, _i: i }));
   }
-  return { total: t.ranked.length, from, sort: [], rows: t.ranked.slice(from, from + n) };
+  const of = rows.length;
+  rows = applyFilters(3, rows, filters);
+  return {
+    total: rows.length, of, from, sort,
+    rows: rows.slice(from, from + n).map(({ _i, ...r }) => r),
+  };
 }
 
 function stage3CoinRows(id, query) {
@@ -1420,6 +1487,6 @@ module.exports = {
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, stage3Declared, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
-  setSetNotes, setSetSort, applySort, validateSort, sortLabel,
+  setSetNotes, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
 };

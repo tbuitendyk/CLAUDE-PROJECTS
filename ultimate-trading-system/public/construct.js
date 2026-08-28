@@ -3844,18 +3844,11 @@ function s3Provenance() {
 }
 
 async function s3Counts() {
-  // agree and with contexts follow the chosen parent's own coins (owner
-  // order, 2026-08-27): a chain holding no coin judged on its own has no 6-
-  // member vote to agree on, and one holding no doubles or triples has no
-  // 8-member vote — the box that does not apply is put away, the same rule
-  // Sweep applies to a market entry's gate.
-  {
-    const row = (s3SetsCache || []).find((x) => x.id === ($('#s3From3') && $('#s3From3').value));
-    const sz = (row && row.params && row.params.sizes) || null;
-    const q6 = $('#s3Q6'); const q8 = $('#s3Q8');
-    if (q6 && q6.closest('label')) q6.closest('label').style.display = (!sz || sz.singles) ? '' : 'none';
-    if (q8 && q8.closest('label')) q8.closest('label').style.display = (!sz || sz.doubles || sz.triples) ? '' : 'none';
-  }
+  // Nothing is put away here any more. The agreement dial is a SHARE of
+  // whatever committee a unit holds, so it applies to a coin judged on its
+  // own and to one read alongside others alike — which is why the two
+  // committee-size boxes that used to live here are gone (owner loop,
+  // 2026-08-28).
   const c1 = $('#s3Cost1');
   if (c1) {
     const body = {
@@ -3904,7 +3897,7 @@ async function s3Counts() {
 function s3BlockParams() {
   const entry = $('#s3Entry').value;
   const permEntry = $('#s3PermEntry').checked;
-  const cell = { tHours: Number($('#s3T').value), quorumSingles: Number($('#s3Q6').value), quorumContexts: Number($('#s3Q8').value) };
+  const cell = { tHours: Number($('#s3T').value) };
   if (entry !== 'market' || permEntry) {
     cell.entry = entry === 'market' ? 'breakout' : entry;
     cell.gate = $('#s3Gate').value;
@@ -3920,12 +3913,20 @@ function s3BlockParams() {
     cellPermute: {
       entry: permEntry, gate: $('#s3PermGate').checked, dMult: $('#s3PermD').checked,
       tHours: $('#s3PermT').checked, trail: $('#s3PermTrail').checked, arm: $('#s3PermArm').checked,
-      agree: $('#s3PermAgree').checked,
     },
     decision: $('#s3Dec').value, permuteDecision: $('#s3PermDec').checked,
     band: $('#s3Band').value.trim() === '' ? 'auto' : ($('#s3Band').value.trim() === 'auto' ? 'auto' : Number($('#s3Band').value)),
     permuteBand: $('#s3PermBand').checked,
     weekdaysOnly: $('#s3Wk').checked, permuteWeekdays: $('#s3PermWk').checked,
+    // the agreement is its own dimension now, never part of the trade shape
+    agreeRule: $('#s3AgreeRule').value,
+    agreePct: Number($('#s3AgreeShare').value),
+    agreeBothModels: $('#s3AgreeBoth').checked,
+    agreePersist: Number($('#s3AgreeHold').value) || 0,
+    agreePermuteRule: $('#s3PermAgreeRule').checked,
+    agreePermutePct: $('#s3PermAgreeShare').checked,
+    agreePermuteBoth: $('#s3PermAgreeBoth').checked,
+    agreePermutePersist: $('#s3PermAgreeHold').checked,
   };
 }
 
@@ -3973,10 +3974,13 @@ function fillStageForm(doc) {
     setV('#s3Entry', c.entry); setV('#s3Gate', c.gate); setV('#s3D', c.dMult); setV('#s3T', c.tHours);
     setV('#s3Trail', c.trailMult == null ? '' : c.trailMult);
     setV('#s3Arm', c.armMult == null ? '' : c.armMult);
-    setV('#s3Q6', c.quorumSingles); setV('#s3Q8', c.quorumContexts);
+    setV('#s3AgreeRule', p.agreeRule || 'count'); setV('#s3AgreeShare', p.agreePct == null ? 50 : p.agreePct);
+    setC('#s3AgreeBoth', p.agreeBothModels); setV('#s3AgreeHold', p.agreePersist || 0);
+    setC('#s3PermAgreeRule', p.agreePermuteRule); setC('#s3PermAgreeShare', p.agreePermutePct);
+    setC('#s3PermAgreeBoth', p.agreePermuteBoth); setC('#s3PermAgreeHold', p.agreePermutePersist);
     const cp = p.cellPermute || {};
     setC('#s3PermEntry', cp.entry); setC('#s3PermGate', cp.gate); setC('#s3PermD', cp.dMult); setC('#s3PermT', cp.tHours);
-    setC('#s3PermTrail', cp.trail); setC('#s3PermArm', cp.arm); setC('#s3PermAgree', cp.agree);
+    setC('#s3PermTrail', cp.trail); setC('#s3PermArm', cp.arm);
   }
   // a programmatic fill never fires 'change', so remember it here — copied
   // settings must survive a screen flip exactly like typed ones
@@ -4127,9 +4131,16 @@ async function drawSweep3() {
         <label class="c"><input type="checkbox" id="s3PermArm"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">agree<select id="s3Q6">${vocabOptions('quorumOf6', '2')}</select></label>
-        <label class="f">with contexts<select id="s3Q8">${vocabOptions('quorumOf8', '3')}</select></label>
-        <label class="c"><input type="checkbox" id="s3PermAgree"> permute</label>
+        <label class="f" title="how the members' votes become one call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members, so near-copies share one vote; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by<select id="s3AgreeRule">${vocabOptions('agreeRule', 'count')}</select></label>
+        <label class="c" title="price every agree by choice as its own setting."><input type="checkbox" id="s3PermAgreeRule"> permute</label>
+        <label class="f" title="how demanding the rule is, as a share of the committee. Higher is stricter for every rule, and a share means the same thing whatever a unit's committee holds — which is why no committee size appears in a setting's name any more.">share<select id="s3AgreeShare">${vocabOptions('agreeShare', '50')}</select></label>
+        <label class="c" title="price every share as its own setting. Shares landing on the same rung for every unit in the run are counted once."><input type="checkbox" id="s3PermAgreeShare"> permute</label>
+      </div>
+      <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="c" title="the side that wins must include at least one LOGREG member and one BOOST member, so a call can never be one kind's quirk."><input type="checkbox" id="s3AgreeBoth"> both kinds</label>
+        <label class="c" title="price both with and without the both kinds requirement."><input type="checkbox" id="s3PermAgreeBoth"> permute</label>
+        <label class="f" title="how many decision moments in a row the same call must have stood before it is acted on. off acts at once.">hold<select id="s3AgreeHold">${vocabOptions('agreeHold', '0')}</select></label>
+        <label class="c" title="price every hold as its own setting."><input type="checkbox" id="s3PermAgreeHold"> permute</label>
       </div>
     </div>
     <div class="row" style="margin-top:.4rem"><span class="note" id="s3Count">…</span></div>
@@ -4175,7 +4186,8 @@ async function drawSweep3() {
     const el = $(`#${id}`); if (el) el.onchange = s3Counts;
   }
   for (const id of ['s3From3', 's3Carry3', 's3Null3', 's3Dec', 's3PermDec', 's3Band', 's3PermBand', 's3Wk', 's3PermWk', 's3Entry', 's3PermEntry',
-    's3Gate', 's3PermGate', 's3D', 's3PermD', 's3T', 's3PermT', 's3Trail', 's3PermTrail', 's3Arm', 's3PermArm', 's3Q6', 's3Q8', 's3PermAgree']) {
+    's3Gate', 's3PermGate', 's3D', 's3PermD', 's3T', 's3PermT', 's3Trail', 's3PermTrail', 's3Arm', 's3PermArm',
+    's3AgreeRule', 's3PermAgreeRule', 's3AgreeShare', 's3PermAgreeShare', 's3AgreeBoth', 's3PermAgreeBoth', 's3AgreeHold', 's3PermAgreeHold']) {
     const el = $(`#${id}`); if (el) el.onchange = s3Counts;
   }
   // what is in the boxes survives a screen flip: write the remembered draft
@@ -4521,18 +4533,112 @@ function b3WireCoinSort(root) {
   });
 }
 
+// ---- WHAT EVERY TABLE ON THIS SCREEN GETS (owner order, 2026-08-28) -------
+//
+// Filters above it, lined up in one grid so every name ends on the same edge
+// and every box starts on the same edge; a fold so it can be put away; and
+// sortable columns carrying their priority number. Written once here rather
+// than four times below, because four copies is how two tables end up
+// disagreeing about what a filter does.
+const b3Filters = (key) => (b3View().filters || {})[key] || {};
+function b3SaveFilters(key, patch) {
+  const all = { ...(b3View().filters || {}) };
+  all[key] = { ...(all[key] || {}), ...patch };
+  for (const k of Object.keys(all[key])) if (all[key][k] === '' || all[key][k] == null) delete all[key][k];
+  b3SaveView({ filters: all });
+}
+// spec: [id, name shown, kind, tooltip, options?]  kind: 'text' | 'num' | 'pick'
+function b3FilterGrid(key, specs) {
+  const cur = b3Filters(key);
+  const box = (sp) => {
+    const [id, , kind, , opts] = sp;
+    const v = cur[id] == null ? '' : String(cur[id]);
+    if (kind === 'pick') {
+      return `<select data-b3filter="${key}:${id}"><option value="">any</option>${
+        opts.map((o) => `<option value="${esc(o)}"${v === o ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
+    }
+    return `<input data-b3filter="${key}:${id}" type="${kind === 'num' ? 'number' : 'text'}" step="any" value="${esc(v)}">`;
+  };
+  return `<div class="filters">${specs.map((sp) => `<label title="${esc(sp[3])}"><span class="fname">${esc(sp[1])}</span><span class="fbox">${box(sp)}</span></label>`).join('')}
+    <span class="frow"><button data-b3filterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button></span></div>`;
+}
+function b3WireFilters(root) {
+  $(root).querySelectorAll('[data-b3filter]').forEach((el) => {
+    el.onchange = () => {
+      const [key, id] = el.dataset.b3filter.split(':');
+      b3SaveFilters(key, { [id]: el.value });
+      b3SaveView({ [`from${key}`]: 0 });
+      if (key === 'S3C' || key === 'S3R') b3RedrawPeggedToCoinHead();
+      else drawBoards3().then(() => restoreScroll(tab));
+    };
+  });
+  $(root).querySelectorAll('[data-b3filterclear]').forEach((btn) => {
+    btn.onclick = () => {
+      const key = btn.dataset.b3filterclear;
+      const all = { ...(b3View().filters || {}) };
+      delete all[key];
+      b3SaveView({ filters: all, [`from${key}`]: 0 });
+      if (key === 'S3C' || key === 'S3R') b3RedrawPeggedToCoinHead();
+      else drawBoards3().then(() => restoreScroll(tab));
+    };
+  });
+}
+// A table's own fold. Open unless the owner put it away, and remembered.
+const b3TableOpen = (key) => ((b3View().tables || {})[key] !== false);
+function b3FoldBtn(key, title) {
+  return `<h3 style="margin-top:0"><button data-b3tablefold="${key}" style="min-width:1.6rem;padding:0 .3rem;margin-right:.4rem"
+    title="puts this table away, or brings it back. It comes back as you left it.">${b3TableOpen(key) ? '▾' : '▸'}</button>${title}</h3>`;
+}
+function b3WireTableFold(root) {
+  $(root).querySelectorAll('[data-b3tablefold]').forEach((btn) => {
+    btn.onclick = () => {
+      const all = { ...(b3View().tables || {}) };
+      const key = btn.dataset.b3tablefold;
+      all[key] = !b3TableOpen(key);
+      b3SaveView({ tables: all });
+      drawBoards3().then(() => restoreScroll(tab));
+    };
+  });
+}
+// The line under a table that owns up to what the filters removed.
+function b3Shown(t) {
+  const total = (t && t.total) || 0;
+  const of = t && t.of != null ? t.of : total;
+  return of > total ? `<p class="note">${total.toLocaleString()} of ${of.toLocaleString()} rows — the rest are held back by the filters above.</p>` : '';
+}
+
 async function b3DrawStage1(doc, incomplete, view, mount) {
+  const heading = `Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})`;
+  if (!b3TableOpen('S1')) {
+    $(mount).innerHTML = `${incomplete}<div class="panel">${b3FoldBtn('S1', heading)}
+      <p class="note">put away — press the arrow to bring it back.</p></div>`;
+    b3WireTableFold(mount);
+    return;
+  }
   const from = Math.max(0, Number(view.fromS1) || 0);
-  const t = await apiOr(`api/stageset/${doc.id}/stage1?from=${from}&n=100`, null);
+  const qs = new URLSearchParams({ from, n: 100, ...b3Filters('S1') }).toString();
+  const t = await apiOr(`api/stageset/${doc.id}/stage1?${qs}`, null);
   const rows = (t && t.rows) || [];
   $(mount).innerHTML = `${incomplete}<div class="panel">
-    <h3 style="margin-top:0">Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})</h3>
+    ${b3FoldBtn('S1', heading)}
+    ${b3FilterGrid('S1', [
+    ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
+    ['ctx', 'alongside', 'text', 'shows only rows read against a coin containing what you type. Empty shows every row.'],
+    ['geometry', 'chunk shape', 'text', 'shows only rows whose chunk shape contains what you type, such as daily.'],
+    ['scoreMin', 'forecast score at least', 'num', 'hides rows whose forecast score is below this. Empty hides nothing.'],
+    ['beatMin', 'beat its own null set at least, %', 'num', 'hides rows that beat less than this share of their null set. Empty hides nothing.'],
+    ['leadMin', 'lead over null set at least', 'num', 'hides rows whose lead over null set is below this. Empty hides nothing.'],
+    ['voicesMin', 'independent voices at least', 'num', 'hides rows holding fewer independent voices than this. Empty hides nothing.'],
+    ['rankMax', 'order at most', 'num', 'hides rows placed lower than this in the order. Empty hides nothing.'],
+  ])}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — sequential. The fixed rule (beat its own null set, ties broken by lead over null set) when nothing is picked.">order</th>
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">order</th>
         <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${b3SortBtn(doc, 'trade', 'asc')}</th>
         <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${b3SortBtn(doc, 'ctx', 'asc')}</th>
         <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${b3SortBtn(doc, 'geometry', 'asc')}</th>
+        <th ${b3th} title="how many members vote for this unit at stage 1 — one per reading, all LOGREG.">members${b3SortBtn(doc, 'members', 'desc')}</th>
+        <th ${b3th} title="how many of those members are INDEPENDENT. Members that call the same way almost every time count as one voice however differently they were built, so this is the number of real opinions behind the vote.">independent voices${b3SortBtn(doc, 'voices', 'desc')}</th>
         <th ${b3th} title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two null-set columns are what compare across shapes.">forecast score${b3SortBtn(doc, 'score', 'desc')}</th>
         <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own null set${b3SortBtn(doc, 'beat', 'desc')}</th>
         <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set${b3SortBtn(doc, 'lead', 'desc')}</th></tr></thead>
@@ -4541,33 +4647,59 @@ async function b3DrawStage1(doc, incomplete, view, mount) {
         <td ${b3td}>${b3Coin(r)}</td>
         <td ${b3td}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
         <td ${b3td}>${esc(b3Geo(r.geometry))}</td>
+        <td ${b3td}>${r.members == null ? '—' : r.members}</td>
+        <td ${b3td}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}</td>
         <td ${b3td}>${r.score == null ? '—' : r.score.toFixed(1)}</td>
         <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="7" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${b3Shown(t)}
     ${b3Pager((t && t.total) || 0, from, 100, 'S1')}
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
       carry forward takes the top of. With nothing picked: beat its own null set, ties broken by lead over null set —
-      the fixed rule. No money on this table because stage 1 never prices a trade, and no held-back column because
-      stage 1 never reads that window.</p>
+      the fixed rule. Independent voices below members means some members are near-copies of each other and the
+      committee is smaller than it looks. No money on this table because stage 1 never prices a trade.</p>
   </div>`;
   b3WirePager(mount);
   b3WireSort(doc, mount);
+  b3WireFilters(mount);
+  b3WireTableFold(mount);
 }
 
 async function b3DrawStage2(doc, incomplete, view, mount) {
+  const heading = `Stage 2 — the carried rows, LOGREG joined by BOOST (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
+  if (!b3TableOpen('S2')) {
+    $(mount).innerHTML = `${incomplete}<div class="panel">${b3FoldBtn('S2', heading)}
+      <p class="note">put away — press the arrow to bring it back.</p></div>`;
+    b3WireTableFold(mount);
+    return;
+  }
   const from = Math.max(0, Number(view.fromS2) || 0);
-  const t = await apiOr(`api/stageset/${doc.id}/stage2?from=${from}&n=100`, null);
+  const qs = new URLSearchParams({ from, n: 100, ...b3Filters('S2') }).toString();
+  const t = await apiOr(`api/stageset/${doc.id}/stage2?${qs}`, null);
   const rows = (t && t.rows) || [];
   $(mount).innerHTML = `${incomplete}<div class="panel">
-    <h3 style="margin-top:0">Stage 2 — the carried rows, LOGREG joined by BOOST (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
+    ${b3FoldBtn('S2', heading)}
+    ${b3FilterGrid('S2', [
+    ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
+    ['ctx', 'alongside', 'text', 'shows only rows read against a coin containing what you type. Empty shows every row.'],
+    ['geometry', 'chunk shape', 'text', 'shows only rows whose chunk shape contains what you type, such as daily.'],
+    ['membersMin', 'members at least', 'num', 'hides rows with fewer members than this. Empty hides nothing.'],
+    ['voicesMin', 'independent voices at least', 'num', 'hides rows holding fewer independent voices than this. Empty hides nothing.'],
+    ['scoreAllMin', 'forecast score — all members at least', 'num', 'hides rows scoring below this with every member pooled. Empty hides nothing.'],
+    ['helpedMin', 'fuller board helped at least', 'num', 'hides rows the BOOST members helped by less than this. Empty hides nothing.'],
+    ['beatMin', 'beat its own null set at least, %', 'num', 'hides rows that beat less than this share of their null set. Empty hides nothing.'],
+    ['leadMin', 'lead over null set at least', 'num', 'hides rows whose lead over null set is below this. Empty hides nothing.'],
+    ['s1rankMax', 'stage 1 order at most', 'num', 'hides rows that placed lower than this at stage 1. Empty hides nothing.'],
+  ])}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — sequential. Forecast score with all members, best first, when nothing is picked.">stage 2 order</th>
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">stage 2 order</th>
         <th ${b3th} title="where the same unit ranked at stage 1">stage 1 order${b3SortBtn(doc, 's1rank', 'asc')}</th>
         <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${b3SortBtn(doc, 'trade', 'asc')}</th>
         <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${b3SortBtn(doc, 'ctx', 'asc')}</th>
         <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${b3SortBtn(doc, 'geometry', 'asc')}</th>
         <th ${b3th} title="how many members vote for this unit now, and what they are">members${b3SortBtn(doc, 'members', 'desc')}</th>
+        <th ${b3th} title="how many of those members are INDEPENDENT. Members that call the same way almost every time count as one voice however differently they were built. The figure in brackets is what it was before the BOOST members joined, so what the fuller board bought in real opinions is visible here.">independent voices${b3SortBtn(doc, 'voices', 'desc')}</th>
         <th ${b3th} title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members${b3SortBtn(doc, 'score3', 'desc')}</th>
         <th ${b3th} title="the same fixed score with every member pooled, BOOST included">forecast score — all members${b3SortBtn(doc, 'scoreAll', 'desc')}</th>
         <th ${b3th} title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?${b3SortBtn(doc, 'helped', 'desc')}</th>
@@ -4580,32 +4712,39 @@ async function b3DrawStage2(doc, incomplete, view, mount) {
         <td ${b3td}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
         <td ${b3td}>${esc(b3Geo(r.geometry))}</td>
         <td ${b3td}>${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST</td>
+        <td ${b3td}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}${r.voices3 == null ? '' : ` <span class="muted">(${r.voices3} before BOOST)</span>`}</td>
         <td ${b3td}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
         <td ${b3td}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
         <td ${b3td}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td>
         <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="11" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${b3Shown(t)}
     ${b3Pager((t && t.total) || 0, from, 100, 'S2')}
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 3
       carry forward takes the top of. With nothing picked: forecast score — all members, best first; ties keep their
-      carry order either way. The null set columns are the unit's stage 1 reading, carried with it. No money on this
-      table: a stage 2 record is training inventory — members and kept votes. Pricing and the held-back window belong
-      to stage 3.</p>
+      carry order either way. Independent voices below members means some members are near-copies; if the BOOST
+      members added members without adding voices, this is where that shows. No money on this table: a stage 2
+      record is training inventory. Pricing and the held-back window belong to stage 3.</p>
   </div>`;
   b3WirePager(mount);
   b3WireSort(doc, mount);
+  b3WireFilters(mount);
+  b3WireTableFold(mount);
 }
 
 async function b3DrawStage3(doc, incomplete, view, mount) {
   const from = Math.max(0, Number(view.fromS3R) || 0);
   const coinsQ = view.coins || {};
+  const coinF = b3Filters('S3C');
   const qs = new URLSearchParams({
-    sort: coinsQ.sort || 'share', flip: coinsQ.flip ? '1' : '', minPairs: coinsQ.minPairs ?? '', minShare: coinsQ.minShare ?? '',
-    minHold: coinsQ.minHold ?? '', minTrades: coinsQ.minTrades ?? '', minVsLong: coinsQ.minVsLong ?? '',
+    sort: coinsQ.sort || 'share', flip: coinsQ.flip ? '1' : '',
+    minPairs: coinF.minPairs ?? '', minShare: coinF.minShare ?? '', minTest: coinF.minTest ?? '',
+    minHold: coinF.minHold ?? '', minTrades: coinF.minTrades ?? '', minVsLong: coinF.minVsLong ?? '',
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
+  const rankQs = new URLSearchParams({ from, n: 100, ...b3Filters('S3R') }).toString();
   const [ranked, coins] = await Promise.all([
-    apiOr(`api/stageset/${doc.id}/ranked?from=${from}&n=100`, null),
+    apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
   ]);
   // A finished set whose tables are missing totals itself when opened (the
@@ -4629,9 +4768,30 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
   const cr = (coins && coins.rows) || [];
   const openKeys = new Set(view.openS3 || []);
   const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry].join('|');
+  const s3Head = `Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
   $(mount).innerHTML = `${incomplete}<div class="panel">
-    <h3 style="margin-top:0">Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
+    ${b3FoldBtn('S3R', s3Head)}
+    ${!b3TableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
     <p style="margin:.6rem 0 .2rem"><b>Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
+    ${b3FilterGrid('S3R', [
+    ['rule', 'agree by', 'pick', 'shows only settings using this way of turning votes into a call. any shows every one.', ['count', 'conviction', 'voices', 'families', 'unusual']],
+    ['shareMin', 'share at least, %', 'num', 'hides settings whose share is below this. Empty hides nothing.'],
+    ['shareMax', 'share at most, %', 'num', 'hides settings whose share is above this. Empty hides nothing.'],
+    ['decision', 'decision', 'pick', 'shows only settings using this decision. any shows both.', ['argmax', 'directional']],
+    ['entry', 'entry', 'pick', 'shows only settings opened this way. any shows both.', ['market', 'breakout']],
+    ['gate', 'gate', 'text', 'shows only settings whose gate contains what you type. Empty shows every gate.'],
+    ['tMin', 't at least, hours', 'num', 'hides settings held for fewer hours than this. Empty hides nothing.'],
+    ['tMax', 't at most, hours', 'num', 'hides settings held for more hours than this. Empty hides nothing.'],
+    ['coinsMin', 'coins at least', 'num', 'hides settings priced on fewer coins than this. Empty hides nothing.'],
+    ['testMin', 'avg test $ at least', 'num', 'hides settings whose average test money is below this. Empty hides nothing.'],
+    ['holdMin', 'avg held-back $ at least', 'num', 'hides settings whose average held-back money is below this. Empty hides nothing.'],
+    ['tradesMin', 'avg held-back trades at least', 'num', 'hides settings with fewer average entries than this. Empty hides nothing.'],
+    ['vsLongMin', 'avg vs always-long $ at least', 'num', 'hides settings that beat just holding the coin by less than this. Empty hides nothing.'],
+    ['beatMin', 'beat its own null set at least, %', 'num', 'hides settings that won less than this share of their head-to-heads. Empty hides nothing.'],
+    ['leadMin', 'lead over null set at least', 'num', 'hides settings whose lead over null set is below this. Empty hides nothing.'],
+    ['inMoneyMin', 'coins in the money at least', 'num', 'hides settings where fewer coins than this made money. Empty hides nothing.'],
+    ['voicesMin', 'independent voices at least', 'num', 'hides settings whose committees held fewer independent voices than this. Empty hides nothing.'],
+  ])}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="how the members' votes become a call — priced from the kept votes.">decision${b3RankSortBtn(doc, 'decision', 'asc')}</th>
@@ -4643,7 +4803,10 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
         <th ${b3th} title="how many hours a position is held before it is closed, if nothing else closed it first.">t${b3RankSortBtn(doc, 'tHours', 'asc')}</th>
         <th ${b3th} title="which stop the setting uses. static sits still on the far side of the entry; a dash means it does not apply.">trail${b3RankSortBtn(doc, 'trailMult', 'asc')}</th>
         <th ${b3th} title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm${b3RankSortBtn(doc, 'armMult', 'asc')}</th>
-        <th ${b3th} title="how many members must say the same thing before a trade is taken, out of how many there are.">agree${b3RankSortBtn(doc, 'quorum', 'asc')}</th>
+        <th ${b3th} title="how this setting turns the members' votes into a call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by${b3RankSortBtn(doc, 'agreeRule', 'asc')}</th>
+        <th ${b3th} title="how demanding the rule is, as a share of the committee. Higher is stricter, and it means the same thing whatever a unit's committee holds.">share${b3RankSortBtn(doc, 'agreePct', 'desc')}</th>
+        <th ${b3th} title="what that share worked out to for the coins priced here, averaged because committees can differ in size. For unusual it is the agreement count the rule demanded.">rung it landed on${b3RankSortBtn(doc, 'avgRung', 'desc')}</th>
+        <th ${b3th} title="how many INDEPENDENT voices the committees held, averaged over the coins. Members that call the same way almost every time count as one voice, so this is how many real opinions the setting rests on.">independent voices${b3RankSortBtn(doc, 'avgVoices', 'desc')}</th>
         <th ${b3th} title="how many coins this setting was priced on.">coins${b3RankSortBtn(doc, 'coins', 'desc')}</th>
         <th ${b3th} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $${b3RankSortBtn(doc, 'avgTest', 'desc')}</th>
         <th ${b3th} title="the once-only look, on data no ordering ever read">avg held-back $${b3RankSortBtn(doc, 'avgHold', 'desc')}</th>
@@ -4662,7 +4825,10 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
         <td ${b3td}>${r.tHours}h</td>
         <td ${b3td}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? (r.entry === 'market' ? '—' : 'static') : `${r.trailMult}×`}</td>
         <td ${b3td}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? '—' : `${r.armMult}×`}</td>
-        <td ${b3td}>${r.quorum}/${r.members}</td>
+        <td ${b3td}>${esc(r.agreeRule || 'count')}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
+        <td ${b3td}>${r.agreePct == null ? '—' : `${r.agreePct}%`}</td>
+        <td ${b3td}>${r.avgRung == null ? '—' : r.avgRung.toFixed(1)}${r.members ? ` <span class="muted">of ${r.members}</span>` : ''}</td>
+        <td ${b3td}${r.avgVoices != null && r.members && r.avgVoices < r.members ? ' class="warn"' : ''}>${r.avgVoices == null ? '—' : r.avgVoices.toFixed(1)}</td>
         <td ${b3td}>${r.coins}</td>
         <td ${b3td}>${b3Money(r.avgTest)}</td>
         <td ${b3td}>${b3Money(r.avgHold)}</td>
@@ -4670,38 +4836,22 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
         <td ${b3td}>${b3Money(r.avgVsLong)}</td>
         <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
         <td ${b3td}>${b3Lead(r.avgLead)}</td>
-        <td ${b3td}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="18" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${b3td}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="21" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${b3Shown(ranked)}
     ${b3Pager((ranked && ranked.total) || 0, from, 100, 'S3R')}
     <p class="note">Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
-      nothing picked: beat its own null set, best first.</p>
+      nothing picked: beat its own null set, best first. Independent voices below members means the committees held
+      near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
+    `}
     <p style="margin:.9rem 0 .2rem"><b>Every coin of every setting</b> — one row per coin, its records opening below it</p>
-    <div class="row" style="margin:.3rem 0 0">
-      <label class="c"><span class="muted">beat its own null set at least, %</span><input id="b3MinShare" type="number" min="0" max="100" step="1" value="${esc(coinsQ.minShare ?? '')}" style="width:5.5rem"></label>
-    </div>
-    <div class="row" style="margin:.15rem 0 0">
-      <label class="c"><span class="muted">avg held-back at least, $</span><input id="b3MinHold" type="number" step="1" value="${esc(coinsQ.minHold ?? '')}" style="width:5.5rem"></label>
-    </div>
-    <div class="row" style="margin:.15rem 0 0">
-      <label class="c"><span class="muted">avg trades at least</span><input id="b3MinTrades" type="number" min="0" step="1" value="${esc(coinsQ.minTrades ?? '')}" style="width:5.5rem"></label>
-    </div>
-    <div class="row" style="margin:.15rem 0 0">
-      <label class="c"><span class="muted">avg vs always-long at least, $</span><input id="b3MinVsLong" type="number" step="1" value="${esc(coinsQ.minVsLong ?? '')}" style="width:5.5rem"></label>
-    </div>
-    <div class="row" style="margin:.5rem 0">
-      <label class="c"><span class="muted">sort by</span><select id="b3Sort">
-        <option value="share"${(coinsQ.sort || 'share') === 'share' ? ' selected' : ''}>beat its own null set</option>
-        <option value="pairs"${coinsQ.sort === 'pairs' ? ' selected' : ''}>comparisons</option>
-        <option value="test"${coinsQ.sort === 'test' ? ' selected' : ''}>avg test $</option>
-        <option value="money"${coinsQ.sort === 'money' ? ' selected' : ''}>avg held-back</option>
-        <option value="trades"${coinsQ.sort === 'trades' ? ' selected' : ''}>avg trades</option>
-        <option value="vslong"${coinsQ.sort === 'vslong' ? ' selected' : ''}>avg vs always-long</option>
-        <option value="rows"${coinsQ.sort === 'rows' ? ' selected' : ''}>rows</option>
-        <option value="coin"${coinsQ.sort === 'coin' ? ' selected' : ''}>coin</option>
-        <option value="setting"${coinsQ.sort === 'setting' ? ' selected' : ''}>setting</option>
-      </select></label>
-      <label class="c"><span class="muted">at least this many comparisons</span><input id="b3MinPairs" type="number" min="0" step="10" value="${esc(coinsQ.minPairs ?? '')}" style="width:5.5rem"></label>
-      <button id="b3Go">Apply</button>
-    </div>
+    ${b3FilterGrid('S3C', [
+    ['minShare', 'beat its own null set at least, %', 'num', 'hides rows that won less than this share of their head-to-heads. Empty hides nothing.'],
+    ['minPairs', 'comparisons at least', 'num', 'hides rows whose share rests on fewer head-to-heads than this. Empty hides nothing.'],
+    ['minTest', 'avg test $ at least', 'num', 'hides rows whose average test-window money is below this. Empty hides nothing.'],
+    ['minHold', 'avg held-back at least, $', 'num', 'hides rows whose average held-back money is below this. Empty hides nothing.'],
+    ['minTrades', 'avg trades at least', 'num', 'hides rows with fewer average entries than this. Empty hides nothing.'],
+    ['minVsLong', 'avg vs always-long at least, $', 'num', 'hides rows that beat just holding the coin by less than this. Empty hides nothing.'],
+  ])}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-b3coinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${b3CoinSortBtn(view, 'setting', '↑')}</th>
         <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${b3CoinSortBtn(view, 'coin', '↑')}</th>
@@ -4730,17 +4880,12 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
     ${coins && coins.removed ? `<p class="note">${coins.removed.toLocaleString()} row(s) held back by the floors.</p>` : ''}
     ${b3Pager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`;
-  // Apply asks again with the boxes as set (a fresh pick reads its natural
-  // way, so the turn is put away) — and, like every redraw of this table,
-  // holds the page still (see b3RedrawPeggedToCoinHead).
-  const applyCoins = () => {
-    b3SaveView({ coins: {
-      sort: $('#b3Sort').value, flip: false, minPairs: $('#b3MinPairs').value, minShare: $('#b3MinShare').value,
-      minHold: $('#b3MinHold').value, minTrades: $('#b3MinTrades').value, minVsLong: $('#b3MinVsLong').value, offset: 0,
-    } });
-    b3RedrawPeggedToCoinHead();
-  };
-  $('#b3Go').onclick = applyCoins;
+  // THE ORDERING BOX AND ITS Apply ARE GONE (owner order, 2026-08-28: "remove
+  // obsolete ordering selections as we can do all row ordering by column
+  // selections"). Every column sorts on one click and every filter asks again
+  // the moment it changes, so a button whose only job was to re-ask had
+  // nothing left to do. The page still holds perfectly still on every one of
+  // those redraws — see b3RedrawPeggedToCoinHead.
   // opening or closing a row's records must not move the page either (owner
   // order, 2026-08-27) — same peg, same rule
   $(mount).querySelectorAll('[data-b3rec]').forEach((btn) => {
@@ -4755,6 +4900,8 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
   b3WirePager(mount);
   b3WireRankSort(doc, mount);
   b3WireCoinSort(mount);
+  b3WireFilters(mount);
+  b3WireTableFold(mount);
   // opened records rows, fetched and slotted under their coin row
   for (const k of openKeys) {
     const tr = $(mount).querySelector(`tr[data-b3key="${CSS.escape(k)}"]`);

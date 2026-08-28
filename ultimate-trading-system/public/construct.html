@@ -77,6 +77,16 @@
     border:1px solid var(--line); border-radius:5px; padding:.28rem .45rem; }
   label.f { display:flex; flex-direction:column; gap:.15rem; font-size:.74rem; color:var(--dim); }
   label.c { display:flex; align-items:center; gap:.35rem; font-size:.8rem; color:var(--fg); }
+  /* FILTERS ABOVE A TABLE (owner order, 2026-08-28: "right justified filter
+     names and their left justified value boxes all lined up properly"). One
+     grid, two columns: every name ends on the same edge and every box starts
+     on the same edge, however long the names are. */
+  .filters { display:grid; grid-template-columns:max-content max-content; gap:.25rem .6rem; align-items:center; margin:.35rem 0 .5rem; }
+  .filters > label { display:contents; }
+  .filters .fname { text-align:right; font-size:.74rem; color:var(--dim); white-space:nowrap; }
+  .filters .fbox { justify-self:start; }
+  .filters .fbox input, .filters .fbox select { width:8rem; }
+  .filters .frow { grid-column:1 / -1; justify-self:start; margin-top:.15rem; }
   /* a control this run will not use: greyed, never hidden, so the row keeps its
      shape and neighbouring labels keep their context (owner, 2026-07-31) */
   .ctl-off { opacity:.5; }
