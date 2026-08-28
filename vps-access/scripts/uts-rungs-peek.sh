@@ -74,4 +74,29 @@ print('')
 print('how many DISTINCT results the six /6 rungs produce per family:')
 for n in sorted(distinct6):
     print('  %d distinct: %d families' % (n, distinct6[n]))
+
+print('')
+print('WHICH units pair up (3 distinct) vs not, by coin and geometry:')
+paired = collections.Counter()
+free = collections.Counter()
+for key, cells in fams.items():
+    row6 = [cells.get((s, '1/8')) for s in SIXES]
+    if len([x for x in row6 if x is not None]) != 6:
+        continue
+    unit = (key[0], key[2])
+    if len(set(row6)) == 3:
+        paired[unit] += 1
+    else:
+        free[unit] += 1
+pu = sorted(set(paired))
+fu = sorted(set(free))
+both = [u for u in pu if u in set(fu)]
+print('units that ALWAYS pair: %d' % len([u for u in pu if u not in set(fu)]))
+geos = collections.Counter(g for (c, g) in pu if (c, g) not in set(fu))
+print('  their geometries: %s' % json.dumps(dict(geos)))
+print('  first few: %s' % ', '.join('%s %s' % u for u in pu[:6]))
+print('units that never pair: %d' % len([u for u in fu if u not in set(pu)]))
+geos2 = collections.Counter(g for (c, g) in fu if (c, g) not in set(pu))
+print('  their geometries: %s' % json.dumps(dict(geos2)))
+print('units mixed (some families pair, some do not): %d' % len(both))
 PY
