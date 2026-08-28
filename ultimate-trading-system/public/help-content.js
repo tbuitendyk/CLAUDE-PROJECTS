@@ -447,11 +447,11 @@ window.HELP = {
       s3PermArm: { what: 'Price every starting point as its own setting in the block.' },
       s3Q6: {
         what: 'How many of a single coin\'s 6 members must say the same thing before a trade is taken.',
-        more: 'It is put away when the chosen stage 2 record set holds no coin judged on its own — there is no 6-member vote to agree on.',
+        more: 'It is put away when the chosen stage 2 record set holds no coin judged on its own — there is no 6-member vote to agree on. A put-away box is not part of the run at all: no setting is counted for it and no setting\'s name carries it.',
       },
       s3Q8: {
         what: 'The same, for a unit judged alongside contexts — 8 members rather than 6.',
-        more: 'It is put away when the chosen stage 2 record set holds no doubles or triples — there is no 8-member vote to agree on.',
+        more: 'It is put away when the chosen stage 2 record set holds no doubles or triples — there is no 8-member vote to agree on. A put-away box is not part of the run at all: no setting is counted for it and no setting\'s name carries it.',
       },
       s3PermAgree: { what: 'Price every level of agreement as its own setting in the block. It multiplies the block fastest — and here that multiplying is arithmetic, not training.' },
       s3Desc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
@@ -565,8 +565,9 @@ window.HELP = {
         + 'score with every member, so what the BOOST members bought is visible before any pricing. A stage 3 '
         + 'set shows the pricing: the settings ranked against each other with coins in the money beside the '
         + 'averages — sortable by any one column, picked on the column and saved on the record set — and every '
-        + 'coin of every setting with floors, a sort, avg test $ beside the held-back averages, and each row\'s '
-        + 'records opening underneath — the decision, band and 24/5 variants that make the row up.\n\n'
+        + 'coin of every setting with floors, one-click sorting on every column, avg test $ beside the held-back '
+        + 'averages, and each row\'s records opening underneath — the decision, band and 24/5 variants that make '
+        + 'the row up. Apply, a column sort, a records button and a page turn all hold the page still.\n\n'
         + 'A set that finished with failed units carries an INCOMPLETE banner: it does not match its own plan, '
         + 'and every table under the banner is missing those units. The held-back window appears only on stage 3 '
         + 'tables, because only stage 3 prices it.'],
@@ -578,7 +579,10 @@ window.HELP = {
       b3MinHold: { what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.' },
       b3MinTrades: { what: 'Hides rows whose avg trades is below this. Empty hides nothing.' },
       b3MinVsLong: { what: 'Hides rows whose avg vs always-long is below this many dollars. Empty hides nothing.' },
-      b3Sort: { what: 'How the every-coin table is ordered. The whole data set is sorted before the page is cut, so page one really is the top of everything.' },
+      b3Sort: {
+        what: 'How the every-coin table is ordered. The whole data set is sorted before the page is cut, so page one really is the top of everything.',
+        more: 'The columns sort with one click too — this box and the buttons on the column headings set the same order, and a second click on the same column turns it the other way.',
+      },
       b3MinPairs: { what: 'Hides rows whose share rests on fewer head-to-heads than this. Zero hides nothing; the line under the table says how many rows the floors held back.' },
       b3Go: {
         what: 'Asks again with the sort and floors chosen beside it. The page does not move: the line of column headings stays exactly where it was.',

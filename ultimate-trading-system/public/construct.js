@@ -3876,7 +3876,13 @@ async function s3Counts() {
     const carry = Number($('#s3Carry3') && $('#s3Carry3').value) || 0;
     const units = parent ? (carry > 0 ? Math.min(carry, parent.plan.units) : parent.plan.units) : null;
     const coins = parent && parent.params && Array.isArray(parent.params.universe) ? parent.params.universe.length : null;
-    const got = await askPost('api/stage3-count', { ...s3BlockParams(), units: units || 0, coins: coins || 1 }, null);
+    // from and carry ride along so the counter resolves the ACTUAL units the
+    // launch will price — which agreement bars exist is decided by them, and
+    // a bar the run cannot use is neither counted nor named (owner order,
+    // 2026-08-27: on singles there is no with contexts at all)
+    const got = await askPost('api/stage3-count', {
+      ...s3BlockParams(), from: $('#s3From3').value || '', carry, units: units || 0, coins: coins || 1,
+    }, null);
     if (got && !got.error) {
       const sims = units ? got.settings * units * (1 + (Number($('#s3Null3').value) || 0)) : null;
       // the budget verdict comes from the SAME arithmetic the launch enforces:
@@ -4451,13 +4457,66 @@ function b3WireRankSort(doc, root) {
   });
 }
 
+// THE COINS TABLE HOLDS STILL (owner orders, 2026-08-27: "the page must not
+// move" on Apply, and again on the records buttons). ANY redraw of the every-
+// coin table — Apply, a column sort, a records open/close, a page turn —
+// measures where its line of column headings sits in the window and puts it
+// back at exactly that height afterwards, whatever the new rows did to the
+// page's length. The scroll memory is held shut around the nudge (the page
+// moving itself never writes it) and then told the pegged place.
+async function b3RedrawPeggedToCoinHead() {
+  const head = document.querySelector('[data-b3coinhead]');
+  const pegTop = head ? head.getBoundingClientRect().top : null;
+  await drawBoards3();
+  holdScrollMemory();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    holdScrollMemory();
+    const again = document.querySelector('[data-b3coinhead]');
+    if (pegTop != null && again) {
+      window.scrollBy(0, again.getBoundingClientRect().top - pegTop);
+      rememberScroll(tab);
+    } else {
+      restoreScroll(tab);   // the table did not come back (e.g. totalling) — the old rule
+    }
+  }));
+}
+
 function b3WirePager(root) {
   $(root).querySelectorAll('[data-b3page]').forEach((btn) => {
     btn.onclick = () => {
       const [key, from] = btn.dataset.b3page.split(':');
-      if (key === 'S3C') b3SaveView({ coins: { ...(b3View().coins || {}), offset: Number(from) } });
-      else b3SaveView({ [`from${key}`]: Number(from) });
-      drawBoards3().then(() => restoreScroll(tab));
+      if (key === 'S3C') {
+        b3SaveView({ coins: { ...(b3View().coins || {}), offset: Number(from) } });
+        b3RedrawPeggedToCoinHead();
+      } else {
+        b3SaveView({ [`from${key}`]: Number(from) });
+        drawBoards3().then(() => restoreScroll(tab));
+      }
+    };
+  });
+}
+
+// ONE CLICK ON A COLUMN SORTS THE COINS TABLE BY IT (owner order,
+// 2026-08-27); a second click turns the order the other way. The pick lives
+// with the rest of this table's view — the same place the sort by box and
+// the floors keep theirs — and the whole data set is sorted before the page
+// is cut, so page one really is the top of everything.
+function b3CoinSortBtn(view, key, naturalArrow) {
+  const cq = view.coins || {};
+  const active = (cq.sort || 'share') === key;
+  const flippedArrow = naturalArrow === '↓' ? '↑' : '↓';
+  const state = !active ? '·' : (cq.flip ? flippedArrow : naturalArrow);
+  return ` <button data-b3coinsort="${key}" data-b3arrow="${naturalArrow}" style="min-width:1.6rem;padding:0 .25rem"
+    title="one click sorts the whole table by this column${naturalArrow === '↓' ? ' — best first' : ' — A to Z'}; a second click turns it the other way.">${state}</button>`;
+}
+function b3WireCoinSort(root) {
+  $(root).querySelectorAll('[data-b3coinsort]').forEach((btn) => {
+    btn.onclick = () => {
+      const key = btn.dataset.b3coinsort;
+      const cq = b3View().coins || {};
+      const active = (cq.sort || 'share') === key;
+      b3SaveView({ coins: { ...cq, sort: key, flip: active ? !cq.flip : false, offset: 0 } });
+      b3RedrawPeggedToCoinHead();
     };
   });
 }
@@ -4541,7 +4600,7 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
   const from = Math.max(0, Number(view.fromS3R) || 0);
   const coinsQ = view.coins || {};
   const qs = new URLSearchParams({
-    sort: coinsQ.sort || 'share', minPairs: coinsQ.minPairs ?? '', minShare: coinsQ.minShare ?? '',
+    sort: coinsQ.sort || 'share', flip: coinsQ.flip ? '1' : '', minPairs: coinsQ.minPairs ?? '', minShare: coinsQ.minShare ?? '',
     minHold: coinsQ.minHold ?? '', minTrades: coinsQ.minTrades ?? '', minVsLong: coinsQ.minVsLong ?? '',
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
@@ -4632,8 +4691,11 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
       <label class="c"><span class="muted">sort by</span><select id="b3Sort">
         <option value="share"${(coinsQ.sort || 'share') === 'share' ? ' selected' : ''}>beat its own null set</option>
         <option value="pairs"${coinsQ.sort === 'pairs' ? ' selected' : ''}>comparisons</option>
+        <option value="test"${coinsQ.sort === 'test' ? ' selected' : ''}>avg test $</option>
         <option value="money"${coinsQ.sort === 'money' ? ' selected' : ''}>avg held-back</option>
+        <option value="trades"${coinsQ.sort === 'trades' ? ' selected' : ''}>avg trades</option>
         <option value="vslong"${coinsQ.sort === 'vslong' ? ' selected' : ''}>avg vs always-long</option>
+        <option value="rows"${coinsQ.sort === 'rows' ? ' selected' : ''}>rows</option>
         <option value="coin"${coinsQ.sort === 'coin' ? ' selected' : ''}>coin</option>
         <option value="setting"${coinsQ.sort === 'setting' ? ' selected' : ''}>setting</option>
       </select></label>
@@ -4641,15 +4703,15 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
       <button id="b3Go">Apply</button>
     </div>
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-b3coinhead style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting</th>
-        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
-        <th ${b3th} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set</th>
-        <th ${b3th} title="how many head-to-heads the share rests on.">comparisons</th>
-        <th ${b3th} title="average test-window money per record — flattering by construction, because the carry was ordered on that window.">avg test $</th>
-        <th ${b3th} title="average held-back money per record.">avg held-back</th>
-        <th ${b3th} title="average held-back entries per record.">avg trades</th>
-        <th ${b3th} title="average held-back money minus just holding the coin over the same window.">avg vs always-long</th>
-        <th ${b3th} title="how many records this row averages — one per decision, band and 24/5 variant of the setting.">rows</th>
+        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${b3CoinSortBtn(view, 'setting', '↑')}</th>
+        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${b3CoinSortBtn(view, 'coin', '↑')}</th>
+        <th ${b3th} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${b3CoinSortBtn(view, 'share', '↓')}</th>
+        <th ${b3th} title="how many head-to-heads the share rests on.">comparisons${b3CoinSortBtn(view, 'pairs', '↓')}</th>
+        <th ${b3th} title="average test-window money per record — flattering by construction, because the carry was ordered on that window.">avg test $${b3CoinSortBtn(view, 'test', '↓')}</th>
+        <th ${b3th} title="average held-back money per record.">avg held-back${b3CoinSortBtn(view, 'money', '↓')}</th>
+        <th ${b3th} title="average held-back entries per record.">avg trades${b3CoinSortBtn(view, 'trades', '↓')}</th>
+        <th ${b3th} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${b3CoinSortBtn(view, 'vslong', '↓')}</th>
+        <th ${b3th} title="how many records this row averages — one per decision, band and 24/5 variant of the setting.">rows${b3CoinSortBtn(view, 'rows', '↓')}</th>
         <th ${b3th} title="opens the records themselves below the row.">records</th></tr></thead>
       <tbody id="b3CoinBody">${cr.map((r) => {
     const k = keyOf(r);
@@ -4668,43 +4730,31 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
     ${coins && coins.removed ? `<p class="note">${coins.removed.toLocaleString()} row(s) held back by the floors.</p>` : ''}
     ${b3Pager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`;
-  // THE PAGE MUST NOT MOVE ON Apply (owner order, 2026-08-27): the line of
-  // column headings is measured against the top of the window before the
-  // redraw and put back at exactly that height after it, whatever the new
-  // rows did to the page's length. The nudge is the page moving itself, so
-  // the scroll memory is held shut around it, then told the pegged place.
-  const applyCoins = async () => {
+  // Apply asks again with the boxes as set (a fresh pick reads its natural
+  // way, so the turn is put away) — and, like every redraw of this table,
+  // holds the page still (see b3RedrawPeggedToCoinHead).
+  const applyCoins = () => {
     b3SaveView({ coins: {
-      sort: $('#b3Sort').value, minPairs: $('#b3MinPairs').value, minShare: $('#b3MinShare').value,
+      sort: $('#b3Sort').value, flip: false, minPairs: $('#b3MinPairs').value, minShare: $('#b3MinShare').value,
       minHold: $('#b3MinHold').value, minTrades: $('#b3MinTrades').value, minVsLong: $('#b3MinVsLong').value, offset: 0,
     } });
-    const head = document.querySelector('[data-b3coinhead]');
-    const pegTop = head ? head.getBoundingClientRect().top : null;
-    await drawBoards3();
-    holdScrollMemory();
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-      holdScrollMemory();
-      const again = document.querySelector('[data-b3coinhead]');
-      if (pegTop != null && again) {
-        window.scrollBy(0, again.getBoundingClientRect().top - pegTop);
-        rememberScroll(tab);
-      } else {
-        restoreScroll(tab);   // the table did not come back (e.g. totalling) — the old rule
-      }
-    }));
+    b3RedrawPeggedToCoinHead();
   };
   $('#b3Go').onclick = applyCoins;
+  // opening or closing a row's records must not move the page either (owner
+  // order, 2026-08-27) — same peg, same rule
   $(mount).querySelectorAll('[data-b3rec]').forEach((btn) => {
-    btn.onclick = async () => {
+    btn.onclick = () => {
       const k = btn.dataset.b3rec;
       const keys = new Set(b3View().openS3 || []);
       if (keys.has(k)) { keys.delete(k); } else { keys.add(k); }
       b3SaveView({ openS3: [...keys] });
-      drawBoards3().then(() => restoreScroll(tab));
+      b3RedrawPeggedToCoinHead();
     };
   });
   b3WirePager(mount);
   b3WireRankSort(doc, mount);
+  b3WireCoinSort(mount);
   // opened records rows, fetched and slotted under their coin row
   for (const k of openKeys) {
     const tr = $(mount).querySelector(`tr[data-b3key="${CSS.escape(k)}"]`);

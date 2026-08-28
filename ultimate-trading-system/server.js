@@ -787,15 +787,18 @@ app.post('/api/stage1-count', (req, res) => {
 app.post('/api/stage3-count', (req, res) => {
   try {
     const b = req.body || {};
-    const settings = stages.settingsFor(b).length;
-    const out = { settings };
-    // the budget arithmetic rides the SAME answer the launch will enforce,
-    // so the cost line and the refusal can never be two different numbers
-    const units = Math.max(0, Math.floor(Number(b.units) || 0));
-    const coins = Math.max(1, Math.floor(Number(b.coins) || 1));
+    // the count rides the SAME resolution the launch runs — the parent's
+    // actual carried units decide which agreement bars are declared at all
+    // (cellForUnits), and the budget arithmetic rides the same answer the
+    // launch will enforce — so the cost line and the refusal can never be
+    // two different numbers
+    const d = stages.stage3Declared(b);
+    const out = { settings: d.settings };
+    const units = d.units ?? Math.max(0, Math.floor(Number(b.units) || 0));
+    const coins = d.coins ?? Math.max(1, Math.floor(Number(b.coins) || 1));
     if (units > 0) {
-      out.heap = stages.tallyBudgetFor({ settings, coins });
-      out.disk = stages.storeBudgetFor({ rows: settings * units });
+      out.heap = stages.tallyBudgetFor({ settings: d.settings, coins });
+      out.disk = stages.storeBudgetFor({ rows: d.settings * units });
     }
     return res.json(out);
   } catch (err) { return res.status(400).json({ error: err.message }); }

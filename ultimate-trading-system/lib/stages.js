@@ -625,6 +625,60 @@ function settingsFor(params) {
   return out;
 }
 
+// the units a stage 3 launch will actually price: every carried record, or
+// the top of the parent's table in the SAME order its table shows — the
+// sort saved on it, or forecast score with all members when none is saved,
+// ties by carry position either way — cut to the carry count.
+function stage3UnitsFor(parent, carry) {
+  let records = allRecords(parent.id);
+  const savedS2 = Array.isArray(parent.sort) && parent.sort.length ? parent.sort : null;
+  if (carry > 0) {
+    let ordered;
+    if (savedS2) {
+      ordered = applySort(2,
+        records.map((r) => ({ ...r, members: (r.specs || []).length })),
+        savedS2, (a, b) => a.carriedRank - b.carriedRank);
+    } else {
+      ordered = records.slice()
+        .sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
+    }
+    records = ordered.slice(0, carry);
+  }
+  return { records, savedS2 };
+}
+// THE DECLARED AGREEMENT NAMES ONLY THE BARS THE PRICED UNITS HOLD A VOTE
+// FOR (owner order, 2026-08-27: "on singles there's no with contexts at
+// all"). A coin judged on its own has the 6-member vote; a coin read
+// alongside other coins has the 8-member vote; a bar no priced unit can use
+// is not declared, is not multiplied by permute agree, and is never named
+// in any setting. The decision rides the records the launch actually
+// prices, because the carry can cut a mixed parent down to one kind.
+function cellForUnits(cell, records) {
+  const out = { ...(cell || {}) };
+  if (!records.some((r) => !r.ctx1)) delete out.quorumSingles;
+  if (!records.some((r) => r.ctx1)) delete out.quorumContexts;
+  return out;
+}
+// The counter the cost line asks rides the SAME resolution the launch runs —
+// same records, same carry cut, same declared bars — so the number on the
+// screen and the number that runs can never be two different numbers. When
+// no parent is named yet, the block is counted exactly as declared.
+function stage3Declared(b) {
+  const out = { units: null, coins: null };
+  let cell = (b || {}).cell;
+  const parent = getSet(String((b || {}).from || ''));
+  if (parent && parent.stage === 2) {
+    const carry = Math.max(0, Math.floor(num((b || {}).carry, 0)));
+    const { records } = stage3UnitsFor(parent, carry);
+    if (records.length) {
+      cell = cellForUnits(cell, records);
+      out.units = records.length;
+      out.coins = new Set(records.map((r) => r.trade)).size;
+    }
+  }
+  out.settings = settingsFor({ ...(b || {}), cell }).length;
+  return out;
+}
 function startStage3(params) {
   claimOrRefuse();
   const parent = parentOrRefuse(params.from, 2);
@@ -633,28 +687,15 @@ function startStage3(params) {
     throw new Error('fee % each way must be a real cost between 0 and 5% — it prices every trade and every directional bar here');
   }
   const nullN = Math.max(0, Math.floor(num(params.nullN, 19)));
-  const settings = settingsFor(params);
-  if (!settings.length) throw new Error('the block declared no settings');
   // carry forward (owner order, 2026-08-27): 0 prices every carried unit; a
-  // positive count takes the top of the parent in the SAME order its table
-  // shows — the sort saved on it, or forecast score with all members when
-  // none is saved, ties by carry position either way.
+  // positive count takes the top of the parent's table. The units come
+  // FIRST because the declared block depends on them — see cellForUnits.
   const carry = Math.max(0, Math.floor(num(params.carry, 0)));
-  let parentRecords = allRecords(parent.id);
-  const savedS2 = Array.isArray(parent.sort) && parent.sort.length ? parent.sort : null;
-  if (carry > 0) {
-    let ordered;
-    if (savedS2) {
-      ordered = applySort(2,
-        parentRecords.map((r) => ({ ...r, members: (r.specs || []).length })),
-        savedS2, (a, b) => a.carriedRank - b.carriedRank);
-    } else {
-      ordered = parentRecords.slice()
-        .sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
-    }
-    parentRecords = ordered.slice(0, carry);
-  }
+  const { records: parentRecords, savedS2 } = stage3UnitsFor(parent, carry);
   if (!parentRecords.length) throw new Error(`${parent.name} holds no records — nothing to price`);
+  const cell = cellForUnits(params.cell, parentRecords);
+  const settings = settingsFor({ ...params, cell });
+  if (!settings.length) throw new Error('the block declared no settings');
 
   // the budget gate: the whole plan is known here, so a block that cannot
   // fit is refused NOW, with the arithmetic, never discovered mid-total
@@ -681,7 +722,8 @@ function startStage3(params) {
     },
     params: {
       ...parent.params, from: parent.id, fee, nullN, carry: carry > 0 ? parentRecords.length : 0,
-      cell: params.cell, cellPermute: params.cellPermute || null,
+      // the cell as it RAN — cellForUnits may have put a bar away
+      cell, cellPermute: params.cellPermute || null,
       decision: params.decision || 'argmax', band: params.band ?? 'auto', weekdaysOnly: !!params.weekdaysOnly,
       permuteDecision: !!params.permuteDecision, permuteBand: !!params.permuteBand, permuteWeekdays: !!params.permuteWeekdays,
       // the campaign in use at THIS launch, not the parent's (same rule as stage 2)
@@ -1185,7 +1227,7 @@ function stage2Table(id, from, n) {
   };
 }
 
-const S3_SORTS = ['share', 'pairs', 'money', 'vslong', 'coin', 'setting'];
+const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting'];
 function stage3Coins(id, query) {
   const t = readTally(id);
   if (!t) return null;
@@ -1204,13 +1246,20 @@ function stage3Coins(id, query) {
   const orders = {
     share: byShare,
     pairs: (a, b) => (b.pairs - a.pairs) || byShare(a, b),
+    test: (a, b) => ((b.avgTest ?? -1e15) - (a.avgTest ?? -1e15)) || byShare(a, b),
     money: (a, b) => ((b.avgHold ?? -1e15) - (a.avgHold ?? -1e15)) || byShare(a, b),
+    trades: (a, b) => ((b.avgTrades ?? -1e15) - (a.avgTrades ?? -1e15)) || byShare(a, b),
     vslong: (a, b) => ((b.avgVsLong ?? -1e15) - (a.avgVsLong ?? -1e15)) || byShare(a, b),
+    rows: (a, b) => (b.rows - a.rows) || byShare(a, b),
     coin: (a, b) => String(a.trade).localeCompare(String(b.trade)) || byShare(a, b),
     setting: (a, b) => String(a.cellLabel).localeCompare(String(b.cellLabel)) || byShare(a, b),
   };
   const key = S3_SORTS.includes(query.sort) ? query.sort : 'share';
-  kept.sort(orders[key]);
+  // one click on a column sorts it its natural way — best first, or A to Z;
+  // a second click turns the whole order the other way (owner order,
+  // 2026-08-27). The flip reverses ties too, so the order stays total.
+  const cmp = orders[key];
+  kept.sort(query.flip ? (a, b) => cmp(b, a) : cmp);
   const from = Math.max(0, Math.floor(num(query.offset, 0)));
   const limit = Math.max(1, Math.min(500, Math.floor(num(query.limit, 100))));
   return {
@@ -1258,7 +1307,7 @@ module.exports = {
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, cellForUnits, stage3Declared, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetNotes, setSetSort, applySort, validateSort, sortLabel,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
 };

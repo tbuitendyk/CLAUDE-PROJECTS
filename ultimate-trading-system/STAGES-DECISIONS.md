@@ -300,6 +300,29 @@ work — the owner reviews decisions in the morning, not at 3am.
     both lines. The budget gate never saw this because the gate prices the
     fold, not a parse storm the reader itself was causing.
 
+42. **A setting's name carries only the agreement bars its units hold**
+    (owner order, 2026-08-27: "GET RID OF THE +1/8 PART AS ON SINGLES
+    THERE'S NO WITH CONTEXTS AT ALL"). The launch reads the units the
+    carry actually takes — a mixed parent cut to its top can leave one
+    kind — and a bar no priced unit can use is not declared, not
+    multiplied by permute agree, and never named in any setting. The cost
+    line's counter resolves the same records the launch prices, so screen
+    and run stay one number; on a singles-only block with permute agree
+    this is also 8× fewer settings, because the inapplicable rungs no
+    longer exist. Already-recorded sets keep the names they ran under —
+    stored records are never rewritten; re-running stage 3 yields the
+    clean table.
+
+43. **The every-coin table sorts on one click and never moves the page.**
+    Every column heading carries a button: one click sorts the whole set by
+    it its natural way (best first, or A to Z), a second click turns the
+    order; the sort by box and the buttons set the same order. And EVERY
+    redraw of this table — Apply, a column sort, a records open/close, a
+    page turn — goes through the one peg (b3RedrawPeggedToCoinHead), so the
+    line of column headings stays exactly where the eye left it. The
+    ranked table's own pager keeps the old restore rule — no order covers
+    it, and pegging it uninvited is scope the owner did not ask for.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and

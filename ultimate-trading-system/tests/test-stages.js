@@ -92,6 +92,72 @@ module.exports = {
     assert.strictEqual(labels.size, full.length, 'every setting carries a distinct name');
   },
 
+  // A setting's name carries ONLY the agreement bars the priced units hold
+  // a vote for (owner order, 2026-08-27: "on singles there's no with
+  // contexts at all"): the bar a run cannot use is not declared, is not
+  // multiplied by permute agree, and is never named.
+  async theDeclaredAgreementNamesOnlyTheBarsTheUnitsHold() {
+    const single = { trade: 'AAA', ctx1: null, ctx2: null };
+    const double = { trade: 'BBB', ctx1: 'CCC', ctx2: null };
+    const both = { entry: 'market', tHours: 65, quorumSingles: 2, quorumContexts: 3 };
+    assert.deepStrictEqual(stages.cellForUnits(both, [single]), { entry: 'market', tHours: 65, quorumSingles: 2 },
+      'a singles-only run declares no with-contexts bar');
+    assert.deepStrictEqual(stages.cellForUnits(both, [double]), { entry: 'market', tHours: 65, quorumContexts: 3 },
+      'a contexts-only run declares no single-coin bar');
+    assert.deepStrictEqual(stages.cellForUnits(both, [single, double]), both, 'a mixed run keeps both');
+    // the names follow: no label carries a bar that was not declared
+    const labels = stages.settingsFor({ cell: { entry: 'market', tHours: 89, quorumSingles: 1 } }).map((s) => s.label);
+    assert.ok(labels.length && labels.every((l) => l.startsWith('q1/6 market t89h') && !l.includes('/8')),
+      `the label names only the 6-member bar — got ${labels[0]}`);
+    // and permute agree multiplies only the bars that exist: 6 rungs, not 48
+    assert.strictEqual(stages.settingsFor({ cell: { entry: 'market', tHours: 65, quorumSingles: 2 }, cellPermute: { agree: true } }).length, 6,
+      'no inapplicable rungs — a singles-only block is 6 agreements, not 48');
+    // the launch is wired through the same rule — pinned in source because a
+    // real stage 3 launch is too heavy for this suite (the end-to-end exam
+    // launches for real and reads the clean names back off the tables)
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(src.includes('const cell = cellForUnits(params.cell, parentRecords);'),
+      'start stage 3 declares through cellForUnits');
+    assert.ok(src.includes('cell, cellPermute: params.cellPermute || null,'),
+      'and the record set keeps the cell as it RAN');
+  },
+
+  // The counter behind the Sweep3 cost line resolves the SAME units the
+  // launch will price — the carry cut decides which bars exist, so the
+  // number on the screen and the number that runs are one number.
+  async theStageThreeCountRidesTheLaunchesOwnResolution() {
+    const id = `s2-test-${Date.now().toString(36)}-cd`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({
+        id, stage: 2, seq: 999986, name: 'S2 #cd', status: 'done', createdAt: new Date().toISOString(),
+        plan: { units: 2 }, params: { universe: ['AAA', 'BBB', 'CCC'] },
+      }));
+      const w = rowstore.writer(id, 'records');
+      w.push({ carriedRank: 1, s1rank: 1, trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], scoreAll: 5, score3: 4 });
+      w.push({ carriedRank: 2, s1rank: 2, trade: 'BBB', ctx1: 'CCC', ctx2: null, geometry: 'daily-4d', specs: [], scoreAll: 1, score3: 1 });
+      w.close();
+      const b = { from: id, cell: { entry: 'market', tHours: 65, quorumSingles: 2, quorumContexts: 3 }, cellPermute: { agree: true } };
+      // both kinds carried → both bars exist → 6 × 8 agreement rungs
+      const mixed = stages.stage3Declared({ ...b, carry: 0 });
+      assert.strictEqual(mixed.settings, 48, 'a mixed carry declares both bars — 48 agreements');
+      assert.strictEqual(mixed.units, 2);
+      assert.strictEqual(mixed.coins, 2, 'coins counted from the records the launch prices, not the universe');
+      // carry 1 takes the top by forecast score — all members: the single —
+      // and the with-contexts bar disappears from the count with it
+      const cut = stages.stage3Declared({ ...b, carry: 1 });
+      assert.strictEqual(cut.settings, 6, 'the carry cut a mixed parent to singles — 6 agreements, no /8 rung');
+      assert.strictEqual(cut.units, 1);
+      assert.strictEqual(cut.coins, 1);
+      // no parent named yet: counted exactly as declared, nothing invented
+      assert.strictEqual(stages.stage3Declared({ cell: b.cell, cellPermute: { agree: true } }).settings, 48);
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
   // Stage 3's tables, pencilled end to end on a fabricated records store:
   // per-coin-first averaging, coins in the money, the every-coin grouping by
   // cell across decision/band/24-5 variants, floors, and the block-targeted
@@ -150,6 +216,14 @@ module.exports = {
       const sorted = stages.stage3Coins(id, { sort: 'money', minPairs: 10 });
       assert.deepStrictEqual(sorted.rows.map((r) => r.avgHold), [20, 7, -4], 'money sort, whole set, best first');
       assert.deepStrictEqual(sorted.rows.map((r) => r.avgTest), [18, 9, -4], 'and every served row carries its avg test $');
+      // one click on a column sorts it; a second click turns the whole order
+      // the other way (owner order, 2026-08-27)
+      const byTest = stages.stage3Coins(id, { sort: 'test', minPairs: 10 });
+      assert.deepStrictEqual(byTest.rows.map((r) => r.avgTest), [18, 9, -4], 'avg test $ sorts the whole set, best first');
+      const turned = stages.stage3Coins(id, { sort: 'test', flip: '1', minPairs: 10 });
+      assert.deepStrictEqual(turned.rows.map((r) => r.avgTest), [-4, 9, 18], 'a second click turns the whole order the other way');
+      const byRows = stages.stage3Coins(id, { sort: 'rows', minPairs: 10 });
+      assert.strictEqual(byRows.rows[0].rows, 2, 'rows sorts by how many records the row averages');
       const floored = stages.stage3Coins(id, { minVsLong: 0 });
       assert.ok(floored.rows.every((r) => r.avgVsLong >= 0), 'the vs always-long floor holds');
 
@@ -693,6 +767,15 @@ module.exports = {
         'picking another ranked column replaces the pick — never stacks it');
       assert.ok(src.includes('title="average test-window money per record') && src.includes('${b3Money(r.avgTest)}'),
         'the every-coin table shows each row-set\'s avg test $');
+      // the coins table holds still on EVERY redraw and sorts on one click
+      // (owner orders, 2026-08-27)
+      assert.ok(src.includes('function b3RedrawPeggedToCoinHead('), 'the one peg serves every redraw of the coins table');
+      assert.ok(src.includes('b3SaveView({ openS3: [...keys] });\n      b3RedrawPeggedToCoinHead();'),
+        'opening or closing a row\'s records redraws pegged — the page does not move');
+      assert.ok(src.split('b3RedrawPeggedToCoinHead();').length - 1 >= 4,
+        'Apply, the records buttons, the coins page turn and the column sorts all redraw pegged');
+      assert.ok(src.includes('data-b3coinsort'), 'the coins columns carry one-click sort buttons');
+      assert.ok(src.includes('flip: active ? !cq.flip : false'), 'a second click on the same column turns the order');
     }
     const map = screens.byTab();
     for (const key of ['sweep', 'sweep3']) {

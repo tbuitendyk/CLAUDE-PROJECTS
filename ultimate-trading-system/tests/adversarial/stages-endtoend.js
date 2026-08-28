@@ -150,6 +150,11 @@ async function waitDone(id, label) {
   const rowA = coins.rows.find((r) => r.trade === A && / t65h/.test(r.cellLabel));
   assert.ok(rowA, 'the t65h cell must have a coin row for the planted coin');
   assert.strictEqual(rowA.rows, 2, 'the two decision variants are the records under the row');
+  // a singles-only run names no with-contexts bar (owner order, 2026-08-27),
+  // even though the launch above declared one — the units decide
+  assert.ok(rowA.cellLabel.startsWith('q2/6 ') && !rowA.cellLabel.includes('/8'),
+    `a singles-only run's setting names only the 6-member bar — got ${rowA.cellLabel}`);
+  assert.strictEqual(d3.params.cell.quorumContexts, undefined, 'the record set keeps the cell as it ran');
   const detail = stages.stage3CoinRows(s3.id, {
     cellLabel: rowA.cellLabel, trade: A, ctx1: '', ctx2: '', geometry: 'daily-1d',
   });
