@@ -8,7 +8,7 @@ node - <<'JS'
 const rowstore = require('./lib/rowstore');
 const id = 's2-mtb4g9is-1';
 const recs = rowstore.readAll(id, 'records');
-const rec = recs[0];
+const rec = recs.find((r) => r.trade === 'ADAUSDT' && r.geometry === 'daily-1d') || recs[0];
 console.log('unit:', rec.trade, rec.geometry, 'size', rec.size);
 console.log('members:', rec.specs.map((s, i) => `${i}:${s.model}/${s.view}`).join('  '));
 const range = rec.blocks.votes;
