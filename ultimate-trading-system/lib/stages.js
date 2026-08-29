@@ -196,6 +196,24 @@ function seedOf(id) {
 let activeSet = null;   // the running set's doc
 let activePool = null;
 function stageRunning() { return activeSet ? activeSet.id : null; }
+// EVERYTHING HEAVY THIS FILE OWNS, in one answer, so the other side of the box
+// can ask (owner order, 2026-08-29: "fix both guards so neither can fire during
+// the other").
+//
+// The guards were asymmetric and only one direction held. A stage launch asked
+// batch.batchRunning() and refused while a sweep was going; nothing asked the
+// other way, because a stage run is `activeSet` and not `activeBatch`. So the
+// planted check — which regenerates the fabricated pair's candles and then
+// fires a whole sweep — read the box as idle in the middle of a nine-hour stage
+// 3, and Start sweep would have done the same. Two worker pools against a
+// four-worker allowance, and cache writes underneath a job that is reading.
+//
+// Returns what is busy, in words fit to put in a refusal, or null.
+function stageBusy() {
+  if (activeSet) return `stage run ${activeSet.id}`;
+  if (tallyRun && !tallyRun.error) return `the totalling of ${tallyRun.id}`;
+  return null;
+}
 function claimOrRefuse() {
   if (batch.batchRunning()) {
     throw new Error('a sweep is running on this box right now — a stage run would fight it for the same workers. '
@@ -1722,7 +1740,7 @@ function stage3CoinRows(id, query) {
 }
 
 module.exports = {
-  sameEngineLine, foldSameTradeSettings, SAME_TRADE_TOLERANCE,
+  sameEngineLine, stageBusy, foldSameTradeSettings, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,

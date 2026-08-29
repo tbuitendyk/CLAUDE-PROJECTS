@@ -1333,4 +1333,62 @@ module.exports = {
       + 'only callers, or the number on the cost line and the number that runs come from different arithmetic');
   },
 
+  // NEITHER HEAVY JOB CAN FIRE DURING THE OTHER (owner order, 2026-08-29: "fix
+  // both guards so neither can fire during the other").
+  //
+  // The guards were asymmetric and only one direction held. A stage launch
+  // asked batch.batchRunning() and refused while a sweep was going. Nothing
+  // asked the other way, because a stage run is tracked as its own active set
+  // and is not a batch — so the planted check, which REGENERATES THE FABRICATED
+  // PAIR'S CANDLES and then fires a whole sweep, read the box as idle in the
+  // middle of a nine-hour stage 3. Two worker pools against a four-worker
+  // allowance, and cache writes underneath a job that is reading.
+  //
+  // Read out of the source both ways, because the fault was never a wrong
+  // answer from one guard — it was a question one of them never asked.
+  async neitherHeavyJobCanFireDuringTheOther() {
+    const lib = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const bat = fs.readFileSync(path.join(ROOT, 'lib', 'batch.js'), 'utf8');
+    const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+
+    // ONE ANSWER for everything heavy the stages own — the run AND its
+    // totalling, which is just as heavy and just as easy to forget.
+    assert.strictEqual(typeof stages.stageBusy, 'function', 'there is no way to ask whether a stage run is going');
+    assert.strictEqual(stages.stageBusy(), null, 'an idle box must report nothing busy');
+    const fn = lib.slice(lib.indexOf('function stageBusy()'), lib.indexOf('\n}', lib.indexOf('function stageBusy()')));
+    assert.ok(/activeSet/.test(fn), 'stageBusy does not notice a stage run');
+    assert.ok(/tallyRun/.test(fn), 'stageBusy does not notice a totalling, which holds the same workers');
+
+    // A STAGE REFUSES WHILE A SWEEP RUNS (the direction that already held).
+    const claim = lib.slice(lib.indexOf('function claimOrRefuse()'), lib.indexOf('\n}', lib.indexOf('function claimOrRefuse()')));
+    assert.ok(/batch\.batchRunning\(\)/.test(claim), 'a stage launch no longer asks whether a sweep is going');
+
+    // A SWEEP REFUSES WHILE A STAGE RUNS (the direction that did not).
+    const refuse = bat.slice(bat.indexOf('function launchRefusal()'), bat.indexOf('\n}', bat.indexOf('function launchRefusal()')));
+    assert.ok(/require\('\.\/stages'\)\.stageBusy\(\)/.test(refuse),
+      'a sweep launch does not ask whether a stage run is going — a stage run is not a batch, so batchRunning() reads '
+      + 'null all the way through one');
+    assert.ok(/require\('\.\/stages'\)/.test(refuse) && !/^const .*require\('\.\/stages'\)/m.test(bat),
+      'lib/stages must be required lazily here — it already requires lib/batch, and asking at load time hands back a half-built module');
+
+    // AND THE PLANTED CHECK REFUSES BEFORE IT WRITES ANYTHING. It regenerates
+    // cache data and THEN fires its sweep, so leaning on the sweep refusing a
+    // moment later would leave the candles already rewritten.
+    const route = srv.slice(srv.indexOf("app.post('/api/planted-gate'"), srv.indexOf("app.post('/api/planted-gate'") + 1400);
+    assert.ok(/stages\.stageBusy\(\)/.test(route), 'the planted check does not ask whether a stage run is going');
+    assert.ok(route.indexOf('stages.stageBusy()') < route.indexOf('generatePlanted'),
+      'the planted check regenerates the fabricated pair BEFORE it checks whether the box is free');
+
+    // ...AND THE BUTTON SLEEPS WITH THE REASON rather than taking a press and
+    // refusing after it. Same arithmetic on the status as on the refusal, so
+    // the screen and the route cannot disagree about whether it can run.
+    const status = srv.slice(srv.indexOf("app.get('/api/planted-gate/status'"), srv.indexOf("app.get('/api/planted-gate/status'") + 900);
+    assert.ok(/stages\.stageBusy\(\)/.test(status) && /blockedBy/.test(status),
+      'the status does not say what would stop the check, so the button cannot sleep');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(/gate\.blockedBy \? `disabled title=/.test(ui), 'the planted check button does not sleep while the box is busy');
+    assert.ok(/waits for \$\{esc\(gate\.blockedBy\)\} to finish/.test(ui),
+      'and it does not say what it is waiting for, which is the only thing that makes a sleeping button bearable');
+  },
+
 };

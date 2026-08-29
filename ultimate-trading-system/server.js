@@ -527,7 +527,12 @@ app.post('/api/bracketlab/:id/notes', (req, res) => {
 
 app.get('/api/planted-gate/status', (req, res) => {
   try {
-    res.json(planted.gateStatus(RELEASE_VERSION));
+    // WHAT WOULD STOP IT, said on the status so the button can sleep and give
+    // the reason instead of taking a press and refusing after it (owner order,
+    // 2026-08-29). The same arithmetic the POST refuses on, so the screen and
+    // the route can never disagree about whether it can run.
+    const blockedBy = batch.batchRunning() || require('./lib/jobs').anyJobRunning() || stages.stageBusy() || null;
+    res.json({ ...planted.gateStatus(RELEASE_VERSION), blockedBy });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -538,9 +543,14 @@ app.post('/api/planted-gate', (req, res) => {
   // (downloads/refreshes). A refresh job's tail regenerates the fabricated
   // pair — overlapping the gate would rewrite the pair's candles under the
   // gate sweep's workers (review 2026-08-03, MAJOR).
-  const busy = batch.batchRunning() || require('./lib/jobs').anyJobRunning();
+  // ...AND STAGE RUNS, which are neither (owner order, 2026-08-29). A stage run
+  // is tracked as its own active set, so batchRunning() reads null all the way
+  // through one — and this route REGENERATES CACHE DATA before it fires its
+  // sweep, so it has to refuse here, before anything is written, and not rely
+  // on the sweep launch refusing a moment later.
+  const busy = batch.batchRunning() || require('./lib/jobs').anyJobRunning() || stages.stageBusy();
   if (busy) {
-    return res.status(409).json({ error: `${busy} is running — the planted check regenerates cache data and fires a sweep, so it refuses while ANY job or sweep runs` });
+    return res.status(409).json({ error: `${busy} is running — the planted check regenerates cache data and fires a sweep, so it refuses while ANY job, sweep or stage run is going` });
   }
   try {
     const span = planted.plantedSpan();

@@ -1194,8 +1194,10 @@ async function drawVerify() {
       A pass belongs to the engine version that earned it; a new release starts NOT CHECKED.</p>
     <div class="row"><span>current: <b class="${gate && gate.running ? 'warn' : (gate && gate.state === 'PASS' ? 'pos' : gate && gate.state === 'FAIL' ? 'neg' : 'muted')}">${esc(gate && gate.running ? 'RUNNING' : ((gate && gate.state) || 'NOT CHECKED'))}</b>
       ${gate && gate.engineVersion ? `<span class="muted">(engine ${esc(gate.engineVersion)})</span>` : ''}</span>
-      <button id="pgRun" class="pri" ${gate && gate.running ? 'disabled title="a planted check is already running"' : ''}>Run the planted check</button>
-      <span id="pgMsg" class="note">${gate && gate.running ? `running now — ${esc(gate.running)}` : ''}</span></div>
+      <button id="pgRun" class="pri" ${gate && gate.running ? 'disabled title="a planted check is already running"'
+    : (gate && gate.blockedBy ? `disabled title="${esc(gate.blockedBy)} is going — the planted check regenerates the fabricated pair and fires a whole sweep, so it waits for the box to be free"` : '')}>Run the planted check</button>
+      <span id="pgMsg" class="note">${gate && gate.running ? `running now — ${esc(gate.running)}`
+    : (gate && gate.blockedBy ? `waits for ${esc(gate.blockedBy)} to finish` : '')}</span></div>
     ${gate && gate.detail ? `<p class="note">${esc(gate.detail)}</p>` : ''}
     ${gate && gate.running ? '<p class="note">This regenerates the fabricated pair and fires a full sweep, so it takes minutes. The badge above and the release strip refresh themselves — you do not need to reload.</p>' : ''}
     ${gate && gate.lastGate && gate.lastGate.sentences ? `<div class="note"><b>Last gate (${esc(gate.lastGate.id || '')}, engine ${esc(gate.lastGate.engineVersion || '')}, ${gate.lastGate.pass ? 'PASS' : 'FAIL'}):</b>
@@ -1265,7 +1267,7 @@ async function drawVerify() {
   }
   const pg = $('#pgRun');
   if (pg) pg.onclick = async () => {
-    if (!confirm('Run the planted check?\n\nRegenerates the fabricated pair and fires a full sweep through the null pipeline. Minutes, not seconds. It refuses while ANY other job or sweep is running.')) return;
+    if (!confirm('Run the planted check?\n\nRegenerates the fabricated pair and fires a full sweep through the null pipeline. Minutes, not seconds. It refuses while any other job, sweep or stage run is going.')) return;
     pg.disabled = true;
     $('#pgMsg').textContent = 'starting…';
     const out = await tryPost('api/planted-gate', {});

@@ -541,6 +541,14 @@ function launchRefusal() {
   if (activeBatch && activeBatch.status === 'running') return `batch ${activeBatch.id} is already running`;
   const j = require('./jobs').anyJobRunning();
   if (j) return `data/analysis job ${j} is running — a sweep launched over its cache writes would read two datasets`;
+  // A STAGE RUN IS HEAVY WORK TOO (owner order, 2026-08-29: "fix both guards so
+  // neither can fire during the other"). This asked only about batches, and a
+  // stage run is not one — so a sweep read the box as idle in the middle of a
+  // nine-hour stage 3 and would have built a second worker pool beside it.
+  // Required lazily: lib/stages already requires this file, and asking for it
+  // at load time would hand back a half-built module.
+  const st = require('./stages').stageBusy();
+  if (st) return `${st} is going — a sweep would fight it for the same workers. Wait for it or stop it first.`;
   // The Compute tab's sweep-processor choice is READ here, which is what makes
   // it a setting rather than a decoration (owner design, 2026-08-25). Today the
   // only platform is this machine, so this refuses only a hand-edited settings
