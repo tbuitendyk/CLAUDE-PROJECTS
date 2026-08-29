@@ -1,8 +1,8 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "ed6f15aedee2814fef8893b547a403521f73357f",
-  "subject": "3.1.0: the chain refuses on the digit that means records refuse",
-  "capturedAt": "2026-08-29T06:20:00Z",
+  "commit": "b492b7b9a49144c048aaa07a4ccd2fa07e0661ca",
+  "subject": "3.1.1: the budget refusal names the dial that does not move it, and by how much",
+  "capturedAt": "2026-08-29T06:45:00Z",
   "files": {
     "public/construct.js": {
       "sha256": "008bc133945eef25885d690ffde3f44acd4d8f4f45ad27c8a7cff90d21c8d48e",
