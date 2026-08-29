@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **6202672c8f19 — what the box is serving**, not from the working tree.
+Generated from **8a292192c405 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -247,7 +247,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (86)
+## What the controls are called (88)
 
 - `— pick a stage`
 - `+both`
@@ -269,6 +269,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `beat its own null set`
 - `before BOOST)`
 - `BOOST`
+- `call`
 - `campaign:`
 - `chunk shape`
 - `clear filters`
@@ -319,6 +320,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `setting`
 - `Settings, ranked`
 - `share`
+- `share that agreed`
 - `Size:`
 - `Stage 1`
 - `stage 1 order`
@@ -374,10 +376,10 @@ _none_
 - The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.
 - rows — the rest are held back by the filters above.
 
-## Every word, flat (266)
+## Every word, flat (268)
 
 ```
-above. accordingly. actually added adding after again agree all alongside always-long and any appear are arm arrow as asks at average averaged avg away away. back back. background band be beat because before belong below beside best board Boards BOOST both box bring broken building by campaign can cannot carry child chunk clear cleared coin coins column columns comes committee committees comparable comparisons copy cost could count Data decision declared Delete DOES each Each either entry every Every exactly exists failed FAILED few fewer fills filter filter. filters fingerprint first first. fixed floors floors. forecast form forward four from fuller gate going held held-back helped here hold holds if in independent Independent into inventory. is it it. its Its ITS keep kept landed lands. lead left LOGREG looks. MATCH maximum means median member members minimum missing money move near-copies never next No NOT not notes nothing now null numbers of of. on One one opening opinions order Ordered other over OWN own page parent parents per pick picked picking PLAN. press prev priced prices Pricing proved provenance put puts ranked read real record records rest restart. rests row rows rule. run rung save saved score screen seconds. section sections selections service set SET set. sets setting settings Settings shape share showed showing shows. Size smaller so some sort stage Stage STAMP stops suggests. table tables takes test than that the The their They THIS this This ties time to top totalled totalling trade. trades trail training tried unit units voices votes vs way. what What when where whole why window with With without wrote yet you
+above. accordingly. actually added adding after again agree agreed all alongside always-long and any appear are arm arrow as asks at average averaged avg away away. back back. background band be beat because before belong below beside best board Boards BOOST both box bring broken building by call campaign can cannot carry child chunk clear cleared coin coins column columns comes committee committees comparable comparisons copy cost could count Data decision declared Delete DOES each Each either entry every Every exactly exists failed FAILED few fewer fills filter filter. filters fingerprint first first. fixed floors floors. forecast form forward four from fuller gate going held held-back helped here hold holds if in independent Independent into inventory. is it it. its Its ITS keep kept landed lands. lead left LOGREG looks. MATCH maximum means median member members minimum missing money move near-copies never next No NOT not notes nothing now null numbers of of. on One one opening opinions order Ordered other over OWN own page parent parents per pick picked picking PLAN. press prev priced prices Pricing proved provenance put puts ranked read real record records rest restart. rests row rows rule. run rung save saved score screen seconds. section sections selections service set SET set. sets setting settings Settings shape share showed showing shows. Size smaller so some sort stage Stage STAMP stops suggests. table tables takes test than that the The their They THIS this This ties time to top totalled totalling trade. trades trail training tried unit units voices votes vs way. what What when where whole why window with With without wrote yet you
 ```
 
 ---
