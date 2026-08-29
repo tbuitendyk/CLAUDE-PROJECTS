@@ -56,9 +56,16 @@ else:
         by.setdefault((d.get('engineVersion'), d.get('measurements')), []).append(s)
     for (ev, mv), rows in sorted(by.items(), key=lambda kv: str(kv[0])):
         note = ''
-        if cur and ev and ev != cur:
-            note = ' -- ALREADY refused as a parent (different engine release)'
-        elif cur and ev == cur:
-            note = ' -- would be refused as a parent the moment the release changes'
+        # THE SAME RULE THE ENGINE USES, not a stricter one. lib/stages.js
+        # compares the FIRST digit only -- that digit is defined as "anything
+        # that makes yesterday's records refuse" -- so a script that compares
+        # the whole string reports work as lost when it is fine. This one said
+        # exactly that about two good record sets minutes after the engine
+        # stopped agreeing with it.
+        major = lambda v: (str(v or '').split('.') + [''])[0]
+        if cur and ev and major(ev) != major(cur):
+            note = ' -- REFUSED as a parent: a different first digit'
+        elif cur and ev:
+            note = f' -- usable as a parent (engine {ev} and {cur} share a first digit)'
         print(f"  engine {ev or '-'} / block {mv or '-'}: {len(rows)} set(s){note}")
 PY
