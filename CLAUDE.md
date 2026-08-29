@@ -110,7 +110,18 @@ said to check. Checking is a judgement I kept failing, so it is now a lookup.
   what is forbidden.
 - **Every tab has a list**, generated from its own renderer, and the tab list
   itself is read from the code — so a tab added tomorrow gets one without
-  anybody remembering to ask.
+  anybody remembering to ask, and four tabs deleted this morning lose theirs
+  without anybody remembering either.
+- **A screen is its renderer plus every helper it draws with, all the way
+  down** (2026-08-28). One level was enough until Boards started drawing its
+  tables through `bDrawStage1/2/3`, each of which draws its paging bar through
+  `bPager` — two hops out, and `prev`, `next` and the "N rows · page X of Y"
+  line were on the owner's screen and on no list. Both directions of the check
+  read through the same reader, so neither could see the hole. The walk now
+  follows helpers as far as they go, and **a screen renderer is a dead end**:
+  Verify's status strip calls `draw()`, the tab dispatcher, and following that
+  put all 82 of Boards' controls on Verify's list — over-collecting is the
+  opposite failure and it authorises words the owner cannot see.
 
 **Words already proved forbidden**, with what they really are:
 
@@ -131,13 +142,21 @@ is the same fault pointing the other way.
 
 | I wrote | Where it is legal | What it actually is |
 |---|---|---|
-| `branch` | **Sweep** | Now on the screen, in front of the four boxes it names: `chunk shape`, `decision`, `band % (or auto)`, `24/5`. It is there because I needed a word and there wasn't one — the owner's call to make, and worth asking before adding another. |
-| `logreg`, `boost` | **Boards**, **Sweep2**, **Boards2**, **Sweep3**, **Boards3** | Two different ways of working out a forecast from the same prices; each of a committee's members is one of them on one view. Corrected 2026-08-26 (owner order): they ARE on screen — press a Survivor board row's `inspect` button and the panel's `model` column shows them for every member, beside the `view` column (`full` / `prices` / `volume`) — and the `agree` hover on Sweep now names all of them. This table said "nowhere" because the list generator reads the screens' fixed labels and cannot see values inside data tables — the same blindness the `slim` row records, repeated to the owner as fact a second time before being checked against what the screens actually display. Added 2026-08-26, later the same day: the Sweep2 and Boards2 drawings name both models outright — stage 1 trains logreg, stage 2 adds boost — because the owner asked, of the old page, why the model in use was being kept dark. |
-| `slim` | **Boards**, **Sweep** | Everything is scored once, cheaply, before the best of it is scored again in full. (2026-08-27: the crunch of the Sweep2 drawing removed the word there — its stage 1 line names `logreg` and the stage number instead — so it is back to these two screens.) Corrected 2026-08-22: it is in the run's plan line on Boards — "N units · N slim runs · N promote runs" — and always was. The generator could not see it, so this table said "nowhere" and I told the owner it was a word they could not see. Corrected again 2026-08-26: it has ALSO been on Sweep itself since 2026-08-22 — the two-boxes passname says "shapes the slim pass and the promote pass alike" — which this row failed to record while the test's own list knew it; and it is now on Sweep2, the drawing of the three-stage design, whose stage 1 is the slim scoring. Placements are read out of the generator, never typed from memory — this row has now been wrong twice by being typed. |
-| `promoted` | **Verify** | The second, fuller scoring of the best rows — as many as `promote top K`. Legal on Verify, and on Sweep say what it does instead. |
-| `combo` | **nowhere** | One asset on its own, or one asset alongside the others it is read against — `singles`, `doubles`, `triples` choose which. |
+| `logreg`, `boost` | **Sweep**, **Boards** | Two different ways of working out a forecast from the same prices; each member of the group that votes on one coin is one of them, reading one slice of the numbers. Named on purpose on both screens — Sweep says which kind each stage trains, Boards shows them per member — because the owner asked why the model in use was being kept dark. |
+| `member` | **Sweep**, **Boards** | One forecast in the group that votes on a coin. |
+| `committee` | **Boards**, **Tune** | The whole group of forecasts that vote on one coin. Not on Sweep — there it is `members`, `agree`, and the shares. |
+| `promoted` | **Verify** | The second, fuller scoring of the best rows. Legal on Verify; anywhere else, say what it does instead. |
 | `cell` | **History**, **Greenlight** | One particular setting of `entry`, `gate`, `d`, `t`, `trail` and `arm` together. |
-| `committee`, `member` | **Boards**, **Tune** (`member` on Boards) | The group of forecasts that vote on one asset. Not on Sweep — there, only `agree`, `with contexts` and the fractions exist. |
+| `branch` | **nowhere** (2026-08-28) | Was on the deleted Sweep, in front of the four boxes it named. Those boxes are on the surviving Sweep and that word is not, so it is forbidden again: say `decision`, `band % (or auto)`, `24/5` and `chunk shape` by name. |
+| `slim` | **nowhere** (2026-08-28) | Everything scored once, cheaply, before the best of it is scored again in full. It was on the deleted Sweep's two boxes and in the deleted Boards' plan line; both went, so the word went with them. On the three stages, say "stage 1" and "stage 2". |
+| `combo` | **nowhere** | One coin on its own, or one coin alongside the others it is read against — `singles`, `doubles`, `triples` choose which. |
+| `contexts` | **nowhere** | The other coins a coin is read alongside. Say "alongside one other coin" or "alongside two others", which is what the screen says. |
+
+Every placement in that table is READ OUT OF THE GENERATOR, never typed. It has
+been wrong four times by being typed — three of them telling the owner a word
+was one they could not see when it was on the screen in front of them, and the
+fourth (2026-08-28) leaving `slim` and `branch` marked legal on screens that had
+been deleted that morning.
 
 **To check a word**: find the tab in `ultimate-trading-system/SCREEN-WORDS.md`
 and look. That is the whole procedure.

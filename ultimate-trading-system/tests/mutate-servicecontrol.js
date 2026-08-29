@@ -268,6 +268,13 @@ const GUARDS = [
     'apageAlwaysStatesTheTrueTotalOnScreen', 'every table stops at its first hundred rows with nothing on screen saying there are more'],
   [path.join(ROOT, 'public', 'construct.js'), "${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}", '',
     'everyTableThatCanGrowHasAPagingBar', 'the every-coin table — the longest one on the screen — loses its paging bar and stops at its first hundred rows'],
+  // THE WORD LIST'S OWN READER, both ways. Too shallow and words on the
+  // owner's screen are on no list, which under RULE ONE-A forbids saying them;
+  // too deep and one screen's words are authorised on another.
+  [path.join(ROOT, 'lib', 'screencontrols.js'), '      queue.push(b);', '',
+    'theReaderFollowsWhatARendererDrawsWith', 'the reader stops one hop from the renderer again and the paging bar goes back to being a screen the word list cannot see'],
+  [path.join(ROOT, 'lib', 'screencontrols.js'), "      if (isScreen(name)) { seen.add(name); continue; }", '',
+    'theReaderFollowsWhatARendererDrawsWith', 'a helper that redraws the page drags every other screen\'s words onto this list — every word in the app authorised on every screen'],
 ];
 
 const only = process.argv[2] || '';

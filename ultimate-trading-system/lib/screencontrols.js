@@ -67,8 +67,31 @@ function bodyOf(S, start) {
 //   * only where the body actually calls them by name
 //   * only if the helper's own body contains markup, so pure arithmetic
 //     helpers add nothing
-//   * each one once, and only one level deep
-function helperBodies(S, body) {
+//   * each one once, and FOLLOWED THROUGH a helper that only draws by calling
+//     more helpers
+//
+// THE DEPTH WENT FROM ONE LEVEL TO ALL OF THEM ON 2026-08-28, and the hole it
+// closed is the same one that put it here. Boards draws its three stage tables
+// through bDrawStage1/2/3, and each of those draws its paging bar through
+// bPager — two hops from the renderer. At one level the bar was invisible
+// again: `prev`, `next` and the "N rows · page X of Y" line were on the owner's
+// screen and on no list, which under RULE ONE-A means they could not be said to
+// the owner at all. Both directions of the check read through this function, so
+// neither could see the hole.
+//
+// Depth does not loosen the narrowing, which is what stops over-collecting: a
+// helper still has to be top level in this same file, actually called by name,
+// and have markup in its own body. What changed is that the walk keeps going
+// through the ones that qualify instead of stopping after the first hop.
+//
+// AND ONE NARROWING HAD TO BE ADDED to make depth safe, caught the moment it
+// was tried: a SCREEN IS NOT A HELPER OF ANOTHER SCREEN. Verify's status strip
+// calls draw(), the tab dispatcher, which calls every renderer there is — so at
+// full depth Verify collected all 291 controls on Boards and the two lists came
+// out identical. Following depth without this would authorise every word in the
+// app on every screen, which is the fault this whole file exists to prevent,
+// wearing the fix. draw() and every drawX() renderer are dead ends.
+function helperBodies(S, body, isScreen) {
   const out = [];
   const defined = new Map();
   for (const m of S.matchAll(/^(?:async )?function ([A-Za-z_$][\w$]*)\s*\(/gm)) {
@@ -78,13 +101,21 @@ function helperBodies(S, body) {
     if (!defined.has(m[1])) defined.set(m[1], m.index);
   }
   const seen = new Set();
-  for (const m of body.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)) {
-    const name = m[1];
-    if (seen.has(name) || !defined.has(name)) continue;
-    seen.add(name);
-    const b = bodyOf(S, defined.get(name));
-    // Markup, not arithmetic: a helper that draws nothing has no words on it.
-    if (/<[a-z]/i.test(b)) out.push(b);
+  const queue = [body];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const m of cur.matchAll(/\b([A-Za-z_$][\w$]*)\s*\(/g)) {
+      const name = m[1];
+      if (seen.has(name) || !defined.has(name)) continue;
+      if (isScreen(name)) { seen.add(name); continue; }
+      seen.add(name);
+      const b = bodyOf(S, defined.get(name));
+      // Markup, not arithmetic: a helper that draws nothing has no words on it,
+      // and following it would drag in words no screen shows.
+      if (!/<[a-z]/i.test(b)) continue;
+      out.push(b);
+      queue.push(b);
+    }
   }
   return out;
 }
@@ -94,7 +125,11 @@ function drawBody(fnName, src) {
   const start = S.indexOf(`async function ${fnName}()`);
   if (start < 0) throw new Error(`${fnName}() is gone - that screen cannot be read`);
   const body = bodyOf(S, start);
-  return [body, ...helperBodies(S, body)].join('\n');
+  // The dead ends: the tab dispatcher and every screen renderer, this one
+  // included, so a helper that redraws the page cannot drag another screen's
+  // words onto this list.
+  const screens = new Set(['draw', ...tabs(S).map((t) => t.fn)]);
+  return [body, ...helperBodies(S, body, (n) => screens.has(n))].join('\n');
 }
 
 // The words immediately before a control, which is what the owner reads as its

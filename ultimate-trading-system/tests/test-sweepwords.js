@@ -188,24 +188,19 @@ module.exports = {
     // fact — the slim blindness repeated word for word. The collector now
     // reads the values a screen prints as data from the engine, the same way
     // it reads the dropdown choices.
-    const NOWHERE = ['combo'];
-    // 'slim' and 'promote' became SWEEP words on 2026-08-22, when the owner
-    // asked for the two passes to be drawn as two boxes and named. That is the
-    // honest resolution of the whole tangle about those words: they are on the
-    // screen now, so they can be used about that screen.
-    //
-    // 2026-08-26: the Sweep2 and Boards2 drawings of the three-stage design
-    // name things on purpose that the working screens kept dark — stage 1 is
-    // the slim scoring and trains logreg, stage 2 adds boost, and the Boards2
-    // members column spells both out — because the owner asked, of the old
-    // page, why the model in use was not being named. Placements below were
-    // read back out of the generator, not typed from memory.
-    // 2026-08-27: the crunch order ("remove all that verbiage") took 'slim'
-    // off Sweep2 again — its compact stage 1 line names logreg and the
-    // stage, not the old pass name. Read back out of the generator.
-    const ONLY_ON = { slim: ['Boards', 'Sweep'],
-      logreg: ['Boards', 'Boards2', 'Boards3', 'Sweep2', 'Sweep3'],
-      boost: ['Boards', 'Boards2', 'Boards3', 'Sweep2', 'Sweep3'] };
+    // Fourth correction, 2026-08-28: 'slim' is on NO screen again. The two
+    // boxes that named it were on the deleted Sweep, and the plan line that
+    // named it was on the deleted Boards. It went back to being an internal
+    // word the same day the screens went, so it is in NOWHERE — and read back
+    // out of the generator, never typed.
+    const NOWHERE = ['combo', 'slim'];
+    // 'logreg' and 'boost' are named ON PURPOSE on both surviving screens —
+    // Sweep says which kind of member each stage trains, and Boards shows them
+    // per member — because the owner asked, of the old page, why the model in
+    // use was being kept dark. Placements below were read back out of the
+    // generator, not typed from memory: typing them is how this table has been
+    // wrong three times.
+    const ONLY_ON = { logreg: ['Sweep', 'Boards'], boost: ['Sweep', 'Boards'] };
     const where = {};
     for (const t of tabs()) {
       for (const w of collect(t.fn).words) {
@@ -239,19 +234,35 @@ module.exports = {
   // hole had been there a while. The opposite failure is worse and is checked
   // too: a reader that over-collects would authorise words from a screen the
   // owner is not looking at.
+  // AND IT FOLLOWS THEM AS FAR AS THEY GO (2026-08-28). One level was enough
+  // while a screen called its helpers directly. Boards does not: it draws its
+  // three stage tables through bDrawStage1/2/3, and each of those draws its
+  // paging bar through bPager — two hops away. At one level the bar was
+  // invisible all over again, so `prev`, `next` and the "N rows · page X of Y"
+  // line were on the owner's screen and on no list. Both directions of the
+  // check read through the same reader, so neither could see the hole.
   async theReaderFollowsWhatARendererDrawsWith() {
     const boards = drawBody('drawBoards');
-    for (const w of ['rows per page', '>first<', '>prev<', '>next<', '>last<']) {
+    for (const w of ['>prev<', '>next<', 'rows · page ']) {
       assert.ok(boards.includes(w),
         `the Boards reader cannot see "${w}" — it is on the screen and would be on no list`);
     }
+    const screens = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'screencontrols.js'), 'utf8');
     // A helper that draws nothing must add nothing: pulling in arithmetic
     // helpers would fill the list with words that are on no screen at all.
-    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    assert.ok(/if \(\/<\[a-z\]\/i\.test\(b\)\) out\.push\(b\)/.test(
-      require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'screencontrols.js'), 'utf8')),
-    'the reader follows helpers that draw nothing, so the list gains words no screen shows');
-    assert.ok(src.length > 0);
+    assert.ok(/if \(!\/<\[a-z\]\/i\.test\(b\)\) continue;/.test(screens),
+      'the reader follows helpers that draw nothing, so the list gains words no screen shows');
+    // ...AND A SCREEN IS NOT A HELPER OF ANOTHER SCREEN, which is what makes
+    // depth safe. Verify's status strip calls draw(), the tab dispatcher, which
+    // calls every renderer there is. Following that would put all 82 of Boards'
+    // controls on Verify's list — the exact over-collection this file exists to
+    // prevent, wearing the fix.
+    assert.ok(/const screens = new Set\(\['draw', \.\.\.tabs\(S\)\.map\(\(t\) => t\.fn\)\]\);/.test(screens),
+      'the renderers are not dead ends any more, so one screen can drag another screen\'s words onto its list');
+    const verify = drawBody('drawVerify');
+    for (const w of ['every coin of every setting', 'copy settings into the form']) {
+      assert.ok(!verify.includes(w), `Verify's list has picked up "${w}", which is on Boards`);
+    }
   },
 
   // AND IT MUST NOT BLEED BETWEEN SCREENS. Each of these is shown on exactly
@@ -267,8 +278,12 @@ module.exports = {
       const c = collect(t.fn);
       byTabWords[t.key] = [...c.controls, ...c.options, ...c.prose].join('\n').toLowerCase();
     }
-    const onlyOn = { sweep: ['promote top k', 'board rows'], verify: ['run the planted check'],
-      boards: ['menu grid'], greenlight: ['greenlight this config'] };
+    // RE-AIMED 2026-08-28: promote top k, board rows and menu grid were on the
+    // deleted screens. These are phrases the surviving screens own outright.
+    const onlyOn = { sweep: ['start stage 1', 'fee % each way', 'null set size'],
+      verify: ['run the planted check'],
+      boards: ['every coin of every setting', 'copy settings into the form'],
+      greenlight: ['greenlight this config'] };
     for (const [home, words] of Object.entries(onlyOn)) {
       for (const w of words) {
         assert.ok((byTabWords[home] || '').includes(w), `"${w}" is missing from its own screen (${home})`);
