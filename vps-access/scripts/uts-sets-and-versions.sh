@@ -18,7 +18,7 @@ curl -sf --max-time 25 "$B/api/planted-gate/status" -o /tmp/uts-pg2.json 2>/dev/
 : > /tmp/uts-setdocs.jsonl
 for id in $(python3 -c 'import json;print(" ".join(s["id"] for s in (json.load(open("/tmp/uts-sets.json")).get("sets") or [])))'); do
   curl -sf --max-time 25 "$B/api/stageset/$id" \
-    | python3 -c 'import json,sys; d=json.load(sys.stdin).get("set") or {}; print(json.dumps({k:d.get(k) for k in ("id","stage","status","name","engineVersion","measurements")}))' \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin).get("set") or {}; o={k:d.get(k) for k in ("id","stage","status","name","engineVersion","measurements","progress","startedAt","createdAt")}; o["perf"]=d.get("perf"); print(json.dumps(o))' \
     >> /tmp/uts-setdocs.jsonl 2>/dev/null || true
 done
 python3 <<'PY'
@@ -68,4 +68,25 @@ else:
         elif cur and ev:
             note = f' -- usable as a parent (engine {ev} and {cur} share a first digit)'
         print(f"  engine {ev or '-'} / block {mv or '-'}: {len(rows)} set(s){note}")
+    # WHAT A RUNNING JOB IS ACTUALLY DOING, and how fast. Read-only: the rate
+    # is worked out here from what the set has already written, so a long job
+    # can be judged before the screen that shows it has been deployed.
+    if running:
+        r = docs.get(running) or {}
+        pf = r.get('perf') or {}
+        print()
+        print(f"  RUNNING {running}: {r.get('progress') or '(no progress line yet)'}")
+        done = pf.get('unitsDone'); total = pf.get('unitsTotal'); el = pf.get('elapsedMs')
+        started = r.get('startedAt') or r.get('createdAt')
+        print(f"    started {started}   workers {pf.get('workers')}")
+        if el:
+            print(f"    {round(el/60000)} min into the priced pass")
+        if done and total and el:
+            per = el/done
+            left = per*(total-done)
+            import datetime
+            ends = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(milliseconds=left)
+            print(f"    {done} of {total} units at {round(per/60000,1)} min each -> about {round(left/60000)} min left, lands ~{ends.strftime('%H:%M')} UTC")
+        elif total:
+            print(f"    0 of {total} units finished, so there is no rate to measure yet")
 PY
