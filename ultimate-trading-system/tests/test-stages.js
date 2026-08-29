@@ -1594,6 +1594,71 @@ module.exports = {
     }
   },
 
+  // THE gate FILTER IS A DROPDOWN OF THE ENGINE'S OWN GATES (owner order,
+  // 2026-08-29: "where's the drop down selector on gate on table 3.A?").
+  //
+  // There are three gates and it was a typing box, which let a gate be typed
+  // that matches nothing and made "a" keep both `always` and `active`. And it
+  // read the STORED gate, which a setting opened at market carries even though
+  // the column prints a dash for it — so the filter handed back rows the
+  // screen says have no gate.
+  async theGateFilterOffersTheEnginesOwnGatesAndTheOnesWithout() {
+    const id = `s3-test-${Date.now().toString(36)}-gt`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999977, name: 'S3 #gt', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 3 }, params: { nullN: 9 },
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, entry, gate) => ({
+        si, label: `count 75% ${entry} t65h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false,
+        bandPct: 2, entry, gate, dMult: entry === 'market' ? null : 1.5, tHours: 65, trailMult: null, armMult: null,
+        agreeRule: 'count', agreePct: 75, agreeBoth: false, agreePersist: 0,
+        rung: 6, members: 8, voices: 8, pnl: 10, trades: 3,
+        holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat: 5, pairs: 9, lead: 1, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      });
+      w.push(mk(0, 'breakout', 'always'));
+      w.push(mk(1, 'breakout', 'active'));
+      // opened at market: it carries a gate in the record and the column
+      // prints a dash, because no gate applies to it
+      w.push(mk(2, 'market', 'always'));
+      w.close();
+      await stages.buildTally(doc);
+
+      const pick = (g) => stages.stage3Ranked(id, 0, 10, { gate: g }).rows.map((r) => r.si).sort();
+      assert.deepStrictEqual(pick('always'), [0], 'picking a gate must not hand back the market row the column shows a dash for');
+      assert.deepStrictEqual(pick('active'), [1], '"active" must not also keep "always"');
+      assert.deepStrictEqual(pick('does not apply'), [2], 'there is no way to pick the settings no gate applies to');
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10).total, 3, 'and an empty box still shows every setting');
+    } finally {
+      try { fs.unlinkSync(file); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      rowstore.remove(id);
+    }
+  },
+
+  // ...and the box the owner presses is a dropdown, filled from the engine.
+  async theGateBoxIsADropdownFilledFromTheEngineNotFromTheScreen() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const fn = ui.slice(ui.indexOf('function bGateFilterSpec('), ui.indexOf('function bFilterGrid('));
+    assert.ok(fn.length > 100, 'the gate box no longer has a spec of its own');
+    assert.ok(/VOCAB && VOCAB\.gate/.test(fn), 'the gate choices are not read from what the engine serves');
+    assert.ok(/'does not apply'/.test(fn), 'there is no choice for the settings no gate applies to');
+    assert.ok(!/'always'/.test(fn) && !/'active'/.test(fn) && !/'directional'/.test(fn),
+      'a gate is typed into the page — adding one to the engine would leave the screen behind');
+    assert.ok(/return \['gate', 'gate', 'text', hoverType\]/.test(fn),
+      'with the engine\'s list missing the box must stay a typing box, not offer a short dropdown');
+    assert.ok(/bGateFilterSpec\(/.test(ui.slice(ui.indexOf("bFilterGrid('S3R'"))), 'Table 3.A does not use it');
+    // and the engine really does serve them
+    const vocab = require('../lib/vocabulary');
+    const served = (typeof vocab.vocabulary === 'function' ? vocab.vocabulary() : vocab)['gate'];
+    assert.ok(Array.isArray(served) && served.length >= 3, 'the engine serves no gate list for the dropdown to read');
+  },
+
   // AND IT IS ON THE SCREEN — all three tables, with its floors.
   async whatActuallyAgreedIsOnEveryStageThreeTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');

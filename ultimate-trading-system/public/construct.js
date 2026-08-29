@@ -2732,6 +2732,20 @@ function bStat(v) {
 // so what is read here and what the table counts can never be two different
 // sets. A box that takes words rather than a number gets four empty cells, so
 // every row of the grid still lines up on the same six columns.
+// THE GATES THE ENGINE HAS, read from what it serves and never typed here
+// (RULE FIVE). There are three of them, so a typing box was the wrong control:
+// it let a gate be typed that matches nothing, and typing "a" quietly kept
+// both `always` and `active`. The fourth choice is not a gate — it is what the
+// column prints for a setting opened at market, which no gate applies to.
+//
+// If the engine's list has not arrived, the box stays a typing box rather than
+// offering a short one: a dropdown missing choices the system provides is the
+// fault this whole vocabulary mechanism exists to stop.
+function bGateFilterSpec(hoverPick, hoverType) {
+  const list = (VOCAB && VOCAB.gate) || null;
+  if (!list || !list.length) return ['gate', 'gate', 'text', hoverType];
+  return ['gate', 'gate', 'pick', hoverPick, [...list.map((o) => String(o.value)), 'does not apply']];
+}
 function bFilterGrid(key, specs, spread) {
   const cur = bFilters(key);
   const box = (sp) => {
@@ -2993,7 +3007,12 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['rule', 'agree by', 'pick', 'shows only settings using this way of turning votes into a call. any shows every one.', ['count', 'conviction', 'voices', 'families', 'unusual']],
     ['decision', 'decision', 'pick', 'shows only settings using this decision. any shows both.', ['argmax', 'directional']],
     ['entry', 'entry', 'pick', 'shows only settings opened this way. any shows both.', ['market', 'breakout']],
-    ['gate', 'gate', 'text', 'shows only settings whose gate contains what you type. Empty shows every gate.'],
+    bGateFilterSpec(
+      'shows only settings using this gate. does not apply picks the ones opened at market, which no gate applies to '
+      + '— the ones showing a dash in the column. any shows every setting.',
+      'shows only settings whose gate contains what you type. Type does not apply for the ones opened at market. '
+      + 'Empty shows every setting.',
+    ),
     ['tMin', 't at least, hours', 'num', 'hides settings held for fewer hours than this. Empty hides nothing.'],
     ['tMax', 't at most, hours', 'num', 'hides settings held for more hours than this. Empty hides nothing.'],
     ['coinsMin', 'coins at least', 'num', 'hides settings priced on fewer coins than this. Empty hides nothing.'],

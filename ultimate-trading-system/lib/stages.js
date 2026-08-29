@@ -596,7 +596,7 @@ const FILTER_DEFS = {
     beatMin: ['_beatPct', 'min'], leadMin: ['lead', 'min'], s1rankMax: ['s1rank', 'max'], rankMax: ['rank', 'max'],
   },
   3: {
-    decision: ['decision', 'text'], entry: ['entry', 'text'], gate: ['gate', 'text'],
+    decision: ['decision', 'text'], entry: ['entry', 'text'], gate: ['_gate', 'text'],
     rule: ['agreeRule', 'text'],
     tMin: ['tHours', 'min'], tMax: ['tHours', 'max'],
     coinsMin: ['coins', 'min'], testMin: ['avgTest', 'min'], holdMin: ['avgHold', 'min'],
@@ -613,6 +613,11 @@ const FILTER_DEFS = {
 const DERIVED = {
   _ctx: (r) => [r.ctx1, r.ctx2].filter(Boolean).join(' + '),
   _beatPct: (r) => (r.pairs ? (r.beat / r.pairs) * 100 : null),
+  // WHAT THE gate COLUMN ACTUALLY SHOWS. A setting opened at market carries a
+  // gate in its record and the column prints a dash, because no gate applies
+  // to it — so a filter reading the stored value would hand back rows the
+  // screen says have no gate at all. This reads what is on the screen.
+  _gate: (r) => (r.entry === 'market' ? 'does not apply' : String(r.gate || '')),
   _sharePct: (r) => (r.share == null ? null : r.share * 100),
 };
 const readsField = (field) => DERIVED[field] || ((r) => r[field]);
