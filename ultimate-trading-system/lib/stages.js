@@ -37,6 +37,48 @@ function voicesOf(members, nTest) {
 }
 const trainingsPerUnit = (size) => require('./bracketwork').slimViewsFor(size === 1 ? 1 : 2).length;
 
+// A LONG JOB SAYS WHERE IT IS, HOW FAST IT IS GOING, AND WHEN IT WILL LAND
+// (owner order, 2026-08-29: "no idea if it will take 10 hours or 10 minutes to
+// get to 1% ... give some useful information so long runs aren't pure
+// guesswork").
+//
+// What they were looking at was "reading the kept votes: 10/10 units · 0% of
+// 332,572,800 pricings". Three things wrong with it, all of them this function:
+//
+//   * THE WORDS AND THE NUMBER WERE ABOUT DIFFERENT PHASES. A stage 3 run has
+//     three long ones — reading the kept votes, pricing them, totalling the
+//     tables — and the percentage was always of the pricings, so during the
+//     first and last phase it read 0% or 100% of something nobody was doing.
+//   * ONLY THE MIDDLE PHASE ESTIMATED ANYTHING. The other two reported a bare
+//     count, so the run went dark for however long they took.
+//   * THE ESTIMATE WAS A DURATION, and a duration has to be added to the clock
+//     by hand to be worth anything. "lands about 14:20" is the thing an owner
+//     can act on.
+//
+// So every phase reports through here: its own name, its own done-of-total, its
+// own rate measured from when THAT phase started, and a finish time of day. A
+// phase that has completed nothing yet says so plainly rather than showing a
+// confident 0%.
+function phaseNote(doc, { phase, done, total, word, startedMs, extra = '' }) {
+  const now = Date.now();
+  const elapsed = Math.max(0, now - startedMs);
+  const per = done > 0 ? elapsed / done : null;
+  const left = per != null ? Math.round(per * Math.max(0, total - done)) : null;
+  doc.perf = doc.perf || {};
+  doc.perf.phase = phase;
+  doc.perf.phaseDone = done;
+  doc.perf.phaseTotal = total;
+  doc.perf.phaseWord = word;
+  doc.perf.phaseElapsedMs = elapsed;
+  doc.perf.phaseEtaMs = left;
+  // the wall clock, computed here so the screen never has to add a duration to
+  // "now" and get it wrong across a page that has been open for an hour
+  doc.perf.phaseEndsAtMs = left == null ? null : now + left;
+  doc.progress = `${phase}: ${Number(done).toLocaleString()} of ${Number(total).toLocaleString()} ${word}`
+    + (extra ? ` · ${extra}` : '');
+  return doc.perf;
+}
+
 const ENGINE_VERSION = require('../package.json').version;
 const MEASUREMENTS_VERSION = require('./features').MEASUREMENTS_VERSION;
 
@@ -344,8 +386,10 @@ function startStage1(params) {
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (units.length - doc.perf.unitsDone)) : null;
       doc.perf.cyclesDone += trainingsPerUnit(u.size);
-      doc.progress = `stage 1: ${doc.perf.unitsDone}/${units.length} units \u00b7 `
-        + `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings (${unitKeyOf(u)})`;
+      phaseNote(doc, {
+        phase: 'training the LOGREG members', done: doc.perf.unitsDone, total: units.length, word: 'units', startedMs: t0,
+        extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings (${unitKeyOf(u)})`,
+      });
       saveSet(doc);
     });
     if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
@@ -711,8 +755,10 @@ function startStage2(params) {
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (carried.length - doc.perf.unitsDone)) : null;
       doc.perf.cyclesDone += trainingsPerUnit(rec.size);
-      doc.progress = `stage 2: ${doc.perf.unitsDone}/${carried.length} carried units \u00b7 `
-        + `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings`;
+      phaseNote(doc, {
+        phase: 'training the BOOST members', done: doc.perf.unitsDone, total: carried.length, word: 'units', startedMs: t0,
+        extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} trainings`,
+      });
       saveSet(doc);
     });
     if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
@@ -963,6 +1009,11 @@ function startStage3(params) {
   doc.perf.workers = pool.parallel ? pool.workers.length : 1;
   saveSet(doc);
   const t0 = Date.now();
+  // Each phase is timed from ITS OWN start, not from the launch: a rate
+  // measured across a phase that has finished tells you nothing about the one
+  // you are in, and stage 3's three phases go at wildly different speeds.
+  const tRead = Date.now();
+  let tPrice = null;
   const w = { records: rowstore.writer(id, 'records') };
   const p = {
     allLoaded: parent.params.allLoaded, startMonth: parent.params.startMonth,
@@ -991,10 +1042,16 @@ function startStage3(params) {
         unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
       });
       if (pi % 5 === 4 || pi === parentRecords.length - 1) {
-        doc.progress = `reading the kept votes: ${pi + 1}/${parentRecords.length} units`;
+        phaseNote(doc, { phase: 'reading the kept votes', done: pi + 1, total: parentRecords.length, word: 'units', startedMs: tRead });
         saveSet(doc);
       }
     }
+    // the pricing clock starts when the pricing does, and the screen is told
+    // at once that this phase has begun with nothing finished yet — otherwise
+    // the previous phase's line sits there looking like the current one
+    tPrice = Date.now();
+    phaseNote(doc, { phase: 'pricing the settings', done: 0, total: parentRecords.length, word: 'units', startedMs: tPrice });
+    saveSet(doc);
     await pool.forEach('s3Unit', payloads, (settled, i) => {
       if (doc.cancelRequested) return;
       const rec = parentRecords[i];
@@ -1013,8 +1070,10 @@ function startStage3(params) {
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (parentRecords.length - doc.perf.unitsDone)) : null;
       doc.perf.cyclesDone = doc.perf.unitsDone * settings.length * (1 + nullN);
-      doc.progress = `stage 3: ${doc.perf.unitsDone}/${parentRecords.length} units · `
-        + `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} pricings`;
+      phaseNote(doc, {
+        phase: 'pricing the settings', done: doc.perf.unitsDone, total: parentRecords.length, word: 'units', startedMs: tPrice,
+        extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} pricings`,
+      });
       saveSet(doc);
     });
     if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
@@ -1026,8 +1085,9 @@ function startStage3(params) {
     saveSet(doc);
     const tallyGate = tallyBudgetFor({ settings: settings.length, coins: coinsN });
     let lastTallySave = 0;
+    const tTally = Date.now();
     const tallyNote = (dn, tn) => {
-      doc.progress = `totalling the tables: ${dn} of ${tn} parts`;
+      phaseNote(doc, { phase: 'totalling the tables', done: dn, total: tn, word: 'parts', startedMs: tTally });
       const now = Date.now();
       if (now - lastTallySave > 1000 || dn === tn) { lastTallySave = now; saveSet(doc); }
     };

@@ -705,12 +705,16 @@ module.exports = {
     assert.ok(/rememberSweepForm\(\);/.test(fill),
       'a programmatic fill never fires change, so copy settings must remember what it wrote');
     const prog = ui.slice(ui.indexOf('async function swProgress('), ui.indexOf('async function swCounts('));
-    assert.ok(/cyclesTotal/.test(prog) && /cyclesWord/.test(prog) && /etaMs/.test(prog),
-      'the progress line must carry the cycle total, the word for a cycle, and how long is left');
+    // RE-AIMED 2026-08-29: the line reported cycles-of-total for the WHOLE run
+    // and one duration. It reports the phase in progress now — see
+    // everyPhaseOfALongRunReportsItsRateAndWhenItLands for the arithmetic.
+    assert.ok(/phaseTotal/.test(prog) && /phaseWord/.test(prog) && /phaseEtaMs/.test(prog) && /phaseEndsAtMs/.test(prog),
+      'the progress line must carry how far through this phase, the word for its work, how long is left, and when it lands');
     const lib = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     assert.strictEqual(lib.split('cyclesWord:').length - 1, 3, 'all three launches declare their cycle counts');
-    assert.ok(/reading the kept votes: \$\{pi \+ 1\}\/\$\{parentRecords.length\} units/.test(lib),
-      'the long read before stage 3 dispatch says what it is doing instead of sitting on "writing the plan"');
+    assert.ok(/phase: 'reading the kept votes', done: pi \+ 1, total: parentRecords\.length/.test(lib),
+      'the long read before stage 3 dispatch says what it is doing instead of sitting on "writing the plan" — and it '
+      + 'reports through the shared reporter, so it carries a rate and a finish time like every other phase');
   },
 
   // Notes on a record set: refused while it is being written, saved and
@@ -1186,6 +1190,71 @@ module.exports = {
     const eAt = src.indexOf('if (parent.engineVersion && !sameEngineLine(');
     assert.ok(mAt > 0, 'the measurement block refusal is gone');
     assert.ok(eAt > mAt, 'the release check now runs before the measurement block check — the stronger one must be first');
+  },
+
+  // A LONG RUN SAYS HOW FAST IT IS GOING AND WHEN IT LANDS (owner order,
+  // 2026-08-29: "no idea if it will take 10 hours or 10 minutes to get to 1%
+  // ... give some useful information so long runs aren't pure guesswork").
+  //
+  // What was on screen: "reading the kept votes: 10/10 units · 0% of
+  // 332,572,800 pricings". The words named one phase and the percentage
+  // belonged to another, only the middle of stage 3's three phases estimated
+  // anything at all, and the estimate was a duration rather than a time of day.
+  // Driven through the shipped reporter, never a copy of its arithmetic.
+  async everyPhaseOfALongRunReportsItsRateAndWhenItLands() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const at = src.indexOf('function phaseNote(');
+    assert.ok(at > 0, 'the shared phase reporter is gone');
+    // eslint-disable-next-line no-new-func
+    const phaseNote = new Function(`${src.slice(at, src.indexOf('\n}', at) + 2)}; return phaseNote;`)();
+
+    const now = Date.now();
+    // NOTHING FINISHED: no estimate, and it must say nothing rather than zero.
+    const cold = {};
+    phaseNote(cold, { phase: 'pricing the settings', done: 0, total: 10, word: 'units', startedMs: now - 5 * 60000 });
+    assert.strictEqual(cold.perf.phaseEtaMs, null, 'an estimate was invented from no completed work');
+    assert.strictEqual(cold.perf.phaseEndsAtMs, null, 'a finish time was invented from no completed work');
+    assert.ok(/pricing the settings: 0 of 10 units/.test(cold.progress), `the line must still say where it is: ${cold.progress}`);
+
+    // ONE UNIT IN SIX MINUTES, nine to go: 54 minutes, and a clock time to match.
+    const warm = {};
+    phaseNote(warm, { phase: 'pricing the settings', done: 1, total: 10, word: 'units', startedMs: now - 6 * 60000 });
+    assert.strictEqual(Math.round(warm.perf.phaseEtaMs / 60000), 54,
+      `1 of 10 in six minutes is 54 minutes left, got ${Math.round(warm.perf.phaseEtaMs / 60000)}`);
+    assert.ok(Math.abs(warm.perf.phaseEndsAtMs - (now + warm.perf.phaseEtaMs)) < 2000,
+      'the finish time is not now plus what is left — the screen must never have to add a duration to its own clock');
+
+    // THE RATE IS MEASURED FROM THIS PHASE'S OWN START. A phase clocked from
+    // the launch inherits the speed of a phase that has already finished, and
+    // stage 3's three phases go at wildly different speeds.
+    const late = {};
+    phaseNote(late, { phase: 'totalling the tables', done: 5, total: 10, word: 'parts', startedMs: now - 10 * 60000 });
+    assert.strictEqual(Math.round(late.perf.phaseEtaMs / 60000), 10, 'half of ten parts in ten minutes is ten minutes left');
+    assert.strictEqual(late.perf.phaseWord, 'parts', 'the phase must report its own unit of work, not the previous one\'s');
+
+    // EVERY PHASE OF EVERY STAGE GOES THROUGH IT — a phase that reports by hand
+    // is the one that will be silent, which is exactly how this started.
+    for (const phase of ['training the LOGREG members', 'training the BOOST members',
+      'reading the kept votes', 'pricing the settings', 'totalling the tables']) {
+      assert.ok(src.includes(`phase: '${phase}'`), `${phase} does not report through the shared reporter`);
+    }
+    assert.ok(!/doc\.progress = `stage 3:/.test(src) && !/doc\.progress = `reading the kept votes:/.test(src),
+      'a phase is still writing its own progress line, so it can drift from the estimate beside it');
+
+    // AND THE SCREEN READS THOSE FIELDS, or the work above never reaches anyone.
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    for (const [f, why] of [
+      ['pf.phaseDone', 'how far through this phase'],
+      ['pf.phaseTotal', 'of how much'],
+      ['pf.phaseEtaMs', 'how long is left'],
+      ['pf.phaseEndsAtMs', 'when it lands'],
+      ['pf.phaseElapsedMs', 'how long it has been going'],
+    ]) {
+      assert.ok(ui.includes(f), `the progress line does not read ${f} — ${why}`);
+    }
+    assert.ok(/no estimate until the first/.test(ui),
+      'a phase with nothing finished shows a bare 0% and no rate, which reads as a stuck job');
+    assert.ok(/lands about <b>\$\{hhmm\} UTC<\/b>/.test(ui), 'the finish is not given as a time of day');
   },
 
 };

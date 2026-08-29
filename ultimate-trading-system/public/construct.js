@@ -530,11 +530,47 @@ async function swProgress() {
   // the percent, and about how long is left (owner order, 2026-08-27) —
   // refreshed every few seconds by the poll below.
   const pf = (row && row.perf) || {};
-  const pct = pf.cyclesTotal ? Math.floor(((pf.cyclesDone || 0) / pf.cyclesTotal) * 100) : null;
+  // WHAT A LONG RUN HAS TO SAY (owner order, 2026-08-29: "no idea if it will
+  // take 10 hours or 10 minutes to get to 1% ... so long runs aren't pure
+  // guesswork"). Four things, in the order they get looked at:
+  //
+  //   how far through THIS phase · how fast · when it lands · how long it has
+  //   been going
+  //
+  // The percentage is of the phase in progress, not of a number belonging to a
+  // phase that has already finished — which is how "reading the kept votes:
+  // 10/10 units · 0% of 332,572,800 pricings" came to be on the screen. And the
+  // finish is a TIME OF DAY, worked out on the service where the clock that
+  // measured the rate is, because a duration has to be added to the clock by
+  // hand before it means anything.
+  const done = Number(pf.phaseDone);
+  const total = Number(pf.phaseTotal);
+  const pct = total > 0 ? Math.floor((done / total) * 100) : null;
+  const perMs = done > 0 ? pf.phaseElapsedMs / done : null;
+  const rate = () => {
+    if (!perMs) return null;
+    const perHour = 3600000 / perMs;
+    if (perHour >= 1) return `${perHour < 10 ? perHour.toFixed(1) : Math.round(perHour).toLocaleString()} ${esc(pf.phaseWord || 'units')}/hour`;
+    return `${msWords(perMs)} per ${esc(String(pf.phaseWord || 'unit').replace(/s$/, ''))}`;
+  };
+  const lands = () => {
+    if (pf.phaseEndsAtMs == null) return null;
+    const d = new Date(pf.phaseEndsAtMs);
+    if (Number.isNaN(d.getTime())) return null;
+    const hhmm = d.toISOString().slice(11, 16);
+    const days = Math.floor((pf.phaseEtaMs || 0) / 86400000);
+    return `lands about <b>${hhmm} UTC</b>${days >= 1 ? ` (+${days}d)` : ''}`;
+  };
   const tail = [
-    pct != null ? `<b>${pct}%</b> of ${Number(pf.cyclesTotal).toLocaleString()} ${esc(pf.cyclesWord || 'cycles')}` : null,
-    pf.etaMs != null ? `about ${msWords(pf.etaMs)} left` : null,
-    pf.elapsedMs ? `${msWords(pf.elapsedMs)} in` : null,
+    pct != null ? `<b>${pct}%</b>` : null,
+    rate(),
+    lands(),
+    pf.phaseEtaMs != null ? `${msWords(pf.phaseEtaMs)} left` : null,
+    pf.phaseElapsedMs ? `${msWords(pf.phaseElapsedMs)} in` : null,
+    // A PHASE THAT HAS FINISHED NOTHING CANNOT BE ESTIMATED, and saying so is
+    // the whole point: a bare 0% with no rate reads as a stuck job.
+    pf.phaseEtaMs == null && pf.phaseTotal
+      ? `<span class="muted">no estimate until the first ${esc(String(pf.phaseWord || 'unit').replace(/s$/, ''))} lands</span>` : null,
   ].filter(Boolean).join(' · ');
   el.innerHTML = row
     ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="swStop" class="danger">stop</button>`
