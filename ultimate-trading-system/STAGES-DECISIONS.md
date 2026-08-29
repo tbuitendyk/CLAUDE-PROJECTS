@@ -425,6 +425,17 @@ work — the owner reviews decisions in the morning, not at 3am.
     working tree. RULE ONE-C in CLAUDE.md carries the rule; the test is what
     makes it a guarantee rather than a resolution.
 
+55. **The chain refuses on the first digit alone** (owner decision,
+    2026-08-29, chosen over stranding two finished record sets). The parent
+    refusal compared the whole release string, so any difference at all
+    refused — and a patch that fixed a tab which would not draw would have
+    thrown away a finished stage 1 and stage 2. RULE ONE-C already defines the
+    first digit as exactly this question: "anything that makes yesterday's
+    records refuse". So that is what is compared. The measurement block check
+    is untouched and still runs first, an unreadable stamp still falls back to
+    the strict whole-string rule, and every set still stores its full release
+    so a chain says which one wrote each link.
+
 ## Parked, needing the owner
 
 - **Forward books F1-F3** are frozen experiments on measurement block 2.

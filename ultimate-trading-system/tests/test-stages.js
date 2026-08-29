@@ -1124,4 +1124,44 @@ module.exports = {
     }
   },
 
+  // WHICH RELEASES CAN BE CHAINED (owner decision, 2026-08-29).
+  //
+  // The parent refusal compared the WHOLE release string, so ANY difference
+  // refused — and it cost real work: a patch that fixed a tab which would not
+  // draw and a cost line which would not clear, neither able to touch a kept
+  // vote, would have refused a finished stage 2 and sent the owner back to
+  // re-run the training. Comparing more than the guard's own definition is not
+  // caution, it is a different and wrong rule.
+  //
+  // CLAUDE.md RULE ONE-C defines the FIRST digit as exactly this question:
+  // "something already on disk stops being readable or comparable ... anything
+  // that makes yesterday's records refuse." So that is what is compared. Driven
+  // through the shipped function, never a copy of its logic.
+  async theChainRefusesOnTheDigitThatMeansRecordsRefuse() {
+    const same = stages.sameEngineLine;
+    // a fix or a new control cannot change what a kept vote means, so they pass
+    for (const [a, b] of [['3.0.1', '3.0.2'], ['3.0.1', '3.1.0'], ['3.0.1', '3.9.9'], ['3.0.0', '3.0.0']]) {
+      assert.strictEqual(same(a, b), true,
+        `${a} -> ${b} was refused. Only the first digit means yesterday's records no longer compare; refusing on the `
+        + 'others throws away training the change could not have affected.');
+    }
+    // and the day the arithmetic really moves, it bites
+    for (const [a, b] of [['3.0.1', '4.0.0'], ['2.0.0', '3.0.0'], ['4.9.9', '5.0.0']]) {
+      assert.strictEqual(same(a, b), false, `${a} -> ${b} was allowed through — that is a first-digit release`);
+    }
+    // FAILS SAFE on anything it cannot read as a release at all
+    assert.strictEqual(same('weird', '3.1.0'), false, 'an unreadable stamp must fall back to refusing');
+    assert.strictEqual(same(undefined, '3.1.0'), false, 'a missing stamp must fall back to refusing');
+    assert.strictEqual(same('weird', 'weird'), true, 'two identical unreadable stamps are still the same engine');
+
+    // ...AND THE MEASUREMENT BLOCK CHECK IS UNTOUCHED AND RUNS FIRST. It is the
+    // one that catches the numbers themselves changing, and narrowing the
+    // release check must not have narrowed it by accident.
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const mAt = src.indexOf('if (pm !== MEASUREMENTS_VERSION) {');
+    const eAt = src.indexOf('if (parent.engineVersion && !sameEngineLine(');
+    assert.ok(mAt > 0, 'the measurement block refusal is gone');
+    assert.ok(eAt > mAt, 'the release check now runs before the measurement block check — the stronger one must be first');
+  },
+
 };

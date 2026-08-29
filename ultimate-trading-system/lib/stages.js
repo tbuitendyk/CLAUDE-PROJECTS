@@ -39,6 +39,46 @@ const trainingsPerUnit = (size) => require('./bracketwork').slimViewsFor(size ==
 
 const ENGINE_VERSION = require('../package.json').version;
 const MEASUREMENTS_VERSION = require('./features').MEASUREMENTS_VERSION;
+
+// WHICH PART OF THE RELEASE DECIDES WHETHER TWO SETS CAN BE CHAINED
+// (owner decision, 2026-08-29).
+//
+// The parent refusal used to compare the WHOLE release string, so any
+// difference at all refused. That is too blunt, and it cost the owner real
+// work: a patch release that fixed a tab that would not draw and a cost line
+// that would not clear — neither of which can touch a kept vote — would have
+// refused a finished stage 2 and sent them back to re-run the training.
+//
+// THE FIRST DIGIT IS ALREADY DEFINED AS THIS EXACT QUESTION. CLAUDE.md RULE
+// ONE-C, written the same day: the third digit is a fix or a wording change;
+// the second is new behaviour or a new control; the FIRST is "something already
+// on disk stops being readable or comparable — a new measurement block, a
+// schema change, anything that makes yesterday's records refuse."
+//
+// That last clause is word for word what this guard is for, so the guard reads
+// the first digit and nothing else. Comparing more than that made the guard
+// stricter than its own definition: a release can gain a control or fix a
+// screen — second and third digit by rule — without a single kept vote meaning
+// anything different, and refusing those threw away training the change could
+// not possibly have affected.
+//
+// It fails SAFE. The day the arithmetic really does change, that is a
+// first-digit release by the rule and this bites. The measurement block check
+// above — the one that catches the numbers members were trained on changing —
+// is untouched and runs FIRST, so the commonest reason to refuse is caught
+// before this is even reached. A version that cannot be read as three numbers
+// falls back to the old, strict whole-string comparison. And the full release
+// of every set is still stored and still shown, so a chain says which release
+// wrote each link even where they differ.
+const engineLine = (v) => {
+  const m = /^(\d+)\./.exec(String(v || ''));
+  return m ? m[1] : null;
+};
+function sameEngineLine(a, b) {
+  const la = engineLine(a); const lb = engineLine(b);
+  if (la == null || lb == null) return String(a) === String(b);  // unreadable: the old, strict rule
+  return la === lb;
+}
 const SETS_DIR = path.join(__dirname, '..', 'data', 'stagesets');
 
 // ---- set documents -----------------------------------------------------------
@@ -350,9 +390,10 @@ function parentOrRefuse(fromId, wantStage) {
       + `${MEASUREMENTS_VERSION} — every member in it was trained on numbers that no longer exist. Start a new stage 1; `
       + 'the old set stays on disk until you delete it.');
   }
-  if (parent.engineVersion && parent.engineVersion !== ENGINE_VERSION) {
+  if (parent.engineVersion && !sameEngineLine(parent.engineVersion, ENGINE_VERSION)) {
     throw new Error(`${parent.name} was written by engine ${parent.engineVersion} and this box runs ${ENGINE_VERSION} — `
-      + 'votes kept by one version of the arithmetic cannot be priced by another without saying so');
+      + 'votes kept by one version of the arithmetic cannot be priced by another without saying so. The first '
+      + 'number is the one that means yesterday\'s records no longer compare, and it has moved.');
   }
   const fresh = stampManifest(`check-${Date.now().toString(36)}`, parent.params.universe);
   const diff = manifestDiff(parent.dataManifest, fresh);
@@ -1483,6 +1524,7 @@ function stage3CoinRows(id, query) {
 }
 
 module.exports = {
+  sameEngineLine,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,

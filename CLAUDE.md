@@ -240,6 +240,13 @@ nothing changed. That is the harm, and it is why the rule is absolute.
   that makes yesterday's records refuse.
 - **It only ever goes up.** A number that goes backwards makes an older record
   read as the newer one.
+- **The first digit is load-bearing, not decorative** (owner decision,
+  2026-08-29). A stage refuses a parent written under a different FIRST digit,
+  and nothing else about the release is compared — because "makes yesterday's
+  records refuse" is the definition of that digit, above. So moving it throws
+  away every chain on the box, and moving the other two never does. Before
+  moving the first digit, read what is on disk (`uts-sets-and-versions.sh`) and
+  tell the owner what it will cost them; it is their call, not a session's.
 - **`tests/test-release.js` enforces it**, because a rule that depends on
   remembering is not a rule. It finds the commit where the number last moved and
   fails if anything in `lib/`, `public/`, `server.js`, `service-control/` or the
