@@ -111,16 +111,20 @@ module.exports = {
   },
 
   // The response contract is the same class as the request contract, and it is
-  // NOT uniform across the three launchers: /api/bracketlab and historytuning
-  // answer { batchId }, while httwo answers { started, id, … }. Reading the
-  // wrong one renders a blank run id forever, and "fix them all to batchId"
-  // would break the one that was right. Each key is read from the backend
-  // source, so the check tracks the contract instead of a memory of it.
+  // NOT uniform across the launchers: historytuning answers { batchId }, httwo
+  // answers { started, id, … }, and the three stages answer { id, name, units }
+  // (stage 3 adds settings). Reading the wrong key renders a blank forever, and
+  // "fix them all to the same word" would break the ones that were right. Each
+  // key is read from the backend source, so the check tracks the contract
+  // instead of a memory of it.
+  //
+  // RE-AIMED 2026-08-28. The bracketlab row named #swMsg, which was on the
+  // deleted Sweep. The three stage launchers replace it, and they are held to
+  // the stronger version of the same rule: EVERY key their message reads has to
+  // be a key their own backend function returns.
   everyLauncherReadsTheRunIdKeyItsBackendReturns() {
-    const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    // (UI message id, where the authoritative return literal lives, its anchor)
+    const STAGES = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     const LAUNCHERS = [
-      { msg: 'swMsg',  src: server, anchor: "app.post('/api/bracketlab'", re: /res\.json\(\{\s*(\w+):\s*id\b/ },
       { msg: 'htMsg',  src: BATCH,  anchor: 'function htLaunch',  re: /return \{\s*(\w+):\s*doc\.id\b/ },
       { msg: 'ht2Msg', src: BATCH,  anchor: 'function ht2Launch', re: /return \{[^}]*?\b(\w+):\s*doc\.id\b/ },
     ];
@@ -134,14 +138,33 @@ module.exports = {
       assert.strictEqual(ui[1], backend[1],
         `#${l.msg} reads out.${ui[1]} but ${l.anchor} returns { ${backend[1]} } — the run id renders blank`);
     }
+    // THE THREE STAGES. Every out.<key> the message reads must be returned by
+    // the function behind that stage's route, read from lib/stages.js rather
+    // than restated here.
+    for (const [out, fn] of [['swOut1', 'function startStage1'], ['swOut2', 'function startStage2'], ['swOut3', 'function startStage3']]) {
+      const at = SWEEP.indexOf(`say('#${out}'`);
+      assert.ok(at > 0, `#${out} must still report what was launched`);
+      const said = SWEEP.slice(at, SWEEP.indexOf('`)', at));
+      const keys = [...said.matchAll(/\bgot\.(\w+)/g)].map((m) => m[1]);
+      assert.ok(keys.length, `#${out} reports nothing about the launch it just made`);
+      const fnAt = STAGES.indexOf(fn);
+      assert.ok(fnAt > 0, `${fn} must still exist to read the contract from`);
+      const ret = STAGES.slice(fnAt).match(/\n  return \{([^}]*)\};/);
+      assert.ok(ret, `${fn} must still answer with an object literal`);
+      const returned = new Set([...ret[1].matchAll(/(\w+)\s*[:,}]/g)].map((m) => m[1]));
+      for (const k of keys) {
+        assert.ok(returned.has(k),
+          `#${out} reads out.${k} but ${fn} returns { ${[...returned].join(', ')} } — it renders blank`);
+      }
+    }
   },
 
-  // The declared block must send exactly what the run can use — no more, and no
-  // LESS. Both halves have bitten:
+  // The block must send exactly what the run can use — no more, and no LESS.
+  // Both halves have bitten:
   //
   //   * Too much: the validator THROWS on a parameter that cannot apply (a rail
   //     distance under a plain market entry) rather than ignoring it, so a form
-  //     that oversends turns replication mode into a launch failure.
+  //     that oversends turns a launch into a failure.
   //   * Too little: the boxes were hidden, and so unsent, whenever the entry box
   //     read market or the trail box read static — even with permute ticked
   //     beside them, which puts breakout and following stops in the run. The
@@ -150,65 +173,75 @@ module.exports = {
   //     the operator never saw (owner, 2026-08-22).
   //
   // So the condition, not the entry box, decides.
+  //
+  // RE-AIMED 2026-08-28 at swBlockParams, which is where the three-stage Sweep
+  // builds the block. The old declared-config toggle went with its screen: on
+  // the three-stage Sweep the block is always declared, so there is nothing to
+  // switch on. The two conditions below are the ones that bit, in their new
+  // spelling, and they are read out of that one function rather than the file
+  // at large — a match anywhere else would not prove the block is built right.
   declaredBlockSendsOnlyWhatTheValidatorAccepts() {
-    assert.ok(/id="swDecOn"/.test(SWEEP), 'the Sweep form must carry the declared-config toggle');
+    const at = SWEEP.indexOf('function swBlockParams()');
+    assert.ok(at > 0, 'the Sweep form must still build its block in one named place');
+    const fn = SWEEP.slice(at, SWEEP.indexOf('\n}', at));
     // THE RAILS RIDE WITH BREAKOUT, and breakout is in the run when the box
     // says so OR when its permute is ticked (owner, 2026-08-22). Reading the
     // box alone sent no gate and no distance for a permuted entry, and the
     // launch came back refused. A plain market run still sends neither.
-    assert.ok(/const rails = entry !== 'market' \|\| dp\.entry;/.test(SWEEP),
+    assert.ok(/if \(entry !== 'market' \|\| permEntry\) \{/.test(fn),
       'the rails must be sent whenever breakout is in the run, not only when the box reads breakout');
+    for (const part of ["cell.gate = \$('#swGate').value;", "cell.dMult = Number(\$('#swD').value);"]) {
+      assert.ok(fn.includes(part), `${part} is no longer sent with the rails`);
+    }
+    assert.ok(/\} else \{\n\s*cell\.entry = 'market';\n\s*\}/.test(fn),
+      'a plain market run must send an entry and nothing else — a rail distance under market is refused by the validator');
     // an arm rides with a MOVING stop, which a permuted trail also puts in the run
-    assert.ok(/const movingStop = trailRaw \|\| dp\.trail;/.test(SWEEP),
-      'an arm must be sent whenever a following stop is in the run');
-    assert.ok(/\.\.\.\(trailRaw \? \{ trailMult: Number\(trailRaw\) \} : \{\}\)/.test(SWEEP),
-      'a trailMult may be sent only when the box actually names one');
-    assert.ok(/\.\.\.\(movingStop \? \{ armMult: Number\(\$\('#swDecArm'\)\.value\) \} : \{\}\)/.test(SWEEP),
-      'the arm must come from the box on screen, never from a value chosen in code');
-    // what those conditions actually PRODUCE is checked against the server's own
-    // expansion in tests/test-permutefields.js — this is the source-level guard.
-    // quorum counts only for the committee sizes the run will contain
-    assert.ok(/if \(\$\('#swSingles'\)\.checked\) qPart\.quorumSingles/.test(SWEEP),
-      'quorumSingles must be sent only when singles are ticked');
-    assert.ok(/if \(\$\('#swDoubles'\)\.checked \|\| \$\('#swTriples'\)\.checked\) qPart\.quorumContexts/.test(SWEEP),
-      'quorumContexts must be sent only when doubles or triples are ticked');
+    assert.ok(fn.includes("if ($('#swTrail').value !== '') { cell.trailMult = Number($('#swTrail').value); cell.armMult = Number($('#swArm').value); }"),
+      'a trailMult may be sent only when the box actually names one, and it must bring its arm');
+    assert.ok(fn.includes("else if ($('#swPermTrail').checked) { cell.armMult = Number($('#swArm').value); }"),
+      'an arm must be sent whenever a following stop is in the run, and it must come from the box on screen '
+      + 'rather than from a value chosen in code');
+    // THE AGREEMENT IS ITS OWN DIMENSION and every part of it comes off the
+    // screen. The two committee-size counts this used to check went with the
+    // share dial that replaced them (test-stages.js holds that).
+    for (const k of ['agreeRule', 'agreePct', 'agreeBothModels', 'agreePersist']) {
+      assert.ok(new RegExp(`${k}: `).test(fn), `the block no longer carries ${k}`);
+    }
   },
+
+  // REMOVED 2026-08-28: declaredQuorumBoxesRespectTheirCommitteeSizes checked
+  // that #swDecQ6 offered 1..6 and #swDecQ8 offered 1..8, because an agreement
+  // was a COUNT and one number could not mean the same thing on a committee of
+  // six and one of eight. Both boxes are gone: the agreement is a share of
+  // whatever committee a unit holds, so there is one dial and no size to cap it
+  // against. What replaced them is checked in tests/test-stages.js
+  // (everyAgreementRuleIsReachableFromTheScreen, noSettingNameCarriesACommitteeSize).
 
   // Every declared menu value must exist in the run's grid, or validateDeclared
   // throws "must be one of … (this run's grid)" at launch.
   declaredMenusMatchTheBackendGrid() {
     const bracketLib = require('../lib/bracket');
     const cases = [
-      ['swDecEntry', bracketLib.ENTRIES.map(String)],
-      ['swDecGate', bracketLib.GATES.map(String)],
-      ['swDecD', bracketLib.D_MULTS.map(String)],
-      ['swDecT', bracketLib.T_HOURS.map(String)],
-      ['swDecArm', bracketLib.ARM_MULTS.map(String)],
+      ['swEntry', bracketLib.ENTRIES.map(String)],
+      ['swGate', bracketLib.GATES.map(String)],
+      ['swD', bracketLib.D_MULTS.map(String)],
+      ['swT', bracketLib.T_HOURS.map(String)],
+      ['swArm', bracketLib.ARM_MULTS.map(String)],
     ];
     for (const [id, allowed] of cases) {
       const offered = optionValues(SWEEP, id);
-      assert.ok(offered.length, `the declared block must carry #${id}`);
+      assert.ok(offered.length, `the block must carry #${id}`);
       const bad = offered.filter((v) => !allowed.includes(v));
       assert.strictEqual(bad.length, 0,
         `#${id} offers ${bad.join(', ')} — not in the backend grid (${allowed.join(', ')})`);
     }
-    // trail additionally allows "" for the static (opposite-rail) stop
-    const trail = optionValues(SWEEP, 'swDecTrail');
+    // trail additionally allows "" for the stop that sits at a fixed price on
+    // the far side of the entry and never moves — the `static` choice
+    const trail = optionValues(SWEEP, 'swTrail');
     const allowedTrail = ['', ...bracketLib.TRAIL_MULTS.map(String)];
     const badTrail = trail.filter((v) => !allowedTrail.includes(v));
     assert.strictEqual(badTrail.length, 0,
-      `#swDecTrail offers ${badTrail.join(', ')} — not in the backend grid`);
-  },
-
-  // The two agreement counts are capped per committee size (6 and 8).
-  declaredQuorumBoxesRespectTheirCommitteeSizes() {
-    for (const [id, cap] of [['swDecQ6', 6], ['swDecQ8', 8]]) {
-      const vals = optionValues(SWEEP, id).map(Number);
-      assert.ok(vals.length, `the declared block must carry #${id}`);
-      const bad = vals.filter((n) => !Number.isInteger(n) || n < 1 || n > cap);
-      assert.strictEqual(bad.length, 0,
-        `#${id} offers ${bad.join(', ')} — validateDeclared accepts 1..${cap}`);
-    }
+      `#swTrail offers ${badTrail.join(', ')} — not in the backend grid`);
   },
 
   // CLASS-WIDE, not instance-wide. The window-layout defect was found by eye and
@@ -229,15 +262,16 @@ module.exports = {
       // this select offers that the other side does not accept would silently
       // fall back to the default order — the page would CLAIM one ordering and
       // show another, which on a ranked table is a lie about which row won.
-      { id: 'bCoinSort', allowed: require('../lib/replication').COIN_SORTS, why: 'lib/replication.js COIN_SORTS' },
-      // the stage pages' own orderings, same fault class as bCoinSort.
-      // (s3Order left this list 2026-08-27 with the control itself: the carry
-      // follows the sort saved on the parent's table now.)
-      // b3Sort is gone (owner order, 2026-08-28: "remove obsolete ordering
-      // selections as we can do all row ordering by column selections"). The
-      // every-coin table is ordered by clicking its columns, and the values
-      // those clicks send are still the engine's own list — pinned below.
-      { id: 's3AgreeRule', allowed: require('../lib/agreement').AGREE_RULES, why: 'lib/agreement.js AGREE_RULES' },
+      // The stage screens' own orderings all left this list with the controls
+      // themselves: the carry follows the sort saved on the parent's table
+      // (2026-08-27), and every table is ordered by clicking its columns rather
+      // than by a dropdown (owner order, 2026-08-28: "remove obsolete ordering
+      // selections as we can do all row ordering by column selections").
+      // bCoinSort went the same way on 2026-08-28 with the screen that carried
+      // it. The keys those column clicks send are the engine's own list, and
+      // tests/test-stages.js (theSavedSortOrdersTheTablesAndTheFirstColumnFollows)
+      // holds them to it.
+      { id: 'swAgreeRule', allowed: require('../lib/agreement').AGREE_RULES, why: 'lib/agreement.js AGREE_RULES' },
     ];
     for (const c of CHECKED) {
       const offered = optionValues(SWEEP, c.id);
@@ -250,14 +284,14 @@ module.exports = {
     // never been checked against anything. Fail loudly rather than assume.
     const known = new Set([...CHECKED.map((c) => c.id),
       // checked by their own test in test-declaredset.js against the run's grid
-      'swDecEntry', 'swDecGate', 'swDecD', 'swDecT', 'swDecTrail', 'swDecArm', 'swDecQ6', 'swDecQ8',
+      'swEntry', 'swGate', 'swD', 'swT', 'swTrail', 'swArm',
       // free-form or purely local to the page, with no backend allow-list
-      'swDec', 'bSort', 'glTarget', 'htWin', 'tuneTarget',
+      'swDec', 'swAgreeShare', 'swAgreeHold', 'glTarget', 'htWin', 'tuneTarget',
       // run-id pickers: every real option is a run id the SERVER listed, so the
       // allow-list is the server's own reply and cannot be restated here. The
       // only literal value in them is the empty placeholder. What these must
       // never be is <input> boxes — test-uicontracts.js pins that.
-      'bPick', 't1null', 'cmpA', 'cmpB', 'b3Pick1', 'b3Pick2', 'b3Pick3', 's3From2', 's3From3',
+      't1null', 'cmpA', 'cmpB', 'bPick1', 'bPick2', 'bPick3', 'swFrom2', 'swFrom3',
       // same shape: the campaign picker's options are the names the service
       // itself reports, and a NEW name is typed in the box beside it
       'cxCampPick',
@@ -291,25 +325,26 @@ module.exports = {
       assert.ok(m, `the Sweep form must still carry #${id}`);
       return m[0];
     };
-    // NOTHING ON THIS FORM IS CAPPED ANY MORE (owner order, 2026-08-23).
+    // NOTHING THE BACKEND DOES NOT CAP MAY CARRY A MAX (owner order,
+    // 2026-08-23) — or the form refuses a run the system would have accepted.
     //
-    // promote top K used to carry max="50" because lib/batch.js reduced it to
-    // 50 — SILENTLY. Type 200 and the run planned 50 with nothing on any screen
-    // saying so, which is worse than a refusal because the owner goes on
-    // believing they set it. The board size that caused the cap is a box now
-    // too, and the pair is refused BY NAME when it cannot be honoured rather
-    // than one of the two being changed.
-    //
-    // A box the backend does not cap must not invent one either, or the form
-    // refuses a run the system would have accepted.
+    // RE-AIMED 2026-08-28. The three boxes this named (null boards, promote top
+    // K, board rows) were on the deleted Sweep. The surviving Sweep's own
+    // uncapped boxes are the two null set sizes and the two carry counts, and
+    // they are held to the same rule.
     const uncapped = [
-      { id: 'swNulls', param: 'labelShiftReps' },
-      { id: 'swK', param: 'promoteK' },
-      { id: 'swBoardRows', param: 'detailK' },
+      { id: 'swNull1', param: 'the stage 1 null set size' },
+      { id: 'swNull3', param: 'the stage 3 null set size' },
+      { id: 'swCarry', param: 'the stage 2 carry' },
+      { id: 'swCarry3', param: 'the stage 3 carry' },
     ];
     for (const b of uncapped) {
       assert.ok(!/max="/.test(tagOf(b.id)),
         `#${b.id} carries a max that ${b.param} does not — the form refuses what the backend accepts`);
+    }
+    // ...and every one of them must still refuse a negative, which IS a real bound.
+    for (const b of uncapped) {
+      assert.ok(/min="0"/.test(tagOf(b.id)), `#${b.id} accepts a negative count`);
     }
 
     // DRIVEN, NOT GREPPED. The first version of this checked the source for
@@ -338,45 +373,20 @@ module.exports = {
       'the refusal must name the two boxes on the screen, not the fields in the code');
     assert.ok(/Nothing has been changed for you/.test(err.message),
       'the refusal does not say that nothing was altered on the owner\'s behalf');
-    // The screen says it while it is being typed, not only after Start sweep.
-    assert.ok(/promote top K is \$\{k\} but the board keeps \$\{rows\}/.test(SWEEP),
-      'the conflict is only reported by the server, so the owner finds out by pressing the button');
+    // THE SCREEN HALF WENT WITH ITS SCREEN, 2026-08-28: the old Sweep said the
+    // conflict while it was being typed rather than only after Start sweep.
+    // Both boxes were on that screen, so there is no pair left to conflict.
+    // The three-stage Sweep keeps the same principle where it still applies —
+    // its cost line states the budget refusal before start stage 3 is pressed,
+    // out of the same arithmetic the launch enforces (tests/test-stages.js,
+    // theBudgetGateDoesTheArithmeticUpFront).
   },
 
-  // THE COST REPORT IS WHAT REPLACED THE CAP, so it has to be right. A ceiling
-  // that is wrong refuses a run; a cost that is wrong lets the owner start one
-  // they would not have chosen, which is worse. Run out of the shipped function
-  // rather than restated here — a formula copied into a test only proves the copy.
-  //
-  // Watched failing 2026-08-22: changing the multiplier to n fails
-  // theNullBoardCostIsStatedCorrectly.
-  theNullBoardCostIsStatedCorrectly() {
-    const from = SWEEP.indexOf('  const syncNullCost = () => {');
-    assert.ok(from > 0, 'the null boards cost report must still exist');
-    const body = SWEEP.slice(SWEEP.indexOf('const el =', from), SWEEP.indexOf('\n  };', from));
-    const say = (typed) => {
-      let out = '';
-      const $ = (sel) => (sel === '#swNullCost'
-        ? { set textContent(v) { out = v; }, set innerHTML(v) { out = v; } }
-        : { value: typed });
-      // eslint-disable-next-line no-new-func
-      new Function('$', body)($);
-      return out.replace(/<\/?b>/g, '');
-    };
-    assert.ok(/nothing to measure/.test(say('0')), 'no boards must say the run has nothing to compare against');
-    assert.ok(/nothing to measure/.test(say('')), 'an empty box is no boards, not a broken report');
-    for (const n of [1, 2, 19, 24, 200, 1000]) {
-      const said = say(String(n));
-      assert.ok(said.includes(`${n + 1}x the work`),
-        `${n} boards is ${n + 1} passes of the run, and the report says: ${said}`);
-      assert.ok(said.includes(`1-in-${n + 1}`),
-        `beating all ${n} is a 1-in-${n + 1} claim, and the report says: ${said}`);
-      assert.ok(/promote top K stops applying/.test(said),
-        'the report must say that any number above zero makes promote top K stop applying');
-    }
-    // the one number worth knowing, offered only while it is still ahead
-    assert.ok(/9 more would reach 1-in-20/.test(say('10')), '10 boards is 9 short of 1-in-20');
-    assert.ok(!/more would reach/.test(say('19')), '19 already reaches it — do not ask for more');
-    assert.ok(!/more would reach/.test(say('40')), 'past it, the prompt is noise');
-  },
+  // REMOVED 2026-08-28: theNullBoardCostIsStatedCorrectly ran the deleted
+  // Sweep's syncNullCost out of its own source and checked what it said — that
+  // n null boards is (n+1)x the work, that beating all n is a 1-in-(n+1) claim,
+  // and that any number above zero makes promote top K stop applying. All three
+  // facts belonged to that screen's arithmetic: on the three stages a null set
+  // is dealt from votes already kept, costs no training at all, and there is no
+  // promote top K for it to switch off. There is nothing to re-aim this at.
 };

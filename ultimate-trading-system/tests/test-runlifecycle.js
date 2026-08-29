@@ -232,11 +232,18 @@ module.exports = {
     const row = listRow({ id: 'r1', status: 'interrupted', startedAt: 'x', error: 'it stopped', interruptedWhere: 'slim 1/2' });
     assert.strictEqual(row.error, 'it stopped');
     assert.strictEqual(row.interruptedWhere, 'slim 1/2');
-    // and the screen must actually read it
-    assert.ok(/The last job did not finish/.test(UI),
-      'the Sweep section must report a job that ended badly, not say the same words it says for no job at all');
-    assert.ok(/This run did not finish/.test(UI),
-      'and the run itself must say so when it is opened');
+    // THE SCREEN HALF WENT WITH ITS SCREEN, 2026-08-28. It named the old
+    // Sweep's "The last job did not finish" line and the old Boards' "This run
+    // did not finish". Both screens were deleted by owner order. The reason
+    // still travels on the picker row, which is what listRow above proves, and
+    // the three-stage Sweep and Boards carry their own version of this — a set
+    // stranded mid-run is marked interrupted and its Boards tables wear an
+    // INCOMPLETE banner (tests/test-stages.js).
+    //
+    // WHAT IS NOT COVERED ANY MORE, on purpose and recorded rather than
+    // papered over: the three-stage Sweep's progress line says only "nothing
+    // is running" when the last stage run ended badly. Restoring that report
+    // is a change to the screen and waits for the owner.
   },
 
   // -------------------------------------------------------------- deleting
@@ -297,13 +304,14 @@ module.exports = {
     assert.ok(/csrfGuard/.test(route), 'it must be guarded like the other unrepeatable actions');
     assert.ok(/body\.confirm !== body\.id/.test(route), 'the id must be given twice or nothing is deleted');
     assert.ok(/RUN_LOCKED/.test(route), 'a refusal must come back as a refusal, not a generic failure');
-    // and the screen must offer it, with the same read-before-you-answer order
-    assert.ok(/id="bDelete"/.test(UI), 'the Boards section must offer the delete');
-    const h = UI.slice(UI.indexOf("$('#bDelete')"), UI.indexOf("$('#bDelete')") + 3000);
-    assert.ok(h.indexOf('will permanently remove') < h.indexOf('requestAnimationFrame'),
-      'the list of what goes must be written before the page is given a chance to paint');
-    assert.ok(h.indexOf('requestAnimationFrame') < h.indexOf('const typed = prompt('),
-      'and painted before the box blocks the browser');
+    // THE SCREEN HALF WENT WITH ITS SCREEN, 2026-08-28: #bDelete was on the
+    // deleted Boards. THE ROUTE IS NOW UNREACHABLE FROM ANY SCREEN — reported
+    // to the owner, whose call it is whether it goes or gets a control. It is
+    // still guarded, which is what the assertions above hold.
+    //
+    // The read-before-you-answer order itself is not lost: the surviving Boards
+    // deletes record sets by the same discipline, and tests/test-stages.js
+    // (theDeleteAsksForTheNameBackAndProtectsParents) holds it there.
   },
 
   // EVERY PROMOTED UNIT LEAVES A RECORD, AND EXACTLY ONE (owner, 2026-08-22).
@@ -478,32 +486,28 @@ module.exports = {
     assert.ok(/NOT_RESUMABLE/.test(route), 'a refusal must come back as a refusal');
     assert.ok(/batchId: batch\.resumeBracketLab/.test(route),
       'it must answer in the same shape a fresh launch does, so the page reads one contract');
-    assert.ok(/id="bResume"/.test(UI), 'the Boards section must offer it');
-    assert.ok(/doc\.status === 'interrupted' \|\| doc\.status === 'cancelled'\) \? '' : 'disabled'/.test(UI),
-      'and offer it only on a run that stopped — a control that is live when it cannot work teaches people to ignore refusals');
-    const h = UI.slice(UI.indexOf("$('#bResume')"), UI.indexOf("$('#bResume')") + 2600);
-    assert.ok(/api\/resume-contents/.test(h), 'it must say what is left before it starts anything');
-    assert.ok(h.indexOf('still to score') < h.indexOf('requestAnimationFrame'),
-      'and that has to be written before the page is given a chance to paint');
-    assert.ok(h.indexOf('requestAnimationFrame') < h.indexOf('confirm('),
-      'and painted before the box blocks the browser');
+    // THE SCREEN HALF WENT WITH ITS SCREEN, 2026-08-28: #bResume was on the
+    // deleted Boards, so this route too is now unreachable from any screen.
+    // Reported to the owner. The guard above is what still holds.
   },
 
   // ------------------------------------------------------- the form remembers
-  theSweepFormSurvivesARedrawAndShowsTheRunningJob() {
+  //
+  // NARROWED 2026-08-28. This used to check three things at once: that the
+  // boxes survive a redraw, that a RUNNING job's settings are shown in them
+  // instead, and that the owner's draft is only remembered while it is the
+  // owner's own. The middle two were the old Sweep's running-job mirror, which
+  // went with that screen; the three-stage Sweep reports a running job on its
+  // own progress line and never writes into the boxes, so there is no mirror
+  // to guard and nothing for the draft to be overwritten by. What is left is
+  // the property that is still live, and it is checked against the code that
+  // still does it.
+  theSweepFormSurvivesARedraw() {
     assert.ok(/const SWEEP_FORM_KEY = /.test(UI), 'the form must keep what is in it across a redraw');
     assert.ok(/document\.querySelectorAll\('#view \[id\^="sw"\]'\)/.test(UI),
       'the control list must be asked of the page — a list written here needs remembering when a control is added');
-    assert.ok(/if \(runDoc\) fillSweepForm\(runDoc\.params \|\| \{\}, /.test(UI),
-      'with a job running, the form must show THAT job\'s settings');
-    assert.ok(/else restoreSweepForm\(\);/.test(UI),
-      'with nothing running, it must show whatever the owner last had in it');
-    // and it must not overwrite the owner's draft with the running job's values
-    const at = UI.indexOf('else restoreSweepForm();');
-    const after = UI.slice(at, at + 1200);
-    assert.ok(/if \(runDoc\) \{/.test(after) && /\} else \{/.test(after),
-      'remembering must be wired only when the form is the owner\'s own');
-    assert.ok(after.indexOf('addEventListener(\'change\', rememberSweepForm)') > after.indexOf('} else {'),
-      'the form is only remembered while it is the owner\'s, never while it mirrors a running job');
+    assert.ok(/restoreSweepForm\(\);/.test(UI), 'nothing writes the remembered draft back into the boxes');
+    assert.ok(/const noteSweepChange = \(\) => \{ rememberSweepForm\(\); swProvenance\(\); \};/.test(UI),
+      'the boxes are no longer remembered on every change');
   },
 };

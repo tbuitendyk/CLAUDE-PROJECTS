@@ -169,18 +169,14 @@ module.exports = {
     assert.ok(d.rows.every((r) => r.label === label), 'another configuration\'s coins leaked into the line');
   },
 
-  async theScreenFetchesThoseCoinsWhenALineIsOpened() {
-    assert.ok(/class="repdetail"/.test(CX), 'the screen has nowhere to put a configuration\'s coins');
-    assert.ok(/replication-coins`\n\s*\+ `\?label=/.test(CX),
-      'an opened line no longer asks the saved tally for its coins');
-    assert.ok(!/replication-detail/.test(CX),
-      'the screen still asks the retired per-row walk — the ask that died at the web server\'s time limit and froze the site');
-    assert.ok(/addEventListener\('toggle'/.test(CX), 'the coins are fetched up front again rather than on opening a line');
-    assert.ok(/if \(box\.dataset\.loaded\) return;/.test(CX),
-      'opening a line twice asks the server twice');
-    assert.ok(/could not read this configuration/.test(CX),
-      'a failed read leaves an empty table, and empty is not the same answer as could-not-ask');
-  },
+  // REMOVED 2026-08-28 with the screen it named: theScreenFetchesThoseCoinsWhenALineIsOpened
+  // checked that opening a line on the old Boards' ranked replication list
+  // fetched that configuration's coins once, on the toggle, from
+  // api/.../replication-coins rather than the retired per-row walk. That whole
+  // list was on the deleted Boards. The server side of it — replication.coins
+  // paging and counting honestly — is still checked by
+  // oneConfigurationsCoinsAreReachableAndCounted and
+  // aConfigurationsCoinsCanBeWalkedToTheEnd, above and below.
 
   // ---- the picker, which was fetched three times a visit -------------------
   async theRunsPickerDoesNotCarryWhatNoScreenReads() {
@@ -219,52 +215,78 @@ module.exports = {
 
   // ---- every table that can grow is pageable ------------------------------
   //
-  // "make it sane and pageable" (owner, 2026-08-23). Four tables grow with the
-  // run and each had a different answer: the ranked list shipped everything and
-  // reached 99 MB, one configuration's rows capped at 500 with no way to ask
-  // for the 501st, the menu grid capped at 400, the board had no limit at all.
-  // One bar now, on all four.
+  // "make it sane and pageable" (owner, 2026-08-23). Four tables grew with the
+  // run and each had a different answer: one shipped everything and reached
+  // 99 MB, one capped at 500 rows with no way to ask for the 501st, one capped
+  // at 400, one had no limit at all.
+  //
+  // RE-AIMED 2026-08-28 at the surviving screens. pageBar and the four tables
+  // it served were on the deleted Boards; every table on the three-stage Boards
+  // pages through bPager. The property is the same one and it is checked the
+  // same way: a table that grows with the run must be walkable, and a page must
+  // say what it is a page of.
   async everyTableThatCanGrowHasAPagingBar() {
-    for (const [name, why] of [
-      ["pageBar('repList'", 'the ranked list of configurations'],
-      ["pageBar('board'", 'the survivor board'],
-      ["pageBar('grid'", 'the menu grid'],
-      ['pageBar(key, d.page', "one configuration's per-asset rows"],
+    for (const [key, why] of [
+      ['S1', 'the stage 1 table'],
+      ['S2', 'the stage 2 table'],
+      ['S3R', 'the stage 3 settings, ranked'],
+      ['S3C', 'every coin of every setting'],
     ]) {
-      assert.ok(CX.includes(name), `${why} has no paging bar — it is the table that grows and cannot be walked`);
+      assert.ok(CX.includes(`, '${key}')`),
+        `${why} has no paging bar — it is a table that grows and cannot be walked`);
     }
-    // The bar is drawn many times on one screen, so its controls cannot carry
-    // ids. They are addressed the way the per-row buttons beside them already
-    // are, and one delegated listener serves all of them.
-    assert.ok(/data-pager="\$\{esc\(name\)\}"/.test(CX), 'the bar\'s buttons are not addressable');
-    assert.ok(/function wirePagers\(/.test(CX), 'nothing listens for a page being asked for');
-    assert.ok(/if \(!root \|\| root\.dataset\.pagersWired\) return;/.test(CX),
-      'the listener is attached on every redraw, so one click fires it once per redraw since the page '
-      + 'loaded — and a paging click would jump several pages at once. Checking merely that the flag is '
-      + 'MENTIONED passed with the guard deleted, because the line that sets it was still there.');
+    // The bar is drawn on four tables, so its buttons cannot carry ids. They
+    // are addressed by the key of the table they page, and one function wires
+    // every one of them.
+    assert.ok(/data-bpage="\$\{key\}:/.test(CX), 'the bar\'s buttons are not addressable');
+    assert.ok(/function bWirePager\(/.test(CX), 'nothing listens for a page being asked for');
+    assert.ok(/\$\(root\)\.querySelectorAll\('\[data-bpage\]'\)\.forEach/.test(CX),
+      'the pager is wired by walking the table just drawn — a listener left on the whole page would fire '
+      + 'once per redraw since load, and one click would jump several pages at once');
   },
 
-  // THE ONE THAT WOULD HAVE BEEN SILENT. Every handler on the board looks its
-  // row up by index in the WHOLE list — leaders[data-i]. Paging the table
-  // without making that index absolute would open, inspect and select the
-  // WRONG ROW on every page but the first, and nothing would look broken.
-  async apagedBoardStillPointsAtTheRightRow() {
-    const board = CX.slice(CX.indexOf('const shownLeaders'), CX.indexOf('clear selection'));
-    assert.ok(/const abs = boardPage\.offset \+ i;/.test(board),
-      'the board renders a per-page index; every row handler reads it as an index into the whole board');
-    for (const attr of ['data-i', 'data-grid', 'data-inspect']) {
-      assert.ok(new RegExp(`${attr}="\\$\\{abs\\}"`).test(board),
-        `${attr} still carries the per-page index — on page 2 it addresses the wrong row`);
-      assert.ok(!new RegExp(`${attr}="\\$\\{i\\}"`).test(board), `${attr} was left on the per-page index`);
-    }
+  // A page that does not say what it is a page OF is a short list that reads as
+  // a complete one. That is the whole point, so it is checked on the bar itself.
+  // RUN, NOT GREPPED. Reading the source for the words it prints passes on a
+  // bar that has been short-circuited to print them and nothing else — a
+  // mutation planted exactly that and this test stayed green. So the shipped
+  // function is executed, and what it returns is what gets checked.
+  async apageAlwaysStatesTheTrueTotalOnScreen() {
+    const src = CX.slice(CX.indexOf('function bPager('), CX.indexOf('// THE SORT SELECTORS'));
+    assert.ok(src.length > 100, 'the paging bar is gone');
+    // eslint-disable-next-line no-new-func
+    const bPager = new Function(`${src}; return bPager;`)();
+
+    // A LIST THAT FITS still says how many rows it holds — silence there reads
+    // as "this is all of it".
+    const small = bPager(37, 0, 100, 'S1');
+    assert.ok(small.includes('37 row(s)'), `a short list must state its own size; got: ${small}`);
+    assert.ok(!/data-bpage/.test(small), 'a list that fits offers page buttons that go nowhere');
+
+    // A LIST THAT DOES NOT FIT says the true total, which page this is, how
+    // many there are, and offers both directions.
+    const big = bPager(2500, 300, 100, 'S3C');
+    assert.ok(big.includes('2,500 rows'),
+      `the bar does not print the true total, so a page reads as the whole list; got: ${big}`);
+    assert.ok(big.includes('page 4 of 25'), `the bar does not say which page of how many; got: ${big}`);
+    assert.ok(big.includes('data-bpage="S3C:200"'), `prev must step back one page; got: ${big}`);
+    assert.ok(big.includes('data-bpage="S3C:400"'), `next must step forward one page; got: ${big}`);
+
+    // ...and neither end walks off the list.
+    assert.ok(bPager(2500, 0, 100, 'S1').includes('data-bpage="S1:0"'), 'prev on page 1 must stay on page 1');
+    assert.ok(bPager(2500, 2400, 100, 'S1').includes('data-bpage="S1:2400"'), 'next on the last page must stay there');
   },
 
-  async theMenuGridIsNoLongerCutOffAtFourHundred() {
-    assert.ok(!/cells\.slice\(0, 400\)/.test(CX), 'the menu grid still shows only its first 400 settings');
-    assert.ok(/const gridShown = cells\.slice\(gridPage\.offset/.test(CX), 'the menu grid is not paged');
-    assert.ok(/drawGridTable\(\)/.test(CX),
-      'paging the grid re-asks the server for arithmetic it already did');
-  },
+  // REMOVED 2026-08-28 with the screens they named:
+  //   * apagedBoardStillPointsAtTheRightRow — the survivor board's row handlers
+  //     looked their row up by index into the WHOLE list, so paging it without
+  //     making that index absolute would have opened the wrong row silently.
+  //     That board was on the deleted Boards. The three-stage tables address
+  //     their rows by a key built from the row's own contents (data-bkey,
+  //     data-brec), never by page position, so the fault cannot recur in the
+  //     shape this guarded.
+  //   * theMenuGridIsNoLongerCutOffAtFourHundred — the menu grid was on the
+  //     deleted Boards and has no counterpart.
 
   // The coins behind one configuration are reachable to the last one.
   async aConfigurationsCoinsCanBeWalkedToTheEnd() {
@@ -307,18 +329,6 @@ module.exports = {
     const whole = replication.rank(doc, { offset: 0, limit: 1000 });
     assert.strictEqual(mid.scored[0].label, whole.scored[100].label,
       'page 5 does not start where page 5 should — the offset is not being applied to the sorted order');
-  },
-
-  // A page that does not say what it is a page OF is a short list that reads as
-  // a complete one. That is the whole point, so it is checked on the bar itself.
-  async apageAlwaysStatesTheTrueTotalOnScreen() {
-    const bar = CX.slice(CX.indexOf('function pageBar('), CX.indexOf('const PAGERS'));
-    assert.ok(/of <b>\$\{total\.toLocaleString\(\)\}<\/b>/.test(bar),
-      'the bar does not print the true total, so a page reads as the whole list');
-    assert.ok(/showing <b>/.test(bar), 'the bar does not say which rows are being shown');
-    assert.ok(/data-size="1"/.test(bar), 'there is no way to change how many rows a page holds');
-    assert.ok(/offset: 0, limit: Number\(sel\.value\)/.test(CX),
-      'changing the page size leaves the reader stranded deep in a list they just made shorter');
   },
 
   async theGuardIsInstalledBeforeAnyRoute() {

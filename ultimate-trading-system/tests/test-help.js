@@ -101,20 +101,28 @@ module.exports = {
     }
   },
 
-  // The one the owner asked for by name: the two passes, and what changes them.
-  async theSweepOverviewExplainsBothPassesAndWhatNullBoardsDoToThem() {
+  // The one the owner asked for by name. RE-AIMED 2026-08-28: the old Sweep's
+  // two passes and its null boards are gone with that screen, and the thing a
+  // reader now has to be told before pressing anything is what each of the
+  // three stages does, what it writes, and what carries between them.
+  async theSweepOverviewExplainsEveryStageAndWhatCarriesBetweenThem() {
     const how = help().sweep.how.map(([h, b]) => `${h}\n${b}`).join('\n');
     for (const [thing, why] of [
-      ['promote top K', 'it never says how many rows get the fuller scoring'],
-      ['also try moving stops', 'it never says which pass the following stops apply to'],
-      ['null boards', 'it never says what the scrambled companions do'],
-      ['agree', 'it never connects the fuller scoring to the agreement fractions'],
+      ['Stage 1', 'it never says what the first stage does'],
+      ['Stage 2', 'it never says what the second stage does'],
+      ['Stage 3', 'it never says what the third stage does'],
+      ['record set', 'it never says what a stage writes'],
+      ['parent', 'it never says how one stage finds the one it reads'],
+      ['null set', 'it never says what the shuffled companions do'],
+      ['carr', 'it never says what travels from one stage to the next'],
     ]) {
       assert.ok(how.includes(thing), `the Sweep overview does not mention ${thing} — ${why}`);
     }
-    assert.ok(/stops applying/.test(how),
-      'the Sweep overview does not say that null boards make promote top K stop applying — '
-      + 'which is the part that makes a run far bigger than it looks');
+    assert.ok(/nothing retrains/.test(how),
+      'the Sweep overview does not say that stage 3 prices without training — which is the part that makes '
+      + 'asking a different block tomorrow cheap, and the reason the stages are split at all');
+    assert.ok(/refuse/.test(how),
+      'the Sweep overview never says a launch can refuse, so a refusal reads as a fault rather than the guard it is');
   },
 
   // The one that stops it becoming more of the same.

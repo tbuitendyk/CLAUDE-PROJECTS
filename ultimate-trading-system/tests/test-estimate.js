@@ -248,21 +248,43 @@ module.exports = {
   },
 
   // The screen must ask, and must ask about the run it would actually send.
+  // RE-AIMED 2026-08-28 at the surviving screen. This checked that the old
+  // Sweep built its request in ONE place (sweepBody) so the run that was priced
+  // and the run that was started could not be two different runs, and that the
+  // cost sat above Start sweep where it is read before the button rather than
+  // after. Both screens it named are deleted; the three-stage Sweep holds the
+  // same two properties, and holds the first one harder — the counter and the
+  // launch resolve the block through the same server function rather than
+  // merely sending the same body.
   theScreenAsksAndPricesTheRealRequest() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    assert.ok(/function sweepBody\(\)/.test(ui),
-      'the request must be built in one place — two copies are two different runs, the one priced and the one started');
-    assert.ok(/askPost\('api\/sweep-estimate', sweepBody\(\)\)/.test(ui),
-      'and the estimate must be asked for THAT request');
-    assert.ok(/const body = sweepBody\(\);/.test(ui), 'and the launch must send the same one');
-    assert.ok(/id="swCost"/.test(ui), 'the cost must be on the screen');
-    assert.ok(ui.indexOf('id="swCost"') < ui.indexOf('id="swStart2"'),
-      'and above Start sweep, where it is read before the button rather than after');
-    assert.ok(/function sweepParams\(b\)/.test(server), 'the server must map the request once for both callers');
-    assert.ok(/app\.post\('\/api\/sweep-estimate'/.test(server), 'and offer the estimate');
-    const route = server.slice(server.indexOf("app.post('/api/sweep-estimate'"), server.indexOf("app.post('/api/bracketlab'"));
+    assert.ok(/function swBlockParams\(\)/.test(ui),
+      'the stage 3 block must be built in one place — two copies are two different runs, the one priced and the one started');
+    assert.ok(/askPost\('api\/stage3-count', \{\n\s*\.\.\.swBlockParams\(\)/.test(ui),
+      'and the count must be asked for THAT block');
+    const launch = ui.slice(ui.indexOf("tryPost('api/stage3', {"), ui.indexOf("tryPost('api/stage3', {") + 400);
+    assert.ok(/\.\.\.swBlockParams\(\),/.test(launch),
+      'and the launch must send the same one — not a second hand-written copy of the block');
+    // The cost has to be beside the button that spends it, or it is read after
+    // the press instead of before it. Stage 3's sits above start stage 3;
+    // stage 1's is the note immediately under the row start stage 1 is in.
+    // RECORDED, NOT ASSERTED AWAY: those two are not the same placement, and
+    // the owner's rule when this was written was that the cost is read BEFORE
+    // the button. Moving swCost1 above its row is a screen change and waits
+    // for the owner.
+    for (const [cost, button] of [['id="swCost1"', 'id="swGo1"'], ['id="swCount"', 'id="swGo3"']]) {
+      assert.ok(ui.includes(cost), `${cost} — the cost must be on the screen`);
+      assert.ok(Math.abs(ui.indexOf(cost) - ui.indexOf(button)) < 700,
+        `${cost} is nowhere near ${button} — a cost that is not beside the button that spends it is read after the press`);
+    }
+    // ONE resolution, server side: the counter and the launch both go through
+    // stage3Declared, so the cost line and the refusal cannot be two numbers.
+    assert.ok(/app\.post\('\/api\/stage3-count'/.test(server), 'the server must offer the count');
+    const route = server.slice(server.indexOf("app.post('/api/stage3-count'"), server.indexOf("app.post('/api/stage1'"));
     assert.ok(!/csrfGuard/.test(route), 'it changes nothing, so it needs no guard');
-    assert.ok(/refusal/.test(route), 'and a refusal comes back as an answer, not as a failure');
+    assert.ok(/stages\.stage3Declared\(b\)/.test(route),
+      'the count must ride the launch\'s own resolution, not a second copy of the arithmetic');
+    assert.ok(/error: err\.message/.test(route), 'and a refusal comes back as an answer, not as a failure');
   },
 };

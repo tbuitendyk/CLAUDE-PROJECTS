@@ -127,7 +127,7 @@ module.exports = {
     assert.deepStrictEqual([...rules].sort(), ['conviction', 'count', 'families', 'unusual', 'voices']);
   },
 
-  // The counter behind the Sweep3 cost line resolves the SAME units the
+  // The counter behind the Sweep cost line resolves the SAME units the
   // launch will price — the carry cut decides which bars exist, so the
   // number on the screen and the number that runs are one number.
   async theStageThreeCountRidesTheLaunchesOwnResolution() {
@@ -156,7 +156,15 @@ module.exports = {
       assert.strictEqual(cut.units, 1);
       assert.strictEqual(cut.coins, 1);
       assert.strictEqual(cut.settings, 8, 'twelve shares land on the eight rungs an 8-member committee has');
-      assert.ok(mixed.settings >= cut.settings, 'a mixed run can tell at least as many shares apart');
+      // AND THE MIXED RUN MUST COUNT MORE. `>=` was too weak to notice the
+      // resolution being skipped altogether: with no sizes resolved the count
+      // falls back to a coin on its own, which is exactly the cut case, and a
+      // count that always answered 8 satisfied it. Both sizes carried, a share
+      // is two settings whenever it lands on different rungs for 8 members and
+      // for 10 — twelve shares, twelve distinguishable pairs.
+      assert.strictEqual(mixed.settings, 12,
+        'the count is not resolving which committee sizes the launch will actually price — it is answering '
+        + 'for a coin on its own whatever is carried, so the cost line and the launch are two different numbers');
       // no parent named yet: counted for a coin on its own, which is the
       // smallest committee — twelve shares, eight rungs
       assert.strictEqual(stages.stage3Declared({ cell: b.cell, agreePermutePct: true }).settings, 8);
@@ -669,23 +677,23 @@ module.exports = {
     }
   },
 
-  // What is in the Sweep3 boxes survives a screen flip, and the progress
+  // What is in the Sweep boxes survives a screen flip, and the progress
   // line carries the cycle counts (owner order, 2026-08-27: "not lose the
   // values loaded to the stage 1/2/3 areas on screen flips ... a decent
   // progress indicator with total number of cycles and progress").
-  async theSweep3FormAndTheCycleCountsSurviveTheFlip() {
+  async theSweepFormAndTheCycleCountsSurviveTheFlip() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const screens = require('../lib/screencontrols');
-    const body = screens.drawBody('drawSweep3');
-    assert.ok(body.includes('restoreSweep3Form()'), 'every draw writes the remembered draft back into the boxes');
-    assert.ok(body.includes('rememberSweep3Form(); s3Provenance();'),
+    const body = screens.drawBody('drawSweep');
+    assert.ok(body.includes('restoreSweepForm()'), 'every draw writes the remembered draft back into the boxes');
+    assert.ok(body.includes('rememberSweepForm(); swProvenance();'),
       'every change is remembered AND repaints the provenance colors');
-    assert.ok(body.includes("addEventListener('change', noteSweep3Change)"), 'every change is remembered');
-    assert.ok(body.includes("addEventListener('input', noteSweep3Change)"), 'typing is remembered too, not only leaving the box');
-    const fill = ui.slice(ui.indexOf('function fillStageForm('), ui.indexOf('let s3SetsCache'));
-    assert.ok(/rememberSweep3Form\(\);/.test(fill),
+    assert.ok(body.includes("addEventListener('change', noteSweepChange)"), 'every change is remembered');
+    assert.ok(body.includes("addEventListener('input', noteSweepChange)"), 'typing is remembered too, not only leaving the box');
+    const fill = ui.slice(ui.indexOf('function fillStageForm('), ui.indexOf('let swSetsCache'));
+    assert.ok(/rememberSweepForm\(\);/.test(fill),
       'a programmatic fill never fires change, so copy settings must remember what it wrote');
-    const prog = ui.slice(ui.indexOf('async function s3Progress('), ui.indexOf('async function s3Counts('));
+    const prog = ui.slice(ui.indexOf('async function swProgress('), ui.indexOf('async function swCounts('));
     assert.ok(/cyclesTotal/.test(prog) && /cyclesWord/.test(prog) && /etaMs/.test(prog),
       'the progress line must carry the cycle total, the word for a cycle, and how long is left');
     const lib = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
@@ -726,63 +734,63 @@ module.exports = {
   // both — which is what obliges the Help tab to describe them on both.
   async theTwoScreensDrawTheSharedPanelsFromOneFunction() {
     const screens = require('../lib/screencontrols');
-    for (const fn of ['drawSweep', 'drawSweep3']) {
-      const body = screens.drawBody(fn);
-      assert.ok(body.includes('campaignPanelHtml('), `${fn} must draw the campaign panel from the shared function`);
-      assert.ok(body.includes('wireCampaignPanel('), `${fn} must wire the campaign panel with the shared function`);
+    {
+      const body = screens.drawBody('drawSweep');
+      assert.ok(body.includes('campaignPanelHtml('), 'drawSweep must draw the campaign panel from the shared function');
+      assert.ok(body.includes('wireCampaignPanel('), 'drawSweep must wire the campaign panel with the shared function');
     }
-    for (const fn of ['drawBoards', 'drawBoards3']) {
-      const body = screens.drawBody(fn);
+    {
+      const body = screens.drawBody('drawBoards');
       for (const shared of ['campaignNoteHtml(', 'descriptionPanelHtml(', 'notesPanelHtml(', 'runIdentityPanelHtml(', 'wireNotesSave(']) {
-        assert.ok(body.includes(shared), `${fn} must draw the opened run's head with ${shared.slice(0, -1)}`);
+        assert.ok(body.includes(shared), `drawBoards must draw the opened record set's head with ${shared.slice(0, -1)}`);
       }
     }
-    // the settings-copy is basic run functionality and Boards3 keeps it: one
-    // named mapping fills the Sweep3 boxes, the fillSweepForm discipline
+    // the settings-copy is basic run functionality and Boards keeps it: one
+    // named mapping fills the Sweep boxes, the fillSweepForm discipline
     {
-      const body = screens.drawBody('drawBoards3');
+      const body = screens.drawBody('drawBoards');
       for (const n of [1, 2, 3]) {
-        assert.ok(body.includes(`id="b3CopySettings${n}"`), `each Boards3 section must offer copy settings into the form (stage ${n})`);
+        assert.ok(body.includes(`id="bCopySettings${n}"`), `each Boards section must offer copy settings into the form (stage ${n})`);
       }
       assert.ok(body.includes('fillStageForm(doc)'), 'and it must fill through the one named mapping');
       // the mapping fills ONLY the open set's own stage box — a stage 2 set
       // must not touch the stage 1 box (owner order, 2026-08-27)
       const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-      const fn = src.slice(src.indexOf('function fillStageForm('), src.indexOf('let s3SetsCache'));
+      const fn = src.slice(src.indexOf('function fillStageForm('), src.indexOf('let swSetsCache'));
       const s1Block = fn.slice(fn.indexOf("doc.stage === 1"), fn.indexOf("doc.stage === 2"));
-      assert.ok(/#s3Uni/.test(s1Block) && /#s3Null1/.test(s1Block), 'the stage 1 fields fill only under stage === 1');
-      assert.ok(!/#s3Uni|#s3Null1|#s3Layout/.test(fn.slice(fn.indexOf("doc.stage === 2"))),
+      assert.ok(/#swUni/.test(s1Block) && /#swNull1/.test(s1Block), 'the stage 1 fields fill only under stage === 1');
+      assert.ok(!/#swUni|#swNull1|#swLayout/.test(fn.slice(fn.indexOf("doc.stage === 2"))),
         'a stage 2 or 3 set must leave the stage 1 box exactly as it is');
     }
-    // Boards3 is three provenance-linked sections (owner order, 2026-08-27):
+    // Boards is three provenance-linked sections (owner order, 2026-08-27):
     // stage-filtered pickers, a child pulling its parents onto the screen, a
     // parent putting its children away, folds remembered
     {
-      const body = screens.drawBody('drawBoards3');
-      for (const pin of ['b3Options(1, s1sel)', 'b3Options(2, s2sel)', 'b3Options(3, s3sel)']) {
+      const body = screens.drawBody('drawBoards');
+      for (const pin of ['bOptions(1, s1sel)', 'bOptions(2, s2sel)', 'bOptions(3, s3sel)']) {
         assert.ok(body.includes(pin), `each section's picker offers only its own stage's sets (${pin})`);
       }
       assert.ok(body.includes('if (s3sel) { s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }'),
         'a stage 3 selection must put its whole chain on screen');
       assert.ok(body.includes('else if (s2sel) { s1sel = parentOf(s2sel); }'),
         'a stage 2 selection must put its stage 1 parent on screen');
-      assert.ok(body.includes("b3SaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] })"),
+      assert.ok(body.includes("bSaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] })"),
         'picking a stage 1 parent must put the child selections away');
-      assert.ok(body.includes('data-b3fold') && body.includes('fold1: true, fold2: true, fold3: true'),
+      assert.ok(body.includes('data-bfold') && body.includes('fold1: true, fold2: true, fold3: true'),
         'the sections fold, and a fresh stage 3 pick opens its whole chain');
       assert.ok(/fold\[stage\]\) \{ mount.innerHTML = '<p class="note">put away/.test(body),
         'a folded section says it is put away rather than vanishing');
     }
-    // Sweep3's titles carry the provenance colors, judged live
+    // Sweep's titles carry the provenance colors, judged live
     {
       const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-      for (const id of ['s3H1', 's3H2', 's3H3']) assert.ok(src.includes(`id="${id}"`), `the ${id} title must exist to be painted`);
-      const fn = src.slice(src.indexOf('function s3Provenance('), src.indexOf('async function s3Counts('));
+      for (const id of ['swH1', 'swH2', 'swH3']) assert.ok(src.includes(`id="${id}"`), `the ${id} title must exist to be painted`);
+      const fn = src.slice(src.indexOf('function swProvenance('), src.indexOf('async function swCounts('));
       assert.ok(/var\(--pos\)/.test(fn) && /var\(--neg\)/.test(fn), 'green normally, red at the point of break');
-      assert.ok(fn.includes("rowOf(v('#s3From2'))") && fn.includes("rowOf(v('#s3From3'))"),
+      assert.ok(fn.includes("rowOf(v('#swFrom2'))") && fn.includes("rowOf(v('#swFrom3'))"),
         'stage 1 is judged against what the stage 2 box names, stage 2 against what the stage 3 box names');
-      const swBody = screens.drawBody('drawSweep3');
-      assert.ok(swBody.includes('s3Provenance()'), 'the colors are wired on the page');
+      const swBody = screens.drawBody('drawSweep');
+      assert.ok(swBody.includes('swProvenance()'), 'the colors are wired on the page');
       assert.ok(swBody.includes("b.disabled = going"), 'the start buttons sleep while a run is going');
     }
   // The stage 3 tables' newest owner orders (2026-08-27): Apply pegs the
@@ -791,33 +799,33 @@ module.exports = {
     // their avg test $.
     {
       const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-      assert.ok(src.includes('<thead><tr data-b3coinhead'), 'the coins heading line carries the peg mark');
+      assert.ok(src.includes('<thead><tr data-bcoinhead'), 'the coins heading line carries the peg mark');
       assert.ok(src.includes('window.scrollBy(0, again.getBoundingClientRect().top - pegTop);'),
         'Apply puts the heading line back at exactly the height it was measured at');
-      assert.ok(src.includes('function b3RankSortBtn(') && src.includes("b3WireRankSort(doc, mount);"),
+      assert.ok(src.includes('function bRankSortBtn(') && src.includes("bWireRankSort(doc, mount);"),
         'the ranked table columns carry sort buttons and they are wired');
       assert.ok(src.includes('const spec = !cur ? [{ key, dir: first }]'),
         'picking another ranked column replaces the pick — never stacks it');
-      assert.ok(src.includes('title="average test-window money per record') && src.includes('${b3Money(r.avgTest)}'),
+      assert.ok(src.includes('title="average test-window money per record') && src.includes('${bMoney(r.avgTest)}'),
         'the every-coin table shows each row-set\'s avg test $');
       // the coins table holds still on EVERY redraw and sorts on one click
       // (owner orders, 2026-08-27)
-      assert.ok(src.includes('function b3RedrawPeggedToCoinHead('), 'the one peg serves every redraw of the coins table');
-      assert.ok(src.includes('b3SaveView({ openS3: [...keys] });\n      b3RedrawPeggedToCoinHead();'),
+      assert.ok(src.includes('function bRedrawPeggedToCoinHead('), 'the one peg serves every redraw of the coins table');
+      assert.ok(src.includes('bSaveView({ openS3: [...keys] });\n      bRedrawPeggedToCoinHead();'),
         'opening or closing a row\'s records redraws pegged — the page does not move');
-      assert.ok(src.split('b3RedrawPeggedToCoinHead();').length - 1 >= 4,
+      assert.ok(src.split('bRedrawPeggedToCoinHead();').length - 1 >= 4,
         'Apply, the records buttons, the coins page turn and the column sorts all redraw pegged');
-      assert.ok(src.includes('data-b3coinsort'), 'the coins columns carry one-click sort buttons');
+      assert.ok(src.includes('data-bcoinsort'), 'the coins columns carry one-click sort buttons');
       assert.ok(src.includes('flip: active ? !cq.flip : false'), 'a second click on the same column turns the order');
     }
     const map = screens.byTab();
-    for (const key of ['sweep', 'sweep3']) {
+    for (const key of ['sweep']) {
       const ids = map[key].controls.map((c) => c.id);
       for (const id of ['cxCampPick', 'cxCamp', 'campSet', 'campTree', 'campDelete']) {
         assert.ok(ids.includes(id), `${key} must expose the campaign control ${id}`);
       }
     }
-    for (const key of ['boards', 'boards3']) {
+    for (const key of ['boards']) {
       const ids = map[key].controls.map((c) => c.id);
       for (const id of ['bNotes', 'bNotesSave']) {
         assert.ok(ids.includes(id), `${key} must expose the notes control ${id}`);
@@ -906,30 +914,30 @@ module.exports = {
   },
 
   // S6 OF THE LOOP — the owner's twelve interface demands, checked in the
-  // source rather than by eye. Every table on Boards3 must carry filters, a
+  // source rather than by eye. Every table on Boards must carry filters, a
   // fold and sortable columns, and every filter the screen offers must be a
   // filter the service actually implements.
   async everyTableCarriesFiltersAFoldAndSortableColumns() {
     const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const screens = require('../lib/screencontrols');
-    const body = screens.drawBody('drawBoards3');
+    const body = screens.drawBody('drawBoards');
     // one shared implementation, not one per table
-    for (const fn of ['function b3FilterGrid(', 'function b3WireFilters(', 'function b3FoldBtn(', 'function b3WireTableFold(']) {
+    for (const fn of ['function bFilterGrid(', 'function bWireFilters(', 'function bFoldBtn(', 'function bWireTableFold(']) {
       assert.ok(src.includes(fn), `the shared table furniture must exist: ${fn}`);
     }
     // every one of the four tables asks for all three
     for (const key of ['S1', 'S2', 'S3R', 'S3C']) {
-      assert.ok(new RegExp(`b3FilterGrid\\('${key}'`).test(src), `the ${key} table must offer filters`);
+      assert.ok(new RegExp(`bFilterGrid\\('${key}'`).test(src), `the ${key} table must offer filters`);
     }
     for (const key of ['S1', 'S2', 'S3R']) {
-      assert.ok(new RegExp(`b3FoldBtn\\('${key}'`).test(src), `the ${key} table must fold`);
+      assert.ok(new RegExp(`bFoldBtn\\('${key}'`).test(src), `the ${key} table must fold`);
     }
     // the filters the screen offers are the filters the service implements —
     // a box the service ignores is worse than no box
     const defs = require('../lib/stages').FILTER_DEFS;
     const offered = { S1: 1, S2: 2, S3R: 3 };
     for (const [key, stage] of Object.entries(offered)) {
-      const at = src.indexOf(`b3FilterGrid('${key}'`);
+      const at = src.indexOf(`bFilterGrid('${key}'`);
       const block = src.slice(at, src.indexOf('])}', at));
       for (const m of block.matchAll(/\['([a-zA-Z0-9]+)', '[^']*', '(?:text|num|pick)'/g)) {
         assert.ok(defs[stage][m[1]], `the ${key} table offers a "${m[1]}" filter the service does not implement`);
@@ -939,12 +947,20 @@ module.exports = {
     const grids = [...src.matchAll(/\['[a-zA-Z0-9]+', '[^']*', '(?:text|num|pick)', '([^']*)'/g)];
     assert.ok(grids.length >= 30, `every filter needs its own hover text — found ${grids.length}`);
     for (const g of grids) assert.ok(g[1].length > 20, `a filter's hover text says too little: "${g[1]}"`);
+    // THE SCREEN NEVER COMPUTES A COUNT OF ITS OWN. The removed Sweep worked
+    // out the size of a declared block in the page, beside the engine's own
+    // enumerator — two copies of one arithmetic, and a whole test file existed
+    // to keep them agreeing. This screen asks the engine for every number it
+    // shows, so the two cannot disagree because there is only one.
+    assert.ok(src.includes("askPost('api/stage1-count'") && src.includes("askPost('api/stage3-count'"),
+      'the cost lines must come from the engine, not from arithmetic on the page');
+    assert.ok(!/const MENUS = \{/.test(src), 'the page is counting settings for itself again');
     // the obsolete ordering box is gone and nothing still reaches for it
-    assert.ok(!src.includes("$('#b3Sort')") && !src.includes("$('#b3Go')"),
+    assert.ok(!src.includes("$('#bSort')") && !src.includes("$('#bGo')"),
       'the every-coin table orders by its columns now — the ordering box and its Apply must be gone');
     // the start buttons still sleep while a run is going (demand 12)
-    assert.ok(screens.drawBody('drawSweep3').includes('b.disabled = going'), 'the start buttons must sleep while a run is going');
-    assert.ok(body.includes('b3WireFilters(mount)') || src.includes('b3WireFilters(mount)'), 'the filters must be wired, not merely drawn');
+    assert.ok(screens.drawBody('drawSweep').includes('b.disabled = going'), 'the start buttons must sleep while a run is going');
+    assert.ok(body.includes('bWireFilters(mount)') || src.includes('bWireFilters(mount)'), 'the filters must be wired, not merely drawn');
   },
 
   // The agreement dial is fully exposed on the screen — every rule the engine
@@ -955,12 +971,12 @@ module.exports = {
     const offered = (vocabulary().agreeRule || []).map((o) => o.value);
     assert.deepStrictEqual(offered.slice().sort(), require('../lib/agreement').AGREE_RULES.slice().sort(),
       'the screen must offer exactly the rules the engine implements');
-    for (const id of ['s3AgreeRule', 's3AgreeShare', 's3AgreeBoth', 's3AgreeHold',
-      's3PermAgreeRule', 's3PermAgreeShare', 's3PermAgreeBoth', 's3PermAgreeHold']) {
-      assert.ok(src.includes(`id="${id}"`), `${id} must exist on Sweep3`);
+    for (const id of ['swAgreeRule', 'swAgreeShare', 'swAgreeBoth', 'swAgreeHold',
+      'swPermAgreeRule', 'swPermAgreeShare', 'swPermAgreeBoth', 'swPermAgreeHold']) {
+      assert.ok(src.includes(`id="${id}"`), `${id} must exist on Sweep`);
     }
     // and the two committee-size boxes it replaced are gone entirely
-    for (const gone of ['s3Q6', 's3Q8', 's3PermAgree"']) {
+    for (const gone of ['swQ6', 'swQ8', 'swPermAgree"']) {
       assert.ok(!src.includes(gone), `${gone} belonged to the old per-size bars and must be gone`);
     }
     // the launch is sent every one of them

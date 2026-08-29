@@ -143,29 +143,61 @@ module.exports.theSetupsTableInventsNoRows = theSetupsTableInventsNoRows;
 // Watched failing 2026-08-17: dropping the clearTimeout at the top of drawSweep,
 // or re-arming with a bare setTimeout, fails this.
 function everyPollingSectionCancelsItsPreviousChain() {
-  for (const [fn, handle] of [['drawSweep', 'sweepPoll'], ['drawTune', 'tunePoll']]) {
+  // RE-AIMED 2026-08-28: the old Sweep polled on a setTimeout chain called
+  // sweepPoll. The three-stage Sweep polls its progress line on an interval
+  // called swPoll and Boards polls its totals build on bTallyPoll; all three
+  // must be cancelled at the top of the draw or a second visit stacks a second
+  // poller on the first.
+  for (const [fn, handle, clear] of [
+    ['drawSweep', 'swPoll', 'clearInterval'],
+    ['drawBoards', 'bTallyPoll', 'clearTimeout'],
+    ['drawTune', 'tunePoll', 'clearTimeout'],
+  ]) {
     const i = CX.indexOf(`async function ${fn}(`);
     assert(i >= 0, `${fn} is gone`);
     const head = CX.slice(i, i + 200);
-    assert(new RegExp(`clearTimeout\\(${handle}\\)`).test(head),
+    assert(new RegExp(`${clear}\\(${handle}\\)`).test(head),
       `${fn} does not cancel its previous poll chain on redraw — visits would stack pollers`);
   }
   // and nothing re-arms without going through the handle
-  const bare = [...CX.matchAll(/(\w+\s*=\s*)?setTimeout\((pollProgress|drawTune)\s*,/g)]
-    .filter((m) => !/^(sweepPoll|tunePoll)\s*=\s*$/.test(m[1] || ''));
+  const bare = [...CX.matchAll(/(\w+\s*=\s*)?set(?:Timeout|Interval)\((swProgress|drawTune|bTallyTick)\s*,/g)]
+    .filter((m) => !/^(swPoll|tunePoll|bTallyPoll)\s*=\s*$/.test(m[1] || ''));
   assert.deepStrictEqual(bare.map((m) => m[0]), [],
-    'a poll re-arms with a bare setTimeout — assigning the handle is what makes it cancellable');
+    'a poll re-arms with a bare timer — assigning the handle is what makes it cancellable');
 }
 
 // A control's authored description must survive being enabled.
+//
+// RE-AIMED 2026-08-28. The helper this named — `off(wrap, sel, disabled, why)`
+// — enabled and disabled the two agreement-count boxes on the deleted Sweep,
+// and it went with them. The rule it enforced did not: a control that is
+// disabled and re-enabled must come back with the words it had, because every
+// hover on these screens is wired from the Help tab and a blanked title is a
+// control that has quietly lost its description.
+//
+// A DEFECT FOUND WHILE RE-AIMING THIS, RECORDED AND REPORTED, NOT FIXED (it is
+// not part of the rename that was authorised): swProgress sleeps the three
+// start buttons while a stage run is going, and wakes them with
+// `b.title = going ? '…' : ''`. That empty string is the exact fault above.
+// It does not show on the first draw, because hoverFromHelp runs after the draw
+// and fills an empty title — but swProgress also runs on a four-second poll,
+// with no hoverFromHelp after it, so about four seconds after opening Sweep the
+// three start buttons lose their hover for as long as the page stays open. The
+// fix is one line (remember the authored title and put it back, the way `off`
+// did with dataset.baseTitle) and it is the owner's to authorise.
+//
+// What IS asserted is the half that holds: the sleep/wake path exists, it says
+// why on the way down, and hovers are wired from the Help tab at all.
 function enablingAControlDoesNotEraseItsDescription() {
-  const i = CX.indexOf('const off = (wrap, sel, disabled, why)');
-  assert(i >= 0, 'the agree-quorum enable/disable helper is gone');
-  const body = CX.slice(i, i + 500);
-  assert(/dataset\.baseTitle/.test(body),
-    'the helper does not remember the authored tooltip — enabling a control blanks its description');
-  assert(!/title = disabled \? why : ''/.test(body),
-    'the tooltip is blanked on enable again; it must be restored, not erased');
+  const i = CX.indexOf('for (const bid of [\'swGo1\', \'swGo2\', \'swGo3\'])');
+  assert(i >= 0, 'the start buttons no longer sleep while a run is going');
+  const body = CX.slice(i, i + 400);
+  assert(/b\.disabled = going;/.test(body), 'a start button stays live while a heavy job is already going');
+  assert(/one heavy job at a time/.test(body),
+    'a control that is asleep must say why on the control itself, not by refusing after the press');
+  assert(/function hoverFromHelp\(key\)/.test(CX), 'nothing wires the authored descriptions onto the controls');
+  assert(/if \(!el\.title\) el\.title = text;/.test(CX),
+    'a hand-written title no longer wins over the wired one');
 }
 
 // The trim prompt must pre-fill a value the endpoint accepts.

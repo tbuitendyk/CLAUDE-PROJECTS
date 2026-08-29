@@ -547,21 +547,31 @@ module.exports = {
       && /weekdaysOnly: l\.weekdaysOnly \?\? null/.test(push)
       && /key: l\.key \?\? null/.test(push),
       'a recorded replication row no longer names the choices that made it');
+    // AND THE STAGE 3 WRITE SITE, which is where a priced record is written
+    // now. Same rule, same reason: a record that does not name the choices that
+    // made it is an anonymous number in a table read to learn which choices
+    // work.
+    const work = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stagework.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+    assert.ok(/decision: stream\.decision,/.test(work)
+      && /bandMode: stream\.band === 'auto' \? 'auto' : Number\(stream\.band\),/.test(work)
+      && /weekdaysOnly: !!stream\.weekdaysOnly,/.test(work),
+      'a priced stage 3 record no longer names the choices that made it');
+    // ...and the screen must show them. RE-AIMED 2026-08-28: the columns moved
+    // to the surviving Boards' opened-records rows with the screen change, and
+    // the column that used to be called beat its own copies is beat its own
+    // null set there. Its ordered place is unchanged — between test trades and
+    // held-back $ (owner order, 2026-08-26).
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
-    assert.ok(/>decision<\/th>/.test(page) && />24\/5<\/th>/.test(page),
-      'the records table no longer shows the decision and 24/5 columns');
-    // beat its own copies sits BETWEEN test trades and held-back $ (owner
-    // order, 2026-08-26), inside the records table's own head
-    const head = page.slice(page.indexOf('function coinRecordsHtml'), page.indexOf('function coinHeadHtml'));
+    const head = page.slice(page.indexOf("api/stageset/${doc.id}/coin-rows"), page.indexOf('</thead>', page.indexOf("api/stageset/${doc.id}/coin-rows")));
+    assert.ok(head.length > 200, 'the opened records rows are gone from the every-coin table');
+    for (const col of ['>decision</th>', '>band</th>', '>24/5</th>']) {
+      assert.ok(head.includes(col), `the records table no longer shows its ${col.replace(/[<>/th]/g, '')} column`);
+    }
     const tt = head.indexOf('>test trades</th>');
-    const bc = head.indexOf('>beat its own copies</th>');
+    const bc = head.indexOf('>beat its own null set</th>');
     const hb = head.indexOf('>held-back $</th>');
     assert.ok(tt >= 0 && bc >= 0 && hb >= 0 && tt < bc && bc < hb,
-      'the records\' beat its own copies column is missing or out of its ordered place');
-    assert.ok(/were recovered from this run's own unit records/.test(page)
-      && /are being recovered now/.test(page)
-      && /kept\s+no unit records to recover them from/.test(page),
-      'the records\' naming states are no longer said out loud — recovered, recovering, or honestly unrecoverable');
+      'the records\' beat its own null set column is missing or out of its ordered place');
   },
 
   // The full pass belongs OFF the thread that answers pages: the worker file
@@ -576,9 +586,18 @@ module.exports = {
     const rep = fs.readFileSync(path.join(__dirname, '..', 'lib', 'replication.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
     assert.ok(/new Worker\(path\.join\(__dirname, 'replication-worker\.js'\)/.test(rep),
       'startTotals no longer builds in a worker — the pass is back on the answering thread');
-    // and the page keeps everything answering while it waits
+    // and the page keeps everything answering while it waits. RE-AIMED
+    // 2026-08-28: the box that reported the background build was on the deleted
+    // Boards; the surviving Boards does the same for a record set's tables, and
+    // says how far the totalling has got rather than only that it is going.
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
-    assert.ok(/got\.building/.test(page) && /setTimeout\(askRep, 15000\)/.test(page),
-      'the Boards box no longer reports the background build and re-asks');
+    assert.ok(/ranked\.totalling \|\| ranked\.waiting \|\| ranked\.failed/.test(page),
+      'the Boards screen no longer notices that a record set is still totalling');
+    assert.ok(/building in the background; the tables appear here when it lands/.test(page),
+      'and it no longer says so — an empty table reads as an answer');
+    assert.ok(/bTallyPoll = setTimeout\(\(\) => \{ if \(tab === 'boards'\) drawBoards\(\)/.test(page),
+      'nothing re-asks while the build runs, so the tables never appear without a manual reload');
+    assert.ok(/the totalling failed:/.test(page),
+      'a build that DIED reads exactly like one still running — an ended state must be reported, not waited on');
   },
 };

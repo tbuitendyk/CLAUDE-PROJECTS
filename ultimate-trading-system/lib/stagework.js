@@ -1,11 +1,11 @@
-// Pure task functions for the three-stage system (Sweep3 / Boards3) — the
+// Pure task functions for the three-stage system (Sweep / Boards) — the
 // unit of work either the main thread or a worker executes identically, in
 // the same mould as bracketwork.js and under the same rule: every function
 // here is deterministic given its descriptor, touches no shared state, and
 // returns a plain object.
 //
-// WHAT THE STAGES ARE (owner's design, approved on the Sweep2/Boards2
-// drawings, 2026-08-27):
+// WHAT THE STAGES ARE (owner's design, approved on the drawings it was worked
+// out on, 2026-08-27):
 //
 //   Stage 1  trains each unit's slim members once (logreg per view), KEEPS
 //            EVERY VOTE the members cast on the test and held-back windows,

@@ -128,17 +128,32 @@ module.exports = {
   },
 
   // The screen must offer the ticks and send them, or the feature is unreachable.
+  //
+  // RE-AIMED 2026-08-28 at the surviving Sweep. The old form's ticks were named
+  // swPermDec* and rode on a declaredPermute key; the three-stage Sweep names
+  // them swPerm* and sends them as cellPermute, plus four more the old form
+  // never had — the agreement is its own dimension now and every part of it
+  // permutes. The property is unchanged: every tick on screen must reach the
+  // request, and the count must be readable before the button is pressed.
   theSweepFormOffersAndSendsThePermuteTicks() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    for (const id of ['swPermDecEntry', 'swPermDecGate', 'swPermDecD', 'swPermDecT',
-      'swPermDecTrail', 'swPermDecArm', 'swPermDecAgree']) {
-      assert.ok(new RegExp(`id="${id}"`).test(ui), `the replication row must offer #${id}`);
+    for (const id of ['swPermEntry', 'swPermGate', 'swPermD', 'swPermT', 'swPermTrail', 'swPermArm',
+      'swPermDec', 'swPermBand', 'swPermWk',
+      'swPermAgreeRule', 'swPermAgreeShare', 'swPermAgreeBoth', 'swPermAgreeHold']) {
+      assert.ok(new RegExp(`id="${id}"`).test(ui), `the block must offer #${id}`);
     }
-    assert.ok(/body\.declaredPermute = dp/.test(ui), 'the ticks must reach the request body');
-    assert.ok(/Object\.values\(dp\)\.some\(Boolean\)/.test(ui),
-      'with nothing ticked the key must be omitted, so the single path is untouched');
-    // and the count must be visible BEFORE Start sweep, not discovered from a refusal
-    assert.ok(/id="swDecCount"/.test(ui), 'the form must show how many configs the ticks declare');
+    // EVERY ONE OF THEM MUST BE READ. A tick on screen that the block never
+    // asks about is a control that does nothing, which is the whole fault this
+    // test exists for.
+    const at = ui.indexOf('function swBlockParams()');
+    const fn = ui.slice(at, ui.indexOf('\n}', at));
+    for (const id of ['swPermEntry', 'swPermGate', 'swPermD', 'swPermT', 'swPermTrail', 'swPermArm',
+      'swPermDec', 'swPermBand', 'swPermWk',
+      'swPermAgreeRule', 'swPermAgreeShare', 'swPermAgreeBoth', 'swPermAgreeHold']) {
+      assert.ok(fn.includes(`#${id}`), `#${id} is on screen but the block never reads it — the tick does nothing`);
+    }
+    // and the count must be visible BEFORE start stage 3, not discovered from a refusal
+    assert.ok(/id="swCount"/.test(ui), 'the form must show how many settings the ticks declare');
   },
 
   // The replication table the tick's own tooltip promises must exist on the tab.
@@ -148,33 +163,28 @@ module.exports = {
   // them, so the page asks for the totals instead of computing them over every
   // recorded row. The reading rules did not move — they are checked against
   // lib/replication.js, which is where they now live.
+  // NARROWED 2026-08-28. The screen half named the deleted Boards' replication
+  // table. The counting rules did not go anywhere — they live in
+  // lib/replication.js, which is what this now reads, and they are the part
+  // that decides whether the numbers mean anything.
   theBoardShowsTheReplicationTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const lib = fs.readFileSync(path.join(ROOT, 'lib', 'replication.js'), 'utf8');
-    assert.ok(/api\/batch\/\$\{encodeURIComponent\(doc\.id\)\}\/replication/.test(ui),
-      'the Boards section must ask for the replication totals');
     assert.ok(/if \(!tagged \|\| r\.nullDealSeed == null\)/.test(lib),
       'null copies score the declared cell too and must never enter the cross-asset count');
     assert.ok(/if \('nullDealSeed' in r\) \{ tagged = true/.test(lib),
       'untagged runs must be detected, not filtered as if they were tagged');
-    assert.ok(/INFERRED, not measured/.test(ui),
-      'and an inferred count must say on the page that it is inferred');
     assert.ok(/nullShare/.test(lib), 'the measured null must be computed per configuration');
     // and the browser must never be shipped the rows themselves again
     assert.ok(!/const all = \(doc && doc\.replication\) \|\| \[\]/.test(ui),
       'the page must not read every recorded row — that is what could not be shipped');
   },
 
-  // ONE config gets the table on its own; MANY get a ranked, openable list FIRST
-  // (owner, 2026-08-17) — with dozens of configs a wall of tables is unreadable.
-  oneConfigGetsATableAndManyGetARankedList() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    assert.ok(/if \(scored\.length === 1\)/.test(ui), 'a single config keeps the plain table');
-    assert.ok(/Replication — the declared config on every asset/.test(ui), 'under its own heading');
-    assert.ok(/declared configs, ranked/.test(ui), 'many configs get a ranked list');
-    assert.ok(/<details/.test(ui) && /<summary/.test(ui), 'each line opens for its per-asset detail');
-    assert.ok(/overflow-y:auto/.test(ui), 'and the list scrolls');
-  },
+  // REMOVED 2026-08-28 with the screen it named: oneConfigGetsATableAndManyGetARankedList
+  // held the deleted Boards to showing one declared config as a plain table and
+  // many as a ranked, openable list. The three-stage Boards has no single-config
+  // case — every stage 3 record set is a block of settings, always ranked, and
+  // its own table checks are in tests/test-stages.js.
 
   // QC-142 ENFORCEMENT. An ordering IS a claim about which row is better, so a
   // statistic the register bans as evidence may not appear in a sort key —
@@ -223,15 +233,14 @@ module.exports = {
       'the resolution floor of a measured null is admitted and must stay');
   },
 
-  // The columns carry their reading rules, or a number is shown that will be
-  // misread — these four are misread in opposite directions if swapped.
-  everyRankedColumnCarriesItsReadingRule() {
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    assert.ok(/only sanctioned yardstick \(QC-7\)/.test(ui), 'the measured null must name its rule');
-    assert.ok(/knife-edge fit/.test(ui), 'plateau width must say what it guards against');
-    assert.ok(/CONTEXT, NOT EVIDENCE/.test(ui), 'the across-asset share must be labelled context');
-    assert.ok(/Ranked LAST on purpose/.test(ui), 'and money must say why it is last');
-  },
+  // REMOVED 2026-08-28 with the columns it named: everyRankedColumnCarriesItsReadingRule
+  // held four hover rules on the deleted Boards' ranked replication list — the
+  // measured null as the only sanctioned yardstick, plateau width against a
+  // knife-edge fit, the across-asset share as context not evidence, and money
+  // ranked last on purpose. None of those four columns exists on the
+  // three-stage Boards. The rule they enforced — every column says how to read
+  // it — is enforced there by tests/test-help.js, which makes every control's
+  // hover come from its Help entry, and by test-stages.js on the sort buttons.
 
   // Each tab remembers its OWN theme (owner, 2026-08-17).
   constructingRemembersItsOwnTheme() {
@@ -252,12 +261,12 @@ module.exports = {
   // is the same; it is now put to the group.
   permuteTicksHideWithTheBoxTheyBelongTo() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    const sync = ui.slice(ui.indexOf('const syncDecEntry'));
+    const sync = ui.slice(ui.indexOf('async function swCounts()'));
     for (const [grp, box, tick] of [
-      ['swGrpGate', 'swDecGate', 'swPermDecGate'],
-      ['swGrpD', 'swDecD', 'swPermDecD'],
-      ['swGrpTrail', 'swDecTrail', 'swPermDecTrail'],
-      ['swGrpArm', 'swDecArm', 'swPermDecArm'],
+      ['swGrpGate', 'swGate', 'swPermGate'],
+      ['swGrpD', 'swD', 'swPermD'],
+      ['swGrpTrail', 'swTrail', 'swPermTrail'],
+      ['swGrpArm', 'swArm', 'swPermArm'],
     ]) {
       const at = ui.indexOf(`id="${grp}"`);
       assert.ok(at > 0, `the box and its tick need a group #${grp}`);
@@ -266,6 +275,11 @@ module.exports = {
         `#${grp} must hold both ${box} and its tick ${tick}`);
       assert.ok(new RegExp(`#${grp}`).test(sync), `#${grp} must be shown and hidden as one`);
     }
+    // AND HIDING MUST PUT THE ROW BACK AS IT WAS. The groups lay out with
+    // flex; setting display to '' on the way back leaves the browser to guess,
+    // and a block would stack the box above its tick.
+    assert.ok(/e\.style\.display = on \? 'flex' : 'none';/.test(ui),
+      'a group that comes back must come back laid out the way it was drawn');
   },
 
   // One row per (asset, declared config), tagged so the table can group them.

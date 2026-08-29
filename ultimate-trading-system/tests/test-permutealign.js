@@ -33,10 +33,14 @@ function groupAround(id) {
 
 // box id -> the permute tick that belongs to it.
 const PAIRS = [
+  // The surviving Sweep's pairs (owner order, 2026-08-28: the original Sweep
+  // and its two drawings are gone and this pair is the only one left, so the
+  // list below is that screen's, read off it).
   ['swGeom', 'swPermGeom'], ['swDec', 'swPermDec'], ['swBand', 'swPermBand'],
-  ['swWeekdays', 'swPermWk'], ['swDecEntry', 'swPermDecEntry'], ['swDecGate', 'swPermDecGate'],
-  ['swDecD', 'swPermDecD'], ['swDecT', 'swPermDecT'], ['swDecTrail', 'swPermDecTrail'],
-  ['swDecArm', 'swPermDecArm'], ['swDecQ6', 'swPermDecAgree'], ['swDecQ8', 'swPermDecAgree'],
+  ['swEntry', 'swPermEntry'], ['swGate', 'swPermGate'], ['swD', 'swPermD'],
+  ['swT', 'swPermT'], ['swTrail', 'swPermTrail'], ['swArm', 'swPermArm'],
+  ['swAgreeRule', 'swPermAgreeRule'], ['swAgreeShare', 'swPermAgreeShare'],
+  ['swAgreeHold', 'swPermAgreeHold'],
 ];
 
 module.exports = {
@@ -60,26 +64,24 @@ module.exports = {
 
   // Hiding must take the pair, not one half of it.
   async hidingTakesTheWholePair() {
-    assert.ok(/for \(const grp of \['#swGrpGate', '#swGrpD', '#swGrpTrail'\]\) show\(grp, !market\)/.test(PAGE),
+    assert.ok(/for \(const grp of \['#swGrpGate', '#swGrpD', '#swGrpTrail'\]\) swShowGroup\(grp, !market\)/.test(PAGE),
       'the market-entry hide no longer targets the whole group — a permute tick can be left on screen for a box that is gone');
-    assert.ok(/show\('#swGrpArm'/.test(PAGE), 'the arm pair is no longer hidden as one group');
-    assert.ok(!/show\('#swPermDecGateWrap'/.test(PAGE),
-      'the old half-by-half hiding is back');
+    assert.ok(/swShowGroup\('#swGrpArm'/.test(PAGE), 'the arm pair is no longer hidden as one group');
+    assert.ok(!/swShowGroup\('#swPerm/.test(PAGE),
+      'half-by-half hiding is back — a pair hides as one group or not at all');
   },
 
-  // A tick offering to try every agreement level when there is no agreement
-  // level to set (owner, 2026-08-21). This one is shared by two dropdowns, so
-  // the groups did not cover it: it is only dead when BOTH are.
-  async theSharedAgreeTickIsDeadWhenBothItsBoxesAre() {
-    assert.ok(/const noSingles = !\$\('#swSingles'\)\.checked;/.test(PAGE)
-      && /const noContexts = !\(\$\('#swDoubles'\)\.checked \|\| \$\('#swTriples'\)\.checked\);/.test(PAGE),
-    'the two conditions that ghost the agreement boxes are gone');
-    assert.ok(/const dead = noSingles && noContexts;/.test(PAGE),
-      'the shared "permute" tick is not tied to BOTH agreement boxes being off');
-    assert.ok(/\$\('#swPermDecAgree'\)\.disabled = dead;/.test(PAGE),
-      'the shared "permute" tick can still be ticked when neither agreement box can be set');
-    assert.ok(/permWrap\.classList\.toggle\('ctl-off', dead\)/.test(PAGE),
-      'the shared "permute" tick is not greyed out with its boxes');
+  // The tick that used to be shared by two agreement boxes is gone with them
+  // (owner loop, 2026-08-28): the dial is one share of the committee now, so
+  // each agreement control has its own permute and none of them can apply to
+  // a committee that does not exist.
+  async everyAgreementControlOwnsItsOwnPermute() {
+    for (const [box, tick] of [['swAgreeRule', 'swPermAgreeRule'], ['swAgreeShare', 'swPermAgreeShare'],
+      ['swAgreeBoth', 'swPermAgreeBoth'], ['swAgreeHold', 'swPermAgreeHold']]) {
+      assert.ok(PAGE.includes(`id="${box}"`), `${box} is gone from the page`);
+      assert.ok(PAGE.includes(`id="${tick}"`), `${tick} is gone from the page`);
+    }
+    assert.ok(!/swPermDecAgree/.test(PAGE), 'the shared agreement tick is back');
   },
 
   // A hidden group must close up rather than leave a hole in the row.

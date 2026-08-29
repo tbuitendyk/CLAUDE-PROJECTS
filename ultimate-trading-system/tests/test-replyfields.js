@@ -86,18 +86,22 @@ const PAIRS = [
     // the catch branch's own shape, and the one path that already worked
     allowExtra: ['error'],
   },
+  // REMOVED 2026-08-28 with the screen it read: the inspect panel was on the
+  // deleted Boards, and nothing on the surviving pair reads lib/inspect.js. The
+  // pairing cannot be re-aimed at a reader that does not exist — if an inspect
+  // panel comes back, this pair comes back with it.
+  // RE-AIMED 2026-08-28. The run-size line moved to the surviving Boards' record
+  // set head, where it reads a STAGE SET's plan rather than a batch run's — so
+  // the writer it is paired against moved with it, to lib/stages.js.
   {
-    label: 'inspect members',
-    reader: () => between(CX, 'mem.map((m, i) =>', '</tr>`;', 'inspect member reader'),
-    varName: 'm',
-    writer: () => between(read('lib/inspect.js'), 'const members = specs.map', '}));', 'inspect members'),
-    allowExtra: [],
-  },
-  {
-    label: 'run-size plan',
+    label: 'record set plan',
     reader: () => between(CX, '<b>Size:</b>', '</p>`', 'plan reader'),
-    varName: 'pl',
-    writer: () => between(read('lib/batch.js'), 'plan: { branches:', '},', 'plan literal'),
+    varName: 'plan',
+    // ALL THREE stage plans, because one line on the head reads whichever the
+    // open set happens to be — a name written by only stage 3 must still count
+    // as written, and a name written by none of them must still be caught.
+    writer: () => ['plan: { units: units.length', 'plan: { units: carried.length', 'plan: { units: parentRecords.length']
+      .map((a) => `${between(read('lib/stages.js'), a, '}', 'stage plan literal')}}`).join('\n'),
     allowExtra: [],
   },
 ];

@@ -711,7 +711,7 @@ app.post('/api/abort', (req, res) => {
 
 app.get('/api/batches', (req, res) => res.json({ running: batch.batchRunning(), batches: batch.listBatches() }));
 
-// ---- the three-stage record sets (Sweep3 / Boards3) ---------------------------
+// ---- the three-stage record sets (Sweep / Boards) ---------------------------
 //
 // Launches are plan-first and chained: stage 2 reads a finished stage 1 set,
 // stage 3 a finished stage 2 set, and a launch refuses — by name — when the
@@ -786,7 +786,7 @@ app.get('/api/stageset/:id/coin-rows', (req, res) => {
   catch (err) { return res.status(500).json({ error: err.message }); }
 });
 
-// The counters behind the Sweep3 cost lines — the same enumerators the
+// The counters behind the Sweep cost lines — the same enumerators the
 // launches run, so the number on the screen and the number that runs can
 // never be two different numbers.
 app.post('/api/stage1-count', (req, res) => {

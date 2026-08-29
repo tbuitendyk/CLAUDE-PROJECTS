@@ -19,10 +19,10 @@
 // trap.
 
 // SHARED PANELS GET SHARED ENTRIES (owner order, 2026-08-27: the campaign
-// panel and the opened run's head are each ONE piece of code drawn on two
-// screens — Sweep and Sweep3, Boards and Boards3). Their help is written once
-// here and spread into both sections, so the two screens' explanations cannot
-// drift apart any more than their markup can.
+// panel and the opened record set's head are each ONE piece of code drawn on
+// both Sweep and Boards). Their help is written once here and spread into both
+// sections, so the two screens' explanations cannot drift apart any more than
+// their markup can.
 const CAMPAIGN_PANEL_CONTROLS = {
   cxCampPick: {
     what: 'Pick a campaign that already exists. Choosing one switches to it straight away.',
@@ -39,9 +39,9 @@ const CAMPAIGN_PANEL_CONTROLS = {
     more: 'It tells you exactly how many of each will go before it asks, and you have to type the name back. It refuses outright if any setup made from that campaign is still running on the Trade tab, and names which ones — and it refuses while a stage run is being written, because record sets are never deleted mid-run.',
   },
 };
-// The three Boards3 sections carry the same two controls each — written once
-// here, one entry per literal id, so the six cannot drift apart.
-const B3_SECTION_CONTROLS = (() => {
+// The three Boards sections carry the same three controls each — written once
+// here, one entry per literal id, so the nine cannot drift apart.
+const BOARD_SECTION_CONTROLS = (() => {
   const out = {};
   const fills = {
     1: 'Picking one puts the stage 2 and stage 3 selections away — a new parent starts a new chain.',
@@ -49,16 +49,16 @@ const B3_SECTION_CONTROLS = (() => {
     3: 'Picking one fills the stage 1 and stage 2 sections with its whole chain, so the provenance is on screen.',
   };
   for (const n of [1, 2, 3]) {
-    out[`b3Pick${n}`] = {
+    out[`bPick${n}`] = {
       what: `Which stage ${n} record set this section reads. Only stage ${n} sets are offered.`,
       more: fills[n],
     };
-    out[`b3Delete${n}`] = {
+    out[`bDelete${n}`] = {
       what: 'Permanently removes the record set picked in this section — its records, kept votes and tables. You are shown what will go, and have to type the record set id back, before anything is deleted.',
       more: 'It refuses two things, by name: a set another set names as its parent (delete the children first), and any deletion while a stage run is going, because a run may be reading its parent at that moment.',
     };
-    out[`b3CopySettings${n}`] = {
-      what: `Fills the stage ${n} box on Sweep3 with this record set's exact settings and description, so you can do it again or change one thing.`,
+    out[`bCopySettings${n}`] = {
+      what: `Fills the stage ${n} box on Sweep with this record set's exact settings and description, so you can do it again or change one thing.`,
       more: 'Its parent record set is picked where it has one, so pressing start re-runs the same step of the same chain. The other boxes are left exactly as they are; nothing launches. It works whether the section is open or put away.',
     };
   }
@@ -100,267 +100,6 @@ window.HELP = {
 
   sweep: {
     title: 'Sweep',
-    intro: 'Where a search is set up and started. It tries a great many settings against the '
-      + 'price history and records how each one would have done. Nothing here places an order or '
-      + 'commits to anything: a sweep produces a list to look at, and every result is a candidate, not a finding.\n\n'
-      + 'The controls are drawn as two boxes because they fall into exactly two kinds. Everything in the '
-      + 'first box shapes both passes. Everything in the second box the first pass ignores completely, '
-      + 'however it is set. Between them sits promote top K, which is the only thing that travels from '
-      + 'one pass to the other.',
-    how: [
-      ['What happens when you press Start sweep',
-        'It builds a list of everything to try, then works through it twice.\n\n'
-        + 'The list is every asset you asked for — on its own if singles is ticked, alongside one other '
-        + 'if doubles is, alongside two if triples is — set against every combination of the four boxes '
-        + 'under branch: chunk shape, decision, band % (or auto) and 24/5. Tick permute beside any of '
-        + 'those and every value of it is tried instead of just the one showing, which multiplies the list.'],
-      ['The first pass: everything, cheaply',
-        'Every single item on that list is scored. Cheaply, in two specific ways: fewer separate '
-        + 'forecasts are made for each asset, and only the stop that sits still is tried — the trailing '
-        + 'plane tick is ignored on this pass however it is set.\n\n'
-        + 'The point of this pass is to rank, not to measure. It puts the list in order.'],
-      ['The second pass: the best of it, in full',
-        'The best rows from the first pass are then scored again, properly. How many is exactly what '
-        + 'promote top K says — 25 unless you change it, and it cannot go above 50.\n\n'
-        + 'This time each asset gets its full set of forecasts, which is what the agree and with '
-        + 'contexts fractions are counting out of. And if also try moving stops is ticked, every setting is '
-        + 'also tried with stops that follow the price up behind you, at four distances and three '
-        + 'starting points — roughly thirteen times the work, but only on these rows, not on all of them.'],
-      ['What you end up with',
-        'A board, on the Boards tab. One row per thing tried, with what it would have made, how many '
-        + 'trades that took, and how it did against simply holding the asset. The rows scored twice are '
-        + 'marked as such.\n\n'
-        + 'Read it as a list of candidates. The best row on a board of thousands is the best of '
-        + 'thousands of tries, and that flatters itself — which is what the Verify, History and Tune '
-        + 'tabs exist to deal with.'],
-      ['What null boards change, which is more than it looks',
-        'Setting null boards above 0 does two things, and the second is not obvious.\n\n'
-        + 'It adds that many companion runs on deliberately scrambled decisions, so you can see whether '
-        + 'the real one did any better than nonsense. With 19 of them the strongest claim available is '
-        + 'one-in-20.\n\n'
-        + 'AND it changes how the run works: every row gets the full second-pass treatment instead of '
-        + 'only the best ones, because a scrambled companion has to be scored exactly as deeply as the '
-        + 'real thing or the comparison is worthless. So promote top K stops applying, and the run is '
-        + 'not (N+1) times the size — it is very much more than that.'],
-      ['What replication adds, if you tick it',
-        'The search picks its winner after seeing the results, which is what makes the best row '
-        + 'flatter itself. Replication is the opposite: YOU fix the settings before the run, and '
-        + 'every asset is scored on what you fixed.\n\n'
-        + 'With every permute left unticked that is one set of settings, and it is the strongest '
-        + 'reading the system offers — nothing was chosen after the fact, so there is nothing to '
-        + 'correct for.\n\n'
-        + 'Tick permute on any of those boxes and it becomes every combination of them, each one '
-        + 'scored on every asset. That is searching again, and it costs twice: the counter beside '
-        + 'the boxes says how many sets you have declared and the run grows by that much, and the '
-        + 'reading loses the very thing that made it strong. Having searched, the honest end is the '
-        + 'sealed block you get with the 61/13/13/13 window layout.\n\n'
-        + 'The boxes follow the run, not each other. Tick permute beside entry while entry reads '
-        + 'market and gate, d, trail and arm all appear, because breakout is now in the run and '
-        + 'needs them. Tick permute beside trail while it reads static and arm appears, because '
-        + 'following stops are now in the run and every one of them needs a starting point.'],
-    ],
-    controls: {
-      ...CAMPAIGN_PANEL_CONTROLS,
-      swUni: {
-        what: 'Which assets to search over. Leave it blank to use all of the ones held.',
-        more: 'Write them separated by commas to narrow it down.',
-      },
-      swSingles: { what: 'Include each asset judged on its own price history alone.' },
-      swDoubles: { what: 'Include each asset judged alongside one other asset, so how the two move against each other counts as well.' },
-      swTriples: { what: 'Include each asset judged alongside two others.' },
-      swAll: {
-        what: 'Use every month of price history that is held, rather than a chosen range.',
-        more: 'With this ticked, start and end are ignored.',
-      },
-      swStart: { what: 'First month of price history to search over. Ignored when all loaded data is ticked.' },
-      swEnd: { what: 'Last month of price history to search over. Ignored when all loaded data is ticked.' },
-      swGeom: {
-        what: 'How long a stretch of prices each decision looks at, and how often a decision is made. Weekly 8-day looks at eight days and decides once a week; Daily 1-day looks at one day and decides every day.',
-      },
-      swPermGeom: { what: 'Try every chunk shape rather than only the one chosen. Multiplies the size of the search.' },
-      swDec: {
-        what: 'How a forecast becomes a decision. argmax takes whichever outcome is judged most likely. directional only acts when the forecast is confident enough, and stands aside otherwise.',
-      },
-      swPermDec: { what: 'Try both ways of deciding rather than only the one chosen.' },
-      swBand: {
-        what: 'How big a move has to be before it counts as a move at all, as a percentage. Anything smaller is treated as going nowhere.',
-        more: 'Leave it as auto to have it worked out from each asset’s own history, which is usually what you want, because a percentage that suits one asset will not suit another.',
-      },
-      swPermBand: { what: 'Try more than one size of move rather than only the one chosen.' },
-      swWeekdays: {
-        what: 'Only decide and open on weekdays. Affects the daily chunk shapes only — the weekly one has no weekday rule, so ticking this does nothing to it.',
-      },
-      swPermWk: {
-        what: 'Try it both ways — weekdays only, and every day.',
-        more: 'When this is ticked the 24/5 tick is ignored, because both are being tried. Weekly 8-day is only tried one way, since the setting means nothing to it.',
-      },
-      swLayout: {
-        what: 'How the price history is divided up between finding something and testing it. 70/15/15 keeps one block back to check against. 61/13/13/13 keeps a second block back, sealed, to be looked at once at the very end.',
-        more: 'Use the sealed one when you intend to search hard, because the honest end of a search is a block of data the search never touched.',
-      },
-      swBoardRows: {
-        what: 'How many rows the board of results keeps. It was stuck at 50 and there was no box for it anywhere, so you could not see it or change it.',
-        more: 'Everything scored gets ranked, and only this many are kept. There is no limit — type any number and the cost of it is printed beside the box before you start. The cost is in the sorting: the list is re-ordered every time a new row lands on it, so a very large one is slower on a wide run. It also decides the most that can go into the second pass, because the second pass picks from this list.',
-      },
-      swK: {
-        what: 'How many of the best rows get scored a second time, in full. It sits between the two boxes because it is the only thing that travels from one pass to the other.',
-        more: 'Everything is scored once cheaply first. Only this many are then scored again with the fuller treatment. It used to be reduced to 50 without telling you; now it goes through as you typed it, and if you ask for more than the board keeps you are told so and asked to change one of the two boxes — neither is changed for you. Two things switch it off entirely: null boards above zero, and the replication tick — either of those sends EVERY row through the second pass, and this box then does nothing.',
-      },
-      swNulls: {
-        what: 'How many companion runs to do on deliberately scrambled decisions, as a comparison. If the real run does no better than the scrambled ones, there was nothing there.',
-        more: 'This is the single most expensive setting on the page. Each one costs a whole extra search, AND turning it on changes how the run works: every row is scored in full rather than only the best ones, so promote top K stops applying. With N companions the strongest claim you can make is one-in-(N+1) — 19 of them gets you one-in-20, and past that you are buying decimal places rather than evidence. There is no ceiling: type any number and the cost of it is printed beside the box before you launch.',
-      },
-      swMinTr: { what: 'Ignore any result that came from fewer trades than this. A handful of trades is luck, not evidence.' },
-      swFee: {
-        what: 'What a trade is assumed to cost, as a percent of the money in the position. It is charged each way — once going in and once coming out — so 0.125 here costs 0.25 percent over the whole trade.',
-        more: 'This is not a detail. Most of what a search finds is eaten by what it costs to trade, and the point where a setting stops making money sits only a little above the cost you assume here — so the same run priced two ways can give two different answers about the same setting. Set it to what the place you would actually trade this on charges; different places charge different amounts, which is why the box is here and not fixed in the program. It follows the config: send one to the Trade page and it starts out priced at whatever it was found under here, and can be changed there.',
-      },
-      swTrail: {
-        what: 'Makes the search try stops that follow the price up behind you, as well as the one that sits still.',
-        more: 'Each setting is then tried with four following distances and three starting points, so roughly thirteen times as much work — and only on the rows that got scored a second time, never on the first cheap pass. This is about what the RUN looks at. The trail box further down this same box is a different question: which stop the one configuration YOU name uses. They were called almost the same thing until 2026-08-22, which is why this one is now spelled out.',
-      },
-      swDecOn: {
-        what: 'As well as the search, score settings YOU fix here — before the run — on every asset. Leave every permute unticked and that is one set of settings; tick any of them and it becomes every combination of the boxes you ticked, each one scored on every asset.',
-        more: 'With nothing permuted this is the strongest kind of reading available, because nothing was picked after seeing the results. Permuting is searching again, so that strength goes: the counter beside the boxes says how many sets you have declared, it multiplies the whole run, and the honest end of a search is the sealed block you get with the 61/13/13/13 window layout. Either way the search still runs as normal and this adds a separate table beside it.',
-      },
-      swDecEntry: {
-        what: 'How the position is opened. market buys or sells at the opening price of the hour, in whichever direction was called. breakout waits until the price reaches a level set d away from where it started, and opens there.',
-      },
-      swPermDecEntry: { what: 'Score every way of opening as its own fixed set of settings.' },
-      swDecGate: {
-        what: 'When a position is allowed to be opened at all. directional only when a direction was called; active whenever anything is happening; always every single period.',
-        more: 'market opens in the called direction and has nothing to gate, so this box is hidden while entry is market — unless permute beside entry is ticked, because then breakout is in the run too and needs a gate.',
-      },
-      swPermDecGate: { what: 'Score every gate as its own fixed set of settings.' },
-      swDecD: {
-        what: 'How far from the starting price the opening level sits, as a multiple of the band. Bigger means waiting for a larger move before opening.',
-        more: 'Only applies to breakout, so it is hidden while entry is market — unless permute beside entry is ticked, because then breakout is in the run too.',
-      },
-      swPermDecD: { what: 'Score every distance as its own fixed set of settings.' },
-      swDecT: { what: 'How many hours a position is held before it is closed, if nothing else has closed it first.' },
-      swPermDecT: { what: 'Score every holding time as its own fixed set of settings.' },
-      swDecTrail: {
-        what: 'Which stop the one configuration you are naming here uses. static means the stop sits still, at the price level on the far side of where you opened. The others follow the price up behind you as it goes your way, at the distance shown. This is not the same control as also try moving stops above: that one decides whether the SEARCH tries moving stops at all, and this one has to have it ticked, because a named setting can only be found among the settings the run actually worked out.',
-        more: 'static is NOT "no stop", and it is worth knowing how far away it sits: twice d. Two levels are placed either side of the starting price, each d away, and you open at whichever one the price reaches — so the other one, your stop, is d below the start plus the d you climbed to get in. Starting price 100 with d of 3%: levels at 103 and 97, you open long at 103, your stop is 97, which is 6 below your entry. To test with NO stop at all, set entry to market instead — that places no levels, so nothing can stop you out and the only way out is time.',
-      },
-      swPermDecTrail: { what: 'Score every kind of stop, static included, as its own fixed set of settings.' },
-      swDecArm: {
-        what: 'How far the price has to move in your favour before a following stop starts following. 0× follows from the very beginning.',
-        more: 'A stop that does not move has nothing to start, so this box appears only when there is a following stop in the run: trail set to something other than static, or permute beside trail ticked, which puts the following stops in whatever the box itself says.',
-      },
-      swPermDecArm: { what: 'Score every starting point as its own fixed set of settings.' },
-      swDecQ6: {
-        what: 'How many of the 6 must say the same thing before a trade is taken, for an asset judged on its own.',
-        more: 'The 6 are 3 views (full / prices / volume) × 2 models (LOGREG and BOOST). Those names are on the Boards screen: press a Survivor board row\'s inspect button and its view and model columns list them, one line per member.',
-      },
-      swDecQ8: { what: 'The same, for an asset judged alongside others — there are 8 to agree rather than 6.' },
-      swPermDecAgree: {
-        what: 'Score every level of agreement as its own fixed set of settings.',
-        more: 'This one multiplies the work fastest of all of them.',
-      },
-      swDesc: {
-        what: 'Why you are doing this run. It is kept with the run and shown in its heading from then on.',
-        more: 'Worth writing. Months later it is the only thing that says what you were trying to find out.',
-      },
-      swStart2: { what: 'Starts the search with the settings above. Progress appears below.' },
-      swStop: {
-        what: 'Stops the running search.',
-        more: 'The two heavy scans on the Tune tab do not stop — they take minutes and run to the end. The Tune tab shows which one is going.',
-      },
-    },
-  },
-
-  sweep2: {
-    title: 'Sweep2',
-    intro: 'A drawing, not a working screen. Every control on it is switched off, and nothing on it reads or '
-      + 'writes anything. It shows a proposed redesign of the search as three stages you run one at a time, so the '
-      + 'design can be marked up and corrected before any of it is built.',
-    how: [
-      ['Why this page exists, and what the three stages are',
-        'The current sweep does everything in one run: it trains cheaply, trains fully, deals its scrambled copies by '
-        + 'training them again, and prices the declared settings — all inside one job, and asking any new question '
-        + 'afterwards means running the whole thing again.\n\n'
-        + 'The drawing splits that into three stages, each writing a record set the next one reads. Stage 1 trains the '
-        + 'cheap members once for every unit and KEEPS EVERY VOTE they cast, then ranks every unit with one fixed rule — did those votes beat their own null set, the same votes calendar-shuffled, at plain forecasting — so nothing about the ordering is chosen or guessed, and no trade setting exists until stage 3. Stage 2 trains the fuller boards, but only '
-        + 'on the rows you carry forward, and reuses the stage 1 members instead of training them a second time. '
-        + 'Stage 3 never trains anything: it prices any setting, or any block of settings, straight from the kept '
-        + 'votes — so the question you think of tomorrow costs minutes, not days.\n\n'
-        + 'The worked example on the page: the run open on Boards today holds 25,704 units and cost 231,336 trainings. '
-        + 'The same work as three stages is 77,112 trainings at stage 1 plus 3,000 at stage 2 — roughly a third — and '
-        + 'every null-set deal becomes free arithmetic instead of another training.'],
-    ],
-    controls: {
-      s2Uni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
-      s2Singles: { what: 'Include each coin judged on its own price history alone.' },
-      s2Doubles: { what: 'Include each coin judged alongside one other coin.' },
-      s2Triples: { what: 'Include each coin judged alongside two others.' },
-      s2AllData: { what: 'Use every month of price history that is held, rather than a chosen range. With this ticked, start and end are ignored.' },
-      s2Start: { what: 'First month of price history stage 1 works over.' },
-      s2End: { what: 'Last month of price history stage 1 works over.' },
-      s2Geom: { what: 'How long a stretch of prices each decision looks at, and how often a decision is made — same meaning as on Sweep.' },
-      s2PermGeom: {
-        what: 'Train every chunk shape rather than only the one chosen. This is a real multiplier of training, so it lives at stage 1 where the training happens.',
-      },
-      s2Layout: { what: 'How the price history is divided between finding something and testing it — same meaning as on Sweep. The sealed layout is the honest end of a search.' },
-      s2Copies1: {
-        what: 'How many shuffled companions make up each unit\'s null set. Each one is the same kept votes with their dates shuffled away, given the same forecast score — no training, ever.',
-        more: 'The ordering IS the against-null-set result: beat its own null set, ties broken by lead over null set. So the null set always feeds the pick — there is no way to deal one that nothing reads.',
-      },
-      s2Desc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
-      s2Go1: { what: 'Would start stage 1. On this drawing it is switched off, like everything else here.' },
-      s2From2: {
-        what: 'Which stage 1 record set stage 2 carries forward from. A stage 2 record set names this parent forever.',
-        more: 'It refuses a parent built on different price data — the record sets carry fingerprints of the price files and a mismatch refuses rather than mixes.',
-      },
-      s2Order: {
-        what: 'Which of stage 1\'s two against-null-set results the carry is taken in: beat its own null set — the count — or lead over null set, how far above the null set\'s typical forecast score the real one sits.',
-        more: 'Both come from stage 1\'s one fixed rule, on the test window only. There is no money ordering to pick, because stage 1 never prices a trade, and the held-back window is never read here.',
-      },
-      s2Carry: {
-        what: 'How many rows carry forward into the fuller training, best first under order by. 0 carries all of them.',
-        more: 'Carry generously: the cut is for shedding the clearly-dead, not for picking winners. Forecast skill is not money — stage 3\'s pricing is the judge.',
-      },
-      s2Desc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
-      s2Go2: { what: 'Would start stage 2. Switched off on this drawing.' },
-      s2From3: {
-        what: 'Which stage 2 record set the pricing reads its kept votes from. A stage 3 record set names this parent forever.',
-      },
-      s2P3Dec: { what: 'The decision to price, or with permute ticked, every decision — arithmetic on the kept votes either way.' },
-      s2P3PermDec: { what: 'Price every way of deciding as its own setting in the block.' },
-      s2P3Band: { what: 'The band to price, or with permute ticked, more than one size of move.' },
-      s2P3PermBand: { what: 'Price more than one band as its own setting in the block.' },
-      s2P3Wk: { what: 'Price weekday-only activity for this setting.' },
-      s2P3PermWk: { what: 'Price it both ways — weekdays only, and every day.' },
-      s2P3Entry: { what: 'The way of opening to price — same meaning as on Sweep.' },
-      s2P3PermEntry: { what: 'Price every way of opening as its own setting in the block.' },
-      s2P3Gate: { what: 'The gate to price — same meaning as on Sweep.' },
-      s2P3PermGate: { what: 'Price every gate as its own setting in the block.' },
-      s2P3D: { what: 'The opening-level distance to price.' },
-      s2P3PermD: { what: 'Price every distance as its own setting in the block.' },
-      s2P3T: { what: 'The holding time to price.' },
-      s2P3PermT: { what: 'Price every holding time as its own setting in the block.' },
-      s2P3Trail: { what: 'The stop to price. static sits still; the others follow the price behind you.' },
-      s2P3PermTrail: { what: 'Price every kind of stop, static included, as its own setting in the block.' },
-      s2P3Arm: { what: 'The starting point for a following stop.' },
-      s2P3PermArm: { what: 'Price every starting point as its own setting in the block.' },
-      s2P3Q6: { what: 'How many of a single coin\'s 6 members must agree, for the setting being priced.' },
-      s2P3Q8: { what: 'The same, for a unit judged alongside contexts — 8 members rather than 6.' },
-      s2P3PermAgree: { what: 'Price every level of agreement as its own setting in the block. It multiplies the block fastest, and here that multiplying costs arithmetic, not training.' },
-      s2P3Fee: {
-        what: 'What a trade is assumed to cost, as a percent of the money in the position, charged each way. It lives at this stage because stage 3 is the first place a trade is priced.',
-        more: 'Re-pricing the same block at a different fee is arithmetic on the kept votes — never a retrain.',
-      },
-      s2P3Copies: {
-        what: 'How many null-set deals each setting is read against, dealt from the kept votes — no training.',
-        more: 'The same deals are used for every setting in the block, so any two settings\' shares are always comparable.',
-      },
-      s2P3Desc: { what: 'Why this stage 3 exists. Kept on the record set.' },
-      s2P3Go: { what: 'Would start stage 3 — pricing only, no training. Switched off on this drawing.' },
-    },
-  },
-
-  sweep3: {
-    title: 'Sweep3',
     intro: 'The working three-stage system. Each stage writes a record set the next one reads, every set names '
       + 'its parent, and a launch refuses — by name — when the price files no longer match the ones its parent '
       + 'read. Stage 1 trains and keeps votes, stage 2 adds the BOOST members to the rows you carry forward, and '
@@ -372,7 +111,7 @@ window.HELP = {
         + 'the same votes with the calendar shuffled away, at plain forecasting on the test window. No trade box '
         + 'and no fee exist at stage 1, so there is nothing to guess.\n\n'
         + 'Stage 2 reads a finished stage 1 record set, carries the best rows forward in the sort saved on its '
-        + 'table on Boards3 (the against-null-set rule when none is saved), and trains only the BOOST members for '
+        + 'table on Boards (the against-null-set rule when none is saved), and trains only the BOOST members for '
         + 'them. The LOGREG members are never retrained; after this a carried unit holds all its members\' votes.\n\n'
         + 'Stage 3 reads a finished stage 2 record set and prices any block of settings from the kept votes: '
         + 'decision, band, 24/5, agree, entry, gate, d, t, trail, arm and the fee are all applied here, as '
@@ -383,190 +122,109 @@ window.HELP = {
         'One heavy job at a time: a stage refuses to start while a sweep or another stage run is going. A stage '
         + 'refuses a parent that is not finished, one written by a different engine release, and one whose price '
         + 'files no longer fingerprint identically — the refusal names the symbols that changed, and nothing is '
-        + 'ever mixed. A set that finishes with failed units says INCOMPLETE on Boards3 rather than wearing a '
+        + 'ever mixed. A set that finishes with failed units says INCOMPLETE on Boards rather than wearing a '
         + 'finished face: a set must match its own plan, written before anything ran.'],
     ],
     controls: {
       ...CAMPAIGN_PANEL_CONTROLS,
-      s3Uni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
-      s3Singles: { what: 'Include each coin judged on its own price history alone — 3 members each.' },
-      s3Doubles: { what: 'Include each coin judged alongside one other coin — 4 members each, the cross view added.' },
-      s3Triples: { what: 'Include each coin judged alongside two others — 4 members each.' },
-      s3AllData: { what: 'Use every month of price history that is held, rather than a chosen range. With this ticked, start and end are ignored.' },
-      s3Start: { what: 'First month of price history stage 1 works over.' },
-      s3End: { what: 'Last month of price history stage 1 works over.' },
-      s3Geom: { what: 'How long a stretch of prices each decision looks at, and how often a decision is made — same meaning as on Sweep.' },
-      s3PermGeom: { what: 'Train every chunk shape rather than only the one chosen. A real multiplier of training, so it lives at stage 1 where the training happens.' },
-      s3Layout: { what: 'How the price history is divided between learning, testing and the held-back look — same meaning as on Sweep. The sealed layout is the honest end of a search.' },
-      s3Null1: {
+      swUni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
+      swSingles: { what: 'Include each coin judged on its own price history alone — 3 members each.' },
+      swDoubles: { what: 'Include each coin judged alongside one other coin — 4 members each, the cross view added.' },
+      swTriples: { what: 'Include each coin judged alongside two others — 4 members each.' },
+      swAllData: { what: 'Use every month of price history that is held, rather than a chosen range. With this ticked, start and end are ignored.' },
+      swStart: { what: 'First month of price history stage 1 works over.' },
+      swEnd: { what: 'Last month of price history stage 1 works over.' },
+      swGeom: {
+        what: 'How long a stretch of prices each decision looks at, and how often a decision is made. Weekly 8-day looks at eight days and decides once a week; Daily 1-day looks at one day and decides every day.',
+      },
+      swPermGeom: { what: 'Train every chunk shape rather than only the one chosen. A real multiplier of training, so it lives at stage 1 where the training happens.' },
+      swLayout: {
+        what: 'How the price history is divided up between learning, testing and the held-back look. 70/15/15 keeps one block back to check against. 61/13/13/13 keeps a second block back, sealed, to be looked at once at the very end.',
+        more: 'Use the sealed one when you intend to search hard, because the honest end of a search is a block of data the search never touched.',
+      },
+      swNull1: {
         what: 'How many shuffled companions make up each unit\'s null set. Each one is the same kept votes with their dates shuffled away, given the same forecast score — no training, ever.',
         more: 'The ordering IS the against-null-set result: beat its own null set, ties broken by lead over null set. The null set always feeds the pick.',
       },
-      s3Desc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
-      s3Go1: { what: 'Starts stage 1. Progress shows at the top of this screen, and the finished set lands on Boards3.' },
-      s3From2: {
+      swDesc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
+      swGo1: { what: 'Starts stage 1. Progress shows at the top of this screen, and the finished set lands on Boards.' },
+      swFrom2: {
         what: 'Which finished stage 1 record set stage 2 carries forward from. A stage 2 set names this parent forever.',
         more: 'The launch refuses when the price files no longer fingerprint identically to the ones the parent read — a mismatch refuses, it never mixes.',
       },
-      s3Carry: {
+      swCarry: {
         what: 'How many rows carry forward into the BOOST training, from the top of the parent\'s table in the sort saved on it. 0 carries all of them.',
-        more: 'Pick the sort on Boards3 — its columns save first/second/third priorities onto the record set, and the carry takes exactly that order. With nothing saved it is the fixed rule: beat its own null set, ties by lead over null set. Carry generously: the cut is for shedding the clearly-dead, not for picking winners.',
+        more: 'Pick the sort on Boards — its columns save first/second/third priorities onto the record set, and the carry takes exactly that order. With nothing saved it is the fixed rule: beat its own null set, ties by lead over null set. Carry generously: the cut is for shedding the clearly-dead, not for picking winners.',
       },
-      s3Desc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
-      s3Go2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
-      s3From3: { what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever.' },
-      s3Carry3: {
+      swDesc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
+      swGo2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
+      swFrom3: { what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever.' },
+      swCarry3: {
         what: 'How many of the parent\'s units get priced, from the top of its table in the sort saved on it. 0 prices all of them.',
-        more: 'The stage 2 table\'s columns on Boards3 save first/second/third sort priorities onto the record set, and a count here takes exactly that order. With nothing saved: forecast score — all members, best first, ties keeping their carry order.',
+        more: 'The stage 2 table\'s columns on Boards save first/second/third sort priorities onto the record set, and a count here takes exactly that order. With nothing saved: forecast score — all members, best first, ties keeping their carry order.',
       },
-      s3Fee: {
+      swFee: {
         what: 'What a trade is assumed to cost, as a percent of the money in the position, charged each way. It lives at this stage because stage 3 is the first place a trade is priced.',
         more: 'directional decisions also use it as their sure-enough bar — the bar is re-tuned from each member\'s kept votes at this fee, arithmetic, never a retrain.',
       },
-      s3Null3: {
+      swNull3: {
         what: 'How many null-set deals each setting is read against, dealt from the kept votes — no training.',
         more: 'The same deals are used for every setting in the block, so any two settings\' shares are always comparable.',
       },
-      s3Dec: { what: 'The decision to price: argmax takes whichever outcome the votes lean to most; directional acts only when the sureness clears the fee-priced bar.' },
-      s3PermDec: { what: 'Price both ways of deciding, each as its own setting in the block.' },
-      s3Band: { what: 'The size a move must reach to count as a move, for pricing the rails. auto uses the width each unit trained at, worked out from its own history.' },
-      s3PermBand: { what: 'Price every band on the menu as its own setting in the block.' },
-      s3Wk: { what: 'Price this setting on weekday starts only. Weekly chunk shapes always span weekends, so for those units this reads the same either way.' },
-      s3PermWk: { what: 'Price it both ways — weekdays only, and every day.' },
-      s3Entry: { what: 'How the position is opened — same meaning as on Sweep. market carries no gate, d, trail or arm.' },
-      s3PermEntry: { what: 'Price every way of opening as its own setting in the block.' },
-      s3Gate: { what: 'When a position may be opened at all — same meaning as on Sweep.' },
-      s3PermGate: { what: 'Price every gate as its own setting in the block.' },
-      s3D: { what: 'How far from the starting price the opening level sits, as a multiple of the band.' },
-      s3PermD: { what: 'Price every distance as its own setting in the block.' },
-      s3T: { what: 'How many hours a position is held before it is closed, if nothing else closed it first.' },
-      s3PermT: { what: 'Price every holding time as its own setting in the block.' },
-      s3Trail: { what: 'Which stop the setting uses. static sits still on the far side of the entry; the others follow the price behind you.' },
-      s3PermTrail: { what: 'Price every kind of stop, static included, as its own setting in the block.' },
-      s3Arm: { what: 'How far the price must move in your favour before a following stop starts following.' },
-      s3PermArm: { what: 'Price every starting point as its own setting in the block.' },
-      s3AgreeRule: {
+      swDec: { what: 'The decision to price: argmax takes whichever outcome the votes lean to most; directional acts only when the sureness clears the fee-priced bar.' },
+      swPermDec: { what: 'Price both ways of deciding, each as its own setting in the block.' },
+      swBand: { what: 'The size a move must reach to count as a move, for pricing the rails. auto uses the width each unit trained at, worked out from its own history.' },
+      swPermBand: { what: 'Price every band on the menu as its own setting in the block.' },
+      swWk: { what: 'Price this setting on weekday starts only. Weekly chunk shapes always span weekends, so for those units this reads the same either way.' },
+      swPermWk: { what: 'Price it both ways — weekdays only, and every day.' },
+      swEntry: {
+        what: 'How the position is opened. market buys or sells at the opening price of the hour, in whichever direction was called. breakout waits until the price reaches a level set d away from where it started, and opens there.',
+        more: 'market carries no gate, d, trail or arm — those four boxes disappear while it is chosen, because none of them means anything to it.',
+      },
+      swPermEntry: { what: 'Price every way of opening as its own setting in the block.' },
+      swGate: {
+        what: 'When a position is allowed to be opened at all. directional only when a direction was called; active whenever anything is happening; always every single period.',
+      },
+      swPermGate: { what: 'Price every gate as its own setting in the block.' },
+      swD: { what: 'How far from the starting price the opening level sits, as a multiple of the band.' },
+      swPermD: { what: 'Price every distance as its own setting in the block.' },
+      swT: { what: 'How many hours a position is held before it is closed, if nothing else closed it first.' },
+      swPermT: { what: 'Price every holding time as its own setting in the block.' },
+      swTrail: { what: 'Which stop the setting uses. static sits still on the far side of the entry; the others follow the price behind you.' },
+      swPermTrail: { what: 'Price every kind of stop, static included, as its own setting in the block.' },
+      swArm: { what: 'How far the price must move in your favour before a following stop starts following.' },
+      swPermArm: { what: 'Price every starting point as its own setting in the block.' },
+      swAgreeRule: {
         what: 'How the members\' votes become one call.',
         more: 'count is how many members say the same thing. conviction is how strongly they lean, added up, so eight members barely leaning is not the same as eight certain ones. voices counts only INDEPENDENT members — members that call the same way almost every time share one vote between them. families needs different KINDS of evidence to agree, not just a number of members. unusual asks how rare this much agreement is for this particular committee, which makes one setting mean the same thing on a quarrelsome unit and a unanimous one.',
       },
-      s3PermAgreeRule: { what: 'Price every agree by choice as its own setting in the block.' },
-      s3AgreeShare: {
+      swPermAgreeRule: { what: 'Price every agree by choice as its own setting in the block.' },
+      swAgreeShare: {
         what: 'How demanding the rule is, as a share of the committee.',
         more: 'Higher is stricter for every rule, so the dial never changes direction under you. A share rather than a count is what lets one number mean the same thing whether a coin\'s committee holds 8 members or 32 — and it is why no committee size appears in a setting\'s name any more.',
       },
-      s3PermAgreeShare: {
+      swPermAgreeShare: {
         what: 'Price every share as its own setting in the block.',
         more: 'Shares that land on the same rung for every unit in the run are counted once, so the block never carries two settings that would price identical trades.',
       },
-      s3AgreeBoth: {
+      swAgreeBoth: {
         what: 'The winning side must include at least one LOGREG member and one BOOST member.',
         more: 'Without it a call can be one kind of member\'s quirk, agreed with by its own near-copies.',
       },
-      s3PermAgreeBoth: { what: 'Price both with and without the both kinds requirement.' },
-      s3AgreeHold: {
+      swPermAgreeBoth: { what: 'Price both with and without the both kinds requirement.' },
+      swAgreeHold: {
         what: 'How many decision moments in a row the same call must have stood before it is acted on. off acts at once.',
         more: 'A hold is a plain noise filter: it costs entries and keeps only the calls the committee stayed with.',
       },
-      s3PermAgreeHold: { what: 'Price every hold as its own setting in the block.' },
-      s3Desc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
-      s3Go3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards3.' },
-      s3Stop: { what: 'Stops the stage run that is going. Everything already written stays; the set reports itself cancelled.' },
+      swPermAgreeHold: { what: 'Price every hold as its own setting in the block.' },
+      swDesc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
+      swGo3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards.' },
+      swStop: { what: 'Stops the stage run that is going. Everything already written stays; the set reports itself cancelled.' },
     },
   },
 
   boards: {
     title: 'Boards',
-    how: [
-      ['What a row is, and why the best one lies to you',
-        'One row is one thing that was tried: an asset, a chunk shape, a decision, a band, and — for the rows scored twice — one particular combination of entry, gate, d, t, trail and arm.\\n\\nThe board is sorted, so the top row is the best of everything tried. That is exactly the problem. Try two thousand things against the same history and the best of them looks good whether or not anything real is there, because you picked it after seeing the answers. The number on the top row is not wrong; what is wrong is reading it as what you would have made.\\n\\nWhat the board is FOR is narrowing: it says which handful are worth the slower checks on the tabs after it. Picking a row here is what those tabs then work on.'],
-    ],
-    intro: 'What a finished search found, one row per setting tried. This is a list to read, not '
-      + 'a set of answers: the best row on a board of thousands is the best of thousands of tries, and '
-      + 'that flatters itself. Picking a row here is what the Verify, Tune and Greenlight tabs then work on.',
-    controls: {
-      bPick: { what: 'Which finished run to look at. The newest is at the top.' },
-      bOpen: { what: 'Loads the chosen run and draws its rows below.' },
-      bResume: {
-        what: 'Carries on a run that stopped, from where it stopped. It scores only the units that have no result yet — everything already scored is kept exactly as it is — and then finishes as normal.',
-        more: 'It refuses more than it accepts, on purpose. The price files have to fingerprint identically to the ones the run read, and the engine has to be the same version it started under. Half a board worked out from one history and half from another is not one board, and nothing on the finished screen would say so. It also refuses a run that finished, and one that is going now. Anything that failed the first time gets another go, since a failure left no result to keep.',
-      },
-      bCoinSort: {
-        what: 'How the every-coin table is ordered. beat its own copies puts the strongest scores first, with more comparisons winning ties; comparisons puts the best-evidenced rows first; avg held-back, coin and configuration order by those.',
-        more: 'The whole data set is sorted before the page is cut, so page one really is the top of everything — never just the top of a page.',
-      },
-      bCoinMin: {
-        what: 'Hides rows whose score rests on fewer head-to-heads than this. Zero hides nothing.',
-        more: 'A perfect score built on ten comparisons is luck wearing a score. The line under the table says how many rows a floor removed, so nothing disappears silently.',
-      },
-      bCoinMinShare: {
-        what: 'Hides rows whose share of head-to-heads won is below this percent. Empty hides nothing.',
-        more: 'A set floor also hides rows with no share at all — a row that was never measured cannot clear a bar, and letting it through would smuggle unmeasured rows past every filter.',
-      },
-      bCoinMinHold: {
-        what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.',
-        more: 'A set floor also hides rows that recorded no held-back money.',
-      },
-      bCoinMinTrades: {
-        what: 'Hides rows whose avg trades is below this. Empty hides nothing.',
-        more: 'A row whose money rests on a handful of trades is thin evidence however good the other columns look.',
-      },
-      bCoinMinVsLong: {
-        what: 'Hides rows whose avg vs always-long is below this many dollars. Empty hides nothing.',
-        more: 'Zero keeps only rows that beat just holding the coin, on average.',
-      },
-      bCoinGo: {
-        what: 'Asks again with the sort and floor chosen beside it.',
-      },
-      bDelete: {
-        what: 'Permanently removes the run that is open, together with the model and tuning files that belong only to it. You are shown exactly what will go, and then have to type the run id back, before anything is deleted.',
-        more: 'It refuses two things. The run that is going right now — stop it first, so a job cannot be writing a file that is being taken away underneath it. And any run a greenlight names as the evidence it came from, because something on the Trade tab may be standing on that evidence. Neither refusal deletes anything; both say which it is.',
-      },
-      ...RUN_NOTES_CONTROLS,
-      bCopySettings: {
-        what: 'Fills the Sweep tab with the exact settings this run used, so you can do it again or change one thing.',
-        more: 'Everything comes across: the assets, the sizes, the date range, the chunk shape, the decision, the band, the permutes, the window layout, the null boards and also try moving stops.',
-      },
-      bSort: { what: 'What to order the rows by.' },
-      bClearSel: {
-        what: 'Unpicks the row you had selected.',
-        more: 'Worth knowing: a row picked once keeps steering the Verify, Tune and Greenlight tabs until it is cleared here.',
-      },
-    },
-  },
-
-  boards2: {
-    title: 'Boards2',
-    intro: 'A drawing, not a working screen. Every control on it is switched off and every row on it is a worked '
-      + 'example. It shows how the three stages drawn on Sweep2 would read back: one table per stage, with the chain '
-      + 'between them always on screen.',
-    how: [
-      ['One table per stage, and the chain always visible',
-        'Every record set names the one it came from, so the page always shows the whole chain: which stage 1 the '
-        + 'ranking came from, which stage 2 carried what forward and by which measure, and which stage 3 priced what. '
-        + 'No table mixes two stages, and every number says which record set it belongs to.\n\n'
-        + 'The stage 1 table is the ranking — it shows exactly where the carry-forward cut fell, including the first '
-        + 'row that missed it. The stage 2 table puts each unit\'s cheap score beside its full score, so the fuller '
-        + 'board\'s effect is visible instead of remembered. The stage 3 tables are the pricing: the settings ranked '
-        + 'against each other, and every coin of every setting with its own records opening underneath, the same two '
-        + 'readings Boards offers today.\n\n'
-        + 'The held-back window appears only on stage 3 tables, because only stage 3 prices it — under settings that '
-        + 'were fully named first.'],
-    ],
-    controls: {
-      b2Pick: { what: 'Which record set to read. Every set is listed with its stage, what it holds, and the parent it came from.' },
-      b2Open: { what: 'Would open the chosen record set and draw its chain and tables below. Switched off on this drawing.' },
-      b2MinShare: { what: 'Hides rows whose share of head-to-heads won is below this percent. Empty hides nothing — same meaning as the floor on Boards.' },
-      b2MinHold: { what: 'Hides rows whose avg held-back is below this many dollars. Empty hides nothing.' },
-      b2MinTrades: { what: 'Hides rows whose avg trades is below this. Empty hides nothing.' },
-      b2MinVsLong: { what: 'Hides rows whose avg vs always-long is below this many dollars. Empty hides nothing.' },
-      b2Sort: { what: 'How the every-coin table is ordered — the same readings as on Boards, named this drawing\'s way: beat its own null set for beat its own copies, setting for configuration.' },
-      b2MinPairs: { what: 'Hides rows whose share rests on fewer head-to-heads than this. Zero hides nothing.' },
-      b2Go: { what: 'Would ask again with the sort and floors chosen beside it. Switched off on this drawing.' },
-    },
-  },
-
-  boards3: {
-    title: 'Boards3',
     intro: 'Where the record sets are read: one section per stage, the whole provenance on screen. Picking a '
       + 'stage 3 record set fills the stage 2 and stage 1 sections with its parents; picking a stage 2 set fills '
       + 'its stage 1 parent; picking a parent puts the child selections away. Each section can be put away and '
@@ -588,7 +246,7 @@ window.HELP = {
     ],
     controls: {
       ...RUN_NOTES_CONTROLS,
-      ...B3_SECTION_CONTROLS,
+      ...BOARD_SECTION_CONTROLS,
     },
   },
 

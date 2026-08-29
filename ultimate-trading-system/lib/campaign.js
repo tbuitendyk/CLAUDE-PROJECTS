@@ -272,7 +272,7 @@ function deleteCampaign(name) {
     if (going) {
       throw new Error(`the campaign "${found.name}" holds ${found.stageSets.length} record set(s) and a stage run `
         + `(${going}) is being written right now — record sets are never deleted while one is going. `
-        + 'Wait for it to finish or stop it on the Sweep3 tab; nothing has been deleted.');
+        + 'Wait for it to finish or stop it on the Sweep tab; nothing has been deleted.');
     }
   }
 

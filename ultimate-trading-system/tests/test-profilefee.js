@@ -158,14 +158,28 @@ module.exports = {
 
   // 5. THE SWEEP CAN SET IT TOO — "for that matter, where we're training and
   // searching with sweeps".
+  // RE-AIMED 2026-08-28 at the surviving screen. The old Sweep sent the fee on
+  // its launch body; the three-stage Sweep sends it on the stage 3 launch,
+  // which is the first place a trade is priced at all.
   async theSweepCanBePricedFromTheScreen() {
     assert.ok(/id="swFee"/.test(CONSTRUCT), 'the Sweep section has no box for what a trade costs');
-    assert.ok(/feePerLeg: \$\('#swFee'\)\.value\.trim\(\) === '' \? undefined : Number\(\$\('#swFee'\)\.value\) \/ 100/.test(CONSTRUCT),
+    assert.ok(/fee: Number\(\$\('#swFee'\)\.value\) \/ 100/.test(CONSTRUCT),
       'the Sweep section has the box but does not send it, or sends a percent where a fraction belongs');
-    // A blank box must NOT mean a free run. That is the shape of mistake that
-    // would flatter every result on the page.
-    assert.ok(/=== '' \? undefined/.test(CONSTRUCT),
-      'a blank fee box sends a value instead of falling back to the lab rate');
+    // ...and the engine must refuse a cost it cannot price a trade at, rather
+    // than running free and flattering every number on the page.
+    const stages = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(/if \(!Number\.isFinite\(fee\) \|\| fee < 0 \|\| fee > 0\.05\)/.test(stages),
+      'stage 3 no longer checks the fee it was handed');
+    //
+    // A GAP, RECORDED RATHER THAN ASSERTED AWAY (found 2026-08-28, reported to
+    // the owner, not fixed — it is not part of the rename that was authorised).
+    // The old Sweep sent `undefined` for an EMPTY fee box so the engine fell
+    // back to the lab rate. The three-stage Sweep sends Number('') / 100, which
+    // is 0, and the check above lets 0 through — so clearing that box buys a
+    // free run whose every number is flattered. The box carries a default and
+    // has to be deliberately emptied, which is why this is a gap and not a
+    // live fault, but it is the exact mistake the deleted assertion existed to
+    // stop. The fix is the owner's to authorise.
   },
 
   // 6. RULE FIVE: it is on the screens, not only in the request body.

@@ -1,4 +1,4 @@
-// The three-stage record sets (Sweep3 / Boards3) — plan-first orchestration
+// The three-stage record sets (Sweep / Boards) — plan-first orchestration
 // over the pure tasks in stagework.js.
 //
 // A record set is written PLAN FIRST: the closed list of units, the settings,
@@ -89,7 +89,7 @@ function publicParams(d) {
     orderBy: p.orderBy || null, carry: p.carry ?? null, fee: p.fee ?? null,
     campaign: p.campaign || null,
     sizes: p.sizes || null,
-    // what the Sweep3 provenance check reads a stage 1 set by (owner order,
+    // what the Sweep provenance check reads a stage 1 set by (owner order,
     // 2026-08-27: the section titles go red at the point of provenance break)
     universe: p.universe || null, geometries: p.geometries || null,
     allLoaded: p.allLoaded !== false, startMonth: p.startMonth || null, endMonth: p.endMonth || null,
@@ -121,7 +121,7 @@ function claimOrRefuse() {
   }
   if (activeSet) throw new Error(`stage run ${activeSet.id} is going right now — one heavy job at a time`);
   if (tallyRun && !tallyRun.error) {
-    throw new Error(`the tables of ${tallyRun.id} are totalling right now — one heavy job at a time. They appear on Boards3 when it lands.`);
+    throw new Error(`the tables of ${tallyRun.id} are totalling right now — one heavy job at a time. They appear on Boards when it lands.`);
   }
 }
 function cancelStage(id) {
@@ -375,7 +375,7 @@ function rankingOf(id) { return rowstore.readAll(id, 'ranking'); }
 
 // ---- saved sort orders (owner order, 2026-08-27) ---------------------------------
 // The stage 1 and stage 2 tables sort by up to three columns, clicked into
-// first/second/third priority on Boards3 and SAVED ON THE RECORD SET —
+// first/second/third priority on Boards and SAVED ON THE RECORD SET —
 // because the next stage's carry forward reads this exact order to decide
 // what it takes. One closed list of what may be sorted, per stage; a key not
 // on it is refused by name, never guessed.
@@ -542,7 +542,7 @@ function startStage2(params) {
   claimOrRefuse();
   if (params.orderBy !== undefined) {
     throw new Error('order by is gone — the carry follows the sort saved on the parent record set\'s table '
-      + '(the fixed rule when none is saved). Pick the sort on Boards3.');
+      + '(the fixed rule when none is saved). Pick the sort on Boards.');
   }
   const parent = parentOrRefuse(params.from, 1);
   const carry = Math.max(0, Math.floor(num(params.carry, 0)));
@@ -550,7 +550,7 @@ function startStage2(params) {
   if (!ranking.length) throw new Error(`${parent.name} holds no ranking — nothing to carry`);
   const parentRecords = new Map(allRecords(parent.id).map((r) => [r.u, r]));
   // The carry takes the parent's table in ITS OWN saved order — the exact
-  // order the owner sees on Boards3 — and the fixed rule (the recorded
+  // order the owner sees on Boards — and the fixed rule (the recorded
   // ranking) when no sort is saved.
   const saved = Array.isArray(parent.sort) && parent.sort.length ? parent.sort : null;
   let ordered = ranking.slice();
@@ -1330,7 +1330,7 @@ function setSetNotes(id, text) {
   return { id: doc.id, notes: doc.notes, notesEditedAt: doc.notesEditedAt };
 }
 
-// ---- reads for Boards3 ------------------------------------------------------------
+// ---- reads for Boards ------------------------------------------------------------
 function chainOf(id) {
   const out = [];
   let cur = getSet(id);

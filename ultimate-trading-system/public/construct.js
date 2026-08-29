@@ -181,332 +181,23 @@ const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[
 // fetched when a line is opened, and the opened table and the panel have to be
 // drawn by the SAME function or they will come to disagree about what a row
 // means.
-const nullCell = (g) => (g.nullShare == null
-  ? '<span class="muted" title="this run recorded no dealt-vote copies of this configuration">no null copies</span>'
-  : `<b class="${g.nullShare === 1 ? 'pos' : ''}">${g.nullBeat}/${g.nullPairs}</b>`);
 // The old per-asset row renderer and its more-note are RETIRED with the row
 // walk that fed them (owner go, 2026-08-26) — an opened line now draws
 // per-coin summaries with coinHeadHtml/coinRowHtml, the same columns the
 // every-coin table draws, from the same saved tally.
 
 
-// ---- ONE PAGING BAR, USED BY EVERY TABLE THAT CAN GROW ----------------------
-// (owner order, 2026-08-23: "make it sane and pageable".)
-//
-// Four tables on this page grow with the run: the ranked list of declared
-// configurations, one configuration's per-asset rows, the survivor board, and
-// the menu grid. Each had its own answer — one shipped everything and reached
-// 99 MB, one capped at 500 with no way to ask for the 501st, one capped at 400
-// and said so, one had no limit at all. Four answers to one question is four
-// things to get wrong, so there is one now.
-//
-// The bar ALWAYS states the true total. A page that does not say what it is a
-// page of is a short list that reads as a complete one, which is the fault all
-// of this exists to remove.
-//
-// The controls carry no ids on purpose: the bar is drawn many times on one
-// screen (once per opened configuration) and ids have to be unique. They are
-// addressed the same way the per-row buttons beside them already are, by data
-// attribute, through one delegated handler.
-const PAGE_SIZES = [25, 50, 100, 200, 500];
-
-function pageBar(name, p, extra = '') {
-  if (!p) return '';
-  const total = p.total || 0;
-  const from = total ? p.offset + 1 : 0;
-  const to = p.offset + (p.shown || 0);
-  const at = (o) => `data-pager="${esc(name)}" data-go="${o}"`;
-  const dis = (cond) => (cond ? 'disabled' : '');
-  const prev = Math.max(0, p.offset - p.limit);
-  const last = Math.max(0, Math.floor(Math.max(0, total - 1) / p.limit) * p.limit);
-  return `<div class="row" style="gap:.4rem;margin:.35rem 0;align-items:center;flex-wrap:wrap">
-    <button ${at(0)} ${dis(p.offset === 0)} title="back to the first page">first</button>
-    <button ${at(prev)} ${dis(p.offset === 0)} title="the previous page">prev</button>
-    <span class="note">showing <b>${from.toLocaleString()}–${to.toLocaleString()}</b> of <b>${total.toLocaleString()}</b>${extra}</span>
-    <button ${at(p.offset + p.limit)} ${dis(!p.more)} title="the next page">next</button>
-    <button ${at(last)} ${dis(!p.more)} title="jump to the last page">last</button>
-    <label class="muted" style="font-size:.74rem" title="how many rows this table shows at a time. Nothing is hidden by a smaller number — the count beside it always says how many there are in total.">rows per page
-      <select data-pager="${esc(name)}" data-size="1">
-        ${PAGE_SIZES.map((n) => `<option value="${n}" ${n === p.limit ? 'selected' : ''}>${n}</option>`).join('')}
-      </select></label>
-  </div>`;
-}
-
-// Every pageable table registers how to redraw itself at a given page. One
-// delegated listener then serves all of them, however many are on screen.
-// Where each table currently is. Kept out here so a redraw — switching sort,
-// saving notes — puts you back on the page you were reading, not at the top.
-const pageAt = {
-  repList: { offset: 0, limit: 100 },
-  repCoins: { offset: 0, limit: 100 },
-  board: { offset: 0, limit: 50 },
-  grid: { offset: 0, limit: 200 },
-  repDetail: {},                       // one entry per configuration label
-};
-const PAGERS = {};
-// The replication table, once it has been asked for. Kept per run so opening it
-// costs its minutes once and a redraw does not spend them again — and so
-// switching runs cannot show one run's totals under another's name.
-let repLoaded = { id: null, data: null };
-// The per-coin view, fetched when its own box is opened. Sort and narrowing
-// live here so a redraw keeps the reader's place.
-let repCoins = { id: null, data: null, sort: 'share', minPairs: 0, minShare: '', minHold: '', minTrades: '', minVsLong: '' };
-// The records opened below coin rows, by row identity, WITH what came back —
-// so a redraw (tab flip, paging, Apply) draws them open instead of folding
-// them and shortening the page out from under the remembered scroll (owner
-// order, 2026-08-26).
-let openRecs = { id: null, byKey: new Map() };
-const coinKeyOf = (o) => [o.label, o.trade, o.ctx1 || '', o.ctx2 || '', o.geometry].join('|');
-
-// ONE builder for the records shown below a coin row — drawn by coinBox()
-// for every open row on every redraw, and by the button press that opens
-// one. Two copies of this block would be the drift RULE TWO polices.
-function coinRecordsHtml(got) {
-  if (got && got.loading) return '<span class="muted">loading the records…</span>';
-  if (!got) return '<span class="warn">could not read the records — nothing is missing from the run, the screen could not ask</span>';
-  if (got.indexed === false) return `<span class="muted">${esc(got.why || 'the records are not reachable yet')}</span>`;
-  if (!got.rows || !got.rows.length) return '<span class="muted">no records came back for this row</span>';
-  // THE CHOICES ARE NAMED, ALWAYS (owner orders, 2026-08-26: "knowing the
-  // actual choices is essential", then "you need to record that information
-  // for each row. i'm sure it can be recovered"). Rows recorded from today
-  // carry them; older rows are named from the run's own unit records,
-  // matched in the order both were written — the recovery runs in the
-  // background the first time records are asked for, and this box reports
-  // it until the names arrive.
-  const named = got.rows.some((r) => r.decision != null || r.bandMode != null || r.weekdaysOnly != null);
-  const tail = got.namesFrom === 'rows'
-    ? ', and each record names the choices that made it.'
-    : got.namesFrom === 'recovered'
-      ? `, and each record's decision, band and 24/5 were recovered from this run's own unit records, matched in the
-          order both were written down.${got.unnamedRecords ? ` <b>${got.unnamedRecords} record(s) could not be matched and show — instead.</b>` : ''}`
-      : got.recovery && got.recovery.going
-        ? `. <b>The decision, band and 24/5 of each record are being recovered now</b> from this run's own unit
-          records — ${Number(got.recovery.scanned || 0).toLocaleString()} of ${Number(got.recovery.of || 0).toLocaleString()} rows
-          matched so far. Press the records button again when that finishes.`
-        : got.recovery && got.recovery.error
-          ? `. <b>${esc(got.recovery.error)}</b> — press the records button again to retry.`
-          : named
-            ? ', and each record names the choices that made it.'
-            : `. <b>This run's records were written before they carried their decision, band and 24/5 choices, and it kept
-          no unit records to recover them from.</b> The band % below is each record's own; the unnamed boxes show —
-          rather than a guess.`;
-  return `<p class="note" style="margin:.2rem 0">source: the run's replication rows themselves — the ${got.rows.length} record(s)
-          this row averages, read straight from the stored rows. Each is one promoted unit's own scoring of this configuration on this coin,
-          one per combination of the boxes permuted on Sweep that share the coin and chunk shape${tail}</p>
-        <div class="scrollx"><table style="border-collapse:collapse">
-          <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-            <th style="padding:.2rem .5rem .2rem 0" title="how the committee's votes become a call — the decision box on Sweep, one of the choices permuted across this coin's records">decision</th>
-            <th style="padding:.2rem .5rem" title="the band % (or auto) box as it was chosen. auto works the width out from the prices, and the band % column shows what it worked out to">band</th>
-            <th style="padding:.2rem .5rem" title="whether this record traded weekdays only — the 24/5 box on Sweep">24/5</th>
-            <th style="padding:.2rem .5rem" title="how far either side of the current price this record set its two levels, as a percentage of price">band %</th>
-            <th style="padding:.2rem .5rem" title="profit-and-loss on the window the settings were CHOSEN on — flattering by construction">test $</th>
-            <th style="padding:.2rem .5rem" title="entries in the test window — the window the settings were chosen on">test trades</th>
-            <th style="padding:.2rem .5rem" title="of the head-to-heads between THIS record's held-back money and every scrambled copy of this coin, the share it won. The coin row above sums exactly these records.">beat its own copies</th>
-            <th style="padding:.2rem .5rem" title="the once-only look on data no search touched — the number that counts">held-back $</th>
-            <th style="padding:.2rem .5rem" title="entries in the held-back window — the once-only look">held-back trades</th>
-            <th style="padding:.2rem .5rem" title="how many held-back positions closed at their stop">held-back stops</th>
-            <th style="padding:.2rem .5rem" title="this record's held-back money minus just holding the coin over the same window">vs always-long</th></tr></thead>
-          <tbody>${got.rows.map((r) => {
-    const h = r.holdout || null;
-    return `<tr>
-            <td style="padding:.2rem .5rem .2rem 0">${r.decision == null ? '<span class="muted">—</span>' : esc(r.decision)}</td>
-            <td style="padding:.2rem .5rem">${r.bandMode == null ? '<span class="muted">—</span>' : r.bandMode === 'auto' ? 'auto' : `${esc(r.bandMode)}%`}</td>
-            <td style="padding:.2rem .5rem">${r.weekdaysOnly == null ? '<span class="muted">—</span>' : r.weekdaysOnly ? 'yes' : 'no'}</td>
-            <td style="padding:.2rem .5rem">±${r.bandPct ?? '—'}%</td>
-            <td style="padding:.2rem .5rem" class="${(r.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(r.pnl)}</td>
-            <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
-            <td style="padding:.2rem .5rem">${r.beatCopies == null || !r.copyPairs ? '<span class="muted">—</span>' : `<b class="${r.beatCopies / r.copyPairs > 0.5 ? 'pos' : ''}">${(r.beatCopies / r.copyPairs * 100).toFixed(1)}%</b> <span class="muted">${r.beatCopies}/${r.copyPairs}</span>`}</td>
-            <td style="padding:.2rem .5rem" class="${h ? ((h.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${h ? money(h.pnl) : '—'}</td>
-            <td style="padding:.2rem .5rem">${h && h.trades != null ? h.trades : '—'}</td>
-            <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>
-            <td style="padding:.2rem .5rem" class="${h && h.vsAlwaysLong != null ? (h.vsAlwaysLong >= 0 ? 'pos' : 'neg') : 'muted'}">${h && h.vsAlwaysLong != null ? money(h.vsAlwaysLong) : '—'}</td></tr>`;
-  }).join('')}</tbody></table></div>`;
-}
-
-// ONE set of coin-row columns, drawn with or without the configuration
-// column in front — the every-coin table and a ranked line's own table must
-// never come to disagree about what a column means.
-function coinHeadHtml(withConfig) {
-  return `<thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-          ${withConfig ? `<th style="padding:.3rem .5rem .3rem 0" title="${esc(COL.coinCfg)}">configuration</th>` : ''}
-          <th style="padding:.3rem .5rem${withConfig ? '' : ' .3rem 0'}" title="${esc(COL.coin)}">coin</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinShare)}">beat its own copies</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinPairs)}">comparisons</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinMoney)}">avg held-back</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinTrades)}">avg trades</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinVsLong)}">avg vs always-long</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinRows)}">rows</th>
-          <th style="padding:.3rem .5rem" title="${esc(COL.coinRecords)}">records</th></tr></thead>`;
-}
-function coinRowHtml(r, withConfig) {
-  const span = withConfig ? 9 : 8;
-  const open = openRecs.byKey.has(coinKeyOf(r));
-  return `<tr>
-          ${withConfig ? `<td style="padding:.25rem .5rem .25rem 0">${esc(r.label)}</td>` : ''}
-          <td style="padding:.25rem .5rem${withConfig ? '' : ' .25rem 0'}"><b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''} <span class="muted">${esc(r.geometry)}</span></td>
-          <td style="padding:.25rem .5rem">${r.share == null ? '<span class="muted">—</span>' : `<b class="${r.share > 0.5 ? 'pos' : ''}">${(r.share * 100).toFixed(1)}%</b> <span class="muted">${r.beat}/${r.pairs}</span>`}</td>
-          <td style="padding:.25rem .5rem">${r.pairs}</td>
-          <td style="padding:.25rem .5rem" class="${(r.avgHold ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgHold == null ? '<span class="muted">—</span>' : money(r.avgHold)}</td>
-          <td style="padding:.25rem .5rem">${r.avgTrades == null ? '<span class="muted">—</span>' : r.avgTrades.toFixed(1)}</td>
-          <td style="padding:.25rem .5rem" class="${(r.avgVsLong ?? 0) >= 0 ? 'pos' : 'neg'}">${r.avgVsLong == null ? '<span class="muted">—</span>' : money(r.avgVsLong)}</td>
-          <td style="padding:.25rem .5rem">${r.rows}</td>
-          <td style="padding:.25rem .5rem"><button class="coinopen" data-label="${esc(r.label)}" data-trade="${esc(r.trade)}" data-ctx1="${esc(r.ctx1 || '')}" data-ctx2="${esc(r.ctx2 || '')}" data-geometry="${esc(r.geometry)}" title="${esc(COL.coinRecords)}">${open ? '▾' : '▸'} records</button></td></tr>${
-  open
-    ? `<tr class="coinsub"><td colspan="${span}" style="padding:.25rem .5rem .5rem 1.2rem">${coinRecordsHtml(openRecs.byKey.get(coinKeyOf(r)))}</td></tr>`
-    : ''}`;
-}
-
-// FLIPPING AWAY LOSES NOTHING (owner order, 2026-08-26: "I EXPECT ALL PAGES
-// TO PERSIST THEIR VIEW AND LOCATION WHEN FLIPPING AROUND. *ALWAYS*").
-// Moving to another PAGE (Setup, Trade) unloads this whole script, so state
-// held only in memory dies with it — which is why the earlier fix survived
-// flips between this page's own sections and not a trip to Setup and back.
-// What the Boards section looks like is now written down the same way the
-// page already writes down its section, its run and its scroll — and
-// rebuilt from that record when the page loads.
-const BOARDS_VIEW_KEY = 'cx-boards-view';
-let repViewOpen = false;        // the Replication box has been opened
-let coinsViewOpen = false;      // the every-coin box is open
-let openLabels = new Set();     // ranked lines held open, by configuration
-let boardsViewApplied = false;  // the rebuild runs once per page load
-
-function saveBoardsView(doc) {
-  try {
-    localStorage.setItem(BOARDS_VIEW_KEY, JSON.stringify({
-      runId: doc.id,
-      repOpen: repViewOpen,
-      repList: pageAt.repList,
-      openLabels: [...openLabels].slice(0, 20),
-      coinsOpen: coinsViewOpen,
-      coins: {
-        sort: repCoins.sort, minPairs: repCoins.minPairs, minShare: repCoins.minShare,
-        minHold: repCoins.minHold, minTrades: repCoins.minTrades, minVsLong: repCoins.minVsLong,
-        offset: pageAt.repCoins.offset, limit: pageAt.repCoins.limit,
-      },
-      recKeys: [...openRecs.byKey.keys()].slice(0, 40),
-    }));
-  } catch (_) { /* private window */ }
-}
-function resetBoardsView() {
-  repViewOpen = false; coinsViewOpen = false; openLabels = new Set();
-  openRecs = { id: null, byKey: new Map() };
-  try { localStorage.removeItem(BOARDS_VIEW_KEY); } catch (_) { /* private window */ }
-}
-// Seed the knobs from the record at load, so the first draw already agrees
-// with what the owner last saw; the data behind it is fetched by
-// applyBoardsView after that draw.
-const storedBoardsView = (() => {
-  try { return JSON.parse(localStorage.getItem(BOARDS_VIEW_KEY) || 'null'); } catch (_) { return null; }
-})();
-if (storedBoardsView && storedBoardsView.runId) {
-  repViewOpen = !!storedBoardsView.repOpen;
-  coinsViewOpen = !!storedBoardsView.coinsOpen;
-  openLabels = new Set(storedBoardsView.openLabels || []);
-  if (storedBoardsView.repList) {
-    pageAt.repList = { offset: Number(storedBoardsView.repList.offset) || 0, limit: Number(storedBoardsView.repList.limit) || pageAt.repList.limit };
-  }
-  const c = storedBoardsView.coins || {};
-  repCoins.sort = c.sort || repCoins.sort;
-  repCoins.minPairs = Number(c.minPairs) || 0;
-  repCoins.minShare = c.minShare ?? '';
-  repCoins.minHold = c.minHold ?? '';
-  repCoins.minTrades = c.minTrades ?? '';
-  repCoins.minVsLong = c.minVsLong ?? '';
-  pageAt.repCoins = { offset: Number(c.offset) || 0, limit: Number(c.limit) || pageAt.repCoins.limit };
-  openRecs.id = storedBoardsView.runId;
-  for (const k of (storedBoardsView.recKeys || [])) openRecs.byKey.set(k, { loading: true });
-}
-
-// The one-shot rebuild: fetch what the record says was open, then draw once
-// and put the scroll back — the height is finally the height the owner left.
-async function applyBoardsView(doc) {
-  if (boardsViewApplied) return;
-  boardsViewApplied = true;
-  const v = storedBoardsView;
-  if (!v || v.runId !== doc.id) return;
-  let changed = false;
-  if (repViewOpen && repLoaded.id !== doc.id) {
-    const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication`
-      + `?offset=${pageAt.repList.offset}&limit=${pageAt.repList.limit}`, null);
-    if (got && got.scored && got.scored.length) { repLoaded = { id: doc.id, data: got }; changed = true; }
-  }
-  if (coinsViewOpen && repCoins.id !== doc.id) {
-    const q = pageAt.repCoins;
-    const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coins`
-      + `?sort=${encodeURIComponent(repCoins.sort)}&minPairs=${encodeURIComponent(repCoins.minPairs)}`
-      + `&minShare=${encodeURIComponent(repCoins.minShare)}&minHold=${encodeURIComponent(repCoins.minHold)}`
-      + `&minTrades=${encodeURIComponent(repCoins.minTrades)}&minVsLong=${encodeURIComponent(repCoins.minVsLong)}`
-      + `&offset=${q.offset}&limit=${q.limit}`, null);
-    if (got) { repCoins = { ...repCoins, id: doc.id, data: got }; changed = true; }
-  }
-  for (const [key, held] of openRecs.byKey) {
-    if (!held || !held.loading) continue;
-    const [label, trade, ctx1, ctx2, geometry] = key.split('|');
-    const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coin-rows`
-      + `?label=${encodeURIComponent(label)}&trade=${encodeURIComponent(trade)}&ctx1=${encodeURIComponent(ctx1)}`
-      + `&ctx2=${encodeURIComponent(ctx2)}&geometry=${encodeURIComponent(geometry)}`, null);
-    if (got) { openRecs.byKey.set(key, got); changed = true; }
-    else openRecs.byKey.delete(key);
-  }
-  if (changed) {
-    drawBoards();
-    requestAnimationFrame(() => requestAnimationFrame(() => restoreScroll(tab)));
-  }
-}
-function wirePagers(root) {
-  if (!root || root.dataset.pagersWired) return;
-  root.dataset.pagersWired = '1';
-  root.addEventListener('click', (ev) => {
-    const b = ev.target.closest('button[data-pager][data-go]');
-    if (!b || b.disabled) return;
-    const go = PAGERS[b.dataset.pager];
-    if (go) go({ offset: Math.max(0, Number(b.dataset.go) || 0) });
-  });
-  root.addEventListener('change', (ev) => {
-    const sel = ev.target.closest('select[data-pager][data-size]');
-    if (!sel) return;
-    const go = PAGERS[sel.dataset.pager];
-    // A new page size starts from the top: staying at row 2,300 of a list you
-    // just asked to show 25 at a time is not what anybody means by it.
-    if (go) go({ offset: 0, limit: Number(sel.value) || 100 });
-  });
-}
-
-// ---- the replication ranking ------------------------------------------------
-// SCORE AND ORDER THE DECLARED CONFIGURATIONS. Lifted out of the render function
-// on 2026-08-17 so it can be TESTED rather than only read: the previous version
-// grouped from a list its null copies had already been filtered out of, so the
-// headline statistic was structurally empty on every run and the comparator
-// (whose first key returned -1 whenever both sides were null) ordered nothing at
-// all. A grep-based test cannot see either fault — it saw the right words in the
-// right order and passed. tests/test-declaredset.js now evaluates THIS function.
-//
-// Deliberately closure-free: everything it needs arrives as an argument.
-//
-// Order, and the reason for it (QC-7, QC-142 — an ordering IS a claim, so only
-// statistics the register admits as evidence may sit in the key):
-//   1. the MEASURED NULL — this configuration's held-back money against its OWN
-//      dealt-vote copies, asset by asset. The register's only yardstick.
-//   2. PLATEAU WIDTH on the traded asset — guards against a knife-edge fit.
-//   3. the across-asset share — CONTEXT ONLY; crypto assets move together, so
-//      these are nowhere near independent looks and no p-value is quoted.
-//   4. money, LAST. Leading on money rebuilds the shopped board.
-// GROUPING IS PART OF THE RANKING, so it lives here too. Splitting them is how
-// the fault survived: the caller grouped from a real-only list and the ranker
-// then looked for null copies inside groups that could not contain one. A test
-// that builds the groups itself cannot see that, so the function now owns both
-// halves and the test drives the whole path.
-//   all      — every replication row the run recorded, null copies included
-//   realRows — the real-copy subset the caller already resolved
-//   tagged   — whether this doc marks which copy scored each row
-// The declared-configuration ranking used to live here and now lives in
-// lib/replication.js, where it can stream rows off disk instead of needing all
-// of them in the browser. The reading rules moved with it — the ordering leads
-// on the measured null and money is last on purpose — and the test that guards
-// the sort key moved to test-declaredset.js's reading of that file.
+// (The paging bar, the replication ranking helpers and the whole
+// remembered-view machinery that used to sit here belonged to the original
+// Sweep and Boards screens. Those screens were removed on 2026-08-28 by owner
+// order and this code went with them: every table on the surviving pair pages
+// through bPager and remembers its own view through bSaveView.)
 
 // theme — Constructing remembers its OWN setting (owner, 2026-08-17). It used to
 // share the Trading page's key; each tab now keeps its own.
+//
+// PUT BACK 2026-08-28: this sat among the deleted screens' helpers and went out
+// with them, which left the theme button on the page doing nothing at all.
 const root = document.documentElement;
 root.setAttribute('data-theme', localStorage.getItem('cx-theme') || 'dark');
 $('#themebtn').onclick = () => {
@@ -514,31 +205,18 @@ $('#themebtn').onclick = () => {
   root.setAttribute('data-theme', n); localStorage.setItem('cx-theme', n);
 };
 
-// The CPU button that cycled the per-worker duty cycle from this page is
-// GONE (owner order, 2026-08-26: "Remove the obsolete CPU button"). It was
-// the same dial as the Compute tab's share box on the Setup page, shown in
-// a second place under a hover that misdescribed it — one dial, one home,
-// one name.
-
 // ---- navigation ------------------------------------------------------------
-// Sweep2 AND Boards2 ARE DRAWINGS, NOT SCREENS (owner order, 2026-08-26:
-// "before writing anything into THIS-RELEASE you need to make a prototype
-// page (call it 'Sweep2' for now) on a tab between Sweep and Boards ...
-// ditto for a prototype on new tab 'Boards2'. mock them up IN DETAIL MISSING
-// *ABSOLUTELY NOTHING* ... we will work off of that to make sure you get the
-// design right before any coding"). Every control on them is disabled and
-// neither asks the service for anything — see drawSweep2/drawBoards2.
-// Sweep3 AND Boards3 ARE THE WORKING three-stage system (owner order,
-// 2026-08-27: "Make Sweep3 and Boards3 ... these are the functional versions
-// fully backed by the new data schema and processing. for now leave the
-// original Sweep, Sweep2, Boards, Boards2 in place.").
-const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['sweep2', 'Sweep2'], ['sweep3', 'Sweep3'],
-  ['boards', 'Boards'], ['boards2', 'Boards2'], ['boards3', 'Boards3'], ['verify', 'Verify'],
+// EIGHT TABS, AND ONLY ONE OF EACH (owner order, 2026-08-28: "get rid of the
+// Sweep, Sweep2, Boards, and Boards2 tabs. make the existing 'Sweep3' just
+// 'Sweep' and the existing 'Boards3' just 'Boards'. fix *EVERY* reference in
+// the code to those obsolete items"). Sweep and Boards below ARE the
+// three-stage system: the two earlier working screens and the two drawings
+// they were designed on are gone, and nothing is named after them.
+const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['verify', 'Verify'],
   ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight'], ['help', 'Help']];
 let tab = localStorage.getItem('cx-tab') || 'sweep';
 // the working selection: a saved run + its selected row ride across sections
 let pickedRun = localStorage.getItem('cx-run') || null;
-let pickedDoc = null; // cached doc for pickedRun
 
 // WHERE YOU WERE ON EACH TAB (owner, 2026-08-21).
 //
@@ -770,35 +448,22 @@ async function drawData() {
 // ---- Sweep --------------------------------------------------------------------
 // Section poll timers, held at module scope so a redraw CANCELS the previous
 // chain instead of adding one beside it.
-let sweepPoll = null;
 let tunePoll = null;
 
-// THE FORM KEEPS WHAT IS IN IT (owner, 2026-08-22).
-//
-// drawSweep rebuilds this whole section from scratch, so every control went
-// back to its default on any redraw — switching tab, changing the theme,
-// anything. The owner set up a wide sweep, launched it, pressed the theme
-// button, and came back to an empty form with a job running that the screen
-// could no longer describe.
-//
-// Two different things are wanted, and they do not conflict:
-//   * while a job is RUNNING, the form shows THAT JOB's settings, because the
-//     question anyone has in front of a running job is what it is doing;
-//   * with nothing running, the form shows whatever the owner last had in it.
-//
-// The control list is asked of the page rather than kept here. A list would
-// need somebody to remember it when a control is added; a query cannot go
-// stale.
+// WHAT IS IN THE STAGE BOXES SURVIVES A SCREEN FLIP (owner order,
+// 2026-08-27: "not lose the values loaded to the stage 1/2/3 areas on screen
+// flips — that stuff needs to be left as-is"). The same standing rule the
+// old Sweep form kept, by the same mechanism: every box and tick on this page,
+// found by id so a control added tomorrow is covered, remembered on every
+// change and written back on every draw.
 const SWEEP_FORM_KEY = 'cx-sweepform';
 const sweepControls = () => Array.from(document.querySelectorAll('#view [id^="sw"]'))
   .filter((e) => e.tagName === 'INPUT' || e.tagName === 'SELECT' || e.tagName === 'TEXTAREA');
-
 function rememberSweepForm() {
   const o = {};
   for (const e of sweepControls()) o[e.id] = e.type === 'checkbox' ? e.checked : e.value;
   try { localStorage.setItem(SWEEP_FORM_KEY, JSON.stringify(o)); } catch (_) { /* private window */ }
 }
-
 function restoreSweepForm() {
   let o = null;
   try { o = JSON.parse(localStorage.getItem(SWEEP_FORM_KEY) || 'null'); } catch (_) { o = null; }
@@ -811,53 +476,298 @@ function restoreSweepForm() {
   return true;
 }
 
+// Milliseconds as words for the progress line — '38s', '4m', '2h 05m'.
+function msWords(ms) {
+  const s = Math.max(0, Math.round(ms / 1000));
+  if (s < 60) return `${s}s`;
+  const m = Math.round(s / 60);
+  if (m < 60) return `${m}m`;
+  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
+}
+
+let swPoll = null;
+
+function swSetOptions(sets, stage, selected) {
+  const list = sets.filter((x) => x.stage === stage && (x.status === 'done'));
+  if (!list.length) return `<option value="">— no finished stage ${stage} record set on this box —</option>`;
+  return list.map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${x.plan.units.toLocaleString()} units${x.stage === 1 ? ', votes kept' : ''}</option>`).join('');
+}
+
+async function swProgress() {
+  const el = $('#swProg');
+  if (!el) return;
+  const st = await apiOr('api/stagesets', null);
+  if (!st) { el.innerHTML = '<span class="warn">the record-set list could not be read</span>'; return; }
+  // the start buttons sleep while a run is going — one heavy job at a time,
+  // said on the button instead of by a refusal after the press
+  const going = !!st.running;
+  for (const bid of ['swGo1', 'swGo2', 'swGo3']) {
+    const b = $(`#${bid}`);
+    if (b) { b.disabled = going; b.title = going ? 'a stage run is going — one heavy job at a time. The button wakes when it lands.' : ''; }
+  }
+  if (!st.running) {
+    el.innerHTML = 'nothing is running';
+    if (swPoll) { clearInterval(swPoll); swPoll = null; }
+    return;
+  }
+  const row = (st.sets || []).find((x) => x.id === st.running);
+  // The whole story on one line: what is going, how far through its cycles,
+  // the percent, and about how long is left (owner order, 2026-08-27) —
+  // refreshed every few seconds by the poll below.
+  const pf = (row && row.perf) || {};
+  const pct = pf.cyclesTotal ? Math.floor(((pf.cyclesDone || 0) / pf.cyclesTotal) * 100) : null;
+  const tail = [
+    pct != null ? `<b>${pct}%</b> of ${Number(pf.cyclesTotal).toLocaleString()} ${esc(pf.cyclesWord || 'cycles')}` : null,
+    pf.etaMs != null ? `about ${msWords(pf.etaMs)} left` : null,
+    pf.elapsedMs ? `${msWords(pf.elapsedMs)} in` : null,
+  ].filter(Boolean).join(' · ');
+  el.innerHTML = row
+    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="swStop" class="danger">stop</button>`
+    : `a stage run is going (${esc(st.running)})`;
+  const stop = $('#swStop');
+  if (stop) stop.onclick = async () => { await tryPost(`api/stageset/${st.running}/stop`, {}); swProgress(); };
+  if (!swPoll) swPoll = setInterval(swProgress, 4000);
+}
+
+// GREEN WHEN A SECTION SHOWS THE PROVENANCE OF THE SECTION BELOW IT, RED AT
+// THE POINT OF BREAK (owner order, 2026-08-27). Stage 1's title is judged
+// against the stage 1 record set the stage 2 box names; stage 2's against
+// the stage 2 record set the stage 3 box names; stage 3 anchors the chain.
+// Judged live on every change — set a box back and the title goes green
+// again. A section with nothing below it naming a record set is green.
+function swProvenance() {
+  const sets = swSetsCache || [];
+  const rowOf = (id) => sets.find((x) => x.id === id) || null;
+  const paint = (sel, ok, why) => {
+    const h = $(sel);
+    if (!h) return;
+    h.style.color = ok ? 'var(--pos)' : 'var(--neg)';
+    h.title = ok
+      ? 'green: this section shows the provenance of the section below it (or nothing below names a record set yet)'
+      : `red: ${why}. Set the boxes back and this goes green again.`;
+  };
+  const v = (sel) => { const e = $(sel); return e ? e.value : ''; };
+  const c = (sel) => { const e = $(sel); return !!(e && e.checked); };
+
+  const s1row = rowOf(v('#swFrom2'));
+  if (!s1row) paint('#swH1', true);
+  else {
+    const p = s1row.params || {};
+    const defaults = ((VOCAB && VOCAB.defaultPairs) || []).map((o) => String(o.value));
+    const boxUni = (v('#swUni') || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+    const wantUni = (boxUni.length ? boxUni : defaults).slice().sort().join(',');
+    const setUni = (p.universe || []).slice().sort().join(',');
+    const sz = p.sizes || {};
+    const geos = p.geometries || [];
+    const mismatch = wantUni !== setUni ? 'the universe no longer matches'
+      : (c('#swSingles') !== !!sz.singles || c('#swDoubles') !== !!sz.doubles || c('#swTriples') !== !!sz.triples) ? 'the singles / doubles / triples ticks no longer match'
+        : (c('#swPermGeom') !== (geos.length > 1) || (!c('#swPermGeom') && geos[0] !== v('#swGeom'))) ? 'the chunk shape no longer matches'
+          : v('#swLayout') !== (p.windowLayout || '') ? 'the window layout no longer matches'
+            : Number(v('#swNull1')) !== Number(p.nullN) ? 'the null set size no longer matches'
+              : c('#swAllData') !== (p.allLoaded !== false) ? 'the all loaded data tick no longer matches'
+                : (!c('#swAllData') && (v('#swStart') !== (p.startMonth || '') || v('#swEnd') !== (p.endMonth || ''))) ? 'the start / end months no longer match'
+                  : null;
+    paint('#swH1', !mismatch,
+      `${mismatch} — this section no longer shows the provenance of ${s1row.name}, the record set the stage 2 box reads from`);
+  }
+
+  const s2row = rowOf(v('#swFrom3'));
+  if (!s2row) paint('#swH2', true);
+  else {
+    const par = s2row.parent || {};
+    const carryBox = Number(v('#swCarry')) || 0;
+    const carryMatch = carryBox === 0
+      ? (par.carry != null && par.of != null ? par.carry === par.of : true)
+      : carryBox === par.carry;
+    const mismatch = v('#swFrom2') !== (par.id || '')
+      ? `the stage 1 record set named here is not the one ${s2row.name} was carried out of (${par.name || par.id || 'unrecorded'})`
+      : (!carryMatch ? 'carry forward no longer matches what was carried' : null);
+    paint('#swH2', !mismatch, `${mismatch} — the stage 3 box reads from ${s2row.name}`);
+  }
+
+  paint('#swH3', !v('#swFrom3') || !!s2row, 'the stage 2 record set named here is not on this box any more');
+}
+
+// A GROUP THAT CANNOT APPLY LEAVES THE ROW (RULE FOUR, and the behaviour the
+// original Sweep had before it was removed). A market entry has no rails, so
+// gate, d, trail and arm mean nothing — the payload already omits them, and
+// leaving them on screen live invites the owner to set a box that is thrown
+// away. The whole PAIR goes, box and permute tick together, and a re-shown
+// group goes back to 'flex' rather than '' so it keeps its own alignment.
+function swShowGroup(sel, on) {
+  const e = $(sel);
+  if (e) e.style.display = on ? 'flex' : 'none';
+}
+
+async function swCounts() {
+  // The agreement dial is a SHARE of whatever committee a unit holds, so it
+  // applies to a coin judged on its own and to one read alongside others
+  // alike — which is why the two committee-size boxes that used to live here
+  // are gone (owner loop, 2026-08-28).
+  {
+    // market with its permute OFF is the only case where the rails cannot
+    // exist; with permute on, breakout is in the block too and they can
+    const market = $('#swEntry') && $('#swEntry').value === 'market'
+      && !($('#swPermEntry') && $('#swPermEntry').checked);
+    for (const grp of ['#swGrpGate', '#swGrpD', '#swGrpTrail']) swShowGroup(grp, !market);
+    swShowGroup('#swGrpArm', !market);
+  }
+  const c1 = $('#swCost1');
+  if (c1) {
+    const body = {
+      universe: ($('#swUni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
+      sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
+      geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
+    };
+    if (!body.universe.length) delete body.universe;
+    const got = await askPost('api/stage1-count', body, null);
+    c1.innerHTML = got && !got.error
+      ? `${got.units.toLocaleString()} units → ${got.trainings.toLocaleString()} trainings, votes kept for every one · null set is free arithmetic`
+      : `<span class="warn">${esc((got && got.error) || 'the counter could not be asked')}</span>`;
+  }
+  const c3 = $('#swCount');
+  if (c3) {
+    const sets = swSetsCache || [];
+    const parent = sets.find((x) => x.id === $('#swFrom3').value);
+    const carry = Number($('#swCarry3') && $('#swCarry3').value) || 0;
+    const units = parent ? (carry > 0 ? Math.min(carry, parent.plan.units) : parent.plan.units) : null;
+    const coins = parent && parent.params && Array.isArray(parent.params.universe) ? parent.params.universe.length : null;
+    // from and carry ride along so the counter resolves the ACTUAL units the
+    // launch will price — which agreement bars exist is decided by them, and
+    // a bar the run cannot use is neither counted nor named (owner order,
+    // 2026-08-27: on singles there is no with contexts at all)
+    const got = await askPost('api/stage3-count', {
+      ...swBlockParams(), from: $('#swFrom3').value || '', carry, units: units || 0, coins: coins || 1,
+    }, null);
+    if (got && !got.error) {
+      const sims = units ? got.settings * units * (1 + (Number($('#swNull3').value) || 0)) : null;
+      // the budget verdict comes from the SAME arithmetic the launch enforces:
+      // a refusal is said here, before the button is pressed
+      const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
+      const tight = !refuse ? ((got.heap && got.heap.band === 'tight' && got.heap) || (got.disk && got.disk.band === 'tight' && got.disk) || null) : null;
+      c3.innerHTML = `declared: <b>${got.settings.toLocaleString()} settings</b>${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#swNull3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
+        + (refuse ? `<br><b class="neg">start stage 3 will refuse: ${esc(refuse.message)}</b>`
+          : tight ? `<br><span class="warn">${esc(tight.message)}</span>` : '');
+    } else {
+      c3.innerHTML = `<span class="warn">${esc((got && got.error) || 'the counter could not be asked')}</span>`;
+    }
+  }
+}
+
+// The declared cell exactly as the launch will read it. market carries no
+// gate, d, trail or arm — the same rule the old launcher enforces — so those
+// boxes are omitted from the payload rather than silently ignored.
+function swBlockParams() {
+  const entry = $('#swEntry').value;
+  const permEntry = $('#swPermEntry').checked;
+  const cell = { tHours: Number($('#swT').value) };
+  if (entry !== 'market' || permEntry) {
+    cell.entry = entry === 'market' ? 'breakout' : entry;
+    cell.gate = $('#swGate').value;
+    cell.dMult = Number($('#swD').value);
+    if ($('#swTrail').value !== '') { cell.trailMult = Number($('#swTrail').value); cell.armMult = Number($('#swArm').value); }
+    else if ($('#swPermTrail').checked) { cell.armMult = Number($('#swArm').value); }
+  } else {
+    cell.entry = 'market';
+  }
+  if (entry === 'market' && permEntry) cell.entry = 'breakout';
+  return {
+    cell,
+    cellPermute: {
+      entry: permEntry, gate: $('#swPermGate').checked, dMult: $('#swPermD').checked,
+      tHours: $('#swPermT').checked, trail: $('#swPermTrail').checked, arm: $('#swPermArm').checked,
+    },
+    decision: $('#swDec').value, permuteDecision: $('#swPermDec').checked,
+    band: $('#swBand').value.trim() === '' ? 'auto' : ($('#swBand').value.trim() === 'auto' ? 'auto' : Number($('#swBand').value)),
+    permuteBand: $('#swPermBand').checked,
+    weekdaysOnly: $('#swWk').checked, permuteWeekdays: $('#swPermWk').checked,
+    // the agreement is its own dimension now, never part of the trade shape
+    agreeRule: $('#swAgreeRule').value,
+    agreePct: Number($('#swAgreeShare').value),
+    agreeBothModels: $('#swAgreeBoth').checked,
+    agreePersist: Number($('#swAgreeHold').value) || 0,
+    agreePermuteRule: $('#swPermAgreeRule').checked,
+    agreePermutePct: $('#swPermAgreeShare').checked,
+    agreePermuteBoth: $('#swPermAgreeBoth').checked,
+    agreePermutePersist: $('#swPermAgreeHold').checked,
+  };
+}
+
+// ONE mapping from a record set's stored settings back into the Sweep
+// boxes — the same discipline fillSweepForm keeps for the sweeps: a second
+// copy of this mapping would be two answers to one question. It reads which
+// record set is open on Boards and fills THAT stage's box alone (owner
+// order, 2026-08-27: a stage 2 set was filling the stage 1 box too, which
+// read as loading the wrong data). The parent box is picked from the set's
+// own named parent, so pressing start re-runs the same step of the same
+// chain. The description RIDES TOO (owner order, 2026-08-27: "carry the
+// description field to the Sweep section") — into the same stage's
+// description box, ready to be kept or rewritten before the start.
+function fillStageForm(doc) {
+  const p = doc.params || {};
+  const setV = (sel, v) => { const el = $(sel); if (el && v !== undefined && v !== null) el.value = String(v); };
+  const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
+  if (doc.stage === 1) {
+    setV('#swUni', (p.universe || []).join(','));
+    setC('#swSingles', (p.sizes || {}).singles); setC('#swDoubles', (p.sizes || {}).doubles); setC('#swTriples', (p.sizes || {}).triples);
+    setC('#swAllData', p.allLoaded !== false);
+    setV('#swStart', p.startMonth || ''); setV('#swEnd', p.endMonth || '');
+    const geos = p.geometries || [];
+    if (geos.length) setV('#swGeom', geos[0]);
+    setC('#swPermGeom', geos.length > 1);
+    setV('#swLayout', p.windowLayout || 'reserve61');
+    setV('#swNull1', p.nullN ?? 19);
+    setV('#swDesc1', doc.desc || '');
+  }
+  if (doc.stage === 2) {
+    if (doc.parent) setV('#swFrom2', doc.parent.id);
+    setV('#swCarry', p.carry ?? 0);
+    setV('#swDesc2', doc.desc || '');
+  }
+  if (doc.stage === 3) {
+    if (doc.parent) setV('#swFrom3', doc.parent.id);
+    setV('#swCarry3', p.carry ?? 0);
+    setV('#swDesc3', doc.desc || '');
+    setV('#swFee', p.fee != null ? p.fee * 100 : '');
+    setV('#swNull3', p.nullN ?? 19);
+    setV('#swDec', p.decision || 'argmax'); setC('#swPermDec', p.permuteDecision);
+    setV('#swBand', p.band ?? 'auto'); setC('#swPermBand', p.permuteBand);
+    setC('#swWk', p.weekdaysOnly); setC('#swPermWk', p.permuteWeekdays);
+    const c = p.cell || {};
+    setV('#swEntry', c.entry); setV('#swGate', c.gate); setV('#swD', c.dMult); setV('#swT', c.tHours);
+    setV('#swTrail', c.trailMult == null ? '' : c.trailMult);
+    setV('#swArm', c.armMult == null ? '' : c.armMult);
+    setV('#swAgreeRule', p.agreeRule || 'count'); setV('#swAgreeShare', p.agreePct == null ? 50 : p.agreePct);
+    setC('#swAgreeBoth', p.agreeBothModels); setV('#swAgreeHold', p.agreePersist || 0);
+    setC('#swPermAgreeRule', p.agreePermuteRule); setC('#swPermAgreeShare', p.agreePermutePct);
+    setC('#swPermAgreeBoth', p.agreePermuteBoth); setC('#swPermAgreeHold', p.agreePermutePersist);
+    const cp = p.cellPermute || {};
+    setC('#swPermEntry', cp.entry); setC('#swPermGate', cp.gate); setC('#swPermD', cp.dMult); setC('#swPermT', cp.tHours);
+    setC('#swPermTrail', cp.trail); setC('#swPermArm', cp.arm);
+  }
+  // a programmatic fill never fires 'change', so remember it here — copied
+  // settings must survive a screen flip exactly like typed ones
+  rememberSweepForm();
+  swCounts();
+}
+
+// WHAT IS IN THE STAGE BOXES SURVIVES A SCREEN FLIP (owner order,
+// 2026-08-27: "not lose the values loaded to the stage 1/2/3 areas on screen
+// flips — that stuff needs to be left as-is"). The same standing rule the
+// Sweep form keeps, by the same mechanism: every box and tick on this page,
+// found by id so a control added tomorrow is covered, remembered on every
+// change and written back on every draw.
+
+let swSetsCache = null;
+
 // A run's stored settings, written back into the boxes. ONE mapping, used by
 // "copy settings into the form" on the Boards section and by the running-job
 // display here — two copies of it would be two answers to the same question.
-function fillSweepForm(p, description) {
-  const q = (id) => document.querySelector(id);
-  const setV = (id, v) => { const e = q(id); if (e != null && v != null) e.value = v; };
-  const setC = (id, v) => { const e = q(id); if (e) e.checked = !!v; };
-  setV('#swUni', (p.universe || []).join(','));
-  setC('#swSingles', p.sizes && p.sizes.singles); setC('#swDoubles', p.sizes && p.sizes.doubles);
-  setC('#swTriples', p.sizes && p.sizes.triples); setC('#swAll', p.allLoaded);
-  setV('#swStart', p.startMonth); setV('#swEnd', p.endMonth);
-  setV('#swGeom', p.set && p.set.geometry); setV('#swDec', p.set && p.set.decision);
-  setV('#swBand', p.set && (p.set.band === 'auto' ? 'auto' : p.set.band));
-  setC('#swWeekdays', p.set && p.set.weekdaysOnly);
-  setC('#swPermGeom', p.permute && p.permute.geometry); setC('#swPermDec', p.permute && p.permute.decision);
-  setC('#swPermBand', p.permute && p.permute.band); setC('#swPermWk', p.permute && p.permute.weekdays);
-  setV('#swLayout', p.windowLayout); setV('#swK', p.promoteK); setV('#swNulls', p.labelShiftReps);
-  setV('#swBoardRows', p.detailK);
-  setV('#swMinTr', p.minTrades); setC('#swTrail', p.trailing);
-  // Stored as a fraction, shown as a percent. A run recorded before fees became
-  // a rate stored dollars on the $100 book; 0.125 dollars there is 0.125% here,
-  // which is the same cost and the same number, so the old form reads correctly
-  // either way and the new one is unambiguous.
-  if (p.feePerLeg != null) {
-    const frac = p.feeUnits === 'fraction' ? Number(p.feePerLeg) : Number(p.feePerLeg) / 100;
-    if (Number.isFinite(frac)) setV('#swFee', String(100 * frac));
-  }
-  const d = p.declared;
-  setC('#swDecOn', !!d);
-  if (d) {
-    setV('#swDecEntry', d.entry); setV('#swDecGate', d.gate); setV('#swDecD', d.dMult);
-    setV('#swDecT', d.tHours); setV('#swDecTrail', d.trailMult == null ? '' : d.trailMult);
-    setV('#swDecArm', d.armMult == null ? 0 : d.armMult);
-    setV('#swDecQ6', d.quorumSingles); setV('#swDecQ8', d.quorumContexts);
-  }
-  const dp = p.declaredPermute || {};
-  for (const [k, id] of [['entry', '#swPermDecEntry'], ['gate', '#swPermDecGate'], ['dMult', '#swPermDecD'],
-    ['tHours', '#swPermDecT'], ['trail', '#swPermDecTrail'], ['arm', '#swPermDecArm'], ['agree', '#swPermDecAgree']]) setC(id, dp[k]);
-  // description travels only when the caller asks for it: a RE-RUN states its
-  // own purpose, but a running job's own description is exactly what somebody
-  // looking at a running job wants to read.
-  setV('#swDesc', description == null ? '' : description);
-}
 
 // THE CAMPAIGN PANEL IS ONE PANEL, DRAWN ON TWO SCREENS (owner order,
 // 2026-08-27: "code the campaign interface and back-end on Sweep3 EXACTLY as
-// per the one on Sweep -- go ahead and reuse the code"). One function returns
+// per the one on Sweep -- go ahead and reuse the code" — both of those
+// screens have since been folded into the single Sweep). One function returns
 // the markup and one wires the buttons, so the two screens cannot drift — the
 // same reason the Trade page draws its two branches from one path. Top-level
 // and called by name, so the word list and the control reader follow it onto
@@ -1012,573 +922,7 @@ function wireCampaignPanel(redraw) {
   };
 }
 
-async function drawSweep() {
-  clearTimeout(sweepPoll); sweepPoll = null;
-  const [camp, names, batches] = await Promise.all([
-    apiOr('api/campaign', ({ name: '' })),
-    apiOr('api/campaigns', ({ names: [] })),
-    apiOr('api/batches', ({ batches: [] })),
-  ]);
-  const running = (batches.batches || batches || []).find((b) => b.status === 'running');
-  $('#view').innerHTML = `${campaignPanelHtml(camp, names)}
-  <div class="panel">
-    <h3 style="margin-top:0">Board sweep — wide to FIND (never a result)</h3>
-    <!-- THE TWO PASSES ARE TWO BOXES (owner order, 2026-08-22). Every control
-         here belongs to one of exactly two kinds, and the rows used to cut
-         straight across that line: window layout beside promote top K beside
-         a control the first pass ignores. Nothing on the screen said which was
-         which, so the only way to know was to be told — in words off the
-         screen, which is the fault this whole rule set exists to stop. The
-         boxes ARE the explanation. -->
-    <div class="passbox">
-      <div class="passname"><b>Both passes</b> — everything in this box shapes the slim pass and the promote pass alike</div>
-    <div class="row" style="align-items:flex-end">
-      <label class="f">universe (blank = all 17 default pairs)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
-      <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
-      <label class="c"><input type="checkbox" id="swDoubles" checked> doubles</label>
-      <label class="c"><input type="checkbox" id="swTriples"> triples</label>
-      <label class="c"><input type="checkbox" id="swAll" checked> all loaded data</label>
-      <label class="f">start<input id="swStart" type="month"></label>
-      <label class="f">end<input id="swEnd" type="month"></label>
-    </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <!-- THE WORD "branch" IS ON THE SCREEN NOW (owner order, 2026-08-21).
-           These four together are one thing, and that thing had no name the
-           owner could see — so every time it was described it was described
-           with a word out of the code. The answer to needing a word that is
-           not there is to put it there, not to borrow one. Laid out the same
-           way a field label is: the name above what it names, same size and
-           same colour. -->
-      <div style="display:flex;flex-direction:column;gap:.15rem">
-        <span style="font-size:.74rem;color:var(--dim)">branch</span>
-        <div style="display:flex;align-items:flex-end;gap:.8rem;flex-wrap:wrap">
-        <div id="swGrpGeom" style="display:flex;align-items:flex-end;gap:.45rem">
-          <label class="f">chunk shape<select id="swGeom">${vocabOptions('geometry', 'daily-4d')}</select></label>
-          <label class="c"><input type="checkbox" id="swPermGeom" checked> permute</label>
-        </div>
-        <div id="swGrpDec" style="display:flex;align-items:flex-end;gap:.45rem">
-          <label class="f">decision<select id="swDec">${vocabOptions('decision', 'argmax')}</select></label>
-          <label class="c"><input type="checkbox" id="swPermDec" checked> permute</label>
-        </div>
-        <div id="swGrpBand" style="display:flex;align-items:flex-end;gap:.45rem">
-          <label class="f">band % (or auto)<input id="swBand" value="auto" style="width:5rem"></label>
-          <label class="c"><input type="checkbox" id="swPermBand" checked> permute</label>
-        </div>
-        <div id="swGrpWk" style="display:flex;align-items:flex-end;gap:.45rem">
-          <label class="c"><input type="checkbox" id="swWeekdays"> 24/5</label>
-          <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
-        </div>
-        </div>
-      </div>
-    </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">window layout<select id="swLayout">${vocabOptions('windowLayout', 'split70')}</select></label>
-      <label class="f">null boards<input id="swNulls" type="number" value="0" min="0" style="width:4.5rem" title="companion boards with votes dealt onto random days. Beating all N of them is at best a 1-in-(N+1) claim, so 19 is the first number whose best claim reaches 1-in-20. There is NO ceiling: type any number you like and the cost is printed beside the box before you launch."></label>
-      <label class="f">min trades<input id="swMinTr" type="number" value="10" style="width:4.5rem"></label>
-      <label class="f" title="what a trade is assumed to cost, as a percent of the money in the position. It is charged EACH WAY — once going in and once coming out — so 0.125 here costs 0.25% over the whole trade. It is not decoration: 86% of the gross edge this system finds is eaten by fees and break-even sits about 16% above the assumed cost, so the answer moves with this box. Set it to what the venue you would trade this on charges; a config sent to Trade starts at whatever it was found under here.">fee % each way<input id="swFee" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
-      <span class="note" id="swNullCost"></span>
-    </div>
-    </div>
-
-    <!-- THE HINGE. One control decides what travels from the first pass to the
-         second, so it sits between the two boxes rather than inside either. -->
-    <div class="hinge">
-      <div class="row" style="align-items:flex-end">
-        <label class="f">board rows<input id="swBoardRows" type="number" value="50" min="1" style="width:4.5rem" title="how many rows the survivor board keeps. This was fixed at 50 and set nowhere, so it was neither yours to choose nor visible. There is NO ceiling — type any number and the cost of it is printed beside the box before you launch. It also sets the most that can carry into the second pass, because promotion picks from the board."></label>
-        <label class="f">promote top K<input id="swK" type="number" value="25" min="1" style="width:4.5rem" title="how many of the best rows carry into the second, fuller scoring. It used to be reduced to 50 without saying so; now it goes through as typed, and a number larger than board rows is refused by name instead of being quietly changed."></label>
-        <span class="note" id="swBoardCost"></span>
-      </div>
-      <div class="row" style="margin-top:.3rem">
-        <span class="note">how many rows carry from the slim pass into the promote pass — the only thing that travels between the two boxes.
-          <b>null boards</b> above zero sends every row through instead, and so does replication below.</span>
-      </div>
-    </div>
-
-    <div class="passbox">
-      <div class="passname"><b>Promote pass only</b> — the slim pass ignores everything in this box, however it is set</div>
-    <div class="row" style="align-items:flex-end">
-      <label class="c" title="Makes the SEARCH try stops that follow the price up behind you, as well as the one that sits still. Four following distances by three starting points, on the promote pass only — roughly thirteen times the work. This is about what the run LOOKS AT; the trail box below is about the one configuration you name."><input type="checkbox" id="swTrail"> also try moving stops</label>
-    </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end;border-top:1px solid var(--line);padding-top:.55rem">
-      <label class="c" title="REPLICATION MODE. Instead of judging each asset by the best cell the search shopped for, score settings YOU fix here, before the run, on every asset. With every permute unticked that is ONE config: nothing was chosen after seeing results, so there is no shopping tax and no branch correction owed, and it is the strongest reading the system offers. Tick any permute and these boxes declare a BLOCK of configs instead — every combination, each one scored on every asset. The counter beside them says how many, it multiplies the whole run, and having searched, the honest end is the sealed block of the 61/13/13/13 window layout. Either way the menu still runs and the board is unchanged; this adds a separate replication table reporting each declared cell per asset, read against that configuration's own dealt-vote copies and never as a binomial (QC-7: assets move together, so they are not independent looks). Agreement travels as an exact count per committee size — the 'agree' boxes (5/6 means 5 of a single coin's 6 members).">
-        <input type="checkbox" id="swDecOn">
-        <!-- BOTH WORDINGS ARE IN THE PAGE, and one is hidden (owner order,
-             2026-08-22). The tick means two different things depending on the
-             permute boxes beside it, and calling both "DECLARED" was a claim
-             that is only true of one of them: with nothing permuted you named a
-             setting before the run, and with anything permuted the machine
-             tried thousands and you read off the best afterwards. The owner:
-             "I'M NOT DECLARING ANYTHING...I'M PERMUTING THE OPTIONS."
-             Rendered rather than written in by script so both sentences are on
-             the screen's own word list. -->
-        <span id="swDecLabelOne">replication: score ONE setting you name, on every asset</span><span id="swDecLabelMany" style="display:none">replication: search many settings, each scored on every asset</span></label>
-      <div id="swGrpEntry" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" id="swDecEntryWrap" title="BREAKOUT opens the position when price reaches a rail at p(1±d). MARKET enters at the entry candle's open in the called direction with no rails, holds to t, and exits at the open: the general classifier's own trade, and exactly what the live paper books do. Market entry is directional by definition, so gate and d do not apply to it.">entry
-        <select id="swDecEntry">${vocabOptions('entry', 'breakout')}</select></label>
-        <label class="c" title="score EVERY entry style as its own declared config"><input type="checkbox" id="swPermDecEntry"> permute</label>
-      </div>
-      <div id="swGrpGate" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" id="swDecGateWrap">gate
-        <select id="swDecGate">${vocabOptions('gate', 'directional')}</select></label>
-        <label class="c" id="swPermDecGateWrap" title="score EVERY gate as its own declared config"><input type="checkbox" id="swPermDecGate"> permute</label>
-      </div>
-      <div id="swGrpD" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" id="swDecDWrap">d
-        <select id="swDecD">${vocabOptions('dMult', '1.5')}</select></label>
-        <label class="c" id="swPermDecDWrap" title="score EVERY rail distance as its own declared config"><input type="checkbox" id="swPermDecD"> permute</label>
-      </div>
-      <div id="swGrpT" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">t
-        <select id="swDecT">${vocabOptions('tHours', '65')}</select></label>
-        <label class="c" title="score EVERY hold length as its own declared config"><input type="checkbox" id="swPermDecT"> permute</label>
-      </div>
-      <div id="swGrpTrail" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" id="swDecTrailWrap" title="WHICH STOP YOUR declared configuration uses. 'static' means the stop sits at the price level on the far side of your entry and never moves; the others follow the price up behind you, at the distance shown, measured against the band. This is one setting on ONE configuration — 'also try moving stops' above is the separate question of whether the SEARCH tries moving stops at all, and this needs that ticked, because a declared cell can only be found among cells the run computed.">trail
-        <select id="swDecTrail">${vocabOptions('trailMult', '')}</select></label>
-        <label class="c" id="swPermDecTrailWrap" title="score EVERY trailing stop, static included, as its own declared config"><input type="checkbox" id="swPermDecTrail"> permute</label>
-      </div>
-      <div id="swGrpArm" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" id="swDecArmWrap" title="How far price must move in your favour before the trail starts. 0 trails from the first bar; 1× is close to move-to-breakeven-then-trail.">arm
-        <select id="swDecArm">${vocabOptions('armMult', '0')}</select></label>
-        <label class="c" id="swPermDecArmWrap" title="score EVERY arm distance as its own declared config"><input type="checkbox" id="swPermDecArm"> permute</label>
-      </div>
-      <div id="swGrpAgree" style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" id="swDecQ6Wrap" title="How many of a SINGLE coin's 6 members must agree. The 6 are 3 views (full / prices / volume) × 2 models (LOGREG and BOOST — the view and model columns the inspect button on Boards shows).">agree
-        <select id="swDecQ6">${vocabOptions('quorumOf6', '2')}</select></label>
-        <label class="f" id="swDecQ8Wrap" title="How many of a CONTEXT combo's 8 members must agree. Adding one or two context coins adds a fourth data view — how this coin moves against them — so those committees hold 8 members.">with contexts
-        <select id="swDecQ8">${vocabOptions('quorumOf8', '3')}</select></label>
-        <label class="c" title="score EVERY agreement level as its own declared config — this multiplies the set fastest"><input type="checkbox" id="swPermDecAgree"> permute</label>
-      </div>
-      <span class="note" id="swDecCount"></span>
-    </div>
-    </div>
-
-    <div class="row" style="margin-top:.5rem">
-      <label class="f" style="flex:1">description — why this run exists (rides in the job heading forever)
-        <input id="swDesc" style="width:100%"></label>
-    </div>
-    <!-- WHAT IT WILL COST, BEFORE THE BUTTON (owner order, 2026-08-22). Every
-         hard stop this system has hit was a cost nobody could see until it
-         arrived. The counting is done by the same code that builds the run, so
-         it cannot describe a different run from the one about to start. -->
-    <div class="passbox" id="swCostBox" style="margin-top:.6rem">
-      <div class="passname"><b>What this run will cost</b> — worked out from the settings above, against what the box has now</div>
-      <div id="swCost" class="note">working it out…</div>
-    </div>
-    <div class="row" style="margin-top:.6rem">
-      <button id="swStart2" class="pri">Start sweep</button>
-      <button id="swStop" class="danger" title="aborts the running batch job. Heavy SCANS (stop/conviction) are minutes-scale and run to completion — the Tune section shows which is running.">Stop jobs</button>
-      <span id="swMsg" class="note"></span>
-    </div></div>
-  <div class="panel" id="swProg">${running ? '' : '<span class="muted">No job running.</span>'}</div>`;
-  wireCampaignPanel(() => drawSweep());
-
-  // Market entry has no gate and no rail distance, and the server REJECTS both
-  // rather than ignoring them — a silently ignored parameter is how a declared
-  // config stops meaning what its author thought it meant. So hide the controls
-  // whose values would be refused instead of leaving them on screen.
-  //
-  // WHAT THE RUN WILL SCORE decides that, NOT the dropdown on its own (owner,
-  // 2026-08-22). Ticking permute beside entry puts breakout in the run while
-  // the box still reads market, and every breakout cell needs a gate, a rail
-  // distance and a stop. Reading the box alone hid all four, so the page sent
-  // none of them and Start sweep came back refused naming "gate" — a control
-  // that was not on screen to set.
-  const syncDecEntry = () => {
-    const market = $('#swDecEntry').value === 'market' && !$('#swPermDecEntry').checked;
-    // A permute tick belongs to its box and must vanish WITH it. Left on their
-    // own they were ticks for controls that were not on screen — a market entry
-    // showed three orphans and a static stop a fourth (owner, 2026-08-17).
-    // Each dropdown and its permute are ONE control in one group now, so
-    // hiding is one call instead of two and the tick can no longer outlive the
-    // box it belongs to. The group keeps the row's flex flow, so a hidden pair
-    // closes up rather than leaving a gap.
-    const show = (id, on) => { const e = $(id); if (e) e.style.display = on ? 'flex' : 'none'; };
-    for (const grp of ['#swGrpGate', '#swGrpD', '#swGrpTrail']) show(grp, !market);
-    // arm means nothing without a MOVING stop — and permuting trail puts moving
-    // stops in the run even while the box itself reads static. Hidden, the page
-    // sent no arm at all and every trailing cell was scored at the code's own
-    // 0x: a setting the operator never saw and never chose (RULE FIVE).
-    show('#swGrpArm', !market && (!!$('#swDecTrail').value || $('#swPermDecTrail').checked));
-  };
-  $('#swDecEntry').onchange = syncDecEntry;
-  $('#swDecTrail').onchange = syncDecEntry;
-  // the two ticks that change WHICH BOXES THE RUN NEEDS, so the row keeps up
-  $('#swPermDecEntry').addEventListener('change', syncDecEntry);
-  $('#swPermDecTrail').addEventListener('change', syncDecEntry);
-  syncDecEntry();
-
-  // Each agreement box exists only when the run will contain committees of that
-  // size: 6 members for a single coin, 8 with context coins. GREY OUT, NEVER
-  // HIDE (owner, 2026-07-31) — both boxes keep their place so the row keeps its
-  // shape and the "agree" label keeps its context.
-  const syncDecQuorum = () => {
-    // RESTORE the authored tooltip, do not blank it. This assigned '' whenever
-    // the control was enabled, and it runs on load with both boxes ticked — so
-    // the two "agree" descriptions were erased before the operator could ever
-    // read them, and only ever came back as the REFUSAL message when the
-    // control was greyed out (audit 2026-08-17).
-    const off = (wrap, sel, disabled, why) => {
-      const w = $(wrap);
-      if (w.dataset.baseTitle === undefined) w.dataset.baseTitle = w.title || '';
-      $(sel).disabled = disabled;
-      w.classList.toggle('ctl-off', disabled);
-      w.title = disabled ? why : w.dataset.baseTitle;
-    };
-    const noSingles = !$('#swSingles').checked;
-    const noContexts = !($('#swDoubles').checked || $('#swTriples').checked);
-    off('#swDecQ6Wrap', '#swDecQ6', noSingles,
-      'this run has no single-coin committees — tick "singles" to set their agreement level');
-    off('#swDecQ8Wrap', '#swDecQ8', noContexts,
-      'this run has no context committees — tick "doubles" or "triples" to set their agreement level');
-    // THE TICK GOES WITH THE BOXES IT BELONGS TO (owner, 2026-08-21). Both
-    // dropdowns can be greyed out with the "permute" beside them still live and
-    // tickable — offering to try every agreement level when there is no
-    // agreement level to set. It is the same fault as a tick outliving its box,
-    // which the groups fixed for the others; this one is shared by two boxes,
-    // so it is only dead when BOTH of them are.
-    const permWrap = $('#swPermDecAgree').closest('label');
-    if (permWrap) {
-      if (permWrap.dataset.baseTitle === undefined) permWrap.dataset.baseTitle = permWrap.title || '';
-      const dead = noSingles && noContexts;
-      $('#swPermDecAgree').disabled = dead;
-      permWrap.classList.toggle('ctl-off', dead);
-      permWrap.title = dead
-        ? 'there is no agreement level to permute — tick "singles", "doubles" or "triples" first'
-        : permWrap.dataset.baseTitle;
-    }
-  };
-  ['#swSingles', '#swDoubles', '#swTriples'].forEach((id) => { $(id).addEventListener('change', syncDecQuorum); });
-  syncDecQuorum();
-
-  // HOW MANY CONFIGS THE TICKS DECLARE, before Start sweep. Every declared config
-  // is scored on every asset, so the count multiplies the run — and the strongest
-  // claim available shrinks as the search widens. A number you only discover from
-  // a refusal message is a number you found too late.
-  // trailMoving counts the MOVING stops only; the static stop is added on its
-  // own below, because arm multiplies the moving ones and never the static one.
-  const MENUS = { entry: 2, gate: 3, dMult: 5, tHours: 7, trailMoving: 4, arm: 3 };
-  const syncDecCount = () => {
-    const el = $('#swDecCount');
-    if (!el) return;
-    if (!$('#swDecOn').checked) { el.textContent = ''; return; }
-    const permEntry = $('#swPermDecEntry').checked;
-    const market = $('#swDecEntry').value === 'market';
-    // COUNTED PER ENTRY STYLE AND ADDED, not multiplied straight through. A
-    // market cell has no gate, no rail distance and no stop, so those menus
-    // never multiply it — the flat product both overstated a permuted entry
-    // (multiplying the market half by rails it cannot have) and understated it
-    // (skipping the rail menus altogether whenever the box read market).
-    let rails = 1;
-    if ($('#swPermDecGate').checked) rails *= MENUS.gate;
-    if ($('#swPermDecD').checked) rails *= MENUS.dMult;
-    const armN = $('#swPermDecArm').checked ? MENUS.arm : 1;
-    if ($('#swPermDecTrail').checked) rails *= 1 + MENUS.trailMoving * armN;
-    else if ($('#swDecTrail').value) rails *= armN;
-    // permuting entry scores BOTH: the one market cell, plus every rail cell
-    let n = permEntry ? 1 + rails : (market ? 1 : rails);
-    if ($('#swPermDecT').checked) n *= MENUS.tHours;
-    if ($('#swPermDecAgree').checked) {
-      if ($('#swSingles').checked) n *= 6;
-      if ($('#swDoubles').checked || $('#swTriples').checked) n *= 8;
-    }
-    // WHAT IT COSTS ON DISK, not just in time (owner, 2026-08-22). The rows are
-    // no longer held in memory, so the limit is the disk — and a limit anybody
-    // meets in hour forty is not a limit, it is a loss. Each unit the run
-    // scores in full records one row per config, and a stored row is about 150
-    // bytes; the run's own plan line says how many units, so this says the part
-    // the operator cannot work out for themselves.
-    // WHICH OF THE TWO THINGS THIS TICK IS DOING, said on the tick itself.
-    const one = $('#swDecLabelOne');
-    const many = $('#swDecLabelMany');
-    if (one && many) { one.style.display = n === 1 ? '' : 'none'; many.style.display = n === 1 ? 'none' : ''; }
-
-    // HOW MANY WOULD LOOK GOOD BY LUCK ALONE. A setting beating all of its own
-    // scrambled copies happens by chance about once in (null boards + 1) — that
-    // is the rank argument: under the null the real result is equally likely to
-    // be any of them. Across N searched settings the expected count of lucky
-    // ones is N/(boards+1), whatever the settings have in common, because an
-    // expected count adds up that way even when the things counted do not.
-    //
-    // Stated as the WORST case on purpose. If a setting's assets were separate
-    // looks the number would be far smaller, but the register's own position is
-    // that they are not — crypto assets move together (QC-7) — so we do not get
-    // to assume the flattering version.
-    const boards = Math.max(0, Math.floor(Number($('#swNulls').value) || 0));
-    const luck = boards > 0 ? Math.round(n / (boards + 1)) : null;
-    const cost = `Roughly ${n}x the replication work, and every unit scored in full records up to ${n} `
-      + `rows on disk at about 150 bytes each (<b>${(n * 150 / 1048576).toFixed(1)} MB</b> per unit).`;
-    el.innerHTML = n === 1
-      ? 'one setting, named before the run — nothing was chosen after seeing results, and that is the strongest reading the system offers'
-      : `<b>${n.toLocaleString()}</b> settings searched, each scored on every asset. `
-        + (boards > 0
-          ? `With <b>${boards}</b> null boards, one setting beating every one of its own copies happens by luck about `
-            + `1 time in ${boards + 1} — so out of ${n.toLocaleString()}, expect about <b class="warn">${luck.toLocaleString()}</b> `
-            + 'to beat all their copies by chance alone. Beating the copies says little here; picking the best line of this table is shopping. '
-          : 'No null boards, so there is nothing to compare any of them against. ')
-        + `${cost} Having searched, the honest end is the sealed slice (window layout 61/13/13/13, graded once in History).`;
-  };
-  ['#swDecOn', '#swDecEntry', '#swDecTrail', '#swPermDecEntry', '#swPermDecGate', '#swPermDecD',
-    '#swPermDecT', '#swPermDecTrail', '#swPermDecArm', '#swPermDecAgree', '#swSingles', '#swDoubles', '#swTriples',
-    // the luck figure is worked out from null boards, so it has to follow that box as well
-    '#swNulls']
-    .forEach((id) => { if ($(id)) $(id).addEventListener('change', syncDecCount); });
-  if ($('#swNulls')) $('#swNulls').addEventListener('input', syncDecCount);
-  syncDecCount();
-
-  // WHAT THE NUMBER COSTS, BEFORE Start sweep (owner, 2026-08-22). This box
-  // used to refuse anything above 24 — a ceiling this software picked for the
-  // owner, on how strong a claim they were allowed to attempt. The cap is gone
-  // and the cost is stated instead, which is the standing rule: the software
-  // reports the cost, the human decides.
-  const syncNullCost = () => {
-    const el = $('#swNullCost');
-    if (!el) return;
-    const n = Math.max(0, Math.floor(Number($('#swNulls').value) || 0));
-    if (!n) { el.textContent = 'no null boards — nothing to measure this run against'; return; }
-    el.innerHTML = `<b>${n + 1}x</b> the work — the whole run once for real, then once per board. `
-      + 'promote top K stops applying, so every row is scored in full rather than only the best ones. '
-      + `Beating all ${n} is at best a <b>1-in-${n + 1}</b> claim`
-      + (n < 19 ? ` — ${19 - n} more would reach 1-in-20.` : '.');
-  };
-  ['input', 'change'].forEach((ev) => $('#swNulls').addEventListener(ev, syncNullCost));
-  syncNullCost();
-
-  // BOARD ROWS AND PROMOTE TOP K (owner order, 2026-08-23). The board was fixed
-  // at 50 and promote top K was quietly reduced to it. Both are boxes now, and
-  // the pair is checked HERE so the conflict is visible while it is being typed
-  // rather than thrown back after Start sweep is pressed.
-  const syncBoardCost = () => {
-    const el = $('#swBoardCost');
-    if (!el) return;
-    const rows = Math.max(1, Math.floor(Number($('#swBoardRows').value) || 0));
-    const k = Math.max(1, Math.floor(Number($('#swK').value) || 0));
-    if (k > rows) {
-      el.innerHTML = `<b class="neg">promote top K is ${k} but the board keeps ${rows}</b> — `
-        + `${k - rows} of those rows would not exist to promote. Raise board rows to ${k}, or lower promote top K to ${rows}. `
-        + 'Nothing will be changed for you: the launch refuses this pair.';
-      return;
-    }
-    // The board is re-sorted on every row that lands on it, so its cost is in
-    // the sorting, not in the storage. Stated rather than capped.
-    el.innerHTML = `the board keeps <b>${rows}</b> rows and <b>${k}</b> of them carry into the second pass. `
-      + (rows > 200
-        ? `A board this size is re-ordered on every row that lands on it, so ${rows} rows costs roughly `
-          + `${(rows / 50).toFixed(0)}x the sorting of the usual 50 — noticeable on a wide run, and yours to spend.`
-        : 'The usual board is 50.');
-  };
-  ['input', 'change'].forEach((ev) => {
-    if ($('#swBoardRows')) $('#swBoardRows').addEventListener(ev, syncBoardCost);
-    if ($('#swK')) $('#swK').addEventListener(ev, syncBoardCost);
-  });
-  syncBoardCost();
-
-  // ---- what is in the boxes survives a redraw (see the top of this section) ----
-  const runDoc = running ? await apiOr(`api/batch/${encodeURIComponent(running.id)}`, null) : null;
-  if (runDoc) fillSweepForm(runDoc.params || {}, runDoc.description || (runDoc.params || {}).description || '');
-  else restoreSweepForm();
-  // the dependent controls follow whatever is now in the boxes, not the
-  // defaults they were rendered with
-  syncDecEntry(); syncDecQuorum(); syncDecCount(); syncNullCost(); syncBoardCost();
-  if (runDoc) {
-    const m0 = $('#swMsg');
-    if (m0) {
-      m0.textContent = `these are the settings of the job running now (${runDoc.id}). `
-        + 'The form goes back to your own the moment it finishes.';
-    }
-  } else {
-    // Only remember the owner's OWN form. Writing while the running job's
-    // settings are on display would overwrite the draft they left here.
-    for (const e of sweepControls()) {
-      e.addEventListener('change', rememberSweepForm);
-      e.addEventListener('input', rememberSweepForm);
-    }
-  }
-
-  // ---- the cost of the run in front of you ----
-  //
-  // The body is built by the same function the launch uses, so the estimate is
-  // priced on exactly what would be sent. Re-asked when anything changes, and
-  // debounced, because it walks the whole plan on the other side.
-  let costTimer = null;
-  const drawCost = async () => {
-    const el = $('#swCost');
-    if (!el) return;
-    const out = await askPost('api/sweep-estimate', sweepBody());
-    if (!out) { el.textContent = 'could not work out what this run would cost'; return; }
-    if (out.refusal) {
-      el.innerHTML = `<b style="color:var(--neg)">This run would be refused:</b> ${esc(out.refusal)}`;
-      return;
-    }
-    const p = out.plan;
-    const t = out.time;
-    const b = out.box;
-    const dur = t.seconds == null ? null
-      : t.seconds < 3600 ? `${Math.max(1, Math.round(t.seconds / 60))} min`
-        : t.seconds < 86400 ? `${(t.seconds / 3600).toFixed(1)} hours`
-          : `${(t.seconds / 86400).toFixed(1)} days`;
-    const size = (n) => (n >= 1073741824 ? `${(n / 1073741824).toFixed(1)} GB`
-      : n >= 1048576 ? `${Math.round(n / 1048576)} MB` : `${Math.max(1, Math.round(n / 1024))} kB`);
-    el.innerHTML = `<div class="row" style="gap:1.4rem;flex-wrap:wrap">
-        <span><span class="k">units</span> <b>${p.units.toLocaleString()}</b>
-          <span class="muted">${p.combos} x ${p.branches}${p.nullBoards ? ` x ${p.nullBoards + 1}` : ''}</span></span>
-        <span><span class="k">trainings</span> <b>${(p.slimRuns + p.promoteRuns).toLocaleString()}</b>
-          <span class="muted">${p.slimRuns.toLocaleString()} + ${p.promoteRuns.toLocaleString()}</span></span>
-        <span><span class="k">time</span> <b>${dur || '—'}</b>
-          <span class="muted">${t.secPerTraining == null ? 'nothing measured yet'
-    : `from ${t.samples} finished run(s), ${t.secPerTraining.toFixed(2)}s each`}</span></span>
-        <span><span class="k">disk</span> <b>${size(out.bytes)}</b>
-          <span class="muted">of ${b.diskFreeBytes == null ? '?' : size(b.diskFreeBytes)} free</span></span>
-        <span><span class="k">memory</span> <b>${out.memory ? size(out.memory.bytes) : '—'}</b>
-          <span class="muted">of a ${b.heapCeilingMb == null ? '?' : b.heapCeilingMb} MB ceiling · ${b.memFreeMb.toLocaleString()} MB free on the box</span></span>
-        <span><span class="k">workers</span> <b>${b.cpus}</b> <span class="muted">cpus on the box</span></span>
-      </div>
-      <div class="muted" style="margin-top:.35rem">
-        The memory figure is what the RUN adds — the unit list, the work queue, and one copy of the settings per worker.
-        The decoded prices the workers hold are larger and are not in it: those grow with how many ASSETS are in the run,
-        not with how many settings.
-      </div>
-      <div class="muted" style="margin-top:.35rem">
-        second pass: <b>${p.promoteUnits.toLocaleString()}</b> unit(s)${p.everyUnitPromoted
-    ? ` — every one of them, because ${esc(p.whyEveryUnit || '')}, so promote top K does nothing`
-    : ' — the top of the board, as promote top K says'}${p.declaredConfigs
-    ? ` · ${p.declaredConfigs.toLocaleString()} declared config(s), ${out.rows.replication.toLocaleString()} rows` : ''}${p.trailingMultiplier > 1
-    ? ' · moving stops multiply the settings each promoted unit scores by about 13' : ''}
-      </div>
-      ${out.warnings.length ? `<ul style="margin:.4rem 0 0 1.1rem;color:var(--warn)">${out.warnings.map((w) => `<li>${esc(w)}</li>`).join('')}</ul>` : ''}`;
-  };
-  const askCost = () => { clearTimeout(costTimer); costTimer = setTimeout(drawCost, 300); };
-  for (const e of sweepControls()) { e.addEventListener('change', askCost); e.addEventListener('input', askCost); }
-  askCost();
-
-  // THE REQUEST THIS FORM WOULD SEND, built once and used twice: by the launch
-  // below, and by the cost line above it. Two copies would be two different
-  // runs — the one you were shown the price of, and the one that started.
-  function sweepBody() {
-    const uni = $('#swUni').value.trim();
-    const bandRaw = $('#swBand').value.trim().toLowerCase();
-    const body = {
-      universe: uni ? uni.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean) : undefined,
-      sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
-      // OMIT a blank month rather than sending "": the server rejects an empty
-      // string with HTTP 400 "startMonth must be YYYY-MM", while an absent key
-      // falls through to startBracketLab's own defaults. The month boxes ship
-      // blank, so untick "all loaded data" and the old code could not launch.
-      startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
-      allLoaded: $('#swAll').checked,
-      permute: { geometry: $('#swPermGeom').checked, decision: $('#swPermDec').checked,
-        band: $('#swPermBand').checked, weekdays: $('#swPermWk').checked },
-      set: { geometry: $('#swGeom').value, decision: $('#swDec').value,
-        band: bandRaw === 'auto' || bandRaw === '' ? 'auto' : Number(bandRaw), weekdaysOnly: $('#swWeekdays').checked },
-      promoteK: Number($('#swK').value) || 25, detailK: Number($('#swBoardRows').value) || 50,
-      minTrades: Number($('#swMinTr').value) || 10,
-      trailing: $('#swTrail').checked, windowLayout: $('#swLayout').value,
-      labelShiftReps: Number($('#swNulls').value) || 0, description: $('#swDesc').value.trim(),
-      // The box is in percent and the engine stores a fraction of the position,
-      // the same convention as every other percent box on these pages. A blank
-      // box is not a fee of nothing — it is omitted, and the launcher falls
-      // back to the lab rate rather than quietly pricing the run as free.
-      feePerLeg: $('#swFee').value.trim() === '' ? undefined : Number($('#swFee').value) / 100,
-    };
-    // REPLICATION: one config declared BEFORE the run and scored on every asset,
-    // so the claim is "it held on N of M assets" rather than "the best of ~1,260
-    // cells looked good on one". Assembled to match what validateDeclared accepts
-    // exactly — it throws on a parameter that cannot apply, rather than ignoring it.
-    if ($('#swDecOn').checked) {
-      const entry = $('#swDecEntry').value;
-      const trailRaw = $('#swDecTrail').value;
-      // a count per committee size, sent only for the sizes this run contains
-      const qPart = {};
-      if ($('#swSingles').checked) qPart.quorumSingles = Number($('#swDecQ6').value);
-      if ($('#swDoubles').checked || $('#swTriples').checked) qPart.quorumContexts = Number($('#swDecQ8').value);
-      const dp = {
-        entry: $('#swPermDecEntry').checked, gate: $('#swPermDecGate').checked,
-        dMult: $('#swPermDecD').checked, tHours: $('#swPermDecT').checked,
-        trail: $('#swPermDecTrail').checked, arm: $('#swPermDecArm').checked,
-        agree: $('#swPermDecAgree').checked,
-      };
-      if (Object.values(dp).some(Boolean)) body.declaredPermute = dp;
-      // WHAT IS ON SCREEN IS WHAT IS SENT — the same rule syncDecEntry decides
-      // visibility by, so a box the operator can see and set always reaches the
-      // run. Rails ride along whenever breakout is in the run (the box reads
-      // breakout, or its permute is ticked); the server applies them to the
-      // breakout members and drops them for the market one. An arm rides along
-      // whenever a moving stop is in the run, including one that only exists
-      // because trail is permuted.
-      const rails = entry !== 'market' || dp.entry;
-      const movingStop = trailRaw || dp.trail;
-      body.declared = {
-        entry,
-        tHours: Number($('#swDecT').value),
-        ...qPart,
-        ...(rails ? {
-          gate: $('#swDecGate').value,
-          dMult: Number($('#swDecD').value),
-          ...(trailRaw ? { trailMult: Number(trailRaw) } : {}),
-          ...(movingStop ? { armMult: Number($('#swDecArm').value) } : {}),
-        } : {}),
-      };
-    }
-    return body;
-  }
-
-  $('#swStart2').onclick = async () => {
-    const body = sweepBody();
-    $('#swMsg').textContent = 'launching…';
-    const out = await tryPost('api/bracketlab', body);
-    // the endpoint returns { batchId } (server.js) — reading out.id gave a blank
-    // run id on every launch, so the operator never saw which run they started
-    $('#swMsg').textContent = out ? `launched ${out.batchId || ''} — progress below` : '';
-    pollProgress();
-  };
-  $('#swStop').onclick = async () => {
-    if (!confirm('Stop the running batch job?')) return;
-    const out = await tryPost('api/abort', {}); if (out) $('#swMsg').textContent = 'abort requested';
-  };
-  // ALWAYS, not only while something is going: with nothing running this panel
-  // is where a job that ended badly gets reported, and it can only report it
-  // if it is asked.
-  pollProgress();
-  // ONE CHAIN. Every visit to this section used to start another poller, and
-  // each re-armed itself against the freshly rendered element, so it never hit
-  // the bail-out — five visits meant five chains hitting the box every 5s
-  // forever. CLAUDE.md names this failure mode by name: never check a running
-  // job more often than it could plausibly need (audit 2026-08-17).
-  async function pollProgress() {
-    const bl = await apiOr('api/batches', null);
-    const rows = (bl && (bl.batches || bl)) || [];
-    const run = rows.find((b) => b.status === 'running');
-    const el = $('#swProg'); if (!el) return;
-    if (!run) {
-      // A JOB THAT ENDED BADLY SAYS SO HERE (owner, 2026-08-22). The owner's
-      // first wide sweep stopped after five minutes and this panel said "No
-      // job running." — the same words it says when nothing was ever started.
-      // The one screen that could have told them apart was the one they had no
-      // reason to go and look at.
-      const last = rows.slice().sort((a, b) => String(b.startedAt || '').localeCompare(String(a.startedAt || '')))[0];
-      const bad = last && (last.status === 'interrupted' || last.status === 'error');
-      el.innerHTML = bad
-        ? `<div class="panel" style="border-color:var(--warn);margin:0"><b style="color:var(--warn)">The last job did not finish: ${esc(last.id)} — ${esc(last.status)}.</b>
-           <div style="margin-top:.3rem">${esc(last.error || 'no reason was recorded')}</div>
-           <div class="muted" style="margin-top:.4rem">Open it on the Boards section to see what it managed to record${last.status === 'interrupted' ? ', and to carry it on from where it stopped' : ''}.</div></div>`
-        : '<span class="muted">No job running.</span>';
-      return;
-    }
-    const doc = await apiOr(`api/batch/${encodeURIComponent(run.id)}`, null);
-    const perf = (doc && doc.perf) || {};
-    el.innerHTML = `<h3 style="margin-top:0">Running: ${esc(run.id)}</h3>
-      <div class="grid">
-        <div class="tile" title="which stage the job is in: the cheap slim pass over every setting, then the promote stage that re-scores the survivors in full."><div class="k">Phase</div><div class="v">${esc(perf.phase || '—')}</div></div>
-        <div class="tile" title="one unit is one asset committee on one geometry. This counts units finished against units planned."><div class="k">Units</div><div class="v">${perf.unitsDone ?? 0} / ${perf.unitsTotal ?? '—'}</div></div>
-        <div class="tile" title="one training is one member model fitted on one window. It is the real measure of how much work the job is doing."><div class="k">Trainings</div><div class="v">${perf.runsDone ?? 0} / ${perf.runsTotal ?? '—'}</div></div>
-        <div class="tile" title="trainings completed per minute across all workers on this box. It moves with the CPU cap."><div class="k">Rate</div><div class="v">${perf.ratePerMin ? perf.ratePerMin.toFixed(1) + '/min' : '—'}</div></div>
-        <div class="tile" title="estimated minutes remaining, from the current rate. It is an extrapolation, not a promise."><div class="k">ETA</div><div class="v">${perf.etaMs ? Math.round(perf.etaMs / 60000) + ' min' : '—'}</div></div>
-      </div>`;
-    if (tab === 'sweep') { clearTimeout(sweepPoll); sweepPoll = setTimeout(pollProgress, 5000); }
-  }
-}
-
-// ---- Boards -------------------------------------------------------------------
+// ---- shared by the screens that open a saved thing -------------------------------------------------------------------
 async function loadPicked() {
   if (!pickedRun) return null;
   if (pickedDoc && pickedDoc.id === pickedRun) return pickedDoc;
@@ -1593,17 +937,17 @@ function getSelRow(doc) {
 }
 
 // THE TOP OF AN OPENED RUN IS ONE STRUCTURE, DRAWN ON TWO SCREENS (owner
-// order, 2026-08-27: "the same structure at the top of Boards3 as we have
+// order, 2026-08-27: "the same structure at the top of Boards as we have
 // with Boards ... all formatted the same — recycle / re-use whatever
 // code/back-end you need"). Boards draws a saved run's head with these;
-// Boards3 draws a record set's head with the SAME functions, so the two
+// Boards draws a record set's head with the SAME functions, so the two
 // cannot drift apart — the same reason the Trade page draws its two branches
 // from one path. Top-level and called by name, so the word list and the
 // control reader follow them onto both screens.
 function campaignNoteHtml(doc) {
   return doc ? `<span class="note">campaign: ${esc((doc.params && doc.params.campaign) || '—')} · ${esc(doc.status)} · ${(doc.params && doc.params.windowLayout) || ''}</span>` : '';
 }
-// bold is Boards3's (owner order, 2026-08-27: the description set on Sweep3
+// bold is Boards's (owner order, 2026-08-27: the description set on Sweep
 // reads BOLD when its record set is opened); Boards passes nothing and keeps
 // its plain rendering — a deliberate difference, not a drifted one.
 function descriptionPanelHtml(text, bold) {
@@ -1657,815 +1001,6 @@ function wireNotesSave(saveUrl, onSaved) {
       if (onSaved) onSaved(out);
     }
   };
-}
-
-async function drawBoards() {
-  const bl = await apiOr('api/batches', ({ }));
-  const list = (bl.batches || bl || []).filter((b) => b.kind === 'bracketlab' || b.kind === 'screen' || b.kind === 'walkforward' || b.kind === 'historytuning' || b.kind === 'httwo');
-  const doc = await loadPicked();
-  const leaders = doc ? (doc.leaders || []).filter((l) => l.nullDealSeed == null) : [];
-  // THE BOARD IS PAGED TOO (owner order, 2026-08-23). It was the whole list in
-  // one table — fine at fifty rows, which is what the board held until `board
-  // rows` became a box the owner sets with no ceiling.
-  const boardPage = {
-    offset: Math.min(pageAt.board.offset, Math.max(0, leaders.length - 1)),
-    limit: pageAt.board.limit,
-    total: leaders.length,
-  };
-  const shownLeaders = leaders.slice(boardPage.offset, boardPage.offset + boardPage.limit);
-  boardPage.shown = shownLeaders.length;
-  boardPage.more = boardPage.offset + shownLeaders.length < leaders.length;
-  // SECOND RANKING (owner, 2026-08-17). "best cell" keeps meaning exactly what it
-  // always has and the board's own order is untouched; this is an alternative
-  // reading laid over the same rows, chosen run by run. Ranking by region width
-  // sinks a lone spike — its neighbours are bad — and lifts a modest but wide one.
-  const boardSort = localStorage.getItem('cx-boardsort') || 'board';
-  if (boardSort === 'region') {
-    leaders.sort((a, b) => ((b.region && b.region.size) || 0) - ((a.region && a.region.size) || 0)
-      || (b.pnl || 0) - (a.pnl || 0));
-  }
-  const sel = getSelRow(doc);
-  // VS NULLS, from the CENSUS. construct.js read l.vsNulls, a field nothing
-  // writes — the column had always shown "—" while looking like a measurement.
-  // The board that works builds it from doc.edgeCensus, where the dealt-vote
-  // copies record their held-back money (app.js:2419).
-  const vnKey = (r) => `${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${r.decision}`;
-  const vnNulls = new Map();
-  const vnReal = new Map();
-  for (const r of ((doc && doc.edgeCensus) || [])) {
-    if (r.holdPnl == null) continue;
-    if (r.nullDealSeed != null) {
-      if (!vnNulls.has(vnKey(r))) vnNulls.set(vnKey(r), []);
-      vnNulls.get(vnKey(r)).push(r.holdPnl);
-    } else if (!r.shiftFrac) vnReal.set(vnKey(r), r.holdPnl);
-  }
-  const hasDealNulls = vnNulls.size > 0;
-  const vsNullsCell = (l) => {
-    if (!hasDealNulls) return '<td class="muted" title="this run recorded no dealt-vote null copies, so there is nothing to compare against">—</td>';
-    const real = vnReal.get(vnKey(l));
-    const nulls = vnNulls.get(vnKey(l)) || [];
-    if (real == null || !nulls.length) return '<td class="muted">—</td>';
-    const beats = nulls.filter((v) => real > v).length;
-    return `<td class="${beats === nulls.length ? 'pos' : ''}" title="how many of this row's dealt-vote null copies its HELD-BACK money beat. The register's only sanctioned yardstick (QC-7): the copies keep the committee's vote mix and destroy only the alignment with the market."><b>${beats}/${nulls.length}</b></td>`;
-  };
-  // Did this run hold anything back? If not, the board's money is the window the
-  // settings were CHOSEN on and nothing judged it — the heading must say so
-  // rather than promising a held-back judge that does not exist.
-  const hasHold = ((doc && doc.leaders) || []).some((l) => l.holdout && l.holdout.pnl != null);
-  // NOT FETCHED ON EVERY DRAW ANY MORE (owner, 2026-08-25: "WHAT I WANT IS TO
-  // BE ABLE TO START MY JOB").
-  //
-  // This line asked for the replication table every single time Boards was
-  // drawn. That table is totalled by reading every recorded row, and on the
-  // owner's run that is 49,519,009 of them — measured at about ten minutes a
-  // pass, on the one thread that serves every other page. So opening a run to
-  // press Resume run froze the whole site for ten minutes, and the page the
-  // owner was waiting for was the page that was doing it to them.
-  //
-  // It is opened by hand now, the same way each configuration's own rows
-  // already were. Boards draws at once, Resume run is reachable, and the ten
-  // minutes are spent only when somebody actually asks for that table.
-  const rep = doc ? (repLoaded.id === doc.id ? repLoaded.data : null) : null;
-  // Whether this run has one at all: no declared rows, nothing to open.
-  const declaredHere = !!(doc && doc.rowCounts && doc.rowCounts.replication);
-  const running = doc && doc.status === 'running';
-  // ASSET PREDICTABILITY — pure census arithmetic, and the one reading on this
-  // page that compares real against null across every asset at once.
-  const assetSummary = (() => {
-    if (!hasDealNulls) return '';
-    const byAsset = new Map();
-    for (const r of ((doc && doc.edgeCensus) || [])) {
-      if (r.holdPnl == null || r.shiftFrac) continue;
-      const asset = r.trade + (r.ctx1 ? '+' + r.ctx1 : '') + (r.ctx2 ? '+' + r.ctx2 : '');
-      if (!byAsset.has(asset)) byAsset.set(asset, { real: [], nulls: [] });
-      byAsset.get(asset)[r.nullDealSeed != null ? 'nulls' : 'real'].push(r.holdPnl);
-    }
-    const scored = [...byAsset.entries()]
-      .filter(([, g]) => g.real.length && g.nulls.length)
-      .map(([asset, g]) => {
-        let won = 0;
-        for (const rv of g.real) for (const nv of g.nulls) if (rv > nv) won++;
-        return { asset, pct: (100 * won) / (g.real.length * g.nulls.length), nReal: g.real.length, nNull: g.nulls.length };
-      })
-      .sort((a, b) => b.pct - a.pct);
-    if (!scored.length) return '';
-    return `<div class="panel"><h3 style="margin-top:0">Asset predictability — best to worst</h3>
-      <p class="note">KEY — for each asset: of all real-versus-null match-ups on HELD-BACK money, the share the real
-        setups won. 100% means every real setup beat every null copy; 0% means every null copy beat every real setup;
-        50% means the real setups are indistinguishable from dealt votes.
-        ${running ? '<b>Counts grow until the sweep finishes — do not judge yet.</b>' : ''}</p>
-      <div class="scrollx"><table><thead><tr>${cth('rank','rank')}${cth('asset','asset')}
-        <th title="share of real-versus-null match-ups won on held-back money">predictability</th>
-        <th title="real setups scored so far / null copies scored so far">real / null rows</th></tr></thead><tbody>
-      ${scored.map((x, i) => `<tr><td>${i + 1}</td><td><b>${esc(x.asset)}</b></td>
-        <td class="${x.pct >= 50 ? 'pos' : 'neg'}"><b>${x.pct.toFixed(1)}%</b></td>
-        <td>${x.nReal} / ${x.nNull}</td></tr>`).join('')}
-      </tbody></table></div></div>`;
-  })();
-  // REPLICATION — the declared config scored on every asset. The run has always
-  // recorded this; the tab never showed it (the tick's own tooltip promised a
-  // table that did not exist here). Null copies also score the declared cell,
-  // which is their job, but they must never enter the cross-asset count.
-  // EVERY COIN OF EVERY CONFIGURATION, over the whole data set (owner order,
-  // 2026-08-25). The whole-configuration lines above average across coins, so
-  // a configuration that only works on one coin averages down to nothing and
-  // hides. This box un-hides it: one row per (configuration, coin), sorted
-  // over EVERYTHING — the ordering is made before the page is cut — and the
-  // comparisons column travels with every row because a perfect share on a
-  // handful of comparisons is luck wearing a score.
-  const coinBox = () => {
-    const d = repCoins.id === doc.id ? repCoins.data : null;
-    const rows = d && d.rows ? d.rows : [];
-    // A view held for another run is that run's — drop the whole record the
-    // moment a different run is drawn.
-    if (openRecs.id !== null && openRecs.id !== doc.id) resetBoardsView();
-    const table = !d ? '<p class="note" id="bCoinNote">open to load — served from the same saved totals as the list above</p>'
-      : d.building && !rows.length
-        ? `<p class="note" id="bCoinNote">totalling in the background — ${Number(d.scanned || 0).toLocaleString()} of ${Number(d.of || 0).toLocaleString()} rows so far. This box asks again every fifteen seconds while open.</p>`
-        : `${d.totals && d.totals.upToDate === false ? `<p class="note warn">These rows cover the first ${Number(d.totals.asOfRows || 0).toLocaleString()} of ${Number(d.total || 0).toLocaleString()} recorded rows${d.building ? ' — a fresh totalling is going now' : ''}.</p>` : ''}
-      <div class="scrollx"><table style="width:100%;border-collapse:collapse">
-        ${coinHeadHtml(true)}
-        <tbody>${rows.map((r) => coinRowHtml(r, true)).join('')
-          || `<tr><td colspan="9" class="empty">nothing ${d.minPairs ? `with at least ${d.minPairs} comparisons` : 'here'}</td></tr>`}</tbody></table></div>
-      ${d.narrowedOut ? `<p class="note">${d.narrowedOut.toLocaleString()} row(s) narrowed out by the comparisons floor.</p>` : ''}
-      ${pageBar('repCoins', d.page, ' coin rows')}`;
-    return `<details id="bRepCoins"${repCoins.id === doc.id || coinsViewOpen ? ' open' : ''} style="margin-top:.6rem"><summary style="cursor:pointer"><b>Every coin of every configuration</b> — one row per coin, sortable over the whole data set</summary>
-      <p class="note">source: the same replication rows as the list above — written in the second pass, one for every
-        promoted unit that scored this configuration on this coin. The rows column counts them: one per combination of
-        the boxes permuted on Sweep that share the coin and chunk shape, each scoring the same configuration on its own
-        forecasts. avg held-back, avg trades and avg vs always-long are AVERAGES over those rows — each sum divided
-        by the rows that recorded it — so a coin with 16 rows and one with 8 read alike. The records button on each row
-        opens those rows themselves.</p>
-      <div class="row" style="margin:.5rem 0 0">
-        <label class="c" title="hide rows whose share of head-to-heads won is below this percent. Empty hides nothing; a set floor also hides rows with no share at all — an unmeasured row cannot clear a bar."><span class="muted">beat its own copies at least, %</span><input id="bCoinMinShare" type="number" min="0" max="100" step="1" value="${esc(repCoins.minShare)}" style="width:5.5rem"></label>
-      </div>
-      <div class="row" style="margin:.15rem 0 0">
-        <label class="c" title="hide rows whose avg held-back is below this many dollars. Empty hides nothing; a set floor also hides rows that recorded no held-back money."><span class="muted">avg held-back at least, $</span><input id="bCoinMinHold" type="number" step="1" value="${esc(repCoins.minHold)}" style="width:5.5rem"></label>
-      </div>
-      <div class="row" style="margin:.15rem 0 0">
-        <label class="c" title="hide rows whose avg trades is below this. Empty hides nothing. A row whose money rests on a handful of trades is thin evidence however good it looks."><span class="muted">avg trades at least</span><input id="bCoinMinTrades" type="number" min="0" step="1" value="${esc(repCoins.minTrades)}" style="width:5.5rem"></label>
-      </div>
-      <div class="row" style="margin:.15rem 0 0">
-        <label class="c" title="hide rows whose avg vs always-long is below this many dollars — 0 keeps only rows that beat just holding the coin, on average. Empty hides nothing."><span class="muted">avg vs always-long at least, $</span><input id="bCoinMinVsLong" type="number" step="1" value="${esc(repCoins.minVsLong)}" style="width:5.5rem"></label>
-      </div>
-      <div class="row" style="margin:.5rem 0">
-        <label class="c"><span class="muted">sort by</span><select id="bCoinSort">
-          <option value="share"${repCoins.sort === 'share' ? ' selected' : ''}>beat its own copies</option>
-          <option value="pairs"${repCoins.sort === 'pairs' ? ' selected' : ''}>comparisons</option>
-          <option value="money"${repCoins.sort === 'money' ? ' selected' : ''}>avg held-back</option>
-          <option value="vslong"${repCoins.sort === 'vslong' ? ' selected' : ''}>avg vs always-long</option>
-          <option value="coin"${repCoins.sort === 'coin' ? ' selected' : ''}>coin</option>
-          <option value="configuration"${repCoins.sort === 'configuration' ? ' selected' : ''}>configuration</option>
-        </select></label>
-        <label class="c" title="hide rows whose share rests on fewer head-to-heads than this. Zero hides nothing; the line below the table says how many rows a floor removed."><span class="muted">at least this many comparisons</span><input id="bCoinMin" type="number" min="0" step="10" value="${repCoins.minPairs}" style="width:5.5rem"></label>
-        <button id="bCoinGo" title="asks again with the sort and floor chosen here. The whole data set is sorted before the page is cut, so page one really is the top of everything.">Apply</button>
-      </div>
-      ${table}</details>`;
-  };
-  const repBlock = (() => {
-    // THE ROWS ARE ON DISK AND THERE CAN BE HUNDREDS OF MILLIONS OF THEM
-    // (owner order, 2026-08-22). This used to group and total every recorded
-    // row here, in the browser, which was right at seventeen rows a run and
-    // impossible the moment the declared boxes could be permuted. The counting
-    // now happens on the other side by streaming, and what arrives is one line
-    // per declared configuration — see lib/replication.js, which carries the
-    // reading rules that used to live in rankDeclaredConfigs.
-    if (!rep || !rep.scored || !rep.scored.length) return '';
-    const scored = rep.scored;
-    const tagged = rep.tagged;
-    // A tally can be honest and behind at once — a run writes on while its
-    // saved totals stand still. Say which rows it covers rather than letting a
-    // partial reading wear a finished one's face.
-    const staleNote = rep.totals && rep.totals.upToDate === false
-      ? `<p class="note warn">These totals cover the first ${Number(rep.totals.asOfRows || 0).toLocaleString()} of `
-        + `${Number(rep.total || 0).toLocaleString()} recorded rows — the run has written more since they were built. `
-        + `They refresh when the run finishes${rep.building ? ', and a fresh totalling is going now' : ''}.</p>`
-      : '';
-    const inferredNote = tagged ? '' : `<p class="note"><b>Counts below are INFERRED, not measured.</b> This run recorded ${rep.total}
-      declared-cell rows without marking which copy scored them, so each asset's first-recorded row is taken as the
-      real one — real copies are queued ahead of every null copy. ${rep.dropped} row(s) were excluded.</p>`;
-    // TOOLTIPS carry the reading rules. A number shown without its rule is a
-    // number that will be misread, and these four are misread in opposite
-    // directions if you swap them.
-    const TIP = {
-      null: "this configuration's held-back money against its OWN dealt-vote copies, asset by asset. The register's only sanctioned yardstick (QC-7): the copies keep the committee's vote mix and destroy only the alignment with the market.",
-      region: 'how many neighbouring settings around this one also made money on the traded asset, averaged over its assets. One step at a time on d, t and agreement. Guards against a knife-edge fit; says nothing about whether it generalises.',
-      assets: 'how many assets held up. CONTEXT, NOT EVIDENCE: crypto assets move together, so these are nowhere near independent looks. No p-value is quoted from them (QC-7).',
-      money: 'summed money on the once-only held-back look. Ranked LAST on purpose — leading on money rebuilds the shopped board.',
-    };
-    // THE PER-ASSET TABLE IS CAPPED and says so. A configuration scored on a
-    // wide run has one real row per asset PER BRANCH, which is thousands — a
-    // table nobody scrolls. Showing the first of them silently would be a table
-    // that looks complete and is not.
-    // NEVER A SHORT LIST THAT LOOKS COMPLETE. The reply says how many rows the
-    // configuration actually has; if fewer were sent, the screen says so.
-
-    // ONE declared config: the table on its own, exactly as it was. There is
-    // nothing to choose between, so a ranked list would be furniture.
-    if (scored.length === 1) {
-      const g = scored[0];
-      return `<div class="panel"><h3 style="margin-top:0">Replication — the declared config on every asset</h3>
-        <p class="note">KEY — one FIXED configuration, named before the run, scored once on each asset.
-          <b>beat its own null copies</b> is the reading that counts: the same configuration on dealt votes, which is the
-          only yardstick the register admits. <b>plateau width</b> says whether the setting is sturdy or a knife edge.
-          <b>assets held up</b> is CONTEXT ONLY — crypto assets move together, so it is not a count of independent
-          looks and no p-value is quoted from it. Money is last on purpose. held-back $ is the once-only look on data
-          no search touched; test $ is the window the settings were chosen on and flatters itself by construction.</p>
-        ${staleNote}${inferredNote}
-        <p class="note">source: this run's replication rows — written in the second pass, one for every promoted unit
-          that scored the declared config — totalled once off to the side and served from that saved tally.</p>
-        <div><b>${esc(g.label)}</b></div>
-        <div class="row" style="gap:1.4rem;margin:.3rem 0 .5rem">
-          <span><span class="k" title="${esc(TIP.null)}">beat its own null copies</span> ${nullCell(g)}</span>
-          <span><span class="k" title="${esc(TIP.region)}">plateau width</span> <b>${g.region == null ? '—' : g.region}</b></span>
-          <span><span class="k" title="${esc(TIP.assets)}">assets held up (context)</span> <b>${g.pos} / ${g.holdCount}</b></span>
-          <span><span class="k" title="${esc(TIP.money)}">total held-back</span> <b class="${g.sum >= 0 ? 'pos' : 'neg'}">${money(g.sum)}</b></span>
-          <span><span class="k">beat always-long</span> <b>${g.vsLPos} / ${g.vsLCount}</b></span>
-        </div>
-        <div class="repdetail" data-label="${esc(g.label)}"><span class="muted">loading this configuration's rows…</span></div>
-        ${coinBox()}</div>`;
-    }
-
-    // MANY declared configs: the ranked list comes FIRST (owner, 2026-08-17).
-    // One line per configuration, scrollable; open a line for its per-asset table.
-    const listHtml = scored.map((g, i) => `<details${openLabels.has(g.label) ? ' open' : ''} style="border-bottom:1px solid var(--line)">
-        <summary style="padding:.4rem .25rem;cursor:pointer">
-          <span class="k" style="margin-right:.5rem">#${i + 1}</span><b>${esc(g.label)}</b>
-          <span style="margin-left:.6rem" title="${esc(TIP.null)}">beat its own nulls ${nullCell(g)}</span>
-          <span style="margin-left:.5rem" title="${esc(TIP.region)}">plateau <b>${g.region == null ? '—' : g.region}</b></span>
-          <span class="note" style="margin-left:.5rem" title="${esc(TIP.assets)}">· assets ${g.pos}/${g.holdCount} (context)</span>
-          <span class="note" style="margin-left:.5rem">· beat always-long ${g.vsLPos}/${g.vsLCount}</span>
-          <span class="${g.sum >= 0 ? 'pos' : 'neg'}" style="margin-left:.5rem" title="${esc(TIP.money)}">${money(g.sum)}</span>
-        </summary>
-        <div class="repdetail" data-label="${esc(g.label)}" style="padding:.3rem .25rem .8rem"><span class="muted">open to load this configuration's rows</span></div>
-      </details>`).join('');
-    return `<div class="panel"><h3 style="margin-top:0">Replication — ${Number(rep.configs || 0).toLocaleString()} declared configs, ranked</h3>
-      <p class="note">KEY — each line is ONE declared configuration scored on every asset. Ranked by <b>how much of its
-        own measured null it beat</b> first, then by <b>plateau width</b>, then by the across-asset share, then by money.
-        That order is the register's: an ordering is a claim about which row is better, so only statistics the register
-        admits as evidence may sit in it (QC-7, QC-142). The across-asset share is shown as CONTEXT — assets move
-        together, so it is not a count of independent looks. Open a line to see that configuration on every asset.
-        These configurations were SEARCHED, not declared, so the honest end is the sealed slice: window layout
-        61/13/13/13, graded once in the History section.</p>
-      ${staleNote}${inferredNote}
-      <p class="note">source: this run's replication rows — written in the second pass, one for every promoted unit and
-        every declared config it scored — totalled once off to the side and served from that saved tally.</p>
-      ${pageBar('repList', rep.page, ' configurations')}
-      <div style="max-height:26rem;overflow-y:auto;border:1px solid var(--line);border-radius:6px">${listHtml}</div>
-      ${pageBar('repList', rep.page, ' configurations')}
-      ${coinBox()}</div>`;
-  })();
-  $('#view').innerHTML = `<div class="panel"><div class="row" style="align-items:flex-end">
-      <label class="f">saved runs<select id="bPick" style="min-width:22rem">
-        <option value="">— pick a run —</option>
-        ${list.map((b) => `<option value="${esc(b.id)}" ${b.id === pickedRun ? 'selected' : ''}>${esc(b.id)} (${esc(b.status)})</option>`).join('')}
-      </select></label>
-      <button id="bOpen">Open</button>
-      <button id="bResume" ${doc && (doc.status === 'interrupted' || doc.status === 'cancelled') ? '' : 'disabled'} title="carries on a run that stopped, from where it stopped. It scores only the units that have no result yet, then finishes as normal. It refuses if the price files or the engine are not the ones the run started under — half a board scored against a different history is not one board.">Resume run</button>
-      <button id="bDelete" class="danger" ${doc ? '' : 'disabled'} title="permanently removes the open run and the model and tuning files that belong to it. It refuses the run that is going right now — stop it first — and any run a greenlight names as its evidence. You are shown exactly what will go before anything is deleted.">Delete run…</button>
-      ${campaignNoteHtml(doc)}
-    </div>
-    <div id="bDelOut"></div></div>
-    <div id="bBody">${!doc ? '<div class="panel empty">Open a run to see its board.</div>' : `
-      ${doc.status === 'interrupted' || doc.status === 'error' ? `<div class="panel" style="border-color:var(--warn)">
-        <b style="color:var(--warn)">This run did not finish — ${esc(doc.status)}.</b>
-        <div style="margin-top:.3rem">${esc(doc.error || 'no reason was recorded')}</div></div>` : ''}
-      ${descriptionPanelHtml(doc.description || (doc.params && doc.params.description))}
-      ${notesPanelHtml(doc, `
-          <button id="bCopySettings" title="fill the Sweep form with THIS run's stored settings — universe, sizes, data range, chunk shape, decision, band, permutes, layout, null boards, trailing, min trades, promote K and the declared config. Nothing launches; the form is just set so a re-run is the same run. The description is NOT copied — a re-run states its own purpose.">copy settings into the form</button>`)}
-      ${(() => {
-        // THE RUN'S IDENTITY. plan is the units equation written so it equals
-        // itself; dataManifest is the fingerprint of every candle file the run
-        // read — two runs are data-comparable exactly when these match.
-        const pl = doc.plan || null;
-        const dm = doc.dataManifest || null;
-        const nullBoards = Number((doc.params || {}).labelShiftReps) || 0;
-        if (!pl && !dm) return '';
-        return runIdentityPanelHtml(pl ? `<p class="note"><b>Size:</b> ${pl.combos} combos × ${pl.branches} branch(es)${nullBoards ? ` × ${nullBoards + 1} boards (1 real + ${nullBoards} null)` : ''}
-            = <b>${pl.units}</b> units · ${pl.slimRuns ?? '—'} slim runs · ${pl.promoteRuns ?? '—'} promote runs.
-            <span title="the multiplicity any null reading here must be read against: one good-looking unit out of this many is not a finding">Every null claim on this page is against ${pl.units} units.</span></p>
-          <!-- THE NULL-BOARD FACTOR. This gated on pl.nullBoards, a field
-               nothing writes, so the clause never printed — and with the
-               default 19 null boards the equation shown was off by a factor of
-               20 against the unit count printed beside it. The count that IS
-               recorded is params.labelShiftReps (audit 2026-08-17). -->` : '', dm);
-      })()}
-      ${(doc.failures && doc.failures.length) ? `<div class="panel"><b class="warn">${doc.failures.length} unit(s) FAILED</b>
-        <p class="note">A failed unit is missing from every count on this page — the denominator is smaller than the run intended. First: <code>${esc(doc.failures[0].key || '')}</code> — ${esc(doc.failures[0].error || '')}</p>
-        <details><summary>all failures</summary><pre>${esc(doc.failures.map((f) => `${f.key}: ${f.error}`).join('\n'))}</pre></details></div>` : ''}
-      ${assetSummary}
-      <div class="panel"><h3 style="margin-top:0">Survivor board — the promoted rows ${hasHold ? '(test window; held-back judges)' : '— NOTHING WAS HELD BACK'}</h3>
-      ${hasHold ? '' : '<p class="note"><b>This run held nothing back.</b> Every dollar below is from the window the settings were CHOSEN on, so it flatters itself by construction and cannot say whether anything works out of sample. The null tools are unavailable for this run.</p>'}
-      <p class="note">source: the run's kept top rows — a display list capped at the length chosen on Sweep, first-pass
-        and promoted rows together. The COMPLETE records behind it are the scored rows (every unit of the first pass) and
-        one full row per promoted unit of the second pass; nothing authoritative lives only on this capped list.</p>
-      <p class="note">KEY — setup: traded + context coins; shape: chunk geometry · decision · band; cell: agreement/entry/hold;
-        trades: entries in the test window; test $: profit-and-loss in dollars on the window the settings were CHOSEN on
-        (flattering by construction); held-back $: the once-only look that matters; vs nulls: how many of the row's dealt-vote
-        null copies its held-back money beat. Click a row to SELECT it — the selection drives Verify's Tool 1, Tune's scans
-        and the Greenlight.</p>
-      <div class="row" style="margin:.1rem 0 .5rem"><label class="f" style="flex:none">order by<select id="bSort">
-        <option value="board" ${boardSort === 'board' ? 'selected' : ''}>best cell (the board's own ranking)</option>
-        <option value="region" ${boardSort === 'region' ? 'selected' : ''}>widest region (neighbouring settings that all made money)</option>
-      </select></label><span class="note">the rows are the same either way — only the order changes</span></div>
-      <div class="scrollx"><table><thead><tr>${cth('setup','setup')}${cth('shape','shape')}${cth('cell','cell')}${cth('trades','trades')}
-        ${cth('test $','testUsd')}${cth('held-back $','heldBack')}${cth('vs nulls','vsNulls')}
-        <th title="How many neighbouring settings around this row's best region ALL made money after fees. One step at a time on d, t and agreement; entry and gate are categories, so a region never crosses them. A lone winner scores 1 — noise gives spikes, structure gives regions.">region</th><th></th></tr></thead><tbody>
-      ${shownLeaders.length ? shownLeaders.map((l, i) => {
-    const isSel = sel && sel.trade === l.trade && sel.geometry === l.geometry && sel.decision === l.decision
-      && sel.quorum === l.quorum && sel.tHours === l.tHours && (sel.ctx1 || '') === (l.ctx1 || '');
-    const abs = boardPage.offset + i;                 // the index in the WHOLE board:
-    // every handler below reads leaders[data-i], so a per-page index would
-    // open, inspect and select the wrong row on every page but the first.
-    return `<tr class="clickable ${isSel ? 'selected' : ''}" data-i="${abs}">
-      <td>${esc(l.trade)}${l.ctx1 ? ` <span class="muted">+ ${esc(l.ctx1)}${l.ctx2 ? ' + ' + esc(l.ctx2) : ''}</span>` : ''}</td>
-      <td>${esc(l.geometry)} · ${esc(l.decision)} · ±${l.bandPct ?? l.band ?? '—'}%</td>
-      <td>q${l.quorum} · ${l.entry === 'market' ? 'directional/market' : `${esc(l.gate)}/breakout d${l.dMult}×`} · ${l.tHours}h${l.trailMult != null ? ` · trail ${l.trailMult}×` : ''}</td>
-      <td>${l.trades ?? '—'}</td>
-      <td class="${(l.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(l.pnl)}</td>
-      <td class="${l.holdout ? ((l.holdout.pnl || 0) >= 0 ? 'pos' : 'neg') : 'muted'}">${l.holdout ? money(l.holdout.pnl) : '—'}</td>
-      ${vsNullsCell(l)}
-      <td title="${l.region && l.region.centre ? esc(`middle of the region: q${l.region.centre.quorum} ${l.region.centre.entry === 'market' ? 'directional/market' : `${l.region.centre.gate}/breakout d${l.region.centre.dMult}x`} ${l.region.centre.tHours}h — ${l.region.cellsClearing} of ${l.region.cellsConsidered} settings cleared the bar (${l.region.bar})`) : 'not recorded — this run predates the region being measured'}">${l.region ? esc(String(l.region.size)) : '<span class="muted">—</span>'}</td>
-      <td><button data-grid="${abs}" title="every execution-menu permutation for this row, plateau view on top (test window only)">menu grid</button>
-        <button data-inspect="${abs}" title="open this setup: what each committee member saw, how they voted, and how alike they are. A MICROSCOPE, not a null test — it cannot tell you whether the setup works.">inspect</button></td>
-      </tr>
-      <tr><td colspan="9" style="text-align:left;padding:0 .45rem .3rem"><details><summary>everything recorded for this row, verbatim</summary>
-        <pre>${esc(JSON.stringify(l, null, 1))}</pre></details></td></tr>`;
-  }).join('') : '<tr><td colspan="9" class="empty">no promoted rows (still running, or nothing survived)</td></tr>'}
-      </tbody></table></div>
-      ${pageBar('board', boardPage, ' rows on the board')}
-      ${sel ? `<p class="note">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h — this selection feeds Verify · Tune · Greenlight
-        <button id="bClearSel" style="margin-left:.5rem" title="take the selection off this run. Nothing here could remove one until now, so a row chosen once kept steering Verify, Tune and Greenlight indefinitely.">clear selection</button></p>` : '<p class="note">no row selected yet</p>'}
-      </div>
-      ${repBlock || (declaredHere ? `<div class="panel"><details id="bRepOpen"${repViewOpen ? ' open' : ''}><summary style="cursor:pointer"><b>Replication —</b> the declared config on every asset</summary>
-        <p class="note" id="bRepNote">Totalled once from every recorded row — ${(doc.rowCounts && doc.rowCounts.replication || 0).toLocaleString()} of them — off to the side, so nothing here waits on it.
-          A finished run totals itself; anything older totals in the background the first time this is opened, and this box shows how far that has got.</p></details></div>` : '')}
-      <div class="panel" id="gridOut"><span class="muted">Menu grid: press a row's button — every execution permutation for that row with the plateau view (one setting moved at a time) on top.
-        source: computed fresh from the stored price files when pressed — these are not recorded rows, and they are gone when the page redraws.</span></div>
-      <div class="panel"><details><summary>the COMPLETE stored settings record for this run, verbatim (nothing invisible)</summary>
-        <pre>${esc(JSON.stringify(doc.params || {}, null, 1))}</pre></details></div>`}
-    </div>`;
-  $('#bOpen').onclick = () => { pickedRun = $('#bPick').value || null; localStorage.setItem('cx-run', pickedRun || ''); pickedDoc = null; drawBoards(); };
-  // STILL OPENED BY HAND, NEVER ON EVERY DRAW — but opening no longer costs
-  // minutes on the thread that answers every page (owner order, 2026-08-25:
-  // "do the running tallies now"). A finished run's totals are already saved
-  // beside its rows; a run recorded before totals existed builds them in the
-  // background on first open, and this box reports that build's progress and
-  // asks again every fifteen seconds until the table arrives.
-  //
-  // (The service restart that sat in this row for one day lives on the Compute
-  // tab of the Setup page now, beside the loads and ceilings, per the owner.)
-  const repOpen = $('#bRepOpen');
-  if (repOpen) {
-    const askRep = async () => {
-      if (!repOpen.open || tab !== 'boards' || repLoaded.id === doc.id) return;
-      const note = $('#bRepNote');
-      const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication`
-        + `?offset=${pageAt.repList.offset}&limit=${pageAt.repList.limit}`, null);
-      if (!got) {
-        if (note) note.innerHTML = '<span class="warn">could not read it — nothing is missing from the run, the screen could not ask</span>';
-        return;
-      }
-      if (got.building && !(got.scored && got.scored.length)) {
-        if (note) {
-          note.innerHTML = `<span class="muted">totalling this run's rows in the background — ${Number(got.scanned || 0).toLocaleString()} `
-            + `of ${Number(got.of || 0).toLocaleString()} so far. Everything else keeps answering; this box asks again every fifteen seconds.</span>`;
-        }
-        setTimeout(askRep, 15000);
-        return;
-      }
-      if (got.buildError) {
-        if (note) note.innerHTML = `<span class="warn">${esc(got.buildError)} — open it again to retry</span>`;
-        if (!(got.scored && got.scored.length)) return;
-      }
-      repLoaded = { id: doc.id, data: got };
-      repViewOpen = true;
-      saveBoardsView(doc);
-      drawBoards();
-    };
-    repOpen.addEventListener('toggle', () => {
-      repViewOpen = repOpen.open;
-      saveBoardsView(doc);
-      if (repOpen.open) askRep();
-    });
-    // Rendered already-open from the view record: the toggle never fires, so
-    // the ask is made here.
-    if (repOpen.open && repLoaded.id !== doc.id && boardsViewApplied) askRep();
-  }
-  // The per-coin box: fetched when opened, refetched on Apply, paged through
-  // the same bars as every other table. The sort and the comparisons floor go
-  // to the other side, because the ordering is made over the whole data set
-  // and a page of a locally-sorted slice would be a lie about the rest.
-  const coinsOpenEl = $('#bRepCoins');
-  if (coinsOpenEl) {
-    const askCoins = async () => {
-      if (!coinsOpenEl.open || tab !== 'boards') return;
-      const q = pageAt.repCoins;
-      const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coins`
-        + `?sort=${encodeURIComponent(repCoins.sort)}&minPairs=${encodeURIComponent(repCoins.minPairs)}`
-        + `&minShare=${encodeURIComponent(repCoins.minShare)}&minHold=${encodeURIComponent(repCoins.minHold)}`
-        + `&minTrades=${encodeURIComponent(repCoins.minTrades)}&minVsLong=${encodeURIComponent(repCoins.minVsLong)}`
-        + `&offset=${q.offset}&limit=${q.limit}`, null);
-      if (!got) {
-        const note = $('#bCoinNote');
-        if (note) note.innerHTML = '<span class="warn">could not read it — nothing is missing from the run, the screen could not ask</span>';
-        return;
-      }
-      repCoins = { ...repCoins, id: doc.id, data: got };
-      if (got.building && !(got.rows && got.rows.length)) {
-        const note = $('#bCoinNote');
-        if (note) {
-          note.innerHTML = `<span class="muted">totalling in the background — ${Number(got.scanned || 0).toLocaleString()} `
-            + `of ${Number(got.of || 0).toLocaleString()} rows so far. This box asks again every fifteen seconds while open.</span>`;
-        }
-        setTimeout(askCoins, 15000);
-        return;
-      }
-      drawBoards();
-    };
-    PAGERS.repCoins = ({ offset, limit }) => {
-      pageAt.repCoins = { offset: offset ?? pageAt.repCoins.offset, limit: limit ?? pageAt.repCoins.limit };
-      repCoins.id = null;         // the held page is stale the moment the window moves
-      saveBoardsView(doc);
-      askCoins();
-    };
-    coinsOpenEl.addEventListener('toggle', () => {
-      coinsViewOpen = coinsOpenEl.open;
-      saveBoardsView(doc);
-      if (coinsOpenEl.open && repCoins.id !== doc.id) askCoins();
-    });
-    const go = $('#bCoinGo');
-    if (go) {
-      go.onclick = () => {
-        repCoins.sort = ($('#bCoinSort') || {}).value || 'share';
-        repCoins.minPairs = Math.max(0, Math.floor(Number(($('#bCoinMin') || {}).value) || 0));
-        repCoins.minShare = ($('#bCoinMinShare') || {}).value ?? '';
-        repCoins.minHold = ($('#bCoinMinHold') || {}).value ?? '';
-        repCoins.minTrades = ($('#bCoinMinTrades') || {}).value ?? '';
-        repCoins.minVsLong = ($('#bCoinMinVsLong') || {}).value ?? '';
-        pageAt.repCoins = { offset: 0, limit: pageAt.repCoins.limit };
-        repCoins.id = null;
-        saveBoardsView(doc);
-        askCoins();
-      };
-    }
-  }
-  // THE RECORDS BELOW A ROW (owner order, 2026-08-25). Press the row's
-  // records button and the rows it averages appear under it, fetched from
-  // the other side — which reads ONLY the stored blocks that hold them, so
-  // this costs milliseconds however many rows the run recorded. Press again
-  // and they fold away. Bound to the whole Boards body (fresh each draw),
-  // so the buttons inside an opened ranked line work too (owner go,
-  // 2026-08-26). What came back is KEPT (owner order, 2026-08-26:
-  // "the view needs to stay open and fixed to the same scrolling
-  // position") — coinBox() draws every open one from that state, so a
-  // redraw (switching tabs and back, paging, Apply) keeps them open and
-  // the page keeps its height, which is what lets the remembered scroll
-  // land where it was.
-  const recHost = $('#bBody');
-  if (recHost) recHost.addEventListener('click', async (ev) => {
-    const btn = ev.target && ev.target.closest ? ev.target.closest('button.coinopen') : null;
-    if (!btn) return;
-    const tr = btn.closest('tr');
-    if (!tr) return;
-    const key = ['label', 'trade', 'ctx1', 'ctx2', 'geometry'].map((f) => btn.dataset[f] || '').join('|');
-    const next = tr.nextElementSibling;
-    if (next && next.classList.contains('coinsub')) {
-      next.remove();
-      btn.textContent = '▸ records';
-      openRecs.byKey.delete(key);
-      saveBoardsView(doc);
-      return;
-    }
-    btn.textContent = '… records';
-    const q = ['label', 'trade', 'ctx1', 'ctx2', 'geometry']
-      .map((f) => `${f}=${encodeURIComponent(btn.dataset[f] || '')}`).join('&');
-    const got = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coin-rows?${q}`, null);
-    if (got) { openRecs.id = doc.id; openRecs.byKey.set(key, got); saveBoardsView(doc); }
-    const sub = document.createElement('tr');
-    sub.className = 'coinsub';
-    const cell = document.createElement('td');
-    // As wide as the row it opens under — the every-coin table has nine
-    // columns, a ranked line's own table eight.
-    cell.colSpan = tr.children.length;
-    cell.style.padding = '.25rem .5rem .5rem 1.2rem';
-    cell.innerHTML = coinRecordsHtml(got);
-    sub.appendChild(cell);
-    tr.after(sub);
-    btn.textContent = '▾ records';
-  });
-  // DELETING A RUN takes the model and tuning files that hang off it, so the
-  // owner is shown exactly what that is BEFORE answering — the same two-step
-  // the campaign delete uses, and for the same reason: a count given after the
-  // fact is no use to anybody.
-  // PICKING UP A RUN THAT STOPPED. Same shape as the delete: ask what is left,
-  // show it, then act — so the owner sees how much of the job is still to do
-  // before starting hours of work on the box.
-  const bres = $('#bResume');
-  if (bres) bres.onclick = async () => {
-    const id = pickedRun;
-    const box = $('#bDelOut');
-    if (!id) { box.innerHTML = '<p class="note">open a run first</p>'; return; }
-    const found = await apiOr(`api/resume-contents?id=${encodeURIComponent(id)}`, null);
-    if (!found) { box.innerHTML = '<p class="note">could not read what is left of that run — nothing started</p>'; return; }
-    if (!found.resumable) {
-      box.innerHTML = `<div class="panel" style="border-color:var(--neg);margin-top:.5rem"><b style="color:var(--neg)">“${esc(found.id)}” cannot be picked up — nothing has been started.</b>
-        <ul style="margin:.3rem 0 0 1.1rem">${found.why.map((w) => `<li>${esc(w)}</li>`).join('')}</ul></div>`;
-      return;
-    }
-    box.innerHTML = `<div class="panel" style="border-color:var(--warn);margin-top:.5rem"><b style="color:var(--warn)">Picking up “${esc(found.id)}” will score what it never got to:</b>
-      <ul style="margin:.3rem 0 0 1.1rem">
-        <li><b>${found.unitsScored}</b> already scored, kept as they are</li>
-        <li><b>${found.unitsLeft == null ? '—' : found.unitsLeft}</b> still to score${found.failures ? `, plus <b>${found.failures}</b> that failed and get another go` : ''}</li>
-        ${found.promotedScored ? `<li><b>${found.promotedScored}</b> already scored in full, kept as they are</li>` : ''}
-        ${found.promotedUnnamed ? `<li class="muted"><b>${found.promotedUnnamed}</b> older rows cannot be matched and will be scored again</li>` : ''}
-        ${found.resumes ? `<li class="muted">this run has been picked up ${found.resumes} time(s) already</li>` : ''}
-      </ul>
-      <div class="muted" style="margin-top:.4rem">The price files are checked again the moment it starts. If they are not the ones this run read, nothing is scored and it says so.</div></div>`;
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))));
-    if (!confirm(`Carry on "${found.id}" from where it stopped?\n\n`
-      + `${found.unitsLeft == null ? 'The remaining' : found.unitsLeft} unit(s) still to score. `
-      + 'This takes the one job slot until it finishes.\n\n'
-      + 'Hit Cancel to review what is left prior to starting.')) {
-      box.innerHTML += '<p class="note">cancelled — nothing started</p>';
-      return;
-    }
-    const out = await tryPost('api/run/resume', { id: found.id });
-    if (!out) return;
-    box.innerHTML += `<p class="note">picked up ${esc(out.batchId || found.id)} — watch it on the Sweep section</p>`;
-  };
-  const bdel = $('#bDelete');
-  if (bdel) bdel.onclick = async () => {
-    const id = pickedRun;
-    const box = $('#bDelOut');
-    if (!id) { box.innerHTML = '<p class="note">open a run first</p>'; return; }
-    const found = await apiOr(`api/run-contents?id=${encodeURIComponent(id)}`, null);
-    if (!found) { box.innerHTML = '<p class="note">could not read what that run holds — nothing deleted</p>'; return; }
-
-    if (found.locked) {
-      box.innerHTML = `<div class="panel" style="border-color:var(--neg);margin-top:.5rem"><b style="color:var(--neg)">“${esc(found.id)}” cannot be deleted — nothing has been deleted.</b>
-        <div style="margin-top:.3rem">${esc(found.lockedWhy || '')}</div>
-        ${found.greenlights.length ? `<ul style="margin:.3rem 0 0 1.1rem">${found.greenlights.map((g) =>
-    `<li>${esc(g.id)}${g.revoked ? ' (nuked)' : ''}</li>`).join('')}</ul>` : ''}</div>`;
-      return;
-    }
-
-    const c = found.counts;
-    const lines = [
-      ['rows on the board', c.leaderRows],
-      ['scored rows', c.slimRows],
-      ['replication rows', c.replicationRows],
-      ['saved model files', c.modelFiles],
-      ['tuning files', c.tuningFiles],
-    ].filter(([, n]) => n > 0);
-    box.innerHTML = `<div class="panel" style="border-color:var(--warn);margin-top:.5rem"><b style="color:var(--warn)">Deleting “${esc(found.id)}” will permanently remove:</b>
-      <ul style="margin:.3rem 0 0 1.1rem"><li>the run itself${found.campaign ? ` (campaign ${esc(found.campaign)})` : ''}</li>
-      ${lines.map(([what, n]) => `<li><b>${n}</b> ${esc(what)}</li>`).join('')}</ul>
-      ${found.plantedGate ? `<div class="note" style="margin-top:.4rem"><b>The planted check verdict is KEPT.</b>
-        Deleting this run removes its rows, not its result — the pass or fail it recorded, the engine version it
-        judged and the sentences saying why stay on the box for good, and the badge at the top of the page goes on
-        showing them.</div>` : ''}
-      <div class="muted" style="margin-top:.4rem">This cannot be undone.</div></div>`;
-
-    // Painted BEFORE the box appears: prompt() blocks the browser, so without
-    // this the list of what is about to go is only visible after the answer.
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(r, 0))));
-
-    const typed = prompt('Type the run id exactly to delete it and everything listed on the page behind this box:'
-      + `\n\n${found.id}\n\n`
-      + 'Hit Cancel to review what the run holds prior to deleting.');
-    if (typed === null) { box.innerHTML += '<p class="note">cancelled — nothing deleted</p>'; return; }
-    if (typed.trim() !== found.id) { box.innerHTML += '<p class="note">that did not match the id — nothing deleted</p>'; return; }
-    const out = await tryPost('api/run/delete', { id: found.id, confirm: found.id });
-    if (!out) return;
-    pickedRun = null; pickedDoc = null; localStorage.setItem('cx-run', '');
-    drawBoards();
-  };
-  if (doc) wireNotesSave(`api/bracketlab/${encodeURIComponent(doc.id)}/notes`, (out) => {
-    if (pickedDoc) { pickedDoc.notes = out.notes; pickedDoc.notesEditedAt = out.notesEditedAt; }
-  });
-  const csb = $('#bCopySettings');
-  if (csb) csb.onclick = () => {
-    tab = 'sweep'; localStorage.setItem('cx-tab', tab);
-    draw().then(() => {
-      // '' for the description: intent never copies — a re-run states its own
-      // purpose. Everything else comes from the one shared mapping.
-      fillSweepForm(doc.params || {}, '');
-      rememberSweepForm();
-      const m = $('#swMsg');
-      if (m) m.textContent = `form filled from ${doc.id} — nothing launched. Say why this re-run exists, then Start sweep.`;
-    });
-  };
-  if ($('#bSort')) {
-    $('#bSort').onchange = () => { localStorage.setItem('cx-boardsort', $('#bSort').value); drawBoards(); };
-  }
-  // THE MISSING OFF-SWITCH (owner, 2026-08-18). A row could be selected and
-  // never unselected — nothing in the tab removed a selection from a run. It
-  // is not cosmetic: the stored selection changes what Verify, Tune and
-  // Greenlight offer and aim at, so a state that cannot be left goes on quietly
-  // steering later decisions. The confirm names what stops following it.
-  const bcs = $('#bClearSel');
-  if (bcs) {
-    bcs.onclick = async () => {
-      if (!confirm('Clear the selected row on this run?\n\nVerify, Tune and Greenlight stop following it. '
-        + 'The row stays on the board — this removes the SELECTION, not the result.')) return;
-      const out = await tryPost(`api/bracketlab/${encodeURIComponent(doc.id)}/select`, { clear: true });
-      if (out) drawBoards();
-    };
-  }
-  if (!doc) return;
-  // ONE CONFIGURATION'S ROWS, FETCHED WHEN IT IS OPENED (owner order,
-  // 2026-08-23). The ranked list is summaries only now, so each line's
-  // per-asset table arrives on demand. Fetched ONCE per line — a second open
-  // re-shows what is already there rather than asking again — and the reply
-  // says how many rows the configuration really has, so a capped table can
-  // never read as a complete one.
-  // The two tables the SERVER pages redraw the whole section; the two paged in
-  // the browser redraw only themselves. Registered here, where the section's
-  // own redraw function is in scope.
-  PAGERS.repList = ({ offset, limit }) => {
-    pageAt.repList = { offset: offset ?? pageAt.repList.offset, limit: limit ?? pageAt.repList.limit };
-    saveBoardsView(doc);
-    drawBoards();
-  };
-  PAGERS.board = ({ offset, limit }) => {
-    pageAt.board = { offset: offset ?? pageAt.board.offset, limit: limit ?? pageAt.board.limit };
-    drawBoards();
-  };
-  wirePagers($('#view'));
-  // Rebuild what the view record says was open — once per page load, after
-  // which this call is a no-op (owner order, 2026-08-26: pages persist their
-  // view and location when flipping around, always).
-  applyBoardsView(doc);
-
-  $('#bBody').querySelectorAll('.repdetail').forEach((box) => {
-    const load = async () => {
-      if (box.dataset.loaded) return;
-      box.dataset.loaded = '1';
-      box.innerHTML = '<span class="muted">reading this configuration\'s rows…</span>';
-      const at = pageAt.repDetail[box.dataset.label] || { offset: 0, limit: 200 };
-      // Served from the SAME saved tally as the every-coin table, narrowed to
-      // this configuration (owner go, 2026-08-26). The old ask walked every
-      // recorded row on the answering thread — on the owner's run that walk
-      // outlived the web server's time limit, answered nothing, and froze
-      // every page while it lasted.
-      const d = await apiOr(`api/batch/${encodeURIComponent(doc.id)}/replication-coins`
-        + `?label=${encodeURIComponent(box.dataset.label || '')}&offset=${at.offset}&limit=${at.limit}`, null);
-      if (!d) {
-        // A failed read must not leave a table that looks empty. Empty and
-        // could-not-ask are different answers and the screen says which.
-        box.dataset.loaded = '';
-        box.innerHTML = '<span class="warn">could not read this configuration\'s coins — nothing is missing from the run, the screen could not ask</span>';
-        return;
-      }
-      if (d.building && !(d.rows && d.rows.length)) {
-        box.dataset.loaded = '';
-        box.innerHTML = `<span class="muted">totalling in the background — ${Number(d.scanned || 0).toLocaleString()} of ${Number(d.of || 0).toLocaleString()} rows so far. Open this line again in a little while.</span>`;
-        return;
-      }
-      // Its own pager, named after the configuration, so several open lines
-      // page independently rather than moving each other.
-      const key = `repDetail:${box.dataset.label}`;
-      PAGERS[key] = ({ offset, limit }) => {
-        const at = pageAt.repDetail[box.dataset.label] || { offset: 0, limit: 200 };
-        pageAt.repDetail[box.dataset.label] = { offset: offset ?? at.offset, limit: limit ?? at.limit };
-        box.dataset.loaded = '';
-        load();
-      };
-      box.innerHTML = '<p class="note">source: the same saved tally as the every-coin table, narrowed to this configuration — one row per coin, the records button opens the actual stored rows behind it.</p>'
-        + `<div class="scrollx"><table style="width:100%;border-collapse:collapse">${coinHeadHtml(false)}<tbody>${
-          (d.rows || []).map((r) => coinRowHtml(r, false)).join('') || '<tr><td colspan="8" class="empty">nothing here</td></tr>'
-        }</tbody></table></div>` + pageBar(key, d.page, ' coins');
-    };
-    const holder = box.closest('details');
-    if (!holder) { load(); return; }              // the single-configuration panel: no line to open
-    holder.addEventListener('toggle', () => {
-      const label = box.dataset.label || '';
-      if (holder.open) openLabels.add(label); else openLabels.delete(label);
-      saveBoardsView(doc);
-      if (holder.open) load();
-    });
-    // Restored open from the view record: the toggle never fires, so load now.
-    if (holder.open) load();
-  });
-
-  $('#bBody').querySelectorAll('tr[data-i]').forEach((tr) => {
-    tr.onclick = async (ev) => {
-      if (ev.target.tagName === 'BUTTON' || ev.target.tagName === 'SUMMARY') return;
-      const l = leaders[Number(tr.dataset.i)];
-      // record the selection on the RUN (the same anchor confirm/greenlight use)
-      const out = await tryPost(`api/bracketlab/${encodeURIComponent(doc.id)}/select`, l);
-      pickedDoc = null; if (out) drawBoards();
-    };
-  });
-  const censusFileFor = (l) => {
-    const cr = (doc.edgeCensus || []).find((r) => r.nullDealSeed == null && !r.shiftFrac
-      && r.trade === l.trade && (r.ctx1 || '') === (l.ctx1 || '') && (r.ctx2 || '') === (l.ctx2 || '')
-      && r.geometry === l.geometry && r.decision === l.decision);
-    return cr && cr.modelFile ? cr.modelFile.split('/').pop() : null;
-  };
-  // INSPECT — a microscope on one setup: what each member saw, how it voted, and
-  // how alike the members are. It is NOT a null test and cannot say whether the
-  // setup works; that caveat travels with the panel because the panel invites
-  // exactly that misreading.
-  $('#bBody').querySelectorAll('button[data-inspect]').forEach((b) => {
-    b.onclick = async () => {
-      const l = leaders[Number(b.dataset.inspect)];
-      const file = censusFileFor(l);
-      if (!file) { $('#gridOut').innerHTML = '<span class="warn">this row has no stored votes file (older run) — inspect needs the persisted committee votes</span>'; return; }
-      $('#gridOut').innerHTML = '<span class="muted">opening the setup…</span>';
-      const q = l.quorum ?? 1;
-      const d = await apiOr(`api/bracketlab/${encodeURIComponent(doc.id)}/inspect?file=${encodeURIComponent(file)}&quorum=${encodeURIComponent(q)}`, null);
-      if (!d || d.error) { $('#gridOut').innerHTML = `<span class="warn">${esc((d && d.error) || 'inspect failed')}</span>`; return; }
-      const mem = d.members || [];
-      const pw = d.pairwise || d.agreement || null;
-      $('#gridOut').innerHTML = `<h3 style="margin-top:0">Inside a setup — a MICROSCOPE, not a null test</h3>
-        <p class="note">${esc(d.meta ? `${d.meta.trade} · ${d.meta.geometry} · ${d.meta.decision}` : '')} at agreement ${esc(String(q))}.
-          This panel shows what the committee is made of. It cannot tell you whether the setup works — only a null
-          comparison can, and this is not one.</p>
-        ${mem.length ? `<div class="scrollx"><table><thead><tr>${cth('member','member')}${cth('view','view')}${cth('model','model')}
-          <th title="share of periods this member called a direction rather than standing aside. Read on the HELD-BACK window when the run has one, otherwise the search window.">participation</th>
-          <th title="exact 3-class match rate of this member's calls. Held-back window when the run has one, otherwise the search window. ACCURACY POINTS, not money.">accuracy</th>
-          <th title="accuracy minus the training-majority baseline — what the member adds over always guessing the commonest label. ACCURACY POINTS, not money.">edge</th>
-          <th title="share of this member's committed calls that the committee also traded — a member echoed by the others adds agreement without adding an independent opinion.">echoed by the vote</th></tr></thead><tbody>
-          ${mem.map((m, i) => {
-    // THE DUMP'S OWN NAMES. This read m.participation and m.metrics — neither of
-    // which lib/inspect.js has ever written — so all three columns showed "—"
-    // for every member of every run while looking like a measurement. The real
-    // names are activeHold/activeSearch and the search/hold metric objects
-    // (audit 2026-08-17). Held-back is preferred where it exists: it is the
-    // once-only look, and the search window flatters by construction.
-    const act = m.activeHold ?? m.activeSearch;
-    const met = m.hold || m.search;
-    const pctOf = (v) => (v == null ? '—' : `${(100 * v).toFixed(1)}%`);
-    // m.spec is set on every member lib/inspect.js builds, so the old
-    // `|| m.view` / `|| m.model` fallbacks were unreachable reads of names
-    // nothing writes — the same class as the three columns above, just
-    // harmless because a working read sat in front of them.
-    return `<tr><td>${i + 1}</td><td>${esc(String((m.spec && m.spec.view) || '—'))}</td>
-            <td>${esc(String((m.spec && m.spec.model) || '—'))}</td>
-            <td>${pctOf(act)}</td>
-            <td>${met && met.testAcc != null ? (100 * met.testAcc).toFixed(1) + '%' : '—'}</td>
-            <td>${met && met.edge != null ? (100 * met.edge).toFixed(1) + ' pts' : '—'}</td>
-            <td>${pctOf(m.withTradeHold)}</td></tr>`;
-  }).join('')}
-          </tbody></table></div>
-          <p class="note">Columns read the HELD-BACK window where the run has one, the search window otherwise.
-            Accuracy and edge are ACCURACY POINTS, never money.</p>` : '<p class="note">no per-member detail in this dump</p>'}
-        ${pw ? `<details><summary class="note" style="cursor:pointer">how alike the members are (pairwise agreement) — near-duplicates make an agreement count read higher than the number of independent opinions behind it</summary>
-          <pre>${esc(JSON.stringify(pw, null, 1).slice(0, 8000))}</pre></details>` : ''}
-        <details><summary class="note" style="cursor:pointer">the inspect record, verbatim</summary><pre>${esc(JSON.stringify(d, null, 1).slice(0, 20000))}</pre></details>`;
-    };
-  });
-  $('#bBody').querySelectorAll('button[data-grid]').forEach((b) => {
-    b.onclick = async () => {
-      const l = leaders[Number(b.dataset.grid)];
-      const file = censusFileFor(l);
-      if (!file) { $('#gridOut').innerHTML = '<span class="warn">this row has no stored votes file (older run) — the grid needs the persisted committee votes</span>'; return; }
-      $('#gridOut').innerHTML = '<span class="muted">re-scoring the full menu from the stored votes…</span>';
-      try {
-        const start = await post(`api/bracketlab/${encodeURIComponent(doc.id)}/menugrid`, { file });
-        const d = await pollJob(start.jobId, (m) => { $('#gridOut').innerHTML = `<span class="muted">${esc(m)}</span>`; });
-        const cells = (d.cells || []).slice().sort((a, b) => (b.pnl ?? -Infinity) - (a.pnl ?? -Infinity));
-        // WHERE THE ROW SITS in its own menu, and the held-back comparison. Only
-        // the AVERAGE held-back number is disclosed: per-cell held-back figures
-        // would turn the graded window into another shopping window.
-        const CF = ['quorum', 'gate', 'entry', 'dMult', 'tHours', 'trailMult', 'armMult'];
-        const isCand = (c) => CF.every((k) => (c[k] ?? null) === (l[k] ?? null));
-        const candIdx = cells.findIndex(isCand);
-        const rankLine = candIdx >= 0
-          ? `<p class="note"><b>Your cell sits at #${candIdx + 1} of ${cells.length.toLocaleString()}</b> in the table below (marked ▶).`
-            + (d.holdAvg != null && l.holdout && l.holdout.pnl != null
-              ? ` HELD-BACK comparison: your cell ${money(l.holdout.pnl)} against the average of the ${(d.holdCellCount || 0).toLocaleString()} setups that actually traded, ${money(d.holdAvg)} (${(100 * (d.holdPosShare || 0)).toFixed(0)}% of them positive; ${(d.holdAllCellCount || 0).toLocaleString()} cells in total — never-traded cells and duplicate always-gate copies are excluded so the average cannot be dragged toward zero by cells that did nothing). Every setup was scored once on the graded window but ONLY the average is disclosed: per-setup held-back numbers would let the graded window be shopped.`
-              : '')
-            + '</p>'
-          : '';
-        const drawGridTable = () => {
-        const gridPage = {
-          offset: Math.min(pageAt.grid.offset, Math.max(0, cells.length - 1)),
-          limit: pageAt.grid.limit, total: cells.length,
-        };
-        const gridShown = cells.slice(gridPage.offset, gridPage.offset + gridPage.limit);
-        gridPage.shown = gridShown.length;
-        gridPage.more = gridPage.offset + gridShown.length < cells.length;
-        $('#gridOut').innerHTML = renderPlateau(cells, l) + rankLine + `<h3 style="margin-top:0">Menu grid — ${esc(l.trade)} ${esc(l.geometry)} (${cells.length.toLocaleString()} permutations, test window only)</h3>
-          <div class="scrollx"><table><thead><tr>${cth('cell','cell')}${cth('trades','trades')}${cth('test $','testUsd')}</tr></thead><tbody>
-          ${gridShown.map((c) => `<tr><td>q${c.quorum} · ${c.entry === 'market' ? 'market' : `${esc(c.gate)} d${c.dMult}×`} · ${c.tHours}h${c.trailMult != null ? ` · trail ${c.trailMult}×` : ''}</td>
-            <td>${c.trades ?? '—'}</td><td class="${(c.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(c.pnl)}</td></tr>`).join('')}
-          </tbody></table></div>${pageBar('grid', gridPage, ' settings')}`;
-        // The grid arrives whole and is paged here rather than re-asked for:
-        // it is one run of arithmetic the server already did, and asking again
-        // would recompute it. Re-rendered from the cells already in hand.
-        PAGERS.grid = ({ offset, limit }) => {
-          pageAt.grid = { offset: offset ?? pageAt.grid.offset, limit: limit ?? pageAt.grid.limit };
-          drawGridTable();
-        };
-        };
-        pageAt.grid.offset = 0;      // a freshly opened grid starts at its top
-        drawGridTable();
-      } catch (e) { $('#gridOut').innerHTML = `<span class="warn">menu grid failed: ${esc(e.message)}</span>`; }
-    };
-  });
 }
 
 // ---- Verify -------------------------------------------------------------------
@@ -2798,43 +1333,6 @@ function renderNullVerdict(d) {
 // the widest-region column: neighbours earning similar money means the pick is
 // sturdy; the row alone earning while its neighbours collapse means one step
 // away falls apart.
-function renderPlateau(cells, cand) {
-  if (!cand || !cells.length) return '';
-  const FIELDS = ['quorum', 'gate', 'entry', 'dMult', 'tHours', 'trailMult', 'armMult'];
-  const eq = (a, b) => (a ?? null) === (b ?? null);
-  const isCand = (c) => FIELDS.every((k) => eq(c[k], cand[k]));
-  const group = (skip, title, fmt, extraSame) => {
-    const rows = cells.filter((c) => FIELDS.every((k) => k === skip || eq(c[k], cand[k])) && (!extraSame || extraSame(c)));
-    if (rows.length < 2) return '';
-    rows.sort((a, b) => ((a[skip] ?? -1) === (b[skip] ?? -1) ? ((a.armMult ?? -1) - (b.armMult ?? -1))
-      : (typeof a[skip] === 'string' ? String(a[skip]).localeCompare(String(b[skip])) : (a[skip] ?? -1) - (b[skip] ?? -1))));
-    return `<div style="display:inline-block;vertical-align:top;margin:0 .9rem .7rem 0">
-      <table><thead><tr>${cth(esc(title),'cell')}${cth('test $','testUsd')}${cth('W/T','wt')}</tr></thead><tbody>
-      ${rows.map((c) => `<tr${isCand(c) ? ' class="selected"' : ''}><td>${isCand(c) ? '▶ ' : ''}${esc(fmt(c))}</td>
-        <td class="${(c.pnl || 0) >= 0 ? 'pos' : 'neg'}">${money(c.pnl)}</td><td>${c.wins ?? '—'}/${c.trades ?? '—'}</td></tr>`).join('')}
-      </tbody></table></div>`;
-  };
-  const blocks = [
-    group('quorum', 'agreement', (c) => `${c.quorum}/${c.members}`),
-    group('tHours', 'time limit', (c) => `${c.tHours}h`),
-  ];
-  if (cand.entry !== 'market') {
-    blocks.push(group('dMult', 'trigger distance', (c) => `${c.dMult}×`));
-    blocks.push(group('gate', 'gate', (c) => c.gate));
-    // trailing axis: static plus each distance, arm pinned to the candidate's so
-    // only ONE thing moves
-    blocks.push(group('trailMult', 'trailing stop', (c) => (c.trailMult == null ? 'static' : `${c.trailMult}×`),
-      (c) => (c.trailMult == null ? true : (c.armMult ?? 0) === (cand.armMult ?? 0))));
-  }
-  const body = blocks.filter(Boolean).join('');
-  if (!body) return '';
-  return `<h3 style="margin-top:0">Plateau view — one setting moved at a time, the rest held at your cell</h3>
-    <p class="note">KEY — each small table changes exactly ONE setting; ▶ marks your cell. Neighbours earning similar
-      money is a plateau and the pick is sturdy. Your row alone earning while its neighbours collapse is a needle —
-      one step away it falls apart, so distrust it. Money is TEST-WINDOW money, dollars per $100, the same as the grid
-      below. ${cand.entry === 'market' ? 'Market entry has no trigger distance, gate or trailing — only agreement and time limit can move.' : ''}</p>
-    <div>${body}</div>`;
-}
 
 // ---- History: reading a finished tuning run ---------------------------------
 // Ported from the Bracket lab's renderHtRun (app.js:3195). The Constructing tab
@@ -3459,778 +1957,218 @@ async function drawGreenlight() {
   };
 }
 
-// ---- Sweep2 and Boards2 — DRAWINGS of the three-stage redesign ------------
+// ---- Sweep — the three stages, live ---------------------------------------
 //
-// Owner order, 2026-08-26: "before writing anything into THIS-RELEASE you
-// need to make a prototype page (call it 'Sweep2' for now) on a tab between
-// Sweep and Boards. i need to see your ui design ideas before you write any
-// code. ditto for a prototype on new tab 'Boards2'. mock them up IN DETAIL
-// MISSING *ABSOLUTELY NOTHING* ... we will work off of that to make sure you
-// get the design right before any coding."
-//
-// So: every control is disabled, neither page asks the service for anything,
-// and every number is a worked example. The same rule as the Help tab's
-// pictures — a drawing that can be operated is one somebody will operate.
-// tests/test-prototypes.js holds all of this in place.
-async function drawSweep2() {
-  const dead = 'disabled';
-  $('#view').innerHTML = `<div class="panel" style="border-color:var(--warn)">
-    <h3 style="margin-top:0">Sweep2 — a drawing of the three-stage design</h3>
-    <p class="note"><b>Nothing on this page works.</b> Every control is switched off, and every number is a worked example.</p>
-  </div>
-
-  <div class="panel">
-    <h3 style="margin-top:0">Stage 1 — train once, keep every vote, rank against the null set</h3>
-    <div class="row" style="align-items:flex-end">
-      <label class="f">universe (blank = all 17 default pairs)<input id="s2Uni" ${dead} placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
-      <label class="c"><input type="checkbox" id="s2Singles" checked ${dead}> singles</label>
-      <label class="c"><input type="checkbox" id="s2Doubles" checked ${dead}> doubles</label>
-      <label class="c"><input type="checkbox" id="s2Triples" ${dead}> triples</label>
-      <label class="c"><input type="checkbox" id="s2AllData" checked ${dead}> all loaded data</label>
-      <label class="f">start<input id="s2Start" type="month" ${dead}></label>
-      <label class="f">end<input id="s2End" type="month" ${dead}></label>
-    </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">chunk shape<select id="s2Geom" ${dead}><option>Weekly 8-day</option><option>Daily 1-day</option><option>Daily 2-day</option><option>Daily 3-day</option><option selected>Daily 4-day</option></select></label>
-      <label class="c"><input type="checkbox" id="s2PermGeom" checked ${dead}> permute</label>
-      <label class="f">window layout<select id="s2Layout" ${dead}><option>70/15/15</option><option selected>61/13/13/13 (sealed exam)</option><option>legacy 80/20 (never evidence)</option></select></label>
-      <label class="f">null set size<input id="s2Copies1" type="number" value="19" style="width:4.5rem" ${dead}></label>
-    </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f" style="flex:1">description<input id="s2Desc1" style="width:100%" ${dead}></label>
-      <button id="s2Go1" ${dead}>start stage 1</button>
-    </div>
-    <p class="note" style="margin:.4rem 0 0">trains 3 LOGREG members per coin on its own, 4 alongside others · every vote
-      kept · ordered by beat its own null set, ties by lead over null set · 25,704 units × 3 = 77,112 trainings (worked example)</p>
-  </div>
-
-  <div class="panel">
-    <h3 style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
-    <div class="row" style="align-items:flex-end">
-      <label class="f">from stage 1 record set<select id="s2From2" ${dead}>
-        <option selected>S1 #7 — 2026-08-24 — 25,704 units, votes kept</option>
-        <option>S1 #6 — 2026-08-19 — 4,896 units, votes kept</option></select></label>
-      <label class="f">order by<select id="s2Order" ${dead}>
-        <option selected>beat its own null set</option><option>lead over null set</option></select></label>
-      <label class="f">carry forward (0 = all)<input id="s2Carry" type="number" value="1000" style="width:5.5rem" ${dead}></label>
-    </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f" style="flex:1">description<input id="s2Desc2" style="width:100%" ${dead}></label>
-      <button id="s2Go2" ${dead}>start stage 2</button>
-    </div>
-    <p class="note" style="margin:.4rem 0 0">LOGREG members reused, never retrained · 1,000 carried × 3 BOOST = 3,000 new
-      trainings (worked example) · writes S2 #3, naming its parent</p>
-  </div>
-
-  <div class="panel">
-    <h3 style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
-    <div class="row" style="align-items:flex-end">
-      <label class="f">from stage 2 record set<select id="s2From3" ${dead}>
-        <option selected>S2 #3 — top 1,000 of S1 #7 by beat its own null set</option>
-        <option>S2 #2 — all 4,896 of S1 #6</option></select></label>
-      <label class="f">fee % each way<input id="s2P3Fee" type="number" value="0.125" style="width:5.5rem" ${dead}></label>
-      <label class="f">null set size<input id="s2P3Copies" type="number" value="19" style="width:4.5rem" ${dead}></label>
-    </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">decision<select id="s2P3Dec" ${dead}><option selected>argmax</option><option>directional</option></select></label>
-        <label class="c"><input type="checkbox" id="s2P3PermDec" ${dead}> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">band % (or auto)<input id="s2P3Band" value="auto" style="width:5rem" ${dead}></label>
-        <label class="c"><input type="checkbox" id="s2P3PermBand" ${dead}> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="c"><input type="checkbox" id="s2P3Wk" ${dead}> 24/5</label>
-        <label class="c"><input type="checkbox" id="s2P3PermWk" ${dead}> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">entry<select id="s2P3Entry" ${dead}><option selected>breakout</option><option>market</option></select></label>
-        <label class="c"><input type="checkbox" id="s2P3PermEntry" checked ${dead}> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">gate<select id="s2P3Gate" ${dead}><option>always</option><option>active</option><option selected>directional</option></select></label>
-        <label class="c"><input type="checkbox" id="s2P3PermGate" checked ${dead}> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">d<select id="s2P3D" ${dead}><option>0.25×</option><option>0.5×</option><option>0.75×</option><option>1×</option><option selected>1.5×</option></select></label>
-        <label class="c"><input type="checkbox" id="s2P3PermD" checked ${dead}> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">t<select id="s2P3T" ${dead}><option>17h</option><option>41h</option><option selected>65h</option><option>89h</option><option>113h</option><option>137h</option><option>161h</option></select></label>
-        <label class="c"><input type="checkbox" id="s2P3PermT" checked ${dead}> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">trail<select id="s2P3Trail" ${dead}><option selected>static</option><option>0.5×</option><option>1×</option><option>1.5×</option><option>2×</option></select></label>
-        <label class="c"><input type="checkbox" id="s2P3PermTrail" ${dead}> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">arm<select id="s2P3Arm" ${dead}><option selected>0×</option><option>0.5×</option><option>1×</option></select></label>
-        <label class="c"><input type="checkbox" id="s2P3PermArm" ${dead}> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">agree<select id="s2P3Q6" ${dead}><option>1/6</option><option selected>2/6</option><option>3/6</option><option>4/6</option><option>5/6</option><option>6/6</option></select></label>
-        <label class="f">with contexts<select id="s2P3Q8" ${dead}><option>1/8</option><option>2/8</option><option selected>3/8</option><option>4/8</option><option>5/8</option><option>6/8</option><option>7/8</option><option>8/8</option></select></label>
-        <label class="c"><input type="checkbox" id="s2P3PermAgree" ${dead}> permute</label>
-      </div>
-      <span class="note">declared: <b>2,772 settings</b> (worked example)</span>
-    </div>
-    <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f" style="flex:1">description<input id="s2P3Desc" style="width:100%" ${dead}></label>
-      <button id="s2P3Go" ${dead}>start stage 3</button>
-    </div>
-    <p class="note" style="margin:.4rem 0 0">arithmetic on the kept votes — no trainings · the same null-set deals for every
-      setting in the block · writes S3 #12, naming its parent</p>
-  </div>`;
-}
-
-async function drawBoards2() {
-  const dead = 'disabled';
-  $('#view').innerHTML = `<div class="panel" style="border-color:var(--warn)">
-    <h3 style="margin-top:0">Boards2 — a drawing of how the three stages read back</h3>
-    <p class="note"><b>Nothing on this page works.</b> Every control is switched off, and every row is a worked example.</p>
-  </div>
-
-  <div class="panel">
-    <h3 style="margin-top:0">The record chain</h3>
-    <div class="row" style="align-items:flex-end">
-      <label class="f">record set<select id="b2Pick" ${dead}>
-        <option selected>S3 #12 — 2,772 settings priced on S2 #3 — 2026-08-26</option>
-        <option>S2 #3 — top 1,000 of S1 #7 by beat its own null set — 2026-08-25</option>
-        <option>S1 #7 — 25,704 units, votes kept — 2026-08-24</option>
-        <option>S1 #6 — 4,896 units, votes kept — 2026-08-19</option></select></label>
-      <button id="b2Open" ${dead}>open</button>
-    </div>
-    <p class="note" style="margin-top:.5rem"><b>S1 #7</b> (25,704 units · 77,112 trainings · votes kept)
-      → <b>S2 #3</b> (carried 1,000 by beat its own null set · 3,000 new trainings)
-      → <b>S3 #12</b> (2,772 settings · no training) · price files fingerprint-checked the whole way</p>
-  </div>
-
-  <div class="panel">
-    <h3 style="margin-top:0">Stage 1 — every unit, scored once (S1 #7)</h3>
-    <div class="scrollx"><table style="border-collapse:collapse">
-      <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th style="padding:.3rem .5rem .3rem 0" title="this unit's place under stage 1's fixed rule: beat its own null set, ties broken by lead over null set">order</th>
-        <th style="padding:.3rem .5rem" title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
-        <th style="padding:.3rem .5rem" title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
-        <th style="padding:.3rem .5rem" title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape</th>
-        <th style="padding:.3rem .5rem" title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two null-set columns are what compare across shapes.">forecast score</th>
-        <th style="padding:.3rem .5rem" title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own null set</th>
-        <th style="padding:.3rem .5rem" title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set</th>
-        <th style="padding:.3rem .5rem" title="whether this row carried forward into S2 #3">carried</th></tr></thead>
-      <tbody>
-        <tr><td style="padding:.25rem .5rem .25rem 0">1</td><td style="padding:.25rem .5rem"><b>LTCUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">Daily 4-day</td><td style="padding:.25rem .5rem">96.4</td><td style="padding:.25rem .5rem"><b class="pos">100.0%</b> <span class="muted">19/19</span></td><td style="padding:.25rem .5rem" class="pos">×3.1</td><td style="padding:.25rem .5rem" class="pos">yes</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">2</td><td style="padding:.25rem .5rem"><b>XRPUSDT</b></td><td style="padding:.25rem .5rem">BTCUSDT</td><td style="padding:.25rem .5rem">Daily 3-day</td><td style="padding:.25rem .5rem">91.8</td><td style="padding:.25rem .5rem"><b class="pos">100.0%</b> <span class="muted">19/19</span></td><td style="padding:.25rem .5rem" class="pos">×2.6</td><td style="padding:.25rem .5rem" class="pos">yes</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">3</td><td style="padding:.25rem .5rem"><b>BCHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">Weekly 8-day</td><td style="padding:.25rem .5rem">24.1</td><td style="padding:.25rem .5rem"><b class="pos">94.7%</b> <span class="muted">18/19</span></td><td style="padding:.25rem .5rem" class="pos">×2.2</td><td style="padding:.25rem .5rem" class="pos">yes</td></tr>
-        <tr><td colspan="8" class="muted" style="padding:.25rem .5rem">… 996 more rows …</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">1,000</td><td style="padding:.25rem .5rem"><b>ADAUSDT</b></td><td style="padding:.25rem .5rem">ETHUSDT</td><td style="padding:.25rem .5rem">Daily 4-day</td><td style="padding:.25rem .5rem">78.9</td><td style="padding:.25rem .5rem">68.4% <span class="muted">13/19</span></td><td style="padding:.25rem .5rem">×0.8</td><td style="padding:.25rem .5rem" class="pos">yes — the last one in</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">1,001</td><td style="padding:.25rem .5rem"><b>ETHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">Daily 2-day</td><td style="padding:.25rem .5rem">80.1</td><td style="padding:.25rem .5rem">68.4% <span class="muted">13/19</span></td><td style="padding:.25rem .5rem">×0.7</td><td style="padding:.25rem .5rem" class="muted">no — the first one out, on the tie-break</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">25,704</td><td style="padding:.25rem .5rem"><b>DOGEUSDT</b></td><td style="padding:.25rem .5rem">SOLUSDT</td><td style="padding:.25rem .5rem">Daily 1-day</td><td style="padding:.25rem .5rem">61.0</td><td style="padding:.25rem .5rem">10.5% <span class="muted">2/19</span></td><td style="padding:.25rem .5rem" class="neg">×-1.4</td><td style="padding:.25rem .5rem" class="muted">no</td></tr>
-      </tbody></table></div>
-  </div>
-
-  <div class="panel">
-    <h3 style="margin-top:0">Stage 2 — the carried rows, in full (S2 #3, out of S1 #7)</h3>
-    <div class="scrollx"><table style="border-collapse:collapse">
-      <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th style="padding:.3rem .5rem .3rem 0" title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
-        <th style="padding:.3rem .5rem" title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside</th>
-        <th style="padding:.3rem .5rem" title="how many members vote for this unit now, and what they are">members</th>
-        <th style="padding:.3rem .5rem" title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members</th>
-        <th style="padding:.3rem .5rem" title="the same fixed score with every member pooled, BOOST included">forecast score — all members</th>
-        <th style="padding:.3rem .5rem" title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?</th></tr></thead>
-      <tbody>
-        <tr><td style="padding:.25rem .5rem .25rem 0"><b>LTCUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 LOGREG + 3 BOOST</td><td style="padding:.25rem .5rem">96.4</td><td style="padding:.25rem .5rem">103.9</td><td style="padding:.25rem .5rem" class="pos">+7.5</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0"><b>XRPUSDT</b></td><td style="padding:.25rem .5rem">BTCUSDT</td><td style="padding:.25rem .5rem">8 — 4 LOGREG + 4 BOOST (contexts add the cross view)</td><td style="padding:.25rem .5rem">91.8</td><td style="padding:.25rem .5rem">90.2</td><td style="padding:.25rem .5rem" class="neg">-1.6</td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0"><b>BCHUSDT</b></td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">6 — 3 LOGREG + 3 BOOST</td><td style="padding:.25rem .5rem">24.1</td><td style="padding:.25rem .5rem">27.7</td><td style="padding:.25rem .5rem" class="pos">+3.6</td></tr>
-        <tr><td colspan="6" class="muted" style="padding:.25rem .5rem">… 997 more rows …</td></tr>
-      </tbody></table></div>
-  </div>
-
-  <div class="panel">
-    <h3 style="margin-top:0">Stage 3 — settings priced from the kept votes (S3 #12, out of S2 #3)</h3>
-    <p style="margin:.6rem 0 .2rem"><b>Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
-    <div class="scrollx"><table style="border-collapse:collapse">
-      <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th style="padding:.3rem .5rem .3rem 0" title="how the members' votes become a call — priced from the kept votes.">decision</th>
-        <th style="padding:.3rem .5rem" title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history; the records below show what it worked out to.">band</th>
-        <th style="padding:.3rem .5rem" title="whether this setting trades weekdays only.">24/5</th>
-        <th style="padding:.3rem .5rem" title="how the position is opened.">entry</th>
-        <th style="padding:.3rem .5rem" title="when a position may be opened at all. A dash means the box does not apply to this setting.">gate</th>
-        <th style="padding:.3rem .5rem" title="how far from the starting price the opening level sits. A dash means it does not apply.">d</th>
-        <th style="padding:.3rem .5rem" title="how many hours a position is held before it is closed, if nothing else closed it first.">t</th>
-        <th style="padding:.3rem .5rem" title="which stop the setting uses. static sits still on the far side of the entry; a dash means it does not apply.">trail</th>
-        <th style="padding:.3rem .5rem" title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm</th>
-        <th style="padding:.3rem .5rem" title="how many members must say the same thing before a trade is taken, out of how many there are.">agree</th>
-        <th style="padding:.3rem .5rem" title="how many coins this setting was priced on.">coins</th>
-        <th style="padding:.3rem .5rem" title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money</th>
-        <th style="padding:.3rem .5rem" title="average money per coin on the test window — flattering by construction, because everything was ordered on that window.">avg test $</th>
-        <th style="padding:.3rem .5rem" title="the once-only look, on data no ordering ever read">avg held-back $</th>
-        <th style="padding:.3rem .5rem" title="average entries per coin in the held-back window.">avg held-back trades</th>
-        <th style="padding:.3rem .5rem" title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $</th>
-        <th style="padding:.3rem .5rem" title="across every coin and every null-set deal, the share of head-to-heads won">beat its own null set</th></tr></thead>
-      <tbody>
-        <tr><td style="padding:.25rem .5rem .25rem 0">argmax</td><td style="padding:.25rem .5rem">auto</td><td style="padding:.25rem .5rem">no</td><td style="padding:.25rem .5rem">breakout</td><td style="padding:.25rem .5rem">directional</td><td style="padding:.25rem .5rem">1.5×</td><td style="padding:.25rem .5rem">89h</td><td style="padding:.25rem .5rem">static</td><td style="padding:.25rem .5rem">0×</td><td style="padding:.25rem .5rem">2/6</td><td style="padding:.25rem .5rem">17</td><td style="padding:.25rem .5rem" class="pos">13 of 17</td><td style="padding:.25rem .5rem" class="pos">$84</td><td style="padding:.25rem .5rem" class="pos">$31</td><td style="padding:.25rem .5rem">5.2</td><td style="padding:.25rem .5rem" class="pos">$18</td><td style="padding:.25rem .5rem"><b class="pos">63.1%</b> <span class="muted">204/323</span></td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">argmax</td><td style="padding:.25rem .5rem">auto</td><td style="padding:.25rem .5rem">no</td><td style="padding:.25rem .5rem">breakout</td><td style="padding:.25rem .5rem">active</td><td style="padding:.25rem .5rem">1×</td><td style="padding:.25rem .5rem">65h</td><td style="padding:.25rem .5rem">static</td><td style="padding:.25rem .5rem">0×</td><td style="padding:.25rem .5rem">2/6</td><td style="padding:.25rem .5rem">17</td><td style="padding:.25rem .5rem" class="pos">12 of 17</td><td style="padding:.25rem .5rem" class="pos">$71</td><td style="padding:.25rem .5rem" class="pos">$26</td><td style="padding:.25rem .5rem">6.8</td><td style="padding:.25rem .5rem" class="pos">$11</td><td style="padding:.25rem .5rem"><b class="pos">60.4%</b> <span class="muted">195/323</span></td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">directional</td><td style="padding:.25rem .5rem">auto</td><td style="padding:.25rem .5rem">yes</td><td style="padding:.25rem .5rem">market</td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">41h</td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem" class="muted">—</td><td style="padding:.25rem .5rem">3/6</td><td style="padding:.25rem .5rem">17</td><td style="padding:.25rem .5rem">8 of 17</td><td style="padding:.25rem .5rem" class="pos">$66</td><td style="padding:.25rem .5rem" class="neg">-$4</td><td style="padding:.25rem .5rem">9.1</td><td style="padding:.25rem .5rem" class="neg">-$9</td><td style="padding:.25rem .5rem">49.8% <span class="muted">161/323</span></td></tr>
-        <tr><td colspan="17" class="muted" style="padding:.25rem .5rem">… 2,769 more settings …</td></tr>
-      </tbody></table></div>
-    <p style="margin:.9rem 0 .2rem"><b>Every coin of every setting</b> — one row per coin, its records opening below it</p>
-    <div class="row" style="margin:.3rem 0 0">
-      <label class="c"><span class="muted">beat its own null set at least, %</span><input id="b2MinShare" type="number" style="width:5.5rem" ${dead}></label>
-    </div>
-    <div class="row" style="margin:.15rem 0 0">
-      <label class="c"><span class="muted">avg held-back at least, $</span><input id="b2MinHold" type="number" style="width:5.5rem" ${dead}></label>
-    </div>
-    <div class="row" style="margin:.15rem 0 0">
-      <label class="c"><span class="muted">avg trades at least</span><input id="b2MinTrades" type="number" style="width:5.5rem" ${dead}></label>
-    </div>
-    <div class="row" style="margin:.15rem 0 0">
-      <label class="c"><span class="muted">avg vs always-long at least, $</span><input id="b2MinVsLong" type="number" style="width:5.5rem" ${dead}></label>
-    </div>
-    <div class="row" style="margin:.5rem 0">
-      <label class="c"><span class="muted">sort by</span><select id="b2Sort" ${dead}>
-        <option selected>beat its own null set</option><option>comparisons</option><option>avg held-back</option>
-        <option>avg vs always-long</option><option>coin</option><option>setting</option></select></label>
-      <label class="c"><span class="muted">at least this many comparisons</span><input id="b2MinPairs" type="number" value="100" style="width:5.5rem" ${dead}></label>
-      <button id="b2Go" ${dead}>Apply</button>
-    </div>
-    <div class="scrollx"><table style="border-collapse:collapse">
-      <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th style="padding:.3rem .5rem .3rem 0" title="the setting this row prices, written the same way everywhere on this page.">setting</th>
-        <th style="padding:.3rem .5rem" title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin</th>
-        <th style="padding:.3rem .5rem" title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set</th>
-        <th style="padding:.3rem .5rem" title="how many head-to-heads the share rests on.">comparisons</th>
-        <th style="padding:.3rem .5rem" title="average held-back money per record.">avg held-back</th>
-        <th style="padding:.3rem .5rem" title="average held-back entries per record.">avg trades</th>
-        <th style="padding:.3rem .5rem" title="average held-back money minus just holding the coin over the same window.">avg vs always-long</th>
-        <th style="padding:.3rem .5rem" title="how many records this row averages — one per carried unit that priced this setting on this coin.">rows</th>
-        <th style="padding:.3rem .5rem" title="opens the records themselves below the row.">records</th></tr></thead>
-      <tbody>
-        <tr><td style="padding:.25rem .5rem .25rem 0">q2/6 breakout t89h</td><td style="padding:.25rem .5rem"><b>AVAXUSDT</b> <span class="muted">Daily 4-day</span></td><td style="padding:.25rem .5rem"><b class="pos">90.2%</b> <span class="muted">4,618/5,120</span></td><td style="padding:.25rem .5rem">5,120</td><td style="padding:.25rem .5rem" class="pos">$74</td><td style="padding:.25rem .5rem">4.4</td><td style="padding:.25rem .5rem" class="pos">$52</td><td style="padding:.25rem .5rem">16</td><td style="padding:.25rem .5rem"><button ${dead}>▾ records</button></td></tr>
-        <tr><td colspan="9" style="padding:.25rem .5rem .6rem 1.2rem">
-          <div class="scrollx"><table style="border-collapse:collapse">
-            <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-              <th style="padding:.2rem .5rem .2rem 0" title="how the committee's votes become a call — the decision box, one of the choices permuted across this coin's records">decision</th>
-              <th style="padding:.2rem .5rem" title="the band % (or auto) box as it was chosen. auto works the width out from the prices, and the band % column shows what it worked out to">band</th>
-              <th style="padding:.2rem .5rem" title="whether this record traded weekdays only — the 24/5 box">24/5</th>
-              <th style="padding:.2rem .5rem" title="how far either side of the current price this record set its two levels, as a percentage of price">band %</th>
-              <th style="padding:.2rem .5rem" title="profit-and-loss on the window the settings were CHOSEN on — flattering by construction">test $</th>
-              <th style="padding:.2rem .5rem" title="entries in the test window — the window the settings were chosen on">test trades</th>
-              <th style="padding:.2rem .5rem" title="of the head-to-heads between THIS record's held-back money and every null-set deal of this coin, the share it won. The coin row above sums exactly these records.">beat its own null set</th>
-              <th style="padding:.2rem .5rem" title="the once-only look on data no search touched — the number that counts">held-back $</th>
-              <th style="padding:.2rem .5rem" title="entries in the held-back window — the once-only look">held-back trades</th>
-              <th style="padding:.2rem .5rem" title="how many held-back positions closed at their stop">held-back stops</th>
-              <th style="padding:.2rem .5rem" title="this record's held-back money minus just holding the coin over the same window">vs always-long</th></tr></thead>
-            <tbody>
-              <tr><td style="padding:.2rem .5rem .2rem 0">argmax</td><td style="padding:.2rem .5rem">auto</td><td style="padding:.2rem .5rem">no</td><td style="padding:.2rem .5rem">±2.1%</td><td style="padding:.2rem .5rem" class="pos">$96</td><td style="padding:.2rem .5rem">12</td><td style="padding:.2rem .5rem"><b class="pos">93.8%</b> <span class="muted">300/320</span></td><td style="padding:.2rem .5rem" class="pos">$81</td><td style="padding:.2rem .5rem">5</td><td style="padding:.2rem .5rem">1</td><td style="padding:.2rem .5rem" class="pos">$60</td></tr>
-              <tr><td style="padding:.2rem .5rem .2rem 0">argmax</td><td style="padding:.2rem .5rem">auto</td><td style="padding:.2rem .5rem">yes</td><td style="padding:.2rem .5rem">±2.1%</td><td style="padding:.2rem .5rem" class="pos">$88</td><td style="padding:.2rem .5rem">10</td><td style="padding:.2rem .5rem"><b class="pos">91.3%</b> <span class="muted">292/320</span></td><td style="padding:.2rem .5rem" class="pos">$69</td><td style="padding:.2rem .5rem">4</td><td style="padding:.2rem .5rem">1</td><td style="padding:.2rem .5rem" class="pos">$48</td></tr>
-              <tr><td colspan="11" class="muted" style="padding:.2rem .5rem">… 14 more records …</td></tr>
-            </tbody></table></div></td></tr>
-        <tr><td style="padding:.25rem .5rem .25rem 0">q2/6 breakout t89h</td><td style="padding:.25rem .5rem"><b>LTCUSDT</b> <span class="muted">Daily 4-day</span></td><td style="padding:.25rem .5rem"><b class="pos">87.5%</b> <span class="muted">4,480/5,120</span></td><td style="padding:.25rem .5rem">5,120</td><td style="padding:.25rem .5rem" class="pos">$61</td><td style="padding:.25rem .5rem">5.1</td><td style="padding:.25rem .5rem" class="pos">$40</td><td style="padding:.25rem .5rem">16</td><td style="padding:.25rem .5rem"><button ${dead}>records</button></td></tr>
-        <tr><td colspan="9" class="muted" style="padding:.25rem .5rem">… 235,618 more coin rows …</td></tr>
-      </tbody></table></div>
-  </div>`;
-}
-
-// ---- Sweep3 and Boards3 — the WORKING three-stage system -------------------
-//
-// Owner order, 2026-08-27: "Make Sweep3 and Boards3 ... these are the
-// functional versions fully backed by the new data schema and processing."
-// The layout is the crunched Sweep2/Boards2 drawings, alive: every control
-// here launches or reads real record sets through /api/stage*, and the
-// counts on the cost lines come from the same enumerators the launches run.
-let s3Poll = null;
-
-function s3SetOptions(sets, stage, selected) {
-  const list = sets.filter((x) => x.stage === stage && (x.status === 'done'));
-  if (!list.length) return `<option value="">— no finished stage ${stage} record set on this box —</option>`;
-  return list.map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${x.plan.units.toLocaleString()} units${x.stage === 1 ? ', votes kept' : ''}</option>`).join('');
-}
-
-async function s3Progress() {
-  const el = $('#s3Prog');
-  if (!el) return;
-  const st = await apiOr('api/stagesets', null);
-  if (!st) { el.innerHTML = '<span class="warn">the record-set list could not be read</span>'; return; }
-  // the start buttons sleep while a run is going — one heavy job at a time,
-  // said on the button instead of by a refusal after the press
-  const going = !!st.running;
-  for (const bid of ['s3Go1', 's3Go2', 's3Go3']) {
-    const b = $(`#${bid}`);
-    if (b) { b.disabled = going; b.title = going ? 'a stage run is going — one heavy job at a time. The button wakes when it lands.' : ''; }
-  }
-  if (!st.running) {
-    el.innerHTML = 'nothing is running';
-    if (s3Poll) { clearInterval(s3Poll); s3Poll = null; }
-    return;
-  }
-  const row = (st.sets || []).find((x) => x.id === st.running);
-  // The whole story on one line: what is going, how far through its cycles,
-  // the percent, and about how long is left (owner order, 2026-08-27) —
-  // refreshed every few seconds by the poll below.
-  const pf = (row && row.perf) || {};
-  const pct = pf.cyclesTotal ? Math.floor(((pf.cyclesDone || 0) / pf.cyclesTotal) * 100) : null;
-  const tail = [
-    pct != null ? `<b>${pct}%</b> of ${Number(pf.cyclesTotal).toLocaleString()} ${esc(pf.cyclesWord || 'cycles')}` : null,
-    pf.etaMs != null ? `about ${msWords(pf.etaMs)} left` : null,
-    pf.elapsedMs ? `${msWords(pf.elapsedMs)} in` : null,
-  ].filter(Boolean).join(' · ');
-  el.innerHTML = row
-    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="s3Stop" class="danger">stop</button>`
-    : `a stage run is going (${esc(st.running)})`;
-  const stop = $('#s3Stop');
-  if (stop) stop.onclick = async () => { await tryPost(`api/stageset/${st.running}/stop`, {}); s3Progress(); };
-  if (!s3Poll) s3Poll = setInterval(s3Progress, 4000);
-}
-
-// GREEN WHEN A SECTION SHOWS THE PROVENANCE OF THE SECTION BELOW IT, RED AT
-// THE POINT OF BREAK (owner order, 2026-08-27). Stage 1's title is judged
-// against the stage 1 record set the stage 2 box names; stage 2's against
-// the stage 2 record set the stage 3 box names; stage 3 anchors the chain.
-// Judged live on every change — set a box back and the title goes green
-// again. A section with nothing below it naming a record set is green.
-function s3Provenance() {
-  const sets = s3SetsCache || [];
-  const rowOf = (id) => sets.find((x) => x.id === id) || null;
-  const paint = (sel, ok, why) => {
-    const h = $(sel);
-    if (!h) return;
-    h.style.color = ok ? 'var(--pos)' : 'var(--neg)';
-    h.title = ok
-      ? 'green: this section shows the provenance of the section below it (or nothing below names a record set yet)'
-      : `red: ${why}. Set the boxes back and this goes green again.`;
-  };
-  const v = (sel) => { const e = $(sel); return e ? e.value : ''; };
-  const c = (sel) => { const e = $(sel); return !!(e && e.checked); };
-
-  const s1row = rowOf(v('#s3From2'));
-  if (!s1row) paint('#s3H1', true);
-  else {
-    const p = s1row.params || {};
-    const defaults = ((VOCAB && VOCAB.defaultPairs) || []).map((o) => String(o.value));
-    const boxUni = (v('#s3Uni') || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
-    const wantUni = (boxUni.length ? boxUni : defaults).slice().sort().join(',');
-    const setUni = (p.universe || []).slice().sort().join(',');
-    const sz = p.sizes || {};
-    const geos = p.geometries || [];
-    const mismatch = wantUni !== setUni ? 'the universe no longer matches'
-      : (c('#s3Singles') !== !!sz.singles || c('#s3Doubles') !== !!sz.doubles || c('#s3Triples') !== !!sz.triples) ? 'the singles / doubles / triples ticks no longer match'
-        : (c('#s3PermGeom') !== (geos.length > 1) || (!c('#s3PermGeom') && geos[0] !== v('#s3Geom'))) ? 'the chunk shape no longer matches'
-          : v('#s3Layout') !== (p.windowLayout || '') ? 'the window layout no longer matches'
-            : Number(v('#s3Null1')) !== Number(p.nullN) ? 'the null set size no longer matches'
-              : c('#s3AllData') !== (p.allLoaded !== false) ? 'the all loaded data tick no longer matches'
-                : (!c('#s3AllData') && (v('#s3Start') !== (p.startMonth || '') || v('#s3End') !== (p.endMonth || ''))) ? 'the start / end months no longer match'
-                  : null;
-    paint('#s3H1', !mismatch,
-      `${mismatch} — this section no longer shows the provenance of ${s1row.name}, the record set the stage 2 box reads from`);
-  }
-
-  const s2row = rowOf(v('#s3From3'));
-  if (!s2row) paint('#s3H2', true);
-  else {
-    const par = s2row.parent || {};
-    const carryBox = Number(v('#s3Carry')) || 0;
-    const carryMatch = carryBox === 0
-      ? (par.carry != null && par.of != null ? par.carry === par.of : true)
-      : carryBox === par.carry;
-    const mismatch = v('#s3From2') !== (par.id || '')
-      ? `the stage 1 record set named here is not the one ${s2row.name} was carried out of (${par.name || par.id || 'unrecorded'})`
-      : (!carryMatch ? 'carry forward no longer matches what was carried' : null);
-    paint('#s3H2', !mismatch, `${mismatch} — the stage 3 box reads from ${s2row.name}`);
-  }
-
-  paint('#s3H3', !v('#s3From3') || !!s2row, 'the stage 2 record set named here is not on this box any more');
-}
-
-async function s3Counts() {
-  // Nothing is put away here any more. The agreement dial is a SHARE of
-  // whatever committee a unit holds, so it applies to a coin judged on its
-  // own and to one read alongside others alike — which is why the two
-  // committee-size boxes that used to live here are gone (owner loop,
-  // 2026-08-28).
-  const c1 = $('#s3Cost1');
-  if (c1) {
-    const body = {
-      universe: ($('#s3Uni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
-      sizes: { singles: $('#s3Singles').checked, doubles: $('#s3Doubles').checked, triples: $('#s3Triples').checked },
-      geometry: $('#s3Geom').value, permuteGeometry: $('#s3PermGeom').checked,
-    };
-    if (!body.universe.length) delete body.universe;
-    const got = await askPost('api/stage1-count', body, null);
-    c1.innerHTML = got && !got.error
-      ? `${got.units.toLocaleString()} units → ${got.trainings.toLocaleString()} trainings, votes kept for every one · null set is free arithmetic`
-      : `<span class="warn">${esc((got && got.error) || 'the counter could not be asked')}</span>`;
-  }
-  const c3 = $('#s3Count');
-  if (c3) {
-    const sets = s3SetsCache || [];
-    const parent = sets.find((x) => x.id === $('#s3From3').value);
-    const carry = Number($('#s3Carry3') && $('#s3Carry3').value) || 0;
-    const units = parent ? (carry > 0 ? Math.min(carry, parent.plan.units) : parent.plan.units) : null;
-    const coins = parent && parent.params && Array.isArray(parent.params.universe) ? parent.params.universe.length : null;
-    // from and carry ride along so the counter resolves the ACTUAL units the
-    // launch will price — which agreement bars exist is decided by them, and
-    // a bar the run cannot use is neither counted nor named (owner order,
-    // 2026-08-27: on singles there is no with contexts at all)
-    const got = await askPost('api/stage3-count', {
-      ...s3BlockParams(), from: $('#s3From3').value || '', carry, units: units || 0, coins: coins || 1,
-    }, null);
-    if (got && !got.error) {
-      const sims = units ? got.settings * units * (1 + (Number($('#s3Null3').value) || 0)) : null;
-      // the budget verdict comes from the SAME arithmetic the launch enforces:
-      // a refusal is said here, before the button is pressed
-      const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
-      const tight = !refuse ? ((got.heap && got.heap.band === 'tight' && got.heap) || (got.disk && got.disk.band === 'tight' && got.disk) || null) : null;
-      c3.innerHTML = `declared: <b>${got.settings.toLocaleString()} settings</b>${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#s3Null3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
-        + (refuse ? `<br><b class="neg">start stage 3 will refuse: ${esc(refuse.message)}</b>`
-          : tight ? `<br><span class="warn">${esc(tight.message)}</span>` : '');
-    } else {
-      c3.innerHTML = `<span class="warn">${esc((got && got.error) || 'the counter could not be asked')}</span>`;
-    }
-  }
-}
-
-// The declared cell exactly as the launch will read it. market carries no
-// gate, d, trail or arm — the same rule the old launcher enforces — so those
-// boxes are omitted from the payload rather than silently ignored.
-function s3BlockParams() {
-  const entry = $('#s3Entry').value;
-  const permEntry = $('#s3PermEntry').checked;
-  const cell = { tHours: Number($('#s3T').value) };
-  if (entry !== 'market' || permEntry) {
-    cell.entry = entry === 'market' ? 'breakout' : entry;
-    cell.gate = $('#s3Gate').value;
-    cell.dMult = Number($('#s3D').value);
-    if ($('#s3Trail').value !== '') { cell.trailMult = Number($('#s3Trail').value); cell.armMult = Number($('#s3Arm').value); }
-    else if ($('#s3PermTrail').checked) { cell.armMult = Number($('#s3Arm').value); }
-  } else {
-    cell.entry = 'market';
-  }
-  if (entry === 'market' && permEntry) cell.entry = 'breakout';
-  return {
-    cell,
-    cellPermute: {
-      entry: permEntry, gate: $('#s3PermGate').checked, dMult: $('#s3PermD').checked,
-      tHours: $('#s3PermT').checked, trail: $('#s3PermTrail').checked, arm: $('#s3PermArm').checked,
-    },
-    decision: $('#s3Dec').value, permuteDecision: $('#s3PermDec').checked,
-    band: $('#s3Band').value.trim() === '' ? 'auto' : ($('#s3Band').value.trim() === 'auto' ? 'auto' : Number($('#s3Band').value)),
-    permuteBand: $('#s3PermBand').checked,
-    weekdaysOnly: $('#s3Wk').checked, permuteWeekdays: $('#s3PermWk').checked,
-    // the agreement is its own dimension now, never part of the trade shape
-    agreeRule: $('#s3AgreeRule').value,
-    agreePct: Number($('#s3AgreeShare').value),
-    agreeBothModels: $('#s3AgreeBoth').checked,
-    agreePersist: Number($('#s3AgreeHold').value) || 0,
-    agreePermuteRule: $('#s3PermAgreeRule').checked,
-    agreePermutePct: $('#s3PermAgreeShare').checked,
-    agreePermuteBoth: $('#s3PermAgreeBoth').checked,
-    agreePermutePersist: $('#s3PermAgreeHold').checked,
-  };
-}
-
-// ONE mapping from a record set's stored settings back into the Sweep3
-// boxes — the same discipline fillSweepForm keeps for the sweeps: a second
-// copy of this mapping would be two answers to one question. It reads which
-// record set is open on Boards3 and fills THAT stage's box alone (owner
-// order, 2026-08-27: a stage 2 set was filling the stage 1 box too, which
-// read as loading the wrong data). The parent box is picked from the set's
-// own named parent, so pressing start re-runs the same step of the same
-// chain. The description RIDES TOO (owner order, 2026-08-27: "carry the
-// description field to the Sweep3 section") — into the same stage's
-// description box, ready to be kept or rewritten before the start.
-function fillStageForm(doc) {
-  const p = doc.params || {};
-  const setV = (sel, v) => { const el = $(sel); if (el && v !== undefined && v !== null) el.value = String(v); };
-  const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
-  if (doc.stage === 1) {
-    setV('#s3Uni', (p.universe || []).join(','));
-    setC('#s3Singles', (p.sizes || {}).singles); setC('#s3Doubles', (p.sizes || {}).doubles); setC('#s3Triples', (p.sizes || {}).triples);
-    setC('#s3AllData', p.allLoaded !== false);
-    setV('#s3Start', p.startMonth || ''); setV('#s3End', p.endMonth || '');
-    const geos = p.geometries || [];
-    if (geos.length) setV('#s3Geom', geos[0]);
-    setC('#s3PermGeom', geos.length > 1);
-    setV('#s3Layout', p.windowLayout || 'reserve61');
-    setV('#s3Null1', p.nullN ?? 19);
-    setV('#s3Desc1', doc.desc || '');
-  }
-  if (doc.stage === 2) {
-    if (doc.parent) setV('#s3From2', doc.parent.id);
-    setV('#s3Carry', p.carry ?? 0);
-    setV('#s3Desc2', doc.desc || '');
-  }
-  if (doc.stage === 3) {
-    if (doc.parent) setV('#s3From3', doc.parent.id);
-    setV('#s3Carry3', p.carry ?? 0);
-    setV('#s3Desc3', doc.desc || '');
-    setV('#s3Fee', p.fee != null ? p.fee * 100 : '');
-    setV('#s3Null3', p.nullN ?? 19);
-    setV('#s3Dec', p.decision || 'argmax'); setC('#s3PermDec', p.permuteDecision);
-    setV('#s3Band', p.band ?? 'auto'); setC('#s3PermBand', p.permuteBand);
-    setC('#s3Wk', p.weekdaysOnly); setC('#s3PermWk', p.permuteWeekdays);
-    const c = p.cell || {};
-    setV('#s3Entry', c.entry); setV('#s3Gate', c.gate); setV('#s3D', c.dMult); setV('#s3T', c.tHours);
-    setV('#s3Trail', c.trailMult == null ? '' : c.trailMult);
-    setV('#s3Arm', c.armMult == null ? '' : c.armMult);
-    setV('#s3AgreeRule', p.agreeRule || 'count'); setV('#s3AgreeShare', p.agreePct == null ? 50 : p.agreePct);
-    setC('#s3AgreeBoth', p.agreeBothModels); setV('#s3AgreeHold', p.agreePersist || 0);
-    setC('#s3PermAgreeRule', p.agreePermuteRule); setC('#s3PermAgreeShare', p.agreePermutePct);
-    setC('#s3PermAgreeBoth', p.agreePermuteBoth); setC('#s3PermAgreeHold', p.agreePermutePersist);
-    const cp = p.cellPermute || {};
-    setC('#s3PermEntry', cp.entry); setC('#s3PermGate', cp.gate); setC('#s3PermD', cp.dMult); setC('#s3PermT', cp.tHours);
-    setC('#s3PermTrail', cp.trail); setC('#s3PermArm', cp.arm);
-  }
-  // a programmatic fill never fires 'change', so remember it here — copied
-  // settings must survive a screen flip exactly like typed ones
-  rememberSweep3Form();
-  s3Counts();
-}
-
-// WHAT IS IN THE STAGE BOXES SURVIVES A SCREEN FLIP (owner order,
-// 2026-08-27: "not lose the values loaded to the stage 1/2/3 areas on screen
-// flips — that stuff needs to be left as-is"). The same standing rule the
-// Sweep form keeps, by the same mechanism: every box and tick on this page,
-// found by id so a control added tomorrow is covered, remembered on every
-// change and written back on every draw.
-const SWEEP3_FORM_KEY = 'cx-sweep3form';
-const sweep3Controls = () => Array.from(document.querySelectorAll('#view [id^="s3"]'))
-  .filter((e) => e.tagName === 'INPUT' || e.tagName === 'SELECT' || e.tagName === 'TEXTAREA');
-function rememberSweep3Form() {
-  const o = {};
-  for (const e of sweep3Controls()) o[e.id] = e.type === 'checkbox' ? e.checked : e.value;
-  try { localStorage.setItem(SWEEP3_FORM_KEY, JSON.stringify(o)); } catch (_) { /* private window */ }
-}
-function restoreSweep3Form() {
-  let o = null;
-  try { o = JSON.parse(localStorage.getItem(SWEEP3_FORM_KEY) || 'null'); } catch (_) { o = null; }
-  if (!o || typeof o !== 'object') return false;
-  for (const e of sweep3Controls()) {
-    if (!Object.prototype.hasOwnProperty.call(o, e.id)) continue;
-    if (e.type === 'checkbox') e.checked = !!o[e.id];
-    else e.value = o[e.id] == null ? '' : String(o[e.id]);
-  }
-  return true;
-}
-
-// Milliseconds as words for the progress line — '38s', '4m', '2h 05m'.
-function msWords(ms) {
-  const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s}s`;
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m}m`;
-  return `${Math.floor(m / 60)}h ${String(m % 60).padStart(2, '0')}m`;
-}
-
-let s3SetsCache = null;
-
-async function drawSweep3() {
-  if (s3Poll) { clearInterval(s3Poll); s3Poll = null; }
+// Stage 1 trains the LOGREG members and keeps every vote; stage 2 carries the
+// best rows forward and adds the BOOST members; stage 3 prices settings from
+// the kept votes without training anything. Each stage writes a record set the
+// next one reads, and every set names its parent.
+async function drawSweep() {
+  if (swPoll) { clearInterval(swPoll); swPoll = null; }
   const [st, camp, names] = await Promise.all([
     apiOr('api/stagesets', ({ running: null, sets: [] })),
     apiOr('api/campaign', ({ name: '' })),
     apiOr('api/campaigns', ({ names: [] })),
   ]);
   const sets = st.sets || [];
-  s3SetsCache = sets;
+  swSetsCache = sets;
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Sweep — the three stages, live</h3>
     <p class="note">Each stage writes a record set the next one reads, and every set names its parent. What is
-      running, and everything finished, is on Boards3.</p>
-    <div class="row"><span class="note" id="s3Prog">…</span></div>
+      running, and everything finished, is on Boards.</p>
+    <div class="row"><span class="note" id="swProg">…</span></div>
   </div>
   ${campaignPanelHtml(camp, names)}
 
   <div class="panel">
-    <h3 id="s3H1" style="margin-top:0">Stage 1 — train the LOGREG members once, keep every vote, rank against the null set</h3>
-    <p class="note" style="margin:.2rem 0 .4rem">every member is a LOGREG forecast — 3 per coin on its own, 4 alongside others — trained with the plain
+    <h3 id="swH1" style="margin-top:0">Stage 1 — train the LOGREG members once, keep every vote, rank against the null set</h3>
+    <p class="note" style="margin:.2rem 0 .4rem">every member is a LOGREG forecast — 4 per coin on its own, 5 alongside others — trained with the plain
       argmax fit. No trade, no fee and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f">universe (blank = all 17 default pairs)<input id="s3Uni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
-      <label class="c"><input type="checkbox" id="s3Singles" checked> singles</label>
-      <label class="c"><input type="checkbox" id="s3Doubles"> doubles</label>
-      <label class="c"><input type="checkbox" id="s3Triples"> triples</label>
-      <label class="c"><input type="checkbox" id="s3AllData" checked> all loaded data</label>
-      <label class="f">start<input id="s3Start" type="month"></label>
-      <label class="f">end<input id="s3End" type="month"></label>
+      <label class="f">universe (blank = all 17 default pairs)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
+      <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
+      <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
+      <label class="c"><input type="checkbox" id="swTriples"> triples</label>
+      <label class="c"><input type="checkbox" id="swAllData" checked> all loaded data</label>
+      <label class="f">start<input id="swStart" type="month"></label>
+      <label class="f">end<input id="swEnd" type="month"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f">chunk shape<select id="s3Geom">${vocabOptions('geometry', 'daily-4d')}</select></label>
-      <label class="c"><input type="checkbox" id="s3PermGeom"> permute</label>
-      <label class="f">window layout<select id="s3Layout">${vocabOptions('windowLayout', 'reserve61')}</select></label>
-      <label class="f">null set size<input id="s3Null1" type="number" value="19" min="0" style="width:4.5rem"></label>
+      <label class="f">chunk shape<select id="swGeom">${vocabOptions('geometry', 'daily-4d')}</select></label>
+      <label class="c"><input type="checkbox" id="swPermGeom"> permute</label>
+      <label class="f">window layout<select id="swLayout">${vocabOptions('windowLayout', 'reserve61')}</select></label>
+      <label class="f">null set size<input id="swNull1" type="number" value="19" min="0" style="width:4.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f" style="flex:1">description<input id="s3Desc1" style="width:100%"></label>
-      <button id="s3Go1" class="pri">start stage 1</button>
+      <label class="f" style="flex:1">description<input id="swDesc1" style="width:100%"></label>
+      <button id="swGo1" class="pri">start stage 1</button>
     </div>
-    <p class="note" style="margin:.4rem 0 0" id="s3Cost1">…</p>
-    <div id="s3Out1"></div>
+    <p class="note" style="margin:.4rem 0 0" id="swCost1">…</p>
+    <div id="swOut1"></div>
   </div>
 
   <div class="panel">
-    <h3 id="s3H2" style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
+    <h3 id="swH2" style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
     <div class="row" style="align-items:flex-end">
-      <label class="f">from stage 1 record set<select id="s3From2" style="min-width:24rem">${s3SetOptions(sets, 1, null)}</select></label>
-      <label class="f" title="the carry takes the top of the parent's table in the sort saved on it — pick the sort on Boards3. The fixed rule (beat its own null set, ties by lead over null set) when none is saved.">carry forward (0 = all)<input id="s3Carry" type="number" value="0" min="0" style="width:5.5rem"></label>
+      <label class="f">from stage 1 record set<select id="swFrom2" style="min-width:24rem">${swSetOptions(sets, 1, null)}</select></label>
+      <label class="f" title="the carry takes the top of the parent's table in the sort saved on it — pick the sort on Boards. The fixed rule (beat its own null set, ties by lead over null set) when none is saved.">carry forward (0 = all)<input id="swCarry" type="number" value="0" min="0" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f" style="flex:1">description<input id="s3Desc2" style="width:100%"></label>
-      <button id="s3Go2" class="pri">start stage 2</button>
+      <label class="f" style="flex:1">description<input id="swDesc2" style="width:100%"></label>
+      <button id="swGo2" class="pri">start stage 2</button>
     </div>
     <p class="note" style="margin:.4rem 0 0">BOOST is the second kind of member — a different way of working out a forecast from the same prices.
-      The LOGREG members are reused, never retrained; only the BOOST members train (3 per coin on its own, 4 alongside others),
+      The LOGREG members are reused, never retrained; only the BOOST members train (4 per coin on its own, 5 alongside others),
       so a carried unit ends up with both kinds voting side by side.</p>
-    <div id="s3Out2"></div>
+    <div id="swOut2"></div>
   </div>
 
   <div class="panel">
-    <h3 id="s3H3" style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
+    <h3 id="swH3" style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
     <div class="row" style="align-items:flex-end">
-      <label class="f">from stage 2 record set<select id="s3From3" style="min-width:24rem">${s3SetOptions(sets, 2, null)}</select></label>
-      <label class="f">carry forward (0 = all)<input id="s3Carry3" type="number" value="0" min="0" style="width:5.5rem"></label>
-      <label class="f">fee % each way<input id="s3Fee" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
-      <label class="f">null set size<input id="s3Null3" type="number" value="19" min="0" style="width:4.5rem"></label>
+      <label class="f">from stage 2 record set<select id="swFrom3" style="min-width:24rem">${swSetOptions(sets, 2, null)}</select></label>
+      <label class="f">carry forward (0 = all)<input id="swCarry3" type="number" value="0" min="0" style="width:5.5rem"></label>
+      <label class="f">fee % each way<input id="swFee" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
+      <label class="f">null set size<input id="swNull3" type="number" value="19" min="0" style="width:4.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">decision<select id="s3Dec">${vocabOptions('decision', 'argmax')}</select></label>
-        <label class="c"><input type="checkbox" id="s3PermDec"> permute</label>
+        <label class="f">decision<select id="swDec">${vocabOptions('decision', 'argmax')}</select></label>
+        <label class="c"><input type="checkbox" id="swPermDec"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">band % (or auto)<input id="s3Band" value="auto" style="width:5rem"></label>
-        <label class="c"><input type="checkbox" id="s3PermBand"> permute</label>
+        <label class="f">band % (or auto)<input id="swBand" value="auto" style="width:5rem"></label>
+        <label class="c"><input type="checkbox" id="swPermBand"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="c"><input type="checkbox" id="s3Wk"> 24/5</label>
-        <label class="c"><input type="checkbox" id="s3PermWk"> permute</label>
+        <label class="c"><input type="checkbox" id="swWk"> 24/5</label>
+        <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">entry<select id="s3Entry">${vocabOptions('entry', 'breakout')}</select></label>
-        <label class="c"><input type="checkbox" id="s3PermEntry"> permute</label>
+        <label class="f">entry<select id="swEntry">${vocabOptions('entry', 'breakout')}</select></label>
+        <label class="c"><input type="checkbox" id="swPermEntry"> permute</label>
+      </div>
+      <div id="swGrpGate" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">gate<select id="swGate">${vocabOptions('gate', 'directional')}</select></label>
+        <label class="c"><input type="checkbox" id="swPermGate"> permute</label>
+      </div>
+      <div id="swGrpD" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">d<select id="swD">${vocabOptions('dMult', '1.5')}</select></label>
+        <label class="c"><input type="checkbox" id="swPermD"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">gate<select id="s3Gate">${vocabOptions('gate', 'directional')}</select></label>
-        <label class="c"><input type="checkbox" id="s3PermGate"> permute</label>
+        <label class="f">t<select id="swT">${vocabOptions('tHours', '65')}</select></label>
+        <label class="c"><input type="checkbox" id="swPermT"> permute</label>
+      </div>
+      <div id="swGrpTrail" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">trail<select id="swTrail">${vocabOptions('trailMult', '')}</select></label>
+        <label class="c"><input type="checkbox" id="swPermTrail"> permute</label>
+      </div>
+      <div id="swGrpArm" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f">arm<select id="swArm">${vocabOptions('armMult', '0')}</select></label>
+        <label class="c"><input type="checkbox" id="swPermArm"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">d<select id="s3D">${vocabOptions('dMult', '1.5')}</select></label>
-        <label class="c"><input type="checkbox" id="s3PermD"> permute</label>
+        <label class="f" title="how the members' votes become one call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members, so near-copies share one vote; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by<select id="swAgreeRule">${vocabOptions('agreeRule', 'count')}</select></label>
+        <label class="c" title="price every agree by choice as its own setting."><input type="checkbox" id="swPermAgreeRule"> permute</label>
+        <label class="f" title="how demanding the rule is, as a share of the committee. Higher is stricter for every rule, and a share means the same thing whatever a unit's committee holds — which is why no committee size appears in a setting's name any more.">share<select id="swAgreeShare">${vocabOptions('agreeShare', '50')}</select></label>
+        <label class="c" title="price every share as its own setting. Shares landing on the same rung for every unit in the run are counted once."><input type="checkbox" id="swPermAgreeShare"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">t<select id="s3T">${vocabOptions('tHours', '65')}</select></label>
-        <label class="c"><input type="checkbox" id="s3PermT"> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">trail<select id="s3Trail">${vocabOptions('trailMult', '')}</select></label>
-        <label class="c"><input type="checkbox" id="s3PermTrail"> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">arm<select id="s3Arm">${vocabOptions('armMult', '0')}</select></label>
-        <label class="c"><input type="checkbox" id="s3PermArm"> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" title="how the members' votes become one call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members, so near-copies share one vote; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by<select id="s3AgreeRule">${vocabOptions('agreeRule', 'count')}</select></label>
-        <label class="c" title="price every agree by choice as its own setting."><input type="checkbox" id="s3PermAgreeRule"> permute</label>
-        <label class="f" title="how demanding the rule is, as a share of the committee. Higher is stricter for every rule, and a share means the same thing whatever a unit's committee holds — which is why no committee size appears in a setting's name any more.">share<select id="s3AgreeShare">${vocabOptions('agreeShare', '50')}</select></label>
-        <label class="c" title="price every share as its own setting. Shares landing on the same rung for every unit in the run are counted once."><input type="checkbox" id="s3PermAgreeShare"> permute</label>
-      </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="c" title="the side that wins must include at least one LOGREG member and one BOOST member, so a call can never be one kind's quirk."><input type="checkbox" id="s3AgreeBoth"> both kinds</label>
-        <label class="c" title="price both with and without the both kinds requirement."><input type="checkbox" id="s3PermAgreeBoth"> permute</label>
-        <label class="f" title="how many decision moments in a row the same call must have stood before it is acted on. off acts at once.">hold<select id="s3AgreeHold">${vocabOptions('agreeHold', '0')}</select></label>
-        <label class="c" title="price every hold as its own setting."><input type="checkbox" id="s3PermAgreeHold"> permute</label>
+        <label class="c" title="the side that wins must include at least one LOGREG member and one BOOST member, so a call can never be one kind's quirk."><input type="checkbox" id="swAgreeBoth"> both kinds</label>
+        <label class="c" title="price both with and without the both kinds requirement."><input type="checkbox" id="swPermAgreeBoth"> permute</label>
+        <label class="f" title="how many decision moments in a row the same call must have stood before it is acted on. off acts at once.">hold<select id="swAgreeHold">${vocabOptions('agreeHold', '0')}</select></label>
+        <label class="c" title="price every hold as its own setting."><input type="checkbox" id="swPermAgreeHold"> permute</label>
       </div>
     </div>
-    <div class="row" style="margin-top:.4rem"><span class="note" id="s3Count">…</span></div>
+    <div class="row" style="margin-top:.4rem"><span class="note" id="swCount">…</span></div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="f" style="flex:1">description<input id="s3Desc3" style="width:100%"></label>
-      <button id="s3Go3" class="pri">start stage 3</button>
+      <label class="f" style="flex:1">description<input id="swDesc3" style="width:100%"></label>
+      <button id="swGo3" class="pri">start stage 3</button>
     </div>
-    <div id="s3Out3"></div>
+    <div id="swOut3"></div>
   </div>`;
 
-  wireCampaignPanel(() => drawSweep3());
+  wireCampaignPanel(() => drawSweep());
   const say = (sel, msg, bad) => { $(sel).innerHTML = `<p class="note${bad ? ' warn' : ''}" style="margin:.4rem 0 0">${msg}</p>`; };
-  $('#s3Go1').onclick = async () => {
+  $('#swGo1').onclick = async () => {
     const body = {
-      universe: ($('#s3Uni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
-      sizes: { singles: $('#s3Singles').checked, doubles: $('#s3Doubles').checked, triples: $('#s3Triples').checked },
-      geometry: $('#s3Geom').value, permuteGeometry: $('#s3PermGeom').checked,
-      windowLayout: $('#s3Layout').value, allLoaded: $('#s3AllData').checked,
-      startMonth: $('#s3Start').value || undefined, endMonth: $('#s3End').value || undefined,
-      nullN: Number($('#s3Null1').value) || 0, desc: $('#s3Desc1').value,
+      universe: ($('#swUni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
+      sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
+      geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
+      windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,
+      startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
+      nullN: Number($('#swNull1').value) || 0, desc: $('#swDesc1').value,
     };
     if (!body.universe.length) delete body.universe;
     const got = await tryPost('api/stage1', body);
-    if (got) { rememberSweep3Form(); say('#s3Out1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards3.`); s3Progress(); }
+    if (got) { rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); swProgress(); }
   };
-  $('#s3Go2').onclick = async () => {
+  $('#swGo2').onclick = async () => {
     const got = await tryPost('api/stage2', {
-      from: $('#s3From2').value,
-      carry: Number($('#s3Carry').value) || 0, desc: $('#s3Desc2').value,
+      from: $('#swFrom2').value,
+      carry: Number($('#swCarry').value) || 0, desc: $('#swDesc2').value,
     });
-    if (got) { rememberSweep3Form(); say('#s3Out2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); s3Progress(); }
+    if (got) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); swProgress(); }
   };
-  $('#s3Go3').onclick = async () => {
+  $('#swGo3').onclick = async () => {
     const got = await tryPost('api/stage3', {
-      from: $('#s3From3').value, fee: Number($('#s3Fee').value) / 100,
-      carry: Number($('#s3Carry3').value) || 0,
-      nullN: Number($('#s3Null3').value) || 0, desc: $('#s3Desc3').value,
-      ...s3BlockParams(),
+      from: $('#swFrom3').value, fee: Number($('#swFee').value) / 100,
+      carry: Number($('#swCarry3').value) || 0,
+      nullN: Number($('#swNull3').value) || 0, desc: $('#swDesc3').value,
+      ...swBlockParams(),
     });
-    if (got) { rememberSweep3Form(); say('#s3Out3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); s3Progress(); }
+    if (got) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
   };
-  for (const id of ['s3Uni', 's3Singles', 's3Doubles', 's3Triples', 's3Geom', 's3PermGeom']) {
-    const el = $(`#${id}`); if (el) el.onchange = s3Counts;
+  for (const id of ['swUni', 'swSingles', 'swDoubles', 'swTriples', 'swGeom', 'swPermGeom']) {
+    const el = $(`#${id}`); if (el) el.onchange = swCounts;
   }
-  for (const id of ['s3From3', 's3Carry3', 's3Null3', 's3Dec', 's3PermDec', 's3Band', 's3PermBand', 's3Wk', 's3PermWk', 's3Entry', 's3PermEntry',
-    's3Gate', 's3PermGate', 's3D', 's3PermD', 's3T', 's3PermT', 's3Trail', 's3PermTrail', 's3Arm', 's3PermArm',
-    's3AgreeRule', 's3PermAgreeRule', 's3AgreeShare', 's3PermAgreeShare', 's3AgreeBoth', 's3PermAgreeBoth', 's3AgreeHold', 's3PermAgreeHold']) {
-    const el = $(`#${id}`); if (el) el.onchange = s3Counts;
+  for (const id of ['swFrom3', 'swCarry3', 'swNull3', 'swDec', 'swPermDec', 'swBand', 'swPermBand', 'swWk', 'swPermWk', 'swEntry', 'swPermEntry',
+    'swGate', 'swPermGate', 'swD', 'swPermD', 'swT', 'swPermT', 'swTrail', 'swPermTrail', 'swArm', 'swPermArm',
+    'swAgreeRule', 'swPermAgreeRule', 'swAgreeShare', 'swPermAgreeShare', 'swAgreeBoth', 'swPermAgreeBoth', 'swAgreeHold', 'swPermAgreeHold']) {
+    const el = $(`#${id}`); if (el) el.onchange = swCounts;
   }
   // what is in the boxes survives a screen flip: write the remembered draft
   // back BEFORE the counters read the boxes, then remember every change
-  restoreSweep3Form();
-  const noteSweep3Change = () => { rememberSweep3Form(); s3Provenance(); };
-  for (const e of sweep3Controls()) {
-    e.addEventListener('change', noteSweep3Change);
-    e.addEventListener('input', noteSweep3Change);
+  restoreSweepForm();
+  const noteSweepChange = () => { rememberSweepForm(); swProvenance(); };
+  for (const e of sweepControls()) {
+    e.addEventListener('change', noteSweepChange);
+    e.addEventListener('input', noteSweepChange);
   }
-  s3Progress();
-  s3Counts();
-  s3Provenance();
+  swProgress();
+  swCounts();
+  swProvenance();
 }
 
-// ---- Boards3 ---------------------------------------------------------------
+// ---- Boards ----------------------------------------------------------------
 // WHERE YOU WERE, kept like every other page: the picked set, the every-coin
 // floors and sort, and the opened records rows ride localStorage so flipping
 // away and back lands on the same view.
-const BOARDS3_VIEW_KEY = 'cx-boards3-view';
-let b3TallyPoll = null;   // asks again while a set's tables are totalling
-function b3View() {
-  try { return JSON.parse(localStorage.getItem(BOARDS3_VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
+const BOARDS_VIEW_KEY = 'cx-boards-view';
+let bTallyPoll = null;   // asks again while a set's tables are totalling
+function bView() {
+  try { return JSON.parse(localStorage.getItem(BOARDS_VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
 }
-function b3SaveView(patch) {
-  try { localStorage.setItem(BOARDS3_VIEW_KEY, JSON.stringify({ ...b3View(), ...patch })); } catch (_) { /* private window */ }
+function bSaveView(patch) {
+  try { localStorage.setItem(BOARDS_VIEW_KEY, JSON.stringify({ ...bView(), ...patch })); } catch (_) { /* private window */ }
 }
 
-function b3Money(v) { return v == null ? '<span class="muted">—</span>' : `<span class="${v >= 0 ? 'pos' : 'neg'}">${money(v)}</span>`; }
-function b3Share(share, beat, pairs) {
+function bMoney(v) { return v == null ? '<span class="muted">—</span>' : `<span class="${v >= 0 ? 'pos' : 'neg'}">${money(v)}</span>`; }
+function bShare(share, beat, pairs) {
   if (share == null) return '<span class="muted">—</span>';
   return `<b class="${share > 0.5 ? 'pos' : ''}">${(share * 100).toFixed(1)}%</b> <span class="muted">${Number(beat).toLocaleString()}/${Number(pairs).toLocaleString()}</span>`;
 }
-const b3Lead = (v) => (v == null ? '<span class="muted">—</span>' : `×${Number(v).toFixed(1)}`);
-const b3Coin = (r) => `<b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''}`;
-const b3Geo = (g) => { const v = (HELPVOCAB && HELPVOCAB.geometry) || []; const hit = v.find((o) => o.value === g); return hit ? hit.label : g; };
+const bLead = (v) => (v == null ? '<span class="muted">—</span>' : `×${Number(v).toFixed(1)}`);
+const bCoin = (r) => `<b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''}`;
+const bGeo = (g) => { const v = (HELPVOCAB && HELPVOCAB.geometry) || []; const hit = v.find((o) => o.value === g); return hit ? hit.label : g; };
 
-async function drawBoards3() {
-  if (b3TallyPoll) { clearTimeout(b3TallyPoll); b3TallyPoll = null; }
+async function drawBoards() {
+  if (bTallyPoll) { clearTimeout(bTallyPoll); bTallyPoll = null; }
   if (!HELPVOCAB) HELPVOCAB = await apiOr('api/vocabulary', {});
   const st = await apiOr('api/stagesets', ({ running: null, sets: [] }));
   const sets = st.sets || [];
-  const view = b3View();
+  const view = bView();
   const rowOf = (id) => sets.find((x) => x.id === id) || null;
   const parentOf = (id) => { const r = rowOf(id); return r && r.parent ? r.parent.id : null; };
 
@@ -4258,12 +2196,12 @@ async function drawBoards3() {
   // the option lists are shared; the six controls carry LITERAL ids so the
   // control reader and the Help tab see every one of them (RULE ONE-A: a
   // list with holes is worse than no list)
-  const b3Options = (stage, sel) => `<option value="">— pick a stage ${stage} record set —</option>`
+  const bOptions = (stage, sel) => `<option value="">— pick a stage ${stage} record set —</option>`
     + sets.filter((x) => x.stage === stage).map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
-  const foldBtn = (stage) => `<button data-b3fold="${stage}" title="puts this stage's table away, or brings it back. The last state is remembered.">${fold[stage] ? 'put away' : 'open'}</button>`;
+  const foldBtn = (stage) => `<button data-bfold="${stage}" title="puts this stage's table away, or brings it back. The last state is remembered.">${fold[stage] ? 'put away' : 'open'}</button>`;
 
   $('#view').innerHTML = `<div class="panel">
-    <h3 style="margin-top:0">Boards3 — the record sets, and what each stage wrote</h3>
+    <h3 style="margin-top:0">Boards — the record sets, and what each stage wrote</h3>
     <p class="note">One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
       stage 2 and stage 1 sections with its parents; picking a stage 2 set fills its stage 1 parent; picking a
       parent puts the child selections away. Each section can be put away and comes back as you left it.</p>
@@ -4273,48 +2211,48 @@ async function drawBoards3() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(1)}
       <h3 style="margin:0">Stage 1</h3>
-      <label class="f">record set<select id="b3Pick1" style="min-width:26rem">${b3Options(1, s1sel)}</select></label>
-      <button id="b3Delete1" class="danger" ${s1sel ? '' : 'disabled'}>Delete record set…</button>
-      <button id="b3CopySettings1" ${s1sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep3 with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
+      <label class="f">record set<select id="bPick1" style="min-width:26rem">${bOptions(1, s1sel)}</select></label>
+      <button id="bDelete1" class="danger" ${s1sel ? '' : 'disabled'}>Delete record set…</button>
+      <button id="bCopySettings1" ${s1sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s1sel))}
     </div>
-    <div id="b3S1"></div>
+    <div id="bS1"></div>
   </div>
   <div class="panel">
     <div class="row" style="align-items:flex-end">
       ${foldBtn(2)}
       <h3 style="margin:0">Stage 2</h3>
-      <label class="f">record set<select id="b3Pick2" style="min-width:26rem">${b3Options(2, s2sel)}</select></label>
-      <button id="b3Delete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
-      <button id="b3CopySettings2" ${s2sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep3 with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
+      <label class="f">record set<select id="bPick2" style="min-width:26rem">${bOptions(2, s2sel)}</select></label>
+      <button id="bDelete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
+      <button id="bCopySettings2" ${s2sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s2sel))}
     </div>
-    <div id="b3S2"></div>
+    <div id="bS2"></div>
   </div>
   <div class="panel">
     <div class="row" style="align-items:flex-end">
       ${foldBtn(3)}
       <h3 style="margin:0">Stage 3</h3>
-      <label class="f">record set<select id="b3Pick3" style="min-width:26rem">${b3Options(3, s3sel)}</select></label>
-      <button id="b3Delete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
-      <button id="b3CopySettings3" ${s3sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep3 with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
+      <label class="f">record set<select id="bPick3" style="min-width:26rem">${bOptions(3, s3sel)}</select></label>
+      <button id="bDelete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
+      <button id="bCopySettings3" ${s3sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s3sel))}
     </div>
-    <div id="b3S3"></div>
+    <div id="bS3"></div>
   </div>`;
 
   for (const stage of [1, 2, 3]) {
-    const pick = $(`#b3Pick${stage}`);
+    const pick = $(`#bPick${stage}`);
     if (pick) {
       pick.onchange = () => {
         const idv = pick.value || null;
-        if (stage === 1) b3SaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] });
-        if (stage === 2) b3SaveView({ s1: idv ? parentOf(idv) : null, s2: idv, s3: null, fold1: true, fold2: true, openS3: [] });
-        if (stage === 3) b3SaveView({ s1: idv ? parentOf(parentOf(idv)) || null : null, s2: idv ? parentOf(idv) : null, s3: idv, fold1: true, fold2: true, fold3: true, openS3: [] });
-        drawBoards3().then(() => restoreScroll(tab));
+        if (stage === 1) bSaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] });
+        if (stage === 2) bSaveView({ s1: idv ? parentOf(idv) : null, s2: idv, s3: null, fold1: true, fold2: true, openS3: [] });
+        if (stage === 3) bSaveView({ s1: idv ? parentOf(parentOf(idv)) || null : null, s2: idv ? parentOf(idv) : null, s3: idv, fold1: true, fold2: true, fold3: true, openS3: [] });
+        drawBoards().then(() => restoreScroll(tab));
       };
     }
-    const del = $(`#b3Delete${stage}`);
+    const del = $(`#bDelete${stage}`);
     if (del) {
       del.onclick = async () => {
         const id = selOf[stage];
@@ -4333,17 +2271,17 @@ async function drawBoards3() {
           const patch = { [`s${stage}`]: null, openS3: [] };
           if (stage <= 2) patch.s3 = null;
           if (stage === 1) patch.s2 = null;
-          b3SaveView(patch);
-          drawBoards3().then(() => restoreScroll(tab));
+          bSaveView(patch);
+          drawBoards().then(() => restoreScroll(tab));
         }
       };
     }
   }
-  document.querySelectorAll('[data-b3fold]').forEach((btn) => {
+  document.querySelectorAll('[data-bfold]').forEach((btn) => {
     btn.onclick = () => {
-      const sN = Number(btn.dataset.b3fold);
-      b3SaveView({ [`fold${sN}`]: !fold[sN] });
-      drawBoards3().then(() => restoreScroll(tab));
+      const sN = Number(btn.dataset.bfold);
+      bSaveView({ [`fold${sN}`]: !fold[sN] });
+      drawBoards().then(() => restoreScroll(tab));
     };
   });
 
@@ -4352,11 +2290,11 @@ async function drawBoards3() {
   // set you are actually working), What this run actually is, then the
   // stage's own table. All drawn by the same functions Boards uses.
   for (const stage of [1, 2, 3]) {
-    const mount = $(`#b3S${stage}`);
+    const mount = $(`#bS${stage}`);
     const sel = selOf[stage];
     if (!mount) continue;
     if (!sel) {
-      mount.innerHTML = `<p class="note">${sets.some((x) => x.stage === stage) ? 'nothing picked' : 'no record sets of this stage on this box yet — start one on Sweep3'}</p>`;
+      mount.innerHTML = `<p class="note">${sets.some((x) => x.stage === stage) ? 'nothing picked' : 'no record sets of this stage on this box yet — start one on Sweep'}</p>`;
       continue;
     }
     const got = await apiOr(`api/stageset/${sel}`, null);
@@ -4364,9 +2302,9 @@ async function drawBoards3() {
     const doc = got.set;
     // the header's settings copy works folded or open — it reads the set,
     // not the table
-    const csbN = $(`#b3CopySettings${stage}`);
+    const csbN = $(`#bCopySettings${stage}`);
     if (csbN) csbN.onclick = () => {
-      tab = 'sweep3'; localStorage.setItem('cx-tab', tab);
+      tab = 'sweep'; localStorage.setItem('cx-tab', tab);
       draw().then(() => { fillStageForm(doc); });
     };
     if (!fold[stage]) { mount.innerHTML = '<p class="note">put away — press open to bring it back</p>'; continue; }
@@ -4382,31 +2320,31 @@ async function drawBoards3() {
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
       ${stage === deepest ? notesPanelHtml(doc, '') : ''}
       ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}
-      <div id="b3T${stage}"></div>`;
+      <div id="bT${stage}"></div>`;
     if (stage === deepest) wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null);
     if (doc.status !== 'done' && doc.status !== 'incomplete') {
-      $(`#b3T${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
+      $(`#bT${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
       continue;
     }
     const incomplete = doc.status === 'incomplete'
       ? `<div class="panel" data-role="incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
        ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.</div>` : '';
-    if (doc.stage === 1) await b3DrawStage1(doc, incomplete, view, `#b3T${stage}`);
-    else if (doc.stage === 2) await b3DrawStage2(doc, incomplete, view, `#b3T${stage}`);
-    else await b3DrawStage3(doc, incomplete, view, `#b3T${stage}`);
+    if (doc.stage === 1) await bDrawStage1(doc, incomplete, view, `#bT${stage}`);
+    else if (doc.stage === 2) await bDrawStage2(doc, incomplete, view, `#bT${stage}`);
+    else await bDrawStage3(doc, incomplete, view, `#bT${stage}`);
   }
 }
-const b3td = 'style="padding:.25rem .5rem"';
-const b3td0 = 'style="padding:.25rem .5rem .25rem 0"';
-const b3th = 'style="padding:.3rem .5rem"';
+const btd = 'style="padding:.25rem .5rem"';
+const btd0 = 'style="padding:.25rem .5rem .25rem 0"';
+const bth = 'style="padding:.3rem .5rem"';
 
-function b3Pager(total, from, n, key) {
+function bPager(total, from, n, key) {
   if (total <= n) return `<p class="note">${total.toLocaleString()} row(s)</p>`;
   const page = Math.floor(from / n) + 1;
   const pages = Math.ceil(total / n);
   return `<p class="note">${total.toLocaleString()} rows · page ${page} of ${pages}
-    <button data-b3page="${key}:${Math.max(0, from - n)}">prev</button>
-    <button data-b3page="${key}:${Math.min((pages - 1) * n, from + n)}">next</button></p>`;
+    <button data-bpage="${key}:${Math.max(0, from - n)}">prev</button>
+    <button data-bpage="${key}:${Math.min((pages - 1) * n, from + n)}">next</button></p>`;
 }
 // THE SORT SELECTORS ON THE STAGE TABLES (owner order, 2026-08-27). Each
 // sortable column carries a small button: click sorts by it, click again
@@ -4414,29 +2352,29 @@ function b3Pager(total, from, n, key) {
 // is the sort's priority — first, second, third, three at most. What is
 // picked here SAVES ON THE RECORD SET, because it is the exact order the
 // next stage's carry forward takes the top of.
-function b3SortBtn(doc, key, firstDir) {
+function bSortBtn(doc, key, firstDir) {
   const spec = Array.isArray(doc.sort) ? doc.sort : [];
   const at = spec.findIndex((s) => s.key === key);
   const state = at < 0 ? '·' : `${at + 1} ${spec[at].dir === 'desc' ? '↓' : '↑'}`;
-  return ` <button data-b3sortkey="${key}" data-b3sortdir="${firstDir}" style="min-width:2.2rem;padding:0 .25rem"
+  return ` <button data-bsortkey="${key}" data-bsortdir="${firstDir}" style="min-width:2.2rem;padding:0 .25rem"
     title="click to sort the whole table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (A to Z / low to high first)'}; click again to flip it, a third click puts it away. Its number is the sort's priority — first, second, third. The saved order is exactly what carry forward reads at the next stage's launch.">${state}</button>`;
 }
-function b3WireSort(doc, root) {
-  $(root).querySelectorAll('[data-b3sortkey]').forEach((btn) => {
+function bWireSort(doc, root) {
+  $(root).querySelectorAll('[data-bsortkey]').forEach((btn) => {
     btn.onclick = async () => {
-      const key = btn.dataset.b3sortkey;
+      const key = btn.dataset.bsortkey;
       const spec = (Array.isArray(doc.sort) ? doc.sort : []).map((s) => ({ ...s }));
       const at = spec.findIndex((s) => s.key === key);
       if (at < 0) {
         if (spec.length >= 3) { alert('three sort priorities at most — click one of the numbered columns to put it away first'); return; }
-        spec.push({ key, dir: btn.dataset.b3sortdir === 'asc' ? 'asc' : 'desc' });
-      } else if (spec[at].dir === (btn.dataset.b3sortdir === 'asc' ? 'asc' : 'desc')) {
+        spec.push({ key, dir: btn.dataset.bsortdir === 'asc' ? 'asc' : 'desc' });
+      } else if (spec[at].dir === (btn.dataset.bsortdir === 'asc' ? 'asc' : 'desc')) {
         spec[at].dir = spec[at].dir === 'desc' ? 'asc' : 'desc';
       } else {
         spec.splice(at, 1);
       }
       const out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/sort`, { sort: spec });
-      if (out) drawBoards3().then(() => restoreScroll(tab));
+      if (out) drawBoards().then(() => restoreScroll(tab));
     };
   });
 }
@@ -4447,24 +2385,24 @@ function b3WireSort(doc, root) {
 // column simply replaces the pick. Saved on the record set like the stage 1
 // and stage 2 sorts — but nothing carries out of stage 3, so the button
 // promises only what it does: the order of this table.
-function b3RankSortBtn(doc, key, firstDir) {
+function bRankSortBtn(doc, key, firstDir) {
   const spec = Array.isArray(doc.sort) ? doc.sort : [];
   const at = spec.findIndex((s) => s.key === key);
   const state = at < 0 ? '·' : (spec[at].dir === 'desc' ? '↓' : '↑');
-  return ` <button data-b3ranksort="${key}" data-b3rankdir="${firstDir}" style="min-width:1.6rem;padding:0 .25rem"
+  return ` <button data-branksort="${key}" data-brankdir="${firstDir}" style="min-width:1.6rem;padding:0 .25rem"
     title="click to sort the whole table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (A to Z / low to high first)'}; click again to flip it, a third click puts it away. One column at a time — picking another column replaces this one. Saved on this record set.">${state}</button>`;
 }
-function b3WireRankSort(doc, root) {
-  $(root).querySelectorAll('[data-b3ranksort]').forEach((btn) => {
+function bWireRankSort(doc, root) {
+  $(root).querySelectorAll('[data-branksort]').forEach((btn) => {
     btn.onclick = async () => {
-      const key = btn.dataset.b3ranksort;
-      const first = btn.dataset.b3rankdir === 'asc' ? 'asc' : 'desc';
+      const key = btn.dataset.branksort;
+      const first = btn.dataset.brankdir === 'asc' ? 'asc' : 'desc';
       const cur = (Array.isArray(doc.sort) ? doc.sort : []).find((s) => s.key === key);
       const spec = !cur ? [{ key, dir: first }]
         : cur.dir === first ? [{ key, dir: first === 'desc' ? 'asc' : 'desc' }]
           : [];
       const out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/sort`, { sort: spec });
-      if (out) drawBoards3().then(() => restoreScroll(tab));
+      if (out) drawBoards().then(() => restoreScroll(tab));
     };
   });
 }
@@ -4476,14 +2414,14 @@ function b3WireRankSort(doc, root) {
 // back at exactly that height afterwards, whatever the new rows did to the
 // page's length. The scroll memory is held shut around the nudge (the page
 // moving itself never writes it) and then told the pegged place.
-async function b3RedrawPeggedToCoinHead() {
-  const head = document.querySelector('[data-b3coinhead]');
+async function bRedrawPeggedToCoinHead() {
+  const head = document.querySelector('[data-bcoinhead]');
   const pegTop = head ? head.getBoundingClientRect().top : null;
-  await drawBoards3();
+  await drawBoards();
   holdScrollMemory();
   requestAnimationFrame(() => requestAnimationFrame(() => {
     holdScrollMemory();
-    const again = document.querySelector('[data-b3coinhead]');
+    const again = document.querySelector('[data-bcoinhead]');
     if (pegTop != null && again) {
       window.scrollBy(0, again.getBoundingClientRect().top - pegTop);
       rememberScroll(tab);
@@ -4493,16 +2431,16 @@ async function b3RedrawPeggedToCoinHead() {
   }));
 }
 
-function b3WirePager(root) {
-  $(root).querySelectorAll('[data-b3page]').forEach((btn) => {
+function bWirePager(root) {
+  $(root).querySelectorAll('[data-bpage]').forEach((btn) => {
     btn.onclick = () => {
-      const [key, from] = btn.dataset.b3page.split(':');
+      const [key, from] = btn.dataset.bpage.split(':');
       if (key === 'S3C') {
-        b3SaveView({ coins: { ...(b3View().coins || {}), offset: Number(from) } });
-        b3RedrawPeggedToCoinHead();
+        bSaveView({ coins: { ...(bView().coins || {}), offset: Number(from) } });
+        bRedrawPeggedToCoinHead();
       } else {
-        b3SaveView({ [`from${key}`]: Number(from) });
-        drawBoards3().then(() => restoreScroll(tab));
+        bSaveView({ [`from${key}`]: Number(from) });
+        drawBoards().then(() => restoreScroll(tab));
       }
     };
   });
@@ -4513,22 +2451,22 @@ function b3WirePager(root) {
 // with the rest of this table's view — the same place the sort by box and
 // the floors keep theirs — and the whole data set is sorted before the page
 // is cut, so page one really is the top of everything.
-function b3CoinSortBtn(view, key, naturalArrow) {
+function bCoinSortBtn(view, key, naturalArrow) {
   const cq = view.coins || {};
   const active = (cq.sort || 'share') === key;
   const flippedArrow = naturalArrow === '↓' ? '↑' : '↓';
   const state = !active ? '·' : (cq.flip ? flippedArrow : naturalArrow);
-  return ` <button data-b3coinsort="${key}" data-b3arrow="${naturalArrow}" style="min-width:1.6rem;padding:0 .25rem"
+  return ` <button data-bcoinsort="${key}" data-barrow="${naturalArrow}" style="min-width:1.6rem;padding:0 .25rem"
     title="one click sorts the whole table by this column${naturalArrow === '↓' ? ' — best first' : ' — A to Z'}; a second click turns it the other way.">${state}</button>`;
 }
-function b3WireCoinSort(root) {
-  $(root).querySelectorAll('[data-b3coinsort]').forEach((btn) => {
+function bWireCoinSort(root) {
+  $(root).querySelectorAll('[data-bcoinsort]').forEach((btn) => {
     btn.onclick = () => {
-      const key = btn.dataset.b3coinsort;
-      const cq = b3View().coins || {};
+      const key = btn.dataset.bcoinsort;
+      const cq = bView().coins || {};
       const active = (cq.sort || 'share') === key;
-      b3SaveView({ coins: { ...cq, sort: key, flip: active ? !cq.flip : false, offset: 0 } });
-      b3RedrawPeggedToCoinHead();
+      bSaveView({ coins: { ...cq, sort: key, flip: active ? !cq.flip : false, offset: 0 } });
+      bRedrawPeggedToCoinHead();
     };
   });
 }
@@ -4540,88 +2478,88 @@ function b3WireCoinSort(root) {
 // sortable columns carrying their priority number. Written once here rather
 // than four times below, because four copies is how two tables end up
 // disagreeing about what a filter does.
-const b3Filters = (key) => (b3View().filters || {})[key] || {};
-function b3SaveFilters(key, patch) {
-  const all = { ...(b3View().filters || {}) };
+const bFilters = (key) => (bView().filters || {})[key] || {};
+function bSaveFilters(key, patch) {
+  const all = { ...(bView().filters || {}) };
   all[key] = { ...(all[key] || {}), ...patch };
   for (const k of Object.keys(all[key])) if (all[key][k] === '' || all[key][k] == null) delete all[key][k];
-  b3SaveView({ filters: all });
+  bSaveView({ filters: all });
 }
 // spec: [id, name shown, kind, tooltip, options?]  kind: 'text' | 'num' | 'pick'
-function b3FilterGrid(key, specs) {
-  const cur = b3Filters(key);
+function bFilterGrid(key, specs) {
+  const cur = bFilters(key);
   const box = (sp) => {
     const [id, , kind, , opts] = sp;
     const v = cur[id] == null ? '' : String(cur[id]);
     if (kind === 'pick') {
-      return `<select data-b3filter="${key}:${id}"><option value="">any</option>${
+      return `<select data-bfilter="${key}:${id}"><option value="">any</option>${
         opts.map((o) => `<option value="${esc(o)}"${v === o ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     }
-    return `<input data-b3filter="${key}:${id}" type="${kind === 'num' ? 'number' : 'text'}" step="any" value="${esc(v)}">`;
+    return `<input data-bfilter="${key}:${id}" type="${kind === 'num' ? 'number' : 'text'}" step="any" value="${esc(v)}">`;
   };
   return `<div class="filters">${specs.map((sp) => `<label title="${esc(sp[3])}"><span class="fname">${esc(sp[1])}</span><span class="fbox">${box(sp)}</span></label>`).join('')}
-    <span class="frow"><button data-b3filterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button></span></div>`;
+    <span class="frow"><button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button></span></div>`;
 }
-function b3WireFilters(root) {
-  $(root).querySelectorAll('[data-b3filter]').forEach((el) => {
+function bWireFilters(root) {
+  $(root).querySelectorAll('[data-bfilter]').forEach((el) => {
     el.onchange = () => {
-      const [key, id] = el.dataset.b3filter.split(':');
-      b3SaveFilters(key, { [id]: el.value });
-      b3SaveView({ [`from${key}`]: 0 });
-      if (key === 'S3C' || key === 'S3R') b3RedrawPeggedToCoinHead();
-      else drawBoards3().then(() => restoreScroll(tab));
+      const [key, id] = el.dataset.bfilter.split(':');
+      bSaveFilters(key, { [id]: el.value });
+      bSaveView({ [`from${key}`]: 0 });
+      if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
+      else drawBoards().then(() => restoreScroll(tab));
     };
   });
-  $(root).querySelectorAll('[data-b3filterclear]').forEach((btn) => {
+  $(root).querySelectorAll('[data-bfilterclear]').forEach((btn) => {
     btn.onclick = () => {
-      const key = btn.dataset.b3filterclear;
-      const all = { ...(b3View().filters || {}) };
+      const key = btn.dataset.bfilterclear;
+      const all = { ...(bView().filters || {}) };
       delete all[key];
-      b3SaveView({ filters: all, [`from${key}`]: 0 });
-      if (key === 'S3C' || key === 'S3R') b3RedrawPeggedToCoinHead();
-      else drawBoards3().then(() => restoreScroll(tab));
+      bSaveView({ filters: all, [`from${key}`]: 0 });
+      if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
+      else drawBoards().then(() => restoreScroll(tab));
     };
   });
 }
 // A table's own fold. Open unless the owner put it away, and remembered.
-const b3TableOpen = (key) => ((b3View().tables || {})[key] !== false);
-function b3FoldBtn(key, title) {
-  return `<h3 style="margin-top:0"><button data-b3tablefold="${key}" style="min-width:1.6rem;padding:0 .3rem;margin-right:.4rem"
-    title="puts this table away, or brings it back. It comes back as you left it.">${b3TableOpen(key) ? '▾' : '▸'}</button>${title}</h3>`;
+const bTableOpen = (key) => ((bView().tables || {})[key] !== false);
+function bFoldBtn(key, title) {
+  return `<h3 style="margin-top:0"><button data-btablefold="${key}" style="min-width:1.6rem;padding:0 .3rem;margin-right:.4rem"
+    title="puts this table away, or brings it back. It comes back as you left it.">${bTableOpen(key) ? '▾' : '▸'}</button>${title}</h3>`;
 }
-function b3WireTableFold(root) {
-  $(root).querySelectorAll('[data-b3tablefold]').forEach((btn) => {
+function bWireTableFold(root) {
+  $(root).querySelectorAll('[data-btablefold]').forEach((btn) => {
     btn.onclick = () => {
-      const all = { ...(b3View().tables || {}) };
-      const key = btn.dataset.b3tablefold;
-      all[key] = !b3TableOpen(key);
-      b3SaveView({ tables: all });
-      drawBoards3().then(() => restoreScroll(tab));
+      const all = { ...(bView().tables || {}) };
+      const key = btn.dataset.btablefold;
+      all[key] = !bTableOpen(key);
+      bSaveView({ tables: all });
+      drawBoards().then(() => restoreScroll(tab));
     };
   });
 }
 // The line under a table that owns up to what the filters removed.
-function b3Shown(t) {
+function bShown(t) {
   const total = (t && t.total) || 0;
   const of = t && t.of != null ? t.of : total;
   return of > total ? `<p class="note">${total.toLocaleString()} of ${of.toLocaleString()} rows — the rest are held back by the filters above.</p>` : '';
 }
 
-async function b3DrawStage1(doc, incomplete, view, mount) {
+async function bDrawStage1(doc, incomplete, view, mount) {
   const heading = `Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})`;
-  if (!b3TableOpen('S1')) {
-    $(mount).innerHTML = `${incomplete}<div class="panel">${b3FoldBtn('S1', heading)}
+  if (!bTableOpen('S1')) {
+    $(mount).innerHTML = `${incomplete}<div class="panel">${bFoldBtn('S1', heading)}
       <p class="note">put away — press the arrow to bring it back.</p></div>`;
-    b3WireTableFold(mount);
+    bWireTableFold(mount);
     return;
   }
   const from = Math.max(0, Number(view.fromS1) || 0);
-  const qs = new URLSearchParams({ from, n: 100, ...b3Filters('S1') }).toString();
+  const qs = new URLSearchParams({ from, n: 100, ...bFilters('S1') }).toString();
   const t = await apiOr(`api/stageset/${doc.id}/stage1?${qs}`, null);
   const rows = (t && t.rows) || [];
   $(mount).innerHTML = `${incomplete}<div class="panel">
-    ${b3FoldBtn('S1', heading)}
-    ${b3FilterGrid('S1', [
+    ${bFoldBtn('S1', heading)}
+    ${bFilterGrid('S1', [
     ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
     ['ctx', 'alongside', 'text', 'shows only rows read against a coin containing what you type. Empty shows every row.'],
     ['geometry', 'chunk shape', 'text', 'shows only rows whose chunk shape contains what you type, such as daily.'],
@@ -4633,53 +2571,53 @@ async function b3DrawStage1(doc, incomplete, view, mount) {
   ])}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">order</th>
-        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${b3SortBtn(doc, 'trade', 'asc')}</th>
-        <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${b3SortBtn(doc, 'ctx', 'asc')}</th>
-        <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${b3SortBtn(doc, 'geometry', 'asc')}</th>
-        <th ${b3th} title="how many members vote for this unit at stage 1 — one per reading, all LOGREG.">members${b3SortBtn(doc, 'members', 'desc')}</th>
-        <th ${b3th} title="how many of those members are INDEPENDENT. Members that call the same way almost every time count as one voice however differently they were built, so this is the number of real opinions behind the vote.">independent voices${b3SortBtn(doc, 'voices', 'desc')}</th>
-        <th ${b3th} title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two null-set columns are what compare across shapes.">forecast score${b3SortBtn(doc, 'score', 'desc')}</th>
-        <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own null set${b3SortBtn(doc, 'beat', 'desc')}</th>
-        <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set${b3SortBtn(doc, 'lead', 'desc')}</th></tr></thead>
+        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">order</th>
+        <th ${bth} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${bSortBtn(doc, 'trade', 'asc')}</th>
+        <th ${bth} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${bSortBtn(doc, 'ctx', 'asc')}</th>
+        <th ${bth} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${bSortBtn(doc, 'geometry', 'asc')}</th>
+        <th ${bth} title="how many members vote for this unit at stage 1 — one per reading, all LOGREG.">members${bSortBtn(doc, 'members', 'desc')}</th>
+        <th ${bth} title="how many of those members are INDEPENDENT. Members that call the same way almost every time count as one voice however differently they were built, so this is the number of real opinions behind the vote.">independent voices${bSortBtn(doc, 'voices', 'desc')}</th>
+        <th ${bth} title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two null-set columns are what compare across shapes.">forecast score${bSortBtn(doc, 'score', 'desc')}</th>
+        <th ${bth} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own null set${bSortBtn(doc, 'beat', 'desc')}</th>
+        <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
-        <td ${b3td0}>${Number(r.rank).toLocaleString()}</td>
-        <td ${b3td}>${b3Coin(r)}</td>
-        <td ${b3td}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
-        <td ${b3td}>${esc(b3Geo(r.geometry))}</td>
-        <td ${b3td}>${r.members == null ? '—' : r.members}</td>
-        <td ${b3td}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}</td>
-        <td ${b3td}>${r.score == null ? '—' : r.score.toFixed(1)}</td>
-        <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">nothing here</td></tr>'}</tbody></table></div>
-    ${b3Shown(t)}
-    ${b3Pager((t && t.total) || 0, from, 100, 'S1')}
+        <td ${btd0}>${Number(r.rank).toLocaleString()}</td>
+        <td ${btd}>${bCoin(r)}</td>
+        <td ${btd}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
+        <td ${btd}>${esc(bGeo(r.geometry))}</td>
+        <td ${btd}>${r.members == null ? '—' : r.members}</td>
+        <td ${btd}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}</td>
+        <td ${btd}>${r.score == null ? '—' : r.score.toFixed(1)}</td>
+        <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+        <td ${btd}>${bLead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${bShown(t)}
+    ${bPager((t && t.total) || 0, from, 100, 'S1')}
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
       carry forward takes the top of. With nothing picked: beat its own null set, ties broken by lead over null set —
       the fixed rule. Independent voices below members means some members are near-copies of each other and the
       committee is smaller than it looks. No money on this table because stage 1 never prices a trade.</p>
   </div>`;
-  b3WirePager(mount);
-  b3WireSort(doc, mount);
-  b3WireFilters(mount);
-  b3WireTableFold(mount);
+  bWirePager(mount);
+  bWireSort(doc, mount);
+  bWireFilters(mount);
+  bWireTableFold(mount);
 }
 
-async function b3DrawStage2(doc, incomplete, view, mount) {
+async function bDrawStage2(doc, incomplete, view, mount) {
   const heading = `Stage 2 — the carried rows, LOGREG joined by BOOST (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
-  if (!b3TableOpen('S2')) {
-    $(mount).innerHTML = `${incomplete}<div class="panel">${b3FoldBtn('S2', heading)}
+  if (!bTableOpen('S2')) {
+    $(mount).innerHTML = `${incomplete}<div class="panel">${bFoldBtn('S2', heading)}
       <p class="note">put away — press the arrow to bring it back.</p></div>`;
-    b3WireTableFold(mount);
+    bWireTableFold(mount);
     return;
   }
   const from = Math.max(0, Number(view.fromS2) || 0);
-  const qs = new URLSearchParams({ from, n: 100, ...b3Filters('S2') }).toString();
+  const qs = new URLSearchParams({ from, n: 100, ...bFilters('S2') }).toString();
   const t = await apiOr(`api/stageset/${doc.id}/stage2?${qs}`, null);
   const rows = (t && t.rows) || [];
   $(mount).innerHTML = `${incomplete}<div class="panel">
-    ${b3FoldBtn('S2', heading)}
-    ${b3FilterGrid('S2', [
+    ${bFoldBtn('S2', heading)}
+    ${bFilterGrid('S2', [
     ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
     ['ctx', 'alongside', 'text', 'shows only rows read against a coin containing what you type. Empty shows every row.'],
     ['geometry', 'chunk shape', 'text', 'shows only rows whose chunk shape contains what you type, such as daily.'],
@@ -4693,56 +2631,56 @@ async function b3DrawStage2(doc, incomplete, view, mount) {
   ])}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">stage 2 order</th>
-        <th ${b3th} title="where the same unit ranked at stage 1">stage 1 order${b3SortBtn(doc, 's1rank', 'asc')}</th>
-        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${b3SortBtn(doc, 'trade', 'asc')}</th>
-        <th ${b3th} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${b3SortBtn(doc, 'ctx', 'asc')}</th>
-        <th ${b3th} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${b3SortBtn(doc, 'geometry', 'asc')}</th>
-        <th ${b3th} title="how many members vote for this unit now, and what they are">members${b3SortBtn(doc, 'members', 'desc')}</th>
-        <th ${b3th} title="how many of those members are INDEPENDENT. Members that call the same way almost every time count as one voice however differently they were built. The figure in brackets is what it was before the BOOST members joined, so what the fuller board bought in real opinions is visible here.">independent voices${b3SortBtn(doc, 'voices', 'desc')}</th>
-        <th ${b3th} title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members${b3SortBtn(doc, 'score3', 'desc')}</th>
-        <th ${b3th} title="the same fixed score with every member pooled, BOOST included">forecast score — all members${b3SortBtn(doc, 'scoreAll', 'desc')}</th>
-        <th ${b3th} title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?${b3SortBtn(doc, 'helped', 'desc')}</th>
-        <th ${b3th} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat, as stage 1 read it. Carried with the unit; the BOOST members never face a null set.">beat its own null set${b3SortBtn(doc, 'beat', 'desc')}</th>
-        <th ${b3th} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the stage 1 tie-break, carried with the unit">lead over null set${b3SortBtn(doc, 'lead', 'desc')}</th></tr></thead>
+        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">stage 2 order</th>
+        <th ${bth} title="where the same unit ranked at stage 1">stage 1 order${bSortBtn(doc, 's1rank', 'asc')}</th>
+        <th ${bth} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${bSortBtn(doc, 'trade', 'asc')}</th>
+        <th ${bth} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${bSortBtn(doc, 'ctx', 'asc')}</th>
+        <th ${bth} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${bSortBtn(doc, 'geometry', 'asc')}</th>
+        <th ${bth} title="how many members vote for this unit now, and what they are">members${bSortBtn(doc, 'members', 'desc')}</th>
+        <th ${bth} title="how many of those members are INDEPENDENT. Members that call the same way almost every time count as one voice however differently they were built. The figure in brackets is what it was before the BOOST members joined, so what the fuller board bought in real opinions is visible here.">independent voices${bSortBtn(doc, 'voices', 'desc')}</th>
+        <th ${bth} title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members${bSortBtn(doc, 'score3', 'desc')}</th>
+        <th ${bth} title="the same fixed score with every member pooled, BOOST included">forecast score — all members${bSortBtn(doc, 'scoreAll', 'desc')}</th>
+        <th ${bth} title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?${bSortBtn(doc, 'helped', 'desc')}</th>
+        <th ${bth} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat, as stage 1 read it. Carried with the unit; the BOOST members never face a null set.">beat its own null set${bSortBtn(doc, 'beat', 'desc')}</th>
+        <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the stage 1 tie-break, carried with the unit">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
-        <td ${b3td0}>${Number(r.rank).toLocaleString()}</td>
-        <td ${b3td}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
-        <td ${b3td}>${b3Coin(r)}</td>
-        <td ${b3td}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
-        <td ${b3td}>${esc(b3Geo(r.geometry))}</td>
-        <td ${b3td}>${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST</td>
-        <td ${b3td}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}${r.voices3 == null ? '' : ` <span class="muted">(${r.voices3} before BOOST)</span>`}</td>
-        <td ${b3td}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
-        <td ${b3td}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
-        <td ${b3td}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td>
-        <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${b3td}>${b3Lead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">nothing here</td></tr>'}</tbody></table></div>
-    ${b3Shown(t)}
-    ${b3Pager((t && t.total) || 0, from, 100, 'S2')}
+        <td ${btd0}>${Number(r.rank).toLocaleString()}</td>
+        <td ${btd}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
+        <td ${btd}>${bCoin(r)}</td>
+        <td ${btd}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
+        <td ${btd}>${esc(bGeo(r.geometry))}</td>
+        <td ${btd}>${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST</td>
+        <td ${btd}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}${r.voices3 == null ? '' : ` <span class="muted">(${r.voices3} before BOOST)</span>`}</td>
+        <td ${btd}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
+        <td ${btd}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
+        <td ${btd}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td>
+        <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+        <td ${btd}>${bLead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${bShown(t)}
+    ${bPager((t && t.total) || 0, from, 100, 'S2')}
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 3
       carry forward takes the top of. With nothing picked: forecast score — all members, best first; ties keep their
       carry order either way. Independent voices below members means some members are near-copies; if the BOOST
       members added members without adding voices, this is where that shows. No money on this table: a stage 2
       record is training inventory. Pricing and the held-back window belong to stage 3.</p>
   </div>`;
-  b3WirePager(mount);
-  b3WireSort(doc, mount);
-  b3WireFilters(mount);
-  b3WireTableFold(mount);
+  bWirePager(mount);
+  bWireSort(doc, mount);
+  bWireFilters(mount);
+  bWireTableFold(mount);
 }
 
-async function b3DrawStage3(doc, incomplete, view, mount) {
+async function bDrawStage3(doc, incomplete, view, mount) {
   const from = Math.max(0, Number(view.fromS3R) || 0);
   const coinsQ = view.coins || {};
-  const coinF = b3Filters('S3C');
+  const coinF = bFilters('S3C');
   const qs = new URLSearchParams({
     sort: coinsQ.sort || 'share', flip: coinsQ.flip ? '1' : '',
     minPairs: coinF.minPairs ?? '', minShare: coinF.minShare ?? '', minTest: coinF.minTest ?? '',
     minHold: coinF.minHold ?? '', minTrades: coinF.minTrades ?? '', minVsLong: coinF.minVsLong ?? '',
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
-  const rankQs = new URLSearchParams({ from, n: 100, ...b3Filters('S3R') }).toString();
+  const rankQs = new URLSearchParams({ from, n: 100, ...bFilters('S3R') }).toString();
   const [ranked, coins] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
@@ -4761,19 +2699,19 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
     : t.waiting ? `<p class="note">the tables are not totalled yet — ${esc(t.waiting)}. This page asks again every few seconds.</p>`
       : `<p class="note">totalling the tables: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} parts` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands.</p>`}
     </div>`;
-    if (!t.failed) b3TallyPoll = setTimeout(() => { if (tab === 'boards3') drawBoards3().then(() => restoreScroll(tab)); }, 4000);
+    if (!t.failed) bTallyPoll = setTimeout(() => { if (tab === 'boards') drawBoards().then(() => restoreScroll(tab)); }, 4000);
     return;
   }
   const rr = (ranked && ranked.rows) || [];
   const cr = (coins && coins.rows) || [];
   const openKeys = new Set(view.openS3 || []);
   const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry].join('|');
-  const s3Head = `Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
+  const swHead = `Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
   $(mount).innerHTML = `${incomplete}<div class="panel">
-    ${b3FoldBtn('S3R', s3Head)}
-    ${!b3TableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
+    ${bFoldBtn('S3R', swHead)}
+    ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
     <p style="margin:.6rem 0 .2rem"><b>Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
-    ${b3FilterGrid('S3R', [
+    ${bFilterGrid('S3R', [
     ['rule', 'agree by', 'pick', 'shows only settings using this way of turning votes into a call. any shows every one.', ['count', 'conviction', 'voices', 'families', 'unusual']],
     ['shareMin', 'share at least, %', 'num', 'hides settings whose share is below this. Empty hides nothing.'],
     ['shareMax', 'share at most, %', 'num', 'hides settings whose share is above this. Empty hides nothing.'],
@@ -4794,57 +2732,57 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
   ])}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="how the members' votes become a call — priced from the kept votes.">decision${b3RankSortBtn(doc, 'decision', 'asc')}</th>
-        <th ${b3th} title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history.">band${b3RankSortBtn(doc, 'bandMode', 'asc')}</th>
-        <th ${b3th} title="whether this setting trades weekdays only.">24/5${b3RankSortBtn(doc, 'weekdaysOnly', 'asc')}</th>
-        <th ${b3th} title="how the position is opened.">entry${b3RankSortBtn(doc, 'entry', 'asc')}</th>
-        <th ${b3th} title="when a position may be opened at all. A dash means the box does not apply to this setting.">gate${b3RankSortBtn(doc, 'gate', 'asc')}</th>
-        <th ${b3th} title="how far from the starting price the opening level sits. A dash means it does not apply.">d${b3RankSortBtn(doc, 'dMult', 'asc')}</th>
-        <th ${b3th} title="how many hours a position is held before it is closed, if nothing else closed it first.">t${b3RankSortBtn(doc, 'tHours', 'asc')}</th>
-        <th ${b3th} title="which stop the setting uses. static sits still on the far side of the entry; a dash means it does not apply.">trail${b3RankSortBtn(doc, 'trailMult', 'asc')}</th>
-        <th ${b3th} title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm${b3RankSortBtn(doc, 'armMult', 'asc')}</th>
-        <th ${b3th} title="how this setting turns the members' votes into a call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by${b3RankSortBtn(doc, 'agreeRule', 'asc')}</th>
-        <th ${b3th} title="how demanding the rule is, as a share of the committee. Higher is stricter, and it means the same thing whatever a unit's committee holds.">share${b3RankSortBtn(doc, 'agreePct', 'desc')}</th>
-        <th ${b3th} title="what that share worked out to for the coins priced here, averaged because committees can differ in size. For unusual it is the agreement count the rule demanded.">rung it landed on${b3RankSortBtn(doc, 'avgRung', 'desc')}</th>
-        <th ${b3th} title="how many INDEPENDENT voices the committees held, averaged over the coins. Members that call the same way almost every time count as one voice, so this is how many real opinions the setting rests on.">independent voices${b3RankSortBtn(doc, 'avgVoices', 'desc')}</th>
-        <th ${b3th} title="how many coins this setting was priced on.">coins${b3RankSortBtn(doc, 'coins', 'desc')}</th>
-        <th ${b3th} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $${b3RankSortBtn(doc, 'avgTest', 'desc')}</th>
-        <th ${b3th} title="the once-only look, on data no ordering ever read">avg held-back $${b3RankSortBtn(doc, 'avgHold', 'desc')}</th>
-        <th ${b3th} title="average entries per coin in the held-back window.">avg held-back trades${b3RankSortBtn(doc, 'avgTrades', 'desc')}</th>
-        <th ${b3th} title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $${b3RankSortBtn(doc, 'avgVsLong', 'desc')}</th>
-        <th ${b3th} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set${b3RankSortBtn(doc, 'beat', 'desc')}</th>
-        <th ${b3th} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set${b3RankSortBtn(doc, 'avgLead', 'desc')}</th>
-        <th ${b3th} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money${b3RankSortBtn(doc, 'coinsInMoney', 'desc')}</th></tr></thead>
+        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="how the members' votes become a call — priced from the kept votes.">decision${bRankSortBtn(doc, 'decision', 'asc')}</th>
+        <th ${bth} title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history.">band${bRankSortBtn(doc, 'bandMode', 'asc')}</th>
+        <th ${bth} title="whether this setting trades weekdays only.">24/5${bRankSortBtn(doc, 'weekdaysOnly', 'asc')}</th>
+        <th ${bth} title="how the position is opened.">entry${bRankSortBtn(doc, 'entry', 'asc')}</th>
+        <th ${bth} title="when a position may be opened at all. A dash means the box does not apply to this setting.">gate${bRankSortBtn(doc, 'gate', 'asc')}</th>
+        <th ${bth} title="how far from the starting price the opening level sits. A dash means it does not apply.">d${bRankSortBtn(doc, 'dMult', 'asc')}</th>
+        <th ${bth} title="how many hours a position is held before it is closed, if nothing else closed it first.">t${bRankSortBtn(doc, 'tHours', 'asc')}</th>
+        <th ${bth} title="which stop the setting uses. static sits still on the far side of the entry; a dash means it does not apply.">trail${bRankSortBtn(doc, 'trailMult', 'asc')}</th>
+        <th ${bth} title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm${bRankSortBtn(doc, 'armMult', 'asc')}</th>
+        <th ${bth} title="how this setting turns the members' votes into a call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by${bRankSortBtn(doc, 'agreeRule', 'asc')}</th>
+        <th ${bth} title="how demanding the rule is, as a share of the committee. Higher is stricter, and it means the same thing whatever a unit's committee holds.">share${bRankSortBtn(doc, 'agreePct', 'desc')}</th>
+        <th ${bth} title="what that share worked out to for the coins priced here, averaged because committees can differ in size. For unusual it is the agreement count the rule demanded.">rung it landed on${bRankSortBtn(doc, 'avgRung', 'desc')}</th>
+        <th ${bth} title="how many INDEPENDENT voices the committees held, averaged over the coins. Members that call the same way almost every time count as one voice, so this is how many real opinions the setting rests on.">independent voices${bRankSortBtn(doc, 'avgVoices', 'desc')}</th>
+        <th ${bth} title="how many coins this setting was priced on.">coins${bRankSortBtn(doc, 'coins', 'desc')}</th>
+        <th ${bth} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $${bRankSortBtn(doc, 'avgTest', 'desc')}</th>
+        <th ${bth} title="the once-only look, on data no ordering ever read">avg held-back $${bRankSortBtn(doc, 'avgHold', 'desc')}</th>
+        <th ${bth} title="average entries per coin in the held-back window.">avg held-back trades${bRankSortBtn(doc, 'avgTrades', 'desc')}</th>
+        <th ${bth} title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $${bRankSortBtn(doc, 'avgVsLong', 'desc')}</th>
+        <th ${bth} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set${bRankSortBtn(doc, 'beat', 'desc')}</th>
+        <th ${bth} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set${bRankSortBtn(doc, 'avgLead', 'desc')}</th>
+        <th ${bth} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money${bRankSortBtn(doc, 'coinsInMoney', 'desc')}</th></tr></thead>
       <tbody>${rr.map((r) => `<tr>
-        <td ${b3td0}>${esc(r.decision)}</td>
-        <td ${b3td}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
-        <td ${b3td}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
-        <td ${b3td}>${esc(r.entry)}</td>
-        <td ${b3td}${r.entry === 'market' ? ' class="muted"' : ''}>${r.entry === 'market' ? '—' : esc(r.gate)}</td>
-        <td ${b3td}${r.dMult == null ? ' class="muted"' : ''}>${r.dMult == null ? '—' : `${r.dMult}×`}</td>
-        <td ${b3td}>${r.tHours}h</td>
-        <td ${b3td}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? (r.entry === 'market' ? '—' : 'static') : `${r.trailMult}×`}</td>
-        <td ${b3td}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? '—' : `${r.armMult}×`}</td>
-        <td ${b3td}>${esc(r.agreeRule || 'count')}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
-        <td ${b3td}>${r.agreePct == null ? '—' : `${r.agreePct}%`}</td>
-        <td ${b3td}>${r.avgRung == null ? '—' : r.avgRung.toFixed(1)}${r.members ? ` <span class="muted">of ${r.members}</span>` : ''}</td>
-        <td ${b3td}${r.avgVoices != null && r.members && r.avgVoices < r.members ? ' class="warn"' : ''}>${r.avgVoices == null ? '—' : r.avgVoices.toFixed(1)}</td>
-        <td ${b3td}>${r.coins}</td>
-        <td ${b3td}>${b3Money(r.avgTest)}</td>
-        <td ${b3td}>${b3Money(r.avgHold)}</td>
-        <td ${b3td}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
-        <td ${b3td}>${b3Money(r.avgVsLong)}</td>
-        <td ${b3td}>${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${b3td}>${b3Lead(r.avgLead)}</td>
-        <td ${b3td}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="21" class="empty">nothing here</td></tr>'}</tbody></table></div>
-    ${b3Shown(ranked)}
-    ${b3Pager((ranked && ranked.total) || 0, from, 100, 'S3R')}
+        <td ${btd0}>${esc(r.decision)}</td>
+        <td ${btd}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
+        <td ${btd}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
+        <td ${btd}>${esc(r.entry)}</td>
+        <td ${btd}${r.entry === 'market' ? ' class="muted"' : ''}>${r.entry === 'market' ? '—' : esc(r.gate)}</td>
+        <td ${btd}${r.dMult == null ? ' class="muted"' : ''}>${r.dMult == null ? '—' : `${r.dMult}×`}</td>
+        <td ${btd}>${r.tHours}h</td>
+        <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? (r.entry === 'market' ? '—' : 'static') : `${r.trailMult}×`}</td>
+        <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? '—' : `${r.armMult}×`}</td>
+        <td ${btd}>${esc(r.agreeRule || 'count')}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
+        <td ${btd}>${r.agreePct == null ? '—' : `${r.agreePct}%`}</td>
+        <td ${btd}>${r.avgRung == null ? '—' : r.avgRung.toFixed(1)}${r.members ? ` <span class="muted">of ${r.members}</span>` : ''}</td>
+        <td ${btd}${r.avgVoices != null && r.members && r.avgVoices < r.members ? ' class="warn"' : ''}>${r.avgVoices == null ? '—' : r.avgVoices.toFixed(1)}</td>
+        <td ${btd}>${r.coins}</td>
+        <td ${btd}>${bMoney(r.avgTest)}</td>
+        <td ${btd}>${bMoney(r.avgHold)}</td>
+        <td ${btd}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
+        <td ${btd}>${bMoney(r.avgVsLong)}</td>
+        <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+        <td ${btd}>${bLead(r.avgLead)}</td>
+        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="21" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${bShown(ranked)}
+    ${bPager((ranked && ranked.total) || 0, from, 100, 'S3R')}
     <p class="note">Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
       nothing picked: beat its own null set, best first. Independent voices below members means the committees held
       near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
     `}
     <p style="margin:.9rem 0 .2rem"><b>Every coin of every setting</b> — one row per coin, its records opening below it</p>
-    ${b3FilterGrid('S3C', [
+    ${bFilterGrid('S3C', [
     ['minShare', 'beat its own null set at least, %', 'num', 'hides rows that won less than this share of their head-to-heads. Empty hides nothing.'],
     ['minPairs', 'comparisons at least', 'num', 'hides rows whose share rests on fewer head-to-heads than this. Empty hides nothing.'],
     ['minTest', 'avg test $ at least', 'num', 'hides rows whose average test-window money is below this. Empty hides nothing.'],
@@ -4852,59 +2790,59 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
     ['minTrades', 'avg trades at least', 'num', 'hides rows with fewer average entries than this. Empty hides nothing.'],
     ['minVsLong', 'avg vs always-long at least, $', 'num', 'hides rows that beat just holding the coin by less than this. Empty hides nothing.'],
   ])}
-    <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-b3coinhead style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${b3th.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${b3CoinSortBtn(view, 'setting', '↑')}</th>
-        <th ${b3th} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${b3CoinSortBtn(view, 'coin', '↑')}</th>
-        <th ${b3th} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${b3CoinSortBtn(view, 'share', '↓')}</th>
-        <th ${b3th} title="how many head-to-heads the share rests on.">comparisons${b3CoinSortBtn(view, 'pairs', '↓')}</th>
-        <th ${b3th} title="average test-window money per record — flattering by construction, because the carry was ordered on that window.">avg test $${b3CoinSortBtn(view, 'test', '↓')}</th>
-        <th ${b3th} title="average held-back money per record.">avg held-back${b3CoinSortBtn(view, 'money', '↓')}</th>
-        <th ${b3th} title="average held-back entries per record.">avg trades${b3CoinSortBtn(view, 'trades', '↓')}</th>
-        <th ${b3th} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${b3CoinSortBtn(view, 'vslong', '↓')}</th>
-        <th ${b3th} title="how many records this row averages — one per decision, band and 24/5 variant of the setting.">rows${b3CoinSortBtn(view, 'rows', '↓')}</th>
-        <th ${b3th} title="opens the records themselves below the row.">records</th></tr></thead>
-      <tbody id="b3CoinBody">${cr.map((r) => {
+    <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
+        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${bCoinSortBtn(view, 'setting', '↑')}</th>
+        <th ${bth} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${bCoinSortBtn(view, 'coin', '↑')}</th>
+        <th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>
+        <th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>
+        <th ${bth} title="average test-window money per record — flattering by construction, because the carry was ordered on that window.">avg test $${bCoinSortBtn(view, 'test', '↓')}</th>
+        <th ${bth} title="average held-back money per record.">avg held-back${bCoinSortBtn(view, 'money', '↓')}</th>
+        <th ${bth} title="average held-back entries per record.">avg trades${bCoinSortBtn(view, 'trades', '↓')}</th>
+        <th ${bth} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${bCoinSortBtn(view, 'vslong', '↓')}</th>
+        <th ${bth} title="how many records this row averages — one per decision, band and 24/5 variant of the setting.">rows${bCoinSortBtn(view, 'rows', '↓')}</th>
+        <th ${bth} title="opens the records themselves below the row.">records</th></tr></thead>
+      <tbody id="bCoinBody">${cr.map((r) => {
     const k = keyOf(r);
-    return `<tr data-b3key="${esc(k)}">
-        <td ${b3td0}>${esc(r.cellLabel)}</td>
-        <td ${b3td}>${b3Coin(r)} <span class="muted">${esc(b3Geo(r.geometry))}</span></td>
-        <td ${b3td}>${b3Share(r.share, r.beat, r.pairs)}</td>
-        <td ${b3td}>${Number(r.pairs).toLocaleString()}</td>
-        <td ${b3td}>${b3Money(r.avgTest)}</td>
-        <td ${b3td}>${b3Money(r.avgHold)}</td>
-        <td ${b3td}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
-        <td ${b3td}>${b3Money(r.avgVsLong)}</td>
-        <td ${b3td}>${r.rows}</td>
-        <td ${b3td}><button data-b3rec="${esc(k)}">${openKeys.has(k) ? '▾ records' : 'records'}</button></td></tr>`;
+    return `<tr data-bkey="${esc(k)}">
+        <td ${btd0}>${esc(r.cellLabel)}</td>
+        <td ${btd}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span></td>
+        <td ${btd}>${bShare(r.share, r.beat, r.pairs)}</td>
+        <td ${btd}>${Number(r.pairs).toLocaleString()}</td>
+        <td ${btd}>${bMoney(r.avgTest)}</td>
+        <td ${btd}>${bMoney(r.avgHold)}</td>
+        <td ${btd}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
+        <td ${btd}>${bMoney(r.avgVsLong)}</td>
+        <td ${btd}>${r.rows}</td>
+        <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ records' : 'records'}</button></td></tr>`;
   }).join('') || '<tr><td colspan="10" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${coins && coins.removed ? `<p class="note">${coins.removed.toLocaleString()} row(s) held back by the floors.</p>` : ''}
-    ${b3Pager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
+    ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`;
   // THE ORDERING BOX AND ITS Apply ARE GONE (owner order, 2026-08-28: "remove
   // obsolete ordering selections as we can do all row ordering by column
   // selections"). Every column sorts on one click and every filter asks again
   // the moment it changes, so a button whose only job was to re-ask had
   // nothing left to do. The page still holds perfectly still on every one of
-  // those redraws — see b3RedrawPeggedToCoinHead.
+  // those redraws — see bRedrawPeggedToCoinHead.
   // opening or closing a row's records must not move the page either (owner
   // order, 2026-08-27) — same peg, same rule
-  $(mount).querySelectorAll('[data-b3rec]').forEach((btn) => {
+  $(mount).querySelectorAll('[data-brec]').forEach((btn) => {
     btn.onclick = () => {
-      const k = btn.dataset.b3rec;
-      const keys = new Set(b3View().openS3 || []);
+      const k = btn.dataset.brec;
+      const keys = new Set(bView().openS3 || []);
       if (keys.has(k)) { keys.delete(k); } else { keys.add(k); }
-      b3SaveView({ openS3: [...keys] });
-      b3RedrawPeggedToCoinHead();
+      bSaveView({ openS3: [...keys] });
+      bRedrawPeggedToCoinHead();
     };
   });
-  b3WirePager(mount);
-  b3WireRankSort(doc, mount);
-  b3WireCoinSort(mount);
-  b3WireFilters(mount);
-  b3WireTableFold(mount);
+  bWirePager(mount);
+  bWireRankSort(doc, mount);
+  bWireCoinSort(mount);
+  bWireFilters(mount);
+  bWireTableFold(mount);
   // opened records rows, fetched and slotted under their coin row
   for (const k of openKeys) {
-    const tr = $(mount).querySelector(`tr[data-b3key="${CSS.escape(k)}"]`);
+    const tr = $(mount).querySelector(`tr[data-bkey="${CSS.escape(k)}"]`);
     if (!tr) continue;
     const [cellLabel, trade, ctx1, ctx2, geometry] = k.split('|');
     const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry }).toString();
@@ -4936,13 +2874,13 @@ async function b3DrawStage3(doc, incomplete, view, mount) {
           <td style="padding:.2rem .5rem">${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
           <td style="padding:.2rem .5rem">${r.weekdaysOnly ? 'yes' : 'no'}</td>
           <td style="padding:.2rem .5rem">±${r.bandPct != null ? Number(r.bandPct).toFixed(2) : '—'}%</td>
-          <td style="padding:.2rem .5rem">${b3Money(r.pnl)}</td>
+          <td style="padding:.2rem .5rem">${bMoney(r.pnl)}</td>
           <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
-          <td style="padding:.2rem .5rem">${b3Share(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-          <td style="padding:.2rem .5rem">${h ? b3Money(h.pnl) : '<span class="muted">—</span>'}</td>
+          <td style="padding:.2rem .5rem">${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+          <td style="padding:.2rem .5rem">${h ? bMoney(h.pnl) : '<span class="muted">—</span>'}</td>
           <td style="padding:.2rem .5rem">${h && h.trades != null ? h.trades : '—'}</td>
           <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>
-          <td style="padding:.2rem .5rem">${h && h.vsAlwaysLong != null ? b3Money(h.vsAlwaysLong) : '<span class="muted">—</span>'}</td></tr>`;
+          <td style="padding:.2rem .5rem">${h && h.vsAlwaysLong != null ? bMoney(h.vsAlwaysLong) : '<span class="muted">—</span>'}</td></tr>`;
   }).join('')}</tbody></table></div>`;
     }
     cell.appendChild(td);
@@ -4983,16 +2921,12 @@ function hoverFromHelp(key) {
 // return early on empty states, and a tail call after an early return is a
 // hover that quietly never arrives.
 drawData = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('data'); return r; })(drawData);
-drawSweep = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);
-drawBoards = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('boards'); return r; })(drawBoards);
 drawVerify = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('verify'); return r; })(drawVerify);
 drawHistory = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('history'); return r; })(drawHistory);
 drawTune = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('tune'); return r; })(drawTune);
 drawGreenlight = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('greenlight'); return r; })(drawGreenlight);
-drawSweep2 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep2'); return r; })(drawSweep2);
-drawBoards2 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('boards2'); return r; })(drawBoards2);
-drawSweep3 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep3'); return r; })(drawSweep3);
-drawBoards3 = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('boards3'); return r; })(drawBoards3);
+drawSweep = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);
+drawBoards = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('boards'); return r; })(drawBoards);
 
 function draw() {
   renderTabs(); renderStrip();
@@ -5020,12 +2954,8 @@ function draw() {
   };
   const section = tab === 'data' ? drawData()
     : tab === 'sweep' ? drawSweep()
-      : tab === 'sweep2' ? drawSweep2()
-        : tab === 'sweep3' ? drawSweep3()
-          : tab === 'boards' ? drawBoards()
-            : tab === 'boards2' ? drawBoards2()
-              : tab === 'boards3' ? drawBoards3()
-                : tab === 'verify' ? drawVerify()
+      : tab === 'boards' ? drawBoards()
+        : tab === 'verify' ? drawVerify()
                   : tab === 'history' ? drawHistory()
                     : tab === 'tune' ? drawTune()
                       : tab === 'greenlight' ? drawGreenlight()

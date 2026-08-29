@@ -372,6 +372,45 @@ work — the owner reviews decisions in the morning, not at 3am.
     columns now order it and filters ask again on change; hover text on every
     filter and column.
 
+50. **Eight tabs, one Sweep, one Boards** (owner order, 2026-08-28: "get rid
+    of the Sweep, Sweep2, Boards, and Boards2 tabs. make the existing
+    'Sweep3' just 'Sweep' and the existing 'Boards3' just 'Boards'. fix
+    *EVERY* reference in the code to those obsolete items"). The two earlier
+    working screens and the two drawings the design was worked out on are
+    gone; the three-stage pair carries their names. Internal names went with
+    them — `s3*` control ids are `sw*`, `b3*` helpers and data attributes are
+    `b*`, and the help sections, the word lists' tab list and the mutation
+    guards all follow the code rather than a memory of it.
+51. **Tests re-aimed where the duty survived, removed with a reason where it
+    did not.** Fifty-one checks were failing on names that no longer existed.
+    Each was decided one at a time, never by deleting the failure: the
+    paging bar now runs against `bPager` and is EXECUTED rather than grepped;
+    the cost line's one-place-per-request rule now runs against
+    `swBlockParams` and `stage3Declared`; the permute ticks, the declared
+    menus, the uncapped boxes, the group hide/show, the notes panel, the
+    records column order and the background-totalling report all point at the
+    surviving screens. Where the subject is genuinely gone — the menu grid and
+    its plateau reading, the inspect panel, the ranked replication list, the
+    two drawings, the null-boards cost report, the per-size agreement counts —
+    the check is removed with a line saying what it held and why nothing can
+    replace it. `tests/test-prototypes.js` is deleted outright.
+52. **Three things the deletion broke or exposed, and what was done.** The
+    theme button on Construct had lost its wiring with the deleted screens and
+    did nothing; it is put back and now has a mutation guard. Four mutation
+    guards had gone stale earlier and were testing nothing — the harness
+    reported them as SKIPs; all four are re-anchored, and two tests they
+    pointed at were too weak to notice the damage even so (the stage 3 count
+    fell back to a coin on its own and satisfied a `>=`; the paging bar was
+    read for words instead of run) — both are strengthened.
+53. **What the deletion left with no way in, reported not fixed.** The old
+    run system is now headless: nothing sets the picked run any more, so
+    Verify, History, Tune and Greenlight read whatever a browser last stored
+    and a fresh browser gets nothing; `/api/sweep`, `/api/run/delete`,
+    `/api/run/resume`, `/api/run-contents`, `/api/resume-contents` and
+    `/api/sweep-estimate` are reachable by no screen. Removing the subsystem
+    or giving the surviving tabs a picker are both real changes and both are
+    the owner's to call.
+
 ## Parked, needing the owner
 
 - **Forward books F1-F3** are frozen experiments on measurement block 2.
@@ -382,8 +421,24 @@ work — the owner reviews decisions in the morning, not at 3am.
 - **The owner's existing S1/S2/S3 record sets** are on the old block and will
   be refused as parents. Nothing of theirs was deleted.
 
+- **The picked run has no picker.** Verify, History, Tune and Greenlight all
+  read a saved run that only the deleted Boards could choose. Decision 53.
+- **A blank fee box buys a free run.** The three-stage Sweep sends
+  `Number('') / 100` — zero — and stage 3 accepts a fee of zero, so clearing
+  that box flatters every number it produces. The old Sweep sent nothing and
+  fell back to the lab rate. One line, and it waits for a GO.
+- **The start buttons lose their hover four seconds in.** `swProgress` wakes
+  them with `title = ''`, and the poll re-runs every four seconds with no
+  re-wire after it, so the authored descriptions go blank and stay blank. One
+  line — remember the authored title and put it back.
+- **The engine version has not moved since 2026-08-20** (2.0.0, 190 commits
+  ago). It is not a badge: a planted check or age-dial exam PASS belongs to
+  the version that earned it, so bumping it puts both back to NOT CHECKED
+  until they are re-run. Today's measurement block change is a real argument
+  for bumping it. The cost is the re-run; the call is the owner's.
+
 ## Recorded intent, no action taken
 
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and
-boards works properly we'll be removing the 4 redundant tabs." Nothing is
-removed until that confirmation and its own GO.
+boards works properly we'll be removing the 4 redundant tabs." Confirmed and
+carried out 2026-08-28 under its own GO — decision 50.

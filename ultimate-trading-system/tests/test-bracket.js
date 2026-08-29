@@ -859,14 +859,20 @@ module.exports = {
       `labelShiftReps is capped again — "${line[0].trim()}" — which puts a ceiling on the strongest claim the owner may attempt`);
     assert.ok(/Math\.max\(0,/.test(line[0]) && /Math\.floor/.test(line[0]),
       'it must still be forced to a whole number of boards, zero or more');
-    // and the cost has to be stated where the number is typed
+    // THE SCREEN HALF WAS REMOVED 2026-08-28 with the screen it named. It
+    // checked that the old Sweep printed what the null boards cost before Start
+    // sweep, because there they multiplied the whole run's training. On the
+    // three-stage Sweep a null set is the same kept votes with their dates
+    // shuffled — no training, ever — so there is no training cost to state and
+    // nothing to re-point this at. The engine half above is the part that
+    // guards the owner's decision, and it stands.
     const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    assert.ok(/id="swNullCost"/.test(ui),
-      'with no cap, the Sweep section must print what the number costs before Start sweep');
-    const box = ui.match(/<input id="swNulls"[^>]*>/);
-    assert.ok(box, 'the null boards box must still exist');
-    assert.ok(!/max="/.test(box[0]),
-      `#swNulls still carries a max — ${box[0]} — so the box refuses what the backend now accepts`);
+    for (const id of ['swNull1', 'swNull3']) {
+      const box = ui.match(new RegExp(`<input id="${id}"[^>]*>`));
+      assert.ok(box, `the ${id} box must still exist`);
+      assert.ok(!/max="/.test(box[0]),
+        `#${id} carries a max — ${box[0]} — so the box refuses what the backend accepts`);
+    }
   },
   async everyCommitteeSeatIsADistinctOpinion() {
     // The removed "regime" dimension (2026-07-30, QC 49) filled half the

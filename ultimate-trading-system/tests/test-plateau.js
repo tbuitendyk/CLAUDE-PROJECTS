@@ -149,8 +149,12 @@ module.exports = {
       'the Greenlight anchor must offer "widest region" with the value "region"');
     assert.ok(/id="glTarget"[\s\S]{0,900}?vocabOptions\('greenlightAnchor'/.test(ui),
       'the Greenlight anchor control no longer asks for the anchor list');
-    assert.ok(/id="bSort"/.test(ui), 'the board must offer the second ranking');
-    assert.ok(/l\.region\.size/.test(ui), 'the board must show each row\'s region width');
+    // THE BOARD HALF WENT WITH ITS SCREEN, 2026-08-28. #bSort ranked the deleted
+    // Boards' survivor board by widest region, and l.region.size was that
+    // board's width column. The Greenlight anchor above — which is the part
+    // that decides what actually gets traded — is untouched and is what this
+    // now holds. The engine's own widest-region arithmetic is checked by every
+    // other test in this file, and the sweep still records it (below).
   },
 
   // The sweep must actually record it, or every row reads "—" forever.
