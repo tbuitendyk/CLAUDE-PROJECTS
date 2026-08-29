@@ -492,6 +492,55 @@ guarantee quietly becomes three different guarantees.
   same inputs. There is no "the model said so" anywhere in the product.
 
 
+## RULE EIGHT — the narrowest check that can fail, first (owner order, 2026-08-29)
+
+**Never run a slow check to learn something a fast one would have told me.**
+
+The owner's words: "so we're over 30 minutes ... are you wasting time again or
+is what you're doing strictly necessary?" — then, after I explained that a
+mutation guard had been pointed at a test that could not see it: "maybe point
+the guard at the right test from the start? is that a good idea?" and "make
+yourself a RULE that YOU'LL ACTUALLY FOLLOW to not waste time."
+
+The build that day took about fifteen minutes. The verification took forty-five,
+almost all of it re-running the whole suite once per guard to check six new
+ones — twice, because the first pass proved only that one guard was aimed
+wrong. The harness has taken a name filter the whole time.
+
+This is a LADDER, and it is climbed from the bottom. Every rung is run before
+the one above it, and a rung is skipped only upward, never down:
+
+1. `node --check <file>` — syntax, instantly.
+2. **The one test** that covers the change: `node -e "require('./tests/x.js').theTest()"`.
+3. **The one file**: that test file alone.
+4. **The whole suite**: `npm test`. Once the change is believed finished.
+5. **The mutation harness, FILTERED to what changed**:
+   `node tests/mutate-servicecontrol.js <nameFragment>`.
+6. **The mutation harness whole** — only when guards were re-aimed across the
+   board, or the owner asks. It is roughly forty minutes and it is never the
+   way to find out whether one new guard bites.
+
+**Reading a failure is rung 2, never rung 4.** Re-running `npm test` to see one
+assertion message again is the commonest way this is broken.
+
+**A guard names the test that READS THE LINE IT BREAKS.** Not the test with the
+nearest-sounding name. The lookup, before writing it: a guard on a line in
+`lib/` belongs to the test that EXERCISES that behaviour; a guard on a string in
+`public/` belongs to the test that SCANS the source for that string. If I cannot
+name the assertion that would fail, the guard is not written yet. This has now
+been aimed wrong twice in one day — once at `everyTableThatCanGrowHasAPagingBar`
+when the break landed on `apageAlwaysStatesTheTrueTotalOnScreen`, once at a
+source-scanning test from a `lib/stagework.js` line it could not possibly see.
+
+**A check that costs more than the work it checks needs a reason said out loud**,
+before it is started, not after. "Being thorough" is not a reason; it is what
+every one of these felt like from the inside.
+
+**And the ends are still where the thinking goes** (this does not soften RULE
+SIX's "hunt your own instrument"). Tearing into an answer is cheap and it is
+the job. Re-running a machine that already answered is neither.
+
+
 ## Working style (all sessions)
 
 ### Answer short by default — `/plain` is the standing style, not a request
