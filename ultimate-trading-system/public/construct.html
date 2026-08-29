@@ -87,6 +87,12 @@
   .filters .fbox { justify-self:start; }
   .filters .fbox input, .filters .fbox select { width:8rem; }
   .filters .frow { grid-column:1 / -1; justify-self:start; margin-top:.15rem; }
+  /* the four numbers beside each filter box: two more columns of grid, and the
+     cells sit on the same centre line as the box they belong to because the
+     grid already says align-items:center */
+  .filters.withspread { grid-template-columns:max-content max-content repeat(4, max-content); }
+  .filters .fhead { text-align:right; font-size:.7rem; color:var(--dim); white-space:nowrap; padding-bottom:.1rem; }
+  .filters .fstat { text-align:right; font-size:.74rem; color:var(--dim); white-space:nowrap; font-variant-numeric:tabular-nums; min-width:4.5rem; }
   /* a control this run will not use: greyed, never hidden, so the row keeps its
      shape and neighbouring labels keep their context (owner, 2026-07-31) */
   .ctl-off { opacity:.5; }

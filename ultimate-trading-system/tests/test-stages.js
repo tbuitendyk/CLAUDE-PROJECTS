@@ -953,7 +953,10 @@ module.exports = {
     const offered = { S1: 1, S2: 2, S3R: 3 };
     for (const [key, stage] of Object.entries(offered)) {
       const at = src.indexOf(`bFilterGrid('${key}'`);
-      const block = src.slice(at, src.indexOf('])}', at));
+      // the array closes on its own line; what follows the bracket differs by
+      // table now that two of them are handed a spread as well, so the end of
+      // the list is the bracket and not whatever comes after it
+      const block = src.slice(at, src.indexOf('\n  ]', at));
       for (const m of block.matchAll(/\['([a-zA-Z0-9]+)', '[^']*', '(?:text|num|pick)'/g)) {
         assert.ok(defs[stage][m[1]], `the ${key} table offers a "${m[1]}" filter the service does not implement`);
       }
@@ -1389,6 +1392,160 @@ module.exports = {
     assert.ok(/gate\.blockedBy \? `disabled title=/.test(ui), 'the planted check button does not sleep while the box is busy');
     assert.ok(/waits for \$\{esc\(gate\.blockedBy\)\} to finish/.test(ui),
       'and it does not say what it is waiting for, which is the only thing that makes a sleeping button bearable');
+  },
+
+  // FOUR NUMBERS BESIDE EVERY FILTER THAT TAKES ONE (owner order, 2026-08-29:
+  // "beside each of the filters boxes i want 4 columns of numbers: mininum,
+  // median, average, maximum").
+  //
+  // The numbers have to describe the rows the table is HOLDING, not the whole
+  // set — a spread that ignores the filters in force tells you about a table
+  // you are not looking at, and the first thing anybody does with these is set
+  // the next floor from them.
+  async theFourNumbersBesideEachFilterDescribeTheRowsTheTableIsHolding() {
+    const id = `s3-test-${Date.now().toString(36)}-sp`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999981, name: 'S3 #sp', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 4 }, params: { nullN: 9 },
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, tHours, hold) => ({
+        si, label: `q2/6 x t${tHours}h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false,
+        bandPct: 2, entry: 'breakout', gate: 'directional', dMult: 1.5, tHours, trailMult: null, armMult: null,
+        quorum: 2, members: 6, pnl: 10, trades: 3,
+        holdout: { pnl: hold, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat: 3, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      });
+      w.push(mk(0, 17, 30));
+      w.push(mk(1, 41, -4));
+      w.push(mk(2, 65, 12));
+      w.push(mk(3, 89, 6));
+      w.close();
+      await stages.buildTally(doc);
+
+      const all = stages.stage3Ranked(id, 0, 10);
+      assert.ok(all.spread, 'the served page carries no spread, so the boxes have nothing to show');
+      // t: 17 41 65 89 -> an even count, so the middle is the two middle
+      // values averaged, and it is NOT one of the values in the column
+      const t = all.spread.tMin;
+      assert.deepStrictEqual([t.min, t.median, t.avg, t.max], [17, 53, 53, 89]);
+      assert.strictEqual(all.spread.tMax, all.spread.tMin,
+        'the two boxes that floor and cap the same column must read the same four numbers');
+      // held-back money: 30 -4 12 6 -> min -4, middle (6+12)/2 = 9, avg 11
+      const h = all.spread.holdMin;
+      assert.deepStrictEqual([h.min, h.median, h.avg, h.max], [-4, 9, 11, 30]);
+      // a box that takes words, not a number, gets nothing at all
+      for (const wordy of ['decision', 'entry', 'gate', 'rule']) {
+        assert.ok(!(wordy in all.spread), `"${wordy}" takes words and must not be given four numbers`);
+      }
+
+      // AND THEY MOVE WITH THE FILTERS. With the two losing-or-small settings
+      // filtered out the spread must describe what is left, not the four.
+      const some = stages.stage3Ranked(id, 0, 10, { holdMin: 10 });
+      assert.strictEqual(some.total, 2, 'the fixture is wrong if the floor does not leave two rows');
+      const h2 = some.spread.holdMin;
+      assert.deepStrictEqual([h2.min, h2.median, h2.avg, h2.max], [12, 21, 21, 30],
+        'the four numbers still describe the whole set, so they say nothing about the table on screen');
+      const t2 = some.spread.tMin;
+      assert.deepStrictEqual([t2.min, t2.max], [17, 65], 'and every other column must narrow with it');
+
+      // the every-coin table's floors carry their own four, over its own rows
+      const cn = stages.stage3Coins(id, {});
+      assert.ok(cn.spread && cn.spread.minHold, 'the every-coin floors have no numbers beside them');
+      assert.deepStrictEqual([cn.spread.minHold.min, cn.spread.minHold.max], [-4, 30]);
+      const cn2 = stages.stage3Coins(id, { minHold: 10 });
+      assert.deepStrictEqual([cn2.spread.minHold.min, cn2.spread.minHold.max], [12, 30],
+        'the every-coin numbers must follow its floors too');
+    } finally {
+      try { fs.unlinkSync(file); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      rowstore.remove(id);
+    }
+  },
+
+  // A column with nothing in it must say so rather than inventing a zero, and
+  // the middle of an odd count is the middle value itself.
+  async aColumnWithNoNumbersInItSaysSoInsteadOfReadingZero() {
+    const rows = [{ a: 1, b: null }, { a: 5, b: null }, { a: 3, b: undefined }];
+    const out = stages.spreadOf(rows, { aMin: ['a', 'min'], bMin: ['b', 'min'], cText: ['c', 'text'] });
+    assert.deepStrictEqual([out.aMin.min, out.aMin.median, out.aMin.avg, out.aMin.max], [1, 3, 3, 5],
+      'an odd count takes the middle value itself');
+    assert.strictEqual(out.aMin.n, 3, 'and it says how many rows it read');
+    assert.strictEqual(out.bMin, null, 'a column that is empty must read as empty, not as a column of zeroes');
+    assert.ok(!('cText' in out), 'a box that takes words gets nothing');
+    // rows that carry no number at all must not drag the average down
+    const mixed = stages.spreadOf([{ a: 4 }, { a: null }, { a: 8 }], { aMin: ['a', 'min'] });
+    assert.deepStrictEqual([mixed.aMin.avg, mixed.aMin.n], [6, 2], 'a missing value is skipped, never counted as zero');
+  },
+
+  // AND THE PAGE ACTUALLY SHOWS THEM, headed, in the order they were asked
+  // for, on BOTH stage 3 tables.
+  async everyFilterOnTheStageThreeTablesShowsWhatItsColumnHolds() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(/\], ranked && ranked\.spread\)\}/.test(ui), 'the ranked table does not ask for the four numbers');
+    assert.ok(/\], coins && coins\.spread\)\}/.test(ui), 'the every-coin table does not ask for the four numbers');
+
+    const grid = ui.slice(ui.indexOf('function bStat('), ui.indexOf('function bWireFilters('));
+    for (const w of ['minimum', 'median', 'average', 'maximum']) {
+      assert.ok(grid.includes(`<span class="fhead">${w}</span>`), `the "${w}" column has no heading on the grid`);
+    }
+    assert.ok(grid.indexOf('>minimum<') < grid.indexOf('>median<')
+      && grid.indexOf('>median<') < grid.indexOf('>average<')
+      && grid.indexOf('>average<') < grid.indexOf('>maximum<'),
+    'the four headings are not in the order they were asked for');
+    assert.ok(/bStat\(st\.min\)[\s\S]{0,240}bStat\(st\.median\)[\s\S]{0,240}bStat\(st\.avg\)[\s\S]{0,240}bStat\(st\.max\)/.test(grid),
+      'the numbers are not printed in the order their headings promise, so every column is mislabelled');
+    assert.ok(/st \? bStat\(st\.min\) : ''/.test(grid),
+      'a box with no numbers drops its cells instead of leaving them empty, and every row after it shifts a column left');
+
+    // the printing itself: a whole number keeps its thousands marks and gains
+    // no decimal point, money gets two places, and a value below one gets
+    // three — 0.043 and 0.004 are not the same lead and two places says so.
+    // eslint-disable-next-line no-new-func
+    const bStat = new Function(`${ui.slice(ui.indexOf('function bStat('), ui.indexOf('// FOUR NUMBERS BESIDE EVERY FILTER BOX'))}; return bStat;`)();
+    assert.strictEqual(bStat(null), '—', 'an absent number must read as absent, not as nothing at all');
+    assert.strictEqual(bStat(1234567), '1,234,567');
+    assert.strictEqual(bStat(12.5), '12.50');
+    assert.strictEqual(bStat(0.0432), '0.043');
+
+    const css = fs.readFileSync(path.join(ROOT, 'public', 'construct.html'), 'utf8');
+    assert.ok(/\.filters\.withspread \{[^}]*repeat\(4, max-content\)/.test(css),
+      'the four number columns have no grid track, so they wrap underneath the filter boxes');
+    assert.ok(/\.filters \.fstat \{[^}]*text-align:right/.test(css), 'the numbers do not line up down their own column');
+    assert.ok(/\.filters \.fstat \{[^}]*tabular-nums/.test(css),
+      'the numbers are not set in even-width figures, so the digits do not line up between rows');
+  },
+
+  // TYPING THE PAGE NUMBER (owner order, 2026-08-29: "on the page selectors on
+  // the tables we need to be able to give the exact page number to view").
+  // prev and next walk; on a table 4,116 pages long walking is not a way of
+  // getting anywhere.
+  async everyPageOfATableCanBeReachedByTypingItsNumber() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const pager = ui.slice(ui.indexOf('function bPager('), ui.indexOf('function bSortBtn('));
+    assert.ok(/data-bpageto="\$\{key\}"/.test(pager), 'the page selector has no box to type a page into');
+    assert.ok(/value="\$\{page\}"/.test(pager), 'the box does not show the page you are on, so it cannot say where you are');
+    assert.ok(/data-bpages="\$\{pages\}"/.test(pager) && /data-bper="\$\{n\}"/.test(pager),
+      'the box does not carry how many pages there are or how big one is, so nothing can work out where to go');
+    assert.ok(/title="the page showing/.test(pager), 'the box carries no hover saying what it is');
+    assert.ok(/prev<\/button>/.test(pager) && /next<\/button>/.test(pager),
+      'typing a page must be added BESIDE prev and next, not instead of them');
+
+    const wire = ui.slice(ui.indexOf('function bWirePager('), ui.indexOf('function bCoinSortBtn('));
+    assert.ok(/Math\.min\(pages, Math\.max\(1, want\)\)/.test(wire),
+      'a page number outside the table is not pulled back to a real page');
+    assert.ok(/\(page - 1\) \* per/.test(wire), 'the page number is not turned into the row it starts at');
+    assert.ok(/el\.onchange = jump;/.test(wire) && /el\.onblur = jump;/.test(wire),
+      'a page typed and then clicked away from is dropped');
+    assert.ok(/if \(jumped\) return;/.test(wire),
+      'change and blur both fire, so without a guard one typed page turns the table twice');
+    // the same box on every table that pages, not just the one that was asked about
+    assert.strictEqual((ui.match(/\$\{bPager\(/g) || []).length >= 4, true,
+      'not every table draws its page selector through bPager, so they cannot all have gained the box');
   },
 
 };

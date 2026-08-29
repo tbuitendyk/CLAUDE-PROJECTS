@@ -606,13 +606,85 @@ const FILTER_DEFS = {
   },
 };
 // The values a filter may read that are not stored as such: the share a row
-// beat of its null set, and the context coins as one piece of text.
+// beat of its null set, and the context coins as one piece of text. ONE
+// DEFINITION, read by both the filtering and the four numbers beside each
+// filter box — two copies of "what does this filter actually read" is two
+// answers waiting to disagree.
+const DERIVED = {
+  _ctx: (r) => [r.ctx1, r.ctx2].filter(Boolean).join(' + '),
+  _beatPct: (r) => (r.pairs ? (r.beat / r.pairs) * 100 : null),
+  _sharePct: (r) => (r.share == null ? null : r.share * 100),
+};
+const readsField = (field) => DERIVED[field] || ((r) => r[field]);
 function withDerived(r) {
-  return {
-    ...r,
-    _ctx: [r.ctx1, r.ctx2].filter(Boolean).join(' + '),
-    _beatPct: r.pairs ? (r.beat / r.pairs) * 100 : null,
-  };
+  const out = { ...r };
+  for (const [name, read] of Object.entries(DERIVED)) out[name] = read(r);
+  return out;
+}
+
+// THE FOUR NUMBERS BESIDE EVERY FILTER BOX (owner order, 2026-08-29): the
+// smallest, the middle, the average and the largest value that column holds.
+//
+// They are worked out over the rows the table is HOLDING — the same rows its
+// count reports, after every filter in force — so setting the next floor is a
+// reading rather than a guess-and-re-ask. A filter that takes words rather
+// than a number gets nothing, and its four cells stay empty so the grid still
+// lines up.
+//
+// The middle value needs the column sorted, which is the expensive half. The
+// values go into one Float64Array per column and are sorted in place there:
+// no per-row objects, and a typed array sorts numerically without a
+// comparator. On the 329,280-row table that is a few hundred milliseconds,
+// which is too much to repeat on every page turn — so the answer is kept
+// against the filters that produced it, and a page turn does not change those.
+const SPREAD_CACHE = new Map();
+const SPREAD_CACHE_MAX = 8;
+function spreadOf(rows, defs) {
+  const cols = new Map();
+  for (const [key, [field, kind]] of Object.entries(defs)) {
+    if (kind === 'text') continue;
+    if (!cols.has(field)) cols.set(field, []);
+    cols.get(field).push(key);
+  }
+  const out = {};
+  for (const [field, keys] of cols) {
+    const read = readsField(field);
+    const vals = new Float64Array(rows.length);
+    let n = 0;
+    let sum = 0;
+    for (const r of rows) {
+      // `Number(null)` is 0, not NaN — a row that HAS no value would otherwise
+      // be counted as a row worth zero, which drags the average and puts a
+      // floor of 0 in the minimum column of a column that is entirely empty.
+      const raw = read(r);
+      if (raw == null || raw === '') continue;
+      const v = Number(raw);
+      if (!Number.isFinite(v)) continue;
+      vals[n] = v; n++; sum += v;
+    }
+    let stat = null;
+    if (n) {
+      const use = vals.subarray(0, n);
+      use.sort();
+      stat = {
+        n,
+        min: use[0],
+        median: n % 2 ? use[(n - 1) / 2] : (use[n / 2 - 1] + use[n / 2]) / 2,
+        avg: sum / n,
+        max: use[n - 1],
+      };
+    }
+    for (const k of keys) out[k] = stat;
+  }
+  return out;
+}
+function cachedSpread(key, make) {
+  const hit = SPREAD_CACHE.get(key);
+  if (hit) return hit;
+  const out = make();
+  SPREAD_CACHE.set(key, out);
+  while (SPREAD_CACHE.size > SPREAD_CACHE_MAX) SPREAD_CACHE.delete(SPREAD_CACHE.keys().next().value);
+  return out;
 }
 function applyFilters(stage, rows, filters) {
   const defs = FILTER_DEFS[stage] || {};
@@ -1659,6 +1731,14 @@ function stage2Table(id, from, n, filters = null) {
 }
 
 const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting'];
+// What each floor on the every-coin table reads, in the shape spreadOf wants.
+// The table does its own filtering rather than going through FILTER_DEFS, so
+// its columns are named here — and they are named ONCE, beside the floors
+// that use them.
+const S3_COIN_FILTERS = {
+  minShare: ['_sharePct', 'min'], minPairs: ['pairs', 'min'], minTest: ['avgTest', 'min'],
+  minHold: ['avgHold', 'min'], minTrades: ['avgTrades', 'min'], minVsLong: ['avgVsLong', 'min'],
+};
 function stage3Coins(id, query) {
   const t = readTally(id);
   if (!t) return null;
@@ -1693,8 +1773,12 @@ function stage3Coins(id, query) {
   kept.sort(query.flip ? (a, b) => cmp(b, a) : cmp);
   const from = Math.max(0, Math.floor(num(query.offset, 0)));
   const limit = Math.max(1, Math.min(500, Math.floor(num(query.limit, 100))));
+  // keyed on the floors only: the sort and the page reorder and cut the rows,
+  // neither changes which rows are in them, so a page turn re-uses the answer.
+  const floors = JSON.stringify(Object.keys(S3_COIN_FILTERS).map((k) => query[k] ?? ''));
+  const spread = cachedSpread(`3C|${id}|${t.builtAt}|${t.rows}|${floors}`, () => spreadOf(kept, S3_COIN_FILTERS));
   return {
-    total: kept.length, removed: t.coins.length - kept.length, from,
+    total: kept.length, removed: t.coins.length - kept.length, from, spread,
     rows: kept.slice(from, from + limit).map(({ b, ...row }) => row),
   };
 }
@@ -1718,8 +1802,10 @@ function stage3Ranked(id, from, n, filters = null) {
   }
   const of = rows.length;
   rows = applyFilters(3, rows, filters);
+  const spread = cachedSpread(`3R|${id}|${t.builtAt}|${t.rows}|${JSON.stringify(filters || {})}`,
+    () => spreadOf(rows, FILTER_DEFS[3]));
   return {
-    total: rows.length, of, from, sort,
+    total: rows.length, of, from, sort, spread,
     rows: rows.slice(from, from + n).map(({ _i, ...r }) => r),
   };
 }
@@ -1747,4 +1833,5 @@ module.exports = {
   settingsFor, unitsFor, stage3Declared, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetNotes, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
+  spreadOf, S3_COIN_FILTERS,
 };

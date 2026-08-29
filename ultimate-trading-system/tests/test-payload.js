@@ -261,14 +261,22 @@ module.exports = {
     // as "this is all of it".
     const small = bPager(37, 0, 100, 'S1');
     assert.ok(small.includes('37 row(s)'), `a short list must state its own size; got: ${small}`);
-    assert.ok(!/data-bpage/.test(small), 'a list that fits offers page buttons that go nowhere');
+    assert.ok(!/data-bpage/.test(small), 'a list that fits offers page buttons, or a page to type, that go nowhere');
 
     // A LIST THAT DOES NOT FIT says the true total, which page this is, how
     // many there are, and offers both directions.
     const big = bPager(2500, 300, 100, 'S3C');
     assert.ok(big.includes('2,500 rows'),
       `the bar does not print the true total, so a page reads as the whole list; got: ${big}`);
-    assert.ok(big.includes('page 4 of 25'), `the bar does not say which page of how many; got: ${big}`);
+    // WHICH PAGE OF HOW MANY — the page you are on now sits IN the box you
+    // type the next one into (owner order, 2026-08-29), so the same control
+    // both says where you are and takes you somewhere else.
+    assert.ok(/data-bpageto="S3C"[^>]*value="4"/.test(big), `the box does not show which page this is; got: ${big}`);
+    assert.ok(big.includes('of 25'), `the bar does not say how many pages there are; got: ${big}`);
+    assert.ok(/data-bpageto="S3C"[^>]*max="25"/.test(big) && /data-bpageto="S3C"[^>]*min="1"/.test(big),
+      `the box takes a page number that is not on the table; got: ${big}`);
+    assert.ok(/data-bpageto="S3C"[^>]*data-bper="100"/.test(big),
+      `the box does not carry how big a page is, so nothing can turn a page number into a row; got: ${big}`);
     assert.ok(big.includes('data-bpage="S3C:200"'), `prev must step back one page; got: ${big}`);
     assert.ok(big.includes('data-bpage="S3C:400"'), `next must step forward one page; got: ${big}`);
 

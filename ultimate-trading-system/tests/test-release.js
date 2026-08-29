@@ -113,6 +113,18 @@ module.exports = {
       .map((f) => (f.includes(' -> ') ? f.split(' -> ')[1] : f).replace(/^"|"$/g, ''));
     const all = [...new Set([...committed, ...dirty])].sort();
 
+    // A BUMP THAT IS WRITTEN BUT NOT YET COMMITTED IS THE BUMP THIS RULE ASKS
+    // FOR. `current` comes from HEAD, so between writing a change with its
+    // bump and committing it this read the OLD number and called the change
+    // unbumped -- red for exactly the window in which the suite has to be able
+    // to run before committing. The working tree's number standing above the
+    // one at the last move is the bump, in hand. Once it IS committed the two
+    // are equal again and the ordinary check takes over, so a second change
+    // riding in on the same bump is still caught.
+    const inTree = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8')).version;
+    const movedTo = versionAt(movedAt);
+    if (all.length && inTree && movedTo && /^\d+\.\d+\.\d+$/.test(inTree) && cmp(inTree, movedTo) > 0) return;
+
     assert.deepStrictEqual(all, [],
       `the release is ${current}, set at ${movedAt.slice(0, 12)}, and ${all.length} product file(s) have changed since `
       + `without it moving:\n  ${all.slice(0, 20).join('\n  ')}`

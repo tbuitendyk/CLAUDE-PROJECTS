@@ -281,6 +281,28 @@ const GUARDS = [
     'everyMemberCountOnScreenIsTheCountTheCodeBuilds', 'the Sweep screen states a committee size nobody counted, and it reads as fact'],
   [path.join(ROOT, 'public', 'help-content.js'), '4 members after stage 1', '3 members after stage 1',
     'everyMemberCountOnScreenIsTheCountTheCodeBuilds', 'the singles hover goes back to the count from before the fourth slice — the exact wrong number the owner caught'],
+  // THE FOUR NUMBERS BESIDE EACH FILTER. Three ways they can lie: describing
+  // the whole set rather than the rows on screen, counting an absent value as
+  // a zero, and never reaching the page at all.
+  [path.join(ROOT, 'lib', 'stages.js'), '      if (raw == null || raw === \'\') continue;', '',
+    'aColumnWithNoNumbersInItSaysSoInsteadOfReadingZero',
+    'a row that HAS no value is counted as a row worth zero — an empty column reads as a column of zeroes and every average is dragged towards one'],
+  [path.join(ROOT, 'lib', 'stages.js'), '() => spreadOf(rows, FILTER_DEFS[3])', '() => spreadOf(t.ranked, FILTER_DEFS[3])',
+    'theFourNumbersBesideEachFilterDescribeTheRowsTheTableIsHolding',
+    'the numbers beside each box describe the whole record set instead of the rows the table is showing, so the next floor is set from a table nobody is looking at'],
+  [path.join(ROOT, 'public', 'construct.js'), '], ranked && ranked.spread)}', '])}',
+    'everyFilterOnTheStageThreeTablesShowsWhatItsColumnHolds',
+    'the ranked table stops asking for the four numbers and every box goes back to being a floor set by guessing'],
+  [path.join(ROOT, 'public', 'construct.js'), '], coins && coins.spread)}', '])}',
+    'everyFilterOnTheStageThreeTablesShowsWhatItsColumnHolds',
+    'the every-coin table stops asking for the four numbers'],
+  // THE TYPED PAGE NUMBER.
+  [path.join(ROOT, 'public', 'construct.js'), 'Math.min(pages, Math.max(1, want))', 'want',
+    'everyPageOfATableCanBeReachedByTypingItsNumber',
+    'a page number past the end of the table walks the reader off it and the table comes back empty with no reason given'],
+  [path.join(ROOT, 'public', 'construct.js'), '      if (jumped) return;', '',
+    'everyPageOfATableCanBeReachedByTypingItsNumber',
+    'change and blur both fire, so one typed page turns the table twice and the second turn is the one nobody asked for'],
 ];
 
 const only = process.argv[2] || '';

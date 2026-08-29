@@ -2534,11 +2534,19 @@ const btd = 'style="padding:.25rem .5rem"';
 const btd0 = 'style="padding:.25rem .5rem .25rem 0"';
 const bth = 'style="padding:.3rem .5rem"';
 
+// THE PAGE NUMBER IS TYPED, NOT WALKED TO (owner order, 2026-08-29). prev and
+// next move one page; on a table 4,116 pages long that is not a way of getting
+// to page 3,000. The page showing sits in the box, so it also says where you
+// are, and a number outside the range is pulled back to the nearest real page
+// rather than refused.
 function bPager(total, from, n, key) {
   if (total <= n) return `<p class="note">${total.toLocaleString()} row(s)</p>`;
   const page = Math.floor(from / n) + 1;
   const pages = Math.ceil(total / n);
-  return `<p class="note">${total.toLocaleString()} rows · page ${page} of ${pages}
+  return `<p class="note">${total.toLocaleString()} rows · page
+    <input data-bpageto="${key}" data-bpages="${pages}" data-bper="${n}" type="number" min="1" max="${pages}" step="1" value="${page}"
+      style="width:5.5rem;vertical-align:baseline"
+      title="the page showing. Type the page you want and press enter, or use the arrows on the box; prev and next move one page at a time. A number past the end goes to the last page."> of ${pages}
     <button data-bpage="${key}:${Math.max(0, from - n)}">prev</button>
     <button data-bpage="${key}:${Math.min((pages - 1) * n, from + n)}">next</button></p>`;
 }
@@ -2631,17 +2639,39 @@ async function bRedrawPeggedToCoinHead() {
 
 function bWirePager(root) {
   if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
+  const goTo = (key, from) => {
+    if (key === 'S3C') {
+      bSaveView({ coins: { ...(bView().coins || {}), offset: from } });
+      bRedrawPeggedToCoinHead();
+    } else {
+      bSaveView({ [`from${key}`]: from });
+      drawBoards().then(() => restoreScroll(tab));
+    }
+  };
   $(root).querySelectorAll('[data-bpage]').forEach((btn) => {
     btn.onclick = () => {
       const [key, from] = btn.dataset.bpage.split(':');
-      if (key === 'S3C') {
-        bSaveView({ coins: { ...(bView().coins || {}), offset: Number(from) } });
-        bRedrawPeggedToCoinHead();
-      } else {
-        bSaveView({ [`from${key}`]: Number(from) });
-        drawBoards().then(() => restoreScroll(tab));
-      }
+      goTo(key, Number(from));
     };
+  });
+  // change fires on enter and on the arrows; blur catches a number typed and
+  // then clicked away from, which is the same intent and used to be dropped.
+  $(root).querySelectorAll('[data-bpageto]').forEach((el) => {
+    let jumped = false;                 // change fires, the redraw pulls the box out, blur follows: one jump
+    const jump = () => {
+      if (jumped) return;
+      const key = el.dataset.bpageto;
+      const pages = Math.max(1, Number(el.dataset.bpages) || 1);
+      const per = Math.max(1, Number(el.dataset.bper) || 100);
+      const want = Math.round(Number(el.value));
+      if (!Number.isFinite(want)) { el.value = String(Math.floor(Number(el.defaultValue) || 1)); return; }
+      const page = Math.min(pages, Math.max(1, want));
+      if (page === Number(el.defaultValue)) { el.value = String(page); return; }
+      jumped = true;
+      goTo(key, (page - 1) * per);
+    };
+    el.onchange = jump;
+    el.onblur = jump;
   });
 }
 
@@ -2686,7 +2716,23 @@ function bSaveFilters(key, patch) {
   bSaveView({ filters: all });
 }
 // spec: [id, name shown, kind, tooltip, options?]  kind: 'text' | 'num' | 'pick'
-function bFilterGrid(key, specs) {
+// ONE VALUE, PRINTED SO IT CAN BE COMPARED DOWN A COLUMN. Whole numbers keep
+// their thousands marks and no decimal point; money and shares get two places;
+// anything below one gets three, because a lead of 0.043 and a lead of 0.004
+// are not the same number and 0.04 says they are.
+function bStat(v) {
+  if (v == null || !Number.isFinite(v)) return '—';
+  if (Number.isInteger(v)) return v.toLocaleString();
+  const a = Math.abs(v);
+  if (a >= 1000) return v.toLocaleString(undefined, { maximumFractionDigits: 0 });
+  return v.toLocaleString(undefined, { minimumFractionDigits: a >= 1 ? 2 : 3, maximumFractionDigits: a >= 1 ? 2 : 3 });
+}
+// FOUR NUMBERS BESIDE EVERY FILTER BOX (owner order, 2026-08-29). They come
+// from the service, worked out over the rows the table is holding right now —
+// so what is read here and what the table counts can never be two different
+// sets. A box that takes words rather than a number gets four empty cells, so
+// every row of the grid still lines up on the same six columns.
+function bFilterGrid(key, specs, spread) {
   const cur = bFilters(key);
   const box = (sp) => {
     const [id, , kind, , opts] = sp;
@@ -2697,8 +2743,19 @@ function bFilterGrid(key, specs) {
     }
     return `<input data-bfilter="${key}:${id}" type="${kind === 'num' ? 'number' : 'text'}" step="any" value="${esc(v)}">`;
   };
-  return `<div class="filters">${specs.map((sp) => `<label title="${esc(sp[3])}"><span class="fname">${esc(sp[1])}</span><span class="fbox">${box(sp)}</span></label>`).join('')}
-    <span class="frow"><button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button></span></div>`;
+  const sp4 = spread || null;
+  const stats = (sp) => {
+    if (!sp4) return '';
+    const st = sp4[sp[0]];
+    return `<span class="fstat">${st ? bStat(st.min) : ''}</span><span class="fstat">${st ? bStat(st.median) : ''}</span>`
+      + `<span class="fstat">${st ? bStat(st.avg) : ''}</span><span class="fstat">${st ? bStat(st.max) : ''}</span>`;
+  };
+  // written out one span at a time on purpose: a heading built by a loop is a
+  // word on the screen that the closed word list cannot see.
+  const head = sp4 ? `<span></span><span></span><span class="fhead">minimum</span><span class="fhead">median</span><span class="fhead">average</span><span class="fhead">maximum</span>` : '';
+  return `<div class="filters${sp4 ? ' withspread' : ''}">${head}${specs.map((sp) => `<label title="${esc(sp[3])}"><span class="fname">${esc(sp[1])}</span><span class="fbox">${box(sp)}</span>${stats(sp)}</label>`).join('')}
+    <span class="frow"><button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button></span></div>${
+  sp4 ? `<p class="note">The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.</p>` : ''}`;
 }
 function bWireFilters(root) {
   if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
@@ -2949,7 +3006,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['leadMin', 'lead over null set at least', 'num', 'hides settings whose lead over null set is below this. Empty hides nothing.'],
     ['inMoneyMin', 'coins in the money at least', 'num', 'hides settings where fewer coins than this made money. Empty hides nothing.'],
     ['voicesMin', 'independent voices at least', 'num', 'hides settings whose committees held fewer independent voices than this. Empty hides nothing.'],
-  ])}
+  ], ranked && ranked.spread)}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="how the members' votes become a call — priced from the kept votes.">decision${bRankSortBtn(doc, 'decision', 'asc')}</th>
@@ -3009,7 +3066,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['minHold', 'avg held-back at least, $', 'num', 'hides rows whose average held-back money is below this. Empty hides nothing.'],
     ['minTrades', 'avg trades at least', 'num', 'hides rows with fewer average entries than this. Empty hides nothing.'],
     ['minVsLong', 'avg vs always-long at least, $', 'num', 'hides rows that beat just holding the coin by less than this. Empty hides nothing.'],
-  ])}
+  ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${bCoinSortBtn(view, 'setting', '↑')}</th>
         <th ${bth} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${bCoinSortBtn(view, 'coin', '↑')}</th>
