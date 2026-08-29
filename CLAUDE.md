@@ -215,6 +215,40 @@ either on the screen or ordinary English.
 
 
 
+## RULE ONE-C — the release number moves with the code, ALWAYS (owner order, 2026-08-29)
+
+**Every change that ships bumps the release number in the same commit.** Not
+later, not at the end of a batch, not when somebody remembers.
+
+The owner's words: "YOU *ALWAYS* MAKE RELEASE NUMBER UPDATES — no more of this
+adding code willy nilly and not updating the release numbers. that's just
+wrong." Said after asking twice why it was still 2.0.0 — nine days and 193
+commits, through a new three-stage system, a rebuilt committee, a new
+measurement block and four screens deleted.
+
+**It is not a badge.** It is the engine identity that evidence is keyed to, in
+five places: a planted-check PASS belongs to the release that earned it, so a
+new release reads NOT CHECKED until it is run again; the age-dial exams are
+cleared per release; a stage refuses a parent written by a different release; a
+greenlight and a live setup each record the release their evidence is about.
+Shipping changed arithmetic under an unchanged number tells all five that
+nothing changed. That is the harm, and it is why the rule is absolute.
+
+- **Which digit.** Third for a fix or a wording change; second for new
+  behaviour or a new control; first when something already on disk stops being
+  readable or comparable — a new measurement block, a schema change, anything
+  that makes yesterday's records refuse.
+- **It only ever goes up.** A number that goes backwards makes an older record
+  read as the newer one.
+- **`tests/test-release.js` enforces it**, because a rule that depends on
+  remembering is not a rule. It finds the commit where the number last moved and
+  fails if anything in `lib/`, `public/`, `server.js`, `service-control/` or the
+  top-level scripts has changed since — committed or still in the working tree —
+  without it moving again.
+- **The owner presses the buttons.** Bumping the release makes the planted check
+  read NOT CHECKED. Saying so is mine; running it is theirs, always.
+
+
 ## RULE TWO — Live Trading and Paper Books move together
 
 **Every fix committed to the Live Trading subtab and its subtabs MUST ALSO be

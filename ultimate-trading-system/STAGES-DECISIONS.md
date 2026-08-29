@@ -411,6 +411,20 @@ work — the owner reviews decisions in the morning, not at 3am.
     or giving the surviving tabs a picker are both real changes and both are
     the owner's to call.
 
+54. **Release 3.0.0, and the number can no longer stand still** (owner order,
+    2026-08-29: "YOU *ALWAYS* MAKE RELEASE NUMBER UPDATES — no more of this
+    adding code willy nilly and not updating the release numbers"). It had
+    stood at 2.0.0 for nine days and 193 commits. The first digit moved
+    because record sets written before today are refused by today's engine —
+    that is what a first-digit change means here, and it matches what the
+    number is used for. Checked before setting it: no record sets on disk and
+    nothing trading, so the bump stranded nothing. `tests/test-release.js`
+    now finds the commit where the number last moved and fails if anything in
+    `lib/`, `public/`, `server.js`, `service-control/` or the top-level
+    scripts has changed since without it moving — committed or still in the
+    working tree. RULE ONE-C in CLAUDE.md carries the rule; the test is what
+    makes it a guarantee rather than a resolution.
+
 ## Parked, needing the owner
 
 - **Forward books F1-F3** are frozen experiments on measurement block 2.
@@ -431,11 +445,15 @@ work — the owner reviews decisions in the morning, not at 3am.
   them with `title = ''`, and the poll re-runs every four seconds with no
   re-wire after it, so the authored descriptions go blank and stay blank. One
   line — remember the authored title and put it back.
-- **The engine version has not moved since 2026-08-20** (2.0.0, 190 commits
-  ago). It is not a badge: a planted check or age-dial exam PASS belongs to
-  the version that earned it, so bumping it puts both back to NOT CHECKED
-  until they are re-run. Today's measurement block change is a real argument
-  for bumping it. The cost is the re-run; the call is the owner's.
+- **The planted check now reads NOT CHECKED on 3.0.0.** It passed on 2.0.0 at
+  02:01 on 2026-08-29 and that run took 46 seconds; the PASS belongs to the
+  release that earned it, so the new release starts clean. `Run the planted
+  check` on Verify is the owner's button, not a session's.
+- **Two names still carry the old product's initials.** The live setup stamp is
+  `gc-<version>/setup-1/config-1` in `lib/live/version.js`, and
+  `package-lock.json` still calls itself `general-classifier` at version 1.0.0.
+  Changing the first alters what every stored setup's stamp compares against;
+  changing the second is lockfile churn. Both are the owner's to authorise.
 
 ## Recorded intent, no action taken
 
