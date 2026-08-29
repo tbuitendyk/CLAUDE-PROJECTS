@@ -75,7 +75,13 @@ module.exports.createDerivesPairAndStampsEngineVersionAndHistory = function () {
   const s = mkSetup();
   assert.strictEqual(s.state, 'draft');
   assert.strictEqual(s.tradedPair, 'LTCUSDT', 'tradedPair derived from snapshot, not passed');
-  assert.ok(/^gc-\d+\.\d+\.\d+\/setup-1\/config-1$/.test(s.engineVersion), `engineVersion stamped: ${s.engineVersion}`);
+  // Checked against what the code builds, never a literal. This pinned /^gc-/
+  // — the initials of the product this was renamed out of on 2026-08-19 — and
+  // so kept passing for ten days on a name that had been wrong the whole time.
+  assert.strictEqual(s.engineVersion, require('../lib/live/version').ENGINE_VERSION,
+    `engineVersion stamped: ${s.engineVersion} — it must be the one lib/live/version.js builds`);
+  assert.ok(new RegExp(`^uts-${require('../package.json').version.replace(/\./g, '\\.')}/setup-\\d+/config-\\d+$`).test(s.engineVersion),
+    `the stamp names a product or a release this is not: ${s.engineVersion}`);
   assert.strictEqual(s.stateHistory.length, 1);
   assert.strictEqual(s.stateHistory[0].to, 'draft');
   const back = reg.getSetup(s.id);

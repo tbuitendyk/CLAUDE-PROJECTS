@@ -135,8 +135,32 @@ function waitForServer(timeoutMs) {
   });
 }
 
+// A SECTION THAT DID NOT DRAW IS A FAULT, however politely it says so
+// (2026-08-29). draw() catches a renderer that throws and turns it into the
+// "THIS SCREEN IS INCOMPLETE" banner, so the exception never reaches the
+// console and this harness saw nothing wrong: it clicked Verify, History, Tune
+// and Greenlight and passed all four while every one of them was dying on its
+// first line with `pickedDoc is not defined`. The owner found it by pressing
+// Verify and getting the Boards page under a Verify highlight.
+//
+// The banner carries data-role="incomplete" so it can be found by what it IS
+// rather than by matching its wording. A failed READ is worth reporting too,
+// but a section that STOPPED RENDERING is a different and worse thing: nothing
+// on the screen belongs to the tab that is highlighted.
+async function everySectionActuallyDrew(page, add, where) {
+  const notes = await page.evaluate(() => Array.from(
+    document.querySelectorAll('[data-role="incomplete"]'),
+  ).map((e) => e.textContent.replace(/\s+/g, ' ').trim()));
+  for (const n of notes) {
+    const m = /stopped rendering: (.*?)(?: THIS SCREEN|$)/.exec(n);
+    if (m) add(`the section did not draw at all — ${where}: ${m[1].slice(0, 160)}`);
+    else add(`a read failed and the screen says so — ${where}: ${n.slice(0, 160)}`);
+  }
+}
+
 // Read the visible text a person would actually read, and flag the poison words.
 async function scanText(page, add, where) {
+  await everySectionActuallyDrew(page, add, where);
   const cells = await page.evaluate(() => Array.from(
     document.querySelectorAll('td,th,.v,.k,h1,h2,h3,.badge,.empty,.note,option'),
   ).map((e) => e.textContent.trim()).filter(Boolean));

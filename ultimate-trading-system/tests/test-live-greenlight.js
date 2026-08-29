@@ -58,7 +58,15 @@ module.exports.greenlightFreezesTheSelectedRowIntoTheSharedVocabulary = function
   assert.ok(cfg.configVersion.startsWith('bracketlab-20260801-101010-test/best@'));
   assert.strictEqual(rec.campaign, 'ltc-drill-aug', 'provenance carries the parent job');
   assert.deepStrictEqual(rec.sourceRun.dataManifest.symbols.LTCUSDT, 'd1', 'QC-77 manifest rides along');
-  assert.ok(/^gc-/.test(rec.engineVersion), 'engine version recorded (point 18)');
+  // The stamp is checked against the one the code builds, not against a
+  // literal. It used to pin /^gc-/ — the initials of the product this was
+  // renamed out of on 2026-08-19 — so it kept passing for ten days on a name
+  // that had been wrong the whole time, and would have gone on passing after
+  // the name was fixed only because somebody happened to notice this line.
+  assert.strictEqual(rec.engineVersion, require('../lib/live/version').ENGINE_VERSION,
+    'engine version recorded (point 18) — and it must be the one lib/live/version.js builds');
+  assert.ok(rec.engineVersion.startsWith(`uts-${require('../package.json').version}/`),
+    `the stamp names a product or a release this is not: ${rec.engineVersion}`);
 };
 
 module.exports.greenlightRefusalsAreLoudAndSpecific = function () {

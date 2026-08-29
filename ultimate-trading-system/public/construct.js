@@ -217,6 +217,17 @@ const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['veri
 let tab = localStorage.getItem('cx-tab') || 'sweep';
 // the working selection: a saved run + its selected row ride across sections
 let pickedRun = localStorage.getItem('cx-run') || null;
+// ...and the one run document loadPicked() holds, so four screens asking for it
+// in a row do not fetch it four times.
+//
+// PUT BACK 2026-08-29. This declaration sat among the deleted screens' helpers
+// and went out with them, and nothing noticed because nothing here runs under a
+// module that would have flagged it. loadPicked() READS it before it assigns,
+// so every call threw `pickedDoc is not defined` — which is every draw of
+// Verify, History, Tune and Greenlight. The tab highlighted, the renderer died
+// on its first line, and #view kept whatever screen was there before. The owner
+// found it by pressing Verify and getting Boards under a Verify highlight.
+let pickedDoc = null;
 
 // WHERE YOU WERE ON EACH TAB (owner, 2026-08-21).
 //
@@ -2968,7 +2979,14 @@ function draw() {
   return Promise.resolve(section).then((r) => { band(); return r; }, (err) => {
     fetchFailures.push(`the ${tab} section stopped rendering: ${err && err.message ? err.message : err}`);
     const v = $('#view');
-    if (v && !v.innerHTML.trim()) v.innerHTML = '<div class="panel empty">This section could not be drawn.</div>';
+    // A DEAD SECTION CLEARS THE SCREEN. This used to replace #view only when it
+    // was already empty, so a renderer that threw left the PREVIOUS tab's page
+    // sitting under the new tab's highlight — every number on it relabelled by
+    // a heading it does not belong to, and pressing the tab again just stacked
+    // another banner on top of it. The owner hit exactly that: Verify
+    // highlighted, Boards on screen, five banners piled above it (2026-08-29).
+    // Showing nothing is honest; showing another screen's numbers is not.
+    if (v) v.innerHTML = '<div class="panel empty">This section could not be drawn. Nothing below is from it.</div>';
     band();
     return null;
   });

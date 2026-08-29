@@ -40,7 +40,7 @@ const PREFIX = 'ultimate-trading-system/';
 // the way the box behaves. Tests, decision records and the word lists are not
 // product -- they describe it, and a note about the code is not a change to it.
 const PRODUCT = ['lib', 'public', 'server.js', 'live-mirror.js', 'live-produce.js',
-  'pilot-refresh.js', 'service-control', 'package.json'];
+  'pilot-refresh.js', 'service-control', 'package.json', 'package-lock.json'];
 
 // `raw` skips the trim, because `git status --porcelain` puts the status in
 // the first TWO columns and an unmodified-in-index file leads with a space --
