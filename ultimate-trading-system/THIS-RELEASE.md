@@ -19,7 +19,7 @@ by the session uses the current labels. **Paper Books** and **Live Trading** are
 the two branches inside Trade and did not change.
 
 Points 1-13 were carried over by owner instruction (2026-08-19) from the
-release notes now in `ARCHIVE/NEXT-RELEASE.md`, which is closed. Their
+release notes closed and removed 2026-08-28 by owner order (no archives). Their
 original numbering is cited for traceability. Points 14 onward are new.
 
 ---
@@ -392,9 +392,9 @@ Owner (2026-08-12) — DECIDED DIRECTION:
 > - Selling point that falls out: "we can't see how big you trade, and we
 >   don't charge you for it."
 
-*(Point references inside the owner's text above are to the old numbering in
-`ARCHIVE/NEXT-RELEASE.md`: old 9 is now point 4, old 19 is now point 10, old
-11 is now point 6, old 7 is now point 2.)*
+*(Point references inside the owner's text above are to an earlier numbering
+of the same list: old 9 is now point 4, old 19 is now point 10, old 11 is now
+point 6, old 7 is now point 2.)*
 
 `[feasibility]` Nothing built; this is a recorded decision, not a work item
 yet. It becomes buildable only after point 5, since tiers cannot be counted
