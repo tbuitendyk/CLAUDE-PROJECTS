@@ -243,7 +243,7 @@ module.exports = {
   // check read through the same reader, so neither could see the hole.
   async theReaderFollowsWhatARendererDrawsWith() {
     const boards = drawBody('drawBoards');
-    for (const w of ['>prev<', '>next<', 'rows · page ']) {
+    for (const w of ['>prev<', '>next<', 'rows · page']) {
       assert.ok(boards.includes(w),
         `the Boards reader cannot see "${w}" — it is on the screen and would be on no list`);
     }
