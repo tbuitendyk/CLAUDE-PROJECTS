@@ -78,7 +78,8 @@ function setCampaign(raw) {
 // The tree is COMPUTED on read from records that already carry the campaign
 // stamp — batch runs (doc.campaign, stamped at every launch since 2026-08-04)
 // and greenlights — never from a second ledger that could drift (the
-// forwardbook lesson: a recomputation cannot disagree with itself).
+// lesson of the removed research books: a recomputation cannot disagree
+// with itself).
 // Lineage: a run that derives from another carries its parent's id in params
 // (sourceRunId for History Tuning, sourceRun for HT v2 etc.); those links are
 // surfaced verbatim so branches that share an original sweep are connected by

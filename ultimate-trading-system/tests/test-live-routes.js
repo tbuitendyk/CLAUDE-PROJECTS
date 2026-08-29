@@ -15,14 +15,14 @@ const ORIGIN = { Origin: 'https://www.buitendyk.ca' };  // same-site (CSRF-allow
 const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-liveroutes-'));
 process.env.GC_SETUPS_DIR = SCRATCH;
 const reg = require('../lib/live/setups');
-const { BOOKS, TRAIN_THROUGH } = require('../lib/forwardbook');
+const { A_CUTOFF_MS, aSetupConfig } = require('./fixtures-setup');
 
 function f1Config() {
-  const F1 = BOOKS.find((b) => b.id === 'F1');
+  const F1 = aSetupConfig();
   return {
     combo: { ...F1.combo }, branch: { ...F1.branch }, stage: F1.stage,
     members: F1.members.map((m) => ({ ...m })), cell: { ...F1.cell },
-    trainThrough: TRAIN_THROUGH, configVersion: 'f1-v1-2026-08-11',
+    trainThrough: A_CUTOFF_MS, configVersion: 'f1-v1-2026-08-11',
   };
 }
 

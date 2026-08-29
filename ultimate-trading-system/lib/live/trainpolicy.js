@@ -9,9 +9,10 @@
 // the training history window".
 //
 // The rule shape carried `trainThrough` anyway, inherited wholesale from
-// lib/forwardbook.js where freeze-at-a-date IS intrinsic: those books exist to
-// be out-of-sample evidence, so "trained once through 30 June, never retrained"
-// is their whole point. configschema copied the vocabulary, greenlight then had
+// three set-ups that were written into the product (removed 2026-08-28) and
+// for which freeze-at-a-date WAS intrinsic: they existed to be out-of-sample
+// evidence, so "trained once through a date, never retrained" was their whole
+// point. configschema copied the vocabulary, greenlight then had
 // to populate the field, and populated it by GUESSING from the run's fire time
 // — a date that is neither the rule's business nor deliberately chosen.
 //

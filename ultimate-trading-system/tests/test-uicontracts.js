@@ -440,8 +440,14 @@ function theScanTargetProseMatchesWhatTheLauncherWillUse() {
   assert(/const tgt = /.test(CX), 'the resolved scan target is gone');
   assert(/const chosen = books\.find\(/.test(CX),
     'the launcher no longer resolves the picked target against the list it rendered');
-  assert(/chosen\.kind === 'profile' \? \{ setupId: chosen\.id \} : \{ bookId: chosen\.id \}/.test(CX),
-    "a setup is not addressed as setupId, so the scan would run against another record's frozen dates");
+  // Every target is one of the owner's own profiles now: the third kind — a
+  // trade set-up written into the product, carrying its own frozen cutoff dates
+  // — was removed on 2026-08-28 by owner order, so there is nothing left to
+  // address by any other name.
+  assert(/chosen \? \{ setupId: chosen\.id \}/.test(CX),
+    'a setup is not addressed as setupId, so the scan would run against something the owner did not make');
+  assert(!/bookId: chosen\.id/.test(CX),
+    'the screen can address a built-in set-up again — nothing is ever baked into the code');
   assert(/const target = tgt === 'sel'/.test(CX),
     'the prose no longer derives from the resolved target, so it can describe a different '
     + 'target from the one the scan will actually use');

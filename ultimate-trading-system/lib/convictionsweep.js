@@ -175,11 +175,10 @@ function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours
 // THE FREEZE IS THE CALLER'S TO STATE (owner, 2026-08-19: "generalizing it all
 // so that ALL of the functionality -- DATA AND CODE" belongs to the profile).
 //
-// This module used to default its training cutoff to TRAIN_THROUGH/SCORE_FROM
-// imported from lib/forwardbook.js. Those constants are the frozen dates of a
-// PRE-REGISTERED RESEARCH RECORD — three books committed with their cutoffs
-// before any number existed. They are correct for that record and meaningless
-// for anyone else. Inheriting them meant a profile's stop was tuned against a
+// This module used to default its training cutoff to a pair of dates written
+// into the product beside three trade set-ups. Those dates were correct for
+// those set-ups and meaningless for anyone else (all of it removed 2026-08-28
+// by owner order: nothing is ever baked into the code). Inheriting them meant a profile's stop was tuned against a
 // stranger's training window, silently and with a plausible-looking number
 // coming out the far end: the exact shape of every instrumentation defect in
 // this project.

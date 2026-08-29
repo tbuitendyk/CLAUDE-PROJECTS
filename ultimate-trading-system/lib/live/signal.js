@@ -33,8 +33,8 @@ const SIDE_MAP = { 1: 'LONG', '-1': 'SHORT', 0: 'FLAT' };
 // Same freshness rule as pilotsignal: never chase an entry more than 3h old.
 const ENTRY_FRESH_H = 3;
 
-// Per-config frozen-roster check — the generalized twin of forwardbook's
-// assertFrozenMembersMatchEngine: a config whose member list has drifted from
+// Per-config frozen-roster check — the generalized, per-config form of a
+// guard that used to protect three set-ups written into the product: a config whose member list has drifted from
 // what specsFor(size, stage) builds is QC 71's failure mode (plausible numbers,
 // wrong experiment). Fail loudly before any decision.
 function assertMembersMatchEngine(cfg) {

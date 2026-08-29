@@ -3122,7 +3122,7 @@ async function drawTune() {
     : (savedTarget === 'sel' ? 'sel' : (known.has(savedTarget) ? savedTarget : firstReal));
   const chosen = books.find((b) => optId(b) === tgt) || null;
   const scanBody = tgt === 'sel' ? { runId: doc.id, target: 'best' }
-    : chosen ? (chosen.kind === 'profile' ? { setupId: chosen.id } : { bookId: chosen.id })
+    : chosen ? { setupId: chosen.id }
       : null;
   // The prose and the dropdown are computed from the SAME resolved value, so
   // the sentence above the control can no longer describe a different target
@@ -3197,7 +3197,7 @@ async function drawTune() {
         <td class="neg">${usd(-Math.abs(c.winnerProfitForfeitedUsd || 0))}</td><td>${c.losersCut}</td>
         <td class="${(c.loserPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.loserPnlDeltaUsd)}</td>
         <td class="${(c.netPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${usd(c.netPnlDeltaUsd)}</b></td>
-        <td>${s.bookId === 'F1' ? `<button data-stop="${c.stopPct}">apply to the live rule</button>` : ''}</td></tr>`).join('')}
+        <td>${s.appliesToLiveRule ? `<button data-stop="${c.stopPct}">apply to the live rule</button>` : ''}</td></tr>`).join('')}
       </tbody></table></div>
       <p class="note">NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. Apply buttons exist
         only for the running engine; for a lab row the number informs the greenlight instead.</p>`;
@@ -3207,7 +3207,7 @@ async function drawTune() {
     return `<p><b>${esc(c.bookId)}</b> over ${c.entries} priced entries: flat ${usd(c.flatUsd)} vs ladder <b>${usd(c.ladderUsd)}</b>
       — uplift <b class="${(c.upliftUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.upliftUsd)}</b>.</p>
       <div class="scrollx"><table><thead><tr>${cth('agreement','agreement')}${cth('mult','mult')}${cth('trades','trades')}${cth('wins','wins')}${cth('win %','winPct')}${cth('flat $','flatUsd')}${cth('ladder $','ladderUsd')}</tr></thead><tbody>
-      ${(c.buckets || []).map((b) => `<tr><td>${b.agree} of ${(c.setup && c.setup.members) || 4}${b.thin ? ' ⚠' : ''}</td>
+      ${(c.buckets || []).map((b) => `<tr><td>${b.agree} of ${(c.setup && c.setup.members) || '?'}${b.thin ? ' ⚠' : ''}</td>
         <td>${b.multiplier}x</td><td>${b.n}</td><td>${b.winners}</td>
         <td>${b.n ? ((100 * b.winners) / b.n).toFixed(1) + '%' : '—'}</td>
         <td>${usd(b.flatUsd)}</td><td><b>${usd(b.ladderUsd)}</b></td></tr>`).join('')}

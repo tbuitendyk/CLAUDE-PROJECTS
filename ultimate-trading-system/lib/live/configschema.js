@@ -1,15 +1,14 @@
 // The ONE parameter vocabulary (NEXT-RELEASE point 5, plan step 2.1).
 //
 // A live trading job's configSnapshot is EXACTLY the book/lab shape the engine
-// primitives already consume — the same object lib/forwardbook.js freezes and
-// lib/bracketwork.js (buildCombo/trainMembers/quorumCall) + lib/bracket.js
+// primitives already consume — the same object lib/bracketwork.js (buildCombo/trainMembers/quorumCall) + lib/bracket.js
 // (simCell) execute. Nothing is translated between lab and live: a greenlighted
 // config means the same thing live BECAUSE it is the same object driving the
 // same functions. This module only VALIDATES that shape — it never reinterprets
 // a field (the QC-register instrumentation lesson: reinterpretation is where a
 // greenlight silently stops meaning what it meant).
 //
-// Vocabulary (from forwardbook.BOOKS + bracketwork/bracket usage):
+// Vocabulary (from bracketwork/bracket usage):
 //   combo    { trade, ctx1, ctx2, size }        pairs + committee width class
 //   branch   { geometry, decision, band, weekdaysOnly }
 //   stage    'slim' | 'promoted'                which member roster specsFor builds
@@ -97,8 +96,8 @@ function validateConfig(cfg) {
   // trainThrough is NOT part of a rule (owner, 2026-08-19). A rule says what
   // to trade; WHEN its members train is a property of the deployment that puts
   // it to work — lib/live/trainpolicy.js. The field arrived here by inheritance
-  // from forwardbook, where freeze-at-a-date is intrinsic because those books
-  // exist to be out-of-sample evidence. Copying the vocabulary wholesale meant
+  // from three set-ups once written into the product, where freeze-at-a-date
+  // was intrinsic because they existed to be out-of-sample evidence. Copying the vocabulary wholesale meant
   // greenlight had to populate it, and it did so by guessing from the run's
   // fire time: a date that is neither the rule's business nor deliberately
   // chosen. Legacy configs may still carry the field; it is ignored, not read.

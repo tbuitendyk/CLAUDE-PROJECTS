@@ -1,11 +1,13 @@
 // splitFrozen -- divide chunks into what a model may TRAIN on and what it is
 // SCORED on, given a cutoff.
 //
-// This is pure chunk arithmetic: it knows nothing about any particular book,
-// pair or rule. It lived inside lib/forwardbook.js, the file that also held one
-// hardcoded config's definition, so every part of the generalized rail that
-// needed this primitive had to import from the module being retired — the
-// coupling that made "delete the one-off" look impossible. Nothing about the
+// This is pure chunk arithmetic: it knows nothing about any particular
+// pair or rule. It used to live in a module that ALSO held three trade
+// set-ups written into the product, so every part of the generalized rail
+// that needed this primitive had to import from the very module that wanted
+// deleting — the coupling that made "delete the one-off" look impossible.
+// Splitting it out is what made the deletion possible; the set-ups were
+// removed on 2026-08-28 by owner order. Nothing about the
 // function changed in moving it; only where it lives.
 
 

@@ -1107,12 +1107,6 @@ app.get('/api/httwo/exams', (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-// Forward books: out-of-sample money records for setups whose backtest window
-// is spent (lib/forwardbook.js; pre-registered in vps-access
-// reports/FORWARD-BOOKS.md before any forward number existed). Recomputed on
-// demand rather than stored — training and scoring are frozen to dates, so the
-// record is a deterministic function of the cached data and cannot drift.
-// Trains members, so it refuses while a sweep holds the box.
 // Live pilot screen data (PILOT-F1.md). Read-only view of the executor's
 // journal synced from the Mexico box. No trading logic lives here — this only
 // renders what the deterministic executor already did (independence rule §4).
@@ -1430,15 +1424,13 @@ app.get('/api/pilot/stop-candidates', (req, res) => {
       candidates.push({ kind: 'error', id: '(profiles unreadable)', name: '(profiles unreadable)', blocked: e.message });
     }
 
-    // the pre-registered research books, which carry their own frozen dates
-    try {
-      const { BOOKS, TRAIN_THROUGH } = require('./lib/forwardbook');
-      for (const b of BOOKS) {
-        if (hasExistingStop(b.cell)) continue;
-        candidates.push({ kind: 'book', id: b.id, name: `${b.id} — ${b.note}`,
-          combo: b.combo, cell: b.cell, trainThrough: TRAIN_THROUGH, trainMode: 'frozen', blocked: null });
-      }
-    } catch (_) { /* the record is not required for the owner's own profiles to be tunable */ }
+    // NOTHING IS OFFERED HERE BUT THE OWNER'S OWN PROFILES (owner order,
+    // 2026-08-28: "NOTHING IS EVER BAKED INTO THE CODE ... THE SYSTEM BELONGS
+    // TO *ME*"). Three trade set-ups used to be written into the product and
+    // listed here beside the owner's, with their coins, their settings and
+    // their cutoff dates typed into a file nobody could reach from a screen.
+    // They are gone, and so is this list's ability to suggest anything the
+    // owner did not make.
 
     res.json({ candidates });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1498,20 +1490,13 @@ function bookFromScanBody(b) {
     };
   }
 
-  // A PRE-REGISTERED RESEARCH BOOK, which supplies its own frozen dates. No
-  // default id any more: scanning "whatever was hardcoded" when the caller named
-  // nothing is how a screen ends up reporting one setup's numbers under another
-  // setup's heading.
-  const { BOOKS, TRAIN_THROUGH, SCORE_FROM } = require('./lib/forwardbook');
-  const bookId = String((b && b.bookId) || '');
-  if (!bookId) {
-    const e = new Error('name what to scan: setupId for one of your profiles, '
-      + 'bookId for a pre-registered book, or runId for a row of a saved run');
-    e.status = 400; throw e;
-  }
-  const book = BOOKS.find((x) => x.id === bookId);
-  if (!book) { const e = new Error(`no such setup ${bookId}`); e.status = 404; throw e; }
-  return { book, opts: { trainThrough: TRAIN_THROUGH, scoreFrom: SCORE_FROM } };
+  // EVERY TARGET IS SOMETHING THE OWNER MADE. There used to be a third kind
+  // here — a research book written into the product, carrying its own frozen
+  // cutoff dates — and naming one scanned settings and a training window that
+  // came from a file rather than from them. Removed 2026-08-28 by owner order.
+  const e = new Error('name what to scan: setupId for one of your profiles, '
+    + 'or runId for a row of a saved run');
+  e.status = 400; throw e;
 }
 function convictionSweepPath() {
   const dir = path.join(__dirname, 'data', 'pilot');
@@ -1571,9 +1556,18 @@ app.post('/api/pilot/stopsweep', (req, res) => {
     (async () => {
       try {
         const r = await computeSetupStop(book, opts);
+        // Whether the apply button is offered is a FACT about the target, not
+        // a name: it appears when the thing just scanned is a profile that is
+        // actually live. The screen used to test for a hardcoded id (owner
+        // order, 2026-08-28: nothing is ever baked into the code).
+        let appliesToLiveRule = false;
+        try {
+          const st = require('./lib/live/setups').getSetup(book.id);
+          appliesToLiveRule = !!(st && st.state === 'live');
+        } catch (_) { /* no registry, no apply button */ }
         // The scan only SHOWS options — it applies nothing. The owner chooses a
         // value (or none) via POST /api/pilot/stop-apply.
-        writeStopSweep({ status: 'done', bookId: book.id,
+        writeStopSweep({ status: 'done', bookId: book.id, appliesToLiveRule,
           finishedUtc: new Date().toISOString(), ...r });
       } catch (e) {
         writeStopSweep({ status: 'error', bookId: book.id,

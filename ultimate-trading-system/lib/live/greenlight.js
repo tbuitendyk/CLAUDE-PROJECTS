@@ -78,7 +78,7 @@ function configFromSelection(doc, target) {
 
   // The band must be the RESOLVED number the run traded at, never 'auto' — an
   // adaptive band re-derived later would relabel the world the members were
-  // trained against (forwardbook: theBandIsFrozenNotAuto).
+  // trained against.
   const bandPct = Number.isFinite(sel.bandPct) ? sel.bandPct
     : (Number.isFinite(row.bandPct) ? row.bandPct : null);
   if (!Number.isFinite(bandPct) || bandPct <= 0) {

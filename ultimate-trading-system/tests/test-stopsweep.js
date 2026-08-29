@@ -77,7 +77,7 @@ module.exports.zeroOffsetEntersAtChunkStart = function () {
 // A SCAN MUST STATE ITS OWN TRAINING CUTOFF (owner, 2026-08-19).
 //
 // Both heavy scans used to default to TRAIN_THROUGH/SCORE_FROM imported from
-// lib/forwardbook.js — the frozen dates of a pre-registered research record with
+// a module of built-in trade set-ups — the frozen dates of a research record with
 // three books in it. Correct for that record, meaningless for anything else. So
 // tuning a protective stop for the owner's own setup silently trained the
 // committee through a stranger's cutoff and returned a confident number with the
@@ -89,6 +89,27 @@ module.exports.zeroOffsetEntersAtChunkStart = function () {
 module.exports.aScanWithNoStatedCutoffIsRefusedNotDefaulted = function () {
   const fs = require('fs');
   const path = require('path');
+  // NOTHING IS EVER BAKED INTO THE CODE (owner order, 2026-08-28: "THE SYSTEM
+  // BELONGS TO *ME*"). Three trade set-ups — coins, settings, cutoff dates and
+  // recorded results — used to live in lib/forwardbook.js and were offered
+  // beside the owner's own profiles. They are gone. This check is repo-wide
+  // rather than about these two modules, because the rule is about the whole
+  // product: no such file, and nothing anywhere reaching for one.
+  {
+    const root = path.join(__dirname, '..');
+    assert.ok(!fs.existsSync(path.join(root, 'lib', 'forwardbook.js')),
+      'lib/forwardbook.js is back — trade set-ups written into the product are never allowed');
+    const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true }).flatMap((d) => {
+      if (d.name === 'node_modules' || d.name === 'data' || d.name.startsWith('.')) return [];
+      const full = path.join(dir, d.name);
+      return d.isDirectory() ? walk(full) : (d.name.endsWith('.js') ? [full] : []);
+    });
+    for (const file of walk(root)) {
+      const raw = fs.readFileSync(file, 'utf8').replace(/\/\/[^\n]*/g, '');
+      assert.ok(!/require\([^)]*forwardbook[^)]*\)/.test(raw),
+        `${path.relative(root, file)} reaches for a module of built-in trade set-ups`);
+    }
+  }
   for (const f of ['stopsweep.js', 'convictionsweep.js']) {
     const raw = fs.readFileSync(path.join(__dirname, '..', 'lib', f), 'utf8');
     // Strip line comments before checking: the explanation of WHY these
@@ -96,7 +117,7 @@ module.exports.aScanWithNoStatedCutoffIsRefusedNotDefaulted = function () {
     // prose from code fails on its own documentation.
     const src = raw.replace(/\/\/[^\n]*/g, '');
     assert.ok(!/require\('\.\/forwardbook'\)/.test(src),
-      `lib/${f} imports the pre-registered record again — its frozen dates are not a default for anyone else`);
+      `lib/${f} imports a set of trade set-ups written into the product again — nothing is ever baked into the code`);
     assert.ok(!/TRAIN_THROUGH|SCORE_FROM/.test(src),
       `lib/${f} still references another record's frozen constants`);
     assert.ok(/function requireFreeze\(/.test(src), `lib/${f} lost the cutoff guard`);

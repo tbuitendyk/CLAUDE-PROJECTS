@@ -5,7 +5,8 @@
 // greenlighting history data, we're greenlighting a set of configs which are
 // independent of the training history window ... so why do we care?" The answer
 // was that we shouldn't. `trainThrough` had been inherited into the rule shape
-// from lib/forwardbook.js, where freeze-at-a-date IS intrinsic, and the
+// from three trade set-ups once written into the product, where
+// freeze-at-a-date WAS intrinsic, and the
 // greenlight then had to invent a value — which it did by reading the run's
 // FIRE TIME. For the run that produced F1 that guess lands five weeks past
 // anything the run had loaded.
@@ -20,22 +21,30 @@ const path = require('path');
 const ROOT = path.join(__dirname, '..');
 const tp = require(path.join(ROOT, 'lib', 'live', 'trainpolicy'));
 const { validateConfig } = require(path.join(ROOT, 'lib', 'live', 'configschema'));
-const { BOOKS, TRAIN_THROUGH } = require(path.join(ROOT, 'lib', 'forwardbook'));
+const { A_CUTOFF_MS, aSetupConfig } = require('./fixtures-setup');
 
-function ruleOf(book) {
+function ruleOf(cfg) {
   return {
-    combo: book.combo, branch: book.branch, stage: book.stage,
-    members: book.members, cell: book.cell, configVersion: 'test/v1',
+    combo: cfg.combo, branch: cfg.branch, stage: cfg.stage,
+    members: cfg.members, cell: cfg.cell, configVersion: 'test/v1',
   };
 }
+// A few shapes of rule, made here rather than borrowed from the product:
+// two different sets of coins, and a breakout cell beside a market one.
+const RULES = [
+  aSetupConfig(),
+  aSetupConfig({ combo: { trade: 'XLMUSDT', ctx1: 'DOTUSDT', ctx2: 'TRXUSDT', size: 3 } }),
+  aSetupConfig({ branch: { geometry: 'daily-4d', decision: 'directional', band: 1.61, weekdaysOnly: false },
+    cell: { quorum: 1, entry: 'breakout', gate: 'active', dMult: 1.5, tHours: 161, trailMult: null, armMult: null } }),
+];
 
 // A RULE IS COMPLETE WITHOUT A TRAINING WINDOW. This is the claim the owner
 // made and it has to hold in the validator, not just in prose.
 function aRuleValidatesWithNoTrainingWindowAtAll() {
-  for (const book of BOOKS) {
-    const v = validateConfig(ruleOf(book));
-    assert.ok(v.ok, `${book.id} was refused without a training window: ${(v.errors || []).join('; ')}`);
-  }
+  RULES.forEach((cfg, i) => {
+    const v = validateConfig(ruleOf(cfg));
+    assert.ok(v.ok, `rule ${i + 1} was refused without a training window: ${(v.errors || []).join('; ')}`);
+  });
 }
 
 // ...and the field must not sneak back in as a requirement.
@@ -54,8 +63,8 @@ function theGreenlightInventsNoTrainingFreeze() {
 }
 
 function frozenAndRollingResolveAsDeclared() {
-  const frozen = tp.resolveFreeze({ id: 's1', trainPolicy: { mode: 'frozen', throughMs: TRAIN_THROUGH } });
-  assert.strictEqual(frozen.throughMs, TRAIN_THROUGH);
+  const frozen = tp.resolveFreeze({ id: 's1', trainPolicy: { mode: 'frozen', throughMs: A_CUTOFF_MS } });
+  assert.strictEqual(frozen.throughMs, A_CUTOFF_MS);
   assert.strictEqual(frozen.legacy, false);
 
   const now = 1_800_000_000_000;
@@ -68,8 +77,8 @@ function frozenAndRollingResolveAsDeclared() {
 // — nothing paper-trading is disturbed — but the result says `legacy` so the
 // screens can label it and the old shape cannot quietly become permanent.
 function aLegacySetupKeepsWorkingAndIsFlaggedAsLegacy() {
-  const out = tp.resolveFreeze({ id: 'old', configSnapshot: { trainThrough: TRAIN_THROUGH } });
-  assert.strictEqual(out.throughMs, TRAIN_THROUGH, 'a legacy setup lost its freeze — that would retrain it');
+  const out = tp.resolveFreeze({ id: 'old', configSnapshot: { trainThrough: A_CUTOFF_MS } });
+  assert.strictEqual(out.throughMs, A_CUTOFF_MS, 'a legacy setup lost its freeze — that would retrain it');
   assert.strictEqual(out.legacy, true, 'a legacy freeze was not flagged, so the old shape becomes invisible');
 }
 

@@ -31,15 +31,15 @@ const TRADE = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
 // source the engine freezes so it cannot drift from the real shape. Taken from
 // tests/test-live-setups.js, where it is already the canonical fixture.
 function snapshot() {
-  const { BOOKS, TRAIN_THROUGH } = require('../lib/forwardbook');
-  const F1 = BOOKS.find((b) => b.id === 'F1');
+  const { A_CUTOFF_MS, aSetupConfig } = require('./fixtures-setup');
+  const F1 = aSetupConfig();
   return {
     combo: { ...F1.combo },
     branch: { ...F1.branch },
     stage: F1.stage,
     members: F1.members.map((m) => ({ ...m })),
     cell: { ...F1.cell },
-    trainThrough: TRAIN_THROUGH,
+    trainThrough: A_CUTOFF_MS,
     configVersion: 'profile-fee-test',
   };
 }
