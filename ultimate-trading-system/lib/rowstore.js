@@ -121,7 +121,12 @@ function exists(runId, name) {
 // with a column the file has not seen writes a fresh header line first, so the
 // field is kept rather than dropped, and a reader walking the file picks up the
 // new shape when it passes that line.
-function writer(runId, name) {
+// `offThread` moves the squashing to libuv's thread pool. OFF BY DEFAULT and
+// opt-in per writer, because it changes the contract: flush() only promises the
+// rows are QUEUED, and close() must be awaited. Every caller that pushes rows
+// and reads them straight back — which is most of them, and all of the tests —
+// keeps today's synchronous behaviour untouched.
+function writer(runId, name, { offThread = false } = {}) {
   const file = storeFile(runId, name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   let fd = null;
@@ -139,6 +144,43 @@ function writer(runId, name) {
   let offset = (() => { try { return fs.statSync(file).size; } catch (_) { return 0; } })();
   let blockFirstRow = count;
   let needHeader = squashed;            // every block starts with its own header
+
+  // THE SQUASHING RUNS OFF THE THREAD THAT ANSWERS PAGES (owner order,
+  // 2026-08-29: "can't we make that run on all of the 4 worker threads at 90%
+  // as i've got it set?").
+  //
+  // Four workers priced the units and the service still drew two cores of its
+  // 3.9. The workers were not the cap: every unit's rows came back to the ONE
+  // main thread to be turned into text and gzipSync'd — synchronous,
+  // CPU-bound — before the pool could hand the next unit out, because the
+  // pool awaits its callback inside the lane. About a core of packing sat
+  // beside about a core of pricing. zlib.gzip with a callback does the same
+  // work on libuv's thread pool, so the main thread is free while it runs.
+  //
+  // THREE THINGS THIS MUST NOT BREAK, and each is why the shape below is what
+  // it is rather than a plain await:
+  //
+  //   * BLOCK COUNT IS READ THE INSTANT A FLUSH RETURNS. Every stage records
+  //     its unit's block range as [before, after] around a flush, and that
+  //     range is how one unit's rows are read back without touching another's.
+  //     So a block is RESERVED synchronously and filled in when its bytes
+  //     exist; blockCount is right immediately, exactly as before.
+  //   * BLOCKS MUST LAND IN ORDER, because each records its own byte offset.
+  //     One promise chain, one block at a time — the offset is only ever
+  //     touched inside it.
+  //   * THE SIDECAR MUST NEVER CLAIM ROWS THAT ARE NOT ON DISK. Each task
+  //     writes the index for the blocks written SO FAR, not for the ones still
+  //     being packed, so a service killed mid-run leaves an index that matches
+  //     the file.
+  const chained = squashed && offThread;
+  let chain = Promise.resolve();
+  let chainError = null;
+  const metaFor = (upto) => ({
+    rows: upto >= 0 ? blocks[upto].firstRow + blocks[upto].rows : count,
+    cols: cols || [],
+    squashed,
+    blocks: squashed ? blocks.slice(0, upto + 1) : undefined,
+  });
 
   const api = {
     get count() { return count; },
@@ -170,22 +212,70 @@ function writer(runId, name) {
     flush() {
       if (buf.length) {
         const text = `${buf.join('\n')}\n`;
-        if (squashed) {
+        buf = [];
+        pending = 0;
+        if (chained) {
+          // reserved now so blockCount is right the moment this returns;
+          // its bytes and its place in the file are filled in below
+          const bi = blocks.length;
+          blocks.push({ at: null, bytes: null, firstRow: blockFirstRow, rows: count - blockFirstRow });
+          blockFirstRow = count;
+          needHeader = true;            // the next block must stand on its own
+          chain = chain.then(() => new Promise((resolve, reject) => {
+            zlib.gzip(Buffer.from(text, 'utf8'), { level: GZIP_LEVEL }, (err, packed) => {
+              if (err) { reject(err); return; }
+              try {
+                blocks[bi].at = offset;
+                blocks[bi].bytes = packed.length;
+                offset += packed.length;
+                fs.writeSync(open(), packed);
+                writeMeta(runId, name, metaFor(bi));
+                resolve();
+              } catch (e) { reject(e); }
+            });
+          })).catch((err) => {
+            // A LOST BLOCK IS NOT A WARNING. Held and thrown by drain/close,
+            // because rows that never reached the file cannot be discovered
+            // later from anything on disk.
+            chainError = chainError || err;
+          });
+        } else if (squashed) {
+          // the original path, unchanged: pack and write here and now
           const packed = zlib.gzipSync(Buffer.from(text, 'utf8'), { level: GZIP_LEVEL });
           fs.writeSync(open(), packed);
           blocks.push({ at: offset, bytes: packed.length, firstRow: blockFirstRow, rows: count - blockFirstRow });
           offset += packed.length;
           blockFirstRow = count;
-          needHeader = true;            // the next block must stand on its own
+          needHeader = true;
+          writeMeta(runId, name, metaFor(blocks.length - 1));
         } else {
           fs.writeSync(open(), text);
+          writeMeta(runId, name, metaFor(-1));
         }
-        buf = [];
-        pending = 0;
+        return;
       }
-      writeMeta(runId, name, { rows: count, cols: cols || [], squashed, blocks: squashed ? blocks : undefined });
+      // nothing buffered: refresh the index behind whatever has already landed
+      if (chained) chain = chain.then(() => { writeMeta(runId, name, metaFor(blocks.length - 1)); });
+      else writeMeta(runId, name, metaFor(squashed ? blocks.length - 1 : -1));
     },
-    close() { api.flush(); if (fd !== null) { fs.closeSync(fd); fd = null; } },
+    // Everything handed to flush() is on disk when this resolves. On a writer
+    // that is not offThread there is nothing in flight, so this is immediate.
+    async drain() {
+      api.flush();
+      await chain;
+      if (chainError) { const e = chainError; chainError = null; throw e; }
+    },
+    // AWAIT THIS ON AN offThread WRITER. On any other it behaves exactly as it
+    // always did — the flush inside it is synchronous — so the promise it
+    // returns can be ignored by the callers that never opted in.
+    close() {
+      if (!chained) {
+        api.flush();
+        if (fd !== null) { fs.closeSync(fd); fd = null; }
+        return Promise.resolve();
+      }
+      return api.drain().then(() => { if (fd !== null) { fs.closeSync(fd); fd = null; } });
+    },
   };
   return api;
 }

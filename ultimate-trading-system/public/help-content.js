@@ -64,13 +64,19 @@ const BOARD_SECTION_CONTROLS = (() => {
   }
   return out;
 })();
-const RUN_NOTES_CONTROLS = {
-  bNotes: { what: 'Your own notes on this run — what you were trying, what it showed, what it cost.' },
-  bNotesSave: {
-    what: 'Saves the notes onto the run.',
-    more: 'Only works once the run has finished; nothing can be written to a run while it is still computing.',
-  },
-};
+// One notes box per section, so each record set on screen can be written on
+// where it is shown.
+const RUN_NOTES_CONTROLS = (() => {
+  const out = {};
+  for (const n of [1, 2, 3]) {
+    out[`bNotes${n}`] = { what: `Your own notes on the stage ${n} record set — what you were trying, what it showed, what it cost.` };
+    out[`bNotesSave${n}`] = {
+      what: `Saves the notes onto the stage ${n} record set.`,
+      more: 'Only works once that record set has finished; nothing can be written to one while it is still computing.',
+    };
+  }
+  return out;
+})();
 window.HELP = {
   data: {
     title: 'Data',
@@ -130,7 +136,7 @@ window.HELP = {
       swUni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
       swSingles: {
         what: 'Include each coin judged on its own price history alone — 4 members after stage 1, and 8 once stage 2 has added the BOOST members.',
-        more: 'Each member reads a different slice of the same prices, so a coin on its own has four to read and one member for each. The count was wrong on this hover until 2026-08-28: it said 3, which was true before a fourth slice was added.',
+        more: 'Each member reads a different slice of the same prices, so a coin on its own has four slices to read and one member for each. Stage 2 adds a second member per slice, which is what doubles the count.',
       },
       swDoubles: {
         what: 'Include each coin judged alongside one other coin — 5 members after stage 1, and 10 once stage 2 has added the BOOST members.',

@@ -1086,13 +1086,52 @@ function descriptionPanelHtml(text, bold) {
 // share a row whose tops meet by construction, with nothing nudged.
 // extraButtons is the slot for buttons only one screen has (Boards puts its
 // settings-copying button there); the box, the save and the stamp are shared.
-function notesPanelHtml(doc, extraButtons) {
+// EVERY OPEN SECTION GETS ITS OWN NOTES BOX (owner, 2026-08-29: "the field is
+// not available to fill on stage 1 and 2 currently").
+//
+// It was drawn on the deepest selection only, so opening a stage 3 record set
+// took the box away from the stage 1 and stage 2 sections above it and there
+// was no way to write a note on either. They are three record sets, each with
+// its own notes on the service, and each is writable where it is shown.
+//
+// WHY THREE FUNCTIONS AND NOT ONE WITH A SUFFIX. Every id on these screens has
+// to be readable straight out of the source: lib/screencontrols.js is what
+// tells the Help tab which controls exist and what feeds the closed word list,
+// and it reads literal id attributes. An id built at runtime is a control the
+// owner can see and the word list cannot name, which RULE ONE-A does not allow.
+// The three per-section pickers, deletes and copy-settings buttons are written
+// out literally for the same reason. A test holds these three identical apart
+// from the digit.
+function notesPanel1(doc) {
+  const off = doc.status === 'running';
   return `<div class="panel">
-        <label class="f" for="bNotes">notes — why this run exists, what it showed, what it cost</label>
+        <label class="f" for="bNotes1">notes — why this run exists, what it showed, what it cost</label>
         <div class="row" style="align-items:flex-start;margin-top:.15rem">
-          <textarea id="bNotes" rows="3" style="flex:1;font:inherit" ${doc.status === 'running' ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
-          <button id="bNotesSave" ${doc.status === 'running' ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>${extraButtons || ''}
-          <span id="bNotesMsg" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
+          <textarea id="bNotes1" rows="3" style="flex:1;font:inherit" ${off ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
+          <button id="bNotesSave1" ${off ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
+          <span id="bNotesMsg1" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
+        </div>
+      </div>`;
+}
+function notesPanel2(doc) {
+  const off = doc.status === 'running';
+  return `<div class="panel">
+        <label class="f" for="bNotes2">notes — why this run exists, what it showed, what it cost</label>
+        <div class="row" style="align-items:flex-start;margin-top:.15rem">
+          <textarea id="bNotes2" rows="3" style="flex:1;font:inherit" ${off ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
+          <button id="bNotesSave2" ${off ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
+          <span id="bNotesMsg2" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
+        </div>
+      </div>`;
+}
+function notesPanel3(doc) {
+  const off = doc.status === 'running';
+  return `<div class="panel">
+        <label class="f" for="bNotes3">notes — why this run exists, what it showed, what it cost</label>
+        <div class="row" style="align-items:flex-start;margin-top:.15rem">
+          <textarea id="bNotes3" rows="3" style="flex:1;font:inherit" ${off ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
+          <button id="bNotesSave3" ${off ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
+          <span id="bNotesMsg3" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
         </div>
       </div>`;
 }
@@ -1116,13 +1155,14 @@ function runIdentityPanelHtml(sizeLine, dm) {
 // the RESPONSE: the stored value comes back truncated, and the edited stamp
 // is taken on the server, not here. onSaved lets a screen refresh its own
 // cached copy (Boards keeps the opened run's doc in hand).
-function wireNotesSave(saveUrl, onSaved) {
-  const nsave = $('#bNotesSave');
+function wireNotesSave(saveUrl, onSaved, suffix) {
+  const nsave = $(`#bNotesSave${suffix}`);
   if (nsave) nsave.onclick = async () => {
-    const out = await tryPost(saveUrl, { text: $('#bNotes').value });
+    const box = $(`#bNotes${suffix}`);
+    const out = await tryPost(saveUrl, { text: box.value });
     if (out) {
-      $('#bNotes').value = out.notes || '';
-      $('#bNotesMsg').textContent = `saved ${String(out.notesEditedAt || '').slice(0, 16)}`;
+      box.value = out.notes || '';
+      $(`#bNotesMsg${suffix}`).textContent = `saved ${String(out.notesEditedAt || '').slice(0, 16)}`;
       if (onSaved) onSaved(out);
     }
   };
@@ -1301,7 +1341,7 @@ async function drawHistory() {
       no-dial reference on ~20 paired folds — same folds, same frozen trading cell, so the ONLY difference is the
       dial. The table's verdict is the paired money difference, fold by fold.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="how fast older evidence stops counting. The server accepts these three keys and no others (lib/httwo.js HALF_LIVES); the tab used to offer 90d/180d/365d/730d and EVERY launch threw.">half-life<select id="ht2hl">${vocabOptions('halfLife', '12mo')}</select></label>
+      <label class="f" title="how fast older evidence stops counting. A shorter half-life makes the model lean on recent weeks; a longer one keeps older weeks in play. These three are the choices the engine runs.">half-life<select id="ht2hl">${vocabOptions('halfLife', '12mo')}</select></label>
       ${sel ? '<button id="ht2Run" class="pri">Launch paired age-dial run</button>' : '<span class="note">select a row on Boards first.</span>'}
       <span id="ht2Msg" class="note"></span>
     </div>
@@ -2460,10 +2500,10 @@ async function drawBoards() {
       esc(c.status),
     ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
-      ${stage === deepest ? notesPanelHtml(doc, '') : ''}
+      ${stage === 1 ? notesPanel1(doc) : stage === 2 ? notesPanel2(doc) : notesPanel3(doc)}
       ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}
       <div id="bT${stage}"></div>`;
-    if (stage === deepest) wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null);
+    wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null, String(stage));
     if (doc.status !== 'done' && doc.status !== 'incomplete') {
       $(`#bT${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
       continue;

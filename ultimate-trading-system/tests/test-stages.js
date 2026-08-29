@@ -756,7 +756,7 @@ module.exports = {
     }
     {
       const body = screens.drawBody('drawBoards');
-      for (const shared of ['campaignNoteHtml(', 'descriptionPanelHtml(', 'notesPanelHtml(', 'runIdentityPanelHtml(', 'wireNotesSave(']) {
+      for (const shared of ['campaignNoteHtml(', 'descriptionPanelHtml(', 'notesPanel1(', 'runIdentityPanelHtml(', 'wireNotesSave(']) {
         assert.ok(body.includes(shared), `drawBoards must draw the opened record set's head with ${shared.slice(0, -1)}`);
       }
     }
@@ -842,7 +842,7 @@ module.exports = {
     }
     for (const key of ['boards']) {
       const ids = map[key].controls.map((c) => c.id);
-      for (const id of ['bNotes', 'bNotesSave']) {
+      for (const id of ['bNotes1', 'bNotesSave1', 'bNotes2', 'bNotesSave2', 'bNotes3', 'bNotesSave3']) {
         assert.ok(ids.includes(id), `${key} must expose the notes control ${id}`);
       }
     }

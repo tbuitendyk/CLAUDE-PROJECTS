@@ -22,13 +22,41 @@ module.exports = {
   // (notesPanelHtml / wireNotesSave). Only one screen carries them now, but the
   // properties are the ones that were always the point.
   notesAreReadableWritableAndRefusedWhileTheRunComputes() {
-    assert.ok(/id="bNotes"/.test(UI), 'the record set must carry notes');
-    assert.ok(/tryPost\(saveUrl, \{ text: \$\('#bNotes'\)\.value \}\)/.test(UI),
+    // ONE BOX PER OPEN SECTION, each with a LITERAL id (2026-08-29). It used to
+    // be drawn on the deepest selection only, so a stage 3 record set took the
+    // box away from the two sections above it. The ids are literal because
+    // lib/screencontrols.js reads them out of the source — an id built at
+    // runtime is a control the owner can see and the word list cannot name.
+    for (const n of [1, 2, 3]) {
+      for (const id of [`bNotes${n}`, `bNotesSave${n}`, `bNotesMsg${n}`]) {
+        assert.ok(UI.includes(`id="${id}"`), `the stage ${n} section is missing ${id}`);
+      }
+    }
+    // AND THE THREE MUST NOT DRIFT. Three copies of one control is how one of
+    // them quietly stops matching the others.
+    const bodyOf = (n) => {
+      const at = UI.indexOf(`function notesPanel${n}(doc) {`);
+      assert.ok(at > 0, `notesPanel${n} is gone`);
+      // ONLY the id suffixes are normalised. Replacing the bare digit everywhere
+      // also rewrote .slice(0, 16) differently for n=1 than for n=2, which made
+      // this fail on three boxes that were in fact identical.
+      return UI.slice(at, UI.indexOf('\n}', at))
+        .split(`notesPanel${n}`).join('notesPanel#')
+        .split(`bNotesSave${n}`).join('bNotesSave#')
+        .split(`bNotesMsg${n}`).join('bNotesMsg#')
+        .split(`bNotes${n}`).join('bNotes#');
+    };
+    assert.strictEqual(bodyOf(2), bodyOf(1), 'the stage 2 notes box has drifted from the stage 1 one');
+    assert.strictEqual(bodyOf(3), bodyOf(1), 'the stage 3 notes box has drifted from the stage 1 one');
+    assert.ok(/tryPost\(saveUrl, \{ text: box\.value \}\)/.test(UI),
       'saved with the single field the endpoint reads');
     assert.ok(/wireNotesSave\(`api\/stageset\/\$\{encodeURIComponent\(doc\.id\)\}\/notes`/.test(UI),
       'the Boards screen must wire the save to its own record set\'s notes address');
-    assert.ok(/doc\.status === 'running' \? 'disabled'/.test(UI),
-      'the engine refuses writes while a run computes, so the box must say so rather than failing on save');
+    assert.ok(/const off = doc\.status === 'running';/.test(UI)
+      && /\$\{off \? 'disabled' : ''\}/.test(UI),
+    'the engine refuses writes while a run computes, so the box must say so rather than failing on save');
+    assert.ok(/notes save after the run finishes/.test(UI),
+      'and the button must say WHY it is asleep, not just be dead');
     assert.ok(/out\.notes \|\| ''/.test(UI),
       're-render from the RESPONSE: the stored value comes back truncated');
   },

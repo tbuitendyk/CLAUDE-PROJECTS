@@ -247,10 +247,13 @@ const unitKeyOf = (u) => `${u.trade}|${u.ctx1 || ''}|${u.ctx2 || ''}|${u.geometr
 
 function writers(id) {
   return {
-    votes: rowstore.writer(id, 'votes'),
-    tau: rowstore.writer(id, 'tau'),
-    models: rowstore.writer(id, 'models'),
-    records: rowstore.writer(id, 'records'),
+    // offThread: these four take the whole output of every unit, and packing
+    // it on the thread that hands the next unit out is what held the pool to
+    // two cores of its four (owner, 2026-08-29). Their closes are awaited.
+    votes: rowstore.writer(id, 'votes', { offThread: true }),
+    tau: rowstore.writer(id, 'tau', { offThread: true }),
+    models: rowstore.writer(id, 'models', { offThread: true }),
+    records: rowstore.writer(id, 'records', { offThread: true }),
   };
 }
 // Write one unit's stores, flushing per store so every unit owns whole
@@ -401,8 +404,8 @@ function startStage1(params) {
     for (let r = 0; r < done.length; r++) {
       rk.push({ rank: r + 1, u: done[r].u, beat: done[r].beat, pairs: done[r].pairs, lead: done[r].lead, score: done[r].score });
     }
-    rk.close();
-    ['votes', 'tau', 'models', 'records'].forEach((k) => w[k].close());
+    await rk.close();
+    for (const k of ['votes', 'tau', 'models', 'records']) await w[k].close();
     doc.counts = { unitsScored: done.length, failures: doc.failures.length };
     doc.status = done.length === units.length ? 'done' : 'incomplete';
     if (doc.status === 'incomplete') {
@@ -762,7 +765,7 @@ function startStage2(params) {
       saveSet(doc);
     });
     if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
-    ['votes', 'tau', 'models', 'records'].forEach((k) => w[k].close());
+    for (const k of ['votes', 'tau', 'models', 'records']) await w[k].close();
     const okN = carried.length - doc.failures.length;
     doc.counts = { unitsScored: okN, failures: doc.failures.length };
     doc.status = okN === carried.length ? 'done' : 'incomplete';
@@ -1014,7 +1017,9 @@ function startStage3(params) {
   // you are in, and stage 3's three phases go at wildly different speeds.
   const tRead = Date.now();
   let tPrice = null;
-  const w = { records: rowstore.writer(id, 'records') };
+  // offThread: stage 3's records are the big one — a unit hands back a row per
+  // setting, and squashing them here is what starved the other three lanes.
+  const w = { records: rowstore.writer(id, 'records', { offThread: true }) };
   const p = {
     allLoaded: parent.params.allLoaded, startMonth: parent.params.startMonth,
     endMonth: parent.params.endMonth, windowLayout: parent.params.windowLayout,
@@ -1077,7 +1082,7 @@ function startStage3(params) {
       saveSet(doc);
     });
     if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
-    w.records.close();
+    await w.records.close();
     const okN = parentRecords.length - doc.failures.length;
     doc.counts = { unitsScored: okN, settings: settings.length, rows: rowstore.count(id, 'records'), failures: doc.failures.length };
     doc.status = okN === parentRecords.length ? 'done' : 'incomplete';

@@ -171,4 +171,43 @@ module.exports = {
     assert.ok(/\.tab\.tab-far \{[^}]*margin-left:\s*auto/.test(css),
       'the rule that pushes Help to the right-hand edge is gone, so the class does nothing');
   },
+  // WHAT A PAYING READER MUST NEVER MEET (owner order, 2026-08-29: "that kind
+  // of historical comment about errors in the code or corrections made and
+  // references to how things used to work is out of place in all tool tips and
+  // help content ... expunge all references to irrelevant details that we
+  // obviously would not want in a production system for subscription access").
+  //
+  // Two hovers had it: one said what the count on it used to be and when it was
+  // corrected, the other named a source file and recounted a launch bug. Both
+  // read as a changelog leaking through the screen. Help says what a control
+  // does NOW and how to use it NOW; the reasoning behind a change belongs in
+  // the code and in the commit, where the people who need it look.
+  //
+  // Checked on the help entries AND on the hovers the page renders, because
+  // they are two different files and only one of them was caught by eye.
+  async noProductionTextRecountsItsOwnHistoryOrNamesTheCode() {
+    const H = help();
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const BANNED = [
+      [/\b20\d{2}-\d{2}-\d{2}\b/, 'a date — the screen is not a changelog'],
+      [/\bused to\b|\bit said\b|\bwas wrong\b|\buntil 20\d\d\b|\bpreviously\b|\bearlier version\b/i,
+        'an account of how it used to behave'],
+      [/\bowner order\b|\bcorrected\b|\baudit\b|\bQC[- ]?\d/i, 'an internal note about why it changed'],
+      [/\blib\/|\btests?\/|\w+\.js\b/, 'a source file'],
+    ];
+    const bad = [];
+    const check = (where, text) => {
+      if (!text) return;
+      for (const [re, why] of BANNED) if (re.test(text)) bad.push(`${where}: ${why} — "${String(text).replace(/\s+/g, ' ').slice(0, 110)}"`);
+    };
+    for (const [key, sec] of Object.entries(H)) {
+      check(`${key}.intro`, sec.intro);
+      (sec.how || []).forEach(([, body], i) => check(`${key}.how[${i}]`, body));
+      for (const [id, e] of Object.entries(sec.controls || {})) { check(`${key}.${id}.what`, e.what); check(`${key}.${id}.more`, e.more); }
+    }
+    for (const m of ui.matchAll(/title="((?:[^"\\]|\\.)*)"/g)) check('a hover on the page', m[1]);
+    assert.deepStrictEqual(bad, [],
+      `production text is telling the reader about the code instead of the control:\n  ${bad.join('\n  ')}`);
+  },
+
 };

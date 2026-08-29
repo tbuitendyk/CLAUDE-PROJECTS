@@ -57,6 +57,27 @@ function withScratch(fn) {
   }
 }
 
+// THE SAME SCRATCH, FOR A TEST THAT AWAITS. withScratch deletes the directory
+// in its finally, which for an async fn means deleting it while the work is
+// still going — the off-thread writer's whole point is that its work outlives
+// the call that queued it.
+async function withScratchAsync(fn) {
+  const realData = path.join(ROOT, 'data');
+  const stash = `${realData}.stash-rsa-${process.pid}`;
+  const had = fs.existsSync(realData);
+  if (had) fs.renameSync(realData, stash);
+  fs.mkdirSync(path.join(realData, 'batches'), { recursive: true });
+  const mods = ['lib/rowstore', 'lib/batch', 'lib/replication'];
+  mods.forEach((m) => { delete require.cache[require.resolve(path.join(ROOT, m))]; });
+  try {
+    return await fn({ realData, rowstore: require(path.join(ROOT, 'lib/rowstore')) });
+  } finally {
+    fs.rmSync(realData, { recursive: true, force: true });
+    if (had) fs.renameSync(stash, realData);
+    mods.forEach((m) => { delete require.cache[require.resolve(path.join(ROOT, m))]; });
+  }
+}
+
 module.exports = {
   // THE defect, stated as a property: the run document must stay the same size
   // whether the run produced fifty rows or fifty million.
@@ -355,4 +376,91 @@ module.exports = {
         + 'the field names repeat on every row and they were most of it');
     });
   },
+  // THE OFF-THREAD SQUASHING WRITES THE SAME FILE (owner order, 2026-08-29:
+  // "can't we make that run on all of the 4 worker threads at 90%").
+  //
+  // Four workers priced units and the service drew two cores of its 3.9,
+  // because every unit's rows came back to the ONE main thread to be gzipped
+  // before the pool could hand out the next. zlib.gzip with a callback does it
+  // on libuv's thread pool instead. The risk is not speed, it is the row store:
+  // blocks are appended and each records its own byte offset, so anything that
+  // lands out of order silently reads back as the wrong rows.
+  //
+  // So the two writers are driven over the same rows and their files compared
+  // byte for byte, and the rows are walked back out of the off-thread one.
+  async offThreadSquashingWritesExactlyTheSameStore() {
+    await withScratchAsync(async ({ realData, rowstore }) => {
+      const rows = [];
+      // ENOUGH TO CROSS SEVERAL BLOCK BOUNDARIES. The first cut of this wrote
+      // 4,000 rows — under 800 KB against a 1 MB block — so it produced ONE
+      // block and had no order to get wrong: dropping the serialising chain
+      // altogether still passed it. A test of ordering has to make several.
+      // Varied on purpose too, so a swapped block cannot pass by looking like
+      // its neighbour.
+      for (let i = 0; i < 40000; i++) {
+        rows.push({ i, trade: `SYM${i % 7}USDT`, pnl: (i % 13) - 6.5, note: `row ${i} `.repeat(20) });
+      }
+      const sync = rowstore.writer('cmp-sync', 'replication');
+      for (const r of rows) sync.push(r);
+      await sync.close();
+
+      const off = rowstore.writer('cmp-off', 'replication', { offThread: true });
+      for (const r of rows) off.push(r);
+      await off.close();
+
+      const fileOf = (id) => path.join(realData, 'batches', `${id}.rows`, 'replication.jsonl.gz');
+      const a = fs.readFileSync(fileOf('cmp-sync'));
+      const b = fs.readFileSync(fileOf('cmp-off'));
+      assert.strictEqual(b.length, a.length, 'the off-thread store is a different size from the one written here');
+      assert.ok(a.equals(b), 'the off-thread store is not byte-for-byte the file the synchronous writer produces');
+
+      // and it reads back: every row, in order, with its fields
+      const back = [];
+      rowstore.each('cmp-off', 'replication', (r) => { back.push(r); });
+      assert.strictEqual(back.length, rows.length, `walked ${back.length} rows back out of ${rows.length}`);
+      for (let i = 0; i < rows.length; i++) {
+        assert.strictEqual(back[i].i, rows[i].i, `row ${i} came back as row ${back[i].i} — the blocks landed out of order`);
+        assert.strictEqual(back[i].trade, rows[i].trade);
+      }
+      // the sidecar agrees with the file it indexes
+      const meta = JSON.parse(fs.readFileSync(path.join(realData, 'batches', 'cmp-off.rows', 'replication.jsonl.gz.meta.json'), 'utf8'));
+      assert.strictEqual(meta.rows, rows.length, 'the index under-counts or over-counts what is in the file');
+      let at = 0;
+      for (const blk of meta.blocks) {
+        assert.strictEqual(blk.at, at, 'a block records a byte offset that is not where it actually sits');
+        at += blk.bytes;
+      }
+      assert.strictEqual(at, b.length, 'the blocks do not account for the whole file');
+      assert.ok(meta.blocks.length >= 5,
+        `only ${meta.blocks.length} block(s) were written, so this proved nothing about the order they land in`);
+    });
+  },
+
+  // A BLOCK RANGE TAKEN AROUND A FLUSH IS STILL RIGHT. Every stage records its
+  // unit's rows as [blockCount before, blockCount after] and reads them back by
+  // that range later. Deferring the write must not defer the COUNT, or one
+  // unit's records quietly serve another unit's rows.
+  async aBlockRangeTakenAroundAnOffThreadFlushStillFindsItsOwnRows() {
+    await withScratchAsync(async ({ rowstore }) => {
+      const w = rowstore.writer('ranges', 'records', { offThread: true });
+      const ranges = [];
+      for (let u = 0; u < 5; u++) {
+        const before = w.blockCount;
+        for (let i = 0; i < 900; i++) w.push({ u, i, pad: `unit ${u} row ${i} `.repeat(20) });
+        w.flush();
+        ranges.push([before, w.blockCount]);
+      }
+      await w.close();
+      for (let u = 0; u < 5; u++) {
+        const [from, to] = ranges[u];
+        assert.ok(to > from, `unit ${u} recorded an empty block range`);
+        const got = rowstore.readBlocks('ranges', 'records', Array.from({ length: to - from }, (_, k) => from + k));
+        const mine = got.filter((x) => x.row.u === u).length;
+        assert.strictEqual(mine, got.length,
+          `unit ${u}'s block range served ${got.length - mine} row(s) belonging to another unit`);
+        assert.strictEqual(mine, 900, `unit ${u} read back ${mine} of its 900 rows`);
+      }
+    });
+  },
+
 };
