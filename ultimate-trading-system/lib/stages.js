@@ -1082,16 +1082,35 @@ function tallyBudgetFor({ settings, coins, heapLimitBytes = null }) {
     const r = require('./estimate').boxResources();
     heap = (r.heapCeilingMb || 1792) * 1048576;
   }
-  const bytes = Math.round(settings * (TALLY_SETTING_BASE_BYTES + Math.max(1, coins) * TALLY_ATOM_BYTES));
+  const per = TALLY_SETTING_BASE_BYTES + Math.max(1, coins) * TALLY_ATOM_BYTES;
+  const bytes = Math.round(settings * per);
   const share = bytes / heap;
   const band = share > HEAP_REFUSE_SHARE ? 'refuse' : (share > HEAP_WARN_SHARE ? 'tight' : 'fits');
+  // THE REFUSAL SAYS WHICH DIALS MOVE IT, AND BY HOW MUCH (owner, 2026-08-29:
+  // "half as many nulls shouldn't take just as much space").
+  //
+  // They were right that the number did not move and wrong about why, and the
+  // message was what misled them. It named three things to shrink and left the
+  // null set size looking like a fourth — reasonably, since the pricings figure
+  // on the same line reacts to it. It does not belong there: the finished
+  // tables are one entry per setting and one cell per setting-and-coin, and
+  // every null-set deal is folded into a running count as it is priced and
+  // never kept. So the size is settings × coins and nothing else, and the
+  // message now says that instead of leaving it to be guessed.
+  //
+  // It also says how far over the bar the block is. "Shrink it" without a
+  // number is an invitation to guess repeatedly at a screen that takes a moment
+  // to answer each time.
+  const fits = Math.floor((heap * HEAP_REFUSE_SHARE) / per);
   const message = band === 'fits' ? null
     : band === 'tight'
       ? `these tables will need about ${gbWords(bytes)} of the ${gbWords(heap)} the service has — it will run, but it is tight`
       : `these tables would need about ${gbWords(bytes)} and the service has ${gbWords(heap)} in all — anything above `
-        + `${gbWords(Math.round(heap * HEAP_REFUSE_SHARE))} refuses rather than dying mid-total. Shrink the block: fewer settings, `
-        + 'a smaller carry forward, or fewer coins.';
-  return { bytes, heapBytes: heap, share, band, message };
+        + `${gbWords(Math.round(heap * HEAP_REFUSE_SHARE))} refuses rather than dying mid-total. The size is settings × coins `
+        + 'and nothing else — the null set size does not change it, because each deal is counted as it is priced and never '
+        + `kept. On ${Math.max(1, coins)} coin(s), ${fits.toLocaleString()} settings fit; this block declares `
+        + `${settings.toLocaleString()}. Shrink it with fewer settings, a smaller carry forward, or fewer coins.`;
+  return { bytes, heapBytes: heap, share, band, message, fits };
 }
 
 function storeBudgetFor({ rows, freeBytes = null }) {

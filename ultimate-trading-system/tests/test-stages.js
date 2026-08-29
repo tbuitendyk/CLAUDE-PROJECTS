@@ -1010,8 +1010,32 @@ module.exports = {
     assert.ok(/it will run, but it is tight/.test(owners.message));
     const over = stages.tallyBudgetFor({ settings: 1000000, coins: 17, heapLimitBytes: 1792 * 1048576 });
     assert.strictEqual(over.band, 'refuse');
-    assert.ok(/refuses rather than dying mid-total/.test(over.message) && /Shrink the block/.test(over.message),
+    assert.ok(/refuses rather than dying mid-total/.test(over.message) && /Shrink it with fewer settings/.test(over.message),
       'the refusal says why and what to shrink');
+    // AND IT NAMES THE DIAL THAT DOES NOT MOVE IT (owner, 2026-08-29: "half as
+    // many nulls shouldn't take just as much space"). They were right that the
+    // figure did not move and wrong about why, and the message was what misled
+    // them: it listed three things to shrink beside a pricings figure that DOES
+    // react to the null set size, so a fourth lever was the obvious reading.
+    assert.ok(/the null set size does not change it/.test(over.message),
+      'the refusal does not say that the null set size cannot move this number, so it will be tried');
+    assert.ok(/each deal is counted as it is priced and never kept/.test(over.message),
+      'and it does not say WHY, which is the only thing that makes it believable');
+    // ...and it says how far over the bar the block is, because "shrink it"
+    // with no number is an invitation to guess at a screen that takes a moment
+    // to answer each time.
+    assert.ok(over.fits > 0 && over.fits < 1000000, `the refusal must work out what WOULD fit; got ${over.fits}`);
+    assert.ok(over.message.includes(`${over.fits.toLocaleString()} settings fit`)
+      && over.message.includes('this block declares 1,000,000'),
+    `the refusal must state both numbers; got: ${over.message}`);
+    // the arithmetic behind that: it is settings x coins and NOTHING else, so
+    // the same block on the same coins is the same size whatever the nulls are
+    const a19 = stages.tallyBudgetFor({ settings: 50000, coins: 5, nullN: 19, heapLimitBytes: 1792 * 1048576 });
+    const a99 = stages.tallyBudgetFor({ settings: 50000, coins: 5, nullN: 99, heapLimitBytes: 1792 * 1048576 });
+    assert.strictEqual(a19.bytes, a99.bytes,
+      'the tally size moved with the null set size — every deal is folded into a running count and never kept, so it must not');
+    assert.ok(stages.tallyBudgetFor({ settings: 50000, coins: 10, heapLimitBytes: 1792 * 1048576 }).bytes > a19.bytes,
+      'the tally size does not grow with the coins, which is one of the two things it IS made of');
     assert.ok(/GB/.test(over.message), 'the refusal carries the arithmetic, not just a verdict');
     // disk: rows against what is actually free
     const disk = stages.storeBudgetFor({ rows: 10000000, freeBytes: 4 * GB });
@@ -1042,9 +1066,9 @@ module.exports = {
       fs.writeFileSync(file, JSON.stringify(doc));
       const out = stages.ensureTally(id);
       assert.ok(out.failed, 'an impossible totalling must refuse, not start');
-      assert.ok(/Shrink the block/.test(out.failed), 'and say what to shrink');
+      assert.ok(/Shrink it with fewer settings/.test(out.failed), 'and say what to shrink');
       const back = stages.getSet(id);
-      assert.ok(/Shrink the block/.test(back.tallyError || ''), 'the refusal is recorded on the set itself');
+      assert.ok(/Shrink it with fewer settings/.test(back.tallyError || ''), 'the refusal is recorded on the set itself');
     } finally {
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
     }
