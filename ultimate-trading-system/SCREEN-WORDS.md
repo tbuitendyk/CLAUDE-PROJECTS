@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **8a292192c405 — what the box is serving**, not from the working tree.
+Generated from **3140d133b066 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -247,7 +247,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (88)
+## What the controls are called (84)
 
 - `— pick a stage`
 - `+both`
@@ -284,7 +284,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `decision`
 - `Delete record set…`
 - `entry`
-- `Every coin of every setting`
 - `forecast score`
 - `forecast score — all members`
 - `forecast score — stage 1 members`
@@ -318,8 +317,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `rung it landed on`
 - `save notes`
 - `setting`
-- `Settings, ranked`
-- `share`
 - `share that agreed`
 - `Size:`
 - `Stage 1`
@@ -332,7 +329,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `test trades`
 - `the tables are not totalled yet —`
 - `the totalling failed:`
-- `totalling the tables:`
 - `trail`
 - `units`
 - `vs always-long`
@@ -342,7 +338,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 _none_
 
-## Sentences the page prints (31)
+## Sentences the page prints (34)
 
 - Boards — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -367,19 +363,22 @@ _none_
 - — the records are all kept; the totalling can be tried again after a service restart.
 - . This page asks again every few seconds.
 - — building in the background; the tables appear here when it lands.
+- Table 3.A: Settings, ranked
 - — one row per declared setting, averaged over its coins
+- share that agreed is empty on this set —
 - Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
 - nothing picked: beat its own null set, best first. Independent voices below members means the committees held
 - near-copies, so the setting rests on fewer real opinions than its member count suggests.
+- Table 3.B: Every coin of every setting
 - — one row per coin, its records opening below it
 - row(s) held back by the floors.
 - The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.
 - rows — the rest are held back by the filters above.
 
-## Every word, flat (268)
+## Every word, flat (272)
 
 ```
-above. accordingly. actually added adding after again agree agreed all alongside always-long and any appear are arm arrow as asks at average averaged avg away away. back back. background band be beat because before belong below beside best board Boards BOOST both box bring broken building by call campaign can cannot carry child chunk clear cleared coin coins column columns comes committee committees comparable comparisons copy cost could count Data decision declared Delete DOES each Each either entry every Every exactly exists failed FAILED few fewer fills filter filter. filters fingerprint first first. fixed floors floors. forecast form forward four from fuller gate going held held-back helped here hold holds if in independent Independent into inventory. is it it. its Its ITS keep kept landed lands. lead left LOGREG looks. MATCH maximum means median member members minimum missing money move near-copies never next No NOT not notes nothing now null numbers of of. on One one opening opinions order Ordered other over OWN own page parent parents per pick picked picking PLAN. press prev priced prices Pricing proved provenance put puts ranked read real record records rest restart. rests row rows rule. run rung save saved score screen seconds. section sections selections service set SET set. sets setting settings Settings shape share showed showing shows. Size smaller so some sort stage Stage STAMP stops suggests. table tables takes test than that the The their They THIS this This ties time to top totalled totalling trade. trades trail training tried unit units voices votes vs way. what What when where whole why window with With without wrote yet you
+3.A 3.B above. accordingly. actually added adding after again agree agreed all alongside always-long and any appear are arm arrow as asks at average averaged avg away away. back back. background band be beat because before belong below beside best board Boards BOOST both box bring broken building by call campaign can cannot carry child chunk clear cleared coin coins column columns comes committee committees comparable comparisons copy cost could count Data decision declared Delete DOES each Each either empty entry every Every exactly exists failed FAILED few fewer fills filter filter. filters fingerprint first first. fixed floors floors. forecast form forward four from fuller gate going held held-back helped here hold holds if in independent Independent into inventory. is it it. its Its ITS keep kept landed lands. lead left LOGREG looks. MATCH maximum means median member members minimum missing money move near-copies never next No NOT not notes nothing now null numbers of of. on One one opening opinions order Ordered other over OWN own page parent parents per pick picked picking PLAN. press prev priced prices Pricing proved provenance put puts ranked read real record records rest restart. rests row rows rule. run rung save saved score screen seconds. section sections selections service set SET set. sets setting settings Settings shape share showed showing shows. Size smaller so some sort stage Stage STAMP stops suggests. table Table tables takes test than that the The their They THIS this This ties time to top totalled totalling trade. trades trail training tried unit units voices votes vs way. what What when where whole why window with With without wrote yet you
 ```
 
 ---
