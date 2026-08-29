@@ -371,29 +371,83 @@ async function s3UnitTask(task) {
     cutoffCache.set(key, c);
     return c;
   };
+  // WHAT A SHARE IS A SHARE OF, under this rule, for THIS unit. One
+  // definition: the rung divides by it, and the agreement actually reached
+  // divides by the same thing, so the two are on one scale and comparable.
+  const denomFor = (rule, decision) => (rule === 'voices' ? voicesFor(decision).voices
+    : rule === 'families' ? new Set(families).size : memberProbs.length);
   // The rung a share lands on for THIS unit, under this rule.
   const rungFor = (rule, pct, decision) => {
-    const M = memberProbs.length;
-    const n = rule === 'voices' ? voicesFor(decision).voices
-      : rule === 'families' ? new Set(families).size : M;
+    const n = denomFor(rule, decision);
     return Math.max(1, Math.min(n, Math.ceil((pct / 100) * n)));
+  };
+
+  // The votes and the extras a rule reads, built once per way of asking.
+  // Pulled out of streamFor so the agreement REACHED can be read off exactly
+  // the same votes the rule read, rather than off a second copy that could
+  // drift from it.
+  const ctxCache = new Map();
+  const ctxFor = (decision, agr, dealIdx, slice) => {
+    const key = `${decision}|${agr.rule}|${agr.pct}|${dealIdx}|${slice}`;
+    if (ctxCache.has(key)) return ctxCache.get(key);
+    const ctx = {
+      calls: callsFor(decision, dealIdx, slice), models, families,
+      probs: agr.rule === 'conviction' ? probsFor(dealIdx, slice) : null,
+      weights: agr.rule === 'voices' ? voicesFor(decision).weights : null,
+      cutoff: agr.rule === 'unusual' ? cutoffFor(decision, agr.pct) : null,
+    };
+    ctxCache.set(key, ctx);
+    return ctx;
   };
 
   const streamCache = new Map();
   const streamFor = (decision, agr, dealIdx, slice) => {
     const key = `${decision}|${agr.rule}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}|${dealIdx}|${slice}`;
     if (streamCache.has(key)) return streamCache.get(key);
-    const calls = callsFor(decision, dealIdx, slice);
-    const ctx = {
-      calls, models, families,
-      probs: agr.rule === 'conviction' ? probsFor(dealIdx, slice) : null,
-      weights: agr.rule === 'voices' ? voicesFor(decision).weights : null,
-      cutoff: agr.rule === 'unusual' ? cutoffFor(decision, agr.pct) : null,
-    };
+    const ctx = ctxFor(decision, agr, dealIdx, slice);
     const level = agr.rule === 'unusual' ? agr.pct : rungFor(agr.rule, agr.pct, decision);
     const s = agreement.agreementStream(ctx, agr.rule, level, { bothModels: agr.both, persist: agr.persist });
     streamCache.set(key, s);
     return s;
+  };
+
+  // HOW MUCH ACTUALLY AGREED, averaged over the moments this way of asking
+  // spoke on the test slice, as a share of whatever the rule counts. The bar
+  // is the floor of this number, never the whole of it: a setting asking for
+  // 75% of eight fires on six, seven or eight, and this is what it got.
+  //
+  // Measured on the TEST slice only — every other thing this committee is
+  // described by (its independent voices, the unusual rule's own cutoff) is
+  // worked out there, and the held-back window stays unread.
+  //
+  // Cached on the same key the stream is, minus the window: which moments
+  // speak depends on the rule, the share, +both and +hold, and on nothing
+  // about the trade shape. So this is worked out once per way of asking and
+  // re-used by every trade shape that asks that way.
+  const agreedCache = new Map();
+  const agreedFor = (decision, agr) => {
+    const key = `${decision}|${agr.rule}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}`;
+    if (agreedCache.has(key)) return agreedCache.get(key);
+    const spoke = streamFor(decision, agr, -1, 'test');
+    const ctx = ctxFor(decision, agr, -1, 'test');
+    const denom = denomFor(agr.rule, decision);
+    let sum = 0;
+    let n = 0;
+    let lo = Infinity;
+    let hi = -Infinity;
+    for (let i = 0; i < spoke.length; i++) {
+      const c = spoke[i];
+      if (!c) continue;
+      const got = agreement.achievedAt(ctx, i, agr.rule, c);
+      sum += got; n++;
+      if (got < lo) lo = got;
+      if (got > hi) hi = got;
+    }
+    const pct = (v) => (v / denom) * 100;
+    const out = (n && denom) ? { agreed: pct(sum / n), agreedLow: pct(lo), agreedHigh: pct(hi), agreedN: n }
+      : { agreed: null, agreedLow: null, agreedHigh: null, agreedN: 0 };
+    agreedCache.set(key, out);
+    return out;
   };
   const pick = (arr, idxs) => idxs.map((i) => arr[i]);
   const holdCtlCache = new Map();
@@ -454,6 +508,7 @@ async function s3UnitTask(task) {
       trailMult: st.trailMult ?? null, armMult: st.armMult ?? null,
       agreeRule: agr.rule, agreePct: agr.pct, agreeBoth: agr.both, agreePersist: agr.persist,
       rung: agr.rule === 'unusual' ? cutoffFor(stream.decision, agr.pct) : rungFor(agr.rule, agr.pct, stream.decision),
+      ...agreedFor(stream.decision, agr),
       members: memberProbs.length, voices: voicesFor(stream.decision).voices,
       pnl: tRes.pnl, trades: tRes.trades,
       holdout,
@@ -489,10 +544,13 @@ function tallyFold(acc, r, blockIdx) {
     acc.perSetting.set(r.si, s);
   }
   let c = s.perCoin.get(r.trade);
-  if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0 }; s.perCoin.set(r.trade, c); }
+  if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0, agr: 0, agrN: 0 }; s.perCoin.set(r.trade, c); }
   c.test += r.pnl || 0; c.testN++;
   if (r.rung != null) { c.rung += r.rung; c.rungN++; }
   if (r.voices != null) { c.voices += r.voices; c.voicesN++; }
+  // records priced before this measurement existed simply have no value here,
+  // and a column with no value reads as absent rather than as zero
+  if (r.agreed != null) { c.agr += r.agreed; c.agrN++; }
   if (r.holdout && r.holdout.pnl != null) {
     c.hold += r.holdout.pnl; c.holdN++;
     c.trades += r.holdout.trades || 0;
@@ -506,10 +564,12 @@ function tallyFold(acc, r, blockIdx) {
   let k = acc.perCoin.get(ck);
   if (!k) {
     k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
-      beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0, rows: 0, b: new Set() };
+      beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
+      agr: 0, agrN: 0, rows: 0, b: new Set() };
     acc.perCoin.set(ck, k);
   }
   k.rows++;
+  if (r.agreed != null) { k.agr += r.agreed; k.agrN++; }
   k.beat += r.beat || 0; k.pairs += r.pairs || 0;
   k.test += r.pnl || 0; k.testN++;
   if (r.holdout && r.holdout.pnl != null) {
@@ -537,20 +597,22 @@ function mergeTallyAcc(acc, part) {
     if (!s) { s = { ...ps, perCoin: new Map() }; delete s.perCoin; s.perCoin = new Map(); acc.perSetting.set(ps.si, s); }
     for (const [trade, add] of ps.perCoin) {
       let c = s.perCoin.get(trade);
-      if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0 }; s.perCoin.set(trade, c); }
+      if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0, agr: 0, agrN: 0 }; s.perCoin.set(trade, c); }
       c.test += add.test; c.testN += add.testN; c.hold += add.hold; c.holdN += add.holdN;
       c.trades += add.trades; c.vsl += add.vsl; c.vsln += add.vsln;
       c.beat += add.beat; c.pairs += add.pairs;
       c.ld += add.ld || 0; c.ldN += add.ldN || 0;
       c.rung += add.rung || 0; c.rungN += add.rungN || 0;
       c.voices += add.voices || 0; c.voicesN += add.voicesN || 0;
+      c.agr += add.agr || 0; c.agrN += add.agrN || 0;
     }
   }
   for (const [ck, add] of part.perCoin) {
     let k = acc.perCoin.get(ck);
     if (!k) {
       k = { cellLabel: add.cellLabel, trade: add.trade, ctx1: add.ctx1, ctx2: add.ctx2, geometry: add.geometry,
-        beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0, rows: 0, b: new Set() };
+        beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
+        agr: 0, agrN: 0, rows: 0, b: new Set() };
       acc.perCoin.set(ck, k);
     }
     k.rows += add.rows;
@@ -559,6 +621,7 @@ function mergeTallyAcc(acc, part) {
     k.hold += add.hold; k.holdN += add.holdN;
     k.trades += add.trades; k.tradesN += add.tradesN;
     k.vsl += add.vsl; k.vsln += add.vsln;
+    k.agr += add.agr || 0; k.agrN += add.agrN || 0;
     for (const b of add.b) k.b.add(b);
   }
   return acc;

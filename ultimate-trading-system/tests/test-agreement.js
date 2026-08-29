@@ -152,4 +152,94 @@ module.exports = {
     assert.strictEqual(a.argmaxCall([0.5, 0.3, 0.2]), -1);
     assert.strictEqual(a.argmaxCall({ d: 0.1, n: 0.8, u: 0.1 }), 0);
   },
+  // WHAT ACTUALLY AGREED, not what was demanded (owner, 2026-08-29: "of
+  // course i'm looking for the *actual* results of the agreement").
+  //
+  // Every rule fires at or ABOVE its bar. Until this existed, a run built on
+  // one share printed that share on every row and there was no way to tell a
+  // call that scraped in from a unanimous one.
+  whatActuallyAgreedIsReadOffTheSameVotesTheRuleRead() {
+    // four members, read down the columns: moment 0 is unanimous, moment 1 is
+    // three to one, moment 2 is a tie, moment 3 is two to one with an abstainer
+    const calls = [
+      [1, 1, 1, 1],
+      [1, 1, 1, 0],
+      [1, 1, -1, -1],
+      [1, -1, -1, -1],
+    ];
+    assert.deepStrictEqual(a.sides(calls, 0), { up: 4, down: 0, winner: 1 });
+    assert.strictEqual(a.achievedAt({ calls }, 0, 'count', 1), 4, 'unanimous must report four of four');
+    assert.deepStrictEqual(a.sides(calls, 1), { up: 3, down: 1, winner: 1 });
+    assert.strictEqual(a.achievedAt({ calls }, 1, 'count', 1), 3, 'three to one must report three');
+    assert.deepStrictEqual(a.sides(calls, 3), { up: 1, down: 2, winner: -1 });
+    assert.strictEqual(a.achievedAt({ calls }, 3, 'count', -1), 2,
+      'the winning side is what is counted, and an abstainer is on neither');
+    // and it is never below the bar the rule cleared, which is the whole point
+    for (let i = 0; i < 4; i++) {
+      const winner = a.agreementStream({ calls }, 'count', 2)[i];
+      if (!winner) continue;
+      assert.ok(a.achievedAt({ calls }, i, 'count', winner) >= 2,
+        `moment ${i} fired on a bar of 2 and reports fewer than 2 agreeing`);
+    }
+    // unusual weighs the same head count — its share is a percentile, not a
+    // share of the committee, so only the count is comparable
+    assert.strictEqual(a.achievedAt({ calls }, 0, 'unusual', 1), 4);
+
+    // voices: copies share one vote, so four members that are two opinions
+    // report two, not four
+    const w = a.voiceGroups(DOUBLED, 5).weights;
+    assert.deepStrictEqual(a.sides(DOUBLED, 1), { up: 4, down: 1, winner: 1 });
+    assert.strictEqual(a.achievedAt({ calls: DOUBLED, weights: w }, 1, 'voices', 1), 2,
+      'four members that are two opinions and their copies must report two voices agreeing');
+
+    // families: how many KINDS of evidence lined up, not how many members
+    const families = ['full', 'full', 'prices', 'volume'];
+    assert.strictEqual(a.achievedAt({ calls, families }, 0, 'families', 1), 3,
+      'four members drawn from three kinds of evidence report three');
+    assert.strictEqual(a.achievedAt({ calls, families }, 3, 'families', -1), 2,
+      'and only the kinds on the winning side count');
+
+    // conviction: how hard the committee leaned, sign included
+    const probs = [[[0, 0, 1]], [[0, 0, 1]], [[0, 0.5, 0.5]], [[1, 0, 0]]];
+    const lean = a.achievedAt({ calls: [[1], [1], [1], [-1]], probs }, 0, 'conviction', 1);
+    assert.ok(Math.abs(lean - 1.5) < 1e-12, `two certain up, one half up, one certain down leans 1.5; got ${lean}`);
+  },
+
+  // THE PROPERTY THE OWNER IS ACTUALLY ASKING ABOUT: a setting built on a
+  // share fires at or ABOVE it, so what agreed can never come back below the
+  // bar and can never exceed everything there is. Checked across every rule
+  // and every rung on a pile of made-up committees, because the one thing a
+  // worked example cannot prove is that there is no case where it fails.
+  whatAgreedIsNeverBelowTheBarAndNeverAboveEverything() {
+    // a fixed, repeatable pseudo-random stream — a test that shuffles
+    // differently every run is a test that fails on somebody else's machine
+    let seed = 20260829;
+    const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+    const vote = () => [-1, 0, 1][Math.floor(rnd() * 3)];
+    for (let trial = 0; trial < 40; trial++) {
+      const M = 3 + Math.floor(rnd() * 8);
+      const T = 30;
+      const calls = Array.from({ length: M }, () => Array.from({ length: T }, vote));
+      const probs = calls.map((row) => row.map((c) => (c === 1 ? [0, 0.3, 0.7] : c === -1 ? [0.7, 0.3, 0] : [0.2, 0.6, 0.2])));
+      const families = calls.map((_, m) => ['full', 'prices', 'volume', 'pricevol'][m % 4]);
+      const { weights, voices } = a.voiceGroups(calls, T);
+      const ctx = { calls, probs, weights, families, models: calls.map((_, m) => (m % 2 ? 'boost' : 'logreg')) };
+      for (const rule of a.AGREE_RULES) {
+        if (rule === 'unusual') continue;            // its bar is a percentile, checked on its own above
+        const denom = rule === 'voices' ? voices : rule === 'families' ? new Set(families).size : M;
+        for (let level = 1; level <= denom; level++) {
+          const stream = a.agreementStream(ctx, rule, level);
+          for (let i = 0; i < T; i++) {
+            const c = stream[i];
+            if (!c) continue;
+            const got = a.achievedAt(ctx, i, rule, c);
+            assert.ok(got + 1e-9 >= level,
+              `${rule} fired at moment ${i} on a bar of ${level} and reports only ${got} agreeing`);
+            assert.ok(got <= denom + 1e-9,
+              `${rule} reports ${got} agreeing out of a possible ${denom}, which is more than exists`);
+          }
+        }
+      }
+    }
+  },
 };

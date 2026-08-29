@@ -1482,6 +1482,118 @@ module.exports = {
     assert.deepStrictEqual([mixed.aMin.avg, mixed.aMin.n], [6, 2], 'a missing value is skipped, never counted as zero');
   },
 
+  // WHAT ACTUALLY AGREED REACHES BOTH TABLES AND THE RECORDS (owner order,
+  // 2026-08-29: "i should be seeing on the individual records' columns THE
+  // EXACT AGREEMENT MATCH FOR THAT ROW (or the AVERAGE OF THE 8 subrows in
+  // the case of the second table)").
+  //
+  // The share a setting was BUILT on is one number and never moves; what its
+  // members actually did is another, and it sits at that share or above it.
+  // With only the first recorded, a run built on one share printed that share
+  // on every row and looked as though the rule demanded exactly it.
+  async whatActuallyAgreedIsCarriedIntoBothTablesAndEveryRecord() {
+    const id = `s3-test-${Date.now().toString(36)}-ag`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999979, name: 'S3 #ag', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 2 }, params: { nullN: 9 },
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, decision, trade, agreed) => ({
+        si, label: `count 75% market t65h · ${decision} auto 24/7`, decision, bandMode: 'auto', weekdaysOnly: false,
+        bandPct: 2, entry: 'market', gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null,
+        agreeRule: 'count', agreePct: 75, agreeBoth: false, agreePersist: 0,
+        rung: 6, members: 8, voices: 8, pnl: 10, trades: 3,
+        ...(agreed == null ? {} : { agreed, agreedLow: 75, agreedHigh: 100, agreedN: 40 }),
+        holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat: 5, pairs: 9, lead: 1, u: 0, trade, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      });
+      // setting 0, coin AAA: two records, 80% and 90% -> the coin row averages 85
+      w.push(mk(0, 'argmax', 'AAA', 80));
+      w.push(mk(0, 'directional', 'AAA', 90));
+      // setting 1, coin AAA: one record, and it was priced before the
+      // measurement existed, so it carries no value at all
+      w.push(mk(1, 'argmax', 'AAA', null));
+      w.close();
+      await stages.buildTally(doc);
+
+      const rk = stages.stage3Ranked(id, 0, 10);
+      const r0 = rk.rows.find((r) => r.si === 0);
+      const r1 = rk.rows.find((r) => r.si === 1);
+      assert.ok(Math.abs(r0.avgAgreed - 85) < 1e-12, `80 and 90 average 85; got ${r0.avgAgreed}`);
+      assert.strictEqual(r1.avgAgreed, null,
+        'a record priced before the measurement existed must read as absent, never as zero agreement');
+      // it is a column the table can be ordered by
+      stages.setSetSort(id, [{ key: 'avgAgreed', dir: 'desc' }]);
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.avgAgreed), [85, null],
+        'the ranked table does not sort by what actually agreed, and a missing value must sit last');
+      stages.setSetSort(id, []);
+      // and a floor on it
+      const floored = stages.stage3Ranked(id, 0, 10, { agreedMin: 86 });
+      assert.strictEqual(floored.total, 0, 'the floor on what agreed does not bite');
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10, { agreedMin: 85 }).total, 1);
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10, { agreedMax: 84 }).total, 0, 'and neither does the cap');
+      // the four numbers beside the box read the column, not the dial
+      assert.deepStrictEqual([rk.spread.agreedMin.min, rk.spread.agreedMin.max], [85, 85]);
+      assert.strictEqual(rk.spread.agreedMin.n, 1, 'the row with no value must not be counted in the four numbers');
+
+      // the every-coin table: the average of the records underneath it
+      const cn = stages.stage3Coins(id, {});
+      const cAAA = cn.rows.find((r) => r.cellLabel === 'count 75% market t65h');
+      assert.strictEqual(cAAA.rows, 3, 'the fixture is wrong if the coin row does not hold all three records');
+      assert.ok(Math.abs(cAAA.avgAgreed - 85) < 1e-12,
+        `the coin row averages only the records that HAVE a value: 80 and 90 -> 85; got ${cAAA.avgAgreed}`);
+      assert.strictEqual(stages.stage3Coins(id, { minAgreed: 86 }).rows.length, 0, 'the every-coin floor does not bite');
+      assert.strictEqual(stages.stage3Coins(id, { sort: 'agreed' }).rows.length, 1, 'the every-coin table cannot sort by it');
+      assert.ok(cn.spread && cn.spread.minAgreed, 'the every-coin floor has no four numbers beside it');
+
+      // the records themselves carry their own, with the least and the most
+      const got = stages.stage3CoinRows(id, {
+        cellLabel: 'count 75% market t65h', trade: 'AAA', ctx1: '', ctx2: '', geometry: 'daily-4d',
+      });
+      const withVal = (got.rows || []).filter((r) => r.agreed != null);
+      assert.strictEqual(withVal.length, 2, 'the records under the row do not carry what actually agreed');
+      assert.deepStrictEqual(withVal.map((r) => [r.agreedLow, r.agreedHigh, r.agreedN]), [[75, 100, 40], [75, 100, 40]],
+        'a record must say the least and the most it ever got, and on how many calls');
+    } finally {
+      try { fs.unlinkSync(file); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      rowstore.remove(id);
+    }
+  },
+
+  // AND IT IS ON THE SCREEN — all three tables, with its floors.
+  async whatActuallyAgreedIsOnEveryStageThreeTable() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.strictEqual((ui.match(/>share that agreed/g) || []).length, 3,
+      'the column must be on the ranked table, the every-coin table AND the records under a coin row');
+    assert.ok(/bRankSortBtn\(doc, 'avgAgreed', 'desc'\)/.test(ui), 'the ranked column does not sort');
+    assert.ok(/bCoinSortBtn\(view, 'agreed', '↓'\)/.test(ui), 'the every-coin column does not sort');
+    assert.ok(/'agreedMin', 'share that agreed at least, %'/.test(ui) && /'agreedMax', 'share that agreed at most, %'/.test(ui),
+      'the ranked table has no floor and cap on what actually agreed');
+    assert.ok(/'minAgreed', 'share that agreed at least, %'/.test(ui), 'the every-coin table has no floor on it');
+    assert.ok(/minAgreed: coinF\.minAgreed/.test(ui), 'the every-coin floor is drawn but never sent, so it does nothing');
+    // the record line says the spread, not just the average — an average of
+    // one number and an average of forty read the same without it
+    assert.ok(/r\.agreedLow\.toFixed\(1\)/.test(ui) && /r\.agreedHigh\.toFixed\(1\)/.test(ui) && /r\.agreedN/.test(ui),
+      'a record shows its average agreement with no idea of its range or how many calls it rests on');
+    // every header still has a cell under it
+    const rk = ui.indexOf("rr.map((r) => `<tr>");
+    const rHead = ui.slice(ui.lastIndexOf('<thead>', rk), ui.indexOf('</thead>', ui.lastIndexOf('<thead>', rk)));
+    const rBody = ui.slice(rk, ui.indexOf('<tr><td colspan', rk));
+    const ck = ui.indexOf('<tbody id="bCoinBody">');
+    const cHead = ui.slice(ui.lastIndexOf('<thead>', ck), ui.indexOf('</thead>', ui.lastIndexOf('<thead>', ck)));
+    const cBody = ui.slice(ck, ui.indexOf('<tr><td colspan', ck));
+    const n = (x, t) => (x.match(new RegExp(`<${t}[ >]`, 'g')) || []).length;
+    assert.strictEqual(n(rHead, 'th'), n(rBody, 'td'), 'the ranked table has a different number of headings and cells');
+    assert.strictEqual(n(cHead, 'th'), n(cBody, 'td'), 'the every-coin table has a different number of headings and cells');
+    assert.ok(/colspan="22"/.test(ui) && /colspan="11"/.test(ui),
+      'the "nothing here" line no longer spans the whole table, so it sits under one column');
+  },
+
   // AND THE PAGE ACTUALLY SHOWS THEM, headed, in the order they were asked
   // for, on BOTH stage 3 tables.
   async everyFilterOnTheStageThreeTablesShowsWhatItsColumnHolds() {

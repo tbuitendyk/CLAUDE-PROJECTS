@@ -2955,6 +2955,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     sort: coinsQ.sort || 'share', flip: coinsQ.flip ? '1' : '',
     minPairs: coinF.minPairs ?? '', minShare: coinF.minShare ?? '', minTest: coinF.minTest ?? '',
     minHold: coinF.minHold ?? '', minTrades: coinF.minTrades ?? '', minVsLong: coinF.minVsLong ?? '',
+    minAgreed: coinF.minAgreed ?? '',
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, ...bFilters('S3R') }).toString();
@@ -3006,6 +3007,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['leadMin', 'lead over null set at least', 'num', 'hides settings whose lead over null set is below this. Empty hides nothing.'],
     ['inMoneyMin', 'coins in the money at least', 'num', 'hides settings where fewer coins than this made money. Empty hides nothing.'],
     ['voicesMin', 'independent voices at least', 'num', 'hides settings whose committees held fewer independent voices than this. Empty hides nothing.'],
+    ['agreedMin', 'share that agreed at least, %', 'num', 'hides settings whose members agreed by less than this on average. Empty hides nothing.'],
+    ['agreedMax', 'share that agreed at most, %', 'num', 'hides settings whose members agreed by more than this on average. Empty hides nothing.'],
   ], ranked && ranked.spread)}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
@@ -3021,6 +3024,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="how this setting turns the members' votes into a call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by${bRankSortBtn(doc, 'agreeRule', 'asc')}</th>
         <th ${bth} title="how demanding the rule is, as a share of the committee. Higher is stricter, and it means the same thing whatever a unit's committee holds.">share${bRankSortBtn(doc, 'agreePct', 'desc')}</th>
         <th ${bth} title="what that share worked out to for the coins priced here, averaged because committees can differ in size. For unusual it is the agreement count the rule demanded.">rung it landed on${bRankSortBtn(doc, 'avgRung', 'desc')}</th>
+        <th ${bth} title="what ACTUALLY agreed at the moments this setting spoke, averaged over them and over its coins, as a share of whatever the rule counts. Every rule fires at or above its bar, never only on it, so this sits at the share or above it — at the share means it only ever scraped in, 100% means every member lined up every time. Measured on the test window; the held-back window is never read for it.">share that agreed${bRankSortBtn(doc, 'avgAgreed', 'desc')}</th>
         <th ${bth} title="how many INDEPENDENT voices the committees held, averaged over the coins. Members that call the same way almost every time count as one voice, so this is how many real opinions the setting rests on.">independent voices${bRankSortBtn(doc, 'avgVoices', 'desc')}</th>
         <th ${bth} title="how many coins this setting was priced on.">coins${bRankSortBtn(doc, 'coins', 'desc')}</th>
         <th ${bth} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $${bRankSortBtn(doc, 'avgTest', 'desc')}</th>
@@ -3043,6 +3047,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${esc(r.agreeRule || 'count')}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
         <td ${btd}>${r.agreePct == null ? '—' : `${r.agreePct}%`}</td>
         <td ${btd}>${r.avgRung == null ? '—' : r.avgRung.toFixed(1)}${r.members ? ` <span class="muted">of ${r.members}</span>` : ''}</td>
+        <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
         <td ${btd}${r.avgVoices != null && r.members && r.avgVoices < r.members ? ' class="warn"' : ''}>${r.avgVoices == null ? '—' : r.avgVoices.toFixed(1)}</td>
         <td ${btd}>${r.coins}</td>
         <td ${btd}>${bMoney(r.avgTest)}</td>
@@ -3051,7 +3056,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${bMoney(r.avgVsLong)}</td>
         <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
         <td ${btd}>${bLead(r.avgLead)}</td>
-        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="21" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="22" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${bShown(ranked)}
     ${bPager((ranked && ranked.total) || 0, from, 100, 'S3R')}
     <p class="note">Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
@@ -3066,6 +3071,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['minHold', 'avg held-back at least, $', 'num', 'hides rows whose average held-back money is below this. Empty hides nothing.'],
     ['minTrades', 'avg trades at least', 'num', 'hides rows with fewer average entries than this. Empty hides nothing.'],
     ['minVsLong', 'avg vs always-long at least, $', 'num', 'hides rows that beat just holding the coin by less than this. Empty hides nothing.'],
+    ['minAgreed', 'share that agreed at least, %', 'num', 'hides rows whose records agreed by less than this on average. Empty hides nothing.'],
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${bCoinSortBtn(view, 'setting', '↑')}</th>
@@ -3076,6 +3082,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="average held-back money per record.">avg held-back${bCoinSortBtn(view, 'money', '↓')}</th>
         <th ${bth} title="average held-back entries per record.">avg trades${bCoinSortBtn(view, 'trades', '↓')}</th>
         <th ${bth} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${bCoinSortBtn(view, 'vslong', '↓')}</th>
+        <th ${bth} title="what ACTUALLY agreed at the moments this coin's records spoke, averaged over the records underneath. Every rule fires at or above its bar, so this sits at the share or above it. Measured on the test window.">share that agreed${bCoinSortBtn(view, 'agreed', '↓')}</th>
         <th ${bth} title="how many records this row averages — one per decision, band and 24/5 variant of the setting.">rows${bCoinSortBtn(view, 'rows', '↓')}</th>
         <th ${bth} title="opens the records themselves below the row.">records</th></tr></thead>
       <tbody id="bCoinBody">${cr.map((r) => {
@@ -3089,9 +3096,10 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${bMoney(r.avgHold)}</td>
         <td ${btd}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
         <td ${btd}>${bMoney(r.avgVsLong)}</td>
+        <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
         <td ${btd}>${r.rows}</td>
         <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ records' : 'records'}</button></td></tr>`;
-  }).join('') || '<tr><td colspan="10" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
+  }).join('') || '<tr><td colspan="11" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${coins && coins.removed ? `<p class="note">${coins.removed.toLocaleString()} row(s) held back by the floors.</p>` : ''}
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`)) return;
@@ -3136,6 +3144,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
           <th style="padding:.2rem .5rem .2rem 0" title="how the members' votes became this record's calls">decision</th>
           <th style="padding:.2rem .5rem" title="the band % (or auto) box as this record priced it. auto is worked out from the coin's own history; band % shows what it worked out to">band</th>
           <th style="padding:.2rem .5rem" title="whether this record traded weekdays only">24/5</th>
+          <th style="padding:.2rem .5rem" title="what ACTUALLY agreed at the moments THIS record spoke, as a share of whatever its rule counts: the average, and in brackets the least and the most it ever got. The share it was built on is the floor of this, never the whole of it.">share that agreed</th>
           <th style="padding:.2rem .5rem" title="how far either side of the current price this record set its two levels, as a percentage of price">band %</th>
           <th style="padding:.2rem .5rem" title="profit-and-loss on the test window — the window the carry was ordered on">test $</th>
           <th style="padding:.2rem .5rem" title="entries in the test window">test trades</th>
@@ -3150,6 +3159,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
           <td style="padding:.2rem .5rem .2rem 0">${esc(r.decision)}</td>
           <td style="padding:.2rem .5rem">${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
           <td style="padding:.2rem .5rem">${r.weekdaysOnly ? 'yes' : 'no'}</td>
+          <td style="padding:.2rem .5rem">${r.agreed == null ? '<span class="muted">—</span>'
+      : `${r.agreed.toFixed(1)}%<span class="muted"> (${r.agreedLow.toFixed(1)}–${r.agreedHigh.toFixed(1)}%, ${Number(r.agreedN).toLocaleString()} call${r.agreedN === 1 ? '' : 's'})</span>`}</td>
           <td style="padding:.2rem .5rem">±${r.bandPct != null ? Number(r.bandPct).toFixed(2) : '—'}%</td>
           <td style="padding:.2rem .5rem">${bMoney(r.pnl)}</td>
           <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>

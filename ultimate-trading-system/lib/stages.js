@@ -498,7 +498,7 @@ const SORT_KEYS = {
   3: {
     decision: 's', bandMode: 'n', weekdaysOnly: 'n', entry: 's', gate: 's',
     dMult: 'n', tHours: 'n', trailMult: 'n', armMult: 'n',
-    agreeRule: 's', agreePct: 'n', avgRung: 'n', avgVoices: 'n', members: 'n',
+    agreeRule: 's', agreePct: 'n', avgAgreed: 'n', avgRung: 'n', avgVoices: 'n', members: 'n',
     coins: 'n', avgTest: 'n', avgHold: 'n', avgTrades: 'n', avgVsLong: 'n',
     beat: 'share', avgLead: 'n', coinsInMoney: 'n',
   },
@@ -513,7 +513,7 @@ const SORT_WORDS = {
   helped: 'fuller board helped?',
   decision: 'decision', bandMode: 'band', weekdaysOnly: '24/5', entry: 'entry', gate: 'gate',
   dMult: 'd', tHours: 't', trailMult: 'trail', armMult: 'arm',
-  agreeRule: 'agree by', agreePct: 'share', avgRung: 'rung it landed on', avgVoices: 'independent voices',
+  agreeRule: 'agree by', agreePct: 'share', avgAgreed: 'share that agreed', avgRung: 'rung it landed on', avgVoices: 'independent voices',
   coins: 'coins', avgTest: 'avg test $', avgHold: 'avg held-back $',
   avgTrades: 'avg held-back trades', avgVsLong: 'avg vs always-long $',
   avgLead: 'lead over null set', coinsInMoney: 'coins in the money',
@@ -602,7 +602,7 @@ const FILTER_DEFS = {
     coinsMin: ['coins', 'min'], testMin: ['avgTest', 'min'], holdMin: ['avgHold', 'min'],
     tradesMin: ['avgTrades', 'min'], vsLongMin: ['avgVsLong', 'min'],
     beatMin: ['_beatPct', 'min'], leadMin: ['avgLead', 'min'], inMoneyMin: ['coinsInMoney', 'min'],
-    voicesMin: ['avgVoices', 'min'],
+    voicesMin: ['avgVoices', 'min'], agreedMin: ['avgAgreed', 'min'], agreedMax: ['avgAgreed', 'max'],
   },
 };
 // The values a filter may read that are not stored as such: the share a row
@@ -1464,6 +1464,7 @@ async function buildTally(doc, pool = null, note = null) {
       members: st.members,
       avgRung: mean((c) => (c.rungN ? c.rung / c.rungN : null)),
       avgVoices: mean((c) => (c.voicesN ? c.voices / c.voicesN : null)),
+      avgAgreed: mean((c) => (c.agrN ? c.agr / c.agrN : null)),
       coins: coinCells.length,
       coinsInMoney: coinHold.filter((v) => v != null && v > 0).length,
       avgTest: mean((c) => (c.testN ? c.test / c.testN : null)),
@@ -1486,6 +1487,7 @@ async function buildTally(doc, pool = null, note = null) {
       avgHold: k.holdN ? k.hold / k.holdN : null,
       avgTrades: k.tradesN ? k.trades / k.tradesN : null,
       avgVsLong: k.vsln ? k.vsl / k.vsln : null,
+      avgAgreed: k.agrN ? k.agr / k.agrN : null,
       rows: k.rows, b: [...k.b].sort((x, y) => x - y),
     });
     acc.perCoin.delete(key);
@@ -1730,7 +1732,7 @@ function stage2Table(id, from, n, filters = null) {
   return { total: rows.length, of, from, sort: doc.sort || [], rows: rows.slice(from, from + n) };
 }
 
-const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting'];
+const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed'];
 // What each floor on the every-coin table reads, in the shape spreadOf wants.
 // The table does its own filtering rather than going through FILTER_DEFS, so
 // its columns are named here — and they are named ONCE, beside the floors
@@ -1738,6 +1740,7 @@ const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows',
 const S3_COIN_FILTERS = {
   minShare: ['_sharePct', 'min'], minPairs: ['pairs', 'min'], minTest: ['avgTest', 'min'],
   minHold: ['avgHold', 'min'], minTrades: ['avgTrades', 'min'], minVsLong: ['avgVsLong', 'min'],
+  minAgreed: ['avgAgreed', 'min'],
 };
 function stage3Coins(id, query) {
   const t = readTally(id);
@@ -1747,7 +1750,9 @@ function stage3Coins(id, query) {
   const minHold = query.minHold === '' || query.minHold == null ? null : Number(query.minHold);
   const minTrades = query.minTrades === '' || query.minTrades == null ? null : Number(query.minTrades);
   const minVsLong = query.minVsLong === '' || query.minVsLong == null ? null : Number(query.minVsLong);
+  const minAgreed = query.minAgreed === '' || query.minAgreed == null ? null : Number(query.minAgreed);
   const clears = (r) => (minPairs ? r.pairs >= minPairs : true)
+    && (minAgreed == null || (r.avgAgreed != null && r.avgAgreed >= minAgreed))
     && (minShare == null || (r.share != null && r.share * 100 >= minShare))
     && (minHold == null || (r.avgHold != null && r.avgHold >= minHold))
     && (minTrades == null || (r.avgTrades != null && r.avgTrades >= minTrades))
@@ -1762,6 +1767,7 @@ function stage3Coins(id, query) {
     trades: (a, b) => ((b.avgTrades ?? -1e15) - (a.avgTrades ?? -1e15)) || byShare(a, b),
     vslong: (a, b) => ((b.avgVsLong ?? -1e15) - (a.avgVsLong ?? -1e15)) || byShare(a, b),
     rows: (a, b) => (b.rows - a.rows) || byShare(a, b),
+    agreed: (a, b) => ((b.avgAgreed ?? -1e15) - (a.avgAgreed ?? -1e15)) || byShare(a, b),
     coin: (a, b) => String(a.trade).localeCompare(String(b.trade)) || byShare(a, b),
     setting: (a, b) => String(a.cellLabel).localeCompare(String(b.cellLabel)) || byShare(a, b),
   };

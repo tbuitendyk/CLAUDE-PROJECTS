@@ -149,6 +149,41 @@ function percentileCutoff(callArrays, nTest, strictPct) {
   return sorted[Math.max(0, at)];
 }
 
+// WHAT ACTUALLY AGREED at a moment, on the same scale as the rung.
+//
+// The rung says what a setting DEMANDED. Every rule has always been "at or
+// above" it, so on most moments MORE than the bar's worth of members line up
+// — and until now nothing anywhere recorded how much. A table of settings all
+// built on one share therefore printed that one share on every row and gave
+// no way to tell a bare six-of-eight from a unanimous call.
+//
+// Read at the same moments and off the same votes the rule read, so the
+// number is the rule's own arithmetic reported rather than a second opinion.
+// Reporting only — no rule reads it, and it is never taken from the held-back
+// window.
+function achievedAt(ctx, i, rule, winner) {
+  const { calls } = ctx;
+  if (rule === 'voices') {
+    let w = 0;
+    for (let m = 0; m < calls.length; m++) if (calls[m][i] === winner) w += ctx.weights[m];
+    return w;
+  }
+  if (rule === 'conviction') {
+    let s = 0;
+    for (let m = 0; m < calls.length; m++) s += netLean(ctx.probs[m][i]);
+    return Math.abs(s);
+  }
+  if (rule === 'families') {
+    const seen = new Set();
+    for (let m = 0; m < calls.length; m++) if (calls[m][i] === winner) seen.add(ctx.families[m]);
+    return seen.size;
+  }
+  // count and unusual both weigh the plain head count of the winning side
+  let n = 0;
+  for (let m = 0; m < calls.length; m++) if (calls[m][i] === winner) n++;
+  return n;
+}
+
 // A whole stream of calls under one rule, with the two modifiers applied.
 //
 //   bothModels — the winning side must contain at least one of each kind of
@@ -181,6 +216,6 @@ function agreementStream(ctx, rule, level, mods = {}) {
 }
 
 module.exports = {
-  AGREE_RULES, RULE_WORDS, voiceGroups, argmaxCall, agreementStream, agreementAt,
+  AGREE_RULES, RULE_WORDS, voiceGroups, argmaxCall, agreementStream, agreementAt, achievedAt,
   percentileCutoff, netLean, sides,
 };
