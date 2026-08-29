@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **57c0f4f65fc7 — what the box is serving**, not from the working tree.
+Generated from **bb643c3e77f9 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
