@@ -157,6 +157,10 @@ const COL = {
   ladderUsd: 'US dollars the same bucket made with the declared ladder applied. The difference is the whole question.',
   // greenlight
   glId: 'the greenlight id. It is the config\'s identity on the Trade tab.',
+  fee: 'what a trade was assumed to cost on the run behind this greenlight, as a percent of the money in the '
+    + 'position, charged each way. It is not a setting here — it is what the evidence was found under, and a config '
+    + 'sent to the Trade tab starts out priced at it and can be changed there. A dash means the run predates the '
+    + 'fee being recorded.',
   campaign: 'the named line of work the source sweep belonged to.',
   why: 'the reason recorded at greenlight time. It is the decision record and is not editable afterwards.',
   minted: 'when the config was greenlighted, UTC.',
@@ -610,7 +614,76 @@ function swShowGroup(sel, on) {
   if (e) e.style.display = on ? 'flex' : 'none';
 }
 
+// THE COST LINES ARE ASKED ROBUSTLY (owner order, 2026-08-29: flipping the
+// stage 3 permutations around produced "the counter could not be asked" —
+// "make this thing more robust").
+//
+// Four things were wrong with asking, and all four show up exactly when the
+// owner is flipping boxes quickly, which is when the line matters most:
+//
+//   * IT SAID NOTHING USEFUL. askPost throws the reason away, so every failure
+//     read the same — a busy service, a refused block and a typo in the
+//     universe box were one message. Now the reason is kept and shown.
+//   * A VERDICT OUTLIVED THE BOXES IT WAS ABOUT. "start stage 3 will refuse"
+//     stayed on screen after the permutes that caused it were cleared (owner,
+//     2026-08-29). So the line is BLANKED THE INSTANT anything changes and says
+//     it is re-asking; a refusal or a figure is only ever on screen while it
+//     describes the boxes as they are set right now. Keeping the last good
+//     answer was considered and rejected for exactly this: the stale thing that
+//     hurts here is a refusal, and a refusal nobody can clear is worse than no
+//     number at all.
+//   * REPLIES COULD LAND OUT OF ORDER. Every change fired its own request; a
+//     slow early one arriving after a fast later one overwrote the right answer
+//     with a stale one, silently. Each ask now carries a ticket and a late
+//     reply is dropped.
+//   * IT ASKED ON EVERY FLIP. Ticking four boxes fired four counts at a service
+//     that may be running a stage job. The asks are coalesced.
+let swAskSeq = 0;               // the ticket; a reply from an old ticket is dropped
+let swCountsTimer = null;
+
+// One count ask: returns { ok, data } or { ok:false, why }. Retries ONCE,
+// because the common failure here is a service busy with a stage job for a
+// moment, not a wrong request — and a wrong request fails the same way twice.
+async function swAsk(path, body) {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const d = await post(path, body);
+      if (d && d.error) return { ok: false, why: String(d.error) };
+      return { ok: true, data: d };
+    } catch (e) {
+      const why = (e && e.message) || String(e);
+      // A refusal is an ANSWER — asking again gets the same one, and retrying
+      // it just doubles the load on a service that already said no.
+      if (attempt === 1 || /must be|refus|invalid|not a|HTTP 4/i.test(why)) return { ok: false, why };
+      await new Promise((r) => { setTimeout(r, 400); });
+    }
+  }
+  return { ok: false, why: 'the counter did not answer' };
+}
+
+// Draw one cost line: the fresh answer, or the reason there is none. Never a
+// figure or a verdict left over from a different set of boxes.
+function swSayCount(el, html, why) {
+  el.innerHTML = html != null ? html
+    : `<span class="warn">the count is not known right now — ${esc(why)}. `
+      + 'Change any box to ask again.</span>';
+}
+
+// Coalesce the flips: a burst of changes asks once, after the burst — and the
+// lines go blank the moment the first change lands, so nothing that described
+// the old boxes is still readable while the new answer is on its way.
+function swCountsSoon() {
+  for (const sel of ['#swCost1', '#swCount']) {
+    const el = $(sel);
+    if (el) el.innerHTML = '<span class="muted">…asking</span>';
+  }
+  clearTimeout(swCountsTimer);
+  swCountsTimer = setTimeout(() => { swCounts(); }, 250);
+}
+
 async function swCounts() {
+  const ticket = ++swAskSeq;
+  const current = () => ticket === swAskSeq;   // a newer ask has taken over
   // The agreement dial is a SHARE of whatever committee a unit holds, so it
   // applies to a coin judged on its own and to one read alongside others
   // alike — which is why the two committee-size boxes that used to live here
@@ -631,11 +704,14 @@ async function swCounts() {
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
     };
     if (!body.universe.length) delete body.universe;
-    const got = await askPost('api/stage1-count', body, null);
-    c1.innerHTML = got && !got.error
-      ? `${got.units.toLocaleString()} units → ${got.trainings.toLocaleString()} trainings, votes kept for every one · null set is free arithmetic`
-      : `<span class="warn">${esc((got && got.error) || 'the counter could not be asked')}</span>`;
+    const r = await swAsk('api/stage1-count', body);
+    if (current()) {
+      swSayCount(c1, r.ok
+        ? `${r.data.units.toLocaleString()} units → ${r.data.trainings.toLocaleString()} trainings, votes kept for every one · null set is free arithmetic`
+        : null, r.why);
+    }
   }
+  if (!current()) return;   // a newer ask is in flight; its answer is the one to draw
   const c3 = $('#swCount');
   if (c3) {
     const sets = swSetsCache || [];
@@ -647,21 +723,23 @@ async function swCounts() {
     // launch will price — which agreement bars exist is decided by them, and
     // a bar the run cannot use is neither counted nor named (owner order,
     // 2026-08-27: on singles there is no with contexts at all)
-    const got = await askPost('api/stage3-count', {
+    const r = await swAsk('api/stage3-count', {
       ...swBlockParams(), from: $('#swFrom3').value || '', carry, units: units || 0, coins: coins || 1,
-    }, null);
-    if (got && !got.error) {
+    });
+    if (!current()) return;
+    let html = null;
+    if (r.ok) {
+      const got = r.data;
       const sims = units ? got.settings * units * (1 + (Number($('#swNull3').value) || 0)) : null;
       // the budget verdict comes from the SAME arithmetic the launch enforces:
       // a refusal is said here, before the button is pressed
       const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
       const tight = !refuse ? ((got.heap && got.heap.band === 'tight' && got.heap) || (got.disk && got.disk.band === 'tight' && got.disk) || null) : null;
-      c3.innerHTML = `declared: <b>${got.settings.toLocaleString()} settings</b>${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#swNull3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
+      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#swNull3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
         + (refuse ? `<br><b class="neg">start stage 3 will refuse: ${esc(refuse.message)}</b>`
           : tight ? `<br><span class="warn">${esc(tight.message)}</span>` : '');
-    } else {
-      c3.innerHTML = `<span class="warn">${esc((got && got.error) || 'the counter could not be asked')}</span>`;
     }
+    swSayCount(c3, html, r.why);
   }
 }
 
@@ -2131,21 +2209,38 @@ async function drawSweep() {
     });
     if (got) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
   };
-  for (const id of ['swUni', 'swSingles', 'swDoubles', 'swTriples', 'swGeom', 'swPermGeom']) {
-    const el = $(`#${id}`); if (el) el.onchange = swCounts;
-  }
-  for (const id of ['swFrom3', 'swCarry3', 'swNull3', 'swDec', 'swPermDec', 'swBand', 'swPermBand', 'swWk', 'swPermWk', 'swEntry', 'swPermEntry',
-    'swGate', 'swPermGate', 'swD', 'swPermD', 'swT', 'swPermT', 'swTrail', 'swPermTrail', 'swArm', 'swPermArm',
-    'swAgreeRule', 'swPermAgreeRule', 'swAgreeShare', 'swPermAgreeShare', 'swAgreeBoth', 'swPermAgreeBoth', 'swAgreeHold', 'swPermAgreeHold']) {
-    const el = $(`#${id}`); if (el) el.onchange = swCounts;
-  }
+  // EVERY BOX THAT CHANGES THE COUNT RE-ASKS IT, AND ON TYPING AS WELL AS ON
+  // LEAVING THE BOX (owner, 2026-08-29: "especially it's not working with the
+  // null set size").
+  //
+  // Two faults, one line of wiring each:
+  //   * The list of controls was TYPED here, twice, so a control added later
+  //     was wired to nothing and its cost line silently stopped tracking it.
+  //     It is read off the page now, the same way the form memory reads it.
+  //   * Only `change` was wired. On a dropdown or a tick that fires at once,
+  //     but on a TYPED box — the null set size, the carry, the universe, the
+  //     band — `change` waits for the box to lose focus. So the owner typed a
+  //     new null set size, looked at the line, and it still described the old
+  //     one. `input` fires on every keystroke and the ask is coalesced, so this
+  //     costs one request per burst, not one per character.
+  //
+  // The description boxes are left out on purpose: they are recorded on the
+  // record set and change no count, so asking on them would be pure noise.
+  const NO_COUNT = new Set(['swDesc1', 'swDesc2', 'swDesc3']);
   // what is in the boxes survives a screen flip: write the remembered draft
-  // back BEFORE the counters read the boxes, then remember every change
+  // back BEFORE anything reads the boxes, then wire every duty in ONE walk of
+  // them — remembering the draft, repainting the provenance colours, and
+  // re-asking the counts. Two walks over the same list is two lists again, and
+  // the one that fell behind would be the one nobody was looking at.
   restoreSweepForm();
-  const noteSweepChange = () => { rememberSweepForm(); swProvenance(); };
-  for (const e of sweepControls()) {
-    e.addEventListener('change', noteSweepChange);
-    e.addEventListener('input', noteSweepChange);
+  for (const el of sweepControls()) {
+    const onChange = () => {
+      rememberSweepForm();
+      swProvenance();
+      if (!NO_COUNT.has(el.id)) swCountsSoon();
+    };
+    el.addEventListener('change', onChange);
+    el.addEventListener('input', onChange);
   }
   swProgress();
   swCounts();
@@ -2338,7 +2433,14 @@ async function drawBoards() {
       continue;
     }
     const incomplete = doc.status === 'incomplete'
-      ? `<div class="panel" data-role="incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
+      // ITS OWN MARKER, NOT THE OUTAGE ONE (2026-08-29). This wore
+      // data-role="incomplete", the marker draw() puts on the "a read failed"
+      // banner — and they mean opposite things. That one says the screen could
+      // not be drawn; this one says the set really is short those units and the
+      // numbers below are true but partial. Sharing a marker made the browser
+      // harness report a perfectly honest record set as a broken screen, and
+      // would have let a real outage hide behind a legitimate notice.
+      ? `<div class="panel" data-role="set-incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
        ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.</div>` : '';
     if (doc.stage === 1) await bDrawStage1(doc, incomplete, view, `#bT${stage}`);
     else if (doc.stage === 2) await bDrawStage2(doc, incomplete, view, `#bT${stage}`);
@@ -2371,6 +2473,7 @@ function bSortBtn(doc, key, firstDir) {
     title="click to sort the whole table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (A to Z / low to high first)'}; click again to flip it, a third click puts it away. Its number is the sort's priority — first, second, third. The saved order is exactly what carry forward reads at the next stage's launch.">${state}</button>`;
 }
 function bWireSort(doc, root) {
+  if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
   $(root).querySelectorAll('[data-bsortkey]').forEach((btn) => {
     btn.onclick = async () => {
       const key = btn.dataset.bsortkey;
@@ -2404,6 +2507,7 @@ function bRankSortBtn(doc, key, firstDir) {
     title="click to sort the whole table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (A to Z / low to high first)'}; click again to flip it, a third click puts it away. One column at a time — picking another column replaces this one. Saved on this record set.">${state}</button>`;
 }
 function bWireRankSort(doc, root) {
+  if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
   $(root).querySelectorAll('[data-branksort]').forEach((btn) => {
     btn.onclick = async () => {
       const key = btn.dataset.branksort;
@@ -2443,6 +2547,7 @@ async function bRedrawPeggedToCoinHead() {
 }
 
 function bWirePager(root) {
+  if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
   $(root).querySelectorAll('[data-bpage]').forEach((btn) => {
     btn.onclick = () => {
       const [key, from] = btn.dataset.bpage.split(':');
@@ -2471,6 +2576,7 @@ function bCoinSortBtn(view, key, naturalArrow) {
     title="one click sorts the whole table by this column${naturalArrow === '↓' ? ' — best first' : ' — A to Z'}; a second click turns it the other way.">${state}</button>`;
 }
 function bWireCoinSort(root) {
+  if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
   $(root).querySelectorAll('[data-bcoinsort]').forEach((btn) => {
     btn.onclick = () => {
       const key = btn.dataset.bcoinsort;
@@ -2512,6 +2618,7 @@ function bFilterGrid(key, specs) {
     <span class="frow"><button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button></span></div>`;
 }
 function bWireFilters(root) {
+  if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
   $(root).querySelectorAll('[data-bfilter]').forEach((el) => {
     el.onchange = () => {
       const [key, id] = el.dataset.bfilter.split(':');
@@ -2539,6 +2646,7 @@ function bFoldBtn(key, title) {
     title="puts this table away, or brings it back. It comes back as you left it.">${bTableOpen(key) ? '▾' : '▸'}</button>${title}</h3>`;
 }
 function bWireTableFold(root) {
+  if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
   $(root).querySelectorAll('[data-btablefold]').forEach((btn) => {
     btn.onclick = () => {
       const all = { ...(bView().tables || {}) };
@@ -2549,6 +2657,24 @@ function bWireTableFold(root) {
     };
   });
 }
+// A TABLE WRITES INTO ITS MOUNT ONLY IF THE MOUNT IS STILL THERE (2026-08-29).
+//
+// Each stage table fetches its rows and then writes them into `#bT1/2/3`. If
+// anything redraws Boards while that fetch is in flight — a filter, a page
+// turn, a fold, a flip away and back — #view is replaced and the mount the
+// earlier draw was going to write into no longer exists. `$(mount).innerHTML`
+// then threw `Cannot set properties of null`, which under the new rule blanks
+// the whole screen and says the section could not be drawn. It could: a NEWER
+// draw is already drawing it. Giving up quietly is the right answer, and the
+// six wiring helpers below are made tolerant for the same reason — they run
+// against the same mount a moment later.
+function bPut(mount, html) {
+  const el = typeof mount === 'string' ? $(mount) : mount;
+  if (!el) return null;                  // superseded: a newer draw owns the screen
+  el.innerHTML = html;
+  return el;
+}
+
 // The line under a table that owns up to what the filters removed.
 function bShown(t) {
   const total = (t && t.total) || 0;
@@ -2559,8 +2685,8 @@ function bShown(t) {
 async function bDrawStage1(doc, incomplete, view, mount) {
   const heading = `Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})`;
   if (!bTableOpen('S1')) {
-    $(mount).innerHTML = `${incomplete}<div class="panel">${bFoldBtn('S1', heading)}
-      <p class="note">put away — press the arrow to bring it back.</p></div>`;
+    if (!bPut(mount, `${incomplete}<div class="panel">${bFoldBtn('S1', heading)}
+      <p class="note">put away — press the arrow to bring it back.</p></div>`)) return;
     bWireTableFold(mount);
     return;
   }
@@ -2568,7 +2694,7 @@ async function bDrawStage1(doc, incomplete, view, mount) {
   const qs = new URLSearchParams({ from, n: 100, ...bFilters('S1') }).toString();
   const t = await apiOr(`api/stageset/${doc.id}/stage1?${qs}`, null);
   const rows = (t && t.rows) || [];
-  $(mount).innerHTML = `${incomplete}<div class="panel">
+  if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S1', heading)}
     ${bFilterGrid('S1', [
     ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
@@ -2607,7 +2733,7 @@ async function bDrawStage1(doc, incomplete, view, mount) {
       carry forward takes the top of. With nothing picked: beat its own null set, ties broken by lead over null set —
       the fixed rule. Independent voices below members means some members are near-copies of each other and the
       committee is smaller than it looks. No money on this table because stage 1 never prices a trade.</p>
-  </div>`;
+  </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
   bWireFilters(mount);
@@ -2617,8 +2743,8 @@ async function bDrawStage1(doc, incomplete, view, mount) {
 async function bDrawStage2(doc, incomplete, view, mount) {
   const heading = `Stage 2 — the carried rows, LOGREG joined by BOOST (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
   if (!bTableOpen('S2')) {
-    $(mount).innerHTML = `${incomplete}<div class="panel">${bFoldBtn('S2', heading)}
-      <p class="note">put away — press the arrow to bring it back.</p></div>`;
+    if (!bPut(mount, `${incomplete}<div class="panel">${bFoldBtn('S2', heading)}
+      <p class="note">put away — press the arrow to bring it back.</p></div>`)) return;
     bWireTableFold(mount);
     return;
   }
@@ -2626,7 +2752,7 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   const qs = new URLSearchParams({ from, n: 100, ...bFilters('S2') }).toString();
   const t = await apiOr(`api/stageset/${doc.id}/stage2?${qs}`, null);
   const rows = (t && t.rows) || [];
-  $(mount).innerHTML = `${incomplete}<div class="panel">
+  if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S2', heading)}
     ${bFilterGrid('S2', [
     ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
@@ -2674,7 +2800,7 @@ async function bDrawStage2(doc, incomplete, view, mount) {
       carry order either way. Independent voices below members means some members are near-copies; if the BOOST
       members added members without adding voices, this is where that shows. No money on this table: a stage 2
       record is training inventory. Pricing and the held-back window belong to stage 3.</p>
-  </div>`;
+  </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
   bWireFilters(mount);
@@ -2704,12 +2830,12 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   if (t) {
     const tp = t.totalling;
     const pct = tp && tp.total ? ` (${Math.floor((tp.done / tp.total) * 100)}%)` : '';
-    $(mount).innerHTML = `${incomplete}<div class="panel">
+    if (!bPut(mount, `${incomplete}<div class="panel">
       <h3 style="margin-top:0">Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
       ${t.failed ? `<p class="note"><b class="warn">the totalling failed:</b> ${esc(t.failed)} — the records are all kept; the totalling can be tried again after a service restart.</p>`
     : t.waiting ? `<p class="note">the tables are not totalled yet — ${esc(t.waiting)}. This page asks again every few seconds.</p>`
       : `<p class="note">totalling the tables: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} parts` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands.</p>`}
-    </div>`;
+    </div>`)) return;
     if (!t.failed) bTallyPoll = setTimeout(() => { if (tab === 'boards') drawBoards().then(() => restoreScroll(tab)); }, 4000);
     return;
   }
@@ -2718,7 +2844,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   const openKeys = new Set(view.openS3 || []);
   const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry].join('|');
   const swHead = `Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
-  $(mount).innerHTML = `${incomplete}<div class="panel">
+  if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S3R', swHead)}
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
     <p style="margin:.6rem 0 .2rem"><b>Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
@@ -2828,7 +2954,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   }).join('') || '<tr><td colspan="10" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${coins && coins.removed ? `<p class="note">${coins.removed.toLocaleString()} row(s) held back by the floors.</p>` : ''}
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
-  </div>`;
+  </div>`)) return;
   // THE ORDERING BOX AND ITS Apply ARE GONE (owner order, 2026-08-28: "remove
   // obsolete ordering selections as we can do all row ordering by column
   // selections"). Every column sorts on one click and every filter asks again

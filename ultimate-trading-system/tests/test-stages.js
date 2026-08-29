@@ -686,10 +686,21 @@ module.exports = {
     const screens = require('../lib/screencontrols');
     const body = screens.drawBody('drawSweep');
     assert.ok(body.includes('restoreSweepForm()'), 'every draw writes the remembered draft back into the boxes');
-    assert.ok(body.includes('rememberSweepForm(); swProvenance();'),
-      'every change is remembered AND repaints the provenance colors');
-    assert.ok(body.includes("addEventListener('change', noteSweepChange)"), 'every change is remembered');
-    assert.ok(body.includes("addEventListener('input', noteSweepChange)"), 'typing is remembered too, not only leaving the box');
+    // ONE WALK OF THE CONTROLS DOES ALL THREE DUTIES (2026-08-29). There were
+    // two walks — one wiring the draft memory and the provenance colours, one
+    // wiring the counts off a hand-typed list of ids — and the typed one had
+    // fallen behind, so the null set size changed nothing on the cost line.
+    assert.ok(body.includes('for (const el of sweepControls()) {'), 'the controls are not walked to be wired');
+    for (const [duty, why] of [
+      ['rememberSweepForm();', 'the draft is no longer remembered on a change'],
+      ['swProvenance();', 'the provenance colours no longer repaint on a change'],
+      ['swCountsSoon();', 'the cost lines no longer re-ask on a change'],
+    ]) {
+      assert.ok(body.includes(duty), why);
+    }
+    assert.ok(body.includes("el.addEventListener('change', onChange);") && body.includes("el.addEventListener('input', onChange);"),
+      'typing must count as a change too — on a typed box (the null set size, the carry, the universe) `change` '
+      + 'waits for the box to lose focus, which is how the cost line came to describe boxes the owner had already retyped');
     const fill = ui.slice(ui.indexOf('function fillStageForm('), ui.indexOf('let swSetsCache'));
     assert.ok(/rememberSweepForm\(\);/.test(fill),
       'a programmatic fill never fires change, so copy settings must remember what it wrote');
@@ -952,7 +963,7 @@ module.exports = {
     // enumerator — two copies of one arithmetic, and a whole test file existed
     // to keep them agreeing. This screen asks the engine for every number it
     // shows, so the two cannot disagree because there is only one.
-    assert.ok(src.includes("askPost('api/stage1-count'") && src.includes("askPost('api/stage3-count'"),
+    assert.ok(src.includes("swAsk('api/stage1-count'") && src.includes("swAsk('api/stage3-count'"),
       'the cost lines must come from the engine, not from arithmetic on the page');
     assert.ok(!/const MENUS = \{/.test(src), 'the page is counting settings for itself again');
     // the obsolete ordering box is gone and nothing still reaches for it

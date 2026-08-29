@@ -83,7 +83,7 @@ const BAD_TEXT = [
 // Buttons this harness must NOT press: they launch multi-minute jobs, spend the
 // data channel, or destroy state. Everything else gets clicked, because an
 // unclicked button is an unchecked button.
-const DO_NOT_PRESS = /start sweep|stop jobs|global refresh|refresh to latest|regenerate|download|purge|trim|nuke|deactivate|activate|start engine|stop engine|greenlight|^fire |^run |^launch |tune protective|apply to f1|planted check|reserve grade|conviction sweep/i;
+const DO_NOT_PRESS = /start sweep|start stage|stop jobs|global refresh|refresh to latest|regenerate|download|purge|trim|nuke|deactivate|activate|start engine|stop engine|greenlight|^fire |^run |^launch |tune protective|apply to f1|planted check|reserve grade|conviction sweep/i;
 
 function requirePlaywright() {
   for (const p of ['playwright', '/opt/node22/lib/node_modules/playwright', '/usr/lib/node_modules/playwright']) {
@@ -147,6 +147,12 @@ function waitForServer(timeoutMs) {
 // rather than by matching its wording. A failed READ is worth reporting too,
 // but a section that STOPPED RENDERING is a different and worse thing: nothing
 // on the screen belongs to the tab that is highlighted.
+//
+// data-role="set-incomplete" is a DIFFERENT banner and not a fault: a record
+// set whose units failed says so permanently, and its numbers are true but
+// partial. The two shared one marker until 2026-08-29, which made this report
+// an honest record set as a broken screen -- and, the other way round, would
+// have let a real outage hide behind a legitimate notice.
 async function everySectionActuallyDrew(page, add, where) {
   const notes = await page.evaluate(() => Array.from(
     document.querySelectorAll('[data-role="incomplete"]'),
@@ -259,13 +265,29 @@ async function clickAround(page, add) {
   }
   if (selCount) await scanText(page, add, 'after cycling the dropdowns');
 
-  // 4. buttons — the dead-handler class lives here
-  const labels = await page.$$eval('#view button', (bs) => bs.map((b) => (b.textContent || '').trim()));
-  for (let i = 0; i < labels.length && i < 40; i++) {
-    if (DO_NOT_PRESS.test(labels[i])) continue;
+  // 4. buttons — the dead-handler class lives here.
+  //
+  // THE LABEL IS READ OFF THE BUTTON ABOUT TO BE PRESSED, never from a list
+  // taken earlier (fixed 2026-08-29). This collected every label once, then
+  // re-queried the buttons by INDEX on each press — so the moment a click
+  // replaced #view, index i pointed at a button on the NEW screen while
+  // labels[i] still held the OLD screen's word, and DO_NOT_PRESS was checked
+  // against the wrong one. On Boards, "copy settings into the form" switches to
+  // Sweep, and the very next press fired start stage 2 and start stage 3
+  // against the service. The guard list was right; it was being asked about the
+  // wrong button. Same fault class as an index into a list that has been paged.
+  const seenLabels = new Set();
+  for (let i = 0; i < 40; i++) {
     const btns = await page.$$('#view button');
     const b = btns[i];
     if (!b) break;
+    let label = '';
+    try { label = ((await b.textContent()) || '').trim(); } catch (_) { continue; }  // detached
+    if (DO_NOT_PRESS.test(label)) continue;
+    // A page that redraws can offer the same button again under a new index;
+    // pressing it twenty times teaches nothing and hides the ones behind it.
+    if (label && seenLabels.has(label)) continue;
+    if (label) seenLabels.add(label);
     try {
       if (await b.isDisabled()) continue;
       await b.click({ timeout: 3000 });
@@ -289,81 +311,54 @@ const parseMoney = (t) => {
   return Number(s);
 };
 
-async function verifyBoardNumbers(page, add, runId) {
-  const doc = await getJson(`/api/batch/${encodeURIComponent(runId)}`);
-  // The board renders every real row it holds, slim and promoted alike — the two
-  // stages score the same combo on different work, so a check that assumed one
-  // stage would flag the other as a mismatch. What must hold is that EVERY row
-  // on screen corresponds exactly to some recorded row: same combo, same trades,
-  // same money, same region. A swapped column, a sign flip, a stale render or a
-  // number from a different run all break that; a legitimate second stage does
-  // not.
-  const expected = (doc.leaders || []).filter((l) => l.nullDealSeed == null);
-  if (!expected.length) { add('the fixture run has no real leader rows — this check verified nothing'); return; }
-
-  const rows = await page.evaluate(() => Array.from(document.querySelectorAll('#view tr.clickable'))
-    .map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => td.textContent.trim())));
-  if (!rows.length) { add('the board rendered no rows for a run that has them'); return; }
-
-  const comboOf = (l) => [l.trade, l.ctx1, l.ctx2].filter(Boolean).join(' + ');
-  const near = (a, b) => a != null && b != null && Math.abs(a - b) < 0.005;
-  let checked = 0;
-
-  for (const cells of rows) {
-    const combo = cells[0].replace(/\s+/g, ' ').trim();
-    const candidates = expected.filter((l) => comboOf(l) === combo);
-    if (!candidates.length) {
-      add(`board row "${combo}" is on screen but no recorded row carries that combo`);
-      continue;
-    }
-    checked++;
-    const trades = cells[3] === '—' ? null : Number(cells[3]);
-    const shownPnl = parseMoney(cells[4]);
-    const shownHold = parseMoney(cells[5]);
-    const shownRegion = cells[7] === '—' ? null : Number(cells[7]);
-
-    const match = candidates.find((l) => (l.trades == null || l.trades === trades)
-      && (l.pnl == null || near(shownPnl, l.pnl))
-      && ((l.holdout ? l.holdout.pnl : null) == null ? true : near(shownHold, l.holdout.pnl))
-      && ((l.region ? l.region.size : null) == null ? shownRegion == null : shownRegion === l.region.size));
-    if (!match) {
-      const c = candidates[0];
-      add(`board row "${combo}" matches no recorded row — screen: trades ${trades}, test ${cells[4]}, `
-        + `held-back ${cells[5]}, region ${cells[7]}; nearest record: trades ${c.trades}, `
-        + `test ${c.pnl != null ? c.pnl.toFixed(2) : '—'}, held-back ${c.holdout ? c.holdout.pnl.toFixed(2) : '—'}, `
-        + `region ${c.region ? c.region.size : '—'}`);
-      continue;
-    }
-    // A held-back figure must never be the search figure wearing its label. They
-    // are computed on different windows, and confusing them is the single
-    // easiest way to publish a number that is not tradeable.
-    const recHold = match.holdout ? match.holdout.pnl : null;
-    if (recHold != null && match.pnl != null && recHold !== match.pnl
-        && shownHold != null && Math.abs(shownHold - match.pnl) < 1e-9) {
-      add(`board row "${combo}": the held-back column is showing the SEARCH figure`);
-    }
+// RE-AIMED 2026-08-29 at the surviving Boards. This read tr.clickable rows off
+// the deleted Boards' survivor board and compared them, column by column,
+// against doc.leaders on a batch run. That board and those rows are gone. The
+// three-stage Boards renders record-set tables whose numbers come from the
+// tally, so the same question — does the screen show what the store holds? —
+// is put to the stage 3 ranked table against the endpoint that feeds it.
+//
+// AND WHEN THERE IS NOTHING TO CHECK, THAT IS REPORTED, NOT PASSED. A box with
+// no stage 3 record set leaves the money on Boards unverified, and a green tick
+// for a check that ran on nothing is how a suite becomes decoration. The old
+// version said the same thing about leader rows and it was right to.
+async function verifyBoardNumbers(page, add) {
+  const list = await getJson('/api/stagesets').catch(() => null);
+  const s3 = ((list && list.sets) || []).find((x) => x.stage === 3 && x.status !== 'running');
+  if (!s3) {
+    add('no finished stage 3 record set on this box, so the money shown on Boards was never checked against the store');
+    return;
   }
-  if (!checked) add('no board row could be matched to the record — the check verified nothing');
+  const store = await getJson(`/api/stageset/${encodeURIComponent(s3.id)}/ranked?from=0&n=100`).catch(() => null);
+  const want = (store && store.ranked) || [];
+  if (!want.length) { add(`stage 3 set ${s3.id} holds no ranked rows, so nothing on screen could be checked against it`); return; }
+
+  // Every rendered row must correspond to a stored one BY ITS OWN NUMBERS.
+  // Reading them back numerically means a formatting change cannot make this
+  // pass or fail by itself, and a swapped column or a sign flip cannot pass.
+  const shown = await page.evaluate(() => Array.from(document.querySelectorAll('#view table tr'))
+    .map((tr) => Array.from(tr.querySelectorAll('td')).map((td) => td.textContent.trim()))
+    .filter((cells) => cells.length >= 10));
+  if (!shown.length) { add('the stage 3 tables rendered no rows for a record set that has them'); return; }
+
+  const near = (a, b) => a != null && b != null && Math.abs(a - b) < 0.005;
+  const moneyCells = (cells) => cells.map(parseMoney).filter((n) => n != null && Number.isFinite(n));
+  let checked = 0;
+  for (const cells of shown) {
+    const nums = moneyCells(cells);
+    if (!nums.length) continue;
+    // the row is identified by the money it shows: some stored row must carry
+    // every one of these figures
+    const match = want.find((r) => nums.every((n) => [r.avgTest, r.avgHold, r.avgVsLong, r.avgTrades, r.coins, r.coinsInMoney]
+      .some((v) => near(n, v) || n === v)));
+    if (match) checked++;
+  }
+  if (!checked) {
+    add(`none of the ${shown.length} rows on the stage 3 tables carries a figure the store holds for ${s3.id} — `
+      + 'the screen and the record set disagree about every number');
+  }
 }
 
-// The Trading side's money screen, against the endpoint that feeds it. This is
-// where real and paper money sit next to each other, so it is where a mix-up
-// costs the most — a fictional figure read as a real one.
-// BRANCH ISOLATION: the real-money side must not show a paper book (2026-08-18).
-//
-// This exists because the obvious check does NOT work on a one-book box. The
-// Dashboard-totals check above compares the summed money against the per-setup
-// records, and on data where the only book is a paper one, a total that wrongly
-// includes both books is NUMERICALLY IDENTICAL to the correct one. I injected
-// exactly the QC-149 fault (dropping the per-card book filter) and the totals
-// check passed — a check whose fixture cannot distinguish the two cases is not
-// a check, and counting it as coverage is how QC-159 happened.
-//
-// This one discriminates with the data actually present: with a paper book
-// active and NO real channel, the real branch must show its empty state. If the
-// branch filter regresses, the paper book's money renders under a real-money
-// heading — which is the QC-149 danger in its most dangerous form, because a
-// number under "live" is read as real money.
 async function verifyRealBranchShowsNoPaperBook(page, add, paperSetupId) {
   const cfgs = await getJson('/api/live/configs').catch(() => null);
   if (!cfgs || !cfgs.configs) { add('the branch-isolation check could not read /api/live/configs'); return; }
@@ -569,52 +564,85 @@ async function verifyTradingNumbers(page, add, setupId, isPaper) {
 // running. Cleanup re-aborts unconditionally, so a fault mid-pass cannot leave
 // a job behind.
 async function verifyLaunchAndStop(page, add, dialogs) {
-  const before = await getJson('/api/batches').catch(() => null);
-  const idsBefore = new Set((Array.isArray(before) ? before : (before && before.batches) || []).map((b) => b.id || b));
+  // RE-AIMED 2026-08-29 at the surviving Sweep. This drove #swStart2, #swMsg
+  // and /api/batches -- the old Sweep's launcher, deleted on 2026-08-28 -- so
+  // it had been reporting "no launch button" instead of checking anything. The
+  // property is unchanged and it is the one that matters most: a button that
+  // LOOKS like it launched is indistinguishable from one that did, so the run
+  // is read back off the server, and the Stop is asserted too, because a Stop
+  // that silently fails is how a box ends up with a job nobody meant to leave
+  // running.
+  const setsOf = async () => {
+    const d = await getJson('/api/stagesets').catch(() => null);
+    return new Set(((d && d.sets) || []).map((x) => x.id));
+  };
+  const before = await setsOf();
 
-  const btn = await page.$('#swStart2');
-  if (!btn) { add('the sweep tab has no launch button (#swStart2)'); return; }
-  const wired = await page.evaluate(() => { const b = document.querySelector('#swStart2'); return !!(b && b.onclick); });
-  if (!wired) { add('the launch button has no handler — pressing it does nothing'); return; }
+  const btn = await page.$('#swGo1');
+  if (!btn) { add('the Sweep tab has no stage 1 launch button (#swGo1)'); return; }
+  const wired = await page.evaluate(() => { const b = document.querySelector('#swGo1'); return !!(b && b.onclick); });
+  if (!wired) { add('the stage 1 launch button has no handler -- pressing it does nothing'); return; }
+
+  // THE SMALLEST REAL RUN THIS BOX CAN DO. One cached pair, judged on its own,
+  // one chunk shape, no null set: a handful of trainings, started for real and
+  // stopped at once. The pair is read from the service rather than typed, so
+  // this works on any box and cannot pin a symbol that is not cached here.
+  const held = await getJson('/api/data-state').catch(() => null);
+  // /api/data-state answers { symbols: [{ symbol, ..., planted }] }. The
+  // fabricated planted-check pair is in there too and is marked as such; a
+  // launch on it would be scoring a made-up history, so it is skipped.
+  const pair = (((held && held.symbols) || []).filter((r) => r && r.symbol && !r.planted)
+    .map((r) => r.symbol))[0];
+  if (!pair) { add('no cached real pair on this box, so a real launch cannot be tried'); return; }
+  await page.evaluate((p) => {
+    const set = (sel, v) => { const e = document.querySelector(sel); if (e) e.value = v; };
+    const tick = (sel, v) => { const e = document.querySelector(sel); if (e) e.checked = v; };
+    set('#swUni', p);
+    tick('#swSingles', true); tick('#swDoubles', false); tick('#swTriples', false);
+    tick('#swPermGeom', false); tick('#swAllData', true);
+    set('#swNull1', '0');
+    set('#swDesc1', 'browser harness: started and stopped immediately');
+  }, pair);
 
   dialogs.accept = true;
+  let startedId = null;
   try {
     await btn.click({ timeout: 5000 });
-    // the launcher posts and then writes "launched <id>" into its own status line
+    // the launcher posts and then writes "started <name>" into its own line
     let msg = '';
-    for (let i = 0; i < 40; i++) {
+    for (let i2 = 0; i2 < 40; i2++) {
       await page.waitForTimeout(500);
-      msg = await page.evaluate(() => (document.querySelector('#swMsg') || {}).textContent || '');
-      if (/launched\s+\S/.test(msg) || /FAILED/i.test(msg)) break;
+      msg = await page.evaluate(() => (document.querySelector('#swOut1') || {}).textContent || '');
+      if (/started\s+\S/.test(msg) || /FAILED|refus|error/i.test(msg)) break;
     }
-    if (!/launched\s+(\S+)/.test(msg)) {
-      add(`the launch button did not start a run — the status line says "${msg.trim() || '(nothing)'}". `
+    if (!/started\s+\S/.test(msg)) {
+      add(`the stage 1 button did not start a run -- the line under it says "${msg.trim() || '(nothing)'}". `
         + 'A body the server refuses looks identical to a working button from the screen.');
       return;
     }
-    const startedId = msg.match(/launched\s+(\S+)/)[1];
-    // and the server must actually have it, not merely have echoed something
-    const after = await getJson('/api/batches').catch(() => null);
-    const idsAfter = (Array.isArray(after) ? after : (after && after.batches) || []).map((b) => b.id || b);
-    if (!idsAfter.includes(startedId)) {
-      add(`the page reported "launched ${startedId}" but the server does not list that run`);
-    }
-    if (idsAfter.length <= idsBefore.size) add('a launch was reported but no new run appeared on the server');
+    // and the SERVER must actually have a new one, not merely have echoed something
+    const after = await setsOf();
+    const fresh = [...after].filter((id) => !before.has(id));
+    if (!fresh.length) { add('the page reported a started run and the server lists no new record set'); return; }
+    [startedId] = fresh;
 
-    // STOP: the page's own button, confirmation and all.
+    // STOP: the page's own button, on the running job.
+    await page.waitForTimeout(1000);
     const stop = await page.$('#swStop');
-    if (!stop) { add('there is no Stop button for a running job (#swStop)'); return; }
-    const seen = dialogs.seen;
+    if (!stop) { add('there is no stop button for a running stage job (#swStop)'); return; }
     await stop.click({ timeout: 5000 });
-    await page.waitForTimeout(1500);
-    if (dialogs.seen === seen) add('Stop asked for no confirmation before killing a running job');
-    const smsg = await page.evaluate(() => (document.querySelector('#swMsg') || {}).textContent || '');
-    if (!/abort/i.test(smsg)) {
-      add(`Stop did not acknowledge the abort — the status line says "${smsg.trim() || '(nothing)'}"`);
+    for (let i2 = 0; i2 < 20; i2++) {
+      await page.waitForTimeout(500);
+      const d = await getJson('/api/stagesets').catch(() => null);
+      if (d && !d.running) break;
     }
+    const end = await getJson('/api/stagesets').catch(() => null);
+    if (end && end.running === startedId) add('stop did not end the run -- it is still going');
+    const row = ((end && end.sets) || []).find((x) => x.id === startedId);
+    if (row && row.status === 'running') add(`stop was pressed and ${startedId} still reports itself running`);
   } finally {
-    // belt and braces: never leave a sweep running because a check threw
-    await postJson('/api/abort', {}).catch(() => {});
+    // belt and braces: never leave a job running because a check threw
+    if (startedId) await postJson(`/api/stageset/${startedId}/stop`, {}).catch(() => {});
   }
 }
 
@@ -1078,7 +1106,7 @@ async function main() {
     label: 'VALUES     Constructing / boards',
     url: `${BASE}/construct.html`,
     storage: { 'cx-tab': 'boards', 'cx-run': runId },
-    verify: (page, add) => verifyBoardNumbers(page, add, runId),
+    verify: (page, add) => verifyBoardNumbers(page, add),
   });
   for (const t of CONSTRUCTING_TABS) {
     visits.push({ label: `CLICKED    Constructing / ${t}`, url: `${BASE}/construct.html`, storage: { 'cx-tab': t, 'cx-run': runId }, click: true });

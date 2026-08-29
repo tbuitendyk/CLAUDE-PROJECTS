@@ -507,7 +507,9 @@ module.exports = {
     assert.ok(/document\.querySelectorAll\('#view \[id\^="sw"\]'\)/.test(UI),
       'the control list must be asked of the page — a list written here needs remembering when a control is added');
     assert.ok(/restoreSweepForm\(\);/.test(UI), 'nothing writes the remembered draft back into the boxes');
-    assert.ok(/const noteSweepChange = \(\) => \{ rememberSweepForm\(\); swProvenance\(\); \};/.test(UI),
+    assert.ok(/for \(const el of sweepControls\(\)\) \{\n\s*const onChange = \(\) => \{\n\s*rememberSweepForm\(\);/.test(UI),
       'the boxes are no longer remembered on every change');
+    assert.ok(/el\.addEventListener\('change', onChange\);\n\s*el\.addEventListener\('input', onChange\);/.test(UI),
+      'typing is not remembered — only leaving the box is, so a draft is lost by flipping away mid-word');
   },
 };

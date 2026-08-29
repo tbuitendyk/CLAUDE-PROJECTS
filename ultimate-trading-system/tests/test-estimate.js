@@ -261,7 +261,7 @@ module.exports = {
     const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
     assert.ok(/function swBlockParams\(\)/.test(ui),
       'the stage 3 block must be built in one place — two copies are two different runs, the one priced and the one started');
-    assert.ok(/askPost\('api\/stage3-count', \{\n\s*\.\.\.swBlockParams\(\)/.test(ui),
+    assert.ok(/swAsk\('api\/stage3-count', \{\n\s*\.\.\.swBlockParams\(\)/.test(ui),
       'and the count must be asked for THAT block');
     const launch = ui.slice(ui.indexOf("tryPost('api/stage3', {"), ui.indexOf("tryPost('api/stage3', {") + 400);
     assert.ok(/\.\.\.swBlockParams\(\),/.test(launch),
