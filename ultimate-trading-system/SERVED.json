@@ -1,8 +1,8 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "85ca562e5c0c98bb490190a4290a950b0341d2f7",
-  "subject": "Eight tabs: delete Sweep/Sweep2/Boards/Boards2, rename Sweep3/Boards3 to Sweep/Boards",
-  "capturedAt": "2026-08-29T03:25:00Z",
+  "commit": "0d999ad5e2c0a967c04427caba71dc8e299e1b43",
+  "subject": "Word lists: eight tabs, and a reader that can see the paging bar",
+  "capturedAt": "2026-08-29T03:42:00Z",
   "files": {
     "public/construct.js": {
       "sha256": "2b1a73bd4b914114d727e711a187f34dcc5ab243e922b84f917293e383e06107",
