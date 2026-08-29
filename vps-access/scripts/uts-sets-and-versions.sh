@@ -12,6 +12,15 @@ B=http://127.0.0.1:8094
 curl -sf --max-time 25 "$B/api/stagesets" -o /tmp/uts-sets.json \
   || { echo "the record-set list did not answer"; exit 1; }
 curl -sf --max-time 25 "$B/api/planted-gate/status" -o /tmp/uts-pg2.json 2>/dev/null || true
+# The LIST row does not carry the stamps (it ships plan, counts and params
+# only), so each set is fetched for the two fields that decide whether it can
+# still be a parent. Read-only.
+: > /tmp/uts-setdocs.jsonl
+for id in $(python3 -c 'import json;print(" ".join(s["id"] for s in (json.load(open("/tmp/uts-sets.json")).get("sets") or [])))'); do
+  curl -sf --max-time 25 "$B/api/stageset/$id" \
+    | python3 -c 'import json,sys; d=json.load(sys.stdin).get("set") or {}; print(json.dumps({k:d.get(k) for k in ("id","stage","status","name","engineVersion","measurements")}))' \
+    >> /tmp/uts-setdocs.jsonl 2>/dev/null || true
+done
 python3 <<'PY'
 import json, os
 d = json.load(open('/tmp/uts-sets.json'))
@@ -27,14 +36,24 @@ if not sets:
     print("nothing would be stranded by a release bump.")
 else:
     print()
+    docs = {}
+    try:
+        for line in open('/tmp/uts-setdocs.jsonl'):
+            r = json.loads(line); docs[r['id']] = r
+    except Exception: pass
     print(f"  {'id':<28} {'stg':<4} {'status':<11} {'engine':<9} {'block':<6} name")
     for s in sets:
+        d = docs.get(s.get('id'), {})
         print(f"  {str(s.get('id'))[:28]:<28} {str(s.get('stage')):<4} {str(s.get('status')):<11} "
-              f"{str(s.get('engineVersion') or '-'):<9} {str(s.get('measurementsVersion') or '-'):<6} {str(s.get('name'))[:40]}")
+              f"{str(d.get('engineVersion') or '?'):<9} {str(d.get('measurements') or '?'):<6} {str(s.get('name'))[:40]}")
     print()
     by = {}
     for s in sets:
         by.setdefault((s.get('engineVersion'), s.get('measurementsVersion')), []).append(s)
+    by = {}
+    for s in sets:
+        d = docs.get(s.get('id'), {})
+        by.setdefault((d.get('engineVersion'), d.get('measurements')), []).append(s)
     for (ev, mv), rows in sorted(by.items(), key=lambda kv: str(kv[0])):
         note = ''
         if cur and ev and ev != cur:
