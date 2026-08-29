@@ -671,7 +671,10 @@ function expandBracketPlan(p) {
 // the same execution cell scored on every asset, so each asset costs one
 // look instead of the ~1,260 a menu sweep spends. The quorum travels as a
 // RATIO of the member set (row 9's 4-of-12 = 1/3), so it means the same
-// thing whether a combo yields 6 members (singles) or 8 (with contexts).
+// thing whichever committee size a combo yields — 8 for a coin on its own and
+// 10 with context coins today, and it kept meaning the same thing when a fourth
+// slice moved those from 6 and 8 on 2026-08-28. Sizes are never written down
+// here; slimViewsFor is the one place that knows.
 // Only the PROMOTED stage carries every rung, so declared cells are read
 // there; the slim stage only ever has the majority-vote stream.
 const { declaredQuorumFor } = require('./bracketwork');
@@ -726,10 +729,13 @@ function validateDeclared(raw, menus) {
       throw new Error('declared.armMult is meaningless without declared.trailMult — omit it');
     }
   }
-  // PER-SIZE COUNTS (owner, 2026-07-31). Committees are 6 members for a
-  // single coin and 8 with context coins, so a declaration may name a count
-  // for each. Either alone is valid — a run that ticks only one combo size
-  // only needs one.
+  // PER-SIZE COUNTS (owner, 2026-07-31). A coin on its own and a coin read
+  // with context coins have different committee sizes, so a declaration may
+  // name a count for each. Either alone is valid — a run that ticks only one
+  // combo size only needs one. The sizes themselves are NOT written down here:
+  // they come from declaredQuorumFor, which reads slimViewsFor. This comment
+  // used to say "6 and 8" and went stale the day a fourth slice made it 8 and
+  // 10, which is exactly why a count belongs in one place and not in prose.
   if (raw.quorumSingles !== undefined || raw.quorumContexts !== undefined) {
     const each = (v, cap, name) => {
       if (v === undefined) return undefined;

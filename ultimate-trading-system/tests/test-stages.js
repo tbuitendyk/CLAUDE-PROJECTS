@@ -1055,4 +1055,62 @@ module.exports = {
       try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* fixture */ }
     }
   },
+  // EVERY MEMBER COUNT THE OWNER READS IS COUNTED, NEVER TYPED (owner,
+  // 2026-08-28: "check your tool tips on the Sweep page -- are these true?:
+  // 'singles' -- '... 3 members each.' ... fix them all").
+  //
+  // They were not true. They said 3 and 4 — the counts from before a fourth
+  // slice of the numbers was added — and they had been wrong on the screen and
+  // in the hovers since that landed. Nothing checked them, so nothing noticed;
+  // worse, they were reported to the owner as fixed while the hovers still said
+  // 3, because "I changed it" was checked by eye and not by anything.
+  //
+  // So the counts are DERIVED from the code that actually builds the committee
+  // and compared against every number the owner can read. A fifth slice
+  // tomorrow fails this until both screens and all three hovers move with it.
+  async everyMemberCountOnScreenIsTheCountTheCodeBuilds() {
+    const { slimViewsFor } = require('../lib/bracketwork');
+    const alone = slimViewsFor(1).length;          // a coin judged on its own
+    const withOthers = slimViewsFor(2).length;     // alongside one or two others
+    assert.ok(alone >= 1 && withOthers > alone,
+      `the committee sizes read ${alone} and ${withOthers} — a coin read alongside others must have more to read, not fewer`);
+
+    // stage 1 trains LOGREG on each slice; stage 2 adds BOOST on the same ones
+    const work = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    assert.ok(/slimViewsFor\(combo\.size\)\.map\(\(view\) => \(\{ model: 'logreg', view \}\)\)/.test(work),
+      'stage 1 no longer trains one LOGREG member per slice, so these counts are derived from the wrong thing');
+    assert.ok(/slimViewsFor\(combo\.size\)\.map\(\(view\) => \(\{ model: 'boost', view \}\)\)/.test(work),
+      'stage 2 no longer adds one BOOST member per slice');
+
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const HELP = (() => { const box = {}; // eslint-disable-next-line no-new-func
+      new Function('window', fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8'))(box);
+      return box.HELP; })();
+
+    // 1. THE TWO LINES THE SWEEP SCREEN PRINTS, one per stage.
+    const said = `${alone} per coin on its own, ${withOthers} alongside others`;
+    assert.strictEqual((src.split(said).length - 1), 2,
+      `the Sweep screen must say "${said}" once for the LOGREG members and once for the BOOST members — `
+      + `it says it ${src.split(said).length - 1} time(s), so at least one of those lines is stating a count nobody counted`);
+
+    // 2. THE THREE HOVERS, which is where it was actually wrong.
+    const c = HELP.sweep.controls;
+    for (const [id, first, full] of [
+      ['swSingles', alone, alone * 2],
+      ['swDoubles', withOthers, withOthers * 2],
+      ['swTriples', withOthers, withOthers * 2],
+    ]) {
+      const text = `${c[id].what} ${c[id].more || ''}`;
+      assert.ok(new RegExp(`\\b${first} members after stage 1\\b`).test(text),
+        `the ${id} hover does not say ${first} members after stage 1; it says: ${c[id].what}`);
+      assert.ok(new RegExp(`\\b${full} once stage 2\\b`).test(text),
+        `the ${id} hover does not say ${full} once stage 2 has added the BOOST members; it says: ${c[id].what}`);
+      // and no OTHER member count may sit in the same hover contradicting it
+      const others = [...text.matchAll(/(\d+) members\b/g)].map((m) => Number(m[1]))
+        .filter((n) => n !== first && n !== full);
+      assert.deepStrictEqual(others, [],
+        `the ${id} hover also states ${others.join(', ')} members, which is not what the code builds`);
+    }
+  },
+
 };

@@ -128,9 +128,18 @@ window.HELP = {
     controls: {
       ...CAMPAIGN_PANEL_CONTROLS,
       swUni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
-      swSingles: { what: 'Include each coin judged on its own price history alone — 3 members each.' },
-      swDoubles: { what: 'Include each coin judged alongside one other coin — 4 members each, the cross view added.' },
-      swTriples: { what: 'Include each coin judged alongside two others — 4 members each.' },
+      swSingles: {
+        what: 'Include each coin judged on its own price history alone — 4 members after stage 1, and 8 once stage 2 has added the BOOST members.',
+        more: 'Each member reads a different slice of the same prices, so a coin on its own has four to read and one member for each. The count was wrong on this hover until 2026-08-28: it said 3, which was true before a fourth slice was added.',
+      },
+      swDoubles: {
+        what: 'Include each coin judged alongside one other coin — 5 members after stage 1, and 10 once stage 2 has added the BOOST members.',
+        more: 'One more than a coin on its own, and the extra member is the one that reads how the two coins move against each other — there is nothing for it to read when a coin is judged alone. It costs a great deal more than singles: every coin is paired with every other, so the number of things to train grows with the square of how many coins you name.',
+      },
+      swTriples: {
+        what: 'Include each coin judged alongside two others — 5 members after stage 1, and 10 once stage 2 has added the BOOST members, the same as doubles.',
+        more: 'The extra member reads how the coins move against each other, as with doubles; there is no sixth. What changes is the cost — every coin is grouped with every PAIR of others, which grows with the cube of how many coins you name and is far and away the most expensive box on this screen.',
+      },
       swAllData: { what: 'Use every month of price history that is held, rather than a chosen range. With this ticked, start and end are ignored.' },
       swStart: { what: 'First month of price history stage 1 works over.' },
       swEnd: { what: 'Last month of price history stage 1 works over.' },

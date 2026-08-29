@@ -275,6 +275,12 @@ const GUARDS = [
     'theReaderFollowsWhatARendererDrawsWith', 'the reader stops one hop from the renderer again and the paging bar goes back to being a screen the word list cannot see'],
   [path.join(ROOT, 'lib', 'screencontrols.js'), "      if (isScreen(name)) { seen.add(name); continue; }", '',
     'theReaderFollowsWhatARendererDrawsWith', 'a helper that redraws the page drags every other screen\'s words onto this list — every word in the app authorised on every screen'],
+  // THE MEMBER COUNTS THE OWNER READS. Both halves: the two lines the Sweep
+  // screen prints, and the three hovers where they were actually wrong.
+  [path.join(ROOT, 'public', 'construct.js'), '4 per coin on its own, 5 alongside others', '3 per coin on its own, 4 alongside others',
+    'everyMemberCountOnScreenIsTheCountTheCodeBuilds', 'the Sweep screen states a committee size nobody counted, and it reads as fact'],
+  [path.join(ROOT, 'public', 'help-content.js'), '4 members after stage 1', '3 members after stage 1',
+    'everyMemberCountOnScreenIsTheCountTheCodeBuilds', 'the singles hover goes back to the count from before the fourth slice — the exact wrong number the owner caught'],
 ];
 
 const only = process.argv[2] || '';
