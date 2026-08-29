@@ -854,6 +854,100 @@ function agreementsFor(params, sizes) {
 // enumerator the sweep launcher uses, so a block here can never contain a
 // trade the old path would refuse; the agreement dimension is this stage's
 // own, because the old path cannot express any of it.
+// TWO SETTINGS THAT PRICE THE SAME TRADE ARE ONE SETTING (owner order,
+// 2026-08-29, after asking whether band % and d were producing duplicates).
+//
+// They were not — on today's menus all 195 band-and-d-and-trail-and-arm
+// combinations come out distinct — but only by luck of the numbers, and
+// nothing checked. The band is NOT an independent dimension at pricing time:
+// simCell uses it for exactly three things and nothing else —
+//
+//     dPct = dMult x band     trailPct = trailMult x band     armPct = armMult x band
+//
+// — so it is the UNIT those three are measured in. Two settings whose three
+// products match place identical orders and would be paid for twice: once in
+// compute, and again in a ranked table listing the same trade under two names.
+// Add 0.6 to the distance menu tomorrow and 5% x 0.6 becomes 3% x 1.0.
+//
+// AND `auto` IS THE CASE THAT CANNOT BE SEEN ON THE MENUS AT ALL. It resolves
+// per unit to that unit's own measured band, so an auto setting is the same
+// trade as a fixed 5% one for every coin whose band happens to be 5. The
+// records carry each unit's band, so the launch resolves it and compares the
+// whole run — the same rule the agreement shares already follow: settings that
+// come out identical FOR EVERY UNIT are one setting; if they differ on even one
+// coin they are two, and both run.
+//
+// HOW CLOSE IS THE SAME. A relative tolerance, because these are percentages
+// of price and an auto band is a measured number that will never land exactly
+// on 5. The menus' own finest deliberate distinction is 6.7% apart (3.75
+// against 4.0 as rail distances), so a 1% tolerance cannot merge two choices
+// the menus meant to keep separate, while it does merge an auto band that has
+// landed on one of them. Being a tolerance it is not transitive — a long enough
+// chain of near-matches could fold two ends that are 2% apart — so matching is
+// greedy against a representative rather than clustered, which bounds it, and
+// the number folded is always reported rather than absorbed.
+const SAME_TRADE_TOLERANCE = 0.01;
+const sameShape = (a, b) => {
+  if (a == null || b == null) return a == null && b == null;
+  const scale = Math.max(Math.abs(a), Math.abs(b));
+  return scale === 0 ? true : Math.abs(a - b) <= SAME_TRADE_TOLERANCE * scale;
+};
+
+// The band each unit would price this setting at: a number is itself, `auto`
+// is that unit's own measured band.
+function bandsAcross(band, records) {
+  if (band !== 'auto') { const n = Math.abs(Number(band)); return records.map(() => n); }
+  return records.map((r) => Math.abs(Number(r.bandPct)) || 0);
+}
+
+// Fold a declared block down to the settings that actually price different
+// trades. Returns the kept settings and what was folded into what, so the
+// screen can say so.
+function foldSameTradeSettings(settings, records) {
+  if (!Array.isArray(records) || !records.length) return { kept: settings, folded: [] };
+  // Only the band and the three multipliers decide the priced geometry, and a
+  // block holds a handful of those combinations however many settings it has —
+  // so equivalence is worked out once per combination, not once per setting.
+  const shapeKey = (st) => [st.band, st.dMult ?? null, st.trailMult ?? null, st.armMult ?? null].join('|');
+  const bandCache = new Map();
+  const across = (band) => {
+    if (!bandCache.has(band)) bandCache.set(band, bandsAcross(band, records));
+    return bandCache.get(band);
+  };
+  const reps = [];                      // { key, vecs }
+  const repOf = new Map();              // shapeKey -> representative index
+  for (const st of settings) {
+    const k = shapeKey(st);
+    if (repOf.has(k)) continue;
+    const bands = across(st.band);
+    const vecs = [st.dMult ?? null, st.trailMult ?? null, st.armMult ?? null]
+      .map((m) => (m == null ? null : bands.map((bp) => m * bp)));
+    let at = reps.findIndex((r) => r.vecs.every((v, i) => {
+      const w = vecs[i];
+      if (v == null || w == null) return v == null && w == null;
+      return v.every((x, j) => sameShape(x, w[j]));
+    }));
+    if (at < 0) { at = reps.length; reps.push({ key: k, vecs }); }
+    repOf.set(k, at);
+  }
+  // ...and now a setting's identity is everything that is NOT the geometry,
+  // plus which geometry it resolved to.
+  const rest = (st) => [st.decision, st.band === 'auto' ? 'a' : 'f', st.weekdaysOnly, st.entry, st.gate, st.tHours,
+    st.agreeRule, st.agreePct, st.agreeBoth, st.agreePersist].join('|');
+  const kept = [];
+  const folded = [];
+  const seen = new Map();
+  for (const st of settings) {
+    // an auto setting and a fixed one that price the same trade on every unit
+    // are still one setting, so the auto/fixed marker is dropped from the key
+    const key = `${repOf.get(shapeKey(st))}|${rest(st).replace(/\|[af]\|/, '|')}`;
+    if (seen.has(key)) { folded.push({ dropped: st.label, kept: seen.get(key) }); continue; }
+    seen.set(key, st.label);
+    kept.push(st);
+  }
+  return { kept, folded };
+}
+
 function settingsFor(params, sizes = null) {
   const grid = {
     dMults: bracketLib.D_MULTS, tHours: bracketLib.T_HOURS, gates: bracketLib.GATES,
@@ -923,17 +1017,25 @@ function stage3UnitsFor(parent, carry) {
 function stage3Declared(b) {
   const out = { units: null, coins: null };
   let sizes = null;
+  let records = null;
   const parent = getSet(String((b || {}).from || ''));
   if (parent && parent.stage === 2) {
     const carry = Math.max(0, Math.floor(num((b || {}).carry, 0)));
-    const { records } = stage3UnitsFor(parent, carry);
+    ({ records } = stage3UnitsFor(parent, carry));
     if (records.length) {
       sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
       out.units = records.length;
       out.coins = new Set(records.map((r) => r.trade)).size;
     }
   }
-  out.settings = settingsFor(b || {}, sizes).length;
+  const declared = settingsFor(b || {}, sizes);
+  // the count is of what will actually be PRICED: two settings that place the
+  // same orders on every unit are one setting, and the fold runs here so the
+  // cost line and the launch can never be two different numbers
+  const { kept, folded } = foldSameTradeSettings(declared, records);
+  out.settings = kept.length;
+  out.declared = declared.length;
+  out.folded = folded.length;
   return out;
 }
 function startStage3(params) {
@@ -955,7 +1057,11 @@ function startStage3(params) {
   // can be told apart: two shares landing on the same rung for every unit in
   // the run are one setting, not two.
   const sizes = [...new Set(parentRecords.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
-  const settings = settingsFor(params, sizes);
+  const declaredSettings = settingsFor(params, sizes);
+  // ONE SETTING PER TRADE. Anything that prices identically on every unit is
+  // paid for once, not twice — in compute now and in a ranked table listing the
+  // same trade under two names later.
+  const { kept: settings, folded: sameTrade } = foldSameTradeSettings(declaredSettings, parentRecords);
   if (!settings.length) throw new Error('the block declared no settings');
 
   // the budget gate: the whole plan is known here, so a block that cannot
@@ -995,7 +1101,15 @@ function startStage3(params) {
       campaign: require('./campaign').getCampaign() || null,
     },
     seed: seedOf(id),
-    plan: { units: parentRecords.length, settings: settings.length, settingLabels: settings.map((s) => s.label) },
+    plan: {
+      units: parentRecords.length,
+      settings: settings.length,
+      settingLabels: settings.map((s) => s.label),
+      // what the block asked for, and what was folded away because it priced
+      // the same trade — reported so the difference is never silent
+      declaredSettings: declaredSettings.length,
+      sameTradeFolded: sameTrade.length,
+    },
     perf: {
       unitsDone: 0, unitsTotal: parentRecords.length, elapsedMs: 0, etaMs: null, workers: null,
       cyclesDone: 0, cyclesTotal: parentRecords.length * settings.length * (1 + nullN), cyclesWord: 'pricings',
@@ -1608,7 +1722,7 @@ function stage3CoinRows(id, query) {
 }
 
 module.exports = {
-  sameEngineLine,
+  sameEngineLine, foldSameTradeSettings, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,

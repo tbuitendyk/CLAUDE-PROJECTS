@@ -771,7 +771,12 @@ async function swCounts() {
       // a refusal is said here, before the button is pressed
       const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
       const tight = !refuse ? ((got.heap && got.heap.band === 'tight' && got.heap) || (got.disk && got.disk.band === 'tight' && got.disk) || null) : null;
-      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#swNull3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
+      // WHEN THE BLOCK ASKED FOR MORE THAN IT WILL PRICE, SAY SO. Settings that
+      // place identical orders on every unit are folded to one; a count that
+      // quietly shrank would be as much of a surprise as one that grew.
+      const fold = got.declared && got.folded ? ` <span class="muted">(${got.declared.toLocaleString()} declared, `
+        + `${got.folded.toLocaleString()} priced the same trade and were folded into one)</span>` : '';
+      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#swNull3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
         + (refuse ? `<br><b class="neg">start stage 3 will refuse: ${esc(refuse.message)}</b>`
           : tight ? `<br><span class="warn">${esc(tight.message)}</span>` : '');
     }

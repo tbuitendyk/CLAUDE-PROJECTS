@@ -100,8 +100,8 @@ const PAIRS = [
     // ALL THREE stage plans, because one line on the head reads whichever the
     // open set happens to be — a name written by only stage 3 must still count
     // as written, and a name written by none of them must still be caught.
-    writer: () => ['plan: { units: units.length', 'plan: { units: carried.length', 'plan: { units: parentRecords.length']
-      .map((a) => `${between(read('lib/stages.js'), a, '}', 'stage plan literal')}}`).join('\n'),
+    writer: () => ['plan: { units: units.length', 'plan: { units: carried.length', 'plan: {\n      units: parentRecords.length']
+      .map((a) => `${between(read('lib/stages.js'), a, '\n    }', 'stage plan literal')}}`).join('\n'),
     allowExtra: [],
   },
 ];

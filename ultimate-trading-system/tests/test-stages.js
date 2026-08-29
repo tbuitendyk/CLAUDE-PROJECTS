@@ -1257,4 +1257,80 @@ module.exports = {
     assert.ok(/lands about <b>\$\{hhmm\} UTC<\/b>/.test(ui), 'the finish is not given as a time of day');
   },
 
+  // TWO SETTINGS THAT PRICE THE SAME TRADE ARE ONE SETTING (owner order,
+  // 2026-08-29). The band is not an independent dimension at pricing time —
+  // simCell uses it only as the unit for d, trail and arm — so equal products
+  // mean identical orders. Today's menus happen not to collide; nothing
+  // checked that, and `auto` can collide on some coins and not others.
+  async settingsThatPriceTheSameTradeAreFoldedIntoOne() {
+    const S = (band, dMult, over = {}) => ({
+      band, dMult, trailMult: null, armMult: null, tHours: 65, entry: 'breakout', gate: 'always',
+      decision: 'argmax', weekdaysOnly: false, agreeRule: 'count', agreePct: 50, agreeBoth: false, agreePersist: 0,
+      label: `${band}/${dMult}${over.label || ''}`, ...over,
+    });
+    const same = [{ bandPct: 5 }, { bandPct: 5 }, { bandPct: 5 }];
+
+    // TODAY'S MENUS MUST BE UNTOUCHED. A guard that folds real choices is worse
+    // than no guard: it would silently stop pricing settings the owner asked for.
+    const b = require('../lib/bracket');
+    const real = [];
+    for (const bd of [3, 5, 8]) for (const d of b.D_MULTS) real.push(S(bd, d));
+    const now = stages.foldSameTradeSettings(real, same);
+    assert.strictEqual(now.kept.length, real.length,
+      `${now.folded.length} of today's ${real.length} band-and-distance settings were folded — they are all distinct trades`);
+
+    // A FUTURE MENU THAT COLLIDES IS CAUGHT. 3% x 1.0 and 5% x 0.6 set the rails
+    // at the same place; adding 0.6 to the distance menu would pay for both.
+    const clash = stages.foldSameTradeSettings([S(3, 1), S(5, 0.6)], same);
+    assert.strictEqual(clash.kept.length, 1, 'two settings that set the rails at the same distance were both kept');
+    assert.strictEqual(clash.folded.length, 1);
+    assert.strictEqual(clash.folded[0].kept, '3/1', 'the first one declared is the one kept');
+
+    // ...AND IT HOLDS FOR THE WHOLE SHAPE, not just the distance: the stop and
+    // the arm scale by the band too, so a collision needs all three to line up.
+    const trails = [S(3, 1, { trailMult: 1, armMult: 0.5, label: 'A' }), S(5, 0.6, { trailMult: 0.6, armMult: 0.3, label: 'B' })];
+    assert.strictEqual(stages.foldSameTradeSettings(trails, same).kept.length, 1,
+      'the whole priced shape lines up, so these are one trade');
+    const trailsDiffer = [S(3, 1, { trailMult: 1, armMult: 0.5, label: 'A' }), S(5, 0.6, { trailMult: 1, armMult: 0.5, label: 'B' })];
+    assert.strictEqual(stages.foldSameTradeSettings(trailsDiffer, same).kept.length, 2,
+      'the rails match but the stops do not, so these are two trades and both must run');
+
+    // AUTO, WHICH IS THE ONE THE MENUS CANNOT SHOW. It resolves per unit, so it
+    // is the same trade as a fixed band only when it lands there on EVERY unit.
+    const autoSame = stages.foldSameTradeSettings([S(5, 1), S('auto', 1)], same);
+    assert.strictEqual(autoSame.kept.length, 1, 'auto landed on 5% for every unit and was still priced twice');
+    const autoDiffers = stages.foldSameTradeSettings([S(5, 1), S('auto', 1)], [{ bandPct: 5 }, { bandPct: 5 }, { bandPct: 9 }]);
+    assert.strictEqual(autoDiffers.kept.length, 2,
+      'auto differs from 5% on one coin, so they are two settings and folding them would have thrown a real one away');
+
+    // THE TOLERANCE IS A TOLERANCE, and it is nowhere near the menus' own
+    // spacing. A measured band never lands exactly on 5.
+    assert.strictEqual(stages.foldSameTradeSettings([S(5, 1), S('auto', 1)], [{ bandPct: 5.02 }]).kept.length, 1,
+      'a measured band a fifth of a percent off was treated as a different trade');
+    assert.strictEqual(stages.foldSameTradeSettings([S(5, 1), S('auto', 1)], [{ bandPct: 5.4 }]).kept.length, 2,
+      'a band 8% away was folded — that is wider than the menus\' own finest distinction (3.75 against 4.0)');
+    assert.ok(stages.SAME_TRADE_TOLERANCE > 0 && stages.SAME_TRADE_TOLERANCE <= 0.02,
+      `the tolerance is ${stages.SAME_TRADE_TOLERANCE}; above about 2% it starts merging choices the menus mean to keep apart`);
+
+    // NOTHING IS FOLDED WITH NO UNITS TO JUDGE AGAINST. Without the records
+    // there is no way to resolve auto, and guessing would drop a real setting.
+    assert.strictEqual(stages.foldSameTradeSettings([S(3, 1), S(5, 0.6)], []).kept.length, 2,
+      'settings were folded with no units in hand to resolve the bands against');
+  },
+
+  // AND IT IS SAID, NOT ABSORBED. A block that quietly prices fewer settings
+  // than it declared is the same class of surprise as one that prices more.
+  async theFoldedSettingsAreReportedNotAbsorbed() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(/declaredSettings: declaredSettings\.length,/.test(src) && /sameTradeFolded: sameTrade\.length,/.test(src),
+      'the record set does not record what the block asked for against what was actually priced');
+    assert.ok(/out\.declared = declared\.length;/.test(src) && /out\.folded = folded\.length;/.test(src),
+      'the count does not report the fold, so the cost line cannot mention it');
+    // the count and the launch must fold through the SAME function, or the
+    // number on the screen and the number that runs are two different numbers
+    assert.strictEqual(src.split('foldSameTradeSettings(').length - 1, 3,
+      'the fold is called somewhere other than its definition, the count and the launch — those two must be the '
+      + 'only callers, or the number on the cost line and the number that runs come from different arithmetic');
+  },
+
 };
