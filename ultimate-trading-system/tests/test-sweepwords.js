@@ -73,6 +73,47 @@ module.exports = {
       + missing.join('\n  '));
   },
 
+  // EVERY CHOICE A CONTROL OFFERS IS ON A LIST (owner order, 2026-08-29:
+  // "GO NOW!" on the report that Boards said it had none).
+  //
+  // Boards' list read "What the dropdowns offer (0)" while Table 3.A carried
+  // three of them. The collector only knew two ways a choice could exist —
+  // literal <option> markup, and a vocabOptions() call — and the filter grid
+  // uses neither: it takes a plain list of strings and draws the markup
+  // itself. Nine choices the owner can pick were on no list, and under
+  // RULE ONE-A that forbids naming any of them.
+  //
+  // THIS DOES NOT GO THROUGH THE COLLECTOR, and that is the whole point: it
+  // reads the served source itself. A check that asks the collector what the
+  // choices are cannot notice the collector missing some — which is exactly
+  // how this sat unseen.
+  async everyChoiceAControlOffersIsOnAList() {
+    const md = fs.readFileSync(path.join(ROOT, 'SCREEN-WORDS.md'), 'utf8');
+    const { servedSourceForTests } = require('./sweep-words');
+    const src = servedSourceForTests();
+    const missing = [];
+    // a filter grid spec: [key, label, 'pick', hover, [ ...choices ]]
+    for (const m of src.matchAll(/'pick',\s*(?:'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[^[]|\n)*?\[([^\]]*)\]/g)) {
+      for (const c of m[1].matchAll(/'((?:[^'\\]|\\.)*)'/g)) {
+        const choice = c[1].trim();
+        if (choice && !md.includes(`\`${choice}\``)) missing.push(choice);
+      }
+    }
+    // a control that reads the engine's own list at draw time
+    const vocab = require('../lib/vocabulary');
+    const served = typeof vocab.vocabulary === 'function' ? vocab.vocabulary() : vocab;
+    for (const m of src.matchAll(/\bVOCAB\.([A-Za-z_$][\w$]*)/g)) {
+      for (const o of (served[m[1]] || [])) {
+        if (!md.includes(`\`${o.label}\``)) missing.push(`${m[1]}: ${o.label}`);
+      }
+    }
+    assert.deepStrictEqual([...new Set(missing)], [],
+      'these are choices a control on some screen offers, and they are on no word list — so the rule that says '
+      + 'the list is the only permitted vocabulary would forbid naming a choice the owner can pick:\n  '
+      + [...new Set(missing)].join('\n  ')
+      + '\n     Rebuild it: node tests/sweep-words.js --write');
+  },
+
   // THE LIST DESCRIBES THE SCREEN THE OWNER IS LOOKING AT (owner order,
   // 2026-08-22), which is the one the box is SERVING and not the one in the
   // working tree.
@@ -247,11 +288,22 @@ module.exports = {
       assert.ok(boards.includes(w),
         `the Boards reader cannot see "${w}" — it is on the screen and would be on no list`);
     }
+    // A HELPER THAT NAMES THE CHOICES A CONTROL OFFERS IS PART OF THE SCREEN
+    // (2026-08-29), even when it emits no markup at all. The gate box decides
+    // its four choices in exactly such a helper, and they were on no list.
+    assert.ok(boards.includes('VOCAB.gate') && boards.includes('does not apply'),
+      'the Boards reader cannot see the gate box\'s choices — they are on the screen and would be on no list');
+
+    // ...AND NOTHING MORE THAN THAT. Pulling in arithmetic helpers would fill
+    // the list with words that are on no screen at all, which authorises
+    // inventions just as surely as a missing word forbids a real name.
+    // Checked by BEHAVIOUR, not by pinning the line: money() formats a number,
+    // draws nothing, names no choice, and must stay out.
+    assert.ok(!boards.includes("Number.isFinite(Number(v))"),
+      'the reader now follows helpers that neither draw nor name a choice, so the list gains words no screen shows');
+    assert.ok(!boards.includes('function money'), 'money() is arithmetic and its words are on no screen');
+
     const screens = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'screencontrols.js'), 'utf8');
-    // A helper that draws nothing must add nothing: pulling in arithmetic
-    // helpers would fill the list with words that are on no screen at all.
-    assert.ok(/if \(!\/<\[a-z\]\/i\.test\(b\)\) continue;/.test(screens),
-      'the reader follows helpers that draw nothing, so the list gains words no screen shows');
     // ...AND A SCREEN IS NOT A HELPER OF ANOTHER SCREEN, which is what makes
     // depth safe. Verify's status strip calls draw(), the tab dispatcher, which
     // calls every renderer there is. Following that would put all 82 of Boards'

@@ -112,7 +112,16 @@ function helperBodies(S, body, isScreen) {
       const b = bodyOf(S, defined.get(name));
       // Markup, not arithmetic: a helper that draws nothing has no words on it,
       // and following it would drag in words no screen shows.
-      if (!/<[a-z]/i.test(b)) continue;
+      //
+      // ...EXCEPT A HELPER THAT NAMES THE CHOICES A CONTROL OFFERS (2026-08-29).
+      // The gate box's four choices are decided in a helper that emits no tags
+      // at all — it hands a list of strings back and something else draws the
+      // markup — so this test skipped it and four choices the owner can pick
+      // were on no list. Naming choices IS having words on the screen. Kept
+      // narrow on purpose: it admits a helper that writes `'pick',` or reads a
+      // list from the engine, and nothing else, and screen renderers are still
+      // dead ends so no other screen's words can arrive this way.
+      if (!/<[a-z]/i.test(b) && !/'pick',/.test(b) && !/\bVOCAB\.[A-Za-z_$]/.test(b)) continue;
       out.push(b);
       queue.push(b);
     }

@@ -299,10 +299,30 @@ function servedVocabulary() {
   return vocabularyFn;
 }
 function optionWords(body) {
-  const names = [...new Set([...body.matchAll(/vocabOptions\(\s*'([^']+)'/g)].map((m) => m[1]))];
   const v = servedVocabulary()();
+  const names = [...new Set([...body.matchAll(/vocabOptions\(\s*'([^']+)'/g)].map((m) => m[1]))];
   const out = [];
   for (const n of names) for (const o of (v[n] || [])) out.push(o.label);
+  // A DROPDOWN DOES NOT HAVE TO BE WRITTEN AS <option> TO BE ON THE SCREEN
+  // (owner order, 2026-08-29). Boards' word list read "What the dropdowns
+  // offer (0)" while Table 3.A carried three of them: the filter grid takes
+  // its choices as a plain list of strings and renders the markup itself, so
+  // nothing above could see them. Nine choices the owner can pick were on no
+  // list, which under RULE ONE-A forbids naming any of them.
+  //
+  //     ['rule', 'agree by', 'pick', '<hover>', ['count', 'conviction', ...]]
+  //
+  // The list is read out of the spec, exactly as written. A spec that builds
+  // its choices from the engine instead is handled below.
+  for (const m of body.matchAll(/'pick',\s*(?:'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`|[^[]|\n)*?\[([^\]]*)\]/g)) {
+    for (const c of m[1].matchAll(/'((?:[^'\\]|\\.)*)'/g)) if (c[1].trim()) out.push(c[1]);
+  }
+  // ...and one that reads the engine's own list at draw time, the way the
+  // gate box does. The name it asks the engine for is read from the code, so
+  // a second such box tomorrow is covered without anybody remembering.
+  for (const m of body.matchAll(/VOCAB\.([A-Za-z_$][\w$]*)/g)) {
+    for (const o of (v[m[1]] || [])) out.push(o.label);
+  }
   return out;
 }
 
@@ -353,7 +373,10 @@ function collect(fnName = 'drawSweep') {
   };
 }
 
-module.exports = { collect, drawSweepBody, drawBody, tabs, htmlTemplates, readableText, stripInterpolations };
+module.exports = { collect, drawSweepBody, drawBody, tabs, htmlTemplates, readableText, stripInterpolations,
+  // the served screen source itself, for a check that must NOT go through
+  // this file's own idea of what is on it
+  servedSourceForTests: () => SRC };
 
 if (require.main === module) {
   const all = tabs().map((t) => {
