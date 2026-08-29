@@ -498,7 +498,7 @@ const SORT_KEYS = {
   3: {
     decision: 's', bandMode: 'n', weekdaysOnly: 'n', entry: 's', gate: 's',
     dMult: 'n', tHours: 'n', trailMult: 'n', armMult: 'n',
-    agreeRule: 's', agreePct: 'n', avgAgreed: 'n', avgRung: 'n', avgVoices: 'n', members: 'n',
+    agreeRule: 's', avgAgreed: 'n', avgRung: 'n', avgVoices: 'n', members: 'n',
     coins: 'n', avgTest: 'n', avgHold: 'n', avgTrades: 'n', avgVsLong: 'n',
     beat: 'share', avgLead: 'n', coinsInMoney: 'n',
   },
@@ -513,7 +513,7 @@ const SORT_WORDS = {
   helped: 'fuller board helped?',
   decision: 'decision', bandMode: 'band', weekdaysOnly: '24/5', entry: 'entry', gate: 'gate',
   dMult: 'd', tHours: 't', trailMult: 'trail', armMult: 'arm',
-  agreeRule: 'agree by', agreePct: 'share', avgAgreed: 'share that agreed', avgRung: 'rung it landed on', avgVoices: 'independent voices',
+  agreeRule: 'agree by', avgAgreed: 'share that agreed', avgRung: 'rung it landed on', avgVoices: 'independent voices',
   coins: 'coins', avgTest: 'avg test $', avgHold: 'avg held-back $',
   avgTrades: 'avg held-back trades', avgVsLong: 'avg vs always-long $',
   avgLead: 'lead over null set', coinsInMoney: 'coins in the money',
@@ -597,12 +597,12 @@ const FILTER_DEFS = {
   },
   3: {
     decision: ['decision', 'text'], entry: ['entry', 'text'], gate: ['gate', 'text'],
-    rule: ['agreeRule', 'text'], shareMin: ['agreePct', 'min'], shareMax: ['agreePct', 'max'],
+    rule: ['agreeRule', 'text'],
     tMin: ['tHours', 'min'], tMax: ['tHours', 'max'],
     coinsMin: ['coins', 'min'], testMin: ['avgTest', 'min'], holdMin: ['avgHold', 'min'],
     tradesMin: ['avgTrades', 'min'], vsLongMin: ['avgVsLong', 'min'],
     beatMin: ['_beatPct', 'min'], leadMin: ['avgLead', 'min'], inMoneyMin: ['coinsInMoney', 'min'],
-    voicesMin: ['avgVoices', 'min'], agreedMin: ['avgAgreed', 'min'], agreedMax: ['avgAgreed', 'max'],
+    voicesMin: ['avgVoices', 'min'], agreedMin: ['avgAgreed', 'min'],
   },
 };
 // The values a filter may read that are not stored as such: the share a row
@@ -1234,6 +1234,7 @@ function startStage3(params) {
     // it reads as stuck (owner, 2026-08-27). Say what is actually happening,
     // as it happens.
     const payloads = [];
+    const agreedMap = {};
     for (let pi = 0; pi < parentRecords.length; pi++) {
       const rec = parentRecords[pi];
       const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
@@ -1271,6 +1272,9 @@ function startStage3(params) {
             u: rec.u, trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
           });
         }
+        // the unit's realised agreements, already worked out on the same walk
+        // the pricing used — kept beside the set, never on 329,280 records
+        for (const [k, v] of Object.entries(settled.value.agreed || {})) agreedMap[`${rec.u}|${k}`] = v;
         w.records.flush();
       } else if (!settled.ok) {
         doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
@@ -1300,6 +1304,9 @@ function startStage3(params) {
       const now = Date.now();
       if (now - lastTallySave > 1000 || dn === tn) { lastTallySave = now; saveSet(doc); }
     };
+    // what the members actually did, written before the tables are totalled
+    // because the totalling is what joins it onto every record
+    try { writeAgreed(doc.id, agreedMap); } catch (err) { doc.tallyError = `the agreements could not be saved: ${err.message}`; }
     if (tallyGate.band === 'refuse') doc.tallyError = tallyGate.message;
     else { try { await buildTally(doc, pool, tallyNote); } catch (err) { doc.tallyError = String(err.message || err); } }
     doc.progress = doc.status === 'incomplete' ? doc.progress : '';
@@ -1404,10 +1411,98 @@ function storeBudgetFor({ rows, freeBytes = null }) {
 // an older tally then READS AS ABSENT, so the durable rebuild re-totals it
 // from the kept records with the new column, progress on screen, instead of
 // serving dashes forever where the number belongs.
-const TALLY_V = 2;
+const TALLY_V = 3;
+
+// ---- WHAT THE MEMBERS ACTUALLY DID -------------------------------------------
+//
+// Owner order, 2026-08-29: "you need to pass through those 329k records and
+// record the actual share % agreement FOR EACH ROW. then you get rid of that
+// current SHARE column which lists the same 75% 300k times".
+//
+// They were right, and they were right that it can be done for a set already
+// priced. The realised agreement depends on the unit and on the way of asking
+// and on nothing about the trade shape, so a run of 329,280 settings over ten
+// units holds 600 distinct answers, not 3.3 million. They are kept beside the
+// set and joined onto every record as the tables are totalled.
+//
+// A set priced before this existed gets them by rebuilding the same units from
+// its stage 2 parent's kept votes and walking the same streams. Nothing is
+// re-priced and no record is rewritten.
+const AGREED_V = 1;
+const agreedFile = (id) => path.join(SETS_DIR, `${id}-agreed.json.gz`);
+function readAgreed(id) {
+  try {
+    const raw = JSON.parse(zlib.gunzipSync(fs.readFileSync(agreedFile(id))).toString('utf8'));
+    return raw && raw.v === AGREED_V && raw.map ? raw.map : null;
+  } catch (_) { return null; }
+}
+function writeAgreed(id, map) {
+  const tmp = `${agreedFile(id)}.tmp${process.pid}-${++tmpSeq}`;
+  fs.writeFileSync(tmp, zlib.gzipSync(Buffer.from(JSON.stringify({ v: AGREED_V, at: new Date().toISOString(), map }))));
+  fs.renameSync(tmp, agreedFile(id));
+  return map;
+}
+// The units and the settings a stage 3 set was launched with, rebuilt from
+// what the set itself recorded — the same two calls the launch made, given
+// the same saved params, so the block that comes back is the block that ran.
+function relaunchShapeOf(doc) {
+  const parent = getSet(((doc.parent || {}).id) || (doc.params || {}).from || '');
+  if (!parent || parent.stage !== 2) throw new Error('the stage 2 record set this was priced from is no longer on the box');
+  const { records } = stage3UnitsFor(parent, Math.max(0, Math.floor(num((doc.params || {}).carry, 0))));
+  if (!records.length) throw new Error(`${parent.name} holds no records — the units cannot be rebuilt`);
+  const sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
+  const { kept } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), records);
+  return { parent, records, settings: kept };
+}
+async function buildAgreedTable(doc, pool = null, note = null) {
+  const sw = require('./stagework');
+  const { parent, records, settings } = relaunchShapeOf(doc);
+  const p = doc.params || {};
+  // The SAME payload the launch builds, so the rebuilt streams are the streams
+  // that ran. Only nullN and agreedOnly differ: no null-set deals are dealt
+  // and nothing is priced.
+  const payloads = records.map((rec) => {
+    const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
+    const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
+    return {
+      combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
+      geometry: rec.geometry, params: p,
+      unit: {
+        bandPct: rec.bandPct,
+        probs: rec.specs.map((_, mi) => votes.map((v) => v.m[mi])),
+        ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) },
+        members: rec.specs.map((spec, mi) => ({ spec, tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [] })),
+      },
+      settings, fee: Number(p.fee) || 0, nullN: 0, seed: doc.seed,
+      unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
+      agreedOnly: true,
+    };
+  });
+  const map = {};
+  let done = 0;
+  if (note) note(0, payloads.length);
+  const take = (settled, i) => {
+    if (!settled.ok) throw new Error(`a unit's agreement could not be rebuilt: ${settled.error}`);
+    for (const [k, v] of Object.entries(settled.value.agreed || {})) map[`${records[i].u}|${k}`] = v;
+    done++;
+    if (note) note(done, payloads.length);
+  };
+  if (pool && pool.parallel) {
+    await pool.forEach('s3Unit', payloads, take);
+  } else {
+    for (let i = 0; i < payloads.length; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      take({ ok: true, value: await sw.s3UnitTask(payloads[i]) }, i);
+    }
+  }
+  return writeAgreed(doc.id, map);
+}
+function ensureAgreedTable(id) { return readAgreed(id); }
+
 async function buildTally(doc, pool = null, note = null) {
   const id = doc.id;
   const sw = require('./stagework');
+  const agreedAt = readAgreed(id);
   const blocks = rowstore.blocksOf(id, 'records') || [];
   const acc = sw.newTallyAcc();
   const settingsCount = (doc.plan || {}).settings || 0;
@@ -1422,7 +1517,7 @@ async function buildTally(doc, pool = null, note = null) {
     const per = Math.ceil(blocks.length / lanes);
     const shards = [];
     for (let at = 0; at < blocks.length; at += per) {
-      shards.push({ id, blocks: Array.from({ length: Math.min(per, blocks.length - at) }, (_, k) => at + k) });
+      shards.push({ id, agreedAt, blocks: Array.from({ length: Math.min(per, blocks.length - at) }, (_, k) => at + k) });
     }
     let doneShards = 0;
     if (note) note(0, shards.length);
@@ -1437,7 +1532,7 @@ async function buildTally(doc, pool = null, note = null) {
     // thread the pages share, and "totalling in the background" must be true
     // there — a synchronous 8.7M-row fold froze every screen for minutes.
     for (let bi = 0; bi < blocks.length; bi++) {
-      for (const x of rowstore.readBlocks(id, 'records', [bi])) sw.tallyFold(acc, x.row, bi);
+      for (const x of rowstore.readBlocks(id, 'records', [bi])) sw.tallyFold(acc, x.row, bi, agreedAt);
       if (note) note(bi + 1, blocks.length);
       await new Promise((resolve) => { setImmediate(resolve); });
     }
@@ -1529,7 +1624,8 @@ function ensureTally(id) {
   // the whole of it, over and over, beside the fold.
   if (tallyRun) {
     if (tallyRun.id === id) {
-      return tallyRun.error ? { failed: tallyRun.error } : { totalling: { done: tallyRun.done, total: tallyRun.total } };
+      return tallyRun.error ? { failed: tallyRun.error }
+        : { totalling: { done: tallyRun.done, total: tallyRun.total, phase: tallyRun.phase || null } };
     }
     if (!tallyRun.error) return { waiting: `the tables of another record set are totalling right now — one totalling at a time` };
     tallyRun = null;   // a dead attempt for another set does not block this one
@@ -1561,6 +1657,27 @@ function ensureTally(id) {
       const blocks = rowstore.blocksOf(id, 'records') || [];
       const settingsCount = (doc.plan || {}).settings || 0;
       if (blocks.length >= 8 && settingsCount <= SHARD_SETTINGS_LIMIT) pool = createPool();
+      // WHAT THE MEMBERS ACTUALLY DID COMES FIRST, or the tables would be
+      // totalled without it and the column would be empty for a set that
+      // could perfectly well have filled it. A set priced before it was
+      // measured rebuilds it from its stage 2 parent's kept votes here —
+      // ten units, no pricing — and one that already has it skips straight on.
+      if (!readAgreed(id)) {
+        if (!pool) pool = createPool();
+        run.phase = 'reading what the members actually did';
+        try {
+          await buildAgreedTable(doc, pool, (dn, tn) => { run.done = dn; run.total = tn; });
+          if (doc.agreedError) { delete doc.agreedError; saveSet(doc); }
+        } catch (err) {
+          // BEST EFFORT, NEVER A BLOCKER. The votes live on the stage 2 parent,
+          // and a parent can have been deleted. Tables without one column are
+          // worth far more than no tables, so the reason is recorded and said
+          // on the screen and the totalling carries on.
+          doc.agreedError = String(err.message || err);
+          saveSet(doc);
+        }
+      }
+      run.phase = null;
       await buildTally(doc, pool, (dn, tn) => { run.done = dn; run.total = tn; });
       if (doc.tallyError) { delete doc.tallyError; saveSet(doc); }
       if (tallyRun === run) tallyRun = null;
@@ -1751,7 +1868,14 @@ function stage3Coins(id, query) {
   const minTrades = query.minTrades === '' || query.minTrades == null ? null : Number(query.minTrades);
   const minVsLong = query.minVsLong === '' || query.minVsLong == null ? null : Number(query.minVsLong);
   const minAgreed = query.minAgreed === '' || query.minAgreed == null ? null : Number(query.minAgreed);
+  // avg test $ WAS DECLARED AND NEVER READ (owner, 2026-08-29: "CHECK the
+  // Table 3.B filters ... they do not seem to be filtering correctly"). The
+  // page drew the box and sent what was typed in it, and nothing here looked:
+  // a floor of a million on it removed none of 411,600 rows on the box. Every
+  // other floor on this table was measured biting, one at a time.
+  const minTest = query.minTest === '' || query.minTest == null ? null : Number(query.minTest);
   const clears = (r) => (minPairs ? r.pairs >= minPairs : true)
+    && (minTest == null || (r.avgTest != null && r.avgTest >= minTest))
     && (minAgreed == null || (r.avgAgreed != null && r.avgAgreed >= minAgreed))
     && (minShare == null || (r.share != null && r.share * 100 >= minShare))
     && (minHold == null || (r.avgHold != null && r.avgHold >= minHold))
@@ -1812,6 +1936,7 @@ function stage3Ranked(id, from, n, filters = null) {
     () => spreadOf(rows, FILTER_DEFS[3]));
   return {
     total: rows.length, of, from, sort, spread,
+    agreedError: (doc && doc.agreedError) || null,
     rows: rows.slice(from, from + n).map(({ _i, ...r }) => r),
   };
 }
@@ -1823,11 +1948,16 @@ function stage3CoinRows(id, query) {
     && String(k.ctx1 || '') === String(query.ctx1 || '') && String(k.ctx2 || '') === String(query.ctx2 || '')
     && k.geometry === query.geometry);
   if (!hit) return { indexed: false, why: 'no such coin row in this set' };
+  const agreedAt = readAgreed(id);
+  const keyOf = require('./stagework').agreedKeyOfRecord;
   const got = rowstore.readBlocks(id, 'records', hit.b)
     .map((x) => x.row)
     .filter((r) => r.label.split(' · ')[0] === hit.cellLabel && r.trade === hit.trade
       && String(r.ctx1 || '') === String(hit.ctx1 || '') && String(r.ctx2 || '') === String(hit.ctx2 || '')
-      && r.geometry === hit.geometry);
+      && r.geometry === hit.geometry)
+    // joined on the way out, from the same table the tables were totalled
+    // from — it is not on the record, and this is the only place it is read
+    .map((r) => ({ ...r, ...((agreedAt && agreedAt[`${r.u}|${keyOf(r)}`]) || {}) }));
   return { indexed: true, shown: got.length, rows: got };
 }
 
@@ -1840,4 +1970,5 @@ module.exports = {
   setSetNotes, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
   spreadOf, S3_COIN_FILTERS,
+  buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf,
 };

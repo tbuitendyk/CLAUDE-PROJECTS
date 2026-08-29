@@ -242,6 +242,19 @@ module.exports = {
       assert.strictEqual(byRows.rows[0].rows, 2, 'rows sorts by how many records the row averages');
       const floored = stages.stage3Coins(id, { minVsLong: 0 });
       assert.ok(floored.rows.every((r) => r.avgVsLong >= 0), 'the vs always-long floor holds');
+      // EVERY FLOOR THE TABLE OFFERS MUST ACTUALLY REMOVE ROWS. avg test $ was
+      // drawn, sent and never read: a floor of a million on the owner's own
+      // 411,600-row table removed nothing. A box that does nothing is worse
+      // than no box, so each one is held here against a floor above every
+      // value in its column.
+      for (const [box, col] of [['minTest', 'avgTest'], ['minHold', 'avgHold'], ['minTrades', 'avgTrades'],
+        ['minVsLong', 'avgVsLong'], ['minPairs', 'pairs']]) {
+        const all = stages.stage3Coins(id, {});
+        assert.ok(all.rows.some((r) => r[col] != null), `the fixture has no ${col} to floor`);
+        const none = stages.stage3Coins(id, { [box]: 1e9 });
+        assert.strictEqual(none.rows.length, 0, `the "${box}" floor removes nothing — the box is drawn and never read`);
+        assert.strictEqual(none.removed, all.total, `and the line under the table does not own up to what "${box}" held back`);
+      }
 
       // the records under a row come back from only its blocks, grouped right
       const got = stages.stage3CoinRows(id, { cellLabel: 'q2/6 x', trade: 'AAA', ctx1: '', ctx2: '', geometry: 'daily-4d' });
@@ -517,7 +530,11 @@ module.exports = {
     let parses = 0;
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
-      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: 1, builtAt: 'x', rows: 0, ranked: [], coins: [] })));
+      // THE TWO SHAPE NUMBERS ARE READ OUT OF THE CODE, never typed: this was
+      // written with 1 and 2 in it and went red the next time the tally gained
+      // a column, which is precisely the event it exists to cover.
+      const NOW = Number(/const TALLY_V = (\d+);/.exec(fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8'))[1]);
+      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: NOW - 1, builtAt: 'x', rows: 0, ranked: [], coins: [] })));
       // ONE parse decides, and the verdict is remembered (the third
       // out-of-memory death, 2026-08-27): re-parsing the stale file on every
       // ask is what killed the service beside the re-total.
@@ -529,7 +546,7 @@ module.exports = {
       zlib.gunzipSync = realGunzip;
       // the shape the totalling writes today IS served — the changed file
       // escapes the remembered verdict
-      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: 2, builtAt: 'xx', rows: 0, ranked: [], coins: [] })));
+      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: NOW, builtAt: 'xx', rows: 0, ranked: [], coins: [] })));
       const served = stages.stage3Ranked(id, 0, 10);
       assert.ok(served && served.total === 0, 'the current shape serves');
     } finally {
@@ -1331,8 +1348,11 @@ module.exports = {
       'the count does not report the fold, so the cost line cannot mention it');
     // the count and the launch must fold through the SAME function, or the
     // number on the screen and the number that runs are two different numbers
-    assert.strictEqual(src.split('foldSameTradeSettings(').length - 1, 3,
-      'the fold is called somewhere other than its definition, the count and the launch — those two must be the '
+    // ...and so must the rebuild that reads what the members actually did for
+    // a set already priced: it has to reproduce the block that ran, which
+    // means the same fold, not a second idea of which settings existed.
+    assert.strictEqual(src.split('foldSameTradeSettings(').length - 1, 4,
+      'the fold is called somewhere other than its definition, the count, the launch and the rebuild — those must be the '
       + 'only callers, or the number on the cost line and the number that runs come from different arithmetic');
   },
 
@@ -1502,22 +1522,29 @@ module.exports = {
       fs.mkdirSync(SETS_DIR, { recursive: true });
       fs.writeFileSync(file, JSON.stringify(doc));
       const w = rowstore.writer(id, 'records');
-      const mk = (si, decision, trade, agreed) => ({
-        si, label: `count 75% market t65h · ${decision} auto 24/7`, decision, bandMode: 'auto', weekdaysOnly: false,
+      const mk = (si, decision, trade) => ({
+        si, label: `count 75% market t65h · ${decision === 'unusual' ? 'argmax' : decision} auto 24/7`,
+        decision: decision === 'unusual' ? 'argmax' : decision, bandMode: 'auto', weekdaysOnly: false,
         bandPct: 2, entry: 'market', gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null,
-        agreeRule: 'count', agreePct: 75, agreeBoth: false, agreePersist: 0,
+        agreeRule: decision === 'unusual' ? 'unusual' : 'count', agreePct: 75, agreeBoth: false, agreePersist: 0,
         rung: 6, members: 8, voices: 8, pnl: 10, trades: 3,
-        ...(agreed == null ? {} : { agreed, agreedLow: 75, agreedHigh: 100, agreedN: 40 }),
         holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
         beat: 5, pairs: 9, lead: 1, u: 0, trade, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
       });
-      // setting 0, coin AAA: two records, 80% and 90% -> the coin row averages 85
-      w.push(mk(0, 'argmax', 'AAA', 80));
-      w.push(mk(0, 'directional', 'AAA', 90));
-      // setting 1, coin AAA: one record, and it was priced before the
-      // measurement existed, so it carries no value at all
-      w.push(mk(1, 'argmax', 'AAA', null));
+      // setting 0, coin AAA: two records, one each way, 80% and 90% -> 85
+      w.push(mk(0, 'argmax', 'AAA'));
+      w.push(mk(0, 'directional', 'AAA'));
+      // setting 1, coin AAA: one record whose way of asking has no answer
+      // stored — a set priced before this was measured, and not yet rebuilt
+      w.push(mk(1, 'unusual', 'AAA'));
       w.close();
+      // THE ANSWERS LIVE BESIDE THE SET, keyed by the unit and the way of
+      // asking, never on the record: two ways of asking over one unit is two
+      // numbers, not three records' worth.
+      stages.writeAgreed(id, {
+        '0|argmax|count|75|0|0': { agreed: 80, agreedLow: 75, agreedHigh: 100, agreedN: 40 },
+        '0|directional|count|75|0|0': { agreed: 90, agreedLow: 87.5, agreedHigh: 100, agreedN: 12 },
+      });
       await stages.buildTally(doc);
 
       const rk = stages.stage3Ranked(id, 0, 10);
@@ -1535,7 +1562,8 @@ module.exports = {
       const floored = stages.stage3Ranked(id, 0, 10, { agreedMin: 86 });
       assert.strictEqual(floored.total, 0, 'the floor on what agreed does not bite');
       assert.strictEqual(stages.stage3Ranked(id, 0, 10, { agreedMin: 85 }).total, 1);
-      assert.strictEqual(stages.stage3Ranked(id, 0, 10, { agreedMax: 84 }).total, 0, 'and neither does the cap');
+      assert.throws(() => stages.stage3Ranked(id, 0, 10, { shareMin: 70 }), /not a filter/,
+        'the dial floor must be gone — it hid nothing on a run built on one share');
       // the four numbers beside the box read the column, not the dial
       assert.deepStrictEqual([rk.spread.agreedMin.min, rk.spread.agreedMin.max], [85, 85]);
       assert.strictEqual(rk.spread.agreedMin.n, 1, 'the row with no value must not be counted in the four numbers');
@@ -1556,8 +1584,9 @@ module.exports = {
       });
       const withVal = (got.rows || []).filter((r) => r.agreed != null);
       assert.strictEqual(withVal.length, 2, 'the records under the row do not carry what actually agreed');
-      assert.deepStrictEqual(withVal.map((r) => [r.agreedLow, r.agreedHigh, r.agreedN]), [[75, 100, 40], [75, 100, 40]],
-        'a record must say the least and the most it ever got, and on how many calls');
+      assert.deepStrictEqual(withVal.map((r) => [r.agreed, r.agreedLow, r.agreedHigh, r.agreedN]).sort((x, y) => x[0] - y[0]),
+        [[80, 75, 100, 40], [90, 87.5, 100, 12]],
+        'each record must carry ITS OWN figure, with the least and the most it got and how many calls');
     } finally {
       try { fs.unlinkSync(file); } catch (_) { /* gone */ }
       try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
@@ -1568,12 +1597,22 @@ module.exports = {
   // AND IT IS ON THE SCREEN — all three tables, with its floors.
   async whatActuallyAgreedIsOnEveryStageThreeTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    assert.strictEqual((ui.match(/>share that agreed/g) || []).length, 3,
-      'the column must be on the ranked table, the every-coin table AND the records under a coin row');
+    // the COLUMN HEADINGS only: the name also appears in the line that owns up
+    // to an empty column, and counting that as a fourth table would be wrong
+    assert.strictEqual((ui.match(/>share that agreed(?:\$\{|<)/g) || []).length, 3,
+      'the column must head the ranked table, the every-coin table AND the records under a coin row');
     assert.ok(/bRankSortBtn\(doc, 'avgAgreed', 'desc'\)/.test(ui), 'the ranked column does not sort');
     assert.ok(/bCoinSortBtn\(view, 'agreed', '↓'\)/.test(ui), 'the every-coin column does not sort');
-    assert.ok(/'agreedMin', 'share that agreed at least, %'/.test(ui) && /'agreedMax', 'share that agreed at most, %'/.test(ui),
-      'the ranked table has no floor and cap on what actually agreed');
+    assert.ok(/'agreedMin', 'share that agreed at least, %'/.test(ui), 'the ranked table has no floor on what actually agreed');
+    // THE DIAL COLUMN AND ITS TWO FLOORS ARE GONE (owner order, 2026-08-29:
+    // "obviously i don't need/want a column in table 1 ... that reads share
+    // 75% LITERALLY 329,280 times"). One share was picked, so the column
+    // printed it on every row and the two floors either kept everything or
+    // nothing.
+    assert.ok(!/'shareMin', 'share at least, %'/.test(ui) && !/'shareMax', 'share at most, %'/.test(ui),
+      'the two floors on the share that was ASKED FOR are still there, and on a run built on one share they do nothing');
+    assert.ok(!/bRankSortBtn\(doc, 'agreePct'/.test(ui),
+      'the ranked table still carries the column of the share that was asked for, repeated once per row');
     assert.ok(/'minAgreed', 'share that agreed at least, %'/.test(ui), 'the every-coin table has no floor on it');
     assert.ok(/minAgreed: coinF\.minAgreed/.test(ui), 'the every-coin floor is drawn but never sent, so it does nothing');
     // the record line says the spread, not just the average — an average of
@@ -1590,7 +1629,7 @@ module.exports = {
     const n = (x, t) => (x.match(new RegExp(`<${t}[ >]`, 'g')) || []).length;
     assert.strictEqual(n(rHead, 'th'), n(rBody, 'td'), 'the ranked table has a different number of headings and cells');
     assert.strictEqual(n(cHead, 'th'), n(cBody, 'td'), 'the every-coin table has a different number of headings and cells');
-    assert.ok(/colspan="22"/.test(ui) && /colspan="11"/.test(ui),
+    assert.ok(/colspan="21"/.test(ui) && /colspan="11"/.test(ui),
       'the "nothing here" line no longer spans the whole table, so it sits under one column');
   },
 

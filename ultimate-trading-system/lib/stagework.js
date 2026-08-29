@@ -265,8 +265,17 @@ async function s2UnitTask(task) {
 // count, mask 24/5 by chunk start time, and run the same simCell /
 // holdControls the sweep engine prices with. The null set deals the kept
 // votes once per draw — the same deals for every setting in the block.
+
+// WHAT A REALISED AGREEMENT IS KEYED BY, in one place because two things
+// read it: the pass that computes it, and the totalling that folds it onto
+// every record. It depends on the unit and on the way of asking, and on
+// NOTHING about the trade shape — which is why 329,280 settings on ten units
+// need 600 numbers rather than 3.3 million.
+const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}`;
+const agreedKeyOfRecord = (r) => `${r.decision}|${r.agreeRule || 'count'}|${r.agreePct}|${r.agreeBoth ? 1 : 0}|${Math.max(0, Math.floor(Number(r.agreePersist) || 0))}`;
+
 async function s3UnitTask(task) {
-  const { combo, geometry, params: p, unit, settings, fee, nullN, seed, unitKey } = task;
+  const { combo, geometry, params: p, unit, settings, fee, nullN, seed, unitKey, agreedOnly = false } = task;
   const { geo, maps, split } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   const tsT = testChunks.map((c) => c.startTs);
@@ -301,7 +310,7 @@ async function s3UnitTask(task) {
   // Deal orders, shared by every setting (decision record #7): per slice so
   // a one-directional held-back window cannot pay the real arm for its lean.
   const deals = [];
-  for (let d = 0; d < nullN; d++) {
+  for (let d = 0; d < (agreedOnly ? 0 : nullN); d++) {
     deals.push({
       test: dealOrder(seed, unitKey, `s3-test#${d}`, testChunks.length),
       hold: dealOrder(seed, unitKey, `s3-hold#${d}`, holdChunks.length),
@@ -426,7 +435,7 @@ async function s3UnitTask(task) {
   // re-used by every trade shape that asks that way.
   const agreedCache = new Map();
   const agreedFor = (decision, agr) => {
-    const key = `${decision}|${agr.rule}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}`;
+    const key = agreedKey(decision, agr);
     if (agreedCache.has(key)) return agreedCache.get(key);
     const spoke = streamFor(decision, agr, -1, 'test');
     const ctx = ctxFor(decision, agr, -1, 'test');
@@ -458,6 +467,28 @@ async function s3UnitTask(task) {
     holdCtlCache.set(key, h);
     return h;
   };
+
+  // Every distinct way of asking in this block, each answered once.
+  const agreedMapFor = (list) => {
+    const out = {};
+    for (const st of list) {
+      const agr = {
+        rule: st.agreeRule || 'count',
+        pct: Number(st.agreePct) || 50,
+        both: !!st.agreeBoth,
+        persist: Math.max(0, Math.floor(Number(st.agreePersist) || 0)),
+      };
+      const key = agreedKey(st.decision, agr);
+      if (out[key]) continue;
+      out[key] = agreedFor(st.decision, agr);
+    }
+    return out;
+  };
+  // THE BACKFILL DOOR (owner order, 2026-08-29). A set priced before this was
+  // measured can still have it: the votes are on its stage 2 parent and the
+  // answer never depended on the trade shape. This rebuilds the same unit and
+  // walks the same streams, and prices nothing at all.
+  if (agreedOnly) return { agreed: agreedMapFor(settings), counts: { test: testChunks.length, hold: holdChunks.length } };
 
   const rows = [];
   for (let si = 0; si < settings.length; si++) {
@@ -508,14 +539,13 @@ async function s3UnitTask(task) {
       trailMult: st.trailMult ?? null, armMult: st.armMult ?? null,
       agreeRule: agr.rule, agreePct: agr.pct, agreeBoth: agr.both, agreePersist: agr.persist,
       rung: agr.rule === 'unusual' ? cutoffFor(stream.decision, agr.pct) : rungFor(agr.rule, agr.pct, stream.decision),
-      ...agreedFor(stream.decision, agr),
       members: memberProbs.length, voices: voicesFor(stream.decision).voices,
       pnl: tRes.pnl, trades: tRes.trades,
       holdout,
       beat, pairs: holdChunks.length ? nullN : 0, lead,
     });
   }
-  return { rows, counts: { test: testChunks.length, hold: holdChunks.length } };
+  return { rows, agreed: agreedMapFor(settings), counts: { test: testChunks.length, hold: holdChunks.length } };
 }
 
 // ---- the stage 3 tally, foldable and shardable --------------------------------
@@ -528,7 +558,11 @@ async function s3UnitTask(task) {
 function newTallyAcc() {
   return { perSetting: new Map(), perCoin: new Map(), rows: 0 };
 }
-function tallyFold(acc, r, blockIdx) {
+function tallyFold(acc, r, blockIdx, agreedAt = null) {
+  // What the members ACTUALLY did, looked up by the unit and the way of
+  // asking. It is not on the record: 329,280 settings on ten units share 600
+  // answers between them, so it is kept once per answer and joined here.
+  const agreed = agreedAt ? agreedAt[`${r.u}|${agreedKeyOfRecord(r)}`] : null;
   let s = acc.perSetting.get(r.si);
   if (!s) {
     s = { si: r.si, label: r.label,
@@ -550,7 +584,7 @@ function tallyFold(acc, r, blockIdx) {
   if (r.voices != null) { c.voices += r.voices; c.voicesN++; }
   // records priced before this measurement existed simply have no value here,
   // and a column with no value reads as absent rather than as zero
-  if (r.agreed != null) { c.agr += r.agreed; c.agrN++; }
+  if (agreed && agreed.agreed != null) { c.agr += agreed.agreed; c.agrN++; }
   if (r.holdout && r.holdout.pnl != null) {
     c.hold += r.holdout.pnl; c.holdN++;
     c.trades += r.holdout.trades || 0;
@@ -569,7 +603,7 @@ function tallyFold(acc, r, blockIdx) {
     acc.perCoin.set(ck, k);
   }
   k.rows++;
-  if (r.agreed != null) { k.agr += r.agreed; k.agrN++; }
+  if (agreed && agreed.agreed != null) { k.agr += agreed.agreed; k.agrN++; }
   k.beat += r.beat || 0; k.pairs += r.pairs || 0;
   k.test += r.pnl || 0; k.testN++;
   if (r.holdout && r.holdout.pnl != null) {
@@ -628,11 +662,11 @@ function mergeTallyAcc(acc, part) {
 }
 // TASK: fold one shard of the records store — a list of whole blocks, each
 // read exactly once, each row tagged with the block it came from.
-async function s3TallyShardTask({ id, blocks }) {
+async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
   const rowstore = require('./rowstore');
   const acc = newTallyAcc();
   for (const bIdx of blocks) {
-    for (const got of rowstore.readBlocks(id, 'records', [bIdx])) tallyFold(acc, got.row, bIdx);
+    for (const got of rowstore.readBlocks(id, 'records', [bIdx])) tallyFold(acc, got.row, bIdx, agreedAt);
   }
   return serializeTallyAcc(acc);
 }
@@ -647,6 +681,7 @@ async function s3TallyShardTask({ id, blocks }) {
 
 module.exports = {
   s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask,
+  agreedKey, agreedKeyOfRecord,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   // the arithmetic, exported so the tests can pencil it
   forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks,

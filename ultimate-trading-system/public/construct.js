@@ -2975,7 +2975,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       <h3 style="margin-top:0">Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
       ${t.failed ? `<p class="note"><b class="warn">the totalling failed:</b> ${esc(t.failed)} — the records are all kept; the totalling can be tried again after a service restart.</p>`
     : t.waiting ? `<p class="note">the tables are not totalled yet — ${esc(t.waiting)}. This page asks again every few seconds.</p>`
-      : `<p class="note">totalling the tables: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} parts` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands.</p>`}
+      : `<p class="note">${tp && tp.phase ? esc(tp.phase) : 'totalling the tables'}: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} ${tp.phase ? 'units' : 'parts'}` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands.</p>`}
     </div>`)) return;
     if (!t.failed) bTallyPoll = setTimeout(() => { if (tab === 'boards') drawBoards().then(() => restoreScroll(tab)); }, 4000);
     return;
@@ -2988,11 +2988,9 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S3R', swHead)}
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
-    <p style="margin:.6rem 0 .2rem"><b>Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
+    <p style="margin:.6rem 0 .2rem"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     ${bFilterGrid('S3R', [
     ['rule', 'agree by', 'pick', 'shows only settings using this way of turning votes into a call. any shows every one.', ['count', 'conviction', 'voices', 'families', 'unusual']],
-    ['shareMin', 'share at least, %', 'num', 'hides settings whose share is below this. Empty hides nothing.'],
-    ['shareMax', 'share at most, %', 'num', 'hides settings whose share is above this. Empty hides nothing.'],
     ['decision', 'decision', 'pick', 'shows only settings using this decision. any shows both.', ['argmax', 'directional']],
     ['entry', 'entry', 'pick', 'shows only settings opened this way. any shows both.', ['market', 'breakout']],
     ['gate', 'gate', 'text', 'shows only settings whose gate contains what you type. Empty shows every gate.'],
@@ -3007,8 +3005,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['leadMin', 'lead over null set at least', 'num', 'hides settings whose lead over null set is below this. Empty hides nothing.'],
     ['inMoneyMin', 'coins in the money at least', 'num', 'hides settings where fewer coins than this made money. Empty hides nothing.'],
     ['voicesMin', 'independent voices at least', 'num', 'hides settings whose committees held fewer independent voices than this. Empty hides nothing.'],
-    ['agreedMin', 'share that agreed at least, %', 'num', 'hides settings whose members agreed by less than this on average. Empty hides nothing.'],
-    ['agreedMax', 'share that agreed at most, %', 'num', 'hides settings whose members agreed by more than this on average. Empty hides nothing.'],
+    ['agreedMin', 'share that agreed at least, %', 'num', 'hides every setting whose members agreed by less than this on average. Empty hides nothing.'],
   ], ranked && ranked.spread)}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
@@ -3022,9 +3019,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="which stop the setting uses. static sits still on the far side of the entry; a dash means it does not apply.">trail${bRankSortBtn(doc, 'trailMult', 'asc')}</th>
         <th ${bth} title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm${bRankSortBtn(doc, 'armMult', 'asc')}</th>
         <th ${bth} title="how this setting turns the members' votes into a call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by${bRankSortBtn(doc, 'agreeRule', 'asc')}</th>
-        <th ${bth} title="how demanding the rule is, as a share of the committee. Higher is stricter, and it means the same thing whatever a unit's committee holds.">share${bRankSortBtn(doc, 'agreePct', 'desc')}</th>
-        <th ${bth} title="what that share worked out to for the coins priced here, averaged because committees can differ in size. For unusual it is the agreement count the rule demanded.">rung it landed on${bRankSortBtn(doc, 'avgRung', 'desc')}</th>
-        <th ${bth} title="what ACTUALLY agreed at the moments this setting spoke, averaged over them and over its coins, as a share of whatever the rule counts. Every rule fires at or above its bar, never only on it, so this sits at the share or above it — at the share means it only ever scraped in, 100% means every member lined up every time. Measured on the test window; the held-back window is never read for it.">share that agreed${bRankSortBtn(doc, 'avgAgreed', 'desc')}</th>
+        <th ${bth} title="what ACTUALLY agreed at the moments this setting spoke, averaged over them and over its coins, as a share of whatever the rule counts. Every rule fires at or above the bar it was built on, never only on it, so this sits at that bar or above it — 100% means every member lined up every time. Measured on the test window; the held-back window is never read for it.">share that agreed${bRankSortBtn(doc, 'avgAgreed', 'desc')}</th>
+        <th ${bth} title="the bar this setting was built to clear, as a count, averaged because committees can differ in size. For unusual it is the agreement count the rule demanded. The share it was built on is in its name.">rung it landed on${bRankSortBtn(doc, 'avgRung', 'desc')}</th>
         <th ${bth} title="how many INDEPENDENT voices the committees held, averaged over the coins. Members that call the same way almost every time count as one voice, so this is how many real opinions the setting rests on.">independent voices${bRankSortBtn(doc, 'avgVoices', 'desc')}</th>
         <th ${bth} title="how many coins this setting was priced on.">coins${bRankSortBtn(doc, 'coins', 'desc')}</th>
         <th ${bth} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $${bRankSortBtn(doc, 'avgTest', 'desc')}</th>
@@ -3045,9 +3041,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? (r.entry === 'market' ? '—' : 'static') : `${r.trailMult}×`}</td>
         <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? '—' : `${r.armMult}×`}</td>
         <td ${btd}>${esc(r.agreeRule || 'count')}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
-        <td ${btd}>${r.agreePct == null ? '—' : `${r.agreePct}%`}</td>
-        <td ${btd}>${r.avgRung == null ? '—' : r.avgRung.toFixed(1)}${r.members ? ` <span class="muted">of ${r.members}</span>` : ''}</td>
         <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
+        <td ${btd}>${r.avgRung == null ? '—' : r.avgRung.toFixed(1)}${r.members ? ` <span class="muted">of ${r.members}</span>` : ''}</td>
         <td ${btd}${r.avgVoices != null && r.members && r.avgVoices < r.members ? ' class="warn"' : ''}>${r.avgVoices == null ? '—' : r.avgVoices.toFixed(1)}</td>
         <td ${btd}>${r.coins}</td>
         <td ${btd}>${bMoney(r.avgTest)}</td>
@@ -3056,14 +3051,15 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${bMoney(r.avgVsLong)}</td>
         <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
         <td ${btd}>${bLead(r.avgLead)}</td>
-        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="22" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="21" class="empty">nothing here</td></tr>'}</tbody></table></div>
+    ${ranked && ranked.agreedError ? `<p class="note warn">share that agreed is empty on this set — ${esc(ranked.agreedError)}</p>` : ''}
     ${bShown(ranked)}
     ${bPager((ranked && ranked.total) || 0, from, 100, 'S3R')}
     <p class="note">Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
       nothing picked: beat its own null set, best first. Independent voices below members means the committees held
       near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
     `}
-    <p style="margin:.9rem 0 .2rem"><b>Every coin of every setting</b> — one row per coin, its records opening below it</p>
+    <p style="margin:.9rem 0 .2rem"><b>Table 3.B: Every coin of every setting</b> — one row per coin, its records opening below it</p>
     ${bFilterGrid('S3C', [
     ['minShare', 'beat its own null set at least, %', 'num', 'hides rows that won less than this share of their head-to-heads. Empty hides nothing.'],
     ['minPairs', 'comparisons at least', 'num', 'hides rows whose share rests on fewer head-to-heads than this. Empty hides nothing.'],
