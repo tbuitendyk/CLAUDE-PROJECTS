@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **b492b7b9a491 — what the box is serving**, not from the working tree.
+Generated from **9cc869bdc33d — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,7 +89,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Sweep
 
-## What the controls are called (62)
+## What the controls are called (66)
 
 - `— each says why:`
 - `— no finished stage`
@@ -106,6 +106,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `Currently set:`
 - `d`
 - `decision`
+- `declared,`
 - `declared:`
 - `Delete campaign…`
 - `Deleting “`
@@ -122,9 +123,11 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `greenlights:`
 - `hold`
 - `is going:`
+- `lands`
+- `lands about`
+- `no estimate until the first`
 - `no runs yet`
 - `null set size`
-- `of`
 - `on this box —`
 - `or a new name`
 - `permute`
@@ -151,6 +154,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `trail`
 - `triples`
 - `units`
+- `UTC`
 - `View tree`
 - `window layout`
 
@@ -206,7 +210,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `voices`
 - `Weekly 8-day`
 
-## Sentences the page prints (23)
+## Sentences the page prints (24)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards.
@@ -231,11 +235,12 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - This cannot be undone.
 - ” deleted.
 - and the saved models and tuning files belonging to them.
+- priced the same trade and were folded into one)
 
-## Every word, flat (242)
+## Every word, flat (249)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h above active add against agree all alongside always and any are argmax arm at attaches auto band be been belonging best blank Boards. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin conviction count Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry every Every everything evidence exam exist existing families fee files finished first fit. forecast forward from gate going greenlight greenlights has here hold holds is it it. its keep keeps. kept kind kinds known lands later launched layout legacy live loaded locked LOGREG market member members minted models name names never new next No no not nothing now null of off on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record refuse remove Removed Retire retrained reused right rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape share side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe unusual up View voices vote votes voting way Weekly What while whole why will window with working writes yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above active add against agree all alongside always and any are argmax arm at attaches auto band be been belonging best blank Boards. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin conviction count Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional doubles Each each end ends entry estimate every Every everything evidence exam exist existing families fee files finished first fit. folded forecast forward from gate going greenlight greenlights has here hold holds into is it it. its keep keeps. kept kind kinds known lands later launched layout legacy live loaded locked LOGREG market member members minted models name names never new next No no not nothing now null of off on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record refuse remove Removed Retire retrained reused right rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape share side side. singles size so stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples tuning undone. unit units units. universe until unusual up UTC View voices vote votes voting way Weekly were What while whole why will window with working writes yet
 ```
 
 ---
