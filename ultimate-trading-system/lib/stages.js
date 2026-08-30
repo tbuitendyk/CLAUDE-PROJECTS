@@ -1492,14 +1492,40 @@ const RECORDS_V = 2;
 // WHAT A SET'S OWN BLOCK DECLARES AND ITS RECORDS DO NOT HOLD. Read-only, and
 // through the launch's own enumerator, so the number on the screen and the
 // number that would be priced are the same number.
+// WHICH SETTINGS THE BLOCK DECLARES AND THE RECORDS DO NOT HOLD. ONE
+// definition, read by the line that COUNTS them for the screen and by the
+// pass that PRICES them.
+//
+// It was written twice, and the two copies did not even agree on HOW. The
+// counter used a set. The worker asked an array of 329,280 names whether it
+// held each of 524,832 labels in turn — a hundred and seventy thousand
+// million string comparisons, which is not slow, it is stopped. Nothing on
+// screen would have said so either: the button would have been pressed and
+// the night would have passed with no rows and no error (2026-08-30).
+function missingSettingsIn(held, settings) {
+  const have = new Set(held);
+  return settings.filter((st) => !have.has(st.label));
+}
+// THE NEXT FREE SETTING NUMBER, worked out by a LOOP.
+//
+// This was `Math.max(-1, ...ranked.map(...))`, and a spread hands every entry
+// to the function as an argument of its own. The owner has 329,280 of them;
+// engines cap arguments somewhere around 65,000. It threw "Maximum call stack
+// size exceeded" before a single row was priced, and a list that long is the
+// NORMAL case here, not an edge one. lib/dataset.js carries a comment saying
+// exactly this, from the last time (2026-08-30).
+function nextSettingNumber(ranked) {
+  let max = -1;
+  for (const r of ranked) { const v = Number(r.si) || 0; if (v > max) max = v; }
+  return max + 1;
+}
 function missingSettingsOf(id) {
   const doc = getSet(String(id || ''));
   if (!doc || doc.stage !== 3) return null;
   const held = (doc.plan || {}).settingLabels || [];
   let settings;
   try { ({ settings } = relaunchShapeOf(doc)); } catch (err) { return { why: err.message }; }
-  const have = new Set(held);
-  const missing = settings.filter((st) => !have.has(st.label));
+  const missing = missingSettingsIn(held, settings);
   const coins = Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1;
   return {
     held: held.length,
@@ -1539,11 +1565,11 @@ async function appendMissingSettings(doc, pool = null, note = null) {
   // be mistaken for it.
   const t = readTally(id);
   if (!t) throw new Error('open this set on Boards and let its tables finish first — the next free setting number is read from them');
-  const nextSi = Math.max(-1, ...t.ranked.map((r) => Number(r.si) || 0)) + 1;
+  const nextSi = nextSettingNumber(t.ranked);
   if (nextSi !== held.length) {
     throw new Error(`this set holds ${held.length} setting name(s) but its records reach ${nextSi} — it cannot be added to until those agree`);
   }
-  const missing = settings.filter((st) => !held.includes(st.label));
+  const missing = missingSettingsIn(held, settings);
   if (!missing.length) return { already: true, settings: settings.length };
 
   // both gates, on what the set WOULD hold, before a single row is priced
@@ -2179,6 +2205,7 @@ module.exports = {
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
   spreadOf, S3_COIN_FILTERS,
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
+  missingSettingsIn, nextSettingNumber,
   // the same pool every heavy job uses, so filling in a block is worked the
   // same way a launch is rather than on the one thread that answers pages
   createPoolForFillIn: () => createPool(),

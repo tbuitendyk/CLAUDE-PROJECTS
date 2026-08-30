@@ -1882,14 +1882,100 @@ module.exports = {
   // from a ratio: multiplying the dials out gave 526,848 where the enumerator
   // says 524,832, and a setting priced twice is invisible in a table of half a
   // million rows.
+  // A SET THIS SIZE IS THE NORMAL CASE, AND IT KILLED THE BUTTON (2026-08-30).
+  //
+  // The next free setting number was worked out with `Math.max(-1, ...list)`.
+  // A spread hands every entry to the function as an argument of its own, and
+  // engines cap arguments somewhere around 65,000. The owner pressed `fill in
+  // the missing settings` on a set holding 329,280 of them and it threw
+  // "Maximum call stack size exceeded" before a single row was priced — 0 of 10
+  // units, nothing on disk touched, and the only trace was a status line they
+  // had no reason to be looking at.
+  //
+  // 400,000 on purpose: comfortably past any engine's cap, so this fails on the
+  // spread and cannot be argued down to a smaller number that happens to fit.
+  async theNextFreeSettingNumberSurvivesASetThisLarge() {
+    const stages = require('../lib/stages');
+    const ranked = [];
+    for (let i = 0; i < 400000; i++) ranked.push({ si: i });
+    let got;
+    try {
+      got = stages.nextSettingNumber(ranked);
+    } catch (err) {
+      assert.fail('the next free setting number cannot be worked out for a set of 400,000 settings — '
+        + `it is being spread into a call rather than looped over: ${err.message}`);
+    }
+    assert.strictEqual(got, 400000, 'and it does not come out one past the highest');
+    assert.strictEqual(stages.nextSettingNumber([]), 0, 'an empty set does not start at zero');
+    assert.strictEqual(stages.nextSettingNumber([{ si: 7 }, { si: 2 }]), 8, 'it is not reading the highest');
+  },
+
+  // A HUNDRED AND SEVENTY THOUSAND MILLION STRING COMPARISONS IS NOT SLOW, IT
+  // IS STOPPED (2026-08-30). The same question — which settings the block
+  // declares and the records do not hold — was answered in two places, and the
+  // two did not agree on how. The line that COUNTS them for the screen used a
+  // set. The pass that PRICES them asked an array of 329,280 names whether it
+  // contained each of 524,832 labels, one at a time.
+  //
+  // Nothing on screen would have said so: the button would have been pressed,
+  // and the night would have passed with no rows written and no error shown.
+  //
+  // No stopwatch here. The array itself refuses to be asked, so a lookup done
+  // the wrong way fails instantly and for certain rather than by being slow on
+  // one machine and fast enough on another.
+  async theMissingSettingsAreNeverFoundByAskingAListOncePerSetting() {
+    const stages = require('../lib/stages');
+    const held = ['one', 'two'];
+    held.includes = () => { throw new Error('asked the held list once per setting'); };
+    const settings = [{ label: 'one' }, { label: 'three' }, { label: 'two' }, { label: 'four' }];
+    let missing;
+    try {
+      missing = stages.missingSettingsIn(held, settings);
+    } catch (err) {
+      assert.fail('the missing settings are found by asking the list of held names once per declared '
+        + 'setting. On the owner\'s set that is 524,832 questions of a 329,280-long list — it does not '
+        + `finish. Build a set of the held names once instead: ${err.message}`);
+    }
+    assert.deepStrictEqual(missing.map((x) => x.label), ['three', 'four'],
+      'and it does not come back with the settings that are actually missing');
+  },
+
+  // ONE definition, or the two answers drift again — which is exactly what
+  // happened: one of them was right the whole time.
+  async theScreensCountAndThePricingPassAskTheSameQuestion() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const defs = (src.match(/function missingSettingsIn\(/g) || []).length;
+    const calls = (src.match(/[^n] missingSettingsIn\(held, settings\)/g) || []).length;
+    assert.strictEqual(defs, 1, `the missing settings are defined ${defs} times, not once`);
+    assert.strictEqual(calls, 2,
+      `the count on the screen and the pass that prices them do not both read the one definition `
+      + `(${calls} of 2)`);
+    // COMMENTS STRIPPED FIRST. Both lines below forbid a string, and the code
+    // that replaced them QUOTES that string in its own comment explaining what
+    // it replaced — so a guard reading the raw file fires on the fix itself.
+    const code = src.replace(/\/\/[^\n]*/g, '');
+    assert.ok(!/settings\.filter\(\(st\) => !held\.includes/.test(code),
+      'the pricing pass still works the missing settings out for itself');
+    assert.ok(!/Math\.max\(-1, \.\.\./.test(code),
+      'the next free setting number is spread into a call again');
+  },
+
   async aBlockPricedBeforeItWasWholeIsFilledInFromItsOwnEnumerator() {
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     const fn = src.slice(src.indexOf('async function appendMissingSettings('), src.indexOf('const AGREED_V ='));
     assert.ok(fn.length > 400, 'the pass that fills a block in is gone');
     assert.ok(/relaunchShapeOf\(doc\)/.test(fn),
       'what is missing is not read through the launch\'s own enumerator, so it can differ from what a launch would price');
-    assert.ok(/settings\.filter\(\(st\) => !held\.includes\(st\.label\)\)/.test(fn),
-      'missing is not "declared minus what is on disk", so a setting could be priced twice');
+    // RE-AIMED 2026-08-30. This pinned the SPELLING of the subtraction rather
+    // than the fact of it — and the spelling it pinned asked an array of
+    // 329,280 held names whether it contained each of 524,832 declared labels,
+    // one at a time. So the guard was holding the fault in place: the fix it
+    // needed was the one thing it forbade. What matters is that the pass reads
+    // the SAME definition the screen's count reads, however that is written.
+    assert.ok(/const missing = missingSettingsIn\(held, settings\);/.test(fn),
+      'missing is not "declared minus what is on disk" read through the one shared definition, so a '
+      + 'setting could be priced twice — or the subtraction worked out a second way, which is exactly '
+      + 'how the two copies came to disagree');
     // NOTHING ALREADY PRICED IS RENUMBERED. Records are filed under their
     // setting's number and the tables group by it; a reused number silently
     // merges two settings into one row.
