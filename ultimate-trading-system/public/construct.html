@@ -91,7 +91,14 @@
      the buttons and would otherwise sit on its own baseline. */
   .filters .frow { grid-column:1 / -1; justify-self:start; margin-top:.15rem;
     display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
-  .filters .frow button[disabled] { opacity:.45; cursor:default; }
+  /* THE TEXT GHOSTS, THE BUTTON DOES NOT (owner order, 2026-08-30). Fading the
+     whole button takes its outline with it, and a control that half-vanishes
+     reads as one that is not there rather than one that is waiting. */
+  /* THE TEXT GHOSTS, THE BUTTON DOES NOT (owner order, 2026-08-30). opacity:1
+     is doing real work here: the page fades every disabled button whole at
+     line 74, outline and all, and a control that half-vanishes reads as one
+     that is not there rather than one that is waiting for you. */
+  .filters .frow button[disabled] { opacity:1; color:var(--muted); cursor:default; }
   /* the four numbers beside each filter box: two more columns of grid, and the
      cells sit on the same centre line as the box they belong to because the
      grid already says align-items:center */

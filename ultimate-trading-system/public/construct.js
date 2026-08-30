@@ -2410,11 +2410,20 @@ function bSaveView(patch) {
 }
 
 function bMoney(v) { return v == null ? '<span class="muted">—</span>' : `<span class="${v >= 0 ? 'pos' : 'neg'}">${money(v)}</span>`; }
-function bShare(share, beat, pairs) {
-  if (share == null) return '<span class="muted">—</span>';
+// EVERY COMPARISON TIED IS NOT LOSING EVERY COMPARISON (owner order,
+// 2026-08-30). The service works out which rows those are and says so on the
+// row; this only prints it. Two places deciding the same thing is two places
+// to get it wrong, and it has been exactly that twice already.
+//
+// ONE wording, read by both columns: they are empty for the same reason and
+// the two explanations must never drift apart.
+const B_TIED = "every one of these comparisons tied, so there is nothing to count. With gate always a position opens every period whatever the votes say, so shuffling the votes cannot change a cent — the real run and all of its null-set copies make exactly the same money. Read this as cannot be measured here, not as lost every one.";
+const bDash = (tied) => (tied ? `<span class="muted" title="${B_TIED}">—</span>` : '<span class="muted">—</span>');
+function bShare(share, beat, pairs, tied) {
+  if (tied || share == null) return bDash(tied);
   return `<b class="${share > 0.5 ? 'pos' : ''}">${(share * 100).toFixed(1)}%</b> <span class="muted">${Number(beat).toLocaleString()}/${Number(pairs).toLocaleString()}</span>`;
 }
-const bLead = (v) => (v == null ? '<span class="muted">—</span>' : `×${Number(v).toFixed(1)}`);
+const bLead = (v, tied) => (v == null ? bDash(tied) : `×${Number(v).toFixed(1)}`);
 const bCoin = (r) => `<b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''}`;
 const bGeo = (g) => { const v = (HELPVOCAB && HELPVOCAB.geometry) || []; const hit = v.find((o) => o.value === g); return hit ? hit.label : g; };
 
@@ -2899,7 +2908,7 @@ function bFilterGrid(key, specs, spread) {
     <span class="frow"><button data-bapply="${key}" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">apply settings</button>
     <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press apply settings — one wait for the whole set of boxes rather than one wait per box, and on a large record set each wait is minutes."><input type="checkbox" data-bauto="${key}"${bAuto(key) ? ' checked' : ''}> auto-apply settings</label>
     <button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button>${
-  key === 'S3C' && bView().s3cBeforePin ? '<button data-bunpin3b title="puts the filters back exactly as they were before show in 3.B took them off, and lets go of the setting it pinned.">put the filters back</button>' : ''}</span></div>${
+  key === 'S3C' && bView().s3cBeforePin ? '<button data-bunpin3b title="puts the filters back exactly as they were before show in 3.B took them off, and lets go of the setting it pinned.">revert filters</button>' : ''}</span></div>${
   sp4 ? `<p class="note">The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.</p>` : ''}`;
 }
 function bWireFilters(root) {
@@ -3287,8 +3296,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${bMoney(r.avgHold)}</td>
         <td ${btd}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
         <td ${btd}>${bMoney(r.avgVsLong)}</td>
-        <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${btd}>${bLead(r.avgLead)}</td>
+        <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs, r.nullTies)}</td>
+        <td ${btd}>${bLead(r.avgLead, r.nullTies)}</td>
         <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="23" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${ranked && ranked.agreedError ? `<p class="note warn">share that agreed is empty on this set — ${esc(ranked.agreedError)}</p>` : ''}
     ${bShown(ranked)}
@@ -3326,7 +3335,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     return `<tr data-bkey="${esc(k)}">
         <td ${btd0}>${esc(r.cellLabel)}</td>
         <td ${btd}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span></td>
-        <td ${btd}>${bShare(r.share, r.beat, r.pairs)}</td>
+        <td ${btd}>${bShare(r.share, r.beat, r.pairs, r.nullTies)}</td>
         <td ${btd}>${Number(r.pairs).toLocaleString()}</td>
         <td ${btd}>${bMoney(r.avgTest)}</td>
         <td ${btd}>${bMoney(r.avgHold)}</td>
@@ -3449,7 +3458,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
           <td style="padding:.2rem .5rem">±${r.bandPct != null ? Number(r.bandPct).toFixed(2) : '—'}%</td>
           <td style="padding:.2rem .5rem">${bMoney(r.pnl)}</td>
           <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
-          <td style="padding:.2rem .5rem">${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+          <td style="padding:.2rem .5rem">${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs, r.nullTies)}</td>
           <td style="padding:.2rem .5rem">${h ? bMoney(h.pnl) : '<span class="muted">—</span>'}</td>
           <td style="padding:.2rem .5rem">${h && h.trades != null ? h.trades : '—'}</td>
           <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>

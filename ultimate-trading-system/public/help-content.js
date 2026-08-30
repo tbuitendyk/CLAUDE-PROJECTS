@@ -339,7 +339,7 @@ window.HELP = {
         what: 'Shows, in Table 3.B below, only the coins this setting was priced on — and picks this exact setting out of them.',
         more: 'It takes every other filter on Table 3.B off first, so none of the setting\'s coins can be hidden by '
           + 'something set earlier, and it brings that table onto the screen.\n\n'
-          + 'The button you pressed stays bold until you press another one or press put the filters back.\n\n'
+          + 'The button you pressed stays bold until you press another one or press revert filters.\n\n'
           + 'Each of those coins opens its records straight away, and one record in each is highlighted: the eight '
           + 'records under a coin are the decision, band and 24/5 variants of the setting, and the highlighted one is '
           + 'the row of Table 3.A you actually pressed. So the averages above and the one setting you asked about are '

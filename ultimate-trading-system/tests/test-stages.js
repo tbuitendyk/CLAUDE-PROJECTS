@@ -1824,7 +1824,7 @@ module.exports = {
       'pinning adds the setting beside whatever floors were already on, so it cannot show all of its coins');
     // ...and what was there is kept, so one press puts it back
     assert.ok(/s3cBeforePin: before,/.test(ui), 'nothing remembers the filters that were taken off');
-    assert.ok(/data-bunpin3b/.test(ui) && /put the filters back/.test(ui),
+    assert.ok(/data-bunpin3b/.test(ui) && /revert filters/.test(ui),
       'there is no way to put the filters back after show in 3.B took them off');
     assert.ok(/all\.S3C = \{ \.\.\.\(bView\(\)\.s3cBeforePin \|\| \{\}\) \};/.test(ui),
       'putting them back does not restore what was remembered');

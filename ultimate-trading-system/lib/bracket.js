@@ -96,6 +96,25 @@ function buildComboChunks(maps, geometry, weekdaysOnly, includeUnlabeled = false
 // (+1 → buy-stop, −1 → sell-stop), the other rail existing purely as a stop.
 const GATES = ['always', 'active', 'directional'];
 
+// CAN A NULL SET BE BEATEN AT ALL UNDER THIS gate? (owner order, 2026-08-30.)
+//
+// With gate `always` both rails go out every period whatever the vote is:
+// simBracket reads the call on one line and then never looks at it again. So
+// the same setting with the votes shuffled makes exactly the same money, to
+// the cent, on every one of its null-set copies. The count of how many the
+// real one BEAT wants it STRICTLY ahead, and a tie is not ahead, so it counted
+// zero of them — reading 0.0%, which is what a setting that LOST every one
+// reads too. Two opposite meanings under one number.
+//
+// The other gates read the call, and market cells are directional, so for
+// those the count means exactly what it says.
+//
+// THIS IS THE ONE PLACE THAT ANSWERS IT. Everything that prints, sorts,
+// filters or averages a null-set number asks here, because the last time a
+// fact like this was worked out separately in three readers, two of them
+// agreed and one did not.
+const nullSetCanBeat = (gate) => gate !== 'always';
+
 // ENTRY MODES.
 //
 // 'breakout' is everything above: the position is opened by price REACHING a
@@ -591,4 +610,4 @@ function predictMember(saved, x) {
   return out.label;
 }
 
-module.exports = { comboViews, buildComboChunks, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };
+module.exports = { nullSetCanBeat, comboViews, buildComboChunks, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };

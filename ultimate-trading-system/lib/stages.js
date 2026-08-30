@@ -540,7 +540,7 @@ function validateSort(stage, spec) {
 }
 function sortValue(kind, key, row) {
   if (kind === 's') return key === 'ctx' ? `${row.ctx1 || ''}${row.ctx2 ? ` + ${row.ctx2}` : ''}` : String(row[key] ?? '');
-  if (kind === 'share') return row.pairs ? row.beat / row.pairs : null;
+  if (kind === 'share') return row.nullTies || !row.pairs ? null : row.beat / row.pairs;
   const v = row[key];
   return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
 }
@@ -610,9 +610,22 @@ const FILTER_DEFS = {
 // DEFINITION, read by both the filtering and the four numbers beside each
 // filter box — two copies of "what does this filter actually read" is two
 // answers waiting to disagree.
+// A NULL-SET NUMBER THAT CANNOT MEAN ANYTHING IS EMPTIED, ONCE, before
+// anything reads it (owner order, 2026-08-30: "fix that"). Doing it at the
+// printing end would leave the filters, the sort and the four numbers beside
+// each box all still reading a 0 the screen does not show — which is how one
+// fact ends up written two ways.
+//
+// The comparisons themselves are left alone and still counted: a thousand
+// comparisons really were made, and every one of them tied. That is the
+// honest reading, and it is not the same as losing a thousand.
+function nullSetHonest(r) {
+  if (bracketLib.nullSetCanBeat(r.gate)) return r;
+  return { ...r, nullTies: true, lead: null, avgLead: null };
+}
 const DERIVED = {
   _ctx: (r) => [r.ctx1, r.ctx2].filter(Boolean).join(' + '),
-  _beatPct: (r) => (r.pairs ? (r.beat / r.pairs) * 100 : null),
+  _beatPct: (r) => (r.nullTies || !r.pairs ? null : (r.beat / r.pairs) * 100),
   // WHAT THE gate COLUMN ACTUALLY SHOWS. A setting opened at market carries a
   // gate in its record and the column prints a dash, because no gate applies
   // to it — so a filter reading the stored value would hand back rows the
@@ -900,6 +913,11 @@ const membersForSize = (size) => readingsForSize(size) * 2;
 // The rung a share lands on for a committee of this many.
 const rungFor = (pct, n) => Math.max(1, Math.min(n, Math.ceil((pct / 100) * n)));
 
+// THE gate BACK OUT OF A SHAPE'S NAME. shapeLabel writes it as the first word
+// (or `market`, which has no gate), and this reads it back — kept against the
+// writer, with a test that walks every gate through both, because Table 3.B
+// knows a setting only by its name. Nothing else about the name is parsed.
+const gateOfShape = (label) => String(label || '').split(' ')[0];
 // The trade shape's name, without any agreement in it.
 function shapeLabel(cell) {
   const trailBit = cell.trailMult == null ? '' : ` trail${cell.trailMult}x/arm${cell.armMult}x`;
@@ -2066,7 +2084,12 @@ function stage3Coins(id, query) {
     && (minHold == null || (r.avgHold != null && r.avgHold >= minHold))
     && (minTrades == null || (r.avgTrades != null && r.avgTrades >= minTrades))
     && (minVsLong == null || (r.avgVsLong != null && r.avgVsLong >= minVsLong));
-  const kept = t.coins.filter(clears);
+  // The share is emptied BEFORE the filters read it, so a floor on it drops a
+  // row that cannot be measured rather than keeping it as a zero. A coin row
+  // knows its setting only by name, so the gate comes back out of the name.
+  const honest = (r) => (bracketLib.nullSetCanBeat(gateOfShape(r.cellLabel)) ? r
+    : { ...r, nullTies: true, share: null });
+  const kept = t.coins.map(honest).filter(clears);
   const byShare = (a, b) => ((b.share ?? -1) - (a.share ?? -1)) || (b.pairs - a.pairs);
   const orders = {
     share: byShare,
@@ -2111,9 +2134,9 @@ function stage3Ranked(id, from, n, filters = null) {
   let sort = [];
   if (doc && Array.isArray(doc.sort) && doc.sort.length) {
     sort = doc.sort;
-    rows = applySort(3, t.ranked.map((r, i) => ({ ...r, _i: i })), doc.sort, (a, b) => a._i - b._i);
+    rows = applySort(3, t.ranked.map((r, i) => nullSetHonest({ ...r, _i: i })), doc.sort, (a, b) => a._i - b._i);
   } else {
-    rows = t.ranked.map((r, i) => ({ ...r, _i: i }));
+    rows = t.ranked.map((r, i) => nullSetHonest({ ...r, _i: i }));
   }
   const of = rows.length;
   rows = applyFilters(3, rows, filters);
@@ -2142,7 +2165,7 @@ function stage3CoinRows(id, query) {
       && r.geometry === hit.geometry)
     // joined on the way out, from the same table the tables were totalled
     // from — it is not on the record, and this is the only place it is read
-    .map((r) => ({ ...r, ...((agreedAt && agreedAt[`${r.u}|${keyOf(r)}`]) || {}) }));
+    .map((r) => nullSetHonest({ ...r, ...((agreedAt && agreedAt[`${r.u}|${keyOf(r)}`]) || {}) }));
   return { indexed: true, shown: got.length, rows: got };
 }
 

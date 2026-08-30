@@ -116,6 +116,20 @@ module.exports = {
       + 'just been greyed out — it looks applied and is not');
   },
 
+  // The page fades every disabled button whole. On this one the owner wants
+  // only the words to go quiet, so the control still reads as a control that
+  // is waiting rather than one that is not there.
+  async theGhostedButtonKeepsItsOutline() {
+    const html = HTML();
+    const rule = html.match(/\.filters \.frow button\[disabled\] \{[^}]*\}/);
+    assert.ok(rule, 'the apply settings button has no look of its own while it is asleep');
+    assert.ok(/opacity:1/.test(rule[0]),
+      'the whole button still fades, outline and all — the page fades every disabled button at the '
+      + 'top of the stylesheet, and this one has to say otherwise');
+    assert.ok(/color:var\(--muted\)/.test(rule[0]),
+      'the words do not go quiet, so nothing on the button shows it is asleep');
+  },
+
   async theTwoStageThreeTablesDoNotRunIntoEachOther() {
     const src = JS();
     const html = HTML();
