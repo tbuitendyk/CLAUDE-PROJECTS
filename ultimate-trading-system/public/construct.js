@@ -2996,7 +2996,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       <h3 style="margin-top:0">Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
       ${t.failed ? `<p class="note"><b class="warn">the totalling failed:</b> ${esc(t.failed)} — the records are all kept; the totalling can be tried again after a service restart.</p>`
     : t.waiting ? `<p class="note">the tables are not totalled yet — ${esc(t.waiting)}. This page asks again every few seconds.</p>`
-      : `<p class="note">${tp && tp.phase ? esc(tp.phase) : 'totalling the tables'}: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} ${tp.phase ? 'units' : 'parts'}` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands.</p>`}
+      : `<p class="note">${tp && tp.phase ? esc(tp.phase) : 'totalling the tables'}: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} ${esc(tp.word || 'parts')}` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands.</p>`}
     </div>`)) return;
     if (!t.failed) bTallyPoll = setTimeout(() => { if (tab === 'boards') drawBoards().then(() => restoreScroll(tab)); }, 4000);
     return;

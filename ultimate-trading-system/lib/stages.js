@@ -1751,7 +1751,7 @@ function ensureTally(id) {
   if (tallyRun) {
     if (tallyRun.id === id) {
       return tallyRun.error ? { failed: tallyRun.error }
-        : { totalling: { done: tallyRun.done, total: tallyRun.total, phase: tallyRun.phase || null } };
+        : { totalling: { done: tallyRun.done, total: tallyRun.total, phase: tallyRun.phase || null, word: tallyRun.word || 'parts' } };
     }
     if (!tallyRun.error) return { waiting: `the tables of another record set are totalling right now — one totalling at a time` };
     tallyRun = null;   // a dead attempt for another set does not block this one
@@ -1776,7 +1776,7 @@ function ensureTally(id) {
     if (doc.tallyError !== gate.message) { doc.tallyError = gate.message; saveSet(doc); }
     return { failed: gate.message };
   }
-  const run = { id, done: 0, total: 0, startedAt: Date.now(), error: null, promise: null };
+  const run = { id, done: 0, total: 0, phase: null, word: 'parts', startedAt: Date.now(), error: null, promise: null };
   tallyRun = run;
   run.promise = (async () => {
     let pool = null;
@@ -1787,6 +1787,7 @@ function ensureTally(id) {
       // they are re-derived from the migrated records rather than translated.
       if (recordsVersionOf(doc) < RECORDS_V) {
         run.phase = RECORD_MIGRATIONS[RECORDS_V].says;
+        run.word = 'blocks of records';
         await migrateRecords(doc, (dn, tn) => { run.done = dn; run.total = tn; });
       }
       const blocks = rowstore.blocksOf(id, 'records') || [];
@@ -1800,6 +1801,7 @@ function ensureTally(id) {
       if (!readAgreed(id)) {
         if (!pool) pool = createPool();
         run.phase = 'reading what the members actually did';
+        run.word = 'units';
         try {
           await buildAgreedTable(doc, pool, (dn, tn) => { run.done = dn; run.total = tn; });
           if (doc.agreedError) { delete doc.agreedError; saveSet(doc); }
@@ -1813,6 +1815,7 @@ function ensureTally(id) {
         }
       }
       run.phase = null;
+      run.word = 'parts';
       await buildTally(doc, pool, (dn, tn) => { run.done = dn; run.total = tn; });
       if (doc.tallyError) { delete doc.tallyError; saveSet(doc); }
       if (tallyRun === run) tallyRun = null;
