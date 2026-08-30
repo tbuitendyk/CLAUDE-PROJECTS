@@ -3014,9 +3014,9 @@ function bRenameLine(doc, renaming) {
   }
   const behind = (renaming && renaming.behind) || 0;
   if (!behind) return '';
-  return `<p class="note warn"><b>${Number(behind).toLocaleString()} of this set\u2019s settings are named without the share that decides
-    whether two forecasts count as one voice.</b> The names written today carry it, so this set\u2019s own block reads as not declaring
-    them \u2014 and filling in the missing settings first would price every one of them a second time under its new name.
+  return `<p class="note warn"><b>${Number(behind).toLocaleString()} of this set’s settings are named without the share that decides
+    whether two forecasts count as one voice.</b> The names written today carry it, so this set’s own block reads as not declaring
+    them — and filling in the missing settings first would price every one of them a second time under its new name.
     Renaming changes names only: nothing is priced again, and no result moves.
     <button id="bRename" data-brename="${esc(doc.id)}">bring the setting names up to date</button></p>`;
 }
@@ -3046,7 +3046,7 @@ function bFillInLine(doc, gap, filling) {
     The missing ${Number(gap.missing).toLocaleString()} are ways of asking that did not exist when it ran, so nothing here can answer for them.
     Pricing them is ${Number(gap.pricings).toLocaleString()} pricings over ${gap.units} unit(s); nothing already priced is read, touched or priced again.
     ${stop ? `<b>It cannot be done on this set:</b> ${esc(gap.gate.message)}`
-    : behind ? `<b>Bring the setting names up to date first</b> \u2014 ${Number(behind).toLocaleString()} of this set\u2019s
+    : behind ? `<b>Bring the setting names up to date first</b> — ${Number(behind).toLocaleString()} of this set’s
       settings are named the older way, and pricing now would price every one of them a second time under its new name.`
       : `<button id="bFillIn" data-bfillin="${esc(doc.id)}">fill in the missing settings</button>`}</p>`;
 }
@@ -3429,7 +3429,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   $(mount).querySelectorAll('[data-brename]').forEach((btn) => {
     btn.onclick = async () => {
       // eslint-disable-next-line no-alert
-      if (!confirm('Bring this set\u2019s setting names up to date?\n\n'
+      if (!confirm('Bring this set’s setting names up to date?\n\n'
         + 'Names only. Nothing is priced again and no result moves. The new records are written beside the old ones '
         + 'and swapped in only once they are all there, so an interruption leaves the set exactly as it is. The tables '
         + 'are worked out again afterwards.')) return;
