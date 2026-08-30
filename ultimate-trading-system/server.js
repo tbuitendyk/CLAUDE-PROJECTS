@@ -770,6 +770,8 @@ app.get('/api/stageset/:id/stage2', (req, res) => {
 // A finished set whose tables are missing (a restart or a death mid-total)
 // totals itself when opened: these two answer with how far that has got
 // instead of a bare refusal, and the page asks again until the tables land.
+// one filling-in at a time, in the service that owns the pool
+let fillIn = null;
 app.get('/api/stageset/:id/ranked', (req, res) => {
   let out;
   try {
@@ -790,6 +792,48 @@ app.get('/api/stageset/:id/coins', (req, res) => {
     return res.status(404).json({ error: 'this set has no totalled tables yet' });
   }
   return res.json(out);
+});
+// WHAT THIS SET'S BLOCK DECLARES AND ITS RECORDS DO NOT HOLD, and the door
+// that prices it. A set can be priced before its block is whole — the quorum
+// bar became a dial after this one ran — and the answer is to price what is
+// missing, not to explain the gap away on a screen (owner order, 2026-08-30).
+app.get('/api/stageset/:id/missing', (req, res) => {
+  const out = stages.missingSettingsOf(req.params.id);
+  if (!out) return res.status(404).json({ error: 'no such stage 3 record set' });
+  return res.json(out);
+});
+app.post('/api/stageset/:id/fill-in', (req, res) => {
+  if (fillIn && !fillIn.done) return res.json({ running: fillIn.id, done: fillIn.progress.done, total: fillIn.progress.total });
+  const id = String(req.params.id || '');
+  let plan;
+  try { plan = stages.missingSettingsOf(id); } catch (err) { return res.status(400).json({ error: err.message }); }
+  if (!plan) return res.status(404).json({ error: 'no such stage 3 record set' });
+  if (plan.why) return res.status(400).json({ error: plan.why });
+  if (!plan.missing) return res.json({ already: true, held: plan.held });
+  const run = { id, done: false, error: null, added: 0, progress: { done: 0, total: plan.units || 0 } };
+  fillIn = run;
+  run.promise = (async () => {
+    let pool = null;
+    try {
+      pool = stages.createPoolForFillIn();
+      const out = await stages.appendMissingSettings(stages.getSet(id), pool,
+        (dn, tn) => { run.progress = { done: dn, total: tn }; });
+      run.added = out.added || 0;
+    } catch (err) {
+      run.error = String(err.message || err);
+    } finally {
+      if (pool) pool.abort();
+      run.done = true;
+    }
+  })();
+  return res.json({ started: true, settings: plan.missing, units: plan.units, pricings: plan.pricings });
+});
+app.get('/api/stageset/:id/fill-in/status', (req, res) => {
+  if (!fillIn || fillIn.id !== String(req.params.id || '')) return res.json({ idle: true });
+  return res.json({
+    running: !fillIn.done, done: fillIn.progress.done, total: fillIn.progress.total,
+    added: fillIn.added, error: fillIn.error,
+  });
 });
 app.get('/api/stageset/:id/coin-rows', (req, res) => {
   try { return res.json(stages.stage3CoinRows(req.params.id, req.query || {})); }

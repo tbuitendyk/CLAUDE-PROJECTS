@@ -2852,6 +2852,38 @@ function bWireTableFold(root) {
     };
   });
 }
+// A SET WHOSE BLOCK IS NOT ALL PRICED SAYS SO, AND CAN BE FILLED IN (owner
+// order, 2026-08-30). A set priced before the quorum bar became a dial holds
+// five of the eight ways of asking; the block it declares holds all eight. The
+// answer is to price what is missing, not to explain the gap on a screen.
+//
+// Every number here comes from the launch's own enumerator, so what is offered
+// and what would run are the same thing.
+function bFillInLine(doc, gap, filling) {
+  if (filling && filling.error) {
+    return `<p class="note warn">filling in the missing settings failed: ${esc(filling.error)} — nothing already priced was touched.</p>`;
+  }
+  if (filling && filling.running) {
+    const pct = filling.total ? ` (${Math.floor((filling.done / filling.total) * 100)}%)` : '';
+    return `<p class="note">filling in the settings this block declares: <b>${Number(filling.done).toLocaleString()} of ${Number(filling.total).toLocaleString()} units</b>${pct}
+      — running in the background; the tables are worked out again when it lands. This page asks again every few seconds.</p>`;
+  }
+  if (!gap || gap.why) {
+    return gap && gap.why ? `<p class="note">this set cannot be added to: ${esc(gap.why)}</p>` : '';
+  }
+  if (!gap.missing) {
+    return gap.appends
+      ? `<p class="note">every setting this block declares is priced. It was filled in ${gap.appends} time(s) since it first ran.</p>`
+      : '';
+  }
+  const stop = gap.gate && gap.gate.band === 'refuse';
+  return `<p class="note warn"><b>this set holds ${Number(gap.held).toLocaleString()} of the ${Number(gap.declared).toLocaleString()} settings its block declares.</b>
+    The missing ${Number(gap.missing).toLocaleString()} are ways of asking that did not exist when it ran, so nothing here can answer for them.
+    Pricing them is ${Number(gap.pricings).toLocaleString()} pricings over ${gap.units} unit(s); nothing already priced is read, touched or priced again.
+    ${stop ? `<b>It cannot be done on this set:</b> ${esc(gap.gate.message)}`
+    : `<button id="bFillIn" data-bfillin="${esc(doc.id)}">fill in the missing settings</button>`}</p>`;
+}
+
 // A TABLE WRITES INTO ITS MOUNT ONLY IF THE MOUNT IS STILL THERE (2026-08-29).
 //
 // Each stage table fetches its rows and then writes them into `#bT1/2/3`. If
@@ -3014,9 +3046,11 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, ...bFilters('S3R') }).toString();
-  const [ranked, coins] = await Promise.all([
+  const [ranked, coins, gap, filling] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
+    apiOr(`api/stageset/${doc.id}/missing`, null),
+    apiOr(`api/stageset/${doc.id}/fill-in/status`, null),
   ]);
   // A finished set whose tables are missing totals itself when opened (the
   // durable fix, owner order 2026-08-27): the service reports how far the
@@ -3043,6 +3077,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S3R', swHead)}
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
+    ${bFillInLine(doc, gap, filling)}
     <p style="margin:.6rem 0 .2rem"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     ${bFilterGrid('S3R', [
     ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
@@ -3204,6 +3239,22 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       bRedrawPeggedToCoinHead();
     };
   });
+  $(mount).querySelectorAll('[data-bfillin]').forEach((btn) => {
+    btn.onclick = async () => {
+      const n = Number((gap && gap.missing) || 0).toLocaleString();
+      const p = Number((gap && gap.pricings) || 0).toLocaleString();
+      // eslint-disable-next-line no-alert
+      if (!confirm(`Price the ${n} settings this block declares and this set does not hold?\n\n`
+        + `${p} pricings. Nothing already priced is touched. The tables are worked out again when it lands.`)) return;
+      btn.disabled = true;
+      btn.textContent = 'starting…';
+      try { await post(`api/stageset/${btn.dataset.bfillin}/fill-in`, {}); } catch (err) { alert(err.message); }
+      drawBoards().then(() => restoreScroll(tab));
+    };
+  });
+  if (filling && filling.running) {
+    bTallyPoll = setTimeout(() => { if (tab === 'boards') drawBoards().then(() => restoreScroll(tab)); }, 4000);
+  }
   bWirePager(mount);
   bWireRankSort(doc, mount);
   bWireCoinSort(mount);

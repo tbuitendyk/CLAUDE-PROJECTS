@@ -317,6 +317,20 @@ window.HELP = {
         + 'tables, because only stage 3 prices it.'],
     ],
     controls: {
+      bFillIn: {
+        what: 'Prices the settings this record set\'s own block declares and its records do not hold, and adds them to it.',
+        more: 'A set can be priced before its block is whole. This one ran when the quorum was five named choices; it is '
+          + 'two dials now, and four ways of weighing against two bars is eight ways of asking where five were priced. '
+          + 'Nothing on this screen can answer for the other three, and no filter or column can invent them.\n\n'
+          + 'What is missing is worked out by the SAME enumerator a launch runs, so the count offered and the count '
+          + 'priced are one number. Nothing already priced is read for it, touched, or priced again — the new rows are '
+          + 'appended and take setting numbers after everything on disk.\n\n'
+          + 'It refuses if the finished tables would not fit in memory, and says by how much, before anything runs.\n\n'
+          + 'A set that has been added to says so, with the release each addition ran under. It is no longer one run '
+          + 'under one engine and that is worth knowing rather than inferring — the money is comparable because the '
+          + 'pricing is the same code on the same votes, but the set\'s own stamp names only the first release.\n\n'
+          + 'When it lands the tables are worked out again from all the records, old and new together.',
+      },
       ...RUN_NOTES_CONTROLS,
       ...BOARD_SECTION_CONTROLS,
     },

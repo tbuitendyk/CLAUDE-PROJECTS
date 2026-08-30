@@ -1266,20 +1266,7 @@ function startStage3(params) {
     const agreedMap = {};
     for (let pi = 0; pi < parentRecords.length; pi++) {
       const rec = parentRecords[pi];
-      const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
-      const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
-      payloads.push({
-        combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
-        geometry: rec.geometry, params: p,
-        unit: {
-          bandPct: rec.bandPct,
-          probs: rec.specs.map((_, mi) => votes.map((v) => v.m[mi])),
-          ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) },
-          members: rec.specs.map((spec, mi) => ({ spec, tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [] })),
-        },
-        settings, fee, nullN, seed: doc.seed,
-        unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
-      });
+      payloads.push(s3Payload({ doc, parent, rec, settings, fee, nullN }));
       if (pi % 5 === 4 || pi === parentRecords.length - 1) {
         phaseNote(doc, { phase: 'reading the kept votes', done: pi + 1, total: parentRecords.length, word: 'units', startedMs: tRead });
         saveSet(doc);
@@ -1469,6 +1456,133 @@ const TALLY_V = 4;
 // era a set came from.
 const RECORDS_V = 2;
 
+// WHAT A SET'S OWN BLOCK DECLARES AND ITS RECORDS DO NOT HOLD. Read-only, and
+// through the launch's own enumerator, so the number on the screen and the
+// number that would be priced are the same number.
+function missingSettingsOf(id) {
+  const doc = getSet(String(id || ''));
+  if (!doc || doc.stage !== 3) return null;
+  const held = (doc.plan || {}).settingLabels || [];
+  let settings;
+  try { ({ settings } = relaunchShapeOf(doc)); } catch (err) { return { why: err.message }; }
+  const have = new Set(held);
+  const missing = settings.filter((st) => !have.has(st.label));
+  const coins = Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1;
+  return {
+    held: held.length,
+    declared: settings.length,
+    missing: missing.length,
+    units: (doc.plan || {}).units || 0,
+    pricings: missing.length * ((doc.plan || {}).units || 0) * (1 + Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)))),
+    gate: tallyBudgetFor({ settings: settings.length, coins }),
+    appends: (doc.appends || []).length,
+  };
+}
+
+// ---- FILLING IN A BLOCK THAT WAS PRICED BEFORE IT WAS WHOLE --------------------
+//
+// Owner order, 2026-08-30. The point of moving a set onto today's shape is to
+// have data that exercises it, and a set that cannot answer for three of the
+// eight quorum pairs is not that. This prices what the set's OWN block
+// declares and its records do not hold, and appends it. Nothing already
+// priced is read for it, touched, or priced again.
+//
+// WHAT IS MISSING IS WORKED OUT THROUGH THE LAUNCH'S OWN ENUMERATOR, never
+// from arithmetic. A count reached by multiplying out the dials came to 526,848
+// where the enumerator says 524,832 — the same-trade fold and the share dedup
+// do not follow a ratio. Anything but the enumerator risks pricing a duplicate,
+// and a duplicate is invisible in a table of half a million rows.
+async function appendMissingSettings(doc, pool = null, note = null) {
+  const id = doc.id;
+  const busy = stageBusy();
+  if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
+  const { parent, records, settings } = relaunchShapeOf(doc);
+  const held = (doc.plan || {}).settingLabels || [];
+  if (!held.length) throw new Error(`${doc.name} does not record which settings it holds, so nothing can be added to it safely`);
+
+  // THE INDEX A RECORD IS FILED UNDER MUST NOT BE REUSED. Every record carries
+  // the position of its setting in the launch's list, and the tables group by
+  // it. A new setting takes the next free one, so nothing already on disk can
+  // be mistaken for it.
+  const t = readTally(id);
+  if (!t) throw new Error('open this set on Boards and let its tables finish first — the next free setting number is read from them');
+  const nextSi = Math.max(-1, ...t.ranked.map((r) => Number(r.si) || 0)) + 1;
+  if (nextSi !== held.length) {
+    throw new Error(`this set holds ${held.length} setting name(s) but its records reach ${nextSi} — it cannot be added to until those agree`);
+  }
+  const missing = settings.filter((st) => !held.includes(st.label));
+  if (!missing.length) return { already: true, settings: settings.length };
+
+  // both gates, on what the set WOULD hold, before a single row is priced
+  const coinsN = Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1;
+  const heapGate = tallyBudgetFor({ settings: held.length + missing.length, coins: coinsN });
+  if (heapGate.band === 'refuse') throw new Error(heapGate.message);
+  const diskGate = storeBudgetFor({ rows: missing.length * records.length });
+  if (diskGate.band === 'refuse') throw new Error(diskGate.message);
+
+  const fee = Number((doc.params || {}).fee) || 0;
+  const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
+  const payloads = records.map((rec) => s3Payload({ doc, parent, rec, settings: missing, fee, nullN }));
+  // appended, not rewritten: the writer opens the store for appending and
+  // carries on its own row count, its own columns and its own block list
+  const w = rowstore.writer(id, 'records', { offThread: true });
+  const startedRows = rowstore.count(id, 'records');
+  const failures = [];
+  let done = 0;
+  if (note) note(0, payloads.length);
+  const take = (settled, i) => {
+    const rec = records[i];
+    if (settled.ok && settled.value) {
+      for (const row of settled.value.rows) {
+        // the worker numbers the settings it was handed from zero; they sit
+        // after everything already on disk
+        w.push({
+          ...row,
+          si: nextSi + row.si,
+          u: rec.u, trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
+        });
+      }
+      w.flush();
+    } else if (!settled.ok) {
+      failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
+    }
+    done++;
+    if (note) note(done, payloads.length);
+  };
+  if (pool && pool.parallel) await pool.forEach('s3Unit', payloads, take);
+  else {
+    for (let i = 0; i < payloads.length; i++) {
+      // eslint-disable-next-line no-await-in-loop
+      try { take({ ok: true, value: await require('./stagework').s3UnitTask(payloads[i]) }, i); }
+      catch (err) { take({ ok: false, error: err.message }, i); }
+    }
+  }
+  await w.close();
+  if (failures.length === records.length) {
+    throw new Error(`every unit failed while adding settings: ${failures[0].error}`);
+  }
+
+  const plan = doc.plan || {};
+  plan.settingLabels = held.concat(missing.map((st) => st.label));
+  plan.settings = plan.settingLabels.length;
+  doc.plan = plan;
+  doc.counts = { ...(doc.counts || {}), settings: plan.settings, rows: rowstore.count(id, 'records') };
+  // A SET THAT WAS ADDED TO SAYS SO, and under which release. It is no longer
+  // one run under one engine, and that is a thing the reader is entitled to
+  // know rather than to infer from a stamp that only names the first.
+  doc.appends = [...(doc.appends || []), {
+    at: new Date().toISOString(), engineVersion: ENGINE_VERSION,
+    settings: missing.length, rows: rowstore.count(id, 'records') - startedRows,
+    failures: failures.length,
+  }];
+  if (failures.length) doc.failures = [...(doc.failures || []), ...failures];
+  saveSet(doc);
+  // derived, so rebuilt rather than patched (RULE NINE)
+  try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  try { fs.rmSync(agreedFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  return { added: missing.length, rows: rowstore.count(id, 'records') - startedRows, failures: failures.length };
+}
+
 const AGREED_V = 1;
 const agreedFile = (id) => path.join(SETS_DIR, `${id}-agreed.json.gz`);
 function readAgreed(id) {
@@ -1495,30 +1609,36 @@ function relaunchShapeOf(doc) {
   const { kept } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), records);
   return { parent, records, settings: kept };
 }
+// ONE UNIT'S PAYLOAD, BUILT ONE WAY. The launch, the rebuild of what actually
+// agreed, and the pass that fills in settings a block was priced without all
+// hand the workers the same thing — so anything priced later is priced exactly
+// as the first rows were. Only what is being ASKED for differs: which
+// settings, how many null-set deals, and whether anything is priced at all.
+function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false }) {
+  const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
+  const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
+  return {
+    combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
+    geometry: rec.geometry, params: doc.params,
+    unit: {
+      bandPct: rec.bandPct,
+      probs: rec.specs.map((_, mi) => votes.map((v) => v.m[mi])),
+      ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) },
+      members: rec.specs.map((spec, mi) => ({ spec, tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [] })),
+    },
+    settings, fee, nullN, seed: doc.seed,
+    unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
+    ...(agreedOnly ? { agreedOnly: true } : {}),
+  };
+}
+
 async function buildAgreedTable(doc, pool = null, note = null) {
   const sw = require('./stagework');
   const { parent, records, settings } = relaunchShapeOf(doc);
   const p = doc.params || {};
-  // The SAME payload the launch builds, so the rebuilt streams are the streams
-  // that ran. Only nullN and agreedOnly differ: no null-set deals are dealt
-  // and nothing is priced.
-  const payloads = records.map((rec) => {
-    const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
-    const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
-    return {
-      combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
-      geometry: rec.geometry, params: p,
-      unit: {
-        bandPct: rec.bandPct,
-        probs: rec.specs.map((_, mi) => votes.map((v) => v.m[mi])),
-        ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) },
-        members: rec.specs.map((spec, mi) => ({ spec, tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [] })),
-      },
-      settings, fee: Number(p.fee) || 0, nullN: 0, seed: doc.seed,
-      unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
-      agreedOnly: true,
-    };
-  });
+  const payloads = records.map((rec, i) => s3Payload({
+    doc, parent, rec, settings, fee: Number(p.fee) || 0, nullN: 0, agreedOnly: true, note: note && (() => note(i, records.length)),
+  }));
   const map = {};
   let done = 0;
   if (note) note(0, payloads.length);
@@ -2019,6 +2139,9 @@ module.exports = {
   setSetNotes, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
   spreadOf, S3_COIN_FILTERS,
-  buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf,
+  buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
+  // the same pool every heavy job uses, so filling in a block is worked the
+  // same way a launch is rather than on the one thread that answers pages
+  createPoolForFillIn: () => createPool(),
   RECORDS_V,
 };

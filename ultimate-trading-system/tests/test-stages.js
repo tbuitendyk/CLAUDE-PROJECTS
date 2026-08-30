@@ -1847,6 +1847,52 @@ module.exports = {
     assert.ok(/colspan="23"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A');
   },
 
+  // A BLOCK PRICED BEFORE IT WAS WHOLE CAN BE FILLED IN (owner order,
+  // 2026-08-30: the point of moving a set onto today's shape is to have data
+  // that exercises it, and a set that cannot answer for three of the eight
+  // ways of asking is not that).
+  //
+  // What is missing is worked out through the LAUNCH'S OWN enumerator, never
+  // from a ratio: multiplying the dials out gave 526,848 where the enumerator
+  // says 524,832, and a setting priced twice is invisible in a table of half a
+  // million rows.
+  async aBlockPricedBeforeItWasWholeIsFilledInFromItsOwnEnumerator() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const fn = src.slice(src.indexOf('async function appendMissingSettings('), src.indexOf('const AGREED_V ='));
+    assert.ok(fn.length > 400, 'the pass that fills a block in is gone');
+    assert.ok(/relaunchShapeOf\(doc\)/.test(fn),
+      'what is missing is not read through the launch\'s own enumerator, so it can differ from what a launch would price');
+    assert.ok(/settings\.filter\(\(st\) => !held\.includes\(st\.label\)\)/.test(fn),
+      'missing is not "declared minus what is on disk", so a setting could be priced twice');
+    // NOTHING ALREADY PRICED IS RENUMBERED. Records are filed under their
+    // setting's number and the tables group by it; a reused number silently
+    // merges two settings into one row.
+    assert.ok(/si: nextSi \+ row\.si,/.test(fn), 'new settings do not take numbers after everything on disk');
+    assert.ok(/if \(nextSi !== held\.length\)/.test(fn),
+      'nothing checks that the names on the set and the numbers in its records agree before adding to them');
+    // both gates, before a row is priced
+    assert.ok(/tallyBudgetFor\(\{ settings: held\.length \+ missing\.length/.test(fn),
+      'the memory gate is not asked about what the set WOULD hold, so filling in could make its tables unbuildable');
+    assert.ok(/storeBudgetFor\(/.test(fn), 'the disk gate is not asked at all');
+    assert.ok(/const busy = stageBusy\(\);/.test(fn), 'it can start on top of another heavy job');
+    // one payload builder, so what is appended is priced exactly as the first rows were
+    assert.ok(/s3Payload\(\{ doc, parent, rec, settings: missing, fee, nullN \}\)/.test(fn),
+      'the append builds its own payload, so it can drift from what the launch hands the workers');
+    assert.strictEqual((src.match(/function s3Payload\(/g) || []).length, 1, 'there is more than one payload builder');
+    // derived files go; the set owns up to having been added to
+    assert.ok(/rmSync\(tallyFile\(id\)/.test(fn) && /rmSync\(agreedFile\(id\)/.test(fn),
+      'the totals and the answers survive an append, so they describe fewer settings than the set holds');
+    assert.ok(/doc\.appends = \[\.\.\.\(doc\.appends \|\| \[\]\), \{/.test(fn) && /engineVersion: ENGINE_VERSION/.test(fn),
+      'a set that was added to does not record it, so nothing says it is no longer one run under one engine');
+    // ...and the screen offers it, from the same numbers
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(/function bFillInLine\(doc, gap, filling\)/.test(ui), 'nothing on Boards says a block is short of its own plan');
+    assert.ok(/data-bfillin="\$\{esc\(doc\.id\)\}"/.test(ui), 'there is no control to fill it in');
+    assert.ok(/gap\.gate && gap\.gate\.band === 'refuse'/.test(ui),
+      'the button is offered even when the finished tables could not fit, so it would run and then refuse');
+    assert.ok(/api\/stageset\/\$\{doc\.id\}\/missing/.test(ui), 'the screen works the gap out for itself instead of asking the engine');
+  },
+
   // AND IT IS ON THE SCREEN — all three tables, with its floors.
   async whatActuallyAgreedIsOnEveryStageThreeTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
