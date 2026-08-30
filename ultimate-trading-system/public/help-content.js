@@ -250,6 +250,24 @@ window.HELP = {
         more: 'It roughly doubles the block. Against all of them, shares landing on the same bar are counted '
           + 'once; against its own history every share stands, because the bar is worked out per coin.',
       },
+      swAgreeCopy: {
+        what: 'How alike two members have to be to count as ONE voice. Only voices reads it.',
+        more: 'Two members that make the same call at least this often across the test window share a single vote '
+          + 'between them, so a crowd of near-copies cannot outvote a real disagreement.\n\n'
+          + 'Lower is harsher on copies. At 80% two members that agree four times in five are already one voice and '
+          + 'the committee shrinks a lot. At 100% only members that never once differ are folded, which almost never '
+          + 'happens — so at 100% voices gives the same answer as count, every time.\n\n'
+          + 'This was a fixed number in the code until now, and it was set so high that the rule could barely ever '
+          + 'fold anything: on a committee whose members all differ somewhere, voices IS count. Being able to move it '
+          + 'is what makes the choice worth having.\n\n'
+          + 'It rides in the name of every voices setting, because it changes which calls get made. The other three '
+          + 'ways of weighing cannot read it, so the block is never multiplied by it for them.',
+      },
+      swPermAgreeCopy: {
+        what: 'Price every one voice at choice as its own setting in the block.',
+        more: 'It only multiplies the part of the block that uses voices. The other three ways of weighing are '
+          + 'priced once, because the threshold cannot change anything they do.',
+      },
       swAgreeShare: {
         what: 'HOW MUCH IS ENOUGH. Higher is stricter whichever bar is picked.',
         more: 'The dial never changes direction under you: a bigger number always demands more. What it is a '

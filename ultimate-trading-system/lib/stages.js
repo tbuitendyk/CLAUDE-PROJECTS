@@ -912,7 +912,10 @@ function shapeLabel(cell) {
 // this committee reaches — and a name that hid the difference would put two
 // unlike settings under one heading.
 function agreeLabel(a) {
-  return `${a.rule} ${a.pct}%${a.bar === 'own' ? ' own' : ''}${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}`;
+  // the one-voice threshold rides the name only where it can change anything —
+  // no other way of weighing reads it, and a name that carried it everywhere
+  // would say two settings differ when they are the same trade.
+  return `${a.rule} ${a.pct}%${a.bar === 'own' ? ' own' : ''}${a.rule === 'voices' ? ` +voice${a.copy}` : ''}${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}`;
 }
 
 // Every quorum the block declares, with the shares that cannot be told apart on
@@ -930,6 +933,9 @@ function agreementsFor(params, sizes) {
   const bars = params.agreePermuteBar
     ? agreement.AGREE_BARS.slice()
     : [agreement.AGREE_BARS.includes(params.agreeBar) ? params.agreeBar : 'all'];
+  const copies = params.agreePermuteCopy
+    ? agreement.COPY_PCTS.slice()
+    : [agreement.COPY_PCTS.includes(Number(params.agreeCopy)) ? Number(params.agreeCopy) : agreement.COPY_DEFAULT];
   const pcts = params.agreePermutePct ? AGREE_PCTS.slice() : [Number(params.agreePct) || 50];
   for (const p of pcts) if (!Number.isFinite(p) || p <= 0 || p > 100) throw new Error(`agreement share must be a percent above 0, not "${p}"`);
   const boths = params.agreePermuteBoth ? [false, true] : [!!params.agreeBothModels];
@@ -938,20 +944,25 @@ function agreementsFor(params, sizes) {
   const out = [];
   const seen = new Set();
   for (const rule of rules) {
-    for (const bar of bars) {
-      for (const pct of pcts) {
-        // the rungs this share lands on, one per committee size in the run
-        let key = null;
-        if (bar === 'all' && (rule === 'count' || rule === 'conviction')) {
-          key = `${rule}|${seenSizes.map((z) => rungFor(pct, membersForSize(z))).join(',')}`;
-        } else if (bar === 'all' && rule === 'families') {
-          key = `${rule}|${seenSizes.map((z) => rungFor(pct, readingsForSize(z))).join(',')}`;
-        }
-        for (const bothModels of boths) {
-          for (const persist of persists) {
-            const k = key === null ? null : `${key}|${bothModels}|${persist}`;
-            if (k !== null) { if (seen.has(k)) continue; seen.add(k); }
-            out.push({ rule, bar, pct, bothModels, persist });
+    // ONLY THE VOICES WAY OF WEIGHING READS THE ONE-VOICE THRESHOLD. Sweeping
+    // it for the others would pay for identical settings under different
+    // names — the same fold the shares already get, applied one dial along.
+    for (const copy of (rule === 'voices' ? copies : copies.slice(0, 1))) {
+      for (const bar of bars) {
+        for (const pct of pcts) {
+          // the rungs this share lands on, one per committee size in the run
+          let key = null;
+          if (bar === 'all' && (rule === 'count' || rule === 'conviction')) {
+            key = `${rule}|${seenSizes.map((z) => rungFor(pct, membersForSize(z))).join(',')}`;
+          } else if (bar === 'all' && rule === 'families') {
+            key = `${rule}|${seenSizes.map((z) => rungFor(pct, readingsForSize(z))).join(',')}`;
+          }
+          for (const bothModels of boths) {
+            for (const persist of persists) {
+              const k = key === null ? null : `${key}|${bothModels}|${persist}`;
+              if (k !== null) { if (seen.has(k)) continue; seen.add(k); }
+              out.push({ rule, bar, pct, copy, bothModels, persist });
+            }
           }
         }
       }
@@ -1049,7 +1060,8 @@ function foldSameTradeSettings(settings, records) {
   // settings are the same trade only when EVERY dial that can change a call
   // matches, and the bar changes when the committee is judged to have spoken.
   const rest = (st) => [st.decision, st.band === 'auto' ? 'a' : 'f', st.weekdaysOnly, st.entry, st.gate, st.tHours,
-    st.agreeRule, st.agreeBar, st.agreePct, st.agreeBoth, st.agreePersist].join('|');
+    st.agreeRule, st.agreeBar, st.agreePct, st.agreeRule === 'voices' ? st.agreeCopy : 0,
+    st.agreeBoth, st.agreePersist].join('|');
   const kept = [];
   const folded = [];
   const seen = new Map();
@@ -1093,7 +1105,8 @@ function settingsFor(params, sizes = null) {
           for (const a of agrees) {
             out.push({
               ...cell, quorum: undefined,
-              agreeRule: a.rule, agreeBar: a.bar, agreePct: a.pct, agreeBoth: a.bothModels, agreePersist: a.persist,
+              agreeRule: a.rule, agreeBar: a.bar, agreePct: a.pct, agreeCopy: a.copy,
+              agreeBoth: a.bothModels, agreePersist: a.persist,
               decision, band, weekdaysOnly: wk,
               label: `${agreeLabel(a)} ${shapeLabel(cell)} \u00b7 ${decision} ${band === 'auto' ? 'auto' : `${band}%`} ${wk ? '24/5' : '24/7'}`,
             });
@@ -1209,6 +1222,8 @@ function startStage3(params) {
       cell: params.cell, cellPermute: params.cellPermute || null,
       agreeRule: params.agreeRule || 'count', agreeBar: params.agreeBar === 'own' ? 'own' : 'all',
       agreePct: Number(params.agreePct) || 50,
+      agreeCopy: Number(params.agreeCopy) || agreement.COPY_DEFAULT,
+      agreePermuteCopy: !!params.agreePermuteCopy,
       agreeBothModels: !!params.agreeBothModels, agreePersist: Math.max(0, Math.floor(Number(params.agreePersist) || 0)),
       agreePermuteRule: !!params.agreePermuteRule, agreePermuteBar: !!params.agreePermuteBar,
       agreePermutePct: !!params.agreePermutePct,
@@ -1716,7 +1731,8 @@ async function buildTally(doc, pool = null, note = null) {
       si: st.si, label: st.label,
       decision: st.decision, bandMode: st.bandMode, weekdaysOnly: st.weekdaysOnly,
       entry: st.entry, gate: st.gate, dMult: st.dMult, tHours: st.tHours, trailMult: st.trailMult, armMult: st.armMult,
-      agreeRule: st.agreeRule, agreeBar: st.agreeBar, agreePct: st.agreePct, agreeBoth: st.agreeBoth, agreePersist: st.agreePersist,
+      agreeRule: st.agreeRule, agreeBar: st.agreeBar, agreePct: st.agreePct, agreeCopy: st.agreeCopy,
+      agreeBoth: st.agreeBoth, agreePersist: st.agreePersist,
       members: st.members,
       avgRung: mean((c) => (c.rungN ? c.rung / c.rungN : null)),
       avgVoices: mean((c) => (c.voicesN ? c.voices / c.voicesN : null)),

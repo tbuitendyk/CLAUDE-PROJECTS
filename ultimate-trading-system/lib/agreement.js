@@ -50,7 +50,7 @@ function assertVote(c) {
 //
 // Measured over the moments the caller passes — the test slice, never the
 // held-back window.
-function voiceGroups(callArrays, upTo, threshold = 0.98) {
+function voiceGroups(callArrays, upTo, threshold = COPY_DEFAULT / 100) {
   const M = callArrays.length;
   const n = Math.max(0, Math.min(upTo == null ? (callArrays[0] || []).length : upTo, (callArrays[0] || []).length));
   const groups = [];
@@ -89,6 +89,13 @@ function voiceGroups(callArrays, upTo, threshold = 0.98) {
 // a third did not.
 const AGREE_RULES = ['count', 'conviction', 'voices', 'families'];
 const AGREE_BARS = ['all', 'own'];
+// HOW ALIKE TWO MEMBERS HAVE TO BE TO COUNT AS ONE VOICE. This was a default
+// argument nobody ever passed, so a single number decided whether the voices
+// rule could ever do anything — at 98 two members that agree nineteen times in
+// twenty are still two voices, which is not what anybody means by a near-copy.
+// It is a dial now, and every menu value is a real choice the rule can express.
+const COPY_PCTS = [80, 85, 90, 95, 98, 100];
+const COPY_DEFAULT = 98;
 
 const RULE_WORDS = {
   count: 'how many members say the same thing',
@@ -241,6 +248,6 @@ function agreementStream(ctx, rule, level, mods = {}) {
 }
 
 module.exports = {
-  AGREE_RULES, AGREE_BARS, RULE_WORDS, voiceGroups, argmaxCall,
+  AGREE_RULES, AGREE_BARS, COPY_PCTS, COPY_DEFAULT, RULE_WORDS, voiceGroups, argmaxCall,
   agreementStream, agreementAt, achievedAt, ownHistoryBar, netLean, sides,
 };

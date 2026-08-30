@@ -87,6 +87,9 @@ function vocabulary() {
       { value: 'all', label: 'all of them' },
       { value: 'own', label: 'its own history' },
     ],
+    // only the voices way of weighing reads this, and the block is not
+    // multiplied by it for the others
+    agreeCopy: asChoices(agreement.COPY_PCTS, (q) => `${q}%`),
     agreeShare: asChoices([10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100], (q) => `${q}%`),
     agreeHold: asChoices([0, 1, 2], (q) => (q === 0 ? 'off' : `${q}`)),
     windowLayout: [

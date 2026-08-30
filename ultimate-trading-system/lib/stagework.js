@@ -278,10 +278,14 @@ const agrOf = (st) => ({
   rule: st.agreeRule || 'count',
   bar: st.agreeBar === 'own' ? 'own' : 'all',
   pct: Number(st.agreePct) || 50,
+  // how alike two members must be to count as one voice. Only the voices way
+  // of weighing reads it, but it is part of the quorum's identity all the same
+  // — a key that left it out would hand one setting's cached calls to another.
+  copy: Number(st.agreeCopy) || agreement.COPY_DEFAULT,
   both: !!st.agreeBoth,
   persist: Math.max(0, Math.floor(Number(st.agreePersist) || 0)),
 });
-const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.bar}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}`;
+const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.bar}|${agr.pct}|${agr.copy}|${agr.both ? 1 : 0}|${agr.persist}`;
 // THE SAME KEY, BUILT THE SAME WAY. These were two expressions that had to
 // agree and did not: one went through agrOf and one read the fields raw, so a
 // row whose stored name differed from its resolved one missed its answer
@@ -380,45 +384,46 @@ async function s3UnitTask(task) {
   const models = (unit.members || []).map((m) => (m.spec || {}).model || 'logreg');
   const families = (unit.members || []).map((m) => (m.spec || {}).view || 'full');
   const voiceCache = new Map();
-  const voicesFor = (decision) => {
-    if (voiceCache.has(decision)) return voiceCache.get(decision);
-    const v = agreement.voiceGroups(callsFor(decision, -1, 'test'), nTest);
-    voiceCache.set(decision, v);
+  const voicesFor = (decision, copy) => {
+    const key = `${decision}|${copy}`;
+    if (voiceCache.has(key)) return voiceCache.get(key);
+    const v = agreement.voiceGroups(callsFor(decision, -1, 'test'), nTest, copy / 100);
+    voiceCache.set(key, v);
     return v;
   };
   // THE BAR TAKEN FROM WHAT THIS COMMITTEE REACHES, for whichever way of
   // weighing is asked. Worked out once per (decision, way of weighing, share)
   // and always from the test slice — the held-back window is never read for it.
   const cutoffCache = new Map();
-  const cutoffFor = (decision, rule, pct) => {
-    const key = `${decision}|${rule}|${pct}`;
+  const cutoffFor = (decision, agr) => {
+    const key = `${decision}|${agr.rule}|${agr.copy}|${agr.pct}`;
     if (cutoffCache.has(key)) return cutoffCache.get(key);
-    const c = agreement.ownHistoryBar(barCtx(decision, rule), nTest, rule, pct);
+    const c = agreement.ownHistoryBar(barCtx(agr, decision), nTest, agr.rule, agr.pct);
     cutoffCache.set(key, c);
     return c;
   };
   // WHAT A SHARE IS A SHARE OF, under this rule, for THIS unit. One
   // definition: the rung divides by it, and the agreement actually reached
   // divides by the same thing, so the two are on one scale and comparable.
-  const denomFor = (rule, decision) => (rule === 'voices' ? voicesFor(decision).voices
-    : rule === 'families' ? new Set(families).size : memberProbs.length);
-  // The rung a share lands on for THIS unit, under this rule.
-  const rungFor = (rule, pct, decision) => {
-    const n = denomFor(rule, decision);
-    return Math.max(1, Math.min(n, Math.ceil((pct / 100) * n)));
+  const denomFor = (agr, decision) => (agr.rule === 'voices' ? voicesFor(decision, agr.copy).voices
+    : agr.rule === 'families' ? new Set(families).size : memberProbs.length);
+  // The rung a share lands on for THIS unit, under this quorum.
+  const rungFor = (agr, decision) => {
+    const n = denomFor(agr, decision);
+    return Math.max(1, Math.min(n, Math.ceil((agr.pct / 100) * n)));
   };
   // the votes and the extras a way of weighing needs, on the test slice, for
   // working out the bar. Declared before ctxFor because the bar is worked out
   // before any stream is; both build the same shape.
-  const barCtx = (decision, rule) => ({
+  const barCtx = (agr, decision) => ({
     calls: callsFor(decision, -1, 'test'), models, families,
-    probs: rule === 'conviction' ? probsFor(-1, 'test') : null,
-    weights: rule === 'voices' ? voicesFor(decision).weights : null,
+    probs: agr.rule === 'conviction' ? probsFor(-1, 'test') : null,
+    weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy).weights : null,
   });
   // WHAT IS ENOUGH, for this unit, this way of weighing and this bar.
   const levelFor = (agr, decision) => ((agr.bar === 'own')
-    ? cutoffFor(decision, agr.rule, agr.pct)
-    : rungFor(agr.rule, agr.pct, decision));
+    ? cutoffFor(decision, agr)
+    : rungFor(agr, decision));
 
   // The votes and the extras a rule reads, built once per way of asking.
   // Pulled out of streamFor so the agreement REACHED can be read off exactly
@@ -426,12 +431,12 @@ async function s3UnitTask(task) {
   // drift from it.
   const ctxCache = new Map();
   const ctxFor = (decision, agr, dealIdx, slice) => {
-    const key = `${decision}|${agr.rule}|${dealIdx}|${slice}`;
+    const key = `${decision}|${agr.rule}|${agr.copy}|${dealIdx}|${slice}`;
     if (ctxCache.has(key)) return ctxCache.get(key);
     const ctx = {
       calls: callsFor(decision, dealIdx, slice), models, families,
       probs: agr.rule === 'conviction' ? probsFor(dealIdx, slice) : null,
-      weights: agr.rule === 'voices' ? voicesFor(decision).weights : null,
+      weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy).weights : null,
     };
     ctxCache.set(key, ctx);
     return ctx;
@@ -473,7 +478,7 @@ async function s3UnitTask(task) {
     if (agreedCache.has(key)) return agreedCache.get(key);
     const spoke = streamFor(decision, agr, -1, 'test');
     const ctx = ctxFor(decision, agr, -1, 'test');
-    const denom = denomFor(agr.rule, decision);
+    const denom = denomFor(agr, decision);
     let sum = 0;
     let n = 0;
     let lo = Infinity;
@@ -561,9 +566,10 @@ async function s3UnitTask(task) {
       bandPct,
       entry: st.entry, gate: st.gate, dMult: st.dMult ?? null, tHours: st.tHours,
       trailMult: st.trailMult ?? null, armMult: st.armMult ?? null,
-      agreeRule: agr.rule, agreeBar: agr.bar, agreePct: agr.pct, agreeBoth: agr.both, agreePersist: agr.persist,
+      agreeRule: agr.rule, agreeBar: agr.bar, agreePct: agr.pct, agreeCopy: agr.copy,
+      agreeBoth: agr.both, agreePersist: agr.persist,
       rung: levelFor(agr, stream.decision),
-      members: memberProbs.length, voices: voicesFor(stream.decision).voices,
+      members: memberProbs.length, voices: voicesFor(stream.decision, agr.copy).voices,
       pnl: tRes.pnl, trades: tRes.trades,
       holdout,
       beat, pairs: holdChunks.length ? nullN : 0, lead,
@@ -596,6 +602,7 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
       // and the sharded fold would then disagree with the single-pass one on a
       // field neither of them actually used
       agreeRule: r.agreeRule ?? null, agreeBar: r.agreeBar ?? null, agreePct: r.agreePct ?? null,
+      agreeCopy: r.agreeCopy ?? null,
       agreeBoth: r.agreeBoth ?? null, agreePersist: r.agreePersist ?? null,
       members: r.members ?? null,
       perCoin: new Map() };

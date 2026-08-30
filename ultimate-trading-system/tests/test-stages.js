@@ -1559,8 +1559,8 @@ module.exports = {
       // asking, never on the record: two ways of asking over one unit is two
       // numbers, not three records' worth.
       stages.writeAgreed(id, {
-        '0|argmax|count|all|75|0|0': { agreed: 80, agreedLow: 75, agreedHigh: 100, agreedN: 40 },
-        '0|directional|count|all|75|0|0': { agreed: 90, agreedLow: 87.5, agreedHigh: 100, agreedN: 12 },
+        '0|argmax|count|all|75|98|0|0': { agreed: 80, agreedLow: 75, agreedHigh: 100, agreedN: 40 },
+        '0|directional|count|all|75|98|0|0': { agreed: 90, agreedLow: 87.5, agreedHigh: 100, agreedN: 12 },
       });
       await stages.buildTally(doc);
 
@@ -1733,8 +1733,13 @@ module.exports = {
   // everywhere it matters.
   async everyCacheInThePricingIsKeyedByTheWholeQuorum() {
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
-    assert.ok(/const agreedKey = \(decision, agr\) => `\$\{decision\}\|\$\{agr\.rule\}\|\$\{agr\.bar\}\|\$\{agr\.pct\}\|\$\{agr\.both \? 1 : 0\}\|\$\{agr\.persist\}`/.test(sw),
-      'the one definition of what makes a quorum itself has changed shape — every cache below keys through it');
+    // EVERY DIAL THAT CAN CHANGE A CALL, and the day one was added without
+    // arriving here the caches confused two settings for each other.
+    const key = /const agreedKey = \(decision, agr\) => `([^`]+)`;/.exec(sw);
+    assert.ok(key, 'the one definition of what makes a quorum itself is gone');
+    for (const dial of ['agr.rule', 'agr.bar', 'agr.pct', 'agr.copy', 'agr.both', 'agr.persist', 'decision']) {
+      assert.ok(key[1].includes(dial), `the quorum's key leaves out ${dial}, so two settings that differ only there share one answer`);
+    }
     assert.ok(/const key = `\$\{agreedKey\(decision, agr\)\}\|\$\{dealIdx\}\|\$\{slice\}`;/.test(sw),
       'the stream cache lists the quorum dials by hand again, so a dial added tomorrow will be left out of it');
     // ...and nothing else in the file enumerates them by hand either
@@ -1891,6 +1896,53 @@ module.exports = {
     assert.ok(/gap\.gate && gap\.gate\.band === 'refuse'/.test(ui),
       'the button is offered even when the finished tables could not fit, so it would run and then refuse');
     assert.ok(/api\/stageset\/\$\{doc\.id\}\/missing/.test(ui), 'the screen works the gap out for itself instead of asking the engine');
+  },
+
+  // THE ONE-VOICE THRESHOLD IS A DIAL, NOT A NUMBER IN THE CODE (owner order,
+  // 2026-08-30). It was a default argument nobody ever passed, so a single
+  // hidden number decided whether the voices way of weighing could ever fold
+  // anything — at 98 two members agreeing nineteen times in twenty are still
+  // two voices, and voices was count wearing another name.
+  async theOneVoiceThresholdIsADialAndOnlyVoicesPaysForIt() {
+    const a = require('../lib/agreement');
+    assert.ok(Array.isArray(a.COPY_PCTS) && a.COPY_PCTS.length >= 4, 'there is no menu of thresholds');
+    assert.ok(a.COPY_PCTS.includes(a.COPY_DEFAULT), 'the default is not one of the choices, so it cannot be got back to');
+    // it changes who the voices are, which is the whole point
+    const nearly = [[1, 1, 1, 1, 1], [1, 1, 1, 1, -1]];
+    assert.strictEqual(a.voiceGroups(nearly, 5, 0.98).voices, 2);
+    assert.strictEqual(a.voiceGroups(nearly, 5, 0.80).voices, 1, 'moving it must change the committee');
+
+    // ONLY voices IS MULTIPLIED BY IT. The other three cannot read it, and
+    // paying for identical settings under different names is the fault the
+    // share dedup already exists to stop.
+    const cell = { entry: 'market', tHours: 89 };
+    const swept = stages.settingsFor({ cell, agreeRule: 'voices', agreePct: 75, agreePermuteCopy: true }, [1]);
+    assert.strictEqual(swept.length, a.COPY_PCTS.length, 'sweeping it does not reach the voices settings');
+    assert.deepStrictEqual(swept.map((x) => x.agreeCopy), a.COPY_PCTS);
+    for (const rule of ['count', 'conviction', 'families']) {
+      const one = stages.settingsFor({ cell, agreeRule: rule, agreePct: 75, agreePermuteCopy: true }, [1]);
+      assert.strictEqual(one.length, 1, `${rule} cannot read the threshold and must not be priced once per value of it`);
+    }
+    // ...and it is in the name, so two voices settings are never one heading
+    assert.deepStrictEqual([...new Set(swept.map((x) => x.label.split(' · ')[0]))].length, a.COPY_PCTS.length,
+      'two voices settings on different thresholds share a name');
+    assert.ok(/^voices 75% \+voice80 /.test(swept[0].label), `the name does not carry it: ${swept[0].label}`);
+    // the same-trade fold keeps them apart, and does NOT keep apart settings
+    // that merely carry a threshold no rule of theirs reads
+    const kept = stages.foldSameTradeSettings(swept, [{ trade: 'AAA', bandPct: 2 }]).kept;
+    assert.strictEqual(kept.length, a.COPY_PCTS.length, 'the fold drops thresholds that price different trades');
+
+    // and the dial is on the screen, fed by the engine
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(/vocabOptions\('agreeCopy', '98'\)/.test(ui), 'the threshold is not a control fed from the engine');
+    assert.ok(/agreeCopy: Number\(\$\('#swAgreeCopy'\)\.value\)/.test(ui), 'the control is drawn but never sent');
+    assert.ok(/agreePermuteCopy: \$\('#swPermAgreeCopy'\)\.checked/.test(ui), 'it cannot be swept');
+    const vocab = require('../lib/vocabulary');
+    const served = (typeof vocab.vocabulary === 'function' ? vocab.vocabulary() : vocab).agreeCopy;
+    assert.strictEqual(served.length, a.COPY_PCTS.length, 'the engine does not serve every threshold it can run');
+    // nothing anywhere still hides it
+    const ag = fs.readFileSync(path.join(ROOT, 'lib', 'agreement.js'), 'utf8');
+    assert.ok(!/threshold = 0\.98/.test(ag), 'the threshold is a bare number in the code again');
   },
 
   // AND IT IS ON THE SCREEN — all three tables, with its floors.

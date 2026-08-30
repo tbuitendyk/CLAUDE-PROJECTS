@@ -814,11 +814,13 @@ function swBlockParams() {
     // the agreement is its own dimension now, never part of the trade shape
     agreeRule: $('#swAgreeRule').value,
     agreeBar: $('#swAgreeBar').value,
+    agreeCopy: Number($('#swAgreeCopy').value),
     agreePct: Number($('#swAgreeShare').value),
     agreeBothModels: $('#swAgreeBoth').checked,
     agreePersist: Number($('#swAgreeHold').value) || 0,
     agreePermuteRule: $('#swPermAgreeRule').checked,
     agreePermuteBar: $('#swPermAgreeBar').checked,
+    agreePermuteCopy: $('#swPermAgreeCopy').checked,
     agreePermutePct: $('#swPermAgreeShare').checked,
     agreePermuteBoth: $('#swPermAgreeBoth').checked,
     agreePermutePersist: $('#swPermAgreeHold').checked,
@@ -870,9 +872,11 @@ function fillStageForm(doc) {
     setV('#swTrail', c.trailMult == null ? '' : c.trailMult);
     setV('#swArm', c.armMult == null ? '' : c.armMult);
     setV('#swAgreeRule', p.agreeRule || 'count'); setV('#swAgreeBar', p.agreeBar || 'all');
+    setV('#swAgreeCopy', p.agreeCopy || 98);
     setV('#swAgreeShare', p.agreePct == null ? 50 : p.agreePct);
     setC('#swAgreeBoth', p.agreeBothModels); setV('#swAgreeHold', p.agreePersist || 0);
     setC('#swPermAgreeRule', p.agreePermuteRule); setC('#swPermAgreeBar', p.agreePermuteBar);
+    setC('#swPermAgreeCopy', p.agreePermuteCopy);
     setC('#swPermAgreeShare', p.agreePermutePct);
     setC('#swPermAgreeBoth', p.agreePermuteBoth); setC('#swPermAgreeHold', p.agreePermutePersist);
     const cp = p.cellPermute || {};
@@ -2250,6 +2254,8 @@ async function drawSweep() {
         <label class="c" title="price every quorum by choice as its own setting."><input type="checkbox" id="swPermAgreeRule"> permute</label>
         <label class="f" title="WHAT THE BAR IS A SHARE OF. all of them means a share of what EXISTS — 75% of 8 members is 6 of them, worked out from the committee's size and nothing else. its own history means a share of what this committee ACTUALLY REACHES — the moments are sorted and 75% admits only the strongest quarter of them. The second matters because a bar set as a share of what exists only makes sense when the thing weighed reaches its maximum in practice: a head count does, a sum of how hard eight members lean does not. Read from the test window only; the held-back window is never used for it, though the same window did the ordering, so the bar is set knowing the window it will be scored on.">quorum bar<select id="swAgreeBar">${vocabOptions('agreeBar', 'all')}</select></label>
         <label class="c" title="price both bars as their own settings."><input type="checkbox" id="swPermAgreeBar"> permute</label>
+        <label class="f" title="HOW ALIKE TWO MEMBERS MUST BE TO COUNT AS ONE VOICE. Only voices reads this. Two members that make the same call at least this often across the test window share one vote between them, so a crowd of near-copies cannot outvote a real disagreement. Lower is harsher: at 80% two members agreeing four times in five are already one voice, and the committee shrinks. At 100% only members that never once differ are folded together, which is almost never, and voices then gives the same answer as count. The block is not multiplied by this for the other three — they cannot read it.">one voice at<select id="swAgreeCopy">${vocabOptions('agreeCopy', '98')}</select></label>
+        <label class="c" title="price every one voice at choice as its own setting. It only multiplies the block where voices is being priced."><input type="checkbox" id="swPermAgreeCopy"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="f" title="HOW MUCH IS ENOUGH. Higher is stricter whichever bar is picked, so the dial never changes direction under you. What it is a share OF is quorum bar's business: with all of them it is a share of the committee, and 75% of 8 members is 6; with its own history it is a share of this committee's own moments, and 75% admits the strongest quarter of them. The same number therefore means two different things under the two bars, which is why the bar is written into every setting's name.">share<select id="swAgreeShare">${vocabOptions('agreeShare', '50')}</select></label>
@@ -3142,7 +3148,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${r.tHours}h</td>
         <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? (r.entry === 'market' ? '—' : 'static') : `${r.trailMult}×`}</td>
         <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? '—' : `${r.armMult}×`}</td>
-        <td ${btd}>${esc(r.agreeRule || 'count')}${r.agreeBar === 'own' ? ' <span class="muted">own</span>' : ''}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
+        <td ${btd}>${esc(r.agreeRule || 'count')}${r.agreeBar === 'own' ? ' <span class="muted">own</span>' : ''}${r.agreeRule === 'voices' && r.agreeCopy ? ` <span class="muted">1v${r.agreeCopy}</span>` : ''}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
         <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
         <td ${btd}>${r.avgRung == null ? '—' : r.avgRung.toFixed(1)}${r.members ? ` <span class="muted">of ${r.members}</span>` : ''}</td>
         <td ${btd}${r.avgVoices != null && r.members && r.avgVoices < r.members ? ' class="warn"' : ''}>${r.avgVoices == null ? '—' : r.avgVoices.toFixed(1)}</td>
