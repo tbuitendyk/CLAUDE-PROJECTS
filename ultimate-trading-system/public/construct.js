@@ -2825,7 +2825,7 @@ function bWireFilters(root) {
     btn.onclick = () => {
       const all = { ...(bView().filters || {}) };
       all.S3C = { ...(bView().s3cBeforePin || {}) };
-      bSaveView({ filters: all, s3cBeforePin: null, coins: { ...(bView().coins || {}), offset: 0 } });
+      bSaveView({ filters: all, s3cBeforePin: null, s3cPin: null, openS3: [], coins: { ...(bView().coins || {}), offset: 0 } });
       bRedrawPeggedToCoinHead();
     };
   });
@@ -2834,7 +2834,7 @@ function bWireFilters(root) {
       const key = btn.dataset.bfilterclear;
       const all = { ...(bView().filters || {}) };
       delete all[key];
-      bSaveView({ filters: all, [`from${key}`]: 0, ...(key === 'S3C' ? { s3cBeforePin: null } : {}) });
+      bSaveView({ filters: all, [`from${key}`]: 0, ...(key === 'S3C' ? { s3cBeforePin: null, s3cPin: null } : {}) });
       if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
       else drawBoards().then(() => restoreScroll(tab));
     };
@@ -2858,6 +2858,26 @@ function bWireTableFold(root) {
     };
   });
 }
+// WHICH ROW OF TABLE 3.A IS PINNED, and whether a given row or record IS it.
+// One stored fact answers both, so the bold button and the highlighted record
+// can never disagree about what was pressed.
+const bPin = () => bView().s3cPin || null;
+function bPinnedRow(r) {
+  const p = bPin();
+  return !!p && String(r.label).split(' · ')[0] === p.setting
+    && String(r.decision) === String(p.decision)
+    && String(r.bandMode) === String(p.bandMode)
+    && !!r.weekdaysOnly === !!p.weekdaysOnly;
+}
+// ...and the one record, out of a coin's eight, that the pinned row actually
+// IS. The eight differ only in these three, so exactly one matches.
+function bPinnedRecord(r) {
+  const p = bPin();
+  return !!p && String(r.decision) === String(p.decision)
+    && String(r.bandMode) === String(p.bandMode)
+    && !!r.weekdaysOnly === !!p.weekdaysOnly;
+}
+
 // A SET WHOSE BLOCK IS NOT ALL PRICED SAYS SO, AND CAN BE FILLED IN (owner
 // order, 2026-08-30). A set priced before the quorum bar became a dial holds
 // five of the eight ways of asking; the block it declares holds all eight. The
@@ -3077,8 +3097,11 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   }
   const rr = (ranked && ranked.rows) || [];
   const cr = (coins && coins.rows) || [];
-  const openKeys = new Set(view.openS3 || []);
   const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry].join('|');
+  // 'all' means every row the table is showing: set by show in 3.B, which
+  // cannot know the keys until the rows come back from the service. Declared
+  // after keyOf on purpose — a const read before its own line throws.
+  const openKeys = view.openS3 === 'all' ? new Set(cr.map((r) => keyOf(r))) : new Set(view.openS3 || []);
   const swHead = `Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})`;
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S3R', swHead)}
@@ -3138,7 +3161,9 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money${bRankSortBtn(doc, 'coinsInMoney', 'desc')}</th></tr></thead>
       <tbody>${rr.map((r, i) => `<tr>
         <td ${btd0} class="muted" style="white-space:nowrap">${(from + i + 1).toLocaleString()}</td>
-        <td ${btd} style="white-space:nowrap"><button data-bpin3b="${esc(String(r.label).split(' · ')[0])}" style="white-space:nowrap">show in 3.B</button></td>
+        <td ${btd} style="white-space:nowrap"><button id="bPin3b" data-bpin3b="${esc(String(r.label).split(' · ')[0])}"
+          data-bpindec="${esc(String(r.decision))}" data-bpinband="${esc(String(r.bandMode))}" data-bpinwk="${r.weekdaysOnly ? 1 : 0}"
+          style="white-space:nowrap${bPinnedRow(r) ? ';font-weight:700' : ''}">show in 3.B</button></td>
         <td ${btd}>${esc(r.decision)}</td>
         <td ${btd}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
         <td ${btd}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
@@ -3176,7 +3201,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['minTrades', 'avg trades at least', 'num', 'hides rows with fewer average entries than this. Empty hides nothing.'],
     ['minVsLong', 'avg vs always-long at least, $', 'num', 'hides rows that beat just holding the coin by less than this. Empty hides nothing.'],
     ['minAgreed', 'share that agreed at least, %', 'num', 'hides rows whose records agreed by less than this on average. Empty hides nothing.'],
-    ['setting', 'setting', 'text', 'shows only the coins of the setting named here, matched whole. show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
+    ['setting', 'Table 3.A selection setting', 'text', 'shows only the coins of the setting named here, matched whole. show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${bCoinSortBtn(view, 'setting', '↑')}</th>
@@ -3231,6 +3256,18 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       bSaveView({
         filters: all,
         s3cBeforePin: before,
+        // WHICH ROW OF TABLE 3.A THIS CAME FROM. The button that was pressed
+        // reads bold from it, and the one record in each coin's eight that
+        // this row actually IS reads highlighted from it — both from the same
+        // stored fact, so a redraw, a page turn or a re-sort cannot put the
+        // mark on one and not the other.
+        s3cPin: {
+          setting: btn.dataset.bpin3b,
+          decision: btn.dataset.bpindec,
+          bandMode: btn.dataset.bpinband,
+          weekdaysOnly: btn.dataset.bpinwk === '1',
+        },
+        openS3: 'all',                 // every coin's records, opened
         coins: { ...(bView().coins || {}), offset: 0 },
       });
       bRedrawScrolledToCoinHead();
@@ -3239,7 +3276,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   $(mount).querySelectorAll('[data-brec]').forEach((btn) => {
     btn.onclick = () => {
       const k = btn.dataset.brec;
-      const keys = new Set(bView().openS3 || []);
+      const keys = new Set(bView().openS3 === 'all' ? [...openKeys] : (bView().openS3 || []));
       if (keys.has(k)) { keys.delete(k); } else { keys.add(k); }
       bSaveView({ openS3: [...keys] });
       bRedrawPeggedToCoinHead();
@@ -3296,7 +3333,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
           <th style="padding:.2rem .5rem" title="this record's held-back money minus just holding the coin over the same window">vs always-long</th></tr></thead>
         <tbody>${(got.rows || []).map((r) => {
     const h = r.holdout || null;
-    return `<tr>
+    const mine = bPinnedRecord(r);
+    return `<tr${mine ? ' class="pinned" title="this is the row of Table 3.A you pressed show in 3.B on"' : ''}>
           <td style="padding:.2rem .5rem .2rem 0">${esc(r.decision)}</td>
           <td style="padding:.2rem .5rem">${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
           <td style="padding:.2rem .5rem">${r.weekdaysOnly ? 'yes' : 'no'}</td>

@@ -335,6 +335,17 @@ window.HELP = {
         + 'tables, because only stage 3 prices it.'],
     ],
     controls: {
+      bPin3b: {
+        what: 'Shows, in Table 3.B below, only the coins this setting was priced on — and picks this exact setting out of them.',
+        more: 'It takes every other filter on Table 3.B off first, so none of the setting\'s coins can be hidden by '
+          + 'something set earlier, and it brings that table onto the screen.\n\n'
+          + 'The button you pressed stays bold until you press another one or press put the filters back.\n\n'
+          + 'Each of those coins opens its records straight away, and one record in each is highlighted: the eight '
+          + 'records under a coin are the decision, band and 24/5 variants of the setting, and the highlighted one is '
+          + 'the row of Table 3.A you actually pressed. So the averages above and the one setting you asked about are '
+          + 'both in front of you.\n\n'
+          + 'Every coin opens its own records separately, so a setting priced on many coins takes a moment.',
+      },
       bFillIn: {
         what: 'Prices the settings this record set\'s own block declares and its records do not hold, and adds them to it.',
         more: 'A set can be priced before its block is whole. This one ran when the quorum was five named choices; it is '

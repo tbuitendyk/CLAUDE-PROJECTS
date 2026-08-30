@@ -92,6 +92,11 @@
      grid already says align-items:center */
   .filters.withspread { grid-template-columns:max-content max-content repeat(4, max-content); }
   .filters .fhead { text-align:right; font-size:.7rem; color:var(--dim); white-space:nowrap; padding-bottom:.1rem; }
+  /* the one record, out of a coin's eight, that IS the row of Table 3.A whose
+     show in 3.B was pressed. A left bar and a lift off the background, so it
+     reads in both themes without relying on a colour either one owns */
+  tr.pinned > td { background:color-mix(in srgb, var(--accent, #4a9) 16%, transparent); font-weight:600; }
+  tr.pinned > td:first-child { box-shadow:inset 3px 0 0 0 var(--accent, #4a9); }
   .filters .fstat { text-align:right; font-size:.74rem; color:var(--dim); white-space:nowrap; font-variant-numeric:tabular-nums; min-width:4.5rem; }
   /* a control this run will not use: greyed, never hidden, so the row keeps its
      shape and neighbouring labels keep their context (owner, 2026-07-31) */

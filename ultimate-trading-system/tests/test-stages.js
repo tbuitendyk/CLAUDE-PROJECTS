@@ -1838,8 +1838,29 @@ module.exports = {
       'a text filter cannot be widened, so the setting box cannot show what is in it');
     assert.ok(/'shows only the coins of the setting named here[^']*', 'wide'\]/.test(ui),
       'the setting box is not the wide one, so its own value cannot be read');
+
+    // THE PRESSED BUTTON STAYS MARKED, and the one record it IS is marked
+    // too — both off the SAME stored fact, so they cannot disagree about
+    // which row of Table 3.A is in play (owner order, 2026-08-30).
+    assert.ok(/const bPin = \(\) => bView\(\)\.s3cPin \|\| null;/.test(ui), 'nothing remembers which row was pressed');
+    assert.ok(/bPinnedRow\(r\) \? ';font-weight:700' : ''/.test(ui), 'the pressed button does not stay marked');
+    assert.ok(/function bPinnedRecord\(r\)/.test(ui) && /const mine = bPinnedRecord\(r\);/.test(ui),
+      'no record is picked out of a coin\'s eight as the one that was pressed');
+    for (const dial of ['decision', 'bandMode', 'weekdaysOnly']) {
+      assert.ok(new RegExp(`p\\.${dial}`).test(ui.slice(ui.indexOf('function bPinnedRecord('), ui.indexOf('// A SET WHOSE BLOCK'))),
+        `the highlighted record does not match on ${dial}, so it could mark the wrong one of the eight`);
+    }
+    assert.ok(/tr\.pinned > td \{/.test(fs.readFileSync(path.join(ROOT, 'public', 'construct.html'), 'utf8')),
+      'the highlight has no style, so it marks nothing the eye can see');
+    // pressing another, or putting the filters back, lets go of BOTH marks
+    assert.ok(/s3cBeforePin: null, s3cPin: null, openS3: \[\]/.test(ui),
+      'putting the filters back leaves the button bold and a record highlighted for a setting no longer pinned');
+    // ...and every one of the pinned coins opens its records
+    assert.ok(/openS3: 'all',/.test(ui), 'the pinned rows do not open their records');
+    assert.ok(/view\.openS3 === 'all' \? new Set\(cr\.map\(\(r\) => keyOf\(r\)\)\)/.test(ui),
+      'all is not resolved against the rows the table is actually showing');
     // the box that says what it is pinned to, so it can be seen and cleared
-    assert.ok(/\['setting', 'setting', 'text',/.test(ui),
+    assert.ok(/\['setting', 'Table 3\.A selection setting', 'text',/.test(ui),
       'nothing on Table 3.B shows which setting it is pinned to, so it cannot be seen or undone');
     assert.ok(/setting: coinF\.setting \?\? ''/.test(ui), 'the pin is drawn but never sent');
     // every heading still has a cell under it
