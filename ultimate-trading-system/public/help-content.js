@@ -210,17 +210,60 @@ window.HELP = {
       swArm: { what: 'How far the price must move in your favour before a following stop starts following.' },
       swPermArm: { what: 'Price every starting point as its own setting in the block.' },
       swAgreeRule: {
-        what: 'How the members\' votes become one call.',
-        more: 'count is how many members say the same thing. conviction is how strongly they lean, added up, so eight members barely leaning is not the same as eight certain ones. voices counts only INDEPENDENT members — members that call the same way almost every time share one vote between them. families needs different KINDS of evidence to agree, not just a number of members. unusual asks how rare this much agreement is for this particular committee, which makes one setting mean the same thing on a quarrelsome unit and a unanimous one.',
+        what: 'WHAT IS WEIGHED when the members are polled. Half of the quorum; quorum bar is the other half.',
+        more: 'Every coin is judged by 8 members, each reading a different slice of the numbers, worked out two '
+          + 'different ways. This box says what is measured when they are polled.\n\n'
+          + 'count is the plain head count: how many say the same thing. It is the honest baseline, and its one '
+          + 'permanent weakness is that it cannot tell independent opinions from near-copies.\n\n'
+          + 'conviction is how hard they lean, added up. Six members that are certain and six that barely lean are '
+          + 'the same to count and very different here. This is the only choice that reads how sure they are '
+          + 'rather than how many they are.\n\n'
+          + 'voices is a head count in which members that almost always call the same way as each other share one '
+          + 'vote between them, so a crowd of near-copies cannot outvote a genuine disagreement. On a committee '
+          + 'whose members all differ it gives the same answer as count.\n\n'
+          + 'families is how many different KINDS of evidence agree. The 8 members read four slices of the '
+          + 'numbers between them; two members reading the same slice agreeing is weaker evidence than one price '
+          + 'reader and one volume reader agreeing, and this is the only choice that can say so. Its bar is '
+          + 'coarse by nature — with four kinds there are only four steps.',
       },
-      swPermAgreeRule: { what: 'Price every agree by choice as its own setting in the block.' },
+      swPermAgreeRule: { what: 'Price every quorum by choice as its own setting in the block.' },
+      swAgreeBar: {
+        what: 'WHAT THE BAR IS A SHARE OF. The other half of the quorum.',
+        more: 'all of them sets the bar as a share of what EXISTS. 75% of 8 members is 6 of them, worked out from '
+          + 'the committee\'s size and nothing else. Simple, and it never moves.\n\n'
+          + 'its own history sets the bar as a share of what this committee ACTUALLY REACHES. Every moment in the '
+          + 'test window is sorted by how much agreement it drew, and 75% admits only the strongest quarter of '
+          + 'them.\n\n'
+          + 'Why the second one exists. A bar set as a share of what exists only makes sense when the thing being '
+          + 'weighed reaches its maximum in practice. A head count does — eight of eight happens. A sum of how '
+          + 'hard eight members lean does not: on a noisy market the leans are small, so a bar of 6 out of a '
+          + 'possible 8 cannot be cleared however good the setting is. The own history bar cures that for every '
+          + 'way of weighing at once, because the bar comes from what the numbers actually do.\n\n'
+          + 'It is read from the test window only. The held-back window is never used for it. Note though that '
+          + 'the test window is also the window the ordering was done on, so the bar is chosen knowing the window '
+          + 'it will be scored on — a mild flattery, and the reason a held-back number always matters more.\n\n'
+          + 'Because the same share means two different things under the two bars, own is written into the name '
+          + 'of every setting that uses it and shown beside the rule on the ranked table.',
+      },
+      swPermAgreeBar: {
+        what: 'Price both bars as their own settings in the block.',
+        more: 'It roughly doubles the block. Against all of them, shares landing on the same bar are counted '
+          + 'once; against its own history every share stands, because the bar is worked out per coin.',
+      },
       swAgreeShare: {
-        what: 'How demanding the rule is, as a share of the committee.',
-        more: 'Higher is stricter for every rule, so the dial never changes direction under you. A share rather than a count is what lets one number mean the same thing whether a coin\'s committee holds 8 members or 32 — and it is why no committee size appears in a setting\'s name any more.',
+        what: 'HOW MUCH IS ENOUGH. Higher is stricter whichever bar is picked.',
+        more: 'The dial never changes direction under you: a bigger number always demands more. What it is a '
+          + 'share OF is quorum bar\'s business. With all of them it is a share of the committee — 75% of 8 '
+          + 'members is 6. With its own history it is a share of that committee\'s own moments — 75% admits the '
+          + 'strongest quarter of them.\n\n'
+          + 'A share rather than a count is what lets one number mean the same thing whether a coin\'s committee '
+          + 'holds 8 members or 32, and it is why no committee size appears in a setting\'s name.',
       },
       swPermAgreeShare: {
         what: 'Price every share as its own setting in the block.',
-        more: 'Shares that land on the same rung for every unit in the run are counted once, so the block never carries two settings that would price identical trades.',
+        more: 'Shares that land on the same bar for every unit in the run are counted once, so the block never '
+          + 'carries two settings that would price identical trades. That folding only applies against all of '
+          + 'them; against its own history the bar is worked out per coin, so no share can be ruled out up front.',
       },
       swAgreeBoth: {
         what: 'The winning side must include at least one LOGREG member and one BOOST member.',

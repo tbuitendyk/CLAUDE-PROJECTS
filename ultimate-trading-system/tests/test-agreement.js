@@ -97,14 +97,32 @@ module.exports = {
   },
 
   // Unusual is a strictness dial like every other: higher admits less.
-  unusualIsStrictestAtTheTop() {
+  // THE BAR TAKEN FROM WHAT THE COMMITTEE REACHES, for EVERY way of weighing
+  // and not just a head count (owner order, 2026-08-29). This was 'unusual',
+  // which was never a fifth way of weighing — it was a head count against this
+  // bar. Now any way of weighing can meet either bar, and the dial still runs
+  // the same direction: higher is stricter, always.
+  theOwnHistoryBarIsStrictestAtTheTopForEveryWayOfWeighing() {
     const calls = [[1, 1, 1, 1], [1, 1, 0, -1], [1, 0, 0, -1], [1, 1, 1, 0]];
-    const strict = a.percentileCutoff(calls, 4, 100);
-    const loose = a.percentileCutoff(calls, 4, 10);
-    assert.ok(strict > loose, 'a higher share must demand more agreement, not less');
-    const hard = a.agreementStream({ calls, cutoff: strict }, 'unusual', 100).filter(Boolean).length;
-    const easy = a.agreementStream({ calls, cutoff: loose }, 'unusual', 10).filter(Boolean).length;
-    assert.ok(hard < easy, `strict must trade less often than loose (${hard} vs ${easy})`);
+    const probs = calls.map((row) => row.map((c) => (c === 1 ? [0, 0.3, 0.7] : c === -1 ? [0.7, 0.3, 0] : [0.2, 0.6, 0.2])));
+    const families = ['full', 'prices', 'volume', 'pricevol'];
+    const { weights } = a.voiceGroups(calls, 4);
+    const ctx = { calls, probs, families, weights };
+    for (const rule of a.AGREE_RULES) {
+      const strict = a.ownHistoryBar(ctx, 4, rule, 100);
+      const loose = a.ownHistoryBar(ctx, 4, rule, 10);
+      assert.ok(strict > loose, `${rule}: a higher share must demand more, not less (${strict} vs ${loose})`);
+      const hard = a.agreementStream(ctx, rule, strict).filter(Boolean).length;
+      const easy = a.agreementStream(ctx, rule, loose).filter(Boolean).length;
+      assert.ok(hard < easy, `${rule}: strict must act less often than loose (${hard} vs ${easy})`);
+    }
+    // and the whole point of it: conviction, whose bar as a share of what
+    // EXISTS is unreachable on any realistic data, becomes reachable here
+    const asShareOfAll = Math.ceil(0.75 * 4);
+    assert.ok(a.agreementStream(ctx, 'conviction', asShareOfAll).every((c) => !c),
+      'the fixture is wrong if conviction can already clear a bar set as a share of the committee');
+    assert.ok(a.agreementStream(ctx, 'conviction', a.ownHistoryBar(ctx, 4, 'conviction', 75)).some(Boolean),
+      'against its own history, conviction at the same share must be able to act at all — that is the reason this bar exists');
   },
 
   // The two modifiers.

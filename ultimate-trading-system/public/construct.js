@@ -813,10 +813,12 @@ function swBlockParams() {
     weekdaysOnly: $('#swWk').checked, permuteWeekdays: $('#swPermWk').checked,
     // the agreement is its own dimension now, never part of the trade shape
     agreeRule: $('#swAgreeRule').value,
+    agreeBar: $('#swAgreeBar').value,
     agreePct: Number($('#swAgreeShare').value),
     agreeBothModels: $('#swAgreeBoth').checked,
     agreePersist: Number($('#swAgreeHold').value) || 0,
     agreePermuteRule: $('#swPermAgreeRule').checked,
+    agreePermuteBar: $('#swPermAgreeBar').checked,
     agreePermutePct: $('#swPermAgreeShare').checked,
     agreePermuteBoth: $('#swPermAgreeBoth').checked,
     agreePermutePersist: $('#swPermAgreeHold').checked,
@@ -867,9 +869,11 @@ function fillStageForm(doc) {
     setV('#swEntry', c.entry); setV('#swGate', c.gate); setV('#swD', c.dMult); setV('#swT', c.tHours);
     setV('#swTrail', c.trailMult == null ? '' : c.trailMult);
     setV('#swArm', c.armMult == null ? '' : c.armMult);
-    setV('#swAgreeRule', p.agreeRule || 'count'); setV('#swAgreeShare', p.agreePct == null ? 50 : p.agreePct);
+    setV('#swAgreeRule', p.agreeRule || 'count'); setV('#swAgreeBar', p.agreeBar || 'all');
+    setV('#swAgreeShare', p.agreePct == null ? 50 : p.agreePct);
     setC('#swAgreeBoth', p.agreeBothModels); setV('#swAgreeHold', p.agreePersist || 0);
-    setC('#swPermAgreeRule', p.agreePermuteRule); setC('#swPermAgreeShare', p.agreePermutePct);
+    setC('#swPermAgreeRule', p.agreePermuteRule); setC('#swPermAgreeBar', p.agreePermuteBar);
+    setC('#swPermAgreeShare', p.agreePermutePct);
     setC('#swPermAgreeBoth', p.agreePermuteBoth); setC('#swPermAgreeHold', p.agreePermutePersist);
     const cp = p.cellPermute || {};
     setC('#swPermEntry', cp.entry); setC('#swPermGate', cp.gate); setC('#swPermD', cp.dMult); setC('#swPermT', cp.tHours);
@@ -2240,13 +2244,16 @@ async function drawSweep() {
         <label class="f">arm<select id="swArm">${vocabOptions('armMult', '0')}</select></label>
         <label class="c"><input type="checkbox" id="swPermArm"> permute</label>
       </div>
+      <p class="note" style="margin:.6rem 0 .1rem"><b>Quorum</b> — every coin is judged by 8 members. These four boxes decide when enough of them agree to act.</p>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" title="how the members' votes become one call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members, so near-copies share one vote; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by<select id="swAgreeRule">${vocabOptions('agreeRule', 'count')}</select></label>
-        <label class="c" title="price every agree by choice as its own setting."><input type="checkbox" id="swPermAgreeRule"> permute</label>
-        <label class="f" title="how demanding the rule is, as a share of the committee. Higher is stricter for every rule, and a share means the same thing whatever a unit's committee holds — which is why no committee size appears in a setting's name any more.">share<select id="swAgreeShare">${vocabOptions('agreeShare', '50')}</select></label>
-        <label class="c" title="price every share as its own setting. Shares landing on the same rung for every unit in the run are counted once."><input type="checkbox" id="swPermAgreeShare"> permute</label>
+        <label class="f" title="WHAT IS WEIGHED when the members are polled. count is how many say the same thing — the plain head count. conviction is how hard they lean, added up, so six that are certain outweigh six that barely lean. voices is a head count in which members that almost always call the same way as each other share one vote between them, so a crowd of near-copies cannot outvote a real disagreement. families is how many different KINDS of evidence agree — the members read four different slices of the numbers, and this asks that several slices line up rather than several members. This box is only half the quorum: quorum bar decides how much of it is enough.">quorum by<select id="swAgreeRule">${vocabOptions('agreeRule', 'count')}</select></label>
+        <label class="c" title="price every quorum by choice as its own setting."><input type="checkbox" id="swPermAgreeRule"> permute</label>
+        <label class="f" title="WHAT THE BAR IS A SHARE OF. all of them means a share of what EXISTS — 75% of 8 members is 6 of them, worked out from the committee's size and nothing else. its own history means a share of what this committee ACTUALLY REACHES — the moments are sorted and 75% admits only the strongest quarter of them. The second matters because a bar set as a share of what exists only makes sense when the thing weighed reaches its maximum in practice: a head count does, a sum of how hard eight members lean does not. Read from the test window only; the held-back window is never used for it, though the same window did the ordering, so the bar is set knowing the window it will be scored on.">quorum bar<select id="swAgreeBar">${vocabOptions('agreeBar', 'all')}</select></label>
+        <label class="c" title="price both bars as their own settings."><input type="checkbox" id="swPermAgreeBar"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f" title="HOW MUCH IS ENOUGH. Higher is stricter whichever bar is picked, so the dial never changes direction under you. What it is a share OF is quorum bar's business: with all of them it is a share of the committee, and 75% of 8 members is 6; with its own history it is a share of this committee's own moments, and 75% admits the strongest quarter of them. The same number therefore means two different things under the two bars, which is why the bar is written into every setting's name.">share<select id="swAgreeShare">${vocabOptions('agreeShare', '50')}</select></label>
+        <label class="c" title="price every share as its own setting. Shares landing on the same bar for every unit in the run are counted once."><input type="checkbox" id="swPermAgreeShare"> permute</label>
         <label class="c" title="the side that wins must include at least one LOGREG member and one BOOST member, so a call can never be one kind's quirk."><input type="checkbox" id="swAgreeBoth"> both kinds</label>
         <label class="c" title="price both with and without the both kinds requirement."><input type="checkbox" id="swPermAgreeBoth"> permute</label>
         <label class="f" title="how many decision moments in a row the same call must have stood before it is acted on. off acts at once.">hold<select id="swAgreeHold">${vocabOptions('agreeHold', '0')}</select></label>
@@ -3004,7 +3011,10 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
     <p style="margin:.6rem 0 .2rem"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     ${bFilterGrid('S3R', [
-    ['rule', 'agree by', 'pick', 'shows only settings using this way of turning votes into a call. any shows every one.', ['count', 'conviction', 'voices', 'families', 'unusual']],
+    ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
+      [...(((VOCAB && VOCAB.agreeRule) || []).map((o) => String(o.value))), 'unusual']],
+    ['bar', 'quorum bar', 'pick', 'shows only settings whose bar was set this way. all of them is a share of the committee\'s size; its own history is a share of what it actually reached. any shows both.',
+      ['all of them', 'its own history']],
     ['decision', 'decision', 'pick', 'shows only settings using this decision. any shows both.', ['argmax', 'directional']],
     ['entry', 'entry', 'pick', 'shows only settings opened this way. any shows both.', ['market', 'breakout']],
     bGateFilterSpec(
@@ -3037,7 +3047,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="how many hours a position is held before it is closed, if nothing else closed it first.">t${bRankSortBtn(doc, 'tHours', 'asc')}</th>
         <th ${bth} title="which stop the setting uses. static sits still on the far side of the entry; a dash means it does not apply.">trail${bRankSortBtn(doc, 'trailMult', 'asc')}</th>
         <th ${bth} title="how far price must move in your favour before a following stop starts. A dash means it does not apply.">arm${bRankSortBtn(doc, 'armMult', 'asc')}</th>
-        <th ${bth} title="how this setting turns the members' votes into a call. count is how many say the same thing; conviction is how strongly they lean, added up; voices counts only INDEPENDENT members; families needs different kinds of evidence to agree; unusual asks how rare this much agreement is for this committee.">agree by${bRankSortBtn(doc, 'agreeRule', 'asc')}</th>
+        <th ${bth} title="the quorum this setting used: what was weighed, and what bar it had to clear. count is a head count; conviction is how hard the members leaned, added up; voices is a head count in which near-copies share one vote; families is how many different kinds of evidence agreed. own beside it means the bar came from this committee's own history rather than from a share of its size — so share means the strongest that fraction of its moments, not that fraction of its members.">quorum by${bRankSortBtn(doc, 'agreeRule', 'asc')}</th>
         <th ${bth} title="what ACTUALLY agreed at the moments this setting spoke, averaged over them and over its coins, as a share of whatever the rule counts. Every rule fires at or above the bar it was built on, never only on it, so this sits at that bar or above it — 100% means every member lined up every time. Measured on the test window; the held-back window is never read for it.">share that agreed${bRankSortBtn(doc, 'avgAgreed', 'desc')}</th>
         <th ${bth} title="the bar this setting was built to clear, as a count, averaged because committees can differ in size. For unusual it is the agreement count the rule demanded. The share it was built on is in its name.">rung it landed on${bRankSortBtn(doc, 'avgRung', 'desc')}</th>
         <th ${bth} title="how many INDEPENDENT voices the committees held, averaged over the coins. Members that call the same way almost every time count as one voice, so this is how many real opinions the setting rests on.">independent voices${bRankSortBtn(doc, 'avgVoices', 'desc')}</th>
@@ -3059,7 +3069,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${r.tHours}h</td>
         <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? (r.entry === 'market' ? '—' : 'static') : `${r.trailMult}×`}</td>
         <td ${btd}${r.trailMult == null ? ' class="muted"' : ''}>${r.trailMult == null ? '—' : `${r.armMult}×`}</td>
-        <td ${btd}>${esc(r.agreeRule || 'count')}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
+        <td ${btd}>${esc(r.agreeRule || 'count')}${r.agreeBar === 'own' ? ' <span class="muted">own</span>' : ''}${r.agreeBoth ? ' <span class="muted">+both</span>' : ''}${r.agreePersist ? ` <span class="muted">+hold${r.agreePersist}</span>` : ''}</td>
         <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
         <td ${btd}>${r.avgRung == null ? '—' : r.avgRung.toFixed(1)}${r.members ? ` <span class="muted">of ${r.members}</span>` : ''}</td>
         <td ${btd}${r.avgVoices != null && r.members && r.avgVoices < r.members ? ' class="warn"' : ''}>${r.avgVoices == null ? '—' : r.avgVoices.toFixed(1)}</td>

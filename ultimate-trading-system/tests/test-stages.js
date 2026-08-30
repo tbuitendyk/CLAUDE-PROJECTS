@@ -113,7 +113,7 @@ module.exports = {
     }, [1]);
     for (const x of all) {
       assert.ok(!/\/6|\/8|\/10|q\d/.test(x.label), `a committee size leaked into a name: ${x.label}`);
-      assert.ok(/^(count|conviction|voices|families|unusual) \d+%/.test(x.label), `name must open with the rule and its share: ${x.label}`);
+      assert.ok(/^(count|conviction|voices|families) \d+%/.test(x.label), `name must open with the rule and its share: ${x.label}`);
     }
     // ONE dial, every committee size: the same share is a legal setting for a
     // run of coins on their own and for a run read alongside others
@@ -122,9 +122,22 @@ module.exports = {
     assert.strictEqual(singles.length, 1);
     assert.strictEqual(mixed.length, 1);
     assert.strictEqual(singles[0].label, mixed[0].label, 'one share, one name, whatever the committee holds');
-    // every rule reaches the block, and each is named on the setting
+    // every way of weighing reaches the block, and each is named on the setting
     const rules = new Set(stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreePermuteRule: true }, [1]).map((x) => x.agreeRule));
-    assert.deepStrictEqual([...rules].sort(), ['conviction', 'count', 'families', 'unusual', 'voices']);
+    assert.deepStrictEqual([...rules].sort(), ['conviction', 'count', 'families', 'voices'],
+      'unusual was never a way of weighing — it is count against the own history bar, and the bar is its own dial now');
+    // ...AND SO DOES EACH BAR, with the bar written into the name, because the
+    // same share means two different things under the two of them
+    const bars = stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreeRule: 'count', agreePct: 75, agreePermuteBar: true }, [1]);
+    assert.deepStrictEqual(bars.map((x) => x.agreeBar).sort(), ['all', 'own']);
+    assert.deepStrictEqual(bars.map((x) => x.label.split(' · ')[0]).sort(),
+      ['count 75% market t89h', 'count 75% own market t89h'],
+      'a name that hides which bar it used puts two unlike settings under one heading');
+    // the combination that could not be asked for before
+    const wanted = stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreeRule: 'families', agreeBar: 'own', agreePct: 75 }, [1]);
+    assert.strictEqual(wanted.length, 1);
+    assert.deepStrictEqual([wanted[0].agreeRule, wanted[0].agreeBar], ['families', 'own'],
+      'kinds of evidence measured against its own history must be reachable — it was not, and that was the muddle');
   },
 
   // The counter behind the Sweep cost line resolves the SAME units the
@@ -1542,8 +1555,8 @@ module.exports = {
       // asking, never on the record: two ways of asking over one unit is two
       // numbers, not three records' worth.
       stages.writeAgreed(id, {
-        '0|argmax|count|75|0|0': { agreed: 80, agreedLow: 75, agreedHigh: 100, agreedN: 40 },
-        '0|directional|count|75|0|0': { agreed: 90, agreedLow: 87.5, agreedHigh: 100, agreedN: 12 },
+        '0|argmax|count|all|75|0|0': { agreed: 80, agreedLow: 75, agreedHigh: 100, agreedN: 40 },
+        '0|directional|count|all|75|0|0': { agreed: 90, agreedLow: 87.5, agreedHigh: 100, agreedN: 12 },
       });
       await stages.buildTally(doc);
 

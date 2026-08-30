@@ -271,8 +271,22 @@ async function s2UnitTask(task) {
 // every record. It depends on the unit and on the way of asking, and on
 // NOTHING about the trade shape — which is why 329,280 settings on ten units
 // need 600 numbers rather than 3.3 million.
-const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}`;
-const agreedKeyOfRecord = (r) => `${r.decision}|${r.agreeRule || 'count'}|${r.agreePct}|${r.agreeBoth ? 1 : 0}|${Math.max(0, Math.floor(Number(r.agreePersist) || 0))}`;
+// A SETTING'S QUORUM, in one shape, read from the setting itself. A record set
+// written before the bar became a dial says nothing about it, and `unusual`
+// was exactly today's count-against-its-own-history — so that name still
+// resolves rather than throwing at a screen that has to draw it.
+const agrOf = (st) => {
+  const legacy = agreement.LEGACY_RULES[st.agreeRule] || null;
+  return {
+    rule: legacy ? legacy.rule : (st.agreeRule || 'count'),
+    bar: legacy ? legacy.bar : (st.agreeBar === 'own' ? 'own' : 'all'),
+    pct: Number(st.agreePct) || 50,
+    both: !!st.agreeBoth,
+    persist: Math.max(0, Math.floor(Number(st.agreePersist) || 0)),
+  };
+};
+const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.bar || 'all'}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}`;
+const agreedKeyOfRecord = (r) => `${r.decision}|${r.agreeRule || 'count'}|${r.agreeBar || 'all'}|${r.agreePct}|${r.agreeBoth ? 1 : 0}|${Math.max(0, Math.floor(Number(r.agreePersist) || 0))}`;
 
 async function s3UnitTask(task) {
   const { combo, geometry, params: p, unit, settings, fee, nullN, seed, unitKey, agreedOnly = false } = task;
@@ -372,11 +386,14 @@ async function s3UnitTask(task) {
     voiceCache.set(decision, v);
     return v;
   };
+  // THE BAR TAKEN FROM WHAT THIS COMMITTEE REACHES, for whichever way of
+  // weighing is asked. Worked out once per (decision, way of weighing, share)
+  // and always from the test slice — the held-back window is never read for it.
   const cutoffCache = new Map();
-  const cutoffFor = (decision, pct) => {
-    const key = `${decision}|${pct}`;
+  const cutoffFor = (decision, rule, pct) => {
+    const key = `${decision}|${rule}|${pct}`;
     if (cutoffCache.has(key)) return cutoffCache.get(key);
-    const c = agreement.percentileCutoff(callsFor(decision, -1, 'test'), nTest, pct);
+    const c = agreement.ownHistoryBar(barCtx(decision, rule), nTest, rule, pct);
     cutoffCache.set(key, c);
     return c;
   };
@@ -390,6 +407,18 @@ async function s3UnitTask(task) {
     const n = denomFor(rule, decision);
     return Math.max(1, Math.min(n, Math.ceil((pct / 100) * n)));
   };
+  // the votes and the extras a way of weighing needs, on the test slice, for
+  // working out the bar. Declared before ctxFor because the bar is worked out
+  // before any stream is; both build the same shape.
+  const barCtx = (decision, rule) => ({
+    calls: callsFor(decision, -1, 'test'), models, families,
+    probs: rule === 'conviction' ? probsFor(-1, 'test') : null,
+    weights: rule === 'voices' ? voicesFor(decision).weights : null,
+  });
+  // WHAT IS ENOUGH, for this unit, this way of weighing and this bar.
+  const levelFor = (agr, decision) => ((agr.bar === 'own')
+    ? cutoffFor(decision, agr.rule, agr.pct)
+    : rungFor(agr.rule, agr.pct, decision));
 
   // The votes and the extras a rule reads, built once per way of asking.
   // Pulled out of streamFor so the agreement REACHED can be read off exactly
@@ -397,13 +426,12 @@ async function s3UnitTask(task) {
   // drift from it.
   const ctxCache = new Map();
   const ctxFor = (decision, agr, dealIdx, slice) => {
-    const key = `${decision}|${agr.rule}|${agr.pct}|${dealIdx}|${slice}`;
+    const key = `${decision}|${agr.rule}|${dealIdx}|${slice}`;
     if (ctxCache.has(key)) return ctxCache.get(key);
     const ctx = {
       calls: callsFor(decision, dealIdx, slice), models, families,
       probs: agr.rule === 'conviction' ? probsFor(dealIdx, slice) : null,
       weights: agr.rule === 'voices' ? voicesFor(decision).weights : null,
-      cutoff: agr.rule === 'unusual' ? cutoffFor(decision, agr.pct) : null,
     };
     ctxCache.set(key, ctx);
     return ctx;
@@ -414,8 +442,7 @@ async function s3UnitTask(task) {
     const key = `${decision}|${agr.rule}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}|${dealIdx}|${slice}`;
     if (streamCache.has(key)) return streamCache.get(key);
     const ctx = ctxFor(decision, agr, dealIdx, slice);
-    const level = agr.rule === 'unusual' ? agr.pct : rungFor(agr.rule, agr.pct, decision);
-    const s = agreement.agreementStream(ctx, agr.rule, level, { bothModels: agr.both, persist: agr.persist });
+    const s = agreement.agreementStream(ctx, agr.rule, levelFor(agr, decision), { bothModels: agr.both, persist: agr.persist });
     streamCache.set(key, s);
     return s;
   };
@@ -472,12 +499,7 @@ async function s3UnitTask(task) {
   const agreedMapFor = (list) => {
     const out = {};
     for (const st of list) {
-      const agr = {
-        rule: st.agreeRule || 'count',
-        pct: Number(st.agreePct) || 50,
-        both: !!st.agreeBoth,
-        persist: Math.max(0, Math.floor(Number(st.agreePersist) || 0)),
-      };
+      const agr = agrOf(st);
       const key = agreedKey(st.decision, agr);
       if (out[key]) continue;
       out[key] = agreedFor(st.decision, agr);
@@ -497,12 +519,7 @@ async function s3UnitTask(task) {
     const bandPct = stream.band === 'auto' ? unit.bandPct : Math.abs(Number(stream.band));
     const tIdx = stream.weekdaysOnly ? wkTest : testChunks.map((_, i) => i);
     const hIdx = stream.weekdaysOnly ? wkHold : holdChunks.map((_, i) => i);
-    const agr = {
-      rule: st.agreeRule || 'count',
-      pct: Number(st.agreePct) || 50,
-      both: !!st.agreeBoth,
-      persist: Math.max(0, Math.floor(Number(st.agreePersist) || 0)),
-    };
+    const agr = agrOf(st);
     const cell = { entry: st.entry, gate: st.gate, dMult: st.dMult, tHours: st.tHours, trailMult: st.trailMult ?? null, armMult: st.armMult ?? null };
     const testCallsAll = streamFor(stream.decision, agr, -1, 'test');
     const tRes = bracketLib.simCell(cell, pick(testChunks, tIdx), pick(testCallsAll, tIdx), maps.trade, geo, bandPct, fee);
@@ -537,8 +554,8 @@ async function s3UnitTask(task) {
       bandPct,
       entry: st.entry, gate: st.gate, dMult: st.dMult ?? null, tHours: st.tHours,
       trailMult: st.trailMult ?? null, armMult: st.armMult ?? null,
-      agreeRule: agr.rule, agreePct: agr.pct, agreeBoth: agr.both, agreePersist: agr.persist,
-      rung: agr.rule === 'unusual' ? cutoffFor(stream.decision, agr.pct) : rungFor(agr.rule, agr.pct, stream.decision),
+      agreeRule: agr.rule, agreeBar: agr.bar, agreePct: agr.pct, agreeBoth: agr.both, agreePersist: agr.persist,
+      rung: levelFor(agr, stream.decision),
       members: memberProbs.length, voices: voicesFor(stream.decision).voices,
       pnl: tRes.pnl, trades: tRes.trades,
       holdout,
@@ -681,7 +698,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 
 module.exports = {
   s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask,
-  agreedKey, agreedKeyOfRecord,
+  agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   // the arithmetic, exported so the tests can pencil it
   forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks,

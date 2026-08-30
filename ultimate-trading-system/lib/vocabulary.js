@@ -25,6 +25,7 @@
 // reaches the screen the moment it is made. Nothing has to be kept in step.
 const { GEOMETRIES } = require('./dataset');
 const bracket = require('./bracket');
+const agreement = require('./agreement');
 
 const asChoices = (values, label = (v) => String(v)) => values.map((v) => ({ value: String(v), label: label(v) }));
 
@@ -75,12 +76,16 @@ function vocabulary() {
     // so a removed list breaks the list the rule depends on.
     quorumOf6: asChoices([1, 2, 3, 4, 5, 6], (q) => `${q}/6`),
     quorumOf8: asChoices([1, 2, 3, 4, 5, 6, 7, 8], (q) => `${q}/8`),
-    agreeRule: [
-      { value: 'count', label: 'count' },
-      { value: 'conviction', label: 'conviction' },
-      { value: 'voices', label: 'voices' },
-      { value: 'families', label: 'families' },
-      { value: 'unusual', label: 'unusual' },
+    // WHAT THE QUORUM WEIGHS, and separately WHAT BAR IT MUST CLEAR. These were
+    // one list of five until 2026-08-29, and 'unusual' in it was not a fifth
+    // way of weighing at all — it was count against the own history bar. One
+    // control answering two questions left real combinations unreachable, and
+    // made the share mean different things from row to row with nothing saying
+    // so. Four ways of weighing times two bars is eight, from two boxes.
+    agreeRule: agreement.AGREE_RULES.map((r) => ({ value: r, label: r })),
+    agreeBar: [
+      { value: 'all', label: 'all of them' },
+      { value: 'own', label: 'its own history' },
     ],
     agreeShare: asChoices([10, 20, 25, 30, 40, 50, 60, 70, 75, 80, 90, 100], (q) => `${q}%`),
     agreeHold: asChoices([0, 1, 2], (q) => (q === 0 ? 'off' : `${q}`)),

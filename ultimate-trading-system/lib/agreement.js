@@ -78,7 +78,14 @@ function voiceGroups(callArrays, upTo, threshold = 0.98) {
 // levelsFor(rule, members, voices) gives the rungs the sweep may permute
 // over, so the interface offers exactly what the rule can express and never
 // a rung that means nothing.
-const AGREE_RULES = ['count', 'conviction', 'voices', 'families', 'unusual'];
+// WHAT IS WEIGHED. Four ways, and 'unusual' is not among them any more: it was
+// never a fifth way of weighing, it was `count` against a bar taken from the
+// committee's own history. It is now that pair, and every other way of
+// weighing can be asked the same question. The name stays readable here so a
+// record set written before the split still says what it did.
+const AGREE_RULES = ['count', 'conviction', 'voices', 'families'];
+const AGREE_BARS = ['all', 'own'];
+const LEGACY_RULES = { unusual: { rule: 'count', bar: 'own' } };
 
 const RULE_WORDS = {
   count: 'how many members say the same thing',
@@ -101,52 +108,68 @@ function sides(callArrays, i) {
   return { up, down, winner: up === down ? 0 : (up > down ? 1 : -1) };
 }
 
-// One moment, one rule. ctx carries whatever the rule needs; see streamFor.
+// ONE MOMENT, ONE QUORUM. The rule says WHAT is weighed; the level says how
+// much of it is enough. Every rule is the same comparison — what was reached
+// against what was asked for — because they differ only in the first of those.
+//
+// This used to be five separate comparisons, one per rule, and `unusual` was a
+// sixth kind of thing entirely: the same head count as `count`, against a bar
+// taken from the committee's own history rather than from a share of its size.
+// That made one control answer two questions and left combinations unreachable
+// — "kinds of evidence, against its own history" could not be asked for. The
+// bar is now the CALLER's business (see quorumBar), so a rule is just a way of
+// weighing and any way of weighing can meet either kind of bar.
 function agreementAt(ctx, i, rule, level) {
   const { calls } = ctx;
-  const { up, down, winner } = sides(calls, i);
-  if (!winner) return 0;
-  if (rule === 'count') return Math.max(up, down) >= level ? winner : 0;
-  if (rule === 'voices') {
-    let w = 0;
-    for (let m = 0; m < calls.length; m++) if (calls[m][i] === winner) w += ctx.weights[m];
-    // a rung is only reachable in whole voices; rounding keeps 3 of 3 from
-    // failing on floating-point crumbs
-    return w + 1e-9 >= level ? winner : 0;
+  // A NAME NOBODY IMPLEMENTS IS A CRASH, NOT A HEAD COUNT. achievedAt falls
+  // through to the plain count for anything it does not recognise, which is
+  // right for reading a value and wrong for deciding a trade: a mistyped way
+  // of weighing would quietly become `count` and price a whole block under a
+  // rule nobody asked for.
+  if (!AGREE_RULES.includes(rule)) {
+    throw new Error(`"${rule}" is not an agreement rule (${AGREE_RULES.join('/')})`);
   }
+  const { winner } = sides(calls, i);
+  if (!winner) return 0;
   if (rule === 'conviction') {
+    // the leaning must back the majority before its size is even asked about
     let s = 0;
     for (let m = 0; m < calls.length; m++) s += netLean(ctx.probs[m][i]);
-    if (Math.sign(s) !== winner) return 0;   // the leaning must back the majority
-    return Math.abs(s) + 1e-9 >= level ? winner : 0;
+    if (Math.sign(s) !== winner) return 0;
   }
-  if (rule === 'families') {
-    const seen = new Set();
-    for (let m = 0; m < calls.length; m++) if (calls[m][i] === winner) seen.add(ctx.families[m]);
-    return seen.size >= level ? winner : 0;
-  }
-  if (rule === 'unusual') {
-    return Math.max(up, down) >= ctx.cutoff ? winner : 0;
-  }
-  throw new Error(`"${rule}" is not an agreement rule (${AGREE_RULES.join('/')})`);
+  // the crumb keeps 3 of 3 voices, and a lean that lands exactly on its bar,
+  // from failing on floating-point dust
+  return achievedAt(ctx, i, rule, winner) + 1e-9 >= level ? winner : 0;
 }
 
-// What "unusual" means for THIS committee, worked out from the test slice
-// only. The share is STRICTNESS, exactly as it is for every other rule: 100
-// admits only the very best agreement this committee ever reaches, a small
-// share admits nearly everything. Higher is always stricter, so the dial
-// never changes direction under the owner.
-function percentileCutoff(callArrays, nTest, strictPct) {
-  const counts = [];
+// THE BAR, TAKEN FROM WHAT THIS COMMITTEE ACTUALLY REACHES, for any way of
+// weighing — not just a head count (owner order, 2026-08-29).
+//
+// Why this exists. A bar set as a share of what EXISTS only makes sense when
+// the thing weighed actually reaches its maximum in practice. A head count
+// does. A sum of how hard eight members lean does not: on any noisy market the
+// leans are small, so 75% of eight was a bar that could not be cleared, on any
+// data. Setting the bar from the committee's own spread cures that for every
+// way of weighing at once, and needs no special case for any of them.
+//
+// The share is STRICTNESS either way, so the dial never changes direction:
+// 100 admits only the very best this committee ever reaches, a small share
+// admits nearly everything.
+//
+// Read from the test slice only. That is the same window the ordering was done
+// on, so the bar is chosen knowing the window it will be scored on — mild, and
+// said on the screen. It never reads the held-back window.
+function ownHistoryBar(ctx, nTest, rule, strictPct) {
+  const reached = [];
   for (let i = 0; i < nTest; i++) {
-    const { up, down, winner } = sides(callArrays, i);
-    counts.push(winner ? Math.max(up, down) : 0);
+    const { winner } = sides(ctx.calls, i);
+    reached.push(winner ? achievedAt(ctx, i, rule, winner) : 0);
   }
-  if (!counts.length) return callArrays.length + 1;
-  const sorted = counts.slice().sort((a, b) => b - a);
+  if (!reached.length) return Infinity;      // nothing to learn from: nothing passes
+  reached.sort((a, b) => b - a);
   const frac = Math.max(0, Math.min(1, (100 - strictPct) / 100));
-  const at = Math.max(0, Math.min(sorted.length - 1, Math.ceil(frac * sorted.length) - 1));
-  return sorted[Math.max(0, at)];
+  const at = Math.max(0, Math.min(reached.length - 1, Math.ceil(frac * reached.length) - 1));
+  return reached[Math.max(0, at)];
 }
 
 // WHAT ACTUALLY AGREED at a moment, on the same scale as the rung.
@@ -216,6 +239,6 @@ function agreementStream(ctx, rule, level, mods = {}) {
 }
 
 module.exports = {
-  AGREE_RULES, RULE_WORDS, voiceGroups, argmaxCall, agreementStream, agreementAt, achievedAt,
-  percentileCutoff, netLean, sides,
+  AGREE_RULES, AGREE_BARS, LEGACY_RULES, RULE_WORDS, voiceGroups, argmaxCall,
+  agreementStream, agreementAt, achievedAt, ownHistoryBar, netLean, sides,
 };

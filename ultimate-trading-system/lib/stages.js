@@ -597,7 +597,7 @@ const FILTER_DEFS = {
   },
   3: {
     decision: ['decision', 'text'], entry: ['entry', 'text'], gate: ['_gate', 'text'],
-    rule: ['agreeRule', 'text'],
+    rule: ['agreeRule', 'text'], bar: ['_bar', 'text'],
     tMin: ['tHours', 'min'], tMax: ['tHours', 'max'],
     coinsMin: ['coins', 'min'], testMin: ['avgTest', 'min'], holdMin: ['avgHold', 'min'],
     tradesMin: ['avgTrades', 'min'], vsLongMin: ['avgVsLong', 'min'],
@@ -618,6 +618,10 @@ const DERIVED = {
   // to it — so a filter reading the stored value would hand back rows the
   // screen says have no gate at all. This reads what is on the screen.
   _gate: (r) => (r.entry === 'market' ? 'does not apply' : String(r.gate || '')),
+  // WHICH BAR A ROW USED, in the words the screen shows rather than the word
+  // the record stores. A set priced before the bar became a dial says nothing,
+  // and its rows used a share of the committee's size, which is 'all of them'.
+  _bar: (r) => (r.agreeBar === 'own' || r.agreeRule === 'unusual' ? 'its own history' : 'all of them'),
   _sharePct: (r) => (r.share == null ? null : r.share * 100),
 };
 const readsField = (field) => DERIVED[field] || ((r) => r[field]);
@@ -903,19 +907,29 @@ function shapeLabel(cell) {
     ? `market t${cell.tHours}h`
     : `${cell.gate} d${cell.dMult}x t${cell.tHours}h${trailBit}`;
 }
+// A QUORUM'S NAME. The bar is in it because the same share means two different
+// things under the two bars — 75% of what exists, or the strongest 25% of what
+// this committee reaches — and a name that hid the difference would put two
+// unlike settings under one heading.
 function agreeLabel(a) {
-  return `${a.rule} ${a.pct}%${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}`;
+  return `${a.rule} ${a.pct}%${a.bar === 'own' ? ' own' : ''}${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}`;
 }
 
-// Every agreement setting the block declares, with the shares that cannot be
-// told apart on THIS run's units removed. Shares are only comparable up front
-// for the rules whose rung depends on committee size alone; the voices rule
-// and the unusual rule resolve against each unit's own data at pricing time,
-// so their shares all stand.
+// Every quorum the block declares, with the shares that cannot be told apart on
+// THIS run's units removed.
+//
+// A share is only comparable up front when its bar is a share of what EXISTS
+// and that count is known from the committee's size — count, conviction and
+// families against the all bar. Against the own history bar, and for voices
+// whichever bar it uses, the bar resolves against each unit's own data at
+// pricing time, so every share stands.
 function agreementsFor(params, sizes) {
   const rules = params.agreePermuteRule
     ? agreement.AGREE_RULES.slice()
     : [agreement.AGREE_RULES.includes(params.agreeRule) ? params.agreeRule : 'count'];
+  const bars = params.agreePermuteBar
+    ? agreement.AGREE_BARS.slice()
+    : [agreement.AGREE_BARS.includes(params.agreeBar) ? params.agreeBar : 'all'];
   const pcts = params.agreePermutePct ? AGREE_PCTS.slice() : [Number(params.agreePct) || 50];
   for (const p of pcts) if (!Number.isFinite(p) || p <= 0 || p > 100) throw new Error(`agreement share must be a percent above 0, not "${p}"`);
   const boths = params.agreePermuteBoth ? [false, true] : [!!params.agreeBothModels];
@@ -924,19 +938,21 @@ function agreementsFor(params, sizes) {
   const out = [];
   const seen = new Set();
   for (const rule of rules) {
-    for (const pct of pcts) {
-      // the rungs this share lands on, one per committee size in the run
-      let key = null;
-      if (rule === 'count' || rule === 'conviction') {
-        key = `${rule}|${seenSizes.map((z) => rungFor(pct, membersForSize(z))).join(',')}`;
-      } else if (rule === 'families') {
-        key = `${rule}|${seenSizes.map((z) => rungFor(pct, readingsForSize(z))).join(',')}`;
-      }
-      for (const bothModels of boths) {
-        for (const persist of persists) {
-          const k = key === null ? null : `${key}|${bothModels}|${persist}`;
-          if (k !== null) { if (seen.has(k)) continue; seen.add(k); }
-          out.push({ rule, pct, bothModels, persist });
+    for (const bar of bars) {
+      for (const pct of pcts) {
+        // the rungs this share lands on, one per committee size in the run
+        let key = null;
+        if (bar === 'all' && (rule === 'count' || rule === 'conviction')) {
+          key = `${rule}|${seenSizes.map((z) => rungFor(pct, membersForSize(z))).join(',')}`;
+        } else if (bar === 'all' && rule === 'families') {
+          key = `${rule}|${seenSizes.map((z) => rungFor(pct, readingsForSize(z))).join(',')}`;
+        }
+        for (const bothModels of boths) {
+          for (const persist of persists) {
+            const k = key === null ? null : `${key}|${bothModels}|${persist}`;
+            if (k !== null) { if (seen.has(k)) continue; seen.add(k); }
+            out.push({ rule, bar, pct, bothModels, persist });
+          }
         }
       }
     }
@@ -1072,7 +1088,7 @@ function settingsFor(params, sizes = null) {
           for (const a of agrees) {
             out.push({
               ...cell, quorum: undefined,
-              agreeRule: a.rule, agreePct: a.pct, agreeBoth: a.bothModels, agreePersist: a.persist,
+              agreeRule: a.rule, agreeBar: a.bar, agreePct: a.pct, agreeBoth: a.bothModels, agreePersist: a.persist,
               decision, band, weekdaysOnly: wk,
               label: `${agreeLabel(a)} ${shapeLabel(cell)} \u00b7 ${decision} ${band === 'auto' ? 'auto' : `${band}%`} ${wk ? '24/5' : '24/7'}`,
             });
@@ -1186,9 +1202,11 @@ function startStage3(params) {
     params: {
       ...parent.params, from: parent.id, fee, nullN, carry: carry > 0 ? parentRecords.length : 0,
       cell: params.cell, cellPermute: params.cellPermute || null,
-      agreeRule: params.agreeRule || 'count', agreePct: Number(params.agreePct) || 50,
+      agreeRule: params.agreeRule || 'count', agreeBar: params.agreeBar === 'own' ? 'own' : 'all',
+      agreePct: Number(params.agreePct) || 50,
       agreeBothModels: !!params.agreeBothModels, agreePersist: Math.max(0, Math.floor(Number(params.agreePersist) || 0)),
-      agreePermuteRule: !!params.agreePermuteRule, agreePermutePct: !!params.agreePermutePct,
+      agreePermuteRule: !!params.agreePermuteRule, agreePermuteBar: !!params.agreePermuteBar,
+      agreePermutePct: !!params.agreePermutePct,
       agreePermuteBoth: !!params.agreePermuteBoth, agreePermutePersist: !!params.agreePermutePersist,
       decision: params.decision || 'argmax', band: params.band ?? 'auto', weekdaysOnly: !!params.weekdaysOnly,
       permuteDecision: !!params.permuteDecision, permuteBand: !!params.permuteBand, permuteWeekdays: !!params.permuteWeekdays,
