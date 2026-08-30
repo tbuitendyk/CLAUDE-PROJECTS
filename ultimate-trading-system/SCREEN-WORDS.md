@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **cf30f599a4da — what the box is serving**, not from the working tree.
+Generated from **12eb7f67b031 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -272,10 +272,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (103)
+## What the controls are called (102)
 
 - `— pick a stage`
-- `\u2014`
 - `+both`
 - `+hold`
 - `1v`
@@ -338,7 +337,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `nothing here`
 - `of`
 - `of the`
-- `of this set\u2019s`
+- `of this set’s`
 - `order`
 - `own`
 - `parts`
@@ -433,10 +432,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - rows — the rest are held back by the filters above.
 - — nothing was replaced; the records are exactly as they were.
 - — the new names are written beside the old records and only swapped in once they are all there. This page asks again every few seconds.
-- of this set\u2019s settings are named without the share that decides
+- of this set’s settings are named without the share that decides
 - whether two forecasts count as one voice.
-- The names written today carry it, so this set\u2019s own block reads as not declaring
-- them \u2014 and filling in the missing settings first would price every one of them a second time under its new name.
+- The names written today carry it, so this set’s own block reads as not declaring
+- them — and filling in the missing settings first would price every one of them a second time under its new name.
 - Renaming changes names only: nothing is priced again, and no result moves.
 - filling in the missing settings failed:
 - — nothing already priced was touched.
@@ -450,10 +449,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - Bring the setting names up to date first
 - settings are named the older way, and pricing now would price every one of them a second time under its new name.
 
-## Every word, flat (357)
+## Every word, flat (355)
 
 ```
-1v 3.A 3.B above. accordingly. active actually added adding after again again. agreed all alongside already always always-long and answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged avg away away. back back. background band be beat because before belong below beside best block board Boards BOOST both box breakout bring Bring broken building by call campaign can cannot carry changes child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data date decides decision declared declares declares. declaring Delete did directional DOES does done each Each either empty entry every Every exactly exist exists failed FAILED families few fewer fill filled filling fills filter filter. filters fingerprint first first. fixed floors floors. for forecast forecasts form forward four from fuller gate going held held-back helped here history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next No no NOT not notes nothing now null numbers of of. old older on once One one only opening opinions or order Ordered other out over OWN own page parent parents parts per pick picked picking PLAN. press prev price priced priced. prices Pricing pricing pricings proved provenance put puts quorum ran ran. ranked read reads real record records renaming Renaming replaced rest restart. rests result revert row rows rule. run rung running save saved score screen second seconds. section sections selections service set SET set. sets setting settings Settings shape share show showed showing shows. since Size smaller so some sort stage Stage STAMP stops suggests. swapped table Table tables takes test than that the The their them them. there. They they THIS this This ties time to today top totalled totalling touched touched. trade. trades trail training tried two u2014 u2019s under unit units up voice. voices votes vs was way way. ways were. what What when where whether whole why window with With without worked would written wrote yet you
+1v 3.A 3.B above. accordingly. active actually added adding after again again. agreed all alongside already always always-long and answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged avg away away. back back. background band be beat because before belong below beside best block board Boards BOOST both box breakout bring Bring broken building by call campaign can cannot carry changes child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data date decides decision declared declares declares. declaring Delete did directional DOES does done each Each either empty entry every Every exactly exist exists failed FAILED families few fewer fill filled filling fills filter filter. filters fingerprint first first. fixed floors floors. for forecast forecasts form forward four from fuller gate going held held-back helped here history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next No no NOT not notes nothing now null numbers of of. old older on once One one only opening opinions or order Ordered other out over OWN own page parent parents parts per pick picked picking PLAN. press prev price priced priced. prices Pricing pricing pricings proved provenance put puts quorum ran ran. ranked read reads real record records renaming Renaming replaced rest restart. rests result revert row rows rule. run rung running save saved score screen second seconds. section sections selections service set SET set. sets setting settings Settings shape share show showed showing shows. since Size smaller so some sort stage Stage STAMP stops suggests. swapped table Table tables takes test than that the The their them them. there. They they THIS this This ties time to today top totalled totalling touched touched. trade. trades trail training tried two under unit units up voice. voices votes vs was way way. ways were. what What when where whether whole why window with With without worked would written wrote yet you
 ```
 
 ---
