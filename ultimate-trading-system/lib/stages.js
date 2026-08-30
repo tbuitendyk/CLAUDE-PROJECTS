@@ -1457,107 +1457,17 @@ const TALLY_V = 4;
 // A set priced before this existed gets them by rebuilding the same units from
 // its stage 2 parent's kept votes and walking the same streams. Nothing is
 // re-priced and no record is rewritten.
-// ---- THE RECORD SHAPE, AND MOVING A SET ONTO IT --------------------------------
+// ---- THE RECORD SHAPE ----------------------------------------------------------
 //
-// RULE NINE (owner order, 2026-08-30): "when processes change, fix existing
-// records to match the current schema". No reader anywhere asks which era a
-// record is from. When the shape moves, the records move.
+// RULE NINE: "when processes change, fix existing records to match the current
+// schema". Every set on disk is at this shape, so there is nothing here that
+// knows about an older one — the code that moved them was one-off and went out
+// with the job (owner order, 2026-08-30).
 //
-//   1 -> 2   the quorum's bar became a dial of its own. Rows written before it
-//            carry no agreeBar at all, and the ones weighed by a head count
-//            against the bar taken from the committee's own history were
-//            stamped with a rule name that no longer exists.
+// The stamp stays. It is one line at a launch, and it is what lets the NEXT
+// shape change be written as a migration rather than as archaeology over which
+// era a set came from.
 const RECORDS_V = 2;
-const RECORD_MIGRATIONS = {
-  2: {
-    says: 'writing the quorum bar onto every record',
-    // The retired name WAS a head count against the own history bar. This is
-    // the one place in the codebase that knows that, and it runs once per set.
-    row: (r) => (r.agreeRule === 'unusual'
-      ? { ...r, agreeRule: 'count', agreeBar: 'own', label: String(r.label).replace(/^unusual (\d+)%/, 'count $1% own') }
-      : { ...r, agreeBar: r.agreeBar === 'own' ? 'own' : 'all' }),
-    doc: (d) => {
-      const p = d.params || {};
-      const plan = d.plan || {};
-      if (Array.isArray(plan.settingLabels)) {
-        plan.settingLabels = plan.settingLabels.map((l) => String(l).replace(/^unusual (\d+)%/, 'count $1% own'));
-      }
-      // What the launch ASKED FOR has to keep describing what the set HOLDS,
-      // because the block is rebuilt from these to work out what agreed. A set
-      // written before the split holds both bars whenever it swept the rules —
-      // the retired name was the own history bar — so the bar reads as swept.
-      // It overstates by declaring combinations the set does not hold; extra
-      // answers are unused, a missing one would blank a fifth of a column.
-      const heldBothBars = !!p.agreePermuteRule || p.agreeRule === 'unusual';
-      p.agreeBar = p.agreeRule === 'unusual' ? 'own' : 'all';
-      if (p.agreeRule === 'unusual') p.agreeRule = 'count';
-      p.agreePermuteBar = heldBothBars;
-      d.params = p;
-      d.plan = plan;
-    },
-  },
-};
-const recordsVersionOf = (doc) => Math.max(1, Math.floor(Number((doc || {}).recordsVersion) || 1));
-
-// MIGRATE BESIDE, VERIFY, THEN SWAP. A record set is hours of compute that
-// nothing but a full re-run can produce again, so the old store stays exactly
-// where it is until a complete new one has been written and counted. Block
-// boundaries are NOT preserved and do not need to be: the only thing that ever
-// stored a block number is the totals, and those are deleted here and rebuilt
-// from the migrated records.
-async function migrateRecords(doc, note = null) {
-  const from = recordsVersionOf(doc);
-  if (from >= RECORDS_V) return { already: true, from };
-  const id = doc.id;
-  const steps = [];
-  for (let v = from + 1; v <= RECORDS_V; v++) {
-    if (!RECORD_MIGRATIONS[v]) throw new Error(`no migration exists from record shape ${v - 1} to ${v}`);
-    steps.push(RECORD_MIGRATIONS[v]);
-  }
-  const blocks = rowstore.blocksOf(id, 'records') || [];
-  const wasRows = blocks.reduce((a, b) => a + (b.rows || 0), 0);
-  const tmpId = `${id}-migrating`;
-  rowstore.remove(tmpId);                       // any wreckage from an attempt that died
-  const w = rowstore.writer(tmpId, 'records', { offThread: true });
-  let moved = 0;
-  if (note) note(0, blocks.length);
-  for (let bi = 0; bi < blocks.length; bi++) {
-    for (const got of rowstore.readBlocks(id, 'records', [bi])) {
-      let row = got.row;
-      for (const step of steps) row = step.row(row);
-      w.push(row);
-      moved++;
-    }
-    w.flush();
-    if (note) note(bi + 1, blocks.length);
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => { setImmediate(resolve); });
-  }
-  await w.close();
-
-  // COUNTED BEFORE ANYTHING IS MOVED. A short store swapped in silently is
-  // worse than no migration at all.
-  const after = (rowstore.blocksOf(tmpId, 'records') || []).reduce((a, b) => a + (b.rows || 0), 0);
-  if (!wasRows || after !== wasRows || moved !== wasRows) {
-    rowstore.remove(tmpId);
-    throw new Error(`the migrated records do not match the originals (${wasRows} in, ${moved} written, ${after} readable) — nothing was replaced`);
-  }
-  const live = rowstore.storeDir(id);
-  const kept = `${live}.before-v${RECORDS_V}`;
-  try { fs.rmSync(kept, { recursive: true, force: true }); } catch (_) { /* nothing there */ }
-  fs.renameSync(live, kept);
-  fs.renameSync(rowstore.storeDir(tmpId), live);
-
-  for (const step of steps) step.doc(doc);
-  doc.recordsVersion = RECORDS_V;
-  saveSet(doc);
-  // EVERYTHING DERIVED IS DELETED, NEVER MIGRATED (RULE NINE): a second chance
-  // to get the same translation wrong is not worth the minutes it saves.
-  try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* nothing there */ }
-  try { fs.rmSync(agreedFile(id), { force: true }); } catch (_) { /* nothing there */ }
-  try { fs.rmSync(kept, { recursive: true, force: true }); } catch (_) { /* it can wait for the next sweep */ }
-  return { migrated: true, from, to: RECORDS_V, rows: wasRows };
-}
 
 const AGREED_V = 1;
 const agreedFile = (id) => path.join(SETS_DIR, `${id}-agreed.json.gz`);
@@ -1764,8 +1674,7 @@ function ensureTally(id) {
   // readTally is the arbiter, not the file's existence: a tally of an older
   // shape sits on disk and still reads as absent, and this is the door the
   // re-totalling walks in through. The parse happens once — it remembers.
-  const behind = (() => { const d = getSet(id); return d && recordsVersionOf(d) < RECORDS_V; })();
-  if (!behind) { try { if (readTally(id)) return { ready: true }; } catch (_) { /* fall through */ } }
+  try { if (readTally(id)) return { ready: true }; } catch (_) { /* fall through */ }
   const doc = getSet(id);
   if (!doc || doc.stage !== 3 || (doc.status !== 'done' && doc.status !== 'incomplete')) return { none: true };
   if (batch.batchRunning() || activeSet) {
@@ -1786,15 +1695,6 @@ function ensureTally(id) {
   run.promise = (async () => {
     let pool = null;
     try {
-      // THE RECORDS COME ONTO TODAY'S SHAPE FIRST (RULE NINE). Nothing below
-      // knows about an older one, so this runs before the answers and the
-      // tables are worked out — and it deletes both if it moves anything, so
-      // they are re-derived from the migrated records rather than translated.
-      if (recordsVersionOf(doc) < RECORDS_V) {
-        run.phase = RECORD_MIGRATIONS[RECORDS_V].says;
-        run.word = 'blocks of records';
-        await migrateRecords(doc, (dn, tn) => { run.done = dn; run.total = tn; });
-      }
       const blocks = rowstore.blocksOf(id, 'records') || [];
       const settingsCount = (doc.plan || {}).settings || 0;
       if (blocks.length >= 8 && settingsCount <= SHARD_SETTINGS_LIMIT) pool = createPool();
@@ -2003,8 +1903,6 @@ const S3_COIN_FILTERS = {
   minAgreed: ['avgAgreed', 'min'],
 };
 function stage3Coins(id, query) {
-  const behind = (() => { const d = getSet(id); return d && recordsVersionOf(d) < RECORDS_V; })();
-  if (behind) return null;
   const t = readTally(id);
   if (!t) return null;
   const minPairs = Math.max(0, Math.floor(num(query.minPairs, 0)));
@@ -2013,6 +1911,11 @@ function stage3Coins(id, query) {
   const minTrades = query.minTrades === '' || query.minTrades == null ? null : Number(query.minTrades);
   const minVsLong = query.minVsLong === '' || query.minVsLong == null ? null : Number(query.minVsLong);
   const minAgreed = query.minAgreed === '' || query.minAgreed == null ? null : Number(query.minAgreed);
+  // ONE SETTING'S COINS AND NOTHING ELSE (owner order, 2026-08-30). Matched
+  // WHOLE, not by containing: the button that sets it sends a name exactly,
+  // and a name that is the start of a longer one would otherwise drag that
+  // one's coins in beside it.
+  const setting = query.setting === '' || query.setting == null ? null : String(query.setting);
   // avg test $ WAS DECLARED AND NEVER READ (owner, 2026-08-29: "CHECK the
   // Table 3.B filters ... they do not seem to be filtering correctly"). The
   // page drew the box and sent what was typed in it, and nothing here looked:
@@ -2020,6 +1923,7 @@ function stage3Coins(id, query) {
   // other floor on this table was measured biting, one at a time.
   const minTest = query.minTest === '' || query.minTest == null ? null : Number(query.minTest);
   const clears = (r) => (minPairs ? r.pairs >= minPairs : true)
+    && (setting == null || r.cellLabel === setting)
     && (minTest == null || (r.avgTest != null && r.avgTest >= minTest))
     && (minAgreed == null || (r.avgAgreed != null && r.avgAgreed >= minAgreed))
     && (minShare == null || (r.share != null && r.share * 100 >= minShare))
@@ -2060,9 +1964,6 @@ function stage3Coins(id, query) {
 
 function stage3Ranked(id, from, n, filters = null) {
   const doc = getSet(id);
-  // a set whose records are behind the current shape has no tables to serve:
-  // the read falls through to the door that migrates it and totals it again
-  if (doc && recordsVersionOf(doc) < RECORDS_V) return null;
   const t = readTally(id);
   if (!t) return null;
   // The saved sort orders the WHOLE ranked list before the page is cut, so
@@ -2119,5 +2020,5 @@ module.exports = {
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
   spreadOf, S3_COIN_FILTERS,
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf,
-  RECORDS_V, migrateRecords, recordsVersionOf,
+  RECORDS_V,
 };

@@ -1677,116 +1677,26 @@ module.exports = {
     assert.ok(Array.isArray(served) && served.length >= 3, 'the engine serves no gate list for the dropdown to read');
   },
 
-  // A SET PRICED BEFORE THE SPLIT IS MIGRATED, NOT INTERPRETED (owner order,
-  // 2026-08-30: "i don't want special code to handle legacy records ... the
-  // rule is: when processes change, fix existing records to match the current
-  // schema").
-  //
-  // It WAS interpreted, in three separate readers, and the bug that followed
-  // was two of them translating a key and the third not. The records are moved
-  // onto today's shape instead, once, and nothing downstream knows there was
-  // ever another one.
-  async aSetPricedBeforeTheSplitIsMigratedOntoTodaysShape() {
-    const id = `s3-test-${Date.now().toString(36)}-mg`;
-    const file = path.join(SETS_DIR, `${id}.json`);
-    const doc = {
-      id, stage: 3, seq: 999973, name: 'S3 #mg', status: 'done', createdAt: new Date().toISOString(),
-      plan: {
-        units: 1,
-        settings: 2,
-        settingLabels: ['unusual 75% +both market t65h · argmax auto 24/7', 'count 75% market t65h · argmax auto 24/7'],
-      },
-      params: { nullN: 9, agreeRule: 'count', agreePermuteRule: true },
-      // NO recordsVersion at all: the shape a set written before this carries
-    };
-    try {
-      fs.mkdirSync(SETS_DIR, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(doc));
-      const w = rowstore.writer(id, 'records');
-      const mk = (si, agreeRule, both) => ({
-        si,
-        label: `${agreeRule} 75%${both ? ' +both' : ''} market t65h · argmax auto 24/7`,
-        decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2, entry: 'market',
-        gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null,
-        agreeRule, agreePct: 75, agreeBoth: both, agreePersist: 0,   // and no agreeBar
-        rung: 6, members: 8, voices: 8, pnl: 10, trades: 3,
-        holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
-        beat: 5, pairs: 9, lead: 1, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
-      });
-      w.push(mk(0, 'unusual', true));
-      w.push(mk(1, 'count', false));
-      w.close();
-
-      // a set behind the shape serves NO tables — the read falls through to
-      // the door that moves it, rather than being interpreted on the way out
-      assert.strictEqual(stages.stage3Ranked(id, 0, 10), null, 'a set behind the shape must not serve tables');
-      assert.strictEqual(stages.stage3Coins(id, {}), null, 'nor its every-coin table');
-
-      const out = await stages.migrateRecords(stages.getSet(id));
-      assert.deepStrictEqual([out.migrated, out.rows], [true, 2]);
-
-      // THE RECORDS THEMSELVES now say it, in today's words
-      const rows = [];
-      for (const got of rowstore.readBlocks(id, 'records', [0])) rows.push(got.row);
-      assert.strictEqual(rows.length, 2, 'every row must survive the move');
-      const was = rows.find((r) => r.si === 0);
-      const other = rows.find((r) => r.si === 1);
-      assert.deepStrictEqual([was.agreeRule, was.agreeBar], ['count', 'own'],
-        'the retired name is still on a record, so a reader would still have to know it');
-      assert.strictEqual(was.label, 'count 75% own +both market t65h · argmax auto 24/7',
-        'the setting name must be moved too, or the two tables disagree about what a row is called');
-      assert.deepStrictEqual([other.agreeRule, other.agreeBar], ['count', 'all'],
-        'a row that never used the retired name must still gain the bar it used');
-
-      // the set document moved with them
-      const after = stages.getSet(id);
-      assert.strictEqual(stages.recordsVersionOf(after), stages.RECORDS_V);
-      assert.ok(after.plan.settingLabels.every((l) => !l.startsWith('unusual ')), 'the stored names still carry it');
-      assert.strictEqual(after.params.agreeBar, 'all');
-      assert.strictEqual(after.params.agreePermuteBar, true,
-        'the launch record must still describe a set that holds BOTH bars, or a fifth of a column rebuilds empty');
-
-      // ...and running it again does nothing at all
-      assert.deepStrictEqual(await stages.migrateRecords(stages.getSet(id)), { already: true, from: stages.RECORDS_V });
-
-      // the tables come back, and answer in the new words with no translation
-      await stages.buildTally(stages.getSet(id));
-      const rk = stages.stage3Ranked(id, 0, 10);
-      assert.strictEqual(rk.total, 2);
-      assert.deepStrictEqual(rk.rows.map((r) => `${r.agreeRule}|${r.agreeBar}`).sort(), ['count|all', 'count|own']);
-      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10, { bar: 'its own history' }).rows.map((r) => r.si), [0]);
-      assert.strictEqual(stages.stage3Ranked(id, 0, 10, { rule: 'unusual' }).total, 0, 'the retired name reaches nothing');
-    } finally {
-      try { fs.unlinkSync(file); } catch (_) { /* gone */ }
-      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
-      rowstore.remove(id);
-      rowstore.remove(`${id}-migrating`);
-    }
-  },
-
-  // AND NO READER ANYWHERE STILL KNOWS THE RETIRED NAME (RULE NINE). One
-  // translation left behind is one place for the two vocabularies to drift,
-  // and that is exactly how a key came to be built two different ways.
-  async noReaderStillTranslatesTheRetiredName() {
-    for (const f of ['lib/agreement.js', 'lib/stagework.js']) {
+  // NOTHING ANYWHERE KNOWS THE RETIRED NAME (RULE NINE). Every set on disk was
+  // moved onto today's shape and the code that moved them went out with the
+  // job, so there is no longer anywhere that may mention it at all. This is
+  // the guard that keeps it so: one translation reintroduced is one place for
+  // two vocabularies to drift, which is exactly how a key came to be built two
+  // different ways in the first place.
+  async noReaderAnywhereKnowsTheRetiredName() {
+    for (const f of ['lib/agreement.js', 'lib/stagework.js', 'lib/stages.js', 'lib/vocabulary.js', 'public/construct.js']) {
       const src = fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\/\/[^\n]*/g, '');
-      assert.ok(!/unusual/i.test(src), `${f} still knows the retired name outside a comment`);
+      assert.ok(!/unusual/i.test(src),
+        `${f} knows the retired name outside a comment — records are migrated, never interpreted`);
     }
-    // the migration is allowed to know it — it is the one place that must —
-    // and nothing outside it is
-    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
-    const from = st.indexOf('const RECORD_MIGRATIONS');
-    const to = st.indexOf('const recordsVersionOf');
-    assert.ok(from > 0 && to > from, 'the migrations block cannot be found, so this check proves nothing');
-    const outside = st.slice(0, from) + st.slice(to);
-    assert.ok(!/unusual/i.test(outside),
-      'lib/stages.js knows the retired name somewhere other than the migration that retires it');
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
-    assert.ok(!/unusual/i.test(ui), 'the page still knows the retired name');
     // ONE key, built one way, from either side
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     assert.ok(/const agreedKeyOfRecord = \(r\) => agreedKey\(r\.decision, agrOf\(r\)\);/.test(sw),
       'the two keys are two expressions again, so they can disagree again');
+    // ...and the stamp stays, because the next shape change needs it
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(/const RECORDS_V = \d+;/.test(st) && /recordsVersion: RECORDS_V,/.test(st),
+      'a new record set no longer says which shape it is in, so the next migration has nothing to read');
   },
 
   // EVERY DIAL THAT CAN CHANGE A CALL MAKES A SETTING ITS OWN (2026-08-30).
@@ -1841,6 +1751,79 @@ module.exports = {
       'the fixture cannot tell the two bars apart, so it proves nothing about a cache that confuses them');
   },
 
+  // ONE SETTING'S COINS, FROM THE ROW ITSELF (owner order, 2026-08-30: Table
+  // 3.A's rows "should be (a) numbered and (b) have a filter 3.B button ... so
+  // that only the (5 in this case) coins under with specific config are
+  // displayed in 3.B").
+  async aRowOfTableThreeAPinsTableThreeBToItsOwnCoins() {
+    const id = `s3-test-${Date.now().toString(36)}-pn`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999971, name: 'S3 #pn', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 2, settings: 2 }, params: { nullN: 9 },
+      recordsVersion: stages.RECORDS_V,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, cell, trade) => ({
+        si, label: `${cell} · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false,
+        bandPct: 2, entry: 'market', gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null,
+        agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
+        rung: 6, members: 8, voices: 8, pnl: 10, trades: 3,
+        holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat: 5, pairs: 9, lead: 1, u: 0, trade, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      });
+      // one setting on two coins, and another whose name STARTS WITH the first
+      w.push(mk(0, 'count 75% market t65h', 'AAA'));
+      w.push(mk(0, 'count 75% market t65h', 'BBB'));
+      w.push(mk(1, 'count 75% market t65h long', 'CCC'));
+      w.close();
+      await stages.buildTally(doc);
+
+      assert.strictEqual(stages.stage3Coins(id, {}).total, 3, 'the fixture is wrong if the table does not hold three');
+      const pinned = stages.stage3Coins(id, { setting: 'count 75% market t65h' });
+      assert.strictEqual(pinned.total, 2, 'pinning must leave exactly the coins that setting was priced on');
+      assert.deepStrictEqual(pinned.rows.map((r) => r.trade).sort(), ['AAA', 'BBB']);
+      assert.strictEqual(pinned.removed, 1, 'and the line under the table must own up to what it held back');
+      // WHOLE, not by containing: a name that is the start of a longer one
+      // must not drag the longer one's coins in beside it
+      assert.ok(!pinned.rows.some((r) => r.trade === 'CCC'),
+        'the pin matches by containing, so a longer setting name is caught by a shorter one');
+    } finally {
+      try { fs.unlinkSync(file); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      rowstore.remove(id);
+    }
+  },
+
+  // ...and the row carries its number and its button.
+  async everyRowOfTableThreeASaysWhereItSitsAndCanPinTheOneBelow() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(/\(from \+ i \+ 1\)\.toLocaleString\(\)/.test(ui),
+      'the number is not the row\'s place in the whole table, so page two would start at 1 again');
+    assert.ok(/data-bpin3b="\$\{esc\(String\(r\.label\)\.split\(' · '\)\[0\]\)\}"/.test(ui),
+      'the button does not carry the setting name Table 3.B is keyed by');
+    assert.ok(/bSaveFilters\('S3C', \{ setting: btn\.dataset\.bpin3b \}\)/.test(ui), 'the button is drawn but never wired');
+    assert.ok(/bSaveView\(\{ coins: \{ \.\.\.\(bView\(\)\.coins \|\| \{\}\), offset: 0 \} \}\)/.test(ui),
+      'pinning leaves the every-coin table on whatever page it was, which can be past the end of what is left');
+    assert.ok(/bRedrawPeggedToCoinHead\(\);\n    \};\n  \}\);\n  \$\(mount\)\.querySelectorAll\('\[data-brec\]'\)/.test(ui),
+      'pinning does not hold the page still, so pressing it moves the row out from under the cursor');
+    // the box that says what it is pinned to, so it can be seen and cleared
+    assert.ok(/\['setting', 'setting', 'text',/.test(ui),
+      'nothing on Table 3.B shows which setting it is pinned to, so it cannot be seen or undone');
+    assert.ok(/setting: coinF\.setting \?\? ''/.test(ui), 'the pin is drawn but never sent');
+    // every heading still has a cell under it
+    const rk = ui.indexOf("rr.map((r, i) => `<tr>");
+    const hs = ui.lastIndexOf('<thead>', rk);
+    const n = (x, t) => (x.match(new RegExp(`<${t}[ >]`, 'g')) || []).length;
+    assert.strictEqual(n(ui.slice(hs, ui.indexOf('</thead>', hs)), 'th'),
+      n(ui.slice(rk, ui.indexOf('<tr><td colspan', rk)), 'td'),
+      'Table 3.A has a different number of headings and cells');
+    assert.ok(/colspan="23"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A');
+  },
+
   // AND IT IS ON THE SCREEN — all three tables, with its floors.
   async whatActuallyAgreedIsOnEveryStageThreeTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
@@ -1867,7 +1850,7 @@ module.exports = {
     assert.ok(/r\.agreedLow\.toFixed\(1\)/.test(ui) && /r\.agreedHigh\.toFixed\(1\)/.test(ui) && /r\.agreedN/.test(ui),
       'a record shows its average agreement with no idea of its range or how many calls it rests on');
     // every header still has a cell under it
-    const rk = ui.indexOf("rr.map((r) => `<tr>");
+    const rk = ui.indexOf("rr.map((r, i) => `<tr>");
     const rHead = ui.slice(ui.lastIndexOf('<thead>', rk), ui.indexOf('</thead>', ui.lastIndexOf('<thead>', rk)));
     const rBody = ui.slice(rk, ui.indexOf('<tr><td colspan', rk));
     const ck = ui.indexOf('<tbody id="bCoinBody">');
@@ -1876,8 +1859,17 @@ module.exports = {
     const n = (x, t) => (x.match(new RegExp(`<${t}[ >]`, 'g')) || []).length;
     assert.strictEqual(n(rHead, 'th'), n(rBody, 'td'), 'the ranked table has a different number of headings and cells');
     assert.strictEqual(n(cHead, 'th'), n(cBody, 'td'), 'the every-coin table has a different number of headings and cells');
-    assert.ok(/colspan="21"/.test(ui) && /colspan="11"/.test(ui),
-      'the "nothing here" line no longer spans the whole table, so it sits under one column');
+    // THE SPAN IS COUNTED, NOT TYPED. It was typed, and went stale the moment a
+    // column was added — twice. The line has to reach across whatever the
+    // table currently holds.
+    for (const [name, at] of [['Table 3.A', rk], ['Table 3.B', ck]]) {
+      const head = ui.lastIndexOf('<thead>', at);
+      const cols = n(ui.slice(head, ui.indexOf('</thead>', head)), 'th');
+      const span = /colspan="(\d+)"/.exec(ui.slice(at, ui.indexOf('</tbody>', at)));
+      assert.ok(span, `${name} has no "nothing here" line at all`);
+      assert.strictEqual(Number(span[1]), cols,
+        `${name}'s "nothing here" line spans ${span[1]} of its ${cols} columns`);
+    }
   },
 
   // AND THE PAGE ACTUALLY SHOWS THEM, headed, in the order they were asked
