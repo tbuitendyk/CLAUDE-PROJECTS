@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **12eb7f67b031 — what the box is serving**, not from the working tree.
+Generated from **59af48e1a801 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -272,7 +272,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (102)
+## What the controls are called (104)
 
 - `— pick a stage`
 - `+both`
@@ -311,6 +311,8 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `Data fingerprint:`
 - `decision`
 - `Delete record set…`
+- `dropping the settings failed:`
+- `dropping the settings:`
 - `entry`
 - `fill in the missing settings`
 - `forecast score`
@@ -393,7 +395,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `market`
 - `voices`
 
-## Sentences the page prints (53)
+## Sentences the page prints (61)
 
 - Boards — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -437,6 +439,14 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - The names written today carry it, so this set’s own block reads as not declaring
 - them — and filling in the missing settings first would price every one of them a second time under its new name.
 - Renaming changes names only: nothing is priced again, and no result moves.
+- — what is kept is written beside the old records and only swapped in once it is all there. This page asks again every few seconds.
+- every setting this set holds is one its block declares. Settings were dropped from it
+- time(s).
+- settings its own block does not declare.
+- They price a trade that another setting it holds already prices, so every one of them is a second copy of a row that is
+- already here. Dropping them deletes those rows and renumbers what is left; nothing else is touched, and the tables are
+- worked out again afterwards.
+- drop the settings the block does not declare
 - filling in the missing settings failed:
 - — nothing already priced was touched.
 - filling in the settings this block declares:
@@ -449,10 +459,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - Bring the setting names up to date first
 - settings are named the older way, and pricing now would price every one of them a second time under its new name.
 
-## Every word, flat (355)
+## Every word, flat (370)
 
 ```
-1v 3.A 3.B above. accordingly. active actually added adding after again again. agreed all alongside already always always-long and answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged avg away away. back back. background band be beat because before belong below beside best block board Boards BOOST both box breakout bring Bring broken building by call campaign can cannot carry changes child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data date decides decision declared declares declares. declaring Delete did directional DOES does done each Each either empty entry every Every exactly exist exists failed FAILED families few fewer fill filled filling fills filter filter. filters fingerprint first first. fixed floors floors. for forecast forecasts form forward four from fuller gate going held held-back helped here history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next No no NOT not notes nothing now null numbers of of. old older on once One one only opening opinions or order Ordered other out over OWN own page parent parents parts per pick picked picking PLAN. press prev price priced priced. prices Pricing pricing pricings proved provenance put puts quorum ran ran. ranked read reads real record records renaming Renaming replaced rest restart. rests result revert row rows rule. run rung running save saved score screen second seconds. section sections selections service set SET set. sets setting settings Settings shape share show showed showing shows. since Size smaller so some sort stage Stage STAMP stops suggests. swapped table Table tables takes test than that the The their them them. there. They they THIS this This ties time to today top totalled totalling touched touched. trade. trades trail training tried two under unit units up voice. voices votes vs was way way. ways were. what What when where whether whole why window with With without worked would written wrote yet you
+1v 3.A 3.B above. accordingly. active actually added adding after afterwards. again again. agreed all alongside already always always-long and another answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged avg away away. back back. background band be beat because before belong below beside best block board Boards BOOST both box breakout bring Bring broken building by call campaign can cannot carry changes child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data date decides decision declare declare. declared declares declares. declaring Delete deletes did directional DOES does done drop dropped dropping Dropping each Each either else empty entry every Every exactly exist exists failed FAILED families few fewer fill filled filling fills filter filter. filters fingerprint first first. fixed floors floors. for forecast forecasts form forward four from fuller gate going held held-back helped here here. history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next No no NOT not notes nothing now null numbers of of. old older on once One one only opening opinions or order Ordered other out over OWN own page parent parents parts per pick picked picking PLAN. press prev price priced priced. prices Pricing pricing pricings proved provenance put puts quorum ran ran. ranked read reads real record records renaming Renaming renumbers replaced rest restart. rests result revert row rows rule. run rung running save saved score screen second seconds. section sections selections service set SET set. sets setting settings Settings shape share show showed showing shows. since Size smaller so some sort stage Stage STAMP stops suggests. swapped table Table tables takes test than that the The their them them. there. They they THIS this This those ties time to today top totalled totalling touched touched. trade trade. trades trail training tried two under unit units up voice. voices votes vs was way way. ways were were. what What when where whether whole why window with With without worked would written wrote yet you
 ```
 
 ---
