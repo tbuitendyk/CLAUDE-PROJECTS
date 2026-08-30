@@ -86,7 +86,12 @@
   .filters .fname { text-align:right; font-size:.74rem; color:var(--dim); white-space:nowrap; }
   .filters .fbox { justify-self:start; }
   .filters .fbox input, .filters .fbox select { width:8rem; }
-  .filters .frow { grid-column:1 / -1; justify-self:start; margin-top:.15rem; }
+  /* apply settings, auto-apply settings and clear filters are ONE control row
+     and line up as one (RULE FOUR) — the tick box is a different height from
+     the buttons and would otherwise sit on its own baseline. */
+  .filters .frow { grid-column:1 / -1; justify-self:start; margin-top:.15rem;
+    display:flex; align-items:center; gap:.5rem; flex-wrap:wrap; }
+  .filters .frow button[disabled] { opacity:.45; cursor:default; }
   /* the four numbers beside each filter box: two more columns of grid, and the
      cells sit on the same centre line as the box they belong to because the
      grid already says align-items:center */
@@ -151,6 +156,27 @@
      margin only INSIDE the frozen block, and the content below takes the same
      amount back. 0.9rem - 0.3rem = 0.6rem, and tests/test-frozentop.js fails
      if those three numbers ever stop adding up. */
+  /* THE WAIT BOX (owner order, 2026-08-30). A redraw can take seconds, and
+     until it lands the old page is still on screen unchanged — so a press that
+     worked and a press that did nothing look the same. It sits ABOVE the sticky
+     header (z-index 20) and across the whole window on purpose: the clicks it
+     swallows are clicks that would each have queued another slow redraw. */
+  #waitbox { position:fixed; inset:0; z-index:60; display:flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb, var(--bg) 62%, transparent); }
+  /* An id beats [hidden] on specificity, so display:flex above would keep the
+     box on screen for ever without this line. */
+  #waitbox[hidden] { display:none; }
+  #waitbox > div { background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:1rem 1.5rem; box-shadow:0 8px 28px rgba(0,0,0,.35); text-align:center; max-width:24rem; }
+  #waitbox b { display:block; font-size:1.05rem; margin-bottom:.3rem; }
+  /* THE TWO STAGE 3 TABLES ARE TWO TABLES (owner order, 2026-08-30: "make a
+     clear visual break between the two Stage 3 tables so that they're not just
+     running into each other"). They share one panel, so without a rule between
+     them the second heading reads as another line of the first table's notes.
+     The heading itself is bigger than the notes around it for the same reason:
+     it is the name of a table, not a caption under one. */
+  .t3head { font-size:1.05rem; margin:.6rem 0 .35rem; }
+  .t3break { border-top:2px solid var(--line); margin:1.9rem 0 0; }
   .pagetop { position:sticky; top:0; z-index:20; background:var(--bg);
     margin:-1.1rem -1.1rem 0; padding:1.1rem 1.1rem .3rem; }
   .pagetop .tabs { margin-bottom:0; }
@@ -190,6 +216,13 @@
   </div>
 
   <div id="view"></div>
+
+  <div id="waitbox" hidden>
+    <div>
+      <b>Please wait</b>
+      <span class="muted">the page is being redrawn</span>
+    </div>
+  </div>
 
 <script src="help-content.js?v=1"></script>
 <script src="construct.js?v=1"></script>

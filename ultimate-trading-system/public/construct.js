@@ -268,6 +268,50 @@ function restoreScroll(t) {
   requestAnimationFrame(() => requestAnimationFrame(() => { holdScrollMemory(); window.scrollTo(0, y); }));
 }
 
+// ── THE WAIT BOX (owner order, 2026-08-30) ──────────────────────────────────
+// "going back and forth between the Sweep and Boards tabs and even picking new
+// sets of filters on the 3.A and 3.B tables is taking a long time to redraw."
+//
+// Until a redraw lands, the OLD page is still on screen, unchanged. So a press
+// that worked and a press that did nothing look exactly alike — and the
+// natural response is to press again, which queues a SECOND slow redraw behind
+// the first. This says which it was. It does not make the wait shorter; it
+// makes it visible, and it swallows the clicks that would have made it longer.
+//
+// A COUNT, NOT A FLAG. The pagers, the sorts, the filters, the fold and the tab
+// strip all call a renderer straight, and two can be in the air at once; one
+// finishing must not take away a box the other still needs.
+let waitDepth = 0;
+let waitTimer = null;
+let waitSilent = false;   // set only by the every-few-seconds ask, below
+function waitBox(on) { const el = $('#waitbox'); if (el) el.hidden = !on; }
+function waitStart() {
+  if (waitDepth++ > 0) return;
+  // SHOWN LATE, ON PURPOSE. A redraw that lands in a blink must not flash a box
+  // on the way past. And because a timer only runs when the page is otherwise
+  // idle, a redraw that never lets go of the page never shows one either —
+  // which is right, because the browser could not have drawn it anyway.
+  if (!waitTimer) waitTimer = setTimeout(() => { waitTimer = null; if (waitDepth > 0) waitBox(true); }, 150);
+}
+function waitEnd() {
+  if (--waitDepth > 0) return;
+  waitDepth = 0;
+  if (waitTimer) { clearTimeout(waitTimer); waitTimer = null; }
+  // Two frames, for the same reason restoreScroll waits two: the new content
+  // has been put on the page but not laid out or scrolled to yet. Taking the
+  // box away on the spot uncovers a page that is still jumping.
+  requestAnimationFrame(() => requestAnimationFrame(() => { if (waitDepth === 0) waitBox(false); }));
+}
+// WRAPPED AT THE DEFINITION, never at the call. There are sixteen places a
+// renderer is called from and one missed is a box that never clears. `finally`
+// for the same reason: a renderer that throws is a real case — draw() carries a
+// whole arm for it — and a thrown draw must not leave the screen covered.
+const waitWrap = (fn) => async (...a) => {
+  const quiet = waitSilent;            // read here, before the first await
+  if (!quiet) waitStart();
+  try { return await fn(...a); } finally { if (!quiet) waitEnd(); }
+};
+
 // Keep it current while reading, so a reload lands in the right place too.
 // Throttled to once a frame: a scroll event fires far more often than that and
 // there is nothing to gain from writing every one of them.
@@ -2349,6 +2393,15 @@ async function drawSweep() {
 // away and back lands on the same view.
 const BOARDS_VIEW_KEY = 'cx-boards-view';
 let bTallyPoll = null;   // asks again while a set's tables are totalling
+// THE EVERY-FEW-SECONDS ASK REDRAWS QUIETLY. It repaints the same progress
+// line over and over for as long as the work runs — hours, on a big set — and
+// a wait box popping up every four seconds for hours is not information, it is
+// a page nobody can read. waitSilent is set and cleared around the CALL, which
+// works because waitWrap reads it before its first await.
+function bPollRedraw() {
+  waitSilent = true;
+  try { return drawBoards().then(() => restoreScroll(tab)); } finally { waitSilent = false; }
+}
 function bView() {
   try { return JSON.parse(localStorage.getItem(BOARDS_VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
 }
@@ -2743,11 +2796,48 @@ function bWireCoinSort(root) {
 // than four times below, because four copies is how two tables end up
 // disagreeing about what a filter does.
 const bFilters = (key) => (bView().filters || {})[key] || {};
-function bSaveFilters(key, patch) {
+// EVERY BOX AT ONCE, not one at a time (owner order, 2026-08-30). A filter used
+// to go on the moment a box lost focus, and on a big record set each one of
+// those is a minute. Four boxes was four minutes of watching three tables you
+// did not ask for. The whole key is replaced, so what is applied is exactly
+// what the boxes say — nothing left over from a box that has since been
+// emptied.
+function bSetFilters(key, next) {
   const all = { ...(bView().filters || {}) };
-  all[key] = { ...(all[key] || {}), ...patch };
+  all[key] = { ...next };
   for (const k of Object.keys(all[key])) if (all[key][k] === '' || all[key][k] == null) delete all[key][k];
   bSaveView({ filters: all });
+}
+// Off by default: the whole point is that a box losing focus costs nothing.
+const bAuto = (key) => !!(bView().autoApply || {})[key];
+const bSaveAuto = (key, on) => bSaveView({ autoApply: { ...(bView().autoApply || {}), [key]: !!on } });
+// What the boxes say RIGHT NOW, in the shape bSetFilters stores.
+function bBoxesNow(root, key) {
+  const out = {};
+  if (!$(root)) return out;
+  $(root).querySelectorAll(`[data-bfilter^="${key}:"]`).forEach((el) => {
+    if (el.value !== '' && el.value != null) out[el.dataset.bfilter.slice(key.length + 1)] = el.value;
+  });
+  return out;
+}
+const bSameFilters = (a, b) => {
+  const ka = Object.keys(a).sort(); const kb = Object.keys(b).sort();
+  return ka.length === kb.length && ka.every((k, i) => kb[i] === k && String(a[k]) === String(b[k]));
+};
+// TYPED BACK TO WHAT IT WAS IS NOT A CHANGE (owner order, 2026-08-30). Compared
+// against what is actually applied, not against a "something was touched" flag,
+// so undoing an edit by hand puts the button back to sleep.
+function bApplyState(root, key) {
+  if (!$(root)) return;
+  const btn = $(root).querySelector(`[data-bapply="${key}"]`);
+  if (!btn) return;
+  btn.disabled = bAuto(key) || bSameFilters(bBoxesNow(root, key), bFilters(key));
+}
+function bApplyFilters(root, key) {
+  bSetFilters(key, bBoxesNow(root, key));
+  bSaveView({ [`from${key}`]: 0 });
+  if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
+  else drawBoards().then(() => restoreScroll(tab));
 }
 // spec: [id, name shown, kind, tooltip, options?]  kind: 'text' | 'num' | 'pick'
 // ONE VALUE, PRINTED SO IT CAN BE COMPARED DOWN A COLUMN. Whole numbers keep
@@ -2806,19 +2896,34 @@ function bFilterGrid(key, specs, spread) {
   // word on the screen that the closed word list cannot see.
   const head = sp4 ? `<span></span><span></span><span class="fhead">minimum</span><span class="fhead">median</span><span class="fhead">average</span><span class="fhead">maximum</span>` : '';
   return `<div class="filters${sp4 ? ' withspread' : ''}">${head}${specs.map((sp) => `<label title="${esc(sp[3])}"><span class="fname">${esc(sp[1])}</span><span class="fbox">${box(sp)}</span>${stats(sp)}</label>`).join('')}
-    <span class="frow"><button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button>${
-  key === 'S3C' && bView().s3cBeforePin ? ' <button data-bunpin3b title="puts the filters back exactly as they were before show in 3.B took them off, and lets go of the setting it pinned.">put the filters back</button>' : ''}</span></div>${
+    <span class="frow"><button data-bapply="${key}" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">apply settings</button>
+    <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press apply settings — one wait for the whole set of boxes rather than one wait per box, and on a large record set each wait is minutes."><input type="checkbox" data-bauto="${key}"${bAuto(key) ? ' checked' : ''}> auto-apply settings</label>
+    <button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button>${
+  key === 'S3C' && bView().s3cBeforePin ? '<button data-bunpin3b title="puts the filters back exactly as they were before show in 3.B took them off, and lets go of the setting it pinned.">put the filters back</button>' : ''}</span></div>${
   sp4 ? `<p class="note">The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.</p>` : ''}`;
 }
 function bWireFilters(root) {
   if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
   $(root).querySelectorAll('[data-bfilter]').forEach((el) => {
-    el.onchange = () => {
-      const [key, id] = el.dataset.bfilter.split(':');
-      bSaveFilters(key, { [id]: el.value });
-      bSaveView({ [`from${key}`]: 0 });
-      if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
-      else drawBoards().then(() => restoreScroll(tab));
+    const [key] = el.dataset.bfilter.split(':');
+    // ON INPUT, not on change: the button has to wake on the first keystroke
+    // and go back to sleep the moment the old value is typed back, and change
+    // only fires when the box is left.
+    el.oninput = () => { if (!bAuto(key)) bApplyState(root, key); };
+    el.onchange = () => { if (bAuto(key)) bApplyFilters(root, key); else bApplyState(root, key); };
+  });
+  $(root).querySelectorAll('[data-bapply]').forEach((btn) => {
+    btn.onclick = () => { if (!btn.disabled) bApplyFilters(root, btn.dataset.bapply); };
+  });
+  $(root).querySelectorAll('[data-bauto]').forEach((cb) => {
+    cb.onchange = () => {
+      const key = cb.dataset.bauto;
+      bSaveAuto(key, cb.checked);
+      // Ticking it means "keep it applied", so anything typed and not yet put
+      // on goes on now — otherwise it would sit in a box whose button has just
+      // been greyed out, looking applied and not being it.
+      if (cb.checked && !bSameFilters(bBoxesNow(root, key), bFilters(key))) bApplyFilters(root, key);
+      else bApplyState(root, key);
     };
   });
   $(root).querySelectorAll('[data-bunpin3b]').forEach((btn) => {
@@ -3092,7 +3197,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     : t.waiting ? `<p class="note">the tables are not totalled yet — ${esc(t.waiting)}. This page asks again every few seconds.</p>`
       : `<p class="note">${tp && tp.phase ? esc(tp.phase) : 'totalling the tables'}: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} ${esc(tp.word || 'parts')}` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands.</p>`}
     </div>`)) return;
-    if (!t.failed) bTallyPoll = setTimeout(() => { if (tab === 'boards') drawBoards().then(() => restoreScroll(tab)); }, 4000);
+    if (!t.failed) bTallyPoll = setTimeout(() => { if (tab === 'boards') bPollRedraw(); }, 4000);
     return;
   }
   const rr = (ranked && ranked.rows) || [];
@@ -3107,7 +3212,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ${bFoldBtn('S3R', swHead)}
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
     ${bFillInLine(doc, gap, filling)}
-    <p style="margin:.6rem 0 .2rem"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
+    <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     ${bFilterGrid('S3R', [
     ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
       ((VOCAB && VOCAB.agreeRule) || []).map((o) => String(o.value))],
@@ -3192,7 +3297,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       nothing picked: beat its own null set, best first. Independent voices below members means the committees held
       near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
     `}
-    <p style="margin:.9rem 0 .2rem"><b>Table 3.B: Every coin of every setting</b> — one row per coin, its records opening below it</p>
+    <div class="t3break"></div>
+    <p class="t3head"><b>Table 3.B: Every coin of every setting</b> — one row per coin, its records opening below it</p>
     ${bFilterGrid('S3C', [
     ['minShare', 'beat its own null set at least, %', 'num', 'hides rows that won less than this share of their head-to-heads. Empty hides nothing.'],
     ['minPairs', 'comparisons at least', 'num', 'hides rows whose share rests on fewer head-to-heads than this. Empty hides nothing.'],
@@ -3296,7 +3402,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     };
   });
   if (filling && filling.running) {
-    bTallyPoll = setTimeout(() => { if (tab === 'boards') drawBoards().then(() => restoreScroll(tab)); }, 4000);
+    bTallyPoll = setTimeout(() => { if (tab === 'boards') bPollRedraw(); }, 4000);
   }
   bWirePager(mount);
   bWireRankSort(doc, mount);
@@ -3394,6 +3500,16 @@ drawTune = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...
 drawGreenlight = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('greenlight'); return r; })(drawGreenlight);
 drawSweep = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('sweep'); return r; })(drawSweep);
 drawBoards = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('boards'); return r; })(drawBoards);
+// AND THEN THE WAIT BOX, OUTSIDE ALL OF IT (owner order, 2026-08-30), so the
+// box stays up until the very last thing the redraw does has been done.
+drawData = waitWrap(drawData);
+drawSweep = waitWrap(drawSweep);
+drawBoards = waitWrap(drawBoards);
+drawVerify = waitWrap(drawVerify);
+drawHistory = waitWrap(drawHistory);
+drawTune = waitWrap(drawTune);
+drawGreenlight = waitWrap(drawGreenlight);
+drawHelp = waitWrap(drawHelp);
 
 function draw() {
   renderTabs(); renderStrip();

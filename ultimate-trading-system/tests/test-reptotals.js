@@ -595,8 +595,20 @@ module.exports = {
       'the Boards screen no longer notices that a record set is still totalling');
     assert.ok(/building in the background; the tables appear here when it lands/.test(page),
       'and it no longer says so — an empty table reads as an answer');
-    assert.ok(/bTallyPoll = setTimeout\(\(\) => \{ if \(tab === 'boards'\) drawBoards\(\)/.test(page),
-      'nothing re-asks while the build runs, so the tables never appear without a manual reload');
+    // RE-AIMED 2026-08-30: this pinned the literal drawBoards() inside the
+    // timer, and the ask now goes through a helper so it can redraw WITHOUT
+    // raising the wait box every four seconds for the hours a build runs. The
+    // thing that matters is unchanged and is what is checked now — a timer
+    // fires while the build runs, and what it calls redraws Boards. Both links
+    // are read out of the code, so either one going missing still fails.
+    const timer = page.match(/bTallyPoll = setTimeout\(\(\) => \{ if \(tab === 'boards'\) ([A-Za-z0-9_$]+)\(\)/);
+    assert.ok(timer, 'nothing re-asks while the build runs, so the tables never appear without a manual reload');
+    const asker = timer[1];
+    const body = asker === 'drawBoards' ? 'drawBoards'
+      : (page.slice(page.indexOf(`function ${asker}(`)).slice(0, 400));
+    assert.ok(/drawBoards\(\)/.test(body),
+      `the timer that re-asks while the build runs calls ${asker}(), and that does not redraw Boards — `
+      + 'so the tables never appear without a manual reload');
     assert.ok(/the totalling failed:/.test(page),
       'a build that DIED reads exactly like one still running — an ended state must be reported, not waited on');
   },
