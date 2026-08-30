@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **83b428bd97b2 — what the box is serving**, not from the working tree.
+Generated from **8e459602c2a4 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,12 +89,11 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Sweep
 
-## What the controls are called (66)
+## What the controls are called (68)
 
 - `— each says why:`
 - `— no finished stage`
 - `” will permanently remove:`
-- `agree by`
 - `all loaded data`
 - `arm`
 - `band % (or auto)`
@@ -131,6 +130,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `on this box —`
 - `or a new name`
 - `permute`
+- `Quorum`
+- `quorum bar`
+- `quorum by`
 - `record set on this box —`
 - `record set(s) stayed`
 - `Removed`
@@ -158,7 +160,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `View tree`
 - `window layout`
 
-## What the dropdowns offer (66)
+## What the dropdowns offer (67)
 
 - `0.25×`
 - `0.5×`
@@ -192,6 +194,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `90%`
 - `active`
 - `ADAUSDT`
+- `all of them`
 - `always`
 - `argmax`
 - `ATOMUSDT`
@@ -211,6 +214,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `ETCUSDT`
 - `ETHUSDT`
 - `families`
+- `its own history`
 - `legacy 80/20 (never evidence)`
 - `LINKUSDT`
 - `LTCUSDT`
@@ -220,14 +224,13 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `static`
 - `TRXUSDT`
 - `UNIUSDT`
-- `unusual`
 - `voices`
 - `Weekly 8-day`
 - `XLMUSDT`
 - `XRPUSDT`
 - `ZECUSDT`
 
-## Sentences the page prints (24)
+## Sentences the page prints (25)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards.
@@ -240,6 +243,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - The LOGREG members are reused, never retrained; only the BOOST members train (4 per coin on its own, 5 alongside others),
 - so a carried unit ends up with both kinds voting side by side.
 - Stage 3 — price any settings from the kept votes, no training
+- — every coin is judged by 8 members. These four boxes decide when enough of them agree to act.
 - units. Progress above; the set lands on Boards.
 - carried units.
 - units.
@@ -254,22 +258,21 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - and the saved models and tuning files belonging to them.
 - priced the same trade and were folded into one)
 
-## Every word, flat (266)
+## Every word, flat (278)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above active ADAUSDT add against agree all alongside always and any are argmax arm at ATOMUSDT attaches auto AVAXUSDT band BCHUSDT be been belonging best blank BNBUSDT Boards. BOOST both box breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin conviction count Currently Daily data decision declared default Delete deleted. Deleting deployed. description different directional DOGEUSDT DOTUSDT doubles Each each end ends entry estimate ETCUSDT ETHUSDT every Every everything evidence exam exist existing families fee files finished first fit. folded forecast forward from gate going greenlight greenlights has here hold holds into is it it. its keep keeps. kept kind kinds known lands later launched layout legacy LINKUSDT live loaded locked LOGREG LTCUSDT market member members minted models name names never new next No no not nothing now null of off on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress rank reads record refuse remove Removed Retire retrained reused right rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape share side side. singles size so SOLUSDT stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there this This those three to trade Trade trail train trained training travels tree triples TRXUSDT tuning undone. unit units units. UNIUSDT universe until unusual up UTC View voices vote votes voting way Weekly were What while whole why will window with working writes XLMUSDT XRPUSDT yet ZECUSDT
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above act. active ADAUSDT add against agree all alongside always and any are argmax arm at ATOMUSDT attaches auto AVAXUSDT band bar BCHUSDT be been belonging best blank BNBUSDT Boards. BOOST both box boxes breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin conviction count Currently Daily data decide decision declared default Delete deleted. Deleting deployed. description different directional DOGEUSDT DOTUSDT doubles Each each end ends enough entry estimate ETCUSDT ETHUSDT every Every everything evidence exam exist existing families fee files finished first fit. folded forecast forward four from gate going greenlight greenlights has here history hold holds into is it it. its judged keep keeps. kept kind kinds known lands later launched layout legacy LINKUSDT live loaded locked LOGREG LTCUSDT market member members members. minted models name names never new next No no not nothing now null of off on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress Quorum quorum rank reads record refuse remove Removed Retire retrained reused right rounds run running runs same saved says scans sealed second set Set sets sets. settings setup setups. shape share side side. singles size so SOLUSDT stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there These this This those three to trade Trade trail train trained training travels tree triples TRXUSDT tuning undone. unit units units. UNIUSDT universe until up UTC View voices vote votes voting way Weekly were What when while whole why will window with working writes XLMUSDT XRPUSDT yet ZECUSDT
 ```
 
 ---
 
 # Boards
 
-## What the controls are called (84)
+## What the controls are called (85)
 
 - `— pick a stage`
 - `+both`
 - `+hold`
-- `agree by`
 - `alongside`
 - `any`
 - `arm`
@@ -324,7 +327,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `nothing here`
 - `of`
 - `order`
+- `own`
 - `prev`
+- `quorum by`
 - `record set`
 - `record set —`
 - `records`
@@ -351,9 +356,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `vs always-long`
 - `What this run actually is`
 
-## What the dropdowns offer (12)
+## What the dropdowns offer (13)
 
 - `active`
+- `all of them`
 - `always`
 - `argmax`
 - `breakout`
@@ -362,8 +368,8 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `directional`
 - `does not apply`
 - `families`
+- `its own history`
 - `market`
-- `unusual`
 - `voices`
 
 ## Sentences the page prints (34)
@@ -403,10 +409,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.
 - rows — the rest are held back by the filters above.
 
-## Every word, flat (283)
+## Every word, flat (284)
 
 ```
-3.A 3.B above. accordingly. active actually added adding after again agree agreed all alongside always always-long and any appear apply are argmax arm arrow as asks at average averaged avg away away. back back. background band be beat because before belong below beside best board Boards BOOST both box breakout bring broken building by call campaign can cannot carry child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data decision declared Delete directional DOES does each Each either empty entry every Every exactly exists failed FAILED families few fewer fills filter filter. filters fingerprint first first. fixed floors floors. forecast form forward four from fuller gate going held held-back helped here hold holds if in independent Independent into inventory. is it it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move near-copies never next No NOT not notes nothing now null numbers of of. on One one opening opinions order Ordered other over OWN own page parent parents per pick picked picking PLAN. press prev priced prices Pricing proved provenance put puts ranked read real record records rest restart. rests row rows rule. run rung save saved score screen seconds. section sections selections service set SET set. sets setting settings Settings shape share showed showing shows. Size smaller so some sort stage Stage STAMP stops suggests. table Table tables takes test than that the The their They THIS this This ties time to top totalled totalling trade. trades trail training tried unit units unusual voices votes vs way. what What when where whole why window with With without wrote yet you
+3.A 3.B above. accordingly. active actually added adding after again agreed all alongside always always-long and any appear apply are argmax arm arrow as asks at average averaged avg away away. back back. background band be beat because before belong below beside best board Boards BOOST both box breakout bring broken building by call campaign can cannot carry child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data decision declared Delete directional DOES does each Each either empty entry every Every exactly exists failed FAILED families few fewer fills filter filter. filters fingerprint first first. fixed floors floors. forecast form forward four from fuller gate going held held-back helped here history hold holds if in independent Independent into inventory. is it it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move near-copies never next No NOT not notes nothing now null numbers of of. on One one opening opinions order Ordered other over OWN own page parent parents per pick picked picking PLAN. press prev priced prices Pricing proved provenance put puts quorum ranked read real record records rest restart. rests row rows rule. run rung save saved score screen seconds. section sections selections service set SET set. sets setting settings Settings shape share showed showing shows. Size smaller so some sort stage Stage STAMP stops suggests. table Table tables takes test than that the The their them They THIS this This ties time to top totalled totalling trade. trades trail training tried unit units voices votes vs way. what What when where whole why window with With without wrote yet you
 ```
 
 ---
