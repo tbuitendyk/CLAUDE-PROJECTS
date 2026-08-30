@@ -78,21 +78,23 @@ function voiceGroups(callArrays, upTo, threshold = 0.98) {
 // levelsFor(rule, members, voices) gives the rungs the sweep may permute
 // over, so the interface offers exactly what the rule can express and never
 // a rung that means nothing.
-// WHAT IS WEIGHED. Four ways, and 'unusual' is not among them any more: it was
-// never a fifth way of weighing, it was `count` against a bar taken from the
+// WHAT IS WEIGHED. Four ways, and 'unusual' is not among them: it was never a
+// fifth way of weighing, it was `count` against a bar taken from the
 // committee's own history. It is now that pair, and every other way of
-// weighing can be asked the same question. The name stays readable here so a
-// record set written before the split still says what it did.
+// weighing can be asked the same question.
+//
+// Nothing here knows the retired name. Records written under it are MIGRATED
+// (RULE NINE) — a reader that has to ask which era a record is from is the
+// defect, and the bug that proved it was two readers translating a key while
+// a third did not.
 const AGREE_RULES = ['count', 'conviction', 'voices', 'families'];
 const AGREE_BARS = ['all', 'own'];
-const LEGACY_RULES = { unusual: { rule: 'count', bar: 'own' } };
 
 const RULE_WORDS = {
   count: 'how many members say the same thing',
   conviction: 'how strongly the members lean, added up',
   voices: 'how many INDEPENDENT voices say the same thing',
   families: 'how many different kinds of evidence agree',
-  unusual: 'how unusual this much agreement is for this committee',
 };
 
 // The winning side and its plain counts at one moment.
@@ -239,6 +241,6 @@ function agreementStream(ctx, rule, level, mods = {}) {
 }
 
 module.exports = {
-  AGREE_RULES, AGREE_BARS, LEGACY_RULES, RULE_WORDS, voiceGroups, argmaxCall,
+  AGREE_RULES, AGREE_BARS, RULE_WORDS, voiceGroups, argmaxCall,
   agreementStream, agreementAt, achievedAt, ownHistoryBar, netLean, sides,
 };

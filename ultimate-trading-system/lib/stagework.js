@@ -271,22 +271,22 @@ async function s2UnitTask(task) {
 // every record. It depends on the unit and on the way of asking, and on
 // NOTHING about the trade shape — which is why 329,280 settings on ten units
 // need 600 numbers rather than 3.3 million.
-// A SETTING'S QUORUM, in one shape, read from the setting itself. A record set
-// written before the bar became a dial says nothing about it, and `unusual`
-// was exactly today's count-against-its-own-history — so that name still
-// resolves rather than throwing at a screen that has to draw it.
-const agrOf = (st) => {
-  const legacy = agreement.LEGACY_RULES[st.agreeRule] || null;
-  return {
-    rule: legacy ? legacy.rule : (st.agreeRule || 'count'),
-    bar: legacy ? legacy.bar : (st.agreeBar === 'own' ? 'own' : 'all'),
-    pct: Number(st.agreePct) || 50,
-    both: !!st.agreeBoth,
-    persist: Math.max(0, Math.floor(Number(st.agreePersist) || 0)),
-  };
-};
-const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.bar || 'all'}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}`;
-const agreedKeyOfRecord = (r) => `${r.decision}|${r.agreeRule || 'count'}|${r.agreeBar || 'all'}|${r.agreePct}|${r.agreeBoth ? 1 : 0}|${Math.max(0, Math.floor(Number(r.agreePersist) || 0))}`;
+// A SETTING'S QUORUM, in one shape, read from the setting itself. It reads
+// exactly what is stored and translates nothing: a record set written before
+// the bar became a dial is migrated to say so (RULE NINE), never interpreted.
+const agrOf = (st) => ({
+  rule: st.agreeRule || 'count',
+  bar: st.agreeBar === 'own' ? 'own' : 'all',
+  pct: Number(st.agreePct) || 50,
+  both: !!st.agreeBoth,
+  persist: Math.max(0, Math.floor(Number(st.agreePersist) || 0)),
+});
+const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.bar}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}`;
+// THE SAME KEY, BUILT THE SAME WAY. These were two expressions that had to
+// agree and did not: one went through agrOf and one read the fields raw, so a
+// row whose stored name differed from its resolved one missed its answer
+// entirely. One of them is now the other.
+const agreedKeyOfRecord = (r) => agreedKey(r.decision, agrOf(r));
 
 async function s3UnitTask(task) {
   const { combo, geometry, params: p, unit, settings, fee, nullN, seed, unitKey, agreedOnly = false } = task;
@@ -588,7 +588,7 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
       // null, never undefined: undefined vanishes through the worker boundary
       // and the sharded fold would then disagree with the single-pass one on a
       // field neither of them actually used
-      agreeRule: r.agreeRule ?? null, agreePct: r.agreePct ?? null,
+      agreeRule: r.agreeRule ?? null, agreeBar: r.agreeBar ?? null, agreePct: r.agreePct ?? null,
       agreeBoth: r.agreeBoth ?? null, agreePersist: r.agreePersist ?? null,
       members: r.members ?? null,
       perCoin: new Map() };

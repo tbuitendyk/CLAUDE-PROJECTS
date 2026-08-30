@@ -492,6 +492,7 @@ module.exports = {
     const doc = {
       id, stage: 3, seq: 999987, name: 'S3 #rs', status: 'done', createdAt: new Date().toISOString(),
       plan: { units: 1, settings: 3 }, params: { nullN: 9 },
+      recordsVersion: stages.RECORDS_V,
     };
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
@@ -888,6 +889,7 @@ module.exports = {
     const doc = {
       id, stage: 3, seq: 999988, name: 'S3 #rb', status: 'done', createdAt: new Date().toISOString(),
       plan: { units: 1, settings: 2 }, params: { nullN: 9 },
+      recordsVersion: stages.RECORDS_V,
     };
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
@@ -1441,6 +1443,7 @@ module.exports = {
     const doc = {
       id, stage: 3, seq: 999981, name: 'S3 #sp', status: 'done', createdAt: new Date().toISOString(),
       plan: { units: 1, settings: 4 }, params: { nullN: 9 },
+      recordsVersion: stages.RECORDS_V,
     };
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
@@ -1530,6 +1533,7 @@ module.exports = {
     const doc = {
       id, stage: 3, seq: 999979, name: 'S3 #ag', status: 'done', createdAt: new Date().toISOString(),
       plan: { units: 1, settings: 2 }, params: { nullN: 9 },
+      recordsVersion: stages.RECORDS_V,
     };
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
@@ -1621,6 +1625,7 @@ module.exports = {
     const doc = {
       id, stage: 3, seq: 999977, name: 'S3 #gt', status: 'done', createdAt: new Date().toISOString(),
       plan: { units: 1, settings: 3 }, params: { nullN: 9 },
+      recordsVersion: stages.RECORDS_V,
     };
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
@@ -1672,59 +1677,116 @@ module.exports = {
     assert.ok(Array.isArray(served) && served.length >= 3, 'the engine serves no gate list for the dropdown to read');
   },
 
-  // A SET PRICED BEFORE THE BAR BECAME A DIAL ANSWERS IN TODAY'S WORDS (owner,
-  // 2026-08-29: "so why does quorum by still contain unusual?").
+  // A SET PRICED BEFORE THE SPLIT IS MIGRATED, NOT INTERPRETED (owner order,
+  // 2026-08-30: "i don't want special code to handle legacy records ... the
+  // rule is: when processes change, fix existing records to match the current
+  // schema").
   //
-  // It did, because I put the old word back on the filter so an existing set
-  // stayed reachable. That solved the right problem the wrong way round: it
-  // re-offered on one screen the very confusion the split removed, and on any
-  // new set it is a choice that can never match a row. The rows are translated
-  // instead — 'unusual' was a head count against the own history bar, so it
-  // answers to exactly that pair.
-  async aSetPricedBeforeTheSplitAnswersInTodaysWords() {
-    const id = `s3-test-${Date.now().toString(36)}-lg`;
+  // It WAS interpreted, in three separate readers, and the bug that followed
+  // was two of them translating a key and the third not. The records are moved
+  // onto today's shape instead, once, and nothing downstream knows there was
+  // ever another one.
+  async aSetPricedBeforeTheSplitIsMigratedOntoTodaysShape() {
+    const id = `s3-test-${Date.now().toString(36)}-mg`;
     const file = path.join(SETS_DIR, `${id}.json`);
     const doc = {
-      id, stage: 3, seq: 999975, name: 'S3 #lg', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 1, settings: 2 }, params: { nullN: 9 },
+      id, stage: 3, seq: 999973, name: 'S3 #mg', status: 'done', createdAt: new Date().toISOString(),
+      plan: {
+        units: 1,
+        settings: 2,
+        settingLabels: ['unusual 75% +both market t65h · argmax auto 24/7', 'count 75% market t65h · argmax auto 24/7'],
+      },
+      params: { nullN: 9, agreeRule: 'count', agreePermuteRule: true },
+      // NO recordsVersion at all: the shape a set written before this carries
     };
     try {
       fs.mkdirSync(SETS_DIR, { recursive: true });
       fs.writeFileSync(file, JSON.stringify(doc));
       const w = rowstore.writer(id, 'records');
-      const mk = (si, agreeRule, agreeBar) => ({
-        si, label: `${agreeRule} 75% market t65h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto',
-        weekdaysOnly: false, bandPct: 2, entry: 'market', gate: 'directional', dMult: null, tHours: 65,
-        trailMult: null, armMult: null, agreeRule, agreeBar, agreePct: 75, agreeBoth: false, agreePersist: 0,
+      const mk = (si, agreeRule, both) => ({
+        si,
+        label: `${agreeRule} 75%${both ? ' +both' : ''} market t65h · argmax auto 24/7`,
+        decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2, entry: 'market',
+        gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null,
+        agreeRule, agreePct: 75, agreeBoth: both, agreePersist: 0,   // and no agreeBar
         rung: 6, members: 8, voices: 8, pnl: 10, trades: 3,
         holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
         beat: 5, pairs: 9, lead: 1, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
       });
-      w.push(mk(0, 'unusual', undefined));      // priced before the split
-      w.push(mk(1, 'count', 'all'));            // priced after it
+      w.push(mk(0, 'unusual', true));
+      w.push(mk(1, 'count', false));
       w.close();
-      await stages.buildTally(doc);
 
-      const rows = stages.stage3Ranked(id, 0, 10).rows;
-      const old = rows.find((r) => r.si === 0);
-      assert.deepStrictEqual([old.agreeRule, old.agreeBar], ['count', 'own'],
-        'a row priced before the split still prints a word the box no longer offers');
-      // ...and both halves find it
-      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10, { rule: 'count' }).rows.map((r) => r.si).sort(), [0, 1],
-        'picking count must find the old row too — it was always a head count');
+      // a set behind the shape serves NO tables — the read falls through to
+      // the door that moves it, rather than being interpreted on the way out
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10), null, 'a set behind the shape must not serve tables');
+      assert.strictEqual(stages.stage3Coins(id, {}), null, 'nor its every-coin table');
+
+      const out = await stages.migrateRecords(stages.getSet(id));
+      assert.deepStrictEqual([out.migrated, out.rows], [true, 2]);
+
+      // THE RECORDS THEMSELVES now say it, in today's words
+      const rows = [];
+      for (const got of rowstore.readBlocks(id, 'records', [0])) rows.push(got.row);
+      assert.strictEqual(rows.length, 2, 'every row must survive the move');
+      const was = rows.find((r) => r.si === 0);
+      const other = rows.find((r) => r.si === 1);
+      assert.deepStrictEqual([was.agreeRule, was.agreeBar], ['count', 'own'],
+        'the retired name is still on a record, so a reader would still have to know it');
+      assert.strictEqual(was.label, 'count 75% own +both market t65h · argmax auto 24/7',
+        'the setting name must be moved too, or the two tables disagree about what a row is called');
+      assert.deepStrictEqual([other.agreeRule, other.agreeBar], ['count', 'all'],
+        'a row that never used the retired name must still gain the bar it used');
+
+      // the set document moved with them
+      const after = stages.getSet(id);
+      assert.strictEqual(stages.recordsVersionOf(after), stages.RECORDS_V);
+      assert.ok(after.plan.settingLabels.every((l) => !l.startsWith('unusual ')), 'the stored names still carry it');
+      assert.strictEqual(after.params.agreeBar, 'all');
+      assert.strictEqual(after.params.agreePermuteBar, true,
+        'the launch record must still describe a set that holds BOTH bars, or a fifth of a column rebuilds empty');
+
+      // ...and running it again does nothing at all
+      assert.deepStrictEqual(await stages.migrateRecords(stages.getSet(id)), { already: true, from: stages.RECORDS_V });
+
+      // the tables come back, and answer in the new words with no translation
+      await stages.buildTally(stages.getSet(id));
+      const rk = stages.stage3Ranked(id, 0, 10);
+      assert.strictEqual(rk.total, 2);
+      assert.deepStrictEqual(rk.rows.map((r) => `${r.agreeRule}|${r.agreeBar}`).sort(), ['count|all', 'count|own']);
       assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10, { bar: 'its own history' }).rows.map((r) => r.si), [0]);
-      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10, { bar: 'all of them' }).rows.map((r) => r.si), [1]);
-      // the old word is on no screen and reaches nothing
-      assert.strictEqual(stages.stage3Ranked(id, 0, 10, { rule: 'unusual' }).total, 0,
-        'the old word still selects rows, so it is still a live choice somewhere');
-      const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-      const grid = ui.slice(ui.indexOf("bFilterGrid('S3R'"), ui.indexOf("], ranked && ranked.spread)"));
-      assert.ok(!/'unusual'/.test(grid), 'the quorum by box on Table 3.A still offers the old word');
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10, { rule: 'unusual' }).total, 0, 'the retired name reaches nothing');
     } finally {
       try { fs.unlinkSync(file); } catch (_) { /* gone */ }
       try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
       rowstore.remove(id);
+      rowstore.remove(`${id}-migrating`);
     }
+  },
+
+  // AND NO READER ANYWHERE STILL KNOWS THE RETIRED NAME (RULE NINE). One
+  // translation left behind is one place for the two vocabularies to drift,
+  // and that is exactly how a key came to be built two different ways.
+  async noReaderStillTranslatesTheRetiredName() {
+    for (const f of ['lib/agreement.js', 'lib/stagework.js']) {
+      const src = fs.readFileSync(path.join(ROOT, f), 'utf8').replace(/\/\/[^\n]*/g, '');
+      assert.ok(!/unusual/i.test(src), `${f} still knows the retired name outside a comment`);
+    }
+    // the migration is allowed to know it — it is the one place that must —
+    // and nothing outside it is
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+    const from = st.indexOf('const RECORD_MIGRATIONS');
+    const to = st.indexOf('const recordsVersionOf');
+    assert.ok(from > 0 && to > from, 'the migrations block cannot be found, so this check proves nothing');
+    const outside = st.slice(0, from) + st.slice(to);
+    assert.ok(!/unusual/i.test(outside),
+      'lib/stages.js knows the retired name somewhere other than the migration that retires it');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+    assert.ok(!/unusual/i.test(ui), 'the page still knows the retired name');
+    // ONE key, built one way, from either side
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    assert.ok(/const agreedKeyOfRecord = \(r\) => agreedKey\(r\.decision, agrOf\(r\)\);/.test(sw),
+      'the two keys are two expressions again, so they can disagree again');
   },
 
   // AND IT IS ON THE SCREEN — all three tables, with its floors.
