@@ -1975,6 +1975,29 @@ module.exports = {
     }
   },
 
+  // A WHOLE-STORE REWRITE MUST NOT HOLD THE WHOLE STORE (found by watching the
+  // drop run on the owner's set, 2026-08-30: 1.9 GB of a 1.8 GB ceiling, on a
+  // service that had already died of memory once that day).
+  //
+  // flush() only QUEUES a block for compression — the queue is drained by
+  // close(), at the very end. A loop that flushes and never awaits therefore
+  // holds every block of the store in memory at once, however carefully it
+  // streams the reading. It survived; it should not have had to.
+  async everyWholeStoreRewriteDrainsAsItGoes() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    for (const fn of ['renameSettingsToV3', 'dropSettingsNamed', 'undoUnfinishedAppend']) {
+      const at = src.indexOf(`async function ${fn}(`);
+      assert.ok(at > 0, `${fn} is gone`);
+      const body = src.slice(at, src.indexOf('\n}\n', src.indexOf('return {', at)));
+      assert.ok(/await w\.drain\(\)/.test(body),
+        `${fn} writes a whole store and never drains, so every block of it waits in memory for the close at the end`);
+      // and it must actually be inside the block loop, not once at the end
+      const loop = body.slice(body.indexOf('for (let b = 0'), body.indexOf('await w.close()'));
+      assert.ok(/await w\.drain\(\)/.test(loop),
+        `${fn} drains only after the loop, which is the same as not draining at all`);
+    }
+  },
+
   // A FIELD ADDED PART-WAY THROUGH A WRITE (found by the audit on the owner's
   // own set, 2026-08-30: twelve records of 5,260,920 do not carry agreeCopy).
   //

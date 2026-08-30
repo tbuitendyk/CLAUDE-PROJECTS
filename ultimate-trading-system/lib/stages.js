@@ -1767,7 +1767,13 @@ async function undoUnfinishedAppend(doc, note = null) {
       }
       w.push(r);
     }
-    w.flush();
+    // DRAIN, NOT FLUSH. flush only QUEUES a block for compression; the queue
+    // is drained by close, at the very end. This loop never awaits, so every
+    // block of a five-million-record store sat in memory at once and the
+    // service reached 1.9 GB of its 1.8 GB ceiling on a store it had already
+    // died on once today. Draining every so often costs nothing and holds the
+    // memory flat — and it yields, so the service can answer while it works.
+    if ((b + 1) % 40 === 0) await w.drain(); else w.flush();
     if (note) note(b + 1, blocks.length);
   }
   await w.close();
@@ -1888,7 +1894,13 @@ async function dropSettingsNamed(doc, doomed, note = null) {
       // pass is already rewriting all of them. Same value, written down.
       w.push({ ...r, si: to, agreeCopy: require('./stagework').agrOf(r).copy });
     }
-    w.flush();
+    // DRAIN, NOT FLUSH. flush only QUEUES a block for compression; the queue
+    // is drained by close, at the very end. This loop never awaits, so every
+    // block of a five-million-record store sat in memory at once and the
+    // service reached 1.9 GB of its 1.8 GB ceiling on a store it had already
+    // died on once today. Draining every so often costs nothing and holds the
+    // memory flat — and it yields, so the service can answer while it works.
+    if ((b + 1) % 40 === 0) await w.drain(); else w.flush();
     if (note) note(b + 1, n);
   }
   await w.close();
@@ -1984,7 +1996,13 @@ async function renameSettingsToV3(doc, note = null) {
       // says what it is (RULE NINE)
       w.push({ ...r, label: to, agreeCopy: require('./stagework').agrOf(r).copy });
     }
-    w.flush();
+    // DRAIN, NOT FLUSH. flush only QUEUES a block for compression; the queue
+    // is drained by close, at the very end. This loop never awaits, so every
+    // block of a five-million-record store sat in memory at once and the
+    // service reached 1.9 GB of its 1.8 GB ceiling on a store it had already
+    // died on once today. Draining every so often costs nothing and holds the
+    // memory flat — and it yields, so the service can answer while it works.
+    if ((b + 1) % 40 === 0) await w.drain(); else w.flush();
     if (note) note(b + 1, n);
   }
   await w.close();
