@@ -1672,6 +1672,61 @@ module.exports = {
     assert.ok(Array.isArray(served) && served.length >= 3, 'the engine serves no gate list for the dropdown to read');
   },
 
+  // A SET PRICED BEFORE THE BAR BECAME A DIAL ANSWERS IN TODAY'S WORDS (owner,
+  // 2026-08-29: "so why does quorum by still contain unusual?").
+  //
+  // It did, because I put the old word back on the filter so an existing set
+  // stayed reachable. That solved the right problem the wrong way round: it
+  // re-offered on one screen the very confusion the split removed, and on any
+  // new set it is a choice that can never match a row. The rows are translated
+  // instead — 'unusual' was a head count against the own history bar, so it
+  // answers to exactly that pair.
+  async aSetPricedBeforeTheSplitAnswersInTodaysWords() {
+    const id = `s3-test-${Date.now().toString(36)}-lg`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999975, name: 'S3 #lg', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 2 }, params: { nullN: 9 },
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, agreeRule, agreeBar) => ({
+        si, label: `${agreeRule} 75% market t65h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto',
+        weekdaysOnly: false, bandPct: 2, entry: 'market', gate: 'directional', dMult: null, tHours: 65,
+        trailMult: null, armMult: null, agreeRule, agreeBar, agreePct: 75, agreeBoth: false, agreePersist: 0,
+        rung: 6, members: 8, voices: 8, pnl: 10, trades: 3,
+        holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat: 5, pairs: 9, lead: 1, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      });
+      w.push(mk(0, 'unusual', undefined));      // priced before the split
+      w.push(mk(1, 'count', 'all'));            // priced after it
+      w.close();
+      await stages.buildTally(doc);
+
+      const rows = stages.stage3Ranked(id, 0, 10).rows;
+      const old = rows.find((r) => r.si === 0);
+      assert.deepStrictEqual([old.agreeRule, old.agreeBar], ['count', 'own'],
+        'a row priced before the split still prints a word the box no longer offers');
+      // ...and both halves find it
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10, { rule: 'count' }).rows.map((r) => r.si).sort(), [0, 1],
+        'picking count must find the old row too — it was always a head count');
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10, { bar: 'its own history' }).rows.map((r) => r.si), [0]);
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10, { bar: 'all of them' }).rows.map((r) => r.si), [1]);
+      // the old word is on no screen and reaches nothing
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10, { rule: 'unusual' }).total, 0,
+        'the old word still selects rows, so it is still a live choice somewhere');
+      const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+      const grid = ui.slice(ui.indexOf("bFilterGrid('S3R'"), ui.indexOf("], ranked && ranked.spread)"));
+      assert.ok(!/'unusual'/.test(grid), 'the quorum by box on Table 3.A still offers the old word');
+    } finally {
+      try { fs.unlinkSync(file); } catch (_) { /* gone */ }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      rowstore.remove(id);
+    }
+  },
+
   // AND IT IS ON THE SCREEN — all three tables, with its floors.
   async whatActuallyAgreedIsOnEveryStageThreeTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');

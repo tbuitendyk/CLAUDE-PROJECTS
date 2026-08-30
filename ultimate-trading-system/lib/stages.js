@@ -597,7 +597,7 @@ const FILTER_DEFS = {
   },
   3: {
     decision: ['decision', 'text'], entry: ['entry', 'text'], gate: ['_gate', 'text'],
-    rule: ['agreeRule', 'text'], bar: ['_bar', 'text'],
+    rule: ['_rule', 'text'], bar: ['_bar', 'text'],
     tMin: ['tHours', 'min'], tMax: ['tHours', 'max'],
     coinsMin: ['coins', 'min'], testMin: ['avgTest', 'min'], holdMin: ['avgHold', 'min'],
     tradesMin: ['avgTrades', 'min'], vsLongMin: ['avgVsLong', 'min'],
@@ -605,6 +605,9 @@ const FILTER_DEFS = {
     voicesMin: ['avgVoices', 'min'], agreedMin: ['avgAgreed', 'min'],
   },
 };
+const quorumOf = (r) => (r.agreeRule === 'unusual'
+  ? { rule: 'count', bar: 'own' }
+  : { rule: r.agreeRule || 'count', bar: r.agreeBar === 'own' ? 'own' : 'all' });
 // The values a filter may read that are not stored as such: the share a row
 // beat of its null set, and the context coins as one piece of text. ONE
 // DEFINITION, read by both the filtering and the four numbers beside each
@@ -618,10 +621,15 @@ const DERIVED = {
   // to it — so a filter reading the stored value would hand back rows the
   // screen says have no gate at all. This reads what is on the screen.
   _gate: (r) => (r.entry === 'market' ? 'does not apply' : String(r.gate || '')),
-  // WHICH BAR A ROW USED, in the words the screen shows rather than the word
-  // the record stores. A set priced before the bar became a dial says nothing,
-  // and its rows used a share of the committee's size, which is 'all of them'.
-  _bar: (r) => (r.agreeBar === 'own' || r.agreeRule === 'unusual' ? 'its own history' : 'all of them'),
+  // A ROW'S QUORUM IN TODAY'S WORDS, both halves of it. A record set priced
+  // before the bar became a dial stamped its rows 'unusual', which was never a
+  // way of weighing — it was a head count against the bar taken from the
+  // committee's own history. Written that way here, a set from either side of
+  // the split answers the same two questions, and the old word never has to be
+  // offered on a screen that no longer has it. What the SETTING WAS CALLED at
+  // the time is left alone: a name is a record of what it was called.
+  _rule: (r) => quorumOf(r).rule,
+  _bar: (r) => (quorumOf(r).bar === 'own' ? 'its own history' : 'all of them'),
   _sharePct: (r) => (r.share == null ? null : r.share * 100),
 };
 const readsField = (field) => DERIVED[field] || ((r) => r[field]);
@@ -1960,7 +1968,12 @@ function stage3Ranked(id, from, n, filters = null) {
   return {
     total: rows.length, of, from, sort, spread,
     agreedError: (doc && doc.agreedError) || null,
-    rows: rows.slice(from, from + n).map(({ _i, ...r }) => r),
+    // the same translation the filter reads, or picking count would hand back
+    // rows that print a word the box no longer offers
+    rows: rows.slice(from, from + n).map(({ _i, ...r }) => {
+      const q = quorumOf(r);
+      return { ...r, agreeRule: q.rule, agreeBar: q.bar };
+    }),
   };
 }
 

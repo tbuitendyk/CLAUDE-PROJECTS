@@ -3012,7 +3012,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     <p style="margin:.6rem 0 .2rem"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     ${bFilterGrid('S3R', [
     ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
-      [...(((VOCAB && VOCAB.agreeRule) || []).map((o) => String(o.value))), 'unusual']],
+      ((VOCAB && VOCAB.agreeRule) || []).map((o) => String(o.value))],
     ['bar', 'quorum bar', 'pick', 'shows only settings whose bar was set this way. all of them is a share of the committee\'s size; its own history is a share of what it actually reached. any shows both.',
       ['all of them', 'its own history']],
     ['decision', 'decision', 'pick', 'shows only settings using this decision. any shows both.', ['argmax', 'directional']],
