@@ -1811,6 +1811,36 @@ module.exports = {
       'four ways of weighing against two bars is eight settings, and every one must reach the block');
   },
 
+  // NO CACHE INSIDE THE PRICING MAY LIST THE QUORUM'S DIALS BY HAND
+  // (2026-08-30). The stream cache did, the bar was added without it, and two
+  // settings differing only in their bar shared one cached set of calls — the
+  // second priced with the first's. On the owner's own set that made every
+  // its-own-history answer an exact copy of its all-of-them twin, including
+  // conviction's, which is the one the bar exists to rescue.
+  //
+  // The cure is structural: one definition of what makes a quorum itself, and
+  // every cache keyed through it, so a dial cannot be added without arriving
+  // everywhere it matters.
+  async everyCacheInThePricingIsKeyedByTheWholeQuorum() {
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    assert.ok(/const agreedKey = \(decision, agr\) => `\$\{decision\}\|\$\{agr\.rule\}\|\$\{agr\.bar\}\|\$\{agr\.pct\}\|\$\{agr\.both \? 1 : 0\}\|\$\{agr\.persist\}`/.test(sw),
+      'the one definition of what makes a quorum itself has changed shape — every cache below keys through it');
+    assert.ok(/const key = `\$\{agreedKey\(decision, agr\)\}\|\$\{dealIdx\}\|\$\{slice\}`;/.test(sw),
+      'the stream cache lists the quorum dials by hand again, so a dial added tomorrow will be left out of it');
+    // ...and nothing else in the file enumerates them by hand either
+    const byHand = [...sw.matchAll(/\$\{agr\.pct\}[^`]*\$\{agr\.(both|persist)/g)];
+    assert.strictEqual(byHand.length, 1,
+      `${byHand.length} places spell out the quorum's dials; only agreedKey may`);
+    // the two bars really are two different questions at the same share
+    const a = require('../lib/agreement');
+    const calls = [[1, 1, 1, 1], [1, 1, 0, -1], [1, 0, 0, -1], [1, 1, 1, 0]];
+    const ctx = { calls, families: ['full', 'prices', 'volume', 'pricevol'], weights: a.voiceGroups(calls, 4).weights };
+    const asShareOfAll = Math.max(1, Math.ceil(0.75 * 4));
+    const asShareOfItsOwn = a.ownHistoryBar(ctx, 4, 'count', 75);
+    assert.notStrictEqual(asShareOfAll, asShareOfItsOwn,
+      'the fixture cannot tell the two bars apart, so it proves nothing about a cache that confuses them');
+  },
+
   // AND IT IS ON THE SCREEN — all three tables, with its floors.
   async whatActuallyAgreedIsOnEveryStageThreeTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');

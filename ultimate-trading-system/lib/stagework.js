@@ -439,7 +439,14 @@ async function s3UnitTask(task) {
 
   const streamCache = new Map();
   const streamFor = (decision, agr, dealIdx, slice) => {
-    const key = `${decision}|${agr.rule}|${agr.pct}|${agr.both ? 1 : 0}|${agr.persist}|${dealIdx}|${slice}`;
+    // KEYED BY EVERY DIAL, THROUGH THE ONE DEFINITION OF WHAT A QUORUM IS.
+    // This listed the dials by hand and the bar was added without it, so two
+    // settings that differ only in their bar shared one cached stream: the
+    // second was priced with the first's calls. Half of a swept grid would
+    // have been a silent copy of the other half. Building the key from
+    // agreedKey means a dial cannot be added to a quorum without arriving
+    // here too.
+    const key = `${agreedKey(decision, agr)}|${dealIdx}|${slice}`;
     if (streamCache.has(key)) return streamCache.get(key);
     const ctx = ctxFor(decision, agr, dealIdx, slice);
     const s = agreement.agreementStream(ctx, agr.rule, levelFor(agr, decision), { bothModels: agr.both, persist: agr.persist });
