@@ -548,6 +548,8 @@ module.exports = {
       // written with 1 and 2 in it and went red the next time the tally gained
       // a column, which is precisely the event it exists to cover.
       const NOW = Number(/const TALLY_V = (\d+);/.exec(fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8'))[1]);
+      // the older shape is one object for the whole file, which is what it was
+      // until a tally outgrew what a string may hold (2026-08-30)
       fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: NOW - 1, builtAt: 'x', rows: 0, ranked: [], coins: [] })));
       // ONE parse decides, and the verdict is remembered (the third
       // out-of-memory death, 2026-08-27): re-parsing the stale file on every
@@ -560,7 +562,10 @@ module.exports = {
       zlib.gunzipSync = realGunzip;
       // the shape the totalling writes today IS served — the changed file
       // escapes the remembered verdict
-      fs.writeFileSync(tf, zlib.gzipSync(JSON.stringify({ v: NOW, builtAt: 'xx', rows: 0, ranked: [], coins: [] })));
+      // and the shape it writes NOW is one object per line, with the two counts
+      // in the header — written here the way the totalling writes it rather
+      // than as a single object, which is the thing that changed
+      fs.writeFileSync(tf, zlib.gzipSync(`${JSON.stringify({ v: NOW, builtAt: 'xx', rows: 0, ranked: 0, coins: 0 })}\n`));
       const served = stages.stage3Ranked(id, 0, 10);
       assert.ok(served && served.total === 0, 'the current shape serves');
     } finally {
@@ -1882,6 +1887,65 @@ module.exports = {
   // from a ratio: multiplying the dials out gave 526,848 where the enumerator
   // says 524,832, and a setting priced twice is invisible in a table of half a
   // million rows.
+  // A TALLY BIGGER THAN A STRING CAN BE (found on the owner's own box,
+  // 2026-08-30, after the tables "rebuilt" three times and never appeared).
+  //
+  // Their tally inflates to 553,814,407 bytes. V8 will not make a string longer
+  // than 536,870,888, so turning the whole file into one THREW — and the catch
+  // around it reported "there is no tally", which is the single answer that
+  // makes the caller build another. Twenty minutes a time, producing a file
+  // exactly as unreadable, for ever, with the reason discarded.
+  //
+  // A test below that limit proves nothing at all, so this one crosses it. It
+  // costs one big buffer and almost no time: the reader stops at the third
+  // newline and never looks at the rest.
+  async aTallyTooBigToBeAStringIsStillRead() {
+    const LIMIT = require('buffer').constants.MAX_STRING_LENGTH;
+    const head = `${JSON.stringify({ v: stages.TALLY_V, builtAt: 'x', rows: 2, ranked: 1, coins: 1 })}\n`;
+    const one = `${JSON.stringify({ si: 0, label: 'a', beat: 1, pairs: 2 })}\n`;
+    const two = `${JSON.stringify({ cellLabel: 'a', trade: 'AAA', share: 0.5 })}\n`;
+    const body = Buffer.from(head + one + two, 'utf8');
+    // just past what a string may hold, with no newline in the padding
+    const buf = Buffer.alloc(LIMIT + 4096, 0x20);
+    body.copy(buf, 0);
+
+    // THE PREMISE: the way it used to be read cannot work at this size.
+    assert.throws(() => buf.toString('utf8'),
+      'a buffer past the string limit no longer throws when stringified — if that is true the '
+      + 'original fault is gone and this test should be reconsidered, not deleted');
+
+    // AND THE FIX: reading it line by line does.
+    const t = stages.parseTally(buf);
+    assert.strictEqual(t.v, stages.TALLY_V, 'the version did not survive');
+    assert.strictEqual(t.rows, 2, 'the row count did not survive');
+    assert.deepStrictEqual(t.ranked.map((r) => r.label), ['a'], 'the settings did not survive');
+    assert.deepStrictEqual(t.coins.map((r) => r.trade), ['AAA'], 'the coin rows did not survive');
+  },
+
+  // An older tally is one object for the whole file. It must read as an older
+  // SHAPE — rebuilt quietly — and never as damage, which would be reported and
+  // never rebuilt.
+  async theOlderShapeReadsAsOldAndNotAsBroken() {
+    const old = Buffer.from(JSON.stringify({ v: 4, builtAt: 'x', rows: 1, ranked: [{ si: 0 }], coins: [] }), 'utf8');
+    const t = stages.parseTally(old);
+    assert.notStrictEqual(t.v, stages.TALLY_V,
+      'a tally of the older shape reads as current, so it would be served with columns the screens no longer show');
+  },
+
+  // What a build writes, its reader must read. These two are the pair that came
+  // apart, so they are held together here rather than each checked alone.
+  async whatTheTotallingWritesIsWhatTheReaderReads() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(!/gunzipSync\([^)]*\)\.toString\('utf8'\)/.test(src),
+      'something still turns a whole gzipped file into one string — that is the fault, and it is '
+      + 'invisible until the file grows past 536,870,888 bytes');
+    const writer = src.slice(src.indexOf('// The header carries the two counts'), src.indexOf('await new Promise((resolve) => { ws.on(\'finish\''));
+    assert.ok(/"ranked":\$\{ranked\.length\},"coins":\$\{coins\.length\}\}\\n/.test(writer),
+      'the header no longer carries the two counts, so the reader cannot tell where the settings end');
+    assert.strictEqual((writer.match(/\\n`\)/g) || []).length, 3,
+      'the tally is not written one entry per line, so the reader cannot take it a line at a time');
+  },
+
   // AN AUDIT IS ONLY WORTH THE DAMAGE IT CATCHES (owner, 2026-08-30: "how do i
   // know you haven't made a bunch more issues?").
   //

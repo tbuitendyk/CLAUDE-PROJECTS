@@ -1460,7 +1460,21 @@ function storeBudgetFor({ rows, freeBytes = null }) {
 // an older tally then READS AS ABSENT, so the durable rebuild re-totals it
 // from the kept records with the new column, progress on screen, instead of
 // serving dashes forever where the number belongs.
-const TALLY_V = 4;
+// 5, and the shape changed with it: ONE JSON OBJECT PER LINE rather than one
+// object for the whole file.
+//
+// A 524,832-setting tally inflates to 553,814,407 bytes. V8 will not make a
+// string longer than 536,870,888, so `.toString()` on the whole of it threw —
+// and the catch around it turned "this cannot be read" into "there is no
+// tally", which is the one answer that makes the caller build another. Twenty
+// minutes a time, producing a file exactly as unreadable, for ever, with the
+// reason thrown away (2026-08-30). The owner's tables were never going to
+// appear and nothing on the screen could have said why.
+//
+// Line by line, no single string is ever longer than one entry, and the size
+// of the whole stops mattering. Derived, so the old one is not migrated: it
+// reads as an older shape and is rebuilt (RULE NINE).
+const TALLY_V = 5;
 
 // ---- WHAT THE MEMBERS ACTUALLY DID -------------------------------------------
 //
@@ -2426,11 +2440,11 @@ async function buildTally(doc, pool = null, note = null) {
   gz.pipe(ws);
   const put = (str) => new Promise((resolve) => { if (gz.write(str)) resolve(); else gz.once('drain', resolve); });
   const breathe = (i) => (i % 2000 === 1999 ? new Promise((resolve) => { setImmediate(resolve); }) : null);
-  await put(`{"v":${TALLY_V},"builtAt":${JSON.stringify(out.builtAt)},"rows":${acc.rows},"ranked":[`);
-  for (let i = 0; i < ranked.length; i++) { await put((i ? ',' : '') + JSON.stringify(ranked[i])); const b = breathe(i); if (b) await b; }
-  await put('],"coins":[');
-  for (let i = 0; i < coins.length; i++) { await put((i ? ',' : '') + JSON.stringify(coins[i])); const b = breathe(i); if (b) await b; }
-  await put(']}');
+  // The header carries the two counts so the reader knows where the settings
+  // end and the coins begin without holding either list to find out.
+  await put(`{"v":${TALLY_V},"builtAt":${JSON.stringify(out.builtAt)},"rows":${acc.rows},"ranked":${ranked.length},"coins":${coins.length}}\n`);
+  for (let i = 0; i < ranked.length; i++) { await put(`${JSON.stringify(ranked[i])}\n`); const b = breathe(i); if (b) await b; }
+  for (let i = 0; i < coins.length; i++) { await put(`${JSON.stringify(coins[i])}\n`); const b = breathe(i); if (b) await b; }
   await new Promise((resolve) => { ws.on('finish', resolve); gz.end(); });
   fs.renameSync(tmp, tallyFile(id));
   return out;
@@ -2462,6 +2476,15 @@ function ensureTally(id) {
   // shape sits on disk and still reads as absent, and this is the door the
   // re-totalling walks in through. The parse happens once — it remembers.
   try { if (readTally(id)) return { ready: true }; } catch (_) { /* fall through */ }
+  // A TALLY THAT CANNOT BE READ IS NOT A MISSING ONE. Building another produces
+  // the same unreadable file, so this says what happened once rather than
+  // spending twenty minutes on it again every time the screen asks.
+  if (tallyUnreadable && tallyUnreadable.id === id) {
+    const msg = `the tables were built and cannot be read back: ${tallyUnreadable.why}`;
+    const d = getSet(id);
+    if (d && d.tallyError !== msg) { d.tallyError = msg; saveSet(d); }
+    return { failed: msg };
+  }
   const doc = getSet(id);
   if (!doc || doc.stage !== 3 || (doc.status !== 'done' && doc.status !== 'incomplete')) return { none: true };
   if (batch.batchRunning() || activeSet) {
@@ -2525,6 +2548,44 @@ function ensureTally(id) {
 function tallyWait() { return tallyRun && tallyRun.promise ? tallyRun.promise : Promise.resolve(); }
 
 const tallyInHand = { id: null, tally: null, mtimeMs: 0, size: 0, staleId: null, staleMtimeMs: 0, staleSize: 0 };
+// ONE OBJECT PER LINE, TAKEN OUT OF THE BUFFER. A Buffer may be gigabytes; a
+// STRING may not exceed 536,870,888 characters, so the whole is never turned
+// into one. Each line is an entry and no entry is large.
+function parseTally(buf) {
+  let at = 0;
+  const line = () => {
+    if (at >= buf.length) return null;
+    let e = buf.indexOf(10, at);
+    if (e < 0) e = buf.length;
+    const str = buf.toString('utf8', at, e);
+    at = e + 1;
+    return str;
+  };
+  const first = line();
+  if (!first) throw new Error('the tally file is empty');
+  const head = JSON.parse(first);
+  if (typeof head.ranked !== 'number' || typeof head.coins !== 'number') {
+    // an older shape: one object for the whole file. Say so as a version
+    // difference rather than as damage, so it is rebuilt and not reported.
+    return { v: -1 };
+  }
+  const ranked = new Array(head.ranked);
+  for (let i = 0; i < head.ranked; i++) {
+    const l = line();
+    if (l === null) throw new Error(`the tally says it holds ${head.ranked} settings and stops after ${i}`);
+    ranked[i] = JSON.parse(l);
+  }
+  const coins = new Array(head.coins);
+  for (let i = 0; i < head.coins; i++) {
+    const l = line();
+    if (l === null) throw new Error(`the tally says it holds ${head.coins} coin rows and stops after ${i}`);
+    coins[i] = JSON.parse(l);
+  }
+  return { ...head, ranked, coins };
+}
+// WHY the last unreadable tally could not be read, so it can be said on the
+// screen instead of silently answered with another build.
+let tallyUnreadable = null;
 function readTally(id) {
   // A totalling in flight is about to replace this very file — nothing reads
   // it meanwhile, least of all the screens' four-second polls.
@@ -2542,11 +2603,18 @@ function readTally(id) {
   // a stat answers ever after, until the file itself changes underneath.
   if (tallyInHand.staleId === id && tallyInHand.staleMtimeMs === st.mtimeMs && tallyInHand.staleSize === st.size) return null;
   let t = null;
-  try { t = JSON.parse(zlib.gunzipSync(fs.readFileSync(tallyFile(id))).toString('utf8')); } catch (_) { t = null; }
+  let why = null;
+  try { t = parseTally(zlib.gunzipSync(fs.readFileSync(tallyFile(id)))); } catch (err) { t = null; why = String(err.message || err); }
   // A tally of an older shape is not served and not cached — it reads as
   // absent, and the rebuild-on-read machinery re-totals it with the columns
   // the screens now show. Serving it would put dashes where numbers belong.
-  if (t && t.v !== TALLY_V) t = null;
+  //
+  // A tally that cannot be READ is a different thing entirely, and telling the
+  // two apart is the whole difference between rebuilding once and rebuilding
+  // for ever: an older shape SHOULD be rebuilt, and something unreadable should
+  // be reported, because building it again produces the same unreadable file.
+  if (t && t.v !== TALLY_V) { t = null; why = null; }
+  tallyUnreadable = why ? { id, mtimeMs: st.mtimeMs, size: st.size, why } : null;
   if (t) {
     tallyInHand.id = id; tallyInHand.tally = t; tallyInHand.mtimeMs = st.mtimeMs; tallyInHand.size = st.size;
   } else {
@@ -2807,7 +2875,7 @@ module.exports = {
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, stage3Declared, buildTally, readTally, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, stage3Declared, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetNotes, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
   spreadOf, S3_COIN_FILTERS,
