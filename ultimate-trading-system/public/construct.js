@@ -3020,6 +3020,32 @@ function bRenameLine(doc, renaming) {
     Renaming changes names only: nothing is priced again, and no result moves.
     <button id="bRename" data-brename="${esc(doc.id)}">bring the setting names up to date</button></p>`;
 }
+// SETTINGS THE BLOCK NO LONGER DECLARES (owner order, 2026-08-30). Drawn
+// between the rename and the fill-in, which is the order they have to happen
+// in: a name that is only behind reads as undeclared too, and filling in
+// before dropping prices rows that are about to go.
+function bDropLine(doc, gap, dropping) {
+  if (dropping && dropping.error) {
+    return `<p class="note warn">dropping the settings failed: ${esc(dropping.error)} — nothing was replaced; the records are exactly as they were.</p>`;
+  }
+  if (dropping && dropping.running) {
+    const pct = dropping.total ? ` (${Math.floor((dropping.done / dropping.total) * 100)}%)` : '';
+    return `<p class="note">dropping the settings: <b>${Number(dropping.done).toLocaleString()} of ${Number(dropping.total).toLocaleString()} parts</b>${pct}
+      — what is kept is written beside the old records and only swapped in once it is all there. This page asks again every few seconds.</p>`;
+  }
+  const surplus = (gap && gap.surplus) || 0;
+  if (!surplus) {
+    return gap && gap.drops
+      ? `<p class="note">every setting this set holds is one its block declares. Settings were dropped from it ${gap.drops} time(s).</p>`
+      : '';
+  }
+  if (gap && gap.behind) return '';   // the rename comes first and says so
+  return `<p class="note warn"><b>this set holds ${Number(surplus).toLocaleString()} settings its own block does not declare.</b>
+    They price a trade that another setting it holds already prices, so every one of them is a second copy of a row that is
+    already here. Dropping them deletes those rows and renumbers what is left; nothing else is touched, and the tables are
+    worked out again afterwards.
+    <button id="bDropUndeclared" data-bdrop="${esc(doc.id)}">drop the settings the block does not declare</button></p>`;
+}
 function bFillInLine(doc, gap, filling) {
   // NOT OFFERED WHILE THE NAMES ARE BEHIND. Pressed in that order it would
   // price every behind-named setting a second time; the pass refuses too, and
@@ -3213,12 +3239,13 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, ...bFilters('S3R') }).toString();
-  const [ranked, coins, gap, filling, renaming] = await Promise.all([
+  const [ranked, coins, gap, filling, renaming, dropping] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
     apiOr(`api/stageset/${doc.id}/missing`, null),
     apiOr(`api/stageset/${doc.id}/fill-in/status`, null),
     apiOr(`api/stageset/${doc.id}/rename-settings/status`, null),
+    apiOr(`api/stageset/${doc.id}/drop-undeclared/status`, null),
   ]);
   // A finished set whose tables are missing totals itself when opened (the
   // durable fix, owner order 2026-08-27): the service reports how far the
@@ -3249,6 +3276,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ${bFoldBtn('S3R', swHead)}
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
     ${bRenameLine(doc, renaming)}
+    ${bDropLine(doc, gap, dropping)}
     ${bFillInLine(doc, gap, filling)}
     <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     ${bFilterGrid('S3R', [
@@ -3426,6 +3454,20 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       bRedrawPeggedToCoinHead();
     };
   });
+  $(mount).querySelectorAll('[data-bdrop]').forEach((btn) => {
+    btn.onclick = async () => {
+      const n = (gap && gap.surplus) || 0;
+      // eslint-disable-next-line no-alert
+      if (!confirm(`Delete the ${Number(n).toLocaleString()} settings this block does not declare?\n\n`
+        + 'THIS DELETES PRICED RECORDS. Each one prices a trade another setting here already prices, so what goes is a '
+        + 'second copy. What is kept is written beside the old records and swapped in only once it is all there, so an '
+        + 'interruption leaves the set exactly as it is. It cannot be undone without running the whole set again.')) return;
+      btn.disabled = true;
+      btn.textContent = 'starting…';
+      try { await post(`api/stageset/${btn.dataset.bdrop}/drop-undeclared`, {}); } catch (err) { alert(err.message); }
+      drawBoards().then(() => restoreScroll(tab));
+    };
+  });
   $(mount).querySelectorAll('[data-brename]').forEach((btn) => {
     btn.onclick = async () => {
       // eslint-disable-next-line no-alert
@@ -3452,7 +3494,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       drawBoards().then(() => restoreScroll(tab));
     };
   });
-  if ((filling && filling.running) || (renaming && renaming.running)) {
+  if ((filling && filling.running) || (renaming && renaming.running) || (dropping && dropping.running)) {
     bTallyPoll = setTimeout(() => { if (tab === 'boards') bPollRedraw(); }, 4000);
   }
   bWirePager(mount);

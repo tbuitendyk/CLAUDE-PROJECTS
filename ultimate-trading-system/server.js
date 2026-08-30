@@ -773,6 +773,7 @@ app.get('/api/stageset/:id/stage2', (req, res) => {
 // one filling-in at a time, in the service that owns the pool
 let fillIn = null;
 let renaming = null;   // the one-off that brings a set's setting names up to date
+let dropping = null;   // the pass that drops settings the block no longer declares
 app.get('/api/stageset/:id/ranked', (req, res) => {
   let out;
   try {
@@ -806,6 +807,36 @@ app.get('/api/stageset/:id/missing', (req, res) => {
 // THE SETTING NAMES, BROUGHT UP TO DATE (owner order, 2026-08-30). Same shape
 // as filling in below it: started once, watched by asking, and it says what
 // went wrong rather than going quiet.
+// THE SETTINGS THE BLOCK NO LONGER DECLARES, DROPPED (owner order,
+// 2026-08-30). Same shape as the two beside it. It deletes priced records, so
+// every refusal it can make is made inside stages, not here.
+app.post('/api/stageset/:id/drop-undeclared', (req, res) => {
+  if (dropping && !dropping.done) return res.json({ running: dropping.id, done: dropping.progress.done, total: dropping.progress.total });
+  const id = String(req.params.id || '');
+  const doc = stages.getSet(id);
+  if (!doc || doc.stage !== 3) return res.status(404).json({ error: 'no such stage 3 record set' });
+  const run = { id, done: false, error: null, settings: 0, rows: 0, progress: { done: 0, total: 0 } };
+  dropping = run;
+  run.promise = (async () => {
+    try {
+      const out = await stages.dropUndeclaredSettings(doc, (dn, tn) => { run.progress = { done: dn, total: tn }; });
+      run.settings = out.settings || 0;
+      run.rows = out.rows || 0;
+    } catch (err) {
+      run.error = String(err.message || err);
+    } finally {
+      run.done = true;
+    }
+  })();
+  return res.json({ started: true });
+});
+app.get('/api/stageset/:id/drop-undeclared/status', (req, res) => {
+  if (!dropping || dropping.id !== String(req.params.id || '')) return res.json({ idle: true });
+  return res.json({
+    running: !dropping.done, done: dropping.progress.done, total: dropping.progress.total,
+    settings: dropping.settings, rows: dropping.rows, error: dropping.error,
+  });
+});
 app.post('/api/stageset/:id/rename-settings', (req, res) => {
   if (renaming && !renaming.done) return res.json({ running: renaming.id, done: renaming.progress.done, total: renaming.progress.total });
   const id = String(req.params.id || '');

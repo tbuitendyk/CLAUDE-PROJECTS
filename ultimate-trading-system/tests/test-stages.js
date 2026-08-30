@@ -1882,6 +1882,139 @@ module.exports = {
   // from a ratio: multiplying the dials out gave 526,848 where the enumerator
   // says 524,832, and a setting priced twice is invisible in a table of half a
   // million rows.
+  // DROPPING THE SETTINGS THE BLOCK NO LONGER DECLARES (owner order,
+  // 2026-08-30: "drop the 1,008 market duplicates GO NOW!").
+  //
+  // A market setting opens at the candle's open with no price levels, so the
+  // band cannot change one cent of it; four settings differing only by band are
+  // four copies of one trade, and the enumerator keeps one. A set priced before
+  // it worked that out holds all four.
+  //
+  // THIS DELETES PRICED RECORDS. Everything below is about the ways it could
+  // delete the wrong ones, because there is no undo short of a full re-run.
+  async theSurplusSettingsGoAndWhatIsLeftIsRenumberedWithNoGaps() {
+    const id = `s3-test-${Date.now().toString(36)}-drp`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    // five settings; a fake enumerator declares three of them
+    const names = ['a', 'b', 'c', 'd', 'e'].map((k) => `count 75% always d0.25x t${k.charCodeAt(0)}h · argmax auto 24/7`);
+    const DECLARED = [names[0], names[2], names[4]];
+    const mk = (si, u) => ({
+      si, label: names[si], decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+      entry: 'breakout', gate: 'always', dMult: 0.25, tHours: 17 + si, trailMult: null, armMult: null,
+      agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
+      members: 6, pnl: 10 + si, trades: 3, holdout: { pnl: 30 + si, trades: 4, stops: 1, vsAlwaysLong: 2 },
+      beat: 3, pairs: 9, lead: 1.5, u, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+    });
+    const doc = {
+      id, stage: 3, seq: 999974, name: 'S3 #drp', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 2, settings: names.length, settingLabels: names.slice() },
+      params: { nullN: 9 }, recordsVersion: stages.RECORDS_V,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      for (let u = 0; u < 2; u++) { for (let si = 0; si < names.length; si++) w.push(mk(si, u)); w.flush(); }
+      await w.close();
+      // What the enumerator would say needs the box's own price data, so the
+      // decision is written down here and the surgery is what gets exercised.
+      const doomed = stages.undeclaredIn(names, DECLARED);
+      assert.deepStrictEqual([...doomed], [names[1], names[3]], 'the wrong settings were picked out to go');
+
+      const out = await stages.dropSettingsNamed(stages.getSet(id), doomed);
+      assert.strictEqual(out.settings, 2, 'it did not drop exactly the two settings the block does not declare');
+      assert.strictEqual(out.rows, 4, 'two settings over two units is four records');
+      assert.strictEqual(out.held, 3, 'the set does not hold the three that were declared');
+
+      const back = rowstore.readAll(id, 'records').map((x) => x.row || x);
+      assert.strictEqual(back.length, 6, 'three settings over two units is six records');
+      // RENUMBERED DENSELY: the next thing added to this set takes a number
+      // nothing on disk is using.
+      assert.deepStrictEqual([...new Set(back.map((r) => r.si))].sort((a, b) => a - b), [0, 1, 2],
+        'the positions that remain have gaps, so the next setting added would collide with one already here');
+      const after = stages.getSet(id);
+      assert.deepStrictEqual(after.plan.settingLabels, DECLARED, 'the set’s list of names is not what it kept');
+      for (const r of back) {
+        assert.strictEqual(r.label, after.plan.settingLabels[r.si],
+          `a kept record sits at a position that names a different setting: ${r.si} / ${r.label}`);
+      }
+      // NOT ONE KEPT RESULT MOVED
+      for (const r of back) {
+        const was = mk(names.indexOf(r.label), r.u);
+        assert.deepStrictEqual({ pnl: r.pnl, hold: r.holdout.pnl, beat: r.beat },
+          { pnl: was.pnl, hold: was.holdout.pnl, beat: was.beat }, `dropping moved a result on ${r.label}`);
+      }
+      assert.ok(!rowstore.exists(id, 'records-dropping'), 'the copy it wrote beside the records was left on disk');
+      assert.strictEqual((after.drops || []).length, 1, 'the set does not record that it was pruned');
+
+      // RUNNING IT AGAIN DOES NOTHING, because there is nothing left to drop.
+      const again = await stages.dropSettingsNamed(stages.getSet(id), stages.undeclaredIn(DECLARED, DECLARED));
+      assert.ok(again.already, 'running it a second time did not find the set already clean');
+      assert.strictEqual(rowstore.count(id, 'records'), 6, 'running it a second time changed the record count');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { rowstore.remove(id); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // A NAME THAT IS ONLY BEHIND ALSO READS AS UNDECLARED. Dropping before
+  // renaming would have deleted 65,856 settings on the owner's set that are
+  // nothing worse than badly named.
+  async nothingIsDroppedWhileANameIsMerelyBehind() {
+    const id = `s3-test-${Date.now().toString(36)}-dbh`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999973, name: 'S3 #dbh', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 1, settingLabels: ['voices 75% always d1x t17h · argmax auto 24/7'] },
+      params: { nullN: 9 }, recordsVersion: 2,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      let threw = null;
+      try { await stages.dropSettingsNamed(stages.getSet(id), new Set(['anything'])); } catch (err) { threw = err.message; }
+      assert.ok(threw && /named in the older way/.test(threw),
+        `a set with a behind name was dropped from, which deletes settings that are only badly named: ${threw}`);
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // A record is filed under its setting's POSITION in the set's list of names,
+  // and dropping renumbers on exactly that. If the two ever disagree,
+  // renumbering scrambles the set — so it refuses rather than guesses.
+  async aRecordFiledUnderTheWrongPositionStopsTheWholeThing() {
+    const id = `s3-test-${Date.now().toString(36)}-dps`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const names = ['count 75% always d1x t17h · argmax auto 24/7', 'count 75% always d1x t41h · argmax auto 24/7'];
+    const doc = {
+      id, stage: 3, seq: 999972, name: 'S3 #dps', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 2, settingLabels: names.slice() },
+      params: { nullN: 9 }, recordsVersion: stages.RECORDS_V,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      // the second record claims position 0 while carrying the other name
+      w.push({ si: 0, label: names[0], u: 0, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0, entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null, pnl: 1 });
+      w.push({ si: 0, label: names[1], u: 0, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0, entry: 'breakout', gate: 'always', dMult: 1, tHours: 41, trailMult: null, armMult: null, pnl: 2 });
+      await w.close();
+      const before = fs.readFileSync(rowstore.storeFile(id, 'records'));
+
+      let threw = null;
+      try { await stages.dropSettingsNamed(stages.getSet(id), new Set([names[1]])); } catch (err) { threw = err.message; }
+      assert.ok(threw && /nothing was changed/.test(threw),
+        `records were renumbered against a list they do not agree with: ${threw}`);
+      assert.ok(before.equals(fs.readFileSync(rowstore.storeFile(id, 'records'))),
+        'the records were replaced anyway — this is priced work that cannot be got back');
+      assert.deepStrictEqual(stages.getSet(id).plan.settingLabels, names, 'the set’s list of names was changed anyway');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { rowstore.remove(id); } catch (_) { /* fixture */ }
+    }
+  },
+
   // THE RENAME, RUN END TO END ON A REAL RECORD STORE (owner order,
   // 2026-08-30: "regarding the rename the voices first option ... GO NOW!").
   //

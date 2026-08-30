@@ -359,6 +359,21 @@ window.HELP = {
           + 'The new records are written BESIDE the old ones and counted before anything is replaced, so an '
           + 'interruption leaves the set exactly as it was. The tables are worked out again afterwards.',
       },
+      bDropUndeclared: {
+        what: 'Deletes the settings this record set holds that its own block does not declare, and renumbers what is left.',
+        more: 'A setting entered at market opens at the candle\'s open with no price levels, so the band cannot change one '
+          + 'cent of what it does. Four settings that differ only by their band are therefore four copies of one trade, '
+          + 'and the enumerator keeps one of them.\n\n'
+          + 'A set priced before the enumerator worked that out holds all four. This deletes the copies.\n\n'
+          + 'IT DELETES PRICED RECORDS AND CANNOT BE UNDONE without running the whole set again. Every way it could delete '
+          + 'the wrong thing is a refusal instead: it will not run while any setting name is behind, because a name that '
+          + 'is merely behind also reads as one the block does not declare; and a record is filed under its setting\'s '
+          + 'position in the set\'s list of names, so every record is checked against that list before anything is '
+          + 'written, and any disagreement stops it.\n\n'
+          + 'What is kept is written BESIDE the old records, counted, and checked for gaps in the numbering before '
+          + 'anything is replaced — so an interruption leaves the set exactly as it was. The tables are worked out again '
+          + 'afterwards.',
+      },
       bFillIn: {
         what: 'Prices the settings this record set\'s own block declares and its records do not hold, and adds them to it.',
         more: 'A set can be priced before its block is whole. This one ran when the quorum was five named choices; it is '

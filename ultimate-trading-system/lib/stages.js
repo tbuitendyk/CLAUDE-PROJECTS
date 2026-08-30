@@ -1529,6 +1529,153 @@ function settingsBehind(doc) {
   for (const L of held) if (BEHIND_V3(L)) n++;
   return n;
 }
+// ---- DROPPING THE SETTINGS THE BLOCK NO LONGER DECLARES -------------------
+//
+// Owner order, 2026-08-30: "drop the 1,008 market duplicates GO NOW!", under
+// the standing goal that the set carry no duplicate records at the end.
+//
+// A `market` setting opens at the candle's open with no price levels at all, so
+// the band cannot change one cent of it. The enumerator knows that and folds
+// the three fixed-band twins onto the auto one; the owner's set holds all four
+// because it was priced before the fold knew. They are duplicates by
+// construction, not by coincidence.
+//
+// THIS DELETES PRICED RECORDS, so every way it could delete the WRONG thing is
+// a refusal rather than a judgement:
+//
+//   * a name that is merely BEHIND also reads as one the block does not
+//     declare. Dropping before renaming would delete 65,856 settings that are
+//     only badly named. So it refuses while anything is behind.
+//   * a record is filed under its setting's POSITION in the set's list of
+//     names, and dropping from the middle means renumbering the rest. If any
+//     record's position does not already point at its own name, that
+//     assumption is wrong and renumbering would scramble the set — so every
+//     record is checked against it before anything is written.
+//   * and the copy is written beside and counted before the original is
+//     touched, exactly as the rename is.
+// WHICH HELD NAMES THE BLOCK DOES NOT DECLARE. Split out from the surgery
+// below on purpose: deciding WHAT goes and DOING it are two different risks,
+// and the destructive half can then be exercised on its own against a doomed
+// set somebody wrote down, rather than only against whatever the enumerator
+// happens to say on the day.
+const undeclaredIn = (held, declaredLabels) => {
+  const have = new Set(declaredLabels);
+  const out = new Set();
+  for (const L of held) if (!have.has(L)) out.add(L);
+  return out;
+};
+async function dropUndeclaredSettings(doc, note = null) {
+  const held = (doc.plan || {}).settingLabels || [];
+  if (!held.length) throw new Error(`${doc.name} does not record which settings it holds, so nothing can be dropped from it safely`);
+  const { settings } = relaunchShapeOf(doc);
+  const doomed = undeclaredIn(held, settings.map((x) => x.label));
+  settings.length = 0;
+  return dropSettingsNamed(doc, doomed, note);
+}
+async function dropSettingsNamed(doc, doomed, note = null) {
+  const id = doc.id;
+  const busy = stageBusy();
+  if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
+  const behind = settingsBehind(doc);
+  if (behind) {
+    throw new Error(`${behind.toLocaleString()} of this set's settings are named in the older way — bring the setting `
+      + 'names up to date first, or dropping now would delete every one of them');
+  }
+  const held = (doc.plan || {}).settingLabels || [];
+  if (!held.length) throw new Error(`${doc.name} does not record which settings it holds, so nothing can be dropped from it safely`);
+  if (!doomed.size) return { already: true, held: held.length };
+
+  // the new position of every name that stays; -1 for the ones that go
+  const moveTo = new Array(held.length);
+  const kept = [];
+  for (let i = 0; i < held.length; i++) {
+    if (doomed.has(held[i])) { moveTo[i] = -1; continue; }
+    moveTo[i] = kept.length;
+    kept.push(held[i]);
+  }
+
+  const wasRows = rowstore.count(id, 'records');
+  const blocks = rowstore.blocksOf(id, 'records');
+  const n = Array.isArray(blocks) ? blocks.length : 0;
+  if (!n || !wasRows) throw new Error(`${doc.name} has no records to drop from`);
+
+  const SPARE = 'records-dropping';
+  for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
+    rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
+    try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
+  }
+  const w = rowstore.writer(id, SPARE, { offThread: true });
+  let gone = 0;
+  let seen = 0;
+  if (note) note(0, n);
+  for (let b = 0; b < n; b++) {
+    for (const x of rowstore.readBlocks(id, 'records', [b]) || []) {
+      const r = x.row || x;
+      seen++;
+      // THE ASSUMPTION, CHECKED ON EVERY RECORD rather than sampled: a record
+      // sits at its setting's position in the list of names.
+      if (held[r.si] !== r.label) {
+        throw new Error(`record ${seen} is filed at position ${r.si}, where this set's list of names says `
+          + `"${held[r.si]}" and the record says "${r.label}" — nothing was changed`);
+      }
+      const to = moveTo[r.si];
+      if (to < 0) { gone++; continue; }
+      w.push({ ...r, si: to });
+    }
+    w.flush();
+    if (note) note(b + 1, n);
+  }
+  await w.close();
+
+  // VERIFY BEFORE ANYTHING IS REPLACED.
+  const gotRows = rowstore.count(id, SPARE);
+  if (gotRows !== wasRows - gone) {
+    throw new Error(`the copy holds ${gotRows} records and dropping ${gone} of ${wasRows} should leave `
+      + `${wasRows - gone} — nothing was replaced`);
+  }
+  if (!gotRows) throw new Error('dropping would empty the set — nothing was replaced');
+  // and the positions that remain are 0..n-1 with no gaps, or the next thing
+  // added to this set takes a number something already on disk is using
+  const positions = new Set();
+  for (let b = 0; b < (rowstore.blocksOf(id, SPARE) || []).length; b++) {
+    for (const x of rowstore.readBlocks(id, SPARE, [b]) || []) {
+      const r = x.row || x;
+      positions.add(r.si);
+      if (kept[r.si] !== r.label) {
+        throw new Error(`a kept record landed at the wrong position — nothing was replaced`);
+      }
+    }
+  }
+  if (positions.size !== kept.length) {
+    throw new Error(`the copy holds ${positions.size} settings and ${kept.length} were kept — nothing was replaced`);
+  }
+  for (let i = 0; i < kept.length; i++) {
+    if (!positions.has(i)) throw new Error(`position ${i} is missing from the copy — nothing was replaced`);
+  }
+
+  // SWAP.
+  const from = rowstore.storeFile(id, SPARE);
+  const to = rowstore.storeFile(id, 'records');
+  fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
+  fs.renameSync(from, to);
+
+  const plan = doc.plan || {};
+  plan.settingLabels = kept;
+  plan.settings = kept.length;
+  doc.plan = plan;
+  doc.counts = { ...(doc.counts || {}), settings: kept.length, rows: gotRows };
+  // A SET THAT WAS PRUNED SAYS SO, under which release, the same way one that
+  // was added to does. It is no longer everything its first run priced.
+  doc.drops = [...(doc.drops || []), {
+    at: new Date().toISOString(), engineVersion: ENGINE_VERSION,
+    settings: doomed.size, rows: gone,
+  }];
+  saveSet(doc);
+  try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  try { fs.rmSync(agreedFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  return { settings: doomed.size, rows: gone, held: kept.length, left: gotRows };
+}
+
 // MIGRATE BESIDE, VERIFY, THEN SWAP (RULE NINE). The records are hours of
 // compute that cannot be re-derived from anything but a full re-run, so the
 // one on disk is not touched until a whole new one has been written and
@@ -1645,6 +1792,9 @@ function missingSettingsOf(id) {
   const missing = missingSettingsIn(held, settings);
   const coins = Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1;
   const behind = settingsBehind(doc);
+  // HELD AND NOT DECLARED. Worked out here rather than in a second walk
+  // because this call has already paid for the enumeration.
+  const surplus = held.length - (settings.length - missing.length);
   return {
     held: held.length,
     declared: settings.length,
@@ -1654,6 +1804,8 @@ function missingSettingsOf(id) {
     gate: tallyBudgetFor({ settings: settings.length, coins }),
     appends: (doc.appends || []).length,
     behind,
+    surplus,
+    drops: (doc.drops || []).length,
   };
 }
 
@@ -2336,6 +2488,7 @@ module.exports = {
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
   missingSettingsIn, nextSettingNumber,
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
+  dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,
   // the same pool every heavy job uses, so filling in a block is worked the
   // same way a launch is rather than on the one thread that answers pages
   createPoolForFillIn: () => createPool(),
