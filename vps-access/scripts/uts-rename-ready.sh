@@ -16,7 +16,7 @@ for f in "$D"/stagesets/s3-*.json; do
   curl -sf --max-time 240 "$B/api/stageset/$ID/missing" | python3 -c "
 import json,sys
 d=json.load(sys.stdin)
-for k in ('held','declared','missing','behind','units','pricings'):
+for k in ('held','declared','missing','behind','surplus','drops','units','pricings'):
     print('   %-10s %s' % (k, d.get(k)))
 "
 done
