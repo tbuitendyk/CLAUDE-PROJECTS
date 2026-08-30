@@ -1806,6 +1806,11 @@ module.exports = {
     assert.ok(/data-bpin3b="\$\{esc\(String\(r\.label\)\.split\(' · '\)\[0\]\)\}"/.test(ui),
       'the button does not carry the setting name Table 3.B is keyed by');
     assert.ok(/bSaveFilters\('S3C', \{ setting: btn\.dataset\.bpin3b \}\)/.test(ui), 'the button is drawn but never wired');
+    // A BUTTON THAT WRAPS MAKES EVERY ROW OF THE TABLE TALLER (RULE FOUR).
+    // Three words in a narrow column broke over two lines and doubled the
+    // height of all 329,280 rows.
+    assert.ok(/data-bpin3b="[^"]*"[^>]*white-space:nowrap[^>]*>show in 3\.B<\/button>/.test(ui),
+      'the button can wrap, which makes every row of Table 3.A twice as tall');
     assert.ok(/bSaveView\(\{ coins: \{ \.\.\.\(bView\(\)\.coins \|\| \{\}\), offset: 0 \} \}\)/.test(ui),
       'pinning leaves the every-coin table on whatever page it was, which can be past the end of what is left');
     assert.ok(/bRedrawPeggedToCoinHead\(\);\n    \};\n  \}\);\n  \$\(mount\)\.querySelectorAll\('\[data-brec\]'\)/.test(ui),

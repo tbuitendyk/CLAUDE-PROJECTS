@@ -3039,7 +3039,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="where this setting sits in the table as it is ordered and filtered right now. It is a position, not a score: change the sort or a filter and the same setting gets a different number.">#</th>
-        <th ${bth} title="shows, in Table 3.B below, only the coins this setting was priced on and nothing else. Those rows average every decision, band and 24/5 variant of the setting, not just this row's — the rows column there says how many. Press clear filters under Table 3.B to bring the rest back.">show in 3.B</th>
+        <th ${bth} style="white-space:nowrap" title="shows, in Table 3.B below, only the coins this setting was priced on and nothing else. Those rows average every decision, band and 24/5 variant of the setting, not just this row's — the rows column there says how many. Press clear filters under Table 3.B to bring the rest back.">show in 3.B</th>
         <th ${bth} title="how the members' votes become a call — priced from the kept votes.">decision${bRankSortBtn(doc, 'decision', 'asc')}</th>
         <th ${bth} title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history.">band${bRankSortBtn(doc, 'bandMode', 'asc')}</th>
         <th ${bth} title="whether this setting trades weekdays only.">24/5${bRankSortBtn(doc, 'weekdaysOnly', 'asc')}</th>
@@ -3062,8 +3062,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set${bRankSortBtn(doc, 'avgLead', 'desc')}</th>
         <th ${bth} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money${bRankSortBtn(doc, 'coinsInMoney', 'desc')}</th></tr></thead>
       <tbody>${rr.map((r, i) => `<tr>
-        <td ${btd0} class="muted">${(from + i + 1).toLocaleString()}</td>
-        <td ${btd}><button data-bpin3b="${esc(String(r.label).split(' · ')[0])}">show in 3.B</button></td>
+        <td ${btd0} class="muted" style="white-space:nowrap">${(from + i + 1).toLocaleString()}</td>
+        <td ${btd} style="white-space:nowrap"><button data-bpin3b="${esc(String(r.label).split(' · ')[0])}" style="white-space:nowrap">show in 3.B</button></td>
         <td ${btd}>${esc(r.decision)}</td>
         <td ${btd}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
         <td ${btd}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
