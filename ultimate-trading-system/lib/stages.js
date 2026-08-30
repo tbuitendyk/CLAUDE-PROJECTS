@@ -1043,8 +1043,13 @@ function foldSameTradeSettings(settings, records) {
   }
   // ...and now a setting's identity is everything that is NOT the geometry,
   // plus which geometry it resolved to.
+  // THE BAR IS PART OF WHAT MAKES A SETTING ITSELF. It was missing here, so
+  // the same way of weighing at the same share against the two different bars
+  // read as one setting and half the block was dropped without a word. Two
+  // settings are the same trade only when EVERY dial that can change a call
+  // matches, and the bar changes when the committee is judged to have spoken.
   const rest = (st) => [st.decision, st.band === 'auto' ? 'a' : 'f', st.weekdaysOnly, st.entry, st.gate, st.tHours,
-    st.agreeRule, st.agreePct, st.agreeBoth, st.agreePersist].join('|');
+    st.agreeRule, st.agreeBar, st.agreePct, st.agreeBoth, st.agreePersist].join('|');
   const kept = [];
   const folded = [];
   const seen = new Map();

@@ -1789,6 +1789,28 @@ module.exports = {
       'the two keys are two expressions again, so they can disagree again');
   },
 
+  // EVERY DIAL THAT CAN CHANGE A CALL MAKES A SETTING ITS OWN (2026-08-30).
+  // The bar was left out of the fold's key, so the same way of weighing at the
+  // same share against the two different bars read as ONE trade and half the
+  // block was thrown away silently — which is exactly what happened on the
+  // owner's set the first time the answers were rebuilt after the split.
+  async twoQuorumsThatCanCallDifferentlyAreNeverOneSetting() {
+    const both = stages.settingsFor({
+      cell: { entry: 'market', tHours: 89 }, agreeRule: 'count', agreePct: 75, agreePermuteBar: true,
+    }, [1]);
+    assert.strictEqual(both.length, 2, 'the two bars must survive as two settings');
+    const { kept, folded } = stages.foldSameTradeSettings(both, [{ trade: 'AAA', bandPct: 2 }]);
+    assert.strictEqual(kept.length, 2, `the fold dropped a bar: ${folded.map((f) => f.dropped).join(', ')}`);
+    assert.deepStrictEqual(kept.map((k) => k.agreeBar).sort(), ['all', 'own']);
+    // ...and the whole grid survives it
+    const grid = stages.settingsFor({
+      cell: { entry: 'market', tHours: 89 }, agreePermuteRule: true, agreePermuteBar: true, agreePct: 75,
+    }, [1]);
+    const after = stages.foldSameTradeSettings(grid, [{ trade: 'AAA', bandPct: 2 }]).kept;
+    assert.strictEqual(new Set(after.map((k) => `${k.agreeRule}|${k.agreeBar}`)).size, 8,
+      'four ways of weighing against two bars is eight settings, and every one must reach the block');
+  },
+
   // AND IT IS ON THE SCREEN — all three tables, with its floors.
   async whatActuallyAgreedIsOnEveryStageThreeTable() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
