@@ -1887,6 +1887,35 @@ module.exports = {
   // from a ratio: multiplying the dials out gave 526,848 where the enumerator
   // says 524,832, and a setting priced twice is invisible in a table of half a
   // million rows.
+  // NOTHING TO SAY WHEN THERE IS NOTHING TO DO (owner order, 2026-08-30).
+  //
+  // The drop line and the fill-in line each reported their finished state —
+  // that nothing was surplus or missing, and how many times the set had been
+  // dropped from or added to. Both true. The owner's call was to take them out:
+  // a line that can never go away is not information, it is furniture. What was
+  // done to a set is still recorded on the set.
+  async aFinishedSetSaysNothingAboutBeingFinished() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    for (const [what, gone] of [
+      ['the drop line', 'Settings were dropped from it'],
+      ['the fill-in line', 'It was filled in'],
+      ['either line', 'every setting this set holds is one its block declares'],
+      ['either line', 'every setting this block declares is priced'],
+    ]) {
+      assert.ok(!ui.includes(gone), `${what} is back to reporting its finished state: "${gone}"`);
+    }
+    // and each returns nothing at all in that state, rather than something else
+    const drop = ui.slice(ui.indexOf('function bDropLine('), ui.indexOf('function bFillInLine('));
+    assert.ok(/if \(!surplus\) return '';/.test(drop),
+      'the drop line still draws something when nothing is surplus');
+    // sliced to the NEXT function, not to a character count — a window guessed
+    // by eye stops short the moment the code above it grows.
+    const fillAt = ui.indexOf('function bFillInLine(');
+    const fill = ui.slice(fillAt, ui.indexOf('\nfunction ', fillAt + 10));
+    assert.ok(/if \(!gap\.missing\) return '';/.test(fill),
+      'the fill-in line still draws something when nothing is missing');
+  },
+
   // WHAT THE BLOCK DECLARES IS WORKED OUT ONCE (owner order, 2026-08-30: "fix
   // the /missing caching").
   //

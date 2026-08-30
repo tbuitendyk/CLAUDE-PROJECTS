@@ -3079,12 +3079,13 @@ function bDropLine(doc, gap, dropping) {
     return `<p class="note">dropping the settings: <b>${Number(dropping.done).toLocaleString()} of ${Number(dropping.total).toLocaleString()} parts</b>${pct}
       — what is kept is written beside the old records and only swapped in once it is all there. This page asks again every few seconds.</p>`;
   }
+  // NOTHING TO SAY WHEN THERE IS NOTHING TO DO (owner order, 2026-08-30). This
+  // reported the finished state — that nothing is surplus, and how many times
+  // settings had been dropped. Both true, and the owner does not want them: a
+  // line that can never go away is not information, it is furniture. What was
+  // done to a set is still on the set itself.
   const surplus = (gap && gap.surplus) || 0;
-  if (!surplus) {
-    return gap && gap.drops
-      ? `<p class="note">every setting this set holds is one its block declares. Settings were dropped from it ${gap.drops} time(s).</p>`
-      : '';
-  }
+  if (!surplus) return '';
   if (gap && gap.behind) return '';   // the rename comes first and says so
   return `<p class="note warn"><b>this set holds ${Number(surplus).toLocaleString()} settings its own block does not declare.</b>
     They price a trade that another setting it holds already prices, so every one of them is a second copy of a row that is
@@ -3115,11 +3116,8 @@ function bFillInLine(doc, gap, filling) {
   if (!gap || gap.why) {
     return gap && gap.why ? `<p class="note">this set cannot be added to: ${esc(gap.why)}</p>` : '';
   }
-  if (!gap.missing) {
-    return gap.appends
-      ? `<p class="note">every setting this block declares is priced. It was filled in ${gap.appends} time(s) since it first ran.</p>`
-      : '';
-  }
+  // and the same here: nothing missing, nothing said (owner order, 2026-08-30)
+  if (!gap.missing) return '';
   const stop = gap.gate && gap.gate.band === 'refuse';
   return `<p class="note warn"><b>this set holds ${Number(gap.held).toLocaleString()} of the ${Number(gap.declared).toLocaleString()} settings its block declares.</b>
     The missing ${Number(gap.missing).toLocaleString()} are ways of asking that did not exist when it ran, so nothing here can answer for them.
