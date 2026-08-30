@@ -1975,6 +1975,73 @@ module.exports = {
     }
   },
 
+  // A FIELD ADDED PART-WAY THROUGH A WRITE (found by the audit on the owner's
+  // own set, 2026-08-30: twelve records of 5,260,920 do not carry agreeCopy).
+  //
+  // The store writes its column list from the first row of a run and grows it
+  // when a wider row arrives, so rows written BEFORE the growth read back one
+  // field short. Nothing has ever been wrong about them — every reader resolves
+  // the missing share to the same 98 every other record stores — but a record
+  // leaning on a default is a record that does not say what it is.
+  //
+  // Two things have to hold: the audit has to name the FIELD and count the
+  // records that lack it (not the ones that have it), and the pass that
+  // rewrites the store has to write it.
+  async aFieldMissingFromSomeRecordsIsNamedAndThenWritten() {
+    const id = `s3-test-${Date.now().toString(36)}-fld`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const NAMES = ['count 75% always d1x t17h · argmax auto 24/7', 'count 75% always d1x t41h · argmax auto 24/7'];
+    const rec = (si, u, withCopy) => {
+      const r = {
+        si, label: NAMES[si], decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+        entry: 'breakout', gate: 'always', dMult: 1, tHours: si ? 41 : 17, trailMult: null, armMult: null,
+        agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
+        pnl: 1, trades: 1, u, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      };
+      // the narrow rows go FIRST, exactly as they did on the box
+      return withCopy ? { ...r, agreeCopy: 98 } : r;
+    };
+    const doc = {
+      id, stage: 3, seq: 999959, name: 'S3 #fld', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 2, settings: 2, settingLabels: NAMES.slice() },
+      params: {}, recordsVersion: stages.RECORDS_V,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      w.push(rec(0, 0, false));          // one narrow row, then the store widens
+      w.push(rec(0, 1, true));
+      w.push(rec(1, 0, true));
+      w.push(rec(1, 1, true));
+      await w.close();
+
+      const before = stages.auditRecordSet(stages.getSet(id));
+      const fieldCheck = before.checks.find((c) => /every field any record carries/.test(c.name));
+      assert.ok(fieldCheck, 'the audit does not check that every record carries every field');
+      assert.strictEqual(fieldCheck.ok, false, 'a record missing a field read as sound');
+      assert.ok(/agreeCopy/.test(fieldCheck.detail), `the audit does not name the field: ${fieldCheck.detail}`);
+      assert.ok(/^1 records? do not carry/.test(fieldCheck.detail),
+        `the audit counted the records that HAVE the field instead of the ones that do not: ${fieldCheck.detail}`);
+      // and nothing else is wrong with this set
+      assert.deepStrictEqual(before.checks.filter((c) => !c.ok).map((c) => c.name), [fieldCheck.name],
+        'a set that is only short one field reads as broken in other ways too');
+
+      // the pass that rewrites the store writes it — same value, written down
+      await stages.dropSettingsNamed(stages.getSet(id), new Set([NAMES[1]]));
+      const back = rowstore.readAll(id, 'records').map((x) => x.row || x);
+      for (const r of back) {
+        assert.strictEqual(r.agreeCopy, 98, `a rewritten record still leans on the default: ${JSON.stringify(r).slice(0, 120)}`);
+      }
+      const after = stages.auditRecordSet(stages.getSet(id));
+      assert.deepStrictEqual(after.checks.filter((c) => !c.ok).map((c) => c.name), [],
+        `the set is still not sound after the rewrite: ${JSON.stringify(after.checks.filter((c) => !c.ok))}`);
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { rowstore.remove(id); } catch (_) { /* fixture */ }
+    }
+  },
+
   // A FILL-IN THAT DID NOT FINISH (owner order, 2026-08-30: "look at the state
   // of the data and do it right this time and give me the buttons i need to fix
   // the data").

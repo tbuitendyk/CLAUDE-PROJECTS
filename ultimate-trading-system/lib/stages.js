@@ -1574,10 +1574,12 @@ function auditRecordSet(doc) {
   let misplaced = 0;
   let beyond = 0;
   let misnamed = 0;
-  let shortFields = 0;
-  const examples = { misplaced: [], beyond: [], misnamed: [], shortFields: [] };
+  const examples = { misplaced: [], beyond: [], misnamed: [] };
   const note = (k, v) => { if (examples[k].length < 3) examples[k].push(v); };
-  let columns = null;
+  // Counted by SHAPE, not by record: there are a handful of distinct field
+  // lists among millions of rows, so this holds a handful of entries.
+  const columns = new Set();
+  const shapeSeen = new Map();
 
   const blocks = rowstore.blocksOf(id, 'records') || [];
   for (let b = 0; b < blocks.length; b++) {
@@ -1594,14 +1596,16 @@ function auditRecordSet(doc) {
         misplaced++;
         note('misplaced', `position ${r.si} carries "${r.label}" and the list says "${held[r.si]}"`);
       }
-      // EVERY FIELD A RECORD IS WRITTEN WITH, still on it. Compared against the
-      // first record rather than a list typed here, so a field added tomorrow
-      // is covered and a field a pass quietly dropped from some rows is caught.
-      if (!columns) columns = Object.keys(r);
-      else if (Object.keys(r).length !== columns.length) {
-        shortFields++;
-        note('shortFields', `position ${r.si} carries ${Object.keys(r).length} fields where the first record carries ${columns.length}`);
-      }
+      // EVERY FIELD ANY RECORD CARRIES, ON ALL OF THEM. Measured against the
+      // UNION rather than against whichever record came first: the store writes
+      // its column list from the first row of a run and grows it when a wider
+      // row arrives, so rows written before the growth read back short. Against
+      // the first record this reported five million rows wrong when twelve
+      // were — the fault named the right way round matters.
+      const keys = Object.keys(r);
+      for (const k of keys) if (!columns.has(k)) columns.add(k);
+      const shape = keys.join(',');
+      shapeSeen.set(shape, (shapeSeen.get(shape) || 0) + 1);
       if (checked[r.si]) continue;
       checked[r.si] = 1;
       const agr = require('./stagework').agrOf(r);
@@ -1621,8 +1625,16 @@ function auditRecordSet(doc) {
     beyond ? `${beyond.toLocaleString()} do: ${examples.beyond.join('; ')}` : 'none does');
   say('every name is the one today\u2019s code would write', misnamed === 0,
     misnamed ? `${misnamed.toLocaleString()} settings are not: ${examples.misnamed.join('; ')}` : 'all of them are');
-  say('every record carries the same fields', shortFields === 0,
-    shortFields ? `${shortFields.toLocaleString()} do not: ${examples.shortFields.join('; ')}` : `all of them carry ${columns ? columns.length : 0}`);
+  const shortBy = new Map();
+  for (const [shape, n] of shapeSeen) {
+    const have = new Set(shape.split(','));
+    for (const k of columns) if (!have.has(k)) shortBy.set(k, (shortBy.get(k) || 0) + n);
+  }
+  const short = [...shortBy].sort((a, b) => b[1] - a[1]);
+  say('every record carries every field any record carries', short.length === 0,
+    short.length
+      ? short.map(([k, n]) => `${n.toLocaleString()} records do not carry ${k}`).join('; ')
+      : `all of them carry the same ${columns.size}`);
 
   let empty = 0;
   let wrongCount = 0;
@@ -1867,7 +1879,14 @@ async function dropSettingsNamed(doc, doomed, note = null) {
       }
       const to = moveTo[r.si];
       if (to < 0) { gone++; continue; }
-      w.push({ ...r, si: to });
+      // AND EVERY KEPT RECORD SAYS WHAT IT IS. Twelve of the owner's records
+      // never carried the one-voice share, because the store grows its column
+      // list when a wider row arrives and those twelve were written before it
+      // did. Every reader resolves it to the same 98 that every other record
+      // stores, so nothing has ever been wrong — but a record leaning on a
+      // default is a record that does not say what it is (RULE NINE), and this
+      // pass is already rewriting all of them. Same value, written down.
+      w.push({ ...r, si: to, agreeCopy: require('./stagework').agrOf(r).copy });
     }
     w.flush();
     if (note) note(b + 1, n);
