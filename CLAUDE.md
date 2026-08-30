@@ -541,6 +541,46 @@ SIX's "hunt your own instrument"). Tearing into an answer is cheap and it is
 the job. Re-running a machine that already answered is neither.
 
 
+## RULE NINE — when a process changes, the RECORDS change with it (owner order, 2026-08-30)
+
+**No legacy branches. No "if it was written the old way" anywhere in the
+readers. When the schema moves, the records on disk move with it.**
+
+The owner's words: "i don't want special code to handle legacy records ... the
+rule is: when processes change, fix existing records to match the current
+schema."
+
+Said after I split one agreement control into two and then quietly taught three
+different readers to translate the retired name at read time — a lookup table
+in the engine, a translation in the tables, and a third in the filters. Each
+looked small. Together they were three places where the same fact was written
+in two vocabularies, and the bug that followed was exactly that: two of them
+translated a key and one did not, so a lookup missed on 65,856 rows.
+
+- **A record says what it is, in today's words, or it is migrated.** A reader
+  that has to ask "which era is this from" is the defect. Two vocabularies on
+  disk is two vocabularies to keep in step forever, and nothing keeps them.
+- **Migrate BESIDE, verify, then swap.** Never rewrite a record store in
+  place. Same row count, same block boundaries so every stored block index
+  still points where it did, spot-check the changed fields, and only then move
+  it into position. The owner's record sets are hours of compute that cannot
+  be re-derived from anything but a full re-run.
+- **Everything downstream of the records is DELETED, not migrated.** Totals
+  and any other derived file are rebuilt from the migrated records. Migrating
+  a derived file is a second chance to get the translation wrong.
+- **It is a USER function, not a script somebody remembers to run** (RULE
+  FIVE). A set records the release it was written under; a reader that finds
+  one behind says so on the screen and the migration runs the way the
+  totalling already does — announced, in the background, once.
+- **The alternative is to DELETE the set, and that is the owner's call, never
+  mine.** Re-running is sometimes cheaper and always cleaner. Say what each
+  costs and let them choose.
+- **A schema change is not finished until the migration exists.** Shipping the
+  new shape and leaving the old records readable "for now" is how the legacy
+  branch gets written — there is never a later moment when removing it is more
+  convenient than now.
+
+
 ## Working style (all sessions)
 
 ### Answer short by default — `/plain` is the standing style, not a request
