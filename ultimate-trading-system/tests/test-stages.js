@@ -1882,6 +1882,99 @@ module.exports = {
   // from a ratio: multiplying the dials out gave 526,848 where the enumerator
   // says 524,832, and a setting priced twice is invisible in a table of half a
   // million rows.
+  // AN AUDIT IS ONLY WORTH THE DAMAGE IT CATCHES (owner, 2026-08-30: "how do i
+  // know you haven't made a bunch more issues?").
+  //
+  // A check that passes on a good set proves nothing. So this builds a sound set,
+  // confirms it reads sound, and then breaks it in each of the six ways the
+  // passes on this screen could break it — one at a time — and requires the
+  // audit to name that one and no other.
+  async theAuditCatchesEveryWayThesePassesCouldDamageASet() {
+    const mkDoc = (id, names, units) => ({
+      id, stage: 3, seq: 999960, name: 'S3 #aud', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units, settings: names.length, settingLabels: names.slice() },
+      params: {}, recordsVersion: stages.RECORDS_V,
+    });
+    // names built the way a launch builds them, so a sound set really is sound
+    const rec = (si, u, over) => ({
+      si,
+      label: 'count 75% always d1x t17h · argmax auto 24/7',
+      decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+      entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null,
+      agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeCopy: 98, agreeBoth: false, agreePersist: 0,
+      members: 6, pnl: 1, trades: 3, holdout: { pnl: 2, trades: 1, stops: 0, vsAlwaysLong: 1 },
+      beat: 1, pairs: 9, lead: 1, u, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      ...(over || {}),
+    });
+    const NAMES = [
+      'count 75% always d1x t17h · argmax auto 24/7',
+      'count 75% always d1x t41h · argmax auto 24/7',
+      'voices 75% +voice98 always d1x t65h · argmax 3% 24/7',
+    ];
+    const shape = [
+      { tHours: 17 },
+      { tHours: 41 },
+      { tHours: 65, agreeRule: 'voices', bandMode: 3 },
+    ];
+    const build = async (id, bend) => {
+      const names = NAMES.slice();
+      const doc = mkDoc(id, names, 2);
+      const rows = [];
+      for (let u = 0; u < 2; u++) {
+        for (let si = 0; si < names.length; si++) rows.push(rec(si, u, { ...shape[si], label: names[si] }));
+      }
+      bend(rows, doc);
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      for (const r of rows) w.push(r);
+      await w.close();
+      return stages.getSet(id);
+    };
+    const clean = (id) => {
+      try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
+      try { rowstore.remove(id); } catch (_) { /* fixture */ }
+    };
+    const failing = (res) => res.checks.filter((c) => !c.ok).map((c) => c.name);
+
+    // ---- sound ----
+    let id = `s3-test-${Date.now().toString(36)}-a0`;
+    try {
+      const res = stages.auditRecordSet(await build(id, () => {}));
+      assert.deepStrictEqual(failing(res), [], `a sound set does not read as sound: ${JSON.stringify(res.checks.filter((c) => !c.ok), null, 1)}`);
+      assert.strictEqual(res.ok, true);
+    } finally { clean(id); }
+
+    // ---- each way it can be broken, one at a time ----
+    const bends = [
+      ['a record lost', (rows) => { rows.pop(); },
+        ['every setting has one record per unit', 'none has more or fewer records than there are units', 'every setting covers every unit, none twice']],
+      ['a record filed at the wrong place', (rows) => { rows[1].si = 0; },
+        ['every record sits at its own setting’s place', 'none has more or fewer records than there are units', 'every setting covers every unit, none twice']],
+      ['a record past the end of the list', (rows) => { rows[2].si = 99; },
+        // 'every setting has a record' correctly stays quiet: setting 2 still has
+        // its other unit's record. The audit was right and this list was wrong.
+        ['no record sits past the end of the list', 'none has more or fewer records than there are units', 'every setting covers every unit, none twice']],
+      ['a name today would not write', (rows, doc) => {
+        rows.forEach((r) => { if (r.si === 2) r.label = 'voices 75% always d1x t65h · argmax 3% 24/7'; });
+        doc.plan.settingLabels[2] = 'voices 75% always d1x t65h · argmax 3% 24/7';
+      }, ['every name is the one today’s code would write']],
+      ['two settings sharing a name', (rows, doc) => { doc.plan.settingLabels[1] = doc.plan.settingLabels[0]; },
+        ['no two settings share a name', 'every record sits at its own setting’s place']],
+      ['one unit counted twice and another not at all', (rows) => { rows[3].u = 0; },
+        ['every setting covers every unit, none twice']],
+    ];
+    for (const [what, bend, expect] of bends) {
+      id = `s3-test-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
+      try {
+        const res = stages.auditRecordSet(await build(id, bend));
+        assert.strictEqual(res.ok, false, `the audit passed a set with ${what}`);
+        assert.deepStrictEqual(failing(res).sort(), expect.slice().sort(),
+          `with ${what} the audit named the wrong checks: ${failing(res).join(', ')}`);
+      } finally { clean(id); }
+    }
+  },
+
   // A FILL-IN THAT DID NOT FINISH (owner order, 2026-08-30: "look at the state
   // of the data and do it right this time and give me the buttons i need to fix
   // the data").

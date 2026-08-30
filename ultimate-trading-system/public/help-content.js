@@ -374,6 +374,20 @@ window.HELP = {
           + 'anything is replaced — so an interruption leaves the set exactly as it was. The tables are worked out again '
           + 'afterwards.',
       },
+      bCheckSet: {
+        what: 'Reads every record in this set and says whether it is sound. It adds nothing and changes nothing.',
+        more: 'Each line is a plain statement about the records that is either true or it is not, and a false one says '
+          + 'how many and shows three examples.\n\n'
+          + 'The load-bearing one is "every name is the one today\'s code would write". It rebuilds each setting\'s name '
+          + 'from the fields on the record itself, through the same writers a launch writes with — so a name today would '
+          + 'not write fails, whoever wrote it and whenever. Nothing here consults which passes have been run; the '
+          + 'records answer for themselves.\n\n'
+          + 'The last line needs the set\'s own block and costs a few seconds more: it says whether the set holds exactly '
+          + 'what a launch with these same choices would price, no more and no less. Anything it holds and the block does '
+          + 'not is a duplicate or a leftover; anything the block declares and it does not is a gap.\n\n'
+          + 'Run it before and after anything that touches the records. Two sound readings either side of a change is the '
+          + 'only evidence worth having.',
+      },
       bUndoAppend: {
         what: 'Puts this record set back to how it was before a fill-in that did not finish. It deletes the records that run wrote.',
         more: 'Filling in the missing settings writes its rows one unit at a time, and writes the set’s list of setting names '

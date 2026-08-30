@@ -838,6 +838,18 @@ app.get('/api/stageset/:id/drop-undeclared/status', (req, res) => {
     settings: dropping.settings, rows: dropping.rows, error: dropping.error,
   });
 });
+// CHECKING A SET IS A USER FUNCTION (owner, 2026-08-30). Read-only: it opens
+// the records, adds nothing, changes nothing, and answers with what it found.
+app.get('/api/stageset/:id/check', (req, res) => {
+  const doc = stages.getSet(String(req.params.id || ''));
+  if (!doc || doc.stage !== 3) return res.status(404).json({ error: 'no such stage 3 record set' });
+  try {
+    const own = stages.auditRecordSet(doc);
+    let block = null;
+    try { block = stages.auditAgainstBlock(doc); } catch (err) { block = { why: err.message }; }
+    return res.json({ ...own, block });
+  } catch (err) { return res.status(500).json({ error: err.message }); }
+});
 app.post('/api/stageset/:id/rename-settings', (req, res) => {
   if (renaming && !renaming.done) return res.json({ running: renaming.id, done: renaming.progress.done, total: renaming.progress.total });
   const id = String(req.params.id || '');

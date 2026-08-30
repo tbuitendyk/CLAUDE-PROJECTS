@@ -1529,6 +1529,141 @@ function settingsBehind(doc) {
   for (const L of held) if (BEHIND_V3(L)) n++;
   return n;
 }
+// ---- IS THIS SET SOUND? ---------------------------------------------------
+//
+// Owner, 2026-08-30: "with all the screw ups i have little confidence in the
+// state of the data. how do i know you haven't made a bunch more issues?"
+//
+// That cannot be answered with a reassurance, and it cannot be answered by a
+// check written to agree with the code that did the work. So every check here
+// is against what a sound set IS, not against what any pass happens to do.
+//
+// The load-bearing one is the fourth: it rebuilds every name from the fields
+// on the record itself, through the same two writers a launch writes with and
+// the same one line that joins them. A name today's code would not write fails
+// — whoever wrote it, whenever, and whether or not anybody remembered it had
+// been touched. Nothing about which passes have run is consulted anywhere.
+//
+// It walks the records once and holds three small arrays, so it costs a read
+// of the store and a few megabytes, not a second copy of it.
+function auditRecordSet(doc) {
+  const out = [];
+  const say = (name, ok, detail) => { out.push({ name, ok, detail }); return ok; };
+  const id = doc.id;
+  const held = ((doc.plan || {}).settingLabels) || [];
+  const units = Number(((doc.plan || {}).units)) || 0;
+  if (!held.length || !units) {
+    say('the set records what it holds', false, 'it does not say how many settings or units it has, so nothing here can be checked');
+    return { ok: false, checks: out };
+  }
+
+  const rows = rowstore.count(id, 'records');
+  say('every setting has one record per unit', rows === held.length * units,
+    `${rows.toLocaleString()} records for ${held.length.toLocaleString()} settings over ${units} units `
+    + `(${(held.length * units).toLocaleString()} expected)`);
+
+  // no two settings may share a name, or one hides the other everywhere
+  const names = new Set(held);
+  say('no two settings share a name', names.size === held.length,
+    `${held.length.toLocaleString()} names, ${names.size.toLocaleString()} of them different`);
+
+  const seenUnits = new Int32Array(held.length);        // which units, as bits
+  const perSetting = new Int32Array(held.length);       // and how many records
+  const checked = new Uint8Array(held.length);          // name rebuilt once each
+  const tooManyUnits = units > 30;                      // more than fits in the bits
+  let misplaced = 0;
+  let beyond = 0;
+  let misnamed = 0;
+  let shortFields = 0;
+  const examples = { misplaced: [], beyond: [], misnamed: [], shortFields: [] };
+  const note = (k, v) => { if (examples[k].length < 3) examples[k].push(v); };
+  let columns = null;
+
+  const blocks = rowstore.blocksOf(id, 'records') || [];
+  for (let b = 0; b < blocks.length; b++) {
+    for (const x of rowstore.readBlocks(id, 'records', [b]) || []) {
+      const r = x.row || x;
+      if (!(r.si >= 0 && r.si < held.length)) {
+        beyond++;
+        note('beyond', `position ${r.si} is outside the ${held.length.toLocaleString()} settings this set says it holds`);
+        continue;
+      }
+      perSetting[r.si]++;
+      if (!tooManyUnits) seenUnits[r.si] |= (1 << r.u);
+      if (held[r.si] !== r.label) {
+        misplaced++;
+        note('misplaced', `position ${r.si} carries "${r.label}" and the list says "${held[r.si]}"`);
+      }
+      // EVERY FIELD A RECORD IS WRITTEN WITH, still on it. Compared against the
+      // first record rather than a list typed here, so a field added tomorrow
+      // is covered and a field a pass quietly dropped from some rows is caught.
+      if (!columns) columns = Object.keys(r);
+      else if (Object.keys(r).length !== columns.length) {
+        shortFields++;
+        note('shortFields', `position ${r.si} carries ${Object.keys(r).length} fields where the first record carries ${columns.length}`);
+      }
+      if (checked[r.si]) continue;
+      checked[r.si] = 1;
+      const agr = require('./stagework').agrOf(r);
+      const should = `${agreeLabel({
+        rule: agr.rule, pct: agr.pct, bar: agr.bar, copy: agr.copy, bothModels: agr.both, persist: agr.persist,
+      })} ${shapeLabel(r)} \u00b7 ${r.decision} ${r.bandMode === 'auto' ? 'auto' : `${r.bandMode}%`} ${r.weekdaysOnly ? '24/5' : '24/7'}`;
+      if (should !== r.label) {
+        misnamed++;
+        note('misnamed', `on disk "${r.label}" — today it would be written "${should}"`);
+      }
+    }
+  }
+
+  say('every record sits at its own setting\u2019s place', misplaced === 0,
+    misplaced ? `${misplaced.toLocaleString()} do not: ${examples.misplaced.join('; ')}` : 'all of them do');
+  say('no record sits past the end of the list', beyond === 0,
+    beyond ? `${beyond.toLocaleString()} do: ${examples.beyond.join('; ')}` : 'none does');
+  say('every name is the one today\u2019s code would write', misnamed === 0,
+    misnamed ? `${misnamed.toLocaleString()} settings are not: ${examples.misnamed.join('; ')}` : 'all of them are');
+  say('every record carries the same fields', shortFields === 0,
+    shortFields ? `${shortFields.toLocaleString()} do not: ${examples.shortFields.join('; ')}` : `all of them carry ${columns ? columns.length : 0}`);
+
+  let empty = 0;
+  let wrongCount = 0;
+  let missingUnit = 0;
+  const whole = tooManyUnits ? 0 : (units >= 31 ? -1 : (2 ** units) - 1);
+  for (let i = 0; i < held.length; i++) {
+    if (perSetting[i] === 0) { empty++; continue; }
+    if (perSetting[i] !== units) wrongCount++;
+    if (!tooManyUnits && seenUnits[i] !== whole) missingUnit++;
+  }
+  say('every setting has a record', empty === 0,
+    empty ? `${empty.toLocaleString()} settings have none` : 'all of them do');
+  say('none has more or fewer records than there are units', wrongCount === 0,
+    wrongCount ? `${wrongCount.toLocaleString()} settings do not hold exactly ${units}` : `all hold exactly ${units}`);
+  if (tooManyUnits) {
+    say('every setting covers every unit', true, `not checked \u2014 ${units} units is more than this check can hold in one number`);
+  } else {
+    say('every setting covers every unit, none twice', missingUnit === 0,
+      missingUnit ? `${missingUnit.toLocaleString()} settings miss a unit or hold one twice` : 'all of them do');
+  }
+
+  return { ok: out.every((c) => c.ok), checks: out, rows, settings: held.length, units };
+}
+// AND THE ONE CHECK THAT NEEDS THE BLOCK ITSELF: does the set hold exactly
+// what a launch with these same choices would price today, no more and no
+// less? Separate because it costs the enumeration, which is seventeen seconds.
+function auditAgainstBlock(doc) {
+  const held = ((doc.plan || {}).settingLabels) || [];
+  const { settings } = relaunchShapeOf(doc);
+  const declared = settings.map((x) => x.label);
+  const surplus = undeclaredIn(held, declared).size;
+  const missing = undeclaredIn(declared, held).size;
+  return {
+    held: held.length,
+    declared: declared.length,
+    surplus,
+    missing,
+    ok: surplus === 0 && missing === 0,
+  };
+}
+
 // ---- AN APPEND THAT DID NOT FINISH ----------------------------------------
 //
 // Owner order, 2026-08-30: "look at the state of the data and do it right this
@@ -2644,6 +2779,7 @@ module.exports = {
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,
   unfinishedAppend, unfinishedAppendDetail, undoUnfinishedAppend,
+  auditRecordSet, auditAgainstBlock,
   // the same pool every heavy job uses, so filling in a block is worked the
   // same way a launch is rather than on the one thread that answers pages
   createPoolForFillIn: () => createPool(),

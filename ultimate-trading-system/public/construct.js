@@ -3008,6 +3008,29 @@ function bPinnedRecord(r) {
 // leaves records at positions the list does not reach, and NOTHING is written
 // down to say so. This is drawn first because nothing else may run until it
 // is settled, and every other pass refuses while it stands.
+// WHAT THE CHECK FOUND (owner, 2026-08-30: "how do i know you haven\u2019t made a
+// bunch more issues?"). Every line is a plain statement about the records that
+// is either true or it is not, and a false one says how many and shows three.
+function bCheckLine(doc, check) {
+  if (!check) {
+    return `<p class="note"><button id="bCheckSet" data-bcheck="${esc(doc.id)}">check this set</button>
+      <span class="muted">reads every record and says whether the set is sound. It adds nothing and changes nothing.</span></p>`;
+  }
+  if (check.error) return `<p class="note warn">the check could not run: ${esc(check.error)}</p>`;
+  const rows = (check.checks || []).map((x) => `<li class="${x.ok ? 'pos' : 'neg'}"><b>${x.ok ? 'yes' : 'NO'}</b> \u2014 ${esc(x.name)}
+    <span class="muted">${esc(x.detail || '')}</span></li>`).join('');
+  const b = check.block;
+  const blockLine = !b ? ''
+    : b.why ? `<li class="muted">the set could not be compared with its own block: ${esc(b.why)}</li>`
+      : `<li class="${b.ok ? 'pos' : 'neg'}"><b>${b.ok ? 'yes' : 'NO'}</b> \u2014 the set holds exactly what its block declares
+        <span class="muted">${Number(b.held).toLocaleString()} held, ${Number(b.declared).toLocaleString()} declared,
+        ${Number(b.surplus).toLocaleString()} it holds and the block does not, ${Number(b.missing).toLocaleString()} the block declares and it does not</span></li>`;
+  return `<div class="panel" style="border-color:var(--${check.ok && (!b || b.ok) ? 'pos' : 'neg'})">
+    <p style="margin:.1rem 0 .4rem"><b>${check.ok && (!b || b.ok) ? 'This set is sound.' : 'This set is NOT sound.'}</b>
+    <span class="muted">${Number(check.rows || 0).toLocaleString()} records, ${Number(check.settings || 0).toLocaleString()} settings, ${check.units} units.</span></p>
+    <ul style="margin:.2rem 0 .3rem 1.1rem; padding:0">${rows}${blockLine}</ul>
+    <button id="bCheckSet" data-bcheck="${esc(doc.id)}">check this set</button></div>`;
+}
 function bUndoLine(doc, undoing) {
   if (undoing && undoing.error) {
     return `<p class="note warn">undoing the unfinished run failed: ${esc(undoing.error)} — nothing was replaced; the records are exactly as they were.</p>`;
@@ -3306,6 +3329,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S3R', swHead)}
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
+    ${bCheckLine(doc, bView().checked && bView().checked.id === doc.id ? bView().checked.res : null)}
     ${bUndoLine(doc, undoing)}
     ${(undoing && undoing.half) ? '' : bRenameLine(doc, renaming)}
     ${(undoing && undoing.half) ? '' : bDropLine(doc, gap, dropping)}
@@ -3484,6 +3508,16 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       if (keys.has(k)) { keys.delete(k); } else { keys.add(k); }
       bSaveView({ openS3: [...keys] });
       bRedrawPeggedToCoinHead();
+    };
+  });
+  $(mount).querySelectorAll('[data-bcheck]').forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      btn.textContent = 'reading every record…';
+      const id = btn.dataset.bcheck;
+      const res = await apiOr(`api/stageset/${id}/check`, { error: 'the service did not answer' });
+      bSaveView({ checked: { id, res } });
+      drawBoards().then(() => restoreScroll(tab));
     };
   });
   $(mount).querySelectorAll('[data-bstopfill]').forEach((btn) => {
