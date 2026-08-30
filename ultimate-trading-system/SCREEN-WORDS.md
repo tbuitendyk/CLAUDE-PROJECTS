@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **3213946eef1c — what the box is serving**, not from the working tree.
+Generated from **cf30f599a4da — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -272,9 +272,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (97)
+## What the controls are called (103)
 
 - `— pick a stage`
+- `\u2014`
 - `+both`
 - `+hold`
 - `1v`
@@ -296,6 +297,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `beat its own null set`
 - `before BOOST)`
 - `BOOST`
+- `bring the setting names up to date`
 - `call`
 - `campaign:`
 - `chunk shape`
@@ -336,8 +338,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `nothing here`
 - `of`
 - `of the`
+- `of this set\u2019s`
 - `order`
 - `own`
+- `parts`
 - `prev`
 - `Pricing them is`
 - `pricings over`
@@ -345,6 +349,8 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `record set`
 - `record set —`
 - `records`
+- `renaming the settings failed:`
+- `renaming the settings:`
 - `revert filters`
 - `row(s)`
 - `rows`
@@ -388,7 +394,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `market`
 - `voices`
 
-## Sentences the page prints (44)
+## Sentences the page prints (53)
 
 - Boards — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -425,6 +431,13 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - row(s) held back by the floors.
 - The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.
 - rows — the rest are held back by the filters above.
+- — nothing was replaced; the records are exactly as they were.
+- — the new names are written beside the old records and only swapped in once they are all there. This page asks again every few seconds.
+- of this set\u2019s settings are named without the share that decides
+- whether two forecasts count as one voice.
+- The names written today carry it, so this set\u2019s own block reads as not declaring
+- them \u2014 and filling in the missing settings first would price every one of them a second time under its new name.
+- Renaming changes names only: nothing is priced again, and no result moves.
 - filling in the missing settings failed:
 - — nothing already priced was touched.
 - filling in the settings this block declares:
@@ -434,11 +447,13 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - settings its block declares.
 - are ways of asking that did not exist when it ran, so nothing here can answer for them.
 - unit(s); nothing already priced is read, touched or priced again.
+- Bring the setting names up to date first
+- settings are named the older way, and pricing now would price every one of them a second time under its new name.
 
-## Every word, flat (317)
+## Every word, flat (357)
 
 ```
-1v 3.A 3.B above. accordingly. active actually added adding after again again. agreed all alongside already always always-long and answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged avg away away. back back. background band be beat because before belong below beside best block board Boards BOOST both box breakout bring broken building by call campaign can cannot carry child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data decision declared declares declares. Delete did directional DOES does done each Each either empty entry every Every exactly exist exists failed FAILED families few fewer fill filled filling fills filter filter. filters fingerprint first first. fixed floors floors. for forecast form forward four from fuller gate going held held-back helped here history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move near-copies never next No NOT not notes nothing now null numbers of of. on One one opening opinions or order Ordered other out over OWN own page parent parents per pick picked picking PLAN. press prev priced priced. prices Pricing pricings proved provenance put puts quorum ran ran. ranked read real record records rest restart. rests revert row rows rule. run rung running save saved score screen seconds. section sections selections service set SET set. sets setting settings Settings shape share show showed showing shows. since Size smaller so some sort stage Stage STAMP stops suggests. table Table tables takes test than that the The their them them. They THIS this This ties time to top totalled totalling touched touched. trade. trades trail training tried unit units voices votes vs was way. ways what What when where whole why window with With without worked wrote yet you
+1v 3.A 3.B above. accordingly. active actually added adding after again again. agreed all alongside already always always-long and answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged avg away away. back back. background band be beat because before belong below beside best block board Boards BOOST both box breakout bring Bring broken building by call campaign can cannot carry changes child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data date decides decision declared declares declares. declaring Delete did directional DOES does done each Each either empty entry every Every exactly exist exists failed FAILED families few fewer fill filled filling fills filter filter. filters fingerprint first first. fixed floors floors. for forecast forecasts form forward four from fuller gate going held held-back helped here history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next No no NOT not notes nothing now null numbers of of. old older on once One one only opening opinions or order Ordered other out over OWN own page parent parents parts per pick picked picking PLAN. press prev price priced priced. prices Pricing pricing pricings proved provenance put puts quorum ran ran. ranked read reads real record records renaming Renaming replaced rest restart. rests result revert row rows rule. run rung running save saved score screen second seconds. section sections selections service set SET set. sets setting settings Settings shape share show showed showing shows. since Size smaller so some sort stage Stage STAMP stops suggests. swapped table Table tables takes test than that the The their them them. there. They they THIS this This ties time to today top totalled totalling touched touched. trade. trades trail training tried two u2014 u2019s under unit units up voice. voices votes vs was way way. ways were. what What when where whether whole why window with With without worked would written wrote yet you
 ```
 
 ---
