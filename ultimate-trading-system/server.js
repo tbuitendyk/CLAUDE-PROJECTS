@@ -774,6 +774,7 @@ app.get('/api/stageset/:id/stage2', (req, res) => {
 let fillIn = null;
 let renaming = null;   // the one-off that brings a set's setting names up to date
 let dropping = null;   // the pass that drops settings the block no longer declares
+let undoing = null;    // the pass that undoes what an unfinished fill-in left
 app.get('/api/stageset/:id/ranked', (req, res) => {
   let out;
   try {
@@ -876,15 +877,18 @@ app.post('/api/stageset/:id/fill-in', (req, res) => {
   if (!plan) return res.status(404).json({ error: 'no such stage 3 record set' });
   if (plan.why) return res.status(400).json({ error: plan.why });
   if (!plan.missing) return res.json({ already: true, held: plan.held });
-  const run = { id, done: false, error: null, added: 0, progress: { done: 0, total: plan.units || 0 } };
+  const run = { id, done: false, error: null, added: 0, stop: false, stopped: false,
+    progress: { done: 0, total: plan.units || 0 } };
   fillIn = run;
   run.promise = (async () => {
     let pool = null;
     try {
       pool = stages.createPoolForFillIn();
       const out = await stages.appendMissingSettings(stages.getSet(id), pool,
-        (dn, tn) => { run.progress = { done: dn, total: tn }; });
+        (dn, tn) => { run.progress = { done: dn, total: tn }; },
+        () => run.stop);
       run.added = out.added || 0;
+      run.stopped = !!out.stopped;
     } catch (err) {
       run.error = String(err.message || err);
     } finally {
@@ -898,7 +902,46 @@ app.get('/api/stageset/:id/fill-in/status', (req, res) => {
   if (!fillIn || fillIn.id !== String(req.params.id || '')) return res.json({ idle: true });
   return res.json({
     running: !fillIn.done, done: fillIn.progress.done, total: fillIn.progress.total,
-    added: fillIn.added, error: fillIn.error,
+    added: fillIn.added, error: fillIn.error, stopping: !!fillIn.stop && !fillIn.done, stopped: !!fillIn.stopped,
+  });
+});
+// STOPPING IT IS A USER FUNCTION (owner order, 2026-08-30; RULE FIVE). Until
+// now the only way to end a seven-hour pass was to restart the service, which
+// is not a control and leaves the half-written append behind either way. Asked,
+// not forced: it stops between units, so whole ones are never torn in half.
+app.post('/api/stageset/:id/fill-in/stop', (req, res) => {
+  if (!fillIn || fillIn.id !== String(req.params.id || '') || fillIn.done) return res.json({ idle: true });
+  fillIn.stop = true;
+  return res.json({ stopping: true, done: fillIn.progress.done, total: fillIn.progress.total });
+});
+// AND UNDOING WHAT AN UNFINISHED ONE LEFT.
+app.post('/api/stageset/:id/undo-append', (req, res) => {
+  if (undoing && !undoing.done) return res.json({ running: undoing.id, done: undoing.progress.done, total: undoing.progress.total });
+  const id = String(req.params.id || '');
+  const doc = stages.getSet(id);
+  if (!doc || doc.stage !== 3) return res.status(404).json({ error: 'no such stage 3 record set' });
+  const run = { id, done: false, error: null, rows: 0, progress: { done: 0, total: 0 } };
+  undoing = run;
+  run.promise = (async () => {
+    try {
+      const out = await stages.undoUnfinishedAppend(doc, (dn, tn) => { run.progress = { done: dn, total: tn }; });
+      run.rows = out.rows || 0;
+    } catch (err) {
+      run.error = String(err.message || err);
+    } finally {
+      run.done = true;
+    }
+  })();
+  return res.json({ started: true });
+});
+app.get('/api/stageset/:id/undo-append/status', (req, res) => {
+  const doc = stages.getSet(String(req.params.id || ''));
+  const gap = doc ? stages.unfinishedAppend(doc) : null;
+  const half = gap && gap.extra > 0 ? gap : null;
+  if (!undoing || undoing.id !== String(req.params.id || '')) return res.json({ idle: true, half });
+  return res.json({
+    running: !undoing.done, done: undoing.progress.done, total: undoing.progress.total,
+    rows: undoing.rows, error: undoing.error, half,
   });
 });
 app.get('/api/stageset/:id/coin-rows', (req, res) => {

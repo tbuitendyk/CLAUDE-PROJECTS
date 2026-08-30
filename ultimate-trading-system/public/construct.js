@@ -3003,6 +3003,29 @@ function bPinnedRecord(r) {
 // fill-in line on purpose: filling in BEFORE renaming prices every one of
 // these a second time under its new name, so the order matters and the screen
 // has to make it obvious.
+// AN UNFINISHED FILL-IN (owner order, 2026-08-30). It writes its rows unit by
+// unit and its list of names once, at the end — so a run that stops or dies
+// leaves records at positions the list does not reach, and NOTHING is written
+// down to say so. This is drawn first because nothing else may run until it
+// is settled, and every other pass refuses while it stands.
+function bUndoLine(doc, undoing) {
+  if (undoing && undoing.error) {
+    return `<p class="note warn">undoing the unfinished run failed: ${esc(undoing.error)} — nothing was replaced; the records are exactly as they were.</p>`;
+  }
+  if (undoing && undoing.running) {
+    const pct = undoing.total ? ` (${Math.floor((undoing.done / undoing.total) * 100)}%)` : '';
+    return `<p class="note">undoing the unfinished run: <b>${Number(undoing.done).toLocaleString()} of ${Number(undoing.total).toLocaleString()} parts</b>${pct}
+      — what is kept is written beside the old records and only swapped in once it is all there. This page asks again every few seconds.</p>`;
+  }
+  const half = undoing && undoing.half;
+  if (!half) return '';
+  return `<p class="note warn"><b>this set holds ${Number(half.extra).toLocaleString()} records past the end of its own list of settings.</b>
+    A run that fills in the missing settings writes its rows as it goes and its list of names only when it finishes, so a run
+    that stopped or died leaves these behind. They cover some of this set’s coins and not others, which would read on every
+    table as an ordinary row resting on fewer. Undoing puts the set back exactly as it was before that run started; filling in
+    again then prices the whole thing once.
+    <button id="bUndoAppend" data-bundoappend="${esc(doc.id)}">undo the unfinished run</button></p>`;
+}
 function bRenameLine(doc, renaming) {
   if (renaming && renaming.error) {
     return `<p class="note warn">renaming the settings failed: ${esc(renaming.error)} — nothing was replaced; the records are exactly as they were.</p>`;
@@ -3057,7 +3080,14 @@ function bFillInLine(doc, gap, filling) {
   if (filling && filling.running) {
     const pct = filling.total ? ` (${Math.floor((filling.done / filling.total) * 100)}%)` : '';
     return `<p class="note">filling in the settings this block declares: <b>${Number(filling.done).toLocaleString()} of ${Number(filling.total).toLocaleString()} units</b>${pct}
-      — running in the background; the tables are worked out again when it lands. This page asks again every few seconds.</p>`;
+      — running in the background; the tables are worked out again when it lands. This page asks again every few seconds.
+      ${filling.stopping ? '<b>stopping after this unit.</b>'
+    : `<button id="bStopFill" data-bstopfill="${esc(doc.id)}">stop after this unit</button>`}</p>`;
+  }
+  if (filling && filling.stopped) {
+    return `<p class="note warn"><b>the run was stopped after ${Number(filling.done).toLocaleString()} of ${Number(filling.total).toLocaleString()} units.</b>
+      The units that finished are whole and are still on disk, but the ones that did not are not — so the set is not filled in, and
+      the line above offers to put it back.</p>`;
   }
   if (!gap || gap.why) {
     return gap && gap.why ? `<p class="note">this set cannot be added to: ${esc(gap.why)}</p>` : '';
@@ -3239,13 +3269,14 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, ...bFilters('S3R') }).toString();
-  const [ranked, coins, gap, filling, renaming, dropping] = await Promise.all([
+  const [ranked, coins, gap, filling, renaming, dropping, undoing] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
     apiOr(`api/stageset/${doc.id}/missing`, null),
     apiOr(`api/stageset/${doc.id}/fill-in/status`, null),
     apiOr(`api/stageset/${doc.id}/rename-settings/status`, null),
     apiOr(`api/stageset/${doc.id}/drop-undeclared/status`, null),
+    apiOr(`api/stageset/${doc.id}/undo-append/status`, null),
   ]);
   // A finished set whose tables are missing totals itself when opened (the
   // durable fix, owner order 2026-08-27): the service reports how far the
@@ -3275,9 +3306,10 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S3R', swHead)}
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
-    ${bRenameLine(doc, renaming)}
-    ${bDropLine(doc, gap, dropping)}
-    ${bFillInLine(doc, gap, filling)}
+    ${bUndoLine(doc, undoing)}
+    ${(undoing && undoing.half) ? '' : bRenameLine(doc, renaming)}
+    ${(undoing && undoing.half) ? '' : bDropLine(doc, gap, dropping)}
+    ${(undoing && undoing.half && !(filling && (filling.running || filling.stopped))) ? '' : bFillInLine(doc, gap, filling)}
     <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     ${bFilterGrid('S3R', [
     ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
@@ -3454,6 +3486,27 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       bRedrawPeggedToCoinHead();
     };
   });
+  $(mount).querySelectorAll('[data-bstopfill]').forEach((btn) => {
+    btn.onclick = async () => {
+      btn.disabled = true;
+      btn.textContent = 'stopping…';
+      try { await post(`api/stageset/${btn.dataset.bstopfill}/fill-in/stop`, {}); } catch (err) { alert(err.message); }
+      drawBoards().then(() => restoreScroll(tab));
+    };
+  });
+  $(mount).querySelectorAll('[data-bundoappend]').forEach((btn) => {
+    btn.onclick = async () => {
+      // eslint-disable-next-line no-alert
+      if (!confirm('Put this set back to before the unfinished run?\n\n'
+        + 'THIS DELETES THE RECORDS THAT RUN WROTE. They cover some of this set’s coins and not others, so they cannot be '
+        + 'used as they stand. What is kept is written beside the old records and swapped in only once it is all there, so an '
+        + 'interruption leaves the set exactly as it is. Filling in again afterwards prices the whole thing once.')) return;
+      btn.disabled = true;
+      btn.textContent = 'starting…';
+      try { await post(`api/stageset/${btn.dataset.bundoappend}/undo-append`, {}); } catch (err) { alert(err.message); }
+      drawBoards().then(() => restoreScroll(tab));
+    };
+  });
   $(mount).querySelectorAll('[data-bdrop]').forEach((btn) => {
     btn.onclick = async () => {
       const n = (gap && gap.surplus) || 0;
@@ -3494,7 +3547,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       drawBoards().then(() => restoreScroll(tab));
     };
   });
-  if ((filling && filling.running) || (renaming && renaming.running) || (dropping && dropping.running)) {
+  if ((filling && filling.running) || (renaming && renaming.running)
+    || (dropping && dropping.running) || (undoing && undoing.running)) {
     bTallyPoll = setTimeout(() => { if (tab === 'boards') bPollRedraw(); }, 4000);
   }
   bWirePager(mount);

@@ -1529,6 +1529,118 @@ function settingsBehind(doc) {
   for (const L of held) if (BEHIND_V3(L)) n++;
   return n;
 }
+// ---- AN APPEND THAT DID NOT FINISH ----------------------------------------
+//
+// Owner order, 2026-08-30: "look at the state of the data and do it right this
+// time and give me the buttons i need to fix the data.
+//
+// Filling in writes its rows UNIT BY UNIT into the real store, and writes the
+// set's list of names once, at the very end. A service that dies part-way — and
+// one died of memory this morning — therefore leaves records sitting at
+// positions the list does not reach, with nothing written down to say so.
+//
+// Nothing had to be kept for this to be found: a finished set holds exactly one
+// record per name per unit, so a row count that is not names × units says an
+// append is unfinished. That check is free — the count is in the sidecar — so
+// the screen can ask it on every draw, and only the REPAIR pays for a walk.
+function unfinishedAppend(doc) {
+  const held = ((doc || {}).plan || {}).settingLabels || [];
+  const units = Number(((doc || {}).plan || {}).units) || 0;
+  if (!held.length || !units) return null;
+  const rows = rowstore.count(doc.id, 'records');
+  const whole = held.length * units;
+  if (rows === whole) return null;
+  return { rows, whole, extra: rows - whole, held: held.length, units };
+}
+// AND WHAT EXACTLY IS OUT THERE, which does cost a walk: how far the records
+// reach past the list, how many settings that is, and — the one that decides
+// what can be done about it — which units got that far. An append prices one
+// unit at a time and each finished unit is whole, so the ones that landed are
+// worth keeping and the ones that did not are the work that is left.
+function unfinishedAppendDetail(doc) {
+  const held = ((doc.plan || {}).settingLabels || []).length;
+  const blocks = rowstore.blocksOf(doc.id, 'records') || [];
+  const perUnit = new Map();
+  let reach = held;
+  let extra = 0;
+  for (let b = 0; b < blocks.length; b++) {
+    for (const x of rowstore.readBlocks(doc.id, 'records', [b]) || []) {
+      const r = x.row || x;
+      if (r.si < held) continue;
+      extra++;
+      if (r.si + 1 > reach) reach = r.si + 1;
+      perUnit.set(r.u, (perUnit.get(r.u) || 0) + 1);
+    }
+  }
+  const settings = reach - held;
+  // a unit is WHOLE only if it carries one record for every new setting
+  const whole = [];
+  const part = [];
+  for (const [u, n] of [...perUnit].sort((a, b) => a[0] - b[0])) (n === settings ? whole : part).push({ u, rows: n });
+  return { held, reach, settings, extra, unitsWhole: whole, unitsPart: part };
+}
+// UNDO IT. Everything at a position past the end of the list goes, and the set
+// is exactly what it was before the append started. Beside, verified, then
+// swapped, like every other pass that touches these records.
+//
+// THE OTHER CHOICE IS TO FINISH IT, and that is not offered as a repair here
+// because a half-covered setting is worse than a missing one: it would be
+// averaged over the units that landed and read like every other row while
+// resting on fewer. Pressing fill in again after this prices the whole thing
+// once, which is slow and right.
+async function undoUnfinishedAppend(doc, note = null) {
+  const id = doc.id;
+  const busy = stageBusy();
+  if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
+  const gap = unfinishedAppend(doc);
+  if (!gap) return { already: true };
+  if (gap.extra < 0) {
+    throw new Error(`this set holds ${gap.rows.toLocaleString()} records where ${gap.held.toLocaleString()} settings `
+      + `over ${gap.units} units would be ${gap.whole.toLocaleString()} — there are FEWER, not more, so this is not an `
+      + 'unfinished append and nothing here can repair it');
+  }
+  const held = (doc.plan || {}).settingLabels || [];
+  const blocks = rowstore.blocksOf(id, 'records') || [];
+  const SPARE = 'records-undoing';
+  for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
+    rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
+    try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
+  }
+  const w = rowstore.writer(id, SPARE, { offThread: true });
+  let gone = 0;
+  if (note) note(0, blocks.length);
+  for (let b = 0; b < blocks.length; b++) {
+    for (const x of rowstore.readBlocks(id, 'records', [b]) || []) {
+      const r = x.row || x;
+      if (r.si >= held.length) { gone++; continue; }
+      // the same check the drop makes: a record sits at its own name
+      if (held[r.si] !== r.label) {
+        throw new Error(`a record at position ${r.si} carries "${r.label}" and the list says "${held[r.si]}" `
+          + '— nothing was changed');
+      }
+      w.push(r);
+    }
+    w.flush();
+    if (note) note(b + 1, blocks.length);
+  }
+  await w.close();
+
+  const left = rowstore.count(id, SPARE);
+  if (left !== gap.whole) {
+    throw new Error(`undoing would leave ${left.toLocaleString()} records where ${gap.held.toLocaleString()} settings `
+      + `over ${gap.units} units is ${gap.whole.toLocaleString()} — nothing was replaced`);
+  }
+  const from = rowstore.storeFile(id, SPARE);
+  const to = rowstore.storeFile(id, 'records');
+  fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
+  fs.renameSync(from, to);
+  doc.counts = { ...(doc.counts || {}), rows: left };
+  saveSet(doc);
+  try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  try { fs.rmSync(agreedFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  return { rows: gone, left };
+}
+
 // ---- DROPPING THE SETTINGS THE BLOCK NO LONGER DECLARES -------------------
 //
 // Owner order, 2026-08-30: "drop the 1,008 market duplicates GO NOW!", under
@@ -1822,7 +1934,12 @@ function missingSettingsOf(id) {
 // where the enumerator says 524,832 — the same-trade fold and the share dedup
 // do not follow a ratio. Anything but the enumerator risks pricing a duplicate,
 // and a duplicate is invisible in a table of half a million rows.
-async function appendMissingSettings(doc, pool = null, note = null) {
+// STOPPING IT IS A USER FUNCTION (owner order, 2026-08-30; RULE FIVE). Seven
+// hours in, the only way to end this pass was to restart the service — which
+// leaves the half-written append behind and looks, from the screen, like
+// nothing happened at all. It is asked between UNITS, which is the only place
+// it can stop and leave whole ones behind.
+async function appendMissingSettings(doc, pool = null, note = null, asked = null) {
   const id = doc.id;
   const busy = stageBusy();
   if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
@@ -1836,10 +1953,29 @@ async function appendMissingSettings(doc, pool = null, note = null) {
     throw new Error(`${behind.toLocaleString()} of this set's settings are named in the older way — bring the setting `
       + 'names up to date first, or every one of them would be priced a second time under its new name');
   }
-  const { parent, records, settings } = relaunchShapeOf(doc);
+  // READ BEFORE THE GUARDS THAT USE IT. This sat below them and a const read
+  // before its own line throws — the whole pass would have died on the spot.
   const held = (doc.plan || {}).settingLabels || [];
   if (!held.length) throw new Error(`${doc.name} does not record which settings it holds, so nothing can be added to it safely`);
-
+  // A HALF-WRITTEN RUN IS NOT SOMETHING TO APPEND TO, and this costs nothing to
+  // ask — it is a row count against the sidecar — so it is asked BEFORE the
+  // enumeration below, which is seventeen seconds. The narrowest check that can
+  // fail goes first.
+  const halfDone = unfinishedAppend(doc);
+  if (halfDone && halfDone.extra > 0) {
+    throw new Error(`this set holds ${halfDone.extra.toLocaleString()} records past the end of its own list of names, `
+      + 'left by a run that did not finish — undo that first');
+  }
+  const { parent, records, settings } = relaunchShapeOf(doc);
+  // AND THE SAME FOR THE SETTINGS THAT ARE ALREADY DUPLICATES (owner order,
+  // 2026-08-30). This guard was written for the names and NOT for these, and the
+  // owner pressed straight past the gap and paid seven hours for it. A pass that
+  // promises no second copy has to refuse both ways of getting one.
+  const surplusNow = undeclaredIn(held, settings.map((x) => x.label)).size;
+  if (surplusNow) {
+    throw new Error(`this set holds ${surplusNow.toLocaleString()} settings its block does not declare — drop them `
+      + 'first, or this run prices around duplicates that are about to go');
+  }
   // THE INDEX A RECORD IS FILED UNDER MUST NOT BE REUSED. Every record carries
   // the position of its setting in the launch's list, and the tables group by
   // it. A new setting takes the next free one, so nothing already on disk can
@@ -1888,16 +2024,34 @@ async function appendMissingSettings(doc, pool = null, note = null) {
     }
     done++;
     if (note) note(done, payloads.length);
+    wantsStop();          // asked after every unit, on both paths
+  };
+  let stopped = false;
+  // STOPPING THE POOLED PATH IS pool.abort(), NOT A FOURTH ARGUMENT. forEach
+  // takes three and ignores anything after them, so a stop passed that way is a
+  // button that silently does nothing — which is worse than no button at all.
+  // The lane loop already stops on the pool's own flag, and abort sets it.
+  const wantsStop = () => {
+    if (!stopped && asked && asked()) { stopped = true; if (pool && pool.abort) pool.abort(); }
+    return stopped;
   };
   if (pool && pool.parallel) await pool.forEach('s3Unit', payloads, take);
   else {
     for (let i = 0; i < payloads.length; i++) {
+      if (wantsStop()) break;
       // eslint-disable-next-line no-await-in-loop
       try { take({ ok: true, value: await require('./stagework').s3UnitTask(payloads[i]) }, i); }
       catch (err) { take({ ok: false, error: err.message }, i); }
     }
   }
   await w.close();
+  // A STOPPED RUN IS NOT A FINISHED ONE. The names are deliberately NOT written:
+  // the set is left exactly as an interrupted append leaves it, and the repair
+  // that undoes those rows is the same one a crash needs. Writing them here
+  // would hide half-covered settings among whole ones.
+  if (stopped) {
+    return { stopped: true, unitsDone: done, units: payloads.length, rows: rowstore.count(id, 'records') - startedRows };
+  }
   if (failures.length === records.length) {
     throw new Error(`every unit failed while adding settings: ${failures[0].error}`);
   }
@@ -2489,6 +2643,7 @@ module.exports = {
   missingSettingsIn, nextSettingNumber,
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,
+  unfinishedAppend, unfinishedAppendDetail, undoUnfinishedAppend,
   // the same pool every heavy job uses, so filling in a block is worked the
   // same way a launch is rather than on the one thread that answers pages
   createPoolForFillIn: () => createPool(),

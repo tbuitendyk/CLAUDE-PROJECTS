@@ -374,6 +374,29 @@ window.HELP = {
           + 'anything is replaced — so an interruption leaves the set exactly as it was. The tables are worked out again '
           + 'afterwards.',
       },
+      bUndoAppend: {
+        what: 'Puts this record set back to how it was before a fill-in that did not finish. It deletes the records that run wrote.',
+        more: 'Filling in the missing settings writes its rows one unit at a time, and writes the set’s list of setting names '
+          + 'once, at the very end. A run that is stopped, or that dies, therefore leaves records sitting at positions the '
+          + 'list does not reach, and nothing is written down anywhere to say so.\n\n'
+          + 'They are found without any note having been kept: a whole set holds exactly one record per setting per unit, so '
+          + 'a count that is not settings × units says a run is unfinished. That check costs nothing, so the screen makes it '
+          + 'every time it draws.\n\n'
+          + 'Those records cover some of this set’s coins and not others. Left in place they would be averaged over the coins '
+          + 'that landed and read on every table like an ordinary row, while resting on fewer — which is worse than a row '
+          + 'that is plainly absent. So the choice offered is to put the set back, and fill in again, which prices the whole '
+          + 'thing once.\n\n'
+          + 'What is kept is written BESIDE the old records and counted before anything is replaced, so an interruption '
+          + 'leaves the set exactly as it was. Nothing else on this screen will run while this stands.',
+      },
+      bStopFill: {
+        what: 'Asks a running fill-in to stop when the unit it is on finishes.',
+        more: 'It is asked, not forced: a unit is either whole or it is not, so the run stops between them and never tears '
+          + 'one in half.\n\n'
+          + 'A stopped run is not a finished one. The set’s list of setting names is deliberately NOT written, because the '
+          + 'units that landed do not cover every coin — so the set is left exactly as an interrupted run leaves it, and the '
+          + 'line above offers to put it back.',
+      },
       bFillIn: {
         what: 'Prices the settings this record set\'s own block declares and its records do not hold, and adds them to it.',
         more: 'A set can be priced before its block is whole. This one ran when the quorum was five named choices; it is '

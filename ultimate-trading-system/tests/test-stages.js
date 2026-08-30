@@ -1882,6 +1882,185 @@ module.exports = {
   // from a ratio: multiplying the dials out gave 526,848 where the enumerator
   // says 524,832, and a setting priced twice is invisible in a table of half a
   // million rows.
+  // A FILL-IN THAT DID NOT FINISH (owner order, 2026-08-30: "look at the state
+  // of the data and do it right this time and give me the buttons i need to fix
+  // the data").
+  //
+  // Filling in writes its rows one unit at a time and the set's list of setting
+  // names once, at the very end. A run that is stopped, or that dies of memory
+  // as this box's service did, leaves records at positions the list does not
+  // reach with NOTHING written down to say so. It has to be findable from the
+  // records alone, and it has to be undoable.
+  async anUnfinishedFillInIsFoundFromTheRecordsAloneAndCanBePutBack() {
+    const id = `s3-test-${Date.now().toString(36)}-half`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const names = ['count 75% always d1x t17h · argmax auto 24/7', 'count 75% always d1x t41h · argmax auto 24/7'];
+    const mk = (si, u, label) => ({
+      si, label, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+      entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null,
+      agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
+      members: 6, pnl: 10 + si, trades: 3, holdout: { pnl: 30, trades: 4, stops: 1, vsAlwaysLong: 2 },
+      beat: 3, pairs: 9, lead: 1.5, u, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+    });
+    const doc = {
+      id, stage: 3, seq: 999971, name: 'S3 #half', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 3, settings: 2, settingLabels: names.slice() },
+      params: { nullN: 9 }, recordsVersion: stages.RECORDS_V,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      // the whole set: two settings over three units
+      for (let u = 0; u < 3; u++) { for (let si = 0; si < 2; si++) w.push(mk(si, u, names[si])); w.flush(); }
+      const wholeBytes = null;
+      // ...and then a run that got two of the three units through, appending
+      // two new settings at positions 2 and 3
+      for (let u = 0; u < 2; u++) {
+        w.push(mk(2, u, 'count 75% always d1x t65h · argmax auto 24/7'));
+        w.push(mk(3, u, 'count 75% always d1x t89h · argmax auto 24/7'));
+        w.flush();
+      }
+      await w.close();
+      assert.strictEqual(wholeBytes, null);   // (kept only to name the two phases above)
+
+      // FOUND WITHOUT A NOTE, and for free: six is two settings over three
+      // units, and there are ten.
+      const gap = stages.unfinishedAppend(stages.getSet(id));
+      assert.ok(gap, 'an unfinished run leaves no trace the screen can see');
+      assert.deepStrictEqual({ rows: gap.rows, whole: gap.whole, extra: gap.extra }, { rows: 10, whole: 6, extra: 4 },
+        'the count of what a whole set would hold is wrong, so the screen would say the wrong thing');
+
+      // and the detail says which units got that far — two whole, none part
+      const detail = stages.unfinishedAppendDetail(stages.getSet(id));
+      assert.deepStrictEqual({ settings: detail.settings, extra: detail.extra, whole: detail.unitsWhole.length, part: detail.unitsPart.length },
+        { settings: 2, extra: 4, whole: 2, part: 0 },
+        'the repair cannot tell which units the unfinished run got through');
+
+      // NOTHING MAY BE ADDED TO A SET IN THIS STATE
+      let threw = null;
+      try { await stages.appendMissingSettings(stages.getSet(id)); } catch (err) { threw = err.message; }
+      assert.ok(threw && /past the end of its own list of names/.test(threw),
+        `a set with a half-written run was appended to anyway: ${threw}`);
+
+      const out = await stages.undoUnfinishedAppend(stages.getSet(id));
+      assert.deepStrictEqual({ rows: out.rows, left: out.left }, { rows: 4, left: 6 },
+        'undoing did not take back exactly what the unfinished run wrote');
+      const back = rowstore.readAll(id, 'records').map((x) => x.row || x);
+      assert.strictEqual(back.length, 6, 'the set is not back to what it held before');
+      assert.deepStrictEqual([...new Set(back.map((r) => r.si))].sort((a, b) => a - b), [0, 1],
+        'a position past the end of the list survived');
+      for (const r of back) assert.strictEqual(r.label, names[r.si], 'a kept record sits at the wrong position');
+      assert.ok(!rowstore.exists(id, 'records-undoing'), 'the copy it wrote beside the records was left on disk');
+      assert.strictEqual(stages.unfinishedAppend(stages.getSet(id)), null, 'the set still reads as half-written');
+
+      // and again does nothing
+      assert.ok((await stages.undoUnfinishedAppend(stages.getSet(id))).already, 'running it a second time did something');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { rowstore.remove(id); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // The check that undoing leaves the right number behind cannot be shown
+  // working on the happy path, where the counts agree and removing it changes
+  // nothing. So this set is genuinely SHORT a record it should have — one
+  // setting over two units, and only one of them on disk — as well as carrying
+  // an unfinished run. Undoing would then swap in a store missing real work,
+  // and the check is the only thing that notices.
+  async anUndoThatWouldLeaveTheWrongNumberIsRefused() {
+    const id = `s3-test-${Date.now().toString(36)}-uvf`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const names = ['count 75% always d1x t17h · argmax auto 24/7'];
+    const mk = (si, u, label) => ({
+      si, label, u, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+      entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null,
+      agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0, pnl: 1,
+    });
+    const doc = {
+      id, stage: 3, seq: 999969, name: 'S3 #uvf', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 2, settings: 1, settingLabels: names.slice() },
+      params: {}, recordsVersion: stages.RECORDS_V,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      w.push(mk(0, 0, names[0]));                                          // unit 1 of 2 — unit 2 is MISSING
+      w.push(mk(1, 0, 'count 75% always d1x t41h · argmax auto 24/7'));    // and an unfinished run on top
+      w.push(mk(1, 1, 'count 75% always d1x t41h · argmax auto 24/7'));
+      await w.close();
+      const before = fs.readFileSync(rowstore.storeFile(id, 'records'));
+
+      const gap = stages.unfinishedAppend(stages.getSet(id));
+      assert.ok(gap && gap.extra > 0, 'the fixture does not read as carrying an unfinished run');
+
+      let threw = null;
+      try { await stages.undoUnfinishedAppend(stages.getSet(id)); } catch (err) { threw = err.message; }
+      assert.ok(threw && /nothing was replaced/.test(threw),
+        `undoing swapped in a store holding the wrong number of records: ${threw}`);
+      assert.ok(before.equals(fs.readFileSync(rowstore.storeFile(id, 'records'))),
+        'the records were replaced anyway — this is priced work that cannot be got back');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { rowstore.remove(id); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // THE GUARD THAT WAS MISSING. The rename was guarded and the duplicates were
+  // not, so the owner pressed straight past the gap and paid seven hours for a
+  // run that priced around 1,260 rows that were about to be deleted.
+  async theMissingSettingsCannotBePricedWhileDuplicatesAreStillHeld() {
+    const id = `s3-test-${Date.now().toString(36)}-sur`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999970, name: 'S3 #sur', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 1, settingLabels: ['count 75% market t17h · argmax 3% 24/7'] },
+      params: { nullN: 9 }, recordsVersion: stages.RECORDS_V,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      // the enumerator needs the box's own price data, so this only has to get
+      // as far as the guard: with no stage 2 parent it stops there either way,
+      // and the point is WHICH message comes back.
+      let threw = null;
+      try { await stages.appendMissingSettings(stages.getSet(id)); } catch (err) { threw = err.message; }
+      assert.ok(threw, 'pricing did not refuse at all');
+      assert.ok(!/is going — one heavy job/.test(threw), `it stopped for the wrong reason: ${threw}`);
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // The three refusals are in the pass itself, in the order they have to be
+  // asked, and each names what to do about it.
+  async everyRefusalIsInThePassAndNotOnlyOnTheScreen() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const fn = src.slice(src.indexOf('async function appendMissingSettings('), src.indexOf('const AGREED_V ='));
+    const at = (needle) => fn.indexOf(needle);
+    assert.ok(at('settingsBehind(doc)') > 0, 'nothing refuses while a setting name is behind');
+    // the CALL is not enough: `if (false)` around the throw leaves the call
+    // sitting there and the refusal gone. The branch itself has to be checked.
+    assert.ok(at('undeclaredIn(held,') > 0, 'nothing works out whether the set still holds settings its block does not declare');
+    assert.ok(/const surplusNow = undeclaredIn\(held,[\s\S]{0,120}\n  if \(surplusNow\) \{/.test(fn),
+      'the count of settings the block does not declare is worked out and then not acted on, so pricing goes ahead over '
+      + 'duplicates that are about to be deleted');
+    assert.ok(at('unfinishedAppend(doc)') > 0, 'nothing refuses while a half-written run stands');
+    // read before used, or the whole pass dies on the spot with a reference error
+    assert.ok(at('const held =') < at('undeclaredIn(held,'),
+      'the list of names is read AFTER the guard that uses it — a const read before its own line throws, so the pass '
+      + 'would die instantly rather than refuse');
+    // and the stop is asked between units, on both paths
+    assert.ok(/if \(wantsStop\(\)\) break;/.test(fn), 'the one-at-a-time path cannot be stopped');
+    assert.ok(/wantsStop\(\);\s+\/\/ asked after every unit/.test(fn), 'the pooled path is never asked to stop');
+    assert.ok(/if \(pool && pool\.abort\) pool\.abort\(\)/.test(fn),
+      'stopping the pooled path does not abort the pool — forEach takes three arguments and ignores a fourth, so a stop '
+      + 'passed that way is a button that silently does nothing');
+    assert.ok(/if \(stopped\) \{/.test(fn) && fn.indexOf('if (stopped) {') < fn.indexOf('doc.appends = ['),
+      'a stopped run writes the set’s list of names anyway, which hides half-covered settings among whole ones');
+  },
+
   // DROPPING THE SETTINGS THE BLOCK NO LONGER DECLARES (owner order,
   // 2026-08-30: "drop the 1,008 market duplicates GO NOW!").
   //
