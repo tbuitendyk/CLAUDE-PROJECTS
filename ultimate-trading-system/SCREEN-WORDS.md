@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **93a9b1421acd — what the box is serving**, not from the working tree.
+Generated from **a4e9e8139129 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -272,7 +272,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (95)
+## What the controls are called (97)
 
 - `— pick a stage`
 - `+both`
@@ -280,7 +280,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `1v`
 - `alongside`
 - `any`
+- `apply settings`
 - `arm`
+- `auto-apply settings`
 - `average`
 - `avg held-back`
 - `avg held-back $`
@@ -433,10 +435,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - are ways of asking that did not exist when it ran, so nothing here can answer for them.
 - unit(s); nothing already priced is read, touched or priced again.
 
-## Every word, flat (315)
+## Every word, flat (316)
 
 ```
-1v 3.A 3.B above. accordingly. active actually added adding after again again. agreed all alongside already always always-long and answer any appear apply are argmax arm arrow as asking asks at average averaged avg away away. back back. background band be beat because before belong below beside best block board Boards BOOST both box breakout bring broken building by call campaign can cannot carry child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data decision declared declares declares. Delete did directional DOES does done each Each either empty entry every Every exactly exist exists failed FAILED families few fewer fill filled filling fills filter filter. filters fingerprint first first. fixed floors floors. for forecast form forward four from fuller gate going held held-back helped here history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move near-copies never next No NOT not notes nothing now null numbers of of. on One one opening opinions or order Ordered other out over OWN own page parent parents per pick picked picking PLAN. press prev priced priced. prices Pricing pricings proved provenance put puts quorum ran ran. ranked read real record records rest restart. rests row rows rule. run rung running save saved score screen seconds. section sections selections service set SET set. sets setting settings Settings shape share show showed showing shows. since Size smaller so some sort stage Stage STAMP stops suggests. table Table tables takes test than that the The their them them. They THIS this This ties time to top totalled totalling touched touched. trade. trades trail training tried unit units voices votes vs was way. ways what What when where whole why window with With without worked wrote yet you
+1v 3.A 3.B above. accordingly. active actually added adding after again again. agreed all alongside already always always-long and answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged avg away away. back back. background band be beat because before belong below beside best block board Boards BOOST both box breakout bring broken building by call campaign can cannot carry child chunk clear cleared coin coins column columns comes committee committees comparable comparisons conviction copy cost could count Data decision declared declares declares. Delete did directional DOES does done each Each either empty entry every Every exactly exist exists failed FAILED families few fewer fill filled filling fills filter filter. filters fingerprint first first. fixed floors floors. for forecast form forward four from fuller gate going held held-back helped here history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead left LOGREG looks. market MATCH maximum means median member members minimum missing money move near-copies never next No NOT not notes nothing now null numbers of of. on One one opening opinions or order Ordered other out over OWN own page parent parents per pick picked picking PLAN. press prev priced priced. prices Pricing pricings proved provenance put puts quorum ran ran. ranked read real record records rest restart. rests row rows rule. run rung running save saved score screen seconds. section sections selections service set SET set. sets setting settings Settings shape share show showed showing shows. since Size smaller so some sort stage Stage STAMP stops suggests. table Table tables takes test than that the The their them them. They THIS this This ties time to top totalled totalling touched touched. trade. trades trail training tried unit units voices votes vs was way. ways what What when where whole why window with With without worked wrote yet you
 ```
 
 ---
