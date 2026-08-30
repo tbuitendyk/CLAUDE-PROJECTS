@@ -3008,7 +3008,7 @@ function bPinnedRecord(r) {
 // leaves records at positions the list does not reach, and NOTHING is written
 // down to say so. This is drawn first because nothing else may run until it
 // is settled, and every other pass refuses while it stands.
-// WHAT THE CHECK FOUND (owner, 2026-08-30: "how do i know you haven\u2019t made a
+// WHAT THE CHECK FOUND (owner, 2026-08-30: "how do i know you haven’t made a
 // bunch more issues?"). Every line is a plain statement about the records that
 // is either true or it is not, and a false one says how many and shows three.
 function bCheckLine(doc, check) {
@@ -3017,12 +3017,12 @@ function bCheckLine(doc, check) {
       <span class="muted">reads every record and says whether the set is sound. It adds nothing and changes nothing.</span></p>`;
   }
   if (check.error) return `<p class="note warn">the check could not run: ${esc(check.error)}</p>`;
-  const rows = (check.checks || []).map((x) => `<li class="${x.ok ? 'pos' : 'neg'}"><b>${x.ok ? 'yes' : 'NO'}</b> \u2014 ${esc(x.name)}
+  const rows = (check.checks || []).map((x) => `<li class="${x.ok ? 'pos' : 'neg'}"><b>${x.ok ? 'yes' : 'NO'}</b> — ${esc(x.name)}
     <span class="muted">${esc(x.detail || '')}</span></li>`).join('');
   const b = check.block;
   const blockLine = !b ? ''
     : b.why ? `<li class="muted">the set could not be compared with its own block: ${esc(b.why)}</li>`
-      : `<li class="${b.ok ? 'pos' : 'neg'}"><b>${b.ok ? 'yes' : 'NO'}</b> \u2014 the set holds exactly what its block declares
+      : `<li class="${b.ok ? 'pos' : 'neg'}"><b>${b.ok ? 'yes' : 'NO'}</b> — the set holds exactly what its block declares
         <span class="muted">${Number(b.held).toLocaleString()} held, ${Number(b.declared).toLocaleString()} declared,
         ${Number(b.surplus).toLocaleString()} it holds and the block does not, ${Number(b.missing).toLocaleString()} the block declares and it does not</span></li>`;
   return `<div class="panel" style="border-color:var(--${check.ok && (!b || b.ok) ? 'pos' : 'neg'})">
