@@ -2644,6 +2644,27 @@ async function bRedrawPeggedToCoinHead() {
   }));
 }
 
+// SHOW IN 3.B BRINGS TABLE 3.B TO YOU. Every other change to that table holds
+// the page still on purpose, because the owner is already looking at it. This
+// one is pressed from the table ABOVE and its whole point is the table below,
+// so holding still would leave the answer off the bottom of the screen.
+async function bRedrawScrolledToCoinHead() {
+  await drawBoards();
+  holdScrollMemory();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    holdScrollMemory();
+    const head = document.querySelector('[data-bcoinhead]');
+    if (head) {
+      // its own heading and filters sit above the head row, so land a little
+      // higher than the row itself or they are cut off the top
+      window.scrollBy(0, head.getBoundingClientRect().top - 180);
+      rememberScroll(tab);
+    } else {
+      restoreScroll(tab);
+    }
+  }));
+}
+
 function bWirePager(root) {
   if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
   const goTo = (key, from) => {
@@ -2762,7 +2783,11 @@ function bFilterGrid(key, specs, spread) {
       return `<select data-bfilter="${key}:${id}"><option value="">any</option>${
         opts.map((o) => `<option value="${esc(o)}"${v === o ? ' selected' : ''}>${esc(o)}</option>`).join('')}</select>`;
     }
-    return `<input data-bfilter="${key}:${id}" type="${kind === 'num' ? 'number' : 'text'}" step="any" value="${esc(v)}">`;
+    // a fifth element of 'wide' on a text box widens it: a setting's name is
+    // far longer than a number and a box that cannot show it is a box that
+    // cannot be checked
+    return `<input data-bfilter="${key}:${id}" type="${kind === 'num' ? 'number' : 'text'}" step="any" value="${esc(v)}"${
+      opts === 'wide' ? ' style="width:26rem"' : ''}>`;
   };
   const sp4 = spread || null;
   const stats = (sp) => {
@@ -2775,7 +2800,8 @@ function bFilterGrid(key, specs, spread) {
   // word on the screen that the closed word list cannot see.
   const head = sp4 ? `<span></span><span></span><span class="fhead">minimum</span><span class="fhead">median</span><span class="fhead">average</span><span class="fhead">maximum</span>` : '';
   return `<div class="filters${sp4 ? ' withspread' : ''}">${head}${specs.map((sp) => `<label title="${esc(sp[3])}"><span class="fname">${esc(sp[1])}</span><span class="fbox">${box(sp)}</span>${stats(sp)}</label>`).join('')}
-    <span class="frow"><button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button></span></div>${
+    <span class="frow"><button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button>${
+  key === 'S3C' && bView().s3cBeforePin ? ' <button data-bunpin3b title="puts the filters back exactly as they were before show in 3.B took them off, and lets go of the setting it pinned.">put the filters back</button>' : ''}</span></div>${
   sp4 ? `<p class="note">The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.</p>` : ''}`;
 }
 function bWireFilters(root) {
@@ -2789,12 +2815,20 @@ function bWireFilters(root) {
       else drawBoards().then(() => restoreScroll(tab));
     };
   });
+  $(root).querySelectorAll('[data-bunpin3b]').forEach((btn) => {
+    btn.onclick = () => {
+      const all = { ...(bView().filters || {}) };
+      all.S3C = { ...(bView().s3cBeforePin || {}) };
+      bSaveView({ filters: all, s3cBeforePin: null, coins: { ...(bView().coins || {}), offset: 0 } });
+      bRedrawPeggedToCoinHead();
+    };
+  });
   $(root).querySelectorAll('[data-bfilterclear]').forEach((btn) => {
     btn.onclick = () => {
       const key = btn.dataset.bfilterclear;
       const all = { ...(bView().filters || {}) };
       delete all[key];
-      bSaveView({ filters: all, [`from${key}`]: 0 });
+      bSaveView({ filters: all, [`from${key}`]: 0, ...(key === 'S3C' ? { s3cBeforePin: null } : {}) });
       if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
       else drawBoards().then(() => restoreScroll(tab));
     };
@@ -3101,7 +3135,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['minTrades', 'avg trades at least', 'num', 'hides rows with fewer average entries than this. Empty hides nothing.'],
     ['minVsLong', 'avg vs always-long at least, $', 'num', 'hides rows that beat just holding the coin by less than this. Empty hides nothing.'],
     ['minAgreed', 'share that agreed at least, %', 'num', 'hides rows whose records agreed by less than this on average. Empty hides nothing.'],
-    ['setting', 'setting', 'text', 'shows only the coins of the setting named here, matched whole. show in 3.B on a row of Table 3.A fills this in for you. Empty shows every setting.'],
+    ['setting', 'setting', 'text', 'shows only the coins of the setting named here, matched whole. show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${bCoinSortBtn(view, 'setting', '↑')}</th>
@@ -3146,9 +3180,19 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   // so the row that was pressed stays where it was.
   $(mount).querySelectorAll('[data-bpin3b]').forEach((btn) => {
     btn.onclick = () => {
-      bSaveFilters('S3C', { setting: btn.dataset.bpin3b });
-      bSaveView({ coins: { ...(bView().coins || {}), offset: 0 } });
-      bRedrawPeggedToCoinHead();
+      // EVERY OTHER FLOOR COMES OFF (owner order, 2026-08-30). The point of
+      // the button is to see that setting's coins — all of them — and a floor
+      // left on from earlier would hide some of them with no hint why.
+      // What was there is kept so it can be put back in one press.
+      const all = { ...(bView().filters || {}) };
+      const before = all.S3C || {};
+      all.S3C = { setting: btn.dataset.bpin3b };
+      bSaveView({
+        filters: all,
+        s3cBeforePin: before,
+        coins: { ...(bView().coins || {}), offset: 0 },
+      });
+      bRedrawScrolledToCoinHead();
     };
   });
   $(mount).querySelectorAll('[data-brec]').forEach((btn) => {

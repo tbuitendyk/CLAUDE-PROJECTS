@@ -1805,16 +1805,34 @@ module.exports = {
       'the number is not the row\'s place in the whole table, so page two would start at 1 again');
     assert.ok(/data-bpin3b="\$\{esc\(String\(r\.label\)\.split\(' · '\)\[0\]\)\}"/.test(ui),
       'the button does not carry the setting name Table 3.B is keyed by');
-    assert.ok(/bSaveFilters\('S3C', \{ setting: btn\.dataset\.bpin3b \}\)/.test(ui), 'the button is drawn but never wired');
+    assert.ok(/btn\.onclick = \(\) => \{[\s\S]{0,600}btn\.dataset\.bpin3b/.test(ui), 'the button is drawn but never wired');
     // A BUTTON THAT WRAPS MAKES EVERY ROW OF THE TABLE TALLER (RULE FOUR).
     // Three words in a narrow column broke over two lines and doubled the
     // height of all 329,280 rows.
     assert.ok(/data-bpin3b="[^"]*"[^>]*white-space:nowrap[^>]*>show in 3\.B<\/button>/.test(ui),
       'the button can wrap, which makes every row of Table 3.A twice as tall');
-    assert.ok(/bSaveView\(\{ coins: \{ \.\.\.\(bView\(\)\.coins \|\| \{\}\), offset: 0 \} \}\)/.test(ui),
+    assert.ok(/offset: 0 \},\n      \}\);/.test(ui),
       'pinning leaves the every-coin table on whatever page it was, which can be past the end of what is left');
-    assert.ok(/bRedrawPeggedToCoinHead\(\);\n    \};\n  \}\);\n  \$\(mount\)\.querySelectorAll\('\[data-brec\]'\)/.test(ui),
-      'pinning does not hold the page still, so pressing it moves the row out from under the cursor');
+    // EVERY OTHER FLOOR COMES OFF, or some of the setting's coins stay hidden
+    // by something set earlier with no hint why
+    assert.ok(/all\.S3C = \{ setting: btn\.dataset\.bpin3b \};/.test(ui),
+      'pinning adds the setting beside whatever floors were already on, so it cannot show all of its coins');
+    // ...and what was there is kept, so one press puts it back
+    assert.ok(/s3cBeforePin: before,/.test(ui), 'nothing remembers the filters that were taken off');
+    assert.ok(/data-bunpin3b/.test(ui) && /put the filters back/.test(ui),
+      'there is no way to put the filters back after show in 3.B took them off');
+    assert.ok(/all\.S3C = \{ \.\.\.\(bView\(\)\.s3cBeforePin \|\| \{\}\) \};/.test(ui),
+      'putting them back does not restore what was remembered');
+    assert.ok(/s3cBeforePin: null/.test(ui), 'the remembered filters are never let go of, so the button never goes away');
+    // it takes the reader TO Table 3.B rather than holding still: it is
+    // pressed from the table above and the answer is the one below
+    assert.ok(/bRedrawScrolledToCoinHead\(\);/.test(ui), 'pinning does not bring Table 3.B onto the screen');
+    assert.ok(/async function bRedrawScrolledToCoinHead\(\)/.test(ui), 'the scroll-to helper is gone');
+    // the box has to be able to show a whole setting name
+    assert.ok(/opts === 'wide' \? ' style="width:26rem"' : ''/.test(ui),
+      'a text filter cannot be widened, so the setting box cannot show what is in it');
+    assert.ok(/'shows only the coins of the setting named here[^']*', 'wide'\]/.test(ui),
+      'the setting box is not the wide one, so its own value cannot be read');
     // the box that says what it is pinned to, so it can be seen and cleared
     assert.ok(/\['setting', 'setting', 'text',/.test(ui),
       'nothing on Table 3.B shows which setting it is pinned to, so it cannot be seen or undone');
