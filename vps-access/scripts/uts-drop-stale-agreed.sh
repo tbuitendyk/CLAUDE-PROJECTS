@@ -17,6 +17,13 @@ print('    entries', len(m), ' by bar', dict(bars))
 "
   rm -f "$f" && echo "    deleted — it will be worked out again when the tables are next opened"
 done
+# ...AND THE TABLES BUILT FROM IT. They were totalled from the half-built
+# answers, so a fifth of their rows carry no realised agreement. Derived from
+# the records, so they cost minutes and no information.
+for f in "$D"/s3-*-tally.json.gz; do
+  [ -e "$f" ] || continue
+  rm -f "$f" && echo "  deleted $f — the tables will be totalled again"
+done
 echo
 echo "== what is left beside the set =="
 ls -la "$D"/s3-*-tally.json.gz "$D"/s3-*-agreed.json.gz 2>/dev/null || echo "  no derived files: both will rebuild"
