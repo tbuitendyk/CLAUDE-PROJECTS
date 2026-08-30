@@ -1882,6 +1882,201 @@ module.exports = {
   // from a ratio: multiplying the dials out gave 526,848 where the enumerator
   // says 524,832, and a setting priced twice is invisible in a table of half a
   // million rows.
+  // THE RENAME, RUN END TO END ON A REAL RECORD STORE (owner order,
+  // 2026-08-30: "regarding the rename the voices first option ... GO NOW!").
+  //
+  // Exposing the one-voice share put it into the NAME of every setting that
+  // weighs by `voices`. The fields underneath never moved — a record with no
+  // share stored already resolves to 98, the number that was in the code — so
+  // this is a rename and only a rename. But the name is what a block's declared
+  // list is matched against, so until it is done the owner's set reads as
+  // holding 65,856 settings its own block does not declare.
+  //
+  // A real store, written and read back, because every way this can go wrong is
+  // in the writing: a row lost, a name half-changed, the spare left in place, a
+  // record that is not a `voices` one quietly rewritten.
+  async theSettingNamesAreBroughtUpToDateWithoutTouchingAResult() {
+    const id = `s3-test-${Date.now().toString(36)}-rn`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const mk = (si, rule, tHours, extra) => ({
+      si,
+      label: `${rule} 75%${extra && extra.persist ? ` +hold${extra.persist}` : ''} always d0.25x t${tHours}h · argmax auto 24/7`,
+      decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+      entry: 'breakout', gate: 'always', dMult: 0.25, tHours, trailMult: null, armMult: null,
+      agreeRule: rule, agreeBar: 'all', agreePct: 75,
+      agreeBoth: false, agreePersist: (extra && extra.persist) || 0,
+      members: 6, pnl: 10, trades: 3,
+      holdout: { pnl: 30, trades: 4, stops: 1, vsAlwaysLong: 2 },
+      beat: 3, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+    });
+    // four settings, two of which weigh by voices; one of those carries a hold
+    const made = [mk(0, 'count', 17), mk(1, 'voices', 41), mk(2, 'families', 65), mk(3, 'voices', 89, { persist: 2 })];
+    const doc = {
+      id, stage: 3, seq: 999977, name: 'S3 #rn', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 4, settingLabels: made.map((r) => r.label) },
+      params: { nullN: 9 }, recordsVersion: 2,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      // two blocks, so the walk really walks
+      for (const r of made.slice(0, 2)) w.push(r);
+      w.flush();
+      for (const r of made.slice(2)) w.push(r);
+      await w.close();
+
+      assert.strictEqual(stages.settingsBehind(doc), 2, 'the two voices settings do not read as behind');
+
+      const out = await stages.renameSettingsToV3(stages.getSet(id));
+      assert.strictEqual(out.settings, 2, 'it did not rename exactly the two voices settings');
+      assert.strictEqual(out.rows, made.length, 'the renamed store holds a different number of records');
+
+      const back = rowstore.readAll(id, 'records').map((x) => x.row || x);
+      assert.strictEqual(back.length, made.length, 'a record was lost or gained');
+      const byLabel = new Map(back.map((r) => [r.label, r]));
+      assert.ok(byLabel.has('voices 75% +voice98 always d0.25x t41h · argmax auto 24/7'),
+        `the voices setting was not renamed: ${back.map((r) => r.label).join(' | ')}`);
+      assert.ok(byLabel.has('voices 75% +voice98 +hold2 always d0.25x t89h · argmax auto 24/7'),
+        'the share goes in the wrong place when the setting also holds its call');
+      assert.ok(byLabel.has('count 75% always d0.25x t17h · argmax auto 24/7'),
+        'a setting that does not weigh by voices was renamed too');
+      assert.ok(byLabel.has('families 75% always d0.25x t65h · argmax auto 24/7'),
+        'a setting that does not weigh by voices was renamed too');
+
+      // NOT ONE RESULT MOVED. This is the whole promise the screen makes.
+      for (const r of back) {
+        const was = made.find((m) => m.si === r.si);
+        assert.deepStrictEqual(
+          { pnl: r.pnl, trades: r.trades, beat: r.beat, pairs: r.pairs, lead: r.lead, hold: r.holdout.pnl },
+          { pnl: was.pnl, trades: was.trades, beat: was.beat, pairs: was.pairs, lead: was.lead, hold: was.holdout.pnl },
+          `renaming moved a result on setting ${r.si}`);
+      }
+      // and every voices record now SAYS its share rather than leaving it assumed
+      for (const r of back) if (r.agreeRule === 'voices') assert.strictEqual(r.agreeCopy, 98, 'a renamed record does not carry its share');
+
+      const after = stages.getSet(id);
+      assert.strictEqual(stages.settingsBehind(after), 0, 'the set still reads as behind after being brought up to date');
+      assert.strictEqual(after.recordsVersion, stages.RECORDS_V, 'the set does not record which shape it is at');
+      assert.deepStrictEqual(after.plan.settingLabels.slice().sort(), back.map((r) => r.label).sort(),
+        'the set’s own list of names and the names on its records do not agree');
+
+      // the spare is gone: left behind it would be counted as part of the set
+      assert.ok(!rowstore.exists(id, 'records-renaming'), 'the copy it wrote beside the records was left on disk');
+
+      // RUNNING IT TWICE CHANGES NOTHING. A migration that is not safe to
+      // repeat is one nobody can press again after an interruption.
+      const again = await stages.renameSettingsToV3(stages.getSet(id));
+      assert.strictEqual(again.settings, 0, 'running it a second time renamed something');
+      assert.strictEqual(rowstore.count(id, 'records'), made.length, 'running it a second time changed the record count');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { rowstore.remove(id); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // MIGRATE BESIDE, VERIFY, THEN SWAP (RULE NINE). The check that the copy
+  // holds as many records as the set did is the only thing standing between a
+  // short write and a truncated store swapped in over hours of compute that
+  // cannot be re-derived from anything but a full re-run.
+  //
+  // The happy path cannot show that check working, because on the happy path
+  // the counts agree and removing it changes nothing. So this makes them
+  // disagree — a sidecar claiming more records than the blocks hold, which is
+  // what a service killed mid-write leaves behind — and asks for a refusal.
+  async aShortCopyIsRefusedAndTheRecordsAreLeftExactlyAsTheyWere() {
+    const id = `s3-test-${Date.now().toString(36)}-vfy`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const mk = (si, rule) => ({
+      si, label: `${rule} 75% always d0.25x t17h · argmax auto 24/7`,
+      decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+      entry: 'breakout', gate: 'always', dMult: 0.25, tHours: 17, trailMult: null, armMult: null,
+      agreeRule: rule, agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
+      members: 6, pnl: 10, trades: 3, holdout: { pnl: 30, trades: 4, stops: 1, vsAlwaysLong: 2 },
+      beat: 3, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+    });
+    const made = [mk(0, 'voices'), mk(1, 'count')];
+    const doc = {
+      id, stage: 3, seq: 999975, name: 'S3 #vfy', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 2, settingLabels: made.map((r) => r.label) },
+      params: { nullN: 9 }, recordsVersion: 2,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      for (const r of made) w.push(r);
+      await w.close();
+
+      const before = fs.readFileSync(rowstore.storeFile(id, 'records'));
+      // a sidecar that claims a record the blocks do not hold
+      const meta = `${rowstore.storeFile(id, 'records')}.meta.json`;
+      const m = JSON.parse(fs.readFileSync(meta, 'utf8'));
+      m.rows += 1;
+      fs.writeFileSync(meta, JSON.stringify(m));
+
+      let threw = null;
+      try { await stages.renameSettingsToV3(stages.getSet(id)); } catch (err) { threw = err.message; }
+      assert.ok(threw && /nothing was replaced/.test(threw),
+        `a copy holding fewer records than the set was swapped in anyway: ${threw}`);
+      assert.ok(before.equals(fs.readFileSync(rowstore.storeFile(id, 'records'))),
+        'the records were replaced despite the copy being short — this is hours of compute that cannot be got back');
+      assert.strictEqual(stages.getSet(id).recordsVersion, 2,
+        'the set was marked as moved even though it was not');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { rowstore.remove(id); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // Pricing the missing settings BEFORE renaming prices every behind-named
+  // setting a second time under its new name. The screen says so; this is the
+  // guard that actually holds, because the screen is not the only way in.
+  async theMissingSettingsCannotBePricedWhileTheNamesAreBehind() {
+    const id = `s3-test-${Date.now().toString(36)}-ord`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999976, name: 'S3 #ord', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 2, settingLabels: ['voices 75% always d1x t17h · argmax auto 24/7', 'count 75% always d1x t17h · argmax auto 24/7'] },
+      params: { nullN: 9 }, recordsVersion: 2,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      let threw = null;
+      try { await stages.appendMissingSettings(stages.getSet(id)); } catch (err) { threw = err.message; }
+      assert.ok(threw && /named in the older way/.test(threw),
+        `pricing was allowed while a name was behind, so those settings would be priced twice: ${threw}`);
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // The cheap count on the screen and the rename itself must agree about which
+  // names are behind — one reads the set's list of names, the other rebuilds
+  // each name from its record's own fields, and they are two different reads.
+  async theCountOnTheScreenAgreesWithWhatTheRenameWouldActuallyDo() {
+    const agreement = require('../lib/agreement');
+    for (const rule of agreement.AGREE_RULES) {
+      for (const bar of agreement.AGREE_BARS) {
+        for (const persist of [0, 2]) {
+          const r = {
+            entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null,
+            agreeRule: rule, agreeBar: bar, agreePct: 75, agreeBoth: false, agreePersist: persist,
+          };
+          // the name as it was written before the share went into it
+          const today = stages.renamedLabelOf({ ...r, label: 'x · argmax auto 24/7' });
+          const head = String(today).split(' · ')[0];
+          const older = head.replace(/ \+voice\d+/, '');
+          assert.strictEqual(stages.BEHIND_V3(older), rule === 'voices',
+            `the screen and the rename disagree about "${older}"`);
+          assert.strictEqual(stages.BEHIND_V3(head), false,
+            `a name written today already reads as behind: "${head}"`);
+        }
+      }
+    }
+  },
+
   // A SET THIS SIZE IS THE NORMAL CASE, AND IT KILLED THE BUTTON (2026-08-30).
   //
   // The next free setting number was worked out with `Math.max(-1, ...list)`.

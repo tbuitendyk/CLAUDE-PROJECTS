@@ -2999,7 +2999,32 @@ function bPinnedRecord(r) {
 //
 // Every number here comes from the launch's own enumerator, so what is offered
 // and what would run are the same thing.
+// THE SETTING NAMES ARE BEHIND (owner order, 2026-08-30). Drawn above the
+// fill-in line on purpose: filling in BEFORE renaming prices every one of
+// these a second time under its new name, so the order matters and the screen
+// has to make it obvious.
+function bRenameLine(doc, renaming) {
+  if (renaming && renaming.error) {
+    return `<p class="note warn">renaming the settings failed: ${esc(renaming.error)} — nothing was replaced; the records are exactly as they were.</p>`;
+  }
+  if (renaming && renaming.running) {
+    const pct = renaming.total ? ` (${Math.floor((renaming.done / renaming.total) * 100)}%)` : '';
+    return `<p class="note">renaming the settings: <b>${Number(renaming.done).toLocaleString()} of ${Number(renaming.total).toLocaleString()} parts</b>${pct}
+      — the new names are written beside the old records and only swapped in once they are all there. This page asks again every few seconds.</p>`;
+  }
+  const behind = (renaming && renaming.behind) || 0;
+  if (!behind) return '';
+  return `<p class="note warn"><b>${Number(behind).toLocaleString()} of this set\u2019s settings are named without the share that decides
+    whether two forecasts count as one voice.</b> The names written today carry it, so this set\u2019s own block reads as not declaring
+    them \u2014 and filling in the missing settings first would price every one of them a second time under its new name.
+    Renaming changes names only: nothing is priced again, and no result moves.
+    <button id="bRename" data-brename="${esc(doc.id)}">bring the setting names up to date</button></p>`;
+}
 function bFillInLine(doc, gap, filling) {
+  // NOT OFFERED WHILE THE NAMES ARE BEHIND. Pressed in that order it would
+  // price every behind-named setting a second time; the pass refuses too, and
+  // this is so the owner never gets as far as the refusal.
+  const behind = (gap && gap.behind) || 0;
   if (filling && filling.error) {
     return `<p class="note warn">filling in the missing settings failed: ${esc(filling.error)} — nothing already priced was touched.</p>`;
   }
@@ -3021,7 +3046,9 @@ function bFillInLine(doc, gap, filling) {
     The missing ${Number(gap.missing).toLocaleString()} are ways of asking that did not exist when it ran, so nothing here can answer for them.
     Pricing them is ${Number(gap.pricings).toLocaleString()} pricings over ${gap.units} unit(s); nothing already priced is read, touched or priced again.
     ${stop ? `<b>It cannot be done on this set:</b> ${esc(gap.gate.message)}`
-    : `<button id="bFillIn" data-bfillin="${esc(doc.id)}">fill in the missing settings</button>`}</p>`;
+    : behind ? `<b>Bring the setting names up to date first</b> \u2014 ${Number(behind).toLocaleString()} of this set\u2019s
+      settings are named the older way, and pricing now would price every one of them a second time under its new name.`
+      : `<button id="bFillIn" data-bfillin="${esc(doc.id)}">fill in the missing settings</button>`}</p>`;
 }
 
 // A TABLE WRITES INTO ITS MOUNT ONLY IF THE MOUNT IS STILL THERE (2026-08-29).
@@ -3186,11 +3213,12 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, ...bFilters('S3R') }).toString();
-  const [ranked, coins, gap, filling] = await Promise.all([
+  const [ranked, coins, gap, filling, renaming] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
     apiOr(`api/stageset/${doc.id}/missing`, null),
     apiOr(`api/stageset/${doc.id}/fill-in/status`, null),
+    apiOr(`api/stageset/${doc.id}/rename-settings/status`, null),
   ]);
   // A finished set whose tables are missing totals itself when opened (the
   // durable fix, owner order 2026-08-27): the service reports how far the
@@ -3220,6 +3248,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S3R', swHead)}
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
+    ${bRenameLine(doc, renaming)}
     ${bFillInLine(doc, gap, filling)}
     <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
     ${bFilterGrid('S3R', [
@@ -3397,6 +3426,19 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       bRedrawPeggedToCoinHead();
     };
   });
+  $(mount).querySelectorAll('[data-brename]').forEach((btn) => {
+    btn.onclick = async () => {
+      // eslint-disable-next-line no-alert
+      if (!confirm('Bring this set\u2019s setting names up to date?\n\n'
+        + 'Names only. Nothing is priced again and no result moves. The new records are written beside the old ones '
+        + 'and swapped in only once they are all there, so an interruption leaves the set exactly as it is. The tables '
+        + 'are worked out again afterwards.')) return;
+      btn.disabled = true;
+      btn.textContent = 'starting…';
+      try { await post(`api/stageset/${btn.dataset.brename}/rename-settings`, {}); } catch (err) { alert(err.message); }
+      drawBoards().then(() => restoreScroll(tab));
+    };
+  });
   $(mount).querySelectorAll('[data-bfillin]').forEach((btn) => {
     btn.onclick = async () => {
       const n = Number((gap && gap.missing) || 0).toLocaleString();
@@ -3410,7 +3452,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       drawBoards().then(() => restoreScroll(tab));
     };
   });
-  if (filling && filling.running) {
+  if ((filling && filling.running) || (renaming && renaming.running)) {
     bTallyPoll = setTimeout(() => { if (tab === 'boards') bPollRedraw(); }, 4000);
   }
   bWirePager(mount);

@@ -1487,7 +1487,124 @@ const TALLY_V = 4;
 // The stamp stays. It is one line at a launch, and it is what lets the NEXT
 // shape change be written as a migration rather than as archaeology over which
 // era a set came from.
-const RECORDS_V = 2;
+const RECORDS_V = 3;
+
+// ---- ONE-OFF: the setting names gained the one-voice share ----------------
+//
+// Owner order, 2026-08-30: "rename the voices first".
+//
+// Putting the one-voice share on screen also put it into the NAME of every
+// setting that weighs by `voices`: what was written `voices 75%` is written
+// `voices 75% +voice98` now. NOTHING UNDERNEATH CHANGED — a record with no
+// share stored on it already resolves to 98, which is the number that was in
+// the code — so this is a rename and only a rename.
+//
+// But the name is what a block's declared list is matched against. Until it is
+// done the set reads as holding 65,856 settings its own block does not declare,
+// and filling in the missing ones would price every one of them a SECOND time
+// under the new name.
+//
+// RULE NINE: the records move with the process, so no reader anywhere has to
+// ask which era a name came from. This goes out with the job once every set on
+// the box is at v3.
+function renamedLabelOf(r) {
+  const agr = require('./stagework').agrOf(r);
+  const parts = String(r.label || '').split(' · ');
+  const head = `${agreeLabel({
+    rule: agr.rule, pct: agr.pct, bar: agr.bar, copy: agr.copy, bothModels: agr.both, persist: agr.persist,
+  })} ${shapeLabel(r)}`;
+  return head === parts[0] ? null : [head, ...parts.slice(1)].join(' · ');
+}
+// HOW MANY ARE BEHIND, off the set's OWN list of names rather than a walk over
+// three million records — this is asked every time the screen draws.
+//
+// The test is a string one, and that is safe here for one reason: agreeLabel
+// puts +voiceN straight after the share, for the voices way of weighing and
+// for nothing else. A test holds those two together. The MIGRATION itself
+// never reads a name — it rebuilds each one from the record's own fields.
+const BEHIND_V3 = (label) => /^voices \d+%/.test(label) && !/ \+voice\d+/.test(label);
+function settingsBehind(doc) {
+  const held = ((doc || {}).plan || {}).settingLabels || [];
+  let n = 0;
+  for (const L of held) if (BEHIND_V3(L)) n++;
+  return n;
+}
+// MIGRATE BESIDE, VERIFY, THEN SWAP (RULE NINE). The records are hours of
+// compute that cannot be re-derived from anything but a full re-run, so the
+// one on disk is not touched until a whole new one has been written and
+// counted. An interrupted run leaves a half-written spare and the real store
+// exactly as it was.
+//
+// BLOCK BOUNDARIES: one source block in, one flush out, so they line up. The
+// new names are nine characters longer, so a block at the size limit can still
+// split in two — which is why the check below is on ROWS and not on blocks.
+// Nothing outside the totals indexes a stage 3 block, and the totals are
+// deleted here and rebuilt.
+async function renameSettingsToV3(doc, note = null) {
+  const id = doc.id;
+  const busy = stageBusy();
+  if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
+  const wasRows = rowstore.count(id, 'records');
+  const blocks = rowstore.blocksOf(id, 'records');
+  const n = Array.isArray(blocks) ? blocks.length : 0;
+  if (!n || !wasRows) throw new Error(`${doc.name} has no records to rename`);
+
+  const SPARE = 'records-renaming';
+  // never rowstore.remove(): that takes the WHOLE store directory with it
+  for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
+    rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
+    try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
+  }
+
+  const w = rowstore.writer(id, SPARE, { offThread: true });
+  const renames = new Map();
+  let touched = 0;
+  if (note) note(0, n);
+  for (let b = 0; b < n; b++) {
+    for (const x of rowstore.readBlocks(id, 'records', [b]) || []) {
+      const r = x.row || x;
+      const to = renamedLabelOf(r);
+      if (!to) { w.push(r); continue; }
+      renames.set(r.label, to);
+      touched++;
+      // the share is written out rather than left to be assumed: a record
+      // says what it is (RULE NINE)
+      w.push({ ...r, label: to, agreeCopy: require('./stagework').agrOf(r).copy });
+    }
+    w.flush();
+    if (note) note(b + 1, n);
+  }
+  await w.close();
+
+  // VERIFY BEFORE ANYTHING IS REPLACED.
+  const gotRows = rowstore.count(id, SPARE);
+  if (gotRows !== wasRows) {
+    throw new Error(`the renamed copy holds ${gotRows} records and the set holds ${wasRows} — nothing was replaced`);
+  }
+  const check = (rowstore.readBlocks(id, SPARE, [0]) || []).map((x) => x.row || x);
+  if (!check.length) throw new Error('the renamed copy reads back empty — nothing was replaced');
+  for (const r of check) {
+    if (renamedLabelOf(r)) throw new Error(`a renamed record still reads as needing renaming: ${r.label}`);
+  }
+
+  // SWAP. Two renames inside one directory.
+  const from = rowstore.storeFile(id, SPARE);
+  const to = rowstore.storeFile(id, 'records');
+  fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
+  fs.renameSync(from, to);
+
+  // the set's own list of names, moved by the SAME map the records moved by
+  const plan = doc.plan || {};
+  const held = plan.settingLabels || [];
+  plan.settingLabels = held.map((L) => renames.get(L) || L);
+  doc.plan = plan;
+  doc.recordsVersion = RECORDS_V;
+  saveSet(doc);
+  // derived, so rebuilt rather than patched (RULE NINE)
+  try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  try { fs.rmSync(agreedFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  return { records: touched, settings: renames.size, rows: gotRows };
+}
 
 // WHAT A SET'S OWN BLOCK DECLARES AND ITS RECORDS DO NOT HOLD. Read-only, and
 // through the launch's own enumerator, so the number on the screen and the
@@ -1527,6 +1644,7 @@ function missingSettingsOf(id) {
   try { ({ settings } = relaunchShapeOf(doc)); } catch (err) { return { why: err.message }; }
   const missing = missingSettingsIn(held, settings);
   const coins = Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1;
+  const behind = settingsBehind(doc);
   return {
     held: held.length,
     declared: settings.length,
@@ -1535,6 +1653,7 @@ function missingSettingsOf(id) {
     pricings: missing.length * ((doc.plan || {}).units || 0) * (1 + Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)))),
     gate: tallyBudgetFor({ settings: settings.length, coins }),
     appends: (doc.appends || []).length,
+    behind,
   };
 }
 
@@ -1555,6 +1674,16 @@ async function appendMissingSettings(doc, pool = null, note = null) {
   const id = doc.id;
   const busy = stageBusy();
   if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
+  // ORDER MATTERS AND THE SCREEN CANNOT BE THE ONLY THING SAYING SO. A setting
+  // whose name is behind reads as one the block does not declare, so pricing
+  // the block's missing settings first would price every one of them a SECOND
+  // time under its new name — which is exactly what this pass promises never to
+  // do (owner order, 2026-08-30: no duplicate records).
+  const behind = settingsBehind(doc);
+  if (behind) {
+    throw new Error(`${behind.toLocaleString()} of this set's settings are named in the older way — bring the setting `
+      + 'names up to date first, or every one of them would be priced a second time under its new name');
+  }
   const { parent, records, settings } = relaunchShapeOf(doc);
   const held = (doc.plan || {}).settingLabels || [];
   if (!held.length) throw new Error(`${doc.name} does not record which settings it holds, so nothing can be added to it safely`);
@@ -2206,6 +2335,7 @@ module.exports = {
   spreadOf, S3_COIN_FILTERS,
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
   missingSettingsIn, nextSettingNumber,
+  renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   // the same pool every heavy job uses, so filling in a block is worked the
   // same way a launch is rather than on the one thread that answers pages
   createPoolForFillIn: () => createPool(),

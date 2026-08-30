@@ -772,6 +772,7 @@ app.get('/api/stageset/:id/stage2', (req, res) => {
 // instead of a bare refusal, and the page asks again until the tables land.
 // one filling-in at a time, in the service that owns the pool
 let fillIn = null;
+let renaming = null;   // the one-off that brings a set's setting names up to date
 app.get('/api/stageset/:id/ranked', (req, res) => {
   let out;
   try {
@@ -801,6 +802,40 @@ app.get('/api/stageset/:id/missing', (req, res) => {
   const out = stages.missingSettingsOf(req.params.id);
   if (!out) return res.status(404).json({ error: 'no such stage 3 record set' });
   return res.json(out);
+});
+// THE SETTING NAMES, BROUGHT UP TO DATE (owner order, 2026-08-30). Same shape
+// as filling in below it: started once, watched by asking, and it says what
+// went wrong rather than going quiet.
+app.post('/api/stageset/:id/rename-settings', (req, res) => {
+  if (renaming && !renaming.done) return res.json({ running: renaming.id, done: renaming.progress.done, total: renaming.progress.total });
+  const id = String(req.params.id || '');
+  const doc = stages.getSet(id);
+  if (!doc || doc.stage !== 3) return res.status(404).json({ error: 'no such stage 3 record set' });
+  const behind = stages.settingsBehind(doc);
+  if (!behind) return res.json({ already: true });
+  const run = { id, done: false, error: null, settings: 0, records: 0, progress: { done: 0, total: 0 } };
+  renaming = run;
+  run.promise = (async () => {
+    try {
+      const out = await stages.renameSettingsToV3(doc, (dn, tn) => { run.progress = { done: dn, total: tn }; });
+      run.settings = out.settings;
+      run.records = out.records;
+    } catch (err) {
+      run.error = String(err.message || err);
+    } finally {
+      run.done = true;
+    }
+  })();
+  return res.json({ started: true, settings: behind });
+});
+app.get('/api/stageset/:id/rename-settings/status', (req, res) => {
+  const doc = stages.getSet(String(req.params.id || ''));
+  const behind = doc ? stages.settingsBehind(doc) : 0;
+  if (!renaming || renaming.id !== String(req.params.id || '')) return res.json({ idle: true, behind });
+  return res.json({
+    running: !renaming.done, done: renaming.progress.done, total: renaming.progress.total,
+    settings: renaming.settings, records: renaming.records, error: renaming.error, behind,
+  });
 });
 app.post('/api/stageset/:id/fill-in', (req, res) => {
   if (fillIn && !fillIn.done) return res.json({ running: fillIn.id, done: fillIn.progress.done, total: fillIn.progress.total });

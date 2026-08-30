@@ -346,6 +346,19 @@ window.HELP = {
           + 'both in front of you.\n\n'
           + 'Every coin opens its own records separately, so a setting priced on many coins takes a moment.',
       },
+      bRename: {
+        what: 'Brings this record set\'s setting names up to date. Names only — nothing is priced again and no result moves.',
+        more: 'A setting that weighs by voices is named with the share that decides whether two forecasts count as one '
+          + 'voice, like "voices 75% +voice98". Some of this set\'s names do not carry that share.\n\n'
+          + 'Nothing underneath differs. A record with no share stored on it reads as 98, so every result on this '
+          + 'screen is the result it has always been.\n\n'
+          + 'But the name is what a set is matched against when working out which of its own block\'s settings it does '
+          + 'not hold. While the names disagree, those settings read as ones the set does not have — and pricing them '
+          + 'would price every one of them a second time under its new name. So this comes first, and filling in the '
+          + 'missing settings is not offered until it is done.\n\n'
+          + 'The new records are written BESIDE the old ones and counted before anything is replaced, so an '
+          + 'interruption leaves the set exactly as it was. The tables are worked out again afterwards.',
+      },
       bFillIn: {
         what: 'Prices the settings this record set\'s own block declares and its records do not hold, and adds them to it.',
         more: 'A set can be priced before its block is whole. This one ran when the quorum was five named choices; it is '
