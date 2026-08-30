@@ -7,10 +7,13 @@
 // whole block enumeration. Opens nothing for writing.
 const fs = require('fs');
 const path = require('path');
-const rowstore = require('./lib/rowstore');
-const stagework = require('./lib/stagework');
+// ABSOLUTE, because this file is copied to /tmp before it runs and require()
+// resolves against the FILE, not the working directory.
+const APP = '/opt/ultimate-trading-system';
+const rowstore = require(`${APP}/lib/rowstore`);
+const stagework = require(`${APP}/lib/stagework`);
 
-const src = fs.readFileSync('lib/stages.js', 'utf8');
+const src = fs.readFileSync(`${APP}/lib/stages.js`, 'utf8');
 const cut = (name) => {
   const i = src.indexOf(`function ${name}(`);
   return src.slice(i, src.indexOf('\n}\n', i) + 3);
@@ -21,7 +24,7 @@ const shapeLabel = eval(`${cut('shapeLabel')}; shapeLabel`);
 // eslint-disable-next-line no-eval
 const agreeLabel = eval(`${cut('agreeLabel')}; agreeLabel`);
 
-const dir = 'data/stagesets';
+const dir = `${APP}/data/stagesets`;
 for (const f of fs.readdirSync(dir).filter((x) => /^s3-.*\.json$/.test(x))) {
   const doc = JSON.parse(fs.readFileSync(path.join(dir, f), 'utf8'));
   const held = ((doc.plan || {}).settingLabels) || [];
