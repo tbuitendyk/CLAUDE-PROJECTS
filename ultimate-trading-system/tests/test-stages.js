@@ -1887,6 +1887,152 @@ module.exports = {
   // from a ratio: multiplying the dials out gave 526,848 where the enumerator
   // says 524,832, and a setting priced twice is invisible in a table of half a
   // million rows.
+  // WHAT THE BLOCK DECLARES IS WORKED OUT ONCE (owner order, 2026-08-30: "fix
+  // the /missing caching").
+  //
+  // Every Boards draw asked, and answering meant rebuilding the whole block
+  // through the launch's enumerator — 18,675 ms measured on the owner's set, on
+  // the one thread that answers everything else, for every tab switch, filter,
+  // page turn and sort.
+  //
+  // The danger in caching it is not slowness, it is a STALE ANSWER: the numbers
+  // on that line say how many settings the set is missing and how many it holds
+  // that its block does not declare, and those change the moment a rename, a
+  // drop or a fill-in touches the set. A cache that misses that would tell the
+  // owner the wrong count with total confidence. So this runs the real thing
+  // against a real parent and checks the answer MOVES when it must.
+  async whatTheBlockDeclaresIsWorkedOutOnceAndTheAnswerStillMoves() {
+    const stamp = Date.now().toString(36);
+    const pid = `s2-test-${stamp}-mc`;
+    const id = `s3-test-${stamp}-mc`;
+    const pfile = path.join(SETS_DIR, `${pid}.json`);
+    const file = path.join(SETS_DIR, `${id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      // a stage 2 parent with two carried units
+      fs.writeFileSync(pfile, JSON.stringify({
+        id: pid, stage: 2, seq: 999958, name: 'S2 #mc', status: 'done',
+        createdAt: '2026-08-27T02:00:00.000Z', plan: { units: 2 },
+      }));
+      const pw = rowstore.writer(pid, 'records');
+      for (let i = 0; i < 2; i++) {
+        pw.push({
+          carriedRank: i, trade: i ? 'BBBUSDT' : 'AAAUSDT', ctx1: null, ctx2: null, size: 1,
+          geometry: 'daily-4d', bandPct: 2 + i, scoreAll: 1 - i * 0.1, specs: [{}, {}],
+        });
+      }
+      await pw.close();
+
+      // a stage 3 set off it, with every permute off so the block is tiny
+      const params = {
+        from: pid, carry: 0, nullN: 9, fee: 0, universe: ['AAAUSDT', 'BBBUSDT'],
+        decision: 'argmax', band: 'auto', weekdaysOnly: false,
+        // no armMult: it is meaningless without a trailMult and the launch says so
+        cell: { tHours: 17, entry: 'breakout', gate: 'always', dMult: 1 },
+        cellPermute: {}, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0,
+      };
+      const doc = {
+        id, stage: 3, seq: 999957, name: 'S3 #mc', status: 'done',
+        createdAt: '2026-08-27T03:00:00.000Z', parent: { id: pid, name: 'S2 #mc' },
+        params, plan: { units: 2, settings: 0, settingLabels: [] }, recordsVersion: stages.RECORDS_V,
+      };
+      fs.writeFileSync(file, JSON.stringify(doc));
+
+      const first = stages.missingSettingsOf(id);
+      assert.ok(first && !first.why, `the block could not be read at all: ${first && first.why}`);
+      assert.ok(first.declared > 0, 'the block declares nothing, so this fixture proves nothing');
+      assert.strictEqual(first.held, 0, 'the set was built holding nothing');
+      assert.strictEqual(first.missing, first.declared, 'holding nothing, everything the block declares is missing');
+      assert.strictEqual(first.surplus, 0, 'holding nothing, nothing can be surplus');
+
+      // ASKED AGAIN, THE SAME ANSWER COMES BACK — and comes back as the very
+      // same object, which is the only way to be sure it was not worked out
+      // twice. This is the whole point of the change.
+      assert.strictEqual(stages.missingSettingsOf(id), first,
+        'asking twice with nothing changed worked the whole block out again — that is the 18-second '
+        + 'answer the owner pays for on every tab switch');
+
+      // ...AND THE LIST BEHIND IT SURVIVES A CHANGE TO WHAT THE SET HOLDS,
+      // because a rename or a drop cannot change what the BLOCK declares.
+      const keyBefore = stages.declaredKeyFor(stages.getSet(id));
+
+      // now the set holds one of them, as a rename or a fill-in would leave it
+      const declared = stages.declaredLabelsFor(stages.getSet(id));
+      doc.plan.settingLabels = [declared[0]];
+      doc.plan.settings = 1;
+      fs.writeFileSync(file, JSON.stringify(doc));
+
+      const second = stages.missingSettingsOf(id);
+      assert.notStrictEqual(second, first,
+        'the answer did not move after the set changed what it holds — the owner would be shown the '
+        + 'old count with total confidence');
+      assert.strictEqual(second.held, 1, 'it did not notice the set now holds one');
+      assert.strictEqual(second.missing, first.declared - 1, 'the missing count did not come down by the one now held');
+      assert.strictEqual(second.surplus, 0, 'a setting the block declares read as surplus');
+      assert.strictEqual(stages.declaredKeyFor(stages.getSet(id)), keyBefore,
+        'changing what the set HOLDS threw away the list of what its block DECLARES — those are '
+        + 'different things, and rebuilding it is the eighteen seconds this change exists to avoid');
+
+      // and something the block does NOT declare reads as surplus
+      doc.plan.settingLabels = [declared[0], 'a setting no block would ever declare'];
+      doc.plan.settings = 2;
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const third = stages.missingSettingsOf(id);
+      assert.strictEqual(third.surplus, 1, 'a setting the block does not declare did not read as surplus');
+      assert.strictEqual(third.missing, first.declared - 1, 'a surplus setting was counted as covering a declared one');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(pfile, { force: true }); } catch (_) { /* fixture */ }
+      try { rowstore.remove(pid); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // The key is the whole contract: what it includes is what invalidates, and
+  // what it leaves out is what survives. Each line here is one of those.
+  async theListIsThrownAwayForTheRightReasonsAndKeptForTheRest() {
+    const base = {
+      id: 'x', parent: { id: 'p-nonexistent' },
+      params: { from: 'p-nonexistent', carry: 0, band: 'auto' },
+      plan: { settingLabels: ['a', 'b'] },
+    };
+    const k = (d) => stages.declaredKeyFor(d);
+    assert.strictEqual(k(base), k({ ...base }), 'the same set gives two different keys');
+    assert.notStrictEqual(k(base), k({ ...base, params: { ...base.params, carry: 10 } }),
+      'carrying a different number of units did not throw the list away — a different carry is a '
+      + 'different set of units and so a different block');
+    assert.notStrictEqual(k(base), k({ ...base, params: { ...base.params, band: 3 } }),
+      'a different band did not throw the list away');
+    assert.notStrictEqual(k(base), k({ ...base, id: 'y' }), 'two different sets share a key');
+    // and the one that must NOT invalidate
+    assert.strictEqual(k(base), k({ ...base, plan: { settingLabels: ['a', 'b', 'c', 'd'] } }),
+      'changing what the set HOLDS threw away what its block DECLARES');
+
+    // THE PARENT, WHICH THE FIRST HALF OF THIS TEST CANNOT SEE. Above, every
+    // case names a parent that does not exist, so a key that ignored the parent
+    // entirely would pass all of them — it did, when this was first written.
+    // The parent decides which units are carried and what band each one used,
+    // so a parent that changes IS a different block.
+    const stamp = Date.now().toString(36);
+    const pid = `s2-test-${stamp}-pk`;
+    const pfile = path.join(SETS_DIR, `${pid}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      const withParent = { ...base, parent: { id: pid }, params: { ...base.params, from: pid } };
+      fs.writeFileSync(pfile, JSON.stringify({ id: pid, stage: 2, plan: { units: 1 } }));
+      const before = k(withParent);
+      assert.notStrictEqual(before, k(base),
+        'two sets built off different parents share a key, so one would be answered with the other’s block');
+      // the parent's saved sort changes which units are carried, and saving it
+      // rewrites the parent's file — which is what this must notice
+      fs.writeFileSync(pfile, JSON.stringify({ id: pid, stage: 2, plan: { units: 1 }, sort: [{ key: 'score', dir: 'desc' }] }));
+      assert.notStrictEqual(k(withParent), before,
+        'the parent changed and the list of what the block declares was kept — the carried units and '
+        + 'their bands come from the parent, so that answer is now for a block that no longer exists');
+    } finally {
+      try { fs.rmSync(pfile, { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
   // A TALLY BIGGER THAN A STRING CAN BE (found on the owner's own box,
   // 2026-08-30, after the tables "rebuilt" three times and never appeared).
   //
@@ -2734,12 +2880,28 @@ module.exports = {
   // happened: one of them was right the whole time.
   async theScreensCountAndThePricingPassAskTheSameQuestion() {
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    // RE-AIMED 2026-08-30 again, and for the better reason. The screen's count
+    // no longer needs the setting OBJECTS — it reads the block's list of names
+    // out of the cache — so the two callers stopped sharing one call. What must
+    // still hold is that they share one DIFFERENCE, and they do: everything
+    // goes through undeclaredIn, including missingSettingsIn, which used to
+    // keep its own copy of it in the opposite argument order.
     const defs = (src.match(/function missingSettingsIn\(/g) || []).length;
-    const calls = (src.match(/[^n] missingSettingsIn\(held, settings\)/g) || []).length;
     assert.strictEqual(defs, 1, `the missing settings are defined ${defs} times, not once`);
-    assert.strictEqual(calls, 2,
-      `the count on the screen and the pass that prices them do not both read the one definition `
-      + `(${calls} of 2)`);
+    const diffs = (src.match(/const undeclaredIn = /g) || []).length;
+    assert.strictEqual(diffs, 1, `the set difference is defined ${diffs} times, not once`);
+    const fn = src.slice(src.indexOf('function missingSettingsIn('), src.indexOf('function nextSettingNumber('));
+    assert.ok(/undeclaredIn\(/.test(fn),
+      'the pass that prices the missing settings works the difference out for itself again, instead '
+      + 'of taking the one every other caller takes');
+    assert.ok(!/new Set\(held\)/.test(fn),
+      'it is back to keeping its own set of the held names — that is the second copy, and the last '
+      + 'time there were two they disagreed about how');
+    // and the screen's count reads the cached list rather than rebuilding it
+    const of = src.slice(src.indexOf('function missingSettingsOf('), src.indexOf('function missingSettingsOf(') + 1800);
+    assert.ok(/declaredLabelsFor\(doc\)/.test(of) && !/relaunchShapeOf\(doc\)/.test(of),
+      'the count on the screen rebuilds the whole block again — that is the eighteen and a half '
+      + 'seconds the owner pays on every tab switch, filter, page turn and sort');
     // COMMENTS STRIPPED FIRST. Both lines below forbid a string, and the code
     // that replaced them QUOTES that string in its own comment explaining what
     // it replaced — so a guard reading the raw file fires on the fix itself.

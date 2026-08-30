@@ -1677,8 +1677,7 @@ function auditRecordSet(doc) {
 // less? Separate because it costs the enumeration, which is seventeen seconds.
 function auditAgainstBlock(doc) {
   const held = ((doc.plan || {}).settingLabels) || [];
-  const { settings } = relaunchShapeOf(doc);
-  const declared = settings.map((x) => x.label);
+  const declared = declaredLabelsFor(doc);
   const surplus = undeclaredIn(held, declared).size;
   const missing = undeclaredIn(declared, held).size;
   return {
@@ -1837,18 +1836,21 @@ async function undoUnfinishedAppend(doc, note = null) {
 // and the destructive half can then be exercised on its own against a doomed
 // set somebody wrote down, rather than only against whatever the enumerator
 // happens to say on the day.
-const undeclaredIn = (held, declaredLabels) => {
-  const have = new Set(declaredLabels);
+// THE ONE SET DIFFERENCE, and the argument order is the whole trap: this is
+// the names in the FIRST list that are not in the SECOND. Read both ways round
+// by design — (held, declared) is what the set holds and the block does not
+// declare; (declared, held) is what it declares and the set does not hold.
+const undeclaredIn = (first, second) => {
+  const have = new Set(second);
   const out = new Set();
-  for (const L of held) if (!have.has(L)) out.add(L);
+  for (const L of first) if (!have.has(L)) out.add(L);
   return out;
 };
 async function dropUndeclaredSettings(doc, note = null) {
   const held = (doc.plan || {}).settingLabels || [];
   if (!held.length) throw new Error(`${doc.name} does not record which settings it holds, so nothing can be dropped from it safely`);
-  const { settings } = relaunchShapeOf(doc);
-  const doomed = undeclaredIn(held, settings.map((x) => x.label));
-  settings.length = 0;
+  // labels only, so this reads the list that every draw has already paid for
+  const doomed = undeclaredIn(held, declaredLabelsFor(doc));
   return dropSettingsNamed(doc, doomed, note);
 }
 async function dropSettingsNamed(doc, doomed, note = null) {
@@ -2054,6 +2056,57 @@ async function renameSettingsToV3(doc, note = null) {
 // WHAT A SET'S OWN BLOCK DECLARES AND ITS RECORDS DO NOT HOLD. Read-only, and
 // through the launch's own enumerator, so the number on the screen and the
 // number that would be priced are the same number.
+// ---- THE BLOCK'S OWN LIST, WORKED OUT ONCE ---------------------------------
+//
+// Owner order, 2026-08-30: "fix the /missing caching".
+//
+// Every Boards draw asks what this set's block declares, and answering it
+// meant rebuilding the whole block through the launch's enumerator — 18,675 ms
+// measured end to end, on the one thread that answers everything else, for
+// every tab switch, filter, page turn and sort. It is also why a status ask
+// during a long job so often got no reply at all.
+//
+// IT IS A PURE FUNCTION OF WHAT IT READS, and what it reads cannot change
+// while a finished set sits still:
+//
+//   * the set's own params — fixed at the launch;
+//   * the parent stage 2 set: which records it holds, and the sort saved on
+//     it, because that is what decides which units are carried;
+//   * the parent's own bandPct per record, which is all bandsAcross reads —
+//     nothing here looks at live prices or at anything outside those two.
+//
+// AND IT DOES NOT READ THE SET'S LIST OF SETTING NAMES. That is the property
+// worth having: renaming, dropping and filling in all change that list and
+// none of them can change what the block DECLARES, so the answer stands
+// through every one of them — which are exactly the moments the owner is sat
+// watching a screen redraw.
+//
+// Only the NAMES are kept. The enumerator builds half a million setting
+// objects to answer; they are dropped and the list of labels is held, which
+// is both what every caller here needs and a good deal less memory than the
+// objects would have been.
+const DECLARED_CACHE = new Map();
+const DECLARED_CACHE_MAX = 2;
+function declaredKeyFor(doc) {
+  const pid = ((doc.parent || {}).id) || (doc.params || {}).from || '';
+  let pstat = "gone";
+  try { const st = fs.statSync(setFile(pid)); pstat = `${st.mtimeMs}|${st.size}`; } catch (_) { pstat = 'gone'; }
+  // The parent doc is written whenever its records or its saved sort change,
+  // so its file answers for both without this having to guess at store names.
+  return `${doc.id}|${JSON.stringify(doc.params || {})}|${pid}|${pstat}`;
+}
+function declaredLabelsFor(doc) {
+  const key = declaredKeyFor(doc);
+  const hit = DECLARED_CACHE.get(key);
+  if (hit) return hit;
+  const { settings } = relaunchShapeOf(doc);
+  const labels = settings.map((x) => x.label);
+  settings.length = 0;
+  DECLARED_CACHE.set(key, labels);
+  while (DECLARED_CACHE.size > DECLARED_CACHE_MAX) DECLARED_CACHE.delete(DECLARED_CACHE.keys().next().value);
+  return labels;
+}
+
 // WHICH SETTINGS THE BLOCK DECLARES AND THE RECORDS DO NOT HOLD. ONE
 // definition, read by the line that COUNTS them for the screen and by the
 // pass that PRICES them.
@@ -2065,8 +2118,12 @@ async function renameSettingsToV3(doc, note = null) {
 // screen would have said so either: the button would have been pressed and
 // the night would have passed with no rows and no error (2026-08-30).
 function missingSettingsIn(held, settings) {
-  const have = new Set(held);
-  return settings.filter((st) => !have.has(st.label));
+  // ONE difference, taken through undeclaredIn like every other caller — this
+  // used to keep its own copy of it, in the OPPOSITE argument order, which is
+  // the sort of near-miss that reads as correct in both places right up until
+  // one of them is edited.
+  const gone = undeclaredIn(settings.map((st) => st.label), held);
+  return settings.filter((st) => gone.has(st.label));
 }
 // THE NEXT FREE SETTING NUMBER, worked out by a LOOP.
 //
@@ -2081,30 +2138,50 @@ function nextSettingNumber(ranked) {
   for (const r of ranked) { const v = Number(r.si) || 0; if (v > max) max = v; }
   return max + 1;
 }
+const MISSING_CACHE = new Map();
+const MISSING_CACHE_MAX = 4;
 function missingSettingsOf(id) {
   const doc = getSet(String(id || ''));
   if (!doc || doc.stage !== 3) return null;
+  // AND THE ANSWER ITSELF IS REMEMBERED, on top of the list above. The list
+  // survives a rename or a drop; the ANSWER does not, because both change what
+  // the set holds. So this is keyed on the list's key AND on the set's own
+  // file, and the recompute when that file moves is two set differences over
+  // half a million names — about four tenths of a second, against the eighteen
+  // and a half the enumeration costs.
+  let dstat = 'gone';
+  try { const st = fs.statSync(setFile(doc.id)); dstat = `${st.mtimeMs}|${st.size}`; } catch (_) { dstat = 'gone'; }
+  let declared;
+  let dkey;
+  try {
+    dkey = declaredKeyFor(doc);
+    declared = declaredLabelsFor(doc);
+  } catch (err) { return { why: err.message }; }
+  const key = `${dkey}|${dstat}`;
+  const hit = MISSING_CACHE.get(key);
+  if (hit) return hit;
+
   const held = (doc.plan || {}).settingLabels || [];
-  let settings;
-  try { ({ settings } = relaunchShapeOf(doc)); } catch (err) { return { why: err.message }; }
-  const missing = missingSettingsIn(held, settings);
   const coins = Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1;
-  const behind = settingsBehind(doc);
-  // HELD AND NOT DECLARED. Worked out here rather than in a second walk
-  // because this call has already paid for the enumeration.
-  const surplus = held.length - (settings.length - missing.length);
-  return {
+  // ONE definition, read both ways round: what the block declares and the set
+  // does not hold, and what it holds and the block does not declare.
+  const missing = undeclaredIn(declared, held).size;
+  const surplus = undeclaredIn(held, declared).size;
+  const out = {
     held: held.length,
-    declared: settings.length,
-    missing: missing.length,
+    declared: declared.length,
+    missing,
     units: (doc.plan || {}).units || 0,
-    pricings: missing.length * ((doc.plan || {}).units || 0) * (1 + Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)))),
-    gate: tallyBudgetFor({ settings: settings.length, coins }),
+    pricings: missing * ((doc.plan || {}).units || 0) * (1 + Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)))),
+    gate: tallyBudgetFor({ settings: declared.length, coins }),
     appends: (doc.appends || []).length,
-    behind,
+    behind: settingsBehind(doc),
     surplus,
     drops: (doc.drops || []).length,
   };
+  MISSING_CACHE.set(key, out);
+  while (MISSING_CACHE.size > MISSING_CACHE_MAX) MISSING_CACHE.delete(MISSING_CACHE.keys().next().value);
+  return out;
 }
 
 // ---- FILLING IN A BLOCK THAT WAS PRICED BEFORE IT WAS WHOLE --------------------
@@ -2900,6 +2977,7 @@ module.exports = {
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,
   unfinishedAppend, unfinishedAppendDetail, undoUnfinishedAppend,
+  declaredLabelsFor, declaredKeyFor,
   auditRecordSet, auditAgainstBlock,
   // the same pool every heavy job uses, so filling in a block is worked the
   // same way a launch is rather than on the one thread that answers pages
