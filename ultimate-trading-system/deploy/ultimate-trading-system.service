@@ -20,13 +20,33 @@ EnvironmentFile=/etc/ultimate-trading-system/env
 # previous generation is still serving live trading and paper books on.
 Environment=PORT=8094
 # THE HEAP CEILING IS SET HERE, not left to node (owner, 2026-08-22). Node's
-# own default old-space limit is about 1 GB on 64-bit, and this service is
-# allowed 2 G soft / 3 G hard below — so the first wide sweep died of a full
-# JavaScript heap at 1024 MB with two thirds of its allowance untouched, and
-# systemd restarted it under a limit it had never come close to. 1792 MB of
-# heap plus node's own non-heap footprint sits just under MemoryHigh, which
-# leaves MemoryMax as the real backstop it was written to be.
-ExecStart=/usr/bin/node --max-old-space-size=1792 server.js
+# own default old-space limit is about 1 GB on 64-bit, so the first wide sweep
+# died at 1024 MB with two thirds of its allowance untouched. The ceiling is
+# stated here, and it is kept just under MemoryHigh so that MemoryMax stays the
+# backstop it was written to be rather than the thing that bites first.
+#
+# RAISED 1792 -> 3072 MB (owner order, 2026-08-30: "define a larger heap going
+# forward that will persist"). Three deaths this month were all the same shape —
+# "Ineffective mark-compacts near heap limit", which is not a heap that is too
+# small for the data so much as one with no room to collect in: the collector
+# runs continuously, reclaims almost nothing, and every page load waits behind
+# it. The set that now lives here holds 524,832 settings whose finished tables
+# want about 1.3 GB, and the service was asked to hold that plus a request plus
+# a rebuild inside 1.75 GB.
+#
+# WHY 3072 AND NOT MORE. This box has 16 GB and two VirtualBox guests hold 10.4
+# of it (5,974 MB and 4,387 MB) and cannot give any back. Everything else runs
+# in about 700 MB. 3072 MB of heap plus node's own non-heap footprint peaks
+# around 3.5 GB, which leaves roughly a gigabyte of physical memory and 3.4 GB
+# of swap as slack. Going further would start pushing the guests' pages out to
+# swap, which is the owner's mail and business machines, and that is a worse
+# outcome than a slow page.
+#
+# THE GATE FOLLOWS THIS NUMBER BY ITSELF. lib/estimate.js reads the ceiling out
+# of the running process's own arguments, so the refusal that stops a set whose
+# tables cannot fit moves with it — at 5 coins it goes from about 578,000
+# settings to about 990,000, and the owner's set drops from "tight" to "fits".
+ExecStart=/usr/bin/node --max-old-space-size=3072 server.js
 Restart=on-failure
 RestartSec=5
 
@@ -37,8 +57,17 @@ RestartSec=5
 # would be a change to the running system and needs its own go-ahead.
 CPUWeight=50
 CPUQuota=300%
-MemoryHigh=2G
-MemoryMax=3G
+# THE HARD CAP IS WHAT PROTECTS THE REST OF THE BOX, and it is why the heap
+# above can be raised at all. MemoryMax is a cgroup boundary: if this service
+# overreaches, the kernel kills THIS service and not one of the guests. Without
+# it, a spike here would leave the kernel choosing a victim by its own reckoning
+# on a box that also holds the owner's mail and business machines.
+#
+# High is the soft brake and sits just above where the heap is expected to peak,
+# so ordinary work never touches it and a runaway is throttled and reclaimed
+# before Max ends it. Raised with the heap, 2G/3G -> 3.5G/4G (2026-08-30).
+MemoryHigh=3584M
+MemoryMax=4G
 IOWeight=50
 
 NoNewPrivileges=true

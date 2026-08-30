@@ -142,19 +142,45 @@ module.exports = {
   },
 
   // The ceiling the box runs under has to be the one this service is allowed,
-  // not the one node picks for itself.
+  // not the one node picks for itself — and the three numbers that say so have
+  // to stay in order. They are set in one file and mean nothing apart:
+  //
+  //   heap  <  MemoryHigh  <  MemoryMax
+  //
+  // Below MemoryHigh nothing is throttled. Between High and Max the kernel
+  // reclaims hard. Above Max it kills THIS service, which is the boundary that
+  // keeps a spike here from letting the kernel pick a victim elsewhere on a box
+  // that also holds the owner's mail and business machines.
+  //
+  // A heap at or above High means the soft brake bites during ordinary work; a
+  // heap above Max means the service is killed before the collector is even
+  // asked to try. Raised together 1792/2G/3G -> 3072/3.5G/4G (2026-08-30), and
+  // the suffix is read rather than assumed: this pinned `(\d+)G` and went red
+  // the moment a number needed to be half a gigabyte.
   theServiceRunsWithAHeapCeilingThatMatchesItsAllowance() {
     const unit = fs.readFileSync(path.join(ROOT, 'deploy', 'ultimate-trading-system.service'), 'utf8');
+    const mb = (name) => {
+      const m = unit.match(new RegExp(`^${name}=(\\d+)([KMGT]?)$`, 'm'));
+      assert.ok(m, `the unit must still declare ${name}`);
+      return Number(m[1]) * ({ '': 1 / 1048576, K: 1 / 1024, M: 1, G: 1024, T: 1048576 })[m[2]];
+    };
     const m = unit.match(/--max-old-space-size=(\d+)/);
     assert.ok(m, 'the unit must set a heap ceiling — node\'s own default is about 1 GB and this service is allowed more');
     const heapMb = Number(m[1]);
-    const high = unit.match(/MemoryHigh=(\d+)G/);
-    assert.ok(high, 'the unit must still declare MemoryHigh');
-    const highMb = Number(high[1]) * 1024;
+    const highMb = mb('MemoryHigh');
+    const maxMb = mb('MemoryMax');
     assert.ok(heapMb < highMb,
       `the heap ceiling (${heapMb} MB) must sit below MemoryHigh (${highMb} MB) — node's non-heap footprint needs room too`);
+    assert.ok(highMb < maxMb,
+      `MemoryHigh (${highMb} MB) must sit below MemoryMax (${maxMb} MB), or the soft brake never gets a chance to work`);
     assert.ok(heapMb > 1024,
       `a ceiling of ${heapMb} MB is no better than node's own default — the sweep died at 1024 MB`);
+    // AND THE NON-HEAP FOOTPRINT NEEDS REAL ROOM, not a token gap. Node's own
+    // buffers, the gzip streams and the record buffers live outside the heap,
+    // and this service has been measured at about 400 MB of them while working.
+    assert.ok(highMb - heapMb >= 400,
+      `only ${highMb - heapMb} MB sits between the heap ceiling and MemoryHigh — node's non-heap footprint has been `
+      + 'measured near 400 MB while this service works, so the soft brake would bite during ordinary work');
   },
 
   // ------------------------------------------------------------- being told
