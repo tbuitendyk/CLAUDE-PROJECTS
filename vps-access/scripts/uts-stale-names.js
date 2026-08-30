@@ -18,11 +18,14 @@ const cut = (name) => {
   const i = src.indexOf(`function ${name}(`);
   return src.slice(i, src.indexOf('\n}\n', i) + 3);
 };
-// the two writers, taken out of the shipped file so this cannot drift from it
+// The two writers, taken out of the shipped file so this cannot drift from it.
+// NAMED DIFFERENTLY on purpose: a direct eval hoists the function declaration
+// inside it into THIS scope, so binding it to a const of the same name is a
+// redeclaration and the file will not even parse.
 // eslint-disable-next-line no-eval
-const shapeLabel = eval(`${cut('shapeLabel')}; shapeLabel`);
+const writeShape = eval(`${cut('shapeLabel')}; shapeLabel`);
 // eslint-disable-next-line no-eval
-const agreeLabel = eval(`${cut('agreeLabel')}; agreeLabel`);
+const writeAgree = eval(`${cut('agreeLabel')}; agreeLabel`);
 
 const dir = `${APP}/data/stagesets`;
 for (const f of fs.readdirSync(dir).filter((x) => /^s3-.*\.json$/.test(x))) {
@@ -62,10 +65,10 @@ for (const f of fs.readdirSync(dir).filter((x) => /^s3-.*\.json$/.test(x))) {
   };
   for (const r of bySi.values()) {
     const agr = stagework.agrOf(r);
-    const rebuilt = `${agreeLabel({
+    const rebuilt = `${writeAgree({
       rule: agr.rule, pct: agr.pct, bar: agr.bar, copy: agr.copy,
       bothModels: agr.both, persist: agr.persist,
-    })} ${shapeLabel(r)}`;
+    })} ${writeShape(r)}`;
     const storedHead = String(r.label || '').split(' · ')[0];
     if (rebuilt === storedHead) { same++; continue; }
     let kind = 'something else';
