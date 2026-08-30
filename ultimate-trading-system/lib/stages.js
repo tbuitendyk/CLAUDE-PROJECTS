@@ -2552,23 +2552,39 @@ const tallyInHand = { id: null, tally: null, mtimeMs: 0, size: 0, staleId: null,
 // STRING may not exceed 536,870,888 characters, so the whole is never turned
 // into one. Each line is an entry and no entry is large.
 function parseTally(buf) {
+  // A LINE IS BOUNDED, AND SO IS LOOKING FOR ONE. The older shape is a single
+  // object with no newline in it at all, so scanning to "the end of the first
+  // line" is scanning to the end of the FILE — and stringifying that is exactly
+  // the thing this function exists to avoid. It threw, the throw read as
+  // damage, and damage is the one verdict that does not rebuild: the fix for
+  // the unreadable file refused to rebuild the unreadable file (2026-08-30).
+  //
+  // A header line is about a hundred bytes. No newline in the first 64 KB means
+  // the older shape, decided without touching the rest.
+  const LOOK = 1 << 16;
   let at = 0;
   const line = () => {
     if (at >= buf.length) return null;
-    let e = buf.indexOf(10, at);
-    if (e < 0) e = buf.length;
+    const e = buf.indexOf(10, at);
+    if (e < 0) {
+      if (buf.length - at > LOOK) throw new Error('the tally stops without ending its last line');
+      const tail = buf.toString('utf8', at, buf.length);
+      at = buf.length;
+      return tail;
+    }
     const str = buf.toString('utf8', at, e);
     at = e + 1;
     return str;
   };
+  if (buf.subarray(0, Math.min(buf.length, LOOK)).indexOf(10) < 0) {
+    // an older shape: one object for the whole file. A version difference, not
+    // damage, so it is rebuilt rather than reported.
+    return { v: -1 };
+  }
   const first = line();
   if (!first) throw new Error('the tally file is empty');
   const head = JSON.parse(first);
-  if (typeof head.ranked !== 'number' || typeof head.coins !== 'number') {
-    // an older shape: one object for the whole file. Say so as a version
-    // difference rather than as damage, so it is rebuilt and not reported.
-    return { v: -1 };
-  }
+  if (typeof head.ranked !== 'number' || typeof head.coins !== 'number') return { v: -1 };
   const ranked = new Array(head.ranked);
   for (let i = 0; i < head.ranked; i++) {
     const l = line();

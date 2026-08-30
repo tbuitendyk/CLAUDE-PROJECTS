@@ -1922,6 +1922,42 @@ module.exports = {
     assert.deepStrictEqual(t.coins.map((r) => r.trade), ['AAA'], 'the coin rows did not survive');
   },
 
+  // A NEW-SHAPE TALLY CUT OFF MID-WRITE. The last line has no newline, so the
+  // reader is asked for a "line" that runs to the end of the file — and if that
+  // remainder is huge, building a string of it is the same mistake in the same
+  // function. It must say what is wrong instead, in its own words.
+  async aTallyCutOffMidWriteSaysSoRatherThanBuildingAHugeString() {
+    const LIMIT = require('buffer').constants.MAX_STRING_LENGTH;
+    const head = `${JSON.stringify({ v: stages.TALLY_V, builtAt: 'x', rows: 9, ranked: 2, coins: 0 })}\n`;
+    const buf = Buffer.alloc(LIMIT + 4096, 0x20);
+    Buffer.from(head, 'utf8').copy(buf, 0);            // a header, then no newline ever again
+    assert.throws(() => stages.parseTally(buf), (err) => {
+      assert.ok(/stops without ending its last line/.test(err.message),
+        `it stringified the unterminated remainder instead of saying what was wrong: ${err.message}`);
+      return true;
+    }, 'a truncated tally was read as though it were whole');
+  },
+
+  // AND THE OLDER SHAPE AT THAT SIZE TOO. The older shape is one object with no
+  // newline anywhere, so looking for "the end of the first line" is looking to
+  // the end of the file — and turning THAT into a string is the very thing this
+  // avoids. It threw, the throw read as damage, and damage is the one verdict
+  // that does not rebuild. The fix for the unreadable file refused to rebuild
+  // the unreadable file, live on the owner's box (2026-08-30).
+  async anOlderShapeTooBigToBeAStringStillReadsAsOldAndNotAsBroken() {
+    const LIMIT = require('buffer').constants.MAX_STRING_LENGTH;
+    const buf = Buffer.alloc(LIMIT + 4096, 0x20);      // no newline anywhere
+    Buffer.from('{"v":4,"ranked":[', 'utf8').copy(buf, 0);
+    assert.throws(() => buf.toString('utf8'), 'the premise is gone');
+    let t = null;
+    t = stages.parseTally(buf);                        // must not throw
+    assert.notStrictEqual(t.v, stages.TALLY_V,
+      'an oversized older tally reads as current, so it would be served');
+    assert.strictEqual(t.v, -1,
+      'an oversized older tally reads as damaged rather than old — damage is never rebuilt, so the '
+      + 'tables would never come back');
+  },
+
   // An older tally is one object for the whole file. It must read as an older
   // SHAPE — rebuilt quietly — and never as damage, which would be reported and
   // never rebuilt.
