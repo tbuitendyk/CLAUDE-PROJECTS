@@ -3356,7 +3356,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ${(undoing && undoing.half) ? '' : bRenameLine(doc, renaming)}
     ${(undoing && undoing.half) ? '' : bDropLine(doc, gap, dropping)}
     ${(undoing && undoing.half && !(filling && (filling.running || filling.stopped))) ? '' : bFillInLine(doc, gap, filling)}
-    <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coins</p>
+    <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coin/chunk-shape combinations promoted from Stage 2</p>
     ${bFilterGrid('S3R', [
     ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
       ((VOCAB && VOCAB.agreeRule) || []).map((o) => String(o.value))],
@@ -3442,7 +3442,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
     `}
     <div class="t3break"></div>
-    <p class="t3head"><b>Table 3.B: Every coin of every setting</b> — one row per coin, its records opening below it</p>
+    <p class="t3head"><b>Table 3.B: Every coin of every setting</b> — one row per setting, coin and chunk shape, averaging its decision, band and 24/5 variants, which open below as records</p>
     ${bFilterGrid('S3C', [
     ['minShare', 'beat its own null set at least, %', 'num', 'hides rows that won less than this share of their head-to-heads. Empty hides nothing.'],
     ['minPairs', 'comparisons at least', 'num', 'hides rows whose share rests on fewer head-to-heads than this. Empty hides nothing.'],
