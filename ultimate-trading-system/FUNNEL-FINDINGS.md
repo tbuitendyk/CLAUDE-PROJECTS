@@ -78,3 +78,27 @@ The owner drives UI evaluation. 3.34.1 is deployed, healthz is green, the suite
 is green and the word list is generated from what the box serves. What I have
 NOT done is open the Funnel tab and use it. The first walk through it is the
 owner's, and anything it does wrong is still to be found.
+
+---
+
+## 5. The owner's stage 3 set carries no sealed window
+
+Found while probing the Funnel's read on the box:
+
+```
+sealed: { layout: "reserve61", sealed: false, missing: 10,
+          why: "10 of 10 units carry no sealed window" }
+```
+
+The set's layout IS `reserve61`, so a final 13% of history WAS withheld from
+training and pricing. But `reserve` is null on all ten of its parent's records,
+so nothing records WHERE that window is.
+
+The sealed window is therefore real and unreachable for this set: the one-touch
+grade at the end of the chain would have nothing to bind to.
+
+It affects nothing the Funnel does — that reads test money — and the tab states
+it plainly rather than leaving the line blank. Whether it is worth recovering
+(the bounds are recomputable from the stored parameters, at the risk of
+disagreeing with what was actually priced if the price files have moved) is the
+owner's call, not a session's.

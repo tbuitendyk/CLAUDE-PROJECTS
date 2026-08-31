@@ -2463,6 +2463,18 @@ async function drawBoards() {
     if (newest && newest.stage === 3) { s3sel = newest.id; s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }
     else if (newest && newest.stage === 2) { s2sel = newest.id; s1sel = parentOf(s2sel); }
     else if (newest) s1sel = newest.id;
+    // AND IT IS WRITTEN DOWN, not left in a local (Funnel build, 2026-08-31).
+    //
+    // This resolution used to live only in these three variables. The saved
+    // view got a set id ONLY when the owner CHANGED a picker -- and with one
+    // stage 3 set on the box the picker already shows it, so changing it is
+    // impossible and the saved view stayed empty forever. Boards looked right
+    // because it was reading its own local; anything else asking "which set is
+    // open" got nothing, which is exactly what happened to the Funnel: it said
+    // "open a set on Boards first" to an owner who had one open, and opening it
+    // again could not help because opening it is what Boards had already done
+    // without recording it.
+    if (s1sel || s2sel || s3sel) bSaveView({ s1: s1sel, s2: s2sel, s3: s3sel });
   }
   const selOf = { 1: s1sel, 2: s2sel, 3: s3sel };
   const fold = { 1: view.fold1 !== false, 2: view.fold2 !== false, 3: view.fold3 !== false };
@@ -3739,15 +3751,29 @@ const fFix = (v, n) => (v == null || !Number.isFinite(Number(v)) ? '-' : Number(
 async function drawFunnel() {
   const st = fLoad();
   if (!st.set) {
-    $('#view').innerHTML = `<div class="panel empty">Open a stage 3 record set on the Boards section first -
-      the Funnel walks the set you have open there, so there is no second picker to disagree with it.</div>`;
+    // Reachable only when there is no stage 3 set on the box at all: Boards
+    // now records the one it resolved, so "open one" is advice the owner can
+    // actually act on rather than a door with no handle.
+    $('#view').innerHTML = `<div class="panel empty">There is no stage 3 record set open. Open the Boards section
+      once - it will settle on one - and come back. The Funnel walks the set Boards has open, so there is no second
+      picker here to disagree with it.</div>`;
     return;
   }
   const d = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/read`, {
     step: st.step, rule: st.rule, target: st.target, dial: st.dial,
     dialA: st.dialA, dialB: st.dialB, floor: st.floor, rebuilt: st.rebuilt,
   });
-  if (!d) return;
+  // A FAILED READ MUST SAY SO. This returned without writing anything, which
+  // leaves whatever the last screen put there -- another section's numbers
+  // under this section's heading -- or, on a first load, nothing at all. Both
+  // read as "there is nothing here", and one of them is a lie.
+  if (!d) {
+    $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Funnel</h3>
+      <p class="note neg">This section could not read <b>${esc(st.set)}</b>. Nothing below is from it, because there
+        is nothing below. The reason came back in the message box; if that set has just been deleted or renamed,
+        pick one on the Boards section.</p></div>`;
+    return;
+  }
   if (d.totalling || d.waiting) {
     $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Funnel</h3>
       <p class="note">the tables for this set are being totalled - ${esc(String(d.totalling || d.waiting))}</p></div>`;

@@ -399,4 +399,54 @@ module.exports = {
     }
     assert.deepStrictEqual(bad, [], `control characters in source:\n  ${bad.join('\n  ')}`);
   },
+
+  // A RESOLUTION HELD IN A LOCAL IS NOT A RECORD OF WHAT IS OPEN.
+  //
+  // Boards works out which set to show and, on a first visit, falls back to the
+  // newest one. That answer used to live only in three local variables: the
+  // saved view got a set id ONLY when the owner CHANGED a picker. With one
+  // stage 3 set on the box the picker already shows it, so changing it is
+  // impossible and the saved view stayed empty forever.
+  //
+  // Boards looked right, because it read its own local. Everything else asking
+  // "which set is open" got nothing -- and the Funnel told the owner to open a
+  // set on Boards when they already had one open, with no way to comply.
+  theSetBoardsSettlesOnIsWrittenDownNotJustComputed() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const at = src.indexOf('first visit: the newest set of the deepest stage present');
+    assert.ok(at > 0, 'the first-visit fallback is gone - this test is aimed at nothing');
+    // the branch runs to the end of the enclosing block; take a generous window
+    // to the line that closes the branch, never a character count
+    const end = src.indexOf('const selOf = {', at);
+    assert.ok(end > at, 'the end of the first-visit branch cannot be found');
+    const branch = src.slice(at, end);
+    assert.ok(branch.includes('bSaveView({ s1: s1sel, s2: s2sel, s3: s3sel })'),
+      'the set Boards settles on must be SAVED, or nothing else can know which one is open');
+
+    // and the Funnel must read that one record rather than keeping its own
+    const fn = src.slice(src.indexOf('function pickedSet3'), src.indexOf('function pickedSet3') + 700);
+    assert.ok(fn.includes('bView().s3'), 'the Funnel reads the set Boards recorded');
+    assert.ok(!fn.includes('localStorage.getItem'), 'and does not keep a second key of its own');
+  },
+
+  // A section that cannot read its data must SAY SO. Returning without writing
+  // leaves the previous section's numbers under this section's heading, or on a
+  // first load leaves nothing at all -- and both read as "there is nothing
+  // here", which is a lie when the truth is "I could not ask".
+  aFunnelReadThatFailsSaysSoRatherThanLeavingTheScreenAsItWas() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const at = src.indexOf('async function drawFunnel');
+    assert.ok(at > 0, 'drawFunnel is gone');
+    // to the next top-level function, never a character count
+    const end = src.indexOf('\nfunction fHead(', at);
+    assert.ok(end > at, 'the end of drawFunnel cannot be found');
+    const body = src.slice(at, end);
+    assert.ok(!body.includes('if (!d) return;'),
+      'a bare early return on a failed read is the defect: it writes nothing at all');
+    const branchAt = body.indexOf('if (!d) {');
+    assert.ok(branchAt > 0, 'there must be a failed-read branch at all');
+    assert.ok(body.slice(branchAt, branchAt + 600).includes('innerHTML'),
+      'the failed-read branch must write something to the view');
+    assert.ok(body.includes('could not read'), 'and it must say that it could not read, not show an empty panel');
+  },
 };
