@@ -3442,7 +3442,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
     `}
     <div class="t3break"></div>
-    <p class="t3head"><b>Table 3.B: Every coin of every setting</b> — one row per setting, coin and chunk shape, averaging its decision, band and 24/5 variants, which open below as records</p>
+    <p class="t3head"><b>Table 3.B: Every coin of every setting</b> — one row for each setting on each coin + chunk shape; every row averages the decision, band and 24/5 variants of that setting — rows says how many, and records opens them below</p>
     ${bFilterGrid('S3C', [
     ['minShare', 'beat its own null set at least, %', 'num', 'hides rows that won less than this share of their head-to-heads. Empty hides nothing.'],
     ['minPairs', 'comparisons at least', 'num', 'hides rows whose share rests on fewer head-to-heads than this. Empty hides nothing.'],
