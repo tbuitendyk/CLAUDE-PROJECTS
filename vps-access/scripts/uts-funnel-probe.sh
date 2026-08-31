@@ -1,32 +1,49 @@
 #!/usr/bin/env bash
-# READ-ONLY. Asks the Funnel's read route what it says for the set on the box,
-# because the tab renders nothing and a blank screen carries no error to read.
+# READ-ONLY. The Funnel tab renders nothing, and a blank screen carries no error
+# to read. This asks the read route what it answers for the set on the box and
+# prints the SHAPE of the answer rather than the whole of it, so the reply is
+# readable: the top-level keys, and the keys of the reading each step returns.
 #
-# The set named here is already totalled, so this reads a tally that exists and
-# starts no work. It POSTs one request and prints the status and the body.
+# The set named here is already totalled, so nothing here starts work.
 set -uo pipefail
 
 PORT=8094
 SET=s3-mte0oajo-1
 
-echo "== does the route exist at all =="
-code=$(curl -s -o /dev/null -w '%{http_code}' -X POST \
-  -H 'Content-Type: application/json' \
-  --data '{"step":1}' \
-  "http://127.0.0.1:${PORT}/api/funnel/${SET}/read" || echo 000)
-echo "POST /api/funnel/${SET}/read -> HTTP ${code}"
+ask() {
+  curl -s -X POST -H 'Content-Type: application/json' --data "$1" \
+    "http://127.0.0.1:${PORT}/api/funnel/${SET}/read"
+}
+
+echo "== step 1, the shape of the answer =="
+ask '{"step":1}' | node -e '
+let s = "";
+process.stdin.on("data", (d) => { s += d; });
+process.stdin.on("end", () => {
+  let j;
+  try { j = JSON.parse(s); } catch (e) { console.log("not JSON:", s.slice(0, 300)); return; }
+  console.log("top-level keys:", Object.keys(j).join(", "));
+  console.log("survivors:", j.survivors, "of", j.of, "| step:", j.step);
+  console.log("ruleSentence:", JSON.stringify(j.ruleSentence));
+  console.log("holdsAxis:", JSON.stringify(j.holdsAxis));
+  const r = j.reading;
+  console.log("reading is:", r === null ? "NULL" : typeof r);
+  if (r && typeof r === "object") {
+    console.log("reading keys:", Object.keys(r).join(", "));
+    console.log("dials:", Array.isArray(r.dials) ? r.dials.length : "not an array");
+    if (Array.isArray(r.dials) && r.dials[0]) console.log("first dial:", JSON.stringify(r.dials[0]).slice(0, 240));
+    console.log("splitHalf:", JSON.stringify(r.splitHalf));
+    console.log("lopsided:", JSON.stringify(r.lopsided));
+    console.log("skipped:", Array.isArray(r.skipped) ? r.skipped.length : r.skipped);
+  }
+});'
 
 echo
-echo "== the first 1200 characters of what it answered =="
-curl -s -X POST -H 'Content-Type: application/json' --data '{"step":1}' \
-  "http://127.0.0.1:${PORT}/api/funnel/${SET}/read" | head -c 1200
-echo
-echo
-
-echo "== for comparison, a route that is known to work =="
-curl -s -o /dev/null -w 'GET /api/stageset/%{url_effective} -> %{http_code}\n' \
-  "http://127.0.0.1:${PORT}/api/stageset/${SET}/ranked?from=0&n=1" || true
+echo "== how long it takes, and how big the answer is =="
+/usr/bin/time -f "  %e seconds" curl -s -o /tmp/funnel-read.json -w '  %{size_download} bytes\n' \
+  -X POST -H 'Content-Type: application/json' --data '{"step":1}' \
+  "http://127.0.0.1:${PORT}/api/funnel/${SET}/read" 2>&1 | tail -3
 
 echo
-echo "== what the service last logged =="
-journalctl -u ultimate-trading-system -n 25 --no-pager 2>/dev/null | tail -25 || echo "(no journal access)"
+echo "== the service log since the last restart =="
+journalctl -u ultimate-trading-system --since "-40 min" --no-pager 2>/dev/null | tail -12 || echo "(no journal access)"
