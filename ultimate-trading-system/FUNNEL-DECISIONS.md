@@ -151,3 +151,20 @@ made while building it that the design did not already settle.
     run does, so it waits rather than competing for them. `stageRunning()`, not
     `launchRefusal()`: that one lives in batch.js and my first cut called it
     from a file that has never had it.
+
+## Step 6a — the server contract
+
+38. **ONE read route, not one per step.** A route per step would apply the rule
+    in several places, and the survivor count the owner reads on step 2 and the
+    one the cut writes would be free to become two different numbers.
+39. **The cut checks its own replay BEFORE saving**, rather than asserting it in
+    a test and hoping in production. A set whose rule does not reproduce its own
+    survivors is a story about a decision, not the decision, and it refuses.
+40. **The proof travels with the rebuild's answer**, not as something the screen
+    can forget to ask for.
+41. **Stage 4 docs carry `seq` and `status`.** Found by reading `listSets`:
+    `seqFor` counts the highest `seq` it finds, so a set without one leaves it
+    stuck at 1 and every Funnel set after the first would be minted "#1" — two
+    records with one name.
+42. **A read with no tally answers the way the tables do**, so the screen starts
+    a totalling rather than reporting an empty board.

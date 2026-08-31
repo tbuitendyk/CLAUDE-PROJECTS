@@ -3141,6 +3141,180 @@ function stage3Coins(id, query) {
   };
 }
 
+// ---- THE FUNNEL'S VIEW OF A STAGE 3 SET ----------------------------------------
+//
+// ONE READ RETURNS THE WHOLE STATE OF THE WALK, rather than a route per step.
+// The rule is applied in exactly one place, so the survivor count the owner sees
+// on step 2 and the one the cut writes cannot be two different numbers.
+//
+// Everything here reads TEST money. The held-back window is opened once, at the
+// cut, on what survives (FUNNEL-DESIGN.md section 2).
+function funnelRead(id, state = {}) {
+  const doc = getSet(id);
+  if (!doc) throw new Error(`unknown record set '${id}'`);
+  if (doc.stage !== 3) throw new Error(`${doc.name || id} is a stage ${doc.stage} set — the Funnel reads stage 3`);
+  const t = readTally(id);
+  if (!t) return null;                       // the caller starts a totalling, exactly as the tables do
+
+  const F = require('./funnel');
+  const S4 = require('./funnelset');
+  const rule = S4.normaliseRule(state.rule);
+  const all = t.ranked || [];
+  const rows = S4.applyRule(all, rule);
+  const seed = state.seed || id;
+  const floor = state.floor == null ? 0 : Math.max(0, Math.floor(state.floor));
+  const step = Math.max(1, Math.min(7, Math.floor(Number(state.step) || 1)));
+
+  // What this set can be read ACROSS, worked out from what it actually holds --
+  // this is what makes a single-coin probe fall through to a weaker check by
+  // itself rather than reporting a comparison it never made.
+  const coins = new Set();
+  const shapes = new Set();
+  for (const r of all) { if (r.coins != null) coins.add(r.coins); }
+  for (const r of (t.coins || [])) { coins.add(r.trade); shapes.add(r.geometry); }
+  const fixed = new Set([...Object.keys(rule.ranges), ...Object.keys(rule.allowed)]);
+  const freeDials = F.ALL_DIALS.filter((d) => !fixed.has(d)).length;
+  const holdsAxis = F.holdsAxisFor({
+    coins: coins.size,
+    shapes: shapes.size,
+    // the thirds only exist once the survivors have been rebuilt
+    thirds: !!state.rebuilt,
+    freeDials,
+  });
+
+  const out = {
+    set: {
+      id: doc.id,
+      name: doc.name,
+      stage: 3,
+      settings: all.length,
+      release: (doc.params || {}).engineVersion || null,
+      // named, never left blank -- a missing comparison that shows as nothing
+      // reads as "nothing to report", which is the opposite of the truth
+      noiseTwin: noiseTwinOf(doc),
+      sealed: sealedWindowOf(doc),
+    },
+    money: 'test',
+    step,
+    rule,
+    ruleSentence: S4.ruleSentence(rule),
+    target: state.target == null ? null : Math.max(0, Math.floor(state.target)),
+    survivors: rows.length,
+    of: all.length,
+    holdsAxis,
+    reading: null,
+  };
+  if (!rows.length) {
+    out.reading = { why: 'this rule keeps nothing, so there is nothing to read' };
+    return out;
+  }
+  if (step === 1) out.reading = F.step1(rows, { seed, top: 3 });
+  else if (step === 2) out.reading = F.step2(rows, String(state.dial || ''), { seed });
+  else if (step === 3) {
+    const g = F.step3(rows, String(state.dialA || ''), String(state.dialB || ''), { floor });
+    out.reading = { ...g, floorCost: F.floorCost(g, state.floorChoices) };
+  } else if (step === 4) {
+    out.reading = { axis: holdsAxis, slices: sliceRowsFor(rows, t, holdsAxis.axis, rule), floor };
+  } else if (step === 5) {
+    const ordered = F.ORDERED_DIALS.filter((d) => rows.some((r) => r[d] != null));
+    out.reading = require('./plateau').widestRegion(
+      rows.map((r) => ({ ...r, pnl: F.money(r), trades: r.avgTrades == null ? 1 : r.avgTrades })),
+      { minTrades: 0, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },
+    );
+  }
+  return out;
+}
+
+// The slices step 4 compares across, for whichever axis this set can offer.
+// A coin slice is read from the every-coin table so it is the same arithmetic
+// the screen already shows, never a second calculation of the same thing.
+function sliceRowsFor(rows, t, axis, rule) {
+  const F = require('./funnel');
+  if (axis === 'dials') {
+    const fixed = new Set([...Object.keys(rule.ranges || {}), ...Object.keys(rule.allowed || {})]);
+    const free = F.ALL_DIALS.find((d) => !fixed.has(d) && new Set(rows.map((r) => F.keyOf(r[d]))).size > 1);
+    if (!free) return [];
+    const by = F.groupsFor(rows, free);
+    return [...by.entries()].map(([k, vals]) => ({
+      key: `${free} ${k}`, n: vals.length, mean: vals.reduce((a, c) => a + c, 0) / vals.length,
+    }));
+  }
+  if (axis === 'coins' || axis === 'shapes') {
+    const labels = new Set(rows.map((r) => String(r.label).split(' · ')[0]));
+    const by = new Map();
+    for (const c of (t.coins || [])) {
+      if (!labels.has(c.cellLabel)) continue;
+      const k = axis === 'coins' ? c.trade : c.geometry;
+      if (!by.has(k)) by.set(k, []);
+      if (c.avgTest != null) by.get(k).push(c.avgTest);
+    }
+    return [...by.entries()].map(([k, vals]) => ({
+      key: k, n: vals.length, mean: vals.length ? vals.reduce((a, x) => a + x, 0) / vals.length : null,
+    }));
+  }
+  // 'thirds' needs the rebuilt numbers; the caller supplies them or the axis
+  // was never offered in the first place
+  return [];
+}
+
+// ---- THE CUT: writing a Stage 4 set --------------------------------------------
+//
+// The choices made walking the steps ARE the rule, and the rule is what gets
+// written -- not the rows it happened to pick today. A row cannot be
+// null-tested; a rule can.
+//
+// AN EMPTY OR ONE-SETTING RESULT IS WRITTEN WITH A WARNING, NEVER REFUSED
+// (owner ruling 6). Refusing would take the decision away invisibly.
+function cutFunnelSet(parentId, state = {}) {
+  const busy = stageRunning();
+  if (busy) throw new Error(`${busy} is running — the cut reads the same tables it writes from`);
+  const parent = getSet(parentId);
+  if (!parent) throw new Error(`unknown record set '${parentId}'`);
+  if (parent.stage !== 3) throw new Error(`${parent.name || parentId} is a stage ${parent.stage} set — a Funnel set is cut from stage 3`);
+  const t = readTally(parentId);
+  if (!t) throw new Error(`${parent.name} has no totalled tables yet — there is nothing to cut from`);
+
+  const S4 = require('./funnelset');
+  const seq = seqFor(4);
+  const id = `s4-${Date.now().toString(36)}-${seq}`;
+  const doc = S4.newFunnelSet({
+    id,
+    seq,
+    name: String(state.name || `S4 #${seq}`).slice(0, 120),
+    parent,
+    release: require('../package.json').version,
+    target: state.target,
+    seed: state.seed || id,
+    boardNull: parent.boardNull || null,
+    sealed: sealedWindowOf(parent),
+  });
+  // The walk as it happened, forward steps and back-steps alike. Going back is
+  // more looking, and the reserve grade can only count what was written down.
+  for (const st of (state.steps || [])) S4.recordStep(doc, st);
+  for (const b of (state.backSteps || [])) S4.recordBackStep(doc, b);
+  doc.rule = S4.normaliseRule(state.rule);
+  const survivors = S4.applyRule(t.ranked || [], doc.rule);
+  S4.finishFunnelSet(doc, survivors, state.closing || { key: 'rule' });
+  // THE REPLAY IS CHECKED BEFORE THE SET IS SAVED, not asserted in a test and
+  // hoped for in production. A set whose rule does not reproduce its own
+  // survivors is a story about a decision rather than the decision.
+  const check = S4.replay(doc, t.ranked || []);
+  if (!check.same) {
+    throw new Error(`the rule does not reproduce its own survivors (${check.got} vs ${check.had}) — refusing to write it`);
+  }
+  doc.replayChecked = { at: new Date().toISOString(), ...check };
+  saveSet(doc);
+  return doc;
+}
+
+function listFunnelSets(parentId = null) {
+  return listSets()
+    .filter((x) => String(x.id).startsWith('s4-'))
+    .map((x) => getSet(x.id))
+    .filter((d) => d && (!parentId || ((d.parent || {}).id === parentId)))
+    .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
 function stage3Ranked(id, from, n, filters = null) {
   const doc = getSet(id);
   const t = readTally(id);
@@ -3201,7 +3375,8 @@ module.exports = {
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
   missingSettingsIn, nextSettingNumber,
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
-  rebuildRichFor, proveRebuild, firstDigitOf,
+  rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
+  cutFunnelSet, listFunnelSets,
   sealedWindowOf, sealedFromUnits, noiseTwinOf, needsBoardNullStamp,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,

@@ -787,6 +787,80 @@ app.get('/api/stageset/:id/ranked', (req, res) => {
   }
   return res.json(out);
 });
+// ---- THE FUNNEL: the step between Boards and Verify -----------------------------
+//
+// ONE READ RETURNS THE WHOLE STATE OF THE WALK. A route per step would apply the
+// rule in several places, and the survivor count on step 2 and the one the cut
+// writes would be free to become two different numbers.
+app.post('/api/funnel/:id/read', (req, res) => {
+  let out;
+  try {
+    out = stages.funnelRead(req.params.id, req.body || {});
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+  if (!out) {
+    // no tally yet: the same answer the tables give, so the screen starts a
+    // totalling rather than reporting an empty board
+    const t = stages.ensureTally(req.params.id);
+    if (t.totalling || t.waiting || t.failed) return res.json({ totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null });
+    return res.status(404).json({ error: 'this set has no totalled tables yet' });
+  }
+  return res.json(out);
+});
+
+// Step 6: rebuild the numbers stage 3 did not store, for the survivors only.
+// Minutes at most, and it says how many settings it will price before it runs.
+let funnelRebuild = null;
+app.post('/api/funnel/:id/rebuild', async (req, res) => {
+  if (funnelRebuild) return res.status(409).json({ error: `a rebuild is already going (${funnelRebuild})` });
+  const doc = stages.getSet(req.params.id);
+  if (!doc) return res.status(400).json({ error: 'unknown record set' });
+  const labels = Array.isArray((req.body || {}).labels) ? req.body.labels.map(String) : [];
+  funnelRebuild = req.params.id;
+  try {
+    const got = await stages.rebuildRichFor(doc, labels, {});
+    // THE PROOF TRAVELS WITH THE ANSWER. An unproved rebuild is allowed and
+    // must never look proved, so the verdict is part of the reply rather than
+    // something the screen can forget to ask for.
+    const proof = stages.proveRebuild(got.perSetting, (req.body || {}).expect || null);
+    return res.json({
+      settings: got.settings,
+      units: got.units,
+      failures: got.failures,
+      proof,
+      perSetting: [...got.perSetting.entries()].map(([label, e]) => [label, { avgTest: e.avgTest, units: e.units }]),
+    });
+  } catch (err) {
+    return res.status(400).json({ error: err.message });
+  } finally { funnelRebuild = null; }
+});
+
+// Step 7: write the Stage 4 set. The rule is what is written, not the rows it
+// happened to pick today, and the cut checks its own replay before saving.
+app.post('/api/funnel/:id/cut', (req, res) => {
+  try {
+    const doc = stages.cutFunnelSet(req.params.id, req.body || {});
+    return res.json({
+      id: doc.id, name: doc.name, seq: doc.seq,
+      survivors: doc.counts.survivors, target: doc.counts.target,
+      ruleSentence: doc.ruleSentence, warnings: doc.warnings,
+      closing: doc.closing, replayChecked: doc.replayChecked,
+    });
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+
+app.get('/api/funnel/sets', (req, res) => {
+  const parent = req.query.parent ? String(req.query.parent) : null;
+  return res.json({
+    sets: stages.listFunnelSets(parent).map((d) => ({
+      id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
+      parent: d.parent, target: d.target, counts: d.counts,
+      ruleSentence: d.ruleSentence || null, warnings: d.warnings || [],
+      closing: d.closing, boardNull: d.boardNull, release: d.release,
+      steps: (d.steps || []).length, backSteps: (d.backSteps || []).length,
+    })),
+  });
+});
+
 app.get('/api/stageset/:id/coins', (req, res) => {
   const out = stages.stage3Coins(req.params.id, req.query || {});
   if (!out) {

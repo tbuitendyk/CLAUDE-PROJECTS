@@ -127,12 +127,18 @@ const CLOSINGS = Object.freeze({
 
 // ---- the record --------------------------------------------------------------
 
-function newFunnelSet({ id, name, parent, release, target, seed, boardNull, sealed }) {
+function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull, sealed }) {
   return {
     id,
+    // listSets summarises on stage AND seq, and seqFor counts the highest seq it
+    // finds. A set with no seq leaves seqFor stuck at 1, so every Funnel set
+    // after the first would be minted as "#1" -- two records with one name.
+    seq: seq == null ? null : Number(seq),
     name: name || id,
     kind: 'funnel',
     stage: 4,
+    // a cut is instantaneous; there is no running state to be caught in
+    status: 'done',
     createdAt: new Date().toISOString(),
     // the release that made THIS reading, beside the release that priced the
     // board it read -- a rebuilt number and a stored one can come from
