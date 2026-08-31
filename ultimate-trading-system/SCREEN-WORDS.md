@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **c0da6e4a67b7 — what the box is serving**, not from the working tree.
+Generated from **b464d5d11d11 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -491,7 +491,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Funnel
 
-## What the controls are called (46)
+## What the controls are called (47)
 
 - `- chosen`
 - `, and the two halves read`
@@ -534,6 +534,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `The rule so far`
 - `they do not agree`
 - `thin below`
+- `This section could not read`
 - `to`
 - `What each floor would keep:`
 - `work out the missing numbers`
@@ -561,10 +562,14 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `trailMult`
 - `weekdaysOnly`
 
-## Sentences the page prints (43)
+## Sentences the page prints (47)
 
-- Open a stage 3 record set on the Boards section first -
-- the Funnel walks the set you have open there, so there is no second picker to disagree with it.
+- There is no stage 3 record set open. Open the Boards section
+- once - it will settle on one - and come back. The Funnel walks the set Boards has open, so there is no second
+- picker here to disagree with it.
+- . Nothing below is from it, because there
+- is nothing below. The reason came back in the message box; if that set has just been deleted or renamed,
+- pick one on the Boards section.
 - the tables for this set are being totalled -
 - Every money figure on this screen is test money.
 - The held-back window is opened once,
@@ -607,10 +612,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - An empty or one-setting result is written with a warning, never refused.
 - keeps the set open and clears every choice - recorded as going back
 
-## Every word, flat (334)
+## Every word, flat (354)
 
 ```
-accept across add again against agree agreeBar agreeBoth agreeCopy agreePct agreePersist agreeRule all allowed also an An and anything anyway. anywhere apart are ARE armMult as at average averages avoid back bandMode bar be because being below beside best-looking best-scoring biggest board Boards built but by can cannot cannot. check checked choice choices chosen claim clear cleared clears coins column comparing comparison considered. count cut data decision depth dial disagree dMult do do. does down. dropped. each effect else. empty ended entry evenly Every every everything exists far far. fewest figure final finding first flat flat. flatter floor fluke for forward four from Funnel funnel further. gate gets gives Going going grid Grouping groups guessing half halves happened happens has have held-back here hides hill holds How how in. inside instead is isolated it It it. its judging. keep keeps knows leads like like. limits looks losing loss luck made makes. many marked means measurable menu middle missing money money. more movement much name name. neighbouring neighbours never no No noise none not Not nothing number numbers of offered often on once one One one-setting only Open open opened or ordering other others others. otherwise out over partly Passed peak pick picker picking positive. ramp range RANGE ranges reach read Read reading real. record recorded refused. region relationship. rests result row rows rule rule. run same say score scrambled screen sealed second section seen set settings shape shopping shopping. shows single sit size slice slices small sneak so some spike split-half Split-half spread square squares STABLE stage Stage start Step step stop streak survive survives. sweep swept swing tables take Taking target tells test tests than That that the The their there These these they thin Thin thin. this This tHours tighten times to today top totalled Totals toward trades trailMult two until use value values varies walk walked walks warning was weaker wearing weekdaysOnly what What when whether which whichever widest window with won work worked worst would write written you you. yours
+accept across add again against agree agreeBar agreeBoth agreeCopy agreePct agreePersist agreeRule all allowed also an An and anything anyway. anywhere apart are ARE armMult as at average averages avoid back back. bandMode bar be because been being below below. beside best-looking best-scoring biggest board Boards box built but by came can cannot cannot. check checked choice choices chosen claim clear cleared clears coins column come comparing comparison considered. could count cut data decision deleted depth dial disagree dMult do do. does down. dropped. each effect else. empty ended entry evenly Every every everything exists far far. fewest figure final finding first flat flat. flatter floor fluke for forward four from Funnel funnel further. gate gets gives Going going grid Grouping groups guessing half halves happened happens has have held-back here hides hill holds How how if in in. inside instead is isolated it It it. its judging. just keep keeps knows leads like like. limits looks losing loss luck made makes. many marked means measurable menu message middle missing money money. more movement much name name. neighbouring neighbours never no No noise none not Not Nothing nothing number numbers of offered often on once one One one-setting only Open open open. opened or ordering other others others. otherwise out over partly Passed peak pick picker picking positive. ramp range RANGE ranges reach read Read reading real. reason record recorded refused. region relationship. renamed rests result row rows rule rule. run same say score scrambled screen sealed second section section. seen set settings settle shape shopping shopping. shows single sit size slice slices small sneak so some spike split-half Split-half spread square squares STABLE stage Stage start Step step stop streak survive survives. sweep swept swing tables take Taking target tells test tests than that That the The their There there These these they thin Thin thin. This this tHours tighten times to today top totalled Totals toward trades trailMult two until use value values varies walk walked walks warning was weaker wearing weekdaysOnly what What when whether which whichever widest will window with won work worked worst would write written you you. yours
 ```
 
 ---
