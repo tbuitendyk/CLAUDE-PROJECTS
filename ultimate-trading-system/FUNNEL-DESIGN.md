@@ -1,15 +1,20 @@
 # The Funnel — design
 
-Written 2026-08-31 on the owner's `GO NOW!` for a detailed design. Nothing in
-here is built. No code, no schema change, no deploy has happened.
+Written 2026-08-31 on the owner's `GO NOW!` for a detailed design, revised the
+same day on the owner's direction that the Funnel builds the missing numbers
+rather than stage 3 storing them. Nothing in here is built. No code, no schema
+change, no deploy has happened.
 
-The owner's three rulings, taken as given:
+The owner's rulings, taken as given:
 
 1. Position of the "does it hold" step is my judgement — **but it must work on a
    single-coin probe.**
 2. The Funnel **must run with no null set**, whether or not the stages feeding
    it declared one.
 3. The tab is **Funnel**. Its output is **Stage 4** data.
+4. **The Funnel builds the missing numbers on demand.** Stage 3 does not grow.
+5. **A field sets the target size** of the resulting record set.
+6. **No restrictions** on an empty or one-setting result — warn, never refuse.
 
 ---
 
@@ -64,9 +69,9 @@ this decision closes.
 
 ---
 
-## 3. Every step reports three things
+## 3. Every step reports three things, and shows the distance to target
 
-This is the uniform contract, and it is what satisfies ruling 2.
+The three-part contract is what satisfies ruling 2.
 
 | | What it is | When available |
 |---|---|---|
@@ -88,21 +93,49 @@ deals are seeded from theirs.
 a column, but by naming the absence. A missing comparison that shows as a blank
 reads as "nothing to report", which is the opposite of the truth.
 
+**Split-half is weaker than a noise twin** and the page says so where it stands
+in for one. It tests whether a reading is stable, not whether the effect is real.
+
+### The target size (ruling 5)
+
+A field on the tab sets how many settings the Funnel is aiming to end with. It
+is a TARGET, not a cut. From the moment it is set, every step shows the current
+survivor count against it, so the owner can see whether they are narrowing too
+fast or too slowly while there is still time to change course.
+
+It never trims anything on its own. What happens when the rule overshoots is
+decided at step 7 (§5.7), by the owner, from three named options.
+
 ---
 
-## 4. Part A — what Stage 3 must capture first
+## 4. The missing numbers — built by the Funnel, not stored by stage 3
 
-The Funnel cannot be built on the current record. These are the additions, each
-with where the requirement was learned. All are already computed; none adds
-meaningful compute.
+**Stage 3's record shape does not change.** This is ruling 4 and it is the right
+architecture for a reason beyond cost: stage 3's job is to price the grid, and
+these numbers are analysis inputs. Analysis belongs to Stage 4.
 
-### 4.1 From `simCell` — currently returns eight numbers, stage 3 keeps three
+### 4.1 Why on-demand works
 
-`lib/bracket.js:339` returns `pnl, trades, wins, stops, ambiguous,
-trailAmbiguous, unpriced, grossPerTrade`. Stage 3 keeps `pnl, trades` on test
-and `pnl, trades, stops` on held-back.
+Two pieces of machinery already exist and are in use:
 
-Store all eight, **on both windows**.
+- `s3Payload({ …, settings })` takes an arbitrary SUBSET of settings. The
+  fill-in path already prices subsets this way.
+- The backfill door in `lib/stagework.js` rebuilds a unit off its stage 2 parent
+  and walks the same streams without pricing everything: *"A set priced before
+  this was measured can still have it: the votes are on its stage 2 parent and
+  the answer never depended on the trade shape."*
+
+So the Funnel, at the step that needs them, rebuilds the units once and prices
+only the survivors. Rebuilding a unit is the expensive part and there are ten of
+them; pricing a few thousand narrowed settings against them is seconds.
+
+### 4.2 What gets built
+
+All of these are already computed inside the pricing pass and thrown away. None
+adds meaningful work.
+
+**From `simCell`** — `lib/bracket.js:339` returns eight numbers; stage 3 keeps
+`pnl, trades` on test and `pnl, trades, stops` on held-back:
 
 - `ambiguous` / `trailAmbiguous` — the old census: *"How much of the result rests
   on an unknowable within-bar ordering. Meaningless to report money without
@@ -111,14 +144,8 @@ Store all eight, **on both windows**.
   than noise and still lose, if its mistakes are larger than its wins."*
 - `unpriced` — bars that could not be priced. Currently invisible.
 
-`lib/batch.js` stored `holdWins`, `holdGrossPerTrade`, `searchWins`,
-`searchGrossPerTrade`, `searchStops` and `cellAmbiguous`. The three-stage system
-dropped them. This restores them.
-
-### 4.2 New from `simCell` — free, because it already walks trades in order
-
-`simCell` accumulates `pnl` one trade at a time in chronological order. A running
-minimum inside that same loop yields, at zero extra cost:
+**New, and free, because `simCell` already walks trades in chronological order
+accumulating `pnl` one at a time.** A running minimum inside that same loop:
 
 - `maxDrawdown` — the deepest the running total ever sat below its own high
 - `worstTrade`, `bestTrade`
@@ -128,21 +155,19 @@ minimum inside that same loop yields, at zero extra cost:
 answers "did the money come from the whole window or from one lucky month?" when
 there are no other coins to check against.
 
-Rationale for the exposure numbers, from `lib/convictionsweep.js`:
+From `lib/convictionsweep.js`, on why the exposure numbers matter:
 
 > $ totals flatter big clips, so exposure-honest metrics ride along: return per
 > deployed dollar, worst single trade, max drawdown of the cumulative book, and
 > the PEAK CONCURRENT notional.
 
-Peak concurrent notional is NOT included here — it depends on position overlap
-and is not free. Parked, named as absent.
+Peak concurrent notional is NOT included. It depends on position overlap and is
+not free. Parked, and named as absent on the screen.
 
-### 4.3 From `holdControls` — computes four, stage 3 keeps one
+**From `holdControls`** — `lib/bracket.js:364` computes four benchmarks;
+stage 3 keeps one, as `avg vs always-long $`:
 
-`lib/bracket.js:364` computes `alwaysLong`, `alwaysShort`, `buyHold`,
-`shortHold`. Stage 3 keeps only `alwaysLong`, as `avg vs always-long $`. Keep
-all four. They are cached per unit and per t, so this is three numbers and no
-compute.
+- `alwaysShort`, `buyHold`, `shortHold`
 
 `lib/bracket.js:344`:
 
@@ -154,57 +179,87 @@ compute.
 Buy-and-hold is the comparison a crypto result owes most and it is currently
 calculated and discarded.
 
-### 4.4 Denominators
+**Denominators** — how many periods each window held, and how many the 24/5 mask
+dropped. `$248` has no meaning without the count of periods behind it.
 
-- how many periods each window held, and how many the 24/5 mask dropped
-- a record for a setting that reached no trades, rather than silence — the old
-  board's QC 74: *"recorded so the denominator stays honest"*
+**The null set's shape** — `beat`, `pairs` and `lead` are stored, but since
+`lead = (real − mean) / spread` that is one equation with two unknowns, so
+neither the noise average nor its spread is recoverable. Both are rebuilt: the
+shuffles are a pure function of the set's id (`seedOf` is a hash of the name, the
+shuffle is seeded Fisher-Yates), so a survivor's deals re-price exactly.
 
-`$248` has no meaning without the count of periods behind it.
+### 4.3 The backfill proves itself
 
-### 4.5 The null set's shape, not just its tally
+Every rebuild recomputes `pnl` and `trades` alongside the new numbers and
+compares them to what stage 3 stored.
 
-Today: `beat`, `pairs`, `lead`. Since `lead = (real − mean) / spread`, that is one
-equation with two unknowns, so neither the noise average nor its spread is
-recoverable. Store both. Two numbers, no compute, and it turns "beat 661 of 800"
-into an effect size in dollars.
+**A mismatch means the rebuild is not the same run** — the price files moved, or
+the engine did. It refuses and says which setting disagreed and by how much. It
+never writes numbers from a different world beside numbers from this one.
+Stage 3 launch already carries a guard of this shape for the votes: *"stage 2
+votes do not line up with the rebuilt chunks — the price files changed underneath
+the set."*
 
-Per-deal detail beyond that is NOT stored and does not need to be: the shuffles
-are a pure function of the set's id (`seedOf` is a hash of the name, the shuffle
-is seeded Fisher-Yates), so any single row's deals can be re-priced in seconds
-off its stage 2 parent.
+It also **refuses to backfill across a first-digit release change**, and stamps
+which release computed each rebuilt number.
 
-### 4.6 The sealed reserve
+### 4.4 Where the rebuilt numbers live
 
-`unitChunks` seals the final 13% of history under `reserve61`. Stage 1 captures
-it and passes it up. **Stage 3 does not even read it** — line 297 destructures
-`geo, maps, split` and drops `reserve`.
+**In the Stage 4 set. Never back into the stage 3 store.**
 
-Stage 3 must stamp the sealed window's boundaries on its record set, so that a
-Stage 4 set can carry them and the one-touch grade has something to bind to.
+The row store's columns only ever grow, and rows written before a growth read
+back short. So backfilling only the survivors into stage 3 would leave two record
+shapes on disk — some rows carrying the new columns, some not. That is precisely
+the two-vocabularies-on-disk problem RULE NINE forbids.
 
-This is a prerequisite, not part of the Funnel. Without it the chain has no final
-judge — `startReserveGrade` lives only in `lib/batch.js` and refuses anything
-that is not a History Tuning run.
+Stage 3 stays immutable and uniform. The enriched rows are Stage 4's, written
+once and cached there, so a second pass over the same Funnel set costs nothing.
 
-### 4.7 Board-level noise information
+### 4.5 The one thing that cannot be built afterwards
 
-For each shuffled world, what the best of the whole board did.
+**Board-wide best-of-noise** — "the best row on the whole board in shuffled world
+number seven" — needs all 524,832 settings in that world. It cannot be derived
+from survivors, by definition. It is captured at run time or not at all.
 
-- **Cheap, always on:** per unit, per shuffle, the best money and the widest
-  region size across all settings in that unit. ~2,000 numbers for a whole run.
-  Combined across units it slightly overstates the noise board, which makes a
-  real row work harder — a safe screen, never a flattering one.
-- **Exact:** needs a settings × shuffles accumulator before the maximum. At 19
-  shuffles that is ~10 million numbers and is feasible. At 100 it is ~52 million
-  and I would argue against it.
+Under ruling 2 the Funnel does not require it. Split-half stands in. But if it is
+wanted, the cheap form is: per unit, per shuffle, the best money and the widest
+region size across all settings in that unit — about 2,000 numbers for a whole
+run. Combined across units it slightly overstates the noise board, which makes a
+real row work harder: a safe screen, never a flattering one.
 
-Build the cheap one always. Make the exact one a control on Sweep beside
-`null set size`, with its cost printed on the page.
+That belongs on Sweep as a control beside `null set size`, with its cost printed.
 
 ---
 
-## 5. Part B — the Funnel, step by step
+## 5. How the current data fits
+
+**The stage 3 row store does not change, so the owner's existing set fits the new
+design exactly as it stands. There is nothing to migrate and nothing to re-run.**
+
+Steps 1 to 5 of the Funnel read `pnl` and `trades`, which every existing record
+already carries. Step 6 is where the rebuild button lives, and it operates on
+whatever has survived by then.
+
+Two fields are added to the stage 3 **set document** — not to the records:
+
+| Field | Why | Existing sets |
+|---|---|---|
+| the sealed reserve's boundaries | Stage 3 seals the final 13% of history and never records where. Without this the one-touch grade has nothing to bind to. | Recomputable exactly from the stored parameters (`unitChunks` is deterministic), so a one-pass migration of the set documents fills it in |
+| whether board-wide noise was captured, and if not, why not | So a reader never has to ask which era a set is from | Written as "not captured — this set predates the reading" |
+
+Both are written on EVERY set, old and new, so no reader ever branches on the
+record's age (RULE NINE). Set documents are small; the migration is one cheap
+pass and touches no records.
+
+**And subsequent stage 1–3 runs need change nothing either.** The numbers in §4.2
+stay unstored by design — a new run and an old run present the Funnel with the
+same shape, and the Funnel rebuilds either. One code path, one record shape,
+forever. The only thing a new run can offer that an old one cannot is §4.5's
+board-wide noise, and that is a control the owner sets at launch.
+
+---
+
+## 6. The Funnel, step by step
 
 Grain: steps 1, 2, 3, 5, 6 read the **setting** grain (Table 3.A's grain). Step 4
 reads the **setting × coin** grain (Table 3.B's grain). Both come from the tally
@@ -212,7 +267,7 @@ already built.
 
 Throughout, "money" means test money (§2).
 
-### Step 1 — which dials move the result at all
+### 6.1 Step 1 — which dials move the result at all
 
 For each dial — decision, band, 24/5, entry, gate, d, t, trail, arm, and each
 agreement dial — group the surviving settings by that dial's value and compute:
@@ -241,10 +296,10 @@ the largest single collapse of the space — reached without choosing a value.
 movement. The ORDERING is the finding. The magnitude is a claim only against the
 noise twin or the split-half.
 
-### Step 2 — the shape of each surviving dial
+### 6.2 Step 2 — the shape of each surviving dial
 
-For each dial carried forward from step 1, mean money by value, with counts and
-the within-value spread.
+For each dial carried forward, mean money by value, with counts and the
+within-value spread.
 
 Ordered dials (d, t, trail, arm, band %, agreement share, and the copy dial) get
 a curve and a mechanical shape class:
@@ -271,24 +326,33 @@ page may suggest one; it never applies one (RULE FIVE).
 value is what luck looks like, and picking its peak is the shopping the whole
 design exists to avoid.
 
-### Step 3 — do the dials interact
+### 6.3 Step 3 — do the dials interact
 
 For the top three dials by `M`, three grids: mean money by dial A × dial B, with
-the count in each cell and a thin-count flag below a floor the owner sets.
+the count in each square.
 
-This is where "short d only works with long t" becomes visible. It is invisible
-in any ranked list.
+**The thin-square floor.** Some squares are built from thousands of settings and
+some from two. A square built from two tells you nothing, but it looks like every
+other square — and it will often be the best-looking square on the grid, because
+small groups swing further. So a floor is set: below it, the square greys out and
+prints how many settings it had.
 
-- **Split-half:** the same grid on each half; report the share of cells that
+**The floor is a field, and the page shows what each choice costs** before it is
+set: "240 squares; a floor of 20 keeps 187, a floor of 50 keeps 94." Choosing
+blind is what this whole tab exists to end. The starting value is labelled
+GUESSED, per the project's convention that every threshold says whether it was
+derived or guessed.
+
+- **Split-half:** the same grid on each half; report the share of squares that
   agree in sign.
 - **Noise twin:** the noise board's grid.
 
-### Step 4 — does it hold when what you did NOT choose changes
+### 6.4 Step 4 — does it hold when what you did NOT choose changes
 
-**Positioned here, fourth, deliberately.** Before this step the survivors are
-still a wide region, so a consistency check has something to be consistent
-across. Run earlier, it tests a set so wide the answer is always yes; run later,
-it tests a set so narrow the answer is always no.
+**Positioned fourth, deliberately.** Before this step the survivors are still a
+wide region, so a consistency check has something to be consistent across. Run
+earlier it tests a set so wide the answer is always yes; run later, a set so
+narrow the answer is always no.
 
 **The axis is chosen automatically from what the set actually contains**, in this
 priority order, and the page NAMES which one it used:
@@ -298,24 +362,26 @@ priority order, and the page NAMES which one it used:
 3. **time thirds**, from `pnlThirds` (§4.2)
 4. **the free dials** — those the rule has not fixed
 
-**This is the single-coin probe path.** With one coin the step falls to chunk
-shapes, then to time thirds, then to the free dials, automatically, and prints
-which check it was able to make and that it is a weaker one. It never silently
-skips and it never silently produces a meaningless "1 of 1 positive".
+**This is the single-coin probe path (ruling 1).** With one coin the step falls to
+chunk shapes, then to time thirds, then to the free dials, automatically, and
+prints which check it made and that it is a weaker one. It never silently skips
+and it never silently produces a meaningless "1 of 1 positive".
 
-Report per slice: mean money, and the headline **how many slices out of how many
-are positive**, plus the worst slice.
+Report per slice: mean money, the headline **how many slices out of how many are
+positive**, and the worst slice. The same thin-square floor applies — a coin with
+three settings left in it is not a slice, it is a rounding error, and it greys
+out with its count shown.
 
 - **Split-half:** halve the slices where there are enough; below four slices say
   so rather than halving into nonsense.
-- **Noise twin:** the same count on the noise board — how many slices a noise
-  region gets positive by chance.
+- **Noise twin:** how many slices a noise region gets positive by chance.
 
-### Step 5 — plateau or knife edge
+### 6.5 Step 5 — plateau or knife edge
 
 Run `lib/plateau.js` `widestRegion` on the survivors. Report region size, the
-region's **interior centre** (not its peak — the library already refuses to hand
-back the maximum, for the right reason), cells considered and cells clearing.
+region's **interior centre** — not its peak; the library already refuses to hand
+back the maximum, for the right reason — plus cells considered and cells
+clearing.
 
 **Required change to `plateau.js`:** its `ORDERED_AXES` is a module constant
 naming `quorum`, which is not a stage 3 field — the agreement dials replaced it.
@@ -323,32 +389,50 @@ The axis list must come from the caller. That is also RULE FIVE: which dials hav
 an order is a property of the run, not of the library.
 
 - **Split-half:** region size on each half.
-- **Noise twin:** the widest region each noise board produces. This is the
-  comparison that makes the number a finding rather than an adjective, and it is
-  exactly what §4.7's cheap capture provides.
+- **Noise twin:** the widest region each noise board produces. This is what makes
+  the number a finding rather than an adjective, and it is exactly what §4.5's
+  cheap capture provides.
 
-### Step 6 — exposure
+### 6.6 Step 6 — exposure
 
-Now, and only now, the ugly-path numbers: max drawdown, worst single trade, stops
-per trade, trade count. Shown as distributions across the survivors, not as a
-mean — a mean drawdown hides the row that would have ended you.
+**This is where the rebuild happens** (§4). The button says how many settings it
+will re-price and roughly how long, before it runs.
+
+Then the ugly-path numbers: max drawdown, worst single trade, stops per trade,
+trade count, ambiguous bars. Shown as distributions across the survivors, not as
+means — a mean drawdown hides the row that would have ended you.
 
 The owner sets floors. Dollar totals flatter; this is where an unacceptable path
 is cut regardless of its total.
 
-### Step 7 — declare and cut
+### 6.7 Step 7 — declare and cut
 
 The choices made in steps 2, 3, 4 and 6 ARE the rule. The page states it back as
-one sentence and shows the survivor count.
+one sentence and shows the survivor count against the target size.
 
-One press writes the **Stage 4** set.
+**If the rule overshoots the target, three options, all offered, none removed
+(rulings 5 and 6):**
+
+| Option | What it does | What it costs |
+|---|---|---|
+| accept the rule's answer | Ignore the target | Nothing. The target was only ever a guide. |
+| tighten toward the middle | Narrow each range a step at a time, widest-effect dial first, moving inward from both ends — never toward the best value | Little. It keeps the region's interior, which is the defensible part. |
+| take the top N by a column | Rank and slice | **The most.** This is shopping, on the very board the funnel exists to stop you shopping. It is offered because removing the owner's choice is the fault RULE ZERO and RULE FIVE exist to prevent — and it is labelled exactly this plainly on the screen. |
+
+Whichever is used is recorded on the Stage 4 set, so the reserve grade at the end
+knows what it is judging.
+
+**An empty or one-setting result is written with a warning, never refused**
+(ruling 6).
+
+One press writes the Stage 4 set.
 
 **Then, and not before, the held-back window is read** — once, on the survivors —
 and reported beside the test figures that selected them.
 
 ---
 
-## 6. The Stage 4 record set
+## 7. The Stage 4 record set
 
 Id `s4-<slug>-<n>`, in `data/stagesets`, alongside `s1-`, `s2-`, `s3-`, with its
 rows in the same block store the other stages use.
@@ -360,10 +444,14 @@ It holds:
 - **the steps, in order**: what each showed, what was chosen, and when
 - **the back-steps**, also in order — going back and re-choosing is more looking,
   and the record must not hide it
+- the target size, and which of the three closing options was used
 - per-step survivor counts: real, split-half, and noise where present
 - **whether a noise twin existed at all**, as a first-class field
+- the thin-square floor that was set
 - the surviving settings, by label and by their parent's setting index
-- the sealed reserve's boundaries, carried from the parent (§4.6)
+- **the rebuilt numbers** from §4.2, with the release that computed them and the
+  proof that test money and trades matched what stage 3 stored
+- the sealed reserve's boundaries, carried from the parent
 - the held-back reading taken at step 7, stamped as the first held-back read
 
 **A Stage 4 set must be replayable.** Re-running its recorded steps against its
@@ -374,7 +462,7 @@ other and the existing delete and parent-protection rails apply unchanged.
 
 ---
 
-## 7. What reads a Stage 4 set
+## 8. What reads a Stage 4 set
 
 This replaces the broken "selected row" path. `doc.selection` is written only by
 `POST /api/bracketlab/:id/select`, which **no screen calls** — Verify, History,
@@ -390,15 +478,15 @@ that, every one of them comes to read a Stage 4 set instead.
 | The one-touch reserve grade | The sealed boundaries plus the rule, stamped before the seal is opened |
 | Greenlight | The evidence chain: this set's id and each tool's verdict on it |
 
-**Per-trade capture is a Stage 4 job, not a stage 3 one.** Capturing entry time,
-direction, agreement count, return, deepest adverse move and stop-hit for
-524,832 settings is unaffordable. For a few dozen survivors it is nothing. This
-is the cost control that makes the stop tuner and conviction sizing reachable at
-all.
+**Per-trade capture is a Stage 4 job.** Entry time, direction, agreement count,
+return, deepest adverse move and stop-hit for 524,832 settings is unaffordable.
+For a few dozen survivors it is nothing. This is the cost control that makes the
+stop tuner and conviction sizing reachable at all, and it is the same rebuild
+mechanism as §4, one level deeper.
 
 ---
 
-## 8. Interface
+## 9. Interface
 
 A new tab between Boards and Verify. `TABS` in `public/construct.js:219` becomes
 nine entries, `['funnel', 'Funnel']` inserted after `boards`.
@@ -413,7 +501,8 @@ Layout:
   that or a plain statement of its absence, and the controls for the owner's
   choice.
 - A standing line, always visible: which stage 3 set is open, how many settings
-  survive, and **that every money figure on this tab is test money**.
+  survive, the target size and the distance to it, and **that every money figure
+  on this tab is test money**.
 - The rule so far, in words, always visible.
 
 Alignment: match the pattern the page already uses — grep the class before
@@ -422,12 +511,12 @@ relying on it, and never introduce a second convention beside the existing one
 
 Word list: a new tab gets its own generated list under RULE ONE-A. It cannot be
 generated until the tab is deployed and `SERVED.json` re-fingerprinted — the
-generator reads what the box serves, not the repo. No control on this tab may be
-named to the owner until that has happened.
+generator reads what the box serves, not the repo. **No control on this tab may
+be named to the owner until that has happened.**
 
 ---
 
-## 9. Honest limits — to be printed on the tab, not buried here
+## 10. Honest limits — printed on the tab, not buried here
 
 **The Funnel is itself a search.** Seven steps of choosing is seven chances to
 shop, and the design does not pretend otherwise. Three things limit the damage
@@ -442,47 +531,51 @@ and all three are in the design above:
 **It is a template on purpose.** The same seven steps every time, so two hunts
 are comparable. Not a free-form explorer.
 
-**Split-half is weaker than a noise twin** and the page must say so where it
-stands in for one. It tests stability, not whether the effect exists.
-
 **Peak concurrent notional is absent** (§4.2) and is named as absent.
 
----
-
-## 10. Release numbering
-
-Two parts, and they carry different costs (RULE ONE-C).
-
-- **Part A** adds a new measurement block to the stage 3 record. That is the
-  FIRST digit — `4.0.0` — and a stage refuses a parent written under a different
-  first digit, so **every chain on the box refuses afterwards**. The owner has
-  said the current data is being discarded, which is what makes this affordable.
-- **Part B** — the Funnel tab and the Stage 4 record kind — is new behaviour and
-  new controls: the second digit on its own.
-
-Shipped together, `4.0.0` covers both.
-
-**No migration is possible for Part A.** The numbers were never computed; there
-is nothing on disk to translate. Under RULE NINE the alternative to migrating is
-deleting, and that is the owner's call, already made.
+**Rebuilt numbers are computed by later code than the numbers beside them.**
+§4.3's self-check and the first-digit refusal are what keep that honest, and the
+Stage 4 set records which release computed what.
 
 ---
 
-## 11. Tests, and what each one reads
+## 11. Release numbering
+
+Under ruling 4 the stage 3 record shape does not change, so **nothing on disk
+stops being readable and no first-digit bump is owed**. This is second-digit
+work: new behaviour, new controls, a new record kind.
+
+The set-document migration in §5 adds fields to small JSON documents and touches
+no records. It runs the way the totalling already does — announced, in the
+background, once — and it is a user function, not a script somebody remembers
+(RULE NINE).
+
+The only first-digit item in this whole design is §4.5's board-wide noise
+capture, and it is optional.
+
+---
+
+## 12. Tests, and what each one reads
 
 Under RULE EIGHT, a guard names the test that reads the line it breaks.
 
 | Test | What it asserts |
 |---|---|
-| `everyNumberTheSimulatorReturnsIsStoredOrDerivable` | Reads the return shapes of `simCell` and `holdControls` and fails on any field that is neither stored nor listed as derivable. **This is the test that would have prevented this whole episode.** |
+| `everyNumberTheSimulatorReturnsIsStoredOrRebuildable` | Reads the return shapes of `simCell` and `holdControls` and fails on any field that is neither stored, rebuilt, nor listed as deliberately dropped. **This is the test that would have prevented this whole episode.** |
 | `theFunnelNeverReadsHeldBackMoneyBeforeStepSeven` | Scans the funnel's own code path for the held-back fields |
 | `aFunnelSetReplaysToTheSameSurvivors` | Re-runs a recorded step list against its parent and compares |
+| `aRebuildThatDisagreesWithTheStoredMoneyRefuses` | Fixture where the rebuild differs; asserts it refuses and names the setting |
 | `everyStepReportsSplitHalfWithNoNullSet` | Runs the whole funnel on a set built with `null set size` 0 and asserts every step still answers |
 | `theHoldsAcrossStepNamesTheAxisItUsed` | Single-coin fixture: asserts it falls through to chunk shapes / thirds / free dials and says which |
 | `theHoldsAcrossStepRefusesAOneSliceAnswer` | Asserts it never prints "1 of 1 positive" |
+| `thinSquaresGreyOutAndShowTheirCount` | Grid fixture below the floor |
+| `theFloorPageShowsWhatEachChoiceCosts` | Asserts the survivor-count-per-floor readout exists |
 | `plateauTakesItsAxesFromTheCaller` | Asserts `quorum` is not hardcoded |
 | `aFunnelSetRecordsItsBackSteps` | Going back and re-choosing appears in the record |
+| `aFunnelSetRecordsWhichClosingOptionWasUsed` | All three of §6.7 |
+| `anEmptyResultIsWrittenWithAWarning` | Asserts it is not refused |
 | `theTabSaysWhenThereIsNoNoiseTwin` | Source scan: the absence is named, not blank |
+| `everySetDocumentCarriesTheReserveBoundsAndTheNoiseFlag` | Both directions — no reader branches on a set's age |
 | `drawdownAndWorstTradeComeOutOfTheSameWalk` | Fixture with a known equity path |
 | `pnlThirdsSumToThePnl` | Arithmetic guard |
 
@@ -491,32 +584,31 @@ Mutation guards go on the lines those tests read, and are run filtered
 
 ---
 
-## 12. Build order
+## 13. Build order
 
-1. Part A capture in `lib/stagework.js` and `lib/bracket.js`, with its tests.
-2. The sealed-reserve stamp (§4.6).
-3. The cheap board-level noise capture (§4.7).
-4. `plateau.js` axes from the caller.
-5. The Stage 4 record kind and its store.
-6. The Funnel steps as pure functions, tested headless before any screen exists.
-7. The tab.
-8. Deploy, re-fingerprint, generate the Funnel word list.
-9. Re-point Verify, History, Tune and Greenlight at Stage 4 sets.
+1. `plateau.js` axes from the caller, with its test.
+2. The set-document migration: reserve bounds and the noise flag on every set.
+3. The rebuild path — subset re-pricing off the stage 2 parent, with §4.3's
+   self-proof. Testable headless.
+4. The Stage 4 record kind and its store.
+5. The seven funnel steps as pure functions, tested headless before any screen
+   exists. **This is where the design either works or does not**, and it is
+   provable without a tab.
+6. The tab.
+7. Deploy, re-fingerprint, generate the Funnel word list.
+8. Re-point Verify, History, Tune and Greenlight at Stage 4 sets.
+9. Optional, and only if the owner wants it: §4.5's board-wide noise capture on
+   Sweep, which is the one first-digit item.
 
-Steps 1–4 are prerequisites and produce nothing the owner can see. Step 6 is
-where the design either works or does not, and it is testable without a screen —
-which is where it should be proved.
+Steps 1–4 produce nothing the owner can see. Step 5 is the one that matters.
 
 ---
 
-## 13. Open questions for the owner
+## 14. Decisions taken, for the record
 
-1. **The thin-count floor** in steps 3 and 4 — a cell with two settings in it is
-   not a reading. I would default it to a number the owner sets on the tab
-   rather than choose one in code.
-2. **How many survivors is the funnel aiming at?** The design does not target a
-   number, and probably should not — but if the answer is "a few dozen" then
-   per-trade capture is trivial, and if it is "a few thousand" it is not.
-3. **Whether step 7 should refuse an empty or a one-setting result**, or write it
-   with a warning. I lean write-with-warning: refusing removes the owner's
-   choice, which is the fault RULE ZERO and RULE FIVE exist to stop.
+| Question | Owner's answer |
+|---|---|
+| Thin-square floor | A field, with the page showing what each choice keeps. Starting value labelled GUESSED. |
+| How many survivors to aim at | A target-size field, live from step 1, never auto-trimming. Three named ways to close a gap at step 7. |
+| Empty or one-setting result | Write it with a warning. No restrictions. |
+| Where the missing numbers come from | The Funnel rebuilds them on demand. Stage 3 does not grow. |
