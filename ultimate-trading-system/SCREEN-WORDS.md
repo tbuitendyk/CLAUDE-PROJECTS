@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **0007a4178dce — what the box is serving**, not from the working tree.
+Generated from **8bfb0359de85 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -40,6 +40,7 @@ deployed, and that is correct** - until then the owner cannot see it.
 - **Data**
 - **Sweep**
 - **Boards**
+- **Funnel**
 - **Verify**
 - **History**
 - **Tune**
@@ -484,6 +485,45 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 ```
 1v 3.A 3.B above above. accordingly. active actually added adding adds after afterwards. again again. agreed all alongside already always always-long an and another answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged avg away away. back back. background band be beat because before behind. belong below beside best block board Boards BOOST both box breakout bring Bring broken building but by call campaign can cannot carry changes check child chunk clear cleared coin coins column columns comes committee committees comparable compared comparisons conviction copy cost could count cover Data date decides decision declare declare. declared declares declares. declaring Delete deletes did died directional disk DOES does done drop dropping Dropping each Each either else empty end entry every Every exactly exist exists failed FAILED families few fewer fewer. fill filled filling fills filter filter. filters fingerprint finished finishes first first. fixed floors floors. for forecast forecasts form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead leaves left line list LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next No no NOT not notes nothing nothing. now null numbers of of. offers old older on once once. One one ones only opening opinions or order Ordered ordinary other others out over OWN own page parent parents parts past per pick picked picking PLAN. press prev price priced prices Pricing pricing pricings proved provenance put puts quorum ran ranked read reads real record records renaming Renaming renumbers replaced rest restart. resting rests result revert row rows rule. run rung running save saved says score screen second seconds. section sections selections service set SET set. sets setting settings Settings settings. shape share show showed showing shows. Size smaller so some sort sound. stage Stage STAMP started still stop stopped stopping stops suggests. swapped table Table tables takes test than that the The their them them. then there. these They they thing THIS this This those ties time to today top totalled totalling touched touched. trade trade. trades trail training tried two under undo undoing Undoing unfinished unit unit. units units. up voice. voices votes vs was way way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you
+```
+
+---
+
+# Funnel
+
+## What the controls are called (0)
+
+_none_
+
+## What the dropdowns offer (18)
+
+- `accept what the rule gives`
+- `agreeBar`
+- `agreeBoth`
+- `agreeCopy`
+- `agreePct`
+- `agreePersist`
+- `agreeRule`
+- `armMult`
+- `bandMode`
+- `decision`
+- `dMult`
+- `entry`
+- `gate`
+- `take the top N by a column (this is shopping)`
+- `tHours`
+- `tighten the ranges toward the middle`
+- `trailMult`
+- `weekdaysOnly`
+
+## Sentences the page prints (0)
+
+_none_
+
+## Every word, flat (31)
+
+```
+accept agreeBar agreeBoth agreeCopy agreePct agreePersist agreeRule armMult bandMode by column decision dMult entry gate gives is middle ranges rule shopping take the this tHours tighten top toward trailMult weekdaysOnly what
 ```
 
 ---

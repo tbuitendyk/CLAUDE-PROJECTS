@@ -199,3 +199,17 @@ made while building it that the design did not already settle.
     source-scanning guard read source. A file they cannot read is a file whose
     controls silently stop being checked. `noSourceFileCarriesAControlCharacter`
     now walks every source file in the project.
+
+## Step 6c — the tab is written the way every other screen is
+
+49. **THE TAB'S MARKUP WAS INVISIBLE TO THE WORD LIST, and that is the whole
+    point of the word list.** The first cut built its HTML by concatenating
+    single-quoted strings. Every other screen on the page uses template
+    literals, and the generator reads HTML TEMPLATES — so the generated list
+    came back saying the Funnel has ZERO controls when it has seventeen. The
+    suite went green either way: the both-ways check reads through the same
+    reader, so neither direction could see the hole, exactly as RULE ONE-A's own
+    history describes. A list with holes is worse than no list, because the rule
+    makes the list the authority. Rewritten in the page's own style, which is
+    also what RULE FOUR asks for: match the pattern, do not add a second
+    convention beside it.
