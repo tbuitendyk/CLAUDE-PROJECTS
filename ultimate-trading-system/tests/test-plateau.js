@@ -9,7 +9,15 @@
 // spike; dropping the minTrades guard makes neverTradedCellsDoNotPadARegion
 // count the $0 rows.
 const { assert } = require('./helpers');
-const { widestRegion, adjacent, coordsOf, axisIndex } = require('../lib/plateau');
+const { widestRegion, adjacent, coordsOf, axisIndex, axisListOf } = require('../lib/plateau');
+
+// A stage 3 setting: the three-stage system has no quorum — its agreement dials
+// replaced it — so a board of these cut with the library's own constants is cut
+// on an axis every row is missing.
+const s3cell = (dMult, tHours, agreePct, pnl, trades = 5) => ({
+  entry: 'breakout', gate: 'directional', dMult, tHours, agreePct,
+  trailMult: null, armMult: null, pnl, trades,
+});
 
 // a breakout cell on the real menus; pnl/trades supplied per test
 const cell = (dMult, tHours, quorum, pnl, trades = 5, extra = {}) => ({
@@ -181,5 +189,78 @@ module.exports = {
     const b = widestRegion([...rows].reverse());
     assert.strictEqual(a.size, b.size);
     assert.deepStrictEqual(a.centre, b.centre, 'row order must not change the answer');
+  },
+
+  // WHICH DIALS HAVE AN ORDER IS A PROPERTY OF THE RUN (Funnel design,
+  // 2026-08-31). ORDERED_AXES names quorum. A stage 3 board has no quorum, so
+  // under the constants every row reads -1 on that axis and — worse — two
+  // settings differing ONLY in an agreement dial get identical coordinates.
+  // Identical coordinates are not adjacent (adjacency needs exactly one step),
+  // so a run of five neighbours reads as five regions of one. The board still
+  // returns a plausible number; it is just measured on the wrong space.
+  plateauTakesItsAxesFromTheCaller() {
+    const rows = [
+      s3cell(0.5, 65, 55, 1.1), s3cell(0.5, 65, 60, 1.2), s3cell(0.5, 65, 65, 1.3),
+      s3cell(0.5, 65, 70, 1.4), s3cell(0.5, 65, 75, 1.5),
+    ];
+    const wrong = widestRegion(rows);
+    assert.strictEqual(wrong.size, 1,
+      'with the library constants an agreement run collapses to single cells — this is the fault');
+    const right = widestRegion(rows, {
+      orderedAxes: ['dMult', 'tHours', 'trailMult', 'armMult', 'agreePct'],
+    });
+    assert.strictEqual(right.size, 5, 'named as an ordered axis, the same five are one region');
+    assert.strictEqual(right.centre.agreePct, 65, 'and its middle is the middle of the run');
+  },
+
+  // The centre is spread over the row by lib/live/greenlight.js, so it must
+  // carry the dials the caller named and must not carry a dial it did not.
+  theCentreCarriesTheCallersDialsAndNoOthers() {
+    const rows = [
+      s3cell(0.5, 65, 55, 1.1), s3cell(0.5, 65, 60, 1.2), s3cell(0.5, 65, 65, 1.3),
+    ];
+    const r = widestRegion(rows, {
+      orderedAxes: ['dMult', 'tHours', 'trailMult', 'armMult', 'agreePct'],
+    });
+    assert.ok(!('quorum' in r.centre), 'quorum is not a dial this board has');
+    assert.ok('agreePct' in r.centre, 'agreePct is');
+    for (const k of ['entry', 'gate', 'dMult', 'tHours', 'trailMult', 'armMult', 'pnl', 'trades']) {
+      assert.ok(k in r.centre, k + ' must survive on the centre');
+    }
+  },
+
+  // The defaults are what keep the old sweep byte-identical, so they are pinned.
+  theDefaultAxesAreStillQuorumsBoard() {
+    const rows = [cell(0.25, 65, 2, 1.1), cell(0.5, 65, 2, 1.2)];
+    const r = widestRegion(rows);
+    assert.deepStrictEqual(r.axes.ordered, ['dMult', 'tHours', 'quorum', 'trailMult', 'armMult']);
+    assert.deepStrictEqual(r.axes.categorical, ['entry', 'gate']);
+    assert.ok('quorum' in r.centre, 'the old sweep still gets quorum on its centre');
+  },
+
+  // A region size means nothing without knowing what "next to" meant, so the
+  // reading says which axes cut it — including when there is no region at all.
+  theReadingNamesTheAxesItWasCutOn() {
+    const empty = widestRegion([], { orderedAxes: ['tHours'] });
+    assert.deepStrictEqual(empty.axes.ordered, ['tHours']);
+    assert.strictEqual(empty.size, 0);
+  },
+
+  // Refused rather than coerced: every one of these would cut a region on axes
+  // nobody chose and hand back a number that looks fine.
+  aBadAxisListIsRefusedNotCoerced() {
+    assert.throws(() => axisListOf('tHours', ['dMult'], 'orderedAxes'), /non-empty list/);
+    assert.throws(() => axisListOf([], ['dMult'], 'orderedAxes'), /non-empty list/);
+    assert.throws(() => axisListOf(['tHours', null], ['dMult'], 'orderedAxes'), /not a field name/);
+    assert.throws(() => axisListOf(['tHours', 7], ['dMult'], 'orderedAxes'), /not a field name/);
+    assert.deepStrictEqual(axisListOf(null, ['dMult'], 'orderedAxes'), ['dMult'], 'absent means the default');
+  },
+
+  // A dial on both lists would slice the space AND be walked along it.
+  aDialCannotBeBothOrderedAndCategorical() {
+    assert.throws(
+      () => widestRegion([], { orderedAxes: ['gate', 'tHours'], categoricalAxes: ['entry', 'gate'] }),
+      /both an ordered and a categorical axis/,
+    );
   },
 };

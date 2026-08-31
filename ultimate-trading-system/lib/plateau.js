@@ -31,9 +31,9 @@ function clears(row, minTrades) {
 // Index the values of each ordered axis so "next to" means "one step along the
 // menu this run actually computed", not one step along the library's full menu.
 // A run with a custom grid has its own spacing and must be judged on it.
-function axisIndex(rows) {
+function axisIndex(rows, ordered = ORDERED_AXES) {
   const idx = {};
-  for (const axis of ORDERED_AXES) {
+  for (const axis of ordered) {
     const vals = [...new Set(rows.map((r) => r[axis]).filter((v) => v != null))]
       .sort((a, b) => a - b);
     idx[axis] = new Map(vals.map((v, i) => [v, i]));
@@ -45,9 +45,9 @@ function axisIndex(rows) {
 // cross) and its position on each ordered axis. A null on an ordered axis — a
 // market cell has no dMult, an untrailed cell no trailMult — is its own position
 // so those cells still neighbour each other along the axes they do have.
-function coordsOf(row, idx) {
-  const slice = CATEGORICAL_AXES.map((a) => String(row[a])).join('|');
-  const pos = ORDERED_AXES.map((a) => (row[a] == null ? -1 : idx[a].get(row[a]) ?? -1));
+function coordsOf(row, idx, ordered = ORDERED_AXES, categorical = CATEGORICAL_AXES) {
+  const slice = categorical.map((a) => String(row[a])).join('|');
+  const pos = ordered.map((a) => (row[a] == null ? -1 : idx[a].get(row[a]) ?? -1));
   return { slice, pos };
 }
 
@@ -76,8 +76,32 @@ function adjacent(a, b) {
 // inside the region, not the highest-scoring one. Picking the peak of the region
 // would quietly put the shopped cell back in charge; the point of a plateau is
 // that its middle is defensible precisely because it is not the maximum.
+// An axis list is a list of field names. Anything else is refused rather than
+// coerced: a caller passing a string, or a list with a hole in it, would cut a
+// region on axes nobody chose and hand back a number that looks fine.
+function axisListOf(given, fallback, what) {
+  if (given == null) return fallback;
+  if (!Array.isArray(given) || !given.length) throw new Error(`${what} must be a non-empty list of field names`);
+  for (const a of given) {
+    if (typeof a !== 'string' || !a) throw new Error(`${what} holds something that is not a field name`);
+  }
+  return given;
+}
+
 function widestRegion(rows, opts = {}) {
   const minTrades = opts.minTrades == null ? 1 : opts.minTrades;
+  // WHICH DIALS HAVE AN ORDER IS A PROPERTY OF THE RUN, NOT OF THIS LIBRARY
+  // (Funnel design, 2026-08-31). ORDERED_AXES named `quorum`, which the
+  // three-stage system does not have — its agreement dials replaced it — so a
+  // stage 3 board cut with the constants would have every cell reading -1 on
+  // that axis and would still return a region, silently measured on four axes
+  // instead of five. The defaults keep the old sweep byte-identical.
+  const ordered = axisListOf(opts.orderedAxes, ORDERED_AXES, 'orderedAxes');
+  const categorical = axisListOf(opts.categoricalAxes, CATEGORICAL_AXES, 'categoricalAxes');
+  // A dial named on both lists would slice the space AND be walked along it —
+  // nonsense, and nonsense that returns a plausible-looking number.
+  const both = ordered.filter((a) => categorical.includes(a));
+  if (both.length) throw new Error(`${both.join(', ')} named as both an ordered and a categorical axis`);
   const all = Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object') : [];
   const good = all.filter((r) => clears(r, minTrades));
   const base = {
@@ -87,11 +111,14 @@ function widestRegion(rows, opts = {}) {
     cellsConsidered: all.length,
     cellsClearing: good.length,
     bar: 'pnl > 0 after fees',
+    // provenance: a region size means nothing without knowing what "next to"
+    // meant when it was cut
+    axes: { ordered, categorical },
   };
   if (!good.length) return base;
 
-  const idx = axisIndex(all);
-  const nodes = good.map((r) => ({ row: r, ...coordsOf(r, idx) }));
+  const idx = axisIndex(all, ordered);
+  const nodes = good.map((r) => ({ row: r, ...coordsOf(r, idx, ordered, categorical) }));
 
   // neighbour lists, then connected components by flood fill
   const nbrs = nodes.map(() => []);
@@ -139,7 +166,7 @@ function widestRegion(rows, opts = {}) {
   // is not known to be wide there, so it is not treated as interior.
   const inCompSet = new Set(bestComp);
   const memberAt = new Map(bestComp.map((n) => [`${nodes[n].slice}#${nodes[n].pos.join(',')}`, n]));
-  const axisLen = ORDERED_AXES.map((a) => idx[a].size);
+  const axisLen = ordered.map((a) => idx[a].size);
   const depth = new Map();
   const queue = [];
   for (const n of bestComp) {
@@ -181,23 +208,21 @@ function widestRegion(rows, opts = {}) {
     if (better) { centreDepth = d; centreIdx = n; }
   }
   const centreRow = nodes[centreIdx].row;
+  // Built from the axis lists rather than typed out, so a caller naming its own
+  // dials gets its own dials back. With the defaults this is the same key set
+  // it has always been, which is what lets greenlight go on spreading it.
+  const centre = {};
+  for (const a of categorical) centre[a] = centreRow[a];
+  for (const a of ordered) centre[a] = centreRow[a] ?? null;
+  centre.pnl = centreRow.pnl;
+  centre.trades = centreRow.trades;
+  centre.depthFromEdge = centreDepth;
   return {
     ...base,
     size: bestComp.length,
     sliceLabel: nodes[centreIdx].slice,
-    centre: {
-      entry: centreRow.entry,
-      gate: centreRow.gate,
-      dMult: centreRow.dMult ?? null,
-      tHours: centreRow.tHours,
-      trailMult: centreRow.trailMult ?? null,
-      armMult: centreRow.armMult ?? null,
-      quorum: centreRow.quorum ?? null,
-      pnl: centreRow.pnl,
-      trades: centreRow.trades,
-      depthFromEdge: centreDepth,
-    },
+    centre,
   };
 }
 
-module.exports = { widestRegion, clears, adjacent, coordsOf, axisIndex, ORDERED_AXES, CATEGORICAL_AXES };
+module.exports = { widestRegion, clears, adjacent, coordsOf, axisIndex, axisListOf, ORDERED_AXES, CATEGORICAL_AXES };
