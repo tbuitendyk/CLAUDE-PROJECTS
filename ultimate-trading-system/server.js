@@ -1094,6 +1094,13 @@ app.post('/api/stage3', (req, res) => {
   try { return res.json(stages.startStage3(req.body || {})); }
   catch (err) { return res.status(409).json({ error: err.message }); }
 });
+// FILLING IN THE KEPT SCRAMBLES on a set priced before the column existed.
+// It runs for hours, so it answers straight away and reports on the set
+// document the way every other long job on a set does.
+app.post('/api/stageset/:id/kept-fill', (req, res) => {
+  try { return res.json(stages.startKeptScrambleFill(String(req.params.id || ''), (req.body || {}).keep)); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
 app.post('/api/stageset/:id/stop', (req, res) => res.json(stages.cancelStage(req.params.id)));
 app.post('/api/stageset/:id/notes', (req, res) => {
   try { return res.json(stages.setSetNotes(req.params.id, (req.body || {}).text)); }

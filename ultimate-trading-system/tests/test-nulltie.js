@@ -158,9 +158,20 @@ module.exports = {
     assert.ok(/_beatPct: \(r\) => \(r\.nullTies \|\| !r\.pairs \? null/.test(st),
       'the filters and the four numbers beside each box still read a share for a row that has none, '
       + 'so a floor would keep it as a zero');
-    assert.ok(/if \(kind === 'share'\) return row\.nullTies \|\| !row\.pairs \? null/.test(st),
+    // CHECKED BY BEHAVIOUR, not by matching the source. This used to assert the
+    // exact text of one line, and that line had to change the moment a SECOND
+    // share column arrived -- at which point the assertion was protecting a
+    // shape rather than a fact. The facts are below, and the last of them is
+    // the bug that shape was one edit away from hiding.
+    const sv = require('../lib/stages').sortValue;
+    assert.strictEqual(sv('share', 'beat', { nullTies: true, pairs: 10, beat: 5 }), null,
       'the sort still reads a share for a row that has none, so those rows sort as the worst '
       + 'measured rows instead of sitting after them');
+    assert.strictEqual(sv('share', 'beat', { pairs: 10, beat: 5 }), 0.5,
+      'a row that can be measured must still sort by its share');
+    assert.strictEqual(sv('share', 'beatNoise', { beatNoise: 3, noisePairs: 10, beat: 9, pairs: 9 }), 0.3,
+      'the second share column must divide ITS OWN two numbers -- reading beat and pairs here would '
+      + 'sort one column by another column\'s answer and look like it worked');
     // Table 3.A: marked before the sort AND before the filters
     const ranked = st.slice(st.indexOf('function stage3Ranked('), st.indexOf('function stage3CoinRows('));
     assert.strictEqual((ranked.match(/nullSetHonest\(/g) || []).length, 2,

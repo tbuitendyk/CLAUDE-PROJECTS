@@ -819,10 +819,15 @@ async function swCounts() {
       ...swBlockParams(), from: $('#swFrom3').value || '', carry, units: units || 0, coins: coins || 1,
     });
     if (!current()) return;
+    // PRICINGS PER SETTING PER UNIT: the real one, the null set, and each kept
+    // money figure. Written once because the sentence below and the launch both
+    // read it, and an estimate that leaves out the kept ones understates how
+    // long the owner's run will take by exactly the amount they chose to add.
+    const per3 = () => 1 + (Number($('#swNull3').value) || 0) + (Number($('#swKeep3').value) || 0);
     let html = null;
     if (r.ok) {
       const got = r.data;
-      const sims = units ? got.settings * units * (1 + (Number($('#swNull3').value) || 0)) : null;
+      const sims = units ? got.settings * units * per3() : null;
       // the budget verdict comes from the SAME arithmetic the launch enforces:
       // a refusal is said here, before the button is pressed
       const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
@@ -832,7 +837,7 @@ async function swCounts() {
       // quietly shrank would be as much of a surprise as one that grew.
       const fold = got.declared && got.folded ? ` <span class="muted">(${got.declared.toLocaleString()} declared, `
         + `${got.folded.toLocaleString()} priced the same trade and were folded into one)</span>` : '';
-      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${units ? ` × ${units.toLocaleString()} units × ${(1 + (Number($('#swNull3').value) || 0)).toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
+      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${units ? ` × ${units.toLocaleString()} units × ${per3().toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
         + (refuse ? `<br><b class="neg">start stage 3 will refuse: ${esc(refuse.message)}</b>`
           : tight ? `<br><span class="warn">${esc(tight.message)}</span>` : '');
     }
@@ -920,6 +925,7 @@ function fillStageForm(doc) {
     setV('#swDesc3', doc.desc || '');
     setV('#swFee', p.fee != null ? p.fee * 100 : '');
     setV('#swNull3', p.nullN ?? 19);
+    setV('#swKeep3', p.keepN ?? 0);
     setV('#swDec', p.decision || 'argmax'); setC('#swPermDec', p.permuteDecision);
     setV('#swBand', p.band ?? 'auto'); setC('#swPermBand', p.permuteBand);
     setC('#swWk', p.weekdaysOnly); setC('#swPermWk', p.permuteWeekdays);
@@ -1204,6 +1210,31 @@ function notesPanel3(doc) {
         </div>
       </div>`;
 }
+// FILLING IN THE KEPT SCRAMBLES on a set priced before the column existed.
+// It is a USER function and not a script somebody remembers to run (RULE FIVE
+// and RULE NINE), so it lives here with the set it changes, says what the set
+// has now, and prints what the choice costs BEFORE the button is pressed.
+function bKeptFillPanel(doc) {
+  if (doc.stage !== 3) return '';
+  const p = doc.params || {};
+  const nullN = Number(p.nullN) || 0;
+  const have = Number(p.keepN) || 0;
+  const units = Number((doc.plan || {}).units) || 0;
+  const settings = Number((doc.plan || {}).settings) || 0;
+  const off = doc.status !== 'done';
+  const want = Math.min(10, nullN);
+  // the same arithmetic the fill itself does: the real test money once as a
+  // proof, then each kept scramble on each of the two windows
+  const cost = (k) => units * settings * (1 + k * 2);
+  return `<div class="panel">
+      <h3 style="margin-top:0">Filling in the kept null money</h3>
+      <div class="row" style="align-items:flex-end">
+      <label class="f" title="how many of this set's null-set deals should have their money written down, so the Funnel has a whole second copy of Table 3.A and Table 3.B made of luck to measure against. It re-prices only what is missing, never the whole run, and it proves itself against the money already stored before anything is swapped.">null set money kept<input id="bKeptN" type="number" value="${want}" min="0" max="${nullN}" style="width:4.5rem" ${off ? 'disabled' : ''}></label>
+      <button id="bKeptGo" ${off ? 'disabled title="the set is still working — a fill waits until it has landed"' : ''}>fill in the kept null money</button>
+      <span id="bKeptMsg" class="note">${have ? `this set keeps ${have} of its ${nullN}.` : `this set keeps none of its ${nullN}.`}${nullN && units && settings ? ` Keeping ${want} re-prices ${cost(want).toLocaleString()} times.` : ''}</span>
+      </div>
+    </div>`;
+}
 function runIdentityPanelHtml(sizeLine, dm) {
   return `<div class="panel"><h3 style="margin-top:0">What this run actually is</h3>
           ${sizeLine || ''}
@@ -1224,6 +1255,20 @@ function runIdentityPanelHtml(sizeLine, dm) {
 // the RESPONSE: the stored value comes back truncated, and the edited stamp
 // is taken on the server, not here. onSaved lets a screen refresh its own
 // cached copy (Boards keeps the opened run's doc in hand).
+function wireKeptFill(id) {
+  const go = $('#bKeptGo');
+  if (!go) return;
+  go.onclick = async () => {
+    const keep = Number(($('#bKeptN') || {}).value) || 0;
+    go.disabled = true;
+    const out = await tryPost(`api/stageset/${encodeURIComponent(id)}/kept-fill`, { keep });
+    // tryPost already says why on a refusal; re-enable so the owner can change
+    // the number and ask again rather than being left with a dead button
+    if (!out) { go.disabled = false; return; }
+    $('#bKeptMsg').textContent = `filling in ${out.keep} across ${out.units} unit(s) — `
+      + `${Number(out.pricings).toLocaleString()} pricings. Progress shows above; the totals rebuild when it lands.`;
+  };
+}
 function wireNotesSave(saveUrl, onSaved, suffix) {
   const nsave = $(`#bNotesSave${suffix}`);
   if (nsave) nsave.onclick = async () => {
@@ -2266,6 +2311,7 @@ async function drawSweep() {
       <label class="f">carry forward (0 = all)<input id="swCarry3" type="number" value="0" min="0" style="width:5.5rem"></label>
       <label class="f">fee % each way<input id="swFee" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
       <label class="f">null set size<input id="swNull3" type="number" value="19" min="0" style="width:4.5rem"></label>
+      <label class="f" title="how many of the null set's money figures to write down, rather than just counting them. Keeping some builds a whole second copy of the stage 3 tables out of luck alone, which is the only thing the Funnel can measure a real result against. Costs one extra pricing per setting per coin for each one kept, so 10 makes the run about 10% longer. 0 keeps none, which is how every run before this one worked.">null set money kept<input id="swKeep3" type="number" value="10" min="0" style="width:4.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <div style="display:flex;align-items:flex-end;gap:.45rem">
@@ -2356,7 +2402,7 @@ async function drawSweep() {
     const got = await tryPost('api/stage3', {
       from: $('#swFrom3').value, fee: Number($('#swFee').value) / 100,
       carry: Number($('#swCarry3').value) || 0,
-      nullN: Number($('#swNull3').value) || 0, desc: $('#swDesc3').value,
+      nullN: Number($('#swNull3').value) || 0, keepN: Number($('#swKeep3').value) || 0, desc: $('#swDesc3').value,
       ...swBlockParams(),
     });
     if (got) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
@@ -2606,10 +2652,11 @@ async function drawBoards() {
       esc(c.status),
     ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
-      ${stage === 1 ? notesPanel1(doc) : stage === 2 ? notesPanel2(doc) : notesPanel3(doc)}
+      ${stage === 1 ? notesPanel1(doc) : stage === 2 ? notesPanel2(doc) : notesPanel3(doc)}${bKeptFillPanel(doc)}
       ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}
       <div id="bT${stage}"></div>`;
     wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null, String(stage));
+    if (stage === 3) wireKeptFill(doc.id);
     if (doc.status !== 'done' && doc.status !== 'incomplete') {
       $(`#bT${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
       continue;
@@ -3379,6 +3426,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['vsLongMin', 'avg vs always-long $ at least', 'num', 'hides settings that beat just holding the coin by less than this. Empty hides nothing.'],
     ['beatMin', 'beat its own null set at least, %', 'num', 'hides settings that won less than this share of their head-to-heads. Empty hides nothing.'],
     ['leadMin', 'lead over null set at least', 'num', 'hides settings whose lead over null set is below this. Empty hides nothing.'],
+    ['beatNoiseMin', 'beat the kept null money at least, %', 'num', 'hides settings that beat less than this share of the kept scrambled copies of the whole table. Empty hides nothing.'],
     ['inMoneyMin', 'coins in the money at least', 'num', 'hides settings where fewer coins than this made money. Empty hides nothing.'],
     ['voicesMin', 'independent voices at least', 'num', 'hides settings whose committees held fewer independent voices than this. Empty hides nothing.'],
     ['agreedMin', 'share that agreed at least, %', 'num', 'hides every setting whose members agreed by less than this on average. Empty hides nothing.'],
@@ -3406,6 +3454,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="average entries per coin in the held-back window.">avg held-back trades${bRankSortBtn(doc, 'avgTrades', 'desc')}</th>
         <th ${bth} title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $${bRankSortBtn(doc, 'avgVsLong', 'desc')}</th>
         <th ${bth} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set${bRankSortBtn(doc, 'beat', 'desc')}</th>
+        <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what luck managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bRankSortBtn(doc, 'beatNoise', 'desc')}</th>
         <th ${bth} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set${bRankSortBtn(doc, 'avgLead', 'desc')}</th>
         <th ${bth} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money${bRankSortBtn(doc, 'coinsInMoney', 'desc')}</th></tr></thead>
       <tbody>${rr.map((r, i) => `<tr>
@@ -3432,8 +3481,9 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
         <td ${btd}>${bMoney(r.avgVsLong)}</td>
         <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs, r.nullTies)}</td>
+        <td ${btd}>${r.noisePairs ? bShare(r.beatNoise / r.noisePairs, r.beatNoise, r.noisePairs) : '<span class="muted">—</span>'}</td>
         <td ${btd}>${bLead(r.avgLead, r.nullTies)}</td>
-        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="23" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="24" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${ranked && ranked.agreedError ? `<p class="note warn">share that agreed is empty on this set — ${esc(ranked.agreedError)}</p>` : ''}
     ${bShown(ranked)}
     ${bPager((ranked && ranked.total) || 0, from, 100, 'S3R')}
@@ -3450,6 +3500,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['minHold', 'avg held-back at least, $', 'num', 'hides rows whose average held-back money is below this. Empty hides nothing.'],
     ['minTrades', 'avg trades at least', 'num', 'hides rows with fewer average entries than this. Empty hides nothing.'],
     ['minVsLong', 'avg vs always-long at least, $', 'num', 'hides rows that beat just holding the coin by less than this. Empty hides nothing.'],
+    ['minBeatNoise', 'beat the kept null money at least, %', 'num', 'hides rows that beat less than this share of the kept scrambled copies of the whole table. Empty hides nothing.'],
     ['minAgreed', 'share that agreed at least, %', 'num', 'hides rows whose records agreed by less than this on average. Empty hides nothing.'],
     ['setting', 'Table 3.A selection setting', 'text', 'shows only the coins of the setting named here, matched whole. show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
   ], coins && coins.spread)}
@@ -3457,6 +3508,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
         <th ${bth} title="the traded coin and the chunk shape it was priced at — both are in this one cell, and the row is one setting on one coin at one chunk shape. Anything listed under alongside is context only — read against, never bought or sold.">coin + chunk shape${bCoinSortBtn(view, 'coin', '↑')}</th>
         <th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>
+        <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what luck managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bCoinSortBtn(view, 'beatnoise', '↓')}</th>
         <th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>
         <th ${bth} title="average test-window money per record — flattering by construction, because the carry was ordered on that window.">avg test $${bCoinSortBtn(view, 'test', '↓')}</th>
         <th ${bth} title="average held-back money per record.">avg held-back${bCoinSortBtn(view, 'money', '↓')}</th>
@@ -3471,6 +3523,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd0}>${esc(r.cellLabel)}</td>
         <td ${btd}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span></td>
         <td ${btd}>${bShare(r.share, r.beat, r.pairs, r.nullTies)}</td>
+        <td ${btd}>${r.noisePairs ? bShare(r.beatNoise / r.noisePairs, r.beatNoise, r.noisePairs) : '<span class="muted">—</span>'}</td>
         <td ${btd}>${Number(r.pairs).toLocaleString()}</td>
         <td ${btd}>${bMoney(r.avgTest)}</td>
         <td ${btd}>${bMoney(r.avgHold)}</td>
@@ -3479,7 +3532,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
         <td ${btd}>${r.rows}</td>
         <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ records' : 'records'}</button></td></tr>`;
-  }).join('') || '<tr><td colspan="11" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
+  }).join('') || '<tr><td colspan="12" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${bShown({ total: (coins && coins.total) || 0, of: ((coins && coins.total) || 0) + ((coins && coins.removed) || 0) })}
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`)) return;
@@ -3787,6 +3840,7 @@ async function drawFunnel() {
     ${r.why ? `<p class="note neg">${esc(r.why)}</p>`
     : (d.step === 1 ? fStep1(r) : d.step === 2 ? fStep2(r, st) : d.step === 3 ? fStep3(r, st)
       : d.step === 4 ? fStep4(r) : d.step === 5 ? fStep5(r) : d.step === 6 ? fStep6(d, st) : fStep7(d))}
+    ${fNoiseLine(r)}
   </div>
   <div class="panel">${fRuleBox(d)}</div>`;
   fWire(st);
@@ -3806,7 +3860,7 @@ function fHead(d) {
       ${Number(d.of).toLocaleString()} settings survive${d.target ? ` and the target is ${Number(d.target).toLocaleString()}` : ''}</span>
       <label class="f">target size<input id="fTarget" type="number" min="0" style="width:6rem"
         value="${d.target == null ? '' : d.target}"></label></div>
-    <p class="note">${n.available ? 'This set carries a noise comparison.'
+    <p class="note">${n.available ? `This set carries a noise comparison: ${Number(d.set.keptScrambles || n.kept || 0)} scrambled copies of the whole table, each one the same days in a jumbled order. Every step below is read once against the real table and again against those.`
     : `<b>No noise comparison on this set</b> - ${esc(String(n.why || 'not captured'))}. Every step below is read
        against a split-half instead, which tests whether a reading is STABLE and never whether the effect is real.`}</p>
     <p class="note">${sealed.sealed
@@ -3814,6 +3868,18 @@ function fHead(d) {
     : `<b>No sealed window</b> - ${esc(String(sealed.why || 'not recorded'))}`}</p>`;
 }
 
+function fNoiseLine(reading) {
+  const n = reading && reading.noise;
+  if (!n) return '';
+  if (n.sizes) {
+    const beaten = n.beatenBy == null ? null : `${n.beatenBy} of ${n.of}`;
+    return `<p class="note"><b>Against luck:</b> the widest run luck managed was ${n.widest == null ? '—' : n.widest}`
+      + `${beaten ? `, and this one is wider than ${esc(beaten)} of the scrambled copies` : ''}. `
+      + `${n.beatenBy === n.of ? 'Wider than every one of them.' : 'Anything short of all of them is a result luck reaches too.'}</p>`;
+  }
+  return `<p class="note"><b>Against luck:</b> the same reading on ${n.used} of this set's ${n.of} scrambled copies of the table is drawn beside. `
+    + 'A real finding looks different there; one that looks the same is what the shuffling produces on its own.</p>';
+}
 function fRail(d, st) {
   return `<div class="row" style="flex-wrap:wrap;gap:.35rem">${F_STEPS.map((x, i) => `<button data-fstep="${i + 1}"
     ${i + 1 === d.step ? 'class="pri"' : ''}>${i + 1}. ${esc(x[0])}</button>`).join('')}</div>

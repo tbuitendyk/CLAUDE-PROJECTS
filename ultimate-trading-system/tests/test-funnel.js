@@ -40,8 +40,16 @@ module.exports = {
     const s = src('lib/stages.js');
     const births = s.split('measurements: MEASUREMENTS_VERSION,').length - 1;
     assert.strictEqual(births, 3, 'three stages create sets; all three must be counted here');
-    const stamped = s.split('boardNull: { ...BOARD_NULL_NONE },').length - 1;
-    assert.strictEqual(stamped, 3, 'every set-creation site must stamp the board-noise state');
+    // EVERY site stamps it; they do not all stamp the SAME thing. Stage 3 now
+    // stamps what the run actually kept, because a run that keeps ten and
+    // stamps "none" would fill every column and still tell the Funnel there is
+    // nothing to compare against. Stages 1 and 2 keep nothing and say so.
+    const stamped = s.split('boardNull:').length - 1;
+    assert.ok(stamped >= 3, `every set-creation site must stamp the board-noise state, found ${stamped}`);
+    assert.strictEqual(s.split('boardNull: { ...BOARD_NULL_NONE },').length - 1, 2,
+      'stages 1 and 2 keep nothing, so both must stamp the plain "none"');
+    assert.ok(s.includes('boardNull: keepN > 0'),
+      'stage 3 must stamp what its own null set money kept field asked for');
     assert.ok(/stampBoardNullOnEverySet/.test(src('server.js')),
       'and the sets already on disk must be brought up to date without anyone remembering to');
   },

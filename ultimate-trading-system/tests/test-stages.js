@@ -747,7 +747,11 @@ module.exports = {
     assert.ok(/phaseTotal/.test(prog) && /phaseWord/.test(prog) && /phaseEtaMs/.test(prog) && /phaseEndsAtMs/.test(prog),
       'the progress line must carry how far through this phase, the word for its work, how long is left, and when it lands');
     const lib = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    assert.strictEqual(lib.split('cyclesWord:').length - 1, 3, 'all three launches declare their cycle counts');
+    // Four now: the three launches and the pass that fills in the kept
+    // scrambles on a set priced before the column existed. A long job that
+    // does not declare its cycle count shows no rate and no finish time.
+    assert.strictEqual(lib.split('cyclesWord:').length - 1, 4,
+      'every long job must declare its cycle count — the three launches and the kept-scramble fill');
     assert.ok(/phase: 'reading the kept votes', done: pi \+ 1, total: parentRecords\.length/.test(lib),
       'the long read before stage 3 dispatch says what it is doing instead of sitting on "writing the plan" — and it '
       + 'reports through the shared reporter, so it carries a rate and a finish time like every other phase');
@@ -1875,7 +1879,7 @@ module.exports = {
     assert.strictEqual(n(ui.slice(hs, ui.indexOf('</thead>', hs)), 'th'),
       n(ui.slice(rk, ui.indexOf('<tr><td colspan', rk)), 'td'),
       'Table 3.A has a different number of headings and cells');
-    assert.ok(/colspan="23"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A');
+    assert.ok(/colspan="24"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A');
   },
 
   // A BLOCK PRICED BEFORE IT WAS WHOLE CAN BE FILLED IN (owner order,

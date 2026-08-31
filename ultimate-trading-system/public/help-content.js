@@ -186,6 +186,17 @@ window.HELP = {
         what: 'How many null-set deals each setting is read against, dealt from the kept votes — no training.',
         more: 'The same deals are used for every setting in the block, so any two settings\' shares are always comparable.',
       },
+      swKeep3: {
+        what: 'How many of those null-set deals have their money written down, rather than only being counted. '
+          + 'Keeping some builds a whole second copy of Table 3.A and Table 3.B out of luck alone, which is the '
+          + 'only thing the Funnel can measure a real result against. 0 keeps none, which is how every run before '
+          + 'this one worked.',
+        more: 'It costs one extra pricing per setting per coin for each one kept, so 10 makes the run about 10% '
+          + 'longer. It cannot ask for more deals than the null set has, and it refuses rather than quietly '
+          + 'keeping fewer. Two figures are stored for each one: the money on the test window, which is what the '
+          + 'Funnel reads, and the money on the held-back window, which is free because working out beat its own '
+          + 'null set prices it anyway. Both are rounded to the cent.',
+      },
       swDec: { what: 'The decision to price: argmax takes whichever outcome the votes lean to most; directional acts only when the sureness clears the fee-priced bar.' },
       swPermDec: { what: 'Price both ways of deciding, each as its own setting in the block.' },
       swBand: { what: 'The size a move must reach to count as a move, for pricing the rails. auto uses the width each unit trained at, worked out from its own history.' },
@@ -373,6 +384,27 @@ window.HELP = {
           + 'What is kept is written BESIDE the old records, counted, and checked for gaps in the numbering before '
           + 'anything is replaced — so an interruption leaves the set exactly as it was. The tables are worked out again '
           + 'afterwards.',
+      },
+      bKeptN: {
+        what: 'How many of this record set\'s null-set deals should have their money written down, so the Funnel '
+          + 'has a whole second copy of Table 3.A and Table 3.B made of luck alone to measure a real result against.',
+        more: 'It cannot ask for more than the set was swept with — the deals it writes down have to be deals it '
+          + 'actually made. The line beside it says how many the set keeps today and how many pricings the chosen '
+          + 'number costs, before the button is pressed.',
+      },
+      bKeptGo: {
+        what: 'Fills in the kept null money on a set that was priced before the column existed. It re-prices only '
+          + 'what is missing, never the whole run.',
+        more: 'This works at all because the deals are worked out from a hash of the record set\'s name, so deal '
+          + 'seven is the same deal seven it always was and pricing it again reproduces exactly what the run would '
+          + 'have written.\n\n'
+          + 'It re-prices the real test money alongside, as a proof: a disagreement of more than a cent means the '
+          + 'price files moved or the engine did, and it stops rather than writing numbers from one world beside '
+          + 'numbers from another. Nothing is replaced until every row is written: the records are built BESIDE the '
+          + 'old ones, checked for the same row count and the same block boundaries, and only then swapped. The '
+          + 'tables are worked out again afterwards.\n\n'
+          + 'It runs for hours on a large set. Progress shows above, and the box refuses while anything else heavy '
+          + 'is running, because it reads the same units they do.',
       },
       bCheckSet: {
         what: 'Reads every record in this set and says whether it is sound. It adds nothing and changes nothing.',

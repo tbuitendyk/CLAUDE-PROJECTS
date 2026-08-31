@@ -37,6 +37,13 @@ const { nullRng } = require('./walkforward');
 // stored number and the live number identically, small enough to keep
 // millions of rows on disk without regret.
 const q4 = (x) => Math.round(x * 10000) / 10000;
+// KEPT SCRAMBLE MONEY IS STORED TO THE CENT (FUNNEL-DESIGN.md 4.5). One stored
+// row measures 623 characters and a raw double is 18 of them, most of which are
+// noise that gzip cannot find any repetition in. These figures are only ever
+// averaged, curved, gridded and searched for a region -- a cent is far below any
+// difference that could change a reading. Ten kept at cents is about +22% on the
+// store; the same ten raw would be +61%.
+const cents = (x) => (x == null || !Number.isFinite(x) ? null : Math.round(x * 100) / 100);
 const probsArr = (p) => [q4(p['-1']), q4(p[0]), q4(p[1])];
 const probsObj = (a) => ({ '-1': a[0], 0: a[1], 1: a[2] });
 
@@ -335,6 +342,23 @@ const agreedKeyOfRecord = (r) => agreedKey(r.decision, agrOf(r));
 
 async function s3UnitTask(task) {
   const { combo, geometry, params: p, unit, settings, fee, nullN, seed, unitKey, agreedOnly = false } = task;
+  // HOW MANY OF THE SCRAMBLES TO WRITE DOWN (owner order, 2026-08-31: "keep 10").
+  // Never more than there are: a set swept with 4 scrambles cannot keep 10, and
+  // silently keeping 4 while the set document claims 10 is how a reader ends up
+  // averaging over an array shorter than it was told.
+  const keep = Math.max(0, Math.min(Math.floor(Number(task.keepN) || 0), agreedOnly ? 0 : nullN));
+  // THE BACKFILL MODE (owner order, 2026-08-31: "backfill included"). A set
+  // priced before the kept scrambles existed can have them, because the
+  // scrambles are a pure function of the set's id -- seedOf is a hash of the
+  // name and the shuffle is a seeded Fisher-Yates, so scramble N is identical
+  // every time, forever.
+  //
+  // It prices ONLY what is missing: the real test money as a proof that this is
+  // still the same run, and the kept scrambles on both windows. It does NOT
+  // re-price the real held-back money, the four hold controls, or the whole
+  // null set -- those are already on disk and re-doing them would turn a
+  // two-hour fill into a twelve-hour re-run.
+  const noiseOnly = !!task.noiseOnly;
   const { geo, maps, split } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   const tsT = testChunks.map((c) => c.startTs);
@@ -576,6 +600,42 @@ async function s3UnitTask(task) {
     const cell = { entry: st.entry, gate: st.gate, dMult: st.dMult, tHours: st.tHours, trailMult: st.trailMult ?? null, armMult: st.armMult ?? null };
     const testCallsAll = streamFor(stream.decision, agr, -1, 'test');
     const tRes = bracketLib.simCell(cell, pick(testChunks, tIdx), pick(testCallsAll, tIdx), maps.trade, geo, bandPct, fee);
+    // THE KEPT SCRAMBLES ON THE TEST WINDOW (FUNNEL-DESIGN.md 4.5). Together
+    // these build a complete second copy of Table 3.A and Table 3.B out of
+    // luck alone, so every reading the Funnel takes on the real table can be
+    // taken again where nothing is real.
+    //
+    // THIS IS WHERE THE COST IS, and the design had it backwards. Nothing has
+    // ever scrambled the test window -- every call above passes deal index -1,
+    // the real calendar -- so each of these is a pricing that did not happen
+    // before. The held-back ones further down are free by comparison: the beat
+    // loop already prices them and throws the money away.
+    //
+    // The Funnel reads TEST money on purpose (FUNNEL-DESIGN.md 2, 10) so the
+    // held-back window stays sealed until step 7. A noise twin drawn from the
+    // held-back window would open the seal to decide what to look at, which is
+    // the one thing the whole design exists to prevent.
+    const noiseTest = [];
+    for (let d = 0; d < keep; d++) {
+      const dt = streamFor(stream.decision, agr, d, 'test');
+      const dRes = bracketLib.simCell(cell, pick(testChunks, tIdx), pick(dt, tIdx), maps.trade, geo, bandPct, fee);
+      noiseTest.push(cents(dRes.pnl));
+    }
+    // THE KEPT SCRAMBLES ON THE HELD-BACK WINDOW. In a normal run these cost
+    // nothing: the beat loop below prices them anyway and drops the money the
+    // moment the count is taken. In a backfill there is no beat loop, so they
+    // are priced here and are half of what the fill costs.
+    const noiseHold = [];
+    if (noiseOnly) {
+      for (let d = 0; d < keep && holdChunks.length; d++) {
+        const dh = streamFor(stream.decision, agr, d, 'hold');
+        noiseHold.push(cents(bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), maps.trade, geo, bandPct, fee).pnl));
+      }
+      // The label rides along so the merge joins on a name, never on a position.
+      // Setting indexes are per block and two blocks both start at zero.
+      rows.push({ si, label: st.label, pnl: tRes.pnl, noiseTest, noiseHold: holdChunks.length ? noiseHold : null });
+      continue;
+    }
     let holdout = null;
     let beat = 0;
     let lead = null;
@@ -609,6 +669,10 @@ async function s3UnitTask(task) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
         const dRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), maps.trade, geo, bandPct, fee);
         dealPnls.push(dRes.pnl);
+        // FREE, unlike the test ones above: this pricing happens either way to
+        // work out beat, and today its money is dropped the moment the count is
+        // taken. Step 7 and Verify's board null want it.
+        if (d < keep) noiseHold.push(cents(dRes.pnl));
         if (hRes.pnl > dRes.pnl) beat++;
       }
       // the same one rule stage 1 reads by (decision record #6): how far the
@@ -632,6 +696,12 @@ async function s3UnitTask(task) {
       pnl: tRes.pnl, trades: tRes.trades,
       holdout,
       beat, pairs: holdChunks.length ? nullN : 0, lead,
+      // ALWAYS PRESENT, null when nothing was kept. The row store's columns
+      // only ever grow and a row written before a growth reads back short, so
+      // a column that appears halfway through a run would split one set into
+      // two shapes -- the two-vocabularies-on-disk fault RULE NINE forbids.
+      noiseTest: keep ? noiseTest : null,
+      noiseHold: keep && holdChunks.length ? noiseHold : null,
       // EVERYTHING THE PRICING ALREADY WORKED OUT AND USED TO THROW AWAY
       // (FUNNEL-DESIGN.md section 4.2). It is computed on the one path, so a
       // rebuild and a fresh run cannot disagree — and it is NOT stored: both
@@ -661,6 +731,47 @@ async function s3UnitTask(task) {
 // "yes" to multithreading the totalling). Sums are commutative, the block
 // sets are unions, and the finishing sort happens after the merge — so the
 // sharded answer is the single-pass answer, and a test holds the two equal.
+// THE KEPT SCRAMBLES ARE SUMMED ELEMENTWISE, and index order is load-bearing:
+// scramble 3 of one setting shares its calendar with scramble 3 of every other
+// setting on the same unit, which is the only reason a whole all-luck copy of
+// the tables means anything. Adding position 3 to position 4 would silently
+// average across different calendars and still look like a number.
+//
+// ONE DEFINITION, used by the fold, by the shard merge and by the drain,
+// because those three have to agree and three hand-written index loops is
+// three chances to disagree.
+function addNoiseRow(into, key, arr) {
+  if (!Array.isArray(arr) || !arr.length) return;
+  let sums = into[key];
+  if (!sums) { sums = new Array(arr.length).fill(0); into[key] = sums; into[key + 'N'] = 0; }
+  const n = Math.min(sums.length, arr.length);
+  for (let i = 0; i < n; i++) if (arr[i] != null) sums[i] += arr[i];
+  into[key + 'N'] += 1;
+}
+function mergeNoise(into, key, addSums, addN) {
+  if (!Array.isArray(addSums) || !addSums.length) return;
+  let sums = into[key];
+  if (!sums) { sums = new Array(addSums.length).fill(0); into[key] = sums; into[key + 'N'] = 0; }
+  const n = Math.min(sums.length, addSums.length);
+  for (let i = 0; i < n; i++) sums[i] += addSums[i];
+  into[key + 'N'] += addN || 0;
+}
+// The mean per scramble across a list of cells. Returns null rather than an
+// array of nulls when nothing was kept, so a reader tests one thing.
+function meanNoise(cells, key) {
+  let width = 0;
+  for (const c of cells) if (c[key] && c[key].length > width) width = c[key].length;
+  if (!width) return null;
+  const out = new Array(width).fill(0);
+  const seen = new Array(width).fill(0);
+  for (const c of cells) {
+    const sums = c[key]; const n = c[key + 'N'] || 0;
+    if (!sums || !n) continue;
+    for (let i = 0; i < Math.min(width, sums.length); i++) { out[i] += sums[i] / n; seen[i]++; }
+  }
+  for (let i = 0; i < width; i++) out[i] = seen[i] ? Math.round((out[i] / seen[i]) * 100) / 100 : null;
+  return out;
+}
 function newTallyAcc() {
   return { perSetting: new Map(), perCoin: new Map(), rows: 0 };
 }
@@ -699,6 +810,8 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   }
   c.beat += r.beat || 0; c.pairs += r.pairs || 0;
   if (r.lead != null) { c.ld += r.lead; c.ldN++; }
+  addNoiseRow(c, 'nt', r.noiseTest);
+  addNoiseRow(c, 'nh', r.noiseHold);
 
   const cellLabel = r.label.split(' · ')[0];
   const ck = `${cellLabel}|${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
@@ -718,6 +831,8 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
     k.trades += r.holdout.trades || 0; k.tradesN++;
     if (r.holdout.vsAlwaysLong != null) { k.vsl += r.holdout.vsAlwaysLong; k.vsln++; }
   }
+  addNoiseRow(k, 'nt', r.noiseTest);
+  addNoiseRow(k, 'nh', r.noiseHold);
   k.b.add(blockIdx);
   acc.rows++;
 }
@@ -746,6 +861,7 @@ function mergeTallyAcc(acc, part) {
       c.rung += add.rung || 0; c.rungN += add.rungN || 0;
       c.voices += add.voices || 0; c.voicesN += add.voicesN || 0;
       c.agr += add.agr || 0; c.agrN += add.agrN || 0;
+      mergeNoise(c, 'nt', add.nt, add.ntN); mergeNoise(c, 'nh', add.nh, add.nhN);
     }
   }
   for (const [ck, add] of part.perCoin) {
@@ -762,6 +878,7 @@ function mergeTallyAcc(acc, part) {
     k.hold += add.hold; k.holdN += add.holdN;
     k.trades += add.trades; k.tradesN += add.tradesN;
     k.vsl += add.vsl; k.vsln += add.vsln;
+    mergeNoise(k, 'nt', add.nt, add.ntN); mergeNoise(k, 'nh', add.nh, add.nhN);
     k.agr += add.agr || 0; k.agrN += add.agrN || 0;
     for (const b of add.b) k.b.add(b);
   }
@@ -790,6 +907,7 @@ module.exports = {
   s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
+  addNoiseRow, mergeNoise, meanNoise, cents,
   // the arithmetic, exported so the tests can pencil it
   forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks,
   probsArr, probsObj,

@@ -501,7 +501,7 @@ const SORT_KEYS = {
     dMult: 'n', tHours: 'n', trailMult: 'n', armMult: 'n',
     agreeRule: 's', avgAgreed: 'n', avgRung: 'n', avgVoices: 'n', members: 'n',
     coins: 'n', avgTest: 'n', avgHold: 'n', avgTrades: 'n', avgVsLong: 'n',
-    beat: 'share', avgLead: 'n', coinsInMoney: 'n',
+    beat: 'share', avgLead: 'n', coinsInMoney: 'n', beatNoise: 'share',
   },
 };
 // The words the screens use for those keys, for the chain line — read the
@@ -518,6 +518,7 @@ const SORT_WORDS = {
   coins: 'coins', avgTest: 'avg test $', avgHold: 'avg held-back $',
   avgTrades: 'avg held-back trades', avgVsLong: 'avg vs always-long $',
   avgLead: 'lead over null set', coinsInMoney: 'coins in the money',
+  beatNoise: 'beat the kept null money',
 };
 function sortLabel(spec) {
   return (spec || []).map((s) => `${SORT_WORDS[s.key] || s.key} ${s.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', ');
@@ -539,9 +540,22 @@ function validateSort(stage, spec) {
     return { key, dir };
   });
 }
+// WHICH TWO FIELDS A SHARE COLUMN DIVIDES. There are two share columns now and
+// sortValue used to hardcode the first one's pair, so the second would have
+// been sorted by the first's numbers while looking like it worked.
+const SHARE_FIELDS = {
+  beat: ['beat', 'pairs'],
+  beatNoise: ['beatNoise', 'noisePairs'],
+};
+function shareNum(key) { return (SHARE_FIELDS[key] || SHARE_FIELDS.beat)[0]; }
 function sortValue(kind, key, row) {
   if (kind === 's') return key === 'ctx' ? `${row.ctx1 || ''}${row.ctx2 ? ` + ${row.ctx2}` : ''}` : String(row[key] ?? '');
-  if (kind === 'share') return row.nullTies || !row.pairs ? null : row.beat / row.pairs;
+  if (kind === 'share') {
+    const [num, den] = SHARE_FIELDS[key] || SHARE_FIELDS.beat;
+    // nullTies is about the null set the beat column reads, and only that one
+    if (key === 'beat' && row.nullTies) return null;
+    return !row[den] ? null : row[num] / row[den];
+  }
   const v = row[key];
   return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
 }
@@ -562,7 +576,7 @@ function applySort(stage, rows, spec, baseCmp) {
         return va == null ? 1 : -1;
       }
       let c = typeof va === 'string' ? va.localeCompare(vb) : va - vb;
-      if (c === 0 && kind === 'share') c = (a.beat || 0) - (b.beat || 0);
+      if (c === 0 && kind === 'share') { const nf = shareNum(key); c = (a[nf] || 0) - (b[nf] || 0); }
       if (c) return dir === 'desc' ? -c : c;
     }
     return baseCmp(a, b);
@@ -604,6 +618,7 @@ const FILTER_DEFS = {
     tradesMin: ['avgTrades', 'min'], vsLongMin: ['avgVsLong', 'min'],
     beatMin: ['_beatPct', 'min'], leadMin: ['avgLead', 'min'], inMoneyMin: ['coinsInMoney', 'min'],
     voicesMin: ['avgVoices', 'min'], agreedMin: ['avgAgreed', 'min'],
+    beatNoiseMin: ['_beatNoisePct', 'min'],
   },
 };
 // The values a filter may read that are not stored as such: the share a row
@@ -627,6 +642,10 @@ function nullSetHonest(r) {
 const DERIVED = {
   _ctx: (r) => [r.ctx1, r.ctx2].filter(Boolean).join(' + '),
   _beatPct: (r) => (r.nullTies || !r.pairs ? null : (r.beat / r.pairs) * 100),
+  // The share of the kept all-luck copies this row's TEST money beat. Empty,
+  // not zero, on a set that kept none: a row that was never asked the question
+  // has not answered it badly.
+  _beatNoisePct: (r) => (!r.noisePairs ? null : ((r.beatNoise || 0) / r.noisePairs) * 100),
   // WHAT THE gate COLUMN ACTUALLY SHOWS. A setting opened at market carries a
   // gate in its record and the column prints a dash, because no gate applies
   // to it — so a filter reading the stored value would hand back rows the
@@ -1296,6 +1315,18 @@ function startStage3(params) {
     throw new Error('fee % each way must be a real cost between 0 and 5% — it prices every trade and every directional bar here');
   }
   const nullN = Math.max(0, Math.floor(num(params.nullN, 19)));
+  // HOW MANY SCRAMBLES THIS RUN WRITES DOWN (FUNNEL-DESIGN.md 4.5). Keeping
+  // them is what gives the Funnel a whole second copy of the tables, made of
+  // luck, instead of a split-half standing in for one.
+  //
+  // It REFUSES rather than clamping. A set whose document says it kept ten and
+  // whose rows carry four is a set every later reader has to distrust, and the
+  // reader that averages over the shorter array will not notice it is short.
+  const keepN = Math.max(0, Math.floor(num(params.keepN, 0)));
+  if (keepN > nullN) {
+    throw new Error(`this asks to keep ${keepN} scrambles from a null set of ${nullN} — `
+      + 'there are only as many scrambles to keep as the null set has. Raise the null set size, or lower how many are kept.');
+  }
   // carry forward (owner order, 2026-08-27): 0 prices every carried unit; a
   // positive count takes the top of the parent's table. The units come
   // FIRST because the declared block depends on which committee sizes are
@@ -1331,7 +1362,12 @@ function startStage3(params) {
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
     measurements: MEASUREMENTS_VERSION,
-    boardNull: { ...BOARD_NULL_NONE },
+    // WHAT THIS RUN KEPT, stamped at launch in the shape every reader already
+    // asks. A run that keeps ten and stamps 'none' would fill the columns and
+    // still tell the Funnel there is nothing to compare against.
+    boardNull: keepN > 0
+      ? { captured: true, kept: keepN, why: null }
+      : { captured: false, kept: 0, why: 'null set money kept was 0 when this set was priced' },
     parent: {
       id: parent.id, name: parent.name,
       ...(carry > 0 ? {
@@ -1340,7 +1376,7 @@ function startStage3(params) {
       } : {}),
     },
     params: {
-      ...parent.params, from: parent.id, fee, nullN, carry: carry > 0 ? parentRecords.length : 0,
+      ...parent.params, from: parent.id, fee, nullN, keepN, carry: carry > 0 ? parentRecords.length : 0,
       cell: params.cell, cellPermute: params.cellPermute || null,
       agreeRule: params.agreeRule || 'count', agreeBar: params.agreeBar === 'own' ? 'own' : 'all',
       agreePct: Number(params.agreePct) || 50,
@@ -1368,7 +1404,7 @@ function startStage3(params) {
     },
     perf: {
       unitsDone: 0, unitsTotal: parentRecords.length, elapsedMs: 0, etaMs: null, workers: null,
-      cyclesDone: 0, cyclesTotal: parentRecords.length * settings.length * (1 + nullN), cyclesWord: 'pricings',
+      cyclesDone: 0, cyclesTotal: parentRecords.length * settings.length * (1 + nullN + keepN), cyclesWord: 'pricings',
     },
     failures: [],
     counts: null,
@@ -1501,7 +1537,7 @@ const SHARD_SETTINGS_LIMIT = 5000;
 // object overhead in, plus a per-setting base. tests/test-stages.js holds
 // the disk figure against a real store the same way.
 const TALLY_ATOM_BYTES = 400;        // one setting × one coin, object overhead in
-const TALLY_SETTING_BASE_BYTES = 600; // one ranked entry's own fields
+const TALLY_SETTING_BASE_BYTES = 760; // one ranked entry's own fields, incl. ten kept scrambles
 const S3_RECORD_DISK_BYTES = 500;     // one stage 3 record row on disk, gz block share in
 const HEAP_REFUSE_SHARE = 0.8;        // above this share of the ceiling: refuse
 const HEAP_WARN_SHARE = 0.45;         // above this share: run, but say it is tight
@@ -1582,7 +1618,7 @@ function storeBudgetFor({ rows, freeBytes = null }) {
 // Line by line, no single string is ever longer than one entry, and the size
 // of the whole stops mattering. Derived, so the old one is not migrated: it
 // reads as an older shape and is rebuilt (RULE NINE).
-const TALLY_V = 5;
+const TALLY_V = 6;
 
 // ---- WHAT THE MEMBERS ACTUALLY DID -------------------------------------------
 //
@@ -2280,7 +2316,8 @@ function missingSettingsOf(id) {
     declared: declared.length,
     missing,
     units: (doc.plan || {}).units || 0,
-    pricings: missing * ((doc.plan || {}).units || 0) * (1 + Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)))),
+    pricings: missing * ((doc.plan || {}).units || 0)
+      * (1 + Math.max(0, Math.floor(num((doc.params || {}).nullN, 19))) + Math.max(0, Math.floor(num((doc.params || {}).keepN, 0)))),
     gate: tallyBudgetFor({ settings: declared.length, coins }),
     appends: (doc.appends || []).length,
     behind: settingsBehind(doc),
@@ -2609,7 +2646,7 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false 
       ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) },
       members: rec.specs.map((spec, mi) => ({ spec, tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [] })),
     },
-    settings, fee, nullN, seed: doc.seed,
+    settings, fee, nullN, keepN: agreedOnly ? 0 : (Number((doc.params || {}).keepN) || 0), seed: doc.seed,
     unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
     ...(agreedOnly ? { agreedOnly: true } : {}),
   };
@@ -2695,6 +2732,12 @@ async function buildTally(doc, pool = null, note = null) {
       return vals.length ? vals.reduce((a, b) => a + b, 0) / vals.length : null;
     };
     const coinHold = coinCells.map((c) => (c.holdN ? c.hold / c.holdN : null));
+    // THE ALL-LUCK COPY OF THIS ROW (FUNNEL-DESIGN.md 4.5): one figure per kept
+    // scramble, averaged over the same cells avgTest is. The count beside it is
+    // how many of those this row's real test money beat -- the same shape as
+    // beat its own null set, and worked out here so the table can rank by it.
+    const avgTest = mean((c) => (c.testN ? c.test / c.testN : null));
+    const nt = sw.meanNoise(coinCells, 'nt');
     ranked.push({
       si: st.si, label: st.label,
       decision: st.decision, bandMode: st.bandMode, weekdaysOnly: st.weekdaysOnly,
@@ -2707,19 +2750,30 @@ async function buildTally(doc, pool = null, note = null) {
       avgAgreed: mean((c) => (c.agrN ? c.agr / c.agrN : null)),
       coins: coinCells.length,
       coinsInMoney: coinHold.filter((v) => v != null && v > 0).length,
-      avgTest: mean((c) => (c.testN ? c.test / c.testN : null)),
+      avgTest: avgTest,
       avgHold: mean((c) => (c.holdN ? c.hold / c.holdN : null)),
       avgTrades: mean((c) => (c.holdN ? c.trades / c.holdN : null)),
       avgVsLong: mean((c) => (c.vsln ? c.vsl / c.vsln : null)),
       avgLead: mean((c) => (c.ldN ? c.ld / c.ldN : null)),
       beat: coinCells.reduce((a, c) => a + c.beat, 0),
       pairs: coinCells.reduce((a, c) => a + c.pairs, 0),
+      // THE ALL-LUCK COPY OF THIS ROW (FUNNEL-DESIGN.md 4.5). One figure per
+      // kept scramble, averaged over the same cells avgTest is, so the Funnel
+      // can run any reading twice: once here and once on a table where nothing
+      // is real. null on a set priced before the column existed -- the set
+      // document says so, and no reader has to guess from a record's age.
+      noiseTest: nt,
+      noiseHold: sw.meanNoise(coinCells, 'nh'),
+      beatNoise: nt && avgTest != null ? nt.filter((v) => v != null && avgTest > v).length : null,
+      noisePairs: nt ? nt.length : 0,
     });
     acc.perSetting.delete(key);
   }
   ranked.sort((a, b) => ((b.pairs ? b.beat / b.pairs : -1) - (a.pairs ? a.beat / a.pairs : -1)) || (a.si - b.si));
   const coins = [];
   for (const [key, k] of acc.perCoin) {
+    const kTest = k.testN ? k.test / k.testN : null;
+    const kNt = sw.meanNoise([k], 'nt');
     coins.push({
       cellLabel: k.cellLabel, trade: k.trade, ctx1: k.ctx1, ctx2: k.ctx2, geometry: k.geometry,
       share: k.pairs ? k.beat / k.pairs : null, beat: k.beat, pairs: k.pairs,
@@ -2729,6 +2783,10 @@ async function buildTally(doc, pool = null, note = null) {
       avgVsLong: k.vsln ? k.vsl / k.vsln : null,
       avgAgreed: k.agrN ? k.agr / k.agrN : null,
       rows: k.rows, b: [...k.b].sort((x, y) => x - y),
+      noiseTest: kNt,
+      noiseHold: sw.meanNoise([k], 'nh'),
+      beatNoise: kNt && kTest != null ? kNt.filter((v) => v != null && kTest > v).length : null,
+      noisePairs: kNt ? kNt.length : 0,
     });
     acc.perCoin.delete(key);
   }
@@ -3066,7 +3124,7 @@ function stage2Table(id, from, n, filters = null) {
   return { total: rows.length, of, from, sort: doc.sort || [], rows: rows.slice(from, from + n) };
 }
 
-const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed'];
+const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise'];
 // What each floor on the every-coin table reads, in the shape spreadOf wants.
 // The table does its own filtering rather than going through FILTER_DEFS, so
 // its columns are named here — and they are named ONCE, beside the floors
@@ -3074,7 +3132,7 @@ const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows',
 const S3_COIN_FILTERS = {
   minShare: ['_sharePct', 'min'], minPairs: ['pairs', 'min'], minTest: ['avgTest', 'min'],
   minHold: ['avgHold', 'min'], minTrades: ['avgTrades', 'min'], minVsLong: ['avgVsLong', 'min'],
-  minAgreed: ['avgAgreed', 'min'],
+  minAgreed: ['avgAgreed', 'min'], minBeatNoise: ['_beatNoisePct', 'min'],
 };
 function stage3Coins(id, query) {
   const t = readTally(id);
@@ -3085,6 +3143,7 @@ function stage3Coins(id, query) {
   const minTrades = query.minTrades === '' || query.minTrades == null ? null : Number(query.minTrades);
   const minVsLong = query.minVsLong === '' || query.minVsLong == null ? null : Number(query.minVsLong);
   const minAgreed = query.minAgreed === '' || query.minAgreed == null ? null : Number(query.minAgreed);
+  const minBeatNoise = query.minBeatNoise === '' || query.minBeatNoise == null ? null : Number(query.minBeatNoise);
   // ONE SETTING'S COINS AND NOTHING ELSE (owner order, 2026-08-30). Matched
   // WHOLE, not by containing: the button that sets it sends a name exactly,
   // and a name that is the start of a longer one would otherwise drag that
@@ -3103,7 +3162,10 @@ function stage3Coins(id, query) {
     && (minShare == null || (r.share != null && r.share * 100 >= minShare))
     && (minHold == null || (r.avgHold != null && r.avgHold >= minHold))
     && (minTrades == null || (r.avgTrades != null && r.avgTrades >= minTrades))
-    && (minVsLong == null || (r.avgVsLong != null && r.avgVsLong >= minVsLong));
+    && (minVsLong == null || (r.avgVsLong != null && r.avgVsLong >= minVsLong))
+    // a set that kept no scrambles has not answered this badly -- it was
+    // never asked, so a floor on it drops the row rather than reading a zero
+    && (minBeatNoise == null || (r.noisePairs > 0 && ((r.beatNoise || 0) / r.noisePairs) * 100 >= minBeatNoise));
   // The share is emptied BEFORE the filters read it, so a floor on it drops a
   // row that cannot be measured rather than keeping it as a zero. A coin row
   // knows its setting only by name, so the gate comes back out of the name.
@@ -3111,6 +3173,9 @@ function stage3Coins(id, query) {
     : { ...r, nullTies: true, share: null });
   const kept = t.coins.map(honest).filter(clears);
   const byShare = (a, b) => ((b.share ?? -1) - (a.share ?? -1)) || (b.pairs - a.pairs);
+  // The same share the floor reads, so a column cannot rank by one number
+  // while the box beneath it filters on another.
+  const noiseShare = (r) => (!r.noisePairs ? null : (r.beatNoise || 0) / r.noisePairs);
   const orders = {
     share: byShare,
     pairs: (a, b) => (b.pairs - a.pairs) || byShare(a, b),
@@ -3120,6 +3185,7 @@ function stage3Coins(id, query) {
     vslong: (a, b) => ((b.avgVsLong ?? -1e15) - (a.avgVsLong ?? -1e15)) || byShare(a, b),
     rows: (a, b) => (b.rows - a.rows) || byShare(a, b),
     agreed: (a, b) => ((b.avgAgreed ?? -1e15) - (a.avgAgreed ?? -1e15)) || byShare(a, b),
+    beatnoise: (a, b) => ((noiseShare(b) ?? -1) - (noiseShare(a) ?? -1)) || byShare(a, b),
     coin: (a, b) => String(a.trade).localeCompare(String(b.trade)) || byShare(a, b),
     setting: (a, b) => String(a.cellLabel).localeCompare(String(b.cellLabel)) || byShare(a, b),
   };
@@ -3208,19 +3274,50 @@ function funnelRead(id, state = {}) {
     out.reading = { why: 'this rule keeps nothing, so there is nothing to read' };
     return out;
   }
-  if (step === 1) out.reading = F.step1(rows, { seed, top: 3 });
-  else if (step === 2) out.reading = F.step2(rows, String(state.dial || ''), { seed });
-  else if (step === 3) {
+  // THE ALL-LUCK COPY OF THIS TABLE (FUNNEL-DESIGN.md 4.5). Same rows, same
+  // rule, same step function -- only the money is swapped for what that setting
+  // made in one of the kept scrambles. That is why one stored column answers
+  // all six of the design's noise comparisons: every one of them is "run this
+  // reading on a table", and a kept scramble IS a table.
+  const keptN = rows.length && Array.isArray(rows[0].noiseTest) ? rows[0].noiseTest.length : 0;
+  const luckBoard = (d) => rows.map((r) => ({ ...r, avgTest: (r.noiseTest || [])[d] ?? null }));
+  out.set.keptScrambles = keptN;
+
+  if (step === 1) {
+    out.reading = F.step1(rows, { seed, top: 3 });
+    // ONE of them, not all ten, and the page is told which. The finding at step
+    // 1 is the ORDERING of the dials, and ten copies of the same ordering is
+    // ten times the wait for the same answer.
+    if (keptN) out.reading.noise = { of: keptN, used: 1, reading: F.step1(luckBoard(0), { seed, top: 3 }) };
+  } else if (step === 2) {
+    out.reading = F.step2(rows, String(state.dial || ''), { seed });
+    if (keptN) out.reading.noise = { of: keptN, used: 1, reading: F.step2(luckBoard(0), String(state.dial || ''), { seed }) };
+  } else if (step === 3) {
     const g = F.step3(rows, String(state.dialA || ''), String(state.dialB || ''), { floor });
     out.reading = { ...g, floorCost: F.floorCost(g, state.floorChoices) };
+    if (keptN) out.reading.noise = { of: keptN, used: 1, reading: F.step3(luckBoard(0), String(state.dialA || ''), String(state.dialB || ''), { floor }) };
   } else if (step === 4) {
     out.reading = { axis: holdsAxis, slices: sliceRowsFor(rows, t, holdsAxis.axis, rule), floor };
   } else if (step === 5) {
     const ordered = F.ORDERED_DIALS.filter((d) => rows.some((r) => r[d] != null));
-    out.reading = require('./plateau').widestRegion(
-      rows.map((r) => ({ ...r, pnl: F.money(r), trades: r.avgTrades == null ? 1 : r.avgTrades })),
+    const region = (list) => require('./plateau').widestRegion(
+      list.map((r) => ({ ...r, pnl: F.money(r), trades: r.avgTrades == null ? 1 : r.avgTrades })),
       { minTrades: 0, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },
     );
+    out.reading = region(rows);
+    // ALL of them here, unlike the steps above, and the difference is the
+    // point. "Wider than luck" off one scramble is a coin toss; "wider than
+    // all ten" is the claim the count on Sweep exists to buy.
+    if (keptN) {
+      const each = [];
+      for (let d = 0; d < keptN; d++) { const g = region(luckBoard(d)); each.push(g && g.size != null ? g.size : null); }
+      const mine = out.reading && out.reading.size != null ? out.reading.size : null;
+      out.reading.noise = {
+        of: keptN, used: keptN, sizes: each,
+        widest: each.reduce((a, v) => (v != null && (a == null || v > a) ? v : a), null),
+        beatenBy: mine == null ? null : each.filter((v) => v != null && mine > v).length,
+      };
+    }
   }
   return out;
 }
@@ -3363,7 +3460,213 @@ function stage3CoinRows(id, query) {
   return { indexed: true, shown: got.length, rows: got };
 }
 
+
+// ---- FILLING IN THE KEPT SCRAMBLES ON A SET THAT WAS PRICED WITHOUT THEM ----
+//
+// Owner order, 2026-08-31: "keep 10, do all of it, backfill included".
+//
+// This is a RULE NINE migration, not a re-run. The design said the capture
+// "cannot be built afterwards" and that was wrong: the scrambles are a pure
+// function of the set's id, because seedOf is a hash of the name and the
+// shuffle is a seeded Fisher-Yates. Scramble seven is the same scramble seven
+// it always was, and pricing it again reproduces exactly what the run would
+// have written.
+//
+// WHAT IT PRICES, and what it deliberately does not. Per setting per unit it
+// prices the real test money as a PROOF, plus the kept scrambles on the test
+// window and on the held-back window. It does not touch the real held-back
+// money, the four hold controls, or the ninety other scrambles -- those are on
+// disk already, and re-doing them turns a four-hour fill into a twelve-hour
+// re-run for numbers that would come out identical.
+//
+// MIGRATE BESIDE, VERIFY, SWAP (RULE NINE). The rows are rewritten into a
+// scratch store and moved into place only once every block is written. Each
+// block is flushed after exactly the rows it held before, so every block index
+// already recorded -- the per-unit ranges on this document and the per-coin
+// block lists in the totals -- still points where it did.
+//
+// UNIT BY UNIT, because holding the whole board's new figures at once is 5.2
+// million rows of them. One unit is a five-hundredth of that, and the store is
+// written in unit order anyway.
+async function startKeptScrambleFill(id, wantKeep) {
+  const busy = stageBusy();
+  if (busy) {
+    throw new Error(`${busy} is running — filling in the kept scrambles reads the same units it does, `
+      + 'so it waits rather than competing for them');
+  }
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 3) throw new Error('that is not a stage 3 record set');
+  if (doc.status !== 'done') throw new Error(`${doc.name} is ${doc.status} — a fill waits until the set has landed`);
+  const here = require('../package.json').version;
+  const there = doc.engineVersion || null;
+  if (there && firstDigitOf(there) !== firstDigitOf(here)) {
+    throw new Error(`${doc.name} was priced by release ${there} and this box runs ${here} — `
+      + 'a figure filled in now would come from a different engine than the ones beside it');
+  }
+  const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
+  const have = Math.max(0, Math.floor(num((doc.params || {}).keepN, 0)));
+  const keep = Math.max(0, Math.floor(Number(wantKeep) || 0));
+  if (keep > nullN) {
+    throw new Error(`this asks to keep ${keep} scrambles from a null set of ${nullN} — `
+      + 'there are only as many scrambles to keep as the set was swept with');
+  }
+  if (keep <= have) {
+    throw new Error(`${doc.name} already keeps ${have} — ask for more than that, or there is nothing to fill in`);
+  }
+
+  const { parent, records, settings } = relaunchShapeOf(doc);
+  const blocks = rowstore.blocksOf(id, 'records') || [];
+  if (!blocks.length) throw new Error(`${doc.name} has no rows on disk to fill in`);
+  const fee = Number((doc.params || {}).fee) || 0;
+
+  activeSet = doc;
+  doc.status = 'filling';
+  doc.progress = `filling in ${keep} kept scrambles — 0 of ${records.length} units`;
+  doc.perf = {
+    unitsDone: 0, unitsTotal: records.length, elapsedMs: 0, etaMs: null, workers: null,
+    cyclesDone: 0,
+    // the real test money once as a proof, then each kept scramble on each window
+    cyclesTotal: records.length * settings.length * (1 + keep * 2), cyclesWord: 'pricings',
+  };
+  saveSet(doc);
+
+  (async () => {
+    const pool = createPool();
+    activePool = pool;
+    doc.perf.workers = pool.parallel ? pool.workers.length : 1;
+    saveSet(doc);
+    const t0 = Date.now();
+    const SCRATCH = `${id}__keptfill`;
+    const disagreed = [];
+    try {
+      try { rowstore.remove(SCRATCH); } catch (_) { /* nothing there yet */ }
+      const w = rowstore.writer(SCRATCH, 'records');
+      // WHICH ROWS BELONG TO WHICH UNIT. Stage 3 records no per-unit block
+      // range -- an early draft of this assumed one and would have read the
+      // PARENT's ranges -- so it is taken from the rows themselves, the way
+      // every other reader of this store takes it: each row carries its unit
+      // index in `u`. Blocks come out in the order they were written, which is
+      // unit order, so one unit's figures are in hand at a time and the whole
+      // board's 5.2 million rows of them never are.
+      const priced = new Map();
+      const unitsDone = new Set();
+      const priceUnit = async (u) => {
+        const rec = records[u];
+        if (!rec) throw new Error(`a row names unit ${u} and this set has ${records.length}`);
+        if (unitsDone.has(u)) {
+          throw new Error(`unit ${rec.trade} appears again after the walk moved past it — `
+            + 'the store is not in unit order and this pass will not guess at it');
+        }
+        let settled = null;
+        await pool.forEach('s3Unit', [{ ...s3Payload({ doc, parent, rec, settings, fee, nullN }), keepN: keep, noiseOnly: true }],
+          (one) => { settled = one; });
+        if (!settled || !settled.ok) throw new Error(`unit ${rec.trade} failed: ${settled ? settled.error : 'it returned nothing'}`);
+        // KEYED BY LABEL, NEVER BY POSITION. si comes back numbered from zero
+        // per block, so two blocks both hold a setting 0 and they are not the
+        // same setting.
+        const byLabel = new Map();
+        for (const r of (settled.value.rows || [])) byLabel.set(r.label, r);
+        return byLabel;
+      };
+      for (let bi = 0; bi < blocks.length; bi++) {
+        for (const x of rowstore.readBlocks(id, 'records', [bi])) {
+          const u = x.row.u;
+          if (!priced.has(u)) {
+            // every unit already finished is released before the next is priced
+            for (const had of [...priced.keys()]) { priced.get(had).clear(); priced.delete(had); unitsDone.add(had); }
+            priced.set(u, await priceUnit(u));
+            doc.perf.unitsDone = unitsDone.size;
+            doc.perf.cyclesDone = unitsDone.size * settings.length * (1 + keep * 2);
+            doc.perf.elapsedMs = Date.now() - t0;
+            doc.perf.etaMs = unitsDone.size
+              ? Math.round((doc.perf.elapsedMs / unitsDone.size) * (records.length - unitsDone.size)) : null;
+            doc.progress = `filling in ${keep} kept scrambles — ${unitsDone.size} of ${records.length} units done, `
+              + `block ${bi + 1} of ${blocks.length}`;
+            saveSet(doc);
+          }
+          const add = priced.get(u).get(x.row.label);
+          if (!add) throw new Error(`${x.row.label} is on disk for unit ${u} and the fill did not price it`);
+          // THE PROOF. A cent of drift is rounding; more than that means the
+          // price files moved or the engine did, and the two sets of numbers
+          // are not from the same world.
+          if (Math.abs((add.pnl || 0) - (x.row.pnl || 0)) > 0.01) {
+            disagreed.push({ unit: u, label: x.row.label, stored: x.row.pnl, now: add.pnl });
+            if (disagreed.length > 5) {
+              throw new Error(`the fill disagrees with what stage 3 stored on ${disagreed.length}+ settings `
+                + `(first: ${disagreed[0].label} on unit ${disagreed[0].unit}, ${disagreed[0].stored} then ${disagreed[0].now}) — `
+                + 'this is not the same run any more, so nothing is written');
+            }
+          }
+          w.push({ ...x.row, noiseTest: add.noiseTest || null, noiseHold: add.noiseHold || null });
+        }
+        // one flush per block, so the new block holds exactly the rows the old
+        // one did and every block index already recorded still points at them
+        w.flush();
+      }
+      if (disagreed.length) {
+        throw new Error(`the fill disagrees with what stage 3 stored on ${disagreed.length} setting(s) `
+          + `(first: ${disagreed[0].label} on ${disagreed[0].unit}) — nothing is written`);
+      }
+      w.close();
+      const before = rowstore.count(id, 'records');
+      const after = rowstore.count(SCRATCH, 'records');
+      if (before !== after) {
+        throw new Error(`the filled store holds ${after} rows and the original holds ${before} — nothing is swapped`);
+      }
+      const oldBlocks = rowstore.blocksOf(id, 'records') || [];
+      const newBlocks = rowstore.blocksOf(SCRATCH, 'records') || [];
+      const sameShape = oldBlocks.length === newBlocks.length
+        && oldBlocks.every((b, i) => b.rows === newBlocks[i].rows && b.firstRow === newBlocks[i].firstRow);
+      if (!sameShape) {
+        throw new Error(`the filled store has ${newBlocks.length} blocks against ${oldBlocks.length}, or they hold `
+          + 'different rows — every block index already recorded would point somewhere else, so nothing is swapped');
+      }
+      // THE SWAP, last and only once everything above held.
+      for (const f of ['records.jsonl.gz', 'records.jsonl.gz.meta.json']) {
+        const src = path.join(rowstore.storeDir(SCRATCH), f);
+        const dst = path.join(rowstore.storeDir(id), f);
+        fs.renameSync(src, dst);
+      }
+      try { fs.rmSync(rowstore.storeDir(SCRATCH), { recursive: true, force: true }); } catch (_) { /* already gone */ }
+      // EVERYTHING DOWNSTREAM IS DELETED, NOT MIGRATED (RULE NINE). The totals
+      // are rebuilt from the filled rows; translating them would be a second
+      // chance to get the same translation wrong.
+      try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* no totals yet */ }
+      doc.params = { ...(doc.params || {}), keepN: keep };
+      // THE SHAPE noiseTwinOf READS. Writing {kept} alone would fill in ten
+      // scrambles and leave the Funnel still saying there is no comparison.
+      doc.boardNull = { captured: true, kept: keep, why: null, filledAt: new Date().toISOString(), filledBy: here };
+      doc.status = 'done';
+      doc.progress = `${keep} kept scrambles filled in — the totals rebuild next`;
+      doc.perf.elapsedMs = Date.now() - t0;
+      saveSet(doc);
+    } catch (e) {
+      try { rowstore.remove(SCRATCH); } catch (_) { /* best effort */ }
+      try { fs.rmSync(rowstore.storeDir(SCRATCH), { recursive: true, force: true }); } catch (_) { /* best effort */ }
+      doc.status = 'done';
+      doc.progress = `filling in the kept scrambles stopped: ${e.message}`;
+      saveSet(doc);
+    } finally {
+      if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
+    }
+  })();
+
+  return {
+    started: true,
+    id,
+    keep,
+    units: records.length,
+    settings: settings.length,
+    pricings: records.length * settings.length * (1 + keep * 2),
+  };
+}
+
 module.exports = {
+  startKeptScrambleFill,
+  // exported so the sort can be checked by BEHAVIOUR rather than by matching
+  // the shape of its source, which rotted the moment a second share column
+  // arrived
+  sortValue,
   sameEngineLine, stageBusy, foldSameTradeSettings, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
