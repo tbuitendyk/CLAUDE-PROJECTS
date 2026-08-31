@@ -2475,6 +2475,123 @@ function relaunchShapeOf(doc) {
   const { kept } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), records);
   return { parent, records, settings: kept };
 }
+// ---- REBUILDING THE NUMBERS STAGE 3 DID NOT STORE ------------------------------
+//
+// Owner ruling 4: the Funnel builds the missing numbers on demand, for the
+// settings that survive, and stage 3 does not grow. Everything in `rich` is
+// already computed inside the pricing pass and thrown away by storedRecordOf,
+// so this is the same pass over a handful of settings instead of half a million.
+//
+// Nothing here is cheap in the sense of free: rebuilding a unit is the expensive
+// part and there are as many units as the board holds. Pricing a few thousand
+// narrowed settings against them is seconds.
+
+// The FIRST digit of a release is the one that says records stop being
+// comparable (RULE ONE-C). A number rebuilt by a different first digit is a
+// number from a different engine sitting beside numbers from this one, and
+// nothing downstream could tell them apart.
+function firstDigitOf(v) { return String(v || '').split('.')[0] || null; }
+
+// THE REBUILD PROVES ITSELF. It recomputes the money and the trade count
+// alongside the new numbers and checks them against what stage 3 stored. A
+// mismatch means this is not the same run any more — the price files moved, or
+// the engine did — and it refuses rather than writing numbers from one world
+// beside numbers from another.
+//
+// `expect` maps a setting's index to the average test money the tally holds for
+// it. When the caller supplies none, the result says so: an unproved rebuild is
+// allowed, but it may never look like a proved one.
+// EXPECT IS KEYED BY LABEL, and that is not a detail. si comes back per BLOCK —
+// the worker numbers the settings it was handed from zero — so proving against
+// si would line setting 0 of the rebuild up with setting 0 of the whole board.
+// Every one would "match" and not one of them would be the same setting.
+function proveRebuild(perSetting, expect, tol = 1e-6) {
+  if (!expect || !Object.keys(expect).length) {
+    return { ran: false, checked: 0, matched: 0, mismatches: [], why: 'the caller supplied nothing to check against' };
+  }
+  const mismatches = [];
+  let checked = 0;
+  let unmatched = 0;
+  for (const [label, got] of perSetting) {
+    const want = expect[label];
+    // A setting the caller asked about and the rebuild did not return is not a
+    // silent skip: it is counted and reported, because "checked 3 of 40" and
+    // "checked 40 of 40" are different claims.
+    if (want == null || !Number.isFinite(Number(want))) { unmatched++; continue; }
+    checked++;
+    const mine = got.avgTest;
+    const scale = Math.max(1, Math.abs(Number(want)));
+    if (mine == null || Math.abs(mine - Number(want)) / scale > tol) {
+      mismatches.push({ label, stored: Number(want), rebuilt: mine });
+    }
+  }
+  return {
+    ran: true,
+    checked,
+    matched: checked - mismatches.length,
+    unmatched,
+    mismatches: mismatches.slice(0, 20),
+    why: unmatched ? `${unmatched} rebuilt setting(s) had nothing to check against` : null,
+  };
+}
+
+async function rebuildRichFor(doc, wantedLabels, opts = {}) {
+  const busy = stageRunning();
+  if (busy) {
+    throw new Error(`${busy} is running — a rebuild reads the same units it does, `
+      + 'so it waits rather than competing for them');
+  }
+  const here = require('../package.json').version;
+  const there = (doc.params || {}).engineVersion || doc.release || null;
+  if (there && firstDigitOf(there) !== firstDigitOf(here)) {
+    throw new Error(`this set was priced by release ${there} and this is ${here} — `
+      + 'a rebuilt number would come from a different engine than the ones beside it');
+  }
+  const wanted = new Set((wantedLabels || []).map(String));
+  if (!wanted.size) throw new Error('nothing was asked for');
+  const { parent, records, settings } = relaunchShapeOf(doc);
+  const use = settings.filter((st) => wanted.has(st.label));
+  const missing = [...wanted].filter((L) => !settings.some((st) => st.label === L));
+  if (missing.length) {
+    throw new Error(`${missing.length} of the settings asked for are not in this set's block `
+      + `(first: ${missing[0]}) — it cannot rebuild what it never priced`);
+  }
+  const fee = Number((doc.params || {}).fee) || 0;
+  const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
+  const payloads = records.map((rec) => s3Payload({ doc, parent, rec, settings: use, fee, nullN }));
+
+  // si is per-BLOCK on the way back — the worker numbers what it was handed
+  // from zero — so the label is what identifies a setting across units.
+  const perSetting = new Map();
+  const failures = [];
+  let done = 0;
+  const pool = createPool();
+  activePool = pool;
+  await pool.forEach('s3Unit', payloads, (settled, i) => {
+    const rec = records[i];
+    if (settled.ok && settled.value) {
+      for (const row of settled.value.rows) {
+        let e = perSetting.get(row.label);
+        if (!e) { e = { label: row.label, units: [], avgTest: null }; perSetting.set(row.label, e); }
+        e.units.push({
+          u: rec.u, trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, geometry: rec.geometry,
+          pnl: row.pnl, trades: row.trades, holdout: row.holdout, rich: row.rich,
+        });
+      }
+    } else if (!settled.ok) {
+      failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
+    }
+    done++;
+    if (opts.note) opts.note(done, payloads.length);
+  });
+  activePool = null;
+  for (const e of perSetting.values()) {
+    const vals = e.units.map((x) => x.pnl).filter((v) => v != null && Number.isFinite(v));
+    e.avgTest = vals.length ? vals.reduce((a, c) => a + c, 0) / vals.length : null;
+  }
+  return { perSetting, failures, units: records.length, settings: use.length };
+}
+
 // ONE UNIT'S PAYLOAD, BUILT ONE WAY. The launch, the rebuild of what actually
 // agreed, and the pass that fills in settings a block was priced without all
 // hand the workers the same thing — so anything priced later is priced exactly
@@ -3084,6 +3201,7 @@ module.exports = {
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
   missingSettingsIn, nextSettingNumber,
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
+  rebuildRichFor, proveRebuild, firstDigitOf,
   sealedWindowOf, sealedFromUnits, noiseTwinOf, needsBoardNullStamp,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,

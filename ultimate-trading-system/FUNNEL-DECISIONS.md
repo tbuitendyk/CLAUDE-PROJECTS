@@ -132,3 +132,22 @@ made while building it that the design did not already settle.
     Withholding it would remove the owner's choice invisibly.
 33. **Nothing is trimmed on its own.** Overshooting the target is a warning, not
     an automatic cut — the target is a guide from step 1, never a knife.
+
+## Step 3b — the rebuild
+
+34. **THE PROOF IS KEYED BY LABEL, NOT BY SETTING INDEX**, and getting that wrong
+    is the worst bug this build could have shipped. `si` comes back per BLOCK —
+    the worker numbers the settings it was handed from zero — so a proof keyed by
+    it would line setting 0 of the rebuild up with setting 0 of the whole board.
+    Every one would "match", not one of them would be the same setting, and the
+    output would read as a clean proof. Caught by writing the smoke test before
+    believing the code. A test now pins the failure shape.
+35. **A setting the proof could not check is COUNTED**, not skipped. "Checked 3
+    of 40" and "checked 40 of 40" are different claims and must not print alike.
+36. **An unproved rebuild is allowed and must never look proved.** `ran: false`
+    with a reason, so the tab can say there was no proof rather than showing a
+    blank where a tick would go.
+37. **It refuses while a stage job is going** — a rebuild reads the same units a
+    run does, so it waits rather than competing for them. `stageRunning()`, not
+    `launchRefusal()`: that one lives in batch.js and my first cut called it
+    from a file that has never had it.

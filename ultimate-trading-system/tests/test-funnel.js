@@ -296,4 +296,62 @@ module.exports = {
     assert.strictEqual(doc.parent.release, '3.26.1');
     assert.strictEqual(doc.stage, 4);
   },
+
+  // THE REBUILD PROVES ITSELF OR SAYS IT DID NOT. A rebuilt number sitting
+  // beside a stored one is only safe while both came from the same world.
+  theRebuildProvesItselfAgainstWhatStageThreeStored() {
+    const per = new Map([
+      ['t65 active', { label: 't65 active', avgTest: 10 }],
+      ['t89 active', { label: 't89 active', avgTest: 20 }],
+    ]);
+    const ok = stages.proveRebuild(per, { 't65 active': 10, 't89 active': 20 });
+    assert.strictEqual(ok.ran, true);
+    assert.strictEqual(ok.matched, 2);
+    assert.strictEqual(ok.mismatches.length, 0);
+
+    const drift = stages.proveRebuild(per, { 't65 active': 10, 't89 active': 20.5 });
+    assert.strictEqual(drift.matched, 1);
+    assert.strictEqual(drift.mismatches[0].label, 't89 active', 'and it names which setting disagreed');
+    assert.strictEqual(drift.mismatches[0].stored, 20.5);
+    assert.strictEqual(drift.mismatches[0].rebuilt, 20);
+
+    // AN UNPROVED REBUILD IS ALLOWED AND MUST NEVER LOOK PROVED.
+    const none = stages.proveRebuild(per, null);
+    assert.strictEqual(none.ran, false);
+    assert.ok(none.why, 'and it says why there is no proof');
+  },
+
+  // si comes back per BLOCK -- the worker numbers what it was handed from zero
+  // -- so a proof keyed by si would line setting 0 of the rebuild up with
+  // setting 0 of the whole board. Every one would "match" and not one of them
+  // would be the same setting. This is the shape of that mistake, caught.
+  theProofIsKeyedByLabelBecauseSettingIndexIsPerBlock() {
+    const per = new Map([
+      ['t65 active', { label: 't65 active', avgTest: 10 }],
+      ['t89 active', { label: 't89 active', avgTest: 20 }],
+    ]);
+    const wrong = stages.proveRebuild(per, { 0: 10, 1: 20 });
+    assert.strictEqual(wrong.checked, 0, 'an index-keyed expectation checks nothing');
+    assert.strictEqual(wrong.matched, 0, 'and above all it must not report a pass');
+    assert.strictEqual(wrong.unmatched, 2);
+    assert.ok(/nothing to check against/.test(wrong.why), wrong.why);
+  },
+
+  // The FIRST digit is the one that says records stop being comparable
+  // (RULE ONE-C). A rebuild across it produces numbers from a different engine
+  // sitting beside numbers from this one, and nothing downstream could tell.
+  async aRebuildAcrossAFirstDigitReleaseChangeRefuses() {
+    assert.strictEqual(stages.firstDigitOf('3.31.0'), '3');
+    assert.strictEqual(stages.firstDigitOf('4.0.0'), '4');
+    assert.strictEqual(stages.firstDigitOf(null), null);
+    let threw = null;
+    try {
+      await stages.rebuildRichFor({ id: 's3-x', params: { engineVersion: '1.0.0' } }, ['some setting']);
+    } catch (err) { threw = err.message; }
+    assert.ok(threw && /different engine/.test(threw), `must refuse across the first digit: ${threw}`);
+    // and asking for nothing is refused before any unit is rebuilt
+    let empty = null;
+    try { await stages.rebuildRichFor({ id: 's3-x', params: {} }, []); } catch (err) { empty = err.message; }
+    assert.ok(empty && /nothing was asked for/.test(empty), empty);
+  },
 };
