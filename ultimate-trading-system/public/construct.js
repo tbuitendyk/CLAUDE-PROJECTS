@@ -3356,7 +3356,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ${(undoing && undoing.half) ? '' : bRenameLine(doc, renaming)}
     ${(undoing && undoing.half) ? '' : bDropLine(doc, gap, dropping)}
     ${(undoing && undoing.half && !(filling && (filling.running || filling.stopped))) ? '' : bFillInLine(doc, gap, filling)}
-    <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per declared setting, averaged over its coin/chunk-shape combinations promoted from Stage 2</p>
+    <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per permuted Sweep Stage 3 setting, averaged over its coin/chunk-shape combinations promoted from Stage 2</p>
     ${bFilterGrid('S3R', [
     ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
       ((VOCAB && VOCAB.agreeRule) || []).map((o) => String(o.value))],
@@ -3454,7 +3454,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['setting', 'Table 3.A selection setting', 'text', 'shows only the coins of the setting named here, matched whole. show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${bCoinSortBtn(view, 'setting', '↑')}</th>
+        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
         <th ${bth} title="the traded coin and the chunk shape it was priced at — both are in this one cell, and the row is one setting on one coin at one chunk shape. Anything listed under alongside is context only — read against, never bought or sold.">coin + chunk shape${bCoinSortBtn(view, 'coin', '↑')}</th>
         <th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>
         <th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>
