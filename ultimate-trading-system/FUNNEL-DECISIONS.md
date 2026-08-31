@@ -108,3 +108,27 @@ made while building it that the design did not already settle.
     the comment quoting bracketwork's "judge on holdout" rule — the very line
     explaining why the guard exists. A guard that cannot tell a quotation from a
     field read teaches whoever hits it to loosen it.
+
+## Step 4 — the Stage 4 record
+
+27. **What is preserved is the RULE, not the row.** A row picked off a board
+    cannot be null-tested; a rule can, because the same rule applies to a noise
+    board. That is why this is a record set with a rule on it and not a selected-
+    row flag — and why the broken selection path is being replaced rather than
+    repaired.
+28. **One function applies the rule, at cut time and at replay time.** Two
+    applications that could drift is the whole reason a replay is worth testing,
+    so there is only one.
+29. **A text value on an ordered dial (`auto` band) is kept only when the rule
+    names it.** Coerced to NaN it would silently drop every setting on that arm,
+    and a whole arm going missing is invisible on a count.
+30. **A floor refuses a number that is not there.** Treating a missing drawdown
+    as zero would let exactly the rows nobody has measured through the one step
+    that exists to cut on measurement.
+31. **Going back is recorded.** A funnel walked forward once and one walked back
+    four times have seen different amounts of the board; only one of them admits
+    it, and the reserve grade can only count what was written down.
+32. **All three closings are offered and the costliest names itself as shopping.**
+    Withholding it would remove the owner's choice invisibly.
+33. **Nothing is trimmed on its own.** Overshooting the target is a warning, not
+    an automatic cut — the target is a guide from step 1, never a knife.

@@ -14,6 +14,21 @@ const path = require('path');
 const { assert } = require('./helpers');
 const stages = require('../lib/stages');
 const { newBook } = require('../lib/bracket');
+const FS4 = require('../lib/funnelset');
+
+// a small stage-3-shaped board
+function s3rows() {
+  const rows = [];
+  for (const t of [41, 65, 89, 113]) {
+    for (const g of ['active', 'always']) {
+      rows.push({
+        si: rows.length, label: `t${t} ${g}`, tHours: t, gate: g,
+        bandMode: t === 41 ? 'auto' : 5, maxDrawdown: t * 2, avgTest: t / 10,
+      });
+    }
+  }
+  return rows;
+}
 
 const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 
@@ -178,5 +193,107 @@ module.exports = {
     // and the book is actually used at every site the walk can settle at
     const takes = (src2.match(/book\.take\(/g) || []).length;
     assert.strictEqual(takes, 7, `seven settle sites, found ${takes}`);
+  },
+
+  // A STAGE 4 SET MUST REPLAY. If re-running its recorded rule against its
+  // parent gives a different answer, the record is a story about a decision
+  // rather than the decision itself — and the reserve grade at the end of the
+  // chain would be grading something nobody can reconstruct.
+  aFunnelSetReplaysToTheSameSurvivors() {
+    const rows = s3rows();
+    const rule = { ranges: { tHours: { min: 65, max: 113 } }, allowed: { gate: ['active'] }, floors: { maxDrawdown: { max: 200 } } };
+    const kept = FS4.applyRule(rows, rule);
+    assert.deepStrictEqual(kept.map((r) => r.label), ['t65 active', 't89 active'],
+      't113 active is cut by the drawdown floor, not by the range');
+    const doc = FS4.newFunnelSet({ id: 's4-x-1', parent: { id: 's3-y', name: 'S3 #1' }, target: 3 });
+    doc.rule = rule;
+    FS4.finishFunnelSet(doc, kept, { key: 'rule' });
+    const r = FS4.replay(doc, rows);
+    assert.strictEqual(r.same, true, JSON.stringify(r));
+    // and a rule that has drifted from its survivors is caught, not shrugged at
+    doc.rule = { ...rule, allowed: { gate: ['active', 'always'] } };
+    assert.strictEqual(FS4.replay(doc, rows).same, false);
+  },
+
+  // A range on an ordered dial the run swept as text ('auto' band) cannot be
+  // compared with < and >. Coerced to NaN it would silently drop every one of
+  // those settings, and the owner would never know a whole arm went missing.
+  aTextValueOnAnOrderedDialIsKeptOnlyWhenTheRuleSaysSo() {
+    const rows = s3rows();
+    const without = FS4.applyRule(rows, { ranges: { bandMode: { min: 0, max: 10 } } });
+    assert.ok(!without.some((r) => r.bandMode === 'auto'), 'auto is not silently swept into a numeric range');
+    assert.strictEqual(without.length, 6);
+    const with2 = FS4.applyRule(rows, { ranges: { bandMode: { min: 0, max: 10, also: ['auto'] } } });
+    assert.strictEqual(with2.length, 8, 'and is kept when the rule names it');
+  },
+
+  // A floor cannot pass on a number that is not there. Treating a missing
+  // drawdown as zero would let exactly the rows nobody has measured through.
+  aFloorRefusesAMissingNumberRatherThanTreatingItAsZero() {
+    const rows = [{ si: 0, label: 'measured', maxDrawdown: 10 }, { si: 1, label: 'not measured' }];
+    const kept = FS4.applyRule(rows, { floors: { maxDrawdown: { max: 100 } } });
+    assert.deepStrictEqual(kept.map((r) => r.label), ['measured']);
+  },
+
+  // Going back and re-choosing is more looking. A funnel walked forward once and
+  // one walked back four times have seen different amounts of the board, and the
+  // reserve grade can only count what was written down.
+  aFunnelSetRecordsItsStepsAndItsBackSteps() {
+    const doc = FS4.newFunnelSet({ id: 's4-x-2', target: 10 });
+    FS4.recordStep(doc, { n: 1, what: 'which dials move', chose: 'tHours', survivors: 800 });
+    FS4.recordBackStep(doc, { from: 3, to: 2, why: 'the grid was too thin' });
+    FS4.recordStep(doc, { n: 2, what: 'the shape of tHours', chose: '65 to 113', survivors: 400 });
+    assert.strictEqual(doc.steps.length, 2);
+    assert.strictEqual(doc.backSteps.length, 1);
+    assert.strictEqual(doc.backSteps[0].why, 'the grid was too thin');
+    for (const st of doc.steps) assert.ok(st.at, 'every step is timed');
+  },
+
+  // All three ways of closing the gap are offered and the shopping one says so
+  // in those words. Withholding it would remove the owner's choice invisibly,
+  // which is the fault RULE ZERO and RULE FIVE exist to prevent.
+  allThreeWaysToReachTheTargetAreOfferedAndTheCostliestSaysSo() {
+    assert.deepStrictEqual(Object.keys(FS4.CLOSINGS).sort(), ['rule', 'tighten', 'top']);
+    assert.ok(/shopping/.test(FS4.CLOSINGS.top.cost), 'the top-N option must name itself as shopping');
+    assert.ok(/interior|middle|both ends/.test(FS4.CLOSINGS.tighten.cost));
+    const doc = FS4.newFunnelSet({ id: 's4-x-3', target: 2 });
+    FS4.finishFunnelSet(doc, s3rows().slice(0, 2), { key: 'top', detail: 'top 2 by avgTest' });
+    assert.strictEqual(doc.closing.key, 'top', 'and which one was used is on the set');
+    assert.strictEqual(doc.closing.detail, 'top 2 by avgTest');
+  },
+
+  // NO RESTRICTIONS (owner ruling 6). An empty result is a fact about the rule,
+  // and a refusal would take the decision away.
+  anEmptyOrSingleResultIsWrittenWithAWarningNeverRefused() {
+    const empty = FS4.newFunnelSet({ id: 's4-x-4', target: 5 });
+    empty.rule = { ranges: { tHours: { min: 9999 } } };
+    FS4.finishFunnelSet(empty, [], { key: 'rule' });
+    assert.strictEqual(empty.counts.survivors, 0);
+    assert.ok(/keeps nothing/.test(empty.warnings[0]), empty.warnings[0]);
+    assert.ok(empty.ruleSentence, 'and the rule that emptied it can be read back');
+
+    const one = FS4.newFunnelSet({ id: 's4-x-5', target: 5 });
+    FS4.finishFunnelSet(one, s3rows().slice(0, 1), { key: 'rule' });
+    assert.strictEqual(one.counts.survivors, 1);
+    assert.ok(/one setting/.test(one.warnings[0]), one.warnings[0]);
+
+    // and overshooting the target is a warning too, not a silent trim
+    const over = FS4.newFunnelSet({ id: 's4-x-6', target: 2 });
+    FS4.finishFunnelSet(over, s3rows(), { key: 'rule' });
+    assert.strictEqual(over.counts.survivors, 8, 'nothing is trimmed on its own');
+    assert.ok(over.warnings.some((w) => /past the target/.test(w)), JSON.stringify(over.warnings));
+  },
+
+  // The set says which release read the board and which release priced it. A
+  // rebuilt number and a stored one can come from different engines, and the
+  // set has to be able to say so.
+  aFunnelSetNamesBothReleases() {
+    const doc = FS4.newFunnelSet({
+      id: 's4-x-7', release: '3.31.0',
+      parent: { id: 's3-y', name: 'S3 #1', params: { engineVersion: '3.26.1' } },
+    });
+    assert.strictEqual(doc.release, '3.31.0');
+    assert.strictEqual(doc.parent.release, '3.26.1');
+    assert.strictEqual(doc.stage, 4);
   },
 };
