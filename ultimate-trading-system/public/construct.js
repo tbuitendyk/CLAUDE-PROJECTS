@@ -96,6 +96,17 @@ const comboOf = (r) => (!r ? '—' : r.trade + (r.ctx1 ? ` + ${r.ctx1}` : '') + 
 // decoding to the reader; that is the writer's job. Held in one place so a word
 // means the same thing on every table that uses it.
 const COL = {
+  // Funnel
+  fDialName: 'one of the settings a sweep can be told to vary. Every dial on the record is listed, including the ones this run only swept a single value of.',
+  fMovement: 'how far apart this dial\'s values sit, measured against how much the result varies anyway. THE ORDERING IS THE FINDING - at this many rows every dial shows some movement, and the size of the number is a claim only against the split-half beside it.',
+  fRange: 'the gap in test dollars between this dial\'s best-averaging value and its worst. A ratio with no magnitude beside it cannot be read.',
+  fValues: 'how many different values of this dial the run actually swept. One value is not a comparison, and a dial with one value is listed separately rather than shown as flat.',
+  fEven: 'whether each value of this dial was swept the same number of times. Grouping by one dial only averages the others out when it was; below about two thirds, this movement is partly some other dial\'s wearing this one\'s name.',
+  fValue: 'one setting of the dial being read.',
+  fSettings: 'how many settings sit behind this number. A figure built from two settings looks exactly like one built from two thousand, and it swings much further.',
+  fAvgTest: 'average test-window dollars across the settings behind this row. TEST money, never held-back - the held-back window is opened once, at the cut, on what survives.',
+  fGridCell: 'average test dollars for the settings holding both this column value and this row value. Greyed with a count beside it when fewer settings sit behind it than the thin-square floor.',
+  fSlice: 'one coin, chunk shape, third of the window or dial value the surviving settings are being compared across - whichever of those this set can offer.',
   // Data
   pair: 'the Binance symbol, hourly candles. The fabricated planted-check pair is listed too and is marked as such.',
   months: 'how many whole months of hourly candles are cached on this box for the pair.',
@@ -216,7 +227,8 @@ $('#themebtn').onclick = () => {
 // the code to those obsolete items"). Sweep and Boards below ARE the
 // three-stage system: the two earlier working screens and the two drawings
 // they were designed on are gone, and nothing is named after them.
-const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['verify', 'Verify'],
+const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['funnel', 'Funnel'],
+  ['verify', 'Verify'],
   ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight'], ['help', 'Help']];
 let tab = localStorage.getItem('cx-tab') || 'sweep';
 // the working selection: a saved run + its selected row ride across sections
@@ -3673,6 +3685,7 @@ function hoverFromHelp(key) {
 // return early on empty states, and a tail call after an early return is a
 // hover that quietly never arrives.
 drawData = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('data'); return r; })(drawData);
+drawFunnel = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('funnel'); return r; })(drawFunnel);
 drawVerify = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('verify'); return r; })(drawVerify);
 drawHistory = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('history'); return r; })(drawHistory);
 drawTune = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('tune'); return r; })(drawTune);
@@ -3681,6 +3694,347 @@ drawSweep = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(..
 drawBoards = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('boards'); return r; })(drawBoards);
 // AND THEN THE WAIT BOX, OUTSIDE ALL OF IT (owner order, 2026-08-30), so the
 // box stays up until the very last thing the redraw does has been done.
+
+// ---- Funnel (the step between Boards and Verify) --------------------------------
+//
+// Half a million priced settings, and the only way through them was to sort a
+// table and pick a row -- which is how you find a fluke, not a strategy. This
+// walks a fixed seven-step template instead, and writes what survives as a
+// Stage 4 record set.
+//
+// EVERY MONEY FIGURE ON THIS SCREEN IS TEST MONEY. The held-back window is
+// opened once, at the cut, on what survives. Six steps of narrowing on the
+// held-back numbers would spend the only window that can judge the answer.
+
+const F_STEPS = [
+  ['which dials move the result', 'nothing is cut here'],
+  ['the shape of a dial', 'pick a range, never a value'],
+  ['do two dials interact', 'the grid, with thin squares marked'],
+  ['does it hold elsewhere', 'across whatever this set can offer'],
+  ['a plateau or a knife edge', 'the widest region and its middle'],
+  ['exposure', 'drawdown, worst trade, stops'],
+  ['declare and cut', 'the rule, written as a Stage 4 set'],
+];
+
+let fState = null;
+function fLoad() {
+  if (fState && fState.set === pickedSet3()) return fState;
+  let saved = null;
+  try { saved = JSON.parse(localStorage.getItem('cx-funnel') || 'null'); } catch (_) { saved = null; }
+  const set = pickedSet3();
+  fState = (saved && saved.set === set) ? saved
+    : { set, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
+      dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false };
+  return fState;
+}
+function fSave() { try { localStorage.setItem('cx-funnel', JSON.stringify(fState)); } catch (_) { /* private window */ } }
+
+// WHICH SET THE FUNNEL IS WALKING. It is the set opened on Boards -- there is
+// no second picker, because two pickers for one thing is how the owner ends up
+// reading one set's numbers under another set's name.
+function pickedSet3() {
+  // THE SET BOARDS HAS OPEN, read from Boards own state -- not a second key of
+  // this tab own. Two places remembering which set is open is how the owner
+  // ends up reading one set numbers under another set name, and the first cut
+  // of this function invented exactly that.
+  return bView().s3 || null;
+}
+
+const fNum = (v, d) => (v == null || v === '' || !Number.isFinite(Number(v)) ? d : Number(v));
+const fFix = (v, n) => (v == null || !Number.isFinite(Number(v)) ? '—' : Number(v).toFixed(n == null ? 2 : n));
+
+async function drawFunnel() {
+  const st = fLoad();
+  if (!st.set) {
+    $('#view').innerHTML = '<div class="panel empty">Open a stage 3 record set on the Boards section first — '
+      + 'the Funnel walks the set you have open there, so there is no second picker to disagree with it.</div>';
+    return;
+  }
+  const d = await tryPost('api/funnel/' + encodeURIComponent(st.set) + '/read', {
+    step: st.step, rule: st.rule, target: st.target, dial: st.dial,
+    dialA: st.dialA, dialB: st.dialB, floor: st.floor, rebuilt: st.rebuilt,
+  });
+  if (!d) return;
+  if (d.totalling || d.waiting) {
+    $('#view').innerHTML = '<div class="panel">' + fHead(null, st)
+      + '<p class="note">the tables for this set are being totalled — ' + esc(String(d.totalling || d.waiting)) + '</p></div>';
+    return;
+  }
+
+  $('#view').innerHTML = '<div class="panel">' + fHead(d, st) + fRail(d, st) + '</div>'
+    + '<div class="panel"><h3 style="margin-top:0">Step ' + d.step + ' — ' + esc(F_STEPS[d.step - 1][0]) + '</h3>'
+    + '<p class="note">' + esc(F_STEPS[d.step - 1][1]) + '</p>'
+    + (d.reading && d.reading.why ? '<p class="note neg">' + esc(d.reading.why) + '</p>'
+      : d.step === 1 ? fStep1(d.reading || {})
+        : d.step === 2 ? fStep2(d.reading || {}, d, st)
+          : d.step === 3 ? fStep3(d.reading || {}, d, st)
+            : d.step === 4 ? fStep4(d.reading || {}, d)
+              : d.step === 5 ? fStep5(d.reading || {})
+                : d.step === 6 ? fStep6(d, st)
+                  : fStep7(d, st))
+    + '</div>'
+    + '<div class="panel">' + fRuleBox(d, st) + '</div>';
+  fWire(d, st);
+}
+
+// The standing line. Which set, how many survive against the target, and --
+// named rather than left blank -- whether a noise comparison exists at all and
+// whether the sealed window is intact. A missing comparison shown as nothing
+// reads as "nothing to report", which is the opposite of the truth.
+function fHead(d, st) {
+  if (!d) return '<h3 style="margin-top:0">Funnel — ' + esc(st.set) + '</h3>';
+  const n = d.noiseTwin || (d.set && d.set.noiseTwin) || {};
+  const sealed = (d.set && d.set.sealed) || {};
+  return '<h3 style="margin-top:0">Funnel — ' + esc(d.set.name) + '</h3>'
+    + '<p class="note"><b>Every money figure on this screen is test money.</b> '
+    + 'The held-back window is opened once, at the cut, on what survives.</p>'
+    + '<div class="row"><span class="note"><b>' + Number(d.survivors).toLocaleString() + '</b> of '
+    + Number(d.of).toLocaleString() + ' settings survive'
+    + (d.target ? ' · target <b>' + Number(d.target).toLocaleString() + '</b>' : '')
+    + '</span>'
+    + '<label class="f">target size<input id="fTarget" type="number" min="0" style="width:6rem" value="'
+    + (d.target == null ? '' : d.target) + '"></label></div>'
+    + '<p class="note">' + (n.available
+      ? 'This set carries a noise comparison.'
+      : '<b>No noise comparison on this set</b> — ' + esc(String(n.why || 'not captured'))
+        + '. Every step below is read against a split-half instead, which tests whether a reading is '
+        + 'STABLE and never whether the effect is real.')
+    + '</p>'
+    + '<p class="note">' + (sealed.sealed
+      ? 'The sealed window is intact on all ' + (sealed.units || []).length + ' unit(s).'
+      : '<b>No sealed window</b> — ' + esc(String(sealed.why || 'not recorded'))) + '</p>';
+}
+
+function fRail(d, st) {
+  return '<div class="row" style="flex-wrap:wrap;gap:.35rem">' + F_STEPS.map(function (x, i) {
+    const n = i + 1;
+    const on = n === d.step;
+    return '<button data-fstep="' + n + '"' + (on ? ' class="pri"' : '') + '>' + n + '. ' + esc(x[0]) + '</button>';
+  }).join('') + '</div>'
+    + '<p class="note">Going back is allowed and is recorded on the set — a funnel walked back four times has '
+    + 'seen more of the board than one walked forward once, and the reserve grade can only count what was written down.'
+    + ((st.backSteps || []).length ? ' <b>' + st.backSteps.length + ' step(s) back so far.</b>' : '') + '</p>';
+}
+
+function fStep1(r) {
+  const sh = r.splitHalf || {};
+  const rows = (r.dials || []).map(function (x) {
+    const bal = x.balance || {};
+    return '<tr><td>' + esc(x.dial) + '</td><td>' + fFix(x.m) + '</td><td>' + fFix(x.range) + '</td>'
+      + '<td>' + (x.values || []).length + '</td>'
+      + '<td class="' + (bal.balanced ? 'muted' : 'warn') + '">' + fFix(bal.even) + '</td></tr>';
+  }).join('');
+  return '<p class="note">How far apart a dial\'s values sit, against how much the result varies anyway. '
+    + '<b>The ordering is the finding</b> — at this many rows every dial shows some movement, and the size of the '
+    + 'number is a claim only against the split-half beside it.</p>'
+    + '<table><thead><tr>' + cth('dial', 'fDialName') + cth('movement', 'fMovement') + cth('range', 'fRange')
+      + cth('values', 'fValues') + cth('evenly swept', 'fEven') + '</tr></thead>'
+    + '<tbody>' + rows + '</tbody></table>'
+    + '<p class="note"><b>Split-half:</b> ' + (sh.why ? esc(sh.why)
+      : 'one half leads with ' + esc((sh.a || []).join(', ')) + '; the other with ' + esc((sh.b || []).join(', '))
+        + ' — ' + (sh.agrees ? 'they agree.' : '<b class="neg">they do not agree, and nothing below this step means anything until they do.</b>'))
+    + '</p>'
+    + ((r.lopsided || []).length
+      ? '<p class="note warn"><b>Not evenly swept:</b> ' + esc(r.lopsided.join(', '))
+        + '. Grouping by one dial only averages the others out when every value was swept against the same spread '
+        + 'of everything else. These are partly some other dial\'s movement wearing their name.</p>' : '')
+    + ((r.skipped || []).length
+      ? '<p class="note muted">Not measurable here: '
+        + r.skipped.map(function (x) { return esc(x.dial) + ' (' + esc(x.why) + ')'; }).join('; ')
+        + '. That is not the same as flat.</p>' : '');
+}
+
+function fStep2(r, d, st) {
+  const dials = (st.lastDials || []).length ? st.lastDials : [];
+  // the list comes from the shared vocabulary, so the dials the page offers
+  // cannot drift from the dials the record carries (RULE FIVE)
+  const pick = '<label class="f">dial<select id="fDial">' + vocabOptions('funnelDial', st.dial || '') + '</select></label>';
+  if (!r.groups || !r.groups.length) {
+    return '<div class="row">' + pick + '</div><p class="note">' + esc(r.why || 'pick a dial to read its shape') + '</p>';
+  }
+  const sh = r.splitHalf || {};
+  return '<div class="row">' + pick + '</div>'
+    + '<p class="note">shape: <b>' + esc(r.shape) + '</b>'
+    + ' · halves: ' + esc(String(sh.a)) + ' / ' + esc(String(sh.b))
+    + (sh.agrees ? ' — they agree' : ' — <b class="neg">they do not agree</b>')
+    + '</p>'
+    + (r.shape === 'spike' ? '<p class="note warn"><b>A spike is the shape luck makes.</b> One value far clear of an '
+      + 'otherwise flat menu is what a fluke looks like; a hill or a ramp is a relationship.</p>' : '')
+    + '<table><thead><tr>' + cth('value', 'fValue') + cth('settings', 'fSettings') + cth('avg test', 'fAvgTest')
+      + '</tr></thead><tbody>'
+    + r.groups.map(function (g) { return '<tr><td>' + esc(g.value) + '</td><td>' + g.n + '</td><td>' + fFix(g.mean) + '</td></tr>'; }).join('')
+    + '</tbody></table>'
+    + '<div class="row" style="margin-top:.5rem">'
+    + '<label class="f">keep from<input id="fMin" style="width:7rem" value="' + esc(String(((st.rule.ranges[st.dial] || {}).min) ?? '')) + '"></label>'
+    + '<label class="f">to<input id="fMax" style="width:7rem" value="' + esc(String(((st.rule.ranges[st.dial] || {}).max) ?? '')) + '"></label>'
+    + '<button id="fAddRange" class="pri">add this range to the rule</button>'
+    + '<span class="note">a RANGE, never a value — picking the peak is the shopping this walk exists to avoid</span></div>';
+}
+
+function fStep3(r, d, st) {
+  if (!r.grid) return '<p class="note">pick two dials</p>';
+  const head = '<tr><th></th>' + (r.bVals || []).map(function (b) { return cth(esc(b), 'fGridCell'); }).join('') + '</tr>';
+  const body = (r.aVals || []).map(function (a) {
+    return '<tr><td><b>' + esc(a) + '</b></td>' + (r.bVals || []).map(function (b) {
+      const c = r.grid.find(function (x) { return x.a === a && x.b === b; }) || {};
+      return '<td class="' + (c.thin ? 'muted' : '') + '" title="' + (c.n || 0) + ' settings">'
+        + fFix(c.mean) + (c.thin ? ' <span class="muted">(' + (c.n || 0) + ')</span>' : '') + '</td>';
+    }).join('') + '</tr>';
+  }).join('');
+  return '<div class="row">'
+    + '<label class="f">first dial<input id="fA" style="width:9rem" value="' + esc(st.dialA || '') + '"></label>'
+    + '<label class="f">second dial<input id="fB" style="width:9rem" value="' + esc(st.dialB || '') + '"></label>'
+    + '<label class="f">thin below<input id="fFloor" type="number" min="0" style="width:6rem" value="' + (st.floor || 0) + '"></label>'
+    + '<button id="fGrid" class="pri">read the grid</button></div>'
+    + '<p class="note"><b>' + r.thin + ' of ' + r.squares + ' squares are thin.</b> A square built from two settings '
+    + 'tells you nothing, but it looks like every other square — and it is often the best-looking one on the grid, '
+    + 'because small groups swing further. Thin squares are marked and keep their count; none is dropped.</p>'
+    + '<p class="note">What each floor would keep: '
+    + (r.floorCost || []).map(function (x) { return x.floor + ' → ' + x.keeps + '/' + x.of; }).join(' · ') + '</p>'
+    + '<table><thead>' + head + '</thead><tbody>' + body + '</tbody></table>';
+}
+
+function fStep4(r, d) {
+  const ax = (r.axis || {});
+  const out = ax.axis ? null : 'there is no check left to make on this set';
+  const slices = r.slices || [];
+  const usable = slices.filter(function (s) { return s.mean != null && s.n >= (r.floor || 0); });
+  const positive = usable.filter(function (s) { return s.mean > 0; }).length;
+  return '<p class="note">Read across <b>' + esc(String(ax.axis || 'nothing')) + '</b>'
+    + (ax.weaker ? ' — <b>a weaker check than comparing coins</b>' : '') + '.</p>'
+    + ((ax.passedOver || []).length
+      ? '<p class="note muted">Passed over: ' + ax.passedOver.map(function (x) { return esc(x.axis) + ' (' + esc(x.why) + ')'; }).join('; ') + '</p>' : '')
+    + (out ? '<p class="note neg">' + esc(out) + '</p>' : '')
+    + (usable.length < 2
+      ? '<p class="note neg">One slice is not a comparison — this cannot say whether the region holds anywhere else.</p>'
+      : '<p class="note"><b>' + positive + ' of ' + usable.length + '</b> slices are positive.</p>')
+    + '<table><thead><tr>' + cth('slice', 'fSlice') + cth('settings', 'fSettings') + cth('avg test', 'fAvgTest')
+      + '</tr></thead><tbody>'
+    + slices.map(function (s) { return '<tr><td>' + esc(s.key) + '</td><td>' + s.n + '</td><td>' + fFix(s.mean) + '</td></tr>'; }).join('')
+    + '</tbody></table>';
+}
+
+function fStep5(r) {
+  const c = r.centre || {};
+  return '<p class="note">The widest run of neighbouring settings that all made money, and <b>its middle</b> — '
+    + 'chosen by depth inside the region, never by score, so the best-scoring cell cannot sneak back in.</p>'
+    + '<p class="note">region size <b>' + (r.size || 0) + '</b> of ' + (r.cellsClearing || 0)
+    + ' settings that cleared, out of ' + (r.cellsConsidered || 0) + ' considered.</p>'
+    + (r.size ? '<pre>' + esc(JSON.stringify(c, null, 1)) + '</pre>'
+      : '<p class="note neg">No region: nothing here has neighbours that also work, which is what an isolated fluke looks like.</p>');
+}
+
+function fStep6(d, st) {
+  return '<p class="note">The numbers stage 3 does not store — drawdown, worst trade, wins, gross per trade, how many '
+    + 'bars rest on a within-bar ordering nobody can know — are rebuilt here, for the <b>'
+    + Number(d.survivors).toLocaleString() + '</b> settings that survive and no others. Dollar totals flatter; a mean '
+    + 'drawdown hides the row that would have ended you.</p>'
+    + '<div class="row"><button id="fRebuild" class="pri">rebuild the numbers for these settings</button>'
+    + '<span id="fRebuildMsg" class="note">' + (st.rebuilt ? 'rebuilt' : 'not rebuilt yet') + '</span></div>'
+    + '<div class="row" style="margin-top:.5rem">'
+    + '<label class="f">worst drawdown allowed<input id="fDD" type="number" style="width:8rem" value="'
+    + esc(String(((st.rule.floors.maxDrawdown || {}).max) ?? '')) + '"></label>'
+    + '<label class="f">fewest trades<input id="fTrades" type="number" style="width:8rem" value="'
+    + esc(String(((st.rule.floors.avgTrades || {}).min) ?? '')) + '"></label>'
+    + '<button id="fAddFloors">add these floors to the rule</button></div>';
+}
+
+function fStep7(d, st) {
+  return '<p class="note">The choices you made ARE the rule. This is what gets written — not the rows it happens to '
+    + 'pick today — because a row cannot be checked against a noise board and a rule can.</p>'
+    + '<p class="note"><b>' + esc(d.ruleSentence) + '</b></p>'
+    + '<p class="note">' + Number(d.survivors).toLocaleString() + ' settings survive'
+    + (d.target ? ' against a target of ' + Number(d.target).toLocaleString() : '') + '.</p>'
+    + '<div class="row"><label class="f">name<input id="fName" style="width:14rem" placeholder="left blank, it is numbered"></label>'
+    + '<label class="f">how to reach the target<select id="fClose">' + vocabOptions('funnelClosing', 'rule') + '</select></label>'
+    + '<button id="fCut" class="pri">write the Stage 4 set</button><span id="fCutMsg" class="note"></span></div>'
+    + '<p class="note"><b>Taking the top N is shopping</b>, on the board this walk exists to stop you shopping. It is '
+    + 'offered because the choice is yours, and whichever you use is recorded on the set so the reserve grade knows '
+    + 'what it is judging.</p>'
+    + '<p class="note">An empty or one-setting result is written with a warning, never refused.</p>';
+}
+
+function fRuleBox(d, st) {
+  return '<h3 style="margin-top:0">The rule so far</h3><p class="note">' + esc(d.ruleSentence) + '</p>'
+    + '<div class="row"><button id="fClear">start the rule again</button>'
+    + '<span class="note">keeps the set open and clears every choice — recorded as going back</span></div>';
+}
+
+function fWire(d, st) {
+  const go = function (n, why) {
+    if (n < st.step) st.backSteps.push({ from: st.step, to: n, why: why || null });
+    st.step = n; fSave(); drawFunnel();
+  };
+  document.querySelectorAll('[data-fstep]').forEach(function (b) {
+    b.onclick = function () { go(Number(b.dataset.fstep)); };
+  });
+  const t = $('#fTarget');
+  if (t) t.onchange = function () { st.target = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value) || 0)); fSave(); drawFunnel(); };
+  const dl = $('#fDial');
+  if (dl) dl.onchange = function () { st.dial = dl.value || null; fSave(); drawFunnel(); };
+  const ar = $('#fAddRange');
+  if (ar) ar.onclick = function () {
+    if (!st.dial) return;
+    const lo = $('#fMin').value;
+    const hi = $('#fMax').value;
+    if (lo === '' && hi === '') delete st.rule.ranges[st.dial];
+    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi) };
+    st.steps.push({ n: 2, what: 'the shape of ' + st.dial, chose: lo + ' to ' + hi });
+    fSave(); drawFunnel();
+  };
+  const g = $('#fGrid');
+  if (g) g.onclick = function () {
+    st.dialA = $('#fA').value || null; st.dialB = $('#fB').value || null;
+    st.floor = Math.max(0, Math.floor(Number($('#fFloor').value) || 0));
+    fSave(); drawFunnel();
+  };
+  const af = $('#fAddFloors');
+  if (af) af.onclick = function () {
+    const dd = $('#fDD').value;
+    const tr = $('#fTrades').value;
+    if (dd === '') delete st.rule.floors.maxDrawdown; else st.rule.floors.maxDrawdown = { max: Number(dd) };
+    if (tr === '') delete st.rule.floors.avgTrades; else st.rule.floors.avgTrades = { min: Number(tr) };
+    st.steps.push({ n: 6, what: 'exposure', chose: 'drawdown ' + dd + ', trades ' + tr });
+    fSave(); drawFunnel();
+  };
+  const rb = $('#fRebuild');
+  if (rb) rb.onclick = async function () {
+    rb.disabled = true;
+    $('#fRebuildMsg').textContent = 'rebuilding — this prices the survivors again off their stage 2 parent…';
+    const out = await tryPost('api/funnel/' + encodeURIComponent(st.set) + '/rebuild', { labels: [] });
+    rb.disabled = false;
+    if (!out) { $('#fRebuildMsg').textContent = ''; return; }
+    st.rebuilt = true; fSave();
+    // THE PROOF IS SHOWN, NOT ASSUMED. An unproved rebuild must never look
+    // proved, so the absence of a check is printed as plainly as a failed one.
+    const pr = out.proof || {};
+    $('#fRebuildMsg').textContent = pr.ran
+      ? (pr.mismatches && pr.mismatches.length
+        ? pr.mismatches.length + ' setting(s) came back different from what stage 3 stored — this is not the same run'
+        : 'rebuilt ' + out.settings + ' setting(s); all ' + pr.checked + ' checked against what stage 3 stored')
+      : 'rebuilt ' + out.settings + ' setting(s) — NOT checked against stage 3 (' + String(pr.why || '') + ')';
+  };
+  const cut = $('#fCut');
+  if (cut) cut.onclick = async function () {
+    cut.disabled = true;
+    $('#fCutMsg').textContent = 'writing…';
+    const out = await tryPost('api/funnel/' + encodeURIComponent(st.set) + '/cut', {
+      name: $('#fName').value || null, target: st.target, rule: st.rule,
+      steps: st.steps, backSteps: st.backSteps, closing: { key: $('#fClose').value },
+    });
+    cut.disabled = false;
+    $('#fCutMsg').textContent = out
+      ? out.name + ' written — ' + out.survivors + ' setting(s)' + ((out.warnings || []).length ? ' · ' + out.warnings.join(' · ') : '')
+      : '';
+  };
+  const cl = $('#fClear');
+  if (cl) cl.onclick = function () {
+    st.backSteps.push({ from: st.step, to: 1, why: 'started the rule again' });
+    st.rule = { ranges: {}, allowed: {}, floors: {} };
+    st.step = 1; st.rebuilt = false; fSave(); drawFunnel();
+  };
+}
+
 drawData = waitWrap(drawData);
 drawSweep = waitWrap(drawSweep);
 drawBoards = waitWrap(drawBoards);
@@ -3688,6 +4042,7 @@ drawVerify = waitWrap(drawVerify);
 drawHistory = waitWrap(drawHistory);
 drawTune = waitWrap(drawTune);
 drawGreenlight = waitWrap(drawGreenlight);
+drawFunnel = waitWrap(drawFunnel);
 drawHelp = waitWrap(drawHelp);
 
 function draw() {
@@ -3717,6 +4072,7 @@ function draw() {
   const section = tab === 'data' ? drawData()
     : tab === 'sweep' ? drawSweep()
       : tab === 'boards' ? drawBoards()
+        : tab === 'funnel' ? drawFunnel()
         : tab === 'verify' ? drawVerify()
                   : tab === 'history' ? drawHistory()
                     : tab === 'tune' ? drawTune()

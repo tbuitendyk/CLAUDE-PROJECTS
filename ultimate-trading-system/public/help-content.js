@@ -430,6 +430,89 @@ window.HELP = {
     },
   },
 
+  funnel: {
+    title: 'Funnel',
+    how: [
+      ['Finding a rule instead of picking a row',
+        'A stage 3 sweep prices every setting you asked for against every coin. That is often half a million rows, and the only thing anyone can do with half a million rows by hand is sort them and take the top one.\n\nThat is the worst possible move. The best of half a million tries looks good even when there is nothing there at all - that is simply what maximums do. So this screen never asks you to pick a row. It walks a fixed set of steps that ask, in order: which of the dials actually changes the result, what shape that change has, whether two dials matter together, whether the answer holds up somewhere else, whether the good settings have good neighbours or stand alone, and how ugly the ride was.\n\nWhat comes out is a RULE - a description like "t between 65 and 113 hours, gate active, drawdown under 400" - and the settings that match it. A rule is worth having because the same rule can be run against scrambled data to see whether it finds anything there too. A single row cannot be checked that way, which is why picking one is a dead end.'],
+      ['Why every number here is test money',
+        'A sweep splits its history into three parts: one to learn from, one to try things on, and one that is held back and never looked at.\n\nThe held-back part is the only honest judge you get, and it stops being honest the moment you use it to CHOOSE. If you sort half a million rows by held-back money and take the best, you have fitted to it just as surely as if you had trained on it.\n\nSo every figure on this screen comes from the try-things-on part. The held-back part is opened once, at the very end, on the handful that survive - and then it still means something.'],
+    ],
+    intro: 'Turns a stage 3 board of hundreds of thousands of priced settings into a small set worth investigating, '
+      + 'by walking a fixed sequence of readings rather than letting you sort a table and pick the winner. '
+      + 'Every figure shown is test-window money; the held-back window is opened once, at the end, on what survives. '
+      + 'What it writes is the RULE you arrived at, because a rule can be checked against scrambled data and a single row cannot.',
+    controls: {
+      fTarget: {
+        what: 'Roughly how many settings you are hoping to end up with. It is a guide, not a knife - nothing is ever trimmed to reach it.',
+        more: 'It shows you the distance to the target at every step, so you can see whether you are narrowing too fast or too slowly while there is still time to change course. If your rule overshoots at the end, you are offered three ways to close the gap and told what each one costs.',
+      },
+      fDial: {
+        what: 'Which setting to look at the shape of.',
+        more: 'The list is every dial a sweep can vary, read from the engine rather than typed into this page, so it cannot quietly disagree with what your records actually hold.',
+      },
+      fMin: {
+        what: 'The lowest value of this dial to keep.',
+        more: 'Leave it blank for no lower limit. Keep a RANGE rather than a single value: one value far clear of its neighbours is what luck looks like, and taking it is the shopping this whole screen exists to avoid.',
+      },
+      fMax: {
+        what: 'The highest value of this dial to keep. Blank means no upper limit.',
+        more: 'Together with the lowest value this becomes one clause of the rule, and you can come back and change it at any point.',
+      },
+      fAddRange: {
+        what: 'Adds the range you have chosen for this dial to the rule.',
+        more: 'The survivor count at the top updates straight away. Nothing is written to disk until the last step.',
+      },
+      fA: {
+        what: 'The first of two dials to lay against each other on a grid.',
+        more: 'This is where you see things like a short distance only working when the holding time is long - which no ranked list can show you.',
+      },
+      fB: {
+        what: 'The second dial for the grid.',
+        more: 'Each square shows the average for the settings that carry both values.',
+      },
+      fFloor: {
+        what: 'How many settings must sit behind a square before you trust it.',
+        more: 'Squares below this are greyed and show their count instead of being hidden. A square built from two settings looks exactly like one built from two thousand, and it will often be the best-looking square on the grid precisely because small groups swing further. The line above the grid tells you how many squares each choice of floor would keep, so you are not picking the number blind.',
+      },
+      fGrid: {
+        what: 'Reads the grid for the two dials and the floor you have set.',
+        more: 'Nothing here changes the rule - this step is for looking.',
+      },
+      fRebuild: {
+        what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, and how much of the result rests on guessing what happened inside a single bar.',
+        more: 'These are calculated during the sweep and thrown away, because keeping them for every one of half a million settings is not worth the disk. Here they are re-calculated for the handful you have narrowed to, which takes seconds. It also re-checks the money and the trade count against what the sweep stored: if they disagree, something underneath has changed and it says so rather than mixing numbers from two different runs.',
+      },
+      fDD: {
+        what: 'The worst losing streak you are willing to accept, in dollars.',
+        more: 'A total says nothing about the ride. A setting that made money by sitting through a loss deep enough to end you is not a setting you want, and the total looks identical either way.',
+      },
+      fTrades: {
+        what: 'The fewest trades a setting must have made to stay in.',
+        more: 'A handsome result from four trades is four coin flips. This is a blunt way of saying you want enough of them to mean something.',
+      },
+      fAddFloors: {
+        what: 'Adds the limits you have set to the rule.',
+        more: 'Like every other step, this changes the survivor count immediately and writes nothing until the end.',
+      },
+      fName: {
+        what: 'What to call the set this produces. Leave it blank and it is numbered for you.',
+        more: 'The name is what you will pick it by on every screen after this one, so something you will recognise in a month is worth the ten seconds.',
+      },
+      fClose: {
+        what: 'What to do if your rule keeps more settings than you were aiming for.',
+        more: 'Accepting what the rule gives costs nothing - the target was only ever a guide. Tightening the ranges narrows them inward from both ends, which keeps the middle of the good region rather than drifting toward the best single value. Taking the top N is shopping, on the very board this screen exists to stop you shopping, and it is offered anyway because the choice is yours. Whichever you use is recorded, so the final check at the end of the chain knows what it is judging.',
+      },
+      fCut: {
+        what: 'Writes what you have arrived at as a new record set, and opens the held-back window on it for the first time.',
+        more: 'What gets written is the rule and the settings it keeps, along with every step you took and every step you took back. An empty result or a single-setting result is written with a warning rather than refused - it is your call, and a rule that keeps nothing is still worth being able to read back.',
+      },
+      fClear: {
+        what: 'Throws away every choice and starts the rule again, keeping the same board open.',
+        more: 'This counts as going back, and it is recorded. That is deliberate: a board you have looked at from five different angles has been looked at more than one you walked through once, and the final check needs to know.',
+      },
+    },
+  },
   verify: {
     title: 'Verify',
     how: [

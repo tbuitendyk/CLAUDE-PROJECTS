@@ -281,7 +281,7 @@ function step3(rows, dialA, dialB, opts = {}) {
   for (const r of rows) {
     const v = money(r);
     if (v == null) continue;
-    const k = `${keyOf(r[dialA])} ${keyOf(r[dialB])}`;
+    const k = `${keyOf(r[dialA])}|${keyOf(r[dialB])}`;
     if (!cells.has(k)) cells.set(k, []);
     cells.get(k).push(v);
   }
@@ -290,7 +290,7 @@ function step3(rows, dialA, dialB, opts = {}) {
   const grid = [];
   for (const a of aVals) {
     for (const b of bVals) {
-      const g = cells.get(`${a} ${b}`) || [];
+      const g = cells.get(`${a}|${b}`) || [];
       grid.push({
         a,
         b,

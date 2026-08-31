@@ -354,4 +354,49 @@ module.exports = {
     try { await stages.rebuildRichFor({ id: 's3-x', params: {} }, []); } catch (err) { empty = err.message; }
     assert.ok(empty && /nothing was asked for/.test(empty), empty);
   },
+
+  // A CONTROL CHARACTER IN SOURCE IS INVISIBLE AND IT BREAKS THE READERS.
+  //
+  // Two NUL bytes reached lib/funnel.js as the separator in a grid-square key.
+  // The code WORKED -- the same character wrote the key and read it back -- and
+  // every test passed. What it broke was everything that reads the source as
+  // text: grep reported the file as binary, and the word list generator and
+  // every source-scanning guard in this suite read source. A file they cannot
+  // read is a file whose controls silently stop being checked, which under
+  // RULE ONE-A means words could reach the owner that no list authorises.
+  //
+  // Escapes are the same fault wearing a different coat: a backslash-u written
+  // into source reads back as the escape rather than the character, and that
+  // has leaked into SCREEN-WORDS.md twice.
+  noSourceFileCarriesAControlCharacter() {
+    const root = path.join(__dirname, '..');
+    const dirs = ['lib', 'public', 'tests', 'service-control'];
+    const files = ['server.js', 'live-mirror.js', 'live-produce.js', 'pilot-refresh.js'];
+    const walk = (d) => {
+      let got = [];
+      let entries = [];
+      try { entries = fs.readdirSync(path.join(root, d), { withFileTypes: true }); } catch (_) { return got; }
+      for (const e of entries) {
+        const rel = path.join(d, e.name);
+        if (e.isDirectory()) { if (e.name !== 'node_modules') got = got.concat(walk(rel)); continue; }
+        if (/\.(js|json|md|html|css)$/.test(e.name)) got.push(rel);
+      }
+      return got;
+    };
+    const all = files.concat(...dirs.map(walk));
+    assert.ok(all.length > 50, `only ${all.length} source files found — the walk is not reaching them`);
+    const bad = [];
+    for (const rel of all) {
+      const src = fs.readFileSync(path.join(root, rel), 'utf8');
+      for (let i = 0; i < src.length; i++) {
+        const c = src.charCodeAt(i);
+        // tab, newline and carriage return are the only ones that belong
+        if (c < 32 && c !== 9 && c !== 10 && c !== 13) {
+          bad.push(`${rel} carries U+${c.toString(16).padStart(4, '0')} at ${i}`);
+          break;
+        }
+      }
+    }
+    assert.deepStrictEqual(bad, [], `control characters in source:\n  ${bad.join('\n  ')}`);
+  },
 };

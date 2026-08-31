@@ -97,6 +97,18 @@ function vocabulary() {
       { value: 'reserve61', label: '61/13/13/13 (sealed exam)' },
       { value: 'legacy80', label: 'legacy 80/20 (never evidence)' },
     ],
+    // THE FUNNEL'S DIALS, READ FROM THE ENGINE, never typed here. A list typed
+    // into the page is a list that can quietly disagree with the record — and
+    // then a dial the owner cannot pick is a dial they cannot know exists
+    // (RULE FIVE).
+    funnelDial: require('./funnel').ALL_DIALS.map((d) => ({ value: d, label: d })),
+    // The three ways to close a gap to the target. All three offered, none
+    // removed, and the costliest one says what it is in its own label.
+    funnelClosing: [
+      { value: 'rule', label: 'accept what the rule gives' },
+      { value: 'tighten', label: 'tighten the ranges toward the middle' },
+      { value: 'top', label: 'take the top N by a column (this is shopping)' },
+    ],
     // Stage 2's carry orderings — read from the stage engine, complete.
     greenlightAnchor: [
       { value: 'declared', label: 'declared cell' },

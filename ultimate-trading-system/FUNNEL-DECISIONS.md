@@ -168,3 +168,34 @@ made while building it that the design did not already settle.
     records with one name.
 42. **A read with no tally answers the way the tables do**, so the screen starts
     a totalling rather than reporting an empty board.
+
+## Step 6b — the tab
+
+43. **The set comes from Boards' own state (`bView().s3`), not a key of this
+    tab's own.** My first cut invented `cx-set3`. Two places remembering which
+    set is open is how the owner ends up reading one set's numbers under
+    another set's name — the RULE ONE failure, in code rather than prose.
+44. **The dial list and the closing list come from the shared vocabulary**,
+    generated from `funnel.ALL_DIALS`. A list typed into the page can quietly
+    disagree with the record, and then a dial the owner cannot pick is a dial
+    they cannot know exists (RULE FIVE).
+45. **The step dispatcher was inlined into the renderer.** A helper that draws
+    nothing itself is a dead end to the screen reader, and correctly so — the
+    alternative drags pure arithmetic onto word lists. `fBody` drew nothing, so
+    fifteen controls were described on the Help tab and, to every check, on no
+    screen at all.
+46. **Nothing on this tab shows held-back money.** Not a preference: showing it
+    during the walk re-opens the exact hole the design closes.
+
+## Two traps worth naming, both hit while building the tab
+
+47. **`$` in a `String.replace` replacement is a pattern, not a character.**
+    A replacement containing `avg test $` followed by a quote re-inserted the
+    whole rest of the file. Every scripted edit now uses a replacer function.
+48. **Two NUL bytes reached `lib/funnel.js`** as the separator in a grid-square
+    key. The code worked — the same character wrote the key and read it back —
+    and every test passed. What broke was everything that reads source AS TEXT:
+    grep called the file binary, and the word list generator and every
+    source-scanning guard read source. A file they cannot read is a file whose
+    controls silently stop being checked. `noSourceFileCarriesAControlCharacter`
+    now walks every source file in the project.
