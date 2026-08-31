@@ -137,14 +137,70 @@ const ENTRIES = ['breakout', 'market'];
 // The classifier's trade, priced with the books' own helper so a market cell
 // and a paper book cannot drift apart: same NOTIONAL, same round-trip fee RATE,
 // same open-to-open arithmetic.
+// EVERY TRADE SETTLES THROUGH ONE PLACE (Funnel build, 2026-08-31).
+//
+// The money was accumulated at SEVEN separate sites — six inside simBracket's
+// rail walk and time exit, and simMarket's exit — and each new number would
+// have had to be added at all seven with nothing to catch the one that was
+// missed. Three of those seven also never counted a win: correct, because a
+// both-rails bar is always priced at its worst case and that is always a loss,
+// but correct by arithmetic nobody stated rather than by rule.
+//
+// The exposure numbers ride the walk that already produces the money and cost a
+// handful of operations per trade: a running peak gives the deepest the book
+// ever sat below its own high, a running min and max give the worst and best
+// single trade, and the period index says which third of the window the money
+// came from. FUNNEL-DESIGN.md section 4.2 — "$ totals flatter", and a mean
+// hides the row that would have ended you.
+function newBook(nPeriods, trip) {
+  const n = Math.max(0, Number(nPeriods) || 0);
+  const cut1 = Math.floor(n / 3);
+  const cut2 = Math.floor((2 * n) / 3);
+  let pnl = 0;
+  let trades = 0;
+  let wins = 0;
+  let peak = 0;          // the book starts at zero, so drawdown is measured from there
+  let maxDrawdown = 0;
+  let worstTrade = null;
+  let bestTrade = null;
+  const thirds = [0, 0, 0];
+  return {
+    take(v, i) {
+      pnl += v;
+      trades++;
+      if (v > 0) wins++;
+      if (pnl > peak) peak = pnl;
+      const dd = peak - pnl;
+      if (dd > maxDrawdown) maxDrawdown = dd;
+      if (worstTrade === null || v < worstTrade) worstTrade = v;
+      if (bestTrade === null || v > bestTrade) bestTrade = v;
+      // the thirds are cut on the PERIOD index, not the trade index: a window
+      // whose trades all fall in its first month must read that way, and
+      // counting by trade would spread them evenly and hide it
+      thirds[i < cut1 ? 0 : (i < cut2 ? 1 : 2)] += v;
+    },
+    done(rest) {
+      return {
+        pnl,
+        trades,
+        wins,
+        maxDrawdown,
+        worstTrade,
+        bestTrade,
+        pnlThirds: thirds,
+        grossPerTrade: trades ? (pnl + trades * trip) / trades : null,
+        ...rest,
+      };
+    },
+  };
+}
+
 function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = HOUR_MS }) {
   // feePerLeg is a FRACTION of the position (owner order, 2026-08-23) — see
   // lib/paper.js. The round trip is worked out as a percentage and turned into
   // this book's dollars once, here, instead of a dollar amount being assumed.
   const trip = NOTIONAL * 2 * feeRate(feePerLeg, 'simMarket');
-  let pnl = 0;
-  let trades = 0;
-  let wins = 0;
+  const book = newBook(periods.length, trip);
   let unpriced = 0;
   periods.forEach((per, i) => {
     const dir = calls ? calls[i] : 0;
@@ -166,14 +222,11 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = 
       unpriced++;
       return;
     }
-    const v = pnlAt(dir, ref.open, exitBar.open, feePerLeg);
-    pnl += v;
-    trades++;
-    if (v > 0) wins++;
+    book.take(pnlAt(dir, ref.open, exitBar.open, feePerLeg), i);
   });
   // stops and ambiguous are structurally zero here: there are no rails to be
   // stopped at and no bar that can span two of them.
-  return { pnl, trades, wins, stops: 0, ambiguous: 0, unpriced, grossPerTrade: trades ? (pnl + trades * trip) / trades : null };
+  return book.done({ stops: 0, ambiguous: 0, unpriced });
 }
 
 // TRAILING STOPS (trailPct != null). The stop starts at the opposite rail and
@@ -201,9 +254,7 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = 
 function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg, trailPct = null, armPct = 0, stepMs = HOUR_MS }) {
   // A FRACTION of the position, priced onto this book once. See simMarket above.
   const trip = NOTIONAL * 2 * feeRate(feePerLeg, 'simBracket');
-  let pnl = 0;
-  let trades = 0;
-  let wins = 0;
+  const book = newBook(periods.length, trip);
   let stops = 0;
   let ambiguous = 0;
   let trailAmbiguous = 0;
@@ -247,8 +298,7 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
           // enter long at b, stopped at s within the bar
           ambiguous++;
           stops++;
-          pnl += NOTIONAL * (sRail / bRail - 1) - trip;
-          trades++;
+          book.take(NOTIONAL * (sRail / bRail - 1) - trip, i);
           dir = 0;
           out = sRail; // closed; loop ends via out
           break;
@@ -262,8 +312,7 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
           if (bar.low <= sRail) {
             ambiguous++;
             stops++;
-            pnl += NOTIONAL * (sRail / entry - 1) - trip;
-            trades++;
+            book.take(NOTIONAL * (sRail / entry - 1) - trip, i);
             out = sRail;
             break;
           }
@@ -275,8 +324,7 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
           if (bar.high >= bRail) {
             ambiguous++;
             stops++;
-            pnl += NOTIONAL * (1 - bRail / entry) - trip;
-            trades++;
+            book.take(NOTIONAL * (1 - bRail / entry) - trip, i);
             out = bRail;
             break;
           }
@@ -287,10 +335,7 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
         if (hit && extended) trailAmbiguous++;
         if (hit) {
           stops++;
-          const v = NOTIONAL * (stopLvl / entry - 1) - trip;
-          pnl += v;
-          trades++;
-          if (v > 0) wins++;
+          book.take(NOTIONAL * (stopLvl / entry - 1) - trip, i);
           out = stopLvl;
         } else if (trail != null) {
           if (bar.high > ext) ext = bar.high;
@@ -305,10 +350,7 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
         if (hit && extended) trailAmbiguous++;
         if (hit) {
           stops++;
-          const v = NOTIONAL * (1 - stopLvl / entry) - trip;
-          pnl += v;
-          trades++;
-          if (v > 0) wins++;
+          book.take(NOTIONAL * (1 - stopLvl / entry) - trip, i);
           out = stopLvl;
         } else if (trail != null) {
           if (bar.low < ext) ext = bar.low;
@@ -330,13 +372,10 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
         unpriced++;
         return;
       }
-      const v = dir === 1 ? NOTIONAL * (exitBar.open / entry - 1) - trip : NOTIONAL * (1 - exitBar.open / entry) - trip;
-      pnl += v;
-      trades++;
-      if (v > 0) wins++;
+      book.take(dir === 1 ? NOTIONAL * (exitBar.open / entry - 1) - trip : NOTIONAL * (1 - exitBar.open / entry) - trip, i);
     }
   });
-  return { pnl, trades, wins, stops, ambiguous, trailAmbiguous, unpriced, grossPerTrade: trades ? (pnl + trades * trip) / trades : null };
+  return book.done({ stops, ambiguous, trailAmbiguous, unpriced });
 }
 
 // ---- drift controls ------------------------------------------------------------
@@ -610,4 +649,4 @@ function predictMember(saved, x) {
   return out.label;
 }
 
-module.exports = { nullSetCanBeat, comboViews, buildComboChunks, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };
+module.exports = { nullSetCanBeat, comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };

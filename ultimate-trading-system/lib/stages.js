@@ -1420,8 +1420,12 @@ function startStage3(params) {
       const rec = parentRecords[i];
       if (settled.ok && settled.value) {
         for (const row of settled.value.rows) {
+          // storedRecordOf, not a spread: the pricing hands back everything it
+          // worked out, and exactly one place decides what reaches disk
+          // (ruling 4 — stage 3 does not grow). A spread here would put the
+          // analysis block on 5.2 million records.
           w.records.push({
-            ...row,
+            ...require('./stagework').storedRecordOf(row),
             u: rec.u, trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
           });
         }
@@ -2378,9 +2382,10 @@ async function appendMissingSettings(doc, pool = null, note = null, asked = null
     if (settled.ok && settled.value) {
       for (const row of settled.value.rows) {
         // the worker numbers the settings it was handed from zero; they sit
-        // after everything already on disk
+        // after everything already on disk. storedRecordOf for the same reason
+        // the first writer uses it: one place decides what reaches disk.
         w.push({
-          ...row,
+          ...require('./stagework').storedRecordOf(row),
           si: nextSi + row.si,
           u: rec.u, trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
         });

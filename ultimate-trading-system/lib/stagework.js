@@ -92,6 +92,17 @@ function dealOrder(seed, unitKey, slice, n) {
   return order;
 }
 
+// The deals' own middle and spread. lead is (real - mean) / spread, which is
+// one equation with two unknowns — so from a stored lead neither the noise
+// average nor its width can be recovered, and "beat 661 of 800" can never
+// become an effect size in dollars. Two numbers, no extra pricing.
+function shapeOf(vals) {
+  if (!vals.length) return null;
+  const mean = vals.reduce((a, b) => a + b, 0) / vals.length;
+  const varr = vals.reduce((a, b) => a + (b - mean) * (b - mean), 0) / vals.length;
+  return { mean, spread: Math.sqrt(varr), n: vals.length };
+}
+
 // lead over null set: how far above the null set's typical score the real
 // one sits, against the null set's own spread. Population spread; a spread
 // of zero reads 0, never infinity (decision record #6).
@@ -169,6 +180,36 @@ async function unitChunks(combo, geometry, p) {
 }
 
 const viewsFor = (combo, geo) => bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
+
+// Every number simCell hands back, minus the two the record already stores.
+// A window's money is unreadable without the count of periods behind it and
+// without how much of it rests on a within-bar ordering nobody can know
+// (lib/batch.js, on cellAmbiguous: "Meaningless to report money without it").
+function richOf(r) {
+  if (!r) return null;
+  return {
+    wins: r.wins ?? null,
+    stops: r.stops ?? null,
+    ambiguous: r.ambiguous ?? null,
+    trailAmbiguous: r.trailAmbiguous ?? 0,
+    unpriced: r.unpriced ?? null,
+    grossPerTrade: r.grossPerTrade ?? null,
+    maxDrawdown: r.maxDrawdown ?? null,
+    worstTrade: r.worstTrade ?? null,
+    bestTrade: r.bestTrade ?? null,
+    pnlThirds: r.pnlThirds || null,
+  };
+}
+
+// WHAT STAGE 3 ACTUALLY STORES (ruling 4: stage 3 does not grow). The pricing
+// returns everything on one path so a rebuild and a fresh run can never
+// disagree; this is the one place that decides what reaches disk. Both writers
+// go through it, and a test pins the key set — a field added outside `rich`
+// would otherwise be spread straight into 5.2 million records by both of them.
+function storedRecordOf(row) {
+  const { rich, ...rest } = row;
+  return rest;
+}
 
 // ---- TASK: one stage 1 unit ----------------------------------------------------
 //
@@ -538,6 +579,9 @@ async function s3UnitTask(task) {
     let holdout = null;
     let beat = 0;
     let lead = null;
+    let holdRich = null;
+    let dealShape = null;
+    let controls = null;
     if (holdChunks.length) {
       const holdCallsAll = streamFor(stream.decision, agr, -1, 'hold');
       const hRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(holdCallsAll, hIdx), maps.trade, geo, bandPct, fee);
@@ -545,6 +589,20 @@ async function s3UnitTask(task) {
       holdout = {
         pnl: hRes.pnl, trades: hRes.trades, stops: hRes.stops,
         vsAlwaysLong: hRes.pnl - hc.alwaysLong,
+      };
+      holdRich = richOf(hRes);
+      // ALL FOUR CONTROLS, NOT ONE. lib/bracket.js:344 — "you did not find a
+      // strategy, you found an asset that went up ... put long-and-hold and
+      // short-and-hold on the same window and make the strategy beat them."
+      // They are cached per unit and per t, so this is three subtractions.
+      controls = {
+        alwaysLong: hc.alwaysLong ?? null,
+        alwaysShort: hc.alwaysShort ?? null,
+        buyHold: hc.buyHold ?? null,
+        shortHold: hc.shortHold ?? null,
+        vsAlwaysShort: hc.alwaysShort == null ? null : hRes.pnl - hc.alwaysShort,
+        vsBuyHold: hc.buyHold == null ? null : hRes.pnl - hc.buyHold,
+        vsShortHold: hc.shortHold == null ? null : hRes.pnl - hc.shortHold,
       };
       const dealPnls = [];
       for (let d = 0; d < nullN; d++) {
@@ -556,6 +614,7 @@ async function s3UnitTask(task) {
       // the same one rule stage 1 reads by (decision record #6): how far the
       // real held-back money sits above the deals' typical, against their spread
       lead = leadOver(hRes.pnl, dealPnls);
+      dealShape = shapeOf(dealPnls);
     }
     rows.push({
       si,
@@ -573,6 +632,23 @@ async function s3UnitTask(task) {
       pnl: tRes.pnl, trades: tRes.trades,
       holdout,
       beat, pairs: holdChunks.length ? nullN : 0, lead,
+      // EVERYTHING THE PRICING ALREADY WORKED OUT AND USED TO THROW AWAY
+      // (FUNNEL-DESIGN.md section 4.2). It is computed on the one path, so a
+      // rebuild and a fresh run cannot disagree — and it is NOT stored: both
+      // writers project it away through storedRecordOf, because stage 3's job
+      // is to price the grid and these are analysis inputs (ruling 4).
+      rich: {
+        test: richOf(tRes),
+        hold: holdRich,
+        controls,
+        dealShape,
+        periods: {
+          test: testChunks.length,
+          hold: holdChunks.length,
+          testPriced: tIdx.length,
+          holdPriced: hIdx.length,
+        },
+      },
     });
   }
   return { rows, agreed: agreedMapFor(settings), counts: { test: testChunks.length, hold: holdChunks.length } };
@@ -711,7 +787,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 // came out once the box served a vocabulary without it.
 
 module.exports = {
-  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask,
+  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   // the arithmetic, exported so the tests can pencil it

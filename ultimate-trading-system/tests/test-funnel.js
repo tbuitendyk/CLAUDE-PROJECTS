@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { assert } = require('./helpers');
 const stages = require('../lib/stages');
+const { newBook } = require('../lib/bracket');
 
 const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 
@@ -105,5 +106,77 @@ module.exports = {
     assert.ok(/const busy = stageRunning\(\);/.test(fn), 'it must ask whether a job is going');
     assert.ok(/if \(busy\) return/.test(fn), 'and refuse rather than write beside it');
     assert.ok(/refused/.test(fn), 'and say it refused rather than reporting nothing to do');
+  },
+
+  // The exposure numbers must come off the SAME walk that produced the money,
+  // or they are describing a different book than the one on the screen.
+  drawdownAndWorstTradeComeOutOfTheSameWalk() {
+    const b = newBook(9, 0);
+    b.take(10, 0);    // book at +10, a new high
+    b.take(-30, 4);   // book at -20 — the deepest it has been below its high
+    b.take(5, 8);     // book at -15
+    const r = b.done({});
+    assert.strictEqual(r.pnl, -15);
+    assert.strictEqual(r.trades, 3);
+    assert.strictEqual(r.wins, 2);
+    assert.strictEqual(r.maxDrawdown, 30, 'peak +10 to floor -20 is a drawdown of 30, not 20');
+    assert.strictEqual(r.worstTrade, -30);
+    assert.strictEqual(r.bestTrade, 10);
+
+    // A book that only ever rises has no drawdown, and one that opens with a
+    // loss is measured from zero — it starts flat, not at its first trade.
+    const up = newBook(3, 0); up.take(5, 0); up.take(5, 1);
+    assert.strictEqual(up.done({}).maxDrawdown, 0);
+    const down = newBook(3, 0); down.take(-7, 0);
+    assert.strictEqual(down.done({}).maxDrawdown, 7);
+
+    // Nothing traded is not zero-everything: a worst trade that never happened
+    // is absent, and absent must not read as a break-even trade.
+    const none = newBook(5, 0).done({});
+    assert.strictEqual(none.worstTrade, null);
+    assert.strictEqual(none.bestTrade, null);
+    assert.strictEqual(none.grossPerTrade, null);
+    assert.strictEqual(none.maxDrawdown, 0);
+  },
+
+  // If they do not sum to the money, one of them is measuring a different book.
+  pnlThirdsSumToThePnl() {
+    for (const n of [0, 1, 2, 3, 7, 100]) {
+      const b = newBook(n, 0);
+      for (let i = 0; i < n; i++) b.take((i % 3) - 1.5, i);
+      const r = b.done({});
+      const sum = r.pnlThirds.reduce((a, c) => a + c, 0);
+      assert.ok(Math.abs(sum - r.pnl) < 1e-9, `${n} periods: thirds ${sum} vs pnl ${r.pnl}`);
+      assert.strictEqual(r.pnlThirds.length, 3);
+    }
+  },
+
+  // THE THIRDS ARE CUT ON THE PERIOD, NOT THE TRADE. A window whose money all
+  // arrived in its first month must read that way. Cutting by trade index would
+  // put a third of the trades in each bucket however they were spread in time,
+  // which turns the one reading a single-coin probe depends on into noise.
+  theThirdsAreCutOnPeriodsNotTrades() {
+    const b = newBook(90, 0);
+    b.take(100, 0); b.take(100, 1); b.take(100, 2);   // all in the first third
+    const r = b.done({});
+    assert.deepStrictEqual(r.pnlThirds, [300, 0, 0],
+      'three trades in the first month of ninety periods belong to the first third');
+  },
+
+  // A seventh settle site added later, accumulating on its own, would be
+  // invisible: the money would still be right and every new number would be
+  // quietly short. This is the guard against that.
+  everyTradeSettlesThroughTheOneBook() {
+    const src2 = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bracket.js'), 'utf8');
+    const bookStart = src2.indexOf('function newBook');
+    const bookEnd = src2.indexOf('function simMarket');
+    assert.ok(bookStart > 0 && bookEnd > bookStart, 'newBook must sit above simMarket');
+    const outsideBook = src2.slice(0, bookStart) + src2.slice(bookEnd);
+    assert.ok(!/\bpnl \+=/.test(outsideBook), 'nothing outside the book may accumulate money');
+    assert.ok(!/\btrades\+\+/.test(outsideBook), 'nothing outside the book may count a trade');
+    assert.ok(!/\bwins\+\+/.test(outsideBook), 'nothing outside the book may count a win');
+    // and the book is actually used at every site the walk can settle at
+    const takes = (src2.match(/book\.take\(/g) || []).length;
+    assert.strictEqual(takes, 7, `seven settle sites, found ${takes}`);
   },
 };

@@ -46,3 +46,30 @@ made while building it that the design did not already settle.
 11. **The pure parts are split out** (`sealedFromUnits`, `needsBoardNullStamp`)
     so the verdicts are testable without writing anything into the owner's
     record store.
+
+## Step 3a — every trade settles through one book
+
+12. **One settle point, not seven.** The money was accumulated at seven separate
+    sites — six in `simBracket`'s rail walk and time exit, one in `simMarket`.
+    Each new number would have had to be added at all seven with nothing to
+    catch the one that was missed, which is precisely how the numbers went
+    missing in the first place. A test pins the count at seven and forbids any
+    bare `pnl +=` outside the book.
+13. **Three of those seven never counted a win.** Correct — a both-rails bar is
+    priced at its worst case and that is always a loss — but correct by
+    arithmetic nobody had written down. Routing them through the book makes it a
+    rule instead of a coincidence, and changes no number.
+14. **Drawdown is measured from zero, not from the first trade.** The book starts
+    flat. A run that opens with a £7 loss is £7 down, not level.
+15. **Nothing traded is not zero-everything.** `worstTrade` and `bestTrade` come
+    back `null` when no trade happened, because a worst trade that never
+    occurred must not read as a break-even one.
+16. **The thirds are cut on the PERIOD index, not the trade index.** A window
+    whose money all arrived in its first month has to read that way; cutting by
+    trade would spread them evenly and destroy the one reading a single-coin
+    probe depends on.
+17. **The pricing returns everything on ONE path and `storedRecordOf` decides
+    what reaches disk.** The alternative — a flag that makes the pass return
+    more when asked — is two code paths that can drift. Both writers now project
+    through it, because a spread at either would have put the analysis block on
+    5.2 million records.
