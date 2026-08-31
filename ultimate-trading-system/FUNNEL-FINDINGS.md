@@ -67,10 +67,19 @@ set they should read instead now exists, is written, and replays; nothing reads
 it yet. Until this is done the Funnel produces a record that nothing downstream
 consumes.
 
-**Step 9 — board-wide noise capture on Sweep.** Optional by the owner's second
-ruling, and the one first-digit item in the design. Without it there is no noise
-twin on any set, so every Funnel step reads against a split-half — which is what
-the tab says, on every step.
+**Step 9 — the kept scrambles.** Ordered by the owner on 2026-08-31 at ten kept,
+backfill included, and being built now. Two corrections to what was written here
+on 2026-08-30: it is SECOND-digit work, not first, because it adds columns and
+changes no existing number; and it CAN be backfilled, because the scrambles are a
+hash of the set's name and so reproduce exactly. Measured cost of the backfill on
+the owner's set: 52.5M pricings against a run that did 332.6M in 12.63 hours, so
+about two hours.
+
+One thing found while building it, and it is not what the design assumed: the
+scrambles are priced on the HELD-BACK window only. Every test-window call passes
+deal index -1, the real calendar. The Funnel runs on test money, so its scrambles
+are new pricing rather than figures already computed and thrown away. The
+held-back ones are free; the test ones are the two hours.
 
 ## 4. Not verified by me: the tab on screen
 

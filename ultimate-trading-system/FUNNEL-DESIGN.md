@@ -215,19 +215,69 @@ the two-vocabularies-on-disk problem RULE NINE forbids.
 Stage 3 stays immutable and uniform. The enriched rows are Stage 4's, written
 once and cached there, so a second pass over the same Funnel set costs nothing.
 
-### 4.5 The one thing that cannot be built afterwards
+### 4.5 The kept scrambles — a whole board made of luck
 
-**Board-wide best-of-noise** — "the best row on the whole board in shuffled world
-number seven" — needs all 524,832 settings in that world. It cannot be derived
-from survivors, by definition. It is captured at run time or not at all.
+**Every noise comparison in this design wants the same thing**: not a summary
+number, but a COMPLETE SECOND COPY of the tables, made entirely of luck, so that
+each reading can be taken twice and compared. Six places want it — steps 1, 2, 3,
+4, 5 and Verify's board null — and one mechanism serves them all.
 
-Under ruling 2 the Funnel does not require it. Split-half stands in. But if it is
-wanted, the cheap form is: per unit, per shuffle, the best money and the widest
-region size across all settings in that unit — about 2,000 numbers for a whole
-run. Combined across units it slightly overstates the noise board, which makes a
-real row work harder: a safe screen, never a flattering one.
+**The mechanism: keep the money from a few of the scrambles.** A run already
+builds `null set size` scrambled copies of the calendar. Store, per priced row,
+the money that row made in the first N of them, and every one of those six
+readings can be run a second time against pure luck.
 
-That belongs on Sweep as a control beside `null set size`, with its cost printed.
+**Rounded to cents on purpose.** One stored row measures 623 characters; a raw
+double is 18 of them and gzips badly because the digits are noise. These figures
+are only ever averaged, curved, gridded and region-searched — a cent is far below
+any difference that could matter. Ten kept scrambles at cents is about +22% on
+the store; the same ten raw would be +61%.
+
+#### What the scrambles cost, measured not guessed
+
+**The held-back money is free. The test money is not.** The pricing loop scrambles
+ONLY the held-back window (`lib/stagework.js`, `streamFor(..., d, 'hold')`); every
+call on the test window passes deal index `-1`, the real calendar. The Funnel runs
+on TEST money (§2) precisely so the held-back window stays sealed until step 7 —
+so its noise twin needs test-window scrambles, and those are new pricing.
+
+| Kept | What it adds | Cost |
+|---|---|---|
+| the held-back figures | nothing — already computed inside the `beat` loop and discarded | free |
+| N test-window scrambles | N pricings per setting per unit | about N% on a run that already prices ~101 times per setting per unit |
+
+Measured on the owner's set (2026-08-31): 5,248,320 priced rows, 332,572,800
+pricings, 12.63 hours on 4 workers — about 7,300 pricings a second. Ten kept
+scrambles is 52.5M more pricings, so **about two hours** to backfill, and about
+10% longer for a fresh run.
+
+#### It CAN be backfilled
+
+The earlier claim that this "cannot be built afterwards" was wrong, twice over.
+The scrambles are a pure function of the set's id (`seedOf` is a hash of the name,
+the shuffle is a seeded Fisher-Yates), so scramble number N is identical every
+time, forever. Re-pricing the test window under those same orders reproduces
+exactly what the run would have written.
+
+Backfilling is therefore a RULE NINE migration, not a re-run: price the kept
+scrambles for every existing row, write the store BESIDE with the same row count
+and the same block boundaries so every stored block index still points where it
+did, verify, then swap. The real test money is re-priced alongside and checked
+against what is stored — §4.3's self-proof — so a moved price file cannot slip in
+silently.
+
+#### Release digit: SECOND, not first
+
+Nothing already on disk stops being readable or comparable. No existing number
+changes, no existing record changes shape, and each block of the row store
+carries its own column list in its own header, so blocks written before the
+column read back exactly as they do now. The set document already records whether
+the capture happened (`boardNull`), so no reader branches on a record's age.
+Stage 1 and stage 2 sets stay valid parents.
+
+That control belongs on Sweep, in the `Stage 3 — price any settings from the kept
+votes, no training` panel, beside that panel's `null set size`, with its cost
+printed.
 
 ---
 
@@ -389,9 +439,11 @@ The axis list must come from the caller. That is also RULE FIVE: which dials hav
 an order is a property of the run, not of the library.
 
 - **Split-half:** region size on each half.
-- **Noise twin:** the widest region each noise board produces. This is what makes
-  the number a finding rather than an adjective, and it is exactly what §4.5's
-  cheap capture provides.
+- **Noise twin:** the widest region each kept scramble produces — the same region
+  search, run on the all-luck copy of the same table (§4.5). This is what makes
+  the number a finding rather than an adjective. With one kept scramble, "wider
+  than luck" is a single draw; with ten it is ten out of ten, which is the point
+  of the count being a field and not a constant.
 
 ### 6.6 Step 6 — exposure
 
@@ -550,8 +602,9 @@ no records. It runs the way the totalling already does — announced, in the
 background, once — and it is a user function, not a script somebody remembers
 (RULE NINE).
 
-The only first-digit item in this whole design is §4.5's board-wide noise
-capture, and it is optional.
+**There is no first-digit item in this design.** §4.5's kept scrambles were
+listed as one and are not: they add columns, change no existing number, and leave
+every existing block readable. Second digit, like the rest.
 
 ---
 
@@ -597,8 +650,10 @@ Mutation guards go on the lines those tests read, and are run filtered
 6. The tab.
 7. Deploy, re-fingerprint, generate the Funnel word list.
 8. Re-point Verify, History, Tune and Greenlight at Stage 4 sets.
-9. Optional, and only if the owner wants it: §4.5's board-wide noise capture on
-   Sweep, which is the one first-digit item.
+9. §4.5's kept scrambles: the field on Sweep, the columns on the row store, the
+   matching columns on `Table 3.A` and `Table 3.B`, the Funnel reading against
+   them, and the backfill for sets priced before the column existed. Second
+   digit. Owner ordered it at ten kept, backfill included, 2026-08-31.
 
 Steps 1–4 produce nothing the owner can see. Step 5 is the one that matters.
 
