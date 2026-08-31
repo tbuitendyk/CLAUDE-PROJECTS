@@ -96,9 +96,32 @@ if [[ ! -f "${NGINX_CONF}" ]]; then
 fi
 if grep -q 'location /uts/svc/' "${NGINX_CONF}"; then
   echo "    already routed -- leaving the file alone"
+  echo "    (its home is the website branch's www.buitendyk.ca.conf, so a website"
+  echo "     deploy ships it and this never has to write anything)"
 else
-  BACKUP="${NGINX_CONF}.before-svc.$(date -u +%Y%m%d-%H%M%S)"
-  cp -a "${NGINX_CONF}" "${BACKUP}"
+  # WHERE THIS BLOCK REALLY BELONGS, and why this path is only a fallback
+  # (2026-08-31). NGINX_CONF is sites-ENABLED, which is a symlink to the
+  # sites-AVAILABLE file that deploy-website installs. So a block written here
+  # lives in a file another deploy owns and overwrites, and on 2026-08-31 at
+  # 05:45 one did: the route vanished and the Compute tab's machine reading and
+  # service cards went blank, because both are served from 8095 through it.
+  # The block now ships in the website branch's own config, which is what makes
+  # it survive. This branch is kept for a box where the website has not been
+  # deployed yet -- the grep above means it does nothing once it has.
+  #
+  # AND THE BACKUP FOLLOWS THE LINK. `cp -a` on a symlink copies the LINK, so
+  # the backup taken on 2026-08-24 was a second pointer at the same live file
+  # rather than a copy of what it held -- and when the file was overwritten,
+  # the "backup" showed the overwritten contents too. There was nothing to
+  # restore from. -L resolves it, and the name is the resolved path so the
+  # backup cannot land beside a symlink pretending to be the original.
+  REAL_CONF="$(readlink -f "${NGINX_CONF}")"
+  BACKUP="${REAL_CONF}.before-svc.$(date -u +%Y%m%d-%H%M%S)"
+  cp -aL "${NGINX_CONF}" "${BACKUP}"
+  if [[ -L "${BACKUP}" ]]; then
+    echo "    the backup came out a symlink, so it is not a backup -- refusing to edit" >&2
+    exit 1
+  fi
   echo "    backed up to ${BACKUP}"
   # Inserted BEFORE the /uts/ block. nginx picks the longest matching prefix
   # regardless of order, so this is for a reader's benefit rather than nginx's.
