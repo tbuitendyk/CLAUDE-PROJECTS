@@ -355,6 +355,7 @@ function startStage1(params) {
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
     measurements: MEASUREMENTS_VERSION,
+    boardNull: { ...BOARD_NULL_NONE },
     // The owner's current campaign name rides on every launch, exactly as it
     // does on the sweeps (owner order, 2026-08-04; carried here 2026-08-27).
     params: { universe, sizes, geometries, windowLayout, nullN, ...p, campaign: require('./campaign').getCampaign() || null },
@@ -775,6 +776,7 @@ function startStage2(params) {
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
     measurements: MEASUREMENTS_VERSION,
+    boardNull: { ...BOARD_NULL_NONE },
     parent: {
       id: parent.id, name: parent.name, carry: carried.length, of: ranking.length,
       sortedBy: saved ? sortLabel(saved) : 'the fixed rule',
@@ -1157,6 +1159,107 @@ function stage3UnitsFor(parent, carry) {
   }
   return { records, savedS2 };
 }
+
+// THE SEALED WINDOW IS ALREADY ON DISK, ONE LEVEL UP (Funnel build, 2026-08-31).
+// FUNNEL-DESIGN.md said stage 3 must stamp it and a migration must backfill it.
+// Neither is needed and both were wrong: unitChunks seals the final 13% under
+// reserve61, stage 1 writes it on every record (`reserve: res.reserve || null`)
+// and stage 2 copies it forward (`reserve: rec.reserve`). A stage 3 set's UNITS
+// ARE its parent's records, so the bounds are a read, not a migration.
+//
+// It is resolved through stage3UnitsFor with the set's OWN stored carry, which
+// is the same resolution the launch ran — so the units this returns are the
+// units that were priced, in the same order, and not a re-derivation that could
+// disagree with them.
+function sealedWindowOf(doc) {
+  const layout = ((doc || {}).params || {}).windowLayout || null;
+  const none = (why) => ({ layout, sealed: false, units: [], missing: 0, why });
+  if (layout !== 'reserve61') {
+    return none(`this set's window layout is ${layout || 'unrecorded'} — only reserve61 seals a final window`);
+  }
+  const parentId = ((doc.parent || {}).id) || ((doc.params || {}).from) || null;
+  if (!parentId) return none('this set names no parent to read the sealed window from');
+  const parent = getSet(parentId);
+  if (!parent) return none(`its parent ${parentId} is gone, so the sealed window cannot be read back`);
+  let records;
+  try {
+    ({ records } = stage3UnitsFor(parent, Math.max(0, Math.floor(num((doc.params || {}).carry, 0)))));
+  } catch (err) {
+    return none(`its parent's records would not resolve: ${err.message}`);
+  }
+  const units = records.map((r) => ({
+    u: r.u, trade: r.trade, ctx1: r.ctx1 ?? null, ctx2: r.ctx2 ?? null,
+    geometry: r.geometry, reserve: r.reserve || null,
+  }));
+  return sealedFromUnits(layout, units);
+}
+
+// The verdict, pure — no set document, no filesystem, so it is testable without
+// writing anything into the owner's record store.
+//
+// A PARTLY sealed set is NOT a sealed set. One unit with no reserve means the
+// one-touch grade would quietly grade fewer coins than the board holds, and
+// quietly is the whole problem.
+function sealedFromUnits(layout, units) {
+  if (!Array.isArray(units) || !units.length) {
+    return { layout, sealed: false, units: [], missing: 0, why: 'there are no units to seal' };
+  }
+  const missing = units.filter((x) => !x || !x.reserve).length;
+  return {
+    layout,
+    sealed: missing === 0,
+    units,
+    missing,
+    why: missing ? `${missing} of ${units.length} units carry no sealed window` : null,
+  };
+}
+
+// WHETHER A BOARD-WIDE NOISE READING EXISTS, SAID BY EVERY SET IN THE SAME
+// WORDS (RULE NINE). Per-setting deals are stored as beat/pairs/lead, but the
+// per-deal MONEY never is — so "what did the best row on the whole board make
+// in shuffled world seven" cannot be answered from any set written so far, at
+// any null set size. A reader must not have to notice a field is absent and
+// infer that: noticing an absence IS asking which era a record is from. So the
+// stamp goes on every set, old and new, and the reader only ever reads it.
+const BOARD_NULL_NONE = Object.freeze({
+  captured: false,
+  why: 'no board-wide noise reading was captured when this set was priced',
+});
+
+// Pure, so the migration's decision can be tested apart from its write.
+function needsBoardNullStamp(doc) {
+  return !(doc && doc.boardNull && typeof doc.boardNull === 'object');
+}
+
+function noiseTwinOf(doc) {
+  const bn = (doc || {}).boardNull;
+  if (needsBoardNullStamp(doc)) {
+    throw new Error(`${(doc || {}).id || 'this set'} carries no board-wide noise stamp — `
+      + 'the set documents have not been brought up to date');
+  }
+  return { available: !!bn.captured, why: bn.captured ? null : (bn.why || 'not captured') };
+}
+
+// Stamps every set that has not got one. Additive, instant, and idempotent —
+// it never touches a record and never rewrites a stamp that is already there.
+// It refuses while a stage job is going rather than write under a running
+// writer, and says so instead of half-finishing.
+function stampBoardNullOnEverySet() {
+  const busy = stageRunning();
+  if (busy) return { stamped: 0, already: 0, refused: `${busy} is running` };
+  let stamped = 0;
+  let already = 0;
+  for (const s of listSets()) {
+    let doc;
+    try { doc = getSet(s.id); } catch (_) { doc = null; }
+    if (!doc) continue;
+    if (!needsBoardNullStamp(doc)) { already++; continue; }
+    doc.boardNull = { ...BOARD_NULL_NONE };
+    saveSet(doc);
+    stamped++;
+  }
+  return { stamped, already, refused: null };
+}
 // The counter the cost line asks rides the SAME resolution the launch runs —
 // same records, same carry cut, same declared bars — so the number on the
 // screen and the number that runs can never be two different numbers. When
@@ -1228,6 +1331,7 @@ function startStage3(params) {
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
     measurements: MEASUREMENTS_VERSION,
+    boardNull: { ...BOARD_NULL_NONE },
     parent: {
       id: parent.id, name: parent.name,
       ...(carry > 0 ? {
@@ -2975,6 +3079,8 @@ module.exports = {
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
   missingSettingsIn, nextSettingNumber,
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
+  sealedWindowOf, sealedFromUnits, noiseTwinOf, needsBoardNullStamp,
+  stampBoardNullOnEverySet, BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,
   unfinishedAppend, unfinishedAppendDetail, undoUnfinishedAppend,
   declaredLabelsFor, declaredKeyFor,

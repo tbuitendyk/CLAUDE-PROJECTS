@@ -20,3 +20,29 @@ made while building it that the design did not already settle.
    it is no longer a constant.
 5. **A bad axis list is refused, not coerced.** A string, an empty list or a list
    with a hole in it would each cut a region on axes nobody chose.
+
+## Step 2 — the sealed window and the board-noise stamp
+
+6. **The sealed window needed no migration and no new stored field.** The design
+   said stage 3 must stamp it and a migration must backfill it. Both were wrong:
+   stage 1 already writes `reserve` on every record and stage 2 copies it
+   forward, and a stage 3 set's units ARE its parent's records. Verified against
+   a real record on this box — `s1-mtdzekjr-9` carries
+   `{"chunks":50,"fromTs":1780790400000}`. It is a read.
+7. **It resolves through `stage3UnitsFor` with the set's own stored carry**,
+   which is the same resolver and the same argument the launch used — so it
+   cannot return a different set of units than the ones that were priced. A
+   re-derivation from `unitChunks` would agree only while the price files have
+   not moved.
+8. **A partly sealed set is not sealed.** One unit without a reserve means the
+   one-touch grade covers fewer coins than the board, so the verdict is false
+   and names the count rather than reporting a seal with a footnote.
+9. **The board-noise stamp's wording carries no era.** "Predates X" would tell a
+   reader there are two kinds of set, which is the same defect wearing a
+   sentence. One wording that is true of a set written today and one written in
+   July, and a test that fails on date-flavoured words.
+10. **The stamp refuses while a stage job is going** rather than writing beside a
+    running writer, and says it refused rather than reporting nothing to do.
+11. **The pure parts are split out** (`sealedFromUnits`, `needsBoardNullStamp`)
+    so the verdicts are testable without writing anything into the owner's
+    record store.

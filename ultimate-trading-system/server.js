@@ -1934,4 +1934,16 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`ultimate-trading-system listening on 127.0.0.1:${PORT}`);
+  // WHEN THE PROCESS CHANGES, THE RECORDS CHANGE WITH IT (RULE NINE). Every set
+  // says in the same words whether a board-wide noise reading was captured on
+  // it, so no reader ever has to notice a field is absent and infer the answer.
+  // Additive, instant, idempotent, and it refuses while a stage job is going —
+  // announced here rather than left to somebody remembering to run it.
+  try {
+    const r = stages.stampBoardNullOnEverySet();
+    if (r.refused) console.log(`set documents: not brought up to date — ${r.refused}`);
+    else if (r.stamped) console.log(`set documents: brought ${r.stamped} up to date (${r.already} already were)`);
+  } catch (err) {
+    console.log(`set documents: could not be brought up to date — ${err.message}`);
+  }
 });
