@@ -1,0 +1,152 @@
+/* Page-local styles for /safe-encryption/.
+   Kept out of /assets/style.css on purpose: that file is shared by every page
+   on the site, so bumping its ?v= forces a re-download everywhere. Nothing
+   here is used elsewhere. Bump safe-encryption.css?v=N in index.html when you
+   change this file -- nginx sends no cache-control for it. */
+
+.mono,
+textarea,
+pre code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* --- key row: input grows, buttons keep their size, stacks on a phone --- */
+
+.key-row {
+  display: flex;
+  gap: 0.5rem;
+  align-items: stretch;
+  flex-wrap: wrap;
+}
+
+.key-row input[type="text"] {
+  flex: 1 1 22ch;
+  min-width: 0;
+  width: auto;
+  padding: 0.65rem 0.75rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.95rem;
+  letter-spacing: 0.04em;
+}
+
+.key-row input[type="text"]:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* --- the two big boxes --- */
+
+textarea {
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  resize: vertical;
+  /* Base64 has no spaces to break on; without this the block would push the
+     page sideways on a phone. */
+  word-break: break-all;
+  overflow-wrap: anywhere;
+}
+
+textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+textarea::placeholder {
+  color: var(--text-dim);
+  opacity: 0.7;
+}
+
+/* --- buttons between the boxes --- */
+
+.action-bar {
+  display: flex;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  align-items: center;
+  margin-top: 1.5rem;
+}
+
+.action-bar.tight {
+  margin-top: 0.25rem;
+}
+
+/* --- notes, counters, status --- */
+
+.note {
+  font-size: 0.82rem;
+  color: var(--text-dim);
+  margin: 0.5rem 0 0;
+}
+
+.note code,
+.hero code,
+.limits code {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 0.05em 0.35em;
+  font-size: 0.92em;
+}
+
+.counter {
+  font-variant-numeric: tabular-nums;
+}
+
+.status-line {
+  margin: 0.9rem 0 0;
+  min-height: 1.5rem;
+}
+
+.status-line.bad #status-text { color: var(--bad); }
+.status-line.good #status-text { color: var(--good); }
+
+#progress {
+  margin-top: 1rem;
+}
+
+/* --- help --- */
+
+.steps {
+  margin: 0.75rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.steps li { margin-bottom: 0.9rem; }
+
+.steps pre {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 0.7rem 0.8rem;
+  margin: 0.5rem 0;
+  overflow-x: auto;
+}
+
+.steps pre code {
+  font-size: 0.82rem;
+  color: var(--text);
+  white-space: pre;
+}
+
+.limits {
+  margin: 0.5rem 0 0;
+  padding-left: 1.2rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.limits li { margin-bottom: 0.5rem; }
+.limits strong { color: var(--text); }
+
+/* Wide enough to read a full base64 line, but the hero paragraph is prose. */
+.hero p { max-width: 78ch; }

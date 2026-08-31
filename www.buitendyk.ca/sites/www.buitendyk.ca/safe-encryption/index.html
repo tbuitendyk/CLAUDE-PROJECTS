@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Safe Encryption &mdash; buitendyk.ca</title>
+  <meta name="description" content="Encrypt text in your browser into a real 7-Zip AES-256 archive. Nothing is uploaded and the plain text never touches your disk.">
+  <meta name="referrer" content="no-referrer">
+  <meta name="robots" content="noindex">
+  <!-- The promise this page makes is "your text never leaves the browser", so
+       the page is locked down to make that promise enforceable rather than
+       merely stated: connect-src 'none' means the page cannot open a socket,
+       fetch, XHR or WebSocket at all, and everything it does load comes from
+       this origin. If a future edit ever tried to phone home, the browser
+       would stop it. (frame-ancestors is deliberately absent: it is ignored in a
+       meta CSP, and nginx already sends X-Frame-Options: SAMEORIGIN.) -->
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; form-action 'none'; base-uri 'none'">
+  <link rel="stylesheet" href="/assets/style.css?v=9">
+  <link rel="stylesheet" href="safe-encryption.css?v=1">
+</head>
+<body>
+  <header class="site-header">
+    <div class="inner">
+      <a class="brand" href="/">buitendyk<span>.ca</span></a>
+      <nav class="breadcrumb"><a href="/">home</a> &rsaquo; safe encryption</nav>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <h1>Safe Encryption</h1>
+      <p>
+        Paste text, and get back an encrypted block you can keep anywhere.
+        The encryption is ordinary 7-Zip AES-256, so the result is a real
+        <code>.7z</code> archive that 7-Zip can open years from now &mdash;
+        this page is a convenience, not a format you are locked into.
+        Everything happens in this browser tab: nothing is uploaded, and the
+        plain text is never written to your drive.
+      </p>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <section class="panel" aria-labelledby="key-title">
+      <div class="box-title" id="key-title">1 &middot; Key</div>
+
+      <div class="field">
+        <label for="key">Key (this is the 7-Zip password &mdash; keep it, or the text is gone)</label>
+        <div class="key-row">
+          <input type="text" id="key" class="mono" spellcheck="false" autocomplete="off"
+                 autocapitalize="off" autocorrect="off" aria-describedby="key-note">
+          <button type="button" class="btn secondary small" id="regen">New key</button>
+          <button type="button" class="btn secondary small" id="copy-key">Copy</button>
+        </div>
+        <p class="note" id="key-note">
+          Freshly generated in your browser from
+          <code>crypto.getRandomValues</code> &mdash; about 186 bits, far past
+          anything guessable. Type your own if you prefer. Nobody can recover
+          your text without it, including whoever runs this site.
+        </p>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <section class="panel" aria-labelledby="plain-title">
+      <div class="box-title" id="plain-title">2 &middot; Plain text</div>
+      <div class="field">
+        <label for="plain">Paste the text you want protected</label>
+        <textarea id="plain" rows="9" spellcheck="false" autocomplete="off"
+                  autocapitalize="off" autocorrect="off"
+                  placeholder="Paste or type here."></textarea>
+        <p class="note counter" id="plain-count">empty</p>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <div class="action-bar">
+      <button type="button" class="btn" id="encrypt">Encrypt &darr;</button>
+      <button type="button" class="btn secondary" id="decrypt">&uarr; Decrypt</button>
+      <button type="button" class="btn danger small" id="clear">Clear everything</button>
+    </div>
+
+    <div class="job-progress" id="progress" hidden>
+      <div class="job-progress-track"><div class="job-progress-fill" id="progress-fill"></div></div>
+    </div>
+    <p class="status-line" id="status" role="status" aria-live="polite">
+      <span class="dot" id="status-dot"></span><span id="status-text">Ready.</span>
+    </p>
+
+    <!-- ---------------------------------------------------------------- -->
+    <section class="panel" aria-labelledby="cipher-title">
+      <div class="box-title" id="cipher-title">3 &middot; Encrypted text</div>
+      <div class="field">
+        <label for="cipher">
+          A complete AES-256 <code>.7z</code> archive, written out as base64 so
+          it survives email, notes apps and clipboards
+        </label>
+        <textarea id="cipher" rows="9" spellcheck="false" autocomplete="off"
+                  autocapitalize="off" autocorrect="off"
+                  placeholder="The encrypted block appears here. You can also paste one back in and press Decrypt."></textarea>
+        <p class="note counter" id="cipher-count">empty</p>
+      </div>
+      <div class="action-bar tight">
+        <button type="button" class="btn secondary small" id="copy-cipher">Copy</button>
+        <button type="button" class="btn secondary small" id="download">Download .7z</button>
+        <button type="button" class="btn secondary small" id="load">Load a .7z file</button>
+        <input type="file" id="file" accept=".7z,application/x-7z-compressed" hidden>
+      </div>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <section class="panel" aria-labelledby="help-title">
+      <div class="box-title" id="help-title">Getting it back without this page</div>
+      <p class="note">
+        The encrypted block is a real 7-Zip archive in base64. If this site ever
+        disappears, any copy of 7-Zip still opens it &mdash; that is the whole
+        point of using a standard format.
+      </p>
+      <ol class="steps">
+        <li>Save the encrypted text to a file, say <code>message.b64</code>.</li>
+        <li>Turn it back into an archive:
+          <pre><code>base64 -d &lt; message.b64 &gt; message.7z     # macOS: base64 -D
+certutil -decode message.b64 message.7z    # Windows</code></pre>
+          Or skip this step entirely by pressing <strong>Download .7z</strong> above.
+        </li>
+        <li>Read it back without ever writing the plain text to disk:
+          <pre><code>7z x -so message.7z -p'your-key-here'</code></pre>
+          <span class="note">
+            <code>-so</code> prints the text to your terminal instead of
+            extracting a file. Drop it and 7-Zip writes
+            <code>message.txt</code> to the current folder, which is exactly
+            what you may be trying to avoid.
+          </span>
+        </li>
+      </ol>
+      <p class="note">
+        Technically: one file (<code>message.txt</code>) stored with Deflate,
+        encrypted with AES-256-CBC, key derived by 7-Zip's own function
+        (SHA-256 iterated 2<sup>19</sup> times over a random 16-byte salt and
+        your key as UTF-16LE). The archive header is encrypted too &mdash;
+        7-Zip's &ldquo;encrypt file names&rdquo; mode &mdash; so a stray copy on
+        a disk gives away nothing but its size.
+      </p>
+    </section>
+
+    <!-- ---------------------------------------------------------------- -->
+    <section class="panel" aria-labelledby="limits-title">
+      <div class="box-title" id="limits-title">What this does and does not protect</div>
+      <ul class="limits">
+        <li><strong>Nothing is uploaded.</strong> The page makes no network
+          requests at all; its Content-Security-Policy blocks them outright, so
+          this holds even if the code were later changed by mistake.</li>
+        <li><strong>Nothing is remembered.</strong> No cookies, no local
+          storage. Reloading the page loses everything and gives you a new key.</li>
+        <li><strong>Your key is the whole of the security.</strong> Lose it and
+          the text is unrecoverable &mdash; there is no reset, by design.</li>
+        <li><strong>Your device is still your device.</strong> This cannot help
+          with a keylogger, a shoulder surfer, a clipboard manager that keeps
+          history, or an operating system that pages memory out to swap.</li>
+        <li><strong>Browser crash recovery.</strong> Some browsers save the
+          contents of text boxes to restore a tab after a crash. This page
+          clears both boxes when you leave it, but pressing
+          <em>Clear everything</em> when you are done is the sure thing.</li>
+      </ul>
+    </section>
+  </main>
+
+  <footer class="site-footer">
+    buitendyk.ca &mdash; self-hosted on a personal VPS, built with free &amp; open-source tools.
+  </footer>
+
+  <script type="module" src="safe-encryption.js?v=1"></script>
+</body>
+</html>
