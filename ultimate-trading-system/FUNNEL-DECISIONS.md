@@ -73,3 +73,38 @@ made while building it that the design did not already settle.
     more when asked — is two code paths that can drift. Both writers now project
     through it, because a spread at either would have put the analysis block on
     5.2 million records.
+
+## Step 5 — the funnel readings (taken before steps 3b and 4)
+
+18. **Order changed, deliberately.** The build order put the rebuild path and the
+    Stage 4 record before the readings. The readings are the part that either
+    works or does not, they are pure, and they need neither — so they were built
+    and proved first. RULE SIX puts ordering inside an approved step in the
+    session's hands; this is it, recorded.
+19. **The split is a hash of the setting's NAME, not a shuffle.** A shuffle
+    splits the same set differently depending on the order the rows arrived in,
+    so two reads of one set could disagree about whether a dial is stable. Seeded
+    and order-independent, and a test reverses the rows to prove it.
+20. **`m` is a ratio and it never travels alone.** The dollar range goes with it,
+    because a ratio with no magnitude beside it cannot be read.
+21. **A dial swept at one value is "unmeasurable", never "flat".** Flat is a
+    finding. Nothing to compare is not. Printing them the same tells the owner a
+    dial was tested when it never was.
+22. **THE MARGINALS ARE ONLY HONEST ON A BALANCED GRID, and nothing was going to
+    say when they were not.** The whole claim of step 1 is that grouping by one
+    dial averages the others out — which holds only if every value of that dial
+    was swept against the same spread of everything else. A carry cut, a fold or
+    a failed unit breaks that, and a confounded marginal looks exactly like a
+    real one. `balanceOf` reports it and step 1 names the lopsided dials. Found
+    by attacking the reading, not by it going wrong.
+23. **A value far clear of a flat menu is a spike wherever it sits**, including
+    at the end of the axis. Luck does not care where on the menu it landed, and
+    an end-spike read as "monotone" is a fluke wearing the word for a trend.
+24. **A thin square is MARKED, never dropped.** A hole in a grid reads as
+    "nothing here"; the truth is "not enough to say", and the count says which.
+25. **The noise twin is `null` and explicitly present**, not omitted. A blank
+    column reads as "nothing to report", which is the opposite of the truth.
+26. **The source guard strips comments before scanning.** The first cut fired on
+    the comment quoting bracketwork's "judge on holdout" rule — the very line
+    explaining why the guard exists. A guard that cannot tell a quotation from a
+    field read teaches whoever hits it to loosen it.
