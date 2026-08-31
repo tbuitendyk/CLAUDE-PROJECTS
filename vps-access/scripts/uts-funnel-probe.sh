@@ -1,37 +1,50 @@
 #!/usr/bin/env bash
-# READ-ONLY. How LONG the Funnel's read takes on the real board, and how big the
-# answer is. The tab shows nothing while it waits, so a slow read and a broken
-# one look identical from the screen.
-#
-# The set named here is already totalled; nothing here starts work.
+# READ-ONLY. What EXACTLY makes a row of Table 3.B, counted rather than guessed.
+# Reads the tally that is already built; starts nothing.
 set -uo pipefail
 
-PORT=8094
-SET=s3-mte0oajo-1
+cd /opt/ultimate-trading-system || exit 1
+sudo -u uts node -e '
+const stages = require("./lib/stages");
+const id = "s3-mte0oajo-1";
+const t = stages.readTally(id);
+if (!t) { console.log("no tally"); process.exit(0); }
 
-# the body the tab actually sends, not a stripped-down one
-BODY='{"step":1,"rule":{"ranges":{},"allowed":{},"floors":{}},"target":null,"dial":null,"dialA":null,"dialB":null,"floor":20,"rebuilt":false}'
+console.log("Table 3.A rows (ranked):", t.ranked.length.toLocaleString());
+console.log("Table 3.B rows (coins) :", t.coins.length.toLocaleString());
+console.log();
 
-echo "== the body the tab sends, timed =="
-curl -s -o /tmp/funnel-read.json \
-  -w '  status %{http_code}   %{size_download} bytes   %{time_total} seconds\n' \
-  -X POST -H 'Content-Type: application/json' --data "$BODY" \
-  "http://127.0.0.1:${PORT}/api/funnel/${SET}/read"
+// what 3.B is grouped by
+const settingPart = new Set();
+const unit = new Set();
+for (const c of t.coins) {
+  settingPart.add(c.cellLabel);
+  unit.add([c.trade, c.ctx1 || "", c.ctx2 || "", c.geometry].join("|"));
+}
+console.log("distinct values in the first column :", settingPart.size.toLocaleString());
+console.log("distinct coin + chunk shape pairs   :", unit.size);
+console.log("their product                       :", (settingPart.size * unit.size).toLocaleString());
+console.log("actual rows                         :", t.coins.length.toLocaleString());
+console.log("missing from the full grid          :", (settingPart.size * unit.size - t.coins.length).toLocaleString());
+console.log();
 
-echo
-echo "== again, warm =="
-curl -s -o /dev/null \
-  -w '  status %{http_code}   %{size_download} bytes   %{time_total} seconds\n' \
-  -X POST -H 'Content-Type: application/json' --data "$BODY" \
-  "http://127.0.0.1:${PORT}/api/funnel/${SET}/read"
+// how many records each row averages, and what those records vary by
+const byRows = new Map();
+for (const c of t.coins) byRows.set(c.rows, (byRows.get(c.rows) || 0) + 1);
+console.log("the rows column, how many rows carry each value:");
+for (const [k, v] of [...byRows.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)) {
+  console.log("  rows =", k, "on", v.toLocaleString(), "of the rows");
+}
+console.log();
 
-echo
-echo "== for comparison, the ranked table the Boards section draws =="
-curl -s -o /dev/null \
-  -w '  status %{http_code}   %{size_download} bytes   %{time_total} seconds\n' \
-  "http://127.0.0.1:${PORT}/api/stageset/${SET}/ranked?from=0&n=100"
-
-echo
-echo "== what the service is using =="
-systemctl show ultimate-trading-system -p MemoryCurrent 2>/dev/null || true
-journalctl -u ultimate-trading-system --since "-15 min" --no-pager 2>/dev/null | tail -8 || true
+// and the pieces the second half of a setting name varies over
+const dec = new Set(); const band = new Set(); const wk = new Set();
+for (const r of t.ranked) { dec.add(r.decision); band.add(String(r.bandMode)); wk.add(String(r.weekdaysOnly)); }
+console.log("decision values swept :", [...dec].join(", "));
+console.log("band values swept     :", [...band].sort().join(", "));
+console.log("24/5 values swept     :", [...wk].join(", "));
+console.log("their product         :", dec.size * band.size * wk.size);
+console.log();
+console.log("first column x that product =", (settingPart.size * dec.size * band.size * wk.size).toLocaleString(),
+  "  vs Table 3.A rows", t.ranked.length.toLocaleString());
+' 2>&1 | tail -40
