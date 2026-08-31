@@ -1219,19 +1219,22 @@ function bKeptFillPanel(doc) {
   const p = doc.params || {};
   const nullN = Number(p.nullN) || 0;
   const have = Number(p.keepN) || 0;
-  const units = Number((doc.plan || {}).units) || 0;
-  const settings = Number((doc.plan || {}).settings) || 0;
+  // SIZED FROM THE ROWS ON DISK, not from the plan. The plan is what the LAUNCH
+  // asked for; a set that has since been filled in holds more than that, and on
+  // the owner's set the difference is 329,280 against 524,832 per unit -- so a
+  // cost printed from the plan understates a four-hour job by nearly half.
+  const rows = Number((doc.counts || {}).rows) || 0;
   const off = doc.status !== 'done';
   const want = Math.min(10, nullN);
   // the same arithmetic the fill itself does: the real test money once as a
   // proof, then each kept scramble on each of the two windows
-  const cost = (k) => units * settings * (1 + k * 2);
+  const cost = (k) => rows * (1 + k * 2);
   return `<div class="panel">
       <h3 style="margin-top:0">Filling in the kept null money</h3>
       <div class="row" style="align-items:flex-end">
       <label class="f" title="how many of this set's null-set deals should have their money written down, so the Funnel has a whole second copy of Table 3.A and Table 3.B made of luck to measure against. It re-prices only what is missing, never the whole run, and it proves itself against the money already stored before anything is swapped.">null set money kept<input id="bKeptN" type="number" value="${want}" min="0" max="${nullN}" style="width:4.5rem" ${off ? 'disabled' : ''}></label>
       <button id="bKeptGo" ${off ? 'disabled title="the set is still working — a fill waits until it has landed"' : ''}>fill in the kept null money</button>
-      <span id="bKeptMsg" class="note">${have ? `this set keeps ${have} of its ${nullN}.` : `this set keeps none of its ${nullN}.`}${nullN && units && settings ? ` Keeping ${want} re-prices ${cost(want).toLocaleString()} times.` : ''}</span>
+      <span id="bKeptMsg" class="note">${have ? `this set keeps ${have} of its ${nullN}.` : `this set keeps none of its ${nullN}.`}${nullN && rows ? ` Keeping ${want} re-prices ${cost(want).toLocaleString()} times, across ${rows.toLocaleString()} rows.` : ''}</span>
       </div>
     </div>`;
 }

@@ -1475,7 +1475,9 @@ function startStage3(params) {
       doc.perf.unitsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (parentRecords.length - doc.perf.unitsDone)) : null;
-      doc.perf.cyclesDone = doc.perf.unitsDone * settings.length * (1 + nullN);
+      // the SAME per-setting count cyclesTotal was built from, or a run that
+      // keeps scrambles reports a progress bar that never reaches its end
+      doc.perf.cyclesDone = doc.perf.unitsDone * settings.length * (1 + nullN + keepN);
       phaseNote(doc, {
         phase: 'pricing the settings', done: doc.perf.unitsDone, total: parentRecords.length, word: 'units', startedMs: tPrice,
         extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} pricings`,
@@ -3526,7 +3528,10 @@ async function startKeptScrambleFill(id, wantKeep) {
     unitsDone: 0, unitsTotal: records.length, elapsedMs: 0, etaMs: null, workers: null,
     cyclesDone: 0,
     // the real test money once as a proof, then each kept scramble on each window
-    cyclesTotal: records.length * settings.length * (1 + keep * 2), cyclesWord: 'pricings',
+    // THE ROWS ON DISK, not units x settings. A set that has been filled in
+    // holds more settings than its plan asked for, and a total taken from the
+    // plan makes the progress line read past 100%.
+    cyclesTotal: rowstore.count(id, 'records') * (1 + keep * 2), cyclesWord: 'pricings',
   };
   saveSet(doc);
 
@@ -3576,7 +3581,7 @@ async function startKeptScrambleFill(id, wantKeep) {
             for (const had of [...priced.keys()]) { priced.get(had).clear(); priced.delete(had); unitsDone.add(had); }
             priced.set(u, await priceUnit(u));
             doc.perf.unitsDone = unitsDone.size;
-            doc.perf.cyclesDone = unitsDone.size * settings.length * (1 + keep * 2);
+            doc.perf.cyclesDone = Math.round((doc.perf.cyclesTotal / records.length) * unitsDone.size);
             doc.perf.elapsedMs = Date.now() - t0;
             doc.perf.etaMs = unitsDone.size
               ? Math.round((doc.perf.elapsedMs / unitsDone.size) * (records.length - unitsDone.size)) : null;
@@ -3657,7 +3662,7 @@ async function startKeptScrambleFill(id, wantKeep) {
     keep,
     units: records.length,
     settings: settings.length,
-    pricings: records.length * settings.length * (1 + keep * 2),
+    pricings: rowstore.count(id, 'records') * (1 + keep * 2),
   };
 }
 
