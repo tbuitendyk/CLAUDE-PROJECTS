@@ -234,6 +234,23 @@ function cancelStage(id) {
 // so the screen never shows a corpse as alive (same contract as the sweeps).
 function markInterrupted(reason) {
   for (const row of listSets()) {
+    // A FILL THAT DIED IS NOT A SET THAT DIED. The kept-scramble fill writes
+    // the new records BESIDE the old ones and only swaps at the very end, so a
+    // service restart in the middle leaves the set exactly as it was: done, and
+    // still keeping whatever it kept before. Marking it 'interrupted' would say
+    // its records are suspect when they are untouched -- and, worse, the fill
+    // refuses to start on a set that is not 'done', so the set would be stuck
+    // in a state only a hand-edit could leave.
+    if (row.status === 'filling') {
+      const doc = getSet(row.id);
+      if (!doc) continue;
+      doc.status = 'done';
+      doc.progress = `filling in the kept null money stopped when the service restarted${reason ? ` — ${reason}` : ''}. `
+        + 'The records were not touched: they are written beside and only swapped at the end. Press it again to restart.';
+      saveSet(doc);
+      try { rowstore.remove(`${row.id}__keptfill`); } catch (_) { /* nothing half-written to clear */ }
+      continue;
+    }
     if (row.status !== 'running') continue;
     const doc = getSet(row.id);
     if (!doc) continue;
@@ -3555,6 +3572,19 @@ async function startKeptScrambleFill(id, wantKeep) {
       // board's 5.2 million rows of them never are.
       const priced = new Map();
       const unitsDone = new Set();
+      // EVERY WORKER ON THE SAME UNIT, and this was wrong the first time. It
+      // handed the pool ONE unit and awaited it, so with four workers three sat
+      // idle: the box is allowed 390% and the process sat at exactly 100%, and
+      // a job measured at four hours was on course for seventeen.
+      //
+      // The obvious repair -- price several units at once -- is the one this
+      // cannot take, because holding one unit's new figures is the whole reason
+      // the walk goes unit by unit and four units at once is most of the board
+      // in memory. So the SETTINGS are split instead. Every worker prices a
+      // slice of the SAME unit, memory stays at one unit's worth, and the only
+      // thing done more than once is the small per-unit setup each worker needs
+      // before it can price anything. That is how the totalling already shards.
+      const lanes = Math.max(1, (pool.parallel && pool.workers ? pool.workers.length : 1));
       const priceUnit = async (u) => {
         const rec = records[u];
         if (!rec) throw new Error(`a row names unit ${u} and this set has ${records.length}`);
@@ -3562,15 +3592,33 @@ async function startKeptScrambleFill(id, wantKeep) {
           throw new Error(`unit ${rec.trade} appears again after the walk moved past it — `
             + 'the store is not in unit order and this pass will not guess at it');
         }
-        let settled = null;
-        await pool.forEach('s3Unit', [{ ...s3Payload({ doc, parent, rec, settings, fee, nullN }), keepN: keep, noiseOnly: true }],
-          (one) => { settled = one; });
-        if (!settled || !settled.ok) throw new Error(`unit ${rec.trade} failed: ${settled ? settled.error : 'it returned nothing'}`);
+        // The unit's votes are read from the parent ONCE and the same reading
+        // goes to every lane. Building a payload per lane would read them once
+        // per lane, which is the waste this fix exists to remove.
+        const base = { ...s3Payload({ doc, parent, rec, settings, fee, nullN }), keepN: keep, noiseOnly: true };
+        const per = Math.ceil(settings.length / lanes);
+        const shards = [];
+        for (let at = 0; at < settings.length; at += per) shards.push({ ...base, settings: settings.slice(at, at + per) });
         // KEYED BY LABEL, NEVER BY POSITION. si comes back numbered from zero
-        // per block, so two blocks both hold a setting 0 and they are not the
-        // same setting.
+        // within each shard, so every shard holds a setting 0 and they are not
+        // the same setting.
         const byLabel = new Map();
-        for (const r of (settled.value.rows || [])) byLabel.set(r.label, r);
+        let lanesDone = 0;
+        await pool.forEach('s3Unit', shards, (settled, i) => {
+          if (!settled || !settled.ok) {
+            throw new Error(`unit ${rec.trade}, part ${i + 1} of ${shards.length} failed: `
+              + `${settled ? settled.error : 'it returned nothing'}`);
+          }
+          for (const r of (settled.value.rows || [])) byLabel.set(r.label, r);
+          lanesDone++;
+          doc.progress = `filling in ${keep} kept scrambles — unit ${unitsDone.size + 1} of ${records.length}, `
+            + `${lanesDone} of ${shards.length} parts`;
+          saveSet(doc);
+        });
+        if (byLabel.size !== settings.length) {
+          throw new Error(`unit ${rec.trade} came back with ${byLabel.size} settings and the block declares `
+            + `${settings.length} — the parts do not add up to the whole, so nothing is written`);
+        }
         return byLabel;
       };
       for (let bi = 0; bi < blocks.length; bi++) {

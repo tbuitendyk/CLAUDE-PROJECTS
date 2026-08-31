@@ -204,6 +204,55 @@ module.exports = {
       'if the store is ever not in unit order the fill must say so, not silently re-price or mis-join');
   },
 
+  // THE FILL USED FOUR WORKERS AND ONE CORE. It handed the pool ONE unit and
+  // awaited it, so three of four sat idle: the box allows 390% and the process
+  // sat at exactly 100%, turning a four-hour job into a seventeen-hour one.
+  //
+  // Pricing several units at once is the repair it cannot take -- holding one
+  // unit's figures is the whole reason the walk goes unit by unit. So the
+  // SETTINGS are split and every worker takes a slice of the same unit.
+  theFillPutsEveryWorkerOnTheSameUnit() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const fill = src.slice(src.indexOf('async function startKeptScrambleFill'));
+    const body = fill.slice(0, fill.indexOf('\nasync function ', 1) + 1 || undefined);
+    assert.ok(/pool\.forEach\('s3Unit', shards,/.test(body),
+      'the fill must hand the pool every slice at once, not one unit at a time');
+    assert.ok(body.includes('settings.slice(at, at + per)'),
+      'the slices must be slices of the SETTINGS — splitting units instead is what the memory bound forbids');
+    assert.ok(/const lanes = Math\.max\(1, \(pool\.parallel/.test(body),
+      'how many slices must come from how many workers there actually are');
+    assert.ok(!/pool\.forEach\('s3Unit', \[\{/.test(body),
+      'a single-payload dispatch is still in the fill, so three workers would sit idle again');
+    // the unit's votes are read once and shared, not read once per slice
+    const baseAt = body.indexOf('const base = {');
+    assert.ok(baseAt > 0 && baseAt < body.indexOf('for (let at = 0'),
+      'the payload must be built once before the slices, or the parent is read once per worker');
+  },
+
+  // Four slices that come back with fewer settings than the block declares
+  // would leave rows on disk with nothing to attach, and the failure would
+  // surface as a confusing per-row error deep in the rewrite.
+  theFillRefusesWhenTheSlicesDoNotAddUpToTheWhole() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    assert.ok(src.includes('the parts do not add up to the whole, so nothing is written'),
+      'the fill must check the slices reassemble into the whole block before it writes anything');
+  },
+
+  // A fill killed by a restart has touched NOTHING -- it writes beside and
+  // swaps at the end. Marking the set 'interrupted' would call untouched
+  // records suspect, and the fill refuses to start on a set that is not done,
+  // so the set would be stuck where only a hand-edit could reach it.
+  aFillStrandedByARestartLeavesTheSetDoneAndRestartable() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const mi = src.slice(src.indexOf('function markInterrupted'));
+    const body = mi.slice(0, mi.indexOf('\n}\n') + 1);
+    assert.ok(body.includes("row.status === 'filling'"), 'a stranded fill must be recognised at boot');
+    assert.ok(/doc\.status = 'done';/.test(body), 'its set must come back as done, because its records were never touched');
+    assert.ok(body.includes('__keptfill'), 'the half-written store beside it must be cleared');
+    assert.ok(body.indexOf("row.status === 'filling'") < body.indexOf("row.status !== 'running'"),
+      'the filling case must be handled BEFORE the running case, or it falls through to interrupted');
+  },
+
   // The tally's shape changed, so every totals file on disk must be rebuilt
   // rather than read (RULE NINE: derived files are deleted and rebuilt).
   theTallyVersionMovedWithItsShape() {
