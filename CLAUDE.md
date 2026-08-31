@@ -91,10 +91,24 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   `*.orderflowvolumeprofile.com`, strict TLS verifies; no action was
   needed. Re-pointing `uniontradingacademy.com` (now conveniently already
   on the hosting contract) awaits owner sign-off on v1 content.
-- **ICANN verification:** no in-panel confirm exists — the link arrives by
-  email to the registrant address **`uniontrading777@gmail.com`** (Reg-C:
-  UnionTrading Academy / Francisco Javier Espinosa Magana, León MX). The
-  client must open that mailbox and click the IONOS verification link.
+- **ICANN verification: NOT OUTSTANDING — re-verified 2026-08-31.** The
+  2026-08-05 panel flag ("Se requiere confirmación de los datos de
+  contacto") is gone and no action is pending. Evidence, both sources
+  checked the same day: (1) RDAP at the registry shows status
+  `client transfer prohibited` ONLY — no `clientHold`/`serverHold`/
+  `pendingDelete` — with contact data unchanged since registration
+  (`last changed 2026-08-02T16:09:04Z`); (2) the IONOS panel's domain page
+  and domains-list row carry no confirmation notice or warning badge
+  anywhere. Decisive timing argument: ICANN's 2013 RAA obliges the
+  registrar to SUSPEND an unverified registrant within 15 days of
+  registration — that deadline fell ~2026-08-17, yet 14 days later the
+  domain resolves and serves HTTP 200 with a clean registry status. Most
+  likely it never applied: ICANN verification attaches to a unique
+  registrant CONTACT, not to each domain, and this contact was already in
+  use on the client's earlier IONOS domains/contracts. Registrant address
+  on file remains `uniontrading777@gmail.com` (Reg-C: UnionTrading Academy
+  / Francisco Javier Espinosa Magana, León MX). Do NOT re-raise this as a
+  to-do without first re-checking RDAP status + the panel row.
 - **Deploy trigger VERIFIED WORKING (2026-08-06 eve):** a commit changing
   the root `DEPLOY-REQUEST` marker on `uniontradingacademy` fires "UTA
   deploy site" — **from any committer, Claude sessions included** (proven:
@@ -130,7 +144,8 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   `DEPLOY-REQUEST` on this branch → ~2 min → live, with an automatic
   pre-deploy snapshot of the live webspace to a `backup/…` branch every
   time. (Sign-off arrived and the re-point happened 2026-08-07 — see the
-  LAUNCH bullet; the ICANN mail click is still pending on the client.)
+  LAUNCH bullet. The ICANN click was later found NOT to be pending —
+  see the ICANN bullet.)
 - **LAUNCHED (2026-08-07T15:00Z) — `https://uniontradingacademy.com/` is
   the canonical URL, HTTPS live, all redirects verified.** Owner chose the
   main domain to serve the full site at root with
@@ -186,11 +201,10 @@ Union Trading Academy website (`uniontradingacademy.com/`).
   (blocked on the offer/price decision; account is free to open, ~3.5–4%+IVA
   per charge, and only the public `mpago.la/…` link is ever needed — never
   credentials).
-- **⚠ Domain flag (2026-08-05):** the panel shows `uniontradingacademy.com`
-  needs registrant contact-data confirmation ("Se requiere confirmación de
-  los datos de contacto") — an ICANN verification email must be actioned or
-  the domain can eventually be suspended. Owner/client to click the link
-  (resend available in Dominios & SSL).
+- **⚠ Domain flag (2026-08-05) — CLEARED, see the ICANN bullet above.**
+  The contact-confirmation notice no longer appears in the panel and the
+  registry status is clean (re-verified 2026-08-31). No client action
+  required; this is closed.
 - The included free email account for the domain is still not configured.
 - **Design baseline captured:** full builder capture (exact DOM, all assets,
   full-page shots of all 5 pages) in
