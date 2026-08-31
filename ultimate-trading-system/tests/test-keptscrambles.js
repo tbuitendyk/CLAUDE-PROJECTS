@@ -253,6 +253,28 @@ module.exports = {
       'the filling case must be handled BEFORE the running case, or it falls through to interrupted');
   },
 
+  // The fill reports on the Sweep section's status line, not on the line beside
+  // the button, so a press that leaves the owner on Boards leaves them watching
+  // a line that will never move again (owner order, 2026-08-31).
+  pressingTheFillGoesToWhereItReports() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const at = src.indexOf('function wireKeptFill');
+    const body = src.slice(at, src.indexOf('\nfunction ', at + 10));
+    assert.ok(at > 0 && body.includes("tab = 'sweep'"), 'pressing the fill must go to the Sweep section');
+    assert.ok(body.includes("localStorage.setItem('cx-tab', tab)"),
+      'the tab it lands on must be the one it comes back to, like every other jump on this page');
+    // THE TOP, and reached the page's own way. Every redraw restores the tab's
+    // remembered place two frames later, so a scrollTo here would be undone
+    // right after it happened.
+    assert.ok(body.includes("scrollKeyFor('sweep'), '0'"),
+      'it must put Sweep at the top through the page\'s scroll memory, or the restore undoes it');
+    assert.ok(body.includes('draw().then(() => restoreScroll(tab))'),
+      'it must restore through the shared two-frame path, not scroll by hand');
+    assert.ok(body.indexOf('rememberScroll(tab)') < body.indexOf("tab = 'sweep'"),
+      'the place on the section being LEFT must be remembered first, exactly as the tab strip does it');
+    assert.ok(!/scrollTo\(/.test(body), 'a hand-rolled scroll here races the restore that follows it');
+  },
+
   // The tally's shape changed, so every totals file on disk must be rebuilt
   // rather than read (RULE NINE: derived files are deleted and rebuilt).
   theTallyVersionMovedWithItsShape() {

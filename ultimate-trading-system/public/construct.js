@@ -1269,7 +1269,23 @@ function wireKeptFill(id) {
     // the number and ask again rather than being left with a dead button
     if (!out) { go.disabled = false; return; }
     $('#bKeptMsg').textContent = `filling in ${out.keep} across ${out.units} unit(s) — `
-      + `${Number(out.pricings).toLocaleString()} pricings. Progress shows above; the totals rebuild when it lands.`;
+      + `${Number(out.pricings).toLocaleString()} pricings.`;
+    // STRAIGHT TO WHERE THE PROGRESS ACTUALLY IS (owner order, 2026-08-31).
+    // The fill runs for hours and reports on the Sweep section's status line,
+    // not on this one, so a press that leaves the owner here leaves them
+    // watching a line that will never move again.
+    //
+    // The top is reached through the page's OWN scroll memory rather than a
+    // scrollTo of my own. Every redraw restores the tab's remembered place two
+    // frames later, so a hand-rolled scroll would be undone right after it
+    // happened. Setting Sweep's memory to the top and then restoring it uses
+    // that mechanism instead of racing it -- and it leaves the memory honest,
+    // because the page really is at the top afterwards.
+    rememberScroll(tab);                     // keep the owner's place on the one being left
+    try { localStorage.setItem(scrollKeyFor('sweep'), '0'); } catch (_) { /* private window */ }
+    tab = 'sweep';
+    localStorage.setItem('cx-tab', tab);
+    draw().then(() => restoreScroll(tab));
   };
 }
 function wireNotesSave(saveUrl, onSaved, suffix) {

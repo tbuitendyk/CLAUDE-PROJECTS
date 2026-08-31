@@ -403,8 +403,10 @@ window.HELP = {
           + 'numbers from another. Nothing is replaced until every row is written: the records are built BESIDE the '
           + 'old ones, checked for the same row count and the same block boundaries, and only then swapped. The '
           + 'tables are worked out again afterwards.\n\n'
-          + 'It runs for hours on a large set. Progress shows above, and the box refuses while anything else heavy '
-          + 'is running, because it reads the same units they do.',
+          + 'It runs for hours on a large set, so pressing it takes you straight to the Sweep section, whose '
+          + 'status line at the top is where this reports — not the line beside the button, which stops moving '
+          + 'the moment the fill starts. The box refuses while anything else heavy is running, because it reads '
+          + 'the same units they do.',
       },
       bCheckSet: {
         what: 'Reads every record in this set and says whether it is sound. It adds nothing and changes nothing.',
