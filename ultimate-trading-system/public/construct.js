@@ -3480,7 +3480,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${r.rows}</td>
         <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ records' : 'records'}</button></td></tr>`;
   }).join('') || '<tr><td colspan="11" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
-    ${coins && coins.removed ? `<p class="note">${coins.removed.toLocaleString()} row(s) held back by the floors.</p>` : ''}
+    ${bShown({ total: (coins && coins.total) || 0, of: ((coins && coins.total) || 0) + ((coins && coins.removed) || 0) })}
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`)) return;
   // THE ORDERING BOX AND ITS Apply ARE GONE (owner order, 2026-08-28: "remove
