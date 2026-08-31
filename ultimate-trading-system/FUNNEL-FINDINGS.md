@@ -50,3 +50,31 @@ without a say-so:** ask whether a dial moves `beat its own null set` the same wa
 it moves money. A dial that moves the money and not the beat share is moving
 something other than skill. That is a new reading, not a small choice inside an
 approved step, so it stays here.
+
+---
+
+## 3. NOT DONE: steps 8 and 9 of the build order
+
+The loop ended here with two steps of `FUNNEL-DESIGN.md` section 13 unbuilt.
+Neither is blocked — I ran out of room to do them well, and half-doing them
+would be worse than leaving them.
+
+**Step 8 — re-point Verify, History, Tune and Greenlight at Stage 4 sets.**
+All four still gate on `doc.selection`, which is written only by
+`POST /api/bracketlab/:id/select` and no screen calls it. So all four still say
+"select a row on Boards first" for a control that does not exist. The Stage 4
+set they should read instead now exists, is written, and replays; nothing reads
+it yet. Until this is done the Funnel produces a record that nothing downstream
+consumes.
+
+**Step 9 — board-wide noise capture on Sweep.** Optional by the owner's second
+ruling, and the one first-digit item in the design. Without it there is no noise
+twin on any set, so every Funnel step reads against a split-half — which is what
+the tab says, on every step.
+
+## 4. Not verified by me: the tab on screen
+
+The owner drives UI evaluation. 3.34.1 is deployed, healthz is green, the suite
+is green and the word list is generated from what the box serves. What I have
+NOT done is open the Funnel tab and use it. The first walk through it is the
+owner's, and anything it does wrong is still to be found.
