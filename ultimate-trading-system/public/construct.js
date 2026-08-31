@@ -3455,7 +3455,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting this row prices — its decision, band and 24/5 variants are the records underneath.">setting${bCoinSortBtn(view, 'setting', '↑')}</th>
-        <th ${bth} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${bCoinSortBtn(view, 'coin', '↑')}</th>
+        <th ${bth} title="the traded coin and the chunk shape it was priced at — both are in this one cell, and the row is one setting on one coin at one chunk shape. Anything listed under alongside is context only — read against, never bought or sold.">coin + chunk shape${bCoinSortBtn(view, 'coin', '↑')}</th>
         <th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>
         <th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>
         <th ${bth} title="average test-window money per record — flattering by construction, because the carry was ordered on that window.">avg test $${bCoinSortBtn(view, 'test', '↓')}</th>
