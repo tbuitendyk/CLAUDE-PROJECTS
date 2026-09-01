@@ -90,7 +90,11 @@ module.exports = {
     // Two drains, one per table, plus the fill which writes the two stored
     // columns onto the rows it rewrites. noisePairs is not stored on a row --
     // the tally counts it from the array it just read -- so it stays at two.
-    for (const [field, want] of [['noiseTest:', 3], ['noiseHold:', 3], ['noisePairs:', 2]]) {
+    // Two drains, one per table; the fill writing figures onto a priced row;
+    // and the fill copying a row of a unit it is not pricing through with none.
+    // noisePairs is not stored on a row -- the tally counts it from the array
+    // it just read -- so it stays at two.
+    for (const [field, want] of [['noiseTest:', 4], ['noiseHold:', 4], ['noisePairs:', 2]]) {
       const n = src.split(field).length - 1;
       assert.strictEqual(n, want, `${field} is written in ${n} place(s), expected ${want} — `
         + 'either a table was forgotten or a second writer appeared that nothing keeps in step');
@@ -359,15 +363,22 @@ module.exports = {
     const body = src.slice(at, src.indexOf('\nmodule.exports', at));
     assert.ok(/startKeptScrambleFill\(id, wantKeep, opts = \{\}\)/.test(src),
       'the fill must take a proving mode, or the only way to try it is to run it for hours');
-    assert.ok(body.includes('const w = dryRun ? null : rowstore.writer(SCRATCH'),
-      'a proving run must open no writer at all — nothing to leave behind and nothing to swap by mistake');
-    assert.ok(body.includes('if (!dryRun) w.push('), 'a proving run must write no rows');
-    assert.ok(body.includes('if (onlyUnit != null && u !== onlyUnit) { skipped++; continue; }'),
-      'a proving run must walk the WHOLE store while pricing one unit — the failure was in the walk, not the pricing');
+    // IT MUST WRITE. The first version opened no writer, so "proving run
+    // passed" meant nothing about writing -- and writing is where the block
+    // shape is decided. It passed; the real run then died on the next step.
+    assert.ok(body.includes("rowstore.writer(SCRATCH, 'records', { manualBlocks: true })"),
+      'the proving run must write, through the same writer the real one uses');
+    assert.ok(!/dryRun \? null : rowstore\.writer/.test(body),
+      'a proving run that opens no writer cannot prove anything about writing');
+    assert.ok(body.includes('written unchanged, NOT skipped'),
+      'rows of other units must be copied through, or the block shape has nothing to be checked against');
+    // and every check must run BEFORE it reports
     const dry = body.indexOf('if (dryRun) {');
-    assert.ok(dry > 0 && dry < body.indexOf('w.close()'),
-      'the proving run must return before the swap, not after it');
-    assert.ok(body.includes('PROVING RUN on unit'), 'it must say what it proved, in numbers');
+    assert.ok(dry > body.indexOf('sameShape'),
+      'the proving run must report AFTER the block-shape check, not before it — that is the check that caught the real failure');
+    assert.ok(dry < body.indexOf('fs.renameSync'), 'and it must stop before the rename');
+    assert.ok(body.includes('It would have swapped. Nothing was.'),
+      'it must say it got as far as the swap, in those terms');
   },
 
   // AN ASYNC FUNCTION THAT THROWS DOES NOT THROW. It returns a rejected
@@ -429,6 +440,56 @@ module.exports = {
     const fin = body.indexOf('} finally {');
     assert.ok(fin > 0 && body.indexOf('stopBeat();') > fin,
       'the heartbeat must be stopped in the finally — a failed run must not leave a timer writing the set for ever');
+  },
+
+  // 5,312 blocks written against 3,658, caught by the fill's own check with
+  // nothing swapped (2026-09-01). Flushing after each source block is not
+  // enough: push() ALSO flushes once a block's worth of bytes has piled up, and
+  // these rows are about a fifth bigger than the ones they replace, so source
+  // blocks split in two. Block indexes are recorded elsewhere -- per unit on
+  // the set, per coin in the totals -- so a row that moves blocks makes every
+  // one of them point somewhere else.
+  theRewriteDecidesItsOwnBlockBoundaries() {
+    const rs = fs.readFileSync(path.join(__dirname, '..', 'lib', 'rowstore.js'), 'utf8');
+    assert.ok(/function writer\(runId, name, \{ offThread = false, manualBlocks = false \} = \{\}\)/.test(rs),
+      'the writer must offer boundaries the caller controls');
+    assert.ok(/if \(!manualBlocks && \(squashed \? pending >= BLOCK_BYTES/.test(rs),
+      'with it set, size must never close a block — otherwise a grown row splits one and the shapes stop matching');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    assert.ok(src.includes("rowstore.writer(SCRATCH, 'records', { manualBlocks: true })"),
+      'the fill must use it, or it writes a different shape from the one it is replacing');
+  },
+
+  // PROVED, not asserted: the same rows, in the same blocks, when the rows grow.
+  theSameRowsComeBackInTheSameBlocksWhenTheyGrow() {
+    const rowstore = require('../lib/rowstore');
+    const A = `shapecheck-src-${process.pid}`;
+    const B = `shapecheck-out-${process.pid}`;
+    try {
+      const wa = rowstore.writer(A, 'records', { manualBlocks: true });
+      let seq = 0;
+      for (const n of [700, 900, 400, 1200]) {
+        for (let i = 0; i < n; i++) wa.push({ si: seq++, label: `${'x'.repeat(60)}${seq}`, pnl: seq * 1.5 });
+        wa.flush();
+      }
+      wa.close();
+      const src = (rowstore.blocksOf(A, 'records') || []).map((b) => b.rows);
+      const wb = rowstore.writer(B, 'records', { manualBlocks: true });
+      for (let bi = 0; bi < src.length; bi++) {
+        for (const x of rowstore.readBlocks(A, 'records', [bi])) {
+          wb.push({ ...x.row, noiseTest: new Array(10).fill(-12345.67), noiseHold: new Array(10).fill(9876.54) });
+        }
+        wb.flush();
+      }
+      wb.close();
+      const out = (rowstore.blocksOf(B, 'records') || []).map((b) => b.rows);
+      assert.deepStrictEqual(out, src,
+        'rows that grew must still land in the blocks they came from — every recorded block index depends on it');
+      assert.deepStrictEqual(src, [700, 900, 400, 1200], 'and the caller\'s own boundaries must be the ones kept');
+    } finally {
+      try { rowstore.remove(A); } catch (_) { /* fixture */ }
+      try { rowstore.remove(B); } catch (_) { /* fixture */ }
+    }
   },
 
   // The tally's shape changed, so every totals file on disk must be rebuilt

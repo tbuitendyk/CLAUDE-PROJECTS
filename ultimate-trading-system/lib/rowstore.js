@@ -126,7 +126,21 @@ function exists(runId, name) {
 // rows are QUEUED, and close() must be awaited. Every caller that pushes rows
 // and reads them straight back — which is most of them, and all of the tests —
 // keeps today's synchronous behaviour untouched.
-function writer(runId, name, { offThread = false } = {}) {
+// manualBlocks: THE CALLER DECIDES EVERY BOUNDARY, and nothing else does.
+//
+// A migration that rewrites a store has to land the same rows in the same
+// blocks, because block indexes are recorded elsewhere -- per unit on the set,
+// per coin in the totals -- and a row that moves blocks makes every one of them
+// point somewhere else. Flushing after each source block is not enough on its
+// own: push() ALSO flushes by itself once a block's worth of bytes has piled
+// up, so rows that grew in the rewrite split a source block into two and the
+// shapes stop matching. That is exactly what stopped the kept-scramble fill on
+// 2026-09-01 -- 5,312 blocks written against 3,658, caught by its own check
+// with nothing swapped.
+//
+// With this set, size never closes a block. Blocks come out as large as the
+// rows the caller put in them, which is the point.
+function writer(runId, name, { offThread = false, manualBlocks = false } = {}) {
   const file = storeFile(runId, name);
   fs.mkdirSync(path.dirname(file), { recursive: true });
   let fd = null;
@@ -206,7 +220,7 @@ function writer(runId, name, { offThread = false } = {}) {
       // squashed file also wants a block's worth in hand before it squashes,
       // since compression works by finding repetition and cannot find any in
       // one line at a time.
-      if (squashed ? pending >= BLOCK_BYTES : buf.length >= 512) api.flush();
+      if (!manualBlocks && (squashed ? pending >= BLOCK_BYTES : buf.length >= 512)) api.flush();
       return count;
     },
     flush() {

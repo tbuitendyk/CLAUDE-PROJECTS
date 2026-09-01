@@ -3586,7 +3586,15 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       try { rowstore.remove(SCRATCH); } catch (_) { /* nothing there yet */ }
       // A PROVING RUN OPENS NO WRITER AT ALL. Not "opens one and does not use
       // it" -- nothing to leave behind, nothing to swap by mistake.
-      const w = dryRun ? null : rowstore.writer(SCRATCH, 'records');
+      // manualBlocks, because THIS pass decides where every block ends. Without
+      // it the writer also closes a block whenever a block's worth of bytes has
+      // piled up -- and these rows are about a fifth bigger than the ones they
+      // replace, so source blocks split and the shapes stop matching.
+      // A PROVING RUN WRITES TOO, and the last one did not -- which is why it
+      // passed and the real run then failed on the very next step. "Writes
+      // nothing" also means "does not test writing", and writing is where the
+      // block shape is decided. It rehearses everything except the rename.
+      const w = rowstore.writer(SCRATCH, 'records', { manualBlocks: true });
       // WHICH ROWS BELONG TO WHICH UNIT. Stage 3 records no per-unit block
       // range -- an early draft of this assumed one and would have read the
       // PARENT's ranges -- so it is taken from the rows themselves, the way
@@ -3753,7 +3761,14 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
           // of this store, so releasing one when the next begins would re-price
           // every unit -- and the version that refused instead is what cost the
           // owner an evening.
-          if (onlyUnit != null && u !== onlyUnit) { skipped++; continue; }
+          if (onlyUnit != null && u !== onlyUnit) {
+            // written unchanged, NOT skipped: the block shape can only be
+            // checked against a store that holds every row the original does
+            w.push({ ...x.row, noiseTest: null, noiseHold: null });
+            rowsDone++;
+            skipped++;
+            continue;
+          }
           if (!priced.has(u)) priced.set(u, await priceUnit(u));   // which counts itself and reports
           const cell = priced.get(u);
           const at = labelIdx.get(x.row.label);
@@ -3785,7 +3800,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
             }
           }
           matched++;
-          if (!dryRun) w.push({ ...x.row, noiseTest: nT, noiseHold: anyH ? nH : null });
+          w.push({ ...x.row, noiseTest: nT, noiseHold: anyH ? nH : null });
           rowsDone++;
         }
         // The rewrite is the part that used to look stuck: no unit starts, so
@@ -3793,27 +3808,17 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
         say();
         // one flush per block, so the new block holds exactly the rows the old
         // one did and every block index already recorded still points at them
-        if (w) w.flush();
+        w.flush();
       }
       if (disagreed.length) {
         throw new Error(`the fill disagrees with what stage 3 stored on ${disagreed.length} setting(s) `
           + `(first: ${disagreed[0].label} on ${disagreed[0].unit}) — nothing is written`);
       }
-      if (dryRun) {
-        // WHAT IT PROVED, in the words of what could have gone wrong. Every row
-        // of the named unit -- in BOTH stretches of the store, which is where
-        // the last attempt died -- found its figures, and the money the fill
-        // re-prices still matches what stage 3 stored.
-        const held = priced.size;
-        doc.status = 'done';
-        doc.progress = `PROVING RUN on unit ${onlyUnit}: ${matched.toLocaleString()} of its rows found their figures `
-          + `across the whole store, ${skipped.toLocaleString()} rows of other units passed over, `
-          + `${disagreed.length} disagreed with the stored money. Nothing was written.`;
-        doc.perf.elapsedMs = Date.now() - t0;
-        saveSet(doc);
-        return;
-      }
       w.close();
+      // EVERY CHECK RUNS IN BOTH MODES. The proving run used to return above
+      // this and report success -- so it passed, and the real run then died on
+      // the very next step, on the block shape. A rehearsal that stops before
+      // the hard part is not a rehearsal.
       const before = rowstore.count(id, 'records');
       const after = rowstore.count(SCRATCH, 'records');
       if (before !== after) {
@@ -3826,6 +3831,22 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       if (!sameShape) {
         throw new Error(`the filled store has ${newBlocks.length} blocks against ${oldBlocks.length}, or they hold `
           + 'different rows — every block index already recorded would point somewhere else, so nothing is swapped');
+      }
+      if (dryRun) {
+        // IT GOT THIS FAR, which means it would have swapped. Said in the terms
+        // of what could have gone wrong, and then the rehearsal's store is
+        // thrown away -- the only step it does not take is the rename.
+        doc.status = 'done';
+        doc.progress = `PROVING RUN on unit ${onlyUnit}: ${matched.toLocaleString()} of its rows found their figures `
+          + `across the whole store and ${skipped.toLocaleString()} rows of other units were copied through; `
+          + `${disagreed.length} disagreed with the stored money; the rewritten store holds ${after.toLocaleString()} `
+          + `rows in ${newBlocks.length} blocks against ${before.toLocaleString()} in ${oldBlocks.length}, `
+          + 'and every block holds the rows it held before. It would have swapped. Nothing was.';
+        doc.perf.elapsedMs = Date.now() - t0;
+        saveSet(doc);
+        try { rowstore.remove(SCRATCH); } catch (_) { /* best effort */ }
+        try { fs.rmSync(rowstore.storeDir(SCRATCH), { recursive: true, force: true }); } catch (_) { /* best effort */ }
+        return;
       }
       // THE SWAP, last and only once everything above held.
       for (const f of ['records.jsonl.gz', 'records.jsonl.gz.meta.json']) {
