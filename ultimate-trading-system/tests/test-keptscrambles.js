@@ -393,6 +393,23 @@ module.exports = {
       'a refusal must throw where the endpoint can catch it and answer with it');
   },
 
+  // "it sits for 30 seconds looking like it didn't get the button click"
+  // (owner, 2026-09-01). The answer does not come back until the pass has
+  // enumerated every setting the set declares -- 524,832 on the owner's board
+  // -- and a page that looks ignored gets pressed again.
+  theFillsPressSaysItHeardYouBeforeItAnswers() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const at = src.indexOf('function wireKeptFill');
+    const body = src.slice(at, src.indexOf('\nfunction ', at + 10));
+    assert.ok(body.indexOf('waitStart()') > 0 && body.indexOf('waitStart()') < body.indexOf('tryPost('),
+      'the wait box must go up BEFORE the ask, or it appears after the wait it was for');
+    assert.ok(/\} finally \{\s*\n\s*waitEnd\(\);/.test(body),
+      'it must come down in a finally — a refusal has to uncover the page too');
+    // the page's own box, counted, not a second one invented here
+    assert.ok(!/#waitbox|hidden = /.test(body),
+      'it must use the page\'s shared wait box rather than reaching for the element itself');
+  },
+
   // The tally's shape changed, so every totals file on disk must be rebuilt
   // rather than read (RULE NINE: derived files are deleted and rebuilt).
   theTallyVersionMovedWithItsShape() {

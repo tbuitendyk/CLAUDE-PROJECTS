@@ -1264,7 +1264,27 @@ function wireKeptFill(id) {
   go.onclick = async () => {
     const keep = Number(($('#bKeptN') || {}).value) || 0;
     go.disabled = true;
-    const out = await tryPost(`api/stageset/${encodeURIComponent(id)}/kept-fill`, { keep });
+    // THE WAIT BOX, RAISED BEFORE THE ASK (owner, 2026-09-01: "it sits for 30
+    // seconds looking like it didn't get the button click").
+    //
+    // This press is slow for a real reason: the answer does not come back until
+    // the pass has worked out every setting the set declares, and on the
+    // owner's board that is 524,832 of them. Half a minute of a page that looks
+    // exactly like a page that ignored you is how a second press happens, and a
+    // second press is a second refusal.
+    //
+    // waitStart/waitEnd, not a box of my own: it is the same one every slow
+    // redraw on this page raises, it counts rather than flags so two slow
+    // things at once cannot uncover each other, and it shows itself late so a
+    // fast answer never flashes it. `finally`, because a refusal must uncover
+    // the page too.
+    waitStart();
+    let out;
+    try {
+      out = await tryPost(`api/stageset/${encodeURIComponent(id)}/kept-fill`, { keep });
+    } finally {
+      waitEnd();
+    }
     // tryPost already says why on a refusal; re-enable so the owner can change
     // the number and ask again rather than being left with a dead button
     if (!out) { go.disabled = false; return; }
