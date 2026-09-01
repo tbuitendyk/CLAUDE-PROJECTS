@@ -3249,12 +3249,22 @@ function funnelRead(id, state = {}) {
 
   const F = require('./funnel');
   const S4 = require('./funnelset');
-  const rule = S4.normaliseRule(state.rule);
   const all = t.ranked || [];
+  const step = Math.max(1, Math.min(7, Math.floor(Number(state.step) || 1)));
+  // THE CLOSING IS FOLDED IN AT STEP 7 AND NOWHERE ELSE. It is chosen on step 7
+  // and it is what step 7 is for, so that is where the count and the sentence
+  // have to include it -- what the screen shows before the button is pressed is
+  // then the same arithmetic the written set gets. Earlier steps leave it out on
+  // purpose: 'tighten the ranges toward the middle' re-derives itself against
+  // every setting in the set each time it is asked, and paying that on step 1
+  // buys nothing, because the choice cannot be seen or changed there.
+  const closed = step === 7
+    ? S4.ruleWithClosing(all, state.rule, state.closing, state.target)
+    : { rule: S4.normaliseRule(state.rule), key: 'rule', detail: null };
+  const rule = closed.rule;
   const rows = S4.applyRule(all, rule);
   const seed = state.seed || id;
   const floor = state.floor == null ? 0 : Math.max(0, Math.floor(state.floor));
-  const step = Math.max(1, Math.min(7, Math.floor(Number(state.step) || 1)));
 
   // What this set can be read ACROSS, worked out from what it actually holds --
   // this is what makes a single-coin probe fall through to a weaker check by
@@ -3289,6 +3299,9 @@ function funnelRead(id, state = {}) {
     step,
     rule,
     ruleSentence: S4.ruleSentence(rule),
+    // what the closing did to the rule, in words, so step 7 can state it back
+    // rather than the owner pressing the button to find out
+    closing: { key: closed.key, detail: closed.detail },
     target: state.target == null ? null : Math.max(0, Math.floor(state.target)),
     survivors: rows.length,
     of: all.length,
@@ -3305,7 +3318,14 @@ function funnelRead(id, state = {}) {
   // all six of the design's noise comparisons: every one of them is "run this
   // reading on a table", and a kept scramble IS a table.
   const keptN = rows.length && Array.isArray(rows[0].noiseTest) ? rows[0].noiseTest.length : 0;
-  const luckBoard = (d) => rows.map((r) => ({ ...r, avgTest: (r.noiseTest || [])[d] ?? null }));
+  // FROM EVERY SETTING, THEN THE RULE. The comparison this screen rests on is
+  // the rule's choice against the same rule's choice, so the money is swapped
+  // first and the rule applied second -- which lets a rule that takes the top N
+  // give the scrambled copy its own top N.
+  //
+  // It costs a pass over every setting per scramble, and that is what the
+  // comparison costs.
+  const luckBoard = (d) => S4.nullCopy(all, rule, d);
   out.set.keptScrambles = keptN;
 
   if (step === 1) {
@@ -3414,9 +3434,13 @@ function cutFunnelSet(parentId, state = {}) {
   // more looking, and the reserve grade can only count what was written down.
   for (const st of (state.steps || [])) S4.recordStep(doc, st);
   for (const b of (state.backSteps || [])) S4.recordBackStep(doc, b);
-  doc.rule = S4.normaliseRule(state.rule);
+  // THE CLOSING IS PART OF THE RULE, not a note beside it. A closing recorded
+  // on the set but dropped before the arithmetic writes a set whose record
+  // claims a narrowing its rule does not carry.
+  const closed = S4.ruleWithClosing(t.ranked || [], state.rule, state.closing, doc.target);
+  doc.rule = closed.rule;
   const survivors = S4.applyRule(t.ranked || [], doc.rule);
-  S4.finishFunnelSet(doc, survivors, state.closing || { key: 'rule' });
+  S4.finishFunnelSet(doc, survivors, { key: closed.key, detail: closed.detail });
   // THE REPLAY IS CHECKED BEFORE THE SET IS SAVED, not asserted in a test and
   // hoped for in production. A set whose rule does not reproduce its own
   // survivors is a story about a decision rather than the decision.

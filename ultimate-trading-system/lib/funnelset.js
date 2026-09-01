@@ -143,7 +143,12 @@ function ruleSentence(rule) {
     if (spec && spec.min != null) parts.push(`${field} at least ${spec.min}`);
     if (spec && spec.max != null) parts.push(`${field} at most ${spec.max}`);
   }
-  return parts.length ? parts.join('; ') : 'everything (no choices made yet)';
+  const base = parts.length ? parts.join('; ') : 'everything (no choices made yet)';
+  // THE CUT IS IN THE SENTENCE. It is part of the rule and it is the part that
+  // throws the most away, so a sentence without it reads as the whole decision
+  // while hiding the sharpest part.
+  if (!R.cut) return base;
+  return `${parts.length ? base : 'everything'}, then the top ${R.cut.n} by ${TOP_COLUMNS[R.cut.column]}`;
 }
 
 // ---- closing the gap to the target -------------------------------------------
@@ -172,6 +177,115 @@ const CLOSINGS = Object.freeze({
       + 'on the set so the reserve grade knows what it is judging.',
   },
 });
+
+// ---- tightening the ranges toward the middle ---------------------------------
+//
+// It narrows each ranged dial INWARD FROM BOTH ENDS, one swept value at a time,
+// until the rule keeps the target or nothing can narrow further.
+//
+// BOTH ENDS, and that is the whole difference between this and shopping. Moving
+// one end inward walks the range toward whichever value looks best; moving both
+// keeps the middle of what was chosen, which is the part a wide region makes
+// defensible. It never looks at the money.
+//
+// IT PRODUCES A NEW RULE, not a shorter list. So it replays, and a null copy
+// handed the same rule narrows itself the same way.
+//
+// Deterministic: the dials are taken in ALL_DIALS order and the values in
+// numeric order, so the same rule and the same rows always give the same
+// answer. A replay that wobbled would be worse than no tighten at all.
+function tightenRule(rows, rule, target) {
+  const R = normaliseRule(rule);
+  const want = Math.max(0, Math.floor(Number(target) || 0));
+  if (!want) return { rule: R, steps: 0, why: 'no target to tighten toward' };
+  if (applyRule(rows, R).length <= want) return { rule: R, steps: 0, why: 'the rule already keeps the target or fewer' };
+
+  const dials = funnel.ALL_DIALS.filter((d) => R.ranges[d]);
+  if (!dials.length) return { rule: R, steps: 0, why: 'no dial carries a range, so there is nothing to narrow' };
+
+  // the values each dial was actually swept at, in order -- narrowing means
+  // giving up the outermost one that is still in play
+  const ladder = {};
+  for (const d of dials) {
+    const seen = new Set();
+    for (const r of rows) {
+      const v = Number(r[d]);
+      if (Number.isFinite(v)) seen.add(v);
+    }
+    ladder[d] = [...seen].sort((a, b) => a - b);
+  }
+
+  const out = { ...R, ranges: { ...R.ranges } };
+  for (const d of dials) out.ranges[d] = { ...R.ranges[d] };
+  let steps = 0;
+  let moved = true;
+  while (moved && applyRule(rows, out).length > want) {
+    moved = false;
+    for (const d of dials) {
+      const inPlay = ladder[d].filter((v) => inRange(v, out.ranges[d]));
+      if (inPlay.length <= 2) continue;              // two values left is not a range any more
+      out.ranges[d] = { ...out.ranges[d], min: inPlay[1], max: inPlay[inPlay.length - 2] };
+      steps++;
+      moved = true;
+      if (applyRule(rows, out).length <= want) break;
+    }
+  }
+  const kept = applyRule(rows, out).length;
+  return {
+    rule: out,
+    steps,
+    why: kept <= want
+      ? `narrowed ${steps} time(s) to reach ${kept}`
+      : `narrowed ${steps} time(s) and stopped at ${kept} — no range can give up another value without collapsing`,
+  };
+}
+
+// ---- the same table, dealt wrong ---------------------------------------------
+//
+// A SCRAMBLED COPY IS THE WHOLE TABLE WITH ITS MONEY SWAPPED, and then the rule
+// runs on it exactly as it ran on the real one.
+//
+// THE ORDER IS THE POINT. Swap first, filter second, so the copy picks its OWN
+// rows -- that is the comparison. Filter first and the copy is handed the rows
+// the REAL money chose, so a rule taking the top N compares the best N against
+// the same N and cannot come back with anything but a win.
+//
+// Only the test-money column is swapped, because that is the only column a
+// scrambled copy has. Every other column on it is still the real one.
+function nullCopy(rows, rule, d) {
+  const i = Math.max(0, Math.floor(Number(d) || 0));
+  return applyRule((rows || []).map((r) => ({ ...r, [funnel.TEST_MONEY]: (r.noiseTest || [])[i] ?? null })), rule);
+}
+
+// ---- the closing, folded into the rule ---------------------------------------
+//
+// ONE FUNCTION TURNS A CLOSING INTO A RULE, for the same reason one function
+// applies a rule: the number the screen shows before the button is pressed and
+// the number the written set holds have to come from the same arithmetic.
+//
+// The result is a RULE, never a shortened list, so a scrambled copy handed it
+// does the same thing to itself and the comparison stays a comparison.
+function ruleWithClosing(rows, rule, closing, target) {
+  const R = normaliseRule(rule);
+  const key = closing && CLOSINGS[closing.key] ? String(closing.key) : 'rule';
+  if (key === 'top') {
+    const cut = normaliseCut({ kind: 'top', column: (closing || {}).column, n: (closing || {}).n });
+    // A half-made choice keeps everything and says which half is missing,
+    // rather than being treated as a cut that happened.
+    if (!cut) {
+      const missing = [];
+      if (!TOP_COLUMNS[(closing || {}).column]) missing.push('column');
+      if (!(Math.floor(Number((closing || {}).n)) > 0)) missing.push('count');
+      return { rule: R, key, detail: `no ${missing.join(' and no ')} chosen yet, so nothing was taken off the top` };
+    }
+    return { rule: normaliseRule({ ...R, cut }), key, detail: `top ${cut.n} by ${TOP_COLUMNS[cut.column]}` };
+  }
+  if (key === 'tighten') {
+    const tg = tightenRule(rows, R, target);
+    return { rule: tg.rule, key, detail: tg.why };
+  }
+  return { rule: R, key, detail: null };
+}
 
 // ---- the record --------------------------------------------------------------
 
@@ -276,6 +390,7 @@ function replay(doc, parentRows) {
 }
 
 module.exports = {
+  tightenRule, ruleWithClosing, nullCopy, topColumnNames, TOP_COLUMNS,
   EMPTY_RULE, CLOSINGS,
   normaliseRule, inRange, applyRule, ruleSentence,
   newFunnelSet, recordStep, recordBackStep, warningsFor, finishFunnelSet, replay,

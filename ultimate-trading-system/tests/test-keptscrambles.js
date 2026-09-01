@@ -166,8 +166,8 @@ module.exports = {
   // building the comparison, the two would drift.
   theFunnelRunsTheSameReadingOnTheAllLuckCopy() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    assert.ok(src.includes('const luckBoard = (d) => rows.map((r) => ({ ...r, avgTest:'),
-      'the all-luck copy must be the same rows with the money swapped, not a separate calculation');
+    assert.ok(src.includes('const luckBoard = (d) => S4.nullCopy(all, rule, d);'),
+      'the all-luck copy must come from the one function that builds one, not a separate calculation');
     for (const call of ['F.step1(luckBoard(0)', 'F.step2(luckBoard(0)', 'F.step3(luckBoard(0)', 'region(luckBoard(d))']) {
       assert.ok(src.includes(call), `${call} — that reading has no all-luck twin`);
     }

@@ -3828,7 +3828,8 @@ function fLoad() {
   try { saved = JSON.parse(localStorage.getItem('cx-funnel') || 'null'); } catch (_) { saved = null; }
   fState = (saved && saved.set === set) ? saved
     : { set, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
-      dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false };
+      dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false,
+      closing: { key: 'rule' } };
   return fState;
 }
 function fSave() { try { localStorage.setItem('cx-funnel', JSON.stringify(fState)); } catch (_) { /* private window */ } }
@@ -3854,6 +3855,7 @@ async function drawFunnel() {
   const d = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/read`, {
     step: st.step, rule: st.rule, target: st.target, dial: st.dial,
     dialA: st.dialA, dialB: st.dialB, floor: st.floor, rebuilt: st.rebuilt,
+    closing: st.closing || { key: 'rule' },
   });
   // A FAILED READ MUST SAY SO. This returned without writing anything, which
   // leaves whatever the last screen put there -- another section's numbers
@@ -3878,7 +3880,7 @@ async function drawFunnel() {
     <p class="note">${esc(F_STEPS[d.step - 1][1])}</p>
     ${r.why ? `<p class="note neg">${esc(r.why)}</p>`
     : (d.step === 1 ? fStep1(r) : d.step === 2 ? fStep2(r, st) : d.step === 3 ? fStep3(r, st)
-      : d.step === 4 ? fStep4(r) : d.step === 5 ? fStep5(r) : d.step === 6 ? fStep6(d, st) : fStep7(d))}
+      : d.step === 4 ? fStep4(r) : d.step === 5 ? fStep5(r) : d.step === 6 ? fStep6(d, st) : fStep7(d, st))}
     ${fNoiseLine(r)}
   </div>
   <div class="panel">${fRuleBox(d)}</div>`;
@@ -4031,19 +4033,31 @@ function fStep6(d, st) {
       <button id="fAddFloors">add these limits to the rule</button></div>`;
 }
 
-function fStep7(d) {
+function fStep7(d, st) {
+  // THE COUNT AND THE SENTENCE ABOVE ALREADY HAVE THE CLOSING IN THEM. The read
+  // folds it into the rule for this step, so what is shown is what the button
+  // writes.
+  const cl = (st && st.closing) || { key: 'rule' };
+  const detail = (d.closing || {}).detail;
+  const top = cl.key !== 'top' ? '' : `<label class="f">by which column<select id="fCutCol">${
+    vocabOptions('funnelTopColumn', cl.column || '')}</select></label>
+      <label class="f">how many to keep<input id="fCutN" type="number" min="1" style="width:7rem"
+        value="${esc(String(cl.n == null ? '' : cl.n))}"></label>`;
   return `<p class="note">The choices you made ARE the rule. This is what gets written - not the rows it happens to
       pick today - because a rule can be checked against scrambled data and a single row cannot.</p>
     <p class="note"><b>${esc(d.ruleSentence)}</b></p>
     <p class="note">${Number(d.survivors).toLocaleString()} settings survive${d.target
     ? ` against a target of ${Number(d.target).toLocaleString()}` : ''}.</p>
+    ${detail ? `<p class="note">${esc(detail)}</p>` : ''}
     <div class="row" style="align-items:flex-end">
       <label class="f">name<input id="fName" style="width:14rem" placeholder="left blank, it is numbered"></label>
-      <label class="f">how to reach the target<select id="fClose">${vocabOptions('funnelClosing', 'rule')}</select></label>
+      <label class="f">how to reach the target<select id="fClose">${vocabOptions('funnelClosing', cl.key)}</select></label>
+      ${top}
       <button id="fCut" class="pri">write the Stage 4 set</button><span id="fCutMsg" class="note"></span></div>
     <p class="note"><b>Taking the top N is shopping</b>, on the board this walk exists to stop you shopping. It is
       offered because the choice is yours, and whichever you use is recorded on the set so the final check knows what
-      it is judging.</p>
+      it is judging. Only columns a scrambled copy of the table really has are offered, so the same rule takes the
+      same top N of a scrambled copy and the two can be compared.</p>
     <p class="note">An empty or one-setting result is written with a warning, never refused.</p>`;
 }
 
@@ -4105,23 +4119,49 @@ function fWire(st) {
         : `done for ${out.settings} setting(s); all ${pr.checked} match what the sweep stored`)
       : `done for ${out.settings} setting(s) - NOT checked against the sweep (${String(pr.why || '')})`;
   };
+  // THE CLOSING IS A CHOICE THAT CHANGES THE COUNT, so it redraws like every
+  // other choice does. Picking 'take the top N by a column' seeds the count
+  // from the target -- that is what the target was for -- and leaves it blank
+  // when there is no target, which reads back as a choice not finished rather
+  // than as a cut that happened.
+  const cs = $('#fClose');
+  if (cs) cs.onchange = () => {
+    const key = cs.value;
+    st.closing = key === 'top'
+      ? { key, column: (st.closing || {}).column || 'avgTest', n: (st.closing || {}).n ?? st.target ?? null }
+      : { key };
+    st.steps.push({ n: 7, what: 'how to reach the target', chose: key });
+    fSave(); drawFunnel();
+  };
+  const cc = $('#fCutCol');
+  if (cc) cc.onchange = () => { st.closing = { ...st.closing, key: 'top', column: cc.value }; fSave(); drawFunnel(); };
+  const cn = $('#fCutN');
+  if (cn) cn.onchange = () => {
+    st.closing = { ...st.closing, key: 'top', n: cn.value === '' ? null : Math.max(1, Math.floor(Number(cn.value) || 0)) };
+    fSave(); drawFunnel();
+  };
   const cut = $('#fCut');
   if (cut) cut.onclick = async () => {
     cut.disabled = true;
     $('#fCutMsg').textContent = 'writing';
     const out = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/cut`, {
       name: $('#fName').value || null, target: st.target, rule: st.rule,
-      steps: st.steps, backSteps: st.backSteps, closing: { key: $('#fClose').value },
+      steps: st.steps, backSteps: st.backSteps, closing: st.closing || { key: 'rule' },
     });
     cut.disabled = false;
+    // WHAT THE CLOSING DID, in the reply, not only on the record. 'tighten the
+    // ranges toward the middle' can stop short of the target, and a set written
+    // with 480 against a target of 400 has to say it narrowed and stopped.
+    const cd = (out && out.closing && out.closing.detail) ? ` - ${out.closing.detail}` : '';
     $('#fCutMsg').textContent = out
-      ? `${out.name} written with ${out.survivors} setting(s)${(out.warnings || []).length ? ` - ${out.warnings.join(' - ')}` : ''}`
+      ? `${out.name} written with ${out.survivors} setting(s)${cd}${(out.warnings || []).length ? ` - ${out.warnings.join(' - ')}` : ''}`
       : '';
   };
   const cl = $('#fClear');
   if (cl) cl.onclick = () => {
     st.backSteps.push({ from: st.step, to: 1, why: 'started the rule again' });
     st.rule = { ranges: {}, allowed: {}, floors: {} };
+    st.closing = { key: 'rule' };
     st.step = 1; st.rebuilt = false; fSave(); drawFunnel();
   };
 }

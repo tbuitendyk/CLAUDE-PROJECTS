@@ -537,6 +537,14 @@ window.HELP = {
         what: 'What to do if your rule keeps more settings than you were aiming for.',
         more: 'Accepting what the rule gives costs nothing - the target was only ever a guide. Tightening the ranges narrows them inward from both ends, which keeps the middle of the good region rather than drifting toward the best single value. Taking the top N is shopping, on the very board this screen exists to stop you shopping, and it is offered anyway because the choice is yours. Whichever you use is recorded, so the final check at the end of the chain knows what it is judging.',
       },
+      fCutCol: {
+        what: 'Which column the top N is taken by.',
+        more: 'Only columns a scrambled copy of the table really has are offered. A scrambled copy is your table with the money swapped for what each setting made when the forecasts were dealt onto the wrong days; every OTHER column on it is still the real one. So taking the top N by anything else would sort the scrambled copy by real numbers and hand back the same rows - a comparison that looks like one and is not.',
+      },
+      fCutN: {
+        what: 'How many settings to keep off the top.',
+        more: 'It is seeded from your target when you pick this, because reaching the target is what it is for, and you can set it to anything. It becomes part of the rule rather than a trim done afterwards, which is what lets a scrambled copy be handed the same rule and take its own top N - so you can see how much of your best N is the strategy and how much is the deal.',
+      },
       fCut: {
         what: 'Writes what you have arrived at as a new record set, and opens the held-back window on it for the first time.',
         more: 'What gets written is the rule and the settings it keeps, along with every step you took and every step you took back. An empty result or a single-setting result is written with a warning rather than refused - it is your call, and a rule that keeps nothing is still worth being able to read back.',

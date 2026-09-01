@@ -109,6 +109,13 @@ function vocabulary() {
       { value: 'tighten', label: 'tighten the ranges toward the middle' },
       { value: 'top', label: 'take the top N by a column (this is shopping)' },
     ],
+    // WHICH COLUMNS THE TOP N MAY BE TAKEN BY, read from the engine for the
+    // same reason the dials are. Only a column a scrambled copy of the table
+    // actually HAS can be offered: every other column on a scrambled copy is
+    // still the real one, so taking the top N by it would hand back the same
+    // rows and look like a comparison without being one.
+    funnelTopColumn: Object.entries(require('./funnelset').TOP_COLUMNS)
+      .map(([value, label]) => ({ value, label })),
     // Stage 2's carry orderings — read from the stage engine, complete.
     greenlightAnchor: [
       { value: 'declared', label: 'declared cell' },

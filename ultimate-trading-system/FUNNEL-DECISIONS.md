@@ -213,3 +213,33 @@ made while building it that the design did not already settle.
     makes the list the authority. Rewritten in the page's own style, which is
     also what RULE FOUR asks for: match the pattern, do not add a second
     convention beside it.
+
+## Step 7 — the closing choices are wired (3.38.0, 2026-09-01)
+
+50. **The closing reaches the rule now, not just the record.** `how to reach
+    the target` was read at cut time, written onto the set, and dropped before
+    the arithmetic: `take the top N by a column (this is shopping)` and
+    `tighten the ranges toward the middle` both produced what `accept what the
+    rule gives` produced. One function, `ruleWithClosing`, turns a closing into
+    a rule, and both the read and the cut call it, so the count on screen and
+    the count in the written set come from the same arithmetic.
+51. **The cut is part of the rule, not a trim afterwards.** That is what lets a
+    scrambled copy be handed the same rule and take its own top N — the
+    comparison the tab exists for. It also means the set's replay check covers
+    the cut.
+52. **Only `avg test $` may be shopped by** (owner order, 2026-09-01: "restrict
+    it to columns the null copy has"). A scrambled copy is the real table with
+    its money swapped; every other column on it is still the real one, so
+    taking the top N by one of those sorts the copy by real numbers and hands
+    back the same rows. Held-back money is excluded on purpose — sorting by it
+    at the cut opens the sealed window to decide what to keep. The list on the
+    screen is read from `TOP_COLUMNS`, never typed beside it.
+53. **A scrambled copy is built from every setting, then filtered.** It was
+    built from the rows the rule had already kept — rows chosen on real money —
+    so the copy was asked only what the real table's picks made by luck. With a
+    cut in the rule that compares the best N against the same N. `nullCopy`
+    swaps the money first and applies the rule second.
+54. **Tightening stops honestly.** It narrows each ranged dial inward from both
+    ends, one swept value at a time, and never narrows a range below two
+    values. It can land under the target (a step gives up a whole swept value)
+    or stop above it, and it says which in the reply the cut returns.

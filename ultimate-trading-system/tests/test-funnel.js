@@ -441,6 +441,167 @@ module.exports = {
   // leaves the previous section's numbers under this section's heading, or on a
   // first load leaves nothing at all -- and both read as "there is nothing
   // here", which is a lie when the truth is "I could not ask".
+  // THE CLOSING HAS TO REACH THE ARITHMETIC. It was written on the record and
+  // dropped on the way to applyRule, so 'take the top N by a column' produced
+  // exactly what 'accept what the rule gives' produced -- and the set then said
+  // the owner had shopped when nothing had been shopped, which is the worst of
+  // both: the cost is recorded and the narrowing never happened.
+  theClosingChangesWhatTheRuleKeepsNotJustWhatTheRecordSays() {
+    const rows = s3rows();                       // 8 rows, avgTest 4.1 .. 11.3
+    const plain = FS4.ruleWithClosing(rows, {}, { key: 'rule' }, 3);
+    assert.strictEqual(FS4.applyRule(rows, plain.rule).length, 8, 'accepting the rule trims nothing');
+
+    const top = FS4.ruleWithClosing(rows, {}, { key: 'top', column: 'avgTest', n: 3 }, 3);
+    const kept = FS4.applyRule(rows, top.rule);
+    assert.strictEqual(kept.length, 3, 'the top N must actually be taken');
+    assert.deepStrictEqual(kept.map((r) => r.label), ['t113 active', 't113 always', 't89 active'],
+      'best first, and the tie broken by name so a scrambled copy breaks it the same way');
+    assert.strictEqual(top.detail, 'top 3 by avg test $');
+
+    // and it is IN THE RULE, so it replays and a scrambled copy performs it too
+    const doc = FS4.newFunnelSet({ id: 's4-c-1', target: 3 });
+    doc.rule = top.rule;
+    FS4.finishFunnelSet(doc, kept, { key: top.key, detail: top.detail });
+    assert.strictEqual(FS4.replay(doc, rows).same, true, 'a cut that does not replay is not a rule');
+  },
+
+  // AND THE WRITE PATH FOLDS IT IN. The function above can be perfect and the
+  // cut still never happen: what reaches applyRule is whatever cutFunnelSet
+  // hands it. The mutation harness found this hole -- deleting the fold left
+  // the whole suite green, because every test here exercised the function and
+  // none of them the wiring.
+  theCutFoldsTheClosingIntoTheRuleItWrites() {
+    const s = src('lib/stages.js');
+    const at = s.indexOf('function cutFunnelSet(');
+    assert.ok(at > 0, 'cutFunnelSet is gone');
+    const body = s.slice(at, s.indexOf('\nfunction listFunnelSets(', at));
+    assert.ok(/const closed = S4\.ruleWithClosing\(t\.ranked \|\| \[\], state\.rule, state\.closing, doc\.target\);/.test(body),
+      'the closing must be folded into the rule through the one function that folds it');
+    // the folded rule is what gets written AND what the survivors come from --
+    // writing one rule and filtering by another is the same defect wearing a
+    // different shape
+    const foldAt = body.indexOf('const closed = S4.ruleWithClosing');
+    const ruleAt = body.indexOf('doc.rule = closed.rule;');
+    const applyAt = body.indexOf('S4.applyRule(t.ranked || [], doc.rule)');
+    assert.ok(foldAt > 0 && ruleAt > foldAt && applyAt > ruleAt,
+      'the fold must come first, then the rule it produced, then the survivors from that rule');
+    assert.ok(!/doc\.rule = S4\.normaliseRule\(state\.rule\);/.test(body),
+      'writing the raw rule is the defect: the closing never reaches the arithmetic');
+    // and the closing recorded on the set is the one that was actually applied
+    assert.ok(/S4\.finishFunnelSet\(doc, survivors, \{ key: closed\.key, detail: closed\.detail \}\);/.test(body),
+      'the set must record the closing that ran, with what it did');
+  },
+
+  // A half-made choice is not a cut. Picking the shopping option and typing no
+  // count must keep everything and SAY it kept everything -- silently treating
+  // it as done would write a set whose record claims a narrowing that is not in
+  // its rule.
+  aTopNWithNoColumnOrCountTakesNothingAndSaysSo() {
+    const rows = s3rows();
+    for (const c of [{ key: 'top' }, { key: 'top', column: 'avgTest' }, { key: 'top', n: 3 },
+      { key: 'top', column: 'maxDrawdown', n: 3 }]) {
+      const got = FS4.ruleWithClosing(rows, {}, c, 3);
+      assert.strictEqual(got.rule.cut, null, `${JSON.stringify(c)} must not become a cut`);
+      assert.strictEqual(FS4.applyRule(rows, got.rule).length, 8);
+      assert.ok(/nothing was taken off the top/.test(got.detail), got.detail);
+    }
+  },
+
+  // THE SENTENCE IS THE RECORD THE OWNER READS. A rule that states its ranges
+  // and stays quiet about the top N reads as the whole decision while hiding
+  // the sharpest part of it.
+  theRuleSentenceStatesTheCut() {
+    const bare = FS4.ruleSentence({ ranges: { tHours: { min: 65, max: 113 } } });
+    assert.ok(!/top/.test(bare), bare);
+    const withCut = FS4.ruleSentence({ ranges: { tHours: { min: 65, max: 113 } }, cut: { kind: 'top', column: 'avgTest', n: 40 } });
+    assert.ok(/tHours 65 to 113/.test(withCut) && /then the top 40 by avg test \$/.test(withCut), withCut);
+    // and on a rule with no other clause it does not read as 'no choices made'
+    const only = FS4.ruleSentence({ cut: { kind: 'top', column: 'avgTest', n: 40 } });
+    assert.ok(!/no choices made/.test(only) && /top 40/.test(only), only);
+  },
+
+  // ONLY A COLUMN A SCRAMBLED COPY HAS. A scrambled copy is the real table with
+  // its money swapped; every other column on it is still the real one, so
+  // taking the top N by one of those sorts the copy by REAL numbers and hands
+  // back the same rows -- a comparison that looks like one and is not.
+  theTopNIsOnlyOfferedByAColumnAScrambledCopyHas() {
+    assert.deepStrictEqual(FS4.topColumnNames(), ['avgTest']);
+    const offered = require('../lib/vocabulary').vocabulary().funnelTopColumn;
+    assert.deepStrictEqual(offered.map((o) => o.value), FS4.topColumnNames(),
+      'the list on the screen is read from the engine, never typed beside it');
+    assert.deepStrictEqual(offered.map((o) => o.label), Object.values(FS4.TOP_COLUMNS));
+    // held-back money is deliberately absent: sorting by it at the cut is
+    // opening the sealed window to decide what to keep
+    assert.ok(!FS4.topColumnNames().includes('avgHold'));
+  },
+
+  // THE COMPARISON THE WHOLE SCREEN RESTS ON. A scrambled copy must pick its
+  // OWN rows under the rule. Building it from the rows the real money already
+  // kept -- what the read used to do -- hands it the real table's picks, so a
+  // rule that takes the top N compares your best N against the very same N and
+  // the answer is guaranteed to look like a win.
+  aScrambledCopyPicksItsOwnRowsUnderTheSameRule() {
+    // real money and the scramble disagree completely: the real best is the
+    // scramble's worst
+    const rows = [];
+    for (let i = 0; i < 8; i++) rows.push({ si: i, label: `s${i}`, tHours: 40 + i, avgTest: i, noiseTest: [7 - i] });
+    const rule = { cut: { kind: 'top', column: 'avgTest', n: 3 } };
+    assert.deepStrictEqual(FS4.applyRule(rows, rule).map((r) => r.label), ['s7', 's6', 's5']);
+    assert.deepStrictEqual(FS4.nullCopy(rows, rule, 0).map((r) => r.label), ['s0', 's1', 's2'],
+      'the scrambled copy takes its own top 3, which here is the opposite end');
+    // the swap is the money only -- every other column stays real
+    assert.strictEqual(FS4.nullCopy(rows, rule, 0)[0].tHours, 40);
+    // and the ranges still apply to the copy, so it is the SAME rule
+    const ranged = { ranges: { tHours: { min: 44 } }, cut: { kind: 'top', column: 'avgTest', n: 2 } };
+    assert.deepStrictEqual(FS4.nullCopy(rows, ranged, 0).map((r) => r.label), ['s4', 's5']);
+    // a row with no scramble stored is not silently ranked as if it had one
+    const missing = FS4.nullCopy([{ si: 0, label: 'none', avgTest: 9 }], { cut: { kind: 'top', column: 'avgTest', n: 1 } }, 0);
+    assert.strictEqual(missing[0].avgTest, null);
+  },
+
+  // AND THE READ USES IT. A function that exists and is not called is the same
+  // defect wearing a test that passes.
+  theFunnelReadBuildsItsScrambledCopiesFromEverySettingNotTheSurvivors() {
+    const s = src('lib/stages.js');
+    const at = s.indexOf('function funnelRead(');
+    assert.ok(at > 0, 'funnelRead is gone');
+    const body = s.slice(at, s.indexOf('\nfunction sliceRowsFor(', at));
+    assert.ok(/const luckBoard = \(d\) => S4\.nullCopy\(all, rule, d\);/.test(body),
+      'the scrambled copy must be built from every setting, through the one function that builds one');
+    assert.ok(!/luckBoard = \(d\) => rows\./.test(body),
+      'building it from the already-filtered rows is the defect');
+  },
+
+  // TIGHTENING PRODUCES A RULE, NOT A SHORTER LIST, so it replays and a
+  // scrambled copy narrows itself the same way. It narrows from BOTH ends,
+  // which is the whole difference between it and shopping: moving one end walks
+  // the range toward whichever value looks best.
+  tighteningNarrowsFromBothEndsAndIsStillARule() {
+    const rows = [];
+    for (let t = 1; t <= 20; t++) for (let k = 0; k < 3; k++) rows.push({ si: rows.length, label: `t${t}k${k}`, tHours: t, avgTest: t });
+    const rule = { ranges: { tHours: { min: 1, max: 20 } } };
+    assert.strictEqual(FS4.applyRule(rows, rule).length, 60);
+    const one = FS4.tightenRule(rows, rule, 55);
+    assert.strictEqual(one.rule.ranges.tHours.min, 2, 'the bottom end gives up a value');
+    assert.strictEqual(one.rule.ranges.tHours.max, 19, 'and the top end gives up one too');
+    assert.strictEqual(FS4.applyRule(rows, one.rule).length, 54);
+    // it keeps going until the target is met, and it may land under it -- the
+    // step it gives up is a whole swept value, so the count moves in jumps
+    const got = FS4.tightenRule(rows, rule, 40);
+    assert.deepStrictEqual(got.rule.ranges.tHours, { min: 5, max: 16 });
+    assert.strictEqual(FS4.applyRule(rows, got.rule).length, 36);
+    // identical every time, or a replay would wobble
+    assert.deepStrictEqual(FS4.tightenRule(rows, rule, 40).rule, got.rule);
+    // it stops honestly rather than collapsing the range to reach an impossible target
+    const hard = FS4.tightenRule(rows, rule, 1);
+    assert.ok(FS4.applyRule(rows, hard.rule).length >= 2, 'a range is never narrowed away to nothing');
+    assert.ok(/stopped at/.test(hard.why), hard.why);
+    // and it reaches the arithmetic through the closing, like the other two
+    const closed = FS4.ruleWithClosing(rows, rule, { key: 'tighten' }, 40);
+    assert.deepStrictEqual(closed.rule, got.rule);
+    assert.strictEqual(closed.detail, got.why);
+  },
+
   aFunnelReadThatFailsSaysSoRatherThanLeavingTheScreenAsItWas() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const at = src.indexOf('async function drawFunnel');
