@@ -3517,7 +3517,17 @@ function stage3CoinRows(id, query) {
 // the failure. So: opts.dryRun prices ONE unit and walks the WHOLE store
 // looking every row of that unit up, writing nothing. It exercises this exact
 // function, not a copy, because a copy proves the copy.
-async function startKeptScrambleFill(id, wantKeep, opts = {}) {
+// NOT async, and that is load-bearing (2026-09-01). It was, for no reason --
+// there is not one await outside the background job below -- and an async
+// function that throws does not throw: it returns a REJECTED PROMISE. So every
+// refusal from here sailed straight past the endpoint's try/catch, express
+// serialised the promise as `{}`, and the unhandled rejection KILLED THE
+// SERVICE. It did exactly that at 05:34 on a plain "one heavy job at a time"
+// refusal.
+//
+// startStage1, startStage2 and startStage3 are all plain functions for this
+// reason. This one broke a pattern that was already there.
+function startKeptScrambleFill(id, wantKeep, opts = {}) {
   const dryRun = !!opts.dryRun;
   const onlyUnit = opts.onlyUnit == null ? null : Math.max(0, Math.floor(Number(opts.onlyUnit)));
   const busy = stageBusy();

@@ -196,7 +196,7 @@ module.exports = {
   // every other reader of this store takes the unit from the row's own `u`.
   theFillAssumesNothingAboutTheOrderTheUnitsSitIn() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const at = src.indexOf('async function startKeptScrambleFill');
+    const at = src.indexOf('function startKeptScrambleFill(');
     const body = src.slice(at, src.indexOf('\nmodule.exports', at));
     assert.ok(body.includes('const u = x.row.u;'), 'the fill must take each row\'s unit from the row');
     assert.ok(!/rec\.blocks\s*&&\s*rec\.blocks\.records/.test(body),
@@ -224,7 +224,7 @@ module.exports = {
   // SETTINGS are split and every worker takes a slice of the same unit.
   theFillPutsEveryWorkerOnTheSameUnit() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const fill = src.slice(src.indexOf('async function startKeptScrambleFill'));
+    const fill = src.slice(src.indexOf('function startKeptScrambleFill('));
     const body = fill.slice(0, fill.indexOf('\nasync function ', 1) + 1 || undefined);
     assert.ok(/pool\.forEach\('s3Unit', shards,/.test(body),
       'the fill must hand the pool every slice at once, not one unit at a time');
@@ -293,7 +293,7 @@ module.exports = {
   // made four times faster reported worse than before it.
   theFillsProgressMovesWhileTheWorkDoes() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const at = src.indexOf('async function startKeptScrambleFill');
+    const at = src.indexOf('function startKeptScrambleFill(');
     const body = src.slice(at, src.indexOf('\nmodule.exports', at));
 
     // ONE writer. Two would drift, and the drift is what produced three
@@ -333,7 +333,7 @@ module.exports = {
   // memory -- which is exactly why the first version held one unit and broke.
   everyUnitIsHeldAtOnceAndSmallEnoughToBe() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const at = src.indexOf('async function startKeptScrambleFill');
+    const at = src.indexOf('function startKeptScrambleFill(');
     const body = src.slice(at, src.indexOf('\nmodule.exports', at));
     assert.ok(/new Int32Array\(settings\.length \* width\)/.test(body),
       'the figures must be held as whole cents in a flat array, not as objects');
@@ -355,7 +355,7 @@ module.exports = {
   // function, not a copy — a copy proves the copy.
   aProvingRunPricesOneUnitAndWritesNothing() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const at = src.indexOf('async function startKeptScrambleFill');
+    const at = src.indexOf('function startKeptScrambleFill(');
     const body = src.slice(at, src.indexOf('\nmodule.exports', at));
     assert.ok(/startKeptScrambleFill\(id, wantKeep, opts = \{\}\)/.test(src),
       'the fill must take a proving mode, or the only way to try it is to run it for hours');
@@ -368,6 +368,29 @@ module.exports = {
     assert.ok(dry > 0 && dry < body.indexOf('w.close()'),
       'the proving run must return before the swap, not after it');
     assert.ok(body.includes('PROVING RUN on unit'), 'it must say what it proved, in numbers');
+  },
+
+  // AN ASYNC FUNCTION THAT THROWS DOES NOT THROW. It returns a rejected
+  // promise, which sails past a synchronous try/catch, gets serialised by
+  // express as `{}`, and takes the whole service down as an unhandled
+  // rejection. This one was async for no reason -- not one await outside its
+  // background job -- and at 05:34 on 2026-09-01 a plain "one heavy job at a
+  // time" refusal killed the trading service because of it.
+  //
+  // Every launcher an endpoint calls inside a synchronous try/catch must be a
+  // plain function. The other three always were; this one broke the pattern.
+  everyLauncherAnEndpointCatchesFromIsAPlainFunction() {
+    for (const name of ['startStage1', 'startStage2', 'startStage3', 'startKeptScrambleFill']) {
+      const fn = stages[name];
+      assert.strictEqual(typeof fn, 'function', `${name} must be exported`);
+      assert.notStrictEqual(fn.constructor.name, 'AsyncFunction',
+        `${name} is async, so its refusals return a rejected promise instead of throwing — `
+        + 'the endpoint\'s try/catch cannot see them and the unhandled rejection kills the service');
+    }
+    // and the behaviour, not just the shape: a refusal must reach the caller
+    assert.throws(() => stages.startKeptScrambleFill('no-such-set-at-all', 1),
+      /not a stage 3 record set/,
+      'a refusal must throw where the endpoint can catch it and answer with it');
   },
 
   // The tally's shape changed, so every totals file on disk must be rebuilt
