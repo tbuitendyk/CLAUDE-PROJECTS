@@ -1098,7 +1098,14 @@ app.post('/api/stage3', (req, res) => {
 // It runs for hours, so it answers straight away and reports on the set
 // document the way every other long job on a set does.
 app.post('/api/stageset/:id/kept-fill', (req, res) => {
-  try { return res.json(stages.startKeptScrambleFill(String(req.params.id || ''), (req.body || {}).keep)); }
+  // dryRun/onlyUnit are the PROVING run: one unit priced, the whole store
+  // walked, nothing written. It is not on any screen — it exists so a change
+  // to this pass can be tried in minutes instead of bet on for hours.
+  try {
+    const b = req.body || {};
+    return res.json(stages.startKeptScrambleFill(String(req.params.id || ''), b.keep,
+      { dryRun: !!b.dryRun, onlyUnit: b.onlyUnit }));
+  }
   catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.post('/api/stageset/:id/stop', (req, res) => res.json(stages.cancelStage(req.params.id)));

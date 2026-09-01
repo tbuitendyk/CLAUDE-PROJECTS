@@ -183,7 +183,8 @@ module.exports = {
     assert.ok(before.includes('nothing is swapped'), 'it must refuse rather than swap a store that does not match');
     assert.ok(before.lastIndexOf('before !== after') > 0, 'the row count must be checked before the swap');
     assert.ok(before.lastIndexOf('sameShape') > 0, 'the block boundaries must be checked before the swap');
-    assert.ok(before.lastIndexOf('> 0.01') > 0, 'the fill must prove itself against the money already stored');
+    assert.ok(before.lastIndexOf('Math.abs(nowCents - wasCents) > 1') > 0,
+      'the fill must prove itself against the money already stored — a cent of drift is rounding, more is a different world');
     // and everything derived is deleted, never translated
     assert.ok(src.slice(swapAt).includes('fs.rmSync(tallyFile(id)'), 'the totals must be rebuilt, not migrated');
   },
@@ -193,15 +194,25 @@ module.exports = {
   // records come from the PARENT set, so that range described the parent's
   // votes, not this set's rows. Stage 3 records no per-unit range at all:
   // every other reader of this store takes the unit from the row's own `u`.
-  theFillTakesTheUnitFromTheRowAndNotFromTheParentsBlockRanges() {
+  theFillAssumesNothingAboutTheOrderTheUnitsSitIn() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const fill = src.slice(src.indexOf('async function startKeptScrambleFill'));
-    const body = fill.slice(0, fill.indexOf('\nasync function ', 1) + 1 || undefined);
+    const at = src.indexOf('async function startKeptScrambleFill');
+    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
     assert.ok(body.includes('const u = x.row.u;'), 'the fill must take each row\'s unit from the row');
     assert.ok(!/rec\.blocks\s*&&\s*rec\.blocks\.records/.test(body),
       'the fill must not read a per-unit block range off the parent\'s records — stage 3 does not record one');
-    assert.ok(body.includes('appears again after the walk moved past it'),
-      'if the store is ever not in unit order the fill must say so, not silently re-price or mis-join');
+
+    // THIS ASSERTION USED TO SAY THE OPPOSITE, and that is the whole lesson.
+    // It required the fill to REFUSE when a unit came back after the walk had
+    // moved past it -- an assumption written down as a guard instead of being
+    // read off the disk. Measured on the owner's store afterwards: every unit
+    // appears TWICE, because the pass that added settings later appended a
+    // second one. The guard fired at the last unit, five and a half hours in.
+    assert.ok(!/appears again after the walk moved past it/.test(body),
+      'the fill still refuses a unit it has seen before — but every unit really does appear more than once, '
+      + 'because settings added later are appended as a second pass');
+    assert.ok(/NOTHING IS EVICTED/.test(body),
+      'a unit priced once must stay held, or a store that revisits units re-prices every one of them');
   },
 
   // THE FILL USED FOUR WORKERS AND ONE CORE. It handed the pool ONE unit and
@@ -292,16 +303,17 @@ module.exports = {
     // FOUR writers, each named: the opening line before any work, the reporter,
     // and the two ends (filled in / stopped). A fifth means someone has written
     // a second account of the same thing, which is exactly what went wrong.
-    assert.strictEqual(body.split('doc.progress =').length - 1, 4,
-      'the line must be written in four named places only: the opening line, the reporter, and the two ends');
-    for (const w of ['0 of ${records.length} units`', 'units priced`', 'filled in —', 'stopped:']) {
+    assert.strictEqual(body.split('doc.progress =').length - 1, 5,
+      'the line must be written in five named places only: the opening line, the reporter, '
+      + 'the proving run\'s report, and the two ends');
+    for (const w of ['0 of ${records.length} units`', 'units priced`', 'PROVING RUN on unit', 'filled in —', 'stopped:']) {
       assert.ok(body.includes(w), `the progress writer "${w}" is gone — the count above is no longer checking what it names`);
     }
 
     // A unit counts when it FINISHES. It used to count when the next one began,
     // so a finished unit read as zero for as long as the next took to price.
     const done = body.indexOf('unitsPriced++');
-    assert.ok(done > 0 && done < body.indexOf('return byLabel'),
+    assert.ok(done > 0 && done < body.indexOf('return { vals, has }'),
       'a unit must be counted as it finishes pricing, not when the next one starts');
 
     // The rewrite reports too — that is the stretch that looked stuck.
@@ -314,6 +326,48 @@ module.exports = {
     // times.
     assert.ok(/now - lastSay < 2000/.test(body), 'the reporter must be throttled');
     assert.ok(/say\(true\)/.test(body), 'the moments that matter must report immediately rather than wait for the throttle');
+  },
+
+  // HOLDING EVERY UNIT is only possible because of how it is held. Objects with
+  // ten-number arrays and a name each, ten units deep, is most of the board in
+  // memory -- which is exactly why the first version held one unit and broke.
+  everyUnitIsHeldAtOnceAndSmallEnoughToBe() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const at = src.indexOf('async function startKeptScrambleFill');
+    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
+    assert.ok(/new Int32Array\(settings\.length \* width\)/.test(body),
+      'the figures must be held as whole cents in a flat array, not as objects');
+    assert.ok(body.includes('const labelIdx = new Map();') && body.includes('settings.forEach((st, i) => labelIdx.set'),
+      'ONE copy of the setting names must be shared by every unit — a copy per unit is the bulk of the memory');
+    assert.ok(/new Uint8Array\(settings\.length\)/.test(body),
+      'a setting nothing priced must be caught, not read as zero');
+    assert.ok(body.includes('const NIL = -2147483648'),
+      'a flat array holds no null, so an absent figure needs a value no real one can take');
+    // two settings under one name would take each other's figures
+    assert.ok(body.includes("the fill joins its figures on the name, so two settings sharing one would take each other"),
+      'the join is by name, so the names must be checked unique before anything is priced');
+    // and the width carries the proof alongside the figures
+    assert.ok(body.includes('const width = keep * 2 + 1;'),
+      'the re-priced real money must ride in the same store as the figures it proves');
+  },
+
+  // THE PROVING RUN, which is the part that was missing. It exercises THIS
+  // function, not a copy — a copy proves the copy.
+  aProvingRunPricesOneUnitAndWritesNothing() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const at = src.indexOf('async function startKeptScrambleFill');
+    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
+    assert.ok(/startKeptScrambleFill\(id, wantKeep, opts = \{\}\)/.test(src),
+      'the fill must take a proving mode, or the only way to try it is to run it for hours');
+    assert.ok(body.includes('const w = dryRun ? null : rowstore.writer(SCRATCH'),
+      'a proving run must open no writer at all — nothing to leave behind and nothing to swap by mistake');
+    assert.ok(body.includes('if (!dryRun) w.push('), 'a proving run must write no rows');
+    assert.ok(body.includes('if (onlyUnit != null && u !== onlyUnit) { skipped++; continue; }'),
+      'a proving run must walk the WHOLE store while pricing one unit — the failure was in the walk, not the pricing');
+    const dry = body.indexOf('if (dryRun) {');
+    assert.ok(dry > 0 && dry < body.indexOf('w.close()'),
+      'the proving run must return before the swap, not after it');
+    assert.ok(body.includes('PROVING RUN on unit'), 'it must say what it proved, in numbers');
   },
 
   // The tally's shape changed, so every totals file on disk must be rebuilt
