@@ -654,6 +654,11 @@ Mutation guards go on the lines those tests read, and are run filtered
    matching columns on `Table 3.A` and `Table 3.B`, the Funnel reading against
    them, and the backfill for sets priced before the column existed. Second
    digit. Owner ordered it at ten kept, backfill included, 2026-08-31.
+10. §15's auto mode: the mode switch, the narrowing choice, the automatic walk
+    through steps 1-6, the scrambled-copy run beside it, and the machine-made
+    marks on every recorded step. Second digit. Owner ordered the design
+    2026-09-01 and said it may be revised before any of it is coded, so nothing
+    here is a build order until they say otherwise.
 
 Steps 1–4 produce nothing the owner can see. Step 5 is the one that matters.
 
@@ -667,3 +672,129 @@ Steps 1–4 produce nothing the owner can see. Step 5 is the one that matters.
 | How many survivors to aim at | A target-size field, live from step 1, never auto-trimming. Three named ways to close a gap at step 7. |
 | Empty or one-setting result | Write it with a warning. No restrictions. |
 | Where the missing numbers come from | The Funnel rebuilds them on demand. Stage 3 does not grow. |
+| Should there be an auto mode | Yes — a second way to run the tab (§15). Not built; may be revised before coding. |
+| What auto mode ends with | It writes the RULE and stops on `7. declare and cut`, waiting for approval to write the record set. |
+| Split-half disagreement under auto | Carry on and mark it. It does not stop the walk, and the mark rides on the set. |
+| How auto narrows a dial | The owner's choice, per run: the middle of what was swept, or the best value. The second is shopping and says so. |
+| Which closing auto uses | None chosen up front. It stops and offers all three, exactly as the manual walk does. |
+
+---
+
+## 15. Auto mode — a second way to run the tab (owner order, 2026-09-01)
+
+**NOT BUILT. This section is the agreed design, and the owner has said it may be
+revised before any of it is coded.**
+
+The owner's words: "some kind of auto mode where the software probes the various
+dials, the effectiveness of narrowing the selections is done as an initial test.
+And then there's some kind of iterative process which runs through all the steps
+heading for the selected target size automatically. It would be a second mode of
+operation for the funnel page."
+
+### 15.1 What it does
+
+Steps 1 to 6, walked by the machine toward `target size`. Then it **stops on
+`7. declare and cut` and hands the walk back**, with the rule it arrived at,
+the survivor count, and every choice it made written into the record as steps.
+
+Step 7 is untouched and gains nothing: the owner gets the same
+`how to reach the target` list with the same three options, the same count, the
+same `write the Stage 4 set` button. Auto mode stops exactly where the manual
+walk stops.
+
+That is one stopping point, not two. The owner first asked for a choice between
+the two narrowing closings up front, then revised it: "that should probably be a
+stopping point where we can choose one of the three options just like when we
+run the funnel manually." Because auto mode is chasing the target by definition,
+`accept what the rule gives` still appears — the owner may take whatever the
+automatic rule reached and go no further.
+
+**It never writes the record set on its own.** Owner's answer to question one:
+"it's going to write the rule and stop and wait for the approval to write the
+record set."
+
+### 15.2 THE RULE THAT KEEPS IT HONEST: it may not choose by money
+
+The tab exists to stop the owner shopping a board of half a million settings. A
+machine that tries many narrowings and keeps the best-looking one is shopping at
+machine speed, which is strictly worse than doing it by hand — it can try more
+and it leaves no memory of what it rejected.
+
+So auto mode may only decide using what the manual walk already decides on:
+
+- which dials move the result, in the step 1 ordering;
+- whether the two halves agree;
+- how wide the surviving region is, and how deep inside it a setting sits;
+- whether a dial's values were swept evenly.
+
+It may never prefer a range because that range made more money. The one
+exception is the option in §15.4 that the owner asked for explicitly, and that
+option says what it is in its own label.
+
+### 15.3 Its defence is the scrambled copies
+
+Auto mode runs its **whole procedure twice** — once on the board, once on a
+scrambled copy of it (§4.5) — and reports both. `nullCopy` and the single
+`applyRule` already make this possible: the procedure is a sequence of rules,
+and a rule applies to a scrambled copy exactly as it applies to the real board.
+
+If the same procedure reaches the target on luck alone with a result that looks
+comparable, the procedure found nothing, and **auto mode says so rather than
+handing over a rule**. A set is still writable — RULE ZERO, the owner decides —
+but the tab must not present a fitted-to-noise rule as a finding.
+
+**Auto mode must not report a result at all on a set with no kept scrambles.**
+Without them there is nothing to check the procedure against, and an automatic
+narrowing with no such check is the least defensible thing this tab could
+produce. It says which control on Sweep would have kept them.
+
+### 15.4 The one automatic choice the owner asked to control
+
+Owner's answer to question three: a choice between narrowing a dial to **the
+middle of what was swept** and narrowing it to **the best value**.
+
+- **Middle of what was swept** — the same arithmetic as
+  `tighten the ranges toward the middle`: give up the outermost value from BOTH
+  ends, one at a time. Keeps the interior of a region, which is what makes a
+  wide region defensible. Never looks at the money.
+- **Best value** — keeps the best-averaging value of each dial. **This is
+  shopping, on every dial, automatically.** It is offered because the owner
+  asked for it and removing a choice is the fault RULE ZERO and RULE FIVE exist
+  to prevent. It must carry the cost in its own label, the way
+  `take the top N by a column (this is shopping)` does, so it cannot be chosen
+  by accident. With it selected, §15.3's comparison is the only thing between
+  the owner and a rule fitted to noise, which is why §15.3 refuses without it.
+
+### 15.5 A disagreement at step 1 is marked, not fatal
+
+Owner's answer to question two: "we carry on and mark if the split half
+disagrees at step one."
+
+The manual tab prints, at step 1, that nothing below means anything until the
+halves agree. Auto mode does not stop on it. It marks the run, carries the mark
+onto the Stage 4 set beside the rule, and the mark is not clearable — a walk
+that began on a disagreement is a different kind of evidence from one that did
+not, and the reserve grade at the end of the chain has to be able to see it.
+
+### 15.6 The record is the same record
+
+Every automatic choice is written with `recordStep`, in the same shape a manual
+choice is written, plus a flag saying a machine made it. Every time the
+procedure narrows and then widens again is a back-step and is written with
+`recordBackStep`. A machine that walked back forty times has seen far more of
+the board than an owner who walked forward once, and the one-touch reserve grade
+can only count what was written down.
+
+### 15.7 What is NOT settled
+
+- The starting control and the mode switch have no names. Under RULE ONE-A no
+  control here may be named to the owner until it is built, deployed and
+  `SERVED.json` re-fingerprinted.
+- The stopping condition when the target cannot be reached without collapsing a
+  range — `tightenRule` already stops honestly and says so; the automatic walk
+  needs the same behaviour agreed across all six steps, not just the ranges.
+- Whether auto mode may set the exposure limits at step 6 at all, or must leave
+  `worst losing streak allowed` and `fewest trades` to the owner.
+- Whether the two runs in §15.3 should be one scrambled copy or all of the kept
+  ones. All of them is the stronger claim and costs a pass over every setting
+  per copy.

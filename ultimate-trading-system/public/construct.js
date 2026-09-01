@@ -3840,7 +3840,7 @@ drawBoards = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(.
 // held-back numbers would spend the only window that can judge the answer.
 
 const F_STEPS = [
-  ['which dials move the result', 'nothing is cut here'],
+  ['which dials move the result', 'nothing is cut here, review the table'],
   ['the shape of a dial', 'pick a range, never a value'],
   ['do two dials interact', 'the grid, with thin squares marked'],
   ['does it hold elsewhere', 'across whatever this set can offer'],
