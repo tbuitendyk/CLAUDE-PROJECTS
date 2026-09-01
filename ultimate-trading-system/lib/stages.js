@@ -3657,11 +3657,29 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
         doc.perf.elapsedMs = now - t0;
         doc.perf.etaMs = unitsPriced
           ? Math.round(((now - t0) / unitsPriced) * (records.length - unitsPriced)) : null;
+        // ELAPSED IS ALWAYS IN IT, and that is not decoration. Everything else
+        // on this line only changes when something LANDS, and the first thing
+        // that lands is a quarter of a unit -- around twenty-five minutes in.
+        // For those twenty-five minutes the line was identical to a dead job,
+        // which is the exact complaint the reporter was written to answer
+        // (owner, 2026-09-01: "hit the button 15 minutes ago, still looking at
+        // 0 of 10 units"). A number that ticks is the difference between
+        // "working" and "hung", and it costs nothing.
+        const mins = Math.floor((now - t0) / 60000);
         doc.progress = `filling in ${keep} kept scrambles — ${unitsPriced} of ${records.length} units priced`
           + `${partsNote ? `, ${partsNote}` : ''}`
-          + ` · ${rowsDone.toLocaleString()} of ${totalRows.toLocaleString()} records written`;
+          + ` · ${rowsDone.toLocaleString()} of ${totalRows.toLocaleString()} records written`
+          + ` · ${mins}m so far`;
         saveSet(doc);
       };
+      // THE HEARTBEAT, and it lives HERE because it calls say -- put above the
+      // definition it would have thrown ten seconds into every run. Without it
+      // the line only moves when a part LANDS, and the first part of the first
+      // unit is twenty-five minutes away: twenty-five minutes that read exactly
+      // like a hung job. Ten seconds is far below the cost of anything else
+      // here and far above how often a person refreshes.
+      const beat = setInterval(() => { try { say(true); } catch (_) { /* the run reports its own faults */ } }, 10000);
+      const stopBeat = () => clearInterval(beat);
       // EVERY WORKER ON THE SAME UNIT, and this was wrong the first time. It
       // handed the pool ONE unit and awaited it, so with four workers three sat
       // idle: the box is allowed 390% and the process sat at exactly 100%, and
@@ -3835,6 +3853,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       doc.progress = `filling in the kept scrambles stopped: ${e.message}`;
       saveSet(doc);
     } finally {
+      stopBeat();
       if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
     }
   })();

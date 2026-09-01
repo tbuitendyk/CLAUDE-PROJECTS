@@ -3895,7 +3895,7 @@ function fHead(d) {
   return `<h3 style="margin-top:0">Funnel - ${esc(d.set.name)}</h3>
     <p class="note"><b>Every money figure on this screen is test money.</b> The held-back window is opened once,
       at the cut, on what survives.</p>
-    <div class="row"><span class="note"><b>${Number(d.survivors).toLocaleString()}</b> of
+    <div class="row" style="align-items:flex-end"><span class="note"><b>${Number(d.survivors).toLocaleString()}</b> of
       ${Number(d.of).toLocaleString()} settings survive${d.target ? ` and the target is ${Number(d.target).toLocaleString()}` : ''}</span>
       <label class="f">target size<input id="fTarget" type="number" min="0" style="width:6rem"
         value="${d.target == null ? '' : d.target}"></label></div>
@@ -3963,7 +3963,7 @@ function fStep2(r, st) {
       otherwise flat menu is what a fluke looks like; a hill or a ramp is a relationship.</p>` : ''}
     <table><thead><tr>${cth('value', 'fValue')}${cth('settings', 'fSettings')}${cth('avg test', 'fAvgTest')}</tr></thead>
       <tbody>${r.groups.map((g) => `<tr><td>${esc(g.value)}</td><td>${g.n}</td><td>${fFix(g.mean)}</td></tr>`).join('')}</tbody></table>
-    <div class="row" style="margin-top:.5rem">
+    <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <label class="f">keep from<input id="fMin" style="width:7rem" value="${esc(String(range.min == null ? '' : range.min))}"></label>
       <label class="f">to<input id="fMax" style="width:7rem" value="${esc(String(range.max == null ? '' : range.max))}"></label>
       <button id="fAddRange" class="pri">add this range to the rule</button>
@@ -3972,7 +3972,7 @@ function fStep2(r, st) {
 
 function fStep3(r, st) {
   if (!r.grid) return '<p class="note">name two dials and read the grid</p>';
-  return `<div class="row">
+  return `<div class="row" style="align-items:flex-end">
       <label class="f">first dial<input id="fA" style="width:9rem" value="${esc(st.dialA || '')}"></label>
       <label class="f">second dial<input id="fB" style="width:9rem" value="${esc(st.dialB || '')}"></label>
       <label class="f">thin below<input id="fFloor" type="number" min="0" style="width:6rem" value="${st.floor || 0}"></label>
@@ -4023,7 +4023,7 @@ function fStep6(d, st) {
       flatter; an average losing streak hides the one that would have ended you.</p>
     <div class="row"><button id="fRebuild" class="pri">work out the missing numbers</button>
       <span id="fRebuildMsg" class="note">${st.rebuilt ? 'done for this set' : 'not done yet'}</span></div>
-    <div class="row" style="margin-top:.5rem">
+    <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <label class="f">worst losing streak allowed<input id="fDD" type="number" style="width:8rem"
         value="${esc(String(dd.max == null ? '' : dd.max))}"></label>
       <label class="f">fewest trades<input id="fTrades" type="number" style="width:8rem"
@@ -4037,7 +4037,7 @@ function fStep7(d) {
     <p class="note"><b>${esc(d.ruleSentence)}</b></p>
     <p class="note">${Number(d.survivors).toLocaleString()} settings survive${d.target
     ? ` against a target of ${Number(d.target).toLocaleString()}` : ''}.</p>
-    <div class="row">
+    <div class="row" style="align-items:flex-end">
       <label class="f">name<input id="fName" style="width:14rem" placeholder="left blank, it is numbered"></label>
       <label class="f">how to reach the target<select id="fClose">${vocabOptions('funnelClosing', 'rule')}</select></label>
       <button id="fCut" class="pri">write the Stage 4 set</button><span id="fCutMsg" class="note"></span></div>

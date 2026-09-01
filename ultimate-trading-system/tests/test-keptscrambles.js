@@ -410,6 +410,27 @@ module.exports = {
       'it must use the page\'s shared wait box rather than reaching for the element itself');
   },
 
+  // "hit the button 15 minutes ago, still looking at 0 of 10 units" (owner,
+  // 2026-09-01). The reporter only fired when something LANDED, and the first
+  // thing that lands is a quarter of a unit -- twenty-five minutes in. So the
+  // first twenty-five minutes read exactly like a hung job. The middle was
+  // fixed and the beginning left, and the beginning is the part being watched.
+  theFillsLineMovesBeforeAnythingHasLanded() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const at = src.indexOf('function startKeptScrambleFill');
+    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
+    assert.ok(/const beat = setInterval\(/.test(body), 'the line must tick on its own, not only when work lands');
+    assert.ok(body.includes('m so far'), 'it must carry elapsed time — that is the part that changes with no news');
+    // IT CALLS say, SO IT MUST COME AFTER IT. Placed above, it throws ten
+    // seconds into every run and the run reports nothing at all.
+    assert.ok(body.indexOf('const say = (') < body.indexOf('const beat = setInterval'),
+      'the heartbeat calls say, so it must be declared after it or it throws on its first tick');
+    // and stopped on EVERY way out, including a refusal
+    const fin = body.indexOf('} finally {');
+    assert.ok(fin > 0 && body.indexOf('stopBeat();') > fin,
+      'the heartbeat must be stopped in the finally — a failed run must not leave a timer writing the set for ever');
+  },
+
   // The tally's shape changed, so every totals file on disk must be rebuilt
   // rather than read (RULE NINE: derived files are deleted and rebuilt).
   theTallyVersionMovedWithItsShape() {

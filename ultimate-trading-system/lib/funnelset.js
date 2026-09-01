@@ -28,12 +28,43 @@ const funnel = require('./funnel');
 //            numbers, each named with the direction it cuts
 const EMPTY_RULE = Object.freeze({ ranges: {}, allowed: {}, floors: {} });
 
+// COLUMNS A NULL COPY ACTUALLY HAS (owner order, 2026-09-01). Taking the top N
+// only means anything if the same rule takes the top N of a null copy too --
+// then the comparison is your best N against the null set's best N, and the
+// shopping is measured instead of hidden.
+//
+// Which is only true for a column the null copy HAS. A null copy is the real
+// table with its money swapped for what each setting made in one scrambled
+// copy; every other column is still the real one. So sorting a null copy by
+// anything else would sort it by REAL numbers and hand back the same rows --
+// a comparison that looks like one and is not.
+//
+// Held-back money is deliberately NOT here even though the kept figures carry
+// it: the walk runs on test money so the sealed window stays shut until the
+// cut, and sorting by held-back money at the cut is opening the seal to decide
+// what to keep.
+const TOP_COLUMNS = Object.freeze({ avgTest: 'avg test $' });
+const topColumnNames = () => Object.keys(TOP_COLUMNS);
+
+function normaliseCut(cut) {
+  const c = cut || {};
+  if (c.kind !== 'top') return null;
+  const column = TOP_COLUMNS[c.column] ? String(c.column) : null;
+  const n = Math.max(0, Math.floor(Number(c.n) || 0));
+  if (!column || !n) return null;
+  return { kind: 'top', column, n };
+}
+
 function normaliseRule(rule) {
   const r = rule || {};
   return {
     ranges: r.ranges && typeof r.ranges === 'object' ? r.ranges : {},
     allowed: r.allowed && typeof r.allowed === 'object' ? r.allowed : {},
     floors: r.floors && typeof r.floors === 'object' ? r.floors : {},
+    // PART OF THE RULE, not a step taken after it. That is the whole point:
+    // whatever reads this rule -- including the pass that reads it against a
+    // null copy -- performs the same cut.
+    cut: normaliseCut(r.cut),
   };
 }
 
@@ -54,7 +85,7 @@ function inRange(value, spec) {
 
 function applyRule(rows, rule) {
   const R = normaliseRule(rule);
-  return (rows || []).filter((row) => {
+  const kept = (rows || []).filter((row) => {
     for (const [dial, spec] of Object.entries(R.ranges)) {
       if (!inRange(row[dial], spec)) return false;
     }
@@ -72,6 +103,23 @@ function applyRule(rows, rule) {
     }
     return true;
   });
+  if (!R.cut) return kept;
+  // SORTED THE SAME WAY EVERY TIME. A tie broken differently on the real table
+  // and on a null copy makes the two uncomparable, and makes the rule fail to
+  // reproduce its own survivors on a re-read. The label is unique per setting
+  // (the cut refuses to run otherwise), so it is a total order.
+  const val = (r) => {
+    const v = r[R.cut.column];
+    return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+  };
+  const ordered = kept.slice().sort((a, b) => {
+    const av = val(a); const bv = val(b);
+    if (av == null && bv == null) return String(a.label).localeCompare(String(b.label));
+    if (av == null) return 1;                 // nothing to rank by sits last, either way
+    if (bv == null) return -1;
+    return (bv - av) || String(a.label).localeCompare(String(b.label));
+  });
+  return ordered.slice(0, R.cut.n);
 }
 
 // The rule in one sentence, so the page can state it back before it is pressed.
