@@ -632,6 +632,52 @@ module.exports = {
       'the values column already says a one-value dial is listed separately; the two must not disagree');
   },
 
+  // A DIAL IS PRINTED WITH THE NAME THE OWNER CAN POINT AT (owner order,
+  // 2026-09-01). The first step listed dials as dMult, agreePct, weekdaysOnly
+  // -- the keys the engine holds them under, and names that appear on no
+  // screen. Each now carries the Sweep control's own label in brackets.
+  //
+  // CHECKED BOTH WAYS, which is the only thing that makes the map worth having.
+  // From the engine: every dial the Funnel can print must have an entry, so a
+  // dial added tomorrow fails here rather than showing up bare. From the page:
+  // every label must be the text of a control drawSweep() actually renders, so
+  // a rename on Sweep breaks the suite instead of leaving the Funnel pointing
+  // at a box that is gone.
+  theDialNamesCarryTheirSweepLabel() {
+    const s = src('public/construct.js');
+    const at = s.indexOf('const DIAL_ON_SWEEP = {');
+    assert.ok(at > 0, 'the map is gone');
+    const map = {};
+    for (const m of s.slice(at, s.indexOf('};', at)).matchAll(/^\s{2}([A-Za-z]+): '(.+)',$/gm)) map[m[1]] = m[2];
+
+    // ---- from the engine towards the page -----------------------------------
+    const F = require('../lib/funnel');
+    assert.deepStrictEqual(Object.keys(map).sort(), [...F.ALL_DIALS].sort(),
+      'every dial the Funnel can print needs a Sweep label, and the map may name no dial that is not one');
+
+    // ---- from the page back towards the map ---------------------------------
+    const swAt = s.indexOf('async function drawSweep()');
+    assert.ok(swAt > 0, 'drawSweep is gone');
+    const sweep = s.slice(swAt, s.indexOf('\nasync function ', swAt + 10));
+    for (const [dial, label] of Object.entries(map)) {
+      const esc2 = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      assert.ok(new RegExp(`>\\s*${esc2}\\s*<`).test(sweep),
+        `${dial} is labelled "${label}", which is not the text of any control on Sweep`);
+    }
+
+    // ---- and the first step actually uses it --------------------------------
+    const f1 = s.slice(s.indexOf('function fStep1('), s.indexOf('\nfunction fStep2('));
+    assert.ok(!/<td>\$\{esc\(x\.dial\)\}<\/td>/.test(f1), 'the table must not print the bare key');
+    for (const place of ['esc(fDialLabel(x.dial))', 'r.lopsided.map(fDialLabel)',
+      '(sh.a || []).map(fDialLabel)', '(sh.b || []).map(fDialLabel)']) {
+      assert.ok(f1.includes(place), `a dial name on the first step is still bare: ${place}`);
+    }
+    // the brackets belong to the screen name, so the reason a dial cannot be
+    // measured must not be bracketed too -- two pairs in a row reads as one
+    assert.ok(/\$\{esc\(fDialLabel\(x\.dial\)\)\} - \$\{esc\(x\.why\)\}/.test(f1),
+      'the not-measurable reason must follow a dash, not a second pair of brackets');
+  },
+
   aFunnelReadThatFailsSaysSoRatherThanLeavingTheScreenAsItWas() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const at = src.indexOf('async function drawFunnel');

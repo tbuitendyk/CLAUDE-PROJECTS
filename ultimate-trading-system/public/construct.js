@@ -95,6 +95,35 @@ const comboOf = (r) => (!r ? '—' : r.trade + (r.ctx1 ? ` + ${r.ctx1}` : '') + 
 // tradeable). Most headings on this tab carried nothing at all, which left the
 // decoding to the reader; that is the writer's job. Held in one place so a word
 // means the same thing on every table that uses it.
+// THE DIAL KEYS, WITH WHAT SWEEP CALLS THEM (owner order, 2026-09-01). The
+// Funnel prints a dial by the name the engine holds it under -- dMult, agreePct
+// -- and those are not names the owner can point at. The screen name goes in
+// brackets after it, so the row reads as the box it came from.
+//
+// Every label here is the text of a control in drawSweep(), and
+// theDialNamesCarryTheirSweepLabel checks both directions: a dial with no entry
+// fails, and an entry naming a label Sweep does not show fails. A rename on
+// Sweep therefore breaks the suite instead of quietly leaving the Funnel
+// pointing at a box that is gone.
+const DIAL_ON_SWEEP = {
+  dMult: 'd',
+  tHours: 't',
+  trailMult: 'trail',
+  armMult: 'arm',
+  bandMode: 'band % (or auto)',
+  agreePct: 'share',
+  agreeCopy: 'one voice at',
+  agreePersist: 'hold',
+  decision: 'decision',
+  weekdaysOnly: '24/5',
+  entry: 'entry',
+  gate: 'gate',
+  agreeRule: 'quorum by',
+  agreeBar: 'quorum bar',
+  agreeBoth: 'both kinds',
+};
+const fDialLabel = (d) => (DIAL_ON_SWEEP[d] ? `${d} (${DIAL_ON_SWEEP[d]})` : String(d));
+
 const COL = {
   // Funnel
   fDialName: 'one of the settings a sweep can be told to vary. This table lists only the dials this run swept more than one value of. A dial swept at a single value has nothing to measure against anything, so it is named on the "Not measurable here" line below instead of appearing here as flat.',
@@ -3936,19 +3965,19 @@ function fStep1(r) {
       number is a claim only against the split-half beside it.</p>
     <table><thead><tr>${cth('dial', 'fDialName')}${cth('movement', 'fMovement')}${cth('range', 'fRange')}
       ${cth('values', 'fValues')}${cth('evenly swept', 'fEven')}</tr></thead><tbody>
-      ${(r.dials || []).map((x) => `<tr><td>${esc(x.dial)}</td><td>${fFix(x.m)}</td><td>${fFix(x.range)}</td>
+      ${(r.dials || []).map((x) => `<tr><td>${esc(fDialLabel(x.dial))}</td><td>${fFix(x.m)}</td><td>${fFix(x.range)}</td>
         <td>${(x.values || []).length}</td>
         <td class="${(x.balance || {}).balanced ? 'muted' : 'warn'}">${fFix((x.balance || {}).even)}</td></tr>`).join('')}
     </tbody></table>
     <p class="note"><b>Split-half:</b> ${sh.why ? esc(sh.why)
-    : `one half leads with ${esc((sh.a || []).join(', '))} and the other with ${esc((sh.b || []).join(', '))} - ${sh.agrees
+    : `one half leads with ${esc((sh.a || []).map(fDialLabel).join(', '))} and the other with ${esc((sh.b || []).map(fDialLabel).join(', '))} - ${sh.agrees
       ? 'they agree.'
       : '<b class="neg">they do not agree, and nothing below this step means anything until they do.</b>'}`}</p>
-    ${(r.lopsided || []).length ? `<p class="note warn"><b>Not evenly swept:</b> ${esc(r.lopsided.join(', '))}.
+    ${(r.lopsided || []).length ? `<p class="note warn"><b>Not evenly swept:</b> ${esc(r.lopsided.map(fDialLabel).join(', '))}.
       Grouping by one dial only averages the others out when every value was swept against the same spread of
       everything else. These are partly some other dial's movement wearing their name.</p>` : ''}
     ${(r.skipped || []).length ? `<p class="note muted">Not measurable here:
-      ${r.skipped.map((x) => `${esc(x.dial)} (${esc(x.why)})`).join('; ')}. That is not the same as flat.</p>` : ''}`;
+      ${r.skipped.map((x) => `${esc(fDialLabel(x.dial))} - ${esc(x.why)}`).join('; ')}. That is not the same as flat.</p>` : ''}`;
 }
 
 function fStep2(r, st) {
