@@ -275,6 +275,47 @@ module.exports = {
     assert.ok(!/scrollTo\(/.test(body), 'a hand-rolled scroll here races the restore that follows it');
   },
 
+  // "0 of 10 units done, block 1 of 3658" after 45 minutes, with a unit
+  // finished and the rewrite well under way (owner, 2026-09-01). The line was
+  // written in exactly one place -- the moment a NEW unit started pricing --
+  // which is the one moment nothing happens for long. A job that had just been
+  // made four times faster reported worse than before it.
+  theFillsProgressMovesWhileTheWorkDoes() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const at = src.indexOf('async function startKeptScrambleFill');
+    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
+
+    // ONE writer. Two would drift, and the drift is what produced three
+    // different wrong numbers on one line.
+    const inSay = body.slice(body.indexOf('const say = ('), body.indexOf('const say = (') + 1400);
+    assert.ok(inSay.includes('doc.progress ='), 'the reporter must be the thing that writes the line');
+    // FOUR writers, each named: the opening line before any work, the reporter,
+    // and the two ends (filled in / stopped). A fifth means someone has written
+    // a second account of the same thing, which is exactly what went wrong.
+    assert.strictEqual(body.split('doc.progress =').length - 1, 4,
+      'the line must be written in four named places only: the opening line, the reporter, and the two ends');
+    for (const w of ['0 of ${records.length} units`', 'units priced`', 'filled in —', 'stopped:']) {
+      assert.ok(body.includes(w), `the progress writer "${w}" is gone — the count above is no longer checking what it names`);
+    }
+
+    // A unit counts when it FINISHES. It used to count when the next one began,
+    // so a finished unit read as zero for as long as the next took to price.
+    const done = body.indexOf('unitsPriced++');
+    assert.ok(done > 0 && done < body.indexOf('return byLabel'),
+      'a unit must be counted as it finishes pricing, not when the next one starts');
+
+    // The rewrite reports too — that is the stretch that looked stuck.
+    assert.ok(/rowsDone\+\+/.test(body) && /records written/.test(body),
+      'the rewrite must report how many records it has written, or it looks stuck for hours');
+    assert.ok(body.includes('perUnitPricings') && body.includes('doc.perf.cyclesDone = unitsPriced * perUnitPricings'),
+      'cyclesDone must count real pricings, or the Sweep line shows no rate and no finish time');
+
+    // Throttled, or a 5.2-million-row walk writes the set document 5.2 million
+    // times.
+    assert.ok(/now - lastSay < 2000/.test(body), 'the reporter must be throttled');
+    assert.ok(/say\(true\)/.test(body), 'the moments that matter must report immediately rather than wait for the throttle');
+  },
+
   // The tally's shape changed, so every totals file on disk must be rebuilt
   // rather than read (RULE NINE: derived files are deleted and rebuilt).
   theTallyVersionMovedWithItsShape() {

@@ -3571,7 +3571,45 @@ async function startKeptScrambleFill(id, wantKeep) {
       // unit order, so one unit's figures are in hand at a time and the whole
       // board's 5.2 million rows of them never are.
       const priced = new Map();
-      const unitsDone = new Set();
+      const seenUnits = new Set();
+      // THE LINE HAS TO MOVE WHILE THE WORK DOES (owner, 2026-09-01: "what's
+      // with this after 45 minutes: ... 0 of 10 units done, block 1 of 3658").
+      //
+      // It was written in only one place -- the moment a NEW unit started
+      // pricing -- and that is the one moment nothing is happening for long.
+      // Three lies came out of it at once. A unit was counted only when the
+      // NEXT one began, so a finished unit read as zero. The block number was
+      // stamped once and then sat still through the whole rewrite, which is the
+      // part that looks slowest. And cyclesDone came off the same count, so the
+      // Sweep line showed 0 of 110,214,720 with no rate and no finish time for
+      // five hours. The job had just been made four times faster and reported
+      // worse than before.
+      //
+      // ONE reporter now, called from every place that actually advances, and
+      // throttled -- a five-million-row walk would otherwise write the set
+      // document five million times.
+      const totalRows = blocks.reduce((a, b) => a + (b.rows || 0), 0);
+      const perUnitPricings = settings.length * (1 + keep * 2);
+      let unitsPriced = 0;
+      let rowsDone = 0;
+      let partsNote = '';
+      let lastSay = 0;
+      const say = (force = false) => {
+        const now = Date.now();
+        if (!force && now - lastSay < 2000) return;
+        lastSay = now;
+        // PRICINGS ONLY, because that is what cyclesTotal counts. Mixing the
+        // rewrite in would make the rate mean two different things at once.
+        doc.perf.unitsDone = unitsPriced;
+        doc.perf.cyclesDone = unitsPriced * perUnitPricings;
+        doc.perf.elapsedMs = now - t0;
+        doc.perf.etaMs = unitsPriced
+          ? Math.round(((now - t0) / unitsPriced) * (records.length - unitsPriced)) : null;
+        doc.progress = `filling in ${keep} kept scrambles — ${unitsPriced} of ${records.length} units priced`
+          + `${partsNote ? `, ${partsNote}` : ''}`
+          + ` · ${rowsDone.toLocaleString()} of ${totalRows.toLocaleString()} records written`;
+        saveSet(doc);
+      };
       // EVERY WORKER ON THE SAME UNIT, and this was wrong the first time. It
       // handed the pool ONE unit and awaited it, so with four workers three sat
       // idle: the box is allowed 390% and the process sat at exactly 100%, and
@@ -3588,7 +3626,7 @@ async function startKeptScrambleFill(id, wantKeep) {
       const priceUnit = async (u) => {
         const rec = records[u];
         if (!rec) throw new Error(`a row names unit ${u} and this set has ${records.length}`);
-        if (unitsDone.has(u)) {
+        if (seenUnits.has(u)) {
           throw new Error(`unit ${rec.trade} appears again after the walk moved past it — `
             + 'the store is not in unit order and this pass will not guess at it');
         }
@@ -3611,14 +3649,17 @@ async function startKeptScrambleFill(id, wantKeep) {
           }
           for (const r of (settled.value.rows || [])) byLabel.set(r.label, r);
           lanesDone++;
-          doc.progress = `filling in ${keep} kept scrambles — unit ${unitsDone.size + 1} of ${records.length}, `
-            + `${lanesDone} of ${shards.length} parts`;
-          saveSet(doc);
+          // Named as the unit being PRICED, which is one past those finished
+          partsNote = `pricing unit ${unitsPriced + 1}: ${lanesDone} of ${shards.length} parts`;
+          say(true);
         });
         if (byLabel.size !== settings.length) {
           throw new Error(`unit ${rec.trade} came back with ${byLabel.size} settings and the block declares `
             + `${settings.length} — the parts do not add up to the whole, so nothing is written`);
         }
+        unitsPriced++;
+        partsNote = '';
+        say(true);
         return byLabel;
       };
       for (let bi = 0; bi < blocks.length; bi++) {
@@ -3626,16 +3667,8 @@ async function startKeptScrambleFill(id, wantKeep) {
           const u = x.row.u;
           if (!priced.has(u)) {
             // every unit already finished is released before the next is priced
-            for (const had of [...priced.keys()]) { priced.get(had).clear(); priced.delete(had); unitsDone.add(had); }
-            priced.set(u, await priceUnit(u));
-            doc.perf.unitsDone = unitsDone.size;
-            doc.perf.cyclesDone = Math.round((doc.perf.cyclesTotal / records.length) * unitsDone.size);
-            doc.perf.elapsedMs = Date.now() - t0;
-            doc.perf.etaMs = unitsDone.size
-              ? Math.round((doc.perf.elapsedMs / unitsDone.size) * (records.length - unitsDone.size)) : null;
-            doc.progress = `filling in ${keep} kept scrambles — ${unitsDone.size} of ${records.length} units done, `
-              + `block ${bi + 1} of ${blocks.length}`;
-            saveSet(doc);
+            for (const had of [...priced.keys()]) { priced.get(had).clear(); priced.delete(had); seenUnits.add(had); }
+            priced.set(u, await priceUnit(u));   // which counts itself and reports
           }
           const add = priced.get(u).get(x.row.label);
           if (!add) throw new Error(`${x.row.label} is on disk for unit ${u} and the fill did not price it`);
@@ -3651,7 +3684,11 @@ async function startKeptScrambleFill(id, wantKeep) {
             }
           }
           w.push({ ...x.row, noiseTest: add.noiseTest || null, noiseHold: add.noiseHold || null });
+          rowsDone++;
         }
+        // The rewrite is the part that used to look stuck: no unit starts, so
+        // nothing was ever written. Throttled, so a block costs one clock read.
+        say();
         // one flush per block, so the new block holds exactly the rows the old
         // one did and every block index already recorded still points at them
         w.flush();
