@@ -245,8 +245,14 @@ function markInterrupted(reason) {
       const doc = getSet(row.id);
       if (!doc) continue;
       doc.status = 'done';
+      // HOW MUCH SURVIVED, counted. "Press it again" on its own reads like
+      // starting from nothing, and the whole point of saving each unit is that
+      // it is not.
+      let saved = 0;
+      try { saved = fs.readdirSync(keptFigsDir(row.id)).filter((f) => /^unit-\d+\.bin$/.test(f)).length; } catch (_) { saved = 0; }
       doc.progress = `filling in the kept null money stopped when the service restarted${reason ? ` — ${reason}` : ''}. `
-        + 'The records were not touched: they are written beside and only swapped at the end. Press it again to restart.';
+        + 'The records were not touched: they are written beside and only swapped at the end. '
+        + `${saved} unit(s) are already priced and saved, and will be checked and reused — press it again and it carries on from there.`;
       saveSet(doc);
       try { rowstore.remove(`${row.id}__keptfill`); } catch (_) { /* nothing half-written to clear */ }
       continue;
@@ -3482,51 +3488,91 @@ function stage3CoinRows(id, query) {
 
 // ---- FILLING IN THE KEPT SCRAMBLES ON A SET THAT WAS PRICED WITHOUT THEM ----
 //
-// Owner order, 2026-08-31: "keep 10, do all of it, backfill included".
+// Owner order, 2026-08-31: "keep 10, do all of it, backfill included", and
+// after three failures, 2026-09-01: "redesign the system from the ground up to
+// actually save the records ... you can save every single unit and confirm it
+// in the code before going forward and wasting another five and a half hours."
 //
-// This is a RULE NINE migration, not a re-run. The design said the capture
-// "cannot be built afterwards" and that was wrong: the scrambles are a pure
-// function of the set's id, because seedOf is a hash of the name and the
-// shuffle is a seeded Fisher-Yates. Scramble seven is the same scramble seven
-// it always was, and pricing it again reproduces exactly what the run would
-// have written.
+// IT IS TWO PASSES NOW, AND THE FIRST ONE SAVES.
 //
-// WHAT IT PRICES, and what it deliberately does not. Per setting per unit it
-// prices the real test money as a PROOF, plus the kept scrambles on the test
-// window and on the held-back window. It does not touch the real held-back
-// money, the four hold controls, or the ninety other scrambles -- those are on
-// disk already, and re-doing them turns a four-hour fill into a twelve-hour
-// re-run for numbers that would come out identical.
+//   1. PRICE AND SAVE, one unit at a time. A unit is priced, its figures are
+//      written to their own file, and that file is READ BACK AND CHECKED before
+//      the next unit starts. Then the memory goes. One unit is held, never ten.
+//   2. REWRITE, reading those files back as the walk needs them.
 //
-// MIGRATE BESIDE, VERIFY, SWAP (RULE NINE). The rows are rewritten into a
-// scratch store and moved into place only once every block is written. Each
-// block is flushed after exactly the rows it held before, so every block index
-// already recorded -- the per-unit ranges on this document and the per-coin
-// block lists in the totals -- still points where it did.
+// WHAT THAT BUYS, and each of these is a failure that actually happened:
 //
-// UNIT BY UNIT, because holding the whole board's new figures at once is 5.2
-// million rows of them. One unit is a five-hundredth of that, and the store is
-// written in unit order anyway.
-// A PROVING RUN COMES FIRST, and it is not optional judgement any more.
-// The first version of this walked the store assuming each unit's rows sat in
-// ONE stretch. They do not: every unit appears twice, because the pass that
-// added settings later appended a second one. The guard caught it -- at the
-// last unit, after five and a half hours of the owner's evening.
+//   * A death at hour four costs minutes. Every unit already saved is verified
+//     and skipped on the next attempt, so the work is not lost. The first three
+//     attempts each threw away everything they had done.
+//   * Memory cannot be the thing that kills it. Holding all ten units of
+//     figures was about 560 MB on top of a service already near its ceiling;
+//     this holds one, then two during the rewrite.
+//   * A unit that saved wrong is caught THERE, at the minute it happened,
+//     rather than five hours later against a row that cannot find its figures.
 //
-// The probe that would have found it took sixty seconds and was written AFTER
-// the failure. So: opts.dryRun prices ONE unit and walks the WHOLE store
-// looking every row of that unit up, writing nothing. It exercises this exact
-// function, not a copy, because a copy proves the copy.
-// NOT async, and that is load-bearing (2026-09-01). It was, for no reason --
-// there is not one await outside the background job below -- and an async
-// function that throws does not throw: it returns a REJECTED PROMISE. So every
-// refusal from here sailed straight past the endpoint's try/catch, express
-// serialised the promise as `{}`, and the unhandled rejection KILLED THE
-// SERVICE. It did exactly that at 05:34 on a plain "one heavy job at a time"
-// refusal.
+// THE REST OF WHAT WAS LEARNED, kept because each cost an evening:
 //
-// startStage1, startStage2 and startStage3 are all plain functions for this
-// reason. This one broke a pattern that was already there.
+//   * The scrambles are a pure function of the set's id, so this is a RULE NINE
+//     migration and not a re-run: seedOf is a hash of the name and the shuffle
+//     is a seeded Fisher-Yates. Scramble seven is the same scramble seven.
+//   * Every unit's rows appear in MORE THAN ONE stretch of the store, because
+//     settings added later were appended as a second pass. Measured, not
+//     assumed: 328,020 rows a unit in the first, 196,812 in the second.
+//   * The rewrite decides its own block boundaries (manualBlocks). Flushing per
+//     source block is not enough on its own -- the writer also closes a block
+//     once a block's worth of bytes has piled up, and these rows are a fifth
+//     bigger, so source blocks split and every recorded block index breaks.
+//   * Nothing is swapped until the row count AND the block shape match.
+function keptFigsDir(id) {
+  return path.join(__dirname, '..', 'data', 'batches', `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}__keptfigs`);
+}
+// A UNIT'S FIGURES ON DISK: the flat Int32Array beside a small note saying what
+// it should be. The note is what makes "saved" checkable instead of assumed.
+function writeUnitFigures(dir, u, vals, has, meta) {
+  const crypto = require('crypto');
+  fs.mkdirSync(dir, { recursive: true });
+  const buf = Buffer.from(vals.buffer, vals.byteOffset, vals.byteLength);
+  const sha = crypto.createHash('sha256').update(buf).digest('hex');
+  let priced = 0;
+  for (let i = 0; i < has.length; i++) if (has[i]) priced++;
+  const binTmp = path.join(dir, `unit-${u}.bin.tmp`);
+  fs.writeFileSync(binTmp, buf);
+  fs.renameSync(binTmp, path.join(dir, `unit-${u}.bin`));
+  atomicWrite(path.join(dir, `unit-${u}.json`), JSON.stringify({ ...meta, unit: u, priced, sha, at: new Date().toISOString() }));
+  return { sha, priced };
+}
+// READ BACK AND CHECK, every time -- on the unit just written and on every unit
+// the rewrite loads. A file that says one thing and holds another is exactly
+// the failure this design exists to make impossible, so it is never trusted on
+// the strength of existing.
+function readUnitFigures(dir, u, want) {
+  const crypto = require('crypto');
+  const jf = path.join(dir, `unit-${u}.json`);
+  const bf = path.join(dir, `unit-${u}.bin`);
+  let note;
+  try { note = JSON.parse(fs.readFileSync(jf, 'utf8')); } catch (_) { return null; }
+  let buf;
+  try { buf = fs.readFileSync(bf); } catch (_) { return null; }
+  // ANSWERING A DIFFERENT QUESTION is not the same as being damaged, and
+  // treating them alike would refuse a run just because the owner changed how
+  // many scrambles to keep. Stale gets re-priced; damaged stops everything.
+  const stale = [];
+  if (note.settings !== want.settings) stale.push(`it is for ${note.settings} settings and this set declares ${want.settings}`);
+  if (note.width !== want.width) stale.push(`it holds ${note.width} figures a setting and this asks for ${want.width}`);
+  if (note.keep !== want.keep) stale.push(`it kept ${note.keep} scrambles and this asks for ${want.keep}`);
+  if (stale.length) return { stale };
+  const bad = [];
+  if (note.priced !== want.settings) bad.push(`only ${note.priced} of ${want.settings} settings were priced into it`);
+  const expectBytes = want.settings * want.width * 4;
+  if (buf.length !== expectBytes) bad.push(`it is ${buf.length} bytes and should be ${expectBytes}`);
+  if (!bad.length && crypto.createHash('sha256').update(buf).digest('hex') !== note.sha) {
+    bad.push('its contents do not match the fingerprint written beside it');
+  }
+  if (bad.length) return { bad };
+  return { vals: new Int32Array(buf.buffer, buf.byteOffset, buf.length / 4), note };
+}
+
 function startKeptScrambleFill(id, wantKeep, opts = {}) {
   const dryRun = !!opts.dryRun;
   const onlyUnit = opts.onlyUnit == null ? null : Math.max(0, Math.floor(Number(opts.onlyUnit)));
@@ -3559,18 +3605,15 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
   const blocks = rowstore.blocksOf(id, 'records') || [];
   if (!blocks.length) throw new Error(`${doc.name} has no rows on disk to fill in`);
   const fee = Number((doc.params || {}).fee) || 0;
+  const totalRows = blocks.reduce((a, b) => a + (b.rows || 0), 0);
 
   activeSet = doc;
   doc.status = 'filling';
-  doc.progress = `filling in ${keep} kept scrambles — 0 of ${records.length} units`;
+  doc.progress = `filling in ${keep} kept scrambles — starting`;
   doc.perf = {
     unitsDone: 0, unitsTotal: records.length, elapsedMs: 0, etaMs: null, workers: null,
     cyclesDone: 0,
-    // the real test money once as a proof, then each kept scramble on each window
-    // THE ROWS ON DISK, not units x settings. A set that has been filled in
-    // holds more settings than its plan asked for, and a total taken from the
-    // plan makes the progress line read past 100%.
-    cyclesTotal: rowstore.count(id, 'records') * (1 + keep * 2), cyclesWord: 'pricings',
+    cyclesTotal: records.length * settings.length * (1 + keep * 2), cyclesWord: 'pricings',
   };
   saveSet(doc);
 
@@ -3581,139 +3624,74 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
     saveSet(doc);
     const t0 = Date.now();
     const SCRATCH = `${id}__keptfill`;
+    const FIGS = keptFigsDir(id);
+    const NIL = -2147483648;
+    const width = keep * 2 + 1;          // test figures, held-back figures, then the re-priced real money
     const disagreed = [];
+    let unitsSaved = 0;
+    let rowsDone = 0;
+    let matched = 0;
+    let skipped = 0;
+    let phase = 'pricing';
+    let note = '';
+    let lastSay = 0;
+    const say = (force = false) => {
+      const now = Date.now();
+      if (!force && now - lastSay < 2000) return;
+      lastSay = now;
+      doc.perf.unitsDone = unitsSaved;
+      doc.perf.cyclesDone = unitsSaved * settings.length * (1 + keep * 2);
+      doc.perf.elapsedMs = now - t0;
+      doc.perf.etaMs = unitsSaved ? Math.round(((now - t0) / unitsSaved) * (records.length - unitsSaved)) : null;
+      doc.progress = `filling in ${keep} kept scrambles — ${phase}: ${unitsSaved} of ${records.length} units saved`
+        + `${note ? `, ${note}` : ''}`
+        + `${phase === 'rewriting' ? ` · ${rowsDone.toLocaleString()} of ${totalRows.toLocaleString()} records written` : ''}`
+        + ` · ${Math.floor((now - t0) / 60000)}m so far`;
+      saveSet(doc);
+    };
+    // The line ticks whether or not anything has landed: the first thing that
+    // lands is half an hour away, and half an hour of a still line reads
+    // exactly like a hung job.
+    const beat = setInterval(() => { try { say(true); } catch (_) { /* the run reports its own faults */ } }, 10000);
+    const stopBeat = () => clearInterval(beat);
+
+    const labelIdx = new Map();
+    settings.forEach((st, i) => labelIdx.set(st.label, i));
+    if (labelIdx.size !== settings.length) {
+      stopBeat();
+      throw new Error(`this set declares ${settings.length} settings under ${labelIdx.size} names — `
+        + 'the fill joins its figures on the name, so two settings sharing one would take each other\'s');
+    }
+    const want = { settings: settings.length, width, keep };
+    const lanes = Math.max(1, (pool.parallel && pool.workers ? pool.workers.length : 1));
+
     try {
-      try { rowstore.remove(SCRATCH); } catch (_) { /* nothing there yet */ }
-      // A PROVING RUN OPENS NO WRITER AT ALL. Not "opens one and does not use
-      // it" -- nothing to leave behind, nothing to swap by mistake.
-      // manualBlocks, because THIS pass decides where every block ends. Without
-      // it the writer also closes a block whenever a block's worth of bytes has
-      // piled up -- and these rows are about a fifth bigger than the ones they
-      // replace, so source blocks split and the shapes stop matching.
-      // A PROVING RUN WRITES TOO, and the last one did not -- which is why it
-      // passed and the real run then failed on the very next step. "Writes
-      // nothing" also means "does not test writing", and writing is where the
-      // block shape is decided. It rehearses everything except the rename.
-      const w = rowstore.writer(SCRATCH, 'records', { manualBlocks: true });
-      // WHICH ROWS BELONG TO WHICH UNIT. Stage 3 records no per-unit block
-      // range -- an early draft of this assumed one and would have read the
-      // PARENT's ranges -- so it is taken from the rows themselves, the way
-      // every other reader of this store takes it: each row carries its unit
-      // index in `u`. Blocks come out in the order they were written, which is
-      // unit order, so one unit's figures are in hand at a time and the whole
-      // board's 5.2 million rows of them never are.
-      // EVERY UNIT HELD AT ONCE, and this is the fix for what stopped the last
-      // attempt. Holding one at a time was the memory bound; the store's real
-      // layout (measured, 2026-09-01: two passes, so every unit twice) makes
-      // that impossible, and evicting would re-price all ten.
-      //
-      // So they are all held, in a form small enough that they fit. Three
-      // things make the difference:
-      //   * WHOLE CENTS in an Int32Array, not objects. Twenty numbers a setting
-      //     is 80 bytes, against several hundred for the objects they arrive as.
-      //   * ONE copy of the setting names for all the units, not one per unit.
-      //     The names are the same list every time and they are the bulk of it.
-      //   * a flag per setting, so a setting nothing priced is CAUGHT rather
-      //     than read as zero.
-      // Measured on the owner's set: 524,832 settings x 20 x 4 bytes x 10 units
-      // is about 420 MB, against the 3 GB the service runs with.
-      const NIL = -2147483648;                       // no Int32Array holds null
-      // test figures, then held-back, then the RE-PRICED REAL TEST MONEY. That
-      // last slot is the proof that this is still the same run: it is compared
-      // against what stage 3 stored for the same setting, and a disagreement
-      // beyond a cent means the price files moved or the engine did.
-      const width = keep * 2 + 1;
-      const labelIdx = new Map();
-      settings.forEach((st, i) => labelIdx.set(st.label, i));
-      if (labelIdx.size !== settings.length) {
-        throw new Error(`this set declares ${settings.length} settings under ${labelIdx.size} names — `
-          + 'the fill joins its figures on the name, so two settings sharing one would take each other\'s');
-      }
-      const priced = new Map();                      // unit -> { vals, has }
-      let matched = 0;                               // rows that found their figures
-      let skipped = 0;                               // rows of other units, on a proving run
-      // THE LINE HAS TO MOVE WHILE THE WORK DOES (owner, 2026-09-01: "what's
-      // with this after 45 minutes: ... 0 of 10 units done, block 1 of 3658").
-      //
-      // It was written in only one place -- the moment a NEW unit started
-      // pricing -- and that is the one moment nothing is happening for long.
-      // Three lies came out of it at once. A unit was counted only when the
-      // NEXT one began, so a finished unit read as zero. The block number was
-      // stamped once and then sat still through the whole rewrite, which is the
-      // part that looks slowest. And cyclesDone came off the same count, so the
-      // Sweep line showed 0 of 110,214,720 with no rate and no finish time for
-      // five hours. The job had just been made four times faster and reported
-      // worse than before.
-      //
-      // ONE reporter now, called from every place that actually advances, and
-      // throttled -- a five-million-row walk would otherwise write the set
-      // document five million times.
-      const totalRows = blocks.reduce((a, b) => a + (b.rows || 0), 0);
-      const perUnitPricings = settings.length * (1 + keep * 2);
-      let unitsPriced = 0;
-      let rowsDone = 0;
-      let partsNote = '';
-      let lastSay = 0;
-      const say = (force = false) => {
-        const now = Date.now();
-        if (!force && now - lastSay < 2000) return;
-        lastSay = now;
-        // PRICINGS ONLY, because that is what cyclesTotal counts. Mixing the
-        // rewrite in would make the rate mean two different things at once.
-        doc.perf.unitsDone = unitsPriced;
-        doc.perf.cyclesDone = unitsPriced * perUnitPricings;
-        doc.perf.elapsedMs = now - t0;
-        doc.perf.etaMs = unitsPriced
-          ? Math.round(((now - t0) / unitsPriced) * (records.length - unitsPriced)) : null;
-        // ELAPSED IS ALWAYS IN IT, and that is not decoration. Everything else
-        // on this line only changes when something LANDS, and the first thing
-        // that lands is a quarter of a unit -- around twenty-five minutes in.
-        // For those twenty-five minutes the line was identical to a dead job,
-        // which is the exact complaint the reporter was written to answer
-        // (owner, 2026-09-01: "hit the button 15 minutes ago, still looking at
-        // 0 of 10 units"). A number that ticks is the difference between
-        // "working" and "hung", and it costs nothing.
-        const mins = Math.floor((now - t0) / 60000);
-        doc.progress = `filling in ${keep} kept scrambles — ${unitsPriced} of ${records.length} units priced`
-          + `${partsNote ? `, ${partsNote}` : ''}`
-          + ` · ${rowsDone.toLocaleString()} of ${totalRows.toLocaleString()} records written`
-          + ` · ${mins}m so far`;
-        saveSet(doc);
-      };
-      // THE HEARTBEAT, and it lives HERE because it calls say -- put above the
-      // definition it would have thrown ten seconds into every run. Without it
-      // the line only moves when a part LANDS, and the first part of the first
-      // unit is twenty-five minutes away: twenty-five minutes that read exactly
-      // like a hung job. Ten seconds is far below the cost of anything else
-      // here and far above how often a person refreshes.
-      const beat = setInterval(() => { try { say(true); } catch (_) { /* the run reports its own faults */ } }, 10000);
-      const stopBeat = () => clearInterval(beat);
-      // EVERY WORKER ON THE SAME UNIT, and this was wrong the first time. It
-      // handed the pool ONE unit and awaited it, so with four workers three sat
-      // idle: the box is allowed 390% and the process sat at exactly 100%, and
-      // a job measured at four hours was on course for seventeen.
-      //
-      // The obvious repair -- price several units at once -- is the one this
-      // cannot take, because holding one unit's new figures is the whole reason
-      // the walk goes unit by unit and four units at once is most of the board
-      // in memory. So the SETTINGS are split instead. Every worker prices a
-      // slice of the SAME unit, memory stays at one unit's worth, and the only
-      // thing done more than once is the small per-unit setup each worker needs
-      // before it can price anything. That is how the totalling already shards.
-      const lanes = Math.max(1, (pool.parallel && pool.workers ? pool.workers.length : 1));
-      const priceUnit = async (u) => {
+      // ---- PASS ONE: price a unit, save it, read it back, let it go --------
+      for (let u = 0; u < records.length; u++) {
+        if (onlyUnit != null && u !== onlyUnit) continue;
         const rec = records[u];
-        if (!rec) throw new Error(`a row names unit ${u} and this set has ${records.length}`);
-        // The unit's votes are read from the parent ONCE and the same reading
-        // goes to every lane. Building a payload per lane would read them once
-        // per lane, which is the waste this fix exists to remove.
+        const already = readUnitFigures(FIGS, u, want);
+        if (already && already.vals) {
+          // ALREADY DONE AND STILL SOUND. This is what makes a death at hour
+          // four cost minutes: it is not trusted for existing, it is re-read
+          // and re-fingerprinted before it is believed.
+          unitsSaved++;
+          note = `${rec.trade} was already saved and still checks out`;
+          say(true);
+          continue;
+        }
+        if (already && already.stale) {
+          note = `${rec.trade} was saved for a different ask (${already.stale[0]}) — pricing it again`;
+          say(true);
+        }
+        if (already && already.bad) {
+          throw new Error(`the figures saved for ${rec.trade} are not usable — ${already.bad.join('; ')}. `
+            + 'Delete them and run this again rather than filling in from a file that does not say what it holds');
+        }
         const base = { ...s3Payload({ doc, parent, rec, settings, fee, nullN }), keepN: keep, noiseOnly: true };
         const per = Math.ceil(settings.length / lanes);
         const shards = [];
         for (let at = 0; at < settings.length; at += per) shards.push({ ...base, settings: settings.slice(at, at + per) });
-        // KEYED BY LABEL, NEVER BY POSITION. si comes back numbered from zero
-        // within each shard, so every shard holds a setting 0 and they are not
-        // the same setting.
         const vals = new Int32Array(settings.length * width).fill(NIL);
         const has = new Uint8Array(settings.length);
         let lanesDone = 0;
@@ -3722,74 +3700,79 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
             throw new Error(`unit ${rec.trade}, part ${i + 1} of ${shards.length} failed: `
               + `${settled ? settled.error : 'it returned nothing'}`);
           }
-          // Copied into the flat store as each part lands, so the objects the
-          // worker sent are collectable straight away rather than ten units of
-          // them piling up.
           for (const r of (settled.value.rows || [])) {
             const at = labelIdx.get(r.label);
             if (at === undefined) throw new Error(`unit ${rec.trade} priced "${r.label}", which is not in this set's block`);
-            const base = at * width;
+            const off = at * width;
             for (let d = 0; d < keep; d++) {
-              const t = (r.noiseTest || [])[d];
-              const h = (r.noiseHold || [])[d];
-              vals[base + d] = t == null ? NIL : Math.round(t * 100);
-              vals[base + keep + d] = h == null ? NIL : Math.round(h * 100);
+              const tv = (r.noiseTest || [])[d];
+              const hv = (r.noiseHold || [])[d];
+              vals[off + d] = tv == null ? NIL : Math.round(tv * 100);
+              vals[off + keep + d] = hv == null ? NIL : Math.round(hv * 100);
             }
-            vals[base + keep * 2] = r.pnl == null ? NIL : Math.round(r.pnl * 100);
+            vals[off + keep * 2] = r.pnl == null ? NIL : Math.round(r.pnl * 100);
             has[at] = 1;
           }
           lanesDone++;
-          // Named as the unit being PRICED, which is one past those finished
-          partsNote = `pricing unit ${unitsPriced + 1}: ${lanesDone} of ${shards.length} parts`;
+          note = `pricing ${rec.trade}, ${lanesDone} of ${shards.length} parts`;
           say(true);
         });
-        let got = 0;
-        for (let i = 0; i < has.length; i++) if (has[i]) got++;
-        if (got !== settings.length) {
-          throw new Error(`unit ${rec.trade} came back with ${got} settings and the block declares `
-            + `${settings.length} — the parts do not add up to the whole, so nothing is written`);
-        }
-        unitsPriced++;
-        partsNote = '';
+        note = `saving ${rec.trade}`;
         say(true);
-        return { vals, has };
+        writeUnitFigures(FIGS, u, vals, has, { settings: settings.length, width, keep, trade: rec.trade });
+        // READ BACK BEFORE MOVING ON. The owner's words: confirm it in the code
+        // before going forward. Not "it returned without throwing" -- read the
+        // bytes off the disk and check them against what they claim to be.
+        const back = readUnitFigures(FIGS, u, want);
+        if (!back || !back.vals) {
+          throw new Error(`the figures for ${rec.trade} did not read back${back && back.bad ? ` — ${back.bad.join('; ')}` : ''}`);
+        }
+        let same = back.vals.length === vals.length;
+        if (same) for (let i = 0; i < vals.length; i += 977) if (back.vals[i] !== vals[i]) { same = false; break; }
+        if (!same) throw new Error(`the figures for ${rec.trade} read back different from what was written`);
+        unitsSaved++;
+        note = `${rec.trade} saved and checked`;
+        say(true);
+      }
+
+      // ---- PASS TWO: rewrite the store from the saved figures --------------
+      phase = 'rewriting';
+      note = '';
+      say(true);
+      const w = rowstore.writer(SCRATCH, 'records', { manualBlocks: true });
+      const loaded = new Map();            // unit -> vals, at most two at a time
+      const figuresFor = (u) => {
+        if (loaded.has(u)) return loaded.get(u);
+        const got = readUnitFigures(FIGS, u, want);
+        if (!got || !got.vals) {
+          if (onlyUnit != null) { loaded.set(u, null); return null; }   // a rehearsal has only one unit's figures
+          throw new Error(`the figures for unit ${u} are missing or unusable${got && got.bad ? ` — ${got.bad.join('; ')}` : ''}`);
+        }
+        // never more than two resident: the store is written unit by unit, so
+        // one is in use and one is on its way out
+        while (loaded.size >= 2) loaded.delete(loaded.keys().next().value);
+        loaded.set(u, got.vals);
+        return got.vals;
       };
       for (let bi = 0; bi < blocks.length; bi++) {
         for (const x of rowstore.readBlocks(id, 'records', [bi])) {
           const u = x.row.u;
-          // NOTHING IS EVICTED. A unit's rows appear in more than one stretch
-          // of this store, so releasing one when the next begins would re-price
-          // every unit -- and the version that refused instead is what cost the
-          // owner an evening.
-          if (onlyUnit != null && u !== onlyUnit) {
-            // written unchanged, NOT skipped: the block shape can only be
-            // checked against a store that holds every row the original does
-            w.push({ ...x.row, noiseTest: null, noiseHold: null });
-            rowsDone++;
-            skipped++;
-            continue;
-          }
-          if (!priced.has(u)) priced.set(u, await priceUnit(u));   // which counts itself and reports
-          const cell = priced.get(u);
+          const vals = figuresFor(u);
+          if (!vals) { w.push({ ...x.row, noiseTest: null, noiseHold: null }); rowsDone++; skipped++; continue; }
           const at = labelIdx.get(x.row.label);
-          if (at === undefined || !cell.has[at]) {
-            throw new Error(`${x.row.label} is on disk for unit ${u} and the fill did not price it`);
-          }
-          const base = at * width;
+          if (at === undefined) throw new Error(`${x.row.label} is on disk for unit ${u} and this set's block does not declare it`);
+          const off = at * width;
           const nT = [];
           const nH = [];
           let anyH = false;
           for (let d = 0; d < keep; d++) {
-            const t = cell.vals[base + d];
-            const h = cell.vals[base + keep + d];
-            nT.push(t === NIL ? null : t / 100);
-            if (h !== NIL) anyH = true;
-            nH.push(h === NIL ? null : h / 100);
+            const tv = vals[off + d];
+            const hv = vals[off + keep + d];
+            nT.push(tv === NIL ? null : tv / 100);
+            if (hv !== NIL) anyH = true;
+            nH.push(hv === NIL ? null : hv / 100);
           }
-          // THE PROOF. A cent of drift is rounding; more means the price files
-          // moved or the engine did, and the two figures are not from the same
-          // world. Stored in cents, so the comparison is in cents too.
-          const nowCents = cell.vals[base + keep * 2];
+          const nowCents = vals[off + keep * 2];
           const wasCents = x.row.pnl == null ? NIL : Math.round(x.row.pnl * 100);
           if (nowCents === NIL || wasCents === NIL || Math.abs(nowCents - wasCents) > 1) {
             disagreed.push({ unit: u, label: x.row.label, stored: x.row.pnl, now: nowCents === NIL ? null : nowCents / 100 });
@@ -3803,22 +3786,14 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
           w.push({ ...x.row, noiseTest: nT, noiseHold: anyH ? nH : null });
           rowsDone++;
         }
-        // The rewrite is the part that used to look stuck: no unit starts, so
-        // nothing was ever written. Throttled, so a block costs one clock read.
+        w.flush();          // one flush a block, so the new block holds the rows the old one did
         say();
-        // one flush per block, so the new block holds exactly the rows the old
-        // one did and every block index already recorded still points at them
-        w.flush();
-      }
-      if (disagreed.length) {
-        throw new Error(`the fill disagrees with what stage 3 stored on ${disagreed.length} setting(s) `
-          + `(first: ${disagreed[0].label} on ${disagreed[0].unit}) — nothing is written`);
       }
       w.close();
-      // EVERY CHECK RUNS IN BOTH MODES. The proving run used to return above
-      // this and report success -- so it passed, and the real run then died on
-      // the very next step, on the block shape. A rehearsal that stops before
-      // the hard part is not a rehearsal.
+      if (disagreed.length) {
+        throw new Error(`the fill disagrees with what stage 3 stored on ${disagreed.length} setting(s) `
+          + `(first: ${disagreed[0].label} on unit ${disagreed[0].unit}) — nothing is written`);
+      }
       const before = rowstore.count(id, 'records');
       const after = rowstore.count(SCRATCH, 'records');
       if (before !== after) {
@@ -3833,15 +3808,12 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
           + 'different rows — every block index already recorded would point somewhere else, so nothing is swapped');
       }
       if (dryRun) {
-        // IT GOT THIS FAR, which means it would have swapped. Said in the terms
-        // of what could have gone wrong, and then the rehearsal's store is
-        // thrown away -- the only step it does not take is the rename.
         doc.status = 'done';
-        doc.progress = `PROVING RUN on unit ${onlyUnit}: ${matched.toLocaleString()} of its rows found their figures `
-          + `across the whole store and ${skipped.toLocaleString()} rows of other units were copied through; `
-          + `${disagreed.length} disagreed with the stored money; the rewritten store holds ${after.toLocaleString()} `
-          + `rows in ${newBlocks.length} blocks against ${before.toLocaleString()} in ${oldBlocks.length}, `
-          + 'and every block holds the rows it held before. It would have swapped. Nothing was.';
+        doc.progress = `PROVING RUN on unit ${onlyUnit}: ${matched.toLocaleString()} rows found their figures, `
+          + `${skipped.toLocaleString()} copied through; ${disagreed.length} disagreed with the stored money; `
+          + `the rewritten store holds ${after.toLocaleString()} rows in ${newBlocks.length} blocks against `
+          + `${before.toLocaleString()} in ${oldBlocks.length}, every block holding the rows it held before. `
+          + 'It would have swapped. Nothing was.';
         doc.perf.elapsedMs = Date.now() - t0;
         saveSet(doc);
         try { rowstore.remove(SCRATCH); } catch (_) { /* best effort */ }
@@ -3850,28 +3822,28 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       }
       // THE SWAP, last and only once everything above held.
       for (const f of ['records.jsonl.gz', 'records.jsonl.gz.meta.json']) {
-        const src = path.join(rowstore.storeDir(SCRATCH), f);
-        const dst = path.join(rowstore.storeDir(id), f);
-        fs.renameSync(src, dst);
+        fs.renameSync(path.join(rowstore.storeDir(SCRATCH), f), path.join(rowstore.storeDir(id), f));
       }
       try { fs.rmSync(rowstore.storeDir(SCRATCH), { recursive: true, force: true }); } catch (_) { /* already gone */ }
-      // EVERYTHING DOWNSTREAM IS DELETED, NOT MIGRATED (RULE NINE). The totals
-      // are rebuilt from the filled rows; translating them would be a second
-      // chance to get the same translation wrong.
       try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* no totals yet */ }
+      // The saved figures go only AFTER the swap: until then they are the thing
+      // that makes a second attempt cheap.
+      try { fs.rmSync(FIGS, { recursive: true, force: true }); } catch (_) { /* best effort */ }
       doc.params = { ...(doc.params || {}), keepN: keep };
-      // THE SHAPE noiseTwinOf READS. Writing {kept} alone would fill in ten
-      // scrambles and leave the Funnel still saying there is no comparison.
       doc.boardNull = { captured: true, kept: keep, why: null, filledAt: new Date().toISOString(), filledBy: here };
       doc.status = 'done';
       doc.progress = `${keep} kept scrambles filled in — the totals rebuild next`;
       doc.perf.elapsedMs = Date.now() - t0;
       saveSet(doc);
     } catch (e) {
+      // THE SAVED FIGURES ARE KEPT. They are checked before they are believed,
+      // so keeping them costs nothing and throwing them away is what made each
+      // of the first three failures cost the whole run.
       try { rowstore.remove(SCRATCH); } catch (_) { /* best effort */ }
       try { fs.rmSync(rowstore.storeDir(SCRATCH), { recursive: true, force: true }); } catch (_) { /* best effort */ }
       doc.status = 'done';
-      doc.progress = `filling in the kept scrambles stopped: ${e.message}`;
+      doc.progress = `filling in the kept scrambles stopped: ${e.message}`
+        + (unitsSaved ? ` — ${unitsSaved} unit(s) are saved and will be reused, so a second attempt starts from there.` : '');
       saveSet(doc);
     } finally {
       stopBeat();
@@ -3887,11 +3859,9 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
     onlyUnit,
     units: records.length,
     settings: settings.length,
-    // A proving run prices ONE unit, so it costs a tenth of a pass and writes
-    // nothing. The real one prices every row.
     pricings: dryRun
       ? settings.length * (1 + keep * 2)
-      : rowstore.count(id, 'records') * (1 + keep * 2),
+      : records.length * settings.length * (1 + keep * 2),
   };
 }
 

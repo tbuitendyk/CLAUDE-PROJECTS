@@ -181,7 +181,7 @@ module.exports = {
   // -- must still point where it did, so the block shape is checked too.
   theFillSwapsOnlyAfterTheRowsAndTheBlocksBothMatch() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const swapAt = src.indexOf('fs.renameSync(src, dst)');
+    const swapAt = src.indexOf('fs.renameSync(path.join(rowstore.storeDir(SCRATCH)');
     assert.ok(swapAt > 0, 'the fill must swap the store into place');
     const before = src.slice(0, swapAt);
     assert.ok(before.includes('nothing is swapped'), 'it must refuse rather than swap a store that does not match');
@@ -193,31 +193,6 @@ module.exports = {
     assert.ok(src.slice(swapAt).includes('fs.rmSync(tallyFile(id)'), 'the totals must be rebuilt, not migrated');
   },
 
-  // A BUG THIS NEARLY SHIPPED WITH. The first draft of the fill walked the
-  // store by a per-unit block range read off `rec.blocks.records` -- but those
-  // records come from the PARENT set, so that range described the parent's
-  // votes, not this set's rows. Stage 3 records no per-unit range at all:
-  // every other reader of this store takes the unit from the row's own `u`.
-  theFillAssumesNothingAboutTheOrderTheUnitsSitIn() {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const at = src.indexOf('function startKeptScrambleFill(');
-    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
-    assert.ok(body.includes('const u = x.row.u;'), 'the fill must take each row\'s unit from the row');
-    assert.ok(!/rec\.blocks\s*&&\s*rec\.blocks\.records/.test(body),
-      'the fill must not read a per-unit block range off the parent\'s records — stage 3 does not record one');
-
-    // THIS ASSERTION USED TO SAY THE OPPOSITE, and that is the whole lesson.
-    // It required the fill to REFUSE when a unit came back after the walk had
-    // moved past it -- an assumption written down as a guard instead of being
-    // read off the disk. Measured on the owner's store afterwards: every unit
-    // appears TWICE, because the pass that added settings later appended a
-    // second one. The guard fired at the last unit, five and a half hours in.
-    assert.ok(!/appears again after the walk moved past it/.test(body),
-      'the fill still refuses a unit it has seen before — but every unit really does appear more than once, '
-      + 'because settings added later are appended as a second pass');
-    assert.ok(/NOTHING IS EVICTED/.test(body),
-      'a unit priced once must stay held, or a store that revisits units re-prices every one of them');
-  },
 
   // THE FILL USED FOUR WORKERS AND ONE CORE. It handed the pool ONE unit and
   // awaited it, so three of four sat idle: the box allows 390% and the process
@@ -249,8 +224,14 @@ module.exports = {
   // surface as a confusing per-row error deep in the rewrite.
   theFillRefusesWhenTheSlicesDoNotAddUpToTheWhole() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    assert.ok(src.includes('the parts do not add up to the whole, so nothing is written'),
-      'the fill must check the slices reassemble into the whole block before it writes anything');
+    // The slices reassembling into the whole block is now checked ON DISK, in
+    // the note beside each saved unit, so an incomplete unit is caught when it
+    // is read back a second later rather than five hours later against a row
+    // that cannot find its figures.
+    assert.ok(src.includes('note.priced !== want.settings'),
+      'a saved unit must record how many settings were priced into it, and be rejected if it is short');
+    assert.ok(src.includes('only ${note.priced} of ${want.settings} settings were priced into it'),
+      'and it must say how short, not merely refuse');
   },
 
   // A fill killed by a restart has touched NOTHING -- it writes beside and
@@ -310,20 +291,22 @@ module.exports = {
     assert.strictEqual(body.split('doc.progress =').length - 1, 5,
       'the line must be written in five named places only: the opening line, the reporter, '
       + 'the proving run\'s report, and the two ends');
-    for (const w of ['0 of ${records.length} units`', 'units priced`', 'PROVING RUN on unit', 'filled in —', 'stopped:']) {
+    for (const w of ['— starting`', 'units saved`', 'PROVING RUN on unit', 'filled in —', 'stopped:']) {
       assert.ok(body.includes(w), `the progress writer "${w}" is gone — the count above is no longer checking what it names`);
     }
 
     // A unit counts when it FINISHES. It used to count when the next one began,
     // so a finished unit read as zero for as long as the next took to price.
-    const done = body.indexOf('unitsPriced++');
-    assert.ok(done > 0 && done < body.indexOf('return { vals, has }'),
-      'a unit must be counted as it finishes pricing, not when the next one starts');
+    // A unit counts when it is SAVED AND READ BACK, which is stricter than
+    // when it finished pricing — the count now means "this survives a crash".
+    const done = body.indexOf('unitsSaved++;\n        note = `${rec.trade} saved and checked`');
+    assert.ok(done > body.indexOf('const back = readUnitFigures(FIGS, u, want)'),
+      'a unit must be counted only after its figures have been read back off the disk');
 
     // The rewrite reports too — that is the stretch that looked stuck.
     assert.ok(/rowsDone\+\+/.test(body) && /records written/.test(body),
       'the rewrite must report how many records it has written, or it looks stuck for hours');
-    assert.ok(body.includes('perUnitPricings') && body.includes('doc.perf.cyclesDone = unitsPriced * perUnitPricings'),
+    assert.ok(body.includes('doc.perf.cyclesDone = unitsSaved * settings.length * (1 + keep * 2)'),
       'cyclesDone must count real pricings, or the Sweep line shows no rate and no finish time');
 
     // Throttled, or a 5.2-million-row walk writes the set document 5.2 million
@@ -332,28 +315,6 @@ module.exports = {
     assert.ok(/say\(true\)/.test(body), 'the moments that matter must report immediately rather than wait for the throttle');
   },
 
-  // HOLDING EVERY UNIT is only possible because of how it is held. Objects with
-  // ten-number arrays and a name each, ten units deep, is most of the board in
-  // memory -- which is exactly why the first version held one unit and broke.
-  everyUnitIsHeldAtOnceAndSmallEnoughToBe() {
-    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    const at = src.indexOf('function startKeptScrambleFill(');
-    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
-    assert.ok(/new Int32Array\(settings\.length \* width\)/.test(body),
-      'the figures must be held as whole cents in a flat array, not as objects');
-    assert.ok(body.includes('const labelIdx = new Map();') && body.includes('settings.forEach((st, i) => labelIdx.set'),
-      'ONE copy of the setting names must be shared by every unit — a copy per unit is the bulk of the memory');
-    assert.ok(/new Uint8Array\(settings\.length\)/.test(body),
-      'a setting nothing priced must be caught, not read as zero');
-    assert.ok(body.includes('const NIL = -2147483648'),
-      'a flat array holds no null, so an absent figure needs a value no real one can take');
-    // two settings under one name would take each other's figures
-    assert.ok(body.includes("the fill joins its figures on the name, so two settings sharing one would take each other"),
-      'the join is by name, so the names must be checked unique before anything is priced');
-    // and the width carries the proof alongside the figures
-    assert.ok(body.includes('const width = keep * 2 + 1;'),
-      'the re-priced real money must ride in the same store as the figures it proves');
-  },
 
   // THE PROVING RUN, which is the part that was missing. It exercises THIS
   // function, not a copy — a copy proves the copy.
@@ -370,10 +331,12 @@ module.exports = {
       'the proving run must write, through the same writer the real one uses');
     assert.ok(!/dryRun \? null : rowstore\.writer/.test(body),
       'a proving run that opens no writer cannot prove anything about writing');
-    assert.ok(body.includes('written unchanged, NOT skipped'),
-      'rows of other units must be copied through, or the block shape has nothing to be checked against');
+    assert.ok(body.includes("if (onlyUnit != null) { loaded.set(u, null); return null; }"),
+      'a rehearsal must copy rows of other units through, or the block shape has nothing to be checked against');
+    assert.ok(body.includes('w.push({ ...x.row, noiseTest: null, noiseHold: null }); rowsDone++; skipped++;'),
+      'and copy them through unchanged rather than skipping them');
     // and every check must run BEFORE it reports
-    const dry = body.indexOf('if (dryRun) {');
+    const dry = body.lastIndexOf('if (dryRun) {');
     assert.ok(dry > body.indexOf('sameShape'),
       'the proving run must report AFTER the block-shape check, not before it — that is the check that caught the real failure');
     assert.ok(dry < body.indexOf('fs.renameSync'), 'and it must stop before the rename');
@@ -438,7 +401,7 @@ module.exports = {
       'the heartbeat calls say, so it must be declared after it or it throws on its first tick');
     // and stopped on EVERY way out, including a refusal
     const fin = body.indexOf('} finally {');
-    assert.ok(fin > 0 && body.indexOf('stopBeat();') > fin,
+    assert.ok(fin > 0 && body.lastIndexOf('stopBeat();') > fin,
       'the heartbeat must be stopped in the finally — a failed run must not leave a timer writing the set for ever');
   },
 
@@ -490,6 +453,72 @@ module.exports = {
       try { rowstore.remove(A); } catch (_) { /* fixture */ }
       try { rowstore.remove(B); } catch (_) { /* fixture */ }
     }
+  },
+
+  // THE REDESIGN (owner order, 2026-09-01: "redesign the system from the ground
+  // up to actually save the records ... you can save every single unit and
+  // confirm it in the code before going forward and wasting another five and a
+  // half hours"). Three attempts had each thrown away everything they had done.
+  eachUnitIsSavedAndReadBackBeforeTheNextOneStarts() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const at = src.indexOf('function startKeptScrambleFill');
+    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
+    const write = body.indexOf('writeUnitFigures(FIGS, u, vals, has');
+    const back = body.indexOf('const back = readUnitFigures(FIGS, u, want)');
+    const counted = body.indexOf('unitsSaved++;\n        note = `${rec.trade} saved and checked`');
+    assert.ok(write > 0, 'a unit must be written to disk as soon as it is priced');
+    assert.ok(back > write, 'and read straight back — "it returned without throwing" is not the same as saved');
+    assert.ok(counted > back, 'a unit counts as saved only AFTER it has been read back');
+    assert.ok(body.includes('read back different from what was written'),
+      'the bytes read back must be compared with the bytes written, not merely present');
+  },
+
+  // A file is never believed for existing. That is what makes resuming safe:
+  // a half-written unit from a killed run must be caught, not filled in from.
+  aSavedUnitIsCheckedAgainstWhatItClaimsToBe() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const rd = src.slice(src.indexOf('function readUnitFigures'), src.indexOf('function startKeptScrambleFill'));
+    for (const [what, needle] of [
+      ['how many settings it is for', 'note.settings !== want.settings'],
+      ['how many figures a setting', 'note.width !== want.width'],
+      ['how many scrambles it kept', 'note.keep !== want.keep'],
+      ['whether every setting was priced into it', 'note.priced !== want.settings'],
+      ['its length in bytes', 'buf.length !== expectBytes'],
+      ['its fingerprint', "createHash('sha256')"],
+    ]) {
+      assert.ok(rd.includes(needle), `a saved unit must be checked against ${what} before it is used`);
+    }
+    const body = src.slice(src.indexOf('function startKeptScrambleFill'));
+    assert.ok(body.includes('was already saved and still checks out'),
+      'a unit already saved must be re-checked and skipped, so a death at hour four costs minutes');
+    assert.ok(body.includes('are not usable'), 'and a saved unit that does not check out must stop the run, not be used');
+  },
+
+  // Holding all ten was about 560 MB on a service already near its ceiling —
+  // the one failure mode the rehearsal could not see. Now one is held while
+  // pricing and two while rewriting.
+  theFillHoldsAtMostTwoUnitsOfFiguresAtOnce() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const body = src.slice(src.indexOf('function startKeptScrambleFill'), src.indexOf('\nmodule.exports', src.indexOf('function startKeptScrambleFill')));
+    assert.ok(/while \(loaded\.size >= 2\) loaded\.delete/.test(body),
+      'the rewrite must keep at most two units of figures resident');
+    assert.ok(!/const priced = new Map\(\);/.test(body),
+      'the map that held every unit at once is still there — that is the memory this redesign removes');
+  },
+
+  // Keeping them on a failure is the entire point; deleting them before the
+  // swap would throw away the work that makes a second attempt cheap.
+  theSavedFiguresSurviveAFailureAndGoOnlyAfterTheSwap() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const body = src.slice(src.indexOf('function startKeptScrambleFill'), src.indexOf('\nmodule.exports', src.indexOf('function startKeptScrambleFill')));
+    const swap = body.indexOf('fs.renameSync(path.join(rowstore.storeDir(SCRATCH)');
+    const wipe = body.indexOf('fs.rmSync(FIGS');
+    assert.ok(swap > 0 && wipe > swap, 'the saved figures must be cleared only AFTER the store is swapped');
+    const c = body.indexOf('} catch (e) {');
+    assert.ok(c > 0 && body.slice(c).indexOf('fs.rmSync(FIGS') === -1,
+      'a failure must NOT clear the saved figures — they are what makes the next attempt cheap');
+    assert.ok(body.includes('will be reused, so a second attempt starts from there'),
+      'and the failure must say so, or the owner cannot know the work survived');
   },
 
   // The tally's shape changed, so every totals file on disk must be rebuilt
