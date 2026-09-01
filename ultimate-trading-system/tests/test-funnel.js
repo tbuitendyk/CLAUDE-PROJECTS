@@ -602,6 +602,36 @@ module.exports = {
     assert.strictEqual(closed.detail, got.why);
   },
 
+  // A COLUMN'S DESCRIPTION HAS TO DESCRIBE THE COLUMN IT IS ON. The dial
+  // heading said every dial was listed "including the ones this run only swept
+  // a single value of" -- and a dial swept at one value is the exact set the
+  // table leaves out, because movement() gives it no number and step1 sends it
+  // to the not-measurable line. The owner found it: the three dials named
+  // underneath were missing from the column that claimed to list them.
+  //
+  // The sentence was not invented, which is what made it survive: it is true of
+  // the dial DROPDOWN on the next step, which really is built from every dial.
+  // It was written once and hung on both.
+  theDialColumnsDescriptionMatchesWhatTheColumnHolds() {
+    const s = src('public/construct.js');
+    const at = s.indexOf('  fDialName:');
+    assert.ok(at > 0, 'the dial heading has no description');
+    const line = s.slice(at, s.indexOf('\n', at));
+    assert.ok(!/Every dial on the record is listed/.test(line),
+      'the heading must not claim to list dials the table is built to leave out');
+    assert.ok(/only the dials this run swept\s+more than one value of/.test(line.replace(/\s+/g, ' ')),
+      'it must say the table holds the dials with more than one value');
+    // and it must point at the line that DOES carry the rest, by its rendered
+    // wording -- a description that says "elsewhere" sends the owner hunting
+    assert.ok(line.includes('Not measurable here'),
+      'it must name the line the left-out dials appear on, in that line\'s own words');
+    assert.ok(s.includes('Not measurable here:'), 'and that line must still be the one the page prints');
+    // the same fact, stated the same way, on the values column beside it
+    const vAt = s.indexOf('  fValues:');
+    assert.ok(s.slice(vAt, s.indexOf('\n', vAt)).includes('listed separately'),
+      'the values column already says a one-value dial is listed separately; the two must not disagree');
+  },
+
   aFunnelReadThatFailsSaysSoRatherThanLeavingTheScreenAsItWas() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const at = src.indexOf('async function drawFunnel');

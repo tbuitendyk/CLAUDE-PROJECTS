@@ -97,7 +97,7 @@ const comboOf = (r) => (!r ? '—' : r.trade + (r.ctx1 ? ` + ${r.ctx1}` : '') + 
 // means the same thing on every table that uses it.
 const COL = {
   // Funnel
-  fDialName: 'one of the settings a sweep can be told to vary. Every dial on the record is listed, including the ones this run only swept a single value of.',
+  fDialName: 'one of the settings a sweep can be told to vary. This table lists only the dials this run swept more than one value of. A dial swept at a single value has nothing to measure against anything, so it is named on the "Not measurable here" line below instead of appearing here as flat.',
   fMovement: 'how far apart this dial\'s values sit, measured against how much the result varies anyway. THE ORDERING IS THE FINDING - at this many rows every dial shows some movement, and the size of the number is a claim only against the split-half beside it.',
   fRange: 'the gap in test dollars between this dial\'s best-averaging value and its worst. A ratio with no magnitude beside it cannot be read.',
   fValues: 'how many different values of this dial the run actually swept. One value is not a comparison, and a dial with one value is listed separately rather than shown as flat.',
