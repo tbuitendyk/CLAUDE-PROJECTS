@@ -166,10 +166,12 @@ module.exports = {
   // building the comparison, the two would drift.
   theFunnelRunsTheSameReadingOnTheAllLuckCopy() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    assert.ok(src.includes('const luckBoard = (d) => S4.nullCopy(all, rule, d);'),
-      'the all-luck copy must come from the one function that builds one, not a separate calculation');
-    for (const call of ['F.step1(luckBoard(0)', 'F.step2(luckBoard(0)', 'F.step3(luckBoard(0)', 'region(luckBoard(d))']) {
-      assert.ok(src.includes(call), `${call} — that reading has no all-luck twin`);
+    assert.ok(src.includes('const copyOf = (d) => (rule.cut ? S4.nullCopy(all, rule, d) : S4.swapMoney(rows, d));'),
+      'the scrambled copy must come from the one place that builds one, not a separate calculation');
+    assert.ok(src.includes('const copies = Array.from({ length: keptN }, (_, d) => copyOf(d));'),
+      'every kept copy is built once and every step reads the same ones');
+    for (const call of ['F.movement(b, x.dial)', 'F.recommendRange(rows, dial, check', 'F.step3(x, a, b, { floor })', 'region(x)']) {
+      assert.ok(src.includes(call), `${call} — that reading has no scrambled twin`);
     }
     // step 5 is the one that uses ALL of them, because "wider than all ten" is
     // the claim the count on Sweep is bought for

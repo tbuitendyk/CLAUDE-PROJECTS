@@ -3249,7 +3249,10 @@ function funnelRead(id, state = {}) {
 
   const F = require('./funnel');
   const S4 = require('./funnelset');
-  const all = t.ranked || [];
+  // THE REBUILT NUMBERS ARE LAID ON FIRST, so a limit on the worst losing
+  // streak has something to read (§16, step 6). Rows keep what they carry.
+  const rich = readFunnelRich(id);
+  const all = withFunnelRich(t.ranked || [], rich);
   const step = Math.max(1, Math.min(7, Math.floor(Number(state.step) || 1)));
   // THE CLOSING IS FOLDED IN AT STEP 7 AND NOWHERE ELSE. It is chosen on step 7
   // and it is what step 7 is for, so that is where the count and the sentence
@@ -3278,8 +3281,8 @@ function funnelRead(id, state = {}) {
   const holdsAxis = F.holdsAxisFor({
     coins: coins.size,
     shapes: shapes.size,
-    // the thirds only exist once the survivors have been rebuilt
-    thirds: !!state.rebuilt,
+    // the thirds exist once the survivors have been rebuilt and kept
+    thirds: rows.some((r) => Array.isArray(r.pnlThirds)),
     freeDials,
   });
 
@@ -3306,43 +3309,97 @@ function funnelRead(id, state = {}) {
     survivors: rows.length,
     of: all.length,
     holdsAxis,
+    rebuilt: !!(rich && rich.settings),
     reading: null,
+    // the conditions a mark is recorded for, worked out for THIS step (§16.5)
+    conditions: {},
   };
   if (!rows.length) {
     out.reading = { why: 'this rule keeps nothing, so there is nothing to read' };
     return out;
   }
-  // THE ALL-LUCK COPY OF THIS TABLE (FUNNEL-DESIGN.md 4.5). Same rows, same
-  // rule, same step function -- only the money is swapped for what that setting
-  // made in one of the kept scrambles. That is why one stored column answers
-  // all six of the design's noise comparisons: every one of them is "run this
-  // reading on a table", and a kept scramble IS a table.
+
+  // THE CHECK (§3, §16.2): the scrambled copies when the set kept them, the two
+  // halves of the settings when it did not. One of the two, named, on every
+  // step -- and the same one feeds the recommendation, so there is never a
+  // third number to choose.
   const keptN = rows.length && Array.isArray(rows[0].noiseTest) ? rows[0].noiseTest.length : 0;
-  // FROM EVERY SETTING, THEN THE RULE. The comparison this screen rests on is
-  // the rule's choice against the same rule's choice, so the money is swapped
-  // first and the rule applied second -- which lets a rule that takes the top N
-  // give the scrambled copy its own top N.
-  //
-  // It costs a pass over every setting per scramble, and that is what the
-  // comparison costs.
-  const luckBoard = (d) => S4.nullCopy(all, rule, d);
   out.set.keptScrambles = keptN;
+  // FROM EVERY SETTING, THEN THE RULE, when the rule carries a cut -- so the
+  // copy takes its own top N. Before step 7 there is no cut, and the copy is
+  // the survivors with their money swapped, which is the same rows for a pass
+  // over hundreds instead of hundreds of thousands (funnelset.swapMoney).
+  const copyOf = (d) => (rule.cut ? S4.nullCopy(all, rule, d) : S4.swapMoney(rows, d));
+  const copies = Array.from({ length: keptN }, (_, d) => copyOf(d));
+  const check = keptN ? { copies } : { seed };
+  const kind = F.checkKindOf(check);
+  out.check = { kind, k: keptN };
+  out.conditions.checkIsHalves = kind === 'halves';
+  const [ha, hb] = kind === 'halves' ? F.splitHalf(rows, seed) : [null, null];
 
   if (step === 1) {
-    out.reading = F.step1(rows, { seed, top: 3 });
-    // ONE of them, not all ten, and the page is told which. The finding at step
-    // 1 is the ORDERING of the dials, and ten copies of the same ordering is
-    // ten times the wait for the same answer.
-    if (keptN) out.reading.noise = { of: keptN, used: 1, reading: F.step1(luckBoard(0), { seed, top: 3 }) };
+    const r1 = F.step1(rows, { seed, top: 3 });
+    // the check's movement per dial, DRAWN beside the real one: on every
+    // scrambled copy, or on each half. A dial that does not beat every copy is
+    // greyed by the page -- it ranked, and ranking is what noise does too.
+    const checkM = {};
+    const counts = {};
+    const boards = kind === 'scrambles' ? copies : [ha, hb];
+    for (const x of r1.dials) {
+      const ms = boards.map((b) => F.movement(b, x.dial).m);
+      checkM[x.dial] = ms;
+      counts[x.dial] = kind === 'scrambles' ? ms.every((m) => m != null && x.m > m) : null;
+    }
+    r1.checkM = checkM;
+    r1.counts = counts;
+    r1.noise = { of: keptN, used: keptN, kind };
+    out.reading = r1;
+    const sh = r1.splitHalf || {};
+    out.conditions.halvesDisagree = sh.why ? null : !sh.agrees;
+    out.conditions.leadNotEven = r1.dials.length ? (r1.lopsided || []).includes(r1.dials[0].dial) : null;
   } else if (step === 2) {
-    out.reading = F.step2(rows, String(state.dial || ''), { seed });
-    if (keptN) out.reading.noise = { of: keptN, used: 1, reading: F.step2(luckBoard(0), String(state.dial || ''), { seed }) };
+    const dial = String(state.dial || '');
+    const r2 = F.step2(rows, dial, { seed });
+    if (!r2.why) {
+      // the check's average beside the real one per value, and the range it
+      // recommends -- the widest run of neighbouring values that beat it
+      r2.rec = F.recommendRange(rows, dial, check, { seed });
+      // what each value carries into the next step, so a boundary is set knowing
+      // its cost
+      r2.noise = { of: keptN, used: keptN, kind };
+    }
+    out.reading = r2;
+    out.conditions.spike = r2.shape === 'spike';
   } else if (step === 3) {
-    const g = F.step3(rows, String(state.dialA || ''), String(state.dialB || ''), { floor });
-    out.reading = { ...g, floorCost: F.floorCost(g, state.floorChoices) };
-    if (keptN) out.reading.noise = { of: keptN, used: 1, reading: F.step3(luckBoard(0), String(state.dialA || ''), String(state.dialB || ''), { floor }) };
+    const a = String(state.dialA || '');
+    const b = String(state.dialB || '');
+    const g = F.step3(rows, a, b, { floor });
+    const boards = kind === 'scrambles' ? copies : [ha, hb];
+    const checkGrids = (a && b) ? boards.map((x) => F.step3(x, a, b, { floor })) : [];
+    const block = (a && b) ? F.recommendBlock(g, checkGrids, kind) : null;
+    out.reading = { ...g, floorCost: F.floorCost(g, state.floorChoices), checkGrids, block, noise: { of: keptN, used: keptN, kind } };
+    // THE DIALS INTERACT when the best block does not span every value the
+    // rule currently keeps on both axes -- the good part of one dial sits at
+    // particular values of the other
+    if (block && block.block) {
+      const spansA = block.block.a.from === g.aVals[0] && block.block.a.to === g.aVals[g.aVals.length - 1];
+      const spansB = block.block.b.from === g.bVals[0] && block.block.b.to === g.bVals[g.bVals.length - 1];
+      out.conditions.interact = !(spansA && spansB);
+    } else out.conditions.interact = null;
   } else if (step === 4) {
-    out.reading = { axis: holdsAxis, slices: sliceRowsFor(rows, t, holdsAxis.axis, rule), floor };
+    const slices = sliceRowsFor(rows, t, holdsAxis.axis, rule);
+    const real = F.holdsAcross(slices, holdsAxis.axis, { floor });
+    // the same count on the check: every scrambled copy, or each half
+    const boards = kind === 'scrambles' ? copies : [ha, hb];
+    const checkReads = boards.map((x, i) => F.holdsAcross(
+      sliceRowsFor(x, t, holdsAxis.axis, rule, kind === 'scrambles' ? { d: i } : {}), holdsAxis.axis, { floor },
+    ));
+    out.reading = {
+      axis: holdsAxis, slices, floor,
+      positive: real.positive, of: real.of, why: real.why,
+      check: { kind, positive: checkReads.map((x) => x.positive), of: checkReads.map((x) => x.of) },
+      noise: { of: keptN, used: keptN, kind },
+    };
   } else if (step === 5) {
     const ordered = F.ORDERED_DIALS.filter((d) => rows.some((r) => r[d] != null));
     const region = (list) => require('./plateau').widestRegion(
@@ -3350,28 +3407,49 @@ function funnelRead(id, state = {}) {
       { minTrades: 0, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },
     );
     out.reading = region(rows);
-    // ALL of them here, unlike the steps above, and the difference is the
-    // point. "Wider than luck" off one scramble is a coin toss; "wider than
-    // all ten" is the claim the count on Sweep exists to buy.
-    if (keptN) {
-      const each = [];
-      for (let d = 0; d < keptN; d++) { const g = region(luckBoard(d)); each.push(g && g.size != null ? g.size : null); }
-      const mine = out.reading && out.reading.size != null ? out.reading.size : null;
-      out.reading.noise = {
-        of: keptN, used: keptN, sizes: each,
-        widest: each.reduce((a, v) => (v != null && (a == null || v > a) ? v : a), null),
-        beatenBy: mine == null ? null : each.filter((v) => v != null && mine > v).length,
-      };
-    }
+    // THE REGION AS A RULE (§16.4, step 5): its edges on every ordered dial and
+    // its values on every word-valued one, with what keeping it would leave
+    const keep = S4.regionRule(out.reading, { ordered, categorical: F.CATEGORICAL_DIALS });
+    const keepRule = { ...rule, ranges: keep.ranges, allowed: keep.allowed };
+    out.reading.keep = { ...keep, keeps: out.reading.size ? S4.applyRule(all, keepRule).length : 0 };
+    // ALL of the copies here, unlike the readings above that only compare: "wider
+    // than luck" off one copy is a coin toss; "wider than all ten" is the claim
+    // the count on Sweep exists to buy. With halves, the size on each half.
+    const boards = kind === 'scrambles' ? copies : [ha, hb];
+    const each = boards.map((x) => { const r = region(x); return r && r.size != null ? r.size : null; });
+    const mine = out.reading && out.reading.size != null ? out.reading.size : null;
+    out.reading.noise = {
+      of: keptN, used: kind === 'scrambles' ? keptN : 2, kind, sizes: each,
+      widest: each.reduce((a, v) => (v != null && (a == null || v > a) ? v : a), null),
+      beatenBy: mine == null ? null : each.filter((v) => v != null && mine > v).length,
+    };
+    out.conditions.regionNotWider = mine == null ? null : out.reading.noise.beatenBy < each.length;
+  } else if (step === 6) {
+    out.reading = {
+      rebuilt: out.rebuilt,
+      // WHAT EACH LIMIT WOULD KEEP, read off the survivors themselves
+      ladders: {
+        maxDrawdown: F.ladderFor(rows, 'maxDrawdown', 'max'),
+        avgTrades: F.ladderFor(rows, 'avgTrades', 'min'),
+      },
+    };
   }
   return out;
 }
 
-// The slices step 4 compares across, for whichever axis this set can offer.
-// A coin slice is read from the every-coin table so it is the same arithmetic
-// the screen already shows, never a second calculation of the same thing.
-function sliceRowsFor(rows, t, axis, rule) {
+function sliceRowsFor(rows, t, axis, rule, opts = {}) {
   const F = require('./funnel');
+  // a scrambled copy's per-coin money is the kept scramble at position d
+  const d = opts.d == null ? null : Math.max(0, Math.floor(Number(opts.d) || 0));
+  if (axis === 'thirds') {
+    // THE MONEY IN EACH THIRD OF THE WINDOW, from the rebuilt numbers kept beside
+    // the set. Each third is one slice across every survivor.
+    const w = rows.reduce((m, r) => Math.max(m, Array.isArray(r.pnlThirds) ? r.pnlThirds.length : 0), 0);
+    return Array.from({ length: w }, (_, i) => {
+      const vs = rows.map((r) => (Array.isArray(r.pnlThirds) ? r.pnlThirds[i] : null)).filter((v) => v != null && Number.isFinite(Number(v)));
+      return { key: `third ${i + 1}`, n: vs.length, mean: vs.length ? vs.reduce((a, c) => a + Number(c), 0) / vs.length : null };
+    });
+  }
   if (axis === 'dials') {
     const fixed = new Set([...Object.keys(rule.ranges || {}), ...Object.keys(rule.allowed || {})]);
     const free = F.ALL_DIALS.find((d) => !fixed.has(d) && new Set(rows.map((r) => F.keyOf(r[d]))).size > 1);
@@ -3388,15 +3466,74 @@ function sliceRowsFor(rows, t, axis, rule) {
       if (!labels.has(c.cellLabel)) continue;
       const k = axis === 'coins' ? c.trade : c.geometry;
       if (!by.has(k)) by.set(k, []);
-      if (c.avgTest != null) by.get(k).push(c.avgTest);
+      const v = d == null ? c.avgTest : ((c.noiseTest || [])[d] ?? null);
+      if (v != null) by.get(k).push(v);
     }
     return [...by.entries()].map(([k, vals]) => ({
       key: k, n: vals.length, mean: vals.length ? vals.reduce((a, x) => a + x, 0) / vals.length : null,
     }));
   }
-  // 'thirds' needs the rebuilt numbers; the caller supplies them or the axis
-  // was never offered in the first place
   return [];
+}
+
+// ---- the rebuilt numbers, kept beside the set --------------------------------
+//
+// STAGE 3 DOES NOT GROW (ruling 4): the rebuild's numbers -- worst losing
+// streak, worst trade, wins, stops, the money in each third -- are never
+// written into the records. They were handed to the screen for the proof and
+// then thrown away, which left step 6 with nothing to read: a limit on the
+// worst losing streak refused every row, because no row carried one.
+//
+// So they are kept in a SIDECAR beside the set, keyed by setting label, and
+// funnelRead lays them onto the survivors before the rule is applied. It is a
+// derived file: rebuilt by pressing the button again, never migrated (RULE
+// NINE). One number per setting is the average across its units, the same way
+// avg test $ is.
+const funnelRichFile = (id) => path.join(SETS_DIR, `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.funnelrich.json`);
+const RICH_FIELDS = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 'grossPerTrade'];
+function saveFunnelRich(id, perSetting) {
+  const out = { v: 1, savedAt: new Date().toISOString(), release: require('../package.json').version, settings: {} };
+  for (const [label, e] of perSetting) {
+    const acc = {};
+    const thirds = [];
+    for (const u of (e.units || [])) {
+      const t = u.rich && u.rich.test;
+      if (!t) continue;
+      for (const f of RICH_FIELDS) {
+        const v = t[f];
+        if (v == null || !Number.isFinite(Number(v))) continue;
+        if (!acc[f]) acc[f] = { s: 0, n: 0 };
+        acc[f].s += Number(v); acc[f].n++;
+      }
+      if (Array.isArray(t.pnlThirds)) thirds.push(t.pnlThirds);
+    }
+    const row = {};
+    for (const [f, a] of Object.entries(acc)) row[f] = a.n ? a.s / a.n : null;
+    if (thirds.length) {
+      const w = Math.max(...thirds.map((x) => x.length));
+      row.pnlThirds = Array.from({ length: w }, (_, i) => {
+        const vs = thirds.map((x) => x[i]).filter((v) => v != null && Number.isFinite(Number(v)));
+        return vs.length ? vs.reduce((a, c) => a + Number(c), 0) / vs.length : null;
+      });
+    }
+    out.settings[label] = row;
+  }
+  atomicWrite(funnelRichFile(id), JSON.stringify(out));
+  return { settings: Object.keys(out.settings).length, fields: RICH_FIELDS };
+}
+function readFunnelRich(id) {
+  try { return JSON.parse(fs.readFileSync(funnelRichFile(id), 'utf8')); } catch (_) { return null; }
+}
+// lay the rebuilt numbers onto rows by label; a row keeps what it already has
+function withFunnelRich(rows, rich) {
+  if (!rich || !rich.settings) return rows;
+  return rows.map((r) => {
+    const x = rich.settings[r.label];
+    if (!x) return r;
+    const o = { ...r };
+    for (const [f, v] of Object.entries(x)) if (o[f] === undefined) o[f] = v;
+    return o;
+  });
 }
 
 // ---- THE CUT: writing a Stage 4 set --------------------------------------------
@@ -3434,6 +3571,9 @@ function cutFunnelSet(parentId, state = {}) {
   // more looking, and the reserve grade can only count what was written down.
   for (const st of (state.steps || [])) S4.recordStep(doc, st);
   for (const b of (state.backSteps || [])) S4.recordBackStep(doc, b);
+  // THE MARKS THE WALK WAS CARRIED PAST (§16.5), on the set beside the rule.
+  // Only keys the record knows are kept; the words are the record's own.
+  for (const m of (state.marks || [])) S4.recordMark(doc, { key: m && m.key, step: m && m.step, detail: m && m.detail });
   // THE CLOSING IS PART OF THE RULE, not a note beside it. A closing recorded
   // on the set but dropped before the arithmetic writes a set whose record
   // claims a narrowing its rule does not carry.
@@ -3907,7 +4047,7 @@ module.exports = {
   missingSettingsIn, nextSettingNumber,
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
-  cutFunnelSet, listFunnelSets,
+  cutFunnelSet, listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
   sealedWindowOf, sealedFromUnits, noiseTwinOf, needsBoardNullStamp,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,

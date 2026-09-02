@@ -257,6 +257,18 @@ function nullCopy(rows, rule, d) {
   return applyRule((rows || []).map((r) => ({ ...r, [funnel.TEST_MONEY]: (r.noiseTest || [])[i] ?? null })), rule);
 }
 
+// The survivors themselves with the money swapped for one scrambled copy's.
+// Equal to nullCopy(all, rule, d) whenever the rule carries no cut -- ranges,
+// allowed values and the rebuilt-number limits never read the money, so
+// filtering first and swapping second lands on the same rows -- and a pass
+// over the survivors instead of over every setting. The walk's rule never
+// carries a cut before step 7, so this is what the readings use; a rule that
+// does carry one goes through nullCopy, which lets the copy take its own top N.
+function swapMoney(rows, d) {
+  const i = Math.max(0, Math.floor(Number(d) || 0));
+  return (rows || []).map((r) => ({ ...r, [funnel.TEST_MONEY]: (r.noiseTest || [])[i] ?? null }));
+}
+
 // ---- the closing, folded into the rule ---------------------------------------
 //
 // ONE FUNCTION TURNS A CLOSING INTO A RULE, for the same reason one function
@@ -285,6 +297,54 @@ function ruleWithClosing(rows, rule, closing, target) {
     return { rule: tg.rule, key, detail: tg.why };
   }
   return { rule: R, key, detail: null };
+}
+
+// ---- the widest region, as a rule (§16.4, step 5) -------------------------------
+//
+// A region is a set of neighbouring settings; its edges on every ordered dial
+// and its values on every word-valued one ARE a rule, and this turns
+// widestRegion's `bounds` and `values` into one. The centre is deliberately not
+// used: a rule that kept only the centre would keep one setting, and the whole
+// point of a wide region is that its interior is defensible as a region.
+function regionRule(region, dials) {
+  const R = { ranges: {}, allowed: {} };
+  if (!region || !region.size) return R;
+  const ordered = new Set((dials && dials.ordered) || funnel.ORDERED_DIALS);
+  const categorical = new Set((dials && dials.categorical) || funnel.CATEGORICAL_DIALS);
+  for (const [dial, b] of Object.entries(region.bounds || {})) {
+    if (!ordered.has(dial) || !b || b.min == null) continue;
+    R.ranges[dial] = { min: b.min, max: b.max };
+  }
+  for (const [dial, v] of Object.entries(region.values || {})) {
+    if (!categorical.has(dial) || v === undefined) continue;
+    R.allowed[dial] = [funnel.keyOf(v)];
+  }
+  return R;
+}
+
+// ---- marks (§16.5) -------------------------------------------------------------
+//
+// A MARK IS AN OBSERVATION THE WALK WAS CARRIED PAST. It is not a warning that
+// can be dismissed and not a refusal: the halves disagreed, a kept range was a
+// spike, the region was not wider than the check. It rides on the Stage 4 set
+// beside the rule and is never cleared, so a rule walked past one is visibly
+// thinner evidence than one that was not, wherever the set is read.
+const MARKS = Object.freeze({
+  halvesDisagree: 'the two halves did not agree on the leading dials at step 1',
+  leadNotEven: 'the leading dial was not evenly swept',
+  spike: 'a kept range had a spike shape',
+  interact: 'the two dials interact and the single-dial ranges were kept anyway',
+  slices: 'accepted across slices with some not positive',
+  regionNotWider: 'the widest region was not wider than the check',
+  checkIsHalves: 'no scrambled copies were kept, so the two halves stood in as the check',
+});
+function recordMark(doc, mark) {
+  if (!mark || !MARKS[mark.key]) return doc;
+  if (!Array.isArray(doc.marks)) doc.marks = [];
+  const dup = doc.marks.find((m) => m.key === mark.key && m.step === (mark.step ?? null) && m.detail === (mark.detail ?? null));
+  if (dup) return doc;
+  doc.marks.push({ at: new Date().toISOString(), key: mark.key, step: mark.step ?? null, what: MARKS[mark.key], detail: mark.detail ?? null });
+  return doc;
 }
 
 // ---- the record --------------------------------------------------------------
@@ -321,6 +381,8 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     counts: null,
     closing: null,
     warnings: [],
+    // observations the walk was carried past (§16.5); never cleared
+    marks: [],
     heldBackReadAt: null,
   };
 }
@@ -390,7 +452,8 @@ function replay(doc, parentRows) {
 }
 
 module.exports = {
-  tightenRule, ruleWithClosing, nullCopy, topColumnNames, TOP_COLUMNS,
+  tightenRule, ruleWithClosing, nullCopy, swapMoney, topColumnNames, TOP_COLUMNS,
+  regionRule, MARKS, recordMark,
   EMPTY_RULE, CLOSINGS,
   normaliseRule, inRange, applyRule, ruleSentence,
   newFunnelSet, recordStep, recordBackStep, warningsFor, finishFunnelSet, replay,

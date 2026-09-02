@@ -571,11 +571,12 @@ acting on the entry above them.
 
 ---
 
-## Found 2026-09-02 — the Funnel tab (found, not fixed)
+## Found 2026-09-02 — the Funnel tab (fixed in 3.39.0, the same day)
 
-Three things on the Funnel tab that were found while designing its next step
+Four things on the Funnel tab that were found while designing its next step
 (FUNNEL-DESIGN.md §16). Each was read out of the code that draws the screen.
-None has been touched; the owner decides if and when.
+All four were fixed in 3.39.0 on the owner's order to build §16; the entries
+stay as the record of what was wrong.
 
 - **The bold comparison heading on steps 1, 2 and 3 says a comparison is drawn
   beside the reading, and nothing is drawn.** The sentence reads "the same
@@ -606,6 +607,40 @@ None has been touched; the owner decides if and when.
   as JSON (`public/construct.js`, `fStep5`, `JSON.stringify(r.centre)`).
   **What the fix is:** FUNNEL-DESIGN.md §16.4 — a block control on the grid, an
   accept on step 4 that records a mark, and `keep the widest region` on step 5.
+
+- **The numbers step 6 asks for were thrown away as soon as they were worked
+  out.** `work out the missing numbers` prices the survivors again and returns
+  the worst losing streak, the worst trade and the rest to the screen for the
+  proof — and nothing kept them. So `worst losing streak allowed` could never
+  match a row: the rule refuses a number that is not there, and no row carried
+  one, so `add these limits to the rule` with that box filled emptied the
+  survivors to nothing. **What the fix is:** keep them beside the set, keyed by
+  setting, and lay them onto the survivors before the rule is applied
+  (`saveFunnelRich` / `withFunnelRich` in `lib/stages.js`).
+
+## Found 2026-09-02 01:44 UTC — the service died totalling the filled set (found, not fixed)
+
+- **The service ran out of memory building the tables for S3 #1 right after
+  the kept-scramble fill finished, and systemd restarted it.** The journal
+  says `FATAL ERROR: Reached heap limit Allocation failed - JavaScript heap
+  out of memory` at 01:44:01, heap at 3,015 MB of the 3,072 MB allowed, in
+  `JSON.parse` on the main thread. The restarted process built the same
+  tables and finished with memory at 2.0 GB — so a clean process fits and
+  the one that had just spent 5.7 hours on the fill did not: it carried that
+  memory into the totalling. Two things are wrong, either of which would have
+  saved it: the fill does not let go of what it held before the totals start,
+  and the totalling for a 524,832-setting set with ten kept scrambles per
+  record sits within a few hundred MB of the heap limit even when clean — the
+  kept figures are held twice, once per setting-and-coin and once per coin
+  row (`lib/stagework.js`, `tallyFold`, `addNoiseRow` on both `c` and `k`),
+  ~10.5 million entries with two ten-number arrays each. **What the fix is:**
+  the per-coin rows need only the count their real money beat and the pairs,
+  not the arrays (compute at fold, store two numbers); the block index per
+  coin row is a Set holding one number and can be an array; and the fill
+  should end by releasing its buffers before the totals are kicked. Measured
+  locally: dropping the arrays from the per-coin rows halves that table's
+  footprint. The set's records were never at risk — the totals are derived and
+  rebuild on the next read (RULE NINE).
 
 ## How this file is meant to work
 

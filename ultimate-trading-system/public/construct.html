@@ -56,6 +56,10 @@
   th:first-child,td:first-child { text-align:left; }
   th { color:var(--dim); font-weight:600; font-size:.66rem; text-transform:uppercase; }
   tr.clickable { cursor:pointer; } tr.clickable:hover td { background:var(--tile); }
+  /* the Funnel's grid: a square that beats the check, the recommended block, and the block the owner chose */
+  td.cnt { font-weight:600; } td.blk { outline:1px solid var(--accent); outline-offset:-1px; }
+  td.pick { background:var(--tabon); } td.pickable { cursor:pointer; }
+  tr.dim td { color:var(--muted); }
   tr.selected td { background:var(--tile); box-shadow: inset 3px 0 0 var(--accent); }
   .tile { background:var(--tile); border:1px solid var(--line); border-radius:8px; padding:.55rem .7rem; }
   .k { color:var(--dim); font-size:.66rem; text-transform:uppercase; letter-spacing:.04em; }

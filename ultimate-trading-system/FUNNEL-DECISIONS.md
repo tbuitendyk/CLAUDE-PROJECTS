@@ -243,3 +243,45 @@ made while building it that the design did not already settle.
     ends, one swept value at a time, and never narrows a range below two
     values. It can land under the target (a step gives up a whole swept value)
     or stop above it, and it says which in the reply the cut returns.
+
+## §16 — the guided walk is built (3.39.0, 2026-09-02)
+
+55. **The four open questions were answered by the session, not the owner, to
+    keep the build moving, and each is a one-line change if they choose
+    otherwise.** (1) Coin exclusion at step 4 is NOT built — a coin is a unit,
+    not a dial, and a new kind of clause needs the Stage 4 readers to honour
+    it. (2) The block on step 3 replaces what the rule held for both dials.
+    (3) Marks are recorded silently when the walk moves past a step with the
+    condition present, and when a step's own control is used; step 4 has an
+    explicit accept because acceptance IS the decision there. (4) A value or
+    square counts only if it beats EVERY kept copy; K is printed.
+56. **The scrambled copy the readings use is the survivors with their money
+    swapped, not every setting filtered again.** Before step 7 the rule carries
+    no cut, and ranges, allowed values and the rebuilt-number limits never read
+    the money, so the two constructions land on the same rows — proved in
+    `theFunnelReadBuildsItsScrambledCopiesFromEverySettingNotTheSurvivors`,
+    which also proves they differ once a cut is present. The read keeps ONE
+    line that chooses: `nullCopy(all, rule, d)` under a cut, `swapMoney(rows,
+    d)` otherwise. Ten copies of 524,832 settings on every redraw was the cost
+    of doing it the other way.
+57. **The rebuilt numbers are kept in a sidecar beside the set** —
+    `<id>.funnelrich.json`, keyed by setting label, one number per setting
+    averaged across its units. They used to leave with the rebuild's reply and
+    nothing held them, so a limit on `worst losing streak allowed` refused
+    every row: no row carried one. That is the fourth defect found this round.
+    Stage 3 still does not grow (ruling 4); the sidecar is derived and is
+    rebuilt by pressing the button again, never migrated (RULE NINE). The same
+    numbers make the thirds axis on step 4 real for the first time.
+58. **With the halves as the check, step 1 greys nothing.** A dial counts under
+    scrambles when it beats every copy; the halves' check at step 1 is the
+    agreement of the two orderings, which the page already prints. Greying on
+    "in the top three of both halves" would have been a threshold nobody chose.
+59. **The count line on step 2 is worked out on the page from the table it
+    sits under** — the settings each value carries, summed inside the boxes'
+    range — so it follows the boxes as they are typed without a round trip.
+    It is exact for a range on one dial over the current survivors, which is
+    what the step is.
+60. **The word is gone from every rendered string in `public/construct.js`**
+    (owner: "burn that into your behavior"). The documents' older sections and
+    the code names in tests still carry it; that purge waits for the owner's
+    tiers.

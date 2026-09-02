@@ -188,7 +188,7 @@ window.HELP = {
       },
       swKeep3: {
         what: 'How many of those null-set deals have their money written down, rather than only being counted. '
-          + 'Keeping some builds a whole second copy of Table 3.A and Table 3.B out of luck alone, which is the '
+          + 'Keeping some builds a whole second copy of Table 3.A and Table 3.B out of scrambled money alone, which is the '
           + 'only thing the Funnel can measure a real result against. 0 keeps none, which is how every run before '
           + 'this one worked.',
         more: 'It costs one extra pricing per setting per coin for each one kept, so 10 makes the run about 10% '
@@ -387,7 +387,7 @@ window.HELP = {
       },
       bKeptN: {
         what: 'How many of this record set\'s null-set deals should have their money written down, so the Funnel '
-          + 'has a whole second copy of Table 3.A and Table 3.B made of luck alone to measure a real result against.',
+          + 'has a whole second copy of Table 3.A and Table 3.B made of scrambled money alone to measure a real result against.',
         more: 'It cannot ask for more than the set was swept with — the deals it writes down have to be deals it '
           + 'actually made. The line beside it says how many the set keeps today and how many pricings the chosen '
           + 'number costs, before the button is pressed.',
@@ -487,7 +487,7 @@ window.HELP = {
       },
       fMin: {
         what: 'The lowest value of this dial to keep.',
-        more: 'Leave it blank for no lower limit. Keep a RANGE rather than a single value: one value far clear of its neighbours is what luck looks like, and taking it is the shopping this whole screen exists to avoid.',
+        more: 'Leave it blank for no lower limit. Keep a RANGE rather than a single value: one value far clear of its neighbours is what a shuffle produces, and taking it is the shopping this whole screen exists to avoid.',
       },
       fMax: {
         what: 'The highest value of this dial to keep. Blank means no upper limit.',
@@ -498,12 +498,28 @@ window.HELP = {
         more: 'The survivor count at the top updates straight away. Nothing is written to disk until the last step.',
       },
       fA: {
-        what: 'The first of two dials to lay against each other on a grid.',
+        what: 'The first of two dials to lay against each other on a grid. The list is every dial the engine knows; it starts on the leading dial from step 1.',
         more: 'This is where you see things like a short distance only working when the holding time is long - which no ranked list can show you.',
       },
       fB: {
-        what: 'The second dial for the grid.',
-        more: 'Each square shows the average for the settings that carry both values.',
+        what: 'The second dial for the grid. It starts on the second dial from step 1.',
+        more: 'Each square shows the average for the settings that carry both values, and the second grid underneath shows the same square on the check - so a square that only looks good is told apart from one that beats the check.',
+      },
+      fKeepValues: {
+        what: 'Keeps the ticked values of this dial and drops the rest. For dials whose values are words rather than numbers.',
+        more: 'A word-valued dial cannot be kept as a range - there is no order to "active" and "always". The ticked values become part of the rule, so a scrambled copy handed the same rule keeps the same values. The recommended values are ticked when you arrive; untick or tick as you see fit. Ticking none removes this dial from the rule.',
+      },
+      fKeepBlock: {
+        what: 'Writes a range on BOTH dials at once from a block of squares on the grid, replacing whatever the rule held for those two dials.',
+        more: 'Your own block if you pressed two corners; otherwise the recommended one - the largest rectangle of squares that beat the check and are not thin. Use it when the good part of one dial sits at particular values of the other; two ranges set one at a time cannot say that. The step records whether the two dials interact.',
+      },
+      fAccept4: {
+        what: 'Records that you accepted the rule across these slices, and opens the next step.',
+        more: 'What you accepted is written on the set in words - "accepted 4 of 6; the check managed 3 of 6" - as a mark, so anyone reading the set later can see how much of the board the rule held on and how much of that the check managed anyway. It is disabled when there is nothing to compare.',
+      },
+      fKeepRegion: {
+        what: 'Replaces every range and value in the rule with the edges of the widest region.',
+        more: 'The region is the widest run of neighbouring settings that all made money. Its edges on each dial ARE a rule - the most defensible narrowing this screen can make, because it was chosen by how many neighbours a setting has and never by its score. The count beside it says what keeping it would leave against your target.',
       },
       fFloor: {
         what: 'How many settings must sit behind a square before you trust it.',

@@ -822,11 +822,17 @@ app.post('/api/funnel/:id/rebuild', async (req, res) => {
     // must never look proved, so the verdict is part of the reply rather than
     // something the screen can forget to ask for.
     const proof = stages.proveRebuild(got.perSetting, (req.body || {}).expect || null);
+    // KEPT, NOT THROWN AWAY. The rebuilt numbers used to leave with this reply
+    // and nothing held them, so a limit on the worst losing streak at step 6
+    // refused every row -- no row carried one. They are written beside the set
+    // and funnelRead lays them onto the survivors (Funnel design §16, step 6).
+    const kept = stages.saveFunnelRich(doc.id, got.perSetting);
     return res.json({
       settings: got.settings,
       units: got.units,
       failures: got.failures,
       proof,
+      kept,
       perSetting: [...got.perSetting.entries()].map(([label, e]) => [label, { avgTest: e.avgTest, units: e.units }]),
     });
   } catch (err) {
@@ -844,6 +850,7 @@ app.post('/api/funnel/:id/cut', (req, res) => {
       survivors: doc.counts.survivors, target: doc.counts.target,
       ruleSentence: doc.ruleSentence, warnings: doc.warnings,
       closing: doc.closing, replayChecked: doc.replayChecked,
+      marks: doc.marks || [],
     });
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
@@ -857,6 +864,8 @@ app.get('/api/funnel/sets', (req, res) => {
       ruleSentence: d.ruleSentence || null, warnings: d.warnings || [],
       closing: d.closing, boardNull: d.boardNull, release: d.release,
       steps: (d.steps || []).length, backSteps: (d.backSteps || []).length,
+      // the marks ride with the set wherever it is listed (§16.5)
+      marks: d.marks || [],
     })),
   });
 });

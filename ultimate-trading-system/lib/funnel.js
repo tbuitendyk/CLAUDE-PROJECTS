@@ -371,9 +371,163 @@ function holdsAxisFor(have) {
   return { axis: null, weaker: true, passedOver: reasons };
 }
 
+// ---- the check, and what it recommends (Funnel design §16.2) -------------------
+//
+// ONE MECHANISM FOR THE CHECK AND THE RECOMMENDATION, and it is the one §3
+// already names: scrambled copies of the table when the set kept them, the two
+// halves of the settings when it did not. Nothing here adds a third. A value,
+// a square or a slice COUNTS when the real reading beats the check's reading in
+// SIGN -- above the scrambled copy on every kept copy, or above the half's own
+// average on both halves -- and the recommendation is the widest run of
+// neighbouring things that count. No margin, no multiple, no threshold: the
+// only figure on the screen is how many copies there were.
+//
+// `check` is { copies: [rows, ...] } -- the same rows with the money swapped,
+// one per kept scramble -- or { seed } when there are none. The caller builds
+// the copies, because building them is the caller's rule applied to a
+// scrambled table (funnelset.nullCopy) and this file never applies a rule.
+
+const checkKindOf = (check) => (check && Array.isArray(check.copies) && check.copies.length ? 'scrambles' : 'halves');
+
+// mean money per value of a dial, keyed by value
+function meansBy(rows, dial) {
+  const by = groupsFor(rows, dial);
+  const out = new Map();
+  for (const [k, vals] of by) out.set(k, { n: vals.length, mean: vals.reduce((a, c) => a + c, 0) / vals.length });
+  return out;
+}
+const grandOf = (rows) => {
+  let s = 0; let n = 0;
+  for (const r of rows) { const v = money(r); if (v != null) { s += v; n++; } }
+  return n ? s / n : null;
+};
+
+// Every value of a dial with its real reading, the check's reading, and whether
+// it counts. Ordered dials come back in axis order.
+function countsFor(rows, dial, check, opts = {}) {
+  const kind = checkKindOf(check);
+  const real = meansBy(rows, dial);
+  const keys = sortedValues(dial, [...real.keys()]);
+  const out = [];
+  if (kind === 'scrambles') {
+    const copies = check.copies.map((c) => meansBy(c, dial));
+    for (const k of keys) {
+      const r = real.get(k);
+      const cm = copies.map((m) => (m.get(k) ? m.get(k).mean : null));
+      const counts = cm.length > 0 && cm.every((v) => v != null && r.mean > v);
+      out.push({ value: k, n: r.n, mean: r.mean, check: cm, counts });
+    }
+    return { dial, kind, k: copies.length, values: out };
+  }
+  const seed = (check && check.seed) || opts.seed || 'funnel';
+  const [ha, hb] = splitHalf(rows, seed);
+  const ma = meansBy(ha, dial); const mb = meansBy(hb, dial);
+  const ga = grandOf(ha); const gb = grandOf(hb);
+  for (const k of keys) {
+    const r = real.get(k);
+    const a = ma.get(k) ? ma.get(k).mean : null;
+    const b = mb.get(k) ? mb.get(k).mean : null;
+    const counts = a != null && b != null && ga != null && gb != null && a > ga && b > gb;
+    out.push({ value: k, n: r.n, mean: r.mean, check: [a, b], counts });
+  }
+  return { dial, kind, k: 0, values: out };
+}
+
+// The widest run of neighbouring values that count. Ordered dials give a range
+// over their numeric values; a word-valued dial gives the list of values that
+// count. Ties go to the earliest run, so the same rows give the same answer.
+function recommendRange(rows, dial, check, opts = {}) {
+  const c = countsFor(rows, dial, check, opts);
+  const ordered = ORDERED_DIALS.includes(dial);
+  if (!ordered) {
+    const values = c.values.filter((v) => v.counts).map((v) => v.value);
+    return { ...c, ordered, recommend: values.length ? { values } : null,
+      why: values.length ? null : 'no value beats the check' };
+  }
+  const numeric = c.values.filter((v) => Number.isFinite(Number(v.value)) && v.value !== 'auto' && v.value !== 'none');
+  let best = null;
+  let run = [];
+  const close = () => { if (run.length && (!best || run.length > best.length)) best = run; run = []; };
+  for (const v of numeric) { if (v.counts) run.push(v); else close(); }
+  close();
+  return {
+    ...c, ordered,
+    recommend: best ? { min: Number(best[0].value), max: Number(best[best.length - 1].value), values: best.length } : null,
+    why: best ? null : 'no value beats the check',
+  };
+}
+
+// The largest rectangle of squares that count and are not thin (step 3). A
+// square counts on the same terms as a value: above the scrambled copy's
+// square on every copy, or above each half's own grid average on both halves.
+// `grids` are step3() outputs: the real one and one per check copy (or the two
+// halves). Brute force over every rectangle -- a grid is a few hundred squares.
+function recommendBlock(real, checkGrids, kind) {
+  const A = real.aVals || []; const B = real.bVals || [];
+  const at = (g, a, b) => (g.grid || []).find((x) => x.a === a && x.b === b) || null;
+  const gridGrand = (g) => {
+    let s = 0; let n = 0;
+    for (const x of (g.grid || [])) if (x.mean != null) { s += x.mean * x.n; n += x.n; }
+    return n ? s / n : null;
+  };
+  const grands = kind === 'halves' ? checkGrids.map(gridGrand) : null;
+  const counts = new Map();
+  for (const a of A) {
+    for (const b of B) {
+      const x = at(real, a, b);
+      let ok = !!x && x.mean != null && !x.thin && checkGrids.length > 0;
+      if (ok) {
+        for (let i = 0; i < checkGrids.length && ok; i++) {
+          const y = at(checkGrids[i], a, b);
+          if (!y || y.mean == null) { ok = false; break; }
+          ok = kind === 'halves' ? (grands[i] != null && y.mean > grands[i]) : (x.mean > y.mean);
+        }
+      }
+      counts.set(`${a}|${b}`, ok);
+    }
+  }
+  let best = null;
+  for (let a0 = 0; a0 < A.length; a0++) {
+    for (let a1 = a0; a1 < A.length; a1++) {
+      for (let b0 = 0; b0 < B.length; b0++) {
+        for (let b1 = b0; b1 < B.length; b1++) {
+          let all = true;
+          for (let i = a0; i <= a1 && all; i++) for (let j = b0; j <= b1 && all; j++) if (!counts.get(`${A[i]}|${B[j]}`)) all = false;
+          if (!all) continue;
+          const n = (a1 - a0 + 1) * (b1 - b0 + 1);
+          if (!best || n > best.squares) best = { a0, a1, b0, b1, squares: n };
+        }
+      }
+    }
+  }
+  const squares = [...counts.entries()].filter(([, v]) => v).map(([k]) => k);
+  if (!best) return { counting: squares, block: null, why: 'no square beats the check' };
+  return {
+    counting: squares,
+    block: { a: { from: A[best.a0], to: A[best.a1] }, b: { from: B[best.b0], to: B[best.b1] }, squares: best.squares },
+    why: null,
+  };
+}
+
+// WHAT EACH LIMIT WOULD KEEP (step 6). Thresholds are read off the survivors
+// themselves -- their lowest, quarter, middle, three-quarter and highest values
+// -- so the ladder is always in the range the owner can actually choose in.
+// `dir` is 'max' for a ceiling (worst losing streak) and 'min' for a floor.
+function ladderFor(rows, field, dir) {
+  const vals = rows.map((r) => Number(r[field])).filter((v) => Number.isFinite(v)).sort((a, b) => a - b);
+  if (!vals.length) return { field, dir, of: rows.length, measured: 0, rungs: [] };
+  const q = (p) => vals[Math.min(vals.length - 1, Math.max(0, Math.round((vals.length - 1) * p)))];
+  const at = [...new Set([q(0), q(0.25), q(0.5), q(0.75), q(1)])];
+  return {
+    field, dir, of: rows.length, measured: vals.length,
+    rungs: at.map((t) => ({ at: t, keeps: vals.filter((v) => (dir === 'max' ? v <= t : v >= t)).length })),
+  };
+}
+
 module.exports = {
   ORDERED_DIALS, CATEGORICAL_DIALS, ALL_DIALS, HOLDS_AXES, TEST_MONEY,
   money, keyOf, sortedValues, hash32, splitHalf,
   groupsFor, movement, balanceOf, step1, shapeClass, step2, step3, floorCost,
   holdsAcross, holdsAxisFor,
+  checkKindOf, countsFor, recommendRange, recommendBlock, ladderFor,
 };

@@ -217,11 +217,33 @@ function widestRegion(rows, opts = {}) {
   centre.pnl = centreRow.pnl;
   centre.trades = centreRow.trades;
   centre.depthFromEdge = centreDepth;
+  // THE REGION'S EDGES, so it can be kept as a rule and not only pointed at
+  // (Funnel design §16.4, step 5). Every member sits in one slice -- adjacency
+  // never crosses one -- so the categorical axes take the centre's values and
+  // the ordered axes take the outermost member on each side. An axis a member
+  // does not carry (pos -1) is left out rather than bounded at nothing.
+  const bounds = {};
+  for (const a of ordered) {
+    let lo = null;
+    let hi = null;
+    for (const n of bestComp) {
+      const v = nodes[n].row[a];
+      const x = Number(v);
+      if (v == null || !Number.isFinite(x)) continue;
+      if (lo == null || x < lo) lo = x;
+      if (hi == null || x > hi) hi = x;
+    }
+    if (lo != null) bounds[a] = { min: lo, max: hi };
+  }
+  const values = {};
+  for (const a of categorical) values[a] = centreRow[a];
   return {
     ...base,
     size: bestComp.length,
     sliceLabel: nodes[centreIdx].slice,
     centre,
+    bounds,
+    values,
   };
 }
 

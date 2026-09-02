@@ -566,10 +566,17 @@ module.exports = {
     const at = s.indexOf('function funnelRead(');
     assert.ok(at > 0, 'funnelRead is gone');
     const body = s.slice(at, s.indexOf('\nfunction sliceRowsFor(', at));
-    assert.ok(/const luckBoard = \(d\) => S4\.nullCopy\(all, rule, d\);/.test(body),
-      'the scrambled copy must be built from every setting, through the one function that builds one');
-    assert.ok(!/luckBoard = \(d\) => rows\./.test(body),
-      'building it from the already-filtered rows is the defect');
+    assert.ok(body.includes('const copyOf = (d) => (rule.cut ? S4.nullCopy(all, rule, d) : S4.swapMoney(rows, d));'),
+      'a rule with a cut must build its copy from every setting so the copy takes its own top N; without one the survivors swapped are the same rows');
+    // and that equality is PROVED, not asserted: without a cut the two
+    // constructions land on identical rows, in the same order
+    const all = s3rows().map((r, i) => ({ ...r, noiseTest: [100 - i, i] }));
+    const rule = { ranges: { tHours: { min: 65 } }, allowed: { gate: ['active'] } };
+    const rows = FS4.applyRule(all, rule);
+    for (const d of [0, 1]) assert.deepStrictEqual(FS4.swapMoney(rows, d), FS4.nullCopy(all, rule, d));
+    // with a cut they differ, which is the whole reason nullCopy exists
+    const cut = { ...rule, cut: { kind: 'top', column: 'avgTest', n: 1 } };
+    assert.notDeepStrictEqual(FS4.swapMoney(FS4.applyRule(all, cut), 0), FS4.nullCopy(all, cut, 0));
   },
 
   // TIGHTENING PRODUCES A RULE, NOT A SHORTER LIST, so it replays and a
@@ -676,6 +683,239 @@ module.exports = {
     // measured must not be bracketed too -- two pairs in a row reads as one
     assert.ok(/\$\{esc\(fDialLabel\(x\.dial\)\)\} - \$\{esc\(x\.why\)\}/.test(f1),
       'the not-measurable reason must follow a dash, not a second pair of brackets');
+  },
+
+  // ---- §16: the check and what it recommends --------------------------------
+
+  // A VALUE COUNTS ON SIGN ALONE. Above the scrambled copy on every kept copy,
+  // or above the half's own average on both halves. No margin, no multiple.
+  aValueCountsWhenItBeatsEveryCopyOrBothHalves() {
+    const F = require('../lib/funnel');
+    // t 41..113 with money rising in t; two scrambled copies where t113's
+    // scrambled money is high on copy 1 only
+    const rows = [];
+    for (const t of [41, 65, 89, 113]) for (let k = 0; k < 6; k++) {
+      rows.push({ label: `t${t} k${k}`, tHours: t, gate: k % 2 ? 'active' : 'always',
+        avgTest: t / 10 + (k % 3) * 0.1, noiseTest: [5, t === 113 ? 20 : 5] });
+    }
+    const copies = [0, 1].map((d) => FS4.swapMoney(rows, d));
+    const c = F.countsFor(rows, 'tHours', { copies });
+    assert.strictEqual(c.kind, 'scrambles'); assert.strictEqual(c.k, 2);
+    const by = Object.fromEntries(c.values.map((v) => [v.value, v.counts]));
+    assert.deepStrictEqual(by, { 41: false, 65: true, 89: true, 113: false },
+      't41 sits below the copies and t113 loses on copy 1, so neither counts');
+    // and the recommendation is the widest run of counting neighbours
+    const rec = F.recommendRange(rows, 'tHours', { copies });
+    assert.deepStrictEqual(rec.recommend, { min: 65, max: 89, values: 2 });
+    // halves: above each half's own average on BOTH halves. Under seed 'x' the
+    // odd-k settings land in one half and the even-k in the other (worked out
+    // with splitHalf, not assumed), so t89 is made rich on the odd side only:
+    // it beats one half's average and not the other's, and must not count.
+    const split = rows.map((r) => ({ ...r, avgTest: r.tHours === 89 ? (Number(r.label.slice(-1)) % 2 ? 40 : 0) : r.tHours / 10 }));
+    const [ha, hb] = F.splitHalf(split, 'x');
+    assert.ok(ha.filter((r) => r.tHours === 89).every((r) => r.avgTest === 40) && hb.filter((r) => r.tHours === 89).every((r) => r.avgTest === 0),
+      'the fixture must put the rich t89 settings all in one half');
+    const h = F.countsFor(split, 'tHours', { seed: 'x' });
+    assert.strictEqual(h.kind, 'halves'); assert.strictEqual(h.k, 0);
+    const hby = Object.fromEntries(h.values.map((v) => [v.value, v.counts]));
+    assert.strictEqual(hby[89], false, 't89 beats one half only, so it does not count');
+    // and rich on BOTH sides it does -- the same value, the same split, only
+    // the other half's money changed, which is exactly the AND
+    const both = split.map((r) => ({ ...r, avgTest: r.tHours === 89 ? 40 : r.avgTest }));
+    const hb2 = Object.fromEntries(F.countsFor(both, 'tHours', { seed: 'x' }).values.map((v) => [v.value, v.counts]));
+    assert.strictEqual(hb2[89], true, 't89 above both halves\' averages counts');
+    // a word-valued dial recommends a list of values, never a range
+    const g = F.recommendRange(rows, 'gate', { copies });
+    assert.strictEqual(g.ordered, false);
+    assert.ok(g.recommend == null || Array.isArray(g.recommend.values));
+  },
+
+  // The block is the largest rectangle of squares that count and are not
+  // thin. Thin squares never count, whatever their money says.
+  theBlockIsTheLargestRectangleThatBeatsTheCheck() {
+    const F = require('../lib/funnel');
+    const rows = [];
+    for (const t of [41, 65, 89]) for (const d of [0.5, 1, 1.5]) for (let k = 0; k < 4; k++) {
+      // good money in the middle t at every d, and at t89 d1.5 only
+      const good = (t === 65) || (t === 89 && d === 1.5);
+      rows.push({ label: `t${t} d${d} k${k}`, tHours: t, dMult: d, avgTest: good ? 10 : 1, noiseTest: [3] });
+    }
+    const real = F.step3(rows, 'tHours', 'dMult', { floor: 2 });
+    const checks = [F.step3(FS4.swapMoney(rows, 0), 'tHours', 'dMult', { floor: 2 })];
+    const b = F.recommendBlock(real, checks, 'scrambles');
+    assert.ok(b.block, 'there is a block');
+    assert.deepStrictEqual(b.block.a, { from: '65', to: '65' });
+    assert.deepStrictEqual(b.block.b, { from: '0.5', to: '1.5' });
+    assert.strictEqual(b.block.squares, 3);
+    // a thin square cannot join a block even when its money is best
+    const thin = F.step3(rows.filter((r) => !(r.tHours === 65 && r.dMult === 1 && r.label.endsWith('k0'))), 'tHours', 'dMult', { floor: 4 });
+    const b2 = F.recommendBlock(thin, [F.step3(FS4.swapMoney(rows, 0), 'tHours', 'dMult', { floor: 4 })], 'scrambles');
+    assert.ok(!b2.counting.includes('65|1'), 'the square with three settings under a floor of four is thin and does not count');
+  },
+
+  // The ladder reads its rungs off the survivors, so every rung is a value the
+  // owner can actually choose, and says what each keeps.
+  theLadderSaysWhatEachLimitWouldKeep() {
+    const F = require('../lib/funnel');
+    const rows = [10, 20, 30, 40, 50].map((v, i) => ({ label: `s${i}`, maxDrawdown: v }));
+    const l = F.ladderFor(rows, 'maxDrawdown', 'max');
+    assert.strictEqual(l.measured, 5);
+    assert.deepStrictEqual(l.rungs.map((r) => [r.at, r.keeps]), [[10, 1], [20, 2], [30, 3], [40, 4], [50, 5]]);
+    const m = F.ladderFor(rows, 'avgTrades', 'min');
+    assert.strictEqual(m.measured, 0, 'a number no row carries measures nothing and says so');
+  },
+
+  // THE REGION IS A RULE. Its edges on every ordered dial and its value on
+  // every word-valued one; never its centre alone.
+  theWidestRegionBecomesARuleNotAPoint() {
+    const P = require('../lib/plateau');
+    const rows = [];
+    for (const t of [41, 65, 89, 113, 137]) for (const g of ['active', 'always']) {
+      rows.push({ label: `t${t} ${g}`, tHours: t, gate: g, pnl: (g === 'active' && t >= 65 && t <= 113) ? 5 : -1, trades: 3 });
+    }
+    const r = P.widestRegion(rows, { minTrades: 0, orderedAxes: ['tHours'], categoricalAxes: ['gate'] });
+    assert.strictEqual(r.size, 3);
+    assert.deepStrictEqual(r.bounds, { tHours: { min: 65, max: 113 } });
+    assert.deepStrictEqual(r.values, { gate: 'active' });
+    const rule = FS4.regionRule(r, { ordered: ['tHours'], categorical: ['gate'] });
+    assert.deepStrictEqual(rule, { ranges: { tHours: { min: 65, max: 113 } }, allowed: { gate: ['active'] } });
+    assert.strictEqual(FS4.applyRule(rows, rule).length, 3, 'and applying it keeps exactly the region');
+    // the fields the region always had are untouched
+    assert.strictEqual(r.centre.tHours, 89);
+    assert.deepStrictEqual(FS4.regionRule({ size: 0 }), { ranges: {}, allowed: {} });
+  },
+
+  // A mark is never cleared and never doubled.
+  marksAreRecordedOnceAndRideOnTheSet() {
+    const doc = FS4.newFunnelSet({ id: 's4-m-1', target: 5 });
+    assert.deepStrictEqual(doc.marks, []);
+    FS4.recordMark(doc, { key: 'halvesDisagree', step: 1 });
+    FS4.recordMark(doc, { key: 'halvesDisagree', step: 1 });
+    FS4.recordMark(doc, { key: 'slices', step: 4, detail: 'accepted 4 of 6; the check managed 3 of 6' });
+    FS4.recordMark(doc, { key: 'notAMark', step: 9 });
+    assert.strictEqual(doc.marks.length, 2);
+    assert.strictEqual(doc.marks[0].what, FS4.MARKS.halvesDisagree);
+    assert.ok(doc.marks.every((m) => m.at));
+    FS4.finishFunnelSet(doc, s3rows().slice(0, 2), { key: 'rule' });
+    assert.strictEqual(doc.marks.length, 2, 'finishing the set keeps the marks');
+  },
+
+  // THE REBUILT NUMBERS ARE KEPT AND LAID BACK ON. Before this they left with
+  // the reply and nothing held them, so a limit on the worst losing streak
+  // refused every row -- no row carried one.
+  theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows() {
+    const fs2 = require('fs');
+    const id = 's3-test-funnelrich';
+    const per = new Map([
+      ['a', { label: 'a', units: [{ rich: { test: { maxDrawdown: 100, worstTrade: -5, wins: 3, pnlThirds: [1, 2, 3] } } },
+        { rich: { test: { maxDrawdown: 300, worstTrade: -7, wins: 5, pnlThirds: [3, 2, 1] } } }] }],
+      ['b', { label: 'b', units: [{ rich: null }] }],
+    ]);
+    try {
+      const got = stages.saveFunnelRich(id, per);
+      assert.strictEqual(got.settings, 2);
+      const rich = stages.readFunnelRich(id);
+      assert.strictEqual(rich.settings.a.maxDrawdown, 200, 'one number per setting is the average across its units');
+      assert.deepStrictEqual(rich.settings.a.pnlThirds, [2, 2, 2]);
+      assert.deepStrictEqual(rich.settings.b, {}, 'a setting with no rebuilt numbers carries none, never zeros');
+      const rows = stages.withFunnelRich([{ label: 'a', avgTrades: 9, maxDrawdown: 50 }, { label: 'b' }, { label: 'c' }], rich);
+      assert.strictEqual(rows[0].maxDrawdown, 50, 'a number the row already carries is kept; the sidecar fills gaps only');
+      assert.strictEqual(rows[0].worstTrade, -6, 'and a gap is filled from the sidecar');
+      assert.strictEqual(rows[0].avgTrades, 9);
+      assert.strictEqual(rows[2].maxDrawdown, undefined);
+      // and now a limit can pass
+      assert.strictEqual(FS4.applyRule(rows, { floors: { maxDrawdown: { max: 60 } } }).length, 1);
+    } finally {
+      try { fs2.unlinkSync(stages.funnelRichFile(id)); } catch (_) { /* never written */ }
+    }
+  },
+
+  // ---- §16: the screen ----------------------------------------------------------
+
+  // EVERY STEP HAS ITS CONTROL AND ITS CHECK DRAWN. The old page claimed a
+  // comparison was "drawn beside" on steps 1-3 and drew nothing; steps 3, 4
+  // and 5 had nothing to press. Read out of the renderers, one per step.
+  everyStepHasItsControlAndItsCheckDrawn() {
+    const s = src('public/construct.js');
+    const fn = (name, next) => s.slice(s.indexOf(`function ${name}(`), s.indexOf(`\nfunction ${next}(`));
+    const s1 = fn('fStep1', 'fStep2');
+    assert.ok(s1.includes("cth('check', 'fCheck')"), 'step 1 draws the check column');
+    assert.ok(s1.includes('data-fnarrow='), 'step 1 rows open step 2 with the dial chosen');
+    assert.ok(s1.includes("(r.counts || {})[x.dial] === false ? 'dim'"), 'a dial that does not beat every copy is greyed');
+    const s2 = fn('fStep2', 'fStep3');
+    assert.ok(s2.includes("cth('check', 'fCheck')"), 'step 2 draws the check column');
+    assert.ok(s2.includes('id="fKeepValues"') && s2.includes('data-fval='), 'a word-valued dial gets a box per value');
+    assert.ok(s2.includes('id="fKeepCount"'), 'the count line follows the boxes');
+    assert.ok(/const lo = have\.min != null \? have\.min : \(rr\.min != null \? rr\.min : ''\);/.test(s2),
+      'the boxes are pre-filled from the rule, else from the recommendation');
+    const s3 = fn('fStep3', 'fStep4');
+    assert.ok(s3.includes('<select id="fA">') && s3.includes('<select id="fB">'), 'the two dials are pickers, not typed names');
+    assert.ok(s3.includes('data-fcell=') && s3.includes('id="fKeepBlock"'), 'the grid has corners to press and a block to keep');
+    assert.ok(s3.includes("kind === 'halves' ? 'The check - each half"), 'the check grid is drawn underneath');
+    const s4 = fn('fStep4', 'fStep5');
+    assert.ok(s4.includes('id="fAccept4"'), 'step 4 has an accept');
+    assert.ok(s4.includes('The check managed'), 'and prints what the check managed beside the real count');
+    const s5 = fn('fStep5', 'fLadder');
+    assert.ok(s5.includes('id="fKeepRegion"'), 'step 5 keeps the widest region');
+    assert.ok(!s5.includes('JSON.stringify'), 'and never prints its answer as raw JSON');
+    const s6 = fn('fStep6', 'fStep7');
+    assert.ok(s6.includes("fLadder('worst losing streak'") && s6.includes("fLadder('trades'"), 'step 6 shows what each limit would keep');
+    // and every new control has help
+    const h = src('public/help-content.js');
+    for (const id of ['fKeepValues', 'fKeepBlock', 'fAccept4', 'fKeepRegion']) assert.ok(h.includes(`      ${id}: {`), `${id} has no help entry`);
+  },
+
+  // THE PAGE NEVER CLAIMS A DRAWING THAT IS NOT THERE. The one sentence that
+  // did is gone, and the line that replaces it names what is on the screen.
+  thePageNeverClaimsAComparisonItDoesNotDraw() {
+    const s = src('public/construct.js');
+    assert.ok(!s.includes('is drawn beside. '), 'the false claim is gone');
+    const nl = s.slice(s.indexOf('function fNoiseLine('), s.indexOf('\n}\n', s.indexOf('function fNoiseLine(')));
+    assert.ok(nl.includes("if (n.sizes) {") && nl.includes("return '';"), 'the line prints the region sizes or nothing at all');
+    const cl = s.slice(s.indexOf('function fCheckLine('), s.indexOf('\n}\n', s.indexOf('function fCheckLine(')));
+    assert.ok(cl.includes('drawn beside the same reading on each of this') && cl.includes('two halves of the settings'),
+      'the check line names which check was used, and both name something the step draws');
+  },
+
+  // THE WORD IS GONE FROM EVERYTHING THE OWNER CAN READ (owner order,
+  // 2026-09-02: "we don't use the word LUCK. burn that into your behavior").
+  theBannedWordIsOnNoScreen() {
+    for (const f of ['public/construct.js', 'public/help-content.js', 'public/construct.html', 'public/setup.html', 'public/trade.html']) {
+      const s = src(f);
+      const hits = s.split('\n').map((l, i) => [i + 1, l]).filter(([, l]) => /luck/i.test(l));
+      assert.deepStrictEqual(hits.map(([n]) => n), [], `${f} still carries the word at line(s) ${hits.map(([n]) => n).join(', ')}`);
+    }
+  },
+
+  // MARKS TRAVEL: recorded on the page, sent with the cut, written on the set
+  // in the record's own words, listed with the set.
+  marksTravelFromThePageToTheSetAndBack() {
+    const s = src('public/construct.js');
+    assert.ok(s.includes('marks: st.marks || [],'), 'the cut sends the marks');
+    assert.ok(s.includes("else if (n > st.step) markStep(st.step);"), 'moving past a step records its marks');
+    const words = s.slice(s.indexOf('const F_MARK_WORDS = {'), s.indexOf('};', s.indexOf('const F_MARK_WORDS = {')));
+    for (const [k, v] of Object.entries(FS4.MARKS)) assert.ok(words.includes(`  ${k}: '${v}',`), `the page's words for ${k} differ from the record's`);
+    const st = src('lib/stages.js');
+    assert.ok(st.includes("for (const m of (state.marks || [])) S4.recordMark(doc,"), 'the cut writes them through recordMark');
+    const sv = src('server.js');
+    assert.ok(sv.includes('marks: doc.marks || [],') && sv.includes('marks: d.marks || [],'), 'the cut reply and the set list carry them');
+  },
+
+  // The read hands every step what §16 says it shows, and says which check it
+  // used. Read out of funnelRead rather than run, because a tally on disk is
+  // not something a unit test should make.
+  theReadServesEveryStepItsCheckAndRecommendation() {
+    const s = src('lib/stages.js');
+    const body = s.slice(s.indexOf('function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
+    assert.ok(body.includes("out.check = { kind, k: keptN };"), 'the read names the check');
+    assert.ok(body.includes("out.conditions.checkIsHalves = kind === 'halves';"));
+    assert.ok(body.includes('r1.checkM = checkM;') && body.includes('r1.counts = counts;'), 'step 1: the check per dial');
+    assert.ok(body.includes('r2.rec = F.recommendRange(rows, dial, check, { seed });'), 'step 2: the recommendation');
+    assert.ok(body.includes('F.recommendBlock(g, checkGrids, kind)'), 'step 3: the block');
+    assert.ok(body.includes("check: { kind, positive: checkReads.map((x) => x.positive)"), 'step 4: the check count');
+    assert.ok(body.includes('S4.regionRule(out.reading, { ordered, categorical: F.CATEGORICAL_DIALS })'), 'step 5: the region as a rule');
+    assert.ok(body.includes("maxDrawdown: F.ladderFor(rows, 'maxDrawdown', 'max')"), 'step 6: the ladders');
+    assert.ok(body.includes('const all = withFunnelRich(t.ranked || [], rich);'), 'the rebuilt numbers are laid on before the rule');
   },
 
   aFunnelReadThatFailsSaysSoRatherThanLeavingTheScreenAsItWas() {

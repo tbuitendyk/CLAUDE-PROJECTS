@@ -127,6 +127,12 @@ const fDialLabel = (d) => (DIAL_ON_SWEEP[d] ? `${d} (${DIAL_ON_SWEEP[d]})` : Str
 const COL = {
   // Funnel
   fDialName: 'one of the settings a sweep can be told to vary. This table lists only the dials this run swept more than one value of. A dial swept at a single value has nothing to measure against anything, so it is named on the "Not measurable here" line below instead of appearing here as flat.',
+  fGridCorner: 'the first dial down the side, the second across the top. Each square is the average test money of the settings that carry both values, with the count in brackets when the square is thin.',
+  fGridValue: 'one value of the second dial. Read down this column to see how the first dial behaves at this value of the second.',
+  fRegionDial: 'a dial the widest region spans. Keeping the region writes these edges into the rule.',
+  fRegionFrom: 'the lowest value of this dial inside the region, or the one value a word-valued dial takes there.',
+  fRegionTo: 'the highest value of this dial inside the region.',
+  fCheck: 'the same reading on the check: on every scrambled copy of the table this set kept, or, when it kept none, on each of the two halves of the settings. A row that does not beat every copy is greyed - it ranked, and ranking is what a shuffle does too.',
   fMovement: 'how far apart this dial\'s values sit, measured against how much the result varies anyway. THE ORDERING IS THE FINDING - at this many rows every dial shows some movement, and the size of the number is a claim only against the split-half beside it.',
   fRange: 'the gap in test dollars between this dial\'s best-averaging value and its worst. A ratio with no magnitude beside it cannot be read.',
   fValues: 'how many different values of this dial the run actually swept. One value is not a comparison, and a dial with one value is listed separately rather than shown as flat.',
@@ -208,7 +214,7 @@ const COL = {
   // Boards — every coin of every configuration
   coinCfg: 'the settings fixed before the run, by their label. The same label appears once per coin here.',
   coin: 'the traded pair this row scores, with its chunk shape. The whole-configuration table above averages across all of these; this row is one coin on its own.',
-  coinShare: 'of the head-to-heads on THIS coin between the real decisions and their scrambled copies, the share the real ones won. Half is what guessing scores. Read it with the comparisons column: a high share on few comparisons is luck wearing a score.',
+  coinShare: 'of the head-to-heads on THIS coin between the real decisions and their scrambled copies, the share the real ones won. Half is what guessing scores. Read it with the comparisons column: a high share on few comparisons is chance wearing a score.',
   coinPairs: 'how many head-to-heads are behind the share — every real look on this coin against every one of its scrambled copies. More comparisons make the share worth more.',
   coinMoney: 'this configuration\'s held-back money on this coin, AVERAGED over the rows counted in the rows column — the sum divided by the rows that recorded a held-back result (all of them, on a finished run). Averaging is what lets a coin with 16 rows and one with 8 be read side by side.',
   coinTrades: 'the average number of held-back trades per row on this coin — how much trading is behind each row\'s held-back result. An average near zero means the money rests on a handful of trades.',
@@ -1261,7 +1267,7 @@ function bKeptFillPanel(doc) {
   return `<div class="panel">
       <h3 style="margin-top:0">Filling in the kept null money</h3>
       <div class="row" style="align-items:flex-end">
-      <label class="f" title="how many of this set's null-set deals should have their money written down, so the Funnel has a whole second copy of Table 3.A and Table 3.B made of luck to measure against. It re-prices only what is missing, never the whole run, and it proves itself against the money already stored before anything is swapped.">null set money kept<input id="bKeptN" type="number" value="${want}" min="0" max="${nullN}" style="width:4.5rem" ${off ? 'disabled' : ''}></label>
+      <label class="f" title="how many of this set's null-set deals should have their money written down, so the Funnel has a whole second copy of Table 3.A and Table 3.B made of scrambled money to measure against. It re-prices only what is missing, never the whole run, and it proves itself against the money already stored before anything is swapped.">null set money kept<input id="bKeptN" type="number" value="${want}" min="0" max="${nullN}" style="width:4.5rem" ${off ? 'disabled' : ''}></label>
       <button id="bKeptGo" ${off ? 'disabled title="the set is still working — a fill waits until it has landed"' : ''}>fill in the kept null money</button>
       <span id="bKeptMsg" class="note">${have ? `this set keeps ${have} of its ${nullN}.` : `this set keeps none of its ${nullN}.`}${nullN && rows ? ` Keeping ${want} re-prices ${cost(want).toLocaleString()} times, across ${rows.toLocaleString()} rows.` : ''}</span>
       </div>
@@ -2379,7 +2385,7 @@ async function drawSweep() {
       <label class="f">carry forward (0 = all)<input id="swCarry3" type="number" value="0" min="0" style="width:5.5rem"></label>
       <label class="f">fee % each way<input id="swFee" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
       <label class="f">null set size<input id="swNull3" type="number" value="19" min="0" style="width:4.5rem"></label>
-      <label class="f" title="how many of the null set's money figures to write down, rather than just counting them. Keeping some builds a whole second copy of the stage 3 tables out of luck alone, which is the only thing the Funnel can measure a real result against. Costs one extra pricing per setting per coin for each one kept, so 10 makes the run about 10% longer. 0 keeps none, which is how every run before this one worked.">null set money kept<input id="swKeep3" type="number" value="10" min="0" style="width:4.5rem"></label>
+      <label class="f" title="how many of the null set's money figures to write down, rather than just counting them. Keeping some builds a whole second copy of the stage 3 tables out of scrambled money alone, which is the only thing the Funnel can measure a real result against. Costs one extra pricing per setting per coin for each one kept, so 10 makes the run about 10% longer. 0 keeps none, which is how every run before this one worked.">null set money kept<input id="swKeep3" type="number" value="10" min="0" style="width:4.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <div style="display:flex;align-items:flex-end;gap:.45rem">
@@ -3522,7 +3528,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="average entries per coin in the held-back window.">avg held-back trades${bRankSortBtn(doc, 'avgTrades', 'desc')}</th>
         <th ${bth} title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $${bRankSortBtn(doc, 'avgVsLong', 'desc')}</th>
         <th ${bth} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set${bRankSortBtn(doc, 'beat', 'desc')}</th>
-        <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what luck managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bRankSortBtn(doc, 'beatNoise', 'desc')}</th>
+        <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what the shuffle managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bRankSortBtn(doc, 'beatNoise', 'desc')}</th>
         <th ${bth} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set${bRankSortBtn(doc, 'avgLead', 'desc')}</th>
         <th ${bth} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money${bRankSortBtn(doc, 'coinsInMoney', 'desc')}</th></tr></thead>
       <tbody>${rr.map((r, i) => `<tr>
@@ -3576,7 +3582,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
         <th ${bth} title="the traded coin and the chunk shape it was priced at — both are in this one cell, and the row is one setting on one coin at one chunk shape. Anything listed under alongside is context only — read against, never bought or sold.">coin + chunk shape${bCoinSortBtn(view, 'coin', '↑')}</th>
         <th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>
-        <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what luck managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bCoinSortBtn(view, 'beatnoise', '↓')}</th>
+        <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what the shuffle managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bCoinSortBtn(view, 'beatnoise', '↓')}</th>
         <th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>
         <th ${bth} title="average test-window money per record — flattering by construction, because the carry was ordered on that window.">avg test $${bCoinSortBtn(view, 'test', '↓')}</th>
         <th ${bth} title="average held-back money per record.">avg held-back${bCoinSortBtn(view, 'money', '↓')}</th>
@@ -3849,6 +3855,17 @@ const F_STEPS = [
   ['declare and cut', 'the rule, written as a Stage 4 set'],
 ];
 
+// what each mark says, in the same words the set records (lib/funnelset.js MARKS)
+const F_MARK_WORDS = {
+  halvesDisagree: 'the two halves did not agree on the leading dials at step 1',
+  leadNotEven: 'the leading dial was not evenly swept',
+  spike: 'a kept range had a spike shape',
+  interact: 'the two dials interact and the single-dial ranges were kept anyway',
+  slices: 'accepted across slices with some not positive',
+  regionNotWider: 'the widest region was not wider than the check',
+  checkIsHalves: 'no scrambled copies were kept, so the two halves stood in as the check',
+};
+
 let fState = null;
 function fLoad() {
   const set = pickedSet3();
@@ -3858,7 +3875,7 @@ function fLoad() {
   fState = (saved && saved.set === set) ? saved
     : { set, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
       dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false,
-      closing: { key: 'rule' } };
+      closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {} };
   return fState;
 }
 function fSave() { try { localStorage.setItem('cx-funnel', JSON.stringify(fState)); } catch (_) { /* private window */ } }
@@ -3886,6 +3903,7 @@ async function drawFunnel() {
     dialA: st.dialA, dialB: st.dialB, floor: st.floor, rebuilt: st.rebuilt,
     closing: st.closing || { key: 'rule' },
   });
+  if (d && !d.totalling && !d.waiting && d.rebuilt) st.rebuilt = true;
   // A FAILED READ MUST SAY SO. This returned without writing anything, which
   // leaves whatever the last screen put there -- another section's numbers
   // under this section's heading -- or, on a first load, nothing at all. Both
@@ -3903,14 +3921,28 @@ async function drawFunnel() {
     return;
   }
   const r = d.reading || {};
+  // what this step would leave a mark for, kept so that walking PAST the step
+  // records it (§16.5) -- and step 1's leaders, so step 3 can start from them
+  st.conditions = d.conditions || {};
+  if (d.step === 1 && Array.isArray(r.dials)) st.leaders = r.dials.slice(0, 2).map((x) => x.dial);
+  // WHAT EACH CONTROL ACTS ON, kept from the reply rather than read back off
+  // the page: the values on step 2 and what each carries, the grid's axes and
+  // recommended block on step 3, the counts on step 4, the region's edges on 5
+  st.read = {
+    groups: d.step === 2 && Array.isArray(r.groups) ? r.groups.map((g) => [String(g.value), g.n]) : null,
+    grid: d.step === 3 && r.grid ? { aVals: r.aVals, bVals: r.bVals, block: (r.block || {}).block || null } : null,
+    accept: d.step === 4 && !r.why ? { positive: r.positive, of: r.of, check: r.check || null } : null,
+    keep: d.step === 5 && r.keep ? { ranges: r.keep.ranges || {}, allowed: r.keep.allowed || {} } : null,
+  };
   $('#view').innerHTML = `<div class="panel">${fHead(d)}${fRail(d, st)}</div>
   <div class="panel">
     <h3 style="margin-top:0">Step ${d.step} - ${esc(F_STEPS[d.step - 1][0])}</h3>
     <p class="note">${esc(F_STEPS[d.step - 1][1])}</p>
+    ${d.step <= 5 ? fCheckLine(d) : ''}
     ${r.why ? `<p class="note neg">${esc(r.why)}</p>`
     : (d.step === 1 ? fStep1(r) : d.step === 2 ? fStep2(r, st) : d.step === 3 ? fStep3(r, st)
-      : d.step === 4 ? fStep4(r) : d.step === 5 ? fStep5(r) : d.step === 6 ? fStep6(d, st) : fStep7(d, st))}
-    ${fNoiseLine(r)}
+      : d.step === 4 ? fStep4(r, st) : d.step === 5 ? fStep5(r, d) : d.step === 6 ? fStep6(d, st, r) : fStep7(d, st))}
+    ${fNoiseLine(r, d)}
   </div>
   <div class="panel">${fRuleBox(d)}</div>`;
   fWire(st);
@@ -3930,44 +3962,69 @@ function fHead(d) {
       ${Number(d.of).toLocaleString()} settings survive${d.target ? ` and the target is ${Number(d.target).toLocaleString()}` : ''}</span>
       <label class="f">target size<input id="fTarget" type="number" min="0" style="width:6rem"
         value="${d.target == null ? '' : d.target}"></label></div>
-    <p class="note">${n.available ? `This set carries a noise comparison: ${Number(d.set.keptScrambles || n.kept || 0)} scrambled copies of the whole table, each one the same days in a jumbled order. Every step below is read once against the real table and again against those.`
-    : `<b>No noise comparison on this set</b> - ${esc(String(n.why || 'not captured'))}. Every step below is read
-       against a split-half instead, which tests whether a reading is STABLE and never whether the effect is real.`}</p>
+    <p class="note">${n.available ? `This set carries ${Number(d.set.keptScrambles || n.kept || 0)} scrambled copies of the whole table, each one the same days in a jumbled order. Every step below is read once against the real table and again against each of those, and the second reading is drawn beside the first.`
+    : `<b>No scrambled copies on this set</b> - ${esc(String(n.why || 'not captured'))}. Every step below is read
+       against the two halves of the settings instead, which tests whether a reading is STABLE and never whether the effect is real.`}</p>
     <p class="note">${sealed.sealed
     ? `The sealed window is intact on all ${(sealed.units || []).length} unit(s).`
     : `<b>No sealed window</b> - ${esc(String(sealed.why || 'not recorded'))}`}</p>`;
 }
 
-function fNoiseLine(reading) {
+function fNoiseLine(reading, d) {
   const n = reading && reading.noise;
   if (!n) return '';
   if (n.sizes) {
-    const beaten = n.beatenBy == null ? null : `${n.beatenBy} of ${n.of}`;
-    return `<p class="note"><b>Against luck:</b> the widest run luck managed was ${n.widest == null ? '—' : n.widest}`
-      + `${beaten ? `, and this one is wider than ${esc(beaten)} of the scrambled copies` : ''}. `
-      + `${n.beatenBy === n.of ? 'Wider than every one of them.' : 'Anything short of all of them is a result luck reaches too.'}</p>`;
+    const beaten = n.beatenBy == null ? null : `${n.beatenBy} of ${n.sizes.length}`;
+    const what = n.kind === 'halves' ? 'the two halves' : `the ${n.sizes.length} scrambled cop${n.sizes.length === 1 ? 'y' : 'ies'}`;
+    return `<p class="note"><b>The check:</b> the widest region on ${what} was ${n.widest == null ? '-' : n.widest}`
+      + ` (${n.sizes.map((x) => (x == null ? '-' : x)).join(', ')})`
+      + `${beaten ? `, and this one is wider than ${esc(beaten)}` : ''}. `
+      + `${n.beatenBy === n.sizes.length ? 'Wider than every one of them.' : '<b class="neg">Anything short of all of them is a size a shuffle reaches too.</b>'}</p>`;
   }
-  return `<p class="note"><b>Against luck:</b> the same reading on ${n.used} of this set's ${n.of} scrambled copies of the table is drawn beside. `
-    + 'A real finding looks different there; one that looks the same is what the shuffling produces on its own.</p>';
+  return '';
 }
 function fRail(d, st) {
   return `<div class="row" style="flex-wrap:wrap;gap:.35rem">${F_STEPS.map((x, i) => `<button data-fstep="${i + 1}"
     ${i + 1 === d.step ? 'class="pri"' : ''}>${i + 1}. ${esc(x[0])}</button>`).join('')}</div>
     <p class="note">Going back is allowed and is recorded on the set - a funnel walked back four times has seen more
       of the board than one walked forward once, and the final check can only count what was written down.
-      ${(st.backSteps || []).length ? `<b>${st.backSteps.length} step(s) back so far.</b>` : ''}</p>`;
+      ${(st.backSteps || []).length ? `<b>${st.backSteps.length} step(s) back so far.</b>` : ''}
+      ${(st.marks || []).length ? `<b>${st.marks.length} mark(s) so far</b> - ${esc(st.marks.map((m) => m.what).join('; '))}.` : ''}</p>`;
+}
+
+// One line saying which check this step was read against and where it is
+// drawn. It names what IS on the screen, never what is not.
+function fCheckLine(d) {
+  const c = d.check || {};
+  if (c.kind === 'scrambles') {
+    return `<p class="note"><b>The check:</b> every reading on this step is drawn beside the same reading on each of this
+      set's <b>${c.k}</b> scrambled copies of the table${c.k === 1 ? ' - one copy is a single draw, and the page says so' : ''}.
+      A finding has to beat every one of them.</p>`;
+  }
+  return `<p class="note"><b>The check:</b> this set kept no scrambled copies, so every reading is drawn beside the same
+    reading on each of the two halves of the settings. That tests whether a reading is STABLE, never whether the
+    effect is real - a weaker check, and it is marked as such on the set.</p>`;
 }
 
 function fStep1(r) {
   const sh = r.splitHalf || {};
+  const checkOf = (x) => {
+    const ms = (r.checkM || {})[x.dial] || [];
+    if (!ms.length) return '-';
+    const fin = ms.filter((m) => m != null);
+    if (!fin.length) return '-';
+    return (r.noise || {}).kind === 'halves' ? ms.map((m) => fFix(m)).join(' / ') : `${fFix(Math.min(...fin))} to ${fFix(Math.max(...fin))}`;
+  };
   return `<p class="note">How far apart a dial's values sit, against how much the result varies anyway.
       <b>The ordering is the finding</b> - at this many rows every dial shows some movement, and the size of the
-      number is a claim only against the split-half beside it.</p>
-    <table><thead><tr>${cth('dial', 'fDialName')}${cth('movement', 'fMovement')}${cth('range', 'fRange')}
-      ${cth('values', 'fValues')}${cth('evenly swept', 'fEven')}</tr></thead><tbody>
-      ${(r.dials || []).map((x) => `<tr><td>${esc(fDialLabel(x.dial))}</td><td>${fFix(x.m)}</td><td>${fFix(x.range)}</td>
+      number is a claim only against the check beside it. Press a row to narrow that dial next.</p>
+    <table><thead><tr>${cth('dial', 'fDialName')}${cth('movement', 'fMovement')}${cth('check', 'fCheck')}${cth('range', 'fRange')}
+      ${cth('values', 'fValues')}${cth('evenly swept', 'fEven')}<th></th></tr></thead><tbody>
+      ${(r.dials || []).map((x) => `<tr class="${(r.counts || {})[x.dial] === false ? 'dim' : ''}"><td>${esc(fDialLabel(x.dial))}</td><td>${fFix(x.m)}</td>
+        <td class="${(r.counts || {})[x.dial] ? 'cnt' : ''}">${esc(checkOf(x))}</td><td>${fFix(x.range)}</td>
         <td>${(x.values || []).length}</td>
-        <td class="${(x.balance || {}).balanced ? 'muted' : 'warn'}">${fFix((x.balance || {}).even)}</td></tr>`).join('')}
+        <td class="${(x.balance || {}).balanced ? 'muted' : 'warn'}">${fFix((x.balance || {}).even)}</td>
+        <td><button data-fnarrow="${esc(x.dial)}" title="opens the next step with this dial chosen, so its range can be set. Nothing is cut by pressing it.">narrow this one</button></td></tr>`).join('')}
     </tbody></table>
     <p class="note"><b>Split-half:</b> ${sh.why ? esc(sh.why)
     : `one half leads with ${esc((sh.a || []).map(fDialLabel).join(', '))} and the other with ${esc((sh.b || []).map(fDialLabel).join(', '))} - ${sh.agrees
@@ -3986,66 +4043,154 @@ function fStep2(r, st) {
     return `<div class="row">${pick}</div><p class="note">${esc(r.why || 'pick a dial to read its shape')}</p>`;
   }
   const sh = r.splitHalf || {};
-  const range = (st.rule.ranges || {})[st.dial] || {};
+  const rec = r.rec || {};
+  const kind = rec.kind || (r.noise || {}).kind;
+  const byVal = new Map((rec.values || []).map((v) => [String(v.value), v]));
+  const checkOf = (v) => {
+    const c = v && v.check ? v.check.filter((x) => x != null) : [];
+    if (!c.length) return '-';
+    return kind === 'halves' ? v.check.map((x) => fFix(x)).join(' / ') : `${fFix(Math.min(...c))} to ${fFix(Math.max(...c))}`;
+  };
+  // WHAT IS PRE-FILLED: the range already in the rule for this dial, else the
+  // recommendation. Either way the boxes show where the count line comes from.
+  const have = (st.rule.ranges || {})[st.dial] || {};
+  const rr = rec.recommend || {};
+  const lo = have.min != null ? have.min : (rr.min != null ? rr.min : '');
+  const hi = have.max != null ? have.max : (rr.max != null ? rr.max : '');
+  const total = r.groups.reduce((a, g) => a + g.n, 0);
+  const inRange = (val) => {
+    const n = Number(val);
+    if (!Number.isFinite(n)) return false;
+    return (lo === '' || n >= Number(lo)) && (hi === '' || n <= Number(hi));
+  };
+  const keptByRange = rec.ordered === false ? null : r.groups.filter((g) => inRange(g.value)).reduce((a, g) => a + g.n, 0);
+  const chosen = new Set(((st.rule.allowed || {})[st.dial] || (rr.values || [])).map(String));
+  const keptByValues = rec.ordered === false ? r.groups.filter((g) => chosen.has(String(g.value))).reduce((a, g) => a + g.n, 0) : null;
   return `<div class="row">${pick}</div>
     <p class="note">shape: <b>${esc(r.shape)}</b>, and the two halves read ${esc(String(sh.a))} and
       ${esc(String(sh.b))} - ${sh.agrees ? 'they agree' : '<b class="neg">they do not agree</b>'}</p>
-    ${r.shape === 'spike' ? `<p class="note warn"><b>A spike is the shape luck makes.</b> One value far clear of an
+    ${r.shape === 'spike' ? `<p class="note warn"><b>A spike is the shape a shuffle makes.</b> One value far clear of an
       otherwise flat menu is what a fluke looks like; a hill or a ramp is a relationship.</p>` : ''}
-    <table><thead><tr>${cth('value', 'fValue')}${cth('settings', 'fSettings')}${cth('avg test', 'fAvgTest')}</tr></thead>
-      <tbody>${r.groups.map((g) => `<tr><td>${esc(g.value)}</td><td>${g.n}</td><td>${fFix(g.mean)}</td></tr>`).join('')}</tbody></table>
-    <div class="row" style="align-items:flex-end;margin-top:.5rem">
-      <label class="f">keep from<input id="fMin" style="width:7rem" value="${esc(String(range.min == null ? '' : range.min))}"></label>
-      <label class="f">to<input id="fMax" style="width:7rem" value="${esc(String(range.max == null ? '' : range.max))}"></label>
-      <button id="fAddRange" class="pri">add this range to the rule</button>
-      <span class="note">a RANGE, never a value - picking the peak is the shopping this walk exists to avoid</span></div>`;
+    <table><thead><tr>${cth('value', 'fValue')}${cth('settings', 'fSettings')}${cth('avg test', 'fAvgTest')}${cth('check', 'fCheck')}</tr></thead>
+      <tbody>${r.groups.map((g) => { const v = byVal.get(String(g.value)); return `<tr class="${v && v.counts === false ? 'dim' : ''}"><td>${esc(g.value)}</td><td>${g.n}</td><td>${fFix(g.mean)}</td><td class="${v && v.counts ? 'cnt' : ''}">${esc(checkOf(v))}</td></tr>`; }).join('')}</tbody></table>
+    <p class="note"><b>Recommended:</b> ${rr.min != null ? `keep ${esc(String(rr.min))} to ${esc(String(rr.max))} - the widest run of neighbouring values that beat the check`
+    : (rr.values && rr.values.length ? `keep ${esc(rr.values.join(', '))} - every value that beats the check`
+      : `nothing - ${esc(rec.why || 'no value beats the check')}. A range can still be kept; it is then a choice the check did not support, and the set will say so.`)}</p>
+    ${rec.ordered === false
+    ? `<div class="row" style="align-items:flex-end;margin-top:.5rem">
+        ${r.groups.map((g) => `<label class="c"><input type="checkbox" data-fval="${esc(String(g.value))}" ${chosen.has(String(g.value)) ? 'checked' : ''}> ${esc(String(g.value))}</label>`).join('')}
+        <button id="fKeepValues" class="pri">keep these values</button>
+        <span class="note" id="fKeepCount">keeps ${Number(keptByValues).toLocaleString()} of ${Number(total).toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}</span></div>`
+    : `<div class="row" style="align-items:flex-end;margin-top:.5rem">
+        <label class="f">keep from<input id="fMin" style="width:7rem" value="${esc(String(lo))}"></label>
+        <label class="f">to<input id="fMax" style="width:7rem" value="${esc(String(hi))}"></label>
+        <button id="fAddRange" class="pri">add this range to the rule</button>
+        <span class="note" id="fKeepCount">keeps ${Number(keptByRange).toLocaleString()} of ${Number(total).toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}</span>
+        <span class="note">a RANGE, never a value - picking the peak is the shopping this walk exists to avoid</span></div>`}`;
 }
 
 function fStep3(r, st) {
-  if (!r.grid) return '<p class="note">name two dials and read the grid</p>';
-  return `<div class="row" style="align-items:flex-end">
-      <label class="f">first dial<input id="fA" style="width:9rem" value="${esc(st.dialA || '')}"></label>
-      <label class="f">second dial<input id="fB" style="width:9rem" value="${esc(st.dialB || '')}"></label>
+  const a0 = st.dialA || (st.leaders || [])[0] || '';
+  const b0 = st.dialB || (st.leaders || [])[1] || '';
+  const pickers = `<div class="row" style="align-items:flex-end">
+      <label class="f">first dial<select id="fA">${vocabOptions('funnelDial', a0)}</select></label>
+      <label class="f">second dial<select id="fB">${vocabOptions('funnelDial', b0)}</select></label>
       <label class="f">thin below<input id="fFloor" type="number" min="0" style="width:6rem" value="${st.floor || 0}"></label>
-      <button id="fGrid" class="pri">read the grid</button></div>
+      <button id="fGrid" class="pri">read the grid</button></div>`;
+  if (!r.grid) return `${pickers}<p class="note">name two dials and read the grid</p>`;
+  const kind = (r.noise || {}).kind;
+  const blk = (r.block || {}).block;
+  const counting = new Set((r.block || {}).counting || []);
+  const idx = (list, v) => list.indexOf(v);
+  const inBlock = (a, b) => blk && idx(r.aVals, a) >= idx(r.aVals, blk.a.from) && idx(r.aVals, a) <= idx(r.aVals, blk.a.to)
+    && idx(r.bVals, b) >= idx(r.bVals, blk.b.from) && idx(r.bVals, b) <= idx(r.bVals, blk.b.to);
+  const pk = st.pick || null;
+  const inPick = (a, b) => pk && pk.a0 != null && pk.b0 != null && pk.a1 != null && pk.b1 != null
+    && idx(r.aVals, a) >= Math.min(idx(r.aVals, pk.a0), idx(r.aVals, pk.a1)) && idx(r.aVals, a) <= Math.max(idx(r.aVals, pk.a0), idx(r.aVals, pk.a1))
+    && idx(r.bVals, b) >= Math.min(idx(r.bVals, pk.b0), idx(r.bVals, pk.b1)) && idx(r.bVals, b) <= Math.max(idx(r.bVals, pk.b0), idx(r.bVals, pk.b1));
+  // the check's square: the highest scrambled average the real one has to beat,
+  // or the two halves' averages
+  const checkAt = (a, b) => {
+    const cells = (r.checkGrids || []).map((g) => (g.grid || []).find((x) => x.a === a && x.b === b)).map((c) => (c && c.mean != null ? c.mean : null));
+    const fin = cells.filter((x) => x != null);
+    if (!fin.length) return '-';
+    return kind === 'halves' ? cells.map((x) => fFix(x)).join(' / ') : fFix(Math.max(...fin));
+  };
+  const table = (title, cell) => `<p class="note"><b>${title}</b></p><table><thead><tr>${cth(`${esc(fDialLabel(r.dialA))} \\ ${esc(fDialLabel(r.dialB))}`, 'fGridCorner')}${(r.bVals || []).map((b) => cth(esc(b), 'fGridValue')).join('')}</tr></thead><tbody>
+      ${(r.aVals || []).map((a) => `<tr><td><b>${esc(a)}</b></td>${(r.bVals || []).map((b) => cell(a, b)).join('')}</tr>`).join('')}</tbody></table>`;
+  return `${pickers}
     <p class="note"><b>${r.thin} of ${r.squares} squares are thin.</b> A square built from two settings tells you
       nothing, but it looks like every other square - and it is often the best-looking one on the grid, because small
       groups swing further. Thin squares are marked and keep their count; none is dropped.</p>
-    <p class="note">What each floor would keep:
-      ${(r.floorCost || []).map((x) => `${x.floor} keeps ${x.keeps} of ${x.of}`).join(', ')}</p>
-    <table><thead><tr><th></th>${(r.bVals || []).map((b) => cth(esc(b), 'fGridCell')).join('')}</tr></thead><tbody>
-      ${(r.aVals || []).map((a) => `<tr><td><b>${esc(a)}</b></td>${(r.bVals || []).map((b) => {
-    const c = r.grid.find((x) => x.a === a && x.b === b) || {};
-    return `<td class="${c.thin ? 'muted' : ''}">${fFix(c.mean)}${c.thin ? ` (${c.n || 0})` : ''}</td>`;
-  }).join('')}</tr>`).join('')}</tbody></table>`;
+    <p class="note">What each floor would keep: ${(r.floorCost || []).map((x) => `${x.floor} keeps ${x.keeps} of ${x.of}`).join('; ')}.</p>
+    ${table('The grid - bold squares beat the check; the outlined block is recommended; press two corners to choose your own', (a, b) => {
+      const c = r.grid.find((x) => x.a === a && x.b === b) || {};
+      const k = `${a}|${b}`;
+      const cls = [c.thin ? 'muted' : '', counting.has(k) ? 'cnt' : '', inBlock(a, b) ? 'blk' : '', inPick(a, b) ? 'pick' : '', 'pickable'].filter(Boolean).join(' ');
+      return `<td class="${cls}" data-fcell="${esc(k)}">${fFix(c.mean)}${c.thin ? ` (${c.n || 0})` : ''}</td>`;
+    })}
+    ${table(kind === 'halves' ? 'The check - each half\'s average, first / second' : 'The check - the highest scrambled average in each square', (a, b) => `<td>${esc(checkAt(a, b))}</td>`)}
+    <div class="row" style="align-items:flex-end;margin-top:.5rem">
+      <span class="note">${blk ? `Recommended block: ${esc(fDialLabel(r.dialA))} ${esc(blk.a.from)} to ${esc(blk.a.to)}, ${esc(fDialLabel(r.dialB))} ${esc(blk.b.from)} to ${esc(blk.b.to)} - ${blk.squares} square(s).`
+      : `No block - ${esc((r.block || {}).why || 'no square beats the check')}.`}
+      ${pk && pk.a1 != null ? ` Your block: ${esc(fDialLabel(r.dialA))} ${esc(pk.a0)} to ${esc(pk.a1)}, ${esc(fDialLabel(r.dialB))} ${esc(pk.b0)} to ${esc(pk.b1)}.` : (pk && pk.a0 != null ? ' One corner chosen - press the other.' : '')}</span>
+      <button id="fKeepBlock" class="pri" ${(pk && pk.a1 != null) || blk ? '' : 'disabled'}>keep this block</button>
+      <span class="note">writes a range on BOTH dials in one step, replacing what the rule held for them. Your own block if you chose one, else the recommended one.</span></div>`;
 }
 
-function fStep4(r) {
+function fStep4(r, st) {
   const ax = r.axis || {};
   const slices = r.slices || [];
-  const usable = slices.filter((x) => x.mean != null && x.n >= (r.floor || 0));
-  const positive = usable.filter((x) => x.mean > 0).length;
+  const c = r.check || {};
+  const kind = c.kind || (r.noise || {}).kind;
+  const checkText = (c.positive || []).length
+    ? (kind === 'halves'
+      ? `on the two halves: ${c.positive.map((p, i) => (p == null ? '-' : `${p} of ${c.of[i]}`)).join(' / ')}`
+      : `on the ${c.positive.length} scrambled cop${c.positive.length === 1 ? 'y' : 'ies'}: ${c.positive.map((p, i) => (p == null ? '-' : `${p} of ${c.of[i]}`)).join(', ')}`)
+    : 'nothing to compare against';
+  const best = (c.positive || []).filter((p) => p != null);
+  const checkBest = best.length ? Math.max(...best) : null;
   return `<p class="note">Read across <b>${esc(String(ax.axis || 'nothing'))}</b>${ax.weaker
     ? ' - <b>a weaker check than comparing coins</b>' : ''}.</p>
     ${(ax.passedOver || []).length ? `<p class="note muted">Passed over:
       ${ax.passedOver.map((x) => `${esc(x.axis)} (${esc(x.why)})`).join('; ')}</p>` : ''}
-    ${usable.length < 2
-    ? '<p class="note neg">One slice is not a comparison - this cannot say whether the region holds anywhere else.</p>'
-    : `<p class="note"><b>${positive} of ${usable.length}</b> slices are positive.</p>`}
+    ${r.why
+    ? `<p class="note neg">${esc(r.why)}</p>`
+    : `<p class="note"><b>${r.positive} of ${r.of}</b> slices are positive. The check managed ${esc(checkText)}${checkBest != null && r.positive != null && checkBest >= r.positive ? ' - <b class="neg">as many or more, so this count is what a shuffle gives</b>' : ''}.</p>`}
     <table><thead><tr>${cth('slice', 'fSlice')}${cth('settings', 'fSettings')}${cth('avg test', 'fAvgTest')}</tr></thead>
-      <tbody>${slices.map((x) => `<tr><td>${esc(x.key)}</td><td>${x.n}</td><td>${fFix(x.mean)}</td></tr>`).join('')}</tbody></table>`;
+      <tbody>${slices.map((x) => `<tr><td>${esc(x.key)}</td><td>${x.n}</td><td>${fFix(x.mean)}</td></tr>`).join('')}</tbody></table>
+    <div class="row" style="align-items:flex-end;margin-top:.5rem">
+      <button id="fAccept4" class="pri" ${r.why ? 'disabled' : ''}>accept and carry on</button>
+      <span class="note">records what you accepted - "${r.why ? 'nothing to accept' : `accepted ${r.positive} of ${r.of}; the check managed ${checkBest == null ? '-' : checkBest} of ${r.of}`}" - as a mark on the set, and opens the next step</span></div>`;
 }
 
-function fStep5(r) {
+function fStep5(r, d) {
+  const keep = r.keep || {};
+  const ranges = Object.entries(keep.ranges || {});
+  const allowed = Object.entries(keep.allowed || {});
   return `<p class="note">The widest run of neighbouring settings that all made money, and <b>its middle</b> - chosen
       by depth inside the region, never by score, so the best-scoring one cannot sneak back in.</p>
     <p class="note">region size <b>${r.size || 0}</b> of ${r.cellsClearing || 0} settings that cleared,
       out of ${r.cellsConsidered || 0} considered.</p>
-    ${r.size ? `<pre>${esc(JSON.stringify(r.centre || {}, null, 1))}</pre>`
+    ${r.size ? `<table><thead><tr>${cth('dial', 'fRegionDial')}${cth('from', 'fRegionFrom')}${cth('to', 'fRegionTo')}</tr></thead><tbody>
+      ${ranges.map(([k, b]) => `<tr><td>${esc(fDialLabel(k))}</td><td>${esc(String(b.min))}</td><td>${esc(String(b.max))}</td></tr>`).join('')}
+      ${allowed.map(([k, v]) => `<tr><td>${esc(fDialLabel(k))}</td><td colspan="2">${esc(v.join(', '))}</td></tr>`).join('')}
+    </tbody></table>
+    <div class="row" style="align-items:flex-end;margin-top:.5rem">
+      <button id="fKeepRegion" class="pri">keep the widest region</button>
+      <span class="note">replaces every range and value in the rule with the region's edges above - keeps
+        <b>${Number(keep.keeps || 0).toLocaleString()}</b> of ${Number(d.of || 0).toLocaleString()}${d.target ? ` - target ${Number(d.target).toLocaleString()}` : ''}</span></div>`
     : '<p class="note neg">No region: nothing here has neighbours that also work, which is what an isolated fluke looks like.</p>'}`;
 }
 
-function fStep6(d, st) {
+// WHAT EACH LIMIT WOULD KEEP, so the number is set with its cost in view.
+function fLadder(name, l, word) {
+  if (!l) return '';
+  if (!l.measured) return `<p class="note muted">${esc(name)}: no survivor carries this number yet - work out the missing numbers first.</p>`;
+  return `<p class="note">${esc(name)} - what each limit would keep of ${l.of}: ${l.rungs.map((x) => `${word} ${fFix(x.at)} keeps ${x.keeps}`).join('; ')}.</p>`;
+}
+
+function fStep6(d, st, r) {
   const dd = (st.rule.floors || {}).maxDrawdown || {};
   const tr = (st.rule.floors || {}).avgTrades || {};
   return `<p class="note">The numbers a sweep does not keep - the worst losing streak, the biggest single loss, how
@@ -4054,6 +4199,8 @@ function fStep6(d, st) {
       flatter; an average losing streak hides the one that would have ended you.</p>
     <div class="row"><button id="fRebuild" class="pri">work out the missing numbers</button>
       <span id="fRebuildMsg" class="note">${st.rebuilt ? 'done for this set' : 'not done yet'}</span></div>
+    ${fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most')}
+    ${fLadder('trades', (r.ladders || {}).avgTrades, 'at least')}
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <label class="f">worst losing streak allowed<input id="fDD" type="number" style="width:8rem"
         value="${esc(String(dd.max == null ? '' : dd.max))}"></label>
@@ -4099,6 +4246,7 @@ function fRuleBox(d) {
 function fWire(st) {
   const go = (n, why) => {
     if (n < st.step) st.backSteps.push({ from: st.step, to: n, why: why || null });
+    else if (n > st.step) markStep(st.step);
     st.step = n; fSave(); drawFunnel();
   };
   document.querySelectorAll('[data-fstep]').forEach((b) => { b.onclick = () => go(Number(b.dataset.fstep)); });
@@ -4106,6 +4254,37 @@ function fWire(st) {
   if (t) t.onchange = () => { st.target = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value) || 0)); fSave(); drawFunnel(); };
   const dl = $('#fDial');
   if (dl) dl.onchange = () => { st.dial = dl.value || null; fSave(); drawFunnel(); };
+  // MARKS (§16.5): what this step would leave a mark for is recorded when the
+  // walk moves PAST the step with the condition present, and when a step's own
+  // control is used. Silent by decision (FUNNEL-DECISIONS.md); never cleared.
+  const mark = (key, step, detail) => {
+    if (!st.marks) st.marks = [];
+    if (st.marks.some((m) => m.key === key && m.step === step && (m.detail || null) === (detail || null))) return;
+    st.marks.push({ key, step, what: F_MARK_WORDS[key] || key, detail: detail || null });
+  };
+  const markStep = (step) => {
+    const c = st.conditions || {};
+    if (step === 1) { if (c.halvesDisagree) mark('halvesDisagree', 1); if (c.leadNotEven) mark('leadNotEven', 1); }
+    if (step === 2 && c.spike) mark('spike', 2, st.dial || null);
+    if (step === 3 && c.interact) mark('interact', 3, `${st.dialA || ''} x ${st.dialB || ''}`);
+    if (step === 5 && c.regionNotWider) mark('regionNotWider', 5);
+    if (c.checkIsHalves) mark('checkIsHalves', step);
+  };
+  // a row on step 1 opens step 2 with that dial chosen
+  document.querySelectorAll('[data-fnarrow]').forEach((b) => {
+    b.onclick = () => { markStep(1); st.dial = b.dataset.fnarrow; st.step = 2; st.steps.push({ n: 1, what: 'which dial to narrow next', chose: st.dial }); fSave(); drawFunnel(); };
+  });
+  // a word-valued dial keeps a list of values, not a range
+  const kv = $('#fKeepValues');
+  if (kv) kv.onclick = () => {
+    if (!st.dial) return;
+    const vals = [...document.querySelectorAll('[data-fval]')].filter((x) => x.checked).map((x) => x.dataset.fval);
+    if (!st.rule.allowed) st.rule.allowed = {};
+    if (!vals.length) delete st.rule.allowed[st.dial]; else st.rule.allowed[st.dial] = vals;
+    markStep(2);
+    st.steps.push({ n: 2, what: `the values of ${st.dial}`, chose: vals.join(', ') || 'none' });
+    fSave(); drawFunnel();
+  };
   const ar = $('#fAddRange');
   if (ar) ar.onclick = () => {
     if (!st.dial) return;
@@ -4113,13 +4292,92 @@ function fWire(st) {
     const hi = $('#fMax').value;
     if (lo === '' && hi === '') delete st.rule.ranges[st.dial];
     else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi) };
+    markStep(2);
     st.steps.push({ n: 2, what: `the shape of ${st.dial}`, chose: `${lo} to ${hi}` });
     fSave(); drawFunnel();
   };
-  const g = $('#fGrid');
-  if (g) g.onclick = () => {
+  // the count line follows the boxes as they are edited, from the table on screen
+  for (const id of ['fMin', 'fMax']) {
+    const el = $(`#${id}`);
+    if (el) el.oninput = () => {
+      const lo = $('#fMin').value; const hi = $('#fMax').value;
+      let kept = 0; let total = 0;
+      for (const [val, n] of ((st.read || {}).groups || [])) {
+        const v = Number(val);
+        total += n;
+        if (Number.isFinite(v) && (lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) kept += n;
+      }
+      const kc = $('#fKeepCount');
+      if (kc) kc.textContent = `keeps ${kept.toLocaleString()} of ${total.toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}`;
+    };
+  }
+  const readGrid = () => {
     st.dialA = $('#fA').value || null; st.dialB = $('#fB').value || null;
     st.floor = Math.max(0, Math.floor(Number($('#fFloor').value) || 0));
+    st.pick = null;
+    fSave(); drawFunnel();
+  };
+  const g = $('#fGrid');
+  if (g) g.onclick = readGrid;
+  for (const id of ['fA', 'fB']) { const el = $(`#${id}`); if (el) el.onchange = readGrid; }
+  // two corners choose a block
+  document.querySelectorAll('[data-fcell]').forEach((td) => {
+    td.onclick = () => {
+      const [a, b] = td.dataset.fcell.split('|');
+      const pk = st.pick || {};
+      st.pick = (pk.a0 == null || pk.a1 != null) ? { a0: a, b0: b, a1: null, b1: null } : { ...pk, a1: a, b1: b };
+      fSave(); drawFunnel();
+    };
+  });
+  const kb = $('#fKeepBlock');
+  if (kb) kb.onclick = () => {
+    // the owner's block if both corners are chosen, else the recommended one;
+    // the values between the corners come from the grid's own axes, as read
+    const gr = (st.read || {}).grid;
+    if (!gr) return;
+    const aVals = gr.aVals || []; const bVals = gr.bVals || [];
+    const pk = st.pick && st.pick.a1 != null ? st.pick : null;
+    let span;
+    if (pk) span = { a: [pk.a0, pk.a1], b: [pk.b0, pk.b1] };
+    else if (gr.block) span = { a: [gr.block.a.from, gr.block.a.to], b: [gr.block.b.from, gr.block.b.to] };
+    else return;
+    const between = (list, x, y) => list.slice(Math.min(list.indexOf(x), list.indexOf(y)), Math.max(list.indexOf(x), list.indexOf(y)) + 1);
+    const put = (dial, list, x, y) => {
+      const vals = between(list, x, y);
+      const nums = vals.map(Number);
+      if (nums.every((n) => Number.isFinite(n))) { st.rule.ranges[dial] = { min: Math.min(...nums), max: Math.max(...nums) }; if (st.rule.allowed) delete st.rule.allowed[dial]; }
+      else { if (!st.rule.allowed) st.rule.allowed = {}; st.rule.allowed[dial] = vals; delete st.rule.ranges[dial]; }
+      return vals;
+    };
+    const va = put(st.dialA, aVals, span.a[0], span.a[1]);
+    const vb = put(st.dialB, bVals, span.b[0], span.b[1]);
+    markStep(3);
+    st.steps.push({ n: 3, what: `a block on ${st.dialA} x ${st.dialB}`, chose: `${va[0]}..${va[va.length - 1]} x ${vb[0]}..${vb[vb.length - 1]}${pk ? '' : ' (recommended)'}` });
+    fSave(); drawFunnel();
+  };
+  const ac = $('#fAccept4');
+  if (ac) ac.onclick = () => {
+    const a4 = (st.read || {}).accept;
+    if (!a4) return;
+    const best = ((a4.check || {}).positive || []).filter((p) => p != null);
+    const said = `accepted ${a4.positive} of ${a4.of}; the check managed ${best.length ? Math.max(...best) : '-'} of ${a4.of}`;
+    // the mark is for accepting with some slice NOT positive; all positive is
+    // not something to be marked for
+    if (a4.positive != null && a4.of != null && a4.positive < a4.of) mark('slices', 4, said);
+    if ((st.conditions || {}).checkIsHalves) mark('checkIsHalves', 4);
+    st.steps.push({ n: 4, what: 'does it hold elsewhere', chose: said });
+    st.step = 5; fSave(); drawFunnel();
+  };
+  const kr = $('#fKeepRegion');
+  if (kr) kr.onclick = () => {
+    const keep = (st.read || {}).keep;
+    if (!keep) return;
+    const ranges = {}; const allowed = {};
+    for (const [dial, b] of Object.entries(keep.ranges)) ranges[dial] = { min: b.min, max: b.max };
+    for (const [dial, v] of Object.entries(keep.allowed)) allowed[dial] = v.slice();
+    st.rule.ranges = ranges; st.rule.allowed = allowed;
+    markStep(5);
+    st.steps.push({ n: 5, what: 'the widest region', chose: `kept as the rule (${Object.keys(ranges).length + Object.keys(allowed).length} dial(s))` });
     fSave(); drawFunnel();
   };
   const af = $('#fAddFloors');
@@ -4128,6 +4386,7 @@ function fWire(st) {
     const tr = $('#fTrades').value;
     if (dd === '') delete st.rule.floors.maxDrawdown; else st.rule.floors.maxDrawdown = { max: Number(dd) };
     if (tr === '') delete st.rule.floors.avgTrades; else st.rule.floors.avgTrades = { min: Number(tr) };
+    markStep(6);
     st.steps.push({ n: 6, what: 'exposure', chose: `worst streak ${dd}, fewest trades ${tr}` });
     fSave(); drawFunnel();
   };
@@ -4176,6 +4435,7 @@ function fWire(st) {
     const out = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/cut`, {
       name: $('#fName').value || null, target: st.target, rule: st.rule,
       steps: st.steps, backSteps: st.backSteps, closing: st.closing || { key: 'rule' },
+      marks: st.marks || [],
     });
     cut.disabled = false;
     // WHAT THE CLOSING DID, in the reply, not only on the record. 'tighten the
