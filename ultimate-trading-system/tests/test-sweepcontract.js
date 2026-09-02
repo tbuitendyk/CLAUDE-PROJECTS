@@ -300,7 +300,14 @@ module.exports = {
       // the control refuses any name that is not in that same list at the
       // moment it is asked (test-servicecontrol.js pins that, and pins that a
       // refused name never reaches systemctl).
-      'svcPick']);
+      'svcPick',
+      // the Funnel's coin-and-shape picker (3.41.0): every unit option is a key
+      // the server itself listed for the open set, and the one literal value,
+      // 'all', is the blended table -- test-funnel.js
+      // (theBlendIsChosenByNameAndNothingChosenIsTheFirstUnit) holds the
+      // engine to accepting exactly that literal, and to refusing a key the
+      // set does not hold
+      'fUnit']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));

@@ -127,6 +127,8 @@ const fDialLabel = (d) => (DIAL_ON_SWEEP[d] ? `${d} (${DIAL_ON_SWEEP[d]})` : Str
 const COL = {
   // Funnel
   fDialName: 'one of the settings a sweep can be told to vary. This table lists only the dials this run swept more than one value of. A dial swept at a single value has nothing to measure against anything, so it is named on the "Not measurable here" line below instead of appearing here as flat.',
+  fAcrossUnit: 'one of the other coin-and-shape units of this set. The rule built on this walk was applied to that unit\'s own records.',
+  fAcrossSurvivors: 'how many of that unit\'s settings the rule keeps, out of all it has.',
   fGridCorner: 'the first dial down the side, the second across the top. Each square is the average test money of the settings that carry both values, with the count in brackets when the square is thin.',
   fGridValue: 'one value of the second dial. Read down this column to see how the first dial behaves at this value of the second.',
   fRegionDial: 'a dial the widest region spans. Keeping the region writes these edges into the rule.',
@@ -3885,19 +3887,40 @@ const F_MARK_WORDS = {
   checkIsHalves: 'no scrambled copies were kept, so the two halves stood in as the check',
 };
 
+// ONE WALK PER COIN-AND-SHAPE UNIT (owner order, 2026-09-02: "IT'S ONE RULE
+// PER COIN+SHAPE -- 10 RULES, NOT 5"). Which unit is being walked is
+// remembered per set; each unit's walk is remembered on its own, so ten walks
+// can be in flight and none forgets its place. 'all' is the blended board.
 let fState = null;
+const fUnitKeyFor = (set) => `cx-funnel-unit-${set}`;
+const fWalkKeyFor = (set, unit) => `cx-funnel-${set}-${unit || 'all'}`;
+// null until the first read of a set names its first unit (§17.2); 'all' is
+// the blended table, chosen by name. Remembered in the page as well as in
+// storage, so a window whose storage throws still settles on a unit.
+const fUnitMemory = {};
+function fUnitChosen(set) {
+  try { return localStorage.getItem(fUnitKeyFor(set)) || fUnitMemory[set] || null; } catch (_) { return fUnitMemory[set] || null; }
+}
+function fUnitChoose(set, unit) {
+  fUnitMemory[set] = unit;
+  try { localStorage.setItem(fUnitKeyFor(set), unit); } catch (_) { /* private window */ }
+}
 function fLoad() {
   const set = pickedSet3();
-  if (fState && fState.set === set) return fState;
+  const unit = fUnitChosen(set);
+  if (fState && fState.set === set && (fState.unit || null) === unit) return fState;
   let saved = null;
-  try { saved = JSON.parse(localStorage.getItem('cx-funnel') || 'null'); } catch (_) { saved = null; }
-  fState = (saved && saved.set === set) ? saved
-    : { set, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
+  if (unit) { try { saved = JSON.parse(localStorage.getItem(fWalkKeyFor(set, unit)) || 'null'); } catch (_) { saved = null; } }
+  fState = (saved && saved.set === set) ? { ...saved, unit }
+    : { set, unit, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
       dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false,
-      closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {} };
+      closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {}, across: null };
   return fState;
 }
-function fSave() { try { localStorage.setItem('cx-funnel', JSON.stringify(fState)); } catch (_) { /* private window */ } }
+function fSave() {
+  if (!fState || !fState.unit) return;                    // no walk is saved under no unit
+  try { localStorage.setItem(fWalkKeyFor(fState.set, fState.unit), JSON.stringify(fState)); } catch (_) { /* private window */ }
+}
 
 // WHICH SET THE FUNNEL IS WALKING: the one open on Boards, read from Boards'
 // own state. There is no second picker, because two places remembering which
@@ -3907,7 +3930,7 @@ function pickedSet3() { return bView().s3 || null; }
 const fFix = (v, n) => (v == null || !Number.isFinite(Number(v)) ? '-' : Number(v).toFixed(n == null ? 2 : n));
 
 async function drawFunnel() {
-  const st = fLoad();
+  let st = fLoad();
   if (!st.set) {
     // Reachable only when there is no stage 3 set on the box at all: Boards
     // now records the one it resolved, so "open one" is advice the owner can
@@ -3917,11 +3940,18 @@ async function drawFunnel() {
       picker here to disagree with it.</div>`;
     return;
   }
-  const d = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/read`, {
-    step: st.step, rule: st.rule, target: st.target, dial: st.dial,
-    dialA: st.dialA, dialB: st.dialB, floor: st.floor, rebuilt: st.rebuilt,
-    closing: st.closing || { key: 'rule' },
-  });
+  // the first read of a unit's board is a few seconds of reading its records;
+  // the wait box shows late, so a read answered from hand never flashes it
+  waitStart();
+  let d;
+  try {
+    d = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/read`, {
+      step: st.step, rule: st.rule, target: st.target, dial: st.dial,
+      dialA: st.dialA, dialB: st.dialB, floor: st.floor, rebuilt: st.rebuilt,
+      closing: st.closing || { key: 'rule' },
+      unit: st.unit,                                        // null: the set's first unit; 'all': the blend
+    });
+  } finally { waitEnd(); }
   if (d && !d.totalling && !d.waiting && d.rebuilt) st.rebuilt = true;
   // A FAILED READ MUST SAY SO. This returned without writing anything, which
   // leaves whatever the last screen put there -- another section's numbers
@@ -3939,6 +3969,15 @@ async function drawFunnel() {
       <p class="note">the tables for this set are being totalled - ${esc(String(d.totalling || d.waiting))}</p></div>`;
     return;
   }
+  // THE FIRST VISIT TO A SET IS ON ITS FIRST UNIT, named by the reply. The
+  // choice is kept and the walk is read again under it, so what is drawn and
+  // what is saved are one unit's -- a walk saved for that unit earlier may
+  // stand at another step than the one just read.
+  if (!st.unit) {
+    fUnitChoose(st.set, d.unit || 'all');
+    fState = null;
+    return drawFunnel();
+  }
   const r = d.reading || {};
   // what this step would leave a mark for, kept so that walking PAST the step
   // records it (§16.5) -- and step 1's leaders, so step 3 can start from them
@@ -3947,10 +3986,15 @@ async function drawFunnel() {
   // WHAT EACH CONTROL ACTS ON, kept from the reply rather than read back off
   // the page: the values on step 2 and what each carries, the grid's axes and
   // recommended block on step 3, the counts on step 4, the region's edges on 5
+  // on a unit's board step 4 is read by pressing (§17.3), and what was read
+  // for THIS rule is what the accept records
+  const a4 = st.across && st.across.ruleKey === JSON.stringify(st.rule) ? st.across : null;
   st.read = {
     groups: d.step === 2 && Array.isArray(r.groups) ? r.groups.map((g) => [String(g.value), g.n]) : null,
     grid: d.step === 3 && r.grid ? { aVals: r.aVals, bVals: r.bVals, block: (r.block || {}).block || null } : null,
-    accept: d.step === 4 && !r.why ? { positive: r.positive, of: r.of, check: r.check || null } : null,
+    accept: d.step === 4 && r.pressed
+      ? (a4 ? { positive: a4.positive, of: a4.of, check: null, beatsAll: a4.beatsAll } : null)
+      : (d.step === 4 && !r.why ? { positive: r.positive, of: r.of, check: r.check || null } : null),
     keep: d.step === 5 && r.keep ? { ranges: r.keep.ranges || {}, allowed: r.keep.allowed || {} } : null,
   };
   $('#view').innerHTML = `<div class="panel">${fHead(d)}${fRail(d, st)}</div>
@@ -3974,10 +4018,16 @@ async function drawFunnel() {
 function fHead(d) {
   const n = (d.set && d.set.noiseTwin) || {};
   const sealed = (d.set && d.set.sealed) || {};
-  return `<h3 style="margin-top:0">Funnel - ${esc(d.set.name)}</h3>
+  const unitName = d.unit ? (d.unitName || d.unit) : 'all units together';
+  return `<h3 style="margin-top:0">Funnel - ${esc(d.set.name)} - ${esc(unitName)}</h3>
     <p class="note"><b>Every money figure on this screen is test money.</b> The held-back window is opened once,
-      at the cut, on what survives.</p>
-    <div class="row" style="align-items:flex-end"><span class="note"><b>${Number(d.survivors).toLocaleString()}</b> of
+      at the cut, on what survives. <b>One rule per coin and shape:</b> this walk is on
+      ${d.unit
+    ? `<span>the records of <b>${esc(unitName)}</b> alone - its own money, its own scrambled copies, every dial</span>`
+    : '<span>the blended table, every unit averaged into one row per setting, which hides what any one coin does</span>'}.</p>
+    <div class="row" style="align-items:flex-end">
+      <label class="f">coin and shape<select id="fUnit"><option value="all" ${d.unit ? '' : 'selected'}>all units together</option>${(d.units || []).map((u) => `<option value="${esc(u.key)}" ${u.key === d.unit ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>
+      <span class="note"><b>${Number(d.survivors).toLocaleString()}</b> of
       ${Number(d.of).toLocaleString()} settings survive${d.target ? ` and the target is ${Number(d.target).toLocaleString()}` : ''}</span>
       <label class="f">target size<input id="fTarget" type="number" min="0" style="width:6rem"
         value="${d.target == null ? '' : d.target}"></label></div>
@@ -4165,6 +4215,24 @@ function fStep3(r, st) {
 
 function fStep4(r, st) {
   const ax = r.axis || {};
+  if (r.pressed) {
+    // ON A UNIT'S BOARD, "elsewhere" IS THE OTHER UNITS (§17.3): the same rule
+    // on each of their records, read one at a time when asked
+    const a = st.across && st.across.ruleKey === JSON.stringify(st.rule) ? st.across : null;
+    const asked = !a && st.acrossAsked && st.acrossAsked.ruleKey === JSON.stringify(st.rule);
+    return `<p class="note">Read across the <b>${r.others}</b> other coin-and-shape unit${r.others === 1 ? '' : 's'} of this set: the
+        rule you have built here, applied to each of their records.</p>
+      <div class="row" style="align-items:flex-end">
+        <button id="fAcross" class="pri" ${asked ? 'disabled' : ''}>read the other units</button>
+        <span id="fAcrossMsg" class="note">${a ? `<span>read at ${esc(new Date(a.at).toLocaleTimeString())}</span>` : `<span>not read yet for this rule - ${r.others} boards, read one at a time</span>`}</span></div>
+      ${a ? `<p class="note"><b>${a.positive} of ${a.of}</b> other units are positive under this rule, and on
+        <b>${a.beatsAll} of ${a.of}</b> the money of the survivors beats every one of the scrambled copies of that unit.</p>
+      <table><thead><tr>${cth('unit', 'fAcrossUnit')}${cth('survivors', 'fAcrossSurvivors')}${cth('avg test', 'fAvgTest')}${cth('check', 'fCheck')}</tr></thead>
+        <tbody>${a.units.map((u) => `<tr class="${u.k && u.beats === u.k ? 'cnt' : (u.avgTest == null ? 'dim' : '')}"><td>${esc(u.name)}</td><td>${Number(u.survivors).toLocaleString()} of ${Number(u.of).toLocaleString()}</td><td>${fFix(u.avgTest)}</td><td>${u.k ? `<span>beats ${u.beats} of ${u.k}</span>` : '-'}</td></tr>`).join('')}</tbody></table>
+      <div class="row" style="align-items:flex-end;margin-top:.5rem">
+        <button id="fAccept4" class="pri">accept and carry on</button>
+        <span class="note">records "accepted ${a.positive} of ${a.of} other units positive; ${a.beatsAll} beat every copy" as a mark on the set, and opens the next step</span></div>` : ''}`;
+  }
   const slices = r.slices || [];
   const c = r.check || {};
   const kind = c.kind || (r.noise || {}).kind;
@@ -4273,6 +4341,38 @@ function fRuleBox(d) {
       <span class="note">keeps the set open and clears every choice - recorded as going back</span></div>`;
 }
 
+// FOLLOWING A READING OF THE OTHER UNITS (§17.3): started on the box and
+// polled every two seconds, the count of boards read on the line beside the
+// button. The result is kept under the rule it was read for; a result the box
+// holds for some other reading (another rule, another window) is left alone.
+async function fAcrossFollow(st, status) {
+  const asked = st.acrossAsked;
+  if (!asked) return;
+  let s = status;
+  for (;;) {
+    if (!s) {
+      try { s = await api(`api/funnel/${encodeURIComponent(st.set)}/across`); } catch (_) { s = null; }
+      if (!s || s.none || s.token !== asked.token) { st.acrossAsked = null; fSave(); if ($('#fAcross')) drawFunnel(); return; }
+    }
+    if (s.error) {
+      st.acrossAsked = null; fSave();
+      const m = $('#fAcrossMsg'); if (m) m.textContent = s.error;
+      const b = $('#fAcross'); if (b) b.disabled = false;
+      return;
+    }
+    if (s.result) {
+      st.across = { ...s.result, ruleKey: asked.ruleKey, at: new Date().toISOString() };
+      st.acrossAsked = null;
+      fSave(); drawFunnel();
+      return;
+    }
+    const m = $('#fAcrossMsg'); if (m) m.textContent = `read ${s.done} of ${s.of}`;
+    await new Promise((resolve) => { setTimeout(resolve, 2000); });
+    if (fState !== st) return;                       // the walk on screen is another one now
+    s = null;
+  }
+}
+
 function fWire(st) {
   const go = (n, why) => {
     if (n < st.step) st.backSteps.push({ from: st.step, to: n, why: why || null });
@@ -4282,6 +4382,13 @@ function fWire(st) {
   document.querySelectorAll('[data-fstep]').forEach((b) => { b.onclick = () => go(Number(b.dataset.fstep)); });
   const t = $('#fTarget');
   if (t) t.onchange = () => { st.target = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value) || 0)); fSave(); drawFunnel(); };
+  const un = $('#fUnit');
+  if (un) un.onchange = () => {
+    fSave();                                                   // this unit's walk keeps its place
+    fUnitChoose(st.set, un.value);
+    fState = null;                                             // the next load is the chosen unit's own walk
+    drawFunnel();
+  };
   const dl = $('#fDial');
   if (dl) dl.onchange = () => { st.dial = dl.value || null; fSave(); drawFunnel(); };
   // MARKS (§16.5): what this step would leave a mark for is recorded when the
@@ -4385,12 +4492,27 @@ function fWire(st) {
     st.steps.push({ n: 3, what: `a block on ${st.dialA} x ${st.dialB}`, chose: `${va[0]}..${va[va.length - 1]} x ${vb[0]}..${vb[vb.length - 1]}${pk ? '' : ' (recommended)'}` });
     fSave(); drawFunnel();
   };
+  const ax = $('#fAcross');
+  if (ax) ax.onclick = async () => {
+    ax.disabled = true;
+    const ruleKey = JSON.stringify(st.rule);
+    const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/across`, { rule: st.rule, unit: st.unit });
+    if (!started) { ax.disabled = false; return; }
+    st.acrossAsked = { ruleKey, token: started.token, at: new Date().toISOString() };
+    fSave();
+    fAcrossFollow(st, started);
+  };
+  // a reading started earlier for this rule -- the page was left and come
+  // back to -- is followed again rather than asked for twice
+  if (ax && ax.disabled && st.acrossAsked && !(st.across && st.across.ruleKey === st.acrossAsked.ruleKey)) fAcrossFollow(st, null);
   const ac = $('#fAccept4');
   if (ac) ac.onclick = () => {
     const a4 = (st.read || {}).accept;
     if (!a4) return;
     const best = ((a4.check || {}).positive || []).filter((p) => p != null);
-    const said = `accepted ${a4.positive} of ${a4.of}; the check managed ${best.length ? Math.max(...best) : '-'} of ${a4.of}`;
+    const said = a4.beatsAll != null
+      ? `accepted ${a4.positive} of ${a4.of} other units positive; ${a4.beatsAll} beat every copy`
+      : `accepted ${a4.positive} of ${a4.of}; the check managed ${best.length ? Math.max(...best) : '-'} of ${a4.of}`;
     // the mark is for accepting with some slice NOT positive; all positive is
     // not something to be marked for
     if (a4.positive != null && a4.of != null && a4.positive < a4.of) mark('slices', 4, said);
@@ -4466,6 +4588,7 @@ function fWire(st) {
       name: $('#fName').value || null, target: st.target, rule: st.rule,
       steps: st.steps, backSteps: st.backSteps, closing: st.closing || { key: 'rule' },
       marks: st.marks || [],
+      unit: st.unit,
     });
     cut.disabled = false;
     // WHAT THE CLOSING DID, in the reply, not only on the record. 'tighten the
@@ -4473,7 +4596,7 @@ function fWire(st) {
     // with 480 against a target of 400 has to say it narrowed and stopped.
     const cd = (out && out.closing && out.closing.detail) ? ` - ${out.closing.detail}` : '';
     $('#fCutMsg').textContent = out
-      ? `${out.name} written with ${out.survivors} setting(s)${cd}${(out.warnings || []).length ? ` - ${out.warnings.join(' - ')}` : ''}`
+      ? `${out.name} written for ${out.unitName || 'all units together'} with ${out.survivors} setting(s)${cd}${(out.warnings || []).length ? ` - ${out.warnings.join(' - ')}` : ''}`
       : '';
   };
   const cl = $('#fClear');

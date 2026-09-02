@@ -91,10 +91,13 @@ module.exports = {
     // columns onto the rows it rewrites. noisePairs is not stored on a row --
     // the tally counts it from the array it just read -- so it stays at two.
     // Two drains, one per table; the fill writing figures onto a priced row;
-    // and the fill copying a row of a unit it is not pricing through with none.
-    // noisePairs is not stored on a row -- the tally counts it from the array
-    // it just read -- so it stays at two.
-    for (const [field, want] of [['noiseTest:', 4], ['noiseHold:', 4], ['noisePairs:', 2]]) {
+    // the fill copying a row of a unit it is not pricing through with none;
+    // and, since 3.41.0, the unit board row (boardRowOf) carrying the record's
+    // own kept figures onto the Funnel's per-unit board -- a fifth place that
+    // has to stay in step with the two tables, which is why it is counted
+    // here rather than merely found. noisePairs is not stored on a row -- the
+    // tally counts it from the array it just read -- so it stays at two.
+    for (const [field, want] of [['noiseTest:', 5], ['noiseHold:', 5], ['noisePairs:', 2]]) {
       const n = src.split(field).length - 1;
       assert.strictEqual(n, want, `${field} is written in ${n} place(s), expected ${want} — `
         + 'either a table was forgotten or a second writer appeared that nothing keeps in step');
@@ -102,6 +105,10 @@ module.exports = {
     // beatNoise also names itself in the sort table and the share-field table,
     // so the two drains are found by the money each of them compares against
     assert.ok(src.includes('avgTest > v'), 'Table 3.A must count what its real test money beat');
+    // the unit board row hands the record's kept figures through untouched:
+    // the Funnel reads them by position (F.moneyAt), never a count of them
+    assert.ok(src.includes('noiseTest: Array.isArray(r.noiseTest) ? r.noiseTest : null,'), 'the unit board row must carry the kept test figures as they are');
+    assert.ok(src.includes('noiseHold: Array.isArray(r.noiseHold) ? r.noiseHold : null,'), 'and the kept held-back figures');
     assert.ok(src.includes('kTest > v'), 'Table 3.B must count what its real test money beat');
     assert.ok(src.includes("beatNoise: 'share'"), 'the new column must be rankable on Table 3.A');
     assert.ok(src.includes("'beatnoise'"), 'the new column must be rankable on Table 3.B');

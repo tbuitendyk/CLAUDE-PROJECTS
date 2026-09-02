@@ -1010,3 +1010,101 @@ with no kept scrambles; it falls through to the split-half like everything else.
 3. **Marks — acknowledged to move on, or recorded silently** on leaving the step?
 4. **"Every kept copy" or a share of them?** Proposed every copy, with K printed.
    At K = 1 that is one of one, and the page says so.
+
+---
+
+## 17. One rule per coin-and-shape unit — ten rules, not one (owner order, 2026-09-02)
+
+**The owner's words:** "i don't trust your theory that jumbling all of the coin
++ shape configs together into a set for the dial tunings makes any sense at
+all. who says that they are going to behave the same way? you? the market
+doesn't agree. you're just adding noise to a system that is looking for PER
+COIN signal." And, on the shape of the answer: "IT'S ONE RULE PER COIN+SHAPE
+-- 10 RULES, NOT 5."
+
+**The data agreed before the design did.** The same gate question, asked per
+coin from the records: XRPUSDT's `active` beats every one of the ten scrambled
+copies (+2.51 against -8.79..1.40); BCHUSDT daily-4d's beats nine; DOGEUSDT's
+`directional` beats none anywhere. The blended board showed `active` at -1.33
+and nothing to keep. Averaging the units into one row per setting destroyed
+exactly the signal the system exists to find, and `does it hold elsewhere`,
+asked afterwards, cannot recover what step 2 has already thrown away.
+
+### 17.1 The unit is the board
+
+The Funnel walks **one coin-and-shape unit at a time**. The board for a unit is
+that unit's records -- one per setting, every dial on it, its own test money,
+its own ten kept figures. A Stage 4 set is cut **per unit** and carries the
+unit; ten units make ten sets. That is what Verify, History and Tune consume
+per coin anyway (§8).
+
+**Why the records and not Table 3.B.** The per-coin table folds the eight
+settings that share a name prefix and differ only in `decision` and `band %
+(or auto)` into one row (658,560 rows for 5,248,320 records, `rows: 8`). A
+per-unit walk on it would be blind to two dials. The records hold one row per
+setting per unit with every dial named (decision record 9), in contiguous
+stretches per unit, so a unit's board is a read of its blocks and nothing
+else: no join, no new table, no totals rebuild.
+
+### 17.2 The board is read once per unit and held once
+
+`loadUnitBoard(id, unit)` reads the unit's blocks -- the union of the block
+indexes the per-coin table records for that unit -- and maps each record to a
+board row in the shape every reading already takes: the dials, `avgTest` from
+the record's test money, `avgHold` and `avgTrades` from its held-back result,
+`noiseTest` and `noiseHold`, `beat` and `pairs`, and the rest of the blended
+row's measures read from the one record (`avgVsLong`, `avgLead`, `avgRung`,
+`avgVoices`, `coinsInMoney`), so a column means the same thing on both boards.
+`avgAgreed` is not carried: it lives in the agreed sidecar and a board is read
+from the records alone. One unit's board is held in memory at a time -- 524,832
+rows for this set, one record per setting per unit, about 200 MB measured;
+choosing another unit lets the first go. Reading a unit yields between blocks
+so the pages keep answering. **The walk opens on the set's first unit.** The
+blended board stays available as one more choice -- `all units together`,
+chosen by name -- because removing a choice is the fault RULE FIVE exists to
+prevent; nothing is walked on it unless it is asked for.
+
+### 17.3 What changes per step
+
+- **Every reading** (steps 1-3, 5, 6) runs on the unit's board exactly as it
+  ran on the blend. The check is the unit's own ten kept figures. Nothing in
+  §16 changes here except the rows underneath it.
+- **Step 4 becomes what it was meant to be.** `does it hold elsewhere` applies
+  the rule to each of the OTHER units' boards -- loaded one at a time and let
+  go -- and reports, per unit, the survivors' average test money and whether
+  it is positive, beside the same on the unit's scrambled copies. It is a
+  pressed action, not part of the automatic read: every other board is one
+  read. It is started in the background and polled, the totalling's shape,
+  because nine boards is about a minute and the web server in front allows a
+  request sixty seconds; the line beside the button counts the boards read. The count of other units positive, and of those whose
+  survivors beat every one of their own copies, and the accept mark stay. The
+  rule is applied with the rebuilt numbers laid on per unit, so a limit on the
+  worst losing streak reads each unit's own.
+- **The cut** records the unit on the set, by key and by name, and names the
+  set for its unit unless the owner types a name; the replay loads the unit's
+  board. The read and the cut resolve the board through one function, so the
+  board walked and the board cut cannot be two boards.
+- **The picker** sits on the standing line beside `target size`, offering the
+  set's units by the names the set was launched with. The walk's state is
+  kept per unit, so ten walks can be in flight and none forgets its place.
+
+### 17.3a The rebuilt numbers are kept per unit
+
+The numbers rebuilt at step 6 are kept beside the set per setting, as the
+average across units AND per unit. A unit's board lays on the unit's own; the
+blend lays on the average. That is a new shape for the file, so it carries a
+new version, and a file of the older shape reads as absent: the screen offers
+the rebuild again and writes it back in today's shape. Derived, so rebuilt,
+never translated (RULE NINE).
+
+### 17.4 Not in this build, said plainly
+
+- The tables' own `beat the kept null money` column compares the real money to
+  the kept figures without the cents rule (3.40.1) and is wrong on every
+  always-gate row -- 0 or 10 at random. It needs a totals rebuild
+  (`TALLY_V` 7) and the totalling's memory has to be fixed first (DEFECTS.md,
+  01:44). Deferred, logged.
+- The per-coin table's eight-settings-per-row fold is a fact about Table 3.B
+  that predates the Funnel. Whether Boards should show one row per setting per
+  unit is the owner's call.
+- Auto mode (§15) runs per unit when it is built; nothing about it changes.

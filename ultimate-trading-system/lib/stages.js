@@ -3240,7 +3240,188 @@ function stage3Coins(id, query) {
 //
 // Everything here reads TEST money. The held-back window is opened once, at the
 // cut, on what survives (FUNNEL-DESIGN.md section 2).
-function funnelRead(id, state = {}) {
+// ---- THE UNIT IS THE BOARD (Funnel design §17, owner order 2026-09-02) --------
+//
+// One rule per coin-and-shape unit. A unit's board is its RECORDS -- one per
+// setting, every dial on it, its own test money and its own ten kept figures
+// -- read from the blocks the per-coin table says hold that unit. Not Table
+// 3.B: that folds the eight decision/band variants of a setting into one row.
+// One unit's board is held in memory at a time; asking for another lets the
+// first go. Reading yields between blocks so the pages keep answering.
+// The unit's identity is the one the whole engine uses (unitKeyOf, above);
+// the name beside it is what the screen prints.
+const unitNameOf = (u) => `${u.trade}${u.ctx1 ? ` alongside ${u.ctx1}` : ''}${u.ctx2 ? ` and ${u.ctx2}` : ''} ${u.geometry}`;
+// Worked out once per tally in hand: the per-coin table is 658,560 rows on
+// the owner's set and every read, every board load and every across would
+// otherwise walk it again.
+const unitsOfTally = new WeakMap();
+function unitsOfSet(t) {
+  if (unitsOfTally.has(t)) return unitsOfTally.get(t);
+  const seen = new Map();
+  for (const c of (t.coins || [])) {
+    const key = unitKeyOf(c);
+    if (!seen.has(key)) seen.set(key, { key, name: unitNameOf(c), trade: c.trade, ctx1: c.ctx1 || null, ctx2: c.ctx2 || null, geometry: c.geometry, blocks: new Set() });
+    for (const b of (c.b || [])) seen.get(key).blocks.add(b);
+  }
+  const units = [...seen.values()].map((u) => ({ ...u, blocks: [...u.blocks].sort((x, y) => x - y) }));
+  unitsOfTally.set(t, units);
+  return units;
+}
+// A record as a board row: the shape every reading already takes on the
+// blended board, so nothing downstream changes. Each measure is the ONE
+// record's own -- the same field the blended row averages over its units,
+// read here from a single unit, so a column means the same thing on both
+// boards. `avgAgreed` is not carried: it lives in the agreed sidecar, joined
+// by the totalling, and a board is read from the records alone.
+function boardRowOf(r, unitKey) {
+  const h = r.holdout || null;
+  const held = h && h.pnl != null ? Number(h.pnl) : null;
+  return {
+    si: r.si, label: r.label, unit: unitKey,
+    decision: r.decision ?? null, bandMode: r.bandMode ?? null, weekdaysOnly: r.weekdaysOnly ?? null,
+    entry: r.entry ?? null, gate: r.gate ?? null, dMult: r.dMult ?? null, tHours: r.tHours ?? null,
+    trailMult: r.trailMult ?? null, armMult: r.armMult ?? null,
+    agreeRule: r.agreeRule ?? null, agreeBar: r.agreeBar ?? null, agreePct: r.agreePct ?? null,
+    agreeCopy: r.agreeCopy ?? null, agreeBoth: r.agreeBoth ?? null, agreePersist: r.agreePersist ?? null,
+    members: r.members ?? null,
+    avgRung: r.rung ?? null, avgVoices: r.voices ?? null,
+    coins: 1, coinsInMoney: held != null && held > 0 ? 1 : 0,
+    avgTest: r.pnl == null ? null : Number(r.pnl),
+    avgHold: held,
+    avgTrades: h && h.trades != null ? Number(h.trades) : null,
+    avgVsLong: h && h.vsAlwaysLong != null ? Number(h.vsAlwaysLong) : null,
+    avgLead: r.lead ?? null,
+    beat: r.beat ?? null, pairs: r.pairs ?? null,
+    noiseTest: Array.isArray(r.noiseTest) ? r.noiseTest : null,
+    noiseHold: Array.isArray(r.noiseHold) ? r.noiseHold : null,
+  };
+}
+let unitBoardInHand = { id: null, builtAt: null, key: null, rows: null };
+async function loadUnitBoard(id, t, unitKey) {
+  if (unitBoardInHand.id === id && unitBoardInHand.builtAt === t.builtAt && unitBoardInHand.key === unitKey && unitBoardInHand.rows) {
+    return unitBoardInHand.rows;
+  }
+  const unit = unitsOfSet(t).find((u) => u.key === unitKey);
+  if (!unit) throw new Error(`this set holds no unit called '${unitKey}'`);
+  unitBoardInHand = { id: null, builtAt: null, key: null, rows: null };   // let the last one go first
+  const rows = [];
+  for (const bi of unit.blocks) {
+    const got = rowstore.readBlocks(id, 'records', [bi]);
+    if (!got) throw new Error('the records of this set are not stored in blocks, so a unit board cannot be read from them');
+    for (const x of got) {
+      const r = x.row;
+      if (r.trade !== unit.trade || r.geometry !== unit.geometry || (r.ctx1 || null) !== unit.ctx1 || (r.ctx2 || null) !== unit.ctx2) continue;
+      rows.push(boardRowOf(r, unitKey));
+    }
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => { setImmediate(resolve); });
+  }
+  unitBoardInHand = { id, builtAt: t.builtAt, key: unitKey, rows };
+  return rows;
+}
+// THE BOARD A WALK IS ON: a unit's records, or the blended table. Nothing
+// chosen is the set's FIRST unit (§17.2) -- the blend is walked only when it
+// is asked for by name, 'all'. The read and the cut both resolve here, so the
+// board that was walked and the board that is cut cannot be two boards.
+const blendBoard = (t) => ({ unit: null, name: null, all: t.ranked || [] });
+async function funnelBoard(id, t, unitKey) {
+  const key = unitKey == null ? '' : String(unitKey);
+  if (key === 'all') return blendBoard(t);
+  const units = unitsOfSet(t);
+  const unit = key ? units.find((u) => u.key === key) : units[0];
+  if (key && !unit) throw new Error(`this set holds no unit called '${key}'`);
+  if (!unit) return blendBoard(t);            // a set with no units has only the blend
+  return { unit: unit.key, name: unit.name, all: await loadUnitBoard(id, t, unit.key) };
+}
+
+// DOES IT HOLD ELSEWHERE, done properly (§17.3): the same rule on each of the
+// OTHER units' boards, loaded one at a time and let go. A pressed action, not
+// part of the read -- nine boards is nine reads.
+async function funnelAcross(id, state = {}, note = null) {
+  const doc = getSet(id);
+  if (!doc) throw new Error(`unknown record set '${id}'`);
+  const t = readTally(id);
+  if (!t) throw new Error('this set has no totalled tables yet');
+  const F = require('./funnel');
+  const S4 = require('./funnelset');
+  const rule = S4.normaliseRule(state.rule);
+  // the walked board, resolved exactly as the read resolves it: nothing
+  // chosen is the first unit, 'all' is the blend (then every unit is "other")
+  const units = unitsOfSet(t);
+  const chosen = state.unit == null ? '' : String(state.unit);
+  const here = chosen === 'all' ? null : (chosen ? (units.find((u) => u.key === chosen) || {}).key || null : (units[0] || {}).key || null);
+  if (chosen && chosen !== 'all' && !here) throw new Error(`this set holds no unit called '${chosen}'`);
+  // THE REBUILT NUMBERS ARE LAID ON, per unit, so a rule with a limit on the
+  // worst losing streak reads each unit's own rather than keeping nothing
+  const rich = readFunnelRich(id);
+  const out = { unit: here, rule, units: [] };
+  const others = units.filter((u) => u.key !== here).length;
+  if (note) note(0, others);
+  for (const u of units) {
+    if (u.key === here) continue;
+    // eslint-disable-next-line no-await-in-loop
+    const board = withFunnelRich(await loadUnitBoard(id, t, u.key), rich);
+    const kept = S4.applyRule(board, rule);
+    const money = (list, moneyOf) => { let s = 0; let n = 0; for (const r of list) { const v = moneyOf(r); if (v != null) { s += v; n++; } } return n ? s / n : null; };
+    const real = money(kept, F.money);
+    const k = kept.length && Array.isArray(kept[0].noiseTest) ? kept[0].noiseTest.length : 0;
+    const copies = Array.from({ length: k }, (_, d) => money(kept, F.moneyAt(d)));
+    out.units.push({
+      unit: u.key, name: u.name, survivors: kept.length, of: board.length, avgTest: real,
+      positive: real != null && real > 0,
+      check: copies, beats: copies.filter((v) => F.beats(real, v)).length, k,
+    });
+    if (note) note(out.units.length, others);
+  }
+  const usable = out.units.filter((x) => x.avgTest != null);
+  out.positive = usable.filter((x) => x.positive).length;
+  out.of = usable.length;
+  out.beatsAll = usable.filter((x) => x.k && x.beats === x.k).length;
+  // the walked unit's board comes back into hand for the next read
+  if (here) await loadUnitBoard(id, t, here);
+  return out;
+}
+
+// THE ACROSS RUNS IN THE BACKGROUND AND IS POLLED. On the owner's set it is
+// nine boards at five or six seconds each -- right at the sixty seconds the
+// web server in front allows one request -- so a pressed read that answered
+// in one reply would answer with a gateway time-out on the very set it was
+// built for. Started, polled, finished: the totalling's shape. One at a time;
+// the result is kept for the rule it was read for, and the same rule asked
+// again is answered from it without reading a block.
+let acrossRun = null;   // { key, token, id, startedAt, done, of, result, error, promise }
+function acrossKeyOf(id, state) {
+  const S4 = require('./funnelset');
+  return JSON.stringify([id, state.unit == null ? '' : String(state.unit), S4.normaliseRule(state.rule)]);
+}
+const acrossStatus = (run) => ({
+  running: !run.result && !run.error,
+  token: run.token, done: run.done, of: run.of,
+  startedAt: new Date(run.startedAt).toISOString(),
+  error: run.error, result: run.result,
+});
+function funnelAcrossStart(id, state = {}) {
+  const key = acrossKeyOf(id, state);
+  if (acrossRun) {
+    // the same rule is the same reading -- unless that reading failed, in
+    // which case pressing again tries again rather than re-reading the failure
+    if (acrossRun.key === key && !acrossRun.error) return acrossStatus(acrossRun);
+    if (!acrossRun.result && !acrossRun.error) throw new Error('the other units are still being read for another rule — one reading at a time');
+  }
+  const startedAt = Date.now();
+  const run = { key, token: `${id}:${startedAt}`, id, startedAt, done: 0, of: 0, result: null, error: null, promise: null };
+  acrossRun = run;
+  run.promise = funnelAcross(id, state, (done, of) => { run.done = done; run.of = of; })
+    .then((result) => { run.result = result; run.done = run.of; })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return acrossStatus(run);
+}
+function funnelAcrossStatus(id) {
+  if (!acrossRun || acrossRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, error: null, result: null };
+  return acrossStatus(acrossRun);
+}
+
+async function funnelRead(id, state = {}) {
   const doc = getSet(id);
   if (!doc) throw new Error(`unknown record set '${id}'`);
   if (doc.stage !== 3) throw new Error(`${doc.name || id} is a stage ${doc.stage} set — the Funnel reads stage 3`);
@@ -3249,10 +3430,13 @@ function funnelRead(id, state = {}) {
 
   const F = require('./funnel');
   const S4 = require('./funnelset');
+  // THE BOARD IS THE CHOSEN UNIT'S RECORDS (§17), or the blended table when
+  // `all units together` is chosen. Nothing below cares which.
+  const board = await funnelBoard(id, t, state.unit);
   // THE REBUILT NUMBERS ARE LAID ON FIRST, so a limit on the worst losing
   // streak has something to read (§16, step 6). Rows keep what they carry.
   const rich = readFunnelRich(id);
-  const all = withFunnelRich(t.ranked || [], rich);
+  const all = withFunnelRich(board.all, rich);
   const step = Math.max(1, Math.min(7, Math.floor(Number(state.step) || 1)));
   // THE CLOSING IS FOLDED IN AT STEP 7 AND NOWHERE ELSE. It is chosen on step 7
   // and it is what step 7 is for, so that is where the count and the sentence
@@ -3278,13 +3462,18 @@ function funnelRead(id, state = {}) {
   for (const r of (t.coins || [])) { coins.add(r.trade); shapes.add(r.geometry); }
   const fixed = new Set([...Object.keys(rule.ranges), ...Object.keys(rule.allowed)]);
   const freeDials = F.ALL_DIALS.filter((d) => !fixed.has(d)).length;
-  const holdsAxis = F.holdsAxisFor({
-    coins: coins.size,
-    shapes: shapes.size,
-    // the thirds exist once the survivors have been rebuilt and kept
-    thirds: rows.some((r) => Array.isArray(r.pnlThirds)),
-    freeDials,
-  });
+  const units = unitsOfSet(t).map((u) => ({ key: u.key, name: u.name }));
+  // ON A UNIT'S BOARD, "elsewhere" IS THE OTHER UNITS (§17.3), read by a
+  // pressed action; the axis logic below is for the blended board only.
+  const holdsAxis = board.unit
+    ? { axis: 'units', weaker: false, passedOver: [], others: units.filter((u) => u.key !== board.unit).length }
+    : F.holdsAxisFor({
+      coins: coins.size,
+      shapes: shapes.size,
+      // the thirds exist once the survivors have been rebuilt and kept
+      thirds: rows.some((r) => Array.isArray(r.pnlThirds)),
+      freeDials,
+    });
 
   const out = {
     set: {
@@ -3299,6 +3488,11 @@ function funnelRead(id, state = {}) {
       sealed: sealedWindowOf(doc),
     },
     money: 'test',
+    // which board this walk is on, by key and by the name the screen prints,
+    // and every board the set offers
+    unit: board.unit,
+    unitName: board.name,
+    units,
     step,
     rule,
     ruleSentence: S4.ruleSentence(rule),
@@ -3394,6 +3588,9 @@ function funnelRead(id, state = {}) {
       const spansB = block.block.b.from === g.bVals[0] && block.block.b.to === g.bVals[g.bVals.length - 1];
       out.conditions.interact = !(spansA && spansB);
     } else out.conditions.interact = null;
+  } else if (step === 4 && board.unit) {
+    // the other units are read on demand (funnelAcross); the page presses for it
+    out.reading = { axis: holdsAxis, unit: board.unit, others: holdsAxis.others, why: null, pressed: true, noise: { of: keptN, used: keptN, kind } };
   } else if (step === 4) {
     const slices = sliceRowsFor(rows, t, holdsAxis.axis, rule);
     const real = F.holdsAcross(slices, holdsAxis.axis, { floor });
@@ -3501,8 +3698,11 @@ function sliceRowsFor(rows, t, axis, rule, opts = {}) {
 // avg test $ is.
 const funnelRichFile = (id) => path.join(SETS_DIR, `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.funnelrich.json`);
 const RICH_FIELDS = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 'grossPerTrade'];
+// 2 (3.41.0): each setting's numbers are kept PER UNIT beside the average
+// across units, because a unit's board reads its own (§17).
+const FUNNEL_RICH_V = 2;
 function saveFunnelRich(id, perSetting) {
-  const out = { v: 1, savedAt: new Date().toISOString(), release: require('../package.json').version, settings: {} };
+  const out = { v: FUNNEL_RICH_V, savedAt: new Date().toISOString(), release: require('../package.json').version, settings: {} };
   for (const [label, e] of perSetting) {
     const acc = {};
     const thirds = [];
@@ -3519,6 +3719,19 @@ function saveFunnelRich(id, perSetting) {
     }
     const row = {};
     for (const [f, a] of Object.entries(acc)) row[f] = a.n ? a.s / a.n : null;
+    // AND PER UNIT (§17): on a unit's board the limits read the unit's own
+    // numbers, not an average across ten units. A setting with nothing
+    // rebuilt carries nothing -- not an empty table either.
+    const units = {};
+    for (const u of (e.units || [])) {
+      const tt = u.rich && u.rich.test;
+      if (!tt) continue;
+      const one = {};
+      for (const f of RICH_FIELDS) if (tt[f] != null && Number.isFinite(Number(tt[f]))) one[f] = Number(tt[f]);
+      if (Array.isArray(tt.pnlThirds)) one.pnlThirds = tt.pnlThirds.slice();
+      units[unitKeyOf(u)] = one;
+    }
+    if (Object.keys(units).length) row.units = units;
     if (thirds.length) {
       const w = Math.max(...thirds.map((x) => x.length));
       row.pnlThirds = Array.from({ length: w }, (_, i) => {
@@ -3532,7 +3745,13 @@ function saveFunnelRich(id, perSetting) {
   return { settings: Object.keys(out.settings).length, fields: RICH_FIELDS };
 }
 function readFunnelRich(id) {
-  try { return JSON.parse(fs.readFileSync(funnelRichFile(id), 'utf8')); } catch (_) { return null; }
+  let x = null;
+  try { x = JSON.parse(fs.readFileSync(funnelRichFile(id), 'utf8')); } catch (_) { return null; }
+  // AN OLDER SHAPE READS AS ABSENT, never translated (RULE NINE). The rebuilt
+  // numbers are derived from the records, so the screen offers the rebuild
+  // again and the file is written back in today's shape -- the same way a
+  // tally of an older shape is re-totalled rather than read around.
+  return x && x.v === FUNNEL_RICH_V ? x : null;
 }
 // lay the rebuilt numbers onto rows by label; a row keeps what it already has
 function withFunnelRich(rows, rich) {
@@ -3540,8 +3759,11 @@ function withFunnelRich(rows, rich) {
   return rows.map((r) => {
     const x = rich.settings[r.label];
     if (!x) return r;
+    // a unit board row takes the unit's own rebuilt numbers; the blend takes
+    // the average across units
+    const src = r.unit && x.units && x.units[r.unit] ? x.units[r.unit] : x;
     const o = { ...r };
-    for (const [f, v] of Object.entries(x)) if (o[f] === undefined) o[f] = v;
+    for (const [f, v] of Object.entries(src)) if (f !== 'units' && o[f] === undefined) o[f] = v;
     return o;
   });
 }
@@ -3554,7 +3776,7 @@ function withFunnelRich(rows, rich) {
 //
 // AN EMPTY OR ONE-SETTING RESULT IS WRITTEN WITH A WARNING, NEVER REFUSED
 // (owner ruling 6). Refusing would take the decision away invisibly.
-function cutFunnelSet(parentId, state = {}) {
+async function cutFunnelSet(parentId, state = {}) {
   const busy = stageRunning();
   if (busy) throw new Error(`${busy} is running — the cut reads the same tables it writes from`);
   const parent = getSet(parentId);
@@ -3562,6 +3784,9 @@ function cutFunnelSet(parentId, state = {}) {
   if (parent.stage !== 3) throw new Error(`${parent.name || parentId} is a stage ${parent.stage} set — a Funnel set is cut from stage 3`);
   const t = readTally(parentId);
   if (!t) throw new Error(`${parent.name} has no totalled tables yet — there is nothing to cut from`);
+  // THE SET IS CUT ON THE BOARD IT WAS WALKED ON: a unit's records, or the blend
+  const board = await funnelBoard(parentId, t, state.unit);
+  const ranked = withFunnelRich(board.all, readFunnelRich(parentId));
 
   const S4 = require('./funnelset');
   const seq = seqFor(4);
@@ -3569,13 +3794,17 @@ function cutFunnelSet(parentId, state = {}) {
   const doc = S4.newFunnelSet({
     id,
     seq,
-    name: String(state.name || `S4 #${seq}`).slice(0, 120),
+    // a unit's set says which unit, unless the owner types a name
+    name: String(state.name || (board.unit ? `S4 #${seq} - ${board.name}` : `S4 #${seq}`)).slice(0, 120),
     parent,
     release: require('../package.json').version,
     target: state.target,
     seed: state.seed || id,
     boardNull: parent.boardNull || null,
     sealed: sealedWindowOf(parent),
+    // one rule per coin-and-shape unit (§17); null means the blended board
+    unit: board.unit,
+    unitName: board.name,
   });
   // The walk as it happened, forward steps and back-steps alike. Going back is
   // more looking, and the reserve grade can only count what was written down.
@@ -3587,14 +3816,14 @@ function cutFunnelSet(parentId, state = {}) {
   // THE CLOSING IS PART OF THE RULE, not a note beside it. A closing recorded
   // on the set but dropped before the arithmetic writes a set whose record
   // claims a narrowing its rule does not carry.
-  const closed = S4.ruleWithClosing(t.ranked || [], state.rule, state.closing, doc.target);
+  const closed = S4.ruleWithClosing(ranked, state.rule, state.closing, doc.target);
   doc.rule = closed.rule;
-  const survivors = S4.applyRule(t.ranked || [], doc.rule);
+  const survivors = S4.applyRule(ranked, doc.rule);
   S4.finishFunnelSet(doc, survivors, { key: closed.key, detail: closed.detail });
   // THE REPLAY IS CHECKED BEFORE THE SET IS SAVED, not asserted in a test and
   // hoped for in production. A set whose rule does not reproduce its own
   // survivors is a story about a decision rather than the decision.
-  const check = S4.replay(doc, t.ranked || []);
+  const check = S4.replay(doc, ranked);
   if (!check.same) {
     throw new Error(`the rule does not reproduce its own survivors (${check.got} vs ${check.had}) — refusing to write it`);
   }
@@ -4080,6 +4309,8 @@ module.exports = {
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
   cutFunnelSet, listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
+  unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
+  funnelAcrossStart, funnelAcrossStatus,
   sealedWindowOf, sealedFromUnits, noiseTwinOf, needsBoardNullStamp,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,

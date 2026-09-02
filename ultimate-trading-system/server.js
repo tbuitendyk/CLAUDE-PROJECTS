@@ -792,10 +792,12 @@ app.get('/api/stageset/:id/ranked', (req, res) => {
 // ONE READ RETURNS THE WHOLE STATE OF THE WALK. A route per step would apply the
 // rule in several places, and the survivor count on step 2 and the one the cut
 // writes would be free to become two different numbers.
-app.post('/api/funnel/:id/read', (req, res) => {
+app.post('/api/funnel/:id/read', async (req, res) => {
   let out;
   try {
-    out = stages.funnelRead(req.params.id, req.body || {});
+    // async since §17: a unit's board is read from its records the first
+    // time it is asked for, yielding between blocks
+    out = await stages.funnelRead(req.params.id, req.body || {});
   } catch (err) { return res.status(400).json({ error: err.message }); }
   if (!out) {
     // no tally yet: the same answer the tables give, so the screen starts a
@@ -842,11 +844,22 @@ app.post('/api/funnel/:id/rebuild', async (req, res) => {
 
 // Step 7: write the Stage 4 set. The rule is what is written, not the rows it
 // happened to pick today, and the cut checks its own replay before saving.
-app.post('/api/funnel/:id/cut', (req, res) => {
+// Step 4 on a unit's board (§17.3): the same rule on each of the other units,
+// read one at a time. Pressed, started in the background and polled -- nine
+// boards is about a minute, and the web server in front allows a request
+// sixty seconds. POST starts it (or answers from the run already made for
+// this rule); GET reports how far it is and hands the result over.
+app.post('/api/funnel/:id/across', (req, res) => {
+  try { return res.json(stages.funnelAcrossStart(req.params.id, req.body || {})); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.get('/api/funnel/:id/across', (req, res) => res.json(stages.funnelAcrossStatus(req.params.id)));
+
+app.post('/api/funnel/:id/cut', async (req, res) => {
   try {
-    const doc = stages.cutFunnelSet(req.params.id, req.body || {});
+    const doc = await stages.cutFunnelSet(req.params.id, req.body || {});
     return res.json({
-      id: doc.id, name: doc.name, seq: doc.seq,
+      id: doc.id, name: doc.name, seq: doc.seq, unit: doc.unit || null, unitName: doc.unitName || null,
       survivors: doc.counts.survivors, target: doc.counts.target,
       ruleSentence: doc.ruleSentence, warnings: doc.warnings,
       closing: doc.closing, replayChecked: doc.replayChecked,
@@ -860,7 +873,7 @@ app.get('/api/funnel/sets', (req, res) => {
   return res.json({
     sets: stages.listFunnelSets(parent).map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
-      parent: d.parent, target: d.target, counts: d.counts,
+      parent: d.parent, unit: d.unit || null, unitName: d.unitName || null, target: d.target, counts: d.counts,
       ruleSentence: d.ruleSentence || null, warnings: d.warnings || [],
       closing: d.closing, boardNull: d.boardNull, release: d.release,
       steps: (d.steps || []).length, backSteps: (d.backSteps || []).length,

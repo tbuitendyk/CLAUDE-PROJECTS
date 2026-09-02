@@ -349,7 +349,7 @@ function recordMark(doc, mark) {
 
 // ---- the record --------------------------------------------------------------
 
-function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull, sealed }) {
+function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull, sealed, unit = null, unitName = null }) {
   return {
     id,
     // listSets summarises on stage AND seq, and seqFor counts the highest seq it
@@ -374,6 +374,11 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     // reader has to notice an absence and infer it
     boardNull: boardNull || null,
     sealed: sealed || null,
+    // ONE RULE PER COIN-AND-SHAPE UNIT (§17): the unit this set was walked and
+    // cut on, by key and by the name the screen prints. null means the
+    // blended board.
+    unit: unit || null,
+    unitName: unitName || null,
     steps: [],
     backSteps: [],
     rule: { ...EMPTY_RULE },

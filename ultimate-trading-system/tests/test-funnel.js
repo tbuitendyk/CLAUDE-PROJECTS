@@ -32,6 +32,67 @@ function s3rows() {
 
 const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 
+// A STAGE 3 SET ON DISK FOR THE PER-UNIT BOARD (§17): three units -- AAA on
+// daily-1d, AAA on daily-2d, BBB alongside AAA on daily-1d -- four settings
+// (gate active/always x tHours 41/65), ten kept figures on every record, the
+// records written setting-major so every block holds rows of two units and a
+// board that read a whole block would carry another unit's rows. Money per
+// unit: unit 0's active beats every copy; unit 1's active beats five of ten;
+// unit 2's active loses and beats none.
+const SETS_DIR = path.join(__dirname, '..', 'data', 'stagesets');
+async function unitFixture() {
+  const rowstore = require('../lib/rowstore');
+  const id = `s3-test-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}-unit`;
+  fs.mkdirSync(SETS_DIR, { recursive: true });
+  const doc = { id, stage: 3, seq: 999990, name: 'S3 #unit', status: 'done', createdAt: new Date().toISOString(),
+    plan: { units: 3, settings: 4 }, params: { engineVersion: require('../package.json').version, nullN: 10, keepN: 10 },
+    boardNull: { captured: true, kept: 10 } };
+  fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify(doc));
+  const units = [
+    { u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-1d' },
+    { u: 1, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-2d' },
+    { u: 2, trade: 'BBB', ctx1: 'AAA', ctx2: null, size: 2, geometry: 'daily-1d' },
+  ];
+  const keys = units.map((u) => stages.unitKeyOf(u));
+  const lift = (t) => (t === 65 ? 0.5 : 0);
+  const money = (u, g, t) => (u.u === 0 ? (g === 'active' ? 10 : 0) : u.u === 1 ? (g === 'active' ? 2 : -1) : (g === 'active' ? -4 : 7)) + lift(t);
+  const copies = (u, g, t) => Array.from({ length: 10 }, (_, d) => {
+    if (u.u === 0) return (g === 'active' ? 9 - d * 0.1 : 0) + lift(t);
+    if (u.u === 1) return (g === 'active' ? (d < 5 ? 3 : 1) : -1) + lift(t);
+    return (g === 'active' ? -3 : 7) + lift(t);
+  });
+  const w = rowstore.writer(id, 'records');
+  let si = 0;
+  let n = 0;
+  for (const g of ['active', 'always']) {
+    for (const t of [41, 65]) {
+      const label = `q1 ${g} t${t} · argmax auto 24/7`;
+      for (const u of units) {
+        const pnl = money(u, g, t);
+        w.push({ si, label, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+          entry: 'market', gate: g, dMult: 1.5, tHours: t, trailMult: null, armMult: null,
+          agreeRule: 'share', agreeBar: 0.6, agreePct: null, agreeCopy: 'plain', agreeBoth: false, agreePersist: 0,
+          rung: 3, members: 8, voices: 5, pnl, trades: 10,
+          holdout: { pnl: pnl / 2, trades: 4, stops: 1, vsAlwaysLong: pnl / 4 },
+          beat: 6, pairs: 10, lead: 0.5,
+          noiseTest: copies(u, g, t), noiseHold: copies(u, g, t).map((v) => v / 2),
+          ...u });
+        if (++n % 2 === 0) w.flush();           // two units to a block
+      }
+      si++;
+    }
+  }
+  await w.close();
+  const t = await stages.buildTally(doc);
+  const cleanup = () => {
+    for (const f of [path.join(SETS_DIR, `${id}.json`), path.join(SETS_DIR, `${id}-tally.json.gz`), stages.funnelRichFile(id)]) {
+      try { fs.rmSync(f, { force: true }); } catch (_) { /* fixture */ }
+    }
+    try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+  };
+  return { id, doc, t, units, keys, cleanup };
+}
+
 module.exports = {
   // Every set says whether a board-wide noise reading was captured on it, in
   // the same words, whenever it was written. The stamp goes on at birth for the
@@ -475,14 +536,21 @@ module.exports = {
     const at = s.indexOf('function cutFunnelSet(');
     assert.ok(at > 0, 'cutFunnelSet is gone');
     const body = s.slice(at, s.indexOf('\nfunction listFunnelSets(', at));
-    assert.ok(/const closed = S4\.ruleWithClosing\(t\.ranked \|\| \[\], state\.rule, state\.closing, doc\.target\);/.test(body),
+    // THE CUT IS MADE ON THE BOARD THE WALK WAS ON (§17): a unit's records or
+    // the blend, resolved by the same function the read resolves it through,
+    // with the rebuilt numbers laid on -- and the closing is folded into the
+    // rule on those rows
+    assert.ok(body.includes('const board = await funnelBoard(parentId, t, state.unit);')
+      && body.includes('const ranked = withFunnelRich(board.all, readFunnelRich(parentId));'),
+      'the cut must be made on the board the walk was on, with the rebuilt numbers laid on');
+    assert.ok(/const closed = S4\.ruleWithClosing\(ranked, state\.rule, state\.closing, doc\.target\);/.test(body),
       'the closing must be folded into the rule through the one function that folds it');
     // the folded rule is what gets written AND what the survivors come from --
     // writing one rule and filtering by another is the same defect wearing a
     // different shape
     const foldAt = body.indexOf('const closed = S4.ruleWithClosing');
     const ruleAt = body.indexOf('doc.rule = closed.rule;');
-    const applyAt = body.indexOf('S4.applyRule(t.ranked || [], doc.rule)');
+    const applyAt = body.indexOf('S4.applyRule(ranked, doc.rule)');
     assert.ok(foldAt > 0 && ruleAt > foldAt && applyAt > ruleAt,
       'the fold must come first, then the rule it produced, then the survivors from that rule');
     assert.ok(!/doc\.rule = S4\.normaliseRule\(state\.rule\);/.test(body),
@@ -928,7 +996,8 @@ module.exports = {
     assert.ok(body.includes("check: { kind, positive: checkReads.map((x) => x.positive)"), 'step 4: the check count');
     assert.ok(body.includes('S4.regionRule(out.reading, { ordered, categorical: F.CATEGORICAL_DIALS })'), 'step 5: the region as a rule');
     assert.ok(body.includes("maxDrawdown: F.ladderFor(rows, 'maxDrawdown', 'max')"), 'step 6: the ladders');
-    assert.ok(body.includes('const all = withFunnelRich(t.ranked || [], rich);'), 'the rebuilt numbers are laid on before the rule');
+    assert.ok(body.includes('const board = await funnelBoard(id, t, state.unit);'), 'the read is on the board the walk chose (§17)');
+    assert.ok(body.includes('const all = withFunnelRich(board.all, rich);'), 'the rebuilt numbers are laid on before the rule');
   },
 
   // A POLL REDRAW LEAVES THE OWNER'S PLACE ALONE (owner, 2026-09-02: "when i
@@ -1016,5 +1085,385 @@ module.exports = {
     assert.ok(body.slice(branchAt, branchAt + 600).includes('innerHTML'),
       'the failed-read branch must write something to the view');
     assert.ok(body.includes('could not read'), 'and it must say that it could not read, not show an empty panel');
+  },
+
+  // ---- ONE RULE PER COIN-AND-SHAPE UNIT (§17, owner order 2026-09-02:
+  // "IT'S ONE RULE PER COIN+SHAPE -- 10 RULES, NOT 5") ------------------------
+
+  aUnitIsNamedTheWayTheSetWasLaunchedAndKeyedTheWayTheEngineKeysIt() {
+    assert.strictEqual(stages.unitNameOf({ trade: 'DOGEUSDT', ctx1: null, ctx2: null, geometry: 'daily-1d' }), 'DOGEUSDT daily-1d');
+    assert.strictEqual(stages.unitNameOf({ trade: 'BTCUSDT', ctx1: 'ETHUSDT', ctx2: null, geometry: 'daily-2d' }), 'BTCUSDT alongside ETHUSDT daily-2d');
+    assert.strictEqual(stages.unitNameOf({ trade: 'BTCUSDT', ctx1: 'ETHUSDT', ctx2: 'XRPUSDT', geometry: 'daily-2d' }), 'BTCUSDT alongside ETHUSDT and XRPUSDT daily-2d');
+    assert.strictEqual(stages.unitKeyOf({ trade: 'DOGEUSDT', ctx1: null, ctx2: null, geometry: 'daily-1d' }), 'DOGEUSDT|||daily-1d');
+    assert.strictEqual(stages.unitKeyOf({ trade: 'BTCUSDT', ctx1: 'ETHUSDT', ctx2: 'XRPUSDT', geometry: 'daily-2d' }), 'BTCUSDT|ETHUSDT|XRPUSDT|daily-2d');
+    // the per-coin table's rows fold to one unit each, their blocks unioned,
+    // in the order the set was launched -- and once per tally in hand
+    const t = { coins: [
+      { cellLabel: 'a', trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d', b: [3, 1] },
+      { cellLabel: 'b', trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d', b: [2, 3] },
+      { cellLabel: 'a', trade: 'BBB', ctx1: 'AAA', ctx2: null, geometry: 'daily-1d', b: [4] },
+    ] };
+    const units = stages.unitsOfSet(t);
+    assert.deepStrictEqual(units.map((u) => u.key), ['AAA|||daily-1d', 'BBB|AAA||daily-1d']);
+    assert.deepStrictEqual(units[0].blocks, [1, 2, 3], 'blocks are the union, sorted');
+    assert.strictEqual(units[1].name, 'BBB alongside AAA daily-1d');
+    assert.strictEqual(stages.unitsOfSet(t), units, 'worked out once per tally object');
+    assert.notStrictEqual(stages.unitsOfSet({ coins: t.coins }), units, 'and again for another');
+    assert.deepStrictEqual(stages.unitsOfSet({}), [], 'a tally with no per-coin table offers no units');
+  },
+
+  // A RECORD AS A BOARD ROW: every dial, and every measure the blended row
+  // carries, read from the one record so a column means the same on both
+  // boards. The kept figures ride through untouched -- the readings take
+  // them by position.
+  aUnitBoardRowCarriesEveryDialAndTheBlendedRowsMeasuresFromTheOneRecord() {
+    const F = require('../lib/funnel');
+    const rec = { si: 7, label: 'q1 x · argmax auto 24/7', decision: 'argmax', bandMode: 'auto', weekdaysOnly: false,
+      entry: 'market', gate: 'active', dMult: 1.5, tHours: 65, trailMult: null, armMult: null,
+      agreeRule: 'share', agreeBar: 0.6, agreePct: null, agreeCopy: 'plain', agreeBoth: false, agreePersist: 0,
+      rung: 3, members: 8, voices: 5, pnl: 12.5, trades: 40,
+      holdout: { pnl: 3.25, trades: 12, stops: 2, vsAlwaysLong: 1.1 }, beat: 60, pairs: 100, lead: 0.4,
+      noiseTest: [1, 2, 3], noiseHold: [4, 5, 6], u: 3, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-1d' };
+    const row = stages.boardRowOf(rec, 'AAA|||daily-1d');
+    for (const d of F.ALL_DIALS) assert.ok(d in row, `the board row must carry the dial ${d}`);
+    assert.strictEqual(row.unit, 'AAA|||daily-1d');
+    assert.strictEqual(row.si, 7);
+    assert.strictEqual(row.label, rec.label);
+    assert.strictEqual(F.money(row), 12.5, 'the test money is the record\'s own');
+    assert.strictEqual(row.avgHold, 3.25);
+    assert.strictEqual(row.avgTrades, 12);
+    assert.strictEqual(row.avgVsLong, 1.1);
+    assert.strictEqual(row.avgLead, 0.4);
+    assert.strictEqual(row.avgRung, 3);
+    assert.strictEqual(row.avgVoices, 5);
+    assert.strictEqual(row.coins, 1);
+    assert.strictEqual(row.coinsInMoney, 1);
+    assert.strictEqual(row.beat, 60);
+    assert.strictEqual(row.pairs, 100);
+    assert.strictEqual(row.noiseTest, rec.noiseTest, 'the kept figures are the record\'s own array, not a copy');
+    assert.strictEqual(F.moneyAt(1)(row), 2);
+    assert.strictEqual(row.noiseHold, rec.noiseHold);
+    // a record with no held-back result and nothing kept says so with nulls
+    const bare = stages.boardRowOf({ si: 1, label: 'x', pnl: -2 }, 'k');
+    assert.strictEqual(bare.avgHold, null);
+    assert.strictEqual(bare.avgTrades, null);
+    assert.strictEqual(bare.avgVsLong, null);
+    assert.strictEqual(bare.coinsInMoney, 0);
+    assert.strictEqual(bare.noiseTest, null);
+    assert.strictEqual(bare.gate, null, 'null, never undefined');
+  },
+
+  // A stage 3 set on disk with three units across shared blocks, so the
+  // per-unit board can be read, walked, read across, cut and replayed.
+  async aUnitsBoardIsItsOwnRecordsAndNobodyElses() {
+    const fx = await unitFixture();
+    try {
+      const { id, t, keys } = fx;
+      const b0 = await stages.funnelBoard(id, t, keys[0]);
+      assert.strictEqual(b0.unit, keys[0]);
+      assert.strictEqual(b0.name, 'AAA daily-1d');
+      assert.strictEqual(b0.all.length, 4, 'one row per setting on the unit, and no other unit\'s rows -- the blocks hold two units each');
+      assert.ok(b0.all.every((r) => r.unit === keys[0] && r.coins === 1), 'every row is the unit\'s own');
+      assert.deepStrictEqual(b0.all.map((r) => r.avgTest).sort((a, b) => a - b), [0, 0.5, 10, 10.5], 'the unit\'s own money, not an average');
+      assert.ok(b0.all.every((r) => Array.isArray(r.noiseTest) && r.noiseTest.length === 10), 'the unit\'s own ten kept figures');
+      const b2 = await stages.funnelBoard(id, t, keys[2]);
+      assert.strictEqual(b2.all.length, 4);
+      assert.ok(b2.all.every((r) => r.unit === keys[2]));
+      // one board in hand at a time: asking again is free, asking for another lets it go
+      const again = await stages.funnelBoard(id, t, keys[2]);
+      assert.strictEqual(again.all, b2.all, 'the board in hand is handed back');
+      const b0again = await stages.funnelBoard(id, t, keys[0]);
+      assert.notStrictEqual(b0again.all, b0.all, 'the first board was let go when the second was read');
+      assert.deepStrictEqual(b0again.all.map((r) => r.label), b0.all.map((r) => r.label), 'and reads the same again');
+    } finally { fx.cleanup(); }
+  },
+
+  async theBlendIsChosenByNameAndNothingChosenIsTheFirstUnit() {
+    const fx = await unitFixture();
+    try {
+      const { id, t, keys } = fx;
+      const first = await stages.funnelBoard(id, t, null);
+      assert.strictEqual(first.unit, keys[0], 'nothing chosen is the set\'s first unit');
+      assert.strictEqual((await stages.funnelBoard(id, t, '')).unit, keys[0]);
+      const blend = await stages.funnelBoard(id, t, 'all');
+      assert.strictEqual(blend.unit, null, 'the blend is chosen by name');
+      assert.strictEqual(blend.name, null);
+      assert.strictEqual(blend.all, t.ranked, 'and is the blended table itself, never a copy');
+      await assert.rejects(() => stages.funnelBoard(id, t, 'ZZZ|||daily-9d'), /holds no unit called/);
+      // a tally with no per-coin table has only the blend
+      assert.strictEqual((await stages.funnelBoard(id, { ranked: t.ranked }, null)).unit, null);
+    } finally { fx.cleanup(); }
+  },
+
+  async theReadIsOnTheChosenUnitAndStepFourWaitsToBePressed() {
+    const fx = await unitFixture();
+    try {
+      const { id, keys } = fx;
+      const r1 = await stages.funnelRead(id, { step: 1, rule: {}, unit: keys[0] });
+      assert.strictEqual(r1.unit, keys[0]);
+      assert.strictEqual(r1.unitName, 'AAA daily-1d');
+      assert.deepStrictEqual(r1.units.map((u) => u.key), keys, 'every board the set offers, in launch order');
+      assert.strictEqual(r1.units[2].name, 'BBB alongside AAA daily-1d');
+      assert.strictEqual(r1.of, 4, 'the board is the unit\'s four settings');
+      assert.strictEqual(r1.set.keptScrambles, 10, 'the check is the unit\'s own ten kept figures');
+      assert.strictEqual(r1.check.kind, 'scrambles');
+      assert.ok(r1.reading && Array.isArray(r1.reading.dials), 'step 1 reads on the unit\'s rows');
+      // the gate moves this unit: active makes 10, always makes 0, and active
+      // beats every one of its copies -- bold on step 1
+      assert.ok(r1.reading.dials.some((x) => x.dial === 'gate'), 'gate is among the dials this unit swept');
+      assert.strictEqual(r1.reading.counts.gate, true, 'gate has a value beating the check on this unit');
+      assert.deepStrictEqual(r1.reading.beating.gate, { n: 1, of: 2 }, 'active beats every copy on this unit; always beats none');
+      assert.strictEqual(r1.holdsAxis.axis, 'units');
+      assert.strictEqual(r1.holdsAxis.others, 2);
+      const r4 = await stages.funnelRead(id, { step: 4, rule: { allowed: { gate: ['active'] } }, unit: keys[0] });
+      assert.strictEqual(r4.reading.pressed, true, 'on a unit\'s board step 4 is read by pressing');
+      assert.strictEqual(r4.reading.others, 2);
+      assert.strictEqual(r4.survivors, 2);
+      // nothing chosen is the first unit; the blend by name reads the blended table
+      assert.strictEqual((await stages.funnelRead(id, { step: 1, rule: {} })).unit, keys[0]);
+      const blend = await stages.funnelRead(id, { step: 4, rule: {}, unit: 'all' });
+      assert.strictEqual(blend.unit, null);
+      assert.strictEqual(blend.unitName, null);
+      assert.ok(!blend.reading.pressed, 'the blend reads across what it can offer, as before');
+      assert.notStrictEqual(blend.holdsAxis.axis, 'units');
+      await assert.rejects(() => stages.funnelRead(id, { step: 1, rule: {}, unit: 'ZZZ|||daily-9d' }), /holds no unit called/);
+    } finally { fx.cleanup(); }
+  },
+
+  async readingTheOtherUnitsAppliesTheRuleToEachOfThem() {
+    const fx = await unitFixture();
+    try {
+      const { id, keys } = fx;
+      const rule = { allowed: { gate: ['active'] } };
+      const a = await stages.funnelAcross(id, { rule, unit: keys[0] });
+      assert.strictEqual(a.unit, keys[0]);
+      assert.deepStrictEqual(a.units.map((u) => u.unit), [keys[1], keys[2]], 'the other units, never the walked one');
+      assert.strictEqual(a.units[0].name, 'AAA daily-2d');
+      const u1 = a.units[0];
+      assert.strictEqual(u1.survivors, 2);
+      assert.strictEqual(u1.of, 4);
+      assert.ok(Math.abs(u1.avgTest - 2.25) < 1e-12, `unit 1's active settings average 2.25, got ${u1.avgTest}`);
+      assert.strictEqual(u1.positive, true);
+      assert.strictEqual(u1.k, 10);
+      assert.strictEqual(u1.check.length, 10, 'the same rule on each of the unit\'s own copies');
+      assert.strictEqual(u1.beats, 5, 'beats the five copies below it and not the five above');
+      const u2 = a.units[1];
+      assert.ok(Math.abs(u2.avgTest + 3.75) < 1e-12);
+      assert.strictEqual(u2.positive, false);
+      assert.strictEqual(u2.beats, 0);
+      assert.strictEqual(a.positive, 1);
+      assert.strictEqual(a.of, 2);
+      assert.strictEqual(a.beatsAll, 0);
+      // walked on the blend, every unit is "other"; unit 0's active beats all ten
+      const b = await stages.funnelAcross(id, { rule, unit: 'all' });
+      assert.strictEqual(b.unit, null);
+      assert.deepStrictEqual(b.units.map((u) => u.unit), keys);
+      assert.strictEqual(b.units[0].beats, 10);
+      assert.strictEqual(b.positive, 2);
+      assert.strictEqual(b.of, 3);
+      assert.strictEqual(b.beatsAll, 1);
+      // nothing chosen is the first unit, as everywhere
+      assert.strictEqual((await stages.funnelAcross(id, { rule })).unit, keys[0]);
+      // a rule keeping nothing on a unit says so with nulls rather than zeros
+      const none = await stages.funnelAcross(id, { rule: { allowed: { gate: ['never'] } }, unit: keys[0] });
+      assert.ok(none.units.every((u) => u.survivors === 0 && u.avgTest === null && u.positive === false && u.k === 0));
+      assert.strictEqual(none.of, 0, 'a unit with no survivors is not counted as read');
+      // THE REBUILT NUMBERS ARE LAID ON PER UNIT before the rule is applied
+      // (decision 72): a limit on the worst losing streak reads each unit's
+      // own number. Without the laying the limit finds no number and keeps
+      // nothing anywhere; with the average across units it keeps the wrong
+      // ones. Unit 1's t41 is under the limit and its t65 is over; unit 2's
+      // both are under; the average of every unit is under for both.
+      const per = new Map();
+      for (const label of ['q1 active t41 · argmax auto 24/7', 'q1 active t65 · argmax auto 24/7']) {
+        const own = (u) => (u.u === 1 ? (label.includes('t41') ? 10 : 30) : 5);
+        per.set(label, { label, units: fx.units.map((u) => ({ ...u, rich: { test: { maxDrawdown: own(u) } } })) });
+      }
+      stages.saveFunnelRich(id, per);
+      const limited = await stages.funnelAcross(id, { rule: { allowed: { gate: ['active'] }, floors: { maxDrawdown: { max: 20 } } }, unit: keys[0] });
+      const l1 = limited.units.find((u) => u.unit === keys[1]);
+      const l2 = limited.units.find((u) => u.unit === keys[2]);
+      assert.strictEqual(l1.survivors, 1, 'unit 1 keeps the one active setting whose own worst streak is under the limit');
+      assert.ok(Math.abs(l1.avgTest - 2) < 1e-12, 'and it is the t41 setting, read by the unit\'s own number');
+      assert.strictEqual(l2.survivors, 2, 'unit 2 keeps both: its own numbers are under the limit');
+    } finally { fx.cleanup(); }
+  },
+
+  // STARTED AND POLLED, never one request: nine boards is about a minute and
+  // the web server in front allows a request sixty seconds (decision 73).
+  async readingTheOtherUnitsRunsInTheBackgroundAndIsPolled() {
+    const fx = await unitFixture();
+    try {
+      const { id, keys } = fx;
+      const rule = { allowed: { gate: ['active'] } };
+      const sleep = (ms) => new Promise((resolve) => { setTimeout(resolve, ms); });
+      const settled = async () => { for (let i = 0; i < 200; i++) { const st = stages.funnelAcrossStatus(id); if (!st.running) return st; await sleep(25); } throw new Error('the reading never finished'); };
+      const s0 = stages.funnelAcrossStart(id, { rule, unit: keys[0] });
+      assert.strictEqual(s0.running, true, 'started, not answered');
+      assert.strictEqual(s0.result, null);
+      assert.strictEqual(s0.of, 2, 'it says how many boards it will read before it reads one');
+      assert.ok(s0.token, 'and names the reading, so a page can tell its own from another\'s');
+      // one at a time: another rule is refused while this one reads; the same rule is the same reading
+      assert.throws(() => stages.funnelAcrossStart(id, { rule: { allowed: { gate: ['always'] } }, unit: keys[0] }), /still being read/);
+      assert.strictEqual(stages.funnelAcrossStart(id, { rule, unit: keys[0] }).token, s0.token, 'the same rule asked again is the same reading');
+      assert.strictEqual(stages.funnelAcrossStatus('some-other-set').none, true);
+      const done = await settled();
+      assert.strictEqual(done.error, null);
+      assert.strictEqual(done.token, s0.token);
+      assert.strictEqual(done.done, 2);
+      assert.strictEqual(done.of, 2);
+      const direct = await stages.funnelAcross(id, { rule, unit: keys[0] });
+      assert.deepStrictEqual(done.result, direct, 'the polled result is the worker\'s result');
+      // finished, the same rule is answered from the result without reading a block
+      const again = stages.funnelAcrossStart(id, { rule, unit: keys[0] });
+      assert.strictEqual(again.running, false);
+      assert.strictEqual(again.token, s0.token);
+      assert.deepStrictEqual(again.result, direct);
+      // and another rule, now that nothing is reading, is a new reading
+      const s1 = stages.funnelAcrossStart(id, { rule: { allowed: { gate: ['always'] } }, unit: keys[0] });
+      assert.notStrictEqual(s1.token, s0.token);
+      const d1 = await settled();
+      assert.strictEqual(d1.result.units[0].survivors, 2);
+      assert.ok(d1.result.units.every((u) => u.avgTest !== direct.units.find((x) => x.unit === u.unit).avgTest), 'a different rule, a different reading');
+      // a reading that fails says so, and does not hold the box for ever
+      stages.funnelAcrossStart('no-such-set', { rule, unit: keys[0] });
+      const dead = await (async () => { for (let i = 0; i < 200; i++) { const st = stages.funnelAcrossStatus('no-such-set'); if (!st.running) return st; await sleep(25); } return null; })();
+      assert.ok(dead && /unknown record set/.test(dead.error), 'the error is reported on the status');
+      const retry = stages.funnelAcrossStart('no-such-set', { rule, unit: keys[0] });
+      assert.notStrictEqual(retry.token, dead.token, 'pressing again after a failure tries again, rather than reading the failure back');
+      await (async () => { for (let i = 0; i < 200; i++) { if (!stages.funnelAcrossStatus('no-such-set').running) return; await sleep(25); } })();
+      assert.strictEqual(stages.funnelAcrossStart(id, { rule, unit: keys[0] }).running, true, 'and a dead reading does not block the next');
+      await settled();
+    } finally { fx.cleanup(); }
+  },
+
+  async theCutIsMadeOnTheUnitAndTheSetSaysWhichUnit() {
+    const fx = await unitFixture();
+    let s4 = null;
+    try {
+      const { id, keys } = fx;
+      const doc = await stages.cutFunnelSet(id, { rule: { allowed: { gate: ['active'] } }, closing: { key: 'rule' }, unit: keys[0], steps: [], backSteps: [], marks: [] });
+      s4 = doc.id;
+      assert.strictEqual(doc.unit, keys[0], 'the set records the unit it was cut on');
+      assert.strictEqual(doc.unitName, 'AAA daily-1d', 'by the name the screen prints');
+      assert.ok(/^S4 #\d+ - AAA daily-1d$/.test(doc.name), `named for its unit unless the owner names it, got ${doc.name}`);
+      assert.strictEqual(doc.counts.survivors, 2, 'the unit\'s two active settings, not the blend\'s');
+      assert.strictEqual(doc.replayChecked.same, true, 'the rule reproduces its own survivors on the unit\'s board');
+      assert.ok(doc.survivors.every((s) => s.label.includes('active')));
+      const listed = stages.listFunnelSets(id).find((d) => d.id === s4);
+      assert.ok(listed && listed.unit === keys[0] && listed.unitName === 'AAA daily-1d');
+      // a name typed by the owner wins
+      fs.rmSync(stages.setFileFor ? stages.setFileFor(s4) : path.join(__dirname, '..', 'data', 'stagesets', `${s4}.json`), { force: true });
+      const named = await stages.cutFunnelSet(id, { name: 'mine', rule: { allowed: { gate: ['active'] } }, closing: { key: 'rule' }, unit: keys[0] });
+      s4 = named.id;
+      assert.strictEqual(named.name, 'mine');
+      // and the blend, by name, cuts the blended table with no unit on it
+      fs.rmSync(path.join(__dirname, '..', 'data', 'stagesets', `${s4}.json`), { force: true });
+      const blend = await stages.cutFunnelSet(id, { rule: { allowed: { gate: ['active'] } }, closing: { key: 'rule' }, unit: 'all' });
+      s4 = blend.id;
+      assert.strictEqual(blend.unit, null);
+      assert.strictEqual(blend.unitName, null);
+      assert.ok(/^S4 #\d+$/.test(blend.name));
+      assert.strictEqual(blend.counts.survivors, 2, 'two active settings on the blended table too');
+    } finally {
+      if (s4) { try { fs.rmSync(path.join(__dirname, '..', 'data', 'stagesets', `${s4}.json`), { force: true }); } catch (_) { /* fixture */ } }
+      fx.cleanup();
+    }
+  },
+
+  // THE REBUILT NUMBERS ARE KEPT PER UNIT (§17.3a): a unit's row takes its
+  // own, the blend takes the average, and a file of the older shape reads as
+  // absent so the rebuild is offered again (RULE NINE: derived, so rebuilt,
+  // never translated).
+  aUnitBoardRowTakesTheUnitsOwnRebuiltNumbers() {
+    const id = `s3-test-${Date.now().toString(36)}-rich`;
+    const file = stages.funnelRichFile(id);
+    try {
+      const unitA = { trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d' };
+      const unitB = { trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-2d' };
+      const perSetting = new Map([['q1', { label: 'q1', units: [
+        { ...unitA, rich: { test: { maxDrawdown: 10, worstTrade: -3, pnlThirds: [1, 2, 3] } } },
+        { ...unitB, rich: { test: { maxDrawdown: 20, worstTrade: -5, pnlThirds: [3, 4, 5] } } },
+      ] }]]);
+      stages.saveFunnelRich(id, perSetting);
+      const rich = stages.readFunnelRich(id);
+      assert.strictEqual(rich.v, stages.FUNNEL_RICH_V);
+      assert.strictEqual(rich.v, 2, 'per-unit numbers are the second shape of this file');
+      const q1 = rich.settings.q1;
+      assert.strictEqual(q1.maxDrawdown, 15, 'the blend\'s number is the average across units');
+      assert.deepStrictEqual(q1.pnlThirds, [2, 3, 4]);
+      assert.strictEqual(q1.units[stages.unitKeyOf(unitA)].maxDrawdown, 10, 'and each unit\'s own is kept beside it');
+      assert.deepStrictEqual(q1.units[stages.unitKeyOf(unitB)].pnlThirds, [3, 4, 5]);
+      const laid = stages.withFunnelRich([
+        { label: 'q1', unit: stages.unitKeyOf(unitA) },
+        { label: 'q1', unit: stages.unitKeyOf(unitB) },
+        { label: 'q1' },
+        { label: 'q1', unit: 'CCC|||daily-1d' },
+      ], rich);
+      assert.strictEqual(laid[0].maxDrawdown, 10, 'a unit\'s row reads the unit\'s own');
+      assert.strictEqual(laid[1].maxDrawdown, 20);
+      assert.strictEqual(laid[2].maxDrawdown, 15, 'a blend row reads the average');
+      assert.strictEqual(laid[3].maxDrawdown, 15, 'a unit the rebuild did not cover reads the average -- there is no unit number to read');
+      assert.ok(!('units' in laid[0]), 'the per-unit table is not laid onto a row');
+      // a file of the older shape reads as absent, never translated
+      fs.writeFileSync(file, JSON.stringify({ v: 1, settings: { q1: { maxDrawdown: 15 } } }));
+      assert.strictEqual(stages.readFunnelRich(id), null, 'an older shape reads as absent, so the screen offers the rebuild again');
+    } finally { try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ } }
+  },
+
+  // THE SCREEN: the unit it is walking on goes with the read, the across and
+  // the cut; the first visit keeps the unit the reply named; the picker
+  // offers the blend by its one literal value and every unit the set listed.
+  theScreenSendsTheUnitItIsWalkingOnToTheReadTheAcrossAndTheCut() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const body = src.slice(src.indexOf('async function drawFunnel'), src.indexOf('\nfunction fHead('));
+    assert.ok(/\/read`, \{[\s\S]*?unit: st\.unit,/.test(body), 'the read carries the unit');
+    assert.ok(body.includes("fUnitChoose(st.set, d.unit || 'all');") && body.includes('return drawFunnel();'),
+      'the first visit keeps the unit the reply named and reads again under it');
+    // kept in the page as well as in storage, so a window whose storage
+    // throws settles on a unit instead of asking for ever
+    assert.ok(src.includes('fUnitMemory[set] = unit;') && src.includes('catch (_) { return fUnitMemory[set] || null; }'),
+      'the chosen unit is remembered in the page too');
+    const wire = src.slice(src.indexOf('function fWire('));
+    assert.ok(/\/across`, \{ rule: st\.rule, unit: st\.unit \}/.test(wire), 'the across carries the unit');
+    const cutAt = wire.indexOf('/cut`');
+    assert.ok(cutAt > 0 && /unit: st\.unit,\n\s*\}\);/.test(wire.slice(cutAt, cutAt + 700)), 'the cut carries the unit');
+    assert.ok(src.includes('<select id="fUnit"><option value="all"'), 'the picker offers the blend as all');
+    assert.ok(src.includes('${(d.units || []).map((u) => `<option value="${esc(u.key)}"'), 'and every unit the reply listed');
+    // a walk is saved per unit, and never under no unit
+    assert.ok(src.includes('if (!fState || !fState.unit) return;'), 'no walk is saved under no unit');
+    assert.ok(src.includes("const fWalkKeyFor = (set, unit) => `cx-funnel-${set}-${unit || 'all'}`;"), 'one walk per set and unit');
+  },
+
+  onAUnitsBoardStepFourIsReadByPressingAndTheAcceptRecordsThatRead() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const s4 = src.slice(src.indexOf('function fStep4('), src.indexOf('\nfunction fStep5('));
+    assert.ok(s4.includes('if (r.pressed) {'), 'step 4 on a unit\'s board is its own drawing');
+    assert.ok(s4.includes('<button id="fAcross" class="pri" ${asked ? \'disabled\' : \'\'}>read the other units</button>'), 'read by pressing');
+    assert.ok(s4.includes("${r.others} boards, read one at a time"), 'the count of other boards is the set\'s, never typed');
+    assert.ok(!/nine/.test(s4), 'no typed nine');
+    assert.ok(s4.includes("const a = st.across && st.across.ruleKey === JSON.stringify(st.rule) ? st.across : null;"),
+      'what was read is shown only for the rule it was read for');
+    const draw = src.slice(src.indexOf('async function drawFunnel'), src.indexOf('\nfunction fHead('));
+    assert.ok(draw.includes('accept: d.step === 4 && r.pressed')
+      && draw.includes('(a4 ? { positive: a4.positive, of: a4.of, check: null, beatsAll: a4.beatsAll } : null)'),
+      'the accept on a pressed step 4 records the across read for this rule');
+    const wire = src.slice(src.indexOf('function fWire('));
+    assert.ok(wire.includes('? `accepted ${a4.positive} of ${a4.of} other units positive; ${a4.beatsAll} beat every copy`'),
+      'the mark says what was accepted in the units\' terms');
+    // STARTED AND FOLLOWED (decision 73): the press starts the reading and
+    // remembers which; the follower polls, counts the boards read on the
+    // line, and keeps the result under the rule it was read for -- never a
+    // result the box holds for some other reading
+    assert.ok(wire.includes("st.acrossAsked = { ruleKey, token: started.token, at: new Date().toISOString() };"), 'the press remembers the reading it started');
+    const follow = src.slice(src.indexOf('async function fAcrossFollow('), src.indexOf('\nfunction fWire('));
+    assert.ok(follow.includes("s = await api(`api/funnel/${encodeURIComponent(st.set)}/across`);"), 'the follower polls the reading');
+    assert.ok(follow.includes('if (!s || s.none || s.token !== asked.token) {'), 'a reading that is not the one this page started is left alone');
+    assert.ok(follow.includes('st.across = { ...s.result, ruleKey: asked.ruleKey, at: new Date().toISOString() };'), 'the result is kept under the rule it was read for');
+    assert.ok(follow.includes('m.textContent = `read ${s.done} of ${s.of}`;'), 'the line counts the boards read');
+    assert.ok(follow.includes('if (fState !== st) return;'), 'a follower whose walk has left the screen stops');
+    assert.ok(wire.includes('if (ax && ax.disabled && st.acrossAsked && !(st.across && st.across.ruleKey === st.acrossAsked.ruleKey)) fAcrossFollow(st, null);'),
+      'a reading started before the page was left is followed again, not asked for twice');
+    assert.ok(s4.includes("<button id=\"fAcross\" class=\"pri\" ${asked ? 'disabled' : ''}>read the other units</button>"), 'the button is held while its reading runs');
   },
 };

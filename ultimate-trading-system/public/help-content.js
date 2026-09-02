@@ -477,6 +477,14 @@ window.HELP = {
       + 'Every figure shown is test-window money; the held-back window is opened once, at the end, on what survives. '
       + 'What it writes is the RULE you arrived at, because a rule can be checked against scrambled data and a single row cannot.',
     controls: {
+      fUnit: {
+        what: 'Which coin-and-shape unit this walk is on. One rule per unit - ten units, ten rules.',
+        more: 'A unit\'s board is its own records: one row per setting, every dial on it, its own test money and its own scrambled copies. The walk opens on the first unit of the set. Each unit keeps its own walk, so you can leave one half-done and come back. "all units together" is the blended table, one row per setting averaged over every unit; it hides what any one coin does and is kept only so the choice is yours.',
+      },
+      fAcross: {
+        what: 'Applies the rule you have built on this unit to each of the other units\' records, one at a time, and reports how many come out positive.',
+        more: 'This is the honest form of "does it hold elsewhere": the same rule on other coins and shapes, judged against each of their own scrambled copies. It is pressed rather than automatic because it reads every other unit\'s board, one at a time. The result is kept for this exact rule; change the rule and it asks again.',
+      },
       fTarget: {
         what: 'Roughly how many settings you are hoping to end up with. It is a guide, not a knife - nothing is ever trimmed to reach it.',
         more: 'It shows you the distance to the target at every step, so you can see whether you are narrowing too fast or too slowly while there is still time to change course. If your rule overshoots at the end, you are offered three ways to close the gap and told what each one costs.',

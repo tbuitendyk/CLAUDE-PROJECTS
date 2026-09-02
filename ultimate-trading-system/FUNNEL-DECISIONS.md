@@ -324,3 +324,38 @@ made while building it that the design did not already settle.
     money than that same value on every scrambled copy; the `check` column
     prints how many do. The session defended the old reading before it read
     it properly; that is recorded here so it is not done again.
+
+67. **One rule per coin-and-shape unit — ten, not five, not one** (owner order,
+    2026-09-02). The blended board destroyed the per-coin signal: XRPUSDT's
+    `active` beats every scrambled copy and the blend showed nothing to keep.
+    The unit's board is its records, not Table 3.B, because that table folds
+    the eight decision/band variants of a setting into one row and a walk on
+    it would be blind to two dials. One unit's board is held at a time. The
+    blend stays reachable as `all units together` and is walked on by nobody
+    by default. FUNNEL-DESIGN.md §17.
+68. **Beats means beats by a cent** (3.40.1). Kept figures are cents; the real
+    money is not; `always` read as beating all ten or none of ten on a
+    hundred-trillionth. The tables' own `beat the kept null money` has the
+    same fault and waits on a totals rebuild.
+69. **The walk opens on the set's first unit** (3.41.0). Nothing chosen is the
+    first unit; the blend is chosen by name, `all units together`. The read
+    and the cut resolve the board through one function, so the board walked
+    and the board cut cannot differ. §17.2.
+70. **A unit's board row carries the blended row's measures, from the one
+    record** (3.41.0): `avgVsLong`, `avgLead`, `avgRung`, `avgVoices`,
+    `coinsInMoney` beside the money and the kept figures. `avgAgreed` is not
+    carried -- it is joined from the agreed sidecar by the totalling, and a
+    board is read from the records alone. Said here so nobody reads its
+    absence as a fault.
+71. **The rebuilt-numbers file moved to version 2** (3.41.0), per unit beside
+    the average. An older file reads as absent and the rebuild is offered
+    again -- derived, so rebuilt, never translated (RULE NINE). §17.3a.
+72. **Reading the other units lays the rebuilt numbers on per unit** (3.41.0),
+    because a rule with a limit on the worst losing streak would otherwise
+    keep nothing on every other board and report every one as empty.
+73. **Reading the other units is started and polled, never one request**
+    (3.41.0). Nine boards at five or six seconds each is about a minute, and
+    the web server in front allows a request sixty seconds: answered in one
+    reply, the first press on the owner's set would have been a gateway
+    time-out. One reading at a time; the result is kept for the rule it was
+    read for.
