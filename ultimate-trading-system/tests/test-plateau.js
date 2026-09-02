@@ -98,7 +98,7 @@ module.exports = {
       cell(0.25, 65, 2, 1.1), cell(0.5, 65, 2, 1.2),
       { entry: 'market', gate: 'directional', dMult: null, tHours: 65, quorum: 2,
         trailMult: null, armMult: null, pnl: 1.3, trades: 5 },
-      { entry: 'breakout', gate: 'always', dMult: 0.25, tHours: 65, quorum: 2,
+      { entry: 'breakout', gate: 'active', dMult: 0.25, tHours: 65, quorum: 2,
         trailMult: null, armMult: null, pnl: 1.4, trades: 5 },
     ];
     const r = widestRegion(rows);

@@ -22,7 +22,7 @@ const { expandDeclared } = require('../lib/batch');
 const ROOT = path.join(__dirname, '..');
 const GRID = {
   entries: ['breakout', 'market'],
-  gates: ['always', 'active', 'directional'],
+  gates: ['active', 'directional'],
   dMults: [0.25, 0.5, 0.75, 1, 1.5],
   tHours: [17, 41, 65, 89, 113, 137, 161],
   trailMults: [0.5, 1, 1.5, 2],
@@ -49,7 +49,7 @@ module.exports = {
   eachTickMultipliesBytheMenuItPermutes() {
     assert.strictEqual(expandDeclared(BASE, { dMult: true }, GRID).length, 5);
     assert.strictEqual(expandDeclared(BASE, { tHours: true }, GRID).length, 7);
-    assert.strictEqual(expandDeclared(BASE, { gate: true }, GRID).length, 3);
+    assert.strictEqual(expandDeclared(BASE, { gate: true }, GRID).length, 2);
     assert.strictEqual(expandDeclared(BASE, { dMult: true, tHours: true }, GRID).length, 35);
     // agree is a count PER committee size, so it multiplies by both
     assert.strictEqual(expandDeclared(BASE, { agree: true }, GRID).length, 48);
@@ -115,8 +115,8 @@ module.exports = {
   // software invented for itself.
   aLargeExpansionIsBuiltNotRefused() {
     const set = expandDeclared(BASE, { dMult: true, tHours: true, gate: true, agree: true }, GRID);
-    // 5 d x 7 t x 3 gates x (6 singles x 8 contexts) = 5040
-    assert.strictEqual(set.length, 5040, 'every combination is declared, none refused');
+    // 5 d x 7 t x 3 gates x (6 singles x 8 contexts) = 3360
+    assert.strictEqual(set.length, 3360, 'every combination is declared, none refused');
     for (const c of set) assert.ok(c.label, 'and each one is a validated config');
   },
 

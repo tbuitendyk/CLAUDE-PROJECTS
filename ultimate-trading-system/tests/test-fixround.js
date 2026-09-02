@@ -16,13 +16,13 @@ module.exports = {
     // 1.75 is deliberately NOT in the library menu…
     assert.ok(!bracketLib.D_MULTS.includes(1.75), 'test premise: 1.75 must not be a library dMult');
     // …so the library-only validator refuses it…
-    assert.throws(() => batch.validateDeclared({ gate: 'always', dMult: 1.75, tHours: 65, quorum: 4 }), /dMult must be/);
+    assert.throws(() => batch.validateDeclared({ gate: 'active', dMult: 1.75, tHours: 65, quorum: 4 }), /dMult must be/);
     // …but a run whose grid carries it accepts it…
-    const dec = batch.validateDeclared({ gate: 'always', dMult: 1.75, tHours: 65, quorum: 4 }, customGrid);
+    const dec = batch.validateDeclared({ gate: 'active', dMult: 1.75, tHours: 65, quorum: 4 }, customGrid);
     assert.strictEqual(dec.dMult, 1.75);
     // …and a library value the run's grid does NOT carry refuses loudly.
     assert.throws(
-      () => batch.validateDeclared({ gate: 'always', dMult: bracketLib.D_MULTS[0], tHours: 65, quorum: 4 }, customGrid),
+      () => batch.validateDeclared({ gate: 'active', dMult: bracketLib.D_MULTS[0], tHours: 65, quorum: 4 }, customGrid),
       /this run's grid/,
     );
   },

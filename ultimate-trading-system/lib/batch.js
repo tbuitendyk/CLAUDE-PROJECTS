@@ -1048,9 +1048,10 @@ function htParams(params) {
     if (cell[k] == null) throw new Error(`declaredCell.${k} is missing — the survivor row carries it`);
   }
   if (cell.entry !== 'market' && cell.dMult == null) throw new Error('declaredCell.dMult is missing for a breakout cell');
-  if (cell.gate === 'always') {
-    throw new Error('activation refused: this row uses the always gate — it enters regardless of votes, '
-      + 'so both tuning dials would act on nothing (owner ruling, 2026-08-02)');
+  // a stored row can name a gate the engine no longer has (the always gate
+  // was removed 2026-09-02); it is refused by name, never priced as another
+  if (!bracketLib.GATES.includes(cell.gate)) {
+    throw new Error(`activation refused: this row uses a gate this engine no longer has (${cell.gate})`);
   }
   const combo = need('combo'); // { trade, ctx1, ctx2, size }
   const branch = need('branch'); // { geometry, decision, weekdaysOnly, band }
@@ -1070,7 +1071,7 @@ function htParams(params) {
     dormantPct: src.params.dormantPct, compareSymbol: src.params.compareSymbol,
     // the menu the retunes shop from — the source run's, unchanged
     dMults: src.params.dMults, tHours: src.params.tHours,
-    gates: (src.params.gates || []).filter((g) => g !== 'always'),
+    gates: (src.params.gates || []).filter((g) => bracketLib.GATES.includes(g)),
     entries: src.params.entries,
     // The source run's own fee, normalised to a fraction — a run recorded
     // before 2026-08-23 stored dollars, and tuning it under a different cost
@@ -2409,7 +2410,6 @@ function startBracketLab(params, opts) {
               searchWins: res.best ? (res.best.wins ?? null) : null,
               searchGrossPerTrade: res.best ? (res.best.grossPerTrade ?? null) : null,
               searchStops: res.best ? (res.best.stops ?? null) : null,
-              vsControl: res.best && res.best.controlPnl != null ? res.best.pnl - res.best.controlPnl : null,
               holdStops: res.best && res.best.holdout ? (res.best.holdout.stops ?? null) : null,
               modelFile: modelFile,
               // How much of the result rests on an unknowable within-bar
@@ -2463,7 +2463,6 @@ function startBracketLab(params, opts) {
               entry: d.entry || 'breakout',
               quorum: d.quorum, members: d.members, pnl: d.pnl, trades: d.trades, wins: d.wins,
               grossPerTrade: d.grossPerTrade, stops: d.stops, ambiguous: d.ambiguous,
-              controlPnl: d.controlPnl, vsControl: d.controlPnl == null ? null : d.pnl - d.controlPnl,
               metrics: d.metrics || null,
               holds: d.holds || null,
               trailMult: d.trailMult ?? null, armMult: d.armMult ?? null,
@@ -2768,7 +2767,7 @@ function startHtTwo(params) {
     if (!sel) throw new Error('select a promoted row on the source run first');
     const status = T2.examStatus(ENGINE_VERSION, listBatches().map((b) => getBatch(b.id)).filter(Boolean));
     if (!status.ready) throw new Error(`refused (R4): ${status.detail}`);
-    if (sel.gate === 'always') throw new Error('this row uses the always gate — the age dial would act on nothing');
+    if (!bracketLib.GATES.includes(sel.gate)) throw new Error(`this row uses a gate this engine no longer has (${sel.gate})`);
     if (sel.geometry === 'weekly-8d') throw new Error('weekly-8d is structurally out — the effective-days arithmetic is day-stepped');
     if (!sel.windowStamps || !sel.windowStamps.testStartTs) throw new Error('the selected row carries no window stamps — re-run the board on the current engine');
     p = {

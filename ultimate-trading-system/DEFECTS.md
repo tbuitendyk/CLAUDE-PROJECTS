@@ -594,7 +594,7 @@ stay as the record of what was wrong.
   `agreeBoth` have words for values, not numbers. The rule can hold them (the
   `allowed` part, read by `applyRule` in `lib/funnelset.js`) but nothing on the
   screen ever writes it: `add this range to the rule` writes only `ranges`, and
-  `keep from` / `to` cannot say "gate is active or always". So a rule can never
+  `keep from` / `to` cannot say "gate is active or directional". So a rule can never
   say anything about which gate, which entry, or 24/5. **What the fix is:** on
   step 2, a box per value for a word-valued dial, writing `allowed`.
 

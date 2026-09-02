@@ -30,7 +30,7 @@ module.exports = {
     const bars = { 0: [100, 101, 99.5], 1: [101, 103, 100.5], 17: [105, 105, 104] };
     for (let h = 2; h < 17; h++) bars[h] = [101, 101.5, 100.5];
     const m = mapFrom(t0, bars);
-    const r = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    const r = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
     assert.strictEqual(r.trades, 1);
     assert.strictEqual(r.stops, 0);
     assert.strictEqual(r.ambiguous, 0);
@@ -42,7 +42,7 @@ module.exports = {
     const bars = { 0: [100, 102.5, 99.5], 5: [99, 99.5, 97], 17: [104, 104, 103] };
     for (const h of [1, 2, 3, 4]) bars[h] = [101, 101.5, 100.5];
     const m = mapFrom(t0, bars);
-    const r = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    const r = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
     // long at 102 (bar0 high 102.5), stopped at 98 in bar5
     assert.strictEqual(r.trades, 1);
     assert.strictEqual(r.stops, 1);
@@ -54,7 +54,7 @@ module.exports = {
     // one violent bar spans BOTH rails before entry → pessimistic rule:
     // entered long at 102, stopped at 98 inside the same bar, counted
     const m = mapFrom(t0, { 0: [100, 103, 97] });
-    const r = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    const r = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
     assert.strictEqual(r.trades, 1);
     assert.strictEqual(r.ambiguous, 1);
     assert.strictEqual(r.stops, 1);
@@ -75,9 +75,9 @@ module.exports = {
     // active gate with a dormant call places nothing
     const active = simBracket(period(t0), [0], down2, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
     assert.strictEqual(active.trades, 0);
-    // always gate ignores the call entirely
-    const always = simBracket(period(t0), [0], down2, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
-    assert.strictEqual(always.trades, 1);
+    // a gate the engine does not have is refused, never quietly read as one it has
+    assert.throws(() => simBracket(period(t0), [0], down2, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE }),
+      /gate must be one of active\/directional/);
   },
   async comboLayoutsCompose() {
     const nDays = 3;
@@ -134,9 +134,9 @@ module.exports = {
     assert.strictEqual(declaredQuorumFor(abs, 4), 4);
     // menu membership is enforced — a declared cell must exist in the sweep
     assert.throws(() => validateDeclared({ gate: 'nope', dMult: 1.5, tHours: 65, quorum: 4 }), /gate must be/);
-    assert.throws(() => validateDeclared({ gate: 'always', dMult: 0.9, tHours: 65, quorum: 4 }), /dMult must be/);
-    assert.throws(() => validateDeclared({ gate: 'always', dMult: 1, tHours: 50, quorum: 4 }), /tHours must be/);
-    assert.throws(() => validateDeclared({ gate: 'always', dMult: 1, tHours: 65, quorumRatio: 0 }), /quorumRatio/);
+    assert.throws(() => validateDeclared({ gate: 'active', dMult: 0.9, tHours: 65, quorum: 4 }), /dMult must be/);
+    assert.throws(() => validateDeclared({ gate: 'active', dMult: 1, tHours: 50, quorum: 4 }), /tHours must be/);
+    assert.throws(() => validateDeclared({ gate: 'active', dMult: 1, tHours: 65, quorumRatio: 0 }), /quorumRatio/);
     assert.strictEqual(validateDeclared(null), null); // opt-in only
   },
   async aDeclaredAgreementCountIsPerCommitteeSize() {
@@ -173,7 +173,7 @@ module.exports = {
     assert.strictEqual(dec.dMult, null);
     assert.ok(dec.label.includes('market'));
     assert.throws(() => validateDeclared({ entry: 'market', dMult: 1, tHours: 41, quorum: 3 }), /dMult is meaningless/);
-    assert.throws(() => validateDeclared({ entry: 'market', gate: 'always', tHours: 41, quorum: 3 }), /must be omitted or/);
+    assert.throws(() => validateDeclared({ entry: 'market', gate: 'active', tHours: 41, quorum: 3 }), /must be omitted or/);
     assert.throws(() => validateDeclared({ entry: 'nope', tHours: 41, quorum: 3 }), /entry must be one of/);
     // breakout stays the default so every existing declaration is unchanged
     assert.strictEqual(validateDeclared({ gate: 'active', dMult: 1, tHours: 161, quorum: 4 }).entry, 'breakout');
@@ -230,7 +230,7 @@ module.exports = {
     assert.strictEqual(r.wins, 1);
     // and the same bars as a breakout WOULD have been stopped out — proving
     // the two modes are genuinely different trades, not a relabelling
-    const b = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    const b = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
     assert.strictEqual(b.stops, 1);
   },
   async marketStandsAsideOnAZeroCall() {
@@ -258,9 +258,8 @@ module.exports = {
     assert.strictEqual(market.length, T_HOURS.length);         // one per horizon
     assert.ok(market.every((r) => r.gate === 'directional'));   // definitionally
     assert.ok(market.every((r) => r.dMult === null));           // no distance exists
-    // The always-gate control must be untouched by the addition, or every
-    // vs-control number recorded before this change would silently shift.
-    assert.ok(rows.filter((r) => r.gate === 'always').every((r) => r.entry === 'breakout'));
+    assert.deepStrictEqual(GATES, ['active', 'directional'], 'there is no always gate (owner order, 2026-09-02)');
+    assert.ok(rows.every((r) => GATES.includes(r.gate)), 'every cell carries a gate the engine has');
     assert.deepStrictEqual(ENTRIES, ['breakout', 'market']);
   },
   async classifierMetricsMatchThePipelineDefinitions() {
@@ -335,8 +334,8 @@ module.exports = {
     for (let h = 8; h < 17; h++) bars[h] = [104, 104.5, 103.5];
     bars[17] = [104, 104, 103];
     const m = mapFrom(t0, bars);
-    const trailed = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: 2, armPct: 0 });
-    const staticStop = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    const trailed = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE, trailPct: 2, armPct: 0 });
+    const staticStop = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
     // static stop never triggers (never revisits 98) and exits on the clock
     assert.strictEqual(staticStop.stops, 0);
     // trailing locks in the run instead of giving it back
@@ -354,14 +353,14 @@ module.exports = {
     for (let h = 3; h < 17; h++) bars[h] = [99.5, 100, 99];
     bars[17] = [99.5, 99.5, 99];
     const m = mapFrom(t0, bars);
-    const eager = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: 2, armPct: 0 });
-    const lazy = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: 2, armPct: 10 });
+    const eager = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE, trailPct: 2, armPct: 0 });
+    const lazy = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE, trailPct: 2, armPct: 10 });
     assert.strictEqual(eager.stops, 1);
     assert.strictEqual(lazy.stops, 0);   // never armed -> rail stop, never hit
     assert.ok(eager.pnl > lazy.pnl);
     // trailPct null must reproduce the pre-trailing behaviour exactly
-    const a = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
-    const b = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: null, armPct: 0 });
+    const a = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
+    const b = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE, trailPct: null, armPct: 0 });
     assert.deepStrictEqual(a, b);
   },
   async trailAmbiguityIsCountedNotHidden() {
@@ -373,10 +372,10 @@ module.exports = {
     for (let h = 5; h < 17; h++) bars[h] = [103, 103.5, 102.5];
     bars[17] = [103, 103, 102];
     const m = mapFrom(t0, bars);
-    const r = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE, trailPct: 2, armPct: 0 });
+    const r = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE, trailPct: 2, armPct: 0 });
     assert.ok(r.trailAmbiguous >= 1, 'a bar that extends and stops out must be counted');
     // and the static run reports zero of them, since it has no trail to race
-    const st = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE });
+    const st = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
     assert.strictEqual(st.trailAmbiguous, 0);
   },
   async trailingIsOptInAndMultipliesTheMenu() {
@@ -460,7 +459,7 @@ module.exports = {
     for (let i = 30; i < 60; i++) { const px = 110 - ((i - 30) / 29) * 8; minute.set(E + 2 * HOUR_MS + i * M, bar(px, px + 0.05, px - 0.05)); }
     for (let h = 3; h <= 20; h++) for (let i = 0; i < 60; i++) minute.set(E + h * HOUR_MS + i * M, bar(108, 108.2, 107.8));
 
-    const cell = { entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: 1, armMult: 0 };
+    const cell = { entry: 'breakout', gate: 'active', dMult: 1, tHours: 17, trailMult: 1, armMult: 0 };
     const h = simCell(cell, period(t0), [1], hourly, geo, 2, FEE, HOUR_MS);
     const m = simCell(cell, period(t0), [1], minute, geo, 2, FEE, 60_000);
 
@@ -763,7 +762,7 @@ module.exports = {
                      'cellTrailMult', 'cellArmMult', 'cellQuorum', 'cellAmbiguous',
                      // both windows, every setup, uncapped (owner, 2026-07-30)
                      'searchPnl', 'searchTrades', 'searchWins', 'searchGrossPerTrade',
-                     'searchStops', 'vsControl', 'holdStops', 'modelFile']) {
+                     'searchStops', 'holdStops', 'modelFile']) {
       assert.ok(block.includes(`${f}:`),
         `census records money but not ${f} — an untraceable figure`);
     }
@@ -922,13 +921,29 @@ module.exports = {
   },
   async bestCellHonorsFloorAndTies() {
     const rows = [
-      { gate: 'always', dMult: 1, tHours: 17, pnl: 50, trades: 4 }, // under floor
+      { gate: 'active', dMult: 1, tHours: 17, pnl: 50, trades: 4 }, // under floor
       { gate: 'active', dMult: 1, tHours: 41, pnl: 30, trades: 20 },
       { gate: 'active', dMult: 0.5, tHours: 41, pnl: 30, trades: 12 }, // tie → fewer trades
       { gate: 'directional', dMult: 1.5, tHours: 65, pnl: -5, trades: 30 },
     ];
     const best = bestCell(rows, 10);
     assert.strictEqual(best.trades, 12);
-    assert.strictEqual(bestCell([{ pnl: 9, trades: 3, gate: 'always', dMult: 1, tHours: 17 }], 10), null);
+    assert.strictEqual(bestCell([{ pnl: 9, trades: 3, gate: 'active', dMult: 1, tHours: 17 }], 10), null);
+  },
+
+  // THE ALWAYS GATE IS GONE (owner order, 2026-09-02: "strip always entirely").
+  // It read the vote once and never used it; as a third of every board it
+  // pulled the real money and the shuffled money together on every dial.
+  theAlwaysGateIsGoneAndAGateTheEngineDoesNotHaveIsRefused() {
+    assert.deepStrictEqual(GATES, ['active', 'directional']);
+    assert.ok(!('nullSetCanBeat' in require('../lib/bracket')), 'the tie rule that only always needed went with it');
+    const t0 = Date.UTC(2024, 0, 1);
+    const m = mapFrom(t0, { 0: [100, 103, 99], 17: [104, 105, 103] });
+    assert.throws(() => simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'always', feePerLeg: FEE }),
+      /gate must be one of active\/directional — not "always"/);
+    assert.throws(() => simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'sometimes', feePerLeg: FEE }),
+      /not "sometimes"/, 'and so is any other word');
+    const ok = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
+    assert.ok(ok.trades >= 0, 'the gates the engine has still price');
   },
 };

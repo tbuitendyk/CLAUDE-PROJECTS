@@ -20,7 +20,7 @@ const FS4 = require('../lib/funnelset');
 function s3rows() {
   const rows = [];
   for (const t of [41, 65, 89, 113]) {
-    for (const g of ['active', 'always']) {
+    for (const g of ['active', 'directional']) {
       rows.push({
         si: rows.length, label: `t${t} ${g}`, tHours: t, gate: g,
         bandMode: t === 41 ? 'auto' : 5, maxDrawdown: t * 2, avgTest: t / 10,
@@ -80,7 +80,7 @@ async function unitFixture(opts = {}) {
   const w = rowstore.writer(id, 'records');
   let si = 0;
   let n = 0;
-  for (const g of ['active', 'always']) {
+  for (const g of ['active', 'directional']) {
     for (const t of [41, 65]) {
       const label = `q1 ${g} t${t} · argmax auto 24/7`;
       for (const u of units) {
@@ -301,7 +301,7 @@ module.exports = {
     const r = FS4.replay(doc, rows);
     assert.strictEqual(r.same, true, JSON.stringify(r));
     // and a rule that has drifted from its survivors is caught, not shrugged at
-    doc.rule = { ...rule, allowed: { gate: ['active', 'always'] } };
+    doc.rule = { ...rule, allowed: { gate: ['active', 'directional'] } };
     assert.strictEqual(FS4.replay(doc, rows).same, false);
   },
 
@@ -536,7 +536,7 @@ module.exports = {
     const top = FS4.ruleWithClosing(rows, {}, { key: 'top', column: 'avgTest', n: 3 }, 3);
     const kept = FS4.applyRule(rows, top.rule);
     assert.strictEqual(kept.length, 3, 'the top N must actually be taken');
-    assert.deepStrictEqual(kept.map((r) => r.label), ['t113 active', 't113 always', 't89 active'],
+    assert.deepStrictEqual(kept.map((r) => r.label), ['t113 active', 't113 directional', 't89 active'],
       'best first, and the tie broken by name so a scrambled copy breaks it the same way');
     assert.strictEqual(top.detail, 'top 3 by avg test $');
 
@@ -793,7 +793,7 @@ module.exports = {
     // scrambled money is high on copy 1 only
     const rows = [];
     for (const t of [41, 65, 89, 113]) for (let k = 0; k < 6; k++) {
-      rows.push({ label: `t${t} k${k}`, tHours: t, gate: k % 2 ? 'active' : 'always',
+      rows.push({ label: `t${t} k${k}`, tHours: t, gate: k % 2 ? 'active' : 'directional',
         avgTest: t / 10 + (k % 3) * 0.1, noiseTest: [5, t === 113 ? 20 : 5] });
     }
     // the check is READ off the rows by position, never built as a copy
@@ -868,7 +868,7 @@ module.exports = {
   theWidestRegionBecomesARuleNotAPoint() {
     const P = require('../lib/plateau');
     const rows = [];
-    for (const t of [41, 65, 89, 113, 137]) for (const g of ['active', 'always']) {
+    for (const t of [41, 65, 89, 113, 137]) for (const g of ['active', 'directional']) {
       rows.push({ label: `t${t} ${g}`, tHours: t, gate: g, pnl: (g === 'active' && t >= 65 && t <= 113) ? 5 : -1, trades: 3 });
     }
     const r = P.widestRegion(rows, { minTrades: 0, orderedAxes: ['tHours'], categoricalAxes: ['gate'] });
@@ -1051,9 +1051,11 @@ module.exports = {
     // the forecast spreads the gates apart by making two of them lose more
     // than the shuffle does; the third ignores it and matches its copies
     const rows = [];
-    for (const g of ['active', 'always', 'directional']) for (let k = 0; k < 8; k++) {
-      const real = g === 'always' ? 8 : (g === 'active' ? -2 : -15);
-      const copy = g === 'always' ? 8 : (g === 'active' ? 1 : -6);
+    // 'idle' is a pile the forecast does not touch -- a name for the fixture,
+    // not a gate the engine has
+    for (const g of ['active', 'idle', 'directional']) for (let k = 0; k < 8; k++) {
+      const real = g === 'idle' ? 8 : (g === 'active' ? -2 : -15);
+      const copy = g === 'idle' ? 8 : (g === 'active' ? 1 : -6);
       // the same small spread inside every pile on every copy: a copy with no
       // spread at all would read as infinite movement and hide the trap
       rows.push({ label: `${g} ${k}`, gate: g, avgTest: real + (k % 2) * 0.1, noiseTest: [copy + (k % 2) * 0.1, copy + (k % 2) * 0.1] });
@@ -1083,7 +1085,7 @@ module.exports = {
     assert.strictEqual(F.beats(null, 8.09), false);
     // through the reading: a dial whose copies equal its money to the cent
     const rows = [];
-    for (let k = 0; k < 8; k++) rows.push({ label: `s${k}`, gate: k % 2 ? 'always' : 'active', avgTest: (k % 2 ? 22.78 : 3) + 1e-13, noiseTest: [k % 2 ? 22.78 : 3, k % 2 ? 22.78 : 3] });
+    for (let k = 0; k < 8; k++) rows.push({ label: `s${k}`, gate: k % 2 ? 'idle' : 'active', avgTest: (k % 2 ? 22.78 : 3) + 1e-13, noiseTest: [k % 2 ? 22.78 : 3, k % 2 ? 22.78 : 3] });
     const c = F.countsFor(rows, 'gate', { k: 2 });
     assert.ok(c.values.every((v) => v.counts === false), 'neither value beats copies equal to it');
     const real = F.step3(rows, 'gate', 'gate', { floor: 0 });
@@ -1253,7 +1255,7 @@ module.exports = {
       // beats every one of its copies -- bold on step 1
       assert.ok(r1.reading.dials.some((x) => x.dial === 'gate'), 'gate is among the dials this unit swept');
       assert.strictEqual(r1.reading.counts.gate, true, 'gate has a value beating the check on this unit');
-      assert.deepStrictEqual(r1.reading.beating.gate, { n: 1, of: 2 }, 'active beats every copy on this unit; always beats none');
+      assert.deepStrictEqual(r1.reading.beating.gate, { n: 1, of: 2 }, 'active beats every copy on this unit; directional beats none');
       assert.strictEqual(r1.holdsAxis.axis, 'units');
       assert.strictEqual(r1.holdsAxis.others, 2);
       const r4 = await stages.funnelRead(id, { step: 4, rule: { allowed: { gate: ['active'] } }, unit: keys[0] });
@@ -1345,7 +1347,7 @@ module.exports = {
       assert.strictEqual(s0.of, 2, 'it says how many boards it will read before it reads one');
       assert.ok(s0.token, 'and names the reading, so a page can tell its own from another\'s');
       // one at a time: another rule is refused while this one reads; the same rule is the same reading
-      assert.throws(() => stages.funnelAcrossStart(id, { rule: { allowed: { gate: ['always'] } }, unit: keys[0] }), /still being read/);
+      assert.throws(() => stages.funnelAcrossStart(id, { rule: { allowed: { gate: ['directional'] } }, unit: keys[0] }), /still being read/);
       assert.strictEqual(stages.funnelAcrossStart(id, { rule, unit: keys[0] }).token, s0.token, 'the same rule asked again is the same reading');
       assert.strictEqual(stages.funnelAcrossStatus('some-other-set').none, true);
       const done = await settled();
@@ -1361,7 +1363,7 @@ module.exports = {
       assert.strictEqual(again.token, s0.token);
       assert.deepStrictEqual(again.result, direct);
       // and another rule, now that nothing is reading, is a new reading
-      const s1 = stages.funnelAcrossStart(id, { rule: { allowed: { gate: ['always'] } }, unit: keys[0] });
+      const s1 = stages.funnelAcrossStart(id, { rule: { allowed: { gate: ['directional'] } }, unit: keys[0] });
       assert.notStrictEqual(s1.token, s0.token);
       const d1 = await settled();
       assert.strictEqual(d1.result.units[0].survivors, 2);

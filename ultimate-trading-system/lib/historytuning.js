@@ -303,7 +303,7 @@ async function runPass({
         for (let q = 1; q <= nMembers; q++) {
           const calls = lookIdx.map((i) => streams.get(q)[i]);
           const rows = bracketLib.execSweep(periods, calls, maps.trade, geo, cell.bandPct, feePerLeg, {
-            ...menuOpts, gates: (menuOpts.gates || bracketLib.GATES).filter((g) => g !== 'always'),
+            ...menuOpts, gates: (menuOpts.gates || bracketLib.GATES).filter((g) => bracketLib.GATES.includes(g)),
           });
           const best = bracketLib.bestCell(rows, minTrades);
           if (best && (!bestRow || best.pnl > bestRow.pnl)) { bestRow = best; bestQ = q; }

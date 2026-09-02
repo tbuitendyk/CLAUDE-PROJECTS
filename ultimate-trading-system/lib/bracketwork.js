@@ -418,7 +418,6 @@ async function unitTask(task) {
   const testLabels = testChunks.map((c) => c.label);
   let best = null;
   let declared = null;
-  let controlPnl = null;
   let bestStream = null;
   let declaredStream = null;
   // WIDEST REGION (owner, 2026-08-17). The single best cell is the best of ~1,260
@@ -431,10 +430,6 @@ async function unitTask(task) {
   for (const s of streams) {
     const rows = bracketLib.execSweep(testChunks, s.calls, maps.trade, geo, bandPct, fee, sweepOpts);
     for (const r of rows) allCells.push({ ...r, quorum: s.quorum });
-    if (controlPnl === null) {
-      const ctl = bracketLib.bestCell(rows.filter((r) => r.gate === 'always'), 0);
-      controlPnl = ctl ? ctl.pnl : null;
-    }
     if (p.declared && s.quorum === decQ) {
       const hit = rows.find((r) => matchesDeclared(r, p.declared));
       if (hit) {
@@ -448,8 +443,6 @@ async function unitTask(task) {
       bestStream = s.calls;
     }
   }
-  if (best) best.controlPnl = controlPnl;
-  if (declared) declared.controlPnl = controlPnl;
   // THE DECLARED SET (owner, 2026-08-17). With the replication boxes permuted the
   // run declares many configs instead of one, and each is scored on this asset.
   // No extra compute: every cell is already in allCells, so each config is a
@@ -464,7 +457,7 @@ async function unitTask(task) {
       declaredSet.push({
         label: cfg.label,
         config: cfg,
-        cell: hit ? { ...hit, quorum: q, members: memberCalls.length, controlPnl } : null,
+        cell: hit ? { ...hit, quorum: q, members: memberCalls.length } : null,
       });
     }
   }
@@ -788,7 +781,6 @@ async function menuGridTask({ combo, branch, params, dump }) {
       });
       for (const r of rows) {
         allCells++;
-        if (r.gate === 'always' && k > 1) continue; // identical to k=1: count once
         if (!r.trades) continue;                     // never traded: $0 by absence, not skill
         holdCellCount++;
         sum += r.pnl;

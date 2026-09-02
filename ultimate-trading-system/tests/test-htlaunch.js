@@ -40,10 +40,12 @@ module.exports = {
     await expectRefusal({ sourceBatchId: src.id, combo: COMBO, branch: BRANCH, declaredCell: CELL },
       /activation refused.*70\/15\/15/);
   },
-  async alwaysGateRowsRefuseActivation() {
+  // a stored row can still name the always gate (removed 2026-09-02); it is
+  // refused as a gate this engine no longer has, never priced as another
+  async aRowNamingAGateTheEngineNoLongerHasRefusesActivation() {
     const src = fakeBoard('bracketlab-20990101-0001-t2', {});
     await expectRefusal({ sourceBatchId: src.id, combo: COMBO, branch: BRANCH, declaredCell: { ...CELL, gate: 'always' } },
-      /always gate/);
+      /gate this engine no longer has \(always\)/);
   },
   async weeklyChunkShapeRefusesStructurally() {
     const src = fakeBoard('bracketlab-20990101-0002-t3', {});

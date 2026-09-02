@@ -23,7 +23,7 @@ const funnel = require('./funnel');
 // so there is only one.
 //
 //   ranges   ordered dials: { tHours: { min, max } } -- inclusive both ends
-//   allowed  categorical dials: { gate: ['active', 'always'] }
+//   allowed  categorical dials: { gate: ['active', 'directional'] }
 //   floors   step 6: { maxDrawdown: 500, trades: 20 } -- read from the rebuilt
 //            numbers, each named with the direction it cuts
 const EMPTY_RULE = Object.freeze({ ranges: {}, allowed: {}, floors: {} });

@@ -18,14 +18,14 @@ function board() {
   const rows = [];
   for (const t of [41, 65, 89, 113, 137]) {
     for (const d of [0.25, 0.5, 1, 1.5]) {
-      for (const g of ['active', 'always', 'directional']) {
+      for (const g of ['active', 'passive', 'directional']) {   // passive: a pile the forecast does not touch, a fixture's name
         rows.push({
           label: `t${t} d${d} ${g}`,
           tHours: t, dMult: d, gate: g, entry: 'breakout',
           decision: 'argmax', weekdaysOnly: false, bandMode: 'auto',
           agreeRule: 'count', agreeBar: 'all', agreePct: 60, agreeCopy: 98,
           agreeBoth: false, agreePersist: 0, trailMult: null, armMult: null,
-          avgTest: ((t - 89) / 40) * 10 + (g === 'always' ? -3 : 0) + (((t * 7) + (d * 13)) % 3) * 0.4,
+          avgTest: ((t - 89) / 40) * 10 + (g === 'passive' ? -3 : 0) + (((t * 7) + (d * 13)) % 3) * 0.4,
           // the held-back money is on the row and must never be read by a step
           avgHold: 999,
         });

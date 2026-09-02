@@ -213,7 +213,7 @@ window.HELP = {
       },
       swPermEntry: { what: 'Price every way of opening as its own setting in the block.' },
       swGate: {
-        what: 'When a position is allowed to be opened at all. directional only when a direction was called; active whenever anything is happening; always every single period.',
+        what: 'When a position is allowed to be opened at all. directional only when a direction was called; active whenever anything is happening.',
       },
       swPermGate: { what: 'Price every gate as its own setting in the block.' },
       swD: { what: 'How far from the starting price the opening level sits, as a multiple of the band.' },
@@ -519,7 +519,7 @@ window.HELP = {
       },
       fKeepValues: {
         what: 'Keeps the ticked values of this dial and drops the rest. For dials whose values are words rather than numbers.',
-        more: 'A word-valued dial cannot be kept as a range - there is no order to "active" and "always". The ticked values become part of the rule, so a scrambled copy handed the same rule keeps the same values. The recommended values are ticked when you arrive; untick or tick as you see fit. Ticking none removes this dial from the rule.',
+        more: 'A word-valued dial cannot be kept as a range - there is no order to "active" and "directional". The ticked values become part of the rule, so a scrambled copy handed the same rule keeps the same values. The recommended values are ticked when you arrive; untick or tick as you see fit. Ticking none removes this dial from the rule.',
       },
       fKeepBlock: {
         what: 'Writes a range on BOTH dials at once from a block of squares on the grid, replacing whatever the rule held for those two dials.',

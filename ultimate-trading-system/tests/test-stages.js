@@ -81,7 +81,7 @@ module.exports = {
     assert.strictEqual(stages.settingsFor({ cell: base, cellPermute: { tHours: true } }).length, 7, 'seven holding times');
     assert.strictEqual(stages.settingsFor({ cell: base, permuteDecision: true, permuteBand: true, permuteWeekdays: true }).length,
       2 * 4 * 2, 'decision × band menu × 24/5');
-    // the TRADE SHAPE block, on its own: breakout gates(3) × d(5) × t(7) ×
+    // the TRADE SHAPE block, on its own: breakout gates(2) × d(5) × t(7) ×
     // (static + 4 trails × 3 arms)(13) + market t(7) = 1,372 shapes. The
     // agreement is no longer multiplied in here — it is its own dimension
     // (owner loop, 2026-08-28), which is what stopped a run declaring 8x the
@@ -90,7 +90,7 @@ module.exports = {
       cell: base,
       cellPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true },
     });
-    assert.strictEqual(shapes.length, 1372, 'the shape block must count exactly what the sweep\'s enumerator declares');
+    assert.strictEqual(shapes.length, 917, 'the shape block must count exactly what the sweep\'s enumerator declares');
     const labels = new Set(shapes.map((x) => x.label));
     assert.strictEqual(labels.size, shapes.length, 'every setting carries a distinct name');
     // and an 'agree' permute on the shape side is IGNORED, never multiplied:
@@ -99,7 +99,7 @@ module.exports = {
       cell: { ...base, quorumSingles: 2, quorumContexts: 3 },
       cellPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true, agree: true },
     });
-    assert.strictEqual(withAgree.length, 1372, 'the old agree permute must not reach the shape enumerator');
+    assert.strictEqual(withAgree.length, 917, 'the old agree permute must not reach the shape enumerator');
   },
 
   // NO COMMITTEE SIZE APPEARS IN A SETTING'S NAME, EVER (owner, 2026-08-27:
@@ -1377,7 +1377,7 @@ module.exports = {
   // checked that, and `auto` can collide on some coins and not others.
   async settingsThatPriceTheSameTradeAreFoldedIntoOne() {
     const S = (band, dMult, over = {}) => ({
-      band, dMult, trailMult: null, armMult: null, tHours: 65, entry: 'breakout', gate: 'always',
+      band, dMult, trailMult: null, armMult: null, tHours: 65, entry: 'breakout', gate: 'active',
       decision: 'argmax', weekdaysOnly: false, agreeRule: 'count', agreePct: 50, agreeBoth: false, agreePersist: 0,
       label: `${band}/${dMult}${over.label || ''}`, ...over,
     });
@@ -1717,17 +1717,17 @@ module.exports = {
         holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
         beat: 5, pairs: 9, lead: 1, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
       });
-      w.push(mk(0, 'breakout', 'always'));
+      w.push(mk(0, 'breakout', 'directional'));
       w.push(mk(1, 'breakout', 'active'));
       // opened at market: it carries a gate in the record and the column
       // prints a dash, because no gate applies to it
-      w.push(mk(2, 'market', 'always'));
+      w.push(mk(2, 'market', 'directional'));
       w.close();
       await stages.buildTally(doc);
 
       const pick = (g) => stages.stage3Ranked(id, 0, 10, { gate: g }).rows.map((r) => r.si).sort();
-      assert.deepStrictEqual(pick('always'), [0], 'picking a gate must not hand back the market row the column shows a dash for');
-      assert.deepStrictEqual(pick('active'), [1], '"active" must not also keep "always"');
+      assert.deepStrictEqual(pick('directional'), [0], 'picking a gate must not hand back the market row the column shows a dash for');
+      assert.deepStrictEqual(pick('active'), [1], '"active" must not also keep "directional"');
       assert.deepStrictEqual(pick('does not apply'), [2], 'there is no way to pick the settings no gate applies to');
       assert.strictEqual(stages.stage3Ranked(id, 0, 10).total, 3, 'and an empty box still shows every setting');
     } finally {
@@ -1752,7 +1752,7 @@ module.exports = {
     // and the engine really does serve them
     const vocab = require('../lib/vocabulary');
     const served = (typeof vocab.vocabulary === 'function' ? vocab.vocabulary() : vocab)['gate'];
-    assert.ok(Array.isArray(served) && served.length >= 3, 'the engine serves no gate list for the dropdown to read');
+    assert.ok(Array.isArray(served) && served.length >= 2, 'the engine serves no gate list for the dropdown to read');
   },
 
   // NOTHING ANYWHERE KNOWS THE RETIRED NAME (RULE NINE). Every set on disk was
@@ -2030,7 +2030,7 @@ module.exports = {
         from: pid, carry: 0, nullN: 9, fee: 0, universe: ['AAAUSDT', 'BBBUSDT'],
         decision: 'argmax', band: 'auto', weekdaysOnly: false,
         // no armMult: it is meaningless without a trailMult and the launch says so
-        cell: { tHours: 17, entry: 'breakout', gate: 'always', dMult: 1 },
+        cell: { tHours: 17, entry: 'breakout', gate: 'active', dMult: 1 },
         cellPermute: {}, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0,
       };
       const doc = {
@@ -2246,18 +2246,18 @@ module.exports = {
     // names built the way a launch builds them, so a sound set really is sound
     const rec = (si, u, over) => ({
       si,
-      label: 'count 75% always d1x t17h · argmax auto 24/7',
+      label: 'count 75% active d1x t17h · argmax auto 24/7',
       decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
-      entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null,
+      entry: 'breakout', gate: 'active', dMult: 1, tHours: 17, trailMult: null, armMult: null,
       agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeCopy: 98, agreeBoth: false, agreePersist: 0,
       members: 6, pnl: 1, trades: 3, holdout: { pnl: 2, trades: 1, stops: 0, vsAlwaysLong: 1 },
       beat: 1, pairs: 9, lead: 1, u, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
       ...(over || {}),
     });
     const NAMES = [
-      'count 75% always d1x t17h · argmax auto 24/7',
-      'count 75% always d1x t41h · argmax auto 24/7',
-      'voices 75% +voice98 always d1x t65h · argmax 3% 24/7',
+      'count 75% active d1x t17h · argmax auto 24/7',
+      'count 75% active d1x t41h · argmax auto 24/7',
+      'voices 75% +voice98 active d1x t65h · argmax 3% 24/7',
     ];
     const shape = [
       { tHours: 17 },
@@ -2304,8 +2304,8 @@ module.exports = {
         // its other unit's record. The audit was right and this list was wrong.
         ['no record sits past the end of the list', 'none has more or fewer records than there are units', 'every setting covers every unit, none twice']],
       ['a name today would not write', (rows, doc) => {
-        rows.forEach((r) => { if (r.si === 2) r.label = 'voices 75% always d1x t65h · argmax 3% 24/7'; });
-        doc.plan.settingLabels[2] = 'voices 75% always d1x t65h · argmax 3% 24/7';
+        rows.forEach((r) => { if (r.si === 2) r.label = 'voices 75% active d1x t65h · argmax 3% 24/7'; });
+        doc.plan.settingLabels[2] = 'voices 75% active d1x t65h · argmax 3% 24/7';
       }, ['every name is the one today’s code would write']],
       ['two settings sharing a name', (rows, doc) => { doc.plan.settingLabels[1] = doc.plan.settingLabels[0]; },
         ['no two settings share a name', 'every record sits at its own setting’s place']],
@@ -2361,11 +2361,11 @@ module.exports = {
   async aFieldMissingFromSomeRecordsIsNamedAndThenWritten() {
     const id = `s3-test-${Date.now().toString(36)}-fld`;
     const file = path.join(SETS_DIR, `${id}.json`);
-    const NAMES = ['count 75% always d1x t17h · argmax auto 24/7', 'count 75% always d1x t41h · argmax auto 24/7'];
+    const NAMES = ['count 75% active d1x t17h · argmax auto 24/7', 'count 75% active d1x t41h · argmax auto 24/7'];
     const rec = (si, u, withCopy) => {
       const r = {
         si, label: NAMES[si], decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
-        entry: 'breakout', gate: 'always', dMult: 1, tHours: si ? 41 : 17, trailMult: null, armMult: null,
+        entry: 'breakout', gate: 'active', dMult: 1, tHours: si ? 41 : 17, trailMult: null, armMult: null,
         agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
         pnl: 1, trades: 1, u, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
       };
@@ -2425,10 +2425,10 @@ module.exports = {
   async anUnfinishedFillInIsFoundFromTheRecordsAloneAndCanBePutBack() {
     const id = `s3-test-${Date.now().toString(36)}-half`;
     const file = path.join(SETS_DIR, `${id}.json`);
-    const names = ['count 75% always d1x t17h · argmax auto 24/7', 'count 75% always d1x t41h · argmax auto 24/7'];
+    const names = ['count 75% active d1x t17h · argmax auto 24/7', 'count 75% active d1x t41h · argmax auto 24/7'];
     const mk = (si, u, label) => ({
       si, label, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
-      entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null,
+      entry: 'breakout', gate: 'active', dMult: 1, tHours: 17, trailMult: null, armMult: null,
       agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
       members: 6, pnl: 10 + si, trades: 3, holdout: { pnl: 30, trades: 4, stops: 1, vsAlwaysLong: 2 },
       beat: 3, pairs: 9, lead: 1.5, u, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
@@ -2448,8 +2448,8 @@ module.exports = {
       // ...and then a run that got two of the three units through, appending
       // two new settings at positions 2 and 3
       for (let u = 0; u < 2; u++) {
-        w.push(mk(2, u, 'count 75% always d1x t65h · argmax auto 24/7'));
-        w.push(mk(3, u, 'count 75% always d1x t89h · argmax auto 24/7'));
+        w.push(mk(2, u, 'count 75% active d1x t65h · argmax auto 24/7'));
+        w.push(mk(3, u, 'count 75% active d1x t89h · argmax auto 24/7'));
         w.flush();
       }
       await w.close();
@@ -2502,10 +2502,10 @@ module.exports = {
   async anUndoThatWouldLeaveTheWrongNumberIsRefused() {
     const id = `s3-test-${Date.now().toString(36)}-uvf`;
     const file = path.join(SETS_DIR, `${id}.json`);
-    const names = ['count 75% always d1x t17h · argmax auto 24/7'];
+    const names = ['count 75% active d1x t17h · argmax auto 24/7'];
     const mk = (si, u, label) => ({
       si, label, u, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
-      entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null,
+      entry: 'breakout', gate: 'active', dMult: 1, tHours: 17, trailMult: null, armMult: null,
       agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0, pnl: 1,
     });
     const doc = {
@@ -2518,8 +2518,8 @@ module.exports = {
       fs.writeFileSync(file, JSON.stringify(doc));
       const w = rowstore.writer(id, 'records');
       w.push(mk(0, 0, names[0]));                                          // unit 1 of 2 — unit 2 is MISSING
-      w.push(mk(1, 0, 'count 75% always d1x t41h · argmax auto 24/7'));    // and an unfinished run on top
-      w.push(mk(1, 1, 'count 75% always d1x t41h · argmax auto 24/7'));
+      w.push(mk(1, 0, 'count 75% active d1x t41h · argmax auto 24/7'));    // and an unfinished run on top
+      w.push(mk(1, 1, 'count 75% active d1x t41h · argmax auto 24/7'));
       await w.close();
       const before = fs.readFileSync(rowstore.storeFile(id, 'records'));
 
@@ -2606,11 +2606,11 @@ module.exports = {
     const id = `s3-test-${Date.now().toString(36)}-drp`;
     const file = path.join(SETS_DIR, `${id}.json`);
     // five settings; a fake enumerator declares three of them
-    const names = ['a', 'b', 'c', 'd', 'e'].map((k) => `count 75% always d0.25x t${k.charCodeAt(0)}h · argmax auto 24/7`);
+    const names = ['a', 'b', 'c', 'd', 'e'].map((k) => `count 75% active d0.25x t${k.charCodeAt(0)}h · argmax auto 24/7`);
     const DECLARED = [names[0], names[2], names[4]];
     const mk = (si, u) => ({
       si, label: names[si], decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
-      entry: 'breakout', gate: 'always', dMult: 0.25, tHours: 17 + si, trailMult: null, armMult: null,
+      entry: 'breakout', gate: 'active', dMult: 0.25, tHours: 17 + si, trailMult: null, armMult: null,
       agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
       members: 6, pnl: 10 + si, trades: 3, holdout: { pnl: 30 + si, trades: 4, stops: 1, vsAlwaysLong: 2 },
       beat: 3, pairs: 9, lead: 1.5, u, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
@@ -2675,7 +2675,7 @@ module.exports = {
     const file = path.join(SETS_DIR, `${id}.json`);
     const doc = {
       id, stage: 3, seq: 999973, name: 'S3 #dbh', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 1, settings: 1, settingLabels: ['voices 75% always d1x t17h · argmax auto 24/7'] },
+      plan: { units: 1, settings: 1, settingLabels: ['voices 75% active d1x t17h · argmax auto 24/7'] },
       params: { nullN: 9 }, recordsVersion: 2,
     };
     try {
@@ -2696,7 +2696,7 @@ module.exports = {
   async aRecordFiledUnderTheWrongPositionStopsTheWholeThing() {
     const id = `s3-test-${Date.now().toString(36)}-dps`;
     const file = path.join(SETS_DIR, `${id}.json`);
-    const names = ['count 75% always d1x t17h · argmax auto 24/7', 'count 75% always d1x t41h · argmax auto 24/7'];
+    const names = ['count 75% active d1x t17h · argmax auto 24/7', 'count 75% active d1x t41h · argmax auto 24/7'];
     const doc = {
       id, stage: 3, seq: 999972, name: 'S3 #dps', status: 'done', createdAt: new Date().toISOString(),
       plan: { units: 1, settings: 2, settingLabels: names.slice() },
@@ -2707,8 +2707,8 @@ module.exports = {
       fs.writeFileSync(file, JSON.stringify(doc));
       const w = rowstore.writer(id, 'records');
       // the second record claims position 0 while carrying the other name
-      w.push({ si: 0, label: names[0], u: 0, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0, entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null, pnl: 1 });
-      w.push({ si: 0, label: names[1], u: 0, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0, entry: 'breakout', gate: 'always', dMult: 1, tHours: 41, trailMult: null, armMult: null, pnl: 2 });
+      w.push({ si: 0, label: names[0], u: 0, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0, entry: 'breakout', gate: 'active', dMult: 1, tHours: 17, trailMult: null, armMult: null, pnl: 1 });
+      w.push({ si: 0, label: names[1], u: 0, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0, entry: 'breakout', gate: 'active', dMult: 1, tHours: 41, trailMult: null, armMult: null, pnl: 2 });
       await w.close();
       const before = fs.readFileSync(rowstore.storeFile(id, 'records'));
 
@@ -2743,9 +2743,9 @@ module.exports = {
     const file = path.join(SETS_DIR, `${id}.json`);
     const mk = (si, rule, tHours, extra) => ({
       si,
-      label: `${rule} 75%${extra && extra.persist ? ` +hold${extra.persist}` : ''} always d0.25x t${tHours}h · argmax auto 24/7`,
+      label: `${rule} 75%${extra && extra.persist ? ` +hold${extra.persist}` : ''} active d0.25x t${tHours}h · argmax auto 24/7`,
       decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
-      entry: 'breakout', gate: 'always', dMult: 0.25, tHours, trailMult: null, armMult: null,
+      entry: 'breakout', gate: 'active', dMult: 0.25, tHours, trailMult: null, armMult: null,
       agreeRule: rule, agreeBar: 'all', agreePct: 75,
       agreeBoth: false, agreePersist: (extra && extra.persist) || 0,
       members: 6, pnl: 10, trades: 3,
@@ -2778,13 +2778,13 @@ module.exports = {
       const back = rowstore.readAll(id, 'records').map((x) => x.row || x);
       assert.strictEqual(back.length, made.length, 'a record was lost or gained');
       const byLabel = new Map(back.map((r) => [r.label, r]));
-      assert.ok(byLabel.has('voices 75% +voice98 always d0.25x t41h · argmax auto 24/7'),
+      assert.ok(byLabel.has('voices 75% +voice98 active d0.25x t41h · argmax auto 24/7'),
         `the voices setting was not renamed: ${back.map((r) => r.label).join(' | ')}`);
-      assert.ok(byLabel.has('voices 75% +voice98 +hold2 always d0.25x t89h · argmax auto 24/7'),
+      assert.ok(byLabel.has('voices 75% +voice98 +hold2 active d0.25x t89h · argmax auto 24/7'),
         'the share goes in the wrong place when the setting also holds its call');
-      assert.ok(byLabel.has('count 75% always d0.25x t17h · argmax auto 24/7'),
+      assert.ok(byLabel.has('count 75% active d0.25x t17h · argmax auto 24/7'),
         'a setting that does not weigh by voices was renamed too');
-      assert.ok(byLabel.has('families 75% always d0.25x t65h · argmax auto 24/7'),
+      assert.ok(byLabel.has('families 75% active d0.25x t65h · argmax auto 24/7'),
         'a setting that does not weigh by voices was renamed too');
 
       // NOT ONE RESULT MOVED. This is the whole promise the screen makes.
@@ -2831,9 +2831,9 @@ module.exports = {
     const id = `s3-test-${Date.now().toString(36)}-vfy`;
     const file = path.join(SETS_DIR, `${id}.json`);
     const mk = (si, rule) => ({
-      si, label: `${rule} 75% always d0.25x t17h · argmax auto 24/7`,
+      si, label: `${rule} 75% active d0.25x t17h · argmax auto 24/7`,
       decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
-      entry: 'breakout', gate: 'always', dMult: 0.25, tHours: 17, trailMult: null, armMult: null,
+      entry: 'breakout', gate: 'active', dMult: 0.25, tHours: 17, trailMult: null, armMult: null,
       agreeRule: rule, agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
       members: 6, pnl: 10, trades: 3, holdout: { pnl: 30, trades: 4, stops: 1, vsAlwaysLong: 2 },
       beat: 3, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
@@ -2880,7 +2880,7 @@ module.exports = {
     const file = path.join(SETS_DIR, `${id}.json`);
     const doc = {
       id, stage: 3, seq: 999976, name: 'S3 #ord', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 1, settings: 2, settingLabels: ['voices 75% always d1x t17h · argmax auto 24/7', 'count 75% always d1x t17h · argmax auto 24/7'] },
+      plan: { units: 1, settings: 2, settingLabels: ['voices 75% active d1x t17h · argmax auto 24/7', 'count 75% active d1x t17h · argmax auto 24/7'] },
       params: { nullN: 9 }, recordsVersion: 2,
     };
     try {
@@ -2904,7 +2904,7 @@ module.exports = {
       for (const bar of agreement.AGREE_BARS) {
         for (const persist of [0, 2]) {
           const r = {
-            entry: 'breakout', gate: 'always', dMult: 1, tHours: 17, trailMult: null, armMult: null,
+            entry: 'breakout', gate: 'active', dMult: 1, tHours: 17, trailMult: null, armMult: null,
             agreeRule: rule, agreeBar: bar, agreePct: 75, agreeBoth: false, agreePersist: persist,
           };
           // the name as it was written before the share went into it
@@ -3220,4 +3220,75 @@ module.exports = {
       'not every table draws its page selector through bPager, so they cannot all have gained the box');
   },
 
+
+  // THE ALWAYS GATE IS GONE AND THE RECORDS FOLLOW IT (3.44.0, RULE NINE): a
+  // stage 3 set priced with it is brought up to date the first time it is
+  // opened -- the always settings dropped beside, verified, swapped; the
+  // tables put aside; the set stamped with the gates its records hold, so it
+  // is never asked again. Announced in the totalling's own slot and words.
+  async aSetPricedWithTheAlwaysGateIsBroughtUpToDateOnFirstOpen() {
+    const id = `s3-test-${Date.now().toString(36)}-strip`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const names = [
+      'count 75% always d1x t17h · argmax auto 24/7',
+      'count 75% active d1x t17h · argmax auto 24/7',
+      'count 75% always d1x t41h · argmax auto 24/7',
+      'count 75% directional d1x t41h · argmax auto 24/7',
+    ];
+    const gateOf = (label) => (label.includes(' always ') ? 'always' : label.includes(' active ') ? 'active' : 'directional');
+    const doc = { id, stage: 3, seq: 999984, name: 'S3 #strip', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 4, settingLabels: names.slice() }, params: { universe: ['AAA'], nullN: 0, keepN: 0 },
+      boardNull: { captured: false, kept: 0, why: 'test' } };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      names.forEach((label, si) => w.push({ si, label, u: 0, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0,
+        entry: 'breakout', gate: gateOf(label), dMult: 1, tHours: si < 2 ? 17 : 41, trailMult: null, armMult: null,
+        decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2, rung: 6, members: 8, voices: 8, pnl: 10 + si, trades: 3,
+        holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 }, beat: 5, pairs: 9, lead: 1,
+        trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d' }));
+      w.close();
+      // tables totalled over the always settings exist and are NOT served: the
+      // set reads as having none, so every screen falls through to the strip
+      await stages.buildTally(doc);
+      assert.ok(fs.existsSync(path.join(SETS_DIR, `${id}-tally.json.gz`)), 'the fixture has tables');
+      assert.strictEqual(stages.alwaysStripPending(id), true);
+      assert.strictEqual(stages.readTally(id), null, 'tables totalled over a gate the engine no longer has are not served');
+      assert.strictEqual(stages.isAlwaysLabel(names[0]), true);
+      assert.strictEqual(stages.isAlwaysLabel(names[1]), false);
+      assert.strictEqual(stages.isAlwaysLabel('voices 75% +voice98 +hold2 always d0.25x t89h · argmax auto 24/7'), true,
+        'the gate sits after the agreement, whatever the agreement says');
+      assert.strictEqual(stages.isAlwaysLabel('count 75% market t17h · argmax auto 24/7'), false, 'a market setting has no gate');
+      assert.deepStrictEqual([...stages.alwaysLabelsOf(doc)], [names[0], names[2]]);
+      assert.strictEqual(stages.needsAlwaysStrip(doc), true);
+      // opening the set starts the strip, in the totalling's own slot and words
+      const first = stages.ensureTally(id);
+      assert.ok(first.totalling && first.totalling.phase === 'removing the settings whose gate ignored the forecast', JSON.stringify(first));
+      await stages.tallyRunPromise();
+      const after = stages.getSet(id);
+      assert.deepStrictEqual(after.gates, ['active', 'directional'], 'stamped with the gates its records hold');
+      assert.strictEqual(stages.needsAlwaysStrip(after), false, 'and never asked again');
+      assert.deepStrictEqual(after.plan.settingLabels, [names[1], names[3]], 'the always settings are gone from the list');
+      assert.strictEqual(after.plan.settings, 2);
+      assert.strictEqual(after.drops.length, 1);
+      assert.ok(/always gate was removed/.test(after.drops[0].why), 'the set says why they were dropped');
+      assert.strictEqual(after.tallyError, undefined);
+      const rows = rowstore.readAll(id, 'records');
+      assert.deepStrictEqual(rows.map((r) => [r.si, r.gate, r.label]), [[0, 'active', names[1]], [1, 'directional', names[3]]],
+        'the records that remain, renumbered to their new places');
+      assert.ok(!fs.existsSync(path.join(SETS_DIR, `${id}-tally.json.gz`)), 'the tables were put aside for totalling again');
+      assert.strictEqual(stages.tallyRunPromise(), null, 'the slot is free for the totalling');
+      assert.strictEqual(stages.alwaysStripPending(id), false, 'and the saved document answers the question the other way now');
+      // a set that never held one needs nothing
+      const clean = { ...doc, id: `${id}-clean`, plan: { units: 1, settings: 2, settingLabels: [names[1], names[3]] } };
+      assert.strictEqual(stages.needsAlwaysStrip(clean), false);
+      assert.strictEqual(stages.needsAlwaysStrip({ ...doc, gates: ['active', 'directional'] }), false, 'a stamped set is never scanned');
+    } finally {
+      for (const f of [file, path.join(SETS_DIR, `${id}-tally.json.gz`), path.join(SETS_DIR, `${id}-agreed.json.gz`)]) {
+        try { fs.rmSync(f, { force: true }); } catch (_) { /* fixture */ }
+      }
+      rowstore.remove(id);
+    }
+  },
 };

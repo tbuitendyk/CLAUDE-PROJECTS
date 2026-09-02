@@ -581,8 +581,6 @@ function sortValue(kind, key, row) {
   if (kind === 's') return key === 'ctx' ? `${row.ctx1 || ''}${row.ctx2 ? ` + ${row.ctx2}` : ''}` : String(row[key] ?? '');
   if (kind === 'share') {
     const [num, den] = SHARE_FIELDS[key] || SHARE_FIELDS.beat;
-    // nullTies is about the null set the beat column reads, and only that one
-    if (key === 'beat' && row.nullTies) return null;
     return !row[den] ? null : row[num] / row[den];
   }
   const v = row[key];
@@ -655,22 +653,9 @@ const FILTER_DEFS = {
 // DEFINITION, read by both the filtering and the four numbers beside each
 // filter box — two copies of "what does this filter actually read" is two
 // answers waiting to disagree.
-// A NULL-SET NUMBER THAT CANNOT MEAN ANYTHING IS EMPTIED, ONCE, before
-// anything reads it (owner order, 2026-08-30: "fix that"). Doing it at the
-// printing end would leave the filters, the sort and the four numbers beside
-// each box all still reading a 0 the screen does not show — which is how one
-// fact ends up written two ways.
-//
-// The comparisons themselves are left alone and still counted: a thousand
-// comparisons really were made, and every one of them tied. That is the
-// honest reading, and it is not the same as losing a thousand.
-function nullSetHonest(r) {
-  if (bracketLib.nullSetCanBeat(r.gate)) return r;
-  return { ...r, nullTies: true, lead: null, avgLead: null };
-}
 const DERIVED = {
   _ctx: (r) => [r.ctx1, r.ctx2].filter(Boolean).join(' + '),
-  _beatPct: (r) => (r.nullTies || !r.pairs ? null : (r.beat / r.pairs) * 100),
+  _beatPct: (r) => (!r.pairs ? null : (r.beat / r.pairs) * 100),
   // The share of the kept all-luck copies this row's TEST money beat. Empty,
   // not zero, on a set that kept none: a row that was never asked the question
   // has not answered it badly.
@@ -987,7 +972,6 @@ const rungFor = (pct, n) => Math.max(1, Math.min(n, Math.ceil((pct / 100) * n)))
 // (or `market`, which has no gate), and this reads it back — kept against the
 // writer, with a test that walks every gate through both, because Table 3.B
 // knows a setting only by its name. Nothing else about the name is parsed.
-const gateOfShape = (label) => String(label || '').split(' ')[0];
 // The trade shape's name, without any agreement in it.
 function shapeLabel(cell) {
   const trailBit = cell.trailMult == null ? '' : ` trail${cell.trailMult}x/arm${cell.armMult}x`;
@@ -1463,6 +1447,10 @@ function startStage3(params) {
     boardNull: keepN > 0
       ? { captured: true, kept: keepN, why: null }
       : { captured: false, kept: 0, why: 'null set money kept was 0 when this set was priced' },
+    // THE GATES ITS RECORDS HOLD -- every one the engine has. A set priced
+    // before the always gate was removed carries no stamp, and is migrated the
+    // first time it is opened (needsAlwaysStrip).
+    gates: bracketLib.GATES.slice(),
     parent: {
       id: parent.id, name: parent.name,
       // which of the parent's records this set priced, in the parent's terms:
@@ -2100,9 +2088,11 @@ async function dropUndeclaredSettings(doc, note = null) {
   const doomed = undeclaredIn(held, declaredLabelsFor(doc));
   return dropSettingsNamed(doc, doomed, note);
 }
-async function dropSettingsNamed(doc, doomed, note = null) {
+async function dropSettingsNamed(doc, doomed, note = null, why = null, { inTallySlot = false } = {}) {
   const id = doc.id;
-  const busy = stageBusy();
+  // inside the totalling's own slot the slot IS the exclusivity, and asking
+  // stageBusy would refuse the very job that holds it
+  const busy = inTallySlot ? null : stageBusy();
   if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
   const behind = settingsBehind(doc);
   if (behind) {
@@ -2209,7 +2199,7 @@ async function dropSettingsNamed(doc, doomed, note = null) {
   // was added to does. It is no longer everything its first run priced.
   doc.drops = [...(doc.drops || []), {
     at: new Date().toISOString(), engineVersion: ENGINE_VERSION,
-    settings: doomed.size, rows: gone,
+    settings: doomed.size, rows: gone, why: why || null,
   }];
   saveSet(doc);
   try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* nothing there */ }
@@ -2228,6 +2218,34 @@ async function dropSettingsNamed(doc, doomed, note = null) {
 // split in two — which is why the check below is on ROWS and not on blocks.
 // Nothing outside the totals indexes a stage 3 block, and the totals are
 // deleted here and rebuilt.
+// THE ALWAYS GATE IS GONE (owner order, 2026-09-02), AND THE RECORDS FOLLOW
+// IT (RULE NINE: when a process changes, the records change with it). A stage
+// 3 set priced before 3.44.0 holds settings whose gate ignored the forecast.
+// The first time such a set is opened, those settings are dropped -- beside,
+// verified, swapped, exactly as `drop the settings the block does not
+// declare` does -- the tables are put aside and totalled again, and the set
+// is stamped with the gates its records hold, so it is never asked again.
+// Announced on the screen as the totalling is, in the background, once.
+const isAlwaysLabel = (label) => / always d[0-9.]+x t\d+h/.test(String(label || ''));
+function alwaysLabelsOf(doc) {
+  const held = ((doc || {}).plan || {}).settingLabels || [];
+  return new Set(held.filter(isAlwaysLabel));
+}
+function needsAlwaysStrip(doc) {
+  if (!doc || doc.stage !== 3 || (doc.status !== 'done' && doc.status !== 'incomplete')) return false;
+  if (Array.isArray(doc.gates)) return false;      // stamped: its records hold only gates the engine has
+  return alwaysLabelsOf(doc).size > 0;
+}
+async function stripAlwaysGate(doc, note = null, { inTallySlot = false } = {}) {
+  const doomed = alwaysLabelsOf(doc);
+  const out = doomed.size
+    ? await dropSettingsNamed(doc, doomed, note, 'the always gate was removed from the engine (3.44.0)', { inTallySlot })
+    : { already: true, settings: 0, rows: 0 };
+  doc.gates = bracketLib.GATES.slice();
+  saveSet(doc);
+  return out;
+}
+
 async function renameSettingsToV3(doc, note = null) {
   const id = doc.id;
   const busy = stageBusy();
@@ -2937,6 +2955,35 @@ function ensureTally(id) {
     if (!tallyRun.error) return { waiting: `the tables of another record set are totalling right now — one totalling at a time` };
     tallyRun = null;   // a dead attempt for another set does not block this one
   }
+  // THE RECORDS COME FIRST (3.44.0): a set still holding settings whose gate
+  // ignored the forecast is brought up to date before anything is read from
+  // it, in this same slot, so the screen sees one job: the drop, then the
+  // tables. A set that never held one is stamped here and never asked again.
+  const strip = getSet(id);
+  if (strip && strip.stage === 3 && !Array.isArray(strip.gates) && !needsAlwaysStrip(strip)
+    && (strip.status === 'done' || strip.status === 'incomplete')) {
+    strip.gates = bracketLib.GATES.slice();
+    saveSet(strip);
+  }
+  if (strip && needsAlwaysStrip(strip)) {
+    if (batch.batchRunning() || activeSet) return { waiting: 'a run is going — the records are brought up to date when the box is free' };
+    const run = { id, done: 0, total: 0, phase: 'removing the settings whose gate ignored the forecast', word: 'parts', startedAt: Date.now(), error: null, promise: null };
+    tallyRun = run;
+    run.promise = (async () => {
+      try {
+        await stripAlwaysGate(strip, (dn, tn) => { run.done = dn; run.total = tn; }, { inTallySlot: true });
+        if (strip.tallyError) { delete strip.tallyError; saveSet(strip); }
+      } catch (err) {
+        run.error = String(err.message || err);
+        const d = getSet(id);
+        if (d && d.tallyError !== run.error) { d.tallyError = run.error; saveSet(d); }
+        return;
+      }
+      // the slot is freed; the next ask finds no tables and totals them
+      tallyRun = null;
+    })();
+    return { totalling: { done: 0, total: 0, phase: run.phase, word: run.word } };
+  }
   // readTally is the arbiter, not the file's existence: a tally of an older
   // shape sits on disk and still reads as absent, and this is the door the
   // re-totalling walks in through. The parse happens once — it remembers.
@@ -3067,10 +3114,31 @@ function parseTally(buf) {
 // WHY the last unreadable tally could not be read, so it can be said on the
 // screen instead of silently answered with another build.
 let tallyUnreadable = null;
+// WHETHER A SET STILL HOLDS SETTINGS WHOSE GATE IGNORED THE FORECAST, answered
+// from a stat of its document rather than a parse of it: the answer is asked
+// on every read of every table, and the document of the owner's set carries
+// half a million setting names. The strip saves the document, so the stat
+// changes and the answer is worked out again exactly once.
+const stripPending = new Map();   // id -> { mtimeMs, size, needs }
+function alwaysStripPending(id) {
+  let st = null;
+  try { st = fs.statSync(setFile(id)); } catch (_) { stripPending.delete(id); return false; }
+  const hit = stripPending.get(id);
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.needs;
+  const needs = needsAlwaysStrip(getSet(id));
+  stripPending.set(id, { mtimeMs: st.mtimeMs, size: st.size, needs });
+  return needs;
+}
 function readTally(id) {
   // A totalling in flight is about to replace this very file — nothing reads
   // it meanwhile, least of all the screens' four-second polls.
   if (tallyRun && tallyRun.id === id && !tallyRun.error) return null;
+  // TABLES TOTALLED OVER A GATE THE ENGINE NO LONGER HAS ARE NOT SERVED (3.44.0):
+  // a set still holding always settings reads as having no tables, so every
+  // screen falls through to ensureTally, which brings the records up to date
+  // and totals them again. Serving the old tables would show a third of a
+  // board the engine cannot price any more, on every screen, indefinitely.
+  if (alwaysStripPending(id)) return null;
   let st = null;
   try { st = fs.statSync(tallyFile(id)); } catch (_) { return null; }
   if (tallyInHand.id === id && tallyInHand.tally && tallyInHand.mtimeMs === st.mtimeMs && tallyInHand.size === st.size) {
@@ -3270,12 +3338,7 @@ function stage3Coins(id, query) {
     // a set that kept no scrambles has not answered this badly -- it was
     // never asked, so a floor on it drops the row rather than reading a zero
     && (minBeatNoise == null || (r.noisePairs > 0 && ((r.beatNoise || 0) / r.noisePairs) * 100 >= minBeatNoise));
-  // The share is emptied BEFORE the filters read it, so a floor on it drops a
-  // row that cannot be measured rather than keeping it as a zero. A coin row
-  // knows its setting only by name, so the gate comes back out of the name.
-  const honest = (r) => (bracketLib.nullSetCanBeat(gateOfShape(r.cellLabel)) ? r
-    : { ...r, nullTies: true, share: null });
-  const kept = t.coins.map(honest).filter(clears);
+  const kept = t.coins.filter(clears);
   const byShare = (a, b) => ((b.share ?? -1) - (a.share ?? -1)) || (b.pairs - a.pairs);
   // The same share the floor reads, so a column cannot rank by one number
   // while the box beneath it filters on another.
@@ -3954,9 +4017,9 @@ function stage3Ranked(id, from, n, filters = null) {
   let sort = [];
   if (doc && Array.isArray(doc.sort) && doc.sort.length) {
     sort = doc.sort;
-    rows = applySort(3, t.ranked.map((r, i) => nullSetHonest({ ...r, _i: i })), doc.sort, (a, b) => a._i - b._i);
+    rows = applySort(3, t.ranked.map((r, i) => ({ ...r, _i: i })), doc.sort, (a, b) => a._i - b._i);
   } else {
-    rows = t.ranked.map((r, i) => nullSetHonest({ ...r, _i: i }));
+    rows = t.ranked.map((r, i) => ({ ...r, _i: i }));
   }
   const of = rows.length;
   rows = applyFilters(3, rows, filters);
@@ -3985,7 +4048,7 @@ function stage3CoinRows(id, query) {
       && r.geometry === hit.geometry)
     // joined on the way out, from the same table the tables were totalled
     // from — it is not on the record, and this is the only place it is read
-    .map((r) => nullSetHonest({ ...r, ...((agreedAt && agreedAt[`${r.u}|${keyOf(r)}`]) || {}) }));
+    .map((r) => ({ ...r, ...((agreedAt && agreedAt[`${r.u}|${keyOf(r)}`]) || {}) }));
   return { indexed: true, shown: got.length, rows: got };
 }
 
@@ -4415,7 +4478,8 @@ module.exports = {
   funnelAcrossStart, funnelAcrossStatus,
   sealedWindowOf, sealedFromUnits, noiseTwinOf, needsBoardNullStamp,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
-  dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,
+  dropUndeclaredSettings, dropSettingsNamed, undeclaredIn, isAlwaysLabel, alwaysLabelsOf, needsAlwaysStrip, stripAlwaysGate, alwaysStripPending,
+  tallyRunPromise: () => (tallyRun ? tallyRun.promise : null),
   unfinishedAppend, unfinishedAppendDetail, undoUnfinishedAppend,
   declaredLabelsFor, declaredKeyFor,
   auditRecordSet, auditAgainstBlock,

@@ -99,7 +99,7 @@ module.exports = {
       feeRate: () => feeRate(DOLLAR_FEE, 'test'),
       pnlAt: () => pnlAt(1, 100, 110, DOLLAR_FEE),
       simMarket: () => bracketLib.simMarket(periods, [1], map, geo, { tHours: 1, feePerLeg: DOLLAR_FEE }),
-      simBracket: () => bracketLib.simBracket(periods, [1], map, geo, { dPct: 2, tHours: 1, gate: 'always', feePerLeg: DOLLAR_FEE }),
+      simBracket: () => bracketLib.simBracket(periods, [1], map, geo, { dPct: 2, tHours: 1, gate: 'active', feePerLeg: DOLLAR_FEE }),
       feeFracOf: () => feeFracOf({ feePerLeg: DOLLAR_FEE, feeUnits: 'fraction' }),
     };
     for (const [name, call] of Object.entries(doors)) {

@@ -53,10 +53,8 @@ function vocabulary() {
     }),
     decision: asChoices(['argmax', 'directional']),
     entry: asChoices(bracket.ENTRIES),
-    // The SWEEP gate list, which is wider than the live one on purpose: the
-    // simulator implements 'always', and a live deployment may not use it
-    // (lib/live/configschema.js). Serving the live list here would have removed
-    // a working choice from the sweep screen.
+    // the engine's own gate list (lib/bracket.js GATES): active and
+    // directional, the same two the live side accepts
     gate: asChoices(bracket.GATES),
     dMult: asChoices(bracket.D_MULTS, mult),
     tHours: asChoices(bracket.T_HOURS, (h) => `${h}h`),

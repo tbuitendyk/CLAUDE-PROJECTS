@@ -91,29 +91,17 @@ function buildComboChunks(maps, geometry, weekdaysOnly, includeUnlabeled = false
 // bar resolves AGAINST the book (enter, then stopped in the same bar) and is
 // counted — the results are honest-but-conservative by construction.
 //
-// gate: 'always' places both rails every period; 'active' places both rails
-// only when call ≠ 0; 'directional' places ONLY the rail matching the call
-// (+1 → buy-stop, −1 → sell-stop), the other rail existing purely as a stop.
-const GATES = ['always', 'active', 'directional'];
-
-// CAN A NULL SET BE BEATEN AT ALL UNDER THIS gate? (owner order, 2026-08-30.)
+// gate: 'active' places both rails only when call ≠ 0; 'directional' places
+// ONLY the rail matching the call (+1 → buy-stop, −1 → sell-stop), the other
+// rail existing purely as a stop.
 //
-// With gate `always` both rails go out every period whatever the vote is:
-// simBracket reads the call on one line and then never looks at it again. So
-// the same setting with the votes shuffled makes exactly the same money, to
-// the cent, on every one of its null-set copies. The count of how many the
-// real one BEAT wants it STRICTLY ahead, and a tie is not ahead, so it counted
-// zero of them — reading 0.0%, which is what a setting that LOST every one
-// reads too. Two opposite meanings under one number.
-//
-// The other gates read the call, and market cells are directional, so for
-// those the count means exactly what it says.
-//
-// THIS IS THE ONE PLACE THAT ANSWERS IT. Everything that prints, sorts,
-// filters or averages a null-set number asks here, because the last time a
-// fact like this was worked out separately in three readers, two of them
-// agreed and one did not.
-const nullSetCanBeat = (gate) => gate !== 'always';
+// THERE IS NO 'always' GATE (owner order, 2026-09-02: "strip always entirely").
+// It placed both rails every period whatever the vote was -- a forecast-free
+// strategy that read the call once and never used it. As a third of every
+// board it pulled the real money and the shuffled money together on every
+// dial, and its shuffle comparisons could only ever tie. A gate the engine
+// does not have is refused, never quietly treated as one it has.
+const GATES = ['active', 'directional'];
 
 // ENTRY MODES.
 //
@@ -128,10 +116,10 @@ const nullSetCanBeat = (gate) => gate !== 'always';
 // ambiguous-bar rule stops the position out instantly, every period.
 //
 // Market entry is DIRECTIONAL only, and that is not a limitation but a
-// definition: with no rails there is nothing for 'always' to place and no
-// direction to take without a call, and 'active' (both rails when the
-// committee speaks) collapses into 'directional'. Emitting the degenerate
-// combinations would only pad the menu with duplicates.
+// definition: with no rails there is no direction to take without a call, and
+// 'active' (both rails when the committee speaks) collapses into
+// 'directional'. Emitting the degenerate combination would only pad the menu
+// with a duplicate.
 const ENTRIES = ['breakout', 'market'];
 
 // The classifier's trade, priced with the books' own helper so a market cell
@@ -252,6 +240,7 @@ function simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg, stepMs = 
 // on purpose — a minute run that also changed the fill logic would not be a
 // confirmation of anything.
 function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerLeg, trailPct = null, armPct = 0, stepMs = HOUR_MS }) {
+  if (!GATES.includes(gate)) throw new Error(`gate must be one of ${GATES.join('/')} — not "${gate}"`);
   // A FRACTION of the position, priced onto this book once. See simMarket above.
   const trip = NOTIONAL * 2 * feeRate(feePerLeg, 'simBracket');
   const book = newBook(periods.length, trip);
@@ -265,8 +254,7 @@ function simBracket(periods, calls, tradeMap, geo, { dPct, tHours, gate, feePerL
   periods.forEach((per, i) => {
     const call = calls ? calls[i] : 0;
     let sides; // which rails may OPEN a position
-    if (gate === 'always') sides = [1, -1];
-    else if (gate === 'active') sides = call !== 0 ? [1, -1] : [];
+    if (gate === 'active') sides = call !== 0 ? [1, -1] : [];
     else sides = call === 1 ? [1] : call === -1 ? [-1] : [];
     if (!sides.length) return;
     const entryTs = per.startTs + geo.entryOffsetH * HOUR_MS;
@@ -494,10 +482,6 @@ function execSweep(periods, calls, tradeMap, geo, bandPct, feePerLeg, opts = {})
   // Market cells: one per horizon, directional only (see ENTRIES). Adding 7
   // cells to 105 is a 6.7% widening of the menu — small, but it IS a widening,
   // so boards from before 2026-07-28 are not comparable cell-for-cell.
-  //
-  // Note for anything reading the always-gate control: market cells are
-  // directional and can never enter it, so controlPnl is unchanged by this
-  // addition and prior replication readings stay valid.
   if (entries.includes('market')) for (const tHours of tHoursList) {
     const r = simMarket(periods, calls, tradeMap, geo, { tHours, feePerLeg });
     rows.push({ entry: 'market', gate: 'directional', dMult: null, trailMult: null, armMult: null, tHours, ...r });
@@ -649,4 +633,4 @@ function predictMember(saved, x) {
   return out.label;
 }
 
-module.exports = { nullSetCanBeat, comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };
+module.exports = { comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };

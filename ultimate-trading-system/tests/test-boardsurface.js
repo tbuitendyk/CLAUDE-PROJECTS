@@ -18,6 +18,18 @@ const ROOT = path.join(__dirname, '..');
 const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 
 module.exports = {
+  // THE TIE WORDING WENT WITH THE ALWAYS GATE (2026-09-02). Only a setting
+  // that ignored the forecast could tie every shuffle comparison; with no such
+  // gate there is nothing to mark, and a column that could still be marked
+  // would be marking a gate the engine does not have.
+  theTablesNoLongerSpeakOfTies() {
+    assert.ok(!/nullTies|B_TIED|tied\b/.test(UI.slice(UI.indexOf('const bDash'), UI.indexOf('const bCoin'))), 'the dash carries no tie story');
+    assert.ok(UI.includes('function bShare(share, beat, pairs) {'), 'the share column takes no tie mark');
+    assert.ok(UI.includes('const bLead = (v) => (v == null ? bDash() :'), 'nor does the lead column');
+    const stagesSrc = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(!/nullSetHonest|nullTies|nullSetCanBeat/.test(stagesSrc), 'nothing in the tables empties a number for a gate that no longer exists');
+  },
+
   // A TICK ON THE LEFT OF EVERY RECORD (owner order, 2026-09-02). It names the
   // record by its own number on the set -- never by its place in a sort or
   // on a page, which change -- and the ticks save on the record set the

@@ -720,6 +720,8 @@ regardless of votes, so both tuning dials would act on nothing (owner ruling,
 code. It is listed for completeness rather than as an oversight; keeping it may
 well be the answer.
 
+[feasibility, 2026-09-02] Moot since 3.44.0: the `always` gate was removed from the engine on the owner's order. A stored row that still names it is refused as a gate this engine no longer has.
+
 **18.5 — `Tune` refuses the `weekly-8d` chunk shape.**
 `lib/batch.js`, same two launchers. The training-days arithmetic was built for
 day-stepping chunks, and weekly chunks step seven days, so the floor would be

@@ -471,3 +471,18 @@ work — the owner reviews decisions in the morning, not at 3am.
 Owner, 2026-08-27: "once I've confirmed that the new 3 stage sweep and
 boards works properly we'll be removing the 4 redundant tabs." Confirmed and
 carried out 2026-08-28 under its own GO — decision 50.
+56. **The `always` gate is gone, and the records follow it** (3.44.0, owner
+    order 2026-09-02: "strip always entirely, migrate the set, second digit,
+    and FIX the existing data sets so they can still be used"). The engine's
+    gate list is `active` and `directional`; a gate it does not have is
+    refused by name, never priced as another. A stage 3 set priced before
+    this holds settings whose gate ignored the forecast: the first time it is
+    opened, those settings are dropped through the same pass as `drop the
+    settings the block does not declare` -- written beside, verified, swapped,
+    renumbered -- the tables are put aside and totalled again, and the set is
+    stamped with the gates its records hold (`gates`) so it is never asked
+    again. Announced on the screen in the totalling's own place and words.
+    New sets carry the stamp from launch. The tie machinery that only
+    `always` needed (a shuffle comparison that could only tie) went with it.
+    Second digit, because the remaining records keep their meaning and the
+    migration exists (RULE NINE).

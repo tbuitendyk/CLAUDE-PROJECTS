@@ -433,7 +433,7 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'funnel.js'), 'const beats = (real, other) => real != null && other != null && cents(real) > cents(other);',
     'const beats = (real, other) => real != null && other != null && real > other;',
     'aValueEqualToItsCopiesToTheCentDoesNotBeatThem',
-    'an always setting beats all ten copies or none of them on a hundred-trillionth of a dollar, and step 1 bolds it at random'],
+    'a setting whose copies equal its money to the cent beats all ten or none of them on a hundred-trillionth of a dollar, and step 1 bolds it at random'],
   // ---- ONE RULE PER COIN-AND-SHAPE UNIT (3.41.0, §17) ----
   [path.join(ROOT, 'lib', 'stages.js'),
     "      if (r.trade !== unit.trade || r.geometry !== unit.geometry || (r.ctx1 || null) !== unit.ctx1 || (r.ctx2 || null) !== unit.ctx2) continue;",
@@ -481,6 +481,16 @@ const GUARDS = [
     "    units = units.slice();",
     'theUnitsAreListedInTheStageTwoTablesOrder',
     'the dropdown follows the order the units happened to finish pricing, and the first unit of a set is whichever finished first'],
+  // ---- THE ALWAYS GATE IS GONE (3.44.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "  return alwaysLabelsOf(doc).size > 0;", "  return false;",
+    'aSetPricedWithTheAlwaysGateIsBroughtUpToDateOnFirstOpen',
+    'a set priced with the always gate opens as it is, a third of its board forecast-free, and nothing ever brings it up to date'],
+  [path.join(ROOT, 'lib', 'bracket.js'), "  if (!GATES.includes(gate)) throw new Error(`gate must be one of ${GATES.join('/')} — not \"${gate}\"`);\n", "",
+    'theAlwaysGateIsGoneAndAGateTheEngineDoesNotHaveIsRefused',
+    'a stored row naming the always gate is priced as directional and nobody is told'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  if (alwaysStripPending(id)) return null;\n", "",
+    'aSetPricedWithTheAlwaysGateIsBroughtUpToDateOnFirstOpen',
+    'the old tables, a third of them a gate the engine no longer has, are served on every screen and the strip never starts'],
   // ---- PICKED RECORDS (3.42.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "    records = records.filter((r) => want.has(r.u));", "    records = records.slice();",
     'thePickedRecordsSaveOnTheSetAndTheStageThreeLaunchPricesExactlyThose',

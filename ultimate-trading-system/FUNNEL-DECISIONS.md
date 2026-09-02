@@ -366,3 +366,13 @@ made while building it that the design did not already settle.
     reply, the first press on the owner's set would have been a gateway
     time-out. One reading at a time; the result is kept for the rule it was
     read for.
+75. **There is no `always` gate** (3.44.0, owner order 2026-09-02: "strip
+    always entirely"). It placed both price levels every day whatever the
+    forecast said, read the vote once and never used it. As a third of every
+    board it pulled the real money and the shuffled money together on every
+    dial, and its own shuffle comparisons could only tie. Measured before the
+    change: with it left out, DOGEUSDT daily-1d's money went negative on every
+    dial (it had been carrying the coin's own rise into every average), and
+    on BCHUSDT daily-4d a cluster of values rose to 8 and 9 of 10. The gate
+    list is `active` and `directional`; a set priced with `always` is brought
+    up to date the first time it is opened (STAGES-DECISIONS.md).

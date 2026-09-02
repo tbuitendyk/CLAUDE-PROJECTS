@@ -361,3 +361,11 @@ instead of assuming the reserve grade generalizes. (Owner's addition
 during the roadmap consult: "why wouldn't we run another check of the
 'final candidate' results after 7 to see if the history tuning is
 working?")
+
+## 2026-09-02 — there is no `always` gate any more
+
+The refusals above that name the `always` gate described a gate the engine
+no longer has (owner order, 2026-09-02: "strip always entirely"). A stored
+row that still names it is refused as "a gate this engine no longer has",
+by the same check that refuses any other word the engine does not know. The
+lines above are kept as the record of why the refusal existed.

@@ -85,7 +85,7 @@ module.exports = {
 
       const declared = estimate.estimate({
         ...BASE, labelShiftReps: 0, promoteK: 25,
-        declared: { entry: 'breakout', gate: 'always', dMult: 1, tHours: 41, quorumSingles: 2 },
+        declared: { entry: 'breakout', gate: 'active', dMult: 1, tHours: 41, quorumSingles: 2 },
       }, { poolSize: 4 });
       assert.strictEqual(declared.plan.everyUnitPromoted, true, 'a declared config does the same');
       assert.ok(/declared/.test(declared.plan.whyEveryUnit), `it must say why: ${declared.plan.whyEveryUnit}`);
@@ -97,11 +97,11 @@ module.exports = {
     withScratch(({ estimate }) => {
       const out = estimate.estimate({
         ...BASE, labelShiftReps: 40, trailing: true,
-        declared: { entry: 'breakout', gate: 'always', dMult: 0.25, tHours: 17, quorumSingles: 1 },
+        declared: { entry: 'breakout', gate: 'active', dMult: 0.25, tHours: 17, quorumSingles: 1 },
         declaredPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true, agree: true },
       }, { poolSize: 4 });
-      assert.strictEqual(out.plan.declaredConfigs, 8232, 'every declared permute ticked is 8,232 configurations');
-      assert.strictEqual(out.rows.replication, out.plan.promoteUnits * 8232,
+      assert.strictEqual(out.plan.declaredConfigs, 5502, 'every declared permute ticked is 5,502 configurations: 917 trade shapes (2 gates × 5 d × 7 t × 13 stop choices, plus 7 market) × 6 quorums');
+      assert.strictEqual(out.rows.replication, out.plan.promoteUnits * 5502,
         'one row per promoted unit per configuration — that product is the whole problem');
       // built from the rows and their measured stored size, not from a round
       // number — the multiplier is whatever the store currently costs
@@ -169,7 +169,7 @@ module.exports = {
       const assets = ['ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT', 'LTCUSDT', 'LINKUSDT', 'DOTUSDT'];
       const shapes = ['daily-1d', 'daily-2d', 'daily-3d', 'daily-4d', 'weekly-8d'];
       const labels = [];
-      for (const g of ['always', 'active', 'directional']) {
+      for (const g of ['active', 'directional']) {
         for (const d of [0.25, 0.5, 0.75, 1, 1.5]) {
           for (const t of [17, 41, 65, 89, 113, 137, 161]) labels.push(`q4/6 ${g} d${d}x t${t}h trail1x/arm0.5x`);
         }
