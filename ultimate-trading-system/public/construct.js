@@ -4032,15 +4032,20 @@ function fStep1(r) {
     if (!ms.length) return '-';
     const fin = ms.filter((m) => m != null);
     if (!fin.length) return '-';
-    return (r.noise || {}).kind === 'halves' ? ms.map((m) => fFix(m)).join(' / ') : `${fFix(Math.min(...fin))} to ${fFix(Math.max(...fin))}`;
+    return (r.noise || {}).kind === 'halves' ? ms.map((m) => fFix(m, 3)).join(' / ') : `${fFix(Math.min(...fin), 3)} to ${fFix(Math.max(...fin), 3)}`;
   };
+  // THE WHOLE ROW IS BOLD WHEN IT BEATS EVERY COPY (owner order, 2026-09-02),
+  // so the button at the end of the row is as easy to find as the number; and
+  // three decimals, so a row that beats the top of the range by less than a
+  // hundredth does not look equal to it.
+  const rowClass = (x) => ((r.counts || {})[x.dial] === false ? 'dim' : ((r.counts || {})[x.dial] ? 'cnt' : ''));
   return `<p class="note">How far apart a dial's values sit, against how much the result varies anyway.
       <b>The ordering is the finding</b> - at this many rows every dial shows some movement, and the size of the
       number is a claim only against the check beside it. Press a row to narrow that dial next.</p>
     <table><thead><tr>${cth('dial', 'fDialName')}${cth('movement', 'fMovement')}${cth('check', 'fCheck')}${cth('range', 'fRange')}
       ${cth('values', 'fValues')}${cth('evenly swept', 'fEven')}<th></th></tr></thead><tbody>
-      ${(r.dials || []).map((x) => `<tr class="${(r.counts || {})[x.dial] === false ? 'dim' : ''}"><td>${esc(fDialLabel(x.dial))}</td><td>${fFix(x.m)}</td>
-        <td class="${(r.counts || {})[x.dial] ? 'cnt' : ''}">${esc(checkOf(x))}</td><td>${fFix(x.range)}</td>
+      ${(r.dials || []).map((x) => `<tr class="${rowClass(x)}"><td>${esc(fDialLabel(x.dial))}</td><td>${fFix(x.m, 3)}</td>
+        <td>${esc(checkOf(x))}</td><td>${fFix(x.range)}</td>
         <td>${(x.values || []).length}</td>
         <td class="${(x.balance || {}).balanced ? 'muted' : 'warn'}">${fFix((x.balance || {}).even)}</td>
         <td><button data-fnarrow="${esc(x.dial)}" title="opens the next step with this dial chosen, so its range can be set. Nothing is cut by pressing it.">narrow this one</button></td></tr>`).join('')}
@@ -4091,7 +4096,7 @@ function fStep2(r, st) {
     ${r.shape === 'spike' ? `<p class="note warn"><b>A spike is the shape a shuffle makes.</b> One value far clear of an
       otherwise flat menu is what a fluke looks like; a hill or a ramp is a relationship.</p>` : ''}
     <table><thead><tr>${cth('value', 'fValue')}${cth('settings', 'fSettings')}${cth('avg test', 'fAvgTest')}${cth('check', 'fCheck')}</tr></thead>
-      <tbody>${r.groups.map((g) => { const v = byVal.get(String(g.value)); return `<tr class="${v && v.counts === false ? 'dim' : ''}"><td>${esc(g.value)}</td><td>${g.n}</td><td>${fFix(g.mean)}</td><td class="${v && v.counts ? 'cnt' : ''}">${esc(checkOf(v))}</td></tr>`; }).join('')}</tbody></table>
+      <tbody>${r.groups.map((g) => { const v = byVal.get(String(g.value)); return `<tr class="${v && v.counts === false ? 'dim' : (v && v.counts ? 'cnt' : '')}"><td>${esc(g.value)}</td><td>${g.n}</td><td>${fFix(g.mean)}</td><td>${esc(checkOf(v))}</td></tr>`; }).join('')}</tbody></table>
     <p class="note"><b>Recommended:</b> ${rr.min != null ? `keep ${esc(String(rr.min))} to ${esc(String(rr.max))} - the widest run of neighbouring values that beat the check`
     : (rr.values && rr.values.length ? `keep ${esc(rr.values.join(', '))} - every value that beats the check`
       : `nothing - ${esc(rec.why || 'no value beats the check')}. A range can still be kept; it is then a choice the check did not support, and the set will say so.`)}</p>

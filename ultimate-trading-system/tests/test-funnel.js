@@ -850,7 +850,11 @@ module.exports = {
     const s1 = fn('fStep1', 'fStep2');
     assert.ok(s1.includes("cth('check', 'fCheck')"), 'step 1 draws the check column');
     assert.ok(s1.includes('data-fnarrow='), 'step 1 rows open step 2 with the dial chosen');
-    assert.ok(s1.includes("(r.counts || {})[x.dial] === false ? 'dim'"), 'a dial that does not beat every copy is greyed');
+    assert.ok(s1.includes("(r.counts || {})[x.dial] === false ? 'dim' : ((r.counts || {})[x.dial] ? 'cnt' : '')"),
+      'a dial that does not beat every copy is greyed, and one that does is bold across the whole row');
+    assert.ok(s1.includes('<td>${fFix(x.m, 3)}</td>') && s1.includes('fFix(Math.max(...fin), 3)'),
+      'movement and the check print three decimals, so beating the top of the range by a hair does not read as equal');
+    assert.ok(src('public/construct.html').includes('tr.cnt td { font-weight:600; }'), 'the whole row has a bold style');
     const s2 = fn('fStep2', 'fStep3');
     assert.ok(s2.includes("cth('check', 'fCheck')"), 'step 2 draws the check column');
     assert.ok(s2.includes('id="fKeepValues"') && s2.includes('data-fval='), 'a word-valued dial gets a box per value');
