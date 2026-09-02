@@ -21,7 +21,7 @@ const blocks = rowstore.blocksOf(S, "records") || [];
 const rows = blocks.reduce((a, b) => a + (b.rows || 0), 0);
 console.log("== the store ==");
 console.log("  blocks:", blocks.length, "  rows:", rows.toLocaleString(), " (5,248,320 in 3,658 before the fill)");
-let tally = null; try { tally = fs.statSync("data/stagesets/" + S + ".tally.json.gz"); } catch (_) {}
+let tally = null; try { tally = fs.statSync("data/stagesets/" + S + "-tally.json.gz"); } catch (_) {}
 console.log("  totals file:", tally ? tally.size + " bytes, " + tally.mtime.toISOString() : "not there yet (rebuilds when a screen asks)");
 console.log("== rows sampled from the first, middle and last blocks ==");
 const pick = [0, Math.floor(blocks.length / 3), Math.floor(2 * blocks.length / 3), blocks.length - 1];
