@@ -58,33 +58,34 @@ module.exports = {
     assert.ok(!/restoreScroll/.test(tick),
       'the 30-second redraw restores the scroll position — it is a refresh of what is on screen, not a navigation, and moving the view would make it unreadable while it is being read');
   },
+
+  // THE COLUMN SORTERS ON BOARDS LEAVE THE PAGE WHERE IT IS (owner order,
+  // 2026-09-02: "don't reposition the windows when column sorters are used on
+  // the Boards tab"). A sort press redraws the whole page; the remembered
+  // place can be overwritten by the clamp while a long redraw has the page
+  // short, so a restore from memory landed higher than the owner was. The
+  // sorters take the height BEFORE the redraw and put it back exactly there.
+  async theColumnSortersOnBoardsLeaveThePageWhereItIs() {
+    const src = CONSTRUCT_NOW();
+    const at = src.indexOf('async function drawBoardsHoldingPlace()');
+    assert.ok(at > 0, 'the holding redraw exists');
+    const helper = src.slice(at, at + 500);
+    assert.ok(helper.indexOf('const y = window.scrollY;') > 0 && helper.indexOf('const y = window.scrollY;') < helper.indexOf('await drawBoards();'),
+      'the place is taken BEFORE the redraw replaces anything');
+    assert.ok(/window\.scrollTo\(0, y\)/.test(helper) && helper.indexOf('window.scrollTo(0, y)') > helper.indexOf('await drawBoards();'),
+      'and the page is put back at exactly that height afterwards');
+    assert.ok(/holdScrollMemory\(\);/.test(helper) && /rememberScroll\(tab\);/.test(helper),
+      'the memory is held shut around the move and told the place afterwards');
+    assert.ok(/requestAnimationFrame\(\(\) => requestAnimationFrame\(/.test(helper), 'it waits for the new content to be laid out first');
+    for (const fn of ['function bWireSort(', 'function bWireRankSort(']) {
+      const start = src.indexOf(fn);
+      const body = src.slice(start, src.indexOf('\n}\n', start));
+      assert.ok(body.includes('if (out) drawBoardsHoldingPlace();'), `${fn} redraws holding the page where it is`);
+      assert.ok(!body.includes('restoreScroll('), `${fn} must not restore from the memory the clamp can overwrite`);
+    }
+  },
 };
 
-
-// THE COLUMN SORTERS ON BOARDS LEAVE THE PAGE WHERE IT IS (owner order,
-// 2026-09-02: "don't reposition the windows when column sorters are used on
-// the Boards tab"). A sort press redraws the whole page; the remembered place
-// can be overwritten by the clamp while a long redraw has the page short, so a
-// restore from memory landed higher than the owner was. The sorters take the
-// height BEFORE the redraw and put it back exactly there afterwards.
-module.exports.theColumnSortersOnBoardsLeaveThePageWhereItIs = async function () {
-  const { assert: a } = require('./helpers');
-  const src = CONSTRUCT_NOW();
-  const helper = src.slice(src.indexOf('async function drawBoardsHoldingPlace()'), src.indexOf('async function drawBoardsHoldingPlace()') + 500);
-  a.ok(helper.indexOf('const y = window.scrollY;') > 0 && helper.indexOf('const y = window.scrollY;') < helper.indexOf('await drawBoards();'),
-    'the place is taken BEFORE the redraw replaces anything');
-  a.ok(/window\.scrollTo\(0, y\)/.test(helper) && helper.indexOf('window.scrollTo(0, y)') > helper.indexOf('await drawBoards();'),
-    'and the page is put back at exactly that height afterwards');
-  a.ok(/holdScrollMemory\(\);/.test(helper) && /rememberScroll\(tab\);/.test(helper),
-    'the memory is held shut around the move and told the place afterwards');
-  a.ok(/requestAnimationFrame\(\(\) => requestAnimationFrame\(/.test(helper), 'it waits for the new content to be laid out first');
-  for (const fn of ['function bWireSort(', 'function bWireRankSort(']) {
-    const start = src.indexOf(fn);
-    const body = src.slice(start, src.indexOf('\n}\n', start));
-    a.ok(body.includes('if (out) drawBoardsHoldingPlace();'), `${fn} redraws holding the page where it is`);
-    a.ok(!body.includes('restoreScroll('), `${fn} must not restore from the memory the clamp can overwrite`);
-  }
-};
 
 // THE CLAMP NEVER OVERWRITES THE MEMORY (owner order, 2026-08-26: "the
 // opened table stays open, but the scroll location is lost. fix that
