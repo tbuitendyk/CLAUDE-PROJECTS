@@ -981,6 +981,26 @@ module.exports = {
     assert.ok(!/F\.movement\([^)]*moneyAt/.test(body), 'movement on a scrambled copy is not what decides the bold any more');
   },
 
+  // EQUAL IS NOT A WIN. `always` settings carry scrambled copies equal to
+  // their own money to the cent, and they read as beating all ten or none of
+  // them on a hundred-trillionth of a dollar. The comparison is made in cents.
+  aValueEqualToItsCopiesToTheCentDoesNotBeatThem() {
+    const F = require('../lib/funnel');
+    assert.strictEqual(F.beats(8.09, 8.09), false);
+    assert.strictEqual(F.beats(8.09 + 1e-13, 8.09), false, 'a hundred-trillionth is not a win');
+    assert.strictEqual(F.beats(8.094, 8.09), false, 'under half a cent rounds to the same cent');
+    assert.strictEqual(F.beats(8.10, 8.09), true, 'a cent is');
+    assert.strictEqual(F.beats(null, 8.09), false);
+    // through the reading: a dial whose copies equal its money to the cent
+    const rows = [];
+    for (let k = 0; k < 8; k++) rows.push({ label: `s${k}`, gate: k % 2 ? 'always' : 'active', avgTest: (k % 2 ? 22.78 : 3) + 1e-13, noiseTest: [k % 2 ? 22.78 : 3, k % 2 ? 22.78 : 3] });
+    const c = F.countsFor(rows, 'gate', { k: 2 });
+    assert.ok(c.values.every((v) => v.counts === false), 'neither value beats copies equal to it');
+    const real = F.step3(rows, 'gate', 'gate', { floor: 0 });
+    const blk = F.recommendBlock(real, [F.step3(rows, 'gate', 'gate', { floor: 0, moneyOf: F.moneyAt(0) })], 'scrambles');
+    assert.strictEqual(blk.block, null, 'and no square does either');
+  },
+
   aFunnelReadThatFailsSaysSoRatherThanLeavingTheScreenAsItWas() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const at = src.indexOf('async function drawFunnel');

@@ -401,6 +401,14 @@ function holdsAxisFor(have) {
 
 const checkKindOf = (check) => (check && Number(check.k) > 0 ? 'scrambles' : 'halves');
 
+// BEATS MEANS BEATS BY AT LEAST A CENT (2026-09-02). The kept figures are
+// stored in cents and the real money is not, so an `always` setting -- whose
+// scrambled copies are its own money to the cent -- read as beating all ten
+// or none of them on a difference of a hundred-trillionth. Equal is not a
+// win. Every comparison against the check goes through this.
+const cents = (v) => Math.round(Number(v) * 100);
+const beats = (real, other) => real != null && other != null && cents(real) > cents(other);
+
 // mean money per value of a dial, keyed by value
 function meansBy(rows, dial, moneyOf = money) {
   const by = groupsFor(rows, dial, moneyOf);
@@ -427,7 +435,7 @@ function countsFor(rows, dial, check, opts = {}) {
     for (const k of keys) {
       const r = real.get(k);
       const cm = copies.map((m) => (m.get(k) ? m.get(k).mean : null));
-      const counts = cm.length > 0 && cm.every((v) => v != null && r.mean > v);
+      const counts = cm.length > 0 && cm.every((v) => beats(r.mean, v));
       out.push({ value: k, n: r.n, mean: r.mean, check: cm, counts });
     }
     return { dial, kind, k: K, values: out };
@@ -440,7 +448,7 @@ function countsFor(rows, dial, check, opts = {}) {
     const r = real.get(k);
     const a = ma.get(k) ? ma.get(k).mean : null;
     const b = mb.get(k) ? mb.get(k).mean : null;
-    const counts = a != null && b != null && ga != null && gb != null && a > ga && b > gb;
+    const counts = beats(a, ga) && beats(b, gb);
     out.push({ value: k, n: r.n, mean: r.mean, check: [a, b], counts });
   }
   return { dial, kind, k: 0, values: out };
@@ -493,7 +501,7 @@ function recommendBlock(real, checkGrids, kind) {
         for (let i = 0; i < checkGrids.length && ok; i++) {
           const y = at(checkGrids[i], a, b);
           if (!y || y.mean == null) { ok = false; break; }
-          ok = kind === 'halves' ? (grands[i] != null && y.mean > grands[i]) : (x.mean > y.mean);
+          ok = kind === 'halves' ? beats(y.mean, grands[i]) : beats(x.mean, y.mean);
         }
       }
       counts.set(`${a}|${b}`, ok);
@@ -539,7 +547,7 @@ function ladderFor(rows, field, dir) {
 
 module.exports = {
   ORDERED_DIALS, CATEGORICAL_DIALS, ALL_DIALS, HOLDS_AXES, TEST_MONEY,
-  money, moneyAt, keyOf, sortedValues, hash32, splitHalf,
+  money, moneyAt, beats, cents, keyOf, sortedValues, hash32, splitHalf,
   groupsFor, movement, balanceOf, step1, shapeClass, step2, step3, floorCost,
   holdsAcross, holdsAxisFor,
   checkKindOf, countsFor, recommendRange, recommendBlock, ladderFor,
