@@ -168,7 +168,7 @@ module.exports = {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
     assert.ok(src.includes("const check = keptN ? { k: keptN } : { seed };"),
       'the scrambled copies are read by position through one check, never built');
-    for (const call of ['F.movement(b, x.dial, m)', 'F.recommendRange(rows, dial, check', 'F.step3(x, a, b, { floor, moneyOf: m })', 'region(rows, F.moneyAt(d))']) {
+    for (const call of ['F.countsFor(rows, x.dial, check, { seed })', 'F.recommendRange(rows, dial, check', 'F.step3(x, a, b, { floor, moneyOf: m })', 'region(rows, F.moneyAt(d))']) {
       assert.ok(src.includes(call), `${call} — that reading has no scrambled twin`);
     }
     // step 5 is the one that uses ALL of them, because "wider than all ten" is

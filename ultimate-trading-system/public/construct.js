@@ -132,7 +132,7 @@ const COL = {
   fRegionDial: 'a dial the widest region spans. Keeping the region writes these edges into the rule.',
   fRegionFrom: 'the lowest value of this dial inside the region, or the one value a word-valued dial takes there.',
   fRegionTo: 'the highest value of this dial inside the region.',
-  fCheck: 'the same reading on the check: on every scrambled copy of the table this set kept, or, when it kept none, on each of the two halves of the settings. A row that does not beat every copy is greyed - it ranked, and ranking is what a shuffle does too.',
+  fCheck: 'how many of this dial\'s values make more money than that same value on every scrambled copy of the table (or sit above both halves\' averages, when the set kept no copies). That is the test step 2 applies to each value, so a bold row here is a row with something to keep on step 2. Zero means greyed: this dial may move the money, but not in the direction a forecast is for.',
   fMovement: 'how far apart this dial\'s values sit, measured against how much the result varies anyway. THE ORDERING IS THE FINDING - at this many rows every dial shows some movement, and the size of the number is a claim only against the split-half beside it.',
   fRange: 'the gap in test dollars between this dial\'s best-averaging value and its worst. A ratio with no magnitude beside it cannot be read.',
   fValues: 'how many different values of this dial the run actually swept. One value is not a comparison, and a dial with one value is listed separately rather than shown as flat.',
@@ -4027,12 +4027,13 @@ function fCheckLine(d) {
 
 function fStep1(r) {
   const sh = r.splitHalf || {};
+  // HOW MANY OF THE DIAL'S VALUES BEAT THE CHECK -- step 2's own test, rolled
+  // up, so a bold row here is a bold row waiting on step 2. Movement alone had
+  // no direction and bolded a dial whose forecast made the piles differ by
+  // losing more (owner, 2026-09-02).
   const checkOf = (x) => {
-    const ms = (r.checkM || {})[x.dial] || [];
-    if (!ms.length) return '-';
-    const fin = ms.filter((m) => m != null);
-    if (!fin.length) return '-';
-    return (r.noise || {}).kind === 'halves' ? ms.map((m) => fFix(m, 3)).join(' / ') : `${fFix(Math.min(...fin), 3)} to ${fFix(Math.max(...fin), 3)}`;
+    const b = (r.beating || {})[x.dial];
+    return b ? `${b.n} of ${b.of} values` : '-';
   };
   // THE WHOLE ROW IS BOLD WHEN IT BEATS EVERY COPY (owner order, 2026-09-02),
   // so the button at the end of the row is as easy to find as the number; and

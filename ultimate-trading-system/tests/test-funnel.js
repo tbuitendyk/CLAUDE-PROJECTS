@@ -852,8 +852,8 @@ module.exports = {
     assert.ok(s1.includes('data-fnarrow='), 'step 1 rows open step 2 with the dial chosen');
     assert.ok(s1.includes("(r.counts || {})[x.dial] === false ? 'dim' : ((r.counts || {})[x.dial] ? 'cnt' : '')"),
       'a dial that does not beat every copy is greyed, and one that does is bold across the whole row');
-    assert.ok(s1.includes('<td>${fFix(x.m, 3)}</td>') && s1.includes('fFix(Math.max(...fin), 3)'),
-      'movement and the check print three decimals, so beating the top of the range by a hair does not read as equal');
+    assert.ok(s1.includes('<td>${fFix(x.m, 3)}</td>'), 'movement prints three decimals');
+    assert.ok(s1.includes('return b ? `${b.n} of ${b.of} values` : \'-\';'), 'the check column counts the values that beat the check');
     assert.ok(src('public/construct.html').includes('tr.cnt td { font-weight:600; }'), 'the whole row has a bold style');
     const s2 = fn('fStep2', 'fStep3');
     assert.ok(s2.includes("cth('check', 'fCheck')"), 'step 2 draws the check column');
@@ -922,7 +922,7 @@ module.exports = {
     const body = s.slice(s.indexOf('function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
     assert.ok(body.includes("out.check = { kind, k: keptN };"), 'the read names the check');
     assert.ok(body.includes("out.conditions.checkIsHalves = kind === 'halves';"));
-    assert.ok(body.includes('r1.checkM = checkM;') && body.includes('r1.counts = counts;'), 'step 1: the check per dial');
+    assert.ok(body.includes('r1.beating = beating;') && body.includes('r1.counts = counts;'), 'step 1: how many values beat the check, per dial');
     assert.ok(body.includes('r2.rec = F.recommendRange(rows, dial, check, { seed });'), 'step 2: the recommendation');
     assert.ok(body.includes('F.recommendBlock(g, checkGrids, kind)'), 'step 3: the block');
     assert.ok(body.includes("check: { kind, positive: checkReads.map((x) => x.positive)"), 'step 4: the check count');
@@ -946,6 +946,39 @@ module.exports = {
     const s4 = s.slice(s.indexOf('function fStep4('), s.indexOf('\nfunction fStep5('));
     assert.ok(s4.includes('const said = r.why ?'), 'the sentence is built first');
     assert.ok(!/\$\{[^}]*`accepted/.test(s4), 'no template literal nested inside an interpolation');
+  },
+
+  // STEP 1 MAY NOT POINT AT A DIAL THAT MOVES THE MONEY THE WRONG WAY (owner,
+  // 2026-09-02: "why would you attract a view to a set-up that varies from
+  // the null set IN THE WRONG DIRECTION? don't justify failure"). Movement has
+  // no direction: a forecast that makes every value LOSE more than a shuffle
+  // moves the piles apart just as well. The bold on step 1 is therefore step
+  // 2's test rolled up -- at least one value beats the check -- and a dial
+  // whose every value is beaten by the shuffle is greyed however far apart
+  // its piles sit.
+  stepOneBoldsOnlyADialWithAValueThatBeatsTheCheck() {
+    const F = require('../lib/funnel');
+    // the forecast spreads the gates apart by making two of them lose more
+    // than the shuffle does; the third ignores it and matches its copies
+    const rows = [];
+    for (const g of ['active', 'always', 'directional']) for (let k = 0; k < 8; k++) {
+      const real = g === 'always' ? 8 : (g === 'active' ? -2 : -15);
+      const copy = g === 'always' ? 8 : (g === 'active' ? 1 : -6);
+      // the same small spread inside every pile on every copy: a copy with no
+      // spread at all would read as infinite movement and hide the trap
+      rows.push({ label: `${g} ${k}`, gate: g, avgTest: real + (k % 2) * 0.1, noiseTest: [copy + (k % 2) * 0.1, copy + (k % 2) * 0.1] });
+    }
+    const real = F.movement(rows, 'gate');
+    const copies = [0, 1].map((d) => F.movement(rows, 'gate', F.moneyAt(d)).m);
+    assert.ok(copies.every((m) => real.m > m), 'the fixture is the trap: the real movement beats every copy');
+    const c = F.countsFor(rows, 'gate', { k: 2 });
+    assert.strictEqual(c.values.filter((v) => v.counts).length, 0, 'and yet no value beats the check, so the dial must not count');
+    // and the read rolls exactly that up, never the movement
+    const s = src('lib/stages.js');
+    const body = s.slice(s.indexOf('if (step === 1) {', s.indexOf('function funnelRead(')), s.indexOf('} else if (step === 2) {'));
+    assert.ok(body.includes('const c = F.countsFor(rows, x.dial, check, { seed });'), 'step 1 asks step 2\'s question of every dial');
+    assert.ok(body.includes('counts[x.dial] = n > 0;'), 'and a dial counts only when a value of it beats the check');
+    assert.ok(!/F\.movement\([^)]*moneyAt/.test(body), 'movement on a scrambled copy is not what decides the bold any more');
   },
 
   aFunnelReadThatFailsSaysSoRatherThanLeavingTheScreenAsItWas() {

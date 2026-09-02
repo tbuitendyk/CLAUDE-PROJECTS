@@ -3341,18 +3341,24 @@ function funnelRead(id, state = {}) {
 
   if (step === 1) {
     const r1 = F.step1(rows, { seed, top: 3 });
-    // the check's movement per dial, DRAWN beside the real one: on every
-    // scrambled copy, or on each half. A dial that does not beat every copy is
-    // greyed by the page -- it ranked, and ranking is what noise does too.
-    const checkM = {};
+    // THE CHECK AT STEP 1 IS STEP 2'S CHECK ROLLED UP (owner, 2026-09-02: "why
+    // would you attract a view to a set-up that varies from the null set IN
+    // THE WRONG DIRECTION?"). Movement has no direction -- the forecast can
+    // move the piles apart by making them lose more, and a check on movement
+    // bolded exactly such a dial. So a dial counts only when at least one of
+    // its values makes more money than that same value on every scrambled
+    // copy (or sits above both halves' averages): the thing step 2 will
+    // actually let the owner keep. The column prints how many of its values
+    // do, so a bold row on step 1 is a bold row waiting on step 2.
+    const beating = {};
     const counts = {};
-    const readers = kind === 'scrambles' ? Array.from({ length: keptN }, (_, d) => [rows, F.moneyAt(d)]) : [[ha, F.money], [hb, F.money]];
     for (const x of r1.dials) {
-      const ms = readers.map(([b, m]) => F.movement(b, x.dial, m).m);
-      checkM[x.dial] = ms;
-      counts[x.dial] = kind === 'scrambles' ? ms.every((m) => m != null && x.m > m) : null;
+      const c = F.countsFor(rows, x.dial, check, { seed });
+      const n = c.values.filter((v) => v.counts).length;
+      beating[x.dial] = { n, of: c.values.length };
+      counts[x.dial] = n > 0;
     }
-    r1.checkM = checkM;
+    r1.beating = beating;
     r1.counts = counts;
     r1.noise = { of: keptN, used: keptN, kind };
     out.reading = r1;

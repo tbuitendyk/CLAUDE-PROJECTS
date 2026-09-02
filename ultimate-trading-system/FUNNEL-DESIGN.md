@@ -904,9 +904,19 @@ Three defects, logged in `DEFECTS.md` under 2026-09-02:
 **Step 1 — which dials move the result**
 
 - *Decision:* which dial to narrow next, and in what order.
-- *Shown:* the table as now, plus the check drawn beside it — `movement` on the
-  scrambled copy, or on each half — and a dial that fails its check greyed. A
-  greyed dial is not a lead; it is noise that happened to rank.
+- *Shown:* the table as now, plus the check drawn beside it: **how many of the
+  dial's values make more money than that same value on every scrambled copy**
+  (or sit above both halves' averages) — step 2's own test, rolled up. A dial
+  with none is greyed however far apart its piles sit.
+
+  **Corrected 2026-09-02, after the first run.** The first build bolded a dial
+  when its `movement` beat the scrambled copies' movement. Movement has no
+  direction: on the owner's board `gate` was bold because the real forecast
+  made two of its three values LOSE more than a shuffle does — the piles sat
+  further apart, in the wrong direction — and step 2 then had nothing to keep.
+  Owner: "why would you attract a view to a set-up that varies from the null
+  set IN THE WRONG DIRECTION?" A bold row on step 1 must be a bold row waiting
+  on step 2, so it is now the same test.
 - *Control:* each row enters step 2 with that dial chosen. The `dial` list on
   step 2 stays, for override.
 - *Recorded:* the order the dials were taken in. Marks: the halves disagreed;

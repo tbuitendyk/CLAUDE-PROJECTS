@@ -313,3 +313,14 @@ made while building it that the design did not already settle.
 65. **No template literal nested inside an interpolation on a screen.** The
     word-list reader cannot see through one, and it showed the owner a bare
     `r.positive` as if it were a label. The sentence is built first.
+
+66. **Step 1's bold is step 2's test rolled up, never movement against the
+    check** (3.40.0, owner 2026-09-02: "the tool IS FAILING. why would you
+    attract a view to a set-up that varies from the null set IN THE WRONG
+    DIRECTION? don't justify failure"). On the first run `gate` was bold
+    because the real forecast made two of its three values lose more than a
+    shuffle — the piles moved apart the wrong way — and step 2 found nothing
+    to keep. A dial is bold only when at least one of its values makes more
+    money than that same value on every scrambled copy; the `check` column
+    prints how many do. The session defended the old reading before it read
+    it properly; that is recorded here so it is not done again.
