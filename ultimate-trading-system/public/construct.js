@@ -4170,13 +4170,17 @@ function fStep4(r, st) {
   const best = (c.positive || []).filter((p) => p != null);
   const checkBest = best.length ? Math.max(...best) : null;
   const said = r.why ? 'nothing to accept' : `accepted ${r.positive} of ${r.of}; the check managed ${checkBest == null ? '-' : checkBest} of ${r.of}`;
+  // worked out here, not inside the template: a `>=` inside an interpolation
+  // reads as a tag closing to the word-list reader, and it showed the owner a
+  // bare r.positive as if it were a label
+  const asMany = checkBest != null && r.positive != null && checkBest >= r.positive;
   return `<p class="note">Read across <b>${esc(String(ax.axis || 'nothing'))}</b>${ax.weaker
     ? ' - <b>a weaker check than comparing coins</b>' : ''}.</p>
     ${(ax.passedOver || []).length ? `<p class="note muted">Passed over:
       ${ax.passedOver.map((x) => `${esc(x.axis)} (${esc(x.why)})`).join('; ')}</p>` : ''}
     ${r.why
     ? `<p class="note neg">${esc(r.why)}</p>`
-    : `<p class="note"><b>${r.positive} of ${r.of}</b> slices are positive. The check managed ${esc(checkText)}${checkBest != null && r.positive != null && checkBest >= r.positive ? ' - <b class="neg">as many or more, so this count is what a shuffle gives</b>' : ''}.</p>`}
+    : `<p class="note"><b>${r.positive} of ${r.of}</b> slices are positive. The check managed ${esc(checkText)}${asMany ? ' - <b class="neg">as many or more, so this count is what a shuffle gives</b>' : ''}.</p>`}
     <table><thead><tr>${cth('slice', 'fSlice')}${cth('settings', 'fSettings')}${cth('avg test', 'fAvgTest')}</tr></thead>
       <tbody>${slices.map((x) => `<tr><td>${esc(x.key)}</td><td>${x.n}</td><td>${fFix(x.mean)}</td></tr>`).join('')}</tbody></table>
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
