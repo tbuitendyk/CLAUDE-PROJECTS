@@ -1059,7 +1059,8 @@ row's measures read from the one record (`avgVsLong`, `avgLead`, `avgRung`,
 from the records alone. One unit's board is held in memory at a time -- 524,832
 rows for this set, one record per setting per unit, about 200 MB measured;
 choosing another unit lets the first go. Reading a unit yields between blocks
-so the pages keep answering. **The walk opens on the set's first unit.** The
+so the pages keep answering. **The walk opens on the set's first unit -- the
+top row of the parent's stage 2 table.** The
 blended board stays available as one more choice -- `all units together`,
 chosen by name -- because removing a choice is the fault RULE FIVE exists to
 prevent; nothing is walked on it unless it is asked for.
@@ -1085,7 +1086,10 @@ prevent; nothing is walked on it unless it is asked for.
   board. The read and the cut resolve the board through one function, so the
   board walked and the board cut cannot be two boards.
 - **The picker** sits on the standing line beside `target size`, offering the
-  set's units by the names the set was launched with. The walk's state is
+  set's units by the names the set was launched with, **in the order of the
+  parent's stage 2 table on Boards** -- its saved sort, or forecast score with
+  all members when none is saved (owner decision, 2026-09-02; it used to be
+  the order the units happened to finish pricing). The walk's state is
   kept per unit, so ten walks can be in flight and none forgets its place.
 
 ### 17.3a The rebuilt numbers are kept per unit

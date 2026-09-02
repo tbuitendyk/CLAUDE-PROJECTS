@@ -483,7 +483,7 @@ window.HELP = {
     controls: {
       fUnit: {
         what: 'Which coin-and-shape unit this walk is on. One rule per unit - ten units, ten rules.',
-        more: 'A unit\'s board is its own records: one row per setting, every dial on it, its own test money and its own scrambled copies. The walk opens on the first unit of the set. Each unit keeps its own walk, so you can leave one half-done and come back. "all units together" is the blended table, one row per setting averaged over every unit; it hides what any one coin does and is kept only so the choice is yours.',
+        more: 'A unit\'s board is its own records: one row per setting, every dial on it, its own test money and its own scrambled copies. The units are listed in the order of the parent\'s stage 2 table on Boards - its saved sort - and the walk opens on the first of them. Each unit keeps its own walk, so you can leave one half-done and come back. "all units together" is the blended table, one row per setting averaged over every unit; it hides what any one coin does and is kept only so the choice is yours.',
       },
       fAcross: {
         what: 'Applies the rule you have built on this unit to each of the other units\' records, one at a time, and reports how many come out positive.',

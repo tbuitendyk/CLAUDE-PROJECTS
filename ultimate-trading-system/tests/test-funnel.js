@@ -40,7 +40,7 @@ const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
 // unit: unit 0's active beats every copy; unit 1's active beats five of ten;
 // unit 2's active loses and beats none.
 const SETS_DIR = path.join(__dirname, '..', 'data', 'stagesets');
-async function unitFixture() {
+async function unitFixture(opts = {}) {
   const rowstore = require('../lib/rowstore');
   const id = `s3-test-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}-unit`;
   fs.mkdirSync(SETS_DIR, { recursive: true });
@@ -54,6 +54,22 @@ async function unitFixture() {
     { u: 2, trade: 'BBB', ctx1: 'AAA', ctx2: null, size: 2, geometry: 'daily-1d' },
   ];
   const keys = units.map((u) => stages.unitKeyOf(u));
+  // A PARENT STAGE 2 SET when asked for, whose table order is not the record
+  // order: forecast score -- all members puts unit 1 first, then 2, then 0
+  const parentId = opts.parent ? `${id}-s2` : null;
+  if (parentId) {
+    fs.writeFileSync(path.join(SETS_DIR, `${parentId}.json`), JSON.stringify({
+      id: parentId, stage: 2, seq: 999989, name: 'S2 #unit', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 3 }, params: { universe: ['AAA', 'BBB'] },
+    }));
+    const pw = rowstore.writer(parentId, 'records');
+    const scores = [1, 9, 5];
+    units.forEach((u, i) => pw.push({ u: u.u, carriedRank: i + 1, s1rank: i + 1, trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2,
+      size: u.size, geometry: u.geometry, specs: [], scoreAll: scores[i], score3: scores[i] - 1 }));
+    await pw.close();
+    doc.parent = { id: parentId, name: 'S2 #unit' };
+    fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify(doc));
+  }
   const lift = (t) => (t === 65 ? 0.5 : 0);
   const money = (u, g, t) => (u.u === 0 ? (g === 'active' ? 10 : 0) : u.u === 1 ? (g === 'active' ? 2 : -1) : (g === 'active' ? -4 : 7)) + lift(t);
   const copies = (u, g, t) => Array.from({ length: 10 }, (_, d) => {
@@ -89,8 +105,12 @@ async function unitFixture() {
       try { fs.rmSync(f, { force: true }); } catch (_) { /* fixture */ }
     }
     try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+    if (parentId) {
+      try { fs.rmSync(path.join(SETS_DIR, `${parentId}.json`), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(rowstore.storeDir(parentId), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+    }
   };
-  return { id, doc, t, units, keys, cleanup };
+  return { id, doc, t, units, keys, parentId, cleanup };
 }
 
 module.exports = {
@@ -1179,6 +1199,26 @@ module.exports = {
     } finally { fx.cleanup(); }
   },
 
+  // THE UNITS IN THE STAGE 2 TABLE'S ORDER (owner decision, 2026-09-02):
+  // the parent's table as Boards shows it, so the first unit of a set is
+  // that table's top row, and a sort saved on the table is followed.
+  async theUnitsAreListedInTheStageTwoTablesOrder() {
+    const fx = await unitFixture({ parent: true });
+    try {
+      const { id, t, keys } = fx;
+      assert.deepStrictEqual(stages.unitsOfSet(t, id).map((u) => u.key), [keys[1], keys[2], keys[0]],
+        'the stage 2 table\'s order -- forecast score, all members, best first -- not the order the units finished');
+      const r1 = await stages.funnelRead(id, { step: 1, rule: {} });
+      assert.deepStrictEqual(r1.units.map((u) => u.key), [keys[1], keys[2], keys[0]]);
+      assert.strictEqual(r1.unit, keys[1], 'nothing chosen is the top row of the stage 2 table');
+      // a sort saved on the parent's table is followed on the next read
+      stages.setSetSort(fx.parentId, [{ key: 'trade', dir: 'asc' }]);
+      assert.deepStrictEqual(stages.unitsOfSet(t, id).map((u) => u.key), [keys[0], keys[1], keys[2]], 'coin A to Z, ties by carry order');
+      // and without a parent on the box the units are listed as found
+      assert.deepStrictEqual(stages.unitsOfSet(t, 'no-such-set').map((u) => u.key), keys);
+    } finally { fx.cleanup(); }
+  },
+
   async theBlendIsChosenByNameAndNothingChosenIsTheFirstUnit() {
     const fx = await unitFixture();
     try {
@@ -1203,7 +1243,7 @@ module.exports = {
       const r1 = await stages.funnelRead(id, { step: 1, rule: {}, unit: keys[0] });
       assert.strictEqual(r1.unit, keys[0]);
       assert.strictEqual(r1.unitName, 'AAA daily-1d');
-      assert.deepStrictEqual(r1.units.map((u) => u.key), keys, 'every board the set offers, in launch order');
+      assert.deepStrictEqual(r1.units.map((u) => u.key), keys, 'every board the set offers -- as found, since this fixture has no parent on the box');
       assert.strictEqual(r1.units[2].name, 'BBB alongside AAA daily-1d');
       assert.strictEqual(r1.of, 4, 'the board is the unit\'s four settings');
       assert.strictEqual(r1.set.keptScrambles, 10, 'the check is the unit\'s own ten kept figures');

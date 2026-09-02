@@ -353,6 +353,13 @@ made while building it that the design did not already settle.
 72. **Reading the other units lays the rebuilt numbers on per unit** (3.41.0),
     because a rule with a limit on the worst losing streak would otherwise
     keep nothing on every other board and report every one as empty.
+74. **The units are listed in the stage 2 table's order** (3.43.0, owner
+    decision 2026-09-02). The list followed the order the units happened to
+    finish pricing, reshuffled by which totalling part finished first. It is
+    now the parent's stage 2 table as Boards shows it -- its saved sort, or
+    forecast score with all members when none is saved -- so the first unit
+    of a set is that table's top row, and re-sorting the table reorders the
+    list on the next read.
 73. **Reading the other units is started and polled, never one request**
     (3.41.0). Nine boards at five or six seconds each is about a minute, and
     the web server in front allows a request sixty seconds: answered in one

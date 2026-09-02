@@ -477,6 +477,10 @@ const GUARDS = [
     "      if (!s || s.none) { st.acrossAsked = null; fSave(); if ($('#fAcross')) drawFunnel(); return; }",
     'onAUnitsBoardStepFourIsReadByPressingAndTheAcceptRecordsThatRead',
     'a page that comes back adopts whatever reading the box holds -- another rule, another window -- as its own and records it on the set'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    units = units.map((u, i) => ({ u, i })).sort((a, b) => (at(a.u) - at(b.u)) || (a.i - b.i)).map((x) => x.u);",
+    "    units = units.slice();",
+    'theUnitsAreListedInTheStageTwoTablesOrder',
+    'the dropdown follows the order the units happened to finish pricing, and the first unit of a set is whichever finished first'],
   // ---- PICKED RECORDS (3.42.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "    records = records.filter((r) => want.has(r.u));", "    records = records.slice();",
     'thePickedRecordsSaveOnTheSetAndTheStageThreeLaunchPricesExactlyThose',

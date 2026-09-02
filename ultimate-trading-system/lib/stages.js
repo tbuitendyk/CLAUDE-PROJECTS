@@ -3333,17 +3333,39 @@ const unitNameOf = (u) => `${u.trade}${u.ctx1 ? ` alongside ${u.ctx1}` : ''}${u.
 // Worked out once per tally in hand: the per-coin table is 658,560 rows on
 // the owner's set and every read, every board load and every across would
 // otherwise walk it again.
+// IN THE STAGE 2 TABLE'S ORDER (owner decision, 2026-09-02). The list used to
+// follow the order the units happened to finish pricing, reshuffled by which
+// totalling part finished first -- an order nobody chose. It is now the
+// parent's stage 2 table as Boards shows it: its saved sort, or forecast
+// score with all members when none is saved. So the first unit of a set is
+// that table's top row, and re-sorting the table on Boards reorders the
+// list on the next read. Worked out once per tally in hand and per saved
+// sort, because the per-coin table is 658,560 rows on the owner's set.
 const unitsOfTally = new WeakMap();
-function unitsOfSet(t) {
-  if (unitsOfTally.has(t)) return unitsOfTally.get(t);
+const parentOfSet = (id) => {
+  const doc = id ? getSet(id) : null;
+  const pid = doc ? ((doc.parent || {}).id || (doc.params || {}).from || null) : null;
+  const parent = pid ? getSet(pid) : null;
+  return parent && parent.stage === 2 ? parent : null;
+};
+function unitsOfSet(t, id = null) {
+  const parent = parentOfSet(id);
+  const sortKey = parent ? JSON.stringify([parent.id, parent.sort || []]) : '';
+  const memo = unitsOfTally.get(t);
+  if (memo && memo.sortKey === sortKey) return memo.units;
   const seen = new Map();
   for (const c of (t.coins || [])) {
     const key = unitKeyOf(c);
     if (!seen.has(key)) seen.set(key, { key, name: unitNameOf(c), trade: c.trade, ctx1: c.ctx1 || null, ctx2: c.ctx2 || null, geometry: c.geometry, blocks: new Set() });
     for (const b of (c.b || [])) seen.get(key).blocks.add(b);
   }
-  const units = [...seen.values()].map((u) => ({ ...u, blocks: [...u.blocks].sort((x, y) => x - y) }));
-  unitsOfTally.set(t, units);
+  let units = [...seen.values()].map((u) => ({ ...u, blocks: [...u.blocks].sort((x, y) => x - y) }));
+  if (parent) {
+    const place = new Map(stage2Table(parent.id, 0, Number.MAX_SAFE_INTEGER).rows.map((r, i) => [unitKeyOf(r), i]));
+    const at = (u) => (place.has(u.key) ? place.get(u.key) : Number.MAX_SAFE_INTEGER);
+    units = units.map((u, i) => ({ u, i })).sort((a, b) => (at(a.u) - at(b.u)) || (a.i - b.i)).map((x) => x.u);
+  }
+  unitsOfTally.set(t, { sortKey, units });
   return units;
 }
 // A record as a board row: the shape every reading already takes on the
@@ -3380,7 +3402,7 @@ async function loadUnitBoard(id, t, unitKey) {
   if (unitBoardInHand.id === id && unitBoardInHand.builtAt === t.builtAt && unitBoardInHand.key === unitKey && unitBoardInHand.rows) {
     return unitBoardInHand.rows;
   }
-  const unit = unitsOfSet(t).find((u) => u.key === unitKey);
+  const unit = unitsOfSet(t, id).find((u) => u.key === unitKey);
   if (!unit) throw new Error(`this set holds no unit called '${unitKey}'`);
   unitBoardInHand = { id: null, builtAt: null, key: null, rows: null };   // let the last one go first
   const rows = [];
@@ -3406,7 +3428,7 @@ const blendBoard = (t) => ({ unit: null, name: null, all: t.ranked || [] });
 async function funnelBoard(id, t, unitKey) {
   const key = unitKey == null ? '' : String(unitKey);
   if (key === 'all') return blendBoard(t);
-  const units = unitsOfSet(t);
+  const units = unitsOfSet(t, id);
   const unit = key ? units.find((u) => u.key === key) : units[0];
   if (key && !unit) throw new Error(`this set holds no unit called '${key}'`);
   if (!unit) return blendBoard(t);            // a set with no units has only the blend
@@ -3426,7 +3448,7 @@ async function funnelAcross(id, state = {}, note = null) {
   const rule = S4.normaliseRule(state.rule);
   // the walked board, resolved exactly as the read resolves it: nothing
   // chosen is the first unit, 'all' is the blend (then every unit is "other")
-  const units = unitsOfSet(t);
+  const units = unitsOfSet(t, id);
   const chosen = state.unit == null ? '' : String(state.unit);
   const here = chosen === 'all' ? null : (chosen ? (units.find((u) => u.key === chosen) || {}).key || null : (units[0] || {}).key || null);
   if (chosen && chosen !== 'all' && !here) throw new Error(`this set holds no unit called '${chosen}'`);
@@ -3541,7 +3563,7 @@ async function funnelRead(id, state = {}) {
   for (const r of (t.coins || [])) { coins.add(r.trade); shapes.add(r.geometry); }
   const fixed = new Set([...Object.keys(rule.ranges), ...Object.keys(rule.allowed)]);
   const freeDials = F.ALL_DIALS.filter((d) => !fixed.has(d)).length;
-  const units = unitsOfSet(t).map((u) => ({ key: u.key, name: u.name }));
+  const units = unitsOfSet(t, id).map((u) => ({ key: u.key, name: u.name }));
   // ON A UNIT'S BOARD, "elsewhere" IS THE OTHER UNITS (§17.3), read by a
   // pressed action; the axis logic below is for the blended board only.
   const holdsAxis = board.unit
