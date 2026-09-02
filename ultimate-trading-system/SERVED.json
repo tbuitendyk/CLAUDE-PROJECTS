@@ -1,8 +1,8 @@
 {
-  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "bff3f40963fc9e3e1597be86a2ebc65cdd8124a8",
-  "subject": "3.40.0: step 1 bolds a dial only when one of its values beats the check",
-  "capturedAt": "2026-09-02T03:48:40Z",
+  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
+  "commit": "4973637fa09fbfb9a874f651868750fb58dea1ec",
+  "subject": "3.40.1: beating the check means beating it by at least a cent",
+  "capturedAt": "2026-09-02T04:21:51Z",
   "files": {
     "public/construct.js": {
       "sha256": "ba9d70edfdfefe171cbbad282f091939c3ea85c3ed832422de2a731089b8746a",
