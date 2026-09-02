@@ -566,17 +566,26 @@ module.exports = {
     const at = s.indexOf('function funnelRead(');
     assert.ok(at > 0, 'funnelRead is gone');
     const body = s.slice(at, s.indexOf('\nfunction sliceRowsFor(', at));
-    assert.ok(body.includes('const copyOf = (d) => (rule.cut ? S4.nullCopy(all, rule, d) : S4.swapMoney(rows, d));'),
-      'a rule with a cut must build its copy from every setting so the copy takes its own top N; without one the survivors swapped are the same rows');
-    // and that equality is PROVED, not asserted: without a cut the two
-    // constructions land on identical rows, in the same order
+    // NO COPY OF THE BOARD IS EVER BUILT. Ten copies of 524,832 rows at once
+    // killed the service twice the first time the tab was opened on the filled
+    // set (2026-09-02). The read hands every reading a money reader instead.
+    assert.ok(body.includes("const check = keptN ? { k: keptN } : { seed };"), 'the check is a count and a reader, never an array of copies');
+    assert.ok(!/copies = Array\.from|swapMoney\(rows|S4\.nullCopy\(all, rule, d\)/.test(body),
+      'the read must not build a copy of the board to read the check');
+    assert.ok(body.includes('F.moneyAt(d)'), 'the check reads kept scramble d off the rows by position');
+    // and reading by position IS the swapped copy, proved: the same means
+    const F = require('../lib/funnel');
     const all = s3rows().map((r, i) => ({ ...r, noiseTest: [100 - i, i] }));
     const rule = { ranges: { tHours: { min: 65 } }, allowed: { gate: ['active'] } };
     const rows = FS4.applyRule(all, rule);
-    for (const d of [0, 1]) assert.deepStrictEqual(FS4.swapMoney(rows, d), FS4.nullCopy(all, rule, d));
-    // with a cut they differ, which is the whole reason nullCopy exists
-    const cut = { ...rule, cut: { kind: 'top', column: 'avgTest', n: 1 } };
-    assert.notDeepStrictEqual(FS4.swapMoney(FS4.applyRule(all, cut), 0), FS4.nullCopy(all, cut, 0));
+    for (const d of [0, 1]) {
+      const byPosition = F.movement(rows, 'tHours', F.moneyAt(d));
+      const byCopy = F.movement(FS4.swapMoney(rows, d), 'tHours');
+      assert.deepStrictEqual(byPosition.groups, byCopy.groups, `reading by position must equal the swapped copy (d=${d})`);
+    }
+    // a rule WITH a cut is the one case a copy would differ, and the walk never
+    // draws a reading under a cut: the cut is folded in at step 7 alone
+    assert.ok(body.includes('const closed = step === 7'), 'the cut is folded in at step 7 only');
   },
 
   // TIGHTENING PRODUCES A RULE, NOT A SHORTER LIST, so it replays and a
@@ -698,14 +707,14 @@ module.exports = {
       rows.push({ label: `t${t} k${k}`, tHours: t, gate: k % 2 ? 'active' : 'always',
         avgTest: t / 10 + (k % 3) * 0.1, noiseTest: [5, t === 113 ? 20 : 5] });
     }
-    const copies = [0, 1].map((d) => FS4.swapMoney(rows, d));
-    const c = F.countsFor(rows, 'tHours', { copies });
+    // the check is READ off the rows by position, never built as a copy
+    const c = F.countsFor(rows, 'tHours', { k: 2 });
     assert.strictEqual(c.kind, 'scrambles'); assert.strictEqual(c.k, 2);
     const by = Object.fromEntries(c.values.map((v) => [v.value, v.counts]));
     assert.deepStrictEqual(by, { 41: false, 65: true, 89: true, 113: false },
       't41 sits below the copies and t113 loses on copy 1, so neither counts');
     // and the recommendation is the widest run of counting neighbours
-    const rec = F.recommendRange(rows, 'tHours', { copies });
+    const rec = F.recommendRange(rows, 'tHours', { k: 2 });
     assert.deepStrictEqual(rec.recommend, { min: 65, max: 89, values: 2 });
     // halves: above each half's own average on BOTH halves. Under seed 'x' the
     // odd-k settings land in one half and the even-k in the other (worked out
@@ -725,7 +734,7 @@ module.exports = {
     const hb2 = Object.fromEntries(F.countsFor(both, 'tHours', { seed: 'x' }).values.map((v) => [v.value, v.counts]));
     assert.strictEqual(hb2[89], true, 't89 above both halves\' averages counts');
     // a word-valued dial recommends a list of values, never a range
-    const g = F.recommendRange(rows, 'gate', { copies });
+    const g = F.recommendRange(rows, 'gate', { k: 2 });
     assert.strictEqual(g.ordered, false);
     assert.ok(g.recommend == null || Array.isArray(g.recommend.values));
   },
@@ -741,7 +750,7 @@ module.exports = {
       rows.push({ label: `t${t} d${d} k${k}`, tHours: t, dMult: d, avgTest: good ? 10 : 1, noiseTest: [3] });
     }
     const real = F.step3(rows, 'tHours', 'dMult', { floor: 2 });
-    const checks = [F.step3(FS4.swapMoney(rows, 0), 'tHours', 'dMult', { floor: 2 })];
+    const checks = [F.step3(rows, 'tHours', 'dMult', { floor: 2, moneyOf: F.moneyAt(0) })];
     const b = F.recommendBlock(real, checks, 'scrambles');
     assert.ok(b.block, 'there is a block');
     assert.deepStrictEqual(b.block.a, { from: '65', to: '65' });
@@ -749,7 +758,7 @@ module.exports = {
     assert.strictEqual(b.block.squares, 3);
     // a thin square cannot join a block even when its money is best
     const thin = F.step3(rows.filter((r) => !(r.tHours === 65 && r.dMult === 1 && r.label.endsWith('k0'))), 'tHours', 'dMult', { floor: 4 });
-    const b2 = F.recommendBlock(thin, [F.step3(FS4.swapMoney(rows, 0), 'tHours', 'dMult', { floor: 4 })], 'scrambles');
+    const b2 = F.recommendBlock(thin, [F.step3(rows, 'tHours', 'dMult', { floor: 4, moneyOf: F.moneyAt(0) })], 'scrambles');
     assert.ok(!b2.counting.includes('65|1'), 'the square with three settings under a floor of four is thin and does not count');
   },
 
@@ -916,6 +925,23 @@ module.exports = {
     assert.ok(body.includes('S4.regionRule(out.reading, { ordered, categorical: F.CATEGORICAL_DIALS })'), 'step 5: the region as a rule');
     assert.ok(body.includes("maxDrawdown: F.ladderFor(rows, 'maxDrawdown', 'max')"), 'step 6: the ladders');
     assert.ok(body.includes('const all = withFunnelRich(t.ranked || [], rich);'), 'the rebuilt numbers are laid on before the rule');
+  },
+
+  // A POLL REDRAW LEAVES THE OWNER'S PLACE ALONE (owner, 2026-09-02: "when i
+  // scroll down on the Boards tab the page keeps resetting"). While the tables
+  // total, Boards redraws every four seconds; restoring a remembered position
+  // on each one is what put the owner back at the top.
+  aPollRedrawLeavesThePlaceOnThePageAlone() {
+    const s = src('public/construct.js');
+    const fn = s.slice(s.indexOf('function bPollRedraw('), s.indexOf('\n}\n', s.indexOf('function bPollRedraw(')));
+    assert.ok(!fn.includes('restoreScroll'), 'a poll redraw must not move the page');
+    assert.ok(fn.includes('holdScrollMemory()'), 'and must not let the redraw overwrite the remembered place either');
+    assert.ok(s.includes('This page asks again every few seconds and leaves your place on it alone.'), 'the totalling line says so');
+    // the accept sentence on step 4 is built once, outside the template -- a
+    // template nested inside an interpolation showed the owner a bare r.positive
+    const s4 = s.slice(s.indexOf('function fStep4('), s.indexOf('\nfunction fStep5('));
+    assert.ok(s4.includes('const said = r.why ?'), 'the sentence is built first');
+    assert.ok(!/\$\{[^}]*`accepted/.test(s4), 'no template literal nested inside an interpolation');
   },
 
   aFunnelReadThatFailsSaysSoRatherThanLeavingTheScreenAsItWas() {

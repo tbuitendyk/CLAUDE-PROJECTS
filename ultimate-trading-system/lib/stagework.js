@@ -218,6 +218,19 @@ function storedRecordOf(row) {
   return rest;
 }
 
+// THE KEPT FIGURES ALREADY ON A RECORD, WITH THE NEW ONES ADDED AFTER THEM. A
+// top-up hands back positions from..keep-1; the record holds 0..from-1. The
+// result is always exactly `keep` long: a record holding fewer than `from`
+// figures is padded with nulls up to `from` and the caller counts it, because
+// a set that claims to keep `from` and holds less on a row is a fact worth
+// reporting, never a reason to stop a rewrite that keeps every row.
+function appendKept(existing, from, fresh) {
+  const head = Array.isArray(existing) ? existing.slice(0, from) : [];
+  let padded = 0;
+  while (head.length < from) { head.push(null); padded++; }
+  return { arr: head.concat(Array.isArray(fresh) ? fresh : []), padded };
+}
+
 // ---- TASK: one stage 1 unit ----------------------------------------------------
 //
 // Train the slim members (logreg per view), keep every test/held-back vote,
@@ -347,6 +360,13 @@ async function s3UnitTask(task) {
   // silently keeping 4 while the set document claims 10 is how a reader ends up
   // averaging over an array shorter than it was told.
   const keep = Math.max(0, Math.min(Math.floor(Number(task.keepN) || 0), agreedOnly ? 0 : nullN));
+  // A TOP-UP PRICES ONLY THE SCRAMBLES THE RECORDS DO NOT HOLD (owner order,
+  // 2026-09-02: "a PROPER design would ADD the missing rows, not subject the
+  // user to 6 hours of waiting again"). Scramble d is a pure function of the
+  // set's id, so positions 0..from-1 already on disk are exactly what this
+  // would price again; the loops below start at `from` and the row's arrays
+  // hold positions from..keep-1 only. A fresh run has from = 0.
+  const from = Math.max(0, Math.min(Math.floor(Number(task.keepFrom) || 0), keep));
   // THE BACKFILL MODE (owner order, 2026-08-31: "backfill included"). A set
   // priced before the kept scrambles existed can have them, because the
   // scrambles are a pure function of the set's id -- seedOf is a hash of the
@@ -616,7 +636,7 @@ async function s3UnitTask(task) {
     // held-back window would open the seal to decide what to look at, which is
     // the one thing the whole design exists to prevent.
     const noiseTest = [];
-    for (let d = 0; d < keep; d++) {
+    for (let d = from; d < keep; d++) {
       const dt = streamFor(stream.decision, agr, d, 'test');
       const dRes = bracketLib.simCell(cell, pick(testChunks, tIdx), pick(dt, tIdx), maps.trade, geo, bandPct, fee);
       noiseTest.push(cents(dRes.pnl));
@@ -627,7 +647,7 @@ async function s3UnitTask(task) {
     // are priced here and are half of what the fill costs.
     const noiseHold = [];
     if (noiseOnly) {
-      for (let d = 0; d < keep && holdChunks.length; d++) {
+      for (let d = from; d < keep && holdChunks.length; d++) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
         noiseHold.push(cents(bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), maps.trade, geo, bandPct, fee).pnl));
       }
@@ -672,7 +692,7 @@ async function s3UnitTask(task) {
         // FREE, unlike the test ones above: this pricing happens either way to
         // work out beat, and today its money is dropped the moment the count is
         // taken. Step 7 and Verify's board null want it.
-        if (d < keep) noiseHold.push(cents(dRes.pnl));
+        if (d >= from && d < keep) noiseHold.push(cents(dRes.pnl));
         if (hRes.pnl > dRes.pnl) beat++;
       }
       // the same one rule stage 1 reads by (decision record #6): how far the
@@ -904,7 +924,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 // came out once the box served a vocabulary without it.
 
 module.exports = {
-  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf,
+  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,

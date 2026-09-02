@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **d6a61e0a0cd9 — what the box is serving**, not from the working tree.
+Generated from **c3ea6a04e6db — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -496,39 +496,52 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Funnel
 
-## What the controls are called (51)
+## What the controls are called (65)
 
 - `- chosen`
+- `- what each limit would keep of`
 - `, and the two halves read`
+- `accept and carry on`
 - `add these limits to the rule`
 - `add this range to the rule`
-- `Against luck:`
 - `and`
 - `and the other with`
+- `by which column`
 - `dial`
 - `fewest trades`
 - `first dial`
 - `Funnel`
 - `Funnel -`
 - `here, for the`
+- `how many to keep`
 - `how to reach the target`
 - `its middle`
 - `keep from`
+- `keep the widest region`
+- `keep these values`
+- `keep this block`
+- `keeps`
+- `mark(s) so far`
 - `name`
-- `No noise comparison on this set`
+- `name two dials and read the grid`
+- `narrow this one`
+- `No scrambled copies on this set`
 - `No sealed window`
 - `Not evenly swept:`
 - `Not measurable here:`
 - `of`
-- `of this set's`
 - `one half leads with`
 - `One value far clear of an`
 - `out of`
 - `Passed over:`
 - `Read across`
 - `read the grid`
+- `Recommended:`
+- `records what you accepted - "`
 - `region size`
+- `scrambled copies of the table`
 - `second dial`
+- `set's`
 - `settings survive`
 - `settings that cleared,`
 - `shape:`
@@ -537,20 +550,21 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `Step`
 - `Taking the top N is shopping`
 - `target size`
+- `The check:`
 - `The ordering is the finding`
 - `The rule so far`
-- `the same reading on`
-- `the widest run luck managed was`
+- `the widest region on`
 - `they do not agree`
 - `thin below`
 - `This section could not read`
 - `to`
+- `was`
 - `What each floor would keep:`
 - `work out the missing numbers`
 - `worst losing streak allowed`
 - `write the Stage 4 set`
 
-## What the dropdowns offer (18)
+## What the dropdowns offer (19)
 
 - `accept what the rule gives`
 - `agreeBar`
@@ -560,6 +574,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `agreePersist`
 - `agreeRule`
 - `armMult`
+- `avg test $`
 - `bandMode`
 - `decision`
 - `dMult`
@@ -571,7 +586,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `trailMult`
 - `weekdaysOnly`
 
-## Sentences the page prints (48)
+## Sentences the page prints (58)
 
 - There is no stage 3 record set open. Open the Boards section
 - once - it will settle on one - and come back. The Funnel walks the set Boards has open, so there is no second
@@ -584,30 +599,38 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - The held-back window is opened once,
 - at the cut, on what survives.
 - . Every step below is read
-- against a split-half instead, which tests whether a reading is STABLE and never whether the effect is real.
+- against the two halves of the settings instead, which tests whether a reading is STABLE and never whether the effect is real.
 - Going back is allowed and is recorded on the set - a funnel walked back four times has seen more
 - of the board than one walked forward once, and the final check can only count what was written down.
 - step(s) back so far.
+- every reading on this step is drawn beside the same reading on each of this
+- A finding has to beat every one of them.
+- this set kept no scrambled copies, so every reading is drawn beside the same
+- reading on each of the two halves of the settings. That tests whether a reading is STABLE, never whether the
+- effect is real - a weaker check, and it is marked as such on the set.
 - How far apart a dial's values sit, against how much the result varies anyway.
 - - at this many rows every dial shows some movement, and the size of the
-- number is a claim only against the split-half beside it.
+- number is a claim only against the check beside it. Press a row to narrow that dial next.
 - they do not agree, and nothing below this step means anything until they do.
 - Grouping by one dial only averages the others out when every value was swept against the same spread of
 - everything else. These are partly some other dial's movement wearing their name.
 - . That is not the same as flat.
-- A spike is the shape luck makes.
+- A spike is the shape a shuffle makes.
 - otherwise flat menu is what a fluke looks like; a hill or a ramp is a relationship.
 - a RANGE, never a value - picking the peak is the shopping this walk exists to avoid
 - squares are thin.
 - A square built from two settings tells you
 - nothing, but it looks like every other square - and it is often the best-looking one on the grid, because small
 - groups swing further. Thin squares are marked and keep their count; none is dropped.
+- writes a range on BOTH dials in one step, replacing what the rule held for them. Your own block if you chose one, else the recommended one.
 - a weaker check than comparing coins
-- One slice is not a comparison - this cannot say whether the region holds anywhere else.
-- slices are positive.
+- slices are positive. The check managed
+- as many or more, so this count is what a shuffle gives
+- " - as a mark on the set, and opens the next step
 - The widest run of neighbouring settings that all made money, and
 - by depth inside the region, never by score, so the best-scoring one cannot sneak back in.
 - considered.
+- replaces every range and value in the rule with the region's edges above - keeps
 - No region: nothing here has neighbours that also work, which is what an isolated fluke looks like.
 - The numbers a sweep does not keep - the worst losing streak, the biggest single loss, how
 - many trades won, and how much of the result rests on guessing what happened inside a single bar - are worked out
@@ -617,15 +640,17 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - pick today - because a rule can be checked against scrambled data and a single row cannot.
 - , on the board this walk exists to stop you shopping. It is
 - offered because the choice is yours, and whichever you use is recorded on the set so the final check knows what
-- it is judging.
+- it is judging. Only columns a scrambled copy of the table really has are offered, so the same rule takes the
+- same top N of a scrambled copy and the two can be compared.
 - An empty or one-setting result is written with a warning, never refused.
-- scrambled copies of the table is drawn beside.
+- Anything short of all of them is a size a shuffle reaches too.
 - keeps the set open and clears every choice - recorded as going back
+- : no survivor carries this number yet - work out the missing numbers first.
 
-## Every word, flat (360)
+## Every word, flat (400)
 
 ```
-accept across add again against Against agree agreeBar agreeBoth agreeCopy agreePct agreePersist agreeRule all allowed also an An and anything anyway. anywhere apart are ARE armMult as at average averages avoid back back. bandMode bar be because been being below below. beside beside. best-looking best-scoring biggest board Boards box built but by came can cannot cannot. check checked choice choices chosen claim clear cleared clears coins column come comparing comparison considered. copies could count cut data decision deleted depth dial disagree dMult do do. does down. drawn dropped. each effect else. empty ended entry evenly Every every everything exists far far. fewest figure final finding first flat flat. flatter floor fluke for forward four from Funnel funnel further. gate gets gives Going going grid Grouping groups guessing half halves happened happens has have held-back here hides hill holds How how if in in. inside instead is isolated it It it. its judging. just keep keeps knows leads like like. limits looks losing loss luck made makes. managed many marked means measurable menu message middle missing money money. more movement much name name. neighbouring neighbours never no No noise none not Not Nothing nothing number numbers of offered often on once one One one-setting only Open open open. opened or ordering other others others. otherwise out over partly Passed peak pick picker picking positive. ramp range RANGE ranges reach read Read reading real. reason record recorded refused. region relationship. renamed rests result row rows rule rule. run same say score scrambled screen sealed second section section. seen set settings settle shape shopping shopping. shows single sit size slice slices small sneak so some spike split-half Split-half spread square squares STABLE stage Stage start Step step stop streak survive survives. sweep swept swing table tables take Taking target tells test tests than that That the The their There there These these they thin Thin thin. This this tHours tighten times to today top totalled Totals toward trades trailMult two until use value values varies walk walked walks warning was weaker wearing weekdaysOnly what What when whether which whichever widest will window with won work worked worst would write written you you. yours
+above accept accepted across add again against agree agreeBar agreeBoth agreeCopy agreePct agreePersist agreeRule all allowed also an An and anything Anything anyway. apart are ARE armMult as at average averages avg avoid back back. bandMode bar be beat because been being below below. beside best-looking best-scoring biggest block board Boards BOTH box built but by came can cannot cannot. carries carry check checked choice choices chose chosen claim clear cleared clears coins column columns come compared. comparing considered. copies copy could count cut data decision deleted depth dial dials disagree dMult do do. does down. drawn dropped. each edges effect else else. empty ended entry evenly Every every everything exists far far. fewest figure final finding first first. flat flat. flatter floor fluke for forward four from Funnel funnel further. gate gets gives Going going grid Grouping groups guessing half halves happened happens has have held held-back here hides hill How how if in in. inside instead is isolated it It it. its judging. just keep keeps kept knows leads like like. limit limits looks losing loss made makes. managed many mark marked means measurable menu message middle missing money money. more movement much name name. narrow neighbouring neighbours never next next. no No none not Not Nothing nothing number numbers of offered often on once one One one-setting one. only Only Open open open. opened opens or ordering other others others. otherwise out over own partly Passed peak pick picker picking positive. Press ramp range RANGE ranges reach reaches read Read reading real real. really reason Recommended recommended record recorded records refused. region relationship. renamed replaces replacing rests result row rows rule rule. run same score scrambled screen sealed second section section. seen set set. settings settings. settle shape shopping shopping. short shows shuffle single sit size slices small sneak so some spike Split-half spread square squares STABLE stage Stage start Step step stop streak such survive survives. survivor sweep swept swing table tables take takes Taking target tells test tests than that That the The their them them. There there These these they thin Thin thin. This this tHours tighten times to today too. top totalled Totals toward trades trailMult two until use value values varies walk walked walks warning was weaker wearing weekdaysOnly what What when whether which whichever widest will window with won work worked worst would write writes written yet you you. Your yours
 ```
 
 ---

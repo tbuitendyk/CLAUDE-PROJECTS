@@ -3325,13 +3325,15 @@ function funnelRead(id, state = {}) {
   // third number to choose.
   const keptN = rows.length && Array.isArray(rows[0].noiseTest) ? rows[0].noiseTest.length : 0;
   out.set.keptScrambles = keptN;
-  // FROM EVERY SETTING, THEN THE RULE, when the rule carries a cut -- so the
-  // copy takes its own top N. Before step 7 there is no cut, and the copy is
-  // the survivors with their money swapped, which is the same rows for a pass
-  // over hundreds instead of hundreds of thousands (funnelset.swapMoney).
-  const copyOf = (d) => (rule.cut ? S4.nullCopy(all, rule, d) : S4.swapMoney(rows, d));
-  const copies = Array.from({ length: keptN }, (_, d) => copyOf(d));
-  const check = keptN ? { copies } : { seed };
+  // NO COPY OF THE BOARD IS EVER BUILT (2026-09-02: ten copies of 524,832 rows
+  // at once killed the service twice the first time this tab was opened on
+  // the filled set). Every reading takes a money reader; F.moneyAt(d) reads
+  // kept scramble d straight off each row. The walk's rule carries no cut
+  // before step 7, so reading the survivors by position IS the scrambled copy
+  // under the same rule -- ranges, allowed values and the rebuilt-number
+  // limits never read the money. Only the cut does, and it is folded in at
+  // step 7 alone, where no reading is drawn.
+  const check = keptN ? { k: keptN } : { seed };
   const kind = F.checkKindOf(check);
   out.check = { kind, k: keptN };
   out.conditions.checkIsHalves = kind === 'halves';
@@ -3344,9 +3346,9 @@ function funnelRead(id, state = {}) {
     // greyed by the page -- it ranked, and ranking is what noise does too.
     const checkM = {};
     const counts = {};
-    const boards = kind === 'scrambles' ? copies : [ha, hb];
+    const readers = kind === 'scrambles' ? Array.from({ length: keptN }, (_, d) => [rows, F.moneyAt(d)]) : [[ha, F.money], [hb, F.money]];
     for (const x of r1.dials) {
-      const ms = boards.map((b) => F.movement(b, x.dial).m);
+      const ms = readers.map(([b, m]) => F.movement(b, x.dial, m).m);
       checkM[x.dial] = ms;
       counts[x.dial] = kind === 'scrambles' ? ms.every((m) => m != null && x.m > m) : null;
     }
@@ -3374,8 +3376,8 @@ function funnelRead(id, state = {}) {
     const a = String(state.dialA || '');
     const b = String(state.dialB || '');
     const g = F.step3(rows, a, b, { floor });
-    const boards = kind === 'scrambles' ? copies : [ha, hb];
-    const checkGrids = (a && b) ? boards.map((x) => F.step3(x, a, b, { floor })) : [];
+    const readers = kind === 'scrambles' ? Array.from({ length: keptN }, (_, d) => [rows, F.moneyAt(d)]) : [[ha, F.money], [hb, F.money]];
+    const checkGrids = (a && b) ? readers.map(([x, m]) => F.step3(x, a, b, { floor, moneyOf: m })) : [];
     const block = (a && b) ? F.recommendBlock(g, checkGrids, kind) : null;
     out.reading = { ...g, floorCost: F.floorCost(g, state.floorChoices), checkGrids, block, noise: { of: keptN, used: keptN, kind } };
     // THE DIALS INTERACT when the best block does not span every value the
@@ -3390,7 +3392,7 @@ function funnelRead(id, state = {}) {
     const slices = sliceRowsFor(rows, t, holdsAxis.axis, rule);
     const real = F.holdsAcross(slices, holdsAxis.axis, { floor });
     // the same count on the check: every scrambled copy, or each half
-    const boards = kind === 'scrambles' ? copies : [ha, hb];
+    const boards = kind === 'scrambles' ? Array.from({ length: keptN }, () => rows) : [ha, hb];
     const checkReads = boards.map((x, i) => F.holdsAcross(
       sliceRowsFor(x, t, holdsAxis.axis, rule, kind === 'scrambles' ? { d: i } : {}), holdsAxis.axis, { floor },
     ));
@@ -3402,8 +3404,9 @@ function funnelRead(id, state = {}) {
     };
   } else if (step === 5) {
     const ordered = F.ORDERED_DIALS.filter((d) => rows.some((r) => r[d] != null));
-    const region = (list) => require('./plateau').widestRegion(
-      list.map((r) => ({ ...r, pnl: F.money(r), trades: r.avgTrades == null ? 1 : r.avgTrades })),
+    // one list of cells at a time, and each is let go before the next is made
+    const region = (list, moneyOf = F.money) => require('./plateau').widestRegion(
+      list.map((r) => ({ ...r, pnl: moneyOf(r), trades: r.avgTrades == null ? 1 : r.avgTrades })),
       { minTrades: 0, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },
     );
     out.reading = region(rows);
@@ -3415,8 +3418,9 @@ function funnelRead(id, state = {}) {
     // ALL of the copies here, unlike the readings above that only compare: "wider
     // than luck" off one copy is a coin toss; "wider than all ten" is the claim
     // the count on Sweep exists to buy. With halves, the size on each half.
-    const boards = kind === 'scrambles' ? copies : [ha, hb];
-    const each = boards.map((x) => { const r = region(x); return r && r.size != null ? r.size : null; });
+    const each = [];
+    if (kind === 'scrambles') for (let d = 0; d < keptN; d++) { const r = region(rows, F.moneyAt(d)); each.push(r && r.size != null ? r.size : null); }
+    else for (const x of [ha, hb]) { const r = region(x); each.push(r && r.size != null ? r.size : null); }
     const mine = out.reading && out.reading.size != null ? out.reading.size : null;
     out.reading.noise = {
       of: keptN, used: kind === 'scrambles' ? keptN : 2, kind, sizes: each,
@@ -3452,9 +3456,9 @@ function sliceRowsFor(rows, t, axis, rule, opts = {}) {
   }
   if (axis === 'dials') {
     const fixed = new Set([...Object.keys(rule.ranges || {}), ...Object.keys(rule.allowed || {})]);
-    const free = F.ALL_DIALS.find((d) => !fixed.has(d) && new Set(rows.map((r) => F.keyOf(r[d]))).size > 1);
+    const free = F.ALL_DIALS.find((x) => !fixed.has(x) && new Set(rows.map((r) => F.keyOf(r[x]))).size > 1);
     if (!free) return [];
-    const by = F.groupsFor(rows, free);
+    const by = F.groupsFor(rows, free, d == null ? F.money : F.moneyAt(d));
     return [...by.entries()].map(([k, vals]) => ({
       key: `${free} ${k}`, n: vals.length, mean: vals.reduce((a, c) => a + c, 0) / vals.length,
     }));
@@ -3725,6 +3729,7 @@ function readUnitFigures(dir, u, want) {
   if (note.settings !== want.settings) stale.push(`it is for ${note.settings} settings and this set declares ${want.settings}`);
   if (note.width !== want.width) stale.push(`it holds ${note.width} figures a setting and this asks for ${want.width}`);
   if (note.keep !== want.keep) stale.push(`it kept ${note.keep} scrambles and this asks for ${want.keep}`);
+  if ((note.from || 0) !== (want.from || 0)) stale.push(`it starts at scramble ${note.from || 0} and this asks to start at ${want.from || 0}`);
   if (stale.length) return { stale };
   const bad = [];
   if (note.priced !== want.settings) bad.push(`only ${note.priced} of ${want.settings} settings were priced into it`);
@@ -3764,6 +3769,14 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
   if (!dryRun && keep <= have) {
     throw new Error(`${doc.name} already keeps ${have} — ask for more than that, or there is nothing to fill in`);
   }
+  // A TOP-UP PRICES ONLY WHAT THE RECORDS DO NOT HOLD (owner order, 2026-09-02:
+  // "a PROPER design would ADD the missing rows, not subject the user to 6
+  // hours of waiting again"). Scramble d is a hash of the set's name, so the
+  // `have` positions already on every row are exactly what pricing them again
+  // would produce. From `have` to `keep - 1` is priced and APPENDED; a fresh
+  // fill has from = 0 and adds all of it.
+  const from = dryRun ? 0 : Math.min(have, keep);
+  const add = keep - from;
 
   const { parent, records, settings } = relaunchShapeOf(doc);
   const blocks = rowstore.blocksOf(id, 'records') || [];
@@ -3773,11 +3786,12 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
 
   activeSet = doc;
   doc.status = 'filling';
-  doc.progress = `filling in ${keep} kept scrambles — starting`;
+  const asked = from ? `adding ${add} kept scrambles to the ${from} held` : `filling in ${keep} kept scrambles`;
+  doc.progress = `${asked} — starting`;
   doc.perf = {
     unitsDone: 0, unitsTotal: records.length, elapsedMs: 0, etaMs: null, workers: null,
     cyclesDone: 0,
-    cyclesTotal: records.length * settings.length * (1 + keep * 2), cyclesWord: 'pricings',
+    cyclesTotal: records.length * settings.length * (1 + add * 2), cyclesWord: 'pricings',
   };
   saveSet(doc);
 
@@ -3790,12 +3804,14 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
     const SCRATCH = `${id}__keptfill`;
     const FIGS = keptFigsDir(id);
     const NIL = -2147483648;
-    const width = keep * 2 + 1;          // test figures, held-back figures, then the re-priced real money
+    const width = add * 2 + 1;           // the ADDED test figures, the added held-back figures, then the re-priced real money
     const disagreed = [];
     let unitsSaved = 0;
     let rowsDone = 0;
     let matched = 0;
     let skipped = 0;
+    let padded = 0;                         // rows that held fewer kept figures than the set claimed
+    const sw = require('./stagework');
     let phase = 'pricing';
     let note = '';
     let lastSay = 0;
@@ -3807,7 +3823,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       doc.perf.cyclesDone = unitsSaved * settings.length * (1 + keep * 2);
       doc.perf.elapsedMs = now - t0;
       doc.perf.etaMs = unitsSaved ? Math.round(((now - t0) / unitsSaved) * (records.length - unitsSaved)) : null;
-      doc.progress = `filling in ${keep} kept scrambles — ${phase}: ${unitsSaved} of ${records.length} units saved`
+      doc.progress = `${asked} — ${phase}: ${unitsSaved} of ${records.length} units saved`
         + `${note ? `, ${note}` : ''}`
         + `${phase === 'rewriting' ? ` · ${rowsDone.toLocaleString()} of ${totalRows.toLocaleString()} records written` : ''}`
         + ` · ${Math.floor((now - t0) / 60000)}m so far`;
@@ -3826,7 +3842,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       throw new Error(`this set declares ${settings.length} settings under ${labelIdx.size} names — `
         + 'the fill joins its figures on the name, so two settings sharing one would take each other\'s');
     }
-    const want = { settings: settings.length, width, keep };
+    const want = { settings: settings.length, width, keep, from };
     const lanes = Math.max(1, (pool.parallel && pool.workers ? pool.workers.length : 1));
 
     try {
@@ -3852,7 +3868,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
           throw new Error(`the figures saved for ${rec.trade} are not usable — ${already.bad.join('; ')}. `
             + 'Delete them and run this again rather than filling in from a file that does not say what it holds');
         }
-        const base = { ...s3Payload({ doc, parent, rec, settings, fee, nullN }), keepN: keep, noiseOnly: true };
+        const base = { ...s3Payload({ doc, parent, rec, settings, fee, nullN }), keepN: keep, keepFrom: from, noiseOnly: true };
         const per = Math.ceil(settings.length / lanes);
         const shards = [];
         for (let at = 0; at < settings.length; at += per) shards.push({ ...base, settings: settings.slice(at, at + per) });
@@ -3868,13 +3884,14 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
             const at = labelIdx.get(r.label);
             if (at === undefined) throw new Error(`unit ${rec.trade} priced "${r.label}", which is not in this set's block`);
             const off = at * width;
-            for (let d = 0; d < keep; d++) {
+            // the task hands back positions from..keep-1 only, in order
+            for (let d = 0; d < add; d++) {
               const tv = (r.noiseTest || [])[d];
               const hv = (r.noiseHold || [])[d];
               vals[off + d] = tv == null ? NIL : Math.round(tv * 100);
-              vals[off + keep + d] = hv == null ? NIL : Math.round(hv * 100);
+              vals[off + add + d] = hv == null ? NIL : Math.round(hv * 100);
             }
-            vals[off + keep * 2] = r.pnl == null ? NIL : Math.round(r.pnl * 100);
+            vals[off + add * 2] = r.pnl == null ? NIL : Math.round(r.pnl * 100);
             has[at] = 1;
           }
           lanesDone++;
@@ -3883,7 +3900,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
         });
         note = `saving ${rec.trade}`;
         say(true);
-        writeUnitFigures(FIGS, u, vals, has, { settings: settings.length, width, keep, trade: rec.trade });
+        writeUnitFigures(FIGS, u, vals, has, { settings: settings.length, width, keep, from, trade: rec.trade });
         // READ BACK BEFORE MOVING ON. The owner's words: confirm it in the code
         // before going forward. Not "it returned without throwing" -- read the
         // bytes off the disk and check them against what they claim to be.
@@ -3926,17 +3943,25 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
           const at = labelIdx.get(x.row.label);
           if (at === undefined) throw new Error(`${x.row.label} is on disk for unit ${u} and this set's block does not declare it`);
           const off = at * width;
-          const nT = [];
-          const nH = [];
+          const freshT = [];
+          const freshH = [];
           let anyH = false;
-          for (let d = 0; d < keep; d++) {
+          for (let d = 0; d < add; d++) {
             const tv = vals[off + d];
-            const hv = vals[off + keep + d];
-            nT.push(tv === NIL ? null : tv / 100);
+            const hv = vals[off + add + d];
+            freshT.push(tv === NIL ? null : tv / 100);
             if (hv !== NIL) anyH = true;
-            nH.push(hv === NIL ? null : hv / 100);
+            freshH.push(hv === NIL ? null : hv / 100);
           }
-          const nowCents = vals[off + keep * 2];
+          // APPENDED AFTER WHAT THE ROW ALREADY HOLDS. A row holding fewer than
+          // `from` is padded and counted -- reported, never a reason to stop.
+          const keptT = sw.appendKept(x.row.noiseTest, from, freshT);
+          const keptH = sw.appendKept(x.row.noiseHold, from, freshH);
+          if (keptT.padded || keptH.padded) padded++;
+          const nT = keptT.arr;
+          const nH = keptH.arr;
+          if (from && Array.isArray(x.row.noiseHold) && x.row.noiseHold.some((v) => v != null)) anyH = true;
+          const nowCents = vals[off + add * 2];
           const wasCents = x.row.pnl == null ? NIL : Math.round(x.row.pnl * 100);
           if (nowCents === NIL || wasCents === NIL || Math.abs(nowCents - wasCents) > 1) {
             disagreed.push({ unit: u, label: x.row.label, stored: x.row.pnl, now: nowCents === NIL ? null : nowCents / 100 });
@@ -3994,9 +4019,10 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       // that makes a second attempt cheap.
       try { fs.rmSync(FIGS, { recursive: true, force: true }); } catch (_) { /* best effort */ }
       doc.params = { ...(doc.params || {}), keepN: keep };
+      if (padded) doc.warnings = [...(doc.warnings || []), `${padded} row(s) held fewer than the ${from} kept figures the set claimed before this fill and were padded with blanks`];
       doc.boardNull = { captured: true, kept: keep, why: null, filledAt: new Date().toISOString(), filledBy: here };
       doc.status = 'done';
-      doc.progress = `${keep} kept scrambles filled in — the totals rebuild next`;
+      doc.progress = `${from ? `${add} kept scrambles added, ${keep} now` : `${keep} kept scrambles`} filled in — the totals rebuild next`;
       doc.perf.elapsedMs = Date.now() - t0;
       saveSet(doc);
     } catch (e) {

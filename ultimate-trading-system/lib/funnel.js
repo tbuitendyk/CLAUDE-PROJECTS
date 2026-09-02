@@ -38,6 +38,19 @@ const money = (r) => {
   const v = r == null ? null : r[TEST_MONEY];
   return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
 };
+// A SCRAMBLED COPY IS READ, NEVER BUILT (2026-09-02, the service died twice
+// out of memory the first time the Funnel was opened on the filled set: ten
+// copies of 524,832 rows at once). The money a row made on kept scramble d is
+// already on the row; this hands back a reader for it, and every reading
+// below takes an optional reader in place of the real money. No row is ever
+// copied to read the check.
+const moneyAt = (d) => {
+  const i = Math.max(0, Math.floor(Number(d) || 0));
+  return (r) => {
+    const v = r && Array.isArray(r.noiseTest) ? r.noiseTest[i] : null;
+    return v == null || !Number.isFinite(Number(v)) ? null : Number(v);
+  };
+};
 
 // A value as a grouping key. null is its OWN group -- "this dial does not apply
 // to this setting" is a fact about the setting, not a missing number, and
@@ -79,10 +92,10 @@ function splitHalf(rows, seed) {
 // ---- step 1: which dials move the result at all ------------------------------
 
 // The groups a dial cuts the rows into, with each group's money.
-function groupsFor(rows, dial) {
+function groupsFor(rows, dial, moneyOf = money) {
   const by = new Map();
   for (const r of rows) {
-    const v = money(r);
+    const v = moneyOf(r);
     if (v == null) continue;
     const k = keyOf(r[dial]);
     if (!by.has(k)) by.set(k, []);
@@ -98,8 +111,8 @@ function groupsFor(rows, dial) {
 // A dial the run swept only ONE value of has no movement to measure, and is
 // reported as unmeasurable rather than as flat -- flat is a finding, "there was
 // nothing to compare" is not, and the two must never print the same.
-function movement(rows, dial) {
-  const by = groupsFor(rows, dial);
+function movement(rows, dial, moneyOf = money) {
+  const by = groupsFor(rows, dial, moneyOf);
   const keys = sortedValues(dial, [...by.keys()]);
   const n = [...by.values()].reduce((a, g) => a + g.length, 0);
   const base = {
@@ -277,9 +290,10 @@ function step2(rows, dial, opts = {}) {
 // "nothing here" rather than "not enough to say".
 function step3(rows, dialA, dialB, opts = {}) {
   const floor = opts.floor == null ? 0 : Math.max(0, Math.floor(opts.floor));
+  const moneyOf = typeof opts.moneyOf === 'function' ? opts.moneyOf : money;
   const cells = new Map();
   for (const r of rows) {
-    const v = money(r);
+    const v = moneyOf(r);
     if (v == null) continue;
     const k = `${keyOf(r[dialA])}|${keyOf(r[dialB])}`;
     if (!cells.has(k)) cells.set(k, []);
@@ -382,23 +396,21 @@ function holdsAxisFor(have) {
 // neighbouring things that count. No margin, no multiple, no threshold: the
 // only figure on the screen is how many copies there were.
 //
-// `check` is { copies: [rows, ...] } -- the same rows with the money swapped,
-// one per kept scramble -- or { seed } when there are none. The caller builds
-// the copies, because building them is the caller's rule applied to a
-// scrambled table (funnelset.nullCopy) and this file never applies a rule.
+// `check` is { k } -- k kept scrambles, each read off the rows by position
+// with moneyAt(d) -- or { seed } when there are none. Nothing is copied.
 
-const checkKindOf = (check) => (check && Array.isArray(check.copies) && check.copies.length ? 'scrambles' : 'halves');
+const checkKindOf = (check) => (check && Number(check.k) > 0 ? 'scrambles' : 'halves');
 
 // mean money per value of a dial, keyed by value
-function meansBy(rows, dial) {
-  const by = groupsFor(rows, dial);
+function meansBy(rows, dial, moneyOf = money) {
+  const by = groupsFor(rows, dial, moneyOf);
   const out = new Map();
   for (const [k, vals] of by) out.set(k, { n: vals.length, mean: vals.reduce((a, c) => a + c, 0) / vals.length });
   return out;
 }
-const grandOf = (rows) => {
+const grandOf = (rows, moneyOf = money) => {
   let s = 0; let n = 0;
-  for (const r of rows) { const v = money(r); if (v != null) { s += v; n++; } }
+  for (const r of rows) { const v = moneyOf(r); if (v != null) { s += v; n++; } }
   return n ? s / n : null;
 };
 
@@ -410,14 +422,15 @@ function countsFor(rows, dial, check, opts = {}) {
   const keys = sortedValues(dial, [...real.keys()]);
   const out = [];
   if (kind === 'scrambles') {
-    const copies = check.copies.map((c) => meansBy(c, dial));
+    const K = Math.floor(Number(check.k));
+    const copies = Array.from({ length: K }, (_, d) => meansBy(rows, dial, moneyAt(d)));
     for (const k of keys) {
       const r = real.get(k);
       const cm = copies.map((m) => (m.get(k) ? m.get(k).mean : null));
       const counts = cm.length > 0 && cm.every((v) => v != null && r.mean > v);
       out.push({ value: k, n: r.n, mean: r.mean, check: cm, counts });
     }
-    return { dial, kind, k: copies.length, values: out };
+    return { dial, kind, k: K, values: out };
   }
   const seed = (check && check.seed) || opts.seed || 'funnel';
   const [ha, hb] = splitHalf(rows, seed);
@@ -526,7 +539,7 @@ function ladderFor(rows, field, dir) {
 
 module.exports = {
   ORDERED_DIALS, CATEGORICAL_DIALS, ALL_DIALS, HOLDS_AXES, TEST_MONEY,
-  money, keyOf, sortedValues, hash32, splitHalf,
+  money, moneyAt, keyOf, sortedValues, hash32, splitHalf,
   groupsFor, movement, balanceOf, step1, shapeClass, step2, step3, floorCost,
   holdsAcross, holdsAxisFor,
   checkKindOf, countsFor, recommendRange, recommendBlock, ladderFor,

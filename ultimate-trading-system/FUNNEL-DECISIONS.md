@@ -285,3 +285,31 @@ made while building it that the design did not already settle.
     (owner: "burn that into your behavior"). The documents' older sections and
     the code names in tests still carry it; that purge waits for the owner's
     tiers.
+
+## 3.39.1 — the first test run's findings (2026-09-02)
+
+61. **A scrambled copy is READ, never built.** 3.39.0 built ten copies of the
+    survivors to draw the check, and on step 1 the survivors are the whole
+    board: five million objects, two heap deaths in two minutes the first
+    time the owner opened the tab. Every reading now takes a money reader and
+    `moneyAt(d)` reads kept scramble d off the row. The proof that this is
+    the same arithmetic as a swapped copy is a test, not a comment. Decision
+    56 is superseded: `swapMoney` stays as a tested helper and the read no
+    longer calls it.
+62. **A top-up prices only the scrambles the records do not hold** (owner:
+    "if this data is really by-byte determinate then a PROPER design would
+    ADD the missing rows, not subject the user to 6 hours of waiting again").
+    The task starts at `keepFrom`, the figures file holds only the added
+    positions and says where it starts, and the rewrite appends after what
+    each row holds. A row holding fewer than the set claimed is padded with
+    blanks and counted on the set as a warning — reported, never a reason to
+    stop a rewrite that keeps every row.
+63. **The fill box starts on what the set keeps and asks before going above
+    it**, with the cost of only the added scrambles. At that number the fill
+    refuses on its own, as it always did.
+64. **A poll redraw on Boards leaves the owner's place alone.** Restoring a
+    remembered position on each four-second redraw is what put them back at
+    the top; the redraw now holds the memory shut and moves nothing.
+65. **No template literal nested inside an interpolation on a screen.** The
+    word-list reader cannot see through one, and it showed the owner a bare
+    `r.positive` as if it were a label. The sentence is built first.

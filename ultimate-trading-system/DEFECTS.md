@@ -642,6 +642,21 @@ stay as the record of what was wrong.
   footprint. The set's records were never at risk — the totals are derived and
   rebuild on the next read (RULE NINE).
 
+## Found 2026-09-02 01:58 UTC — opening the Funnel on the filled set killed the service (fixed in 3.39.1)
+
+- **3.39.0's Funnel read built ten copies of the whole board at once.** To
+  draw the check beside every reading it took the survivors and made one copy
+  per kept scramble with the money swapped -- and on step 1 nothing is
+  narrowed yet, so the survivors are all 524,832 settings. Ten copies of that
+  is five million objects; the heap limit is 3 GB; the service died at 01:58
+  and again at 02:00 the moment the tab was opened, and systemd restarted it
+  each time. The old read built one copy. **What the fix is:** no copy at all
+  -- every reading takes a reader for the money, and `moneyAt(d)` reads kept
+  scramble d straight off each row (`lib/funnel.js`). Reading by position is
+  the swapped copy, proved in a test, and nothing is allocated to read it.
+  Every step's reading, the block, the slices and the region all go through
+  the reader. Found by the owner: "looks like 3.39.0 broke the funnel".
+
 ## How this file is meant to work
 
 Anything found and not fixed goes here, in plain language, with enough detail to

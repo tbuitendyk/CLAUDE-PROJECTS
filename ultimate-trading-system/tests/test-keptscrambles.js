@@ -130,7 +130,7 @@ module.exports = {
   theTestWindowIsActuallyScrambled() {
     assert.ok(SRC.includes("streamFor(stream.decision, agr, d, 'test')"),
       'the kept scrambles must be priced on the TEST window with a real deal index');
-    assert.ok(SRC.includes("if (d < keep) noiseHold.push(cents(dRes.pnl))"),
+    assert.ok(SRC.includes("if (d >= from && d < keep) noiseHold.push(cents(dRes.pnl))"),
       'the held-back scrambles are already priced to work out beat — keeping them must cost no pricing');
   },
 
@@ -166,16 +166,57 @@ module.exports = {
   // building the comparison, the two would drift.
   theFunnelRunsTheSameReadingOnTheAllLuckCopy() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    assert.ok(src.includes('const copyOf = (d) => (rule.cut ? S4.nullCopy(all, rule, d) : S4.swapMoney(rows, d));'),
-      'the scrambled copy must come from the one place that builds one, not a separate calculation');
-    assert.ok(src.includes('const copies = Array.from({ length: keptN }, (_, d) => copyOf(d));'),
-      'every kept copy is built once and every step reads the same ones');
-    for (const call of ['F.movement(b, x.dial)', 'F.recommendRange(rows, dial, check', 'F.step3(x, a, b, { floor })', 'region(x)']) {
+    assert.ok(src.includes("const check = keptN ? { k: keptN } : { seed };"),
+      'the scrambled copies are read by position through one check, never built');
+    for (const call of ['F.movement(b, x.dial, m)', 'F.recommendRange(rows, dial, check', 'F.step3(x, a, b, { floor, moneyOf: m })', 'region(rows, F.moneyAt(d))']) {
       assert.ok(src.includes(call), `${call} — that reading has no scrambled twin`);
     }
     // step 5 is the one that uses ALL of them, because "wider than all ten" is
     // the claim the count on Sweep is bought for
     assert.ok(src.includes('used: keptN'), 'the region reading must use every kept scramble, not one');
+  },
+
+  // A TOP-UP PRICES ONLY THE SCRAMBLES THE RECORDS DO NOT HOLD (owner order,
+  // 2026-09-02). Scramble d is a hash of the set's name, so the positions
+  // already on every row are exactly what pricing them again would give; the
+  // task starts at `from`, the figures file holds only the added positions,
+  // and the rewrite appends them after what the row holds.
+  aTopUpPricesOnlyTheMissingScramblesAndAppendsThem() {
+    const { appendKept } = sw;
+    assert.deepStrictEqual(appendKept([1, 2, 3], 3, [4, 5]), { arr: [1, 2, 3, 4, 5], padded: 0 });
+    assert.deepStrictEqual(appendKept(null, 0, [7, 8]), { arr: [7, 8], padded: 0 }, 'a fresh fill appends to nothing');
+    assert.deepStrictEqual(appendKept([1], 3, [4]), { arr: [1, null, null, 4], padded: 2 },
+      'a row holding fewer than the set claimed is padded and counted, never a reason to stop');
+    assert.deepStrictEqual(appendKept([1, 2, 3, 9], 3, [4]).arr, [1, 2, 3, 4], 'nothing past `from` is trusted');
+    // the task prices from `from`, on both windows, and the beat loop keeps by position
+    assert.ok(SRC.includes('const from = Math.max(0, Math.min(Math.floor(Number(task.keepFrom) || 0), keep));'));
+    assert.ok(SRC.includes('for (let d = from; d < keep; d++) {\n      const dt = streamFor(stream.decision, agr, d, \'test\');'), 'the test window starts at from');
+    assert.ok(SRC.includes("for (let d = from; d < keep && holdChunks.length; d++) {"), 'the held-back window starts at from');
+    // the fill asks for exactly that, sizes itself by what is added, keeps only
+    // the added positions in its files, and appends on the rewrite
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const fill = src.slice(src.indexOf('function startKeptScrambleFill('));
+    assert.ok(fill.includes('const from = dryRun ? 0 : Math.min(have, keep);') && fill.includes('const add = keep - from;'));
+    assert.ok(fill.includes('cyclesTotal: records.length * settings.length * (1 + add * 2)'), 'the cost is sized by what is added');
+    assert.ok(fill.includes('const width = add * 2 + 1;'), 'the figures file holds only the added positions');
+    assert.ok(fill.includes('keepN: keep, keepFrom: from, noiseOnly: true'), 'the task is told where to start');
+    assert.ok(fill.includes('const keptT = sw.appendKept(x.row.noiseTest, from, freshT);'), 'the rewrite appends');
+    assert.ok(src.includes("if ((note.from || 0) !== (want.from || 0)) stale.push("), 'a file for a different start is stale, not reused');
+  },
+
+  // THE FILL BOX STARTS ON WHAT THE SET KEEPS AND ASKS BEFORE GOING ABOVE IT
+  // (owner, 2026-09-02: "that button better not run and start deleting good
+  // data if it gets hit again"). At that number the fill refuses on its own;
+  // above it, the page asks, with the cost of only the added scrambles.
+  theFillBoxStartsOnWhatTheSetKeepsAndAsksBeforeRaisingIt() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const panel = src.slice(src.indexOf('function bKeptFillPanel('), src.indexOf('\nfunction ', src.indexOf('function bKeptFillPanel(') + 10));
+    assert.ok(panel.includes('const want = have || Math.min(10, nullN);'), 'the box starts on what the set keeps');
+    assert.ok(panel.includes('const cost = (k) => rows * (1 + Math.max(0, k - have) * 2);'), 'the cost printed is the cost of what is added');
+    assert.ok(panel.includes('data-have="${have}"'), 'the wiring reads what the set keeps off the box');
+    const wire = src.slice(src.indexOf('function wireKeptFill('), src.indexOf('\n}\n', src.indexOf('function wireKeptFill(')));
+    assert.ok(wire.includes('if (haveNow && keep > haveNow) {') && wire.includes('if (!confirm(msg)) return;'), 'raising the count asks first');
+    assert.ok(wire.includes('Only the ${adding} missing scramble(s) are priced'), 'and says only the missing ones are priced');
   },
 
   // RULE NINE: migrate beside, verify, then swap. Every block index already

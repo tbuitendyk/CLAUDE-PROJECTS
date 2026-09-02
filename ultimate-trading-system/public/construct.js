@@ -1260,16 +1260,21 @@ function bKeptFillPanel(doc) {
   // cost printed from the plan understates a four-hour job by nearly half.
   const rows = Number((doc.counts || {}).rows) || 0;
   const off = doc.status !== 'done';
-  const want = Math.min(10, nullN);
+  // THE BOX STARTS ON WHAT THE SET ALREADY KEEPS (owner order, 2026-09-02:
+  // "that button better not run and start deleting good data if it gets hit
+  // again"). A press at that number is refused by the fill; only a number
+  // ABOVE it does anything, and that asks first (wireKeptFill).
+  const want = have || Math.min(10, nullN);
   // the same arithmetic the fill itself does: the real test money once as a
-  // proof, then each kept scramble on each of the two windows
-  const cost = (k) => rows * (1 + k * 2);
+  // proof, then each ADDED scramble on each of the two windows -- a top-up
+  // prices only the scrambles the records do not hold
+  const cost = (k) => rows * (1 + Math.max(0, k - have) * 2);
   return `<div class="panel">
       <h3 style="margin-top:0">Filling in the kept null money</h3>
       <div class="row" style="align-items:flex-end">
-      <label class="f" title="how many of this set's null-set deals should have their money written down, so the Funnel has a whole second copy of Table 3.A and Table 3.B made of scrambled money to measure against. It re-prices only what is missing, never the whole run, and it proves itself against the money already stored before anything is swapped.">null set money kept<input id="bKeptN" type="number" value="${want}" min="0" max="${nullN}" style="width:4.5rem" ${off ? 'disabled' : ''}></label>
+      <label class="f" title="how many of this set's null-set deals should have their money written down, so the Funnel has a whole second copy of Table 3.A and Table 3.B made of scrambled money to measure against. It re-prices only what is missing, never the whole run, and it proves itself against the money already stored before anything is swapped.">null set money kept<input id="bKeptN" type="number" value="${want}" min="0" max="${nullN}" data-have="${have}" data-rows="${rows}" style="width:4.5rem" ${off ? 'disabled' : ''}></label>
       <button id="bKeptGo" ${off ? 'disabled title="the set is still working — a fill waits until it has landed"' : ''}>fill in the kept null money</button>
-      <span id="bKeptMsg" class="note">${have ? `this set keeps ${have} of its ${nullN}.` : `this set keeps none of its ${nullN}.`}${nullN && rows ? ` Keeping ${want} re-prices ${cost(want).toLocaleString()} times, across ${rows.toLocaleString()} rows.` : ''}</span>
+      <span id="bKeptMsg" class="note">${have ? `this set keeps ${have} of its ${nullN}. Pressing at ${have} does nothing; a higher number adds only the missing scrambles and asks first.` : `this set keeps none of its ${nullN}.`}${nullN && rows && !have ? ` Keeping ${want} re-prices ${cost(want).toLocaleString()} times, across ${rows.toLocaleString()} rows.` : ''}</span>
       </div>
     </div>`;
 }
@@ -1298,6 +1303,20 @@ function wireKeptFill(id) {
   if (!go) return;
   go.onclick = async () => {
     const keep = Number(($('#bKeptN') || {}).value) || 0;
+    // RAISING THE COUNT IS ASKED FIRST, with what it costs. A fill runs for
+    // hours and puts the page to sleep at its end; a mis-typed 11 must not
+    // start one on a slip. The refusal for a number at or below what the set
+    // keeps is the fill's own and needs no asking.
+    const bx = $('#bKeptN');
+    const haveNow = Number((bx && bx.dataset.have) || 0);
+    const rowsNow = Number((bx && bx.dataset.rows) || 0);
+    if (haveNow && keep > haveNow) {
+      const adding = keep - haveNow;
+      const msg = `This set already keeps ${haveNow} scrambles. Add ${adding} more, for ${keep} in all?\n\n`
+        + `Only the ${adding} missing scramble(s) are priced -- ${(rowsNow * (1 + adding * 2)).toLocaleString()} pricings across ${rowsNow.toLocaleString()} rows -- `
+        + 'and the records are rewritten beside and swapped only after every check passes. Hours, not minutes.';
+      if (!confirm(msg)) return;
+    }
     go.disabled = true;
     // THE WAIT BOX, RAISED BEFORE THE ASK (owner, 2026-09-01: "it sits for 30
     // seconds looking like it didn't get the button click").
@@ -2532,7 +2551,7 @@ let bTallyPoll = null;   // asks again while a set's tables are totalling
 // works because waitWrap reads it before its first await.
 function bPollRedraw() {
   waitSilent = true;
-  try { return drawBoards().then(() => restoreScroll(tab)); } finally { waitSilent = false; }
+  try { holdScrollMemory(); return drawBoards().then(() => holdScrollMemory()); } finally { waitSilent = false; }
 }
 function bView() {
   try { return JSON.parse(localStorage.getItem(BOARDS_VIEW_KEY) || '{}') || {}; } catch (_) { return {}; }
@@ -3456,7 +3475,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       <h3 style="margin-top:0">Stage 3 — settings priced from the kept votes (${esc(doc.name)}${doc.parent ? `, out of ${esc(doc.parent.name)}` : ''})</h3>
       ${t.failed ? `<p class="note"><b class="warn">the totalling failed:</b> ${esc(t.failed)} — the records are all kept; the totalling can be tried again after a service restart.</p>`
     : t.waiting ? `<p class="note">the tables are not totalled yet — ${esc(t.waiting)}. This page asks again every few seconds.</p>`
-      : `<p class="note">${tp && tp.phase ? esc(tp.phase) : 'totalling the tables'}: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} ${esc(tp.word || 'parts')}` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands.</p>`}
+      : `<p class="note">${tp && tp.phase ? esc(tp.phase) : 'totalling the tables'}: <b>${tp ? `${Number(tp.done).toLocaleString()} of ${Number(tp.total).toLocaleString()} ${esc(tp.word || 'parts')}` : 'starting'}</b>${pct} — building in the background; the tables appear here when it lands. This page asks again every few seconds and leaves your place on it alone.</p>`}
     </div>`)) return;
     if (!t.failed) bTallyPoll = setTimeout(() => { if (tab === 'boards') bPollRedraw(); }, 4000);
     return;
@@ -4150,6 +4169,7 @@ function fStep4(r, st) {
     : 'nothing to compare against';
   const best = (c.positive || []).filter((p) => p != null);
   const checkBest = best.length ? Math.max(...best) : null;
+  const said = r.why ? 'nothing to accept' : `accepted ${r.positive} of ${r.of}; the check managed ${checkBest == null ? '-' : checkBest} of ${r.of}`;
   return `<p class="note">Read across <b>${esc(String(ax.axis || 'nothing'))}</b>${ax.weaker
     ? ' - <b>a weaker check than comparing coins</b>' : ''}.</p>
     ${(ax.passedOver || []).length ? `<p class="note muted">Passed over:
@@ -4161,7 +4181,7 @@ function fStep4(r, st) {
       <tbody>${slices.map((x) => `<tr><td>${esc(x.key)}</td><td>${x.n}</td><td>${fFix(x.mean)}</td></tr>`).join('')}</tbody></table>
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <button id="fAccept4" class="pri" ${r.why ? 'disabled' : ''}>accept and carry on</button>
-      <span class="note">records what you accepted - "${r.why ? 'nothing to accept' : `accepted ${r.positive} of ${r.of}; the check managed ${checkBest == null ? '-' : checkBest} of ${r.of}`}" - as a mark on the set, and opens the next step</span></div>`;
+      <span class="note">records what you accepted - "${esc(said)}" - as a mark on the set, and opens the next step</span></div>`;
 }
 
 function fStep5(r, d) {
