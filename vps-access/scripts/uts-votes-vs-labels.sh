@@ -16,11 +16,14 @@ console.log('s3 doc keys:', Object.keys(d3).join(' '));
 const parentId = typeof d3.parent === 'string' ? d3.parent : (d3.parent && (d3.parent.id || d3.parent.of)) || 's2-mtdyamtf-1';
 console.log('parent:', JSON.stringify(d3.parent), '-> reading', parentId, ' seed:', d3.seed, ' keepN:', d3.params && d3.params.keepN, ' nullN:', d3.params && d3.params.nullN);
 const unitKeyOf = (u) => `${u.trade}|${u.ctx1 || ''}|${u.ctx2 || ''}|${u.geometry}`;
-const listed = d3.units || d3.carried || (d3.plan && d3.plan.units) || null;
-const wanted = listed ? new Set(listed.map(unitKeyOf)) : null;
-console.log('units named on the s3 doc:', listed ? listed.length : 'none found (showing every unit of the parent)');
 const recs = rowstore.readAll(parentId, 'records');
-console.log('parent units:', recs.length);
+console.log('parent units:', recs.length, ' first record keys:', Object.keys(recs[0] || {}).join(' '));
+// the ten the launcher carried: the parent's top ten under its saved sort
+// (beat its own null set high to low, then lead over null set high to low)
+const carry = Number((d3.parent || {}).carry) || 10;
+const ordered = recs.slice().sort((a, b) => ((b.beat || 0) - (a.beat || 0)) || ((b.lead || 0) - (a.lead || 0)));
+const wanted = new Set(ordered.slice(0, carry).map(unitKeyOf));
+console.log('showing every unit of the parent; * marks the', carry, 'the stage 3 set carried (top of the parent sort)');
 const CLASSES = [-1, 0, 1];
 const argmax = (a) => { let b = 0; for (let k = 1; k < 3; k++) if (a[k] > a[b]) b = k; return CLASSES[b]; };
 const f = (x, n = 3) => (x == null || !isFinite(x) ? '-' : Number(x).toFixed(n));
@@ -30,7 +33,7 @@ console.log(['unit'.padEnd(34), pad('n', 4), pad('y-/0/+', 12), pad('call-/0/+',
 let below = 0, above = 0, total = 0;
 for (const rec of recs) {
   const key = unitKeyOf(rec);
-  if (wanted && !wanted.has(key)) continue;
+  const mark = wanted.has(key) ? '*' : ' ';
   const range = rec.blocks && rec.blocks.votes;
   const idxs = []; for (let b = range[0]; b < range[1]; b++) idxs.push(b);
   const votes = rowstore.readBlocks(parentId, 'votes', idxs).map((x) => x.row).filter((r) => r.u === rec.u && r.w === 0).sort((a, b) => a.i - b.i);
@@ -57,11 +60,11 @@ for (const rec of recs) {
   const rng = (cs) => { const v = cs.filter((c) => c != null); return v.length ? `${f(Math.min(...v))}..${f(Math.max(...v))}` : '-'; };
   const mean = (cs) => { const v = cs.filter((c) => c != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
   total++; if (real != null && mean(cAcc) != null) { if (real < mean(cAcc)) below++; else above++; }
-  console.log([key.padEnd(34), pad(n, 4), pad(cnt(y), 12), pad(cnt(calls), 12), pad(f(real), 7), pad(rng(cAcc), 13), pad(`${beats(real, cAcc)}/10`, 6), pad(f(realUD), 7), pad(f(mean(cUD)), 6), pad(beats(realUD, cUD), 3), pad(f(score, 1), 8), pad(rng(cScore), 15), pad(beats(score, cScore), 3)].join(' '));
+  console.log([(mark + key).padEnd(34), pad(n, 4), pad(cnt(y), 12), pad(cnt(calls), 12), pad(f(real), 7), pad(rng(cAcc), 13), pad(`${beats(real, cAcc)}/10`, 6), pad(f(realUD), 7), pad(f(mean(cUD)), 6), pad(beats(realUD, cUD), 3), pad(f(score, 1), 8), pad(rng(cScore), 15), pad(beats(score, cScore), 3)].join(' '));
   // per member, briefly: direction accuracy of each member's own argmax on the real calendar
   const per = [];
   for (let mi = 0; mi < M; mi++) { const c = probs[mi].map(argmax); per.push(`${rec.specs[mi].model}/${rec.specs[mi].view}=${f(dirAcc((i) => c[i]), 2)}`); }
-  console.log('   members:', per.join('  '));
+  console.log('   stage 1 says: beat', rec.beat, 'of', rec.pairs, ' lead', f(rec.lead, 2), ' score3', f(rec.score3, 1), ' scoreAll', f(rec.scoreAll, 1), ' | members:', per.join('  '));
 }
 console.log('');
 console.log(`units read: ${total}; real direction accuracy below its copies' average: ${below}; at or above: ${above}`);
