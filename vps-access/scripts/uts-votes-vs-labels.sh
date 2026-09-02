@@ -23,7 +23,7 @@ console.log('parent units:', recs.length, ' first record keys:', Object.keys(rec
 const carry = Number((d3.parent || {}).carry) || 10;
 const ordered = recs.slice().sort((a, b) => ((b.beat || 0) - (a.beat || 0)) || ((b.lead || 0) - (a.lead || 0)));
 const wanted = new Set(ordered.slice(0, carry).map(unitKeyOf));
-console.log('showing every unit of the parent; * marks the', carry, 'the stage 3 set carried (top of the parent sort)');
+console.log('showing the', carry, 'units the stage 3 set carried (top of the parent sort)');
 const CLASSES = [-1, 0, 1];
 const argmax = (a) => { let b = 0; for (let k = 1; k < 3; k++) if (a[k] > a[b]) b = k; return CLASSES[b]; };
 const f = (x, n = 3) => (x == null || !isFinite(x) ? '-' : Number(x).toFixed(n));
@@ -34,6 +34,7 @@ let below = 0, above = 0, total = 0;
 for (const rec of recs) {
   const key = unitKeyOf(rec);
   const mark = wanted.has(key) ? '*' : ' ';
+  if (!wanted.has(key)) continue;                        // the runner shows 8000 characters: the carried ten only
   const range = rec.blocks && rec.blocks.votes;
   const idxs = []; for (let b = range[0]; b < range[1]; b++) idxs.push(b);
   const votes = rowstore.readBlocks(parentId, 'votes', idxs).map((x) => x.row).filter((r) => r.u === rec.u && r.w === 0).sort((a, b) => a.i - b.i);
