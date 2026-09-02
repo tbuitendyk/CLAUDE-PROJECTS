@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **796e3b78b768 — what the box is serving**, not from the working tree.
+Generated from **cdd690f86f68 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -278,8 +278,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (129)
+## What the controls are called (130)
 
+- `— nothing came out of`
 - `— pick a stage`
 - `+both`
 - `+hold`
@@ -368,7 +369,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `pricings over`
 - `quorum by`
 - `record set`
-- `record set —`
 - `records`
 - `records,`
 - `renaming the settings failed:`
@@ -409,6 +409,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `units`
 - `vs always-long`
 - `What this run actually is`
+- `yet —`
 
 ## What the dropdowns offer (12)
 
@@ -425,12 +426,13 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `market`
 - `voices`
 
-## Sentences the page prints (79)
+## Sentences the page prints (80)
 
 - Boards — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
 - stage 2 and stage 1 sections with its parents; picking a stage 2 set fills its stage 1 parent; picking a
-- parent puts the child selections away. Each section can be put away and comes back as you left it.
+- parent puts the child selections away. Each box offers only the record sets that came out of what is picked
+- above it. Each section can be put away and comes back as you left it.
 - . Its tables appear when it lands.
 - THIS SET DOES NOT MATCH ITS OWN PLAN.
 - unit(s) failed and are missing from every table below — read the numbers accordingly.
@@ -507,10 +509,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - Bring the setting names up to date first
 - settings are named the older way, and pricing now would price every one of them a second time under its new name.
 
-## Every word, flat (453)
+## Every word, flat (454)
 
 ```
-1v 3.A 3.B about above above. accordingly. active actually added adding adds after afterwards. again again. against agreed all alone alone. alongside already always-long an and another answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat before behind. belong below beside best block board Boards BOOST both bought box breakout bring Bring broken building but by call campaign can cannot carry changes check child chunk clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons conviction copy cost could count cover Data date decides decision DECISION declare declare. declared declares declares. declaring Delete deletes did died directional disk DOES does done drop dropping Dropping each Each either else empty end entry every Every exactly exist existed exists factored FACTORED failed FAILED families fee few fewer fewer. fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast forecasts form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into is it It it. its Its ITS keep kept landed lands. last launch lead leaves left line list LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next no NOT not not. notes nothing nothing. now null numbers of of. offers old older on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press prev price priced prices Pricing pricing pricing. pricings promoted proved provenance provided put puts quarter quorum ran ranked read reads real record records records. refuses. renaming Renaming renumbers replaced rest restart. resting rests result revert rewrites row rows rule. run rung running same save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show showed showing shows. Size slice smaller so some sort sound. stage Stage STAMP started still stop stopped stopping stops sub-rows suggests. swapped swapping Sweep table Table tables takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to today top totalled totalling touched touched. trade trades trail training tried tuning tuning-slice two under undo undoing Undoing unfinished unit unit. units units. up variants visible voice. voices votes vs was way way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you your
+1v 3.A 3.B about above above. accordingly. active actually added adding adds after afterwards. again again. against agreed all alone alone. alongside already always-long an and another answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat before behind. belong below beside best block board Boards BOOST both bought box breakout bring Bring broken building but by call came campaign can cannot carry changes check child chunk clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons conviction copy cost could count cover Data date decides decision DECISION declare declare. declared declares declares. declaring Delete deletes did died directional disk DOES does done drop dropping Dropping each Each either else empty end entry every Every exactly exist existed exists factored FACTORED failed FAILED families fee few fewer fewer. fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast forecasts form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into is it It it. its Its ITS keep kept landed lands. last launch lead leaves left line list LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next no NOT not not. notes nothing nothing. now null numbers of of. offers old older on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press prev price priced prices Pricing pricing pricing. pricings promoted proved provenance provided put puts quarter quorum ran ranked read reads real record records records. refuses. renaming Renaming renumbers replaced rest restart. resting rests result revert rewrites row rows rule. run rung running same save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show showed showing shows. Size slice smaller so some sort sound. stage Stage STAMP started still stop stopped stopping stops sub-rows suggests. swapped swapping Sweep table Table tables takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to today top totalled totalling touched touched. trade trades trail training tried tuning tuning-slice two under undo undoing Undoing unfinished unit unit. units units. up variants visible voice. voices votes vs was way way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you your
 ```
 
 ---
