@@ -515,10 +515,16 @@ the one above it, and a rung is skipped only upward, never down:
 3. **The one file**: that test file alone.
 4. **The whole suite**: `npm test`. Once the change is believed finished.
 5. **The mutation harness, FILTERED to what changed**:
-   `node tests/mutate-servicecontrol.js <nameFragment>`.
+   `node tests/mutate-servicecontrol.js <nameFragment>`. Since 2026-09-02 it
+   runs only the test FILE that holds the guard's test (`node tests/run.js
+   <file>`), so a guard costs seconds to a minute, not four minutes.
 6. **The mutation harness whole** — only when guards were re-aimed across the
-   board, or the owner asks. It is roughly forty minutes and it is never the
-   way to find out whether one new guard bites.
+   board, or the owner asks.
+
+**Guards never gate a deploy** (owner order, 2026-09-02: "the cure is almost
+as bad as the disease"). A green suite deploys. The guards run AFTER the
+deploy, in the background, and a guard that misses is a test-only follow-up
+commit — it changes nothing on the box, so it never holds the box.
 
 **Reading a failure is rung 2, never rung 4.** Re-running `npm test` to see one
 assertion message again is the commonest way this is broken.

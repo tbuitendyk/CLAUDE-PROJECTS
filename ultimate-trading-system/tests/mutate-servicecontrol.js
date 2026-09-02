@@ -542,10 +542,25 @@ for (const [file, from, to, testName, consequence] of GUARDS) {
     continue;
   }
   // EVERY occurrence, not the first — a guard written twice must break twice.
+  // THE ONE FILE THAT HOLDS THE TEST, not the whole suite (owner order,
+  // 2026-09-02: ten guards took forty minutes, four of them per guard spent
+  // running tests that could not see the line). The file is found by the
+  // test's name in its source; a name no file holds is a guard aimed at
+  // nothing and is reported as such rather than run against everything.
+  const holders = fs.readdirSync(path.join(ROOT, 'tests'))
+    .filter((f) => /^test-.*\.js$/.test(f))
+    .filter((f) => new RegExp(`^\\s+(?:async\\s+)?${testName}\\s*\\(`, 'm').test(fs.readFileSync(path.join(ROOT, 'tests', f), 'utf8')));
+  if (!holders.length) {
+    fs.writeFileSync(file, orig);
+    inFlight.delete(file);
+    console.log(`SKIP  ${testName}\n      no test file holds a test by that name, so the guard is aimed at nothing`);
+    missed++;
+    continue;
+  }
   fs.writeFileSync(file, orig.split(from).join(to));
   let out = '';
   try {
-    out = execFileSync('npm', ['test'], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
+    out = execFileSync('node', [path.join(ROOT, 'tests', 'run.js'), ...holders], { cwd: ROOT, encoding: 'utf8', maxBuffer: 64 << 20 });
   } catch (err) {
     out = `${err.stdout || ''}${err.stderr || ''}`;
   } finally {
