@@ -658,7 +658,7 @@ module.exports = {
     // NO COPY OF THE BOARD IS EVER BUILT. Ten copies of 524,832 rows at once
     // killed the service twice the first time the tab was opened on the filled
     // set (2026-09-02). The read hands every reading a money reader instead.
-    assert.ok(body.includes("const check = keptN ? { k: keptN } : { seed };"), 'the check is a count and a reader, never an array of copies');
+    assert.ok(body.includes("const check = keptN ? { k: keptN, bar } : { seed };"), 'the check is a count, a bar and a reader, never an array of copies');
     assert.ok(!/copies = Array\.from|swapMoney\(rows|S4\.nullCopy\(all, rule, d\)/.test(body),
       'the read must not build a copy of the board to read the check');
     assert.ok(body.includes('F.moneyAt(d)'), 'the check reads kept scramble d off the rows by position');
@@ -1009,11 +1009,11 @@ module.exports = {
   theReadServesEveryStepItsCheckAndRecommendation() {
     const s = src('lib/stages.js');
     const body = s.slice(s.indexOf('function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
-    assert.ok(body.includes("out.check = { kind, k: keptN };"), 'the read names the check');
+    assert.ok(body.includes("out.check = { kind, k: keptN, bar, chance: kind === 'scrambles' ? F.chanceOf(bar, keptN) : null };"), 'the read names the check, its bar, and what the bar clears by chance');
     assert.ok(body.includes("out.conditions.checkIsHalves = kind === 'halves';"));
     assert.ok(body.includes('r1.beating = beating;') && body.includes('r1.counts = counts;'), 'step 1: how many values beat the check, per dial');
     assert.ok(body.includes('r2.rec = F.recommendRange(rows, dial, check, { seed });'), 'step 2: the recommendation');
-    assert.ok(body.includes('F.recommendBlock(g, checkGrids, kind)'), 'step 3: the block');
+    assert.ok(body.includes('F.recommendBlock(g, checkGrids, kind, { bar })'), 'step 3: the block, under the walk\'s bar');
     assert.ok(body.includes("check: { kind, positive: checkReads.map((x) => x.positive)"), 'step 4: the check count');
     assert.ok(body.includes('S4.regionRule(out.reading, { ordered, categorical: F.CATEGORICAL_DIALS })'), 'step 5: the region as a rule');
     assert.ok(body.includes("maxDrawdown: F.ladderFor(rows, 'maxDrawdown', 'max')"), 'step 6: the ladders');
@@ -1296,7 +1296,8 @@ module.exports = {
       assert.strictEqual(u2.beats, 0);
       assert.strictEqual(a.positive, 1);
       assert.strictEqual(a.of, 2);
-      assert.strictEqual(a.beatsAll, 0);
+      assert.strictEqual(a.clearBar, 0, 'nobody clears eight of ten');
+      assert.strictEqual(a.bar, 8, 'the default bar, eight of ten');
       // walked on the blend, every unit is "other"; unit 0's active beats all ten
       const b = await stages.funnelAcross(id, { rule, unit: 'all' });
       assert.strictEqual(b.unit, null);
@@ -1304,7 +1305,7 @@ module.exports = {
       assert.strictEqual(b.units[0].beats, 10);
       assert.strictEqual(b.positive, 2);
       assert.strictEqual(b.of, 3);
-      assert.strictEqual(b.beatsAll, 1);
+      assert.strictEqual(b.clearBar, 1, 'unit 0 beats all ten, which clears any bar');
       // nothing chosen is the first unit, as everywhere
       assert.strictEqual((await stages.funnelAcross(id, { rule })).unit, keys[0]);
       // a rule keeping nothing on a unit says so with nulls rather than zeros
@@ -1468,9 +1469,9 @@ module.exports = {
     assert.ok(src.includes('fUnitMemory[set] = unit;') && src.includes('catch (_) { return fUnitMemory[set] || null; }'),
       'the chosen unit is remembered in the page too');
     const wire = src.slice(src.indexOf('function fWire('));
-    assert.ok(/\/across`, \{ rule: st\.rule, unit: st\.unit \}/.test(wire), 'the across carries the unit');
+    assert.ok(/\/across`, \{ rule: st\.rule, unit: st\.unit, bar: st\.bar \}/.test(wire), 'the across carries the unit');
     const cutAt = wire.indexOf('/cut`');
-    assert.ok(cutAt > 0 && /unit: st\.unit,\n\s*\}\);/.test(wire.slice(cutAt, cutAt + 700)), 'the cut carries the unit');
+    assert.ok(cutAt > 0 && /unit: st\.unit,\n\s*bar: st\.bar,\n\s*\}\);/.test(wire.slice(cutAt, cutAt + 700)), 'the cut carries the unit');
     assert.ok(src.includes('<select id="fUnit"><option value="all"'), 'the picker offers the blend as all');
     assert.ok(src.includes('${(d.units || []).map((u) => `<option value="${esc(u.key)}"'), 'and every unit the reply listed');
     // a walk is saved per unit, and never under no unit
@@ -1489,10 +1490,10 @@ module.exports = {
       'what was read is shown only for the rule it was read for');
     const draw = src.slice(src.indexOf('async function drawFunnel'), src.indexOf('\nfunction fHead('));
     assert.ok(draw.includes('accept: d.step === 4 && r.pressed')
-      && draw.includes('(a4 ? { positive: a4.positive, of: a4.of, check: null, beatsAll: a4.beatsAll } : null)'),
+      && draw.includes('(a4 ? { positive: a4.positive, of: a4.of, check: null, clearBar: a4.clearBar } : null)'),
       'the accept on a pressed step 4 records the across read for this rule');
     const wire = src.slice(src.indexOf('function fWire('));
-    assert.ok(wire.includes('? `accepted ${a4.positive} of ${a4.of} other units positive; ${a4.beatsAll} beat every copy`'),
+    assert.ok(wire.includes('? `accepted ${a4.positive} of ${a4.of} other units positive; ${a4.clearBar} clear the bar`'),
       'the mark says what was accepted in the units\' terms');
     // STARTED AND FOLLOWED (decision 73): the press starts the reading and
     // remembers which; the follower polls, counts the boards read on the
@@ -1508,5 +1509,108 @@ module.exports = {
     assert.ok(wire.includes('if (ax && ax.disabled && st.acrossAsked && !(st.across && st.across.ruleKey === st.acrossAsked.ruleKey)) fAcrossFollow(st, null);'),
       'a reading started before the page was left is followed again, not asked for twice');
     assert.ok(s4.includes("<button id=\"fAcross\" class=\"pri\" ${asked ? 'disabled' : ''}>read the other units</button>"), 'the button is held while its reading runs');
+  },
+
+  // ---- THE BAR (§18, owner order 2026-09-02: "that bar should be down at
+  // the range of 5 to 7") -------------------------------------------------
+
+  aValueCountsWhenItBeatsAtLeastTheBarOfTheCopies() {
+    const F = require('../lib/funnel');
+    assert.strictEqual(F.DEFAULT_BAR, 8);
+    assert.strictEqual(F.barOf({ k: 10 }), 8, 'nothing asked is eight of ten');
+    assert.strictEqual(F.barOf({ k: 10, bar: 5 }), 5);
+    assert.strictEqual(F.barOf({ k: 10, bar: 40 }), 10, 'K is the ceiling');
+    assert.strictEqual(F.barOf({ k: 10, bar: 0 }), 1, 'and one is the floor');
+    assert.strictEqual(F.barOf({ k: 3 }), 3, 'a set that kept three copies bars at three');
+    assert.strictEqual(F.barOf({ k: 0 }), 0);
+    // what a bar buys: the real figure is one more draw among K + 1
+    assert.ok(Math.abs(F.chanceOf(10, 10) - 1 / 11) < 1e-12);
+    assert.ok(Math.abs(F.chanceOf(8, 10) - 3 / 11) < 1e-12);
+    assert.ok(Math.abs(F.chanceOf(5, 10) - 6 / 11) < 1e-12);
+    assert.strictEqual(F.chanceOf(11, 10), null);
+    // how far ahead: against the copies' average, in units of their spread
+    assert.ok(Math.abs(F.leadOf(5, [1, 2, 3]) - 3) < 1e-12, '(5 - 2) / 1');
+    assert.strictEqual(F.leadOf(5, [2, 2, 2]), null, 'no spread, no lead');
+    assert.strictEqual(F.leadOf(5, [2]), null, 'one copy is no spread');
+    assert.strictEqual(F.leadOf(null, [1, 2, 3]), null);
+    // a value beating 7 of 10 counts under a bar of 7 and not under 8
+    const rows = [];
+    for (let k = 0; k < 10; k++) {
+      // gate a: real 5, copies 0..9 -> beats copies 0..4 (five); gate b: real 8 -> beats 0..7 (eight)
+      rows.push({ label: `a${k}`, gate: 'a', avgTest: 5, noiseTest: Array.from({ length: 10 }, (_, d) => d) });
+      rows.push({ label: `b${k}`, gate: 'b', avgTest: 8, noiseTest: Array.from({ length: 10 }, (_, d) => d) });
+    }
+    const at = (bar) => Object.fromEntries(F.countsFor(rows, 'gate', { k: 10, bar }).values.map((v) => [v.value, v]));
+    assert.strictEqual(at(10).a.beaten, 5);
+    assert.strictEqual(at(10).b.beaten, 8);
+    assert.deepStrictEqual([at(10).a.counts, at(10).b.counts], [false, false], 'all ten: neither');
+    assert.deepStrictEqual([at(8).a.counts, at(8).b.counts], [false, true], 'eight: b');
+    assert.deepStrictEqual([at(5).a.counts, at(5).b.counts], [true, true], 'five: both');
+    assert.strictEqual(at(8).b.lead != null && at(8).b.lead > 0, true, 'and the lead says how far ahead');
+    assert.strictEqual(F.countsFor(rows, 'gate', { k: 10, bar: 5 }).bar, 5, 'the reading says which bar it used');
+    // the halves are both, whatever bar is asked
+    const h = F.countsFor(rows, 'gate', { seed: 's', bar: 1 });
+    assert.strictEqual(h.bar, 2);
+    assert.ok(h.values.every((v) => v.beaten >= 0 && v.beaten <= 2 && v.lead === null));
+    // a square on step 3 counts on the same terms
+    const g = F.step3(rows, 'gate', 'gate', { floor: 0 });
+    const grids = Array.from({ length: 10 }, (_, d) => F.step3(rows, 'gate', 'gate', { floor: 0, moneyOf: F.moneyAt(d) }));
+    assert.strictEqual(F.recommendBlock(g, grids, 'scrambles', { bar: 10 }).block, null, 'no square beats all ten');
+    assert.ok(F.recommendBlock(g, grids, 'scrambles', { bar: 8 }).block, 'b beats eight');
+  },
+
+  async theWalkCarriesItsBarAndTheSetSaysWhatItWasCutUnder() {
+    const fx = await unitFixture();
+    let s4 = null;
+    try {
+      const { id, keys } = fx;
+      // unit 1's active beats five of ten: not bold at eight, bold at five
+      const r8 = await stages.funnelRead(id, { step: 1, rule: {}, unit: keys[1] });
+      assert.deepStrictEqual(r8.check, { kind: 'scrambles', k: 10, bar: 8, chance: 3 / 11 });
+      assert.strictEqual(r8.reading.counts.gate, false, 'five of ten does not clear eight');
+      assert.ok(r8.reading.honesty && r8.reading.honesty.of > 0, 'the board says how many values clear the bar');
+      assert.ok(Math.abs(r8.reading.honesty.byChance - r8.reading.honesty.of * (3 / 11)) < 1e-9, 'and how many would by chance');
+      const r5 = await stages.funnelRead(id, { step: 1, rule: {}, unit: keys[1], bar: 5 });
+      assert.deepStrictEqual(r5.check, { kind: 'scrambles', k: 10, bar: 5, chance: 6 / 11 });
+      assert.strictEqual(r5.reading.counts.gate, true, 'five of ten clears five');
+      assert.strictEqual(r5.reading.beating.gate.n, 1);
+      const r2 = await stages.funnelRead(id, { step: 2, rule: {}, unit: keys[1], dial: 'gate', bar: 5 });
+      const active = r2.reading.rec.values.find((v) => v.value === 'active');
+      assert.strictEqual(active.beaten, 5);
+      assert.strictEqual(active.counts, true);
+      assert.deepStrictEqual(r2.reading.rec.recommend, { values: ['active'] }, 'recommended under five');
+      assert.strictEqual(r2.reading.rec.bar, 5);
+      // the across clears the bar per unit, under the walk's bar
+      const a = await stages.funnelAcross(id, { rule: { allowed: { gate: ['active'] } }, unit: keys[0], bar: 5 });
+      assert.strictEqual(a.bar, 5);
+      assert.strictEqual(a.units.find((u) => u.unit === keys[1]).clears, true, 'unit 1 beats five of ten');
+      assert.strictEqual(a.clearBar, 1);
+      // the cut writes the check it was read under
+      const doc = await stages.cutFunnelSet(id, { rule: { allowed: { gate: ['active'] } }, closing: { key: 'rule' }, unit: keys[1], bar: 5 });
+      s4 = doc.id;
+      assert.deepStrictEqual(doc.check, { kind: 'scrambles', k: 10, bar: 5, chance: 6 / 11 }, 'a bold row means one thing under eight of ten and another under five');
+    } finally {
+      if (s4) { try { fs.rmSync(path.join(__dirname, '..', 'data', 'stagesets', `${s4}.json`), { force: true }); } catch (_) { /* fixture */ } }
+      fx.cleanup();
+    }
+  },
+
+  theScreenOffersTheBarAndSendsItWithEveryRead() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const head = src.slice(src.indexOf('function fHead('), src.indexOf('\nfunction fRail('));
+    assert.ok(head.includes('bold when a value beats at least<input id="fBar" type="number" min="1" max="${c.k}"'), 'the bar box, capped at the copies kept');
+    assert.ok(head.includes('of <b>${c.k}</b> copies - by chance about <b>${fPct(c.chance)}</b> of values would'), 'what the bar buys, beside it');
+    const draw = src.slice(src.indexOf('async function drawFunnel'), src.indexOf('\nfunction fHead('));
+    assert.ok(/\/read`, \{[\s\S]*?bar: st\.bar,/.test(draw), 'the read carries the bar');
+    const wire = src.slice(src.indexOf('function fWire('));
+    assert.ok(wire.includes("{ rule: st.rule, unit: st.unit, bar: st.bar }"), 'the across carries the bar');
+    assert.ok(/unit: st\.unit,\n\s*bar: st\.bar,\n\s*\}\);/.test(wire), 'the cut carries the bar');
+    assert.ok(wire.includes("st.bar = v; fSave(); drawFunnel();"), 'and changing it re-reads');
+    const s1 = src.slice(src.indexOf('function fStep1('), src.indexOf('\nfunction fStep2('));
+    assert.ok(s1.includes('values clear the bar on this board; by chance about'), 'the honesty line on step 1');
+    const s2 = src.slice(src.indexOf('function fStep2('), src.indexOf('\nfunction fStep3('));
+    assert.ok(s2.includes('- beats ${v.beaten == null ? \'-\' : v.beaten} of ${c.length}'), 'step 2 says how many copies each value beats');
+    assert.ok(s2.includes('- lead ${Number(v.lead).toFixed(1)}'), 'and how far ahead');
+    assert.ok(!/beatsAll|beat every copy/.test(src), 'nothing on the page still asks for every copy');
   },
 };

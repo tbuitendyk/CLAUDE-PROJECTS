@@ -349,7 +349,7 @@ function recordMark(doc, mark) {
 
 // ---- the record --------------------------------------------------------------
 
-function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull, sealed, unit = null, unitName = null }) {
+function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull, sealed, unit = null, unitName = null, check = null }) {
   return {
     id,
     // listSets summarises on stage AND seq, and seqFor counts the highest seq it
@@ -379,6 +379,12 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     // blended board.
     unit: unit || null,
     unitName: unitName || null,
+    // THE CHECK THIS WALK WAS READ AGAINST: the kind (scrambled copies or the
+    // two halves), how many copies, the bar a value had to clear (beats at
+    // least `bar` of `k`), and what a bar like that clears by chance. Written
+    // here because a bold row means one thing under eight of ten and another
+    // under five, and the set has to say which it was cut under.
+    check: check ? { kind: check.kind || null, k: check.k ?? null, bar: check.bar ?? null, chance: check.chance ?? null } : null,
     steps: [],
     backSteps: [],
     rule: { ...EMPTY_RULE },

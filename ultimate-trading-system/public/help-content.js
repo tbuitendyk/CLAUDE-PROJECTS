@@ -489,6 +489,10 @@ window.HELP = {
         what: 'Applies the rule you have built on this unit to each of the other units\' records, one at a time, and reports how many come out positive.',
         more: 'This is the honest form of "does it hold elsewhere": the same rule on other coins and shapes, judged against each of their own scrambled copies. It is pressed rather than automatic because it reads every other unit\'s board, one at a time. The result is kept for this exact rule; change the rule and it asks again.',
       },
+      fBar: {
+        what: 'How many of the scrambled copies a value has to beat to count as real - to go bold, to be recommended, to be a square in a block. Eight of ten unless you change it.',
+        more: 'With no forecast at all the real figure is one more draw among the copies, so it beats at least N of K about (K + 1 - N) in (K + 1) of the time: 9% at all ten, 27% at eight, 36% at seven, 55% at five. That rate is printed beside the box so you see what a bar buys, and the line at the top of step 1 says how many values clear the bar against how many would by chance. The bar is saved with this walk and written on the set it cuts, because a bold row means one thing under eight of ten and another under five.',
+      },
       fTarget: {
         what: 'Roughly how many settings you are hoping to end up with. It is a guide, not a knife - nothing is ever trimmed to reach it.',
         more: 'It shows you the distance to the target at every step, so you can see whether you are narrowing too fast or too slowly while there is still time to change course. If your rule overshoots at the end, you are offered three ways to close the gap and told what each one costs.',

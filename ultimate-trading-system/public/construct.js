@@ -134,7 +134,7 @@ const COL = {
   fRegionDial: 'a dial the widest region spans. Keeping the region writes these edges into the rule.',
   fRegionFrom: 'the lowest value of this dial inside the region, or the one value a word-valued dial takes there.',
   fRegionTo: 'the highest value of this dial inside the region.',
-  fCheck: 'how many of this dial\'s values make more money than that same value on every scrambled copy of the table (or sit above both halves\' averages, when the set kept no copies). That is the test step 2 applies to each value, so a bold row here is a row with something to keep on step 2. Zero means greyed: this dial may move the money, but not in the direction a forecast is for.',
+  fCheck: 'how many of this dial\'s values make more money than that same value on at least the bar\'s worth of the scrambled copies (or sit above both halves\' averages, when the set kept no copies). On step 2 each value shows the copies\' range, how many of them it beats, and its lead: how far ahead of the copies\' average it sits, in units of their spread. That is the test step 2 applies to each value, so a bold row here is a row with something to keep on step 2. Zero means greyed: this dial may move the money, but not in the direction a forecast is for.',
   fMovement: 'how far apart this dial\'s values sit, measured against how much the result varies anyway. THE ORDERING IS THE FINDING - at this many rows every dial shows some movement, and the size of the number is a claim only against the split-half beside it.',
   fRange: 'the gap in test dollars between this dial\'s best-averaging value and its worst. A ratio with no magnitude beside it cannot be read.',
   fValues: 'how many different values of this dial the run actually swept. One value is not a comparison, and a dial with one value is listed separately rather than shown as flat.',
@@ -3976,7 +3976,7 @@ function fLoad() {
   fState = (saved && saved.set === set) ? { ...saved, unit }
     : { set, unit, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
       dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false,
-      closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {}, across: null };
+      closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {}, across: null, bar: null };
   return fState;
 }
 function fSave() {
@@ -4012,6 +4012,7 @@ async function drawFunnel() {
       dialA: st.dialA, dialB: st.dialB, floor: st.floor, rebuilt: st.rebuilt,
       closing: st.closing || { key: 'rule' },
       unit: st.unit,                                        // null: the set's first unit; 'all': the blend
+      bar: st.bar,                                          // null: the engine's default bar
     });
   } finally { waitEnd(); }
   if (d && !d.totalling && !d.waiting && d.rebuilt) st.rebuilt = true;
@@ -4062,7 +4063,7 @@ async function drawFunnel() {
     groups: d.step === 2 && Array.isArray(r.groups) ? r.groups.map((g) => [String(g.value), g.n]) : null,
     grid: d.step === 3 && r.grid ? { aVals: r.aVals, bVals: r.bVals, block: (r.block || {}).block || null } : null,
     accept: d.step === 4 && r.pressed
-      ? (a4 ? { positive: a4.positive, of: a4.of, check: null, beatsAll: a4.beatsAll } : null)
+      ? (a4 ? { positive: a4.positive, of: a4.of, check: null, clearBar: a4.clearBar } : null)
       : (d.step === 4 && !r.why ? { positive: r.positive, of: r.of, check: r.check || null } : null),
     keep: d.step === 5 && r.keep ? { ranges: r.keep.ranges || {}, allowed: r.keep.allowed || {} } : null,
   };
@@ -4084,7 +4085,9 @@ async function drawFunnel() {
 // NAMED rather than left blank - whether a noise comparison exists at all and
 // whether the sealed window is intact. A missing comparison shown as nothing
 // reads as 'nothing to report', which is the opposite of the truth.
+const fPct = (x) => (x == null ? '-' : `${Math.round(Number(x) * 100)}%`);
 function fHead(d) {
+  const c = d.check || {};
   const n = (d.set && d.set.noiseTwin) || {};
   const sealed = (d.set && d.set.sealed) || {};
   const unitName = d.unit ? (d.unitName || d.unit) : 'all units together';
@@ -4099,7 +4102,10 @@ function fHead(d) {
       <span class="note"><b>${Number(d.survivors).toLocaleString()}</b> of
       ${Number(d.of).toLocaleString()} settings survive${d.target ? ` and the target is ${Number(d.target).toLocaleString()}` : ''}</span>
       <label class="f">target size<input id="fTarget" type="number" min="0" style="width:6rem"
-        value="${d.target == null ? '' : d.target}"></label></div>
+        value="${d.target == null ? '' : d.target}"></label>
+      ${c.kind === 'scrambles' ? `<label class="f">bold when a value beats at least<input id="fBar" type="number" min="1" max="${c.k}" step="1" style="width:4.5rem"
+        value="${c.bar}"></label>
+      <span class="note">of <b>${c.k}</b> copies - by chance about <b>${fPct(c.chance)}</b> of values would</span>` : ''}</div>
     <p class="note">${n.available ? `This set carries ${Number(d.set.keptScrambles || n.kept || 0)} scrambled copies of the whole table, each one the same days in a jumbled order. Every step below is read once against the real table and again against each of those, and the second reading is drawn beside the first.`
     : `<b>No scrambled copies on this set</b> - ${esc(String(n.why || 'not captured'))}. Every step below is read
        against the two halves of the settings instead, which tests whether a reading is STABLE and never whether the effect is real.`}</p>
@@ -4137,7 +4143,8 @@ function fCheckLine(d) {
   if (c.kind === 'scrambles') {
     return `<p class="note"><b>The check:</b> every reading on this step is drawn beside the same reading on each of this
       set's <b>${c.k}</b> scrambled copies of the table${c.k === 1 ? ' - one copy is a single draw, and the page says so' : ''}.
-      A finding has to beat every one of them.</p>`;
+      A value counts when it beats at least <b>${c.bar}</b> of them; with no forecast at all about <b>${fPct(c.chance)}</b> of values
+      would clear that bar.</p>`;
   }
   return `<p class="note"><b>The check:</b> this set kept no scrambled copies, so every reading is drawn beside the same
     reading on each of the two halves of the settings. That tests whether a reading is STABLE, never whether the
@@ -4159,7 +4166,9 @@ function fStep1(r) {
   // three decimals, so a row that beats the top of the range by less than a
   // hundredth does not look equal to it.
   const rowClass = (x) => ((r.counts || {})[x.dial] === false ? 'dim' : ((r.counts || {})[x.dial] ? 'cnt' : ''));
-  return `<p class="note">How far apart a dial's values sit, against how much the result varies anyway.
+  const h = r.honesty || null;
+  return `${h ? `<p class="note"><b>${h.clear} of ${h.of}</b> values clear the bar on this board; by chance about
+      <b>${h.byChance == null ? '-' : Math.round(h.byChance)}</b> would.</p>` : ''}<p class="note">How far apart a dial's values sit, against how much the result varies anyway.
       <b>The ordering is the finding</b> - at this many rows every dial shows some movement, and the size of the
       number is a claim only against the check beside it. Press a row to narrow that dial next.</p>
     <table><thead><tr>${cth('dial', 'fDialName')}${cth('movement', 'fMovement')}${cth('check', 'fCheck')}${cth('range', 'fRange')}
@@ -4193,7 +4202,8 @@ function fStep2(r, st) {
   const checkOf = (v) => {
     const c = v && v.check ? v.check.filter((x) => x != null) : [];
     if (!c.length) return '-';
-    return kind === 'halves' ? v.check.map((x) => fFix(x)).join(' / ') : `${fFix(Math.min(...c))} to ${fFix(Math.max(...c))}`;
+    if (kind === 'halves') return v.check.map((x) => fFix(x)).join(' / ');
+    return `${fFix(Math.min(...c))} to ${fFix(Math.max(...c))} - beats ${v.beaten == null ? '-' : v.beaten} of ${c.length}${v.lead == null ? '' : ` - lead ${Number(v.lead).toFixed(1)}`}`;
   };
   // WHAT IS PRE-FILLED: the range already in the rule for this dial, else the
   // recommendation. Either way the boxes show where the count line comes from.
@@ -4295,12 +4305,12 @@ function fStep4(r, st) {
         <button id="fAcross" class="pri" ${asked ? 'disabled' : ''}>read the other units</button>
         <span id="fAcrossMsg" class="note">${a ? `<span>read at ${esc(new Date(a.at).toLocaleTimeString())}</span>` : `<span>not read yet for this rule - ${r.others} boards, read one at a time</span>`}</span></div>
       ${a ? `<p class="note"><b>${a.positive} of ${a.of}</b> other units are positive under this rule, and on
-        <b>${a.beatsAll} of ${a.of}</b> the money of the survivors beats every one of the scrambled copies of that unit.</p>
+        <b>${a.clearBar} of ${a.of}</b> the money of the survivors clears the bar against the scrambled copies of that unit.</p>
       <table><thead><tr>${cth('unit', 'fAcrossUnit')}${cth('survivors', 'fAcrossSurvivors')}${cth('avg test', 'fAvgTest')}${cth('check', 'fCheck')}</tr></thead>
-        <tbody>${a.units.map((u) => `<tr class="${u.k && u.beats === u.k ? 'cnt' : (u.avgTest == null ? 'dim' : '')}"><td>${esc(u.name)}</td><td>${Number(u.survivors).toLocaleString()} of ${Number(u.of).toLocaleString()}</td><td>${fFix(u.avgTest)}</td><td>${u.k ? `<span>beats ${u.beats} of ${u.k}</span>` : '-'}</td></tr>`).join('')}</tbody></table>
+        <tbody>${a.units.map((u) => `<tr class="${u.clears ? 'cnt' : (u.avgTest == null ? 'dim' : '')}"><td>${esc(u.name)}</td><td>${Number(u.survivors).toLocaleString()} of ${Number(u.of).toLocaleString()}</td><td>${fFix(u.avgTest)}</td><td>${u.k ? `<span>beats ${u.beats} of ${u.k}${u.lead == null ? '' : ` - lead ${Number(u.lead).toFixed(1)}`}</span>` : '-'}</td></tr>`).join('')}</tbody></table>
       <div class="row" style="align-items:flex-end;margin-top:.5rem">
         <button id="fAccept4" class="pri">accept and carry on</button>
-        <span class="note">records "accepted ${a.positive} of ${a.of} other units positive; ${a.beatsAll} beat every copy" as a mark on the set, and opens the next step</span></div>` : ''}`;
+        <span class="note">records "accepted ${a.positive} of ${a.of} other units positive; ${a.clearBar} clear the bar" as a mark on the set, and opens the next step</span></div>` : ''}`;
   }
   const slices = r.slices || [];
   const c = r.check || {};
@@ -4451,6 +4461,11 @@ function fWire(st) {
   document.querySelectorAll('[data-fstep]').forEach((b) => { b.onclick = () => go(Number(b.dataset.fstep)); });
   const t = $('#fTarget');
   if (t) t.onchange = () => { st.target = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value) || 0)); fSave(); drawFunnel(); };
+  const bb = $('#fBar');
+  if (bb) bb.onchange = () => {
+    const v = bb.value === '' ? null : Math.max(1, Math.floor(Number(bb.value) || 0));
+    st.bar = v; fSave(); drawFunnel();
+  };
   const un = $('#fUnit');
   if (un) un.onchange = () => {
     fSave();                                                   // this unit's walk keeps its place
@@ -4565,7 +4580,7 @@ function fWire(st) {
   if (ax) ax.onclick = async () => {
     ax.disabled = true;
     const ruleKey = JSON.stringify(st.rule);
-    const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/across`, { rule: st.rule, unit: st.unit });
+    const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/across`, { rule: st.rule, unit: st.unit, bar: st.bar });
     if (!started) { ax.disabled = false; return; }
     st.acrossAsked = { ruleKey, token: started.token, at: new Date().toISOString() };
     fSave();
@@ -4579,8 +4594,8 @@ function fWire(st) {
     const a4 = (st.read || {}).accept;
     if (!a4) return;
     const best = ((a4.check || {}).positive || []).filter((p) => p != null);
-    const said = a4.beatsAll != null
-      ? `accepted ${a4.positive} of ${a4.of} other units positive; ${a4.beatsAll} beat every copy`
+    const said = a4.clearBar != null
+      ? `accepted ${a4.positive} of ${a4.of} other units positive; ${a4.clearBar} clear the bar`
       : `accepted ${a4.positive} of ${a4.of}; the check managed ${best.length ? Math.max(...best) : '-'} of ${a4.of}`;
     // the mark is for accepting with some slice NOT positive; all positive is
     // not something to be marked for
@@ -4658,6 +4673,7 @@ function fWire(st) {
       steps: st.steps, backSteps: st.backSteps, closing: st.closing || { key: 'rule' },
       marks: st.marks || [],
       unit: st.unit,
+      bar: st.bar,
     });
     cut.disabled = false;
     // WHAT THE CLOSING DID, in the reply, not only on the record. 'tighten the

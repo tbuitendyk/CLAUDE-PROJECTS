@@ -481,6 +481,13 @@ const GUARDS = [
     "    units = units.slice();",
     'theUnitsAreListedInTheStageTwoTablesOrder',
     'the dropdown follows the order the units happened to finish pricing, and the first unit of a set is whichever finished first'],
+  // ---- THE BAR (3.45.0) ----
+  [path.join(ROOT, 'lib', 'funnel.js'), "      const counts = cm.length > 0 && beaten >= bar;", "      const counts = cm.length > 0 && cm.every((v) => beats(r.mean, v));",
+    'aValueCountsWhenItBeatsAtLeastTheBarOfTheCopies',
+    'the bar on the screen is drawn and never read, and every value still has to beat all ten'],
+  [path.join(ROOT, 'public', 'construct.js'), "      bar: st.bar,                                          // null: the engine's default bar\n", "",
+    'theScreenOffersTheBarAndSendsItWithEveryRead',
+    'the owner sets seven, the box reads eight, and every bold row on the screen is under a bar the owner did not choose'],
   // ---- THE ALWAYS GATE IS GONE (3.44.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "  return alwaysLabelsOf(doc).size > 0;", "  return false;",
     'aSetPricedWithTheAlwaysGateIsBroughtUpToDateOnFirstOpen',

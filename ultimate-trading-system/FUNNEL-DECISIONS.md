@@ -376,3 +376,10 @@ made while building it that the design did not already settle.
     on BCHUSDT daily-4d a cluster of values rose to 8 and 9 of 10. The gate
     list is `active` and `directional`; a set priced with `always` is brought
     up to date the first time it is opened (STAGES-DECISIONS.md).
+76. **The bar is the owner's, and what it buys is printed beside it** (3.45.0,
+    owner order 2026-09-02). "Beats every copy" was never a high bar for one
+    value -- 9% of forecast-free values clear it -- and lowering it to five of
+    ten would bold half the screen. So the bar is a control, default eight of
+    ten, with the chance rate beside it and the board's honesty line on step
+    1; and step 2 prints how far ahead each value sits, not only how often.
+    The cut writes the bar on the set. FUNNEL-DESIGN.md §18.

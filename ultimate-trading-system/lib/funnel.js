@@ -409,6 +409,38 @@ const checkKindOf = (check) => (check && Number(check.k) > 0 ? 'scrambles' : 'ha
 const cents = (v) => Math.round(Number(v) * 100);
 const beats = (real, other) => real != null && other != null && cents(real) > cents(other);
 
+// THE BAR (owner order, 2026-09-02): a value counts when it beats AT LEAST
+// `bar` of the K scrambled copies, not every one of them. The owner's point:
+// the money comes from the combination of settings, and a single value's
+// average is diluted by every combination of the other dials, so "all K" on
+// one value asks too much of a diluted number. The bar is the owner's to set
+// on the screen; it is saved with the walk and written on the set. What a
+// bar buys is printed beside it: with no forecast at all the real figure is
+// one more draw among K + 1, so it clears a bar of `bar` about
+// (K + 1 - bar) / (K + 1) of the time -- 9% at all ten, 27% at eight, 55%
+// at five. The default is eight of ten, the lowest bar that still says
+// something; K is the ceiling, so a set that kept three copies bars at three.
+const DEFAULT_BAR = 8;
+const barOf = (check) => {
+  const K = Math.max(0, Math.floor(Number((check || {}).k) || 0));
+  if (!K) return 0;
+  const asked = (check || {}).bar;
+  const want = asked == null || asked === '' ? DEFAULT_BAR : Math.floor(Number(asked));
+  return Math.max(1, Math.min(K, Number.isFinite(want) ? want : DEFAULT_BAR));
+};
+const chanceOf = (bar, K) => (K > 0 && bar >= 1 && bar <= K ? (K + 1 - bar) / (K + 1) : null);
+// HOW FAR AHEAD, not only how often: the real figure against the copies'
+// average, in units of the copies' own spread. Seven wins by a mile and seven
+// wins by a cent should not read the same. Null with fewer than two copies or
+// no spread at all (copies equal to the cent, as a forecast-free setting's are).
+const leadOf = (real, copies) => {
+  const c = (copies || []).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);
+  if (real == null || c.length < 2) return null;
+  const mean = c.reduce((a, v) => a + v, 0) / c.length;
+  const sd = Math.sqrt(c.reduce((a, v) => a + (v - mean) * (v - mean), 0) / (c.length - 1));
+  return sd > 0 ? (Number(real) - mean) / sd : null;
+};
+
 // mean money per value of a dial, keyed by value
 function meansBy(rows, dial, moneyOf = money) {
   const by = groupsFor(rows, dial, moneyOf);
@@ -431,14 +463,16 @@ function countsFor(rows, dial, check, opts = {}) {
   const out = [];
   if (kind === 'scrambles') {
     const K = Math.floor(Number(check.k));
+    const bar = barOf(check);
     const copies = Array.from({ length: K }, (_, d) => meansBy(rows, dial, moneyAt(d)));
     for (const k of keys) {
       const r = real.get(k);
       const cm = copies.map((m) => (m.get(k) ? m.get(k).mean : null));
-      const counts = cm.length > 0 && cm.every((v) => beats(r.mean, v));
-      out.push({ value: k, n: r.n, mean: r.mean, check: cm, counts });
+      const beaten = cm.filter((v) => beats(r.mean, v)).length;
+      const counts = cm.length > 0 && beaten >= bar;
+      out.push({ value: k, n: r.n, mean: r.mean, check: cm, beaten, lead: leadOf(r.mean, cm), counts });
     }
-    return { dial, kind, k: K, values: out };
+    return { dial, kind, k: K, bar, values: out };
   }
   const seed = (check && check.seed) || opts.seed || 'funnel';
   const [ha, hb] = splitHalf(rows, seed);
@@ -448,10 +482,11 @@ function countsFor(rows, dial, check, opts = {}) {
     const r = real.get(k);
     const a = ma.get(k) ? ma.get(k).mean : null;
     const b = mb.get(k) ? mb.get(k).mean : null;
-    const counts = beats(a, ga) && beats(b, gb);
-    out.push({ value: k, n: r.n, mean: r.mean, check: [a, b], counts });
+    const beaten = (beats(a, ga) ? 1 : 0) + (beats(b, gb) ? 1 : 0);
+    const counts = beaten === 2;                 // both halves, always: two is the whole check
+    out.push({ value: k, n: r.n, mean: r.mean, check: [a, b], beaten, lead: null, counts });
   }
-  return { dial, kind, k: 0, values: out };
+  return { dial, kind, k: 0, bar: 2, values: out };
 }
 
 // The widest run of neighbouring values that count. Ordered dials give a range
@@ -483,8 +518,11 @@ function recommendRange(rows, dial, check, opts = {}) {
 // square on every copy, or above each half's own grid average on both halves.
 // `grids` are step3() outputs: the real one and one per check copy (or the two
 // halves). Brute force over every rectangle -- a grid is a few hundred squares.
-function recommendBlock(real, checkGrids, kind) {
+function recommendBlock(real, checkGrids, kind, opts = {}) {
   const A = real.aVals || []; const B = real.bVals || [];
+  // the same bar as a value's: a square counts when it beats at least `bar`
+  // of the copies' squares; the halves are both, as ever
+  const bar = kind === 'halves' ? checkGrids.length : barOf({ k: checkGrids.length, bar: opts.bar });
   const at = (g, a, b) => (g.grid || []).find((x) => x.a === a && x.b === b) || null;
   const gridGrand = (g) => {
     let s = 0; let n = 0;
@@ -498,11 +536,13 @@ function recommendBlock(real, checkGrids, kind) {
       const x = at(real, a, b);
       let ok = !!x && x.mean != null && !x.thin && checkGrids.length > 0;
       if (ok) {
-        for (let i = 0; i < checkGrids.length && ok; i++) {
+        let won = 0;
+        for (let i = 0; i < checkGrids.length; i++) {
           const y = at(checkGrids[i], a, b);
-          if (!y || y.mean == null) { ok = false; break; }
-          ok = kind === 'halves' ? beats(y.mean, grands[i]) : beats(x.mean, y.mean);
+          if (!y || y.mean == null) continue;
+          if (kind === 'halves' ? beats(y.mean, grands[i]) : beats(x.mean, y.mean)) won++;
         }
+        ok = won >= bar;
       }
       counts.set(`${a}|${b}`, ok);
     }
@@ -547,7 +587,7 @@ function ladderFor(rows, field, dir) {
 
 module.exports = {
   ORDERED_DIALS, CATEGORICAL_DIALS, ALL_DIALS, HOLDS_AXES, TEST_MONEY,
-  money, moneyAt, beats, cents, keyOf, sortedValues, hash32, splitHalf,
+  money, moneyAt, beats, cents, DEFAULT_BAR, barOf, chanceOf, leadOf, keyOf, sortedValues, hash32, splitHalf,
   groupsFor, movement, balanceOf, step1, shapeClass, step2, step3, floorCost,
   holdsAcross, holdsAxisFor,
   checkKindOf, countsFor, recommendRange, recommendBlock, ladderFor,

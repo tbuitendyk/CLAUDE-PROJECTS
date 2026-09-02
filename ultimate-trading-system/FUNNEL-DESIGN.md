@@ -1112,3 +1112,56 @@ never translated (RULE NINE).
   that predates the Funnel. Whether Boards should show one row per setting per
   unit is the owner's call.
 - Auto mode (§15) runs per unit when it is built; nothing about it changes.
+
+---
+
+## 18. The bar — beats at least N of K, and what that buys (owner order, 2026-09-02)
+
+**The owner's words:** "the effect of the set-up is always based on the
+COMBINATION of settings. therefore demanding such a high bar on individual
+settings makes no sense. that bar should be down at the range of 5 to 7."
+
+**What the check was asking.** A value counted only when its real money beat
+that value's money on EVERY one of the K scrambled copies. With no forecast at
+all the real figure is one more draw among K + 1 exchangeable ones, so it
+clears "all K" about 1 in K + 1 of the time — 9% at ten — and a unit's 45
+values would show about four bold by chance. Lowering the bar makes that
+worse fast: 27% at eight, 36% at seven, 55% at five. So the bar is not a
+high bar for one value; it is a weak one, and the remedy for dilution is
+the walk itself (keep a value, re-read every dial on the survivors), not a
+lower bar. Both facts are the owner's to weigh, so both are on the screen.
+
+### 18.1 The control
+
+`bold when a value beats at least` N `of K copies`, on the standing line
+beside `target size`, with the chance a forecast-free value clears it printed
+beside: `by chance about X% of values would`. Default eight of ten, the
+lowest bar that still says something; K is the ceiling. The bar is saved with
+the walk (per set and unit), travels with every read and with the across,
+and is written on the Stage 4 set as `check.bar` beside `check.k` and
+`check.chance`, because a bold row means one thing under eight of ten and
+another under five.
+
+### 18.2 Where it applies
+
+- A value on steps 1 and 2 counts when it beats at least N of the K copies.
+- A square on step 3 counts on the same terms.
+- On a unit's step 4, another unit clears the bar when its survivors' money
+  beats at least N of that unit's own copies; the summary counts those.
+- The two halves, when no copies were kept, are both, as ever: two is the
+  whole check and the bar has nothing to choose.
+- Step 5's widest region keeps its own rule (wider than every copy); it is
+  a size, not a per-value comparison.
+
+### 18.3 How far ahead, not only how often
+
+Beside each value's `check` range step 2 prints `beats N of K` and its
+`lead`: the real money less the copies' average, over the copies' spread.
+Seven wins by a mile and seven wins by a cent should not read the same.
+Null with fewer than two copies or no spread at all.
+
+### 18.4 The board's honesty in one line
+
+At the top of step 1: `N of M values clear the bar on this board; by chance
+about X would`, summed across every dial the board swept more than one value
+of. A board below its chance count is telling you something too.
