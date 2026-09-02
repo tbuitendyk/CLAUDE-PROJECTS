@@ -332,7 +332,9 @@ module.exports = {
     }
     // RE-AIMED 2026-08-28: promote top k, board rows and menu grid were on the
     // deleted screens. These are phrases the surviving screens own outright.
-    const onlyOn = { sweep: ['start stage 1', 'fee % each way', 'null set size'],
+    // RE-AIMED 2026-09-02: fee % each way is on Boards too now, on the fill-in
+    // for the tuning-slice money (3.46.0), so it is no longer a Sweep-only probe.
+    const onlyOn = { sweep: ['start stage 1', 'carry forward (0 = all)', 'null set size'],
       verify: ['run the planted check'],
       boards: ['every coin of every setting', 'copy settings into the form'],
       greenlight: ['greenlight this config'] };

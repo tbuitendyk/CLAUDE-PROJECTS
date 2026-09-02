@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **7e8dee48dcd0 — what the box is serving**, not from the working tree.
+Generated from **d63b27feb9fd — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -238,13 +238,15 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `XRPUSDT`
 - `ZECUSDT`
 
-## Sentences the page prints (25)
+## Sentences the page prints (27)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards.
 - Stage 1 — train the LOGREG members once, keep every vote, rank against the null set
 - every member is a LOGREG forecast — 4 per coin on its own, 5 alongside others — trained with the plain
-- argmax fit. No trade, no fee and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.
+- argmax fit. No trade shape and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.
+- The fee prices only the tuning-slice $ on Boards: each unit's own votes on the last quarter of its training window,
+- one buy or sell per chunk in the direction they lean, read against the same null set.
 - universe (blank = all 17 default pairs)
 - Stage 2 — carry the best forward, add the BOOST members
 - BOOST is the second kind of member — a different way of working out a forecast from the same prices.
@@ -266,17 +268,17 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - and the saved models and tuning files belonging to them.
 - priced the same trade and were folded into one)
 
-## Every word, flat (281)
+## Every word, flat (294)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above act. active ADAUSDT add against agree all alongside and any are argmax arm at ATOMUSDT attaches auto AVAXUSDT band bar BCHUSDT be been belonging best blank BNBUSDT Boards. BOOST both box boxes breakout but by Campaign campaign campaigns cannot carried carry chain chunk coin conviction count Currently Daily data decide decision declared default Delete deleted. Deleting deployed. description different directional DOGEUSDT DOTUSDT doubles Each each end ends enough entry estimate ETCUSDT ETHUSDT every Every everything evidence exam exist existing families fee files finished first fit. folded forecast forward four from gate going greenlight greenlights has here history hold holds into is it it. its judged keep keeps. kept kind kinds known lands later launched layout legacy LINKUSDT live loaded locked LOGREG LTCUSDT market member members members. minted models money name names never new next No no not nothing now null of off on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices. Progress Quorum quorum rank reads record records refuse remove Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected set Set sets sets. settings setup setups. shape share side side. singles size so SOLUSDT stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there These this This those three to trade Trade trail train trained training travels tree triples TRXUSDT tuning undone. unit units units. UNIUSDT universe until up UTC View voice voices vote votes voting way Weekly were What when while whole why will window with working writes XLMUSDT XRPUSDT yet ZECUSDT
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above act. active ADAUSDT add against agree all alongside and any are argmax arm at ATOMUSDT attaches auto AVAXUSDT band bar BCHUSDT be been belonging best blank BNBUSDT Boards Boards. BOOST both box boxes breakout but buy by Campaign campaign campaigns cannot carried carry chain chunk coin conviction count Currently Daily data decide decision declared default Delete deleted. Deleting deployed. description different direction directional DOGEUSDT DOTUSDT doubles Each each end ends enough entry estimate ETCUSDT ETHUSDT every Every everything evidence exam exist existing families fee files finished first fit. folded forecast forward four from gate going greenlight greenlights has here history hold holds in into is it it. its judged keep keeps. kept kind kinds known lands last later launched layout lean legacy LINKUSDT live loaded locked LOGREG LTCUSDT market member members members. minted models money name names never new next No no not nothing now null of off on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices prices. Progress quarter Quorum quorum rank read reads record records refuse remove Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. settings setup setups. shape share side side. singles size so SOLUSDT stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there These they this This those three to trade Trade trail train trained training travels tree triples TRXUSDT tuning tuning-slice undone. unit units units. UNIUSDT universe until up UTC View voice voices vote votes voting way Weekly were What when while whole why will window with working writes XLMUSDT XRPUSDT yet ZECUSDT
 ```
 
 ---
 
 # Boards
 
-## What the controls are called (123)
+## What the controls are called (129)
 
 - `— pick a stage`
 - `+both`
@@ -323,9 +325,12 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `dropping the settings failed:`
 - `dropping the settings:`
 - `entry`
+- `fee % each way`
 - `fill in the kept null money`
 - `fill in the missing settings`
+- `fill in the tuning-slice money`
 - `Filling in the kept null money`
+- `Filling in the tuning-slice money`
 - `forecast score`
 - `forecast score — all members`
 - `forecast score — stage 1 members`
@@ -395,6 +400,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `this set cannot be added to:`
 - `this set holds`
 - `trail`
+- `tuning-slice $`
+- `tuning-slice $ — all members`
+- `tuning-slice $ — stage 1 members`
 - `undo the unfinished run`
 - `undoing the unfinished run failed:`
 - `undoing the unfinished run:`
@@ -417,7 +425,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `market`
 - `voices`
 
-## Sentences the page prints (70)
+## Sentences the page prints (79)
 
 - Boards — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -429,16 +437,22 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - notes — why this run exists, what it showed, what it cost
 - STAMP FAILED — this run cannot be proved comparable to any other
 - put away — press the arrow to bring it back.
+- beat its own null set — tuning-slice $
+- lead over null set — tuning-slice $
 - Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
 - carry forward takes the top of. With nothing picked: beat its own null set, ties broken by lead over null set —
 - the fixed rule. Independent voices below members means some members are near-copies of each other and the
-- committee is smaller than it looks. No money on this table because stage 1 never prices a trade.
+- committee is smaller than it looks. The tuning-slice $ columns are the only money before stage 3: each unit's own
+- votes priced on the last quarter of its training window, which the fit never saw and the test window is not.
+- Test-window money is priced at stage 3 alone.
 - - tick records to pick them; the stage 3 set-up on Sweep prices exactly the picked records when its records to price says Selected records.
 - Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 3
 - carry forward takes the top of. With nothing picked: forecast score — all members, best first; ties keep their
 - carry order either way. Independent voices below members means some members are near-copies; if the BOOST
-- members added members without adding voices, this is where that shows. No money on this table: a stage 2
-- record is training inventory. Pricing and the held-back window belong to stage 3.
+- members added members without adding voices, this is where that shows. The tuning-slice $ columns are the only
+- money here: the members' own votes on the last quarter of the training window, stage 1 members alone and every
+- member pooled, so what the BOOST members bought in money is visible before any pricing. Test-window money and the
+- held-back window belong to stage 3.
 - Stage 3 — settings priced from the kept votes (
 - — the records are all kept; the totalling can be tried again after a service restart.
 - . This page asks again every few seconds.
@@ -453,6 +467,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - Table 3.B: Every coin of every setting
 - — one row for each "short" setting x (each coin + chunk shape); every row averages the "factored out" settings: decision, band and 24/5 variants of the short setting, which are provided as sub-rows
 - SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT
+- This set was written before the tuning-slice $ existed, so its table cannot sort or carry by it, and
+- a stage 2 launch from it refuses. Filling it in prices every unit's own votes on the tuning slice at the fee below,
+- against the same null set, and rewrites the records beside before swapping them in — about a second per unit.
 - The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.
 - rows — the rest are held back by the filters above.
 - reads every record and says whether the set is sound. It adds nothing and changes nothing.
@@ -490,10 +507,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - Bring the setting names up to date first
 - settings are named the older way, and pricing now would price every one of them a second time under its new name.
 
-## Every word, flat (434)
+## Every word, flat (453)
 
 ```
-1v 3.A 3.B above above. accordingly. active actually added adding adds after afterwards. again again. agreed all alone. alongside already always-long an and another answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat because before behind. belong below beside best block board Boards BOOST both box breakout bring Bring broken building but by call campaign can cannot carry changes check child chunk clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons conviction copy cost could count cover Data date decides decision DECISION declare declare. declared declares declares. declaring Delete deletes did died directional disk DOES does done drop dropping Dropping each Each either else empty end entry every Every exactly exist exists factored FACTORED failed FAILED families few fewer fewer. fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fixed floors for forecast forecasts form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into inventory. is it It it. its Its ITS keep kept landed lands. lead leaves left line list LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next No no NOT not notes nothing nothing. now null numbers of of. offers old older on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. press prev price priced prices Pricing pricing pricings promoted proved provenance provided put puts quorum ran ranked read reads real record records records. renaming Renaming renumbers replaced rest restart. resting rests result revert row rows rule. run rung running save saved says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show showed showing shows. Size smaller so some sort sound. stage Stage STAMP started still stop stopped stopping stops sub-rows suggests. swapped Sweep table Table tables takes test than that the The their them them. then there. these They they thing THIS this This those tick ties time to today top totalled totalling touched touched. trade trade. trades trail training tried two under undo undoing Undoing unfinished unit unit. units units. up variants voice. voices votes vs was way way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you your
+1v 3.A 3.B about above above. accordingly. active actually added adding adds after afterwards. again again. against agreed all alone alone. alongside already always-long an and another answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat before behind. belong below beside best block board Boards BOOST both bought box breakout bring Bring broken building but by call campaign can cannot carry changes check child chunk clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons conviction copy cost could count cover Data date decides decision DECISION declare declare. declared declares declares. declaring Delete deletes did died directional disk DOES does done drop dropping Dropping each Each either else empty end entry every Every exactly exist existed exists factored FACTORED failed FAILED families fee few fewer fewer. fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast forecasts form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into is it It it. its Its ITS keep kept landed lands. last launch lead leaves left line list LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name. named names near-copies never new next no NOT not not. notes nothing nothing. now null numbers of of. offers old older on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press prev price priced prices Pricing pricing pricing. pricings promoted proved provenance provided put puts quarter quorum ran ranked read reads real record records records. refuses. renaming Renaming renumbers replaced rest restart. resting rests result revert rewrites row rows rule. run rung running same save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show showed showing shows. Size slice smaller so some sort sound. stage Stage STAMP started still stop stopped stopping stops sub-rows suggests. swapped swapping Sweep table Table tables takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to today top totalled totalling touched touched. trade trades trail training tried tuning tuning-slice two under undo undoing Undoing unfinished unit unit. units units. up variants visible voice. voices votes vs was way way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you your
 ```
 
 ---
