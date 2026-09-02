@@ -659,6 +659,12 @@ Mutation guards go on the lines those tests read, and are run filtered
     marks on every recorded step. Second digit. Owner ordered the design
     2026-09-01 and said it may be revised before any of it is coded, so nothing
     here is a build order until they say otherwise.
+11. §16's guided walk: the check drawn beside every reading (it is claimed and
+    not drawn today), the recommendation pre-filled from that check, a box per
+    value for the seven word-valued dials, pickers on step 3, a block control on
+    the grid, an accept on step 4, `keep the widest region` on step 5, the
+    ladder on step 6, and marks on the Stage 4 set. Second digit. Comes BEFORE
+    item 10: auto mode has nothing to do at steps 3-5 until this exists.
 
 Steps 1–4 produce nothing the owner can see. Step 5 is the one that matters.
 
@@ -677,6 +683,9 @@ Steps 1–4 produce nothing the owner can see. Step 5 is the one that matters.
 | Split-half disagreement under auto | Carry on and mark it. It does not stop the walk, and the mark rides on the set. |
 | How auto narrows a dial | The owner's choice, per run: the middle of what was swept, or the best value. The second is shopping and says so. |
 | Which closing auto uses | None chosen up front. It stops and offers all three, exactly as the manual walk does. |
+| What the recommendation at each step is built from | The check §3 already names — scrambled copies when kept, the split-half otherwise — and nothing else. Sign agreement only; no margin, no multiple, no threshold. The owner refused a third mechanism with a chosen multiple in it (2026-09-02). |
+| Steps 3, 4 and 5 | Get controls: box a block on the grid; accept across slices with a recorded mark; keep the widest region. Step 5's middle is a rule and gets a button (§16). |
+| Marks | Recorded observations the walk was carried past; they ride on the Stage 4 set and print wherever it is read (§16.5). |
 
 ---
 
@@ -743,10 +752,13 @@ comparable, the procedure found nothing, and **auto mode says so rather than
 handing over a rule**. A set is still writable — RULE ZERO, the owner decides —
 but the tab must not present a fitted-to-noise rule as a finding.
 
-**Auto mode must not report a result at all on a set with no kept scrambles.**
-Without them there is nothing to check the procedure against, and an automatic
-narrowing with no such check is the least defensible thing this tab could
-produce. It says which control on Sweep would have kept them.
+**On a set with no kept scrambles auto mode falls through to the split-half,
+exactly as every step does (§3), and carries the weaker-check mark.** An earlier
+draft of this paragraph said it must refuse to report at all; that contradicted
+§3, which names the split-half as the workhorse when there is no null set, and
+the owner struck it (2026-09-02). It still says which control on Sweep would
+have kept scrambles, because the stronger check was available and was not
+bought.
 
 ### 15.4 The one automatic choice the owner asked to control
 
@@ -798,3 +810,193 @@ can only count what was written down.
 - Whether the two runs in §15.3 should be one scrambled copy or all of the kept
   ones. All of them is the stronger claim and costs a pass over every setting
   per copy.
+
+---
+
+## 16. The guided walk — every step makes its decision (owner order, 2026-09-02)
+
+**NOT BUILT.** Where this section and §6 differ on what a step shows or what
+control it has, this section wins; §6 stays as the record of what is built and
+why it was built that way.
+
+The owner's words: "the point of the funnel is to give a step by step guided
+process to finding a set of strong candidates to move forward to Verify,
+History, and Tune tabs. The point is not to look at screens of data and 'guess'
+what might help and walk it back and forth trying to find the best zone. It is
+supposed to be an actual guided *process* that actually *helps* the decision
+making process at each point ... controls with visual results on each screen
+where all of the necessary decisions can be made."
+
+And the question that exposed it: "if nothing is actually done on those sub
+steps, what is the point of them exactly?" Only two of the seven steps cut
+anything today — `2. the shape of a dial` adds ranges, `exposure` adds limits.
+Steps 1, 3, 4 and 5 are readings with no control: the owner looks, forms a
+judgement, and walks back to step 2 to act on it by hand. Nothing records that
+they looked or what they concluded.
+
+### 16.1 The principle every step is held to
+
+> Each step asks ONE question, shows the evidence beside the same evidence from
+> the check, recommends an answer derived from that check — never from the
+> peak — and has one control that records the decision and shows what it does
+> to the count. The owner's job at each step is to accept or override, not to
+> hunt.
+
+"The check" is the one §3 already names: the scrambled copies when the set
+carries them, the split-half when it does not. The page says which it used and
+that the second is weaker. Nothing in this section adds a third.
+
+### 16.2 The recommendation comes from the check, and from nothing else
+
+§6.2 already allows a suggestion ("the page may suggest one; it never applies
+one"). This says how it is made, and the rule is that it is made from the SAME
+mechanism the check uses, so there is never a number to choose:
+
+- **With kept scrambles:** a value counts if its real average beats its
+  scrambled average on every kept copy. Recommend the widest run of neighbouring
+  values that count.
+- **Without:** a value counts if it sits above the dial's own overall average on
+  BOTH halves of the settings. Recommend the widest run of neighbouring values
+  that count.
+
+Sign agreement only. No multiple, no margin, no wobble formula. The one figure
+on the screen is K, the number of kept copies, and the page prints what K is
+worth: at 0, *cannot be checked against scrambled copies — set `null set money kept` on
+Sweep before the run; the two halves were used instead*; at 1, *a single draw*;
+at more, a count.
+
+The same construction gives the block at step 3 (the largest rectangle of
+squares that count, clearing the thin floor) and needs nothing at step 5, where
+the widest region already is the recommendation.
+
+**The corner that was cut and refused (2026-09-02), recorded so it is not
+proposed again:** a "margin scaled to the scatter" — the real average beating
+the scrambled one by a chosen multiple of the average's wobble. That is a third
+mechanism beside the two §3 names, it has a number in it somebody has to pick,
+and it was proposed because the design had not been read. The owner: "If we
+have nulls, we want to use them. If we don't have nulls, then you are going to
+split the hold data ... don't cut corners."
+
+The recommendation is pre-filled into the step's own controls. It is never
+applied on its own (RULE FIVE).
+
+### 16.3 What was found that does not work today
+
+Three defects, logged in `DEFECTS.md` under 2026-09-02:
+
+1. **The bold comparison heading on steps 1-3 is a false claim.** It prints "the
+   same reading on 1 of this set's 10 scrambled copies of the table is drawn
+   beside", and nothing is drawn beside. The reading is computed in
+   `funnelRead` (`out.reading.noise.reading`) and never rendered. Only step 5
+   shows numbers from its check.
+2. **Seven of the fifteen dials cannot be narrowed from the screen.** `decision`,
+   `weekdaysOnly`, `entry`, `gate`, `agreeRule`, `agreeBar` and `agreeBoth` have
+   words for values. `applyRule` handles them through `allowed`; nothing on the
+   screen writes `allowed`. `keep from` / `to` cannot express "gate is active or
+   always".
+3. **Steps 3, 4 and 5 have no control, and step 5 prints the region's middle as
+   raw JSON.** The middle is a set of dial values — it is a rule — and the
+   system already treats exactly this as a first-class choice elsewhere
+   (`widest region` on the Greenlight anchor list).
+
+### 16.4 Step by step
+
+**Step 1 — which dials move the result**
+
+- *Decision:* which dial to narrow next, and in what order.
+- *Shown:* the table as now, plus the check drawn beside it — `movement` on the
+  scrambled copy, or on each half — and a dial that fails its check greyed. A
+  greyed dial is not a lead; it is noise that happened to rank.
+- *Control:* each row enters step 2 with that dial chosen. The `dial` list on
+  step 2 stays, for override.
+- *Recorded:* the order the dials were taken in. Marks: the halves disagreed;
+  the leading dial was not evenly swept.
+
+**Step 2 — the shape of a dial**
+
+- *Decision:* which range to keep — or, for a word-valued dial, which values.
+- *Shown:* the value table with the check's `avg test` beside the real one and
+  the number of settings each value carries forward; `keep from` / `to`
+  pre-filled with §16.2's recommendation; a live line as the boxes are edited:
+  *this range keeps N of M — target T*.
+- *Control:* `add this range to the rule` as now. For a word-valued dial, a box
+  per value, writing `allowed` — the missing half of the rule.
+- *Recorded:* the range or the values; whether the recommendation was accepted
+  or edited, and to what; the shape word. Mark: the shape was a spike.
+
+**Step 3 — do two dials interact**
+
+- *Decision:* whether the range on one dial depends on the other, and if so,
+  box both at once.
+- *Shown:* two pickers, not typed names (RULE FIVE — the choices come from the
+  engine), defaulted to step 1's top two. The grid, thin squares marked, with
+  the check's grid beside it. The recommended block highlighted.
+- *Control:* choose a block of squares — corner to corner — and it becomes
+  ranges on both dials in one recorded step.
+- *Recorded:* the block. Mark: the best block is not the product of the two
+  single-dial ranges — the dials interact.
+
+**Step 4 — does it hold elsewhere**
+
+- *Decision:* accept the rule across the slices it was read on, or go back.
+- *Shown:* `N of M` positive as now, beside the check's `N of M`. If both say
+  five of six, five of six is what the scrambled copies give.
+- *Control:* an explicit accept.
+- *Recorded:* the mark, in words: *accepted 4 of 6 positive; the check managed
+  3 of 6*.
+
+**Step 5 — a plateau or a knife edge**
+
+- *Decision:* keep the widest region.
+- *Shown:* the region's bounds as a from/to table per dial, never JSON; its size
+  against the check — the widest region on every kept copy, or the size on each
+  half; what keeping it would leave against the target.
+- *Control:* keep the widest region. It replaces the rule's ranges (and
+  `allowed`, for the region's word-valued dials) with the region's bounds. One
+  recorded step.
+- *Recorded:* size, the check's figure. Mark: not wider than every copy, or not
+  wider on both halves.
+
+**Step 6 — exposure**
+
+- *Decision:* the two limits, as now.
+- *Shown:* for each limit, a ladder — what each threshold would keep — in the
+  form step 3's floor line already uses. The number is set with its cost
+  visible.
+- *Control:* as now.
+- *Recorded:* as now, plus the count each limit kept.
+
+**Step 7 — declare and cut.** As built in 3.38.0. Unchanged.
+
+### 16.5 Marks
+
+A mark is a recorded observation that the walk was carried past. The full list:
+the halves disagreed at step 1; the leading dial was not evenly swept; a kept
+range had a spike shape; the dials interact and the single-dial ranges were kept
+anyway; accepted N of M slices; the region was not wider than the check; the
+check used was the split-half because no scrambles were kept; a step was walked
+back (already recorded as a back-step).
+
+Marks ride on the Stage 4 set beside the rule and print wherever the set is
+read — Verify, History, Tune and Greenlight (§8) — so a rule walked past a
+disagreement is visibly thinner evidence than one that was not, everywhere it
+is used. They are never clearable.
+
+### 16.6 What this does to §15
+
+Auto mode "walks steps 1 to 6" now has content at steps 3, 4 and 5, which it did
+not: it takes §16.2's recommendation at each of them, records the same marks a
+manual walk would, and stops on step 7. And §15.3 no longer refuses on a set
+with no kept scrambles; it falls through to the split-half like everything else.
+§16 is therefore built BEFORE §15 (build order, item 11).
+
+### 16.7 Open, for the owner
+
+1. **Step 4 — may the rule exclude a coin** from what goes forward? A coin is a
+   unit, not a dial; that is a new kind of clause and the Stage 4 readers would
+   have to honour it.
+2. **Step 3 — the block replaces the single-dial ranges it covers?** Proposed
+   yes, recorded as such.
+3. **Marks — acknowledged to move on, or recorded silently** on leaving the step?
+4. **"Every kept copy" or a share of them?** Proposed every copy, with K printed.
+   At K = 1 that is one of one, and the page says so.

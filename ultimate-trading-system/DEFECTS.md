@@ -571,6 +571,42 @@ acting on the entry above them.
 
 ---
 
+## Found 2026-09-02 — the Funnel tab (found, not fixed)
+
+Three things on the Funnel tab that were found while designing its next step
+(FUNNEL-DESIGN.md §16). Each was read out of the code that draws the screen.
+None has been touched; the owner decides if and when.
+
+- **The bold comparison heading on steps 1, 2 and 3 says a comparison is drawn
+  beside the reading, and nothing is drawn.** The sentence reads "the same
+  reading on 1 of this set's 10 scrambled copies of the table is drawn beside.
+  A real finding looks different there". The comparison is worked out
+  (`lib/stages.js`, `funnelRead`, `out.reading.noise.reading`) and never put on
+  the screen (`public/construct.js`, `fNoiseLine`, which prints only the
+  sentence). Only step 5 shows numbers from its comparison. **What the fix is:**
+  draw it — the same table or grid with the scrambled figures, beside the real
+  one — or, until then, change the sentence so it stops claiming what is not
+  there.
+
+- **Seven of the fifteen dials cannot be narrowed from the screen at all.**
+  `decision`, `weekdaysOnly`, `entry`, `gate`, `agreeRule`, `agreeBar` and
+  `agreeBoth` have words for values, not numbers. The rule can hold them (the
+  `allowed` part, read by `applyRule` in `lib/funnelset.js`) but nothing on the
+  screen ever writes it: `add this range to the rule` writes only `ranges`, and
+  `keep from` / `to` cannot say "gate is active or always". So a rule can never
+  say anything about which gate, which entry, or 24/5. **What the fix is:** on
+  step 2, a box per value for a word-valued dial, writing `allowed`.
+
+- **Steps 3, 4 and 5 have no control, and step 5 prints its answer as raw
+  JSON.** `3. do two dials interact`, `does it hold elsewhere` and `a plateau
+  or a knife edge` are readings with nothing to press; the owner looks and
+  walks back to step 2 to act by hand, and nothing records that. Step 5 works
+  out the widest region of neighbouring settings that all made money and its
+  middle — a set of dial values, which is a rule — and prints it in a grey box
+  as JSON (`public/construct.js`, `fStep5`, `JSON.stringify(r.centre)`).
+  **What the fix is:** FUNNEL-DESIGN.md §16.4 — a block control on the grid, an
+  accept on step 4 that records a mark, and `keep the widest region` on step 5.
+
 ## How this file is meant to work
 
 Anything found and not fixed goes here, in plain language, with enough detail to
