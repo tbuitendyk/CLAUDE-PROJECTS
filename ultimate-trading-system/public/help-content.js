@@ -174,8 +174,12 @@ window.HELP = {
       swDesc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
       swGo2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
       swFrom3: { what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever.' },
+      swPick3: {
+        what: 'Which of the parent\'s records get priced. N records: the carry forward box beside it decides — 0 for all, N for the top of the parent\'s table. Selected records: exactly the records ticked on the parent\'s stage 2 table on Boards.',
+        more: 'The ticks on the stage 2 table save on that record set, so what is picked survives a page flip and a restart, and the count of picked records is shown beside this when Selected records is chosen. A launch with Selected records and nothing ticked refuses rather than pricing nothing or everything. The stage 3 set records the exact list it priced, so a rebuild or a relaunch prices those same records whatever is ticked later.',
+      },
       swCarry3: {
-        what: 'How many of the parent\'s units get priced, from the top of its table in the sort saved on it. 0 prices all of them.',
+        what: 'How many of the parent\'s units get priced, from the top of its table in the sort saved on it. 0 prices all of them. Applies when records to price says N records.',
         more: 'The stage 2 table\'s columns on Boards save first/second/third sort priorities onto the record set, and a count here takes exactly that order. With nothing saved: forecast score — all members, best first, ties keeping their carry order.',
       },
       swFee: {

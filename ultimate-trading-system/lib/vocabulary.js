@@ -114,6 +114,9 @@ function vocabulary() {
     // actually HAS can be offered: every other column on a scrambled copy is
     // still the real one, so taking the top N by it would hand back the same
     // rows and look like a comparison without being one.
+    // records to price on the stage 3 set-up (3.42.0): the engine's own two
+    // choices, N records and Selected records, in its own words
+    stage3Pick: require('./stages').PICK_CHOICES.map((value) => ({ value, label: require('./stages').PICK_LABELS[value] })),
     funnelTopColumn: Object.entries(require('./funnelset').TOP_COLUMNS)
       .map(([value, label]) => ({ value, label })),
     // Stage 2's carry orderings — read from the stage engine, complete.

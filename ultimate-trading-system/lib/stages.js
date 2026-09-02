@@ -157,6 +157,9 @@ function listSets() {
         desc: d.desc || '', progress: d.progress || '', perf: d.perf || null,
         plan: { units: (d.plan || {}).units || 0, settings: (d.plan || {}).settings || 0 },
         counts: d.counts || null, params: publicParams(d),
+        // how many records are picked on a stage 2 set's table -- what the
+        // stage 3 set-up prices when it is told Selected records
+        picked: Array.isArray(d.picked) ? d.picked.length : 0,
       });
     } catch (_) { /* an unreadable doc is skipped, never invented */ }
   }
@@ -169,6 +172,9 @@ function publicParams(d) {
   return {
     windowLayout: p.windowLayout || null, nullN: p.nullN ?? null,
     orderBy: p.orderBy || null, carry: p.carry ?? null, fee: p.fee ?? null,
+    // the exact records a stage 3 set selected, as a count; null when it
+    // priced by carry
+    selected: Array.isArray(p.selected) ? p.selected.length : null,
     campaign: p.campaign || null,
     sizes: p.sizes || null,
     // what the Sweep provenance check reads a stage 1 set by (owner order,
@@ -780,6 +786,26 @@ function setSetSort(id, spec) {
   return { id: doc.id, sort: doc.sort };
 }
 
+// PICKING RECORDS ON THE STAGE 2 TABLE (owner order, 2026-09-02). The ticks
+// save on the record set exactly as the sort does, because they are what the
+// stage 3 set-up prices when it is told Selected records. A record is named
+// by its own number on the set (u); a number the set does not hold is refused
+// rather than dropped, so a stale page cannot quietly pick nothing.
+function setSetPicked(id, list) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error('unknown record set');
+  if (doc.stage !== 2) throw new Error(`${doc.name || doc.id} is a stage ${doc.stage} set — records are picked on a stage 2 table`);
+  if (doc.status === 'running') throw new Error('the record set is still being written — picks save after it finishes');
+  const have = new Set(allRecords(doc.id).map((r) => r.u));
+  const picked = [...new Set((Array.isArray(list) ? list : []).map((u) => Math.floor(Number(u))))].sort((a, b) => a - b);
+  const unknown = picked.filter((u) => !Number.isFinite(u) || !have.has(u));
+  if (unknown.length) throw new Error(`no record numbered ${unknown[0]} on ${doc.name || doc.id}`);
+  doc.picked = picked;
+  saveSet(doc);
+  return { id: doc.id, picked: doc.picked };
+}
+const pickedOf = (doc) => (Array.isArray((doc || {}).picked) ? doc.picked.map(Number) : []);
+
 // ---- STAGE 2 --------------------------------------------------------------------
 function startStage2(params) {
   claimOrRefuse();
@@ -1184,9 +1210,18 @@ function settingsFor(params, sizes = null) {
 // the top of the parent's table in the SAME order its table shows — the
 // sort saved on it, or forecast score with all members when none is saved,
 // ties by carry position either way — cut to the carry count.
-function stage3UnitsFor(parent, carry) {
+function stage3UnitsFor(parent, carry, selected = null) {
   let records = allRecords(parent.id);
   const savedS2 = Array.isArray(parent.sort) && parent.sort.length ? parent.sort : null;
+  // SELECTED RECORDS (owner order, 2026-09-02): exactly the records picked on
+  // the parent's table, in the parent's own record order; the carry count
+  // does not apply. Anything else is the carry: every record, or the top of
+  // the table.
+  if (Array.isArray(selected)) {
+    const want = new Set(selected.map(Number));
+    records = records.filter((r) => want.has(r.u));
+    return { records, savedS2, selected: records.map((r) => r.u) };
+  }
   if (carry > 0) {
     let ordered;
     if (savedS2) {
@@ -1199,7 +1234,36 @@ function stage3UnitsFor(parent, carry) {
     }
     records = ordered.slice(0, carry);
   }
-  return { records, savedS2 };
+  return { records, savedS2, selected: null };
+}
+// HOW A STAGE 3 SET SAYS WHICH OF ITS PARENT'S RECORDS IT PRICED: the exact
+// list it selected, or its carry count. One reader for every place that
+// resolves a set's units again (RULE NINE: the record says what it is).
+function unitsChoiceOf(params) {
+  const p = params || {};
+  const selected = Array.isArray(p.selected) ? p.selected.map(Number) : null;
+  return { carry: selected ? 0 : Math.max(0, Math.floor(num(p.carry, 0))), selected };
+}
+// what the stage 3 set-up's `records to price` offers, and all it accepts --
+// the screen draws its dropdown from this through the vocabulary, so the
+// words on the screen and the values the launch takes are one list
+const PICK_CHOICES = ['count', 'selected'];
+const PICK_LABELS = Object.freeze({ count: 'N records', selected: 'Selected records' });
+// THE RECORDS A STAGE 3 LAUNCH PRICES, from what the set-up asked: `count`
+// takes the carry (0 = all, N = the top of the parent's table); `selected`
+// takes the records picked on the parent's stage 2 table, and refuses when
+// none are picked rather than pricing nothing or everything.
+function stage3RecordsFor(parent, params) {
+  const p = params || {};
+  const pick = p.pick == null || p.pick === '' ? 'count' : String(p.pick);
+  if (!PICK_CHOICES.includes(pick)) throw new Error(`records to price must be N records or Selected records — not "${pick}"`);
+  if (pick === 'selected') {
+    const picked = pickedOf(parent);
+    if (!picked.length) throw new Error(`nothing is picked on ${parent.name || parent.id} — tick records on its stage 2 table on Boards, or price N records`);
+    return { pick, carry: 0, ...stage3UnitsFor(parent, 0, picked) };
+  }
+  const carry = Math.max(0, Math.floor(num(p.carry, 0)));
+  return { pick, carry, ...stage3UnitsFor(parent, carry) };
 }
 
 // THE SEALED WINDOW IS ALREADY ON DISK, ONE LEVEL UP (Funnel build, 2026-08-31).
@@ -1224,8 +1288,11 @@ function sealedWindowOf(doc) {
   const parent = getSet(parentId);
   if (!parent) return none(`its parent ${parentId} is gone, so the sealed window cannot be read back`);
   let records;
+  // with the set's OWN stored choice of records -- the exact list it
+  // selected, or its carry -- or it resolves a different set of units
+  const choice = unitsChoiceOf(doc.params || {});
   try {
-    ({ records } = stage3UnitsFor(parent, Math.max(0, Math.floor(num((doc.params || {}).carry, 0)))));
+    ({ records } = stage3UnitsFor(parent, choice.carry, choice.selected));
   } catch (err) {
     return none(`its parent's records would not resolve: ${err.message}`);
   }
@@ -1312,8 +1379,12 @@ function stage3Declared(b) {
   let records = null;
   const parent = getSet(String((b || {}).from || ''));
   if (parent && parent.stage === 2) {
+    // the same resolution the launch runs, Selected records included;
+    // nothing picked counts as nothing here rather than refusing, so the
+    // cost line can say 0 while the launch says why
+    const pick = String((b || {}).pick || 'count');
     const carry = Math.max(0, Math.floor(num((b || {}).carry, 0)));
-    ({ records } = stage3UnitsFor(parent, carry));
+    ({ records } = pick === 'selected' ? stage3UnitsFor(parent, 0, pickedOf(parent)) : stage3UnitsFor(parent, carry));
     if (records.length) {
       sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
       out.units = records.length;
@@ -1354,8 +1425,9 @@ function startStage3(params) {
   // positive count takes the top of the parent's table. The units come
   // FIRST because the declared block depends on which committee sizes are
   // actually being priced.
-  const carry = Math.max(0, Math.floor(num(params.carry, 0)));
-  const { records: parentRecords, savedS2 } = stage3UnitsFor(parent, carry);
+  const chosen = stage3RecordsFor(parent, params);
+  const { records: parentRecords, savedS2, selected } = chosen;
+  const carry = selected ? 0 : chosen.carry;
   if (!parentRecords.length) throw new Error(`${parent.name} holds no records — nothing to price`);
   // The committee sizes actually being priced decide which agreement shares
   // can be told apart: two shares landing on the same rung for every unit in
@@ -1393,13 +1465,19 @@ function startStage3(params) {
       : { captured: false, kept: 0, why: 'null set money kept was 0 when this set was priced' },
     parent: {
       id: parent.id, name: parent.name,
-      ...(carry > 0 ? {
+      // which of the parent's records this set priced, in the parent's terms:
+      // the ones selected on its table, or the top of it by carry
+      ...(selected ? { selected: parentRecords.length, of: allRecords(parent.id).length } : {}),
+      ...(!selected && carry > 0 ? {
         carry: parentRecords.length, of: allRecords(parent.id).length,
         sortedBy: savedS2 ? sortLabel(savedS2) : 'forecast score — all members high to low',
       } : {}),
     },
     params: {
       ...parent.params, from: parent.id, fee, nullN, keepN, carry: carry > 0 ? parentRecords.length : 0,
+      // the exact records selected, so a rebuild or a relaunch prices these
+      // and not whatever is picked on the parent's table later
+      selected: selected || null,
       cell: params.cell, cellPermute: params.cellPermute || null,
       agreeRule: params.agreeRule || 'count', agreeBar: params.agreeBar === 'own' ? 'own' : 'all',
       agreePct: Number(params.agreePct) || 50,
@@ -2531,7 +2609,8 @@ function writeAgreed(id, map) {
 function relaunchShapeOf(doc) {
   const parent = getSet(((doc.parent || {}).id) || (doc.params || {}).from || '');
   if (!parent || parent.stage !== 2) throw new Error('the stage 2 record set this was priced from is no longer on the box');
-  const { records } = stage3UnitsFor(parent, Math.max(0, Math.floor(num((doc.params || {}).carry, 0))));
+  const choice = unitsChoiceOf(doc.params || {});
+  const { records } = stage3UnitsFor(parent, choice.carry, choice.selected);
   if (!records.length) throw new Error(`${parent.name} holds no records — the units cannot be rebuilt`);
   const sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
   const { kept } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), records);
@@ -3087,7 +3166,7 @@ function chainOf(id) {
       id: cur.id, stage: cur.stage, name: cur.name, status: cur.status,
       createdAt: cur.createdAt, desc: cur.desc || '',
       plan: cur.plan ? { units: cur.plan.units || 0, settings: cur.plan.settings || 0 } : null,
-      counts: cur.counts, parent: cur.parent ? { id: cur.parent.id, name: cur.parent.name, orderBy: cur.parent.orderBy || null, carry: cur.parent.carry ?? null, sortedBy: cur.parent.sortedBy || null } : null,
+      counts: cur.counts, parent: cur.parent ? { id: cur.parent.id, name: cur.parent.name, orderBy: cur.parent.orderBy || null, carry: cur.parent.carry ?? null, sortedBy: cur.parent.sortedBy || null, selected: cur.parent.selected ?? null, of: cur.parent.of ?? null } : null,
       manifestDigest: cur.dataManifest && cur.dataManifest.overallDigest ? cur.dataManifest.overallDigest.slice(0, 12) : null,
       params: publicParams(cur),
     });
@@ -3126,7 +3205,7 @@ function stage2Table(id, from, n, filters = null) {
   const doc = getSet(id);
   if (!doc) return null;
   let rows = allRecords(id).map((r) => ({
-    carriedRank: r.carriedRank, s1rank: r.s1rank,
+    u: r.u, carriedRank: r.carriedRank, s1rank: r.s1rank,
     trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
     members: r.specs.length,
     logreg: r.specs.filter((s) => s.model === 'logreg').length,
@@ -3146,7 +3225,7 @@ function stage2Table(id, from, n, filters = null) {
   rows = rows.map((r, i) => { const { carriedRank, ...rest } = r; return { rank: i + 1, ...rest }; });
   const of = rows.length;
   rows = applyFilters(2, rows, filters);
-  return { total: rows.length, of, from, sort: doc.sort || [], rows: rows.slice(from, from + n) };
+  return { total: rows.length, of, from, sort: doc.sort || [], picked: pickedOf(doc), rows: rows.slice(from, from + n) };
 }
 
 const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise'];
@@ -4301,6 +4380,7 @@ module.exports = {
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, stage3Declared, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
   spreadOf, S3_COIN_FILTERS,

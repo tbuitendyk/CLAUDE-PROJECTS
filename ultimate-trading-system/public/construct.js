@@ -845,15 +845,23 @@ async function swCounts() {
   if (c3) {
     const sets = swSetsCache || [];
     const parent = sets.find((x) => x.id === $('#swFrom3').value);
+    const pick = ($('#swPick3') && $('#swPick3').value) || 'count';
     const carry = Number($('#swCarry3') && $('#swCarry3').value) || 0;
-    const units = parent ? (carry > 0 ? Math.min(carry, parent.plan.units) : parent.plan.units) : null;
+    const pickedN = parent ? Number(parent.picked) || 0 : 0;
+    const units = parent
+      ? (pick === 'selected' ? pickedN : (carry > 0 ? Math.min(carry, parent.plan.units) : parent.plan.units))
+      : null;
+    // the carry box applies to N records only; under Selected records the
+    // line beside it says how many are picked on the parent's table
+    if ($('#swCarry3')) $('#swCarry3').disabled = pick === 'selected';
+    if ($('#swPicked3')) $('#swPicked3').textContent = pick === 'selected' && parent ? `${pickedN.toLocaleString()} picked on ${parent.name}` : '';
     const coins = parent && parent.params && Array.isArray(parent.params.universe) ? parent.params.universe.length : null;
     // from and carry ride along so the counter resolves the ACTUAL units the
     // launch will price — which agreement bars exist is decided by them, and
     // a bar the run cannot use is neither counted nor named (owner order,
     // 2026-08-27: on singles there is no with contexts at all)
     const r = await swAsk('api/stage3-count', {
-      ...swBlockParams(), from: $('#swFrom3').value || '', carry, units: units || 0, coins: coins || 1,
+      ...swBlockParams(), from: $('#swFrom3').value || '', carry, pick, units: units || 0, coins: coins || 1,
     });
     if (!current()) return;
     // PRICINGS PER SETTING PER UNIT: the real one, the null set, and each kept
@@ -959,6 +967,7 @@ function fillStageForm(doc) {
   if (doc.stage === 3) {
     if (doc.parent) setV('#swFrom3', doc.parent.id);
     setV('#swCarry3', p.carry ?? 0);
+    setV('#swPick3', p.selected != null ? 'selected' : 'count');
     setV('#swDesc3', doc.desc || '');
     setV('#swFee', p.fee != null ? p.fee * 100 : '');
     setV('#swNull3', p.nullN ?? 19);
@@ -2403,7 +2412,9 @@ async function drawSweep() {
     <h3 id="swH3" style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 2 record set<select id="swFrom3" style="min-width:24rem">${swSetOptions(sets, 2, null)}</select></label>
+      <label class="f" title="which of the parent's records get priced. N records: the carry forward box beside this decides — 0 prices every record, N prices the top N of the parent's table in the sort saved on it. Selected records: exactly the records ticked on the parent's stage 2 table on Boards, however many that is.">records to price<select id="swPick3">${vocabOptions('stage3Pick', 'count')}</select></label>
       <label class="f">carry forward (0 = all)<input id="swCarry3" type="number" value="0" min="0" style="width:5.5rem"></label>
+      <span id="swPicked3" class="note"></span>
       <label class="f">fee % each way<input id="swFee" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
       <label class="f">null set size<input id="swNull3" type="number" value="19" min="0" style="width:4.5rem"></label>
       <label class="f" title="how many of the null set's money figures to write down, rather than just counting them. Keeping some builds a whole second copy of the stage 3 tables out of scrambled money alone, which is the only thing the Funnel can measure a real result against. Costs one extra pricing per setting per coin for each one kept, so 10 makes the run about 10% longer. 0 keeps none, which is how every run before this one worked.">null set money kept<input id="swKeep3" type="number" value="10" min="0" style="width:4.5rem"></label>
@@ -2497,6 +2508,7 @@ async function drawSweep() {
     const got = await tryPost('api/stage3', {
       from: $('#swFrom3').value, fee: Number($('#swFee').value) / 100,
       carry: Number($('#swCarry3').value) || 0,
+      pick: $('#swPick3').value,
       nullN: Number($('#swNull3').value) || 0, keepN: Number($('#swKeep3').value) || 0, desc: $('#swDesc3').value,
       ...swBlockParams(),
     });
@@ -2741,9 +2753,11 @@ async function drawBoards() {
     const chainLine = stage === deepest && chain.length ? `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
       c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,
       c.plan && c.plan.settings ? `${Number(c.plan.settings).toLocaleString()} settings` : null,
-      c.parent && (c.parent.sortedBy || c.parent.orderBy)
-        ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.sortedBy || (c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set')}`
-        : null,
+      c.parent && c.parent.selected != null
+        ? `selected ${Number(c.parent.selected).toLocaleString()} of ${Number(c.parent.of).toLocaleString()}`
+        : c.parent && (c.parent.sortedBy || c.parent.orderBy)
+          ? `carried ${Number(c.parent.carry).toLocaleString()} by ${c.parent.sortedBy || (c.parent.orderBy === 'lead' ? 'lead over null set' : 'beat its own null set')}`
+          : null,
       esc(c.status),
     ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
@@ -3389,6 +3403,9 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   const qs = new URLSearchParams({ from, n: 100, ...bFilters('S2') }).toString();
   const t = await apiOr(`api/stageset/${doc.id}/stage2?${qs}`, null);
   const rows = (t && t.rows) || [];
+  // PICKED RECORDS (owner order, 2026-09-02): saved on the record set, served
+  // with its table, and what the stage 3 set-up prices under Selected records
+  const picked = new Set((t && t.picked) || []);
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S2', heading)}
     ${bFilterGrid('S2', [
@@ -3405,7 +3422,8 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   ])}
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
-        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">stage 2 order</th>
+        <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="ticks every record on this page, or clears them. Picks save on this record set, and the stage 3 set-up on Sweep prices exactly the picked records when its records to price says Selected records."><input type="checkbox" data-bpickpage="S2"${rows.length && rows.every((r) => picked.has(r.u)) ? ' checked' : ''}></th>
+        <th ${bth} title="this unit's place under the sort picked on the columns — settled before any filter, so it still says where the row stands in the whole set.">stage 2 order</th>
         <th ${bth} title="where the same unit ranked at stage 1">stage 1 order${bSortBtn(doc, 's1rank', 'asc')}</th>
         <th ${bth} title="the traded coin. Anything listed under alongside is context only — read against, never bought or sold.">coin${bSortBtn(doc, 'trade', 'asc')}</th>
         <th ${bth} title="the one or two coins this unit is read against — blank for a coin judged on its own">alongside${bSortBtn(doc, 'ctx', 'asc')}</th>
@@ -3418,7 +3436,8 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <th ${bth} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat, as stage 1 read it. Carried with the unit; the BOOST members never face a null set.">beat its own null set${bSortBtn(doc, 'beat', 'desc')}</th>
         <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the stage 1 tie-break, carried with the unit">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
-        <td ${btd0}>${Number(r.rank).toLocaleString()}</td>
+        <td ${btd0}><input type="checkbox" data-bpick="S2:${r.u}"${picked.has(r.u) ? ' checked' : ''} title="picks this record. Saved on this record set the moment it changes."></td>
+        <td ${btd}>${Number(r.rank).toLocaleString()}</td>
         <td ${btd}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
         <td ${btd}>${bCoin(r)}</td>
         <td ${btd}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
@@ -3429,9 +3448,12 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <td ${btd}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
         <td ${btd}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td>
         <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${btd}>${bLead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btd}>${bLead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="13" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${bShown(t)}
     ${bPager((t && t.total) || 0, from, 100, 'S2')}
+    <p class="note"><b data-bpickcount="S2">${picked.size.toLocaleString()}</b> picked on this record set
+      <button data-bpickclear="S2"${picked.size ? '' : ' disabled'} title="clears every pick on this record set, on every page">clear picks</button>
+      <span>- tick records to pick them; the stage 3 set-up on Sweep prices exactly the picked records when its records to price says Selected records.</span></p>
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 3
       carry forward takes the top of. With nothing picked: forecast score — all members, best first; ties keep their
       carry order either way. Independent voices below members means some members are near-copies; if the BOOST
@@ -3440,8 +3462,49 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
+  bWirePicks(doc, mount, t);
   bWireFilters(mount);
   bWireTableFold(mount);
+}
+
+// PICKING RECORDS (owner order, 2026-09-02): a tick on the left of every
+// record on the stage 2 table. The ticks save on the record set the moment
+// they change, exactly as a column sort does, because the stage 3 set-up
+// prices them. The count line, the clear button and the page's own tick
+// follow without redrawing the table; a save that fails puts the tick back.
+function bWirePicks(doc, root, t) {
+  if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
+  const have = () => new Set((t && t.picked) || []);
+  const uOf = (el) => Number(el.dataset.bpick.split(':')[1]);
+  const boxes = () => [...$(root).querySelectorAll('[data-bpick]')];
+  const save = async (next) => {
+    const out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/picked`, { picked: [...next] });
+    if (!out) return false;
+    t.picked = out.picked;
+    const c = $(root).querySelector('[data-bpickcount]'); if (c) c.textContent = out.picked.length.toLocaleString();
+    const b = $(root).querySelector('[data-bpickclear]'); if (b) b.disabled = !out.picked.length;
+    const all = $(root).querySelector('[data-bpickpage]');
+    if (all) all.checked = boxes().length > 0 && boxes().every((x) => x.checked);
+    return true;
+  };
+  boxes().forEach((cb) => {
+    cb.onchange = async () => {
+      const next = have();
+      if (cb.checked) next.add(uOf(cb)); else next.delete(uOf(cb));
+      if (!(await save(next))) cb.checked = !cb.checked;
+    };
+  });
+  const all = $(root).querySelector('[data-bpickpage]');
+  if (all) all.onchange = async () => {
+    const next = have();
+    for (const x of boxes()) { if (all.checked) next.add(uOf(x)); else next.delete(uOf(x)); }
+    if (await save(next)) boxes().forEach((x) => { x.checked = all.checked; });
+    else all.checked = !all.checked;
+  };
+  const clear = $(root).querySelector('[data-bpickclear]');
+  if (clear) clear.onclick = async () => {
+    if (await save(new Set())) boxes().forEach((x) => { x.checked = false; });
+  };
 }
 
 async function bDrawStage3(doc, incomplete, view, mount) {

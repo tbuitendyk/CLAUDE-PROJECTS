@@ -1139,6 +1139,11 @@ app.post('/api/stageset/:id/sort', (req, res) => {
   try { return res.json(stages.setSetSort(req.params.id, (req.body || {}).sort)); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
+// the records ticked on a stage 2 table, saved on the set like its sort
+app.post('/api/stageset/:id/picked', (req, res) => {
+  try { return res.json(stages.setSetPicked(req.params.id, (req.body || {}).picked)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.post('/api/stageset/:id/delete', (req, res) => {
   try { return res.json(stages.deleteSet(req.params.id, (req.body || {}).confirm)); }
   catch (err) { return res.status(409).json({ error: err.message }); }

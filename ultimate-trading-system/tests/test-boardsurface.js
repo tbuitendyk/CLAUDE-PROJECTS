@@ -18,6 +18,26 @@ const ROOT = path.join(__dirname, '..');
 const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 
 module.exports = {
+  // A TICK ON THE LEFT OF EVERY RECORD (owner order, 2026-09-02). It names the
+  // record by its own number on the set -- never by its place in a sort or
+  // on a page, which change -- and the ticks save on the record set the
+  // moment they change, the way a column sort does.
+  theStageTwoTableOffersATickOnEveryRecordThatSavesOnTheSet() {
+    const body = UI.slice(UI.indexOf('async function bDrawStage2('), UI.indexOf('\nasync function bDrawStage3('));
+    assert.ok(body.includes('<td ${btd0}><input type="checkbox" data-bpick="S2:${r.u}"${picked.has(r.u) ? \' checked\' : \'\'}'),
+      'every record carries a tick named by its record number, drawn ticked when the set says so');
+    assert.ok(body.includes('<input type="checkbox" data-bpickpage="S2"'), 'the heading tick picks or clears the page');
+    assert.ok(body.includes('<button data-bpickclear="S2"'), 'and every pick can be cleared at once');
+    assert.ok(body.includes('<b data-bpickcount="S2">${picked.size.toLocaleString()}</b> picked on this record set'), 'the count of picks is on the screen');
+    assert.ok(body.includes("const picked = new Set((t && t.picked) || []);"), 'the ticks are drawn from the picks the set serves with its table');
+    assert.ok(body.includes('colspan="13"'), 'the empty row spans the new column too');
+    assert.ok(body.includes('bWirePicks(doc, mount, t);'), 'the ticks are wired');
+    const wire = UI.slice(UI.indexOf('function bWirePicks('), UI.indexOf('\nasync function bDrawStage3('));
+    assert.ok(wire.includes("await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/picked`, { picked: [...next] });"),
+      'a change saves the whole list on the record set');
+    assert.ok(wire.includes('if (!(await save(next))) cb.checked = !cb.checked;'), 'a save that fails puts the tick back');
+  },
+
   // The notes box and its save are drawn and wired by ONE pair of functions
   // (notesPanelHtml / wireNotesSave). Only one screen carries them now, but the
   // properties are the ones that were always the point.

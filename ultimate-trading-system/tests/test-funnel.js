@@ -177,8 +177,9 @@ module.exports = {
     const fn = s.slice(s.indexOf('function sealedWindowOf'), s.indexOf('function sealedFromUnits'));
     assert.ok(/stage3UnitsFor\(parent,/.test(fn),
       'it must resolve units through the same resolver the launch used');
-    assert.ok(/params \|\| \{\}\)\.carry/.test(fn),
-      "and with the set's OWN stored carry, or it resolves a different set of units");
+    assert.ok(/const choice = unitsChoiceOf\(doc\.params \|\| \{\}\);/.test(fn)
+      && /stage3UnitsFor\(parent, choice\.carry, choice\.selected\)/.test(fn),
+      "and with the set's OWN stored choice of records -- the exact list it selected, or its carry -- or it resolves a different set of units");
     assert.ok(/r\.reserve \|\| null/.test(fn), 'the bounds come off the parent record');
     assert.ok(!/unitChunks|0\.13/.test(fn), 'it must not recompute the seal');
   },

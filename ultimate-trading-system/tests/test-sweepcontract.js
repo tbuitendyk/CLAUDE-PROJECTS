@@ -396,4 +396,29 @@ module.exports = {
   // facts belonged to that screen's arithmetic: on the three stages a null set
   // is dealt from votes already kept, costs no training at all, and there is no
   // promote top K for it to switch off. There is nothing to re-aim this at.
+
+  // RECORDS TO PRICE (owner order, 2026-09-02): the stage 3 set-up says
+  // "N records" or "Selected records"; under N records the carry forward box
+  // decides, 0 for all or N for the top of the sorted table; under Selected
+  // records the launch prices exactly what is ticked on the parent's stage 2
+  // table. The launch and the cost line both say which.
+  theStageThreeSetUpPricesNRecordsOrTheSelectedOnes() {
+    // the dropdown draws the engine's own two choices through the vocabulary,
+    // so the words on the screen and the values the launch accepts are one list
+    assert.ok(SWEEP.includes("records to price<select id=\"swPick3\">${vocabOptions('stage3Pick', 'count')}</select>"),
+      'the choice sits beside the carry forward box under its own name, drawn from the vocabulary');
+    const stages = require('../lib/stages');
+    const offered = require('../lib/vocabulary').vocabulary().stage3Pick;
+    assert.deepStrictEqual(offered, [{ value: 'count', label: 'N records' }, { value: 'selected', label: 'Selected records' }],
+      'the two choices are named in the owner\'s words');
+    assert.deepStrictEqual(offered.map((o) => o.value), stages.PICK_CHOICES, 'and are exactly what the launch accepts');
+    const go = SWEEP.slice(SWEEP.indexOf("$('#swGo3').onclick"), SWEEP.indexOf("$('#swGo3').onclick") + 700);
+    assert.ok(go.includes("pick: $('#swPick3').value,"), 'the launch says which');
+    const count = SWEEP.slice(SWEEP.indexOf("const c3 = $('#swCount');"), SWEEP.indexOf("const c3 = $('#swCount');") + 2200);
+    assert.ok(/api\/stage3-count', \{[\s\S]*?\bcarry, pick, units/.test(count), 'and so does the cost line');
+    assert.ok(count.includes("$('#swCarry3').disabled = pick === 'selected';"), 'the carry box is held while Selected records is chosen');
+    assert.ok(count.includes("? (pick === 'selected' ? pickedN : (carry > 0 ? Math.min(carry, parent.plan.units) : parent.plan.units))"),
+      'the unit count on the cost line is the picked count under Selected records');
+    assert.ok(SWEEP.includes("setV('#swPick3', p.selected != null ? 'selected' : 'count');"), 'a stage 3 set\'s own choice comes back onto the form');
+  },
 };

@@ -187,6 +187,75 @@ module.exports = {
     }
   },
 
+  // PICKING RECORDS ON THE STAGE 2 TABLE (owner order, 2026-09-02: "a check
+  // box on the left side of every record", and under the stage 3 set-up
+  // "N records" or "Selected records"). The picks save on the set like its
+  // sort; the launch prices exactly the picked records under Selected
+  // records and the carry under N records; every place that resolves a stage
+  // 3 set's units again reads the exact list the set recorded.
+  async thePickedRecordsSaveOnTheSetAndTheStageThreeLaunchPricesExactlyThose() {
+    const id = `s2-test-${Date.now().toString(36)}-pk`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const cell = { entry: 'market', tHours: 65 };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({
+        id, stage: 2, seq: 999985, name: 'S2 #pk', status: 'done', createdAt: new Date().toISOString(),
+        plan: { units: 3 }, params: { universe: ['AAA', 'BBB', 'CCC'] },
+      }));
+      const w = rowstore.writer(id, 'records');
+      w.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', specs: [], scoreAll: 5, score3: 4 });
+      w.push({ u: 1, carriedRank: 2, s1rank: 2, trade: 'BBB', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', specs: [], scoreAll: 9, score3: 8 });
+      w.push({ u: 2, carriedRank: 3, s1rank: 3, trade: 'CCC', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', specs: [], scoreAll: 7, score3: 6 });
+      w.close();
+      // the picks save on the set, deduped and in record order; a number the
+      // set does not hold is refused, not dropped
+      assert.deepStrictEqual(stages.setSetPicked(id, [2, 0, 2]).picked, [0, 2]);
+      assert.deepStrictEqual(stages.getSet(id).picked, [0, 2], 'saved on the record set');
+      assert.throws(() => stages.setSetPicked(id, [0, 7]), /no record numbered 7/);
+      assert.deepStrictEqual(stages.getSet(id).picked, [0, 2], 'a refused save changes nothing');
+      // the table serves each record's number and the picks
+      const t2 = stages.stage2Table(id, 0, 10);
+      assert.deepStrictEqual(t2.picked, [0, 2]);
+      assert.deepStrictEqual(t2.rows.map((r) => r.u).sort(), [0, 1, 2], 'every row says which record it is');
+      assert.strictEqual(stages.listSets().find((x) => x.id === id).picked, 2, 'the set list says how many are picked');
+      // the resolver: Selected records is exactly the picked ones, whatever the carry says
+      const parent = stages.getSet(id);
+      const sel = stages.stage3UnitsFor(parent, 5, [0, 2]);
+      assert.deepStrictEqual(sel.records.map((r) => r.u), [0, 2]);
+      assert.deepStrictEqual(sel.selected, [0, 2]);
+      assert.strictEqual(stages.stage3UnitsFor(parent, 0, []).records.length, 0, 'nothing picked resolves to nothing');
+      const top = stages.stage3UnitsFor(parent, 1);
+      assert.deepStrictEqual(top.records.map((r) => r.u), [1], 'N records takes the top of the table');
+      assert.strictEqual(top.selected, null);
+      // how a set says what it priced, read one way everywhere
+      assert.deepStrictEqual(stages.unitsChoiceOf({ carry: 5, selected: [0, 2] }), { carry: 0, selected: [0, 2] });
+      assert.deepStrictEqual(stages.unitsChoiceOf({ carry: 3 }), { carry: 3, selected: null });
+      assert.deepStrictEqual(stages.unitsChoiceOf({ carry: 3, selected: null }), { carry: 3, selected: null });
+      // the launch's own resolution, from what the set-up asked
+      assert.deepStrictEqual(stages.PICK_CHOICES, ['count', 'selected']);
+      assert.deepStrictEqual(stages.stage3RecordsFor(parent, { pick: 'selected' }).records.map((r) => r.u), [0, 2]);
+      assert.strictEqual(stages.stage3RecordsFor(parent, { pick: 'count', carry: 0 }).records.length, 3);
+      assert.strictEqual(stages.stage3RecordsFor(parent, { carry: 2 }).records.length, 2, 'nothing said is N records');
+      assert.throws(() => stages.stage3RecordsFor(parent, { pick: 'bogus' }), /records to price must be N records or Selected records/);
+      // the cost line counts what the launch would price
+      assert.strictEqual(stages.stage3Declared({ from: id, pick: 'selected', cell, agreePermutePct: true }).units, 2);
+      assert.strictEqual(stages.stage3Declared({ from: id, pick: 'count', carry: 0, cell, agreePermutePct: true }).units, 3);
+      // a rebuild or a relaunch prices the exact list the set recorded, not the table's picks today
+      stages.setSetPicked(id, [1]);
+      const shape = stages.relaunchShapeOf({ parent: { id }, params: { selected: [0, 2], cell, agreePermutePct: true } });
+      assert.deepStrictEqual(shape.records.map((r) => r.u), [0, 2], 'the set\'s own list, whatever is picked now');
+      assert.strictEqual(stages.relaunchShapeOf({ parent: { id }, params: { carry: 1, cell, agreePermutePct: true } }).records.length, 1);
+      // and with nothing picked, Selected records refuses rather than pricing nothing or everything
+      stages.setSetPicked(id, []);
+      assert.throws(() => stages.stage3RecordsFor(stages.getSet(id), { pick: 'selected' }), /nothing is picked on S2 #pk/);
+      assert.strictEqual(stages.stage3Declared({ from: id, pick: 'selected', cell, agreePermutePct: true }).units, null, 'the cost line says nothing rather than refusing');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
   // Stage 3's tables, pencilled end to end on a fabricated records store:
   // per-coin-first averaging, coins in the money, the every-coin grouping by
   // cell across decision/band/24-5 variants, floors, and the block-targeted
