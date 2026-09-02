@@ -9,6 +9,37 @@ running system before it went on the list.
 
 ---
 
+## 2026-09-02 — the stage 1 ranking measured the wrong thing (fixed in 3.46.0)
+
+**What was found.** "Sitting below chance with trained decisions" on the
+Funnel was real and it was not arithmetic. Every step of the sign chain was
+checked: the class order [down, flat, up] from the trainers through every
+reader; the label as the sign of the move from the entry hour's open to the
+exit hour's open beyond the band; call +1 buys; the engine's market money on
+the label window equal to an independent hand calculation minus fees on all
+ten carried units; stored labels equal to rebuilt chunks with zero mismatches.
+All sound. What was wrong was the instrument that chose the units: stage 1
+ranks by `forecast score`, which counts every day once and rewards calling
+flat, and on the box that order ran AGAINST the money the same votes made on
+the test window (rank correlation -0.56 for the fixed rule, -0.61 for the
+score alone). The forecasts were right a little more than chance on ordinary
+days and wrong on the big days, which is where the money is, so the ranking
+selected exactly the units the Funnel then rejected.
+
+**What was done.** 3.46.0 (decision record #57): stages 1 and 2 price each
+unit's own votes on the tuning slice of the training window against the same
+null set, shown as sortable columns beside `forecast score`; the fixed rule
+is unchanged and the carry follows the sort saved on the table. Stage 2 now
+deals the parent's null set again for every member instead of copying the
+stage 1 numbers. Existing stage 1 and 2 sets are filled in from Boards.
+
+**Still open.** The held-back read after `write the Stage 4 set` is designed
+and not built; the chain today ends with no held-back verdict. And the
+training itself still weights every day the same -- weighting days by the
+size of their move is a separate decision the owner has not taken.
+
+---
+
 ## MOST OF THIS FILE IS NOW HISTORY (2026-08-21)
 
 You asked for the defects found this round to be fixed, and they were. Of the

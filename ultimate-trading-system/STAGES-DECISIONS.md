@@ -486,3 +486,31 @@ carried out 2026-08-28 under its own GO — decision 50.
     `always` needed (a shuffle comparison that could only tie) went with it.
     Second digit, because the remaining records keep their meaning and the
     migration exists (RULE NINE).
+57. **Stages 1 and 2 read money on the tuning slice, against one null set**
+    (3.46.0, owner order 2026-09-02: "GO NOW!" on the ordered plan). Measured
+    first, read-only, before anything was built: across the 25 units of the
+    owner's stage 1 set, the fixed rule's order ran against the money the same
+    votes made on the test window (rank correlation -0.56; `forecast score`
+    alone -0.61), because the score counts every day once and rewards calling
+    flat, while money is made on the few big days. Money on the last quarter
+    of the training window -- the tuning slice, which the fit never saw and
+    which tau has always been tuned on -- ordered the units WITH test-window
+    money (+0.50 all members, +0.64 stage 1 members alone). Its top ten held
+    six of the ten best on the test window; the fixed rule's held one. So:
+    each stage 1 unit's probe votes on the tuning slice are priced one buy or
+    sell per chunk in the direction they lean, held from the entry hour to the
+    exit hour through `simMarket` at a `fee % each way` now declared on the
+    stage 1 panel, and read against the same null set the score is read
+    against (`s1val#d` orders, every copy's money kept in cents -- free
+    arithmetic, so no second box). The fixed rule is unchanged; the new
+    columns are sortable, and the carry follows the sort saved on the table.
+    The test window is not read for any of it, so the Funnel's chance line
+    keeps its meaning. Stage 2 stops copying the stage 1 numbers: it deals the
+    parent's null set again (parent seed, same tags) for every member, BOOST
+    included, and reads the stage 1 members' tuning-slice money again, which
+    must equal the parent's to the cent or the unit is refused. Existing stage
+    1 and 2 sets are behind until `fill in the tuning-slice money` is pressed
+    on Boards, with a fee typed there (RULE NINE: written beside, checked,
+    swapped; no reader learns the old shape). Stage 3 and the Funnel are
+    untouched. The training weights (days weighted by the size of their move)
+    stay deferred and unauthorised. Second digit.

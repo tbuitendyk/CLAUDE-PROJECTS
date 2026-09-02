@@ -159,9 +159,15 @@ window.HELP = {
       },
       swNull1: {
         what: 'How many shuffled companions make up each unit\'s null set. Each one is the same kept votes with their dates shuffled away, given the same forecast score — no training, ever.',
-        more: 'The ordering IS the against-null-set result: beat its own null set, ties broken by lead over null set. The null set always feeds the pick.',
+        more: 'The ordering IS the against-null-set result: beat its own null set, ties broken by lead over null set. The null set always feeds the pick. '
+          + 'The same null set is dealt again at stage 2, for every member, and both stages read their tuning-slice $ against it too.',
+      },
+      swFee1: {
+        what: 'The cost of one side of a trade, as a share of the position — the same box stage 3 has. Here it prices only the tuning-slice $ on Boards: each unit\'s own votes on the last quarter of its training window, one buy or sell per chunk in the direction they lean.',
+        more: 'Nothing else at stage 1 costs anything; no trade shape and no decision exist here. Stage 2 inherits this fee, reads the stage 1 members\' tuning-slice $ again and refuses a unit whose figure differs from the parent\'s by a cent.',
       },
       swDesc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
+
       swGo1: { what: 'Starts stage 1. Progress shows at the top of this screen, and the finished set lands on Boards.' },
       swFrom2: {
         what: 'Which finished stage 1 record set stage 2 carries forward from. A stage 2 set names this parent forever.',
@@ -323,7 +329,8 @@ window.HELP = {
     how: [
       ['One table per stage, and the chain always visible',
         'A stage 1 set shows the ranking: every unit under the fixed rule — forecast score, beat its own null '
-        + 'set, lead over null set — with no money anywhere, because stage 1 never prices a trade. A stage 2 set '
+        + 'set, lead over null set — beside the tuning-slice $, the members\' own votes priced on the last quarter '
+        + 'of the training window, the only money read before stage 3, sortable so the carry can follow it. A stage 2 set '
         + 'shows the carried rows: members trained, and the forecast score with the stage 1 members beside the '
         + 'score with every member, so what the BOOST members bought is visible before any pricing. A stage 3 '
         + 'set shows the pricing: the settings ranked against each other with coins in the money beside the '
@@ -412,6 +419,15 @@ window.HELP = {
           + 'the moment the fill starts. The box refuses while anything else heavy is running, because it reads '
           + 'the same units they do.',
       },
+      bMoneyGoS1: {
+        what: 'Fills in the tuning-slice $ on a stage 1 set written before it existed: every unit\'s own votes priced on the tuning slice at the fee typed beside it, against the same null set. Written beside and swapped in after its checks, once, in the background.',
+        more: 'Until it is filled in, the table cannot sort or carry by the tuning-slice $ and a stage 2 launch from this set refuses.',
+      },
+      bMoneyFeeS1: { what: 'The fee % each way the fill prices at. This set never declared one, so it is yours to type; it is stamped on the set.' },
+      bMoneyGoS2: {
+        what: 'Fills in the tuning-slice $ on a stage 2 set written before it existed, and reads every member on the row against the parent\'s null set in place of the stage 1 numbers copied onto it. Written beside and swapped in after its checks, once, in the background.',
+      },
+      bMoneyFeeS2: { what: 'The fee % each way the fill prices at. Use the parent\'s fee if it has one, or the stage 1 members\' figure will not match the parent\'s.' },
       bCheckSet: {
         what: 'Reads every record in this set and says whether it is sound. It adds nothing and changes nothing.',
         more: 'Each line is a plain statement about the records that is either true or it is not, and a false one says '

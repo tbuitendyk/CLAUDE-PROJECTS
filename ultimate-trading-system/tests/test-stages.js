@@ -738,7 +738,7 @@ module.exports = {
       assert.throws(() => stages.setSetSort(s1.id, [{ key: 'lead', dir: 'asc' }]), /still being written/);
       s1.status = 'done';
       fs.writeFileSync(file(s1), JSON.stringify(s1));
-      assert.throws(() => stages.setSetSort(s1.id, [{ key: 'money', dir: 'desc' }]), /is not a column these tables sort by/,
+      assert.throws(() => stages.setSetSort(s1.id, [{ key: 'avgHold', dir: 'desc' }]), /is not a column these tables sort by/,
         'a column these tables never had must be refused by name');
       assert.throws(() => stages.setSetSort(s1.id, [{ key: 'lead' }]), /needs a direction/);
       assert.throws(() => stages.setSetSort(s1.id, [{ key: 'lead', dir: 'asc' }, { key: 'lead', dir: 'desc' }]), /picked twice/);
@@ -3289,6 +3289,182 @@ module.exports = {
         try { fs.rmSync(f, { force: true }); } catch (_) { /* fixture */ }
       }
       rowstore.remove(id);
+    }
+  },
+  // TUNING-SLICE MONEY (3.46.0): the members' lean priced on the label window,
+  // pencilled by hand, and held against copies dealt onto other days of the
+  // same slice. A copy whose money equals the real to the cent is NOT beaten.
+  theTuningSliceMoneyPricesTheLeanOfTheVotesAgainstItsNullSet() {
+    const HOUR = 3600 * 1000;
+    const geo = { entryOffsetH: 1, exitOffsetH: 3 };
+    const t0 = Date.UTC(2024, 0, 1);
+    const chunks = [0, 1, 2, 3].map((i) => ({ startTs: t0 + i * 24 * HOUR }));
+    const mapFor = (exits) => {
+      const m = new Map();
+      chunks.forEach((c, i) => {
+        m.set(c.startTs + 1 * HOUR, { open: 100, high: 100, low: 100, close: 100 });
+        m.set(c.startTs + 3 * HOUR, { open: exits[i], high: exits[i], low: exits[i], close: exits[i] });
+      });
+      return m;
+    };
+    // two members: lean up, up, an exact tie, down
+    const m1 = [[0.2, 0.3, 0.5], [0.1, 0.2, 0.7], [0.4, 0.2, 0.4], [0.7, 0.2, 0.1]];
+    const m2 = [[0.3, 0.3, 0.4], [0.3, 0.3, 0.4], [0.3, 0.4, 0.3], [0.6, 0.3, 0.1]];
+    const calls = sw.directionCalls([m1, m2], [0, 1], 4);
+    assert.deepStrictEqual(calls, [1, 1, 0, -1], 'buy when the members lean up, sell when they lean down, nothing on a tie');
+    assert.deepStrictEqual(sw.directionCalls([m1, m2], [1], 4), [1, 1, 0, -1], 'one member alone leans the same way here');
+    // $100 a trade: +10 on the rise, -5 on the fall, stood aside, -4 short into a rise
+    const tm = mapFor([110, 95, 100, 104]);
+    const gross = sw.directionMoney(chunks, calls, tm, geo, 0);
+    assert.ok(Math.abs(gross.pnl - 1) < 1e-9, `the pencil says +1.00 before fees, got ${gross.pnl}`);
+    assert.strictEqual(gross.trades, 3);
+    // a fee of 0.1% a leg is 20 cents a round trip on $100: three trades, 60 cents
+    const net = sw.directionMoney(chunks, calls, tm, geo, 0.001);
+    assert.ok(Math.abs(net.pnl - 0.4) < 1e-9, `after fees +0.40, got ${net.pnl}`);
+    assert.throws(() => sw.directionMoney(chunks, calls, tm, geo, undefined), /fee % each way is required/);
+    // against its null set: the same calls dealt onto other days, in cents, strictly beaten
+    const got = sw.moneyAgainstNull({ chunks, calls, tradeMap: tm, geo, fee: 0.001, seed: 7, unitKey: 'X|||daily-1d', nullN: 5 });
+    assert.strictEqual(got.money, 0.4);
+    assert.strictEqual(got.pairs, 5);
+    assert.strictEqual(got.nullMoney.length, 5);
+    assert.strictEqual(got.chunks, 4);
+    for (let d = 0; d < 5; d++) {
+      const order = sw.dealOrder(7, 'X|||daily-1d', `s1val#${d}`, 4);
+      const want = sw.cents(sw.directionMoney(chunks, order.map((k) => calls[k]), tm, geo, 0.001).pnl);
+      assert.strictEqual(got.nullMoney[d], want, `copy ${d} is the real calls on the dealt days`);
+    }
+    assert.strictEqual(got.beat, got.nullMoney.filter((m) => got.money > m).length, 'beat counts the copies the real money strictly exceeds');
+    assert.strictEqual(got.lead, sw.leadOver(got.money, got.nullMoney));
+    // every day ends at the same price, so every copy earns exactly the real
+    // money: nothing is beaten, whatever the order
+    const flat = mapFor([105, 105, 105, 105]);
+    const tie = sw.moneyAgainstNull({ chunks, calls, tradeMap: flat, geo, fee: 0.001, seed: 7, unitKey: 'X|||daily-1d', nullN: 6 });
+    assert.ok(tie.nullMoney.every((m) => m === tie.money), 'the fixture must make every copy equal the real');
+    assert.strictEqual(tie.beat, 0, 'a copy equal to the real to the cent is not beaten');
+    assert.strictEqual(tie.lead, 0);
+    // the tuning slice is the last nVal training chunks, sized from the votes on it
+    const train = Array.from({ length: 10 }, (_, i) => ({ startTs: i }));
+    assert.deepStrictEqual(sw.tuningSliceOf(train, [[1, 2, 3, 4], [1, 2, 3, 4]]).map((c) => c.startTs), [6, 7, 8, 9]);
+    assert.throws(() => sw.tuningSliceOf(train, [[1, 2, 3], [1, 2]]), /disagree in length/);
+    assert.throws(() => sw.tuningSliceOf(train.slice(0, 2), [[1, 2, 3]]), /more tuning-slice votes/);
+    assert.throws(() => sw.tuningSliceOf(train, [[]]), /no votes on the tuning slice/);
+    assert.strictEqual(sw.TUNING_TAG, 's1val');
+  },
+
+  // The stage 1 and 2 tables serve the tuning-slice money, sort and filter by
+  // it through the same saved-sort machinery, and say when a set was written
+  // before the money existed -- and the fill refuses without a fee.
+  async theStageTablesServeTheTuningSliceMoneyAndSayWhenASetIsBehind() {
+    const id = `s1-test-${Date.now().toString(36)}-m`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const idOld = `${id}-old`;
+    const fileOld = path.join(SETS_DIR, `${idOld}.json`);
+    const id2 = `s2-test-${Date.now().toString(36)}-m`;
+    const file2 = path.join(SETS_DIR, `${id2}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ id, stage: 1, seq: 999981, name: 'S1 #money', status: 'done', createdAt: new Date().toISOString(), plan: { units: 3 }, params: { nullN: 4, fee: 0.00125 } }));
+      const rec = rowstore.writer(id, 'records');
+      // beat (forecast score) runs one way, beatMoney the other, so a sort by
+      // the money share cannot be a sort by the score share in disguise
+      const units = [
+        { u: 0, beat: 4, lead: 2, score: 10, money: -3.5, beatMoney: 0, leadMoney: -1.2 },
+        { u: 1, beat: 2, lead: 1, score: 9, money: 12.25, beatMoney: 4, leadMoney: 2.1 },
+        { u: 2, beat: 3, lead: 1.5, score: 8, money: 1, beatMoney: 2, leadMoney: 0.3 },
+      ];
+      for (const x of units) {
+        rec.push({ u: x.u, trade: `C${x.u}`, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2, counts: {}, specs: [], score: x.score, beat: x.beat, pairs: 4, lead: x.lead, nullScores: [], money: x.money, moneyTrades: 3, moneyChunks: 4, nullMoney: [0, 0, 0, 0], beatMoney: x.beatMoney, leadMoney: x.leadMoney, blocks: {} });
+      }
+      rec.close();
+      const rk = rowstore.writer(id, 'ranking');
+      rk.push({ rank: 1, u: 0, beat: 4, pairs: 4, lead: 2, score: 10, money: -3.5, beatMoney: 0, leadMoney: -1.2 });
+      rk.push({ rank: 2, u: 2, beat: 3, pairs: 4, lead: 1.5, score: 8, money: 1, beatMoney: 2, leadMoney: 0.3 });
+      rk.push({ rank: 3, u: 1, beat: 2, pairs: 4, lead: 1, score: 9, money: 12.25, beatMoney: 4, leadMoney: 2.1 });
+      rk.close();
+      const page = stages.stage1Table(id, 0, 10);
+      assert.strictEqual(page.behind, null, 'a set carrying the money is not behind');
+      assert.deepStrictEqual(page.rows.map((r) => [r.trade, r.money, r.beatMoney, r.leadMoney]),
+        [['C0', -3.5, 0, -1.2], ['C2', 1, 2, 0.3], ['C1', 12.25, 4, 2.1]], 'the fixed rule still orders; the money rides on every row');
+      stages.setSetSort(id, [{ key: 'beatMoney', dir: 'desc' }]);
+      assert.deepStrictEqual(stages.stage1Table(id, 0, 10).rows.map((r) => r.trade), ['C1', 'C2', 'C0'], 'sorted by the share of its null set the tuning-slice $ beat');
+      stages.setSetSort(id, [{ key: 'money', dir: 'asc' }]);
+      assert.deepStrictEqual(stages.stage1Table(id, 0, 10).rows.map((r) => r.trade), ['C0', 'C2', 'C1'], 'and by the money itself');
+      assert.deepStrictEqual(stages.stage1Table(id, 0, 10, { moneyMin: 0 }).rows.map((r) => r.trade), ['C2', 'C1'], 'a floor on the money');
+      assert.deepStrictEqual(stages.stage1Table(id, 0, 10, { beatMoneyMin: 60 }).rows.map((r) => r.trade), ['C1'], 'a floor on the money share, in percent');
+      assert.strictEqual(stages.sortLabel([{ key: 'beatMoney', dir: 'desc' }]), 'beat its own null set — tuning-slice $ high to low', 'the chain line says the column\'s own words');
+      assert.throws(() => stages.startTuningMoneyFill(id, 0.00125), /already carries the tuning-slice money/, 'a set that has it is not filled again');
+      // a set written before the money existed: behind, and the fill wants a fee
+      fs.writeFileSync(fileOld, JSON.stringify({ id: idOld, stage: 1, seq: 999980, name: 'S1 #old', status: 'done', createdAt: new Date().toISOString(), plan: { units: 1 }, params: { nullN: 4 } }));
+      const old = rowstore.writer(idOld, 'records');
+      old.push({ u: 0, trade: 'C0', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2, counts: {}, specs: [], score: 10, beat: 4, pairs: 4, lead: 2, nullScores: [], blocks: {} });
+      old.close();
+      const rko = rowstore.writer(idOld, 'ranking');
+      rko.push({ rank: 1, u: 0, beat: 4, pairs: 4, lead: 2, score: 10 });
+      rko.close();
+      const oldDoc = JSON.parse(fs.readFileSync(fileOld, 'utf8'));
+      assert.strictEqual(stages.tuningMoneyBehind(oldDoc), true);
+      assert.strictEqual(stages.stage1Table(idOld, 0, 10).behind, 'tuning-slice money', 'the table says so');
+      assert.deepStrictEqual(stages.stage1Table(idOld, 0, 10).rows.map((r) => [r.money, r.beatMoney, r.leadMoney]), [[null, null, null]], 'and the money reads as nothing, never as zero');
+      assert.throws(() => stages.startTuningMoneyFill(idOld, undefined), /fee % each way must be a real cost/, 'the fill wants the fee the set never declared');
+      assert.throws(() => stages.startTuningMoneyFill(idOld, 0.5), /fee % each way must be a real cost/, 'and refuses a fee outside 0 to 5%');
+      // the stage 2 table: both money readings, the sort, the behind flag
+      fs.writeFileSync(file2, JSON.stringify({ id: id2, stage: 2, seq: 999979, name: 'S2 #money', status: 'done', createdAt: new Date().toISOString(), plan: { units: 2 }, params: { nullN: 4, fee: 0.00125 } }));
+      const rec2 = rowstore.writer(id2, 'records');
+      rec2.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'C0', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 4, scoreAll: 5, helped: 1, beat: 3, pairs: 4, lead: 2.5, money3: -3.5, money: 2, nullMoney: [0, 0, 0, 0], beatMoney: 3, leadMoney: 0.8 });
+      rec2.push({ u: 1, carriedRank: 2, s1rank: 2, trade: 'C1', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8, scoreAll: 9, helped: 1, beat: 4, pairs: 4, lead: 4, money3: 12.25, money: -1, nullMoney: [0, 0, 0, 0], beatMoney: 1, leadMoney: -0.4 });
+      rec2.close();
+      const t2 = stages.stage2Table(id2, 0, 10);
+      assert.strictEqual(t2.behind, null);
+      assert.deepStrictEqual(t2.rows.map((r) => [r.trade, r.money3, r.moneyAll, r.beatMoney, r.leadMoney]), [['C1', 12.25, -1, 1, -0.4], ['C0', -3.5, 2, 3, 0.8]]);
+      stages.setSetSort(id2, [{ key: 'moneyAll', dir: 'desc' }]);
+      assert.deepStrictEqual(stages.stage2Table(id2, 0, 10).rows.map((r) => r.trade), ['C0', 'C1'], 'sorted by the tuning-slice $ with every member pooled');
+      assert.deepStrictEqual(stages.stage2Table(id2, 0, 10, { moneyAllMin: 0 }).rows.map((r) => r.trade), ['C0']);
+    } finally {
+      for (const [f, sid] of [[file, id], [fileOld, idOld], [file2, id2]]) {
+        try { fs.rmSync(f, { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(rowstore.storeDir(sid), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      }
+    }
+  },
+
+  // The fee is the owner's, typed on the stage 1 panel and sent with the
+  // launch as a share of the position; a launch without one is refused by
+  // sentence before anything is written.
+  theFeeIsDeclaredOnTheStageOnePanelAndSentWithTheLaunch() {
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(UI.includes('<label class="f">fee % each way<input id="swFee1" type="number" value="0.125"'), 'the stage 1 panel offers the fee, with the same words the stage 3 panel uses');
+    assert.ok(UI.includes("nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,"),
+      'the launch sends it as a share of the position');
+    assert.ok(UI.includes("setV('#swFee1', p.fee != null ? p.fee * 100 : 0.125);"), 'and a remembered set restores it');
+    assert.throws(() => stages.startStage1({ sizes: { singles: true }, nullN: 3 }), /fee % each way must be a real cost/, 'no fee, no launch');
+    assert.throws(() => stages.startStage1({ sizes: { singles: true }, nullN: 3, fee: 0.2 }), /fee % each way must be a real cost/, 'a fee outside 0 to 5% is refused too');
+    assert.strictEqual(stages.feeOrRefuse(0.00125, 'x'), 0.00125);
+    // the stage 1 and 2 tables carry the money columns and the fill-in beside them
+    const s1 = UI.slice(UI.indexOf('async function bDrawStage1('), UI.indexOf('\nasync function bDrawStage2('));
+    for (const th of ["tuning-slice $${bSortBtn(doc, 'money', 'desc')}", "beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}", "lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}"]) {
+      assert.ok(s1.includes(th), `the stage 1 table has the column ${th}`);
+    }
+    assert.ok(s1.includes('colspan="12"'), 'the empty row spans the new columns');
+    assert.ok(s1.includes("${bMoneyFillPanel(doc, t, 'S1')}") && s1.includes("wireMoneyFill(doc, 'S1');"), 'the fill-in sits beside the stage 1 table');
+    const s2 = UI.slice(UI.indexOf('async function bDrawStage2('), UI.indexOf('\nasync function bDrawStage3('));
+    for (const th of ["tuning-slice $ — stage 1 members${bSortBtn(doc, 'money3', 'desc')}", "tuning-slice $ — all members${bSortBtn(doc, 'moneyAll', 'desc')}", "beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}", "lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}"]) {
+      assert.ok(s2.includes(th), `the stage 2 table has the column ${th}`);
+    }
+    assert.ok(s2.includes('colspan="17"'), 'the empty row spans the new columns');
+    assert.ok(s2.includes("${bMoneyFillPanel(doc, t, 'S2')}") && s2.includes("wireMoneyFill(doc, 'S2');"), 'the fill-in sits beside the stage 2 table');
+    assert.ok(!s2.includes('the BOOST members never face a null set'), 'the sentence that said the BOOST members never face a null set is gone');
+    const panel = UI.slice(UI.indexOf('function bMoneyFillPanel('), UI.indexOf('\nasync function bDrawStage1('));
+    assert.ok(panel.includes('<button id="bMoneyGoS1"') && panel.includes('<button id="bMoneyGoS2"') && panel.includes('>fill in the tuning-slice money</button>'),
+      'one button per table, each named so the Help tab can describe it, both saying what they do');
+    assert.ok(panel.includes("await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/tuning-money-fill`, { fee });"), 'and it sends the fee typed beside it');
+    // every sortable key on the stage 1 and 2 tables has the words the chain line prints
+    for (const key of Object.keys(stages.FILTER_DEFS[1]).concat(Object.keys(stages.FILTER_DEFS[2]))) assert.ok(key, key);
+    for (const stage of [1, 2]) {
+      for (const key of ['money', 'money3', 'moneyAll', 'beatMoney', 'leadMoney']) {
+        if (stage === 1 && (key === 'money3' || key === 'moneyAll')) continue;
+        if (stage === 2 && key === 'money') continue;
+        assert.doesNotThrow(() => stages.validateSort(stage, [{ key, dir: 'desc' }]), `${key} sorts the stage ${stage} table`);
+      }
     }
   },
 };

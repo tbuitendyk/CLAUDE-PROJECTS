@@ -1130,6 +1130,12 @@ app.post('/api/stageset/:id/kept-fill', (req, res) => {
   }
   catch (err) { return res.status(409).json({ error: err.message }); }
 });
+// FILLING IN THE TUNING-SLICE MONEY on a stage 1 or 2 set written before it
+// existed (3.46.0, RULE NINE): the fee is the owner's, typed on Boards.
+app.post('/api/stageset/:id/tuning-money-fill', (req, res) => {
+  try { return res.json(stages.startTuningMoneyFill(req.params.id, (req.body || {}).fee)); }
+  catch (err) { return res.status(409).json({ error: String(err.message || err) }); }
+});
 app.post('/api/stageset/:id/stop', (req, res) => res.json(stages.cancelStage(req.params.id)));
 app.post('/api/stageset/:id/notes', (req, res) => {
   try { return res.json(stages.setSetNotes(req.params.id, (req.body || {}).text)); }

@@ -349,6 +349,139 @@ function finishFail(doc, err, pool) {
   if (pool) pool.abort();
 }
 
+// fee % each way, as the Sweep posts it: a fraction of the position. Refused
+// by sentence rather than defaulted, the rule the tau tuner set (2026-08-23).
+function feeOrRefuse(raw, where) {
+  const fee = Number(raw);
+  if (!Number.isFinite(fee) || fee < 0 || fee > 0.05) {
+    throw new Error(`fee % each way must be a real cost between 0 and 5% — ${where}`);
+  }
+  return fee;
+}
+// A STAGE 1 OR 2 SET WRITTEN BEFORE THE TUNING-SLICE MONEY EXISTED (3.46.0) is
+// behind: its records carry no money. Read from the records, never from a
+// version number, so a set half-filled by a crash reads as behind too.
+function tuningMoneyBehind(doc) {
+  if (!doc || (doc.stage !== 1 && doc.stage !== 2)) return false;
+  if (doc.status !== 'done' && doc.status !== 'incomplete') return false;
+  const recs = allRecords(doc.id);
+  if (!recs.length) return false;
+  return recs.some((r) => !Number.isFinite(Number(r.money)));
+}
+
+// ---- FILLING IN THE TUNING-SLICE MONEY (3.46.0, RULE NINE) -----------------------
+//
+// A stage 1 or stage 2 set written before the money existed is brought up to
+// date here, the way the kept null money is: announced on Boards, a fee
+// declared by the owner because the set never had one, run once in the
+// background, written BESIDE and swapped only after the copy is checked. No
+// reader ever learns an older shape -- a set is either up to date, or it is
+// behind and says so on its table.
+function startTuningMoneyFill(id, feeRaw) {
+  const busy = stageBusy();
+  if (busy) throw new Error(`${busy} is running — filling in the tuning-slice money waits rather than competing for the box`);
+  const doc = getSet(id);
+  if (!doc || (doc.stage !== 1 && doc.stage !== 2)) throw new Error('that is not a stage 1 or stage 2 record set');
+  if (doc.status !== 'done' && doc.status !== 'incomplete') throw new Error(`${doc.name} is ${doc.status} — a fill waits until the set has landed`);
+  const here = require('../package.json').version;
+  const there = doc.engineVersion || null;
+  if (there && firstDigitOf(there) !== firstDigitOf(here)) {
+    throw new Error(`${doc.name} was written by release ${there} and this box runs ${here} — `
+      + 'a figure filled in now would come from a different engine than the ones beside it');
+  }
+  if (!tuningMoneyBehind(doc)) throw new Error(`${doc.name} already carries the tuning-slice money — there is nothing to fill in`);
+  const fee = feeOrRefuse(feeRaw, 'it prices the tuning-slice $ this fill writes');
+  const parent = doc.stage === 2 ? getSet((doc.parent || {}).id) : null;
+  if (doc.stage === 2 && !parent) throw new Error(`${doc.name} names a parent that is no longer on disk — its null set cannot be dealt again`);
+  // the deals are the parent's for a stage 2 set: same seed, same tags, the
+  // orders the stage 1 members were read against (decision record #57)
+  const seed = doc.stage === 2 ? parent.seed : doc.seed;
+  const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
+  const recs = allRecords(id);
+  const dp = doc.params || {};
+  const p = { allLoaded: dp.allLoaded !== false, startMonth: dp.startMonth, endMonth: dp.endMonth, windowLayout: dp.windowLayout };
+  const was = doc.status;
+  activeSet = doc;
+  doc.status = 'filling';
+  doc.progress = 'filling in the tuning-slice money — starting';
+  saveSet(doc);
+  (async () => {
+    const sw = require('./stagework');
+    const t0 = Date.now();
+    const SPARE = 'records-moneying';
+    for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
+      rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
+      try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
+    }
+    const w = rowstore.writer(id, SPARE, { offThread: true });
+    let done = 0;
+    const idx = (n) => Array.from({ length: n }, (_, i) => i);
+    for (const rec of recs) {
+      const unitKey = unitKeyOf(rec);
+      // eslint-disable-next-line no-await-in-loop
+      const { geo, maps, split } = await sw.unitChunks({ trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size }, rec.geometry, p);
+      const tauRows = unitRows(id, 'tau', rec.blocks.tau, rec.u);
+      const tauProbs = rec.specs.map((_, mi) => (tauRows.find((t) => t.mi === mi) || {}).probs || []);
+      const slice = sw.tuningSliceOf(split.trainChunks, tauProbs);
+      const priced = (use) => sw.moneyAgainstNull({
+        chunks: slice, calls: sw.directionCalls(tauProbs, use, slice.length), tradeMap: maps.trade, geo, fee, seed, unitKey, nullN,
+      });
+      const tuning = priced(idx(tauProbs.length));
+      const out = {
+        ...rec, money: tuning.money, moneyTrades: tuning.trades, moneyChunks: tuning.chunks,
+        nullMoney: tuning.nullMoney, beatMoney: tuning.beat, leadMoney: tuning.lead,
+      };
+      if (doc.stage === 2) {
+        // the merged members' own reading against the parent's null set, in
+        // place of the stage 1 numbers this record used to copy; the stage 1
+        // members are the first specs (the launch writes the parent's first)
+        const n3 = rec.specs.filter((sp) => sp.model === 'logreg').length;
+        out.money3 = priced(idx(n3)).money;
+        const votes = unitRows(id, 'votes', rec.blocks.votes, rec.u).filter((v) => v.w === 0).sort((a, b) => a.i - b.i);
+        const y = votes.map((v) => v.y);
+        const probs = rec.specs.map((_, mi) => votes.map((v) => v.m[mi]));
+        const scoreAll = sw.forecastScore(probs, y);
+        const nullScores = [];
+        for (let d = 0; d < nullN; d++) nullScores.push(sw.forecastScore(probs, y, sw.dealOrder(seed, unitKey, `s1#${d}`, votes.length)));
+        let beat = 0;
+        for (const sc of nullScores) if (scoreAll > sc) beat++;
+        out.beat = beat; out.pairs = nullN; out.lead = sw.leadOver(scoreAll, nullScores); out.nullScores = nullScores;
+      }
+      w.push(out);
+      w.flush();
+      done++;
+      phaseNote(doc, { phase: 'filling in the tuning-slice money', done, total: recs.length, word: 'units', startedMs: t0 });
+      saveSet(doc);
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => { setImmediate(resolve); });
+    }
+    await w.close();
+    // VERIFY BEFORE ANYTHING IS REPLACED: one record per unit, every unit,
+    // every one of them carrying money
+    const got = rowstore.readAll(id, SPARE);
+    if (got.length !== recs.length) throw new Error(`the copy holds ${got.length} records and the set has ${recs.length} — nothing was replaced`);
+    if (got.some((r) => !Number.isFinite(Number(r.money)))) throw new Error('a record in the copy carries no money — nothing was replaced');
+    // SWAP.
+    const from = rowstore.storeFile(id, SPARE);
+    const to = rowstore.storeFile(id, 'records');
+    fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
+    fs.renameSync(from, to);
+    recordsInHand.id = null; recordsInHand.rows = null;      // the old rows must never be served again
+    doc.params = { ...(doc.params || {}), fee };
+    doc.tuningMoneyAt = new Date().toISOString();
+    doc.status = was;
+    doc.progress = '';
+    saveSet(doc);
+  })().catch((err) => {
+    doc.status = was;
+    doc.progress = `the fill failed: ${String(err.message || err)}`;
+    saveSet(doc);
+  }).finally(() => {
+    if (activeSet && activeSet.id === doc.id) activeSet = null;
+  });
+  return { id, name: doc.name, units: recs.length, fee };
+}
+
 // ---- STAGE 1 --------------------------------------------------------------------
 function startStage1(params) {
   claimOrRefuse();
@@ -366,6 +499,7 @@ function startStage1(params) {
     : [GEOMETRIES[params.geometry] ? params.geometry : 'daily-4d'];
   const windowLayout = ['split70', 'reserve61', 'legacy80'].includes(params.windowLayout) ? params.windowLayout : 'reserve61';
   const nullN = Math.max(0, Math.floor(num(params.nullN, 19)));
+  const fee = feeOrRefuse(params.fee, 'it prices the tuning-slice $ every unit is read by');
   const p = {
     allLoaded: params.allLoaded !== false,
     startMonth: params.startMonth || '2018-01',
@@ -387,7 +521,7 @@ function startStage1(params) {
     boardNull: { ...BOARD_NULL_NONE },
     // The owner's current campaign name rides on every launch, exactly as it
     // does on the sweeps (owner order, 2026-08-04; carried here 2026-08-27).
-    params: { universe, sizes, geometries, windowLayout, nullN, ...p, campaign: require('./campaign').getCampaign() || null },
+    params: { universe, sizes, geometries, windowLayout, nullN, fee, ...p, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: units.length, unitList: units },
     perf: {
@@ -410,7 +544,7 @@ function startStage1(params) {
   (async () => {
     const payloads = units.map((u) => ({
       combo: { trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size },
-      geometry: u.geometry, params: p, seed: doc.seed, unitKey: unitKeyOf(u), nullN,
+      geometry: u.geometry, params: p, seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee,
     }));
     const records = new Array(units.length).fill(null);
     await pool.forEach('s1Unit', payloads, (settled, i) => {
@@ -426,6 +560,10 @@ function startStage1(params) {
           voices: voicesOf(res.members, (res.counts || {}).test || 0),
           score: res.score, beat: res.beat, pairs: res.pairs, lead: res.lead,
           nullScores: res.nullScores,
+          // the tuning-slice money (3.46.0): the probe votes priced on the slice
+          // they were cast on, and every copy of its null set in cents
+          money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
+          nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
           blocks: ranges,
         };
         w.records.push(records[i]);
@@ -450,7 +588,10 @@ function startStage1(params) {
     done.sort((a, b) => (b.beat - a.beat) || ((b.lead ?? -1e9) - (a.lead ?? -1e9)) || (a.u - b.u));
     const rk = rowstore.writer(id, 'ranking');
     for (let r = 0; r < done.length; r++) {
-      rk.push({ rank: r + 1, u: done[r].u, beat: done[r].beat, pairs: done[r].pairs, lead: done[r].lead, score: done[r].score });
+      rk.push({
+        rank: r + 1, u: done[r].u, beat: done[r].beat, pairs: done[r].pairs, lead: done[r].lead, score: done[r].score,
+        money: done[r].money, beatMoney: done[r].beatMoney, leadMoney: done[r].leadMoney,
+      });
     }
     await rk.close();
     for (const k of ['votes', 'tau', 'models', 'records']) await w[k].close();
@@ -471,6 +612,15 @@ function startStage1(params) {
 }
 
 // ---- parent checks ---------------------------------------------------------------
+// the stage 1 members' tuning-slice money, read again at stage 2, against
+// what the parent recorded: a sentence when they differ by a cent, else null
+function moneyDriftOf(res, rec) {
+  const here = res && res.tuning3 ? Number(res.tuning3.money) : NaN;
+  const there = Number(rec.money);
+  if (!Number.isFinite(here) || !Number.isFinite(there)) return null;
+  if (Math.abs(here - there) <= 0.005) return null;
+  return `the stage 1 members' tuning-slice money came out ${here.toFixed(2)} here and ${there.toFixed(2)}`;
+}
 function parentOrRefuse(fromId, wantStage) {
   const parent = getSet(String(fromId || ''));
   if (!parent) throw new Error(`no record set called "${fromId}"`);
@@ -516,10 +666,14 @@ function rankingOf(id) { return rowstore.readAll(id, 'ranking'); }
 // what it takes. One closed list of what may be sorted, per stage; a key not
 // on it is refused by name, never guessed.
 const SORT_KEYS = {
-  1: { trade: 's', ctx: 's', geometry: 's', members: 'n', voices: 'n', score: 'n', beat: 'share', lead: 'n' },
+  1: {
+    trade: 's', ctx: 's', geometry: 's', members: 'n', voices: 'n', score: 'n', beat: 'share', lead: 'n',
+    money: 'n', beatMoney: 'share', leadMoney: 'n',
+  },
   2: {
     s1rank: 'n', trade: 's', ctx: 's', geometry: 's', members: 'n', voices: 'n',
     score3: 'n', scoreAll: 'n', helped: 'n', beat: 'share', lead: 'n',
+    money3: 'n', moneyAll: 'n', beatMoney: 'share', leadMoney: 'n',
   },
   // Stage 3's ranked table (owner order, 2026-08-27): every column may be
   // picked, ONE at a time — nothing carries out of stage 3, so the sort is
@@ -541,6 +695,8 @@ const SORT_WORDS = {
   s1rank: 'stage 1 order', members: 'members', voices: 'independent voices',
   score3: 'forecast score — stage 1 members', scoreAll: 'forecast score — all members',
   helped: 'fuller board helped?',
+  money: 'tuning-slice $', money3: 'tuning-slice $ — stage 1 members', moneyAll: 'tuning-slice $ — all members',
+  beatMoney: 'beat its own null set — tuning-slice $', leadMoney: 'lead over null set — tuning-slice $',
   decision: 'decision', bandMode: 'band', weekdaysOnly: '24/5', entry: 'entry', gate: 'gate',
   dMult: 'd', tHours: 't', trailMult: 'trail', armMult: 'arm',
   agreeRule: 'agree by', avgAgreed: 'share that agreed', avgRung: 'rung it landed on', avgVoices: 'independent voices',
@@ -575,6 +731,7 @@ function validateSort(stage, spec) {
 const SHARE_FIELDS = {
   beat: ['beat', 'pairs'],
   beatNoise: ['beatNoise', 'noisePairs'],
+  beatMoney: ['beatMoney', 'pairs'],
 };
 function shareNum(key) { return (SHARE_FIELDS[key] || SHARE_FIELDS.beat)[0]; }
 function sortValue(kind, key, row) {
@@ -630,12 +787,14 @@ const FILTER_DEFS = {
     trade: ['trade', 'text'], ctx: ['_ctx', 'text'], geometry: ['geometry', 'text'],
     scoreMin: ['score', 'min'], beatMin: ['_beatPct', 'min'], leadMin: ['lead', 'min'],
     voicesMin: ['voices', 'min'], rankMax: ['rank', 'max'],
+    moneyMin: ['money', 'min'], beatMoneyMin: ['_beatMoneyPct', 'min'], leadMoneyMin: ['leadMoney', 'min'],
   },
   2: {
     trade: ['trade', 'text'], ctx: ['_ctx', 'text'], geometry: ['geometry', 'text'],
     membersMin: ['members', 'min'], voicesMin: ['voices', 'min'],
     score3Min: ['score3', 'min'], scoreAllMin: ['scoreAll', 'min'], helpedMin: ['helped', 'min'],
     beatMin: ['_beatPct', 'min'], leadMin: ['lead', 'min'], s1rankMax: ['s1rank', 'max'], rankMax: ['rank', 'max'],
+    moneyAllMin: ['moneyAll', 'min'], beatMoneyMin: ['_beatMoneyPct', 'min'], leadMoneyMin: ['leadMoney', 'min'],
   },
   3: {
     decision: ['decision', 'text'], entry: ['entry', 'text'], gate: ['_gate', 'text'],
@@ -656,6 +815,9 @@ const FILTER_DEFS = {
 const DERIVED = {
   _ctx: (r) => [r.ctx1, r.ctx2].filter(Boolean).join(' + '),
   _beatPct: (r) => (!r.pairs ? null : (r.beat / r.pairs) * 100),
+  // the share of its null set a row's tuning-slice $ beat; empty on a set
+  // written before the money existed
+  _beatMoneyPct: (r) => (!r.pairs || r.beatMoney == null ? null : (r.beatMoney / r.pairs) * 100),
   // The share of the kept all-luck copies this row's TEST money beat. Empty,
   // not zero, on a set that kept none: a row that was never asked the question
   // has not answered it badly.
@@ -803,6 +965,17 @@ function startStage2(params) {
   const ranking = rankingOf(parent.id);
   if (!ranking.length) throw new Error(`${parent.name} holds no ranking — nothing to carry`);
   const parentRecords = new Map(allRecords(parent.id).map((r) => [r.u, r]));
+  // A PARENT WITHOUT THE TUNING-SLICE MONEY IS BROUGHT UP TO DATE FIRST (RULE
+  // NINE): stage 2 deals the parent's null set again and checks its stage 1
+  // members' money against the parent's, and a set written before the money
+  // existed has nothing to check against.
+  if (tuningMoneyBehind(parent)) {
+    throw new Error(`${parent.name} was written before the tuning-slice money existed — open it on Boards and press `
+      + 'fill in the tuning-slice money, then launch');
+  }
+  const parentFee = Number((parent.params || {}).fee);
+  if (!Number.isFinite(parentFee)) throw new Error(`${parent.name} declares no fee % each way, so its tuning-slice $ cannot be read again here`);
+  const parentNullN = Math.max(0, Math.floor(num((parent.params || {}).nullN, 19)));
   // The carry takes the parent's table in ITS OWN saved order — the exact
   // order the owner sees on Boards — and the fixed rule (the recorded
   // ranking) when no sort is saved.
@@ -813,6 +986,7 @@ function startStage2(params) {
       const r = parentRecords.get(row.u) || {};
       return {
         _i: i, u: row.u, beat: row.beat, pairs: row.pairs, lead: row.lead, score: row.score,
+        money: r.money, beatMoney: r.beatMoney, leadMoney: r.leadMoney,
         trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
       };
     });
@@ -866,12 +1040,23 @@ function startStage2(params) {
       const rec = parentRecords.get(row.u);
       if (!rec) throw new Error(`the parent's record for unit ${row.u} is missing — the set does not match its own ranking`);
       const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
+      const tauRows = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
       const nTest = votes.filter((v) => v.w === 0).length;
       const probs = rec.specs.map((_, mi) => votes.map((v) => v.m[mi]));
       payloads.push({
         combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
         geometry: rec.geometry, params: p,
-        s1: { probs, ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) }, nTest },
+        s1: {
+          probs,
+          // the stage 1 members' votes on the tuning slice, so their money
+          // can be read again here and held against the parent's record
+          tauProbs: rec.specs.map((_, mi) => (tauRows.find((t) => t.mi === mi) || {}).probs || []),
+          ts: { test: votes.filter((v) => v.w === 0).map((v) => v.ts), hold: votes.filter((v) => v.w === 1).map((v) => v.ts) }, nTest,
+        },
+        // ONE NULL SET, DECLARED AT STAGE 1 AND DEALT AGAIN HERE (3.46.0): the
+        // parent's seed and size, so every member faces the copies the stage 1
+        // members faced
+        seed: parent.seed, unitKey: unitKeyOf(rec), nullN: parentNullN, fee: parentFee,
         rec: { u: rec.u },
       });
     }
@@ -879,7 +1064,13 @@ function startStage2(params) {
       if (doc.cancelRequested) return;
       const row = carried[i];
       const rec = parentRecords.get(row.u);
-      if (settled.ok && settled.value) {
+      if (settled.ok && settled.value && moneyDriftOf(settled.value, rec)) {
+        // THE STAGE 1 MEMBERS' MONEY MUST COME OUT AS THE PARENT RECORDED IT:
+        // same votes, same slice, same fee, same deals. A cent of difference
+        // means the votes or the price files changed underneath the set, and
+        // the unit is refused rather than written -- the timestamp check's mould.
+        doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: `${moneyDriftOf(settled.value, rec)} on ${parent.name}` });
+      } else if (settled.ok && settled.value) {
         const res = settled.value;
         // Self-contained set (decision record #4): parent's logreg members are
         // copied beside the new boost ones, votes, tau votes and models alike.
@@ -913,7 +1104,11 @@ function startStage2(params) {
           voices: voicesOf(merged.members, merged.ts.test.length),
           voices3: voicesOf(merged.members.slice(0, rec.specs.length), merged.ts.test.length),
           score3: res.score3, scoreAll: res.scoreAll, helped: res.helped,
-          beat: rec.beat, pairs: rec.pairs, lead: rec.lead,
+          // every member's own reading against the parent's null set (3.46.0),
+          // no longer the stage 1 numbers copied across
+          beat: res.beat, pairs: res.pairs, lead: res.lead, nullScores: res.nullScores,
+          money3: res.tuning3.money, money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
+          nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
           blocks: ranges,
         };
         w.records.push(record);
@@ -3255,6 +3450,7 @@ function stage1Table(id, from, n, filters = null) {
       trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
       members: (r.specs || []).length, voices: r.voices ?? null,
       score: row.score, beat: row.beat, pairs: row.pairs, lead: row.lead,
+      money: r.money ?? null, beatMoney: r.beatMoney ?? null, leadMoney: r.leadMoney ?? null,
     };
   });
   if (Array.isArray(doc.sort) && doc.sort.length) rows = applySort(1, rows, doc.sort, (a, b) => a._i - b._i);
@@ -3265,6 +3461,9 @@ function stage1Table(id, from, n, filters = null) {
   rows = applyFilters(1, rows, filters);
   return {
     total: rows.length, of, from, sort: doc.sort || [],
+    // a set written before the tuning-slice money existed says so with its
+    // table, and Boards offers to fill it in there (RULE NINE)
+    behind: tuningMoneyBehind(doc) ? 'tuning-slice money' : null,
     rows: rows.slice(from, from + n).map(({ _i, ...rest }) => rest),
   };
 }
@@ -3281,6 +3480,7 @@ function stage2Table(id, from, n, filters = null) {
     voices: r.voices ?? null, voices3: r.voices3 ?? null,
     score3: r.score3, scoreAll: r.scoreAll, helped: r.helped,
     beat: r.beat, pairs: r.pairs, lead: r.lead,
+    money3: r.money3 ?? null, moneyAll: r.money ?? null, beatMoney: r.beatMoney ?? null, leadMoney: r.leadMoney ?? null,
   }));
   // the saved sort orders the whole table; best all-members forecast score
   // first when none is saved. Ties keep their carry position either way, so
@@ -3293,7 +3493,11 @@ function stage2Table(id, from, n, filters = null) {
   rows = rows.map((r, i) => { const { carriedRank, ...rest } = r; return { rank: i + 1, ...rest }; });
   const of = rows.length;
   rows = applyFilters(2, rows, filters);
-  return { total: rows.length, of, from, sort: doc.sort || [], picked: pickedOf(doc), rows: rows.slice(from, from + n) };
+  return {
+    total: rows.length, of, from, sort: doc.sort || [], picked: pickedOf(doc),
+    behind: tuningMoneyBehind(doc) ? 'tuning-slice money' : null,
+    rows: rows.slice(from, from + n),
+  };
 }
 
 const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise'];
@@ -4478,6 +4682,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
 
 module.exports = {
   startKeptScrambleFill,
+  feeOrRefuse, tuningMoneyBehind, startTuningMoneyFill, moneyDriftOf,
   // exported so the sort can be checked by BEHAVIOUR rather than by matching
   // the shape of its source, which rotted the moment a second share column
   // arrived

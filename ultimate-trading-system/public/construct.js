@@ -957,6 +957,7 @@ function fillStageForm(doc) {
     setC('#swPermGeom', geos.length > 1);
     setV('#swLayout', p.windowLayout || 'reserve61');
     setV('#swNull1', p.nullN ?? 19);
+    setV('#swFee1', p.fee != null ? p.fee * 100 : 0.125);
     setV('#swDesc1', doc.desc || '');
   }
   if (doc.stage === 2) {
@@ -2368,7 +2369,9 @@ async function drawSweep() {
   <div class="panel">
     <h3 id="swH1" style="margin-top:0">Stage 1 — train the LOGREG members once, keep every vote, rank against the null set</h3>
     <p class="note" style="margin:.2rem 0 .4rem">every member is a LOGREG forecast — 4 per coin on its own, 5 alongside others — trained with the plain
-      argmax fit. No trade, no fee and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.</p>
+      argmax fit. No trade shape and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.
+      The fee prices only the tuning-slice $ on Boards: each unit's own votes on the last quarter of its training window,
+      one buy or sell per chunk in the direction they lean, read against the same null set.</p>
     <div class="row" style="align-items:flex-end">
       <label class="f">universe (blank = all 17 default pairs)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
@@ -2383,6 +2386,7 @@ async function drawSweep() {
       <label class="c"><input type="checkbox" id="swPermGeom"> permute</label>
       <label class="f">window layout<select id="swLayout">${vocabOptions('windowLayout', 'reserve61')}</select></label>
       <label class="f">null set size<input id="swNull1" type="number" value="19" min="0" style="width:4.5rem"></label>
+      <label class="f">fee % each way<input id="swFee1" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f" style="flex:1">description<input id="swDesc1" style="width:100%"></label>
@@ -2491,7 +2495,7 @@ async function drawSweep() {
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
       windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,
       startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
-      nullN: Number($('#swNull1').value) || 0, desc: $('#swDesc1').value,
+      nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,
     };
     if (!body.universe.length) delete body.universe;
     const got = await tryPost('api/stage1', body);
@@ -3332,6 +3336,62 @@ function bShown(t) {
   return of > total ? `<p class="note">${total.toLocaleString()} of ${of.toLocaleString()} rows — the rest are held back by the filters above.</p>` : '';
 }
 
+// FILLING IN THE TUNING-SLICE MONEY on a stage 1 or 2 set written before it
+// existed (3.46.0, RULE NINE). A USER function beside the table it changes:
+// the set never declared a fee, so one is asked for here, and the fill runs
+// once, in the background, written beside and swapped in after its checks.
+function bMoneyFillPanel(doc, t, key) {
+  if (!t || !t.behind) return '';
+  const off = doc.status !== 'done' && doc.status !== 'incomplete';
+  const fee = (doc.params || {}).fee;
+  const feeV = fee != null ? fee * 100 : 0.125;
+  const dis = off ? 'disabled title="the set is still working — a fill waits until it has landed"' : '';
+  // ONE LITERAL SET OF IDS PER TABLE: a stage 2 set shows its stage 1 parent
+  // beside it, so both fill-ins can be on the page at once, and each control
+  // is named so the Help tab can describe it and a press reaches the right one.
+  const controls = key === 'S1'
+    ? `<label class="f">fee % each way<input id="bMoneyFeeS1" type="number" value="${feeV}" min="0" max="5" step="0.005" style="width:5.5rem"></label>
+        <button id="bMoneyGoS1" ${dis}>fill in the tuning-slice money</button>
+        <span id="bMoneyMsgS1" class="note"></span>`
+    : `<label class="f">fee % each way<input id="bMoneyFeeS2" type="number" value="${feeV}" min="0" max="5" step="0.005" style="width:5.5rem"></label>
+        <button id="bMoneyGoS2" ${dis}>fill in the tuning-slice money</button>
+        <span id="bMoneyMsgS2" class="note"></span>`;
+  return `<div class="panel" data-role="money-fill">
+      <h3 style="margin-top:0">Filling in the tuning-slice money</h3>
+      <p class="note">This set was written before the tuning-slice $ existed, so its table cannot sort or carry by it, and
+        a stage 2 launch from it refuses. Filling it in prices every unit's own votes on the tuning slice at the fee below,
+        against the same null set, and rewrites the records beside before swapping them in — about a second per unit.</p>
+      <div class="row" style="align-items:flex-end">
+        ${controls}
+      </div>
+    </div>`;
+}
+function wireMoneyFill(doc, key) {
+  const go = $(`#bMoneyGo${key}`);
+  if (!go) return;
+  go.onclick = async () => {
+    const fee = Number(($(`#bMoneyFee${key}`) || {}).value) / 100;
+    go.disabled = true;
+    waitStart();
+    let out;
+    try {
+      out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/tuning-money-fill`, { fee });
+    } finally {
+      waitEnd();
+    }
+    if (!out) { go.disabled = false; return; }
+    $(`#bMoneyMsg${key}`).textContent = `filling in ${out.units} unit(s) — the table is redrawn when it lands.`;
+    // the set is asked every two seconds until it lands, then the page redraws
+    const tick = async () => {
+      const got = await apiOr(`api/stageset/${encodeURIComponent(doc.id)}`, null);
+      const st = got && got.set && got.set.status;
+      if (st === 'filling') { setTimeout(tick, 2000); return; }
+      draw();
+    };
+    setTimeout(tick, 2000);
+  };
+}
+
 async function bDrawStage1(doc, incomplete, view, mount) {
   const heading = `Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})`;
   if (!bTableOpen('S1')) {
@@ -3346,6 +3406,7 @@ async function bDrawStage1(doc, incomplete, view, mount) {
   const rows = (t && t.rows) || [];
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S1', heading)}
+    ${bMoneyFillPanel(doc, t, 'S1')}
     ${bFilterGrid('S1', [
     ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
     ['ctx', 'alongside', 'text', 'shows only rows read against a coin containing what you type. Empty shows every row.'],
@@ -3353,6 +3414,9 @@ async function bDrawStage1(doc, incomplete, view, mount) {
     ['scoreMin', 'forecast score at least', 'num', 'hides rows whose forecast score is below this. Empty hides nothing.'],
     ['beatMin', 'beat its own null set at least, %', 'num', 'hides rows that beat less than this share of their null set. Empty hides nothing.'],
     ['leadMin', 'lead over null set at least', 'num', 'hides rows whose lead over null set is below this. Empty hides nothing.'],
+    ['moneyMin', 'tuning-slice $ at least', 'num', 'hides rows whose tuning-slice $ is below this. Empty hides nothing.'],
+    ['beatMoneyMin', 'beat its own null set — tuning-slice $ at least, %', 'num', 'hides rows whose tuning-slice $ beat less than this share of their null set. Empty hides nothing.'],
+    ['leadMoneyMin', 'lead over null set — tuning-slice $ at least', 'num', 'hides rows whose tuning-slice $ lead over their null set is below this. Empty hides nothing.'],
     ['voicesMin', 'independent voices at least', 'num', 'hides rows holding fewer independent voices than this. Empty hides nothing.'],
     ['rankMax', 'order at most', 'num', 'hides rows placed lower than this in the order. Empty hides nothing.'],
   ])}
@@ -3366,7 +3430,10 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <th ${bth} title="how many of those members are INDEPENDENT. Members that call the same way almost every time count as one voice however differently they were built, so this is the number of real opinions behind the vote.">independent voices${bSortBtn(doc, 'voices', 'desc')}</th>
         <th ${bth} title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two null-set columns are what compare across shapes.">forecast score${bSortBtn(doc, 'score', 'desc')}</th>
         <th ${bth} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own null set${bSortBtn(doc, 'beat', 'desc')}</th>
-        <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th></tr></thead>
+        <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th>
+        <th ${bth} title="the unit's own votes on the tuning slice — the last quarter of its training window, which the fit never saw and the test window is not — priced one buy or sell per chunk in the direction they lean, held from the entry hour to the exit hour, at the fee declared on Sweep. US dollars on $100 a trade, after fees.">tuning-slice $${bSortBtn(doc, 'money', 'desc')}</th>
+        <th ${bth} title="of its null set — the same votes dealt onto other days of the tuning slice — how many this unit's tuning-slice $ beat">beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}</th>
+        <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${btd0}>${Number(r.rank).toLocaleString()}</td>
         <td ${btd}>${bCoin(r)}</td>
@@ -3376,18 +3443,24 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <td ${btd}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}</td>
         <td ${btd}>${r.score == null ? '—' : r.score.toFixed(1)}</td>
         <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${btd}>${bLead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="9" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btd}>${bLead(r.lead)}</td>
+        <td ${btd}>${bMoney(r.money)}</td>
+        <td ${btd}>${bShare(r.pairs && r.beatMoney != null ? r.beatMoney / r.pairs : null, r.beatMoney, r.pairs)}</td>
+        <td ${btd}>${bLead(r.leadMoney)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${bShown(t)}
     ${bPager((t && t.total) || 0, from, 100, 'S1')}
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
       carry forward takes the top of. With nothing picked: beat its own null set, ties broken by lead over null set —
       the fixed rule. Independent voices below members means some members are near-copies of each other and the
-      committee is smaller than it looks. No money on this table because stage 1 never prices a trade.</p>
+      committee is smaller than it looks. The tuning-slice $ columns are the only money before stage 3: each unit's own
+      votes priced on the last quarter of its training window, which the fit never saw and the test window is not.
+      Test-window money is priced at stage 3 alone.</p>
   </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
   bWireFilters(mount);
   bWireTableFold(mount);
+  wireMoneyFill(doc, 'S1');
 }
 
 async function bDrawStage2(doc, incomplete, view, mount) {
@@ -3407,6 +3480,7 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   const picked = new Set((t && t.picked) || []);
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S2', heading)}
+    ${bMoneyFillPanel(doc, t, 'S2')}
     ${bFilterGrid('S2', [
     ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
     ['ctx', 'alongside', 'text', 'shows only rows read against a coin containing what you type. Empty shows every row.'],
@@ -3417,6 +3491,9 @@ async function bDrawStage2(doc, incomplete, view, mount) {
     ['helpedMin', 'fuller board helped at least', 'num', 'hides rows the BOOST members helped by less than this. Empty hides nothing.'],
     ['beatMin', 'beat its own null set at least, %', 'num', 'hides rows that beat less than this share of their null set. Empty hides nothing.'],
     ['leadMin', 'lead over null set at least', 'num', 'hides rows whose lead over null set is below this. Empty hides nothing.'],
+    ['moneyAllMin', 'tuning-slice $ — all members at least', 'num', 'hides rows whose tuning-slice $ with every member pooled is below this. Empty hides nothing.'],
+    ['beatMoneyMin', 'beat its own null set — tuning-slice $ at least, %', 'num', 'hides rows whose tuning-slice $ beat less than this share of their null set. Empty hides nothing.'],
+    ['leadMoneyMin', 'lead over null set — tuning-slice $ at least', 'num', 'hides rows whose tuning-slice $ lead over their null set is below this. Empty hides nothing.'],
     ['s1rankMax', 'stage 1 order at most', 'num', 'hides rows that placed lower than this at stage 1. Empty hides nothing.'],
   ])}
     <div class="scrollx"><table style="border-collapse:collapse">
@@ -3432,8 +3509,12 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <th ${bth} title="the unit's forecast score with only the stage 1 members pooled">forecast score — stage 1 members${bSortBtn(doc, 'score3', 'desc')}</th>
         <th ${bth} title="the same fixed score with every member pooled, BOOST included">forecast score — all members${bSortBtn(doc, 'scoreAll', 'desc')}</th>
         <th ${bth} title="all-members score minus stage-1-members score — what the BOOST members bought, before any pricing">fuller board helped?${bSortBtn(doc, 'helped', 'desc')}</th>
-        <th ${bth} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat, as stage 1 read it. Carried with the unit; the BOOST members never face a null set.">beat its own null set${bSortBtn(doc, 'beat', 'desc')}</th>
-        <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the stage 1 tie-break, carried with the unit">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th></tr></thead>
+        <th ${bth} title="the stage 1 members' own votes on the tuning slice — the last quarter of the training window — priced one buy or sell per chunk in the direction they lean, at the fee the parent declared. Read again here, and it must equal the parent's figure to the cent or the unit is refused.">tuning-slice $ — stage 1 members${bSortBtn(doc, 'money3', 'desc')}</th>
+        <th ${bth} title="the same pricing with every member pooled, BOOST included — what the fuller board bought in money, before any test-window pricing">tuning-slice $ — all members${bSortBtn(doc, 'moneyAll', 'desc')}</th>
+        <th ${bth} title="of its null set — the parent's own deals, dealt again here: the same votes with the calendar shuffled away — how many the forecast score of EVERY member on this row beat, BOOST included">beat its own null set${bSortBtn(doc, 'beat', 'desc')}</th>
+        <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — every member on the row">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th>
+        <th ${bth} title="of its null set — the same votes dealt onto other days of the tuning slice — how many this row's tuning-slice $ with every member pooled beat">beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}</th>
+        <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread — every member pooled">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${btd0}><input type="checkbox" data-bpick="S2:${r.u}"${picked.has(r.u) ? ' checked' : ''} title="picks this record. Saved on this record set the moment it changes."></td>
         <td ${btd}>${Number(r.rank).toLocaleString()}</td>
@@ -3446,8 +3527,12 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <td ${btd}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
         <td ${btd}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
         <td ${btd}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td>
+        <td ${btd}>${bMoney(r.money3)}</td>
+        <td ${btd}>${bMoney(r.moneyAll)}</td>
         <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${btd}>${bLead(r.lead)}</td></tr>`).join('') || '<tr><td colspan="13" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btd}>${bLead(r.lead)}</td>
+        <td ${btd}>${bShare(r.pairs && r.beatMoney != null ? r.beatMoney / r.pairs : null, r.beatMoney, r.pairs)}</td>
+        <td ${btd}>${bLead(r.leadMoney)}</td></tr>`).join('') || '<tr><td colspan="17" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${bShown(t)}
     ${bPager((t && t.total) || 0, from, 100, 'S2')}
     <p class="note"><b data-bpickcount="S2">${picked.size.toLocaleString()}</b> picked on this record set
@@ -3456,14 +3541,17 @@ async function bDrawStage2(doc, incomplete, view, mount) {
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 3
       carry forward takes the top of. With nothing picked: forecast score — all members, best first; ties keep their
       carry order either way. Independent voices below members means some members are near-copies; if the BOOST
-      members added members without adding voices, this is where that shows. No money on this table: a stage 2
-      record is training inventory. Pricing and the held-back window belong to stage 3.</p>
+      members added members without adding voices, this is where that shows. The tuning-slice $ columns are the only
+      money here: the members' own votes on the last quarter of the training window, stage 1 members alone and every
+      member pooled, so what the BOOST members bought in money is visible before any pricing. Test-window money and the
+      held-back window belong to stage 3.</p>
   </div>`)) return;
   bWirePager(mount);
   bWireSort(doc, mount);
   bWirePicks(doc, mount, t);
   bWireFilters(mount);
   bWireTableFold(mount);
+  wireMoneyFill(doc, 'S2');
 }
 
 // PICKING RECORDS (owner order, 2026-09-02): a tick on the left of every

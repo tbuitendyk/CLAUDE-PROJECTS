@@ -118,7 +118,11 @@ function leadOver(real, nullScores) {
   const mean = nullScores.reduce((a, b) => a + b, 0) / nullScores.length;
   const varr = nullScores.reduce((a, b) => a + (b - mean) * (b - mean), 0) / nullScores.length;
   const sd = Math.sqrt(varr);
-  if (!(sd > 0)) return 0;
+  // NO SPREAD, NO LEAD -- tested at the scale of the numbers, not against an
+  // exact zero. Six copies of 4.40 average to a number a hair off 4.40 in
+  // floating point, so their spread came out as 1e-16 rather than 0 and the
+  // lead as a whole ±1 (found 2026-09-02 by the tuning-slice money's tie test).
+  if (!(sd > 1e-9 * Math.max(1, Math.abs(mean)))) return 0;
   return (real - mean) / sd;
 }
 
@@ -130,6 +134,79 @@ function leadOver(real, nullScores) {
 // the validation slice (what tau tuning reads at stage 3) and the fitted
 // model. No decision, no class weights, no tau here: decision is stage 3's
 // business (decision record #1).
+// ---- TUNING-SLICE MONEY (3.46.0, owner order 2026-09-02) -----------------------
+//
+// WHY THIS EXISTS. The forecast score ranks a unit by the sureness its votes
+// placed on what happened, every chunk counted once, the flat class included.
+// Measured on the box (2026-09-02, 25 units): that order ran AGAINST the money
+// the same votes made on the test window (rank correlation -0.61), because a
+// vote can be right on the small days and wrong on the few big ones, and the
+// score cannot tell. Money can. But money on the TEST window is the Funnel's
+// window, and ranking on it would hand the Funnel units already chosen for
+// beating that window's shuffles. So the money is read on the TUNING SLICE:
+// the last quarter of the training window, which the fit never saw and which
+// tau has always been tuned on. The probe votes on it are already stored
+// (tauProbs); pricing them costs one pass of arithmetic per copy.
+//
+// WHAT IS PRICED. One call per chunk: buy when the members lean up, sell when
+// they lean down, nothing on an exact tie -- no flat class, so a unit is paid
+// for direction on the days that pay, weighted by how far the price moved.
+// Held from the entry hour to the exit hour of the label window, through
+// simMarket at the fee declared on Sweep -- the same arithmetic stage 3 uses
+// for market entry, so the number means what a stage 3 number means.
+const TUNING_TAG = 's1val';
+// the lean of the members named in `use`, at each chunk: up minus down
+function directionCalls(memberProbs, use, n) {
+  const out = new Array(n);
+  for (let i = 0; i < n; i++) {
+    let up = 0;
+    let down = 0;
+    for (const mi of use) {
+      const pr = memberProbs[mi][i];
+      up += pr[2];
+      down += pr[0];
+    }
+    out[i] = up > down ? 1 : (down > up ? -1 : 0);
+  }
+  return out;
+}
+// THE TUNING SLICE IS SIZED FROM THE VOTES ON IT, never re-derived: the probe
+// votes are the last nVal chunks of the training window (trainProbMember), and
+// a member whose votes disagree in length with the others is refused rather
+// than silently cut to fit.
+function tuningSliceOf(trainChunks, tauProbs) {
+  const nVal = (tauProbs[0] || []).length;
+  if (!nVal) throw new Error('no votes on the tuning slice — nothing to price');
+  for (const t of tauProbs) {
+    if ((t || []).length !== nVal) {
+      throw new Error(`the members' tuning-slice votes disagree in length (${nVal} against ${(t || []).length})`);
+    }
+  }
+  if (nVal > trainChunks.length) throw new Error('more tuning-slice votes than training chunks — the stores do not describe these chunks');
+  return trainChunks.slice(trainChunks.length - nVal);
+}
+function directionMoney(chunks, calls, tradeMap, geo, fee) {
+  if (!Number.isFinite(fee) || fee < 0) {
+    throw new TypeError(`directionMoney: fee % each way is required — got ${JSON.stringify(fee)}`);
+  }
+  return bracketLib.simMarket(chunks, calls, tradeMap, geo, { tHours: geo.exitOffsetH - geo.entryOffsetH, feePerLeg: fee });
+}
+// The real money beside its null set: the same calls dealt onto other days of
+// the same slice, one seeded order per copy (dealOrder), and every copy's
+// money written down in cents -- it is free arithmetic and the tables read it.
+function moneyAgainstNull({ chunks, calls, tradeMap, geo, fee, seed, unitKey, nullN, tag = TUNING_TAG }) {
+  const real = directionMoney(chunks, calls, tradeMap, geo, fee);
+  const money = cents(real.pnl);
+  const nullMoney = [];
+  for (let d = 0; d < nullN; d++) {
+    const order = dealOrder(seed, unitKey, `${tag}#${d}`, chunks.length);
+    nullMoney.push(cents(directionMoney(chunks, order.map((k) => calls[k]), tradeMap, geo, fee).pnl));
+  }
+  let beat = 0;
+  for (const m of nullMoney) if (money > m) beat++;
+  return { money, trades: real.trades, chunks: chunks.length, nullMoney, beat, pairs: nullN, lead: leadOver(money, nullMoney) };
+}
+
 async function trainProbMember({ model, viewIdx, trainChunks, predictChunks }) {
   const Xtr = trainChunks.map((c) => viewIdx.map((i) => c.x[i]));
   const ytr = trainChunks.map((c) => c.label);
@@ -237,7 +314,7 @@ function appendKept(existing, from, fresh) {
 // score the unit under the fixed rule, deal the null set from the kept votes
 // and read beat / lead. Returns everything the orchestrator writes.
 async function s1UnitTask(task) {
-  const { combo, geometry, params: p, seed, unitKey, nullN } = task;
+  const { combo, geometry, params: p, seed, unitKey, nullN, fee } = task;
   const { geo, maps, split, reserve } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks, bandPct } = split;
   const views = viewsFor(combo, geo);
@@ -258,6 +335,14 @@ async function s1UnitTask(task) {
   }
   let beat = 0;
   for (const s of nullScores) if (score > s) beat++;
+  // THE TUNING-SLICE MONEY, beside the score (3.46.0): the probe votes priced
+  // on the slice they were cast on, against the same null set.
+  const tauProbs = members.map((m) => m.tauProbs);
+  const slice = tuningSliceOf(trainChunks, tauProbs);
+  const tuning = moneyAgainstNull({
+    chunks: slice, calls: directionCalls(tauProbs, tauProbs.map((_, i) => i), slice.length),
+    tradeMap: maps.trade, geo, fee, seed, unitKey, nullN,
+  });
   return {
     bandPct,
     reserve,
@@ -277,6 +362,7 @@ async function s1UnitTask(task) {
     },
     labels: { test: testLabels, hold: holdChunks.map((c) => c.label) },
     score, nullScores, beat, pairs: nullN, lead: leadOver(score, nullScores),
+    tuning,
   };
 }
 
@@ -287,8 +373,8 @@ async function s1UnitTask(task) {
 // retrained. Returns the boost members plus the unit's forecast score with
 // the stage 1 members alone and with every member pooled.
 async function s2UnitTask(task) {
-  const { combo, geometry, params: p, s1 } = task;
-  const { geo, split } = await unitChunks(combo, geometry, p);
+  const { combo, geometry, params: p, s1, seed, unitKey, nullN, fee } = task;
+  const { geo, maps, split } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   // The stage 1 votes must be describing THESE chunks. Refuse a unit whose
   // stored timestamps disagree with the rebuild — a manifest mismatch should
@@ -312,9 +398,35 @@ async function s2UnitTask(task) {
   const boostTest = members.map((m) => m.probs.slice(0, testChunks.length));
   const score3 = forecastScore(s1Test, testLabels);
   const scoreAll = forecastScore([...s1Test, ...boostTest], testLabels);
+  // THE MERGED MEMBERS FACE THE PARENT'S NULL SET (3.46.0): the same deals the
+  // stage 1 members were read against -- the parent's seed, the same unit, the
+  // same tag, the same test length -- so 'beat its own null set' on the stage 2
+  // table describes every member on the row, BOOST included. Before this the
+  // stage 2 record copied the stage 1 numbers and the BOOST members never
+  // faced a null set at all.
+  const allTest = [...s1Test, ...boostTest];
+  const nullScores = [];
+  for (let d = 0; d < nullN; d++) {
+    const order = dealOrder(seed, unitKey, `s1#${d}`, testChunks.length);
+    nullScores.push(forecastScore(allTest, testLabels, order));
+  }
+  let beat = 0;
+  for (const s of nullScores) if (scoreAll > s) beat++;
+  // and the tuning-slice money: the stage 1 members alone, which must come out
+  // exactly as the parent recorded it, and every member pooled
+  const tauAll = [...s1.tauProbs, ...members.map((m) => m.tauProbs)];
+  const slice = tuningSliceOf(trainChunks, tauAll);
+  const idx = (n) => Array.from({ length: n }, (_, i) => i);
+  const priced = (use) => moneyAgainstNull({
+    chunks: slice, calls: directionCalls(tauAll, use, slice.length), tradeMap: maps.trade, geo, fee, seed, unitKey, nullN,
+  });
+  const tuning3 = priced(idx(s1.tauProbs.length));
+  const tuning = priced(idx(tauAll.length));
   return {
     members: members.map((m) => ({ spec: m.spec, picked: m.picked, saved: m.saved, tauProbs: m.tauProbs, probs: m.probs })),
     score3, scoreAll, helped: scoreAll - score3,
+    beat, pairs: nullN, lead: leadOver(scoreAll, nullScores), nullScores,
+    tuning3, tuning,
   };
 }
 
@@ -930,5 +1042,6 @@ module.exports = {
   addNoiseRow, mergeNoise, meanNoise, cents,
   // the arithmetic, exported so the tests can pencil it
   forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks,
+  directionCalls, tuningSliceOf, directionMoney, moneyAgainstNull, TUNING_TAG,
   probsArr, probsObj,
 };
