@@ -324,8 +324,9 @@ window.HELP = {
     title: 'Boards',
     intro: 'Where the record sets are read: one section per stage, the whole provenance on screen. Picking a '
       + 'stage 3 record set fills the stage 2 and stage 1 sections with its parents; picking a stage 2 set fills '
-      + 'its stage 1 parent; picking a parent puts the child selections away. Each section can be put away and '
-      + 'comes back as you left it. No table mixes two stages.',
+      + 'its stage 1 parent; picking a parent puts the child selections away. Each box offers only the record sets '
+      + 'that came out of what is picked above it. Each section can be put away and comes back as you left it. No '
+      + 'table mixes two stages.',
     how: [
       ['One table per stage, and the chain always visible',
         'A stage 1 set shows the ranking: every unit under the fixed rule — forecast score, beat its own null '

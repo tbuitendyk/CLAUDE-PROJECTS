@@ -891,8 +891,8 @@ module.exports = {
     // parent putting its children away, folds remembered
     {
       const body = screens.drawBody('drawBoards');
-      for (const pin of ['bOptions(1, s1sel)', 'bOptions(2, s2sel)', 'bOptions(3, s3sel)']) {
-        assert.ok(body.includes(pin), `each section's picker offers only its own stage's sets (${pin})`);
+      for (const pin of ['bOptions(1, s1sel)', 'bOptions(2, s2sel, s1sel)', 'bOptions(3, s3sel, s2sel)']) {
+        assert.ok(body.includes(pin), `each section's picker offers only its own stage's sets, narrowed to what came out of the pick above (${pin})`);
       }
       assert.ok(body.includes('if (s3sel) { s2sel = parentOf(s3sel); s1sel = s2sel ? parentOf(s2sel) : null; }'),
         'a stage 3 selection must put its whole chain on screen');
@@ -905,6 +905,19 @@ module.exports = {
       assert.ok(/fold\[stage\]\) \{ mount.innerHTML = '<p class="note">put away/.test(body),
         'a folded section says it is put away rather than vanishing');
     }
+    // EACH BOARDS BOX OFFERS ONLY WHAT CAME OUT OF THE PICK ABOVE IT (owner
+    // order, 2026-09-02: "why is Stage 3 on boards offering me a pick of S3 #1
+    // which is not related"): the stage 2 box lists the picked stage 1 set's
+    // children, the stage 3 box the picked stage 2 set's, walked by parent links
+    {
+      const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+      const draw = src.slice(src.indexOf('async function drawBoards('), src.indexOf('const btd = '));
+      assert.ok(draw.includes('${bOptions(2, s2sel, s1sel)}'), 'the stage 2 box is narrowed to what came out of the picked stage 1 set');
+      assert.ok(draw.includes('${bOptions(3, s3sel, s2sel)}'), 'the stage 3 box is narrowed to what came out of the picked stage 2 set');
+      assert.ok(draw.includes('const descendsFrom = (x, ancestorId) =>') && draw.includes('(!above || descendsFrom(x, above.id))'),
+        'descent is walked through the parent links, and a box with nothing picked above it lists every set of its stage');
+      assert.ok(draw.includes('nothing came out of ${esc(above.name)} yet'), 'an empty box says so rather than offering unrelated sets');
+    }
     // Sweep's titles carry the provenance colors, judged live
     {
       const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
@@ -912,7 +925,15 @@ module.exports = {
       const fn = src.slice(src.indexOf('function swProvenance('), src.indexOf('async function swCounts('));
       assert.ok(/var\(--pos\)/.test(fn) && /var\(--neg\)/.test(fn), 'green normally, red at the point of break');
       assert.ok(fn.includes("rowOf(v('#swFrom2'))") && fn.includes("rowOf(v('#swFrom3'))"),
-        'stage 1 is judged against what the stage 2 box names, stage 2 against what the stage 3 box names');
+        'stage 2 is judged by the stage 1 set its box names, stage 3 by the stage 2 set its box names');
+      // EACH TITLE IS JUDGED BY ITS OWN BOX (owner order, 2026-09-02: "why is
+      // Stage 2 red ... should be GREEN and Stage 3 should be red"): the red
+      // lands on the section whose box breaks the chain, never the one above it
+      assert.ok(fn.includes("paint('#swH1', true);"), 'stage 1 is the root and is never painted red');
+      const s2 = fn.slice(fn.indexOf("const s1row = rowOf(v('#swFrom2'));"), fn.indexOf("const s2row = rowOf(v('#swFrom3'));"));
+      assert.ok(s2.includes("paint('#swH2', !mismatch,") && !s2.includes("'#swH1'"), 'a stage 1 set that no longer matches the stage 1 boxes paints STAGE 2, whose box names it');
+      const s3 = fn.slice(fn.indexOf("const s2row = rowOf(v('#swFrom3'));"));
+      assert.ok(s3.includes("paint('#swH3', !mismatch,") && !s3.includes("'#swH2'"), 'a stage 2 set that was not carried out of the stage 1 set the stage 2 box names paints STAGE 3, whose box names it');
       const swBody = screens.drawBody('drawSweep');
       assert.ok(swBody.includes('swProvenance()'), 'the colors are wired on the page');
       assert.ok(swBody.includes("b.disabled = going"), 'the start buttons sleep while a run is going');

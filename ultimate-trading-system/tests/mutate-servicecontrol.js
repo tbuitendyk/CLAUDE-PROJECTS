@@ -170,7 +170,7 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), 'bSaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] })', 'bSaveView({ s1: idv, fold1: true, openS3: [] })',
     'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'picking a new stage 1 parent leaves stale children selected under it'],
   [path.join(ROOT, 'public', 'construct.js'), "const s1row = rowOf(v('#swFrom2'));", 'const s1row = null;',
-    'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'the stage 1 title stays green whatever the boxes show — the provenance flag stops flagging'],
+    'theTwoScreensDrawTheSharedPanelsFromOneFunction', 'the stage 2 title stays green whatever the stage 1 boxes show — the provenance flag stops flagging'],
   [path.join(ROOT, 'lib', 'stages.js'), "  try { if (readTally(id)) return { ready: true }; } catch (_) { /* fall through */ }", '  return { ready: true };',
     'theTablesRebuildThemselvesWhenOpened', 'a set stranded without its tables reads as ready forever and the stage 3 tables stay empty'],
   [path.join(ROOT, 'lib', 'stages.js'), '  if (t && t.v !== TALLY_V) t = null;', '',
@@ -488,6 +488,10 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      bar: st.bar,                                          // null: the engine's default bar\n", "",
     'theScreenOffersTheBarAndSendsItWithEveryRead',
     'the owner sets seven, the box reads eight, and every bold row on the screen is under a bar the owner did not choose'],
+  // ---- THE BOARDS BOXES OFFER ONLY WHAT CAME OUT OF THE PICK ABOVE (3.46.2) ----
+  [path.join(ROOT, 'public', 'construct.js'), '${bOptions(3, s3sel, s2sel)}', '${bOptions(3, s3sel)}',
+    'theTwoScreensDrawTheSharedPanelsFromOneFunction',
+    'the stage 3 box on Boards offers every stage 3 set again, related to the picked stage 2 set or not'],
   // ---- THE SORTERS HOLD THE PAGE STILL (3.46.1) ----
   [path.join(ROOT, 'public', 'construct.js'), "      if (out) drawBoardsHoldingPlace();\n    };\n  });\n}\n\n// THE RANKED TABLE SORTS BY ONE PICKED COLUMN",
     "      if (out) drawBoards().then(() => restoreScroll(tab));\n    };\n  });\n}\n\n// THE RANKED TABLE SORTS BY ONE PICKED COLUMN",

@@ -673,12 +673,17 @@ async function swProgress() {
   if (!swPoll) swPoll = setInterval(swProgress, 4000);
 }
 
-// GREEN WHEN A SECTION SHOWS THE PROVENANCE OF THE SECTION BELOW IT, RED AT
-// THE POINT OF BREAK (owner order, 2026-08-27). Stage 1's title is judged
-// against the stage 1 record set the stage 2 box names; stage 2's against
-// the stage 2 record set the stage 3 box names; stage 3 anchors the chain.
-// Judged live on every change — set a box back and the title goes green
-// again. A section with nothing below it naming a record set is green.
+// GREEN WHEN A SECTION READS FROM WHAT THE SECTION ABOVE IT SHOWS, RED AT THE
+// POINT OF BREAK (owner order, 2026-08-27; re-aimed 2026-09-02: "why is Stage
+// 2 red ... should be GREEN and Stage 3 should be red"). Each title is judged
+// by ITS OWN box: stage 2's by the stage 1 record set its box names, held up
+// to the stage 1 section above; stage 3's by the stage 2 record set its box
+// names, held up to the stage 2 section above. Stage 1 is the root and has
+// nothing above it to disagree with. It was judged one section up before --
+// the red landed on the section ABOVE the box that broke the chain, so a
+// stage 3 box still naming an older stage 2 set painted Stage 2. Judged live
+// on every change; set a box back and the title goes green again. A box
+// naming no record set is green.
 function swProvenance() {
   const sets = swSetsCache || [];
   const rowOf = (id) => sets.find((x) => x.id === id) || null;
@@ -687,14 +692,19 @@ function swProvenance() {
     if (!h) return;
     h.style.color = ok ? 'var(--pos)' : 'var(--neg)';
     h.title = ok
-      ? 'green: this section shows the provenance of the section below it (or nothing below names a record set yet)'
+      ? 'green: this section reads from what the section above it shows (or names no record set yet)'
       : `red: ${why}. Set the boxes back and this goes green again.`;
   };
   const v = (sel) => { const e = $(sel); return e ? e.value : ''; };
   const c = (sel) => { const e = $(sel); return !!(e && e.checked); };
 
+  // stage 1 is the root: nothing above it to disagree with
+  paint('#swH1', true);
+
+  // stage 2: the stage 1 record set its box names, held up to the stage 1 section
   const s1row = rowOf(v('#swFrom2'));
-  if (!s1row) paint('#swH1', true);
+  if (!v('#swFrom2')) paint('#swH2', true);
+  else if (!s1row) paint('#swH2', false, 'the stage 1 record set named here is not on this box any more');
   else {
     const p = s1row.params || {};
     const defaults = ((VOCAB && VOCAB.defaultPairs) || []).map((o) => String(o.value));
@@ -711,12 +721,14 @@ function swProvenance() {
               : c('#swAllData') !== (p.allLoaded !== false) ? 'the all loaded data tick no longer matches'
                 : (!c('#swAllData') && (v('#swStart') !== (p.startMonth || '') || v('#swEnd') !== (p.endMonth || ''))) ? 'the start / end months no longer match'
                   : null;
-    paint('#swH1', !mismatch,
-      `${mismatch} — this section no longer shows the provenance of ${s1row.name}, the record set the stage 2 box reads from`);
+    paint('#swH2', !mismatch,
+      `${mismatch} — the stage 1 section above no longer shows the provenance of ${s1row.name}, the record set this box reads from`);
   }
 
+  // stage 3: the stage 2 record set its box names, held up to the stage 2 section
   const s2row = rowOf(v('#swFrom3'));
-  if (!s2row) paint('#swH2', true);
+  if (!v('#swFrom3')) paint('#swH3', true);
+  else if (!s2row) paint('#swH3', false, 'the stage 2 record set named here is not on this box any more');
   else {
     const par = s2row.parent || {};
     const carryBox = Number(v('#swCarry')) || 0;
@@ -724,12 +736,11 @@ function swProvenance() {
       ? (par.carry != null && par.of != null ? par.carry === par.of : true)
       : carryBox === par.carry;
     const mismatch = v('#swFrom2') !== (par.id || '')
-      ? `the stage 1 record set named here is not the one ${s2row.name} was carried out of (${par.name || par.id || 'unrecorded'})`
-      : (!carryMatch ? 'carry forward no longer matches what was carried' : null);
-    paint('#swH2', !mismatch, `${mismatch} — the stage 3 box reads from ${s2row.name}`);
+      ? `the stage 1 record set the stage 2 box names is not the one ${s2row.name} was carried out of (${par.name || par.id || 'unrecorded'})`
+      : (!carryMatch ? `carry forward no longer matches what ${s2row.name} carried` : null);
+    paint('#swH3', !mismatch,
+      `${mismatch} — ${s2row.name}, the record set this box reads from, does not come out of the stage 2 section above`);
   }
-
-  paint('#swH3', !v('#swFrom3') || !!s2row, 'the stage 2 record set named here is not on this box any more');
 }
 
 // A GROUP THAT CANNOT APPLY LEAVES THE ROW (RULE FOUR, and the behaviour the
@@ -2640,15 +2651,34 @@ async function drawBoards() {
   // the option lists are shared; the six controls carry LITERAL ids so the
   // control reader and the Help tab see every one of them (RULE ONE-A: a
   // list with holes is worse than no list)
-  const bOptions = (stage, sel) => `<option value="">— pick a stage ${stage} record set —</option>`
-    + sets.filter((x) => x.stage === stage).map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
+  // EACH BOX OFFERS ONLY WHAT CAME OUT OF THE PICK ABOVE IT (owner order,
+  // 2026-09-02: "why is Stage 3 on boards offering me a pick of S3 #1 which is
+  // not related ... the provenance chain display is broken"). A stage 3 box
+  // under a picked stage 2 set lists that set's children; under a picked stage
+  // 1 set alone, its grandchildren; with nothing picked above, every set of
+  // the stage. Descent is walked through the parent links, never assumed.
+  const descendsFrom = (x, ancestorId) => {
+    for (let r = x, hops = 0; r && hops < 8; r = r.parent ? rowOf(r.parent.id) : null, hops++) {
+      if (r.parent && r.parent.id === ancestorId) return true;
+    }
+    return false;
+  };
+  const bOptions = (stage, sel, aboveId) => {
+    const above = aboveId ? rowOf(aboveId) : null;
+    const list = sets.filter((x) => x.stage === stage && (!above || descendsFrom(x, above.id)));
+    const head = above && !list.length
+      ? `<option value="">— nothing came out of ${esc(above.name)} yet —</option>`
+      : `<option value="">— pick a stage ${stage} record set${above ? ` out of ${esc(above.name)}` : ''} —</option>`;
+    return head + list.map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
+  };
   const foldBtn = (stage) => `<button data-bfold="${stage}" title="puts this stage's table away, or brings it back. The last state is remembered.">${fold[stage] ? 'put away' : 'open'}</button>`;
 
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Boards — the record sets, and what each stage wrote</h3>
     <p class="note">One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
       stage 2 and stage 1 sections with its parents; picking a stage 2 set fills its stage 1 parent; picking a
-      parent puts the child selections away. Each section can be put away and comes back as you left it.</p>
+      parent puts the child selections away. Each box offers only the record sets that came out of what is picked
+      above it. Each section can be put away and comes back as you left it.</p>
     ${running ? `<p class="note"><b>${esc(running.name)}</b> is going: ${esc(running.progress || '…')}</p>` : ''}
   </div>
   <div class="panel">
@@ -2666,7 +2696,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(2)}
       <h3 style="margin:0">Stage 2</h3>
-      <label class="f">record set<select id="bPick2" style="min-width:26rem">${bOptions(2, s2sel)}</select></label>
+      <label class="f">record set<select id="bPick2" style="min-width:26rem">${bOptions(2, s2sel, s1sel)}</select></label>
       <button id="bDelete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
       <button id="bCopySettings2" ${s2sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s2sel))}
@@ -2677,7 +2707,7 @@ async function drawBoards() {
     <div class="row" style="align-items:flex-end">
       ${foldBtn(3)}
       <h3 style="margin:0">Stage 3</h3>
-      <label class="f">record set<select id="bPick3" style="min-width:26rem">${bOptions(3, s3sel)}</select></label>
+      <label class="f">record set<select id="bPick3" style="min-width:26rem">${bOptions(3, s3sel, s2sel)}</select></label>
       <button id="bDelete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
       <button id="bCopySettings3" ${s3sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s3sel))}

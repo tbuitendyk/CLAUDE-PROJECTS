@@ -514,3 +514,20 @@ carried out 2026-08-28 under its own GO — decision 50.
     swapped; no reader learns the old shape). Stage 3 and the Funnel are
     untouched. The training weights (days weighted by the size of their move)
     stay deferred and unauthorised. Second digit.
+58. **The stage titles on Sweep go red on the section whose own box breaks
+    the chain** (3.46.2, owner order 2026-09-02: "why is Stage 2 red on my
+    Sweep page ... should be GREEN and Stage 3 should be red"). Amends #30.
+    Each title is judged by its own `from ... record set` box against the
+    section above it: Stage 2 by the stage 1 set its box names against the
+    stage 1 boxes; Stage 3 by the stage 2 set its box names against the
+    stage 1 set the stage 2 box names and `carry forward (0 = all)`. Stage 1
+    is the root and stays green. Before this the judgement sat one section
+    up, so a stage 3 box still naming an older stage 2 set painted Stage 2
+    red -- the section above the break -- and Stage 3 green. In the same
+    release, the Boards boxes (owner order, same day: "why is Stage 3 on
+    boards offering me a pick of S3 #1 which is not related"): each `record
+    set` box offers only the sets that came out of what is picked above it,
+    walked through the parent links -- the stage 2 box the picked stage 1
+    set's children, the stage 3 box the picked stage 2 set's; with nothing
+    picked above, every set of the stage; an empty box says nothing came out
+    of that set yet. Third digit.
