@@ -2837,7 +2837,7 @@ function bWireSort(doc, root) {
         spec.splice(at, 1);
       }
       const out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/sort`, { sort: spec });
-      if (out) drawBoards().then(() => restoreScroll(tab));
+      if (out) drawBoardsHoldingPlace();
     };
   });
 }
@@ -2866,9 +2866,28 @@ function bWireRankSort(doc, root) {
         : cur.dir === first ? [{ key, dir: first === 'desc' ? 'asc' : 'desc' }]
           : [];
       const out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/sort`, { sort: spec });
-      if (out) drawBoards().then(() => restoreScroll(tab));
+      if (out) drawBoardsHoldingPlace();
     };
   });
+}
+
+// A REDRAW THAT LEAVES THE PAGE WHERE IT IS (owner order, 2026-09-02: "don't
+// reposition the windows when column sorters are used on the Boards tab").
+// The remembered place is only as good as the last thing that wrote it, and a
+// long redraw outlives the hold on the memory: the page shrinks while its
+// tables are rebuilt, the browser clamps to the bottom of what is left, the
+// listener writes that clamped place, and the restore lands there -- higher
+// than the owner was. So this takes the place BEFORE anything is replaced and
+// puts the page back at exactly that height afterwards, then tells the memory.
+async function drawBoardsHoldingPlace() {
+  const y = window.scrollY;
+  await drawBoards();
+  holdScrollMemory();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    holdScrollMemory();
+    window.scrollTo(0, y);
+    rememberScroll(tab);
+  }));
 }
 
 // THE COINS TABLE HOLDS STILL (owner orders, 2026-08-27: "the page must not

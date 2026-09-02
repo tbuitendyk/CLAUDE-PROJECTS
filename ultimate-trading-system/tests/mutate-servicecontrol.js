@@ -488,6 +488,11 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      bar: st.bar,                                          // null: the engine's default bar\n", "",
     'theScreenOffersTheBarAndSendsItWithEveryRead',
     'the owner sets seven, the box reads eight, and every bold row on the screen is under a bar the owner did not choose'],
+  // ---- THE SORTERS HOLD THE PAGE STILL (3.46.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      if (out) drawBoardsHoldingPlace();\n    };\n  });\n}\n\n// THE RANKED TABLE SORTS BY ONE PICKED COLUMN",
+    "      if (out) drawBoards().then(() => restoreScroll(tab));\n    };\n  });\n}\n\n// THE RANKED TABLE SORTS BY ONE PICKED COLUMN",
+    'theColumnSortersOnBoardsLeaveThePageWhereItIs',
+    'a sort on the stage 1 or 2 table restores from the memory again, and a long redraw lands the page higher than the owner was'],
   // ---- TUNING-SLICE MONEY (3.46.0) ----
   [path.join(ROOT, 'lib', 'stagework.js'), "  for (const m of nullMoney) if (money > m) beat++;\n", "  for (const m of nullMoney) if (money >= m) beat++;\n",
     'theTuningSliceMoneyPricesTheLeanOfTheVotesAgainstItsNullSet',
