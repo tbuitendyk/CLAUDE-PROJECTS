@@ -78,6 +78,17 @@ psapi's `EnumProcesses`/`GetProcessMemoryInfo`, `GetProcessTimes`,
 `GetProcessIoCounters`, `QueryFullProcessImageNameW`, and PDH
 (`PdhAddEnglishCounterW`, so it works on any OS display language).
 
+## Troubleshooting
+
+**The log goes silent ~3 days after every boot** (last heartbeat 66–72 h
+after the `START` line, then nothing until the next reboot): that is Windows
+Task Scheduler's default *ExecutionTimeLimit* of 72 hours killing the task.
+`schtasks /Create` cannot disable it, so `install-task.bat` now patches the
+task XML (`ExecutionTimeLimit` → `PT0S`, i.e. unlimited) via
+`remove-task-time-limit.ps1` and re-registers. If you installed with an
+older version of the script, just re-run the current `install-task.bat`
+elevated — it recreates the task in place.
+
 ## Files
 
 - `main.go` — flags, sampling loop, event state machine (fire/still/clear
@@ -88,4 +99,6 @@ psapi's `EnumProcesses`/`GetProcessMemoryInfo`, `GetProcessTimes`,
 - `logger.go` — CRLF log file with size rotation, mirrored to stdout
 - `build.sh` — cross-compile (enforces Go 1.20.x)
 - `install-task.bat` / `uninstall-task.bat` — boot-time scheduled task as SYSTEM
+- `remove-task-time-limit.ps1` — task-XML patch that disables Task
+  Scheduler's default 72 h kill (used by `install-task.bat`)
 - `dist/perfmon.exe` — prebuilt binary (windows/amd64, go1.20.14)
