@@ -9,6 +9,8 @@ curl -sS -m 200 -H 'content-type: application/json' -d '{"step":1,"rule":{"range
 let raw=""; process.stdin.on("data",(c)=>raw+=c).on("end",()=>{
   const d=JSON.parse(raw); if(d.error){console.log("ERROR",d.error);return;}
   console.log("set:",d.set.name," settings:",d.of," survive:",d.survivors," target:",d.target," check:",JSON.stringify(d.check)," kept:",d.set.keptScrambles);
+  console.log("unit:",d.unit," unitName:",d.unitName," units on the set:",(d.units||[]).length," names:",(d.units||[]).map(u=>u.name).join(" | "));
+  const rr=d.reading||{}; if(rr.honesty) console.log("honesty:",JSON.stringify(rr.honesty)); if(rr.beating) console.log("beating:",JSON.stringify(rr.beating));
   const r=d.reading||{};
   if(r.why){console.log("why:",r.why);return;}
   const f=(x,n=2)=>(x==null||!isFinite(x)?"-":Number(x).toFixed(n));
