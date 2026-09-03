@@ -28,6 +28,10 @@ const folded = t('foldSameTradeSettings', () => stages.foldSameTradeSettings(dec
 console.log('   kept', folded.kept.length, 'folded', folded.folded.length);
 const d = t('stage3Declared (whole)', () => stages.stage3Declared(b));
 console.log('   ', JSON.stringify(d));
+if (stages.countDeclared) {
+  const fast = t('countDeclared (fast)', () => stages.countDeclared(b, sizes, records));
+  console.log('   fast', JSON.stringify(fast), ' equal to the built-and-folded count:', fast.declared === declared.length && fast.kept === folded.kept.length && fast.folded === folded.folded.length);
+}
 t('tallyBudgetFor', () => stages.tallyBudgetFor({ settings: d.settings, coins: d.coins || 5 }));
 t('storeBudgetFor', () => stages.storeBudgetFor({ rows: d.settings * (d.units || 25) }));
 JS
