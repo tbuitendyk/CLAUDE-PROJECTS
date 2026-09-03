@@ -531,3 +531,20 @@ carried out 2026-08-28 under its own GO — decision 50.
     set's children, the stage 3 box the picked stage 2 set's; with nothing
     picked above, every set of the stage; an empty box says nothing came out
     of that set yet. Third digit.
+
+59. **The stage 3 count is worked out without building the settings**
+    (3.46.3, owner order 2026-09-02: "the count is not known right now — HTTP
+    504 ... we need a longer timeout or other fix"). Measured on the box: the
+    count took 8.6 s for a 352,128-setting block -- 5.6 s building every
+    setting with its label, 2.8 s keying them all again for the fold -- on the
+    service's one thread, and every box change asks again, so a few changes in
+    a row queued past the gateway's minute. The block is a cross product,
+    decision x band x 24/5 x trade shape x agreement, and the fold merges only
+    settings that share everything but their resolved geometry; so the kept
+    count is that product with the bands replaced, per group of shapes
+    sharing entry, gate and t, by how many distinct geometries the group's
+    shapes resolve to across the bands. `countDeclared` does that on a few
+    hundred shapes through `shapeRepsFor`, the very pass the launch's fold
+    reads, and a test holds the two equal on blocks that fold for every
+    reason a block can. The launch still builds and folds. The gateway's
+    timeout is untouched. Third digit.

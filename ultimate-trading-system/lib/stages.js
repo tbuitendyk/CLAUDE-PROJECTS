@@ -1292,12 +1292,14 @@ function bandsAcross(band, records) {
 // Fold a declared block down to the settings that actually price different
 // trades. Returns the kept settings and what was folded into what, so the
 // screen can say so.
-function foldSameTradeSettings(settings, records) {
-  if (!Array.isArray(records) || !records.length) return { kept: settings, folded: [] };
-  // Only the band and the three multipliers decide the priced geometry, and a
-  // block holds a handful of those combinations however many settings it has —
-  // so equivalence is worked out once per combination, not once per setting.
-  const shapeKey = (st) => [st.band, st.dMult ?? null, st.trailMult ?? null, st.armMult ?? null].join('|');
+// WHICH SHAPES PRICE THE SAME TRADE ON EVERY UNIT OF THIS RUN. Only the band
+// and the three multipliers decide the priced geometry, and a block holds a
+// handful of those combinations however many settings it has — so equivalence
+// is worked out once per combination, not once per setting. ONE pass, read by
+// the fold the launch runs and by the count the Sweep cost line asks for, so
+// the two can never disagree about what is the same trade.
+const shapeKeyOf = (st) => [st.band, st.dMult ?? null, st.trailMult ?? null, st.armMult ?? null].join('|');
+function shapeRepsFor(shapes, records) {
   const bandCache = new Map();
   const across = (band) => {
     if (!bandCache.has(band)) bandCache.set(band, bandsAcross(band, records));
@@ -1305,8 +1307,8 @@ function foldSameTradeSettings(settings, records) {
   };
   const reps = [];                      // { key, vecs }
   const repOf = new Map();              // shapeKey -> representative index
-  for (const st of settings) {
-    const k = shapeKey(st);
+  for (const st of shapes) {
+    const k = shapeKeyOf(st);
     if (repOf.has(k)) continue;
     const bands = across(st.band);
     const vecs = [st.dMult ?? null, st.trailMult ?? null, st.armMult ?? null]
@@ -1319,6 +1321,12 @@ function foldSameTradeSettings(settings, records) {
     if (at < 0) { at = reps.length; reps.push({ key: k, vecs }); }
     repOf.set(k, at);
   }
+  return repOf;
+}
+function foldSameTradeSettings(settings, records) {
+  if (!Array.isArray(records) || !records.length) return { kept: settings, folded: [] };
+  const shapeKey = shapeKeyOf;
+  const repOf = shapeRepsFor(settings, records);
   // ...and now a setting's identity is everything that is NOT the geometry,
   // plus which geometry it resolved to.
   // THE BAR IS PART OF WHAT MAKES A SETTING ITSELF. It was missing here, so
@@ -1343,7 +1351,9 @@ function foldSameTradeSettings(settings, records) {
   return { kept, folded };
 }
 
-function settingsFor(params, sizes = null) {
+// The trade shapes a block declares — the SAME enumerator the sweep launcher
+// uses, so a block here can never contain a trade the old path would refuse.
+function shapeCellsFor(params) {
   const grid = {
     dMults: bracketLib.D_MULTS, tHours: bracketLib.T_HOURS, gates: bracketLib.GATES,
     entries: bracketLib.ENTRIES, trailMults: bracketLib.TRAIL_MULTS, armMults: bracketLib.ARM_MULTS,
@@ -1357,13 +1367,21 @@ function settingsFor(params, sizes = null) {
   shapeCell.quorum = 1;
   const shapePermute = { ...(params.cellPermute || {}) };
   delete shapePermute.agree;
-  const cells = batch.expandDeclared(shapeCell, shapePermute, grid);
-  const agrees = agreementsFor(params, sizes);
+  return batch.expandDeclared(shapeCell, shapePermute, grid);
+}
+// The three plain axes of a block: decision, band and 24/5.
+function blockAxesFor(params) {
   const decisions = params.permuteDecision ? ['argmax', 'directional'] : [params.decision === 'directional' ? 'directional' : 'argmax'];
   const BAND_MENU = ['auto', 3, 5, 8];
   const bands = params.permuteBand ? BAND_MENU : [params.band === 'auto' || params.band === undefined || params.band === '' ? 'auto' : Number(params.band)];
   for (const b of bands) if (b !== 'auto' && !(Number.isFinite(b) && b > 0)) throw new Error(`band must be auto or a positive percent, not "${b}"`);
   const weekdays = params.permuteWeekdays ? [false, true] : [!!params.weekdaysOnly];
+  return { decisions, bands, weekdays };
+}
+function settingsFor(params, sizes = null) {
+  const cells = shapeCellsFor(params);
+  const agrees = agreementsFor(params, sizes);
+  const { decisions, bands, weekdays } = blockAxesFor(params);
   const out = [];
   for (const decision of decisions) {
     for (const band of bands) {
@@ -1552,6 +1570,44 @@ function stampBoardNullOnEverySet() {
 // same records, same carry cut, same declared bars — so the number on the
 // screen and the number that runs can never be two different numbers. When
 // no parent is named yet, the block is counted exactly as declared.
+// THE COUNT WITHOUT THE SETTINGS (owner order, 2026-09-02: "the count is not
+// known right now — HTTP 504 ... we need a longer timeout or other fix").
+// Building every setting of a 352,128-setting block and keying each one again
+// for the fold took the service eight seconds per ask, on its one thread, and
+// every box change asks again -- so a few changes in a row queued past the
+// gateway's minute. The block is a plain cross product -- decision x band x
+// 24/5 x trade shape x agreement -- and the fold only ever merges settings that
+// share everything but their resolved geometry. So the kept count is that
+// product with the bands replaced, per group of shapes sharing entry, gate and
+// t, by how many distinct geometries the group's shapes resolve to across the
+// bands: a few hundred shapes instead of a few hundred thousand settings,
+// worked out through the SAME shapeRepsFor the launch's fold reads, and a
+// test holds the two equal.
+function countDeclared(params, sizes, records) {
+  const cells = shapeCellsFor(params);
+  const agrees = agreementsFor(params, sizes);
+  const { decisions, bands, weekdays } = blockAxesFor(params);
+  const declared = decisions.length * bands.length * weekdays.length * cells.length * agrees.length;
+  if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0 };
+  const shapes = [];
+  for (const cell of cells) {
+    for (const band of bands) shapes.push({ band, dMult: cell.dMult ?? null, trailMult: cell.trailMult ?? null, armMult: cell.armMult ?? null });
+  }
+  const repOf = shapeRepsFor(shapes, records);
+  // the fold's key, less the geometry: everything else that can change a call
+  // is either on the cell (entry, gate, t) or on an axis the product carries
+  const groups = new Map();
+  for (const cell of cells) {
+    const g = `${cell.entry}|${cell.gate}|${cell.tHours}`;
+    let set = groups.get(g);
+    if (!set) { set = new Set(); groups.set(g, set); }
+    for (const band of bands) set.add(repOf.get(shapeKeyOf({ band, ...cell })));
+  }
+  let geometries = 0;
+  for (const set of groups.values()) geometries += set.size;
+  const kept = decisions.length * weekdays.length * agrees.length * geometries;
+  return { declared, kept, folded: declared - kept };
+}
 function stage3Declared(b) {
   const out = { units: null, coins: null };
   let sizes = null;
@@ -1570,14 +1626,13 @@ function stage3Declared(b) {
       out.coins = new Set(records.map((r) => r.trade)).size;
     }
   }
-  const declared = settingsFor(b || {}, sizes);
   // the count is of what will actually be PRICED: two settings that place the
-  // same orders on every unit are one setting, and the fold runs here so the
-  // cost line and the launch can never be two different numbers
-  const { kept, folded } = foldSameTradeSettings(declared, records);
-  out.settings = kept.length;
-  out.declared = declared.length;
-  out.folded = folded.length;
+  // same orders on every unit are one setting -- counted without building
+  // them, through the same shape pass the launch's fold reads
+  const counted = countDeclared(b || {}, sizes, records || []);
+  out.settings = counted.kept;
+  out.declared = counted.declared;
+  out.folded = counted.folded;
   return out;
 }
 function startStage3(params) {
@@ -4691,7 +4746,7 @@ module.exports = {
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, stage3Declared, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,

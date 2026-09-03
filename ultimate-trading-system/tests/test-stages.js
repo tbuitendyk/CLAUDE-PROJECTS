@@ -140,6 +140,42 @@ module.exports = {
       'kinds of evidence measured against its own history must be reachable — it was not, and that was the muddle');
   },
 
+  // THE COUNT IS THE LAUNCH'S FOLD WITHOUT THE SETTINGS (owner order,
+  // 2026-09-02: "HTTP 504 ... we need a longer timeout or other fix"). The
+  // cost line's number is worked out from the block's axes and its shapes,
+  // never by building every setting -- and it must equal, to the setting, what
+  // the launch gets by building them all and folding the ones that price the
+  // same trade. Held equal here on blocks that fold for every reason a block
+  // can: market cells with no geometry, an auto band that lands on a fixed
+  // one across every unit, and a block with nothing to fold at all.
+  async theStageThreeCountIsTheLaunchsFoldWithoutTheSettings() {
+    const same = (b, sizes, records, why) => {
+      const slow = stages.settingsFor(b, sizes);
+      const fold = stages.foldSameTradeSettings(slow, records);
+      const fast = stages.countDeclared(b, sizes, records);
+      assert.deepStrictEqual([fast.declared, fast.kept, fast.folded], [slow.length, fold.kept.length, fold.folded.length], why);
+      return fast;
+    };
+    const unit = (trade, bandPct, size = 1) => ({ trade, ctx1: size > 1 ? 'ETHUSDT' : null, ctx2: null, size, geometry: 'daily-4d', bandPct });
+    const spread = [unit('AAAUSDT', 2.1), unit('BBBUSDT', 4.4), unit('CCCUSDT', 6.3, 2)];
+    const onFive = [unit('AAAUSDT', 5), unit('BBBUSDT', 5), unit('CCCUSDT', 5)];
+    const cell = { entry: 'breakout', gate: 'active', dMult: 1, tHours: 41, trailMult: 1, armMult: 0 };
+    // the owner's kind of block: every trade dial permuted, every axis permuted
+    const big = { cell, cellPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true },
+      permuteDecision: true, permuteBand: true, agreePermuteRule: true, agreePermutePct: true, agreePermuteBar: true };
+    const a = same(big, [1, 2], spread, 'the full block, units with bands of their own');
+    assert.ok(a.folded > 0, 'market cells carry no geometry, so their bands fold — the fixture must fold something');
+    const b = same(big, [1, 2], onFive, 'the full block, every unit at 5%: auto lands on the 5% band and folds into it');
+    assert.ok(b.kept < a.kept, 'an auto band that resolves to a fixed one on every unit folds more, not less');
+    same({ cell: { entry: 'market', tHours: 65 }, permuteBand: true, agreePermutePct: true }, [1], spread, 'market only: every band is one trade');
+    same({ cell, permuteBand: true }, [1], spread, 'one breakout shape across the bands: nothing to fold');
+    same({ cell }, [1], [], 'no units yet: declared is kept');
+    same({ cell, cellPermute: { dMult: true, trail: true, arm: true }, permuteBand: true, agreePermuteRule: true }, [1, 3], onFive, 'shapes and bands with the voices rule and its copies');
+    // and it is the count the cost line reads
+    const d = stages.stage3Declared({ ...big });
+    assert.strictEqual(d.settings, stages.countDeclared(big, null, []).kept, 'with no parent named the count is the block itself');
+  },
+
   // The counter behind the Sweep cost line resolves the SAME units the
   // launch will price — the carry cut decides which bars exist, so the
   // number on the screen and the number that runs are one number.
@@ -1458,16 +1494,23 @@ module.exports = {
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     assert.ok(/declaredSettings: declaredSettings\.length,/.test(src) && /sameTradeFolded: sameTrade\.length,/.test(src),
       'the record set does not record what the block asked for against what was actually priced');
-    assert.ok(/out\.declared = declared\.length;/.test(src) && /out\.folded = folded\.length;/.test(src),
+    assert.ok(/out\.declared = counted\.declared;/.test(src) && /out\.folded = counted\.folded;/.test(src),
       'the count does not report the fold, so the cost line cannot mention it');
-    // the count and the launch must fold through the SAME function, or the
-    // number on the screen and the number that runs are two different numbers
-    // ...and so must the rebuild that reads what the members actually did for
-    // a set already priced: it has to reproduce the block that ran, which
-    // means the same fold, not a second idea of which settings existed.
-    assert.strictEqual(src.split('foldSameTradeSettings(').length - 1, 4,
-      'the fold is called somewhere other than its definition, the count, the launch and the rebuild — those must be the '
-      + 'only callers, or the number on the cost line and the number that runs come from different arithmetic');
+    // the launch and the rebuild must fold through the SAME function, or the
+    // block that runs and the block read back for a set already priced are two
+    // different ideas of which settings existed
+    assert.strictEqual(src.split('foldSameTradeSettings(').length - 1, 3,
+      'the fold is called somewhere other than its definition, the launch and the rebuild — those must be the '
+      + 'only callers, or the number that runs and the number read back come from different arithmetic');
+    // and the count, which no longer builds the settings (3.46.3), must read
+    // the SAME shape pass the fold reads, or the number on the cost line and
+    // the number that runs are two different numbers
+    assert.strictEqual(src.split('shapeRepsFor(').length - 1, 3,
+      'the shape pass is read somewhere other than its definition, the fold and the count — or by fewer than both');
+    const fold = src.slice(src.indexOf('function foldSameTradeSettings('), src.indexOf('function foldSameTradeSettings(') + 400);
+    const count = src.slice(src.indexOf('function countDeclared('), src.indexOf('function stage3Declared('));
+    assert.ok(fold.includes('shapeRepsFor(settings, records)') && count.includes('shapeRepsFor(shapes, records)'),
+      'the fold and the count both work out which shapes are the same trade through shapeRepsFor');
   },
 
   // NEITHER HEAVY JOB CAN FIRE DURING THE OTHER (owner order, 2026-08-29: "fix

@@ -488,6 +488,10 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      bar: st.bar,                                          // null: the engine's default bar\n", "",
     'theScreenOffersTheBarAndSendsItWithEveryRead',
     'the owner sets seven, the box reads eight, and every bold row on the screen is under a bar the owner did not choose'],
+  // ---- THE COUNT WITHOUT THE SETTINGS (3.46.3) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "    for (const band of bands) set.add(repOf.get(shapeKeyOf({ band, ...cell })));\n", "    for (const band of bands) set.add(shapeKeyOf({ band, ...cell }));\n",
+    'theStageThreeCountIsTheLaunchsFoldWithoutTheSettings',
+    'the cost line counts every band as its own trade, and says more settings than the launch will price'],
   // ---- THE BOARDS BOXES OFFER ONLY WHAT CAME OUT OF THE PICK ABOVE (3.46.2) ----
   [path.join(ROOT, 'public', 'construct.js'), '${bOptions(3, s3sel, s2sel)}', '${bOptions(3, s3sel)}',
     'theTwoScreensDrawTheSharedPanelsFromOneFunction',
