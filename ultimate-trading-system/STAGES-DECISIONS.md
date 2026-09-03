@@ -577,3 +577,14 @@ carried out 2026-08-28 under its own GO — decision 50.
     Existing record sets are unchanged in shape: a unit's blocks were never
     contiguous by contract, and the tally collects them by index. Second
     digit, with #60.
+62. **A box nothing in the block reads is ghosted** (3.48.0, owner order
+    2026-09-03: "ghost arm and one voice at"). `arm` is read only by a stop
+    that follows the price, and a `static` stop is priced without one -- the
+    block was never multiplied by it and Boards already showed a dash -- so
+    with `trail` on `static` and its `permute` unticked the box and its tick
+    changed nothing and looked as if they did. `one voice at` is the same
+    under any `quorum by` but `voices`. Both are now greyed and held, never
+    hidden, exactly the way `carry forward (0 = all)` is held under `Selected
+    records`: the row keeps its shape and the value comes back the moment the
+    box it waits on changes. Hiding stays for a box that cannot exist at all
+    (`market` has no rails). Second digit.

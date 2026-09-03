@@ -556,6 +556,13 @@ const GUARDS = [
     "    funnelTopColumn: [{ value: 'avgTest', label: 'avg test $' }, { value: 'avgHold', label: 'avg held-back $' }],",
     'theTopNIsOnlyOfferedByAColumnAScrambledCopyHas',
     'the sealed window is offered as a column to shop by, and a column no scrambled copy has makes the comparison meaningless'],
+  // 3.48.0: a box nothing in the block reads is ghosted with its tick
+  [path.join(ROOT, 'public', 'construct.js'), "swGhostGroup('#swGrpArm', staticStop);", "swGhostGroup('#swGrpArm', false);",
+    'aBoxNothingInTheBlockReadsIsGhostedWithItsTick',
+    'arm stays live under a static stop — a box nothing reads, offered as if it changed something'],
+  [path.join(ROOT, 'public', 'construct.js'), "swGhostGroup('#swGrpCopy', notVoices);", "swGhostGroup('#swGrpCopy', false);",
+    'aBoxNothingInTheBlockReadsIsGhostedWithItsTick',
+    'one voice at stays live under count, conviction and families, none of which can read it'],
 ];
 
 const only = process.argv[2] || '';

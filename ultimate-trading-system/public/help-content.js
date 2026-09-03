@@ -228,8 +228,11 @@ window.HELP = {
       swPermT: { what: 'Price every holding time as its own setting in the block.' },
       swTrail: { what: 'Which stop the setting uses. static sits still on the far side of the entry; the others follow the price behind you.' },
       swPermTrail: { what: 'Price every kind of stop, static included, as its own setting in the block.' },
-      swArm: { what: 'How far the price must move in your favour before a following stop starts following.' },
-      swPermArm: { what: 'Price every starting point as its own setting in the block.' },
+      swArm: {
+        what: 'How far the price must move in your favour before a following stop starts following. Ghosted while '
+          + 'trail is static and trail is not being permuted: no setting in the block has a following stop then, so nothing reads it.',
+      },
+      swPermArm: { what: 'Price every starting point as its own setting in the block. Ghosted with the arm box whenever nothing in the block can read it.' },
       swAgreeRule: {
         what: 'WHAT IS WEIGHED when the members are polled. Half of the quorum; quorum bar is the other half.',
         more: 'Every coin is judged by 8 members, each reading a different slice of the numbers, worked out two '
@@ -272,7 +275,7 @@ window.HELP = {
           + 'once; against its own history every share stands, because the bar is worked out per coin.',
       },
       swAgreeCopy: {
-        what: 'How alike two members have to be to count as ONE voice. Only voices reads it.',
+        what: 'How alike two members have to be to count as ONE voice. Only voices reads it. Ghosted unless quorum by is voices or quorum by is being permuted.',
         more: 'Two members that make the same call at least this often across the test window share a single vote '
           + 'between them, so a crowd of near-copies cannot outvote a real disagreement.\n\n'
           + 'Lower is harsher on copies. At 80% two members that agree four times in five are already one voice and '
@@ -285,7 +288,7 @@ window.HELP = {
           + 'ways of weighing cannot read it, so the block is never multiplied by it for them.',
       },
       swPermAgreeCopy: {
-        what: 'Price every one voice at choice as its own setting in the block.',
+        what: 'Price every one voice at choice as its own setting in the block. Ghosted with the one voice at box whenever nothing in the block can read it.',
         more: 'It only multiplies the part of the block that uses voices. The other three ways of weighing are '
           + 'priced once, because the threshold cannot change anything they do.',
       },

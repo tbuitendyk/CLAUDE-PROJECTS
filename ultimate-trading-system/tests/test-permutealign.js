@@ -40,7 +40,7 @@ const PAIRS = [
   ['swEntry', 'swPermEntry'], ['swGate', 'swPermGate'], ['swD', 'swPermD'],
   ['swT', 'swPermT'], ['swTrail', 'swPermTrail'], ['swArm', 'swPermArm'],
   ['swAgreeRule', 'swPermAgreeRule'], ['swAgreeShare', 'swPermAgreeShare'],
-  ['swAgreeHold', 'swPermAgreeHold'],
+  ['swAgreeHold', 'swPermAgreeHold'], ['swAgreeCopy', 'swPermAgreeCopy'],
 ];
 
 module.exports = {
@@ -88,5 +88,39 @@ module.exports = {
   async aHiddenGroupClosesUpRatherThanLeavingAGap() {
     assert.ok(/e\.style\.display = on \? 'flex' : 'none'/.test(PAGE),
       "a re-shown group must go back to 'flex', not '' — an inline default would break its own alignment");
+  },
+
+  // A BOX NOTHING IN THE BLOCK READS IS GHOSTED WITH ITS TICK (owner order,
+  // 2026-09-03: "ghost arm and one voice at"). arm is read only by a stop that
+  // follows the price, so with trail on static and trail's permute unticked
+  // the box changed nothing and looked as if it did; one voice at is read only
+  // by voices. Ghosted, never hidden: hiding is for a box that cannot exist
+  // (market has no rails), and a ghosted box keeps the row's shape and its
+  // value for the moment the box it waits on changes.
+  async aBoxNothingInTheBlockReadsIsGhostedWithItsTick() {
+    const ghost = PAGE.slice(PAGE.indexOf('function swGhostGroup('), PAGE.indexOf('function swGhostGroup(') + 400);
+    assert.ok(ghost.includes("e.classList.toggle('ctl-off', !!off);"), 'a ghosted group is not greyed');
+    assert.ok(ghost.includes("for (const c of e.querySelectorAll('select, input')) c.disabled = !!off;"),
+      'a ghosted group is greyed but its box and tick can still be operated');
+    assert.ok(!/style\.display/.test(ghost), 'ghosting hides — the row loses its shape and the value its place');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+    assert.ok(/\.ctl-off \{ opacity:\.5; \}/.test(css), 'the page has no rule that greys a ghosted group');
+    const sync = PAGE.slice(PAGE.indexOf('async function swCounts()'), PAGE.indexOf('async function swCounts()') + 2600);
+    assert.ok(sync.includes("const staticStop = $('#swTrail') && $('#swTrail').value === ''\n      && !($('#swPermTrail') && $('#swPermTrail').checked);"),
+      'arm does not wait on trail being static with its permute unticked');
+    assert.ok(sync.includes("swGhostGroup('#swGrpArm', staticStop);"), 'arm and its tick are not ghosted under a static stop');
+    assert.ok(sync.includes("const notVoices = $('#swAgreeRule') && $('#swAgreeRule').value !== 'voices'\n      && !($('#swPermAgreeRule') && $('#swPermAgreeRule').checked);"),
+      'one voice at does not wait on quorum by being something other than voices with its permute unticked');
+    assert.ok(sync.includes("swGhostGroup('#swGrpCopy', notVoices);"), 'one voice at and its tick are not ghosted under count, conviction or families');
+    const grp = groupAround('swAgreeCopy');
+    assert.ok(grp.startsWith('<div id="swGrpCopy"'), 'one voice at and its tick are not one group, so they cannot be ghosted as one');
+    assert.ok(grp.includes('id="swPermAgreeCopy"'), 'the one voice at tick is outside its group');
+    // and the Help tab says so, in the words on the screen
+    const sandbox = {};
+    // eslint-disable-next-line no-new-func
+    new Function('window', fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8'))(sandbox);
+    const H = sandbox.HELP.sweep.controls;
+    assert.ok(/Ghosted while trail is static/.test(H.swArm.what), 'the arm help does not say when the box is ghosted');
+    assert.ok(/Ghosted unless quorum by is voices/.test(H.swAgreeCopy.what), 'the one voice at help does not say when the box is ghosted');
   },
 };
