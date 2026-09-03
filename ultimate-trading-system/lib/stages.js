@@ -1909,7 +1909,9 @@ function startStage3(params) {
     if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
     pool.abort();
   })().catch((err) => finishFail(doc, err, pool));
-  return { id, name: doc.name, units: parentRecords.length, settings: settings.length };
+  // the count the gates read and the plan was written with — the built
+  // block lives in the background part and is held equal to this count there
+  return { id, name: doc.name, units: parentRecords.length, settings: counted.kept };
 }
 
 // ---- stage 3 tables -------------------------------------------------------------

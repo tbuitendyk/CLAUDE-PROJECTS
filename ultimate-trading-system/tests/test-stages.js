@@ -173,6 +173,66 @@ module.exports = {
     assert.ok(tp.includes("'FAILED — nothing changed.\\n\\n' + e.message"), 'a real refusal still says nothing changed');
   },
 
+  // THE ANSWER IS RUN, NOT READ (owner report, 2026-09-03: pressing start
+  // stage 3 said "nothing changed settings is not defined" — and the run had
+  // started). 3.47.0 moved the built settings into the background part and the
+  // answer line still read them by name, so every press started a run and then
+  // told the browser it had failed. The two tests above read the source and
+  // check its shape; neither RUNS the launch, so a broken answer line passed
+  // both. This one presses the button against a small stage 2 parent and
+  // reads what comes back, then waits for the run behind it to end.
+  async theStageThreeLaunchAnswersWithTheCountItWorkedOut() {
+    const { stampManifest, MANIFEST_DIR } = require('../lib/manifest');
+    const pid = `s2-test-${Date.now().toString(36)}-launch`;
+    const pfile = path.join(SETS_DIR, `${pid}.json`);
+    const universe = ['ZZZTESTUSDT'];
+    let child = null;
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(pfile, JSON.stringify({
+        id: pid, stage: 2, seq: 999984, name: 'S2 #launch', status: 'done', createdAt: new Date().toISOString(),
+        engineVersion: require('../package.json').version, measurements: require('../lib/features').MEASUREMENTS_VERSION,
+        params: { universe, allLoaded: true, windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-03', nullN: 3 },
+        dataManifest: stampManifest(pid, universe), plan: { units: 1 },
+      }));
+      const rec = rowstore.writer(pid, 'records');
+      rec.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'ZZZTESTUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2,
+        specs: [], score3: 1, scoreAll: 1, helped: 0, beat: 0, pairs: 3, lead: 0, blocks: {} });
+      rec.close();
+      const got = stages.startStage3({
+        from: pid, fee: 0.00125, nullN: 3, keepN: 0, carry: 0, pick: 'count',
+        cell: { entry: 'market', tHours: 65 }, decision: 'argmax', band: 3,
+        agreeRule: 'count', agreeBar: 'all', agreePct: 50, agreeCopy: 98,
+      });
+      child = got.id;
+      assert.ok(/^s3-/.test(got.id), 'the answer names the set it started');
+      assert.strictEqual(got.units, 1, 'the answer counts the units it will price');
+      assert.strictEqual(got.settings, 1, 'the answer counts the settings the block declared — one market setting, one agreement');
+      assert.strictEqual(stages.getSet(child).plan.settings, got.settings, 'and it is the count the plan was written with');
+      // the run behind the answer ends rather than stranding — there are no
+      // price files for this coin, so its one unit fails, the failure is
+      // written on the set, and the set says it does not match its own plan
+      const t0 = Date.now();
+      while (stages.getSet(child).status === 'running' && Date.now() - t0 < 30000) await new Promise((r) => setTimeout(r, 50));
+      const after = stages.getSet(child);
+      assert.notStrictEqual(after.status, 'running', 'the run behind the answer never ended');
+      assert.strictEqual(after.status, 'incomplete', `a run whose only unit has no price files ends incomplete, not ${after.status}`);
+      assert.strictEqual((after.failures || []).length, 1, 'the failed unit is written on the set');
+      assert.ok(/no data for ZZZTESTUSDT/.test(after.failures[0].error), `and says why: ${after.failures[0].error}`);
+      assert.ok(/does not match its own plan/.test(after.progress), 'and the set says it does not match its own plan');
+    } finally {
+      // a launch that threw AFTER starting its run leaves a child this test
+      // never learned the id of — found by its parent, so nothing strands
+      const strays = stages.listSets().filter((s) => s.stage === 3 && ((s.parent || {}).id === pid || (s.params || {}).from === pid)).map((s) => s.id);
+      for (const id of [pid, child, ...strays].filter(Boolean)) {
+        try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(path.join(MANIFEST_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
+      }
+    }
+  },
+
   // STAGE 3 PRICES IN PARTS, NOT UNITS (owner order, 2026-09-02: "we're
   // running 1.75M settings with 36.7M pricings and we're getting about 1 cpu
   // worth of effort and no status updates"). Each unit's settings are cut into

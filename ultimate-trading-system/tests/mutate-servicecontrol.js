@@ -563,6 +563,12 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "swGhostGroup('#swGrpCopy', notVoices);", "swGhostGroup('#swGrpCopy', false);",
     'aBoxNothingInTheBlockReadsIsGhostedWithItsTick',
     'one voice at stays live under count, conviction and families, none of which can read it'],
+  // 3.48.1: the launch's answer reads the count it worked out, not a name that
+  // lives in the background part
+  [path.join(ROOT, 'lib', 'stages.js'), 'return { id, name: doc.name, units: parentRecords.length, settings: counted.kept };',
+    'return { id, name: doc.name, units: parentRecords.length, settings: settings.length };',
+    'theStageThreeLaunchAnswersWithTheCountItWorkedOut',
+    'every press of start stage 3 starts a run and then tells the browser it failed'],
 ];
 
 const only = process.argv[2] || '';

@@ -588,3 +588,15 @@ carried out 2026-08-28 under its own GO — decision 50.
     records`: the row keeps its shape and the value comes back the moment the
     box it waits on changes. Hiding stays for a box that cannot exist at all
     (`market` has no rails). Second digit.
+63. **The launch's answer is run, not read** (3.48.1, owner report
+    2026-09-03: pressing `start stage 3` said "nothing changed settings is
+    not defined" -- and the run had started). #60 moved the built block into
+    the background part and left the answer line reading it by name, so every
+    press started a run and then told the browser it had failed. The answer
+    now reports the count the gates read and the plan was written with; the
+    background part is already held equal to it. The tests that let it
+    through read the source and check its shape; none pressed the button. One
+    now does: it launches against a small stage 2 parent, reads the answer,
+    and waits for the run behind it to end -- incomplete, with its one unit's
+    failure written on the set, because the fixture coin has no price files.
+    Deployed after the owner's run landed, at their word. Third digit.
