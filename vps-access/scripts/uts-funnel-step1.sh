@@ -3,7 +3,7 @@
 # open, straight from the service on this box -- the same read the page makes.
 # Nothing is written; the walk's state lives in the owner's browser.
 set -uo pipefail
-S=${1:-s3-mte0oajo-1}
+S=${1:-s3-mtl42g1m-3}
 curl -sS -m 200 -H 'content-type: application/json' -d '{"step":1,"rule":{"ranges":{},"allowed":{},"floors":{}},"target":200}' \
   "http://127.0.0.1:8094/api/funnel/$S/read" | node -e '
 let raw=""; process.stdin.on("data",(c)=>raw+=c).on("end",()=>{
