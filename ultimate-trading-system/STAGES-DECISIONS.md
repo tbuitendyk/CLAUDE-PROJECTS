@@ -600,3 +600,20 @@ carried out 2026-08-28 under its own GO — decision 50.
     and waits for the run behind it to end -- incomplete, with its one unit's
     failure written on the set, because the fixture coin has no price files.
     Deployed after the owner's run landed, at their word. Third digit.
+64. **The name is the owner's** (3.49.0, owner order 2026-09-03: "that's my
+    job to name these things and you haven't given me a control ... previous
+    bombs due to issues with your previous code shouldn't mess up my run
+    nomenclature"). A set was named by code at launch, "S3 #" plus one more
+    than the highest number on disk, so a run my code ended still used up a
+    number, and there was no box for the name and no way to change it after.
+    A RULE FIVE fault. Now: a `name` box beside `description` on each stage
+    of Sweep, its greyed suggestion the next free name from the service (an
+    empty box takes it); and on Boards a `name` box with a `rename` button on
+    every open section, asleep while the set is being written, exactly as the
+    notes are. Names are unique across every set on disk, whatever its stage,
+    because the pickers offer sets by name -- a duplicate is refused by name
+    at launch and at rename. A rename carries into every set that names the
+    renamed one as its parent, stage 2, 3 and 4 alike (RULE NINE), and is
+    refused while the set being written names it as parent, because that run
+    rewrites its own document as it goes. The counter is still kept on every
+    set for its id; the name no longer depends on it. Second digit.

@@ -69,6 +69,11 @@ const BOARD_SECTION_CONTROLS = (() => {
 const RUN_NOTES_CONTROLS = (() => {
   const out = {};
   for (const n of [1, 2, 3]) {
+    out[`bName${n}`] = { what: `The stage ${n} record set's name, as it appears everywhere it is named. Yours to change.` };
+    out[`bRename${n}`] = {
+      what: `Gives the stage ${n} record set the name in the box.`,
+      more: 'Every record set that names this one as its parent carries the new name too. A name another record set already has is refused. Only works once the record set has finished; nothing can be written to one while it is still computing, and not while a run that reads from it is going.',
+    };
     out[`bNotes${n}`] = { what: `Your own notes on the stage ${n} record set — what you were trying, what it showed, what it cost.` };
     out[`bNotesSave${n}`] = {
       what: `Saves the notes onto the stage ${n} record set.`,
@@ -166,6 +171,10 @@ window.HELP = {
         what: 'The cost of one side of a trade, as a share of the position — the same box stage 3 has. Here it prices only the tuning-slice $ on Boards: each unit\'s own votes on the last quarter of its training window, one buy or sell per chunk in the direction they lean.',
         more: 'Nothing else at stage 1 costs anything; no trade shape and no decision exist here. Stage 2 inherits this fee, reads the stage 1 members\' tuning-slice $ again and refuses a unit whose figure differs from the parent\'s by a cent.',
       },
+      swName1: {
+        what: 'What this stage 1 record set is called everywhere it is named — on Boards, in every picker, on the status line. Yours to choose.',
+        more: 'Left empty, it takes the next free number, which is what the box shows greyed. A name another record set already has is refused, so no two sets can share one; rename the other on Boards first.',
+      },
       swDesc1: { what: 'Why this stage 1 exists. Kept on the record set and shown wherever it is named.' },
 
       swGo1: { what: 'Starts stage 1. Progress shows at the top of this screen, and the finished set lands on Boards.' },
@@ -176,6 +185,10 @@ window.HELP = {
       swCarry: {
         what: 'How many rows carry forward into the BOOST training, from the top of the parent\'s table in the sort saved on it. 0 carries all of them.',
         more: 'Pick the sort on Boards — its columns save first/second/third priorities onto the record set, and the carry takes exactly that order. With nothing saved it is the fixed rule: beat its own null set, ties by lead over null set. Carry generously: the cut is for shedding the clearly-dead, not for picking winners.',
+      },
+      swName2: {
+        what: 'What this stage 2 record set is called everywhere it is named — on Boards, in every picker, on the status line. Yours to choose.',
+        more: 'Left empty, it takes the next free number, which is what the box shows greyed. A name another record set already has is refused, so no two sets can share one; rename the other on Boards first.',
       },
       swDesc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
       swGo2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
@@ -317,6 +330,10 @@ window.HELP = {
         more: 'A hold is a plain noise filter: it costs entries and keeps only the calls the committee stayed with.',
       },
       swPermAgreeHold: { what: 'Price every hold as its own setting in the block.' },
+      swName3: {
+        what: 'What this stage 3 record set is called everywhere it is named — on Boards, in every picker, on the status line. Yours to choose.',
+        more: 'Left empty, it takes the next free number, which is what the box shows greyed. A name another record set already has is refused, so no two sets can share one; rename the other on Boards first.',
+      },
       swDesc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
       swGo3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards.' },
       swStop: { what: 'Stops the stage run that is going. Everything already written stays; the set reports itself cancelled.' },

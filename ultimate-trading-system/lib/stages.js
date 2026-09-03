@@ -189,6 +189,27 @@ function seqFor(stage) {
   for (const s of listSets()) if (s.stage === stage && Number.isFinite(s.seq)) max = Math.max(max, s.seq);
   return max + 1;
 }
+// THE NAME IS THE OWNER'S (owner order, 2026-09-03: "that's my job to name
+// these things and you haven't given me a control"). A launch takes the name
+// from its box; an empty box takes the next free one, which is what the box
+// shows greyed as a suggestion. Names are unique across every set on disk,
+// whatever its stage: the pickers on Sweep and Boards offer sets by name, and
+// two sets under one name cannot be told apart there. The counter behind
+// "S3 #N" is still kept on every set (seq), but it is the id's business now,
+// not the name's.
+function nextFreeName(stage) { return `S${stage} #${seqFor(stage)}`; }
+function nextNames() { return { 1: nextFreeName(1), 2: nextFreeName(2), 3: nextFreeName(3) }; }
+function nameTaken(name, exceptId = null) {
+  const want = String(name).trim().toLowerCase();
+  return listSets().find((x) => x.id !== exceptId && String(x.name || '').trim().toLowerCase() === want) || null;
+}
+function nameOrRefuse(raw, stage) {
+  const name = String(raw ?? '').trim().slice(0, 80);
+  if (!name) return nextFreeName(stage);
+  const taken = nameTaken(name);
+  if (taken) throw new Error(`a record set called "${name}" already exists (${taken.id}) — pick another name, or rename that one on Boards first`);
+  return name;
+}
 // nullRng needs a numeric seed; a set's seed is derived from its id so its
 // deals are reproducible from the name alone (decision record #7).
 function seedOf(id) {
@@ -509,10 +530,11 @@ function startStage1(params) {
   const units = unitsFor(universe, sizes, geometries);
   if (!units.length) throw new Error('nothing to score — the universe and sizes produced no units');
 
+  const setName = nameOrRefuse(params.name, 1);
   const seq = seqFor(1);
   const id = `s1-${Date.now().toString(36)}-${seq}`;
   const doc = {
-    id, stage: 1, seq, name: `S1 #${seq}`,
+    id, stage: 1, seq, name: setName,
     createdAt: new Date().toISOString(),
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
@@ -994,10 +1016,11 @@ function startStage2(params) {
   }
   const carried = carry > 0 ? ordered.slice(0, carry) : ordered;
 
+  const setName = nameOrRefuse(params.name, 2);
   const seq = seqFor(2);
   const id = `s2-${Date.now().toString(36)}-${seq}`;
   const doc = {
-    id, stage: 2, seq, name: `S2 #${seq}`,
+    id, stage: 2, seq, name: setName,
     createdAt: new Date().toISOString(),
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
@@ -1688,10 +1711,11 @@ function startStage3(params) {
   const diskGate = storeBudgetFor({ rows: counted.kept * parentRecords.length });
   if (diskGate.band === 'refuse') throw new Error(diskGate.message);
 
+  const setName = nameOrRefuse(params.name, 3);
   const seq = seqFor(3);
   const id = `s3-${Date.now().toString(36)}-${seq}`;
   const doc = {
-    id, stage: 3, seq, name: `S3 #${seq}`,
+    id, stage: 3, seq, name: setName,
     createdAt: new Date().toISOString(),
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
@@ -3527,6 +3551,45 @@ function deleteSet(id, confirm) {
 // carried to record sets 2026-08-27): freely editable once the set has
 // landed, refused while it is being written — the orchestrator saves the doc
 // continuously and a concurrent note write would be silently overwritten.
+// RENAMING A RECORD SET (owner order, 2026-09-03). The owner's name, checked
+// the way a launch checks it, refused while the set is being written or its
+// tables are totalling — and refused while the set being written names this
+// one as its parent, because that run rewrites its own document as it goes and
+// would put the old name back. EVERY SET THAT NAMES THIS ONE AS ITS PARENT
+// CARRIES THE NEW NAME TOO (RULE NINE: when a record changes, the records
+// change with it): stage 2, 3 and 4 sets each wrote their parent's name at
+// launch, and a reader that had to look the parent up to learn its current
+// name would be the legacy branch this rule forbids.
+function setSetName(id, raw) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error('unknown record set');
+  const name = String(raw ?? '').trim().slice(0, 80);
+  if (!name) throw new Error('a record set needs a name — the box is empty');
+  if (doc.status === 'running') throw new Error('the record set is still being written — rename it after it finishes');
+  if (tallyRun && !tallyRun.error && tallyRun.id === doc.id) {
+    throw new Error(`the tables of ${doc.name} are totalling right now — rename it when they land`);
+  }
+  if (activeSet && activeSet.parent && activeSet.parent.id === doc.id) {
+    throw new Error(`${activeSet.name || activeSet.id} is being written right now and names ${doc.name} as its parent — rename it when that run lands`);
+  }
+  const taken = nameTaken(name, doc.id);
+  if (taken) throw new Error(`a record set called "${name}" already exists (${taken.id}) — pick another name`);
+  const was = doc.name;
+  doc.name = name;
+  doc.nameEditedAt = new Date().toISOString();
+  saveSet(doc);
+  const childrenRenamed = [];
+  for (const row of listSets()) {
+    if (!row.parent || row.parent.id !== doc.id) continue;
+    const child = getSet(row.id);
+    if (!child || !child.parent) continue;
+    child.parent.name = name;
+    saveSet(child);
+    childrenRenamed.push(child.id);
+  }
+  return { id: doc.id, name, was, nameEditedAt: doc.nameEditedAt, childrenRenamed };
+}
+
 function setSetNotes(id, text) {
   const doc = getSet(String(id || ''));
   if (!doc) throw new Error('unknown record set');
@@ -4810,7 +4873,7 @@ module.exports = {
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
-  setSetNotes, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
+  setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
   spreadOf, S3_COIN_FILTERS,
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,

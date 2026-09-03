@@ -50,6 +50,38 @@ module.exports = {
     assert.ok(wire.includes('if (!(await save(next))) cb.checked = !cb.checked;'), 'a save that fails puts the tick back');
   },
 
+  // THE NAME IS THE OWNER'S, on every open section (owner order, 2026-09-03).
+  // Drawn and held asleep exactly as the notes are: literal ids, three copies
+  // that must not drift, wired to the set's own rename address, and the button
+  // says why it sleeps while the set is being written.
+  theNameIsTheOwnersOnEveryOpenSection() {
+    for (const n of [1, 2, 3]) {
+      for (const id of [`bName${n}`, `bRename${n}`, `bNameMsg${n}`]) {
+        assert.ok(UI.includes(`id="${id}"`), `the stage ${n} section is missing ${id}`);
+      }
+    }
+    const bodyOf = (n) => {
+      const at = UI.indexOf(`function namePanel${n}(doc) {`);
+      assert.ok(at > 0, `namePanel${n} is gone`);
+      return UI.slice(at, UI.indexOf('\n}', at))
+        .split(`namePanel${n}`).join('namePanel#')
+        .split(`bRename${n}`).join('bRename#')
+        .split(`bNameMsg${n}`).join('bNameMsg#')
+        .split(`bName${n}`).join('bName#');
+    };
+    assert.strictEqual(bodyOf(2), bodyOf(1), 'the stage 2 name box has drifted from the stage 1 one');
+    assert.strictEqual(bodyOf(3), bodyOf(1), 'the stage 3 name box has drifted from the stage 1 one');
+    assert.ok(bodyOf(1).includes('<div class="row" style="align-items:flex-end">'), 'the box and its button do not line up along their bottom edge');
+    assert.ok(/tryPost\(url, \{ name: box\.value \}\)/.test(UI), 'the rename posts the single field the endpoint reads');
+    assert.ok(UI.includes("    wireRename(`api/stageset/${encodeURIComponent(doc.id)}/name`, String(stage));"),
+      'Boards does not wire the rename to its own record set\'s name address');
+    assert.ok(UI.includes("${stage === 1 ? namePanel1(doc) : stage === 2 ? namePanel2(doc) : namePanel3(doc)}${stage === 1 ? notesPanel1(doc)"),
+      'the name box is not drawn above the notes on every open section');
+    assert.ok(/the name changes after the run finishes/.test(UI), 'the button must say WHY it is asleep while the set is being written');
+    assert.ok(/drawBoardsHoldingPlace\(\);\n    \}\n  \};\n\}\nfunction wireNotesSave/.test(UI),
+      'a rename must redraw Boards where it stands, because every picker and heading shows the name');
+  },
+
   // The notes box and its save are drawn and wired by ONE pair of functions
   // (notesPanelHtml / wireNotesSave). Only one screen carries them now, but the
   // properties are the ones that were always the point.

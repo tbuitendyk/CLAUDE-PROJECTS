@@ -569,6 +569,21 @@ const GUARDS = [
     'return { id, name: doc.name, units: parentRecords.length, settings: settings.length };',
     'theStageThreeLaunchAnswersWithTheCountItWorkedOut',
     'every press of start stage 3 starts a run and then tells the browser it failed'],
+  // 3.49.0: the name is the owner's
+  [path.join(ROOT, 'lib', 'stages.js'),
+    '  if (taken) throw new Error(`a record set called "${name}" already exists (${taken.id}) — pick another name, or rename that one on Boards first`);',
+    '  if (false) throw new Error(`a record set called "${name}" already exists (${taken.id}) — pick another name, or rename that one on Boards first`);',
+    'theLaunchTakesTheOwnersNameAndRefusesADuplicate',
+    'two record sets can share one name, and the pickers cannot tell them apart'],
+  [path.join(ROOT, 'lib', 'stages.js'), '    child.parent.name = name;\n    saveSet(child);', '    saveSet(child);',
+    'renamingASetIsTheOwnersAndCarriesToItsChildren',
+    'a renamed set\'s children go on naming it by the old name — two vocabularies on disk'],
+  [path.join(ROOT, 'public', 'construct.js'), "      name: $('#swName3').value,\n", '',
+    'theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt',
+    'the stage 3 name box is on the screen and the launch ignores it'],
+  [path.join(ROOT, 'public', 'construct.js'), "    wireRename(`api/stageset/${encodeURIComponent(doc.id)}/name`, String(stage));\n", '',
+    'theNameIsTheOwnersOnEveryOpenSection',
+    'the rename button is on the screen and pressing it does nothing'],
 ];
 
 const only = process.argv[2] || '';

@@ -617,6 +617,9 @@ async function swProgress() {
   if (!el) return;
   const st = await apiOr('api/stagesets', null);
   if (!st) { el.innerHTML = '<span class="warn">the record-set list could not be read</span>'; return; }
+  // the greyed suggestion in each name box is the next free name, and it
+  // moves the moment a launch takes one
+  for (const n of [1, 2, 3]) { const b = $(`#swName${n}`); if (b && st.nextNames) b.placeholder = st.nextNames[n] || ''; }
   // the start buttons sleep while a run is going — one heavy job at a time,
   // said on the button instead of by a refusal after the press
   const going = !!st.running;
@@ -1271,6 +1274,40 @@ function descriptionPanelHtml(text, bold) {
 // The three per-section pickers, deletes and copy-settings buttons are written
 // out literally for the same reason. A test holds these three identical apart
 // from the digit.
+// THE NAME IS THE OWNER'S, on every open section (owner order, 2026-09-03).
+// Three literal copies for the same reason the notes have three: the ids are
+// read out of the source. Held asleep while the set is being written, with the
+// reason on the button, exactly as the notes are.
+function namePanel1(doc) {
+  const off = doc.status === 'running';
+  return `<div class="panel">
+        <div class="row" style="align-items:flex-end">
+          <label class="f">name<input id="bName1" value="${esc(doc.name || '')}" maxlength="80" style="width:14rem" ${off ? 'disabled' : ''}></label>
+          <button id="bRename1" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>rename</button>
+          <span id="bNameMsg1" class="note">${doc.nameEditedAt ? `renamed ${esc(String(doc.nameEditedAt).slice(0, 16))}` : ''}</span>
+        </div>
+      </div>`;
+}
+function namePanel2(doc) {
+  const off = doc.status === 'running';
+  return `<div class="panel">
+        <div class="row" style="align-items:flex-end">
+          <label class="f">name<input id="bName2" value="${esc(doc.name || '')}" maxlength="80" style="width:14rem" ${off ? 'disabled' : ''}></label>
+          <button id="bRename2" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>rename</button>
+          <span id="bNameMsg2" class="note">${doc.nameEditedAt ? `renamed ${esc(String(doc.nameEditedAt).slice(0, 16))}` : ''}</span>
+        </div>
+      </div>`;
+}
+function namePanel3(doc) {
+  const off = doc.status === 'running';
+  return `<div class="panel">
+        <div class="row" style="align-items:flex-end">
+          <label class="f">name<input id="bName3" value="${esc(doc.name || '')}" maxlength="80" style="width:14rem" ${off ? 'disabled' : ''}></label>
+          <button id="bRename3" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>rename</button>
+          <span id="bNameMsg3" class="note">${doc.nameEditedAt ? `renamed ${esc(String(doc.nameEditedAt).slice(0, 16))}` : ''}</span>
+        </div>
+      </div>`;
+}
 function notesPanel1(doc) {
   const off = doc.status === 'running';
   return `<div class="panel">
@@ -1419,6 +1456,20 @@ function wireKeptFill(id) {
     tab = 'sweep';
     localStorage.setItem('cx-tab', tab);
     draw().then(() => restoreScroll(tab));
+  };
+}
+// the rename posts the one field the endpoint reads, then redraws Boards where
+// it stands, because every picker and heading on the screen shows the name
+function wireRename(url, suffix) {
+  const b = $(`#bRename${suffix}`);
+  if (b) b.onclick = async () => {
+    const box = $(`#bName${suffix}`);
+    const out = await tryPost(url, { name: box.value });
+    if (out) {
+      box.value = out.name || '';
+      $(`#bNameMsg${suffix}`).textContent = `renamed ${String(out.nameEditedAt || '').slice(0, 16)}`;
+      drawBoardsHoldingPlace();
+    }
   };
 }
 function wireNotesSave(saveUrl, onSaved, suffix) {
@@ -2405,6 +2456,9 @@ async function drawSweep() {
   ]);
   const sets = st.sets || [];
   swSetsCache = sets;
+  // the next free name per stage, shown greyed in each name box as the
+  // suggestion an empty box takes
+  const nextNames = st.nextNames || {};
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Sweep — the three stages, live</h3>
     <p class="note">Each stage writes a record set the next one reads, and every set names its parent. What is
@@ -2436,6 +2490,7 @@ async function drawSweep() {
       <label class="f">fee % each way<input id="swFee1" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f">name<input id="swName1" placeholder="${esc(nextNames[1] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc1" style="width:100%"></label>
       <button id="swGo1" class="pri">start stage 1</button>
     </div>
@@ -2450,6 +2505,7 @@ async function drawSweep() {
       <label class="f" title="the carry takes the top of the parent's table in the sort saved on it — pick the sort on Boards. The fixed rule (beat its own null set, ties by lead over null set) when none is saved.">carry forward (0 = all)<input id="swCarry" type="number" value="0" min="0" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f">name<input id="swName2" placeholder="${esc(nextNames[2] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc2" style="width:100%"></label>
       <button id="swGo2" class="pri">start stage 2</button>
     </div>
@@ -2529,6 +2585,7 @@ async function drawSweep() {
     </div>
     <div class="row" style="margin-top:.4rem"><span class="note" id="swCount">…</span></div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="f">name<input id="swName3" placeholder="${esc(nextNames[3] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc3" style="width:100%"></label>
       <button id="swGo3" class="pri">start stage 3</button>
     </div>
@@ -2545,17 +2602,19 @@ async function drawSweep() {
       windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,
       startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
       nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,
+      name: $('#swName1').value,
     };
     if (!body.universe.length) delete body.universe;
     const got = await tryPost('api/stage1', body);
-    if (got) { rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); swProgress(); }
+    if (got) { $('#swName1').value = ''; rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); swProgress(); }
   };
   $('#swGo2').onclick = async () => {
     const got = await tryPost('api/stage2', {
       from: $('#swFrom2').value,
       carry: Number($('#swCarry').value) || 0, desc: $('#swDesc2').value,
+      name: $('#swName2').value,
     });
-    if (got) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); swProgress(); }
+    if (got) { $('#swName2').value = ''; rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); swProgress(); }
   };
   $('#swGo3').onclick = async () => {
     const got = await tryPost('api/stage3', {
@@ -2563,9 +2622,10 @@ async function drawSweep() {
       carry: Number($('#swCarry3').value) || 0,
       pick: $('#swPick3').value,
       nullN: Number($('#swNull3').value) || 0, keepN: Number($('#swKeep3').value) || 0, desc: $('#swDesc3').value,
+      name: $('#swName3').value,
       ...swBlockParams(),
     });
-    if (got) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
+    if (got) { $('#swName3').value = ''; rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
   };
   // EVERY BOX THAT CHANGES THE COUNT RE-ASKS IT, AND ON TYPING AS WELL AS ON
   // LEAVING THE BOX (owner, 2026-08-29: "especially it's not working with the
@@ -2832,10 +2892,11 @@ async function drawBoards() {
       esc(c.status),
     ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
-      ${stage === 1 ? notesPanel1(doc) : stage === 2 ? notesPanel2(doc) : notesPanel3(doc)}${bKeptFillPanel(doc)}
+      ${stage === 1 ? namePanel1(doc) : stage === 2 ? namePanel2(doc) : namePanel3(doc)}${stage === 1 ? notesPanel1(doc) : stage === 2 ? notesPanel2(doc) : notesPanel3(doc)}${bKeptFillPanel(doc)}
       ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}
       <div id="bT${stage}"></div>`;
     wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null, String(stage));
+    wireRename(`api/stageset/${encodeURIComponent(doc.id)}/name`, String(stage));
     if (stage === 3) wireKeptFill(doc.id);
     if (doc.status !== 'done' && doc.status !== 'incomplete') {
       $(`#bT${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;

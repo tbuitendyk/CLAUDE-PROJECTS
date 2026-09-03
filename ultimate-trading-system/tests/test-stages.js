@@ -13,6 +13,55 @@ const rowstore = require('../lib/rowstore');
 const ROOT = path.join(__dirname, '..');
 const SETS_DIR = path.join(ROOT, 'data', 'stagesets');
 
+// A finished stage 2 parent with one record and a price-file record that
+// matches this box, so a stage 3 launch gets past every gate. The coin has no
+// price files, so the run behind the launch ends incomplete, quickly.
+function writeLaunchParent(tag) {
+  const { stampManifest } = require('../lib/manifest');
+  const pid = `s2-test-${Date.now().toString(36)}-${tag}`;
+  const universe = ['ZZZTESTUSDT'];
+  fs.mkdirSync(SETS_DIR, { recursive: true });
+  fs.writeFileSync(path.join(SETS_DIR, `${pid}.json`), JSON.stringify({
+    id: pid, stage: 2, seq: 999984, name: `S2 #${tag}`, status: 'done', createdAt: new Date().toISOString(),
+    engineVersion: require('../package.json').version, measurements: require('../lib/features').MEASUREMENTS_VERSION,
+    params: { universe, allLoaded: true, windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-03', nullN: 3 },
+    dataManifest: stampManifest(pid, universe), plan: { units: 1 },
+  }));
+  const rec = rowstore.writer(pid, 'records');
+  rec.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'ZZZTESTUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2,
+    specs: [], score3: 1, scoreAll: 1, helped: 0, beat: 0, pairs: 3, lead: 0, blocks: {} });
+  rec.close();
+  return pid;
+}
+const LAUNCH_BLOCK = {
+  fee: 0.00125, nullN: 3, keepN: 0, carry: 0, pick: 'count',
+  cell: { entry: 'market', tHours: 65 }, decision: 'argmax', band: 3,
+  agreeRule: 'count', agreeBar: 'all', agreePct: 50, agreeCopy: 98,
+};
+async function untilEnded(id, ms = 30000) {
+  const t0 = Date.now();
+  while (stages.getSet(id).status === 'running' && Date.now() - t0 < ms) await new Promise((r) => setTimeout(r, 50));
+  // a landed stage 3 set totals its tables in the background, and the next
+  // launch refuses while that goes — wait for it, so a test reads the
+  // refusal it is asking about and not the one heavy job at a time
+  const tally = stages.tallyRunPromise();
+  if (tally) await tally.catch(() => {});
+  return stages.getSet(id);
+}
+// the parent, every set that names it as parent (a launch that threw after
+// starting its run leaves one this test never learned the id of), and the
+// price-file records of each
+function cleanLaunchParent(pid) {
+  const { MANIFEST_DIR } = require('../lib/manifest');
+  const kids = stages.listSets().filter((x) => ((x.parent || {}).id === pid || (x.params || {}).from === pid)).map((x) => x.id);
+  for (const id of [pid, ...kids]) {
+    try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
+    try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+    try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+    try { fs.rmSync(path.join(MANIFEST_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
+  }
+}
+
 module.exports = {
   // The fixed rule, by hand: two members over three chunks, labels up /
   // nowhere / down. Pooled surenesses on what happened: 0.35 + 0.65 + 0.5.
@@ -231,6 +280,92 @@ module.exports = {
         try { fs.rmSync(path.join(MANIFEST_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
       }
     }
+  },
+
+  // THE NAME IS THE OWNER'S (owner order, 2026-09-03: "that's my job to name
+  // these things and you haven't given me a control"). The launch takes the
+  // name from its box; an empty box takes the next free one, the same one the
+  // list offers as the greyed suggestion; and a name any set already has is
+  // refused before anything is written.
+  async theLaunchTakesTheOwnersNameAndRefusesADuplicate() {
+    const pid = writeLaunchParent('name');
+    try {
+      const first = stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: '  Named by hand  ' });
+      assert.strictEqual(first.name, 'Named by hand', 'the answer carries the owner\'s name, trimmed');
+      assert.strictEqual(stages.getSet(first.id).name, 'Named by hand', 'and the set on disk is called that');
+      await untilEnded(first.id);
+      let refused = null;
+      try { stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: 'named BY hand' }); } catch (err) { refused = err.message; }
+      assert.ok(refused && /a record set called "named BY hand" already exists/.test(refused),
+        `the same name in another case is the same name, and is refused — got: ${refused || 'a launch'}`);
+      assert.strictEqual(stages.listSets().filter((x) => (x.parent || {}).id === pid).length, 1,
+        'a refused launch wrote nothing');
+      const offered = stages.nextNames()[3];
+      assert.ok(/^S3 #\d+$/.test(offered), `the suggestion is the next free number: ${offered}`);
+      const second = stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: '' });
+      assert.strictEqual(second.name, offered, 'an empty box takes exactly the name the list offered');
+      await untilEnded(second.id);
+      assert.notStrictEqual(stages.nextNames()[3], offered, 'and the suggestion moves once that name is taken');
+    } finally {
+      cleanLaunchParent(pid);
+    }
+  },
+
+  // RENAMING carries the owner's name into every set that names the renamed
+  // one as its parent (RULE NINE), and refuses a duplicate, an empty box, and a
+  // set still being written.
+  async renamingASetIsTheOwnersAndCarriesToItsChildren() {
+    const stamp = Date.now().toString(36);
+    const mk = (id, over) => {
+      const doc = { id, seq: 999980, status: 'done', createdAt: new Date().toISOString(), plan: { units: 1 }, ...over };
+      fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify(doc));
+      return doc;
+    };
+    const ids = [`s2-test-${stamp}-rn`, `s3-test-${stamp}-rn`, `s4-test-${stamp}-rn`, `s1-test-${stamp}-other`];
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      mk(ids[0], { stage: 2, name: 'S2 #old' });
+      mk(ids[1], { stage: 3, name: 'S3 #child', parent: { id: ids[0], name: 'S2 #old' } });
+      mk(ids[2], { stage: 4, kind: 'funnel', name: 'Stage 4 #child', parent: { id: ids[0], name: 'S2 #old', release: '3.49.0' } });
+      mk(ids[3], { stage: 1, name: 'S1 #taken' });
+      const out = stages.setSetName(ids[0], '  Second pass  ');
+      assert.strictEqual(out.name, 'Second pass');
+      assert.strictEqual(out.was, 'S2 #old');
+      assert.ok(out.nameEditedAt, 'the rename is stamped on the server');
+      assert.deepStrictEqual(out.childrenRenamed.sort(), [ids[1], ids[2]].sort(), 'both sets that name it as parent are carried');
+      assert.strictEqual(stages.getSet(ids[0]).name, 'Second pass');
+      assert.strictEqual(stages.getSet(ids[1]).parent.name, 'Second pass', 'the stage 3 child carries the new parent name');
+      assert.strictEqual(stages.getSet(ids[2]).parent.name, 'Second pass', 'the stage 4 set carries it too');
+      assert.strictEqual(stages.getSet(ids[2]).parent.release, '3.49.0', 'and nothing else on the child\'s parent record moved');
+      assert.throws(() => stages.setSetName(ids[0], 's1 #TAKEN'), /already exists/, 'a name another set has, in any case, is refused');
+      assert.throws(() => stages.setSetName(ids[0], '   '), /needs a name/, 'an empty box is refused');
+      assert.strictEqual(stages.setSetName(ids[0], 'Second pass').name, 'Second pass', 'a set may keep its own name');
+      assert.throws(() => stages.setSetName('no-such-set', 'x'), /unknown record set/);
+      mk(ids[3], { stage: 1, name: 'S1 #taken', status: 'running' });
+      assert.throws(() => stages.setSetName(ids[3], 'anything'), /still being written/, 'a set being written keeps its name until it lands');
+    } finally {
+      for (const id of ids) { try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ } }
+    }
+  },
+
+  // The box is on every stage of Sweep, beside description, with the next free
+  // name greyed in it; the launch sends what is typed and empties the box once
+  // a launch has taken it; and the list carries the suggestion from the server.
+  async theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    assert.ok(srv.includes("app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets(), nextNames: stages.nextNames() }));"),
+      'the record-set list does not carry the next free names');
+    assert.ok(ui.includes("  const nextNames = st.nextNames || {};"), 'Sweep does not read the next free names off the list');
+    for (const n of [1, 2, 3]) {
+      assert.ok(ui.includes(`      <label class="f">name<input id="swName${n}" placeholder="\${esc(nextNames[${n}] || '')}" maxlength="80" style="width:10rem"></label>\n      <label class="f" style="flex:1">description<input id="swDesc${n}" style="width:100%"></label>`),
+        `the stage ${n} name box is not beside description with the next free name greyed in it`);
+      assert.ok(ui.includes(`      name: $('#swName${n}').value,`), `the stage ${n} launch does not send the name`);
+      assert.ok(ui.includes(`if (got) { $('#swName${n}').value = ''; rememberSweepForm(); say('#swOut${n}'`),
+        `the stage ${n} box keeps a name a launch has already taken`);
+    }
+    assert.ok(ui.includes("for (const n of [1, 2, 3]) { const b = $(`#swName${n}`); if (b && st.nextNames) b.placeholder = st.nextNames[n] || ''; }"),
+      'the greyed suggestion does not move when a launch takes a name');
   },
 
   // STAGE 3 PRICES IN PARTS, NOT UNITS (owner order, 2026-09-02: "we're

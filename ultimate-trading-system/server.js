@@ -730,7 +730,7 @@ app.get('/api/batches', (req, res) => res.json({ running: batch.batchRunning(), 
 // only validate shapes and put refusals on the wire as plain sentences.
 const stages = require('./lib/stages');
 
-app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets() }));
+app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets(), nextNames: stages.nextNames() }));
 
 app.get('/api/stageset/:id', (req, res) => {
   const doc = stages.getSet(req.params.id);
@@ -1140,6 +1140,11 @@ app.post('/api/stageset/:id/stop', (req, res) => res.json(stages.cancelStage(req
 app.post('/api/stageset/:id/notes', (req, res) => {
   try { return res.json(stages.setSetNotes(req.params.id, (req.body || {}).text)); }
   catch (err) { return res.status(400).json({ error: err.message }); }
+});
+// the owner's name for a record set; a refusal names the set that has it
+app.post('/api/stageset/:id/name', (req, res) => {
+  try { return res.json(stages.setSetName(req.params.id, (req.body || {}).name)); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.post('/api/stageset/:id/sort', (req, res) => {
   try { return res.json(stages.setSetSort(req.params.id, (req.body || {}).sort)); }
