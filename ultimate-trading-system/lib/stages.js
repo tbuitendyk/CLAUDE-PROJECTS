@@ -1667,19 +1667,25 @@ function startStage3(params) {
   // can be told apart: two shares landing on the same rung for every unit in
   // the run are one setting, not two.
   const sizes = [...new Set(parentRecords.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
-  const declaredSettings = settingsFor(params, sizes);
-  // ONE SETTING PER TRADE. Anything that prices identically on every unit is
-  // paid for once, not twice — in compute now and in a ranked table listing the
-  // same trade under two names later.
-  const { kept: settings, folded: sameTrade } = foldSameTradeSettings(declaredSettings, parentRecords);
-  if (!settings.length) throw new Error('the block declared no settings');
+  // THE LAUNCH ANSWERS BEFORE THE SETTINGS ARE BUILT (owner order, 2026-09-02:
+  // the press would "go away and do nothing for a minute before crashing
+  // without a message"). Building and folding a 350,000-setting block takes
+  // seconds on this thread and the browser's gateway gives up at a minute, so
+  // the press came back 504 while the run went ahead unseen. The counts are
+  // worked out here from the block's shape -- countDeclared, the cost line's
+  // own arithmetic, held equal to the fold by test -- and the settings
+  // themselves are built in the background under "writing the plan", checked
+  // against these counts before anything is priced. A bad block still refuses
+  // here: the count expands and validates the same trade shapes.
+  const counted = countDeclared(params, sizes, parentRecords);
+  if (!counted.kept) throw new Error('the block declared no settings');
 
   // the budget gate: the whole plan is known here, so a block that cannot
   // fit is refused NOW, with the arithmetic, never discovered mid-total
   const coinsN = new Set(parentRecords.map((r) => r.trade)).size;
-  const heapGate = tallyBudgetFor({ settings: settings.length, coins: coinsN });
+  const heapGate = tallyBudgetFor({ settings: counted.kept, coins: coinsN });
   if (heapGate.band === 'refuse') throw new Error(heapGate.message);
-  const diskGate = storeBudgetFor({ rows: settings.length * parentRecords.length });
+  const diskGate = storeBudgetFor({ rows: counted.kept * parentRecords.length });
   if (diskGate.band === 'refuse') throw new Error(diskGate.message);
 
   const seq = seqFor(3);
@@ -1734,16 +1740,18 @@ function startStage3(params) {
     recordsVersion: RECORDS_V,
     plan: {
       units: parentRecords.length,
-      settings: settings.length,
-      settingLabels: settings.map((s) => s.label),
+      settings: counted.kept,
+      // the names are written the moment the block is built, below; until
+      // then the plan carries its counts only
+      settingLabels: [],
       // what the block asked for, and what was folded away because it priced
       // the same trade — reported so the difference is never silent
-      declaredSettings: declaredSettings.length,
-      sameTradeFolded: sameTrade.length,
+      declaredSettings: counted.declared,
+      sameTradeFolded: counted.folded,
     },
     perf: {
       unitsDone: 0, unitsTotal: parentRecords.length, elapsedMs: 0, etaMs: null, workers: null,
-      cyclesDone: 0, cyclesTotal: parentRecords.length * settings.length * (1 + nullN + keepN), cyclesWord: 'pricings',
+      cyclesDone: 0, cyclesTotal: parentRecords.length * counted.kept * (1 + nullN + keepN), cyclesWord: 'pricings',
     },
     failures: [],
     counts: null,
@@ -1770,29 +1778,75 @@ function startStage3(params) {
     endMonth: parent.params.endMonth, windowLayout: parent.params.windowLayout,
   };
   (async () => {
+    // THE BLOCK ITSELF, built now that the press has been answered: every
+    // setting with its name, folded to one per trade (ONE SETTING PER TRADE:
+    // anything that prices identically on every unit is paid for once), and
+    // held against the counts the launch was gated on. A disagreement stops
+    // the run before a single pricing, because the cost line and the launch
+    // must be one number.
+    doc.progress = 'writing the plan: building the settings';
+    saveSet(doc);
+    await new Promise((resolve) => { setImmediate(resolve); });
+    const declaredSettings = settingsFor(params, sizes);
+    const { kept: settings, folded: sameTrade } = foldSameTradeSettings(declaredSettings, parentRecords);
+    if (settings.length !== counted.kept || declaredSettings.length !== counted.declared) {
+      throw new Error(`the count said ${counted.kept.toLocaleString()} settings (${counted.declared.toLocaleString()} declared) and the block `
+        + `built ${settings.length.toLocaleString()} (${declaredSettings.length.toLocaleString()} declared) — the cost line and the launch disagree, so nothing was priced`);
+    }
+    Object.assign(doc.plan, {
+      settingLabels: settings.map((s) => s.label),
+      declaredSettings: declaredSettings.length,
+      sameTradeFolded: sameTrade.length,
+    });
+    saveSet(doc);
     // Reading every unit's kept votes back out of the store takes real time
     // on a big set, and a screen that says "writing the plan" through all of
     // it reads as stuck (owner, 2026-08-27). Say what is actually happening,
     // as it happens.
+    // THE WORK IS HANDED OUT IN PARTS, NOT UNITS (owner order, 2026-09-02:
+    // "we're running 1.75M settings with 36.7M pricings and we're getting
+    // about 1 cpu worth of effort and no status updates"). One payload per
+    // unit kept one worker busy on a one-unit run and three idle, and said
+    // nothing until the unit landed. Each unit's settings are cut into enough
+    // parts to feed every worker several times over, each part numbered from
+    // its place in the block so its records file under the same setting
+    // numbers they always did, and the line moves as parts land.
+    const workersN = pool.parallel ? pool.workers.length : 1;
+    const partsPerUnit = Math.max(1, Math.min(settings.length, workersN * 4));
+    const partSize = Math.ceil(settings.length / partsPerUnit);
+    const parts = [];                     // { u: index into parentRecords, from, to }
     const payloads = [];
     const agreedMap = {};
     for (let pi = 0; pi < parentRecords.length; pi++) {
       const rec = parentRecords[pi];
-      payloads.push(s3Payload({ doc, parent, rec, settings, fee, nullN }));
+      const whole = s3Payload({ doc, parent, rec, settings, fee, nullN });     // the votes are read once per unit
+      for (let from = 0; from < settings.length; from += partSize) {
+        const to = Math.min(settings.length, from + partSize);
+        payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: from });
+        parts.push({ u: pi, from, to });
+      }
       if (pi % 5 === 4 || pi === parentRecords.length - 1) {
         phaseNote(doc, { phase: 'reading the kept votes', done: pi + 1, total: parentRecords.length, word: 'units', startedMs: tRead });
         saveSet(doc);
       }
     }
+    const partsOfUnit = Math.ceil(settings.length / partSize);
     // the pricing clock starts when the pricing does, and the screen is told
     // at once that this phase has begun with nothing finished yet — otherwise
     // the previous phase's line sits there looking like the current one
     tPrice = Date.now();
-    phaseNote(doc, { phase: 'pricing the settings', done: 0, total: parentRecords.length, word: 'units', startedMs: tPrice });
+    doc.perf.partsTotal = parts.length;
+    doc.perf.partsDone = 0;
+    phaseNote(doc, { phase: 'pricing the settings', done: 0, total: parts.length, word: 'parts', startedMs: tPrice,
+      extra: `0 of ${parentRecords.length} units` });
     saveSet(doc);
+    const landed = new Array(parentRecords.length).fill(0);
+    const failedUnits = new Set();
+    let pricedSettings = 0;
     await pool.forEach('s3Unit', payloads, (settled, i) => {
       if (doc.cancelRequested) return;
-      const rec = parentRecords[i];
+      const part = parts[i];
+      const rec = parentRecords[part.u];
       if (settled.ok && settled.value) {
         for (const row of settled.value.rows) {
           // storedRecordOf, not a spread: the pricing hands back everything it
@@ -1808,18 +1862,24 @@ function startStage3(params) {
         // the pricing used — kept beside the set, never on 329,280 records
         for (const [k, v] of Object.entries(settled.value.agreed || {})) agreedMap[`${rec.u}|${k}`] = v;
         w.records.flush();
-      } else if (!settled.ok) {
+        pricedSettings += part.to - part.from;
+      } else if (!settled.ok && !failedUnits.has(part.u)) {
+        // one failure per unit, whichever of its parts failed first: the set is
+        // short that unit, and the count of failures is the count of units
+        failedUnits.add(part.u);
         doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
       }
-      doc.perf.unitsDone++;
+      landed[part.u]++;
+      if (landed[part.u] === partsOfUnit) doc.perf.unitsDone++;
+      doc.perf.partsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
-      doc.perf.etaMs = doc.perf.unitsDone ? Math.round((doc.perf.elapsedMs / doc.perf.unitsDone) * (parentRecords.length - doc.perf.unitsDone)) : null;
+      doc.perf.etaMs = doc.perf.partsDone ? Math.round(((Date.now() - tPrice) / doc.perf.partsDone) * (parts.length - doc.perf.partsDone)) : null;
       // the SAME per-setting count cyclesTotal was built from, or a run that
       // keeps scrambles reports a progress bar that never reaches its end
-      doc.perf.cyclesDone = doc.perf.unitsDone * settings.length * (1 + nullN + keepN);
+      doc.perf.cyclesDone = pricedSettings * (1 + nullN + keepN);
       phaseNote(doc, {
-        phase: 'pricing the settings', done: doc.perf.unitsDone, total: parentRecords.length, word: 'units', startedMs: tPrice,
-        extra: `${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} pricings`,
+        phase: 'pricing the settings', done: doc.perf.partsDone, total: parts.length, word: 'parts', startedMs: tPrice,
+        extra: `${doc.perf.unitsDone} of ${parentRecords.length} units · ${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} pricings`,
       });
       saveSet(doc);
     });

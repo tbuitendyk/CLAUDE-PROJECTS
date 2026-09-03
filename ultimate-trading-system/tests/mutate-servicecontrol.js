@@ -488,6 +488,14 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      bar: st.bar,                                          // null: the engine's default bar\n", "",
     'theScreenOffersTheBarAndSendsItWithEveryRead',
     'the owner sets seven, the box reads eight, and every bold row on the screen is under a bar the owner did not choose'],
+  // ---- A PART NUMBERS ITS ROWS FROM ITS PLACE IN THE BLOCK (3.47.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "        payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: from });", "        payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: 0 });",
+    'theStageThreePricingIsHandedOutInParts',
+    'every part numbers its rows from zero, and sixteen records of a unit claim setting number 0 while the plan names one'],
+  // ---- THE FILE-HASH CACHE READS SIZE AND TIME, NOT SIZE ALONE (3.47.0) ----
+  [path.join(ROOT, 'lib', 'manifest.js'), "  if (known && known.size === st.size && known.mtimeMs === st.mtimeMs) return", "  if (known && known.size === st.size) return",
+    'anUnchangedFileIsNotHashedAgainAndAChangedOneIs',
+    'a candle file rewritten to the same length keeps its old hash, and the price-file check passes a parent whose data moved'],
   // ---- THE COUNT WITHOUT THE SETTINGS (3.46.3) ----
   [path.join(ROOT, 'lib', 'stages.js'), "    for (const band of bands) set.add(repOf.get(shapeKeyOf({ band, ...cell })));\n", "    for (const band of bands) set.add(shapeKeyOf({ band, ...cell }));\n",
     'theStageThreeCountIsTheLaunchsFoldWithoutTheSettings',

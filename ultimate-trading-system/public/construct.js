@@ -79,7 +79,18 @@ async function post(p, body) {
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
 }
-const tryPost = async (p, body) => { try { return await post(p, body); } catch (e) { alert('FAILED — nothing changed.\n\n' + e.message); return null; } };
+// A GATEWAY THAT GAVE UP IS NOT A REFUSAL (owner, 2026-09-02: the press came
+// back "FAILED - nothing changed. HTTP 504" while the run had started). The
+// service may still be working on what was asked; say so, and say where the
+// answer will show, instead of claiming nothing happened.
+const tryPost = async (p, body) => {
+  try { return await post(p, body); } catch (e) {
+    alert(/HTTP 50[24]\b/.test(String(e.message))
+      ? 'NO ANSWER IN TIME — the service may still be working on it.\n\n' + e.message + '\n\nThe status line at the top of Sweep says what is going; Boards lists what landed.'
+      : 'FAILED — nothing changed.\n\n' + e.message);
+    return null;
+  }
+};
 // A POST that ASKS rather than acts: it changes nothing, so a failure is a
 // blank answer, never a dialog. The cost line asks on every keystroke and a
 // popup there would be unusable.

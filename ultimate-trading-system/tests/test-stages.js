@@ -140,6 +140,63 @@ module.exports = {
       'kinds of evidence measured against its own history must be reachable — it was not, and that was the muddle');
   },
 
+  // THE LAUNCH ANSWERS BEFORE THE SETTINGS ARE BUILT (owner order, 2026-09-02:
+  // the press would "go away and do nothing for a minute before crashing
+  // without a message", and the run had started). The gates read the count;
+  // the block is built behind the answer and held against that count before
+  // anything is priced; and the browser stops saying "nothing changed" when
+  // it is the gateway that gave up.
+  async theStageThreeLaunchAnswersBeforeTheSettingsAreBuilt() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const start = src.indexOf('function startStage3(params) {');
+    const fn = src.slice(start, src.indexOf('\n}\n', src.indexOf('return { id, name: doc.name', start)));
+    const answer = fn.indexOf('return { id, name: doc.name');
+    const bg = fn.indexOf('(async () => {');
+    assert.ok(answer > 0 && bg > 0 && bg < answer, 'the launch has a background part and answers after starting it');
+    const before = fn.slice(0, bg);
+    const after = fn.slice(bg, answer);
+    assert.ok(before.includes('const counted = countDeclared(params, sizes, parentRecords);'), 'the gates read the count, not the built block');
+    assert.ok(!before.includes('settingsFor(params, sizes)') && !before.includes('foldSameTradeSettings('), 'nothing before the answer builds or folds the settings');
+    assert.ok(before.includes("if (!counted.kept) throw new Error('the block declared no settings');"), 'an empty block still refuses at the press');
+    assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, coins: coinsN })') && before.includes('storeBudgetFor({ rows: counted.kept * parentRecords.length })'),
+      'both budget gates are the count\'s arithmetic');
+    assert.ok(after.includes('const declaredSettings = settingsFor(params, sizes);') && after.includes('foldSameTradeSettings(declaredSettings, parentRecords)'),
+      'the block is built and folded behind the answer');
+    assert.ok(after.indexOf('settings.length !== counted.kept || declaredSettings.length !== counted.declared') < after.indexOf('s3Payload({ doc, parent, rec, settings, fee, nullN })'),
+      'the built block is held against the count before any unit is handed out');
+    assert.ok(after.includes('the cost line and the launch disagree, so nothing was priced'), 'and a disagreement says so and stops');
+    assert.ok(after.includes('settingLabels: settings.map((s) => s.label),'), 'the names are written onto the plan once the block exists');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const tp = ui.slice(ui.indexOf('const tryPost = async (p, body) => {'), ui.indexOf('const tryPost = async (p, body) => {') + 700);
+    assert.ok(/HTTP 50\[24\]/.test(tp) && tp.includes('NO ANSWER IN TIME — the service may still be working on it.'),
+      'a gateway give-up is told apart from a refusal');
+    assert.ok(tp.includes("'FAILED — nothing changed.\\n\\n' + e.message"), 'a real refusal still says nothing changed');
+  },
+
+  // STAGE 3 PRICES IN PARTS, NOT UNITS (owner order, 2026-09-02: "we're
+  // running 1.75M settings with 36.7M pricings and we're getting about 1 cpu
+  // worth of effort and no status updates"). Each unit's settings are cut into
+  // enough parts to feed every worker, each part numbered from its place in the
+  // block, the votes read once per unit, a unit finished when all its parts
+  // land and failed once; and the line counts parts as they land.
+  async theStageThreePricingIsHandedOutInParts() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const start = src.indexOf('function startStage3(params) {');
+    const fn = src.slice(start, src.indexOf('\n}\n', src.indexOf('return { id, name: doc.name', start)));
+    assert.ok(fn.includes('const partsPerUnit = Math.max(1, Math.min(settings.length, workersN * 4));'), 'enough parts to feed every worker several times over, never more parts than settings');
+    assert.ok(fn.includes('const whole = s3Payload({ doc, parent, rec, settings, fee, nullN });'), 'the votes are read once per unit');
+    assert.ok(fn.includes('payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: from });'), 'each part carries its settings and its place in the block');
+    assert.ok(fn.includes("phase: 'pricing the settings', done: doc.perf.partsDone, total: parts.length, word: 'parts', startedMs: tPrice,"), 'progress counts parts as they land');
+    assert.ok(fn.includes('if (landed[part.u] === partsOfUnit) doc.perf.unitsDone++;'), 'a unit is finished when all its parts have landed');
+    assert.ok(fn.includes('} else if (!settled.ok && !failedUnits.has(part.u)) {'), 'a unit fails once, whichever part failed first');
+    assert.ok(fn.includes('doc.perf.cyclesDone = pricedSettings * (1 + nullN + keepN);'), 'the pricings done follow the settings priced, not the units');
+    // and the unit task numbers its rows from the part's place in the block
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    const task = sw.slice(sw.indexOf('async function s3UnitTask(task) {'), sw.indexOf('\n}\n', sw.indexOf('async function s3UnitTask(task) {')));
+    assert.ok(task.includes('const siFrom = Math.max(0, Math.floor(Number(task.siFrom) || 0));'), 'a part knows where it starts');
+    assert.strictEqual(task.split('si: siFrom + si').length - 1, 2, 'both row shapes number from the part\'s place, so a record files under the same setting number whichever part priced it');
+  },
+
   // THE COUNT IS THE LAUNCH'S FOLD WITHOUT THE SETTINGS (owner order,
   // 2026-09-02: "HTTP 504 ... we need a longer timeout or other fix"). The
   // cost line's number is worked out from the block's axes and its shapes,

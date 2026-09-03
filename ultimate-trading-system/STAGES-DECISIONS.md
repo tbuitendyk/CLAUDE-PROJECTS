@@ -548,3 +548,32 @@ carried out 2026-08-28 under its own GO — decision 50.
     reads, and a test holds the two equal on blocks that fold for every
     reason a block can. The launch still builds and folds. The gateway's
     timeout is untouched. Third digit.
+60. **`start stage 3` answers at once; the settings are built behind it**
+    (3.47.0, owner order 2026-09-02: the press would "go away and do nothing
+    for a minute before crashing without a message" -- and the run had in
+    fact started). Two costs sat in front of the answer: every candle file of
+    the universe read whole and hashed, twice, for the price-file check and
+    the set's own stamp; and the whole block built and folded. Now a file's
+    hash is kept beside its size and modified time, in memory and in a side
+    file the manifest never lists, so an unchanged file is never read again;
+    and the launch gates on `countDeclared`, answers with the set's name, and
+    builds the settings under "writing the plan", stopping the run before any
+    pricing if they disagree with the count. The browser no longer says
+    "nothing changed" on a gateway give-up; it says the service may still be
+    working and where to look. Third digit.
+61. **Stage 3 prices in parts, not units** (3.47.0, owner order 2026-09-02:
+    "we're running 1.75M settings with 36.7M pricings and we're getting
+    about 1 cpu worth of effort and no status updates ... i'd rather restart
+    than wait days running one processor"). The pool was handed one payload
+    per unit, so a one-unit run kept one worker busy and three idle, and the
+    line said nothing until the unit landed. Each unit's settings are now cut
+    into enough parts to feed every worker several times over -- four per
+    worker -- each part carrying its place in the block (`siFrom`) so its
+    records file under the same setting numbers they always did; the votes
+    are read once per unit and shared by its parts; the realised agreements
+    from every part are merged by key; a unit counts as finished when all its
+    parts have landed and fails once, whichever part failed first. Progress
+    counts parts as they land, with the units and the pricings beside it.
+    Existing record sets are unchanged in shape: a unit's blocks were never
+    contiguous by contract, and the tally collects them by index. Second
+    digit, with #60.
