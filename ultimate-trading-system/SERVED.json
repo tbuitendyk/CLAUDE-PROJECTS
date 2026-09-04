@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "33c2ce0f227d250bcbdb8bf8afb0e50697289c8d",
-  "subject": "3.52.0: a unit holds only the settings that place different orders on it; 24/5 ghosted when no unit being priced has a weekday version; the tick count follows the ticks; every Funnel dial carries its Sweep name",
-  "capturedAt": "2026-09-04T05:04:01Z",
+  "commit": "b5cc29711863df8c3ece596dc9f9c20fe6657884",
+  "subject": "3.52.1: step 3 says how to walk it, the owner's block is green, and a set behind on the per-unit fold is not served its old tables",
+  "capturedAt": "2026-09-04T05:54:38Z",
   "files": {
     "public/construct.js": {
-      "sha256": "ac370d3571aa0ec2b81182bbc3f1ba656251e4e6b2695548e2d64be1b90ffff6",
-      "bytes": 350462
+      "sha256": "9bf4dc327e8206c7e71733e1922319f78c16be8070277a8d032926996a38ffd0",
+      "bytes": 351770
     },
     "public/help-content.js": {
-      "sha256": "367b57e7a3780fc0541ed0ad5deed4ef5a92b9a8d5249293003aafbbd1dbddac",
-      "bytes": 65379
+      "sha256": "32cf3524cdfd146b298e4c16a9eaf683020e9d587282e97cf36f27f7f64f6260",
+      "bytes": 65534
     },
     "public/setup.html": {
       "sha256": "35a91fa5d8880c5026670fe6644875f8c0d7af867c20c53e69a046cdfac3a08e",
