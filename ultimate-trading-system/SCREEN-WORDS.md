@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **b5cc29711863 — what the box is serving**, not from the working tree.
+Generated from **c48f3d7a98f7 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -523,7 +523,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Funnel
 
-## What the controls are called (91)
+## What the controls are called (92)
 
 - `- chosen`
 - `- what each limit would keep of`
@@ -534,6 +534,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `add these limits to the rule`
 - `add this range to the rule`
 - `all units together`
+- `also keep none`
 - `and`
 - `and the other with`
 - `beats`

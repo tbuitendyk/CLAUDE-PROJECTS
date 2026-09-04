@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "b5cc29711863df8c3ece596dc9f9c20fe6657884",
-  "subject": "3.52.1: step 3 says how to walk it, the owner's block is green, and a set behind on the per-unit fold is not served its old tables",
-  "capturedAt": "2026-09-04T05:54:38Z",
+  "commit": "c48f3d7a98f770a6b14369a24d9145409ecbb43b",
+  "subject": "3.53.0: a range can keep the settings that have no value for the dial",
+  "capturedAt": "2026-09-04T06:05:13Z",
   "files": {
     "public/construct.js": {
-      "sha256": "9bf4dc327e8206c7e71733e1922319f78c16be8070277a8d032926996a38ffd0",
-      "bytes": 351770
+      "sha256": "3487514175a7de07afeea6d35c0da45001d87ee355b9f8f87526bd1da4d574e9",
+      "bytes": 352770
     },
     "public/help-content.js": {
-      "sha256": "32cf3524cdfd146b298e4c16a9eaf683020e9d587282e97cf36f27f7f64f6260",
-      "bytes": 65534
+      "sha256": "07700b76eb8889b00e83d64e3e7f32dc42186612f7f63a1e7f5a33f0cef31b24",
+      "bytes": 65857
     },
     "public/setup.html": {
       "sha256": "35a91fa5d8880c5026670fe6644875f8c0d7af867c20c53e69a046cdfac3a08e",
