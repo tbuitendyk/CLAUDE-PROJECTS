@@ -4583,6 +4583,17 @@ function fStep3(r, st) {
     if (!fin.length) return '-';
     return kind === 'halves' ? cells.map((x) => fFix(x)).join(' / ') : fFix(Math.max(...fin));
   };
+  // A SECOND CHECK GRID (owner order, 2026-09-04: "a second check box, after
+  // the highest scrambled average check box. exact same formatting but it
+  // should show 'average scrambled average'"): the same squares, the average
+  // of the scrambled copies' averages in each. The highest is what a square
+  // must clear to be above all of the copies; the average is where they sit.
+  const checkAvgAt = (a, b) => {
+    const cells = (r.checkGrids || []).map((g) => (g.grid || []).find((x) => x.a === a && x.b === b)).map((c) => (c && c.mean != null ? c.mean : null));
+    const fin = cells.filter((x) => x != null);
+    if (!fin.length) return '-';
+    return fFix(fin.reduce((s, x) => s + x, 0) / fin.length);
+  };
   const table = (title, cell) => `<p class="note"><b>${title}</b></p><table><thead><tr>${cth(`${esc(fDialLabel(r.dialA))} \\ ${esc(fDialLabel(r.dialB))}`, 'fGridCorner')}${(r.bVals || []).map((b) => cth(esc(b), 'fGridValue')).join('')}</tr></thead><tbody>
       ${(r.aVals || []).map((a) => `<tr><td><b>${esc(a)}</b></td>${(r.bVals || []).map((b) => cell(a, b)).join('')}</tr>`).join('')}</tbody></table>`;
   return `${howTo}${pickers}
@@ -4597,6 +4608,7 @@ function fStep3(r, st) {
       return `<td class="${cls}" data-fcell="${esc(k)}">${fFix(c.mean)}${c.thin ? ` (${c.n || 0})` : ''}</td>`;
     })}
     ${table(kind === 'halves' ? 'The check - each half\'s average, first / second' : 'The check - the highest scrambled average in each square', (a, b) => `<td>${esc(checkAt(a, b))}</td>`)}
+    ${kind === 'halves' ? '' : table('The check - the average scrambled average in each square', (a, b) => `<td>${esc(checkAvgAt(a, b))}</td>`)}
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <span class="note">${blk ? `Recommended block: ${esc(fDialLabel(r.dialA))} ${esc(blk.a.from)} to ${esc(blk.a.to)}, ${esc(fDialLabel(r.dialB))} ${esc(blk.b.from)} to ${esc(blk.b.to)} - ${blk.squares} square(s).`
       : `No block - ${esc((r.block || {}).why || 'no square beats the check')}.`}

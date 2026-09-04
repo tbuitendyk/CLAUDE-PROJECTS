@@ -44,6 +44,19 @@ function reply(body) {
     return { ...base, reading: { why: 'pick a dial' } };
   }
   // step 3 before the grid is read: the two dial boxes and the read button
+  // step 3 with two dials named: a small grid with two scrambled copies, so
+  // both check grids can be read off the page (3.54.0)
+  if (body.step === 3 && body.dialA && body.dialB) {
+    const cell = (a, b, mean, n) => ({ a, b, mean, n, thin: false });
+    const A = ['all', 'own']; const B = ['10', '20'];
+    return { ...base, reading: {
+      dialA: body.dialA, dialB: body.dialB, aVals: A, bVals: B, thin: 0, squares: 4, floorCost: [{ floor: 1, keeps: 4, of: 4 }],
+      grid: [cell('all', '10', 5, 100), cell('all', '20', 3, 100), cell('own', '10', 7, 100), cell('own', '20', 4, 100)],
+      checkGrids: [{ grid: [cell('all', '10', 1, 100), cell('all', '20', 2, 100), cell('own', '10', 3, 100), cell('own', '20', 4, 100)] },
+        { grid: [cell('all', '10', 3, 100), cell('all', '20', 0, 100), cell('own', '10', 1, 100), cell('own', '20', 6, 100)] }],
+      noise: { kind: 'scrambles' }, block: { counting: ['all|10', 'own|10'], block: { a: { from: 'all', to: 'own' }, b: { from: '10', to: '10' }, squares: 2 } },
+    } };
+  }
   if (body.step === 3) return { ...base, reading: {} };
   return { ...base, reading: { why: 'not canned' } };
 }
@@ -122,6 +135,20 @@ function requirePlaywright() {
   await page.waitForSelector('#fA', { timeout: 15000 }).catch(() => {});
   const aWords = await page.locator('#fA option').allTextContents().catch(() => []);
   expect(aWords.includes('dMult (d)') && aWords.includes('agreePct (share)'), `the first dial box on step 3 names its dials with their Sweep labels: ${aWords.join(' | ')}`);
+  // name two dials and read the grid: both check grids are on the page, the
+  // second averaging the copies (3.54.0)
+  await page.locator('#fA').selectOption('agreeBar');
+  await page.locator('#fB').selectOption('agreePct');
+  await page.locator('#fGrid').click().catch(() => {});
+  await page.waitForSelector('[data-fcell]', { timeout: 15000 }).catch(() => {});
+  const gridText = await page.locator('#view').innerText();
+  expect(/The check - the highest scrambled average in each square/.test(gridText), 'the highest-scrambled-average grid is on the page');
+  expect(gridText.indexOf('The check - the average scrambled average in each square') > gridText.indexOf('The check - the highest scrambled average in each square'), 'the average-scrambled-average grid follows it');
+  const tables = await page.locator('#view table').allInnerTexts();
+  const avgTable = tables.find((t) => /^all\s+2\.00\s+1\.00/m.test(t) || /all\t2\.00\t1\.00/.test(t)) || null;
+  const highTable = tables.find((t) => /all\t3\.00\t2\.00/.test(t) || /^all\s+3\.00\s+2\.00/m.test(t)) || null;
+  expect(!!highTable, `the highest grid reads all: 3.00, 2.00 (the higher of the two copies)${highTable ? '' : `: ${JSON.stringify(tables)}`}`);
+  expect(!!avgTable, `the average grid reads all: 2.00, 1.00 (the mean of the two copies)${avgTable ? '' : `: ${JSON.stringify(tables)}`}`);
   expect(errors.length === 0, `no page errors and no dialogs${errors.length ? `: ${errors.join('; ')}` : ''}`);
   await browser.close();
   srv.kill();

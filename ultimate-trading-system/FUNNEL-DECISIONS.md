@@ -464,3 +464,17 @@ made while building it that the design did not already settle.
     button follows it, and the walk's note says it. Pressed in the browser
     harness: the tick appears for d and not for t, the count moves, and the
     rule the page sends carries it. Second digit: a new control.
+83. **Step 3 shows the average scrambled average beside the highest**
+    (3.54.0, owner order 2026-09-04: "what i want is a second check box,
+    after the highest scrambled average check box. exact same formatting but
+    it should show 'average scrambled average check box'"). The one check
+    grid printed, per square, the best of the scrambled copies: what the
+    square would have to beat to beat all of them, a harsher yardstick than
+    the bar bold is decided at, so a bold square could sit below the number
+    beside it. A second grid now follows it, drawn through the same table
+    helper on the same squares, with the average of the copies' averages.
+    Read together: the highest says how far chance reached at its best, the
+    average says where chance sits. Neither is the bar; the bar is a count,
+    and the square is bold on that count. Drawn only when there are copies;
+    with the two halves there is nothing to average. Pressed in the browser
+    harness on a canned grid with two copies. Second digit: a new element.

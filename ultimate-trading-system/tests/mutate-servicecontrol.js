@@ -520,6 +520,10 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), ' <b class="fpick">Your block: ', ' <b>Your block: ',
     'theThirdStepSaysHowToWalkItAndShowsTheOwnersBlockInGreen',
     'the line that says which values the owner\'s block covers is drawn like any other note'],
+  // ---- THE SECOND CHECK GRID AVERAGES THE COPIES (3.54.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "    return fFix(fin.reduce((s, x) => s + x, 0) / fin.length);", "    return fFix(Math.max(...fin));",
+    'theThirdStepShowsTheAverageScrambledAverageBesideTheHighest',
+    'the second check grid repeats the highest copy under the word average'],
   // ---- A RANGE CAN KEEP THE SETTINGS WITH NO VALUE FOR THE DIAL (3.53.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi), ...(alsoNone ? { also: ['none'] } : {}) };",
     "    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi) };",

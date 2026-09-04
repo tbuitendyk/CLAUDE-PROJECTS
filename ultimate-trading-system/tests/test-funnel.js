@@ -1882,4 +1882,20 @@ module.exports = {
     assert.ok(/fAlsoNone: \{/.test(help) && /Without it a range drops them, because "none" is not a number/.test(help), 'the tick has no help, or the help does not say why it exists');
   },
 
+  // THE SECOND CHECK GRID (3.54.0, owner order 2026-09-04: "a second check
+  // box, after the highest scrambled average check box. exact same formatting
+  // but it should show 'average scrambled average'"). Same squares, same
+  // table, the average of the copies' averages in each.
+  async theThirdStepShowsTheAverageScrambledAverageBesideTheHighest() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const step = page.slice(page.indexOf('function fStep3('), page.indexOf('\nfunction ', page.indexOf('function fStep3(') + 10));
+    const hi = step.indexOf("'The check - the highest scrambled average in each square'");
+    const avg = step.indexOf("table('The check - the average scrambled average in each square', (a, b) => `<td>${esc(checkAvgAt(a, b))}</td>`)");
+    assert.ok(hi > 0 && avg > hi, 'the average grid is not drawn after the highest grid, through the same table helper');
+    const fn = step.slice(step.indexOf('const checkAvgAt = (a, b) => {'), step.indexOf('};', step.indexOf('const checkAvgAt = (a, b) => {')));
+    assert.ok(fn.includes('return fFix(fin.reduce((s, x) => s + x, 0) / fin.length);'), 'the second grid does not average the copies');
+    assert.ok(fn.includes("(r.checkGrids || []).map((g) => (g.grid || []).find((x) => x.a === a && x.b === b))"), 'the second grid does not read the same squares as the first');
+    assert.ok(step.includes("${kind === 'halves' ? '' : table('The check - the average scrambled average in each square'"), 'with no copies there is nothing to average, and the grid must not pretend otherwise');
+  },
+
 };
