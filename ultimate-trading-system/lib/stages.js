@@ -5020,6 +5020,12 @@ function funnelCutsFor(parentId, unitKey) {
     .map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
       survivors: (d.counts || {}).survivors ?? null, target: (d.counts || {}).target ?? null,
+      // AND THE RULE IT WROTE, IN THE SAME WORDS THE WALK SAYS ITS OWN
+      // (3.59.0). It is how the screen knows the walk it is holding is the
+      // walk that produced this set -- and so that `new rule` starts a new
+      // rule at step 1 rather than dropping back into a finished one at step
+      // 7. Both sentences come from S4.ruleSentence, so they compare.
+      ruleSentence: d.ruleSentence || null,
     }));
 }
 

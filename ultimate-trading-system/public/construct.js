@@ -4369,7 +4369,8 @@ async function drawFunnel() {
       : (d.step === 4 && !r.why ? { positive: r.positive, of: r.of, check: r.check || null } : null),
     keep: d.step === 5 && r.keep ? { ranges: r.keep.ranges || {}, allowed: r.keep.allowed || {} } : null,
   };
-  $('#view').innerHTML = `<div class="panel">${fHead(d, st)}${fRail(d, st)}</div>
+  $('#view').innerHTML = `<div class="panel">${fTitle(d, st, F_NEW_NAME)}</div>
+  <div class="panel">${fHead(d)}${fRail(d, st)}</div>
   <div class="panel">
     <h3 style="margin-top:0">Step ${d.step} - ${esc(F_STEPS[d.step - 1][0])}</h3>
     <p class="note">${esc(F_STEPS[d.step - 1][1])}</p>
@@ -4380,7 +4381,7 @@ async function drawFunnel() {
     ${fNoiseLine(r, d)}
   </div>
   <div class="panel">${fRuleBox(d, st)}</div>`;
-  fWire(st);
+  fWire(st, d);
 }
 
 // THE COIN AND SHAPE BOX, drawn by ONE function (3.58.0). The walk's heading and
@@ -4395,7 +4396,7 @@ function fUnitPicker(d) {
 // whether the sealed window is intact. A missing comparison shown as nothing
 // reads as 'nothing to report', which is the opposite of the truth.
 const fPct = (x) => (x == null ? '-' : `${Math.round(Number(x) * 100)}%`);
-function fHead(d, st) {
+function fHead(d) {
   const c = d.check || {};
   const n = (d.set && d.set.noiseTwin) || {};
   const sealed = (d.set && d.set.sealed) || {};
@@ -4407,8 +4408,6 @@ function fHead(d, st) {
     ? `<span>the records of <b>${esc(unitName)}</b> alone - its own money, its own scrambled copies, every dial</span>`
     : '<span>the blended table, every unit averaged into one row per setting, which hides what any one coin does</span>'}.</p>
     <div class="row" style="align-items:flex-end">
-      ${fUnitPicker(d)}
-      ${fCutPickBox(d, st || {})}
       <span class="note"><b>${Number(d.survivors).toLocaleString()}</b> of
       ${Number(d.of).toLocaleString()} settings survive${d.target ? ` and the target is ${Number(d.target).toLocaleString()}` : ''}</span>
       <label class="f">target size<input id="fTarget" type="number" min="0" style="width:6rem"
@@ -4904,10 +4903,11 @@ async function fDrawCut(d, st, cutId) {
   finally { waitEnd(); }
   // A FAILED READ STILL DRAWS THE PICKER. Without it the owner is shut inside a
   // set that will not open, with no control on screen to leave it by.
+  const named = ((d.cuts || []).find((c) => c.id === cutId) || {}).name || 'this Stage 4 record set';
   if (bad) {
-    $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Funnel</h3>${fCutPick(d, st)}
-      <p class="note neg">This Stage 4 record set could not be read: ${esc(bad)}. Choose another above, or
-        <b>new rule</b> to walk the seven steps again.</p></div>`;
+    $('#view').innerHTML = `<div class="panel">${fTitle(d, st, named)}</div>
+      <div class="panel"><p class="note neg">This Stage 4 record set could not be read: ${esc(bad)}. Choose another
+        above, or <b>new rule</b> to walk the steps again.</p></div>`;
     fWireCut(d, st, null);
     return;
   }
@@ -4916,14 +4916,15 @@ async function fDrawCut(d, st, cutId) {
     const said = tp
       ? `${tp.phase || 'totalling the tables'}: ${Number(tp.done || 0).toLocaleString()} of ${Number(tp.total || 0).toLocaleString()} ${tp.word || 'parts'}`
       : String(cd.totalling || cd.waiting);
-    $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Funnel</h3>${fCutPick(d, st)}
-      <p class="note">the tables of the stage 3 set this was cut from are being worked out - <b>${esc(said)}</b> -
-        this page asks again in a few seconds</p></div>`;
+    $('#view').innerHTML = `<div class="panel">${fTitle(d, st, named)}</div>
+      <div class="panel"><p class="note">the tables of the stage 3 set this was cut from are being worked out -
+        <b>${esc(said)}</b> - this page asks again in a few seconds</p></div>`;
     fWireCut(d, st, null);
     setTimeout(() => { if (tab === 'funnel') drawFunnel(); }, 4000);
     return;
   }
-  $('#view').innerHTML = `<div class="panel">${fCutPick(d, st)}${fCutHead(cd)}</div>
+  $('#view').innerHTML = `<div class="panel">${fTitle(d, st, cd.set.name)}</div>
+    <div class="panel">${fCutHead(cd)}</div>
     <div class="panel">${fCutTable(cd, st)}</div>`;
   fWireCut(d, st, cd);
 }
@@ -4935,20 +4936,27 @@ async function fDrawCut(d, st, cutId) {
 // exist, and `new rule` is one of the things it offers.
 function fCutPickBox(d, st) {
   const cuts = d.cuts || [];
-  if (!cuts.length) return '';
   return `<label class="f">Stage 4 record set<select id="fCutPick" style="min-width:20rem">${cuts.map((c) => `<option value="${esc(c.id)}" ${c.id === st.cut ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}<option value="new" ${st.cut === F_NEW ? 'selected' : ''}>new rule</option></select></label>`;
 }
 // ONE HEADING, NOT TWO. This drew "Funnel - <set> - <coin and shape>" above a
 // heading that says the same thing plus the counts, which is the owner's own
 // first line. The picker is the row; the identity is the line below it.
-function fCutPick(d, st) {
+// THE TITLE AND THE TWO SELECTORS, ALWAYS AT THE TOP (owner order, 2026-09-04):
+// "the coin and shape and stage 4 record set and the bold name are always at
+// the top in a title/selector section, regardless of stage 4 data present or
+// not". Only the section BELOW this one changes with what is chosen, so the
+// screen never rearranges itself under the owner.
+function fTitle(d, st, name) {
   return `<div class="row" style="align-items:flex-end">
       ${fUnitPicker(d)}
       ${fCutPickBox(d, st)}
-      <span class="note">${(d.cuts || []).length} Stage 4 record set(s) have been cut from this coin and shape. Choose
-        <b>new rule</b> to walk the seven steps again and cut another.</span>
-    </div>`;
+      <span class="note">${(d.cuts || []).length} Stage 4 record set(s) have been cut from this coin and shape.
+        Choose <b>new rule</b> to walk the steps again and cut another.</span>
+    </div>
+    <h3 id="fTitleName" style="margin:.55rem 0 0">${esc(name)}</h3>`;
 }
+// what the bold name says while the steps are being walked
+const F_NEW_NAME = 'new rule';
 
 // THE HEADING, AS THE OWNER DREW IT (2026-09-04). Display only, one control on
 // it: the name. Every line is read off the SET, never off today's walk -- what
@@ -4961,9 +4969,7 @@ function fCutHead(cd) {
   const unitName = s.unit ? (s.unitName || s.unit) : 'all units together';
   const parentName = (s.parent || {}).name || (s.parent || {}).id || 'its stage 3 set';
   const marks = (s.marks || []).map((m) => m.what).filter(Boolean);
-  return `<h3>${esc(parentName)} - ${esc(unitName)} - ${Number(s.survivors).toLocaleString()} of
-      ${Number(cd.of).toLocaleString()} settings</h3>
-    <div class="row" style="align-items:flex-end">
+  return `<div class="row" style="align-items:flex-end">
       <label class="f">name<input id="fCutName" value="${esc(s.name || '')}" maxlength="80" style="width:26rem"></label>
       <button id="fCutRename">rename</button>
       <span id="fCutNameMsg" class="note">${s.nameEditedAt ? `renamed ${esc(String(s.nameEditedAt).slice(0, 16))}` : `cut ${esc(String(s.createdAt || '').slice(0, 16))}`}${s.release ? ` by release ${esc(s.release)}` : ''}</span>
@@ -4975,7 +4981,7 @@ function fCutHead(cd) {
       survive. It is here because <b>Verify</b>, <b>History</b>, <b>Tune</b> and <b>Greenlight</b> are where a survivor
       is graded, and they start from what is on this screen.</p>
     <p class="note"><b>Rule:</b> ${esc(fRuleWords(s.ruleSentence))}</p>
-    <p class="note"><b>${esc(unitName)}</b> - ${Number(s.survivors).toLocaleString()} of
+    <p class="note"><b>${esc(parentName)} - ${esc(unitName)}</b> - ${Number(s.survivors).toLocaleString()} of
       ${Number(cd.of).toLocaleString()} settings survive${s.target ? ` and the target is ${Number(s.target).toLocaleString()}` : ''}.
       ${rec.same ? 'Re-applying this rule to the same board today gives back exactly these settings.'
     : `<b class="neg">Re-applying this rule to the same board today gives ${Number(rec.now || 0).toLocaleString()} settings, not
@@ -5006,102 +5012,116 @@ function fcSort(key, cd) {
 }
 const fcThirds = (v) => (Array.isArray(v) && v.length ? v.map((x) => fFix(x, 2)).join(' / ') : '-');
 
-// WHAT EACH SURVIVOR DID. The dials that the rule pinned are the same on every
-// row, so they are said once above the table instead of being repeated down a
-// column; only dials that still vary get one. Columns nothing is behind are left
-// off and named underneath, because a column of dashes reads as a zero.
+// WHAT EACH SURVIVOR DID (3.59.0, owner order: "no horizontal scroll bar is
+// allowed"). One setting is THREE rows -- what it is, then its test window and
+// its held-back window stacked underneath it and set to the right -- so nine
+// columns carry fifteen numbers and the table stays inside the panel. Each
+// heading holds both names, the test one above the held-back one, lined up with
+// the two rows under it, and either can be pressed to order the whole set by
+// it. The heading is frozen, so scrolling the rows never loses what is being
+// looked at.
+//
+// The dials the rule pinned are the same on every row and are said once above
+// the table; the dials that still vary are on each setting's own line, because
+// a column each is what forced the table sideways.
 function fCutTable(cd, st) {
   const has = (k) => !!(cd.has || {})[k];
   const dials = cd.varying || [];
   const blend = !cd.set.unit;
-  const nTest = 1 + ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 'grossPerTrade', 'pnlThirds'].filter(has).length;
-  const nHold = ['avgHold', 'avgTrades', 'avgVsLong', 'beat', 'pairs', 'avgLead'].filter(has).length;
-  const nCom = ['members', 'avgRung', 'avgVoices'].filter(has).length;
-  const nCoins = blend ? ['coins', 'coinsInMoney'].filter(has).length : 0;
+  const c2 = has('maxDrawdown') || has('avgTrades');
+  const c3 = has('worstTrade') || has('avgVsLong');
+  const c4 = has('bestTrade') || has('beat');
+  const c5 = has('wins') || has('pairs');
+  const c6 = has('stops') || has('avgLead');
+  const c7 = has('grossPerTrade');
+  const c8 = has('pnlThirds');
+  const cols = 2 + [c2, c3, c4, c5, c6, c7, c8].filter(Boolean).length;
   const gaps = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 'grossPerTrade'].filter((k) => !has(k)).length;
   const fixedLine = Object.entries(cd.fixed || {})
     .filter(([, v]) => v !== null && v !== undefined)
     .map(([k, v]) => `${fDialLabel(k)} ${v}`).join('; ');
-  const pager = bPager(cd.total, cd.from, cd.per, 'S4R');
   if (!cd.total) {
-    return `<h3 style="margin-top:0">${esc(cd.set.name)}</h3>
-      <p class="note neg">This Stage 4 record set kept no settings at all. An empty result is written with a warning
-        rather than refused, because the choice is yours - the warning is on the heading above.</p>`;
+    return `<p class="note neg">This Stage 4 record set kept no settings at all. An empty result is written with a
+      warning rather than refused, because the choice is yours - the warning is on the heading above.</p>`;
   }
-  return `<h3 style="margin-top:0">${esc(cd.set.name)}</h3>
-    <p class="note">Every one of these ${Number(cd.total).toLocaleString()} settings has the same
-      ${fixedLine ? `<b>${esc(fixedLine)}</b>` : 'nothing'} - the rule fixed those, so they are said here once
-      rather than repeated down a column. ${dials.length ? `The ${dials.length} dial(s) that still vary have a column each.` : 'No dial varies among them.'}</p>
+  const pager = bPager(cd.total, cd.from, cd.per, 'S4R');
+  return `<p class="note">Every one of these ${Number(cd.total).toLocaleString()} settings has the same
+      ${fixedLine ? `<b>${esc(fixedLine)}</b>` : 'nothing'} - the rule fixed those, so they are said here once rather
+      than repeated on every row.</p>
     ${gaps ? `<p class="note muted">The numbers a sweep does not keep - worst losing streak, biggest single loss, best
       single trade, trades won, stopped out, gross per trade - are not on this set. They are worked out by
       <b>work out the missing numbers</b> on step 6 of a walk, and this one was cut without pressing it. Choose
       <b>new rule</b>, walk to step 6, press it, and they appear here for every setting.</p>` : ''}
+    <p class="note"><b>Order the whole set by</b> setting${fcSort('label', cd)}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))}${fcSort(k, cd)}`).join('')}${has('members') ? ` &middot; members${fcSort('members', cd)}` : ''}${has('avgRung') ? ` &middot; rung${fcSort('avgRung', cd)}` : ''}${has('avgVoices') ? ` &middot; voices${fcSort('avgVoices', cd)}` : ''}
+      - or press any heading in the table below.</p>
     ${pager}
-    <div style="overflow-x:auto"><table style="width:auto;min-width:100%;white-space:nowrap">
-      <thead>
-        <tr>
-          <th ${bth} colspan="${1 + dials.length}" title="the setting itself, and the dials the rule left free - the ones that still differ from row to row. The dials the rule pinned are the same on every row and are said once above the table.">what it is</th>
-          <th ${bth} colspan="${nTest}" title="the part of the history the whole walk was read on. Every figure under this heading is test money - the money that chose this rule, and so the money that flatters it.">on the test window</th>
-          ${nHold ? `<th ${bth} colspan="${nHold}" title="the once-only look at days no part of the search touched. Every figure under this heading comes from that one look, and choosing between these settings by any of them spends it.">on the held-back window</th>` : ''}
-          ${nCom ? `<th ${bth} colspan="${nCom}" title="the group of forecasts that vote on this coin, and how they voted.">the group that votes on this coin</th>` : ''}
-          ${nCoins ? `<th ${bth} colspan="${nCoins}" title="this row is the blended table, every coin averaged into one row per setting. These say how many coins are behind it.">across the coins</th>` : ''}
-        </tr>
-        <tr>
-          <th ${bth} title="the setting this row scored, by its name. The name carries every dial the sweep set for it.">setting${fcSort('label', cd)}</th>
-          ${dials.map((k) => `<th ${bth} title="one dial the rule left free, so it still varies among these settings.">${esc(fDialLabel(k))}${fcSort(k, cd)}</th>`).join('')}
-          <th ${bth} title="average test-window dollars for this setting on this coin and shape. Every one of the seven steps was read on this number and no other.">avg test $${fcSort('avgTest', cd)}</th>
-          ${has('maxDrawdown') ? `<th ${bth} title="on the test window: the deepest the running total ever sat below its own best point, in dollars per coin. An average losing streak hides the one that would have ended you.">worst losing streak $${fcSort('maxDrawdown', cd)}</th>` : ''}
-          ${has('worstTrade') ? `<th ${bth} title="on the test window: the single worst trade, in dollars.">biggest single loss $${fcSort('worstTrade', cd)}</th>` : ''}
-          ${has('bestTrade') ? `<th ${bth} title="on the test window: the single best trade, in dollars. A result that rests on one of these is one trade wide.">best single trade $${fcSort('bestTrade', cd)}</th>` : ''}
-          ${has('wins') ? `<th ${bth} title="on the test window: how many of its trades ended in profit.">trades won${fcSort('wins', cd)}</th>` : ''}
-          ${has('stops') ? `<th ${bth} title="on the test window: how many of its trades were closed by the stop rather than at the end of the hold.">stopped out${fcSort('stops', cd)}</th>` : ''}
-          ${has('grossPerTrade') ? `<th ${bth} title="on the test window: average dollars a trade made before fees.">gross per trade $${fcSort('grossPerTrade', cd)}</th>` : ''}
-          ${has('pnlThirds') ? `<th ${bth} title="the test window cut into three by time, each third's dollars in order. A number that is all one third is a number about one stretch of history.">money by third${fcSort('pnlThirds', cd)}</th>` : ''}
-          ${has('avgHold') ? `<th ${bth} title="dollars on the held-back window - the once-only look at days no part of the search touched. Sorting by it and taking the top is shopping that one look.">avg held-back $${fcSort('avgHold', cd)}</th>` : ''}
-          ${has('avgTrades') ? `<th ${bth} title="how many positions this setting took on the held-back window. A handful of trades makes any money figure noise.">trades${fcSort('avgTrades', cd)}</th>` : ''}
-          ${has('avgVsLong') ? `<th ${bth} title="its held-back dollars against simply holding the coin over the same days. Positive means it beat holding.">vs always long $${fcSort('avgVsLong', cd)}</th>` : ''}
-          ${has('beat') ? `<th ${bth} title="of its own null copies - the same votes with the calendar shuffled away - how many its held-back money beat.">beat its own null set${fcSort('beat', cd)}</th>` : ''}
-          ${has('pairs') ? `<th ${bth} title="how many null copies it was measured against. N copies is at best a 1-in-(N+1) claim.">null copies${fcSort('pairs', cd)}</th>` : ''}
-          ${has('avgLead') ? `<th ${bth} title="how far its held-back money sits above the typical null copy, measured in how far apart those copies are. 2 means twice their own spread.">lead${fcSort('avgLead', cd)}</th>` : ''}
-          ${has('members') ? `<th ${bth} title="how many forecasts vote on this coin.">members${fcSort('members', cd)}</th>` : ''}
-          ${has('avgRung') ? `<th ${bth} title="the agreement level the trades landed on.">rung${fcSort('avgRung', cd)}</th>` : ''}
-          ${has('avgVoices') ? `<th ${bth} title="how many of those forecasts vote independently of each other.">voices${fcSort('avgVoices', cd)}</th>` : ''}
-          ${nCoins && has('coins') ? `<th ${bth} title="how many coins are averaged into this row. Every figure on it is an average across them.">coins${fcSort('coins', cd)}</th>` : ''}
-          ${nCoins && has('coinsInMoney') ? `<th ${bth} title="how many of those coins ended the held-back window in profit.">coins in the money${fcSort('coinsInMoney', cd)}</th>` : ''}
-        </tr>
-      </thead>
-      <tbody>${(cd.rows || []).map((r) => `<tr${r.gone ? ' class="muted"' : ''}>
-        <td ${btd0}>${esc(r.label)}${r.gone ? ' <b class="neg">no longer on the board</b>' : ''}</td>
-        ${dials.map((k) => `<td ${btd}>${esc(r[k] == null ? '-' : r[k])}</td>`).join('')}
-        <td ${btd}>${fFix(r.avgTest, 2)}</td>
-        ${has('maxDrawdown') ? `<td ${btd}>${fFix(r.maxDrawdown, 2)}</td>` : ''}
-        ${has('worstTrade') ? `<td ${btd}>${fFix(r.worstTrade, 2)}</td>` : ''}
-        ${has('bestTrade') ? `<td ${btd}>${fFix(r.bestTrade, 2)}</td>` : ''}
-        ${has('wins') ? `<td ${btd}>${fFix(r.wins, 1)}</td>` : ''}
-        ${has('stops') ? `<td ${btd}>${fFix(r.stops, 1)}</td>` : ''}
-        ${has('grossPerTrade') ? `<td ${btd}>${fFix(r.grossPerTrade, 3)}</td>` : ''}
-        ${has('pnlThirds') ? `<td ${btd}>${fcThirds(r.pnlThirds)}</td>` : ''}
-        ${has('avgHold') ? `<td ${btd}>${fFix(r.avgHold, 2)}</td>` : ''}
-        ${has('avgTrades') ? `<td ${btd}>${fFix(r.avgTrades, 1)}</td>` : ''}
-        ${has('avgVsLong') ? `<td ${btd}>${fFix(r.avgVsLong, 2)}</td>` : ''}
-        ${has('beat') ? `<td ${btd}>${fFix(r.beat, 0)}</td>` : ''}
-        ${has('pairs') ? `<td ${btd}>${fFix(r.pairs, 0)}</td>` : ''}
-        ${has('avgLead') ? `<td ${btd}>${fFix(r.avgLead, 2)}</td>` : ''}
-        ${has('members') ? `<td ${btd}>${fFix(r.members, 0)}</td>` : ''}
-        ${has('avgRung') ? `<td ${btd}>${fFix(r.avgRung, 2)}</td>` : ''}
-        ${has('avgVoices') ? `<td ${btd}>${fFix(r.avgVoices, 2)}</td>` : ''}
-        ${nCoins && has('coins') ? `<td ${btd}>${fFix(r.coins, 0)}</td>` : ''}
-        ${nCoins && has('coinsInMoney') ? `<td ${btd}>${fFix(r.coinsInMoney, 0)}</td>` : ''}
+    <table class="s4"><thead>
+      <tr>
+        <th style="width:5rem" title="which of the two rows under each setting you are reading: its test window first, its held-back window under it."><span class="t">test</span><span class="h">hold</span></th>
+        <th title="top: average test-window dollars for this setting, the money every one of the steps was read on. Bottom: dollars on the held-back window - the once-only look at days no part of the search touched."><span class="t">avg test $${fcSort('avgTest', cd)}</span><span class="h">avg held-back $${fcSort('avgHold', cd)}</span></th>
+        ${c2 ? `<th title="top: on the test window, the deepest the running total ever sat below its own best point, in dollars per coin. Bottom: how many positions this setting took on the held-back window."><span class="t">worst losing streak $${fcSort('maxDrawdown', cd)}</span><span class="h">trades${fcSort('avgTrades', cd)}</span></th>` : ''}
+        ${c3 ? `<th title="top: on the test window, the single worst trade in dollars. Bottom: its held-back dollars against simply holding the coin over the same days - positive means it beat holding."><span class="t">biggest single loss $${fcSort('worstTrade', cd)}</span><span class="h">vs always long $${fcSort('avgVsLong', cd)}</span></th>` : ''}
+        ${c4 ? `<th title="top: on the test window, the single best trade in dollars - a result resting on one of these is one trade wide. Bottom: of its own null copies, the same votes with the calendar shuffled away, how many its held-back money beat."><span class="t">best single trade $${fcSort('bestTrade', cd)}</span><span class="h">beat its own null set${fcSort('beat', cd)}</span></th>` : ''}
+        ${c5 ? `<th title="top: on the test window, how many of its trades ended in profit. Bottom: how many null copies it was measured against - N copies is at best a 1-in-(N+1) claim."><span class="t">trades won${fcSort('wins', cd)}</span><span class="h">null copies${fcSort('pairs', cd)}</span></th>` : ''}
+        ${c6 ? `<th title="top: on the test window, how many trades were closed by the stop rather than at the end of the hold. Bottom: how far its held-back money sits above the typical null copy, measured in how far apart those copies are."><span class="t">stopped out${fcSort('stops', cd)}</span><span class="h">lead${fcSort('avgLead', cd)}</span></th>` : ''}
+        ${c7 ? `<th title="on the test window, average dollars a trade made before fees. There is no held-back figure for this one."><span class="t">gross per trade $${fcSort('grossPerTrade', cd)}</span><span class="h">&nbsp;</span></th>` : ''}
+        ${c8 ? '<th title="the test window cut into three by time, the dollars of each third in order. A number that is all one third is a number about one stretch of history. There is no held-back figure for this one."><span class="t">money by third</span><span class="h">&nbsp;</span></th>' : ''}
+      </tr>
+    </thead><tbody>${(cd.rows || []).map((r) => `<tr class="${r.gone ? 'muted' : ''}">
+        <td class="s4what" colspan="${cols}"><b>${esc(r.label)}</b>${r.gone ? ' <b class="neg">no longer on the board</b>' : ''}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))} ${esc(r[k] == null ? '-' : r[k])}`).join('')}${has('members') ? ` &middot; ${fFix(r.members, 0)} members` : ''}${has('avgRung') ? ` &middot; rung ${fFix(r.avgRung, 2)}` : ''}${has('avgVoices') ? ` &middot; ${fFix(r.avgVoices, 2)} voices` : ''}${blend && has('coins') ? ` &middot; ${fFix(r.coins, 0)} coins, ${fFix(r.coinsInMoney, 0)} in the money` : ''}</td>
+      </tr>
+      <tr class="${r.gone ? 'muted' : ''}">
+        <td class="s4tag">test</td>
+        <td>${fFix(r.avgTest, 2)}</td>
+        ${c2 ? `<td>${fFix(r.maxDrawdown, 2)}</td>` : ''}
+        ${c3 ? `<td>${fFix(r.worstTrade, 2)}</td>` : ''}
+        ${c4 ? `<td>${fFix(r.bestTrade, 2)}</td>` : ''}
+        ${c5 ? `<td>${fFix(r.wins, 1)}</td>` : ''}
+        ${c6 ? `<td>${fFix(r.stops, 1)}</td>` : ''}
+        ${c7 ? `<td>${fFix(r.grossPerTrade, 3)}</td>` : ''}
+        ${c8 ? `<td>${fcThirds(r.pnlThirds)}</td>` : ''}
+      </tr>
+      <tr class="s4hold ${r.gone ? 'muted' : ''}">
+        <td class="s4tag">hold</td>
+        <td>${fFix(r.avgHold, 2)}</td>
+        ${c2 ? `<td>${fFix(r.avgTrades, 1)}</td>` : ''}
+        ${c3 ? `<td>${fFix(r.avgVsLong, 2)}</td>` : ''}
+        ${c4 ? `<td>${fFix(r.beat, 0)}</td>` : ''}
+        ${c5 ? `<td>${fFix(r.pairs, 0)}</td>` : ''}
+        ${c6 ? `<td>${fFix(r.avgLead, 2)}</td>` : ''}
+        ${c7 ? '<td></td>' : ''}
+        ${c8 ? '<td></td>' : ''}
       </tr>`).join('')}</tbody>
-    </table></div>
+    </table>
     ${pager}`;
 }
 
 // the drop-down is wired the same on both screens, by one function, because two
 // copies of a control's handler is how the two screens come to behave differently
-function fWireCutPick(st) {
+function fWireCutPick(st, d) {
   const cs = $('#fCutPick');
-  if (cs) cs.onchange = () => { st.cut = cs.value; st.cutFrom = 0; fSave(); drawFunnel(); };
+  if (cs) cs.onchange = () => {
+    // A NEW RULE STARTS AT STEP 1 (owner order, 2026-09-04: "don't go back to
+    // step 7 the previous finished rule if a record set already exists"). A
+    // walk that has been cut is finished; dropping back into it at step 7 with
+    // its own rule still on it is not a new rule, it is the old one wearing the
+    // words. The walk is recognised by its own rule SENTENCE, which is the
+    // sentence the set it wrote carries -- so this works on sets cut before it
+    // was written, and never resets a walk that produced nothing.
+    if (cs.value === F_NEW && fWalkWasAlreadyCut(d)) fFreshWalk(st);
+    st.cut = cs.value; st.cutFrom = 0; fSave(); drawFunnel();
+  };
+}
+const fWalkWasAlreadyCut = (d) => !!(d && d.ruleSentence
+  && (d.cuts || []).some((c) => c.ruleSentence && c.ruleSentence === d.ruleSentence));
+function fFreshWalk(st) {
+  st.step = 1;
+  st.rule = { ranges: {}, allowed: {}, floors: {} };
+  st.closing = { key: 'rule' };
+  st.dial = null; st.dialA = null; st.dialB = null;
+  st.steps = []; st.backSteps = []; st.marks = [];
+  st.pick = null; st.leaders = []; st.conditions = {}; st.across = null;
+  st.acrossAsked = null; st.read = null; st.rebuilt = false;
 }
 // and one for the coin-and-shape box, for the same reason: this walk keeps its
 // place, the chosen board is remembered, and the next load is that board's own
@@ -5117,7 +5137,7 @@ function fWireUnit(st) {
 
 function fWireCut(d, st, cd) {
   fWireUnit(st);
-  fWireCutPick(st);
+  fWireCutPick(st, d);
   // the panels below exist only when the set opened; the two above are the way
   // out of one that did not, so they are wired first and unconditionally
   if (!cd) return;
@@ -5125,11 +5145,17 @@ function fWireCut(d, st, cd) {
   if (rn) rn.onclick = async () => {
     const box = $('#fCutName');
     const out = await tryPost(`api/stageset/${encodeURIComponent(cd.set.id)}/name`, { name: box.value });
-    if (out) {
-      box.value = out.name || '';
-      $('#fCutNameMsg').textContent = `renamed ${String(out.nameEditedAt || '').slice(0, 16)}`;
-      drawFunnel();
-    }
+    if (!out) return;
+    box.value = out.name || '';
+    $('#fCutNameMsg').textContent = `renamed ${String(out.nameEditedAt || '').slice(0, 16)}`;
+    // AND THE NAME AT THE TOP CHANGES WITH IT, ON THE SPOT (owner order,
+    // 2026-09-04). It used to wait for a whole redraw -- seconds on a big
+    // board -- and until then the title and the drop-down both still showed
+    // the old name, which reads as a rename that did not take.
+    const title = $('#fTitleName');
+    if (title) title.textContent = out.name || '';
+    const sel = $('#fCutPick');
+    if (sel) [...sel.options].forEach((o) => { if (o.value === cd.set.id) o.textContent = out.name || ''; });
   };
   document.querySelectorAll('[data-fcsort]').forEach((b) => {
     b.onclick = () => {
@@ -5203,14 +5229,14 @@ async function fAcrossFollow(st, status) {
   }
 }
 
-function fWire(st) {
+function fWire(st, d) {
   const go = (n, why) => {
     if (n < st.step) st.backSteps.push({ from: st.step, to: n, why: why || null });
     else if (n > st.step) markStep(st.step);
     st.step = n; fSave(); drawFunnel();
   };
   document.querySelectorAll('[data-fstep]').forEach((b) => { b.onclick = () => go(Number(b.dataset.fstep)); });
-  fWireCutPick(st);
+  fWireCutPick(st, d);
   const t = $('#fTarget');
   if (t) t.onchange = () => { st.target = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value) || 0)); fRememberForSet(st.set, { target: st.target }); fSave(); drawFunnel(); };
   const bb = $('#fBar');

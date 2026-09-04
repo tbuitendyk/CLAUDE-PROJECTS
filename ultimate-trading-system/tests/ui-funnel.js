@@ -17,7 +17,11 @@ const dials = ['gate', 'tHours', 'dMult', 'entry'];
 // second half of the run turns them on, so the first half proves the other half
 // of the owner's order: with none cut, the seven steps are what is drawn.
 let CUTS = [];
-const CUT = { id: 's4-ui-1', seq: 1, name: 'S4 #1 - XRPUSDT weekly-8d', createdAt: '2026-09-04T10:00:00Z', survivors: 116, target: 400 };
+const CUT = { id: 's4-ui-1', seq: 1, name: 'S4 #1 - XRPUSDT weekly-8d', createdAt: '2026-09-04T10:00:00Z',
+  survivors: 116, target: 400,
+  // the rule this set wrote, in the same words the walk says its own: it is how
+  // `new rule` knows the walk on hand is the one that was already cut (3.59.0)
+  ruleSentence: 'gate is directional' };
 function cutRows(q) {
   const rows = [];
   for (let i = 0; i < 3; i++) {
@@ -255,7 +259,12 @@ function requirePlaywright() {
   // order: with no Stage 4 record set on this coin and shape, the seven steps
   // are what is drawn, automatically
   expect(await page.locator('[data-fstep="1"]').count() === 1, 'with no Stage 4 record set cut, the seven steps are on screen');
-  expect(await page.locator('#fCutPick').count() === 0, 'and there is no Stage 4 record set drop-down to choose from');
+  expect(await page.locator('#fCutPick').count() === 1, 'the Stage 4 record set box is at the top whether or not anything has been cut');
+  expect(await page.locator('#fCutPick option').count() === 1
+    && (await page.locator('#fCutPick option').allTextContents())[0] === 'new rule',
+    `with nothing cut the box offers new rule and nothing else: ${JSON.stringify(await page.locator('#fCutPick option').allTextContents())}`);
+  expect((await page.locator('#fTitleName').innerText()).trim() === 'new rule', 'the bold name says what is selected while the steps are being walked');
+  expect(await page.locator('#fUnit').count() === 1, 'the coin and shape box is at the top, once');
   CUTS = [CUT];
   await page.reload({ waitUntil: 'domcontentloaded' });
   await page.waitForSelector('#fCutPick', { timeout: 15000 });
@@ -272,18 +281,30 @@ function requirePlaywright() {
   expect(/The sealed window is intact on this unit\./.test(cutText), `the sealed line is on the heading and speaks of this unit: ${cutText.slice(cutText.indexOf('sealed'), cutText.indexOf('sealed') + 120)}`);
   expect(/Step 7 - declare and cut: accept what the rule gives/.test(cutText), 'the last step and the closing are on the heading');
   expect(/21 choice\(s\) recorded on the way, 5 step\(s\) back/.test(cutText), 'how the walk went is on the heading');
-  expect(/S4 #1 - XRPUSDT weekly-8d/.test(cutText), "the Stage 4 record set's own name is shown after the header");
-  // the table: grouped columns, the pinned dials said once, the varying one a column
-  // the headings render in capitals (the stylesheet puts every th in capitals),
-  // so what is matched here is the wording, not the case
-  expect(/on the test window/i.test(cutText) && /on the held-back window/i.test(cutText) && /the group that votes on this coin/i.test(cutText),
-    'the columns are grouped by which window they are about');
+  expect(/S4 #1 - XRPUSDT weekly-8d/.test(cutText), "the Stage 4 record set's own name is the bold name at the top");
+  expect((await page.locator('#fTitleName').innerText()).trim() === 'S4 #1 - XRPUSDT weekly-8d',
+    'the bold name at the top is the Stage 4 record set showing');
+  expect(await page.locator('#fUnit').count() === 1 && await page.locator('#fCutPick').count() === 1,
+    'the two selectors are drawn once each, in the title section');
+  // the table: three rows a setting, the two stacked rows named on the row
+  const tags = await page.locator('#view td.s4tag').allTextContents();
+  expect(tags.length === 6 && tags[0].trim() === 'test' && tags[1].trim() === 'hold',
+    `each of the three settings is a what-it-is row plus a test row and a hold row: ${JSON.stringify(tags)}`);
   expect(/gate \(gate\) directional; decision \(decision\) argmax/.test(cutText) || /gate directional; decision argmax/.test(cutText),
     `a dial the rule pinned is said once above the table: ${cutText.slice(cutText.indexOf('Every one of these'), cutText.indexOf('Every one of these') + 200)}`);
   expect(/116 rows · page/.test(cutText), 'the table says how many rows the whole set holds');
-  const heads = await page.locator('#view thead tr').nth(1).innerText();
+  const heads = await page.locator('#view thead tr').first().innerText();
   expect(/avg test \$/i.test(heads) && /avg held-back \$/i.test(heads) && /worst losing streak \$/i.test(heads),
-    `the money columns are on the table: ${heads.replace(/\n/g, ' | ')}`);
+    `every heading carries both names: ${heads.replace(/\n/g, ' | ')}`);
+  // NO SIDEWAYS SCROLL BAR, measured rather than assumed (owner order)
+  const wide = await page.locator('#view').evaluate((el) => {
+    const over = [...el.querySelectorAll('*')].filter((n) => n.scrollWidth > n.clientWidth + 1).map((n) => `${n.tagName}.${n.className}`);
+    return { page: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, over };
+  });
+  expect(!wide.page && !wide.over.length, `nothing on this screen scrolls sideways: ${JSON.stringify(wide)}`);
+  // AND THE HEADING IS FROZEN
+  const stuck = await page.locator('#view table.s4 thead th').first().evaluate((el) => getComputedStyle(el).position);
+  expect(stuck === 'sticky', `the heading stays put while the rows scroll: ${stuck}`);
   expect(/is shopping the held-back window/.test(cutText), 'the screen says what sorting by the held-back column costs');
   // sorting asks the service for the whole set in that order, never the page
   const beforeSort = rowsAsked.length;
@@ -302,15 +323,27 @@ function requirePlaywright() {
   const paged = rowsAsked.slice(beforePage).pop();
   expect(!!paged && Number(paged.from) === 50 && paged.sort === 'avgHold', `next moves one page of 50 and keeps the order: ${JSON.stringify(paged)}`);
   // the rename is the one thing on this screen that writes
+  const rowsBefore = rowsAsked.length;
   await page.locator('#fCutName').fill('the XRP weekly rule');
   await page.locator('#fCutRename').click();
   await page.waitForTimeout(800);
   expect(renamed.length === 1 && /\/api\/stageset\/s4-ui-1\/name$/.test(renamed[0].url) && renamed[0].name === 'the XRP weekly rule',
     `rename posts the new name to the record sets' own name door: ${JSON.stringify(renamed)}`);
+  expect((await page.locator('#fTitleName').innerText()).trim() === 'the XRP weekly rule',
+    `the bold name at the top changes on the spot: ${await page.locator('#fTitleName').innerText()}`);
+  expect((await page.locator('#fCutPick option').allTextContents())[0] === 'the XRP weekly rule',
+    'the Stage 4 record set box still offers the old name');
+  expect(rowsAsked.length === rowsBefore, 'the rename re-read the whole board, which is seconds of waiting for a name change');
   // and new rule puts the seven steps back
   await page.locator('#fCutPick').selectOption('new');
   await page.waitForSelector('[data-fstep="1"]', { timeout: 15000 });
-  expect(await page.locator('[data-fstep="1"]').count() === 1, 'choosing new rule starts the seven steps again for this coin and shape');
+  expect(await page.locator('[data-fstep="1"]').count() === 1, 'choosing new rule starts the steps again for this coin and shape');
+  // AND IT STARTS AT STEP 1. The walk on hand was the one this set was cut
+  // from, and it was left on step 6; a new rule is a new rule (owner order).
+  expect(/Step 1/.test(await heading()), `new rule starts at step 1, not where the finished walk was left: ${await heading()}`);
+  const lastRead = posted[posted.length - 1] || {};
+  expect(lastRead.step === 1 && JSON.stringify((lastRead.rule || {}).allowed || {}) === '{}',
+    `and it starts with an empty rule: ${JSON.stringify(lastRead)}`);
   expect(await page.locator('#fCutPick').count() === 1, 'and the drop-down stays on the heading, so a set already cut is one press away');
   expect(await page.locator('#fCutPick option').count() === 2, 'the drop-down still offers the set and new rule');
   expect(errors.length === 0, `no page errors and no dialogs${errors.length ? `: ${errors.join('; ')}` : ''}`);

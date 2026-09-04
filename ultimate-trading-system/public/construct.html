@@ -65,6 +65,20 @@
   ol.fhow { margin:.2rem 0 .6rem 1.2rem; padding:0; } ol.fhow li { margin:.15rem 0; }
   table.fgrid { table-layout:fixed; } table.fgrid th, table.fgrid td { border:1px solid var(--line); }
   ul.frule { margin:.2rem 0 .5rem 1.2rem; padding:0; } ul.frule li { margin:.15rem 0; } ul.frule button { margin-left:.4rem; }
+  /* THE STAGE 4 RECORD SET'S TABLE (3.59.0, owner order). One setting is three
+     rows: what it is, then its test window and its held-back window stacked
+     underneath it and set to the right. Fixed layout so nothing can push the
+     table wider than the panel -- a sideways scroll bar is not allowed here --
+     and the headings stay put while the rows scroll under them. */
+  table.s4 { table-layout:fixed; }
+  table.s4 thead th { position:sticky; top:0; background:var(--panel); z-index:2; vertical-align:bottom; }
+  table.s4 thead th span.t, table.s4 thead th span.h { display:block; padding:.12rem 0; }
+  table.s4 thead th span.h { border-top:1px solid var(--line); }
+  table.s4 td { vertical-align:top; }
+  table.s4 td.s4what { text-align:left; border-bottom:none; padding:.55rem .45rem .1rem 0; }
+  table.s4 tr.s4hold td { border-bottom:2px solid var(--line); }
+  table.s4 td.s4tag { text-align:left; padding-left:1.6rem; color:var(--dim);
+                      text-transform:uppercase; font-size:.66rem; letter-spacing:.04em; }
   tr.dim td { color:var(--muted); }
   tr.selected td { background:var(--tile); box-shadow: inset 3px 0 0 var(--accent); }
   .tile { background:var(--tile); border:1px solid var(--line); border-radius:8px; padding:.55rem .7rem; }

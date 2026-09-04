@@ -659,3 +659,37 @@ made while building it that the design did not already settle.
     on HELD-BACK trades while the sentence above it describes the test window.
     Both are reported to the owner, neither is touched. Second digit: new
     behaviour and three new controls.
+91. **The Stage 4 screen laid out the way the owner asked for it** (3.59.0,
+    owner order 2026-09-04, four changes).
+
+    * **The title and the two selectors are always at the top**, in their own
+      section: which coin and shape, which Stage 4 record set, and the bold
+      name of whatever is showing -- whether or not anything has ever been cut
+      from that board. Only the section BELOW it changes with the choice, so
+      the screen does not rearrange itself under the owner. The Stage 4 record
+      set box is drawn even when the only thing in it is `new rule`, and the
+      walk's own heading no longer draws either selector: exactly one of each,
+      in one place, and a test counts them.
+    * **A rename changes the bold name on the spot** -- the title and the box,
+      both, with no redraw. It used to wait for a whole read of the board,
+      eight seconds on the owner's set, and until then both still showed the
+      old name, which reads as a rename that did not take.
+    * **A setting is three rows, not one wide one.** The old table put every
+      number in its own column and needed a sideways scroll bar, which the
+      owner has ruled out. Now: what the setting IS on its own row, and
+      underneath it, set to the right, its test window and its held-back
+      window stacked. Nine columns carry fifteen numbers. Every heading holds
+      both names, the test one above the held-back one, lined up with the two
+      rows under it, and either can be pressed to order the whole set by it.
+      The heading is frozen, so scrolling never loses what is being looked at.
+      The browser harness MEASURES both: nothing on the screen has a scroll
+      width wider than its client width, and the heading's computed position
+      is sticky.
+    * **`new rule` starts at step 1** when the walk on hand is the one that was
+      already cut. A finished walk re-entered at step 7 with its own rule still
+      on it is not a new rule, it is the old one wearing the words. The walk is
+      recognised by its own rule SENTENCE -- the same sentence the set it wrote
+      carries, both from `ruleSentence` -- so it works on sets cut before this
+      was written and never throws away a walk that produced nothing.
+
+    Second digit: new behaviour and a rearranged screen.

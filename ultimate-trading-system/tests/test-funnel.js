@@ -2364,10 +2364,9 @@ module.exports = {
     // AND IT IS ON THE WALK'S HEADING TOO. On the Stage 4 heading alone it made
     // the walk a one-way door: `new rule` chosen, and no control left on screen
     // to get back to a set already cut.
-    const head = page.slice(page.indexOf('function fHead(d, st) {'), page.indexOf('function fNoiseLine('));
-    assert.ok(head.includes('${fCutPickBox(d, st || {})}'), 'the walk\'s heading does not carry the Stage 4 record set drop-down, so the walk is a one-way door');
-    assert.ok(page.slice(page.indexOf('function fCutPickBox('), page.indexOf('function fCutPick(')).includes("if (!cuts.length) return '';"),
-      'a coin and shape with nothing cut from it still gets a drop-down with only new rule in it');
+    const head = page.slice(page.indexOf('function fHead(d) {'), page.indexOf('function fNoiseLine('));
+    assert.ok(!head.includes('fUnitPicker(d)') && !head.includes('fCutPickBox('),
+      'the walk\'s own heading still draws a picker; both belong to the title section above it (3.59.0)');
     // the heading the owner drew, line by line
     for (const line of ['Rule:', 'Rule build settings:', 'settings survive', 'The sealed window is intact on',
       'This set carries', 'scrambled copies of the whole table']) {
@@ -2375,8 +2374,10 @@ module.exports = {
     }
     // the name of the set is shown after the header, and it is the set's own
     const table = page.slice(page.indexOf('function fCutTable('), page.indexOf('function fWireCut('));
-    assert.ok(/<h3 style="margin-top:0">\$\{esc\(cd\.set\.name\)\}<\/h3>/.test(table),
-      'the Stage 4 record set\'s name is not shown above its table');
+    // the name is in the title section at the top now (3.59.0), not above the table
+    const title = page.slice(page.indexOf('function fTitle('), page.indexOf('const F_NEW_NAME'));
+    assert.ok(/<h3 id="fTitleName"[^>]*>\$\{esc\(name\)\}<\/h3>/.test(title),
+      'the Stage 4 record set\'s name is not the bold name in the title section');
     // ONE write on the whole screen
     const wire = page.slice(page.indexOf('function fWireCut('), page.indexOf('function fRuleBox('));
     // the two controls that are the way OUT of a set that will not open are
@@ -2400,8 +2401,8 @@ module.exports = {
   aStageFourSetThatWillNotOpenStillDrawsThePicker() {
     const page = src('public/construct.js');
     const draw = page.slice(page.indexOf('async function fDrawCut('), page.indexOf('function fCutPick('));
-    assert.ok(/if \(bad\) \{[\s\S]*?fCutPick\(d, st\)/.test(draw), 'a Stage 4 set that will not read leaves the owner with no way out of it');
-    assert.ok(/if \(cd\.totalling \|\| cd\.waiting\) \{[\s\S]*?fCutPick\(d, st\)/.test(draw), 'a set whose parent is being totalled leaves the owner with no way out of it');
+    assert.ok(/if \(bad\) \{[\s\S]*?fTitle\(d, st, named\)/.test(draw), 'a Stage 4 set that will not read leaves the owner with no way out of it');
+    assert.ok(/if \(cd\.totalling \|\| cd\.waiting\) \{[\s\S]*?fTitle\(d, st, named\)/.test(draw), 'a set whose parent is being totalled leaves the owner with no way out of it');
     assert.ok(draw.includes('fWireCut(d, st, null)'), 'the way out is drawn and not wired');
     // and the branch that chooses between the two screens cannot loop
     const pick = page.slice(page.indexOf('function fCutChosen('), page.indexOf('async function fDrawCut('));
@@ -2415,6 +2416,113 @@ module.exports = {
     const read = page.slice(page.indexOf('d = await tryPost(`api/funnel/'), page.indexOf('} finally { waitEnd(); }'));
     assert.ok(read.includes("view: (st.cut && st.cut !== F_NEW) ? 'cut' : null,"),
       'showing a Stage 4 record set still pays for a step reading nothing draws');
+  },
+
+  // ---- THE OWNER'S FOUR FORMATTING ORDERS (3.59.0, 2026-09-04) -------------
+  //
+  // "the coin and shape and stage 4 record set and the bold name are always at
+  // the top in a title/selector section, regardless of stage 4 data present or
+  // not ... when the selection of either (a) a record set or (b) new rule is
+  // made then the header section below the title/selector section is what
+  // changes".
+  theTitleAndTheTwoSelectorsAreAlwaysAtTheTop() {
+    const page = src('public/construct.js');
+    const title = page.slice(page.indexOf('function fTitle('), page.indexOf('const F_NEW_NAME'));
+    assert.ok(title.includes('${fUnitPicker(d)}') && title.includes('${fCutPickBox(d, st)}'),
+      'the title section does not carry both selectors');
+    assert.ok(/<h3 id="fTitleName"/.test(title), 'the title section has no bold name, so a rename has nothing to change');
+    // and the drop-down is drawn whether or not anything has been cut
+    const box = page.slice(page.indexOf('function fCutPickBox('), page.indexOf('function fTitle('));
+    assert.ok(!/return '';/.test(box), 'a coin and shape with nothing cut from it loses the Stage 4 record set box');
+    assert.ok(/<option value="new"/.test(box), 'the box does not offer new rule');
+    // every screen the Funnel draws opens with it: the walk, the set, the two failures
+    for (const [what, frag] of [['the walk', '`<div class="panel">${fTitle(d, st, F_NEW_NAME)}</div>'],
+      ['a set showing', '`<div class="panel">${fTitle(d, st, cd.set.name)}</div>'],
+      ['a set that will not open', '`<div class="panel">${fTitle(d, st, named)}</div>']]) {
+      assert.ok(page.includes(frag), `${what} does not start with the title and selector section`);
+    }
+    // ...and nothing else draws a second copy of either selector
+    assert.equal((page.match(/id="fUnit"/g) || []).length, 1, 'the coin and shape box is drawn in more than one place');
+    assert.equal((page.match(/id="fCutPick"/g) || []).length, 1, 'the Stage 4 record set box is drawn in more than one place');
+  },
+
+  // "when the rename button is used the new name must be reflected immediately
+  // in the title/selector section bold name."
+  renamingAStageFourSetChangesTheBoldNameOnTheSpot() {
+    const page = src('public/construct.js');
+    const wire = page.slice(page.indexOf('function fWireCut('), page.indexOf('function fRuleBox('));
+    const rn = wire.slice(wire.indexOf("$('#fCutRename')"), wire.indexOf("document.querySelectorAll('[data-fcsort]')"));
+    assert.ok(rn.includes("const title = $('#fTitleName');") && rn.includes('title.textContent = out.name'),
+      'the rename does not change the bold name at the top');
+    assert.ok(rn.includes("if (o.value === cd.set.id) o.textContent = out.name"),
+      'the rename leaves the old name in the Stage 4 record set box');
+    assert.ok(!/drawFunnel\(\)/.test(rn),
+      'the rename waits for a whole redraw, so the old name stays on screen for as long as the board takes to read');
+  },
+
+  // "when new rule is selected for the first time it always starts at step 1 --
+  // don't go back to step 7 the previous finished rule if a record set already
+  // exists." The walk is recognised by its own rule sentence.
+  async aNewRuleStartsAtStepOneWhenTheWalkHasAlreadyBeenCut() {
+    const f = await unitFixture();
+    try {
+      const rule = { ranges: {}, allowed: { gate: ['active'] }, floors: {} };
+      const cut = await stages.cutFunnelSet(f.id, { unit: f.keys[0], rule, target: 2 });
+      const file = path.join(SETS_DIR, `${cut.id}.json`);
+      try {
+        // the set carries the sentence, and the walk that made it says the same
+        const same = await stages.funnelRead(f.id, { step: 7, unit: f.keys[0], rule });
+        const mine = (same.cuts || []).find((c) => c.id === cut.id);
+        assert.ok(mine && mine.ruleSentence, 'a cut set travels without the rule it wrote, so nothing can recognise it');
+        assert.equal(mine.ruleSentence, same.ruleSentence,
+          'the sentence a set carries and the sentence its own walk says are not the same words, so the walk cannot be recognised');
+        // a DIFFERENT rule on the same board is not that walk
+        const other = await stages.funnelRead(f.id, { step: 7, unit: f.keys[0], rule: { ranges: {}, allowed: { gate: ['directional'] }, floors: {} } });
+        assert.notEqual((other.cuts || []).find((c) => c.id === cut.id).ruleSentence, other.ruleSentence,
+          'an unfinished walk is mistaken for the one that was cut, so choosing new rule would throw it away');
+      } finally { try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ } }
+    } finally { f.cleanup(); }
+    // and the page acts on it
+    const page = src('public/construct.js');
+    const pick = page.slice(page.indexOf('function fWireCutPick('), page.indexOf('function fWireUnit('));
+    assert.ok(pick.includes('if (cs.value === F_NEW && fWalkWasAlreadyCut(d)) fFreshWalk(st);'),
+      'choosing new rule drops back into the finished walk at whatever step it ended on');
+    assert.ok(pick.includes('c.ruleSentence && c.ruleSentence === d.ruleSentence'),
+      'the finished walk is recognised by something other than the rule it wrote');
+    const fresh = page.slice(page.indexOf('function fFreshWalk('), page.indexOf('function fWireUnit('));
+    for (const bit of ['st.step = 1;', "st.rule = { ranges: {}, allowed: {}, floors: {} };", 'st.steps = []', 'st.marks = []']) {
+      assert.ok(fresh.includes(bit), `a fresh walk does not clear ${bit}`);
+    }
+  },
+
+  // "the point is no horizontal scroll bar is allowed ... main column names
+  // must be frozen so scrolling down does not lose the context."
+  theStageFourTableIsThreeRowsPerSettingAndCannotScrollSideways() {
+    const page = src('public/construct.js');
+    const table = page.slice(page.indexOf('function fCutTable('), page.indexOf('function fWireCutPick('));
+    assert.ok(!/overflow-x/.test(table), 'the table is back inside a sideways scroller');
+    assert.ok(!/white-space:nowrap/.test(table), 'the cells refuse to wrap, which is what pushes the table sideways');
+    assert.ok(/<table class="s4">/.test(table), 'the table does not use the fixed layout that keeps it inside the panel');
+    // three rows per setting: what it is, then test, then hold
+    assert.ok(/<td class="s4what" colspan="\$\{cols\}"/.test(table), 'what a setting IS does not span the table on its own row');
+    assert.ok(/<td class="s4tag">test<\/td>/.test(table) && /<td class="s4tag">hold<\/td>/.test(table),
+      'the two stacked rows are not named on the row itself, so a reader halfway down cannot tell them apart');
+    assert.ok(table.indexOf('<td class="s4tag">test</td>') < table.indexOf('<td class="s4tag">hold</td>'),
+      'the held-back row is drawn above the test row; the owner asked for test first');
+    // every heading carries both names, lined up with the two rows under it
+    for (const pair of [['avg test $', 'avg held-back $'], ['worst losing streak $', 'trades'],
+      ['biggest single loss $', 'vs always long $'], ['best single trade $', 'beat its own null set'],
+      ['trades won', 'null copies'], ['stopped out', 'lead']]) {
+      const [t, h] = pair;
+      assert.ok(table.includes(`<span class="t">${t}`), `the heading is missing the test name "${t}"`);
+      assert.ok(table.includes(`<span class="h">${h}`), `the heading is missing the held-back name "${h}"`);
+    }
+    // the one column that cannot be sorted must not offer a sorter that does nothing
+    assert.ok(!/money by third\$\{fcSort/.test(table), 'money by third offers a sort the engine ignores');
+    // and the heading is frozen by the stylesheet, not by hope
+    const css = src('public/construct.html');
+    assert.ok(/table\.s4 thead th \{[^}]*position:sticky[^}]*top:0/.test(css), 'the heading is not frozen, so scrolling loses it');
+    assert.ok(/table\.s4 \{ table-layout:fixed/.test(css), 'the table can still be pushed wider than the panel by one long cell');
   },
 
 };
