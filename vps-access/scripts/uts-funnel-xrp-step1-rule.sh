@@ -5,7 +5,7 @@
 set -uo pipefail
 S=${1:-s3-mtl42g1m-3}; U="XRPUSDT|||weekly-8d"
 R='{"ranges":{"tHours":{"min":65,"max":137}},"allowed":{"gate":["directional"]},"floors":{}}'
-curl -sS -m 300 -H 'content-type: application/json' -d "{\"step\":1,\"unit\":\"$U\",\"rule\":$R,\"target\":200,\"barPct\":80,\"closing\":{\"key\":\"rule\"}}" "http://127.0.0.1:8094/api/funnel/$S/read" \
+curl -sS -m 300 -H 'content-type: application/json' -d "{\"step\":1,\"unit\":\"$U\",\"rule\":$R,\"target\":200,\"barPct\":${BAR:-90},\"closing\":{\"key\":\"rule\"}}" "http://127.0.0.1:8094/api/funnel/$S/read" \
 | node -e 'let raw="";process.stdin.on("data",c=>raw+=c).on("end",()=>{const d=JSON.parse(raw);if(d.error){console.log("ERROR",d.error);return;}const r=d.reading||{};const h=r.honesty||{};const f=(x,n=2)=>(x==null||!isFinite(x)?"-":Number(x).toFixed(n));
   console.log("survive",d.survivors,"of",d.of," bar",JSON.stringify(d.check)," clear",h.clear,"of",h.of,"(chance ~"+Math.round(h.byChance)+")"," sentence:",d.ruleSentence);
   console.log("dial".padEnd(13),"movement".padStart(9),"check".padStart(9),"range$".padStart(8),"values".padStart(7),"even".padStart(6));
