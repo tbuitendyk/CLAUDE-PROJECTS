@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **d764f02a48a7 — what the box is serving**, not from the working tree.
+Generated from **33c2ce0f227d — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -239,7 +239,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `XRPUSDT`
 - `ZECUSDT`
 
-## Sentences the page prints (27)
+## Sentences the page prints (28)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards.
@@ -268,11 +268,12 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - ” deleted.
 - and the saved models and tuning files belonging to them.
 - priced the same trade and were folded into one)
+- of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)
 
-## Every word, flat (294)
+## Every word, flat (303)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above act. active ADAUSDT add against agree all alongside and any are argmax arm at ATOMUSDT attaches auto AVAXUSDT band bar BCHUSDT be been belonging best blank BNBUSDT Boards Boards. BOOST both box boxes breakout but buy by Campaign campaign campaigns cannot carried carry chain chunk coin conviction count Currently Daily data decide decision declared default Delete deleted. Deleting deployed. description different direction directional DOGEUSDT DOTUSDT doubles Each each end ends enough entry estimate ETCUSDT ETHUSDT every Every everything evidence exam exist existing families fee files finished first fit. folded forecast forward four from gate going greenlight greenlights has here history hold holds in into is it it. its judged keep keeps. kept kind kinds known lands last later launched layout lean legacy LINKUSDT live loaded locked LOGREG LTCUSDT market member members members. minted models money name names never new next No no not nothing now null of off on once one only or others out own pairs parent parent. passes per permanently permute plain price priced prices prices. Progress quarter Quorum quorum rank read reads record records refuse remove Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. settings setup setups. shape share side side. singles size so SOLUSDT stage Stage stages start started static stayed still stop Sweep sweeps tab the The them them. there These they this This those three to trade Trade trail train trained training travels tree triples TRXUSDT tuning tuning-slice undone. unit units units. UNIUSDT universe until up UTC View voice voices vote votes voting way Weekly were What when while whole why will window with working writes XLMUSDT XRPUSDT yet ZECUSDT
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 65h 8-day 89h about above act. active ADAUSDT add against agree all alongside and another any are argmax arm as at ATOMUSDT attaches auto AVAXUSDT band bar BCHUSDT be been belonging best blank block BNBUSDT Boards Boards. BOOST both box boxes breakout but buy by Campaign campaign campaigns cannot carried carry chain chunk coin conviction count Currently Daily data decide decision declared default Delete deleted. Deleting deployed. description different direction directional DOGEUSDT DOTUSDT doubles Each each end ends enough entry estimate ETCUSDT ETHUSDT every Every everything evidence exam exist existing families fee fewer files finished first fit. folded forecast forward four from gate going greenlight greenlights has here history hold holds in into is it it. its judged keep keeps. kept kind kinds known lands last later launched layout lean legacy LINKUSDT live loaded locked LOGREG LTCUSDT market member members members. minted models money name names never new next No no not nothing now null of off on once one only or orders others out own pairs parent parent. passes per permanently permute places plain price priced prices prices. Progress quarter Quorum quorum rank read reads record records refuse remove Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape share side side. singles size so SOLUSDT stage Stage stages start started static stayed still stop Sweep sweeps tab than that the The them them. there These they this This those three to trade Trade trail train trained training travels tree triples TRXUSDT tuning tuning-slice undone. unit units units. UNIUSDT universe until up UTC View voice voices vote votes voting way Weekly were What when while whole why will window with working writes XLMUSDT XRPUSDT yet ZECUSDT
 ```
 
 ---
