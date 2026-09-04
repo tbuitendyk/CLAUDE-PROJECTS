@@ -6,6 +6,7 @@
 set -uo pipefail
 cd /opt/ultimate-trading-system
 node -e '
+try{
 const s=require("./lib/stages");
 for (const d of s.listSets().filter((x)=>x.stage===3)) {
   const doc=s.getSet(d.id);
@@ -19,5 +20,8 @@ for (const d of s.listSets().filter((x)=>x.stage===3)) {
     console.log(`   ${"".padEnd(26)} test window ${w?`${new Date(w.fromTs).toISOString().slice(0,10)} to ${new Date(w.toTs).toISOString().slice(0,10)} (${Math.round(w.days)} days)`:"cannot be worked out"}`);
   }
   const ex=s.exposureOf(doc,(sw.units||[]),{holdHours:137});
-  console.log(`   exposure: stake ${ex.stake} coins ${ex.coins} most at once ${ex.mostAtOnce} window ${ex.window?Math.round(ex.window.days)+" days":"NONE — "+ex.why}`);
-}'
+  console.log(`   exposure: stake ${ex.stake} coins ${ex.coins} most at once ${ex.mostAtOnce} window ${ex.window?Math.round(ex.window.days)+" days":"NONE - "+ex.why}`);
+}
+}catch(e){console.log("THREW:", e && e.message);}
+const S=require("./lib/stages");
+console.log("exports:", ["testWindowOfUnit","exposureOf","sealedWindowOf","unitNameOf"].map((k)=>k+"="+(typeof S[k])).join(" "));'
