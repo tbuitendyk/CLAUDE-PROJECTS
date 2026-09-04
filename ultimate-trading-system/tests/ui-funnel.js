@@ -13,6 +13,35 @@ const SET = 's3-ui-funnel';
 const UNIT = 'XRPUSDT|||weekly-8d';
 const REAL_THOURS = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'funnel-step2-thours.json'), 'utf8'));
 const dials = ['gate', 'tHours', 'dMult', 'entry'];
+// THE STAGE 4 RECORD SETS OF THIS COIN AND SHAPE (3.58.0). Empty until the
+// second half of the run turns them on, so the first half proves the other half
+// of the owner's order: with none cut, the seven steps are what is drawn.
+let CUTS = [];
+const CUT = { id: 's4-ui-1', seq: 1, name: 'S4 #1 - XRPUSDT weekly-8d', createdAt: '2026-09-04T10:00:00Z', survivors: 116, target: 400 };
+function cutRows(q) {
+  const rows = [];
+  for (let i = 0; i < 3; i++) {
+    rows.push({ si: i, label: `q1 directional t${65 + i * 24} · argmax auto 24/7`, tHours: 65 + i * 24, gate: 'directional',
+      avgTest: 8.4 - i, avgHold: 2.1 - i * 0.5, avgTrades: 24 - i, avgVsLong: 1.2, beat: 19, pairs: 20, avgLead: 2.1,
+      maxDrawdown: 12 + i, worstTrade: -3.2, bestTrade: 9.1, wins: 14, stops: 3, grossPerTrade: 0.42,
+      pnlThirds: [2, 3, 3.4], members: 8, avgRung: 3, avgVoices: 5 });
+  }
+  const on = ['label', 'tHours', 'avgTest', 'avgHold', 'avgTrades', 'avgVsLong', 'beat', 'pairs', 'avgLead',
+    'maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 'grossPerTrade', 'pnlThirds', 'members', 'avgRung', 'avgVoices'];
+  return {
+    set: { ...CUT, unit: UNIT, unitName: 'XRPUSDT weekly-8d', parent: { id: SET, name: 'S3 #ui' }, release: '3.58.0',
+      rule: {}, ruleSentence: 'tHours 65 to 137; gate is directional', nameEditedAt: null,
+      closing: { key: 'rule', label: 'accept what the rule gives', detail: null },
+      warnings: [], check: { kind: 'scrambles', k: 20, barPct: 90, bar: 18, chance: 0.14 },
+      steps: 21, backSteps: 5, marks: [], replayChecked: { same: true } },
+    of: 137760, sealedOn: { sealed: true, of: 1, missing: 0, why: null },
+    record: { same: true, now: 116, had: 116, gone: 0 },
+    varying: ['tHours'], fixed: { gate: 'directional', decision: 'argmax' },
+    has: Object.fromEntries(on.map((k) => [k, true])),
+    total: 116, from: Number(q.get('from') || 0), per: 50,
+    sort: q.get('sort') || 'avgTest', dir: q.get('dir') || 'desc', rows,
+  };
+}
 function reply(body) {
   const rule = body.rule || {};
   const gateFixed = Array.isArray((rule.allowed || {}).gate);
@@ -22,6 +51,7 @@ function reply(body) {
     survivors: gateFixed ? 141120 : 275520, of: 275520, target: body.target || null,
     check: { kind: 'scrambles', k: 20, barPct: 75, bar: 15, chance: 0.28 },
     conditions: {}, ruleSentence: gateFixed ? 'gate is directional' : 'nothing yet',
+    cuts: CUTS,
   };
   if (body.step === 1) {
     return { ...base, reading: { dials: dials.map((d, i) => ({ dial: d, m: 0.5 - i * 0.1, range: 10 - i, values: [1, 2, 3], balance: { even: 1, balanced: true } })),
@@ -89,9 +119,21 @@ function requirePlaywright() {
   page.on('pageerror', (e) => errors.push(`page error: ${e.message}`));
   page.on('dialog', async (d) => { errors.push(`dialog: ${d.message()}`); await d.dismiss(); });
   const posted = [];                       // every read the page asked for, so what it wrote into the rule can be checked
+  const rowsAsked = [];                    // every ask for a Stage 4 set's rows, so sorting and paging can be checked
+  const renamed = [];                      // the one write this screen is allowed to make
+  await page.route('**/api/stageset/*/name', async (route) => {
+    const body = JSON.parse(route.request().postData() || '{}');
+    renamed.push({ url: route.request().url(), name: body.name });
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ name: body.name, nameEditedAt: '2026-09-04T12:00:00Z' }) });
+  });
   await page.route('**/api/funnel/**', async (route) => {
     const req = route.request();
     if (req.url().endsWith('/read')) { const body = JSON.parse(req.postData() || '{}'); posted.push(body); return route.fulfill({ contentType: 'application/json', body: JSON.stringify(reply(body)) }); }
+    if (/\/rows(\?|$)/.test(req.url())) {
+      const q = new URL(req.url()).searchParams;
+      rowsAsked.push(Object.fromEntries(q));
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify(cutRows(q)) });
+    }
     return route.fulfill({ contentType: 'application/json', body: '{}' });
   });
   await page.addInitScript(({ set }) => { localStorage.setItem('cx-tab', 'funnel'); localStorage.setItem('cx-boards-view', JSON.stringify({ s3: set })); }, { set: SET });
@@ -208,6 +250,69 @@ function requirePlaywright() {
   expect(asked !== null && !!asked.rule, `the press carries the rule: ${JSON.stringify(asked)}`);
   expect(/all 12 match what the sweep stored/.test(await page.locator('#view').innerText()), 'the answer is reported beside the button');
   expect(!/NOT checked against the sweep/.test(await page.locator('#view').innerText()), 'a checked rebuild must not read as unchecked');
+  // ---- THE STAGE 4 RECORD SETS OF THIS COIN AND SHAPE (3.58.0) ----
+  // everything above ran with NONE cut, which is the other half of the owner's
+  // order: with no Stage 4 record set on this coin and shape, the seven steps
+  // are what is drawn, automatically
+  expect(await page.locator('[data-fstep="1"]').count() === 1, 'with no Stage 4 record set cut, the seven steps are on screen');
+  expect(await page.locator('#fCutPick').count() === 0, 'and there is no Stage 4 record set drop-down to choose from');
+  CUTS = [CUT];
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.waitForSelector('#fCutPick', { timeout: 15000 });
+  expect(await page.locator('[data-fstep="1"]').count() === 0, 'showing a Stage 4 record set, the seven step buttons are gone');
+  expect(await page.locator('#fCutName').count() === 1 && await page.locator('#fCutRename').count() === 1,
+    'the heading is display only except for the rename control');
+  const cutText = await page.locator('#view').innerText();
+  expect(/S3 #ui - XRPUSDT weekly-8d - 116 of 137,760 settings/.test(cutText), `the heading names the set, the coin and shape and the counts: ${cutText.slice(0, 200)}`);
+  expect(/Rule: tHours \(t\) 65 to 137; gate is directional/.test(cutText), 'the rule is on the heading with its dials named');
+  expect(/116 of 137,760 settings survive and the target is 400/.test(cutText), 'the survive line is on the heading');
+  expect(/bold when a value beats at least 90% of the 20 copies - that is 18 of them - by chance about 14% of values would/.test(cutText),
+    'the rule build settings line is on the heading');
+  expect(/This set carries 20 scrambled copies of the whole table/.test(cutText), 'the scrambled copies line is on the heading');
+  expect(/The sealed window is intact on this unit\./.test(cutText), `the sealed line is on the heading and speaks of this unit: ${cutText.slice(cutText.indexOf('sealed'), cutText.indexOf('sealed') + 120)}`);
+  expect(/Step 7 - declare and cut: accept what the rule gives/.test(cutText), 'the last step and the closing are on the heading');
+  expect(/21 choice\(s\) recorded on the way, 5 step\(s\) back/.test(cutText), 'how the walk went is on the heading');
+  expect(/S4 #1 - XRPUSDT weekly-8d/.test(cutText), "the Stage 4 record set's own name is shown after the header");
+  // the table: grouped columns, the pinned dials said once, the varying one a column
+  // the headings render in capitals (the stylesheet puts every th in capitals),
+  // so what is matched here is the wording, not the case
+  expect(/on the test window/i.test(cutText) && /on the held-back window/i.test(cutText) && /the group that votes on this coin/i.test(cutText),
+    'the columns are grouped by which window they are about');
+  expect(/gate \(gate\) directional; decision \(decision\) argmax/.test(cutText) || /gate directional; decision argmax/.test(cutText),
+    `a dial the rule pinned is said once above the table: ${cutText.slice(cutText.indexOf('Every one of these'), cutText.indexOf('Every one of these') + 200)}`);
+  expect(/116 rows · page/.test(cutText), 'the table says how many rows the whole set holds');
+  const heads = await page.locator('#view thead tr').nth(1).innerText();
+  expect(/avg test \$/i.test(heads) && /avg held-back \$/i.test(heads) && /worst losing streak \$/i.test(heads),
+    `the money columns are on the table: ${heads.replace(/\n/g, ' | ')}`);
+  expect(/is shopping the held-back window/.test(cutText), 'the screen says what sorting by the held-back column costs');
+  // sorting asks the service for the whole set in that order, never the page
+  const beforeSort = rowsAsked.length;
+  await page.locator('[data-fcsort="avgHold"]').click();
+  await page.waitForTimeout(600);
+  const sorted = rowsAsked.slice(beforeSort).pop();
+  expect(!!sorted && sorted.sort === 'avgHold' && sorted.dir === 'desc' && Number(sorted.from) === 0,
+    `pressing a column sorts the whole set by it, high to low, from the first page: ${JSON.stringify(sorted)}`);
+  await page.locator('[data-fcsort="avgHold"]').click();
+  await page.waitForTimeout(600);
+  expect((rowsAsked.pop() || {}).dir === 'asc', 'pressing it again flips the order');
+  // the paging bar moves a page and keeps the order
+  const beforePage = rowsAsked.length;
+  await page.locator('[data-bpage^="S4R:"]').last().click();
+  await page.waitForTimeout(600);
+  const paged = rowsAsked.slice(beforePage).pop();
+  expect(!!paged && Number(paged.from) === 50 && paged.sort === 'avgHold', `next moves one page of 50 and keeps the order: ${JSON.stringify(paged)}`);
+  // the rename is the one thing on this screen that writes
+  await page.locator('#fCutName').fill('the XRP weekly rule');
+  await page.locator('#fCutRename').click();
+  await page.waitForTimeout(800);
+  expect(renamed.length === 1 && /\/api\/stageset\/s4-ui-1\/name$/.test(renamed[0].url) && renamed[0].name === 'the XRP weekly rule',
+    `rename posts the new name to the record sets' own name door: ${JSON.stringify(renamed)}`);
+  // and new rule puts the seven steps back
+  await page.locator('#fCutPick').selectOption('new');
+  await page.waitForSelector('[data-fstep="1"]', { timeout: 15000 });
+  expect(await page.locator('[data-fstep="1"]').count() === 1, 'choosing new rule starts the seven steps again for this coin and shape');
+  expect(await page.locator('#fCutPick').count() === 1, 'and the drop-down stays on the heading, so a set already cut is one press away');
+  expect(await page.locator('#fCutPick option').count() === 2, 'the drop-down still offers the set and new rule');
   expect(errors.length === 0, `no page errors and no dialogs${errors.length ? `: ${errors.join('; ')}` : ''}`);
   await browser.close();
   srv.kill();

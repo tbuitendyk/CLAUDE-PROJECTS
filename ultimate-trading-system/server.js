@@ -908,6 +908,26 @@ app.get('/api/funnel/sets', (req, res) => {
   });
 });
 
+// ONE STAGE 4 SET'S OWN VIEW (3.58.0): the settings it kept, with the numbers
+// from the board it was cut from. Read-only -- it writes nothing, changes no
+// rule, and starts nothing.
+app.get('/api/funnel/set/:id/rows', async (req, res) => {
+  let out;
+  try {
+    out = await stages.funnelSetRows(req.params.id, {
+      from: req.query.from, n: req.query.n, sort: req.query.sort, dir: req.query.dir,
+    });
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+  if (out && out.needsTally) {
+    // its parent has no tables yet: the same answer the walk gives, so the screen
+    // starts a totalling rather than reporting an empty set
+    const t = stages.ensureTally(out.needsTally);
+    if (t.totalling || t.waiting || t.failed) return res.json({ totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null });
+    return res.status(404).json({ error: 'the stage 3 set this was cut from has no totalled tables yet' });
+  }
+  return res.json(out);
+});
+
 app.get('/api/stageset/:id/coins', (req, res) => {
   const out = stages.stage3Coins(req.params.id, req.query || {});
   if (!out) {

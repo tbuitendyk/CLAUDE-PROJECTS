@@ -4627,6 +4627,9 @@ async function funnelRead(id, state = {}) {
     of: all.length,
     holdsAxis,
     rebuilt: !!(rich && rich.settings),
+    // THE STAGE 4 SETS ALREADY CUT FROM THIS COIN AND SHAPE (3.58.0). One read,
+    // one truth about which sets belong to the board on screen.
+    cuts: funnelCutsFor(id, board.unit),
     reading: null,
     // the conditions a mark is recorded for, worked out for THIS step (§16.5)
     conditions: {},
@@ -4661,6 +4664,10 @@ async function funnelRead(id, state = {}) {
   const kind = F.checkKindOf(check);
   out.check = { kind, k: keptN, barPct: F.barPctOf(state), bar, chance: kind === 'scrambles' ? F.chanceOf(bar, keptN) : null };
   out.conditions.checkIsHalves = kind === 'halves';
+  // IN THE STAGE 4 VIEW THERE IS NO STEP TO READ (3.58.0). The heading there
+  // still wants the check, the units and the cut sets; the grid, the region and
+  // the rest are minutes of work for a screen that is not drawn.
+  if (state.view === 'cut') return out;
   const [ha, hb] = kind === 'halves' ? F.splitHalf(rows, seed) : [null, null];
 
   if (step === 1) {
@@ -4995,6 +5002,139 @@ function listFunnelSets(parentId = null) {
     .map((x) => getSet(x.id))
     .filter((d) => d && (!parentId || ((d.parent || {}).id === parentId)))
     .sort((a, b) => String(b.createdAt || '').localeCompare(String(a.createdAt || '')));
+}
+
+// ---- THE STAGE 4 SETS OF ONE COIN AND SHAPE, AND THE ROWS ONE HOLDS ----------
+//
+// (3.58.0, owner order 2026-09-04: "for the given selected coin and shape at the
+// top of Funnel ... there's an option to view the one or more Stage 4 record sets
+// that have been generated".) The cut sets travel on the Funnel read itself,
+// matched on the PARENT and on the UNIT, so the page never has to ask a second
+// door which sets belong to what is on screen. A set cut on the blended board
+// carries no unit; the page's word for that board is 'all', and they are the
+// same board.
+function funnelCutsFor(parentId, unitKey) {
+  const want = unitKey == null || String(unitKey) === 'all' ? null : String(unitKey);
+  return listFunnelSets(parentId)
+    .filter((d) => (d.unit || null) === want)
+    .map((d) => ({
+      id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
+      survivors: (d.counts || {}).survivors ?? null, target: (d.counts || {}).target ?? null,
+    }));
+}
+
+// THE ROWS OF ONE STAGE 4 SET. Membership comes from the RECORD -- the survivors
+// it wrote down -- and the numbers are laid on from its parent's board for the
+// same unit. Re-deriving membership from the rule would show today's answer under
+// yesterday's name: a set is a decision, not a query. The rule IS re-applied,
+// once, and the answer is REPORTED, so a set whose rule no longer reproduces its
+// own survivors says so on the screen instead of quietly showing something else.
+//
+// The board is the same board the walk read -- funnelBoard, then the rebuilt
+// numbers laid on -- so the figures here and the figures the rule was built on
+// cannot be two different readings.
+async function funnelSetRows(id, opts = {}) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  const parentId = (doc.parent || {}).id || null;
+  const parent = parentId ? getSet(parentId) : null;
+  if (!parent) throw new Error(`the stage 3 set this was cut from (${parentId || 'unnamed'}) is gone, so its rows cannot be read back`);
+  const t = readTally(parentId);
+  if (!t) return { needsTally: parentId };
+  const S4 = require('./funnelset');
+  const F = require('./funnel');
+  const board = await funnelBoard(parentId, t, doc.unit || 'all');
+  const all = withFunnelRich(board.all, readFunnelRich(parentId));
+  const wanted = doc.survivors || [];
+  // ONLY THE SURVIVORS ARE HELD IN HAND. A map of every label on the board is a
+  // second copy of a 137,760-row index built on every sort and every page turn;
+  // the set names a hundred or so, and a hundred is what is kept.
+  const want = new Set(wanted.map((s) => s.label));
+  const byLabel = new Map();
+  for (const r of all) if (want.has(r.label)) byLabel.set(r.label, r);
+  const rows = wanted.map((s) => byLabel.get(s.label) || { si: s.si, label: s.label, gone: true });
+  const gone = rows.filter((r) => r.gone).length;
+  // DOES THE RULE STILL GIVE THIS LIST? Applied once against the same board, and
+  // the answer travels to the screen -- never acted on here.
+  const now = S4.applyRule(all, S4.normaliseRule(doc.rule));
+  const had = new Set(wanted.map((s) => s.label));
+  const same = now.length === wanted.length && now.every((r) => had.has(r.label));
+  // WHICH DIALS STILL VARY among the survivors, and what the rest are fixed at.
+  // A dial the same on every row is a fact about the whole set: said once above
+  // the table rather than repeated down a column of one repeated value.
+  const varying = [];
+  const fixed = {};
+  for (const dial of F.ALL_DIALS) {
+    const seen = new Set();
+    for (const r of rows) { seen.add(F.keyOf(r[dial])); if (seen.size > 1) break; }
+    if (seen.size > 1) varying.push(dial);
+    else if (rows.length) fixed[dial] = rows[0][dial] === undefined ? null : rows[0][dial];
+  }
+  // WHICH COLUMNS ANYTHING IS BEHIND. A column of dashes says the numbers are
+  // missing; a named line above the table says WHY, and that is the honest one.
+  const has = {};
+  for (const r of rows) {
+    for (const [k, v] of Object.entries(r)) {
+      if (Array.isArray(v)) { if (v.some((x) => x != null)) has[k] = true; continue; }
+      if (v != null) has[k] = true;
+    }
+  }
+  const keys = new Set();
+  for (const r of rows) for (const k of Object.keys(r)) if (!Array.isArray(r[k])) keys.add(k);
+  const sort = opts.sort && keys.has(String(opts.sort)) ? String(opts.sort)
+    : (keys.has('avgTest') ? 'avgTest' : 'label');
+  const dir = String(opts.dir || 'desc') === 'asc' ? 1 : -1;
+  // A ROW WITH NOTHING IN THE SORTED COLUMN SITS AT THE BOTTOM EITHER WAY, and
+  // ties break on the setting's own name, so the same sort always gives the same
+  // order -- a page boundary that moves under a reload loses rows off the list.
+  rows.sort((x, y) => {
+    const a = x[sort]; const b = y[sort];
+    const an = a == null; const bn = b == null;
+    if (an !== bn) return an ? 1 : -1;
+    if (!an) {
+      const na = Number(a); const nb = Number(b);
+      const c = (Number.isFinite(na) && Number.isFinite(nb) && a !== '' && b !== '')
+        ? na - nb : String(a).localeCompare(String(b));
+      if (c !== 0) return c * dir;
+    }
+    return String(x.label).localeCompare(String(y.label));
+  });
+  const total = rows.length;
+  const per = Math.max(1, Math.min(500, Math.floor(Number(opts.n) || 50)));
+  const from = Math.max(0, Math.min(Math.max(0, total - 1), Math.floor(Number(opts.from) || 0)));
+  // THE SEALED WINDOW ON THIS UNIT, not across the parent's ten. A set cut on one
+  // coin and shape is graded on that one, and "intact on all 10 unit(s)" beside a
+  // one-unit set answers a question nobody asked.
+  const sealedOn = (() => {
+    const s = doc.sealed || null;
+    if (!s) return { sealed: false, of: 0, missing: 0, why: 'this set recorded no sealed window' };
+    const us = Array.isArray(s.units) ? s.units : [];
+    const mine = doc.unit ? us.filter((u) => unitKeyOf(u) === doc.unit) : us;
+    if (doc.unit && !mine.length) return { sealed: false, of: 0, missing: 0, why: `its parent's records name no unit '${doc.unit}'` };
+    const missing = mine.filter((u) => !u || !u.reserve).length;
+    return { sealed: mine.length > 0 && missing === 0, of: mine.length, missing, why: missing ? (s.why || 'a unit has no reserved window') : null };
+  })();
+  return {
+    set: {
+      id: doc.id, seq: doc.seq, name: doc.name, createdAt: doc.createdAt,
+      nameEditedAt: doc.nameEditedAt || null,
+      release: doc.release || null, parent: doc.parent || null,
+      unit: doc.unit || null, unitName: doc.unitName || null,
+      target: (doc.counts || {}).target ?? doc.target ?? null,
+      survivors: (doc.counts || {}).survivors ?? wanted.length,
+      rule: doc.rule, ruleSentence: doc.ruleSentence || S4.ruleSentence(doc.rule),
+      closing: doc.closing || null, warnings: doc.warnings || [],
+      check: doc.check || null, boardNull: doc.boardNull || null,
+      steps: (doc.steps || []).length, backSteps: (doc.backSteps || []).length,
+      marks: doc.marks || [], replayChecked: doc.replayChecked || null,
+    },
+    of: all.length,
+    sealedOn,
+    record: { same, now: now.length, had: wanted.length, gone },
+    varying, fixed, has,
+    total, from, per, sort, dir: dir === 1 ? 'asc' : 'desc',
+    rows: rows.slice(from, from + per),
+  };
 }
 
 function stage3Ranked(id, from, n, filters = null) {
@@ -5478,7 +5618,7 @@ module.exports = {
   testWindowOfUnit, exposureOf,
   funnelAcrossStart, funnelAcrossStatus,
   sealedWindowOf, sealedFromUnits, sealedBehind, startSealedFill, sealedFillWaiting, sealedFillPromise, noiseTwinOf, needsBoardNullStamp,
-  survivorLabelsOf,
+  survivorLabelsOf, funnelCutsFor, funnelSetRows,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn, isAlwaysLabel, alwaysLabelsOf, needsAlwaysStrip, stripAlwaysGate, alwaysStripPending,
   tallyRunPromise: () => (tallyRun ? tallyRun.promise : null),

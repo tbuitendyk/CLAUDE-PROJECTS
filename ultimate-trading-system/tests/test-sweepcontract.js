@@ -307,7 +307,16 @@ module.exports = {
       // (theBlendIsChosenByNameAndNothingChosenIsTheFirstUnit) holds the
       // engine to accepting exactly that literal, and to refusing a key the
       // set does not hold
-      'fUnit']);
+      'fUnit',
+      // the Funnel's Stage 4 record set picker (3.58.0): same shape again --
+      // every set option is an id the SERVICE listed for the open coin and
+      // shape, and the one literal value, 'new', is the walk and is never sent
+      // anywhere. A remembered id the service no longer lists is dropped for
+      // the newest rather than asked for (fCutChosen), and the service refuses
+      // an id that is not a Stage 4 set at all -- test-funnel.js
+      // (aStageFourSetThatWillNotOpenStillDrawsThePicker and
+      // theFunnelOffersTheStageFourSetsCutFromTheCoinAndShape) hold both.
+      'fCutPick']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));

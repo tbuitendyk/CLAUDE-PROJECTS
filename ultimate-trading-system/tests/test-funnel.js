@@ -2221,4 +2221,200 @@ module.exports = {
       'the page still reports the length of a capped list as the count');
   },
 
+  // ---- THE STAGE 4 RECORD SETS ON THE FUNNEL (3.58.0) ----------------------
+  //
+  // Owner order, 2026-09-04: a coin and shape with Stage 4 record sets cut from
+  // it opens on one of them, through a drop-down that replaces the rule-building
+  // heading; `new rule` puts the seven steps back.
+  async theFunnelOffersTheStageFourSetsCutFromTheCoinAndShape() {
+    const f = await unitFixture();
+    try {
+      const rule = { ranges: {}, allowed: { gate: ['active'] }, floors: {} };
+      const cut = await stages.cutFunnelSet(f.id, { unit: f.keys[0], rule, target: 2 });
+      try {
+        // on the board it was cut from, it is offered
+        const on = await stages.funnelRead(f.id, { step: 1, unit: f.keys[0], rule: { ranges: {}, allowed: {}, floors: {} } });
+        assert.ok(Array.isArray(on.cuts), 'the read does not carry the Stage 4 sets of the board on screen');
+        assert.ok(on.cuts.some((c) => c.id === cut.id), 'the set cut from this coin and shape is not offered on it');
+        // on ANOTHER coin and shape of the same stage 3 set, it is NOT
+        const other = await stages.funnelRead(f.id, { step: 1, unit: f.keys[1], rule: { ranges: {}, allowed: {}, floors: {} } });
+        assert.ok(!(other.cuts || []).some((c) => c.id === cut.id),
+          'a set cut on one coin and shape is offered on another, which is a rule about one coin shown under the name of a different one');
+        // and the blended board is a board of its own
+        const blend = await stages.funnelRead(f.id, { step: 1, unit: 'all', rule: { ranges: {}, allowed: {}, floors: {} } });
+        assert.ok(!(blend.cuts || []).some((c) => c.id === cut.id), 'a unit set is offered on the blended board');
+        // showing a set reads NO step: the grid and the region are minutes of
+        // work for a screen that is not drawn
+        const asCut = await stages.funnelRead(f.id, { step: 3, unit: f.keys[0], dialA: 'tHours', dialB: 'gate', view: 'cut', rule: { ranges: {}, allowed: {}, floors: {} } });
+        assert.equal(asCut.reading, null, 'the Stage 4 view still pays for a step reading nothing draws');
+        assert.ok(asCut.check && asCut.units && Array.isArray(asCut.cuts), 'the Stage 4 view is not given the check, the boards or the sets');
+      } finally {
+        try { fs.rmSync(path.join(SETS_DIR, `${cut.id}.json`), { force: true }); } catch (_) { /* fixture */ }
+      }
+    } finally { f.cleanup(); }
+  },
+
+  // THE ROWS ARE WHAT THE SET WROTE DOWN. A set is a decision; re-deriving its
+  // membership from its rule would show today's answer under yesterday's name.
+  // The rule is re-applied once and the disagreement REPORTED, never acted on.
+  async aStageFourSetsRowsAreTheSettingsItWroteDownNotWhatItsRuleFindsToday() {
+    const f = await unitFixture();
+    try {
+      const rule = { ranges: {}, allowed: { gate: ['active'] }, floors: {} };
+      const cut = await stages.cutFunnelSet(f.id, { unit: f.keys[0], rule, target: 2 });
+      const file = path.join(SETS_DIR, `${cut.id}.json`);
+      try {
+        const first = await stages.funnelSetRows(cut.id, {});
+        assert.equal(first.total, cut.counts.survivors, 'the table holds a different number of settings from the count the set recorded');
+        assert.ok(first.rows.every((r) => cut.ruleSentence != null && typeof r.label === 'string'), 'rows come back without their setting names');
+        assert.ok(first.record.same, 'a set just cut does not reproduce itself');
+        assert.ok(first.rows.every((r) => r.avgTest != null), 'the rows carry no money, so the board was never read for them');
+        // now take one survivor OFF the record: the table must follow the
+        // record, and must say the rule no longer gives this list
+        const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+        const dropped = doc.survivors.pop();
+        doc.counts.survivors = doc.survivors.length;
+        fs.writeFileSync(file, JSON.stringify(doc));
+        const after = await stages.funnelSetRows(cut.id, {});
+        assert.equal(after.total, doc.survivors.length, 'the table shows what the rule finds today rather than what the set kept');
+        assert.ok(!after.rows.some((r) => r.label === dropped.label), 'a setting the set does not name is in its table');
+        assert.ok(!after.record.same, 'the set no longer reproduces itself and the screen is not told');
+        assert.equal(after.record.now, first.total, 'the count the rule gives today is not reported');
+        assert.equal(after.record.had, doc.survivors.length, 'the count the set wrote down is not reported');
+        // a survivor whose setting has left the board is shown, marked, never dropped
+        doc.survivors.push({ si: 999, label: 'a setting that is not on this board' });
+        doc.counts.survivors = doc.survivors.length;
+        fs.writeFileSync(file, JSON.stringify(doc));
+        const gone = await stages.funnelSetRows(cut.id, {});
+        assert.equal(gone.record.gone, 1, 'a survivor no longer on the board is not counted');
+        assert.ok(gone.rows.some((r) => r.gone), 'a survivor no longer on the board is dropped from the table instead of shown as missing');
+      } finally { try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ } }
+    } finally { f.cleanup(); }
+  },
+
+  // Sorting orders the WHOLE set before the page is cut, so page one really is
+  // the top of everything; and it never changes who is in it.
+  async theStageFourTableSortsTheWholeSetAndPagesIt() {
+    const f = await unitFixture();
+    try {
+      const rule = { ranges: {}, allowed: {}, floors: {} };
+      const cut = await stages.cutFunnelSet(f.id, { unit: f.keys[0], rule });
+      const file = path.join(SETS_DIR, `${cut.id}.json`);
+      try {
+        const all = await stages.funnelSetRows(cut.id, { n: 500 });
+        assert.ok(all.total >= 4, `the fixture should keep every setting, got ${all.total}`);
+        const down = await stages.funnelSetRows(cut.id, { n: 500, sort: 'avgTest', dir: 'desc' });
+        const up = await stages.funnelSetRows(cut.id, { n: 500, sort: 'avgTest', dir: 'asc' });
+        const m = (x) => x.rows.map((r) => r.avgTest);
+        assert.deepEqual(m(down), [...m(down)].sort((a, b) => b - a), 'high to low does not order the rows high to low');
+        assert.deepEqual(m(up), [...m(up)].sort((a, b) => a - b), 'low to high does not order the rows low to high');
+        assert.deepEqual([...down.rows.map((r) => r.label)].sort(), [...up.rows.map((r) => r.label)].sort(),
+          'flipping the order changes WHO is in the table, which a sort must never do');
+        // the page is a window on the sorted whole, and the count is the whole
+        const p1 = await stages.funnelSetRows(cut.id, { n: 2, from: 0, sort: 'avgTest', dir: 'desc' });
+        const p2 = await stages.funnelSetRows(cut.id, { n: 2, from: 2, sort: 'avgTest', dir: 'desc' });
+        assert.equal(p1.total, all.total, 'the paging bar would say the page is the whole set');
+        assert.equal(p1.rows.length, 2, 'a page of two came back a different size');
+        assert.deepEqual(p1.rows.concat(p2.rows).map((r) => r.label), down.rows.slice(0, 4).map((r) => r.label),
+          'the pages do not join up into the sorted whole, so a row falls between them');
+        // a column nothing can be sorted by falls back rather than throwing
+        const junk = await stages.funnelSetRows(cut.id, { n: 500, sort: 'notAColumn' });
+        assert.equal(junk.sort, 'avgTest', 'an unknown column is not refused for the default one');
+      } finally { try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ } }
+    } finally { f.cleanup(); }
+  },
+
+  // A dial the rule pinned is the same on every row: said once above the table,
+  // never repeated down a column of one repeated value.
+  async aDialTheRuleFixedIsSaidOnceAboveTheStageFourTable() {
+    const f = await unitFixture();
+    try {
+      const rule = { ranges: {}, allowed: { gate: ['active'] }, floors: {} };
+      const cut = await stages.cutFunnelSet(f.id, { unit: f.keys[0], rule });
+      const file = path.join(SETS_DIR, `${cut.id}.json`);
+      try {
+        const out = await stages.funnelSetRows(cut.id, { n: 500 });
+        assert.ok(!out.varying.includes('gate'), 'a dial the rule pinned still gets a column of one repeated value');
+        assert.equal(out.fixed.gate, 'active', 'the pinned dial is not named with the value every row carries');
+        assert.ok(out.varying.includes('tHours'), 'a dial that still varies among the survivors has no column');
+        assert.ok(!('tHours' in out.fixed), 'a dial that varies is also reported as fixed, so the line above the table would lie');
+        // and what the table can show at all is read off the rows, never assumed
+        assert.ok(out.has.avgTest && out.has.avgHold, 'the money columns are not reported as available');
+        assert.ok(!out.has.maxDrawdown, 'a set with nothing rebuilt reports the rebuilt columns as available, so the table draws dashes');
+      } finally { try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ } }
+    } finally { f.cleanup(); }
+  },
+
+  // The heading of a Stage 4 record set is DISPLAY ONLY except for the rename:
+  // no step buttons, no rule box, nothing that writes.
+  theStageFourScreenIsDisplayOnlyExceptForTheRename() {
+    const page = src('public/construct.js');
+    const cut = page.slice(page.indexOf('function fCutPickBox('), page.indexOf('function fWireCut('));
+    assert.ok(!/data-fstep/.test(cut), 'the Stage 4 view still draws the seven step buttons');
+    assert.ok(!/The rule so far/.test(cut), 'the Stage 4 view still draws the rule-building box');
+    assert.ok(!/fClear|fAddRange|fKeepValues|fCutBtn|fRebuild/.test(cut), 'the Stage 4 view carries a control that changes the rule');
+    assert.ok(/id="fCutName"/.test(cut) && /id="fCutRename"/.test(cut), 'the Stage 4 view has no rename control, and the owner asked for exactly that one');
+    // the drop-down offers every set cut from this board plus the way back
+    assert.ok(/id="fCutPick"/.test(cut), 'there is no Stage 4 record set drop-down');
+    // AND IT IS NOT THE CUT BUTTON'S OWN ID. `fCut` is the button on step 7 that
+    // writes a Stage 4 set; two controls under one name is one help entry short
+    // and one description wrong (found by the help tests, 2026-09-04).
+    assert.ok(!/id="fCut"/.test(cut), 'the drop-down has taken the id of the button that writes a Stage 4 set');
+    assert.ok(/<option value="new"/.test(cut), 'the drop-down offers no way back to the seven steps');
+    // AND IT IS ON THE WALK'S HEADING TOO. On the Stage 4 heading alone it made
+    // the walk a one-way door: `new rule` chosen, and no control left on screen
+    // to get back to a set already cut.
+    const head = page.slice(page.indexOf('function fHead(d, st) {'), page.indexOf('function fNoiseLine('));
+    assert.ok(head.includes('${fCutPickBox(d, st || {})}'), 'the walk\'s heading does not carry the Stage 4 record set drop-down, so the walk is a one-way door');
+    assert.ok(page.slice(page.indexOf('function fCutPickBox('), page.indexOf('function fCutPick(')).includes("if (!cuts.length) return '';"),
+      'a coin and shape with nothing cut from it still gets a drop-down with only new rule in it');
+    // the heading the owner drew, line by line
+    for (const line of ['Rule:', 'Rule build settings:', 'settings survive', 'The sealed window is intact on',
+      'This set carries', 'scrambled copies of the whole table']) {
+      assert.ok(cut.includes(line), `the heading is missing the line "${line}" the owner drew`);
+    }
+    // the name of the set is shown after the header, and it is the set's own
+    const table = page.slice(page.indexOf('function fCutTable('), page.indexOf('function fWireCut('));
+    assert.ok(/<h3 style="margin-top:0">\$\{esc\(cd\.set\.name\)\}<\/h3>/.test(table),
+      'the Stage 4 record set\'s name is not shown above its table');
+    // ONE write on the whole screen
+    const wire = page.slice(page.indexOf('function fWireCut('), page.indexOf('function fRuleBox('));
+    // the two controls that are the way OUT of a set that will not open are
+    // wired before anything that needs the set to have opened
+    assert.ok(wire.indexOf('if (!cd) return;') < wire.indexOf("$('#fCutRename')"),
+      'the rename is wired before the guard that says the set opened, so it reaches for a set that is not there');
+    assert.ok(wire.indexOf('fWireUnit(st);') < wire.indexOf('if (!cd) return;')
+      && wire.indexOf('fWireCutPick(st);') < wire.indexOf('if (!cd) return;'),
+      'the two ways out of a set that will not open are wired after the guard that returns early');
+    const posts = wire.match(/tryPost\(/g) || [];
+    assert.equal(posts.length, 1, `the Stage 4 view makes ${posts.length} writes; it may make exactly one, the rename`);
+    assert.ok(wire.includes('api/stageset/${encodeURIComponent(cd.set.id)}/name'), 'the rename does not use the record sets\' own name door');
+    // and the money warning is on it: this screen shows the one look
+    assert.ok(/avg held-back \$/.test(table), 'the held-back money is not on the table the next sections read');
+    assert.ok(/is shopping the held-back window/.test(page.slice(page.indexOf('function fCutHead('), page.indexOf('function fcSort('))),
+      'the screen shows the one held-back look and does not say what sorting by it costs');
+  },
+
+  // A set that will not open must still draw the picker, or the owner is shut
+  // inside it with no control on screen to leave by.
+  aStageFourSetThatWillNotOpenStillDrawsThePicker() {
+    const page = src('public/construct.js');
+    const draw = page.slice(page.indexOf('async function fDrawCut('), page.indexOf('function fCutPick('));
+    assert.ok(/if \(bad\) \{[\s\S]*?fCutPick\(d, st\)/.test(draw), 'a Stage 4 set that will not read leaves the owner with no way out of it');
+    assert.ok(/if \(cd\.totalling \|\| cd\.waiting\) \{[\s\S]*?fCutPick\(d, st\)/.test(draw), 'a set whose parent is being totalled leaves the owner with no way out of it');
+    assert.ok(draw.includes('fWireCut(d, st, null)'), 'the way out is drawn and not wired');
+    // and the branch that chooses between the two screens cannot loop
+    const pick = page.slice(page.indexOf('function fCutChosen('), page.indexOf('async function fDrawCut('));
+    assert.ok(pick.includes('if (!cuts.length) return null;'), 'a board with no Stage 4 sets does not fall through to the walk');
+    assert.ok(pick.includes('return cuts[0].id;'), 'a board with sets does not open on the newest of them');
+    const br = page.slice(page.indexOf('const cutId = fCutChosen(st, d);'), page.indexOf('const r = d.reading || {};'));
+    assert.ok(br.includes("if (cutId !== st.cut) { st.cut = cutId; fSave(); }"),
+      'the chosen set is redrawn without being remembered, so every read asks again');
+    // and showing a set asks for no step reading: the grid and the region are
+    // minutes of work for a screen that is not drawn
+    const read = page.slice(page.indexOf('d = await tryPost(`api/funnel/'), page.indexOf('} finally { waitEnd(); }'));
+    assert.ok(read.includes("view: (st.cut && st.cut !== F_NEW) ? 'cut' : null,"),
+      'showing a Stage 4 record set still pays for a step reading nothing draws');
+  },
+
 };

@@ -603,3 +603,59 @@ made while building it that the design did not already settle.
     screen printed its length, so "20 setting(s)" meant "at least 20" -- the
     true count travels now and the screen reads "N of M setting(s) came back
     different". Third digit: a fix to a fix.
+90. **The Funnel shows the Stage 4 record sets of the coin and shape on
+    screen** (3.58.0, owner order 2026-09-04: "for the given selected coin and
+    shape at the top of Funnel ... there's an option to view the one or more
+    Stage 4 record sets that have been generated"). Cutting a set used to be
+    the last thing that happened to it: it was written, it was listed on other
+    screens, and the Funnel went straight back to step 1 as though nothing had
+    been decided. Now a coin and shape with nothing cut from it opens on the
+    seven steps exactly as before, and one with sets cut from it opens on the
+    newest of them: the rule-building heading is replaced by a drop-down of
+    those sets plus `new rule`, the step buttons and the rule box are gone, and
+    the heading becomes the record of that set - its rule, its target size, the
+    bar it was read under, its scrambled copies, its sealed window, the closing
+    it ended on, how many choices and how many steps back the walk took, and
+    every mark. Underneath it, the settings it kept, one row each, sortable and
+    paged.
+
+    Six decisions inside it:
+
+    * **The sets travel on the Funnel read**, matched on the parent AND the
+      unit. One read, one truth about which sets belong to the board on screen.
+      A set cut on one coin and shape is never offered on another.
+    * **Membership comes from the RECORD, never from re-applying the rule.** A
+      set is a decision, not a query: re-deriving it would show today's answer
+      under yesterday's name. The rule IS re-applied once and the answer
+      REPORTED - a set whose rule no longer reproduces its own survivors says
+      so on the screen, and a survivor no longer on the board is shown marked
+      rather than dropped.
+    * **The numbers are the same board the walk read** - the unit's records
+      with the rebuilt numbers laid on. The figures on this screen and the
+      figures the rule was built on cannot be two readings.
+    * **A dial the rule pinned gets no column.** It is the same on every row,
+      so it is said once above the table. Only dials that still vary get one.
+    * **The held-back money IS on the table**, and the screen says what reading
+      down it costs. The mock-up's line "Every money figure on this screen is
+      test money" would have been FALSE with that column there, so it was
+      replaced by one that names which column is which and says that sorting by
+      the held-back one and taking the best is shopping the single look the
+      whole design protects. The alternative - leaving the column off - would
+      have been me curating what the owner may see, which RULE FIVE forbids,
+      and Verify, History, Tune and Greenlight all start from it.
+    * **The drop-down is on BOTH headings.** Put on the Stage 4 heading alone it
+      made the walk a one-way door: `new rule` chosen, and no control left on
+      screen to get back to a set already cut. Writing a set now leaves the walk
+      on screen too, or pressing a step button straight after a cut would have
+      left it.
+    * **Nothing on the screen writes except the rename**, and a test counts the
+      writes so it stays that way.
+
+    Two things found while building it and NOT built: the four benchmark
+    comparisons a record carries (against holding the coin long, holding it
+    short, always long, always short) and the test-window trade count are on
+    the records and are not carried onto the board, so they cannot be shown
+    here without growing every board read; and step 6's `fewest trades` limits
+    on HELD-BACK trades while the sentence above it describes the test window.
+    Both are reported to the owner, neither is touched. Second digit: new
+    behaviour and three new controls.

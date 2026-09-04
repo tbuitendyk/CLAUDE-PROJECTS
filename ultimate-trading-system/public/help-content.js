@@ -525,6 +525,18 @@ window.HELP = {
         what: 'Which coin-and-shape unit this walk is on. One rule per unit - ten units, ten rules.',
         more: 'A unit\'s board is its own records: one row per setting it holds (a unit holds only the settings that place different orders on it), every dial on it, its own test money and its own scrambled copies. The units are listed in the order of the parent\'s stage 2 table on Boards - its saved sort - and the walk opens on the first of them. Each unit keeps its own walk, so you can leave one half-done and come back. "all units together" is the blended table, one row per setting averaged over the units that hold it; it hides what any one coin does and is kept only so the choice is yours.',
       },
+      fCutPick: {
+        what: 'Which Stage 4 record set to look at, of the ones already cut from this coin and shape. Choose "new rule" to start the steps again and cut another.',
+        more: 'A coin and shape with nothing cut from it opens on step 1, the way it always has. Once one or more have been cut from it, it opens on the newest instead: the heading becomes the record of that set - its rule, its target size, the bar it was read under, whether its window was sealed, and how the walk went - and the settings it kept are listed below it, one row each, sortable by any column. Nothing on that screen changes anything except the name. Only the sets cut from THIS coin and shape are offered; another has its own.',
+      },
+      fCutName: {
+        what: 'The name of the Stage 4 record set showing. Type a new one and press rename.',
+        more: 'Eighty characters at most, and no two record sets may share a name. The name is what every list and heading shows, so changing it here changes it everywhere.',
+      },
+      fCutRename: {
+        what: 'Saves the name typed beside it.',
+        more: 'It is the only control on this screen that changes anything. Everything else on it is the record of a decision already made, and a record you can edit is not a record.',
+      },
       fAcross: {
         what: 'Applies the rule you have built on this unit to each of the other units\' records, one at a time, and reports how many come out positive.',
         more: 'This is the honest form of "does it hold elsewhere": the same rule on other coins and shapes, judged against each of their own scrambled copies. It is pressed rather than automatic because it reads every other unit\'s board, one at a time. The result is kept for this exact rule; change the rule and it asks again.',
