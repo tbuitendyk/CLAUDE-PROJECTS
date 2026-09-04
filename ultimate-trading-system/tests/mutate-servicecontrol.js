@@ -539,7 +539,12 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "  const same = now.length === wanted.length && now.every((r) => had.has(r.label));", "  const same = true;",
     'aStageFourSetsRowsAreTheSettingsItWroteDownNotWhatItsRuleFindsToday',
     'a Stage 4 set whose rule no longer gives its own survivors reads as if it did, so a moved board is invisible'],
-  [path.join(ROOT, 'lib', 'stages.js'), "    if (seen.size > 1) varying.push(dial);", "    varying.push(dial);",
+  // the break has to leave VALID JavaScript: deleting the `if` off this line
+  // orphans the `else` under it, the file stops parsing, and the harness sees a
+  // load failure rather than "FAIL <this test>" -- which reads as a guard that
+  // is not being checked when it is. Widening the condition breaks the same
+  // behaviour and parses (found by the guards themselves, 2026-09-04).
+  [path.join(ROOT, 'lib', 'stages.js'), "    if (seen.size > 1) varying.push(dial);", "    if (seen.size >= 1) varying.push(dial);",
     'aDialTheRuleFixedIsSaidOnceAboveTheStageFourTable',
     'every dial gets a column again, including the ones the rule pinned to one value on every row'],
   [path.join(ROOT, 'lib', 'stages.js'), "  const per = Math.max(1, Math.min(500, Math.floor(Number(opts.n) || 50)));", "  const per = 500;",
