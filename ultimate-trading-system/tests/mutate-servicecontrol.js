@@ -485,9 +485,10 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'funnel.js'), "      const counts = cm.length > 0 && beaten >= bar;", "      const counts = cm.length > 0 && cm.every((v) => beats(r.mean, v));",
     'aValueCountsWhenItBeatsAtLeastTheBarOfTheCopies',
     'the bar on the screen is drawn and never read, and every value still has to beat all ten'],
-  [path.join(ROOT, 'public', 'construct.js'), "      bar: st.bar,                                          // null: the engine's default bar\n", "",
+  [path.join(ROOT, 'public', 'construct.js'), "      barPct: st.barPct,                                    // null: the engine's default share of the copies\n",
+    "      barPct: null,                                         // null: the engine's default share of the copies\n",
     'theScreenOffersTheBarAndSendsItWithEveryRead',
-    'the owner sets seven, the box reads eight, and every bold row on the screen is under a bar the owner did not choose'],
+    'the box is drawn and saved but every read ignores it — the walk is always read at the default share'],
   // ---- A PART NUMBERS ITS ROWS FROM ITS PLACE IN THE BLOCK (3.47.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "        payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: from });", "        payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: 0 });",
     'theStageThreePricingIsHandedOutInParts',
@@ -591,7 +592,7 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "S4.normaliseRule(state.rule), require('./funnel').barPctOf(state)]);", "S4.normaliseRule(state.rule)]);",
     'theAcrossIsKeyedOnTheBarAsWellAsTheRule',
     'the same rule asked again under another bar is answered from the old reading'],
-  [path.join(ROOT, 'public', 'construct.js'), "    if (saved && 'bar' in saved) delete saved.bar;\n", '',
+  [path.join(ROOT, 'public', 'construct.js'), "  if (saved && 'bar' in saved) delete saved.bar;\n", '',
     'theScreenOffersTheBarAndSendsItWithEveryRead',
     'a walk saved under the old count keeps it, and the page silently carries a stale field'],
 ];
