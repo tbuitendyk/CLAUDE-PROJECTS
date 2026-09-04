@@ -4815,12 +4815,30 @@ async function funnelRead(id, state = {}) {
     // a looser bar would be compared against copies measured under a stricter
     // one, which is not a comparison.
     const atLeast = Number.isFinite(Number(state.regionAtLeast)) ? Number(state.regionAtLeast) : 0;
+    // THE TWO WALLS THAT ARE NOT MONEY (3.65.0, owner order 2026-09-04: "write
+    // some code that expands the REGION SIZE as i wanted"). Loosening the money
+    // bar alone can only fill holes inside one slice of the board, and a board
+    // still free on a word-valued dial is cut into slices a region may never
+    // cross -- so the size can sit dead still however low the bar goes. `across`
+    // lets the region step over a named word-valued dial; `reach` lets a step
+    // span more than one notch, so a setting simply missing from the board is
+    // not a wall either. Both default to what they have always been.
+    const across = (Array.isArray(state.regionAcross) ? state.regionAcross : []).filter((d) => F.CATEGORICAL_DIALS.includes(d));
+    const reach = Number.isFinite(Number(state.regionReach)) && Number(state.regionReach) >= 1 ? Math.floor(Number(state.regionReach)) : 1;
     const region = (list, moneyOf = F.money) => require('./plateau').widestRegion(
       list.map((r) => ({ ...r, pnl: moneyOf(r), trades: r.avgTrades == null ? 1 : r.avgTrades })),
-      { minTrades: 0, atLeast, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },
+      { minTrades: 0, atLeast, across, reach, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },
     );
     out.reading = region(rows);
     out.reading.atLeast = atLeast;
+    out.reading.regionReach = reach;
+    out.reading.regionAcross = across;
+    // WHICH WORD-VALUED DIALS THE SCREEN MAY OFFER, read off this board and
+    // never typed (RULE FIVE). A dial the rule already pinned has one value
+    // here and crossing it would do nothing, so it is not offered.
+    out.reading.canCross = F.CATEGORICAL_DIALS
+      .filter((d) => new Set(rows.map((r) => (r[d] == null ? 'none' : String(r[d])))).size > 1)
+      .map((d) => ({ dial: d, values: [...new Set(rows.map((r) => (r[d] == null ? 'none' : String(r[d]))))].sort() }));
     // THE REGION AS A RULE (§16.4, step 5): its edges on every ordered dial and
     // its values on every word-valued one, with what keeping it would leave
     const keep = S4.regionRule(out.reading, { ordered, categorical: F.CATEGORICAL_DIALS });
@@ -4831,6 +4849,8 @@ async function funnelRead(id, state = {}) {
     // own members: the settings it holds that do NOT make money, and the worst
     // of them. At the bar's old value there are none of either.
     out.conditions.regionPapered = (out.reading.papered || {}).n > 0;
+    out.conditions.regionAcross = across.length > 0;
+    out.conditions.regionReach = reach > 1;
     // ALL of the copies here, unlike the readings above that only compare: "wider
     // than luck" off one copy is a coin toss; "wider than all ten" is the claim
     // the count on Sweep exists to buy. With halves, the size on each half.

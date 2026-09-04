@@ -317,7 +317,10 @@ function regionRule(region, dials) {
   }
   for (const [dial, v] of Object.entries(region.values || {})) {
     if (!categorical.has(dial) || v === undefined) continue;
-    R.allowed[dial] = [funnel.keyOf(v)];
+    // A dial the region was allowed to cross holds every value the region
+    // reached, not one (3.65.0), and the rule has to keep all of them or it
+    // would keep a slice of the region and call it the region.
+    R.allowed[dial] = (Array.isArray(v) ? v : [v]).map((x) => funnel.keyOf(x));
   }
   return R;
 }
@@ -431,6 +434,8 @@ const MARKS = Object.freeze({
   slices: 'accepted across slices with some not positive',
   regionNotWider: 'the widest region was not wider than the check',
   regionPapered: 'the region was widened over settings that lost money',
+  regionAcross: 'the region was joined across dials whose values are words, which have no order',
+  regionReach: 'the region was joined over settings missing from the board',
   checkIsHalves: 'no scrambled copies were kept, so the two halves stood in as the check',
 });
 function recordMark(doc, mark) {

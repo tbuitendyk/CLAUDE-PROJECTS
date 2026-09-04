@@ -111,10 +111,17 @@ function reply(body) {
   if (body.step === 5) {
     const at = Number(body.regionAtLeast) || 0;
     const loose = at <= -0.5;
+    const reach = Number(body.regionReach) >= 1 ? Math.floor(Number(body.regionReach)) : 1;
+    const across = Array.isArray(body.regionAcross) ? body.regionAcross : [];
     const papered = loose ? { atLeast: at, n: 1, of: 7, worst: -0.5 } : { atLeast: at, n: 0, of: 3, worst: null };
-    return { ...base, conditions: { regionPapered: papered.n > 0 }, reading: {
-      size: loose ? 7 : 3, cellsClearing: loose ? 7 : 6, cellsConsidered: 40, atLeast: at, regionAtLeast: at, papered,
-      keep: { ranges: { tHours: { min: 1, max: loose ? 7 : 3 } }, allowed: { gate: ['directional'] }, keeps: loose ? 70 : 30 },
+    // the two walls that are not money (3.65.0): crossing gate doubles the
+    // region, a step of two carries it over one hole
+    const size = (loose ? 7 : 3) * (across.includes('gate') ? 2 : 1) + (reach > 1 ? 2 : 0);
+    return { ...base, conditions: { regionPapered: papered.n > 0, regionAcross: across.length > 0, regionReach: reach > 1 }, reading: {
+      size, cellsClearing: loose ? 7 : 6, cellsConsidered: 40, atLeast: at, regionAtLeast: at, papered,
+      regionReach: reach, regionAcross: across,
+      canCross: [{ dial: 'gate', values: ['active', 'directional'] }, { dial: 'entry', values: ['breakout', 'market'] }],
+      keep: { ranges: { tHours: { min: 1, max: loose ? 7 : 3 } }, allowed: { gate: across.includes('gate') ? ['active', 'directional'] : ['directional'] }, keeps: loose ? 70 : 30 },
       noise: { of: 20, used: 20, kind: 'scrambles', sizes: [2, 2], widest: 2, beatenBy: 20 },
     } };
   }
@@ -320,6 +327,28 @@ function requirePlaywright() {
   expect(/region size 7 of 7 settings that cleared/.test(five), `a bar under the dip widens the region on screen: ${five.slice(0, 200)}`);
   expect(/1 of the\s+7 settings in this region LOST money - the worst by -0.50/.test(five),
     `the screen says what the bar papered over: ${five.slice(five.indexOf('settings in this region') - 60, five.indexOf('settings in this region') + 200)}`);
+  // THE TWO WALLS THAT ARE NOT MONEY (3.65.0, owner order). The dials on offer
+  // are the engine's, and ticking one grows the region the bar could not.
+  const crossable = await page.locator('[data-facross]').evaluateAll((xs) => xs.map((x) => x.dataset.facross));
+  expect(crossable.join(',') === 'gate,entry', `the dials the region may cross are the ones the read offered: ${crossable.join(',')}`);
+  await page.locator('#fRegionReach').fill('2');
+  await page.locator('#fRegionRead').click();
+  await page.waitForTimeout(900);
+  expect(posted[posted.length - 1].regionReach === 2, `how far a step may reach goes with the read: ${JSON.stringify(posted[posted.length - 1].regionReach)}`);
+  expect(/region size 9 of 7 settings that cleared/.test(await page.locator('#view').innerText()), 'stepping over a hole does not grow the region on screen');
+  await page.locator('[data-facross="gate"]').check();
+  await page.waitForTimeout(900);
+  expect(JSON.stringify(posted[posted.length - 1].regionAcross) === '["gate"]',
+    `ticking a dial goes with the read: ${JSON.stringify(posted[posted.length - 1].regionAcross)}`);
+  const crossed = await page.locator('#view').innerText();
+  expect(/region size 16 of 7 settings that cleared/.test(crossed), `crossing a word-valued dial grows the region: ${crossed.slice(0, 200)}`);
+  expect(/active, directional/.test(crossed), 'the region kept both values of the dial it crossed, and the table does not say so');
+  // put the two walls back where the rest of this run reads them
+  await page.locator('[data-facross="gate"]').uncheck();
+  await page.waitForTimeout(600);
+  await page.locator('#fRegionReach').fill('1');
+  await page.locator('#fRegionRead').click();
+  await page.waitForTimeout(900);
   // and the way past step 5 leaves every range and value alone
   await page.locator('#fKeepMine').click();
   await page.waitForTimeout(900);

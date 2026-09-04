@@ -601,9 +601,13 @@ window.HELP = {
         what: 'How much a setting is allowed to lose and still count as part of the region. 0 means it has to have made money, which is how this step has always read.',
         more: 'The region is the widest run of neighbouring settings that all work. With the bar at 0 a single setting a cent under splits what would be one wide area into two narrow ones, and a narrow area is the thing this step exists to warn you about - so the split can mislead you in the direction that matters. Set the bar below 0 and a shallow dip is walked through instead. The scrambled copies are measured under exactly the same bar, or a region grown under a loose bar would be compared against copies measured under a strict one, which is not a comparison at all. Whatever it papers over is counted under the box, marked on the set, and cannot be cleared.',
       },
+      fRegionReach: {
+        what: 'How far apart two settings may be and still count as neighbours. 1 means neighbours only, which is how this step has always read.',
+        more: 'The region is grown by walking from one setting to the next along one dial at a time. At 1 it stops dead at any setting that is missing from the board - not one that lost money, one that was never priced, because your rule cut it out or the sweep never made it. A bigger number lets the walk step over that gap and carry on. The money bar cannot help with this: an absent setting has no money to be above or below.',
+      },
       fRegionRead: {
-        what: 'Reads the region again with the bar you have set.',
-        more: 'The bar is also read again when you leave the box, so this button is for when you want to be sure. Nothing is written into the rule by reading; that is the button below.',
+        what: 'Reads the region again with the three limits you have set: the money bar, how far apart neighbours may be, and which word-valued dials the region may step across.',
+        more: 'All three are also read again the moment you leave one of their boxes or tick one of the dials, so this button is for when you want to be sure. Nothing is written into the rule by reading; that is the button below. The tick boxes are offered only for the dials that still hold more than one value on this board, because crossing a dial the rule already pinned would do nothing - and every one of the three is recorded on the set if you use it.',
       },
       fKeepMine: {
         what: 'Leaves every range and value you chose exactly as it is and moves on to step 6.',

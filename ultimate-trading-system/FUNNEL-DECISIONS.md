@@ -881,3 +881,35 @@ made while building it that the design did not already settle.
     is the owner's own.
 
     Second digit: new behaviour and three new controls.
+
+98. **The money bar alone could not grow the region, so the two other walls
+    round it became the owner's too** (2026-09-04, owner: *"i'm bumping up the
+    value to crazy low settings like -50 and it's not increasing the REGION SIZE
+    ... i'm wanting the REGION ITSELF to increase that we clear"*).
+
+    The bar shipped in 3.64.0 does what it says: more settings clear. It cannot
+    make the region bigger on a board where what is holding the region back is
+    not money, and on the owner's board it was not.
+
+    **Wall one: the board is cut into pieces by every word-valued dial.** A
+    region has never been allowed to cross from one piece to another, so on a
+    board still free on such a dial every extra setting the lower bar lets in
+    lands in a different piece and the size sits dead still. A tick per dial —
+    offered only for the dials that still hold more than one value HERE, read
+    off the board and never typed — pulls it out of the cutting and makes any
+    two of its values one step apart. The rule the region becomes then keeps
+    every value the region reached on it: keeping one would keep a slice of the
+    region and call it the region.
+
+    **Wall two: a step was exactly one notch.** A setting missing from the board
+    — never priced, not a loser — walled the region off as hard as a losing one,
+    and no money bar can reach it, because an absent setting has no money to be
+    above or below. How far a step may reach is now a number, 1 by default.
+
+    **What did NOT change.** The centre is still chosen by depth on the ordered
+    dials only: a dial with no order cannot say how deep a cell sits, so a
+    crossed one is left out of that walk. Both new limits go to the scrambled
+    copies through the same one call the money bar does. Both are marked on the
+    set and the marks cannot be cleared.
+
+    Second digit: new behaviour and two new controls.

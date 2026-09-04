@@ -51,27 +51,44 @@ function axisIndex(rows, ordered = ORDERED_AXES) {
   return idx;
 }
 
-// A cell's coordinates: its slice (the categorical part, which regions never
+// A cell's coordinates: its slice (the word-valued part, which regions never
 // cross) and its position on each ordered axis. A null on an ordered axis — a
 // market cell has no dMult, an untrailed cell no trailMult — is its own position
 // so those cells still neighbour each other along the axes they do have.
-function coordsOf(row, idx, ordered = ORDERED_AXES, categorical = CATEGORICAL_AXES) {
-  const slice = categorical.map((a) => String(row[a])).join('|');
+//
+// A WORD-VALUED DIAL THE CALLER NAMES IN `across` LEAVES THE SLICE AND BECOMES
+// AN AXIS (3.65.0, owner order 2026-09-04). It has no order, so any two of its
+// values are one step apart; that is what `wordFrom` marks. Off by default:
+// with nothing named, this is the same slice and the same positions it always
+// was. See the note on `across` in widestRegion for why the owner needs it.
+function coordsOf(row, idx, ordered = ORDERED_AXES, categorical = CATEGORICAL_AXES, across = []) {
+  const cross = across.filter((a) => categorical.includes(a));
+  const slice = categorical.filter((a) => !cross.includes(a)).map((a) => String(row[a])).join('|');
   const pos = ordered.map((a) => (row[a] == null ? -1 : idx[a].get(row[a]) ?? -1));
-  return { slice, pos };
+  for (const a of cross) pos.push(idx[a].get(String(row[a])) ?? -1);
+  return { slice, pos, wordFrom: ordered.length };
 }
 
-// Two cells are neighbours when they sit in the same slice and differ by exactly
-// one step on exactly one ordered axis. Diagonal steps do not connect: requiring
-// a contiguous walk is the whole point, and letting a region hop two settings at
-// once would let scattered luck read as a plateau.
-function adjacent(a, b) {
+// Two cells are neighbours when they sit in the same slice and differ on exactly
+// one axis. Diagonal steps do not connect: requiring a contiguous walk is the
+// whole point, and letting a region hop in two directions at once would let
+// scattered luck read as a plateau.
+//
+// HOW FAR ONE STEP MAY REACH IS THE OWNER'S (3.65.0). It was one notch, always,
+// and a region could then never cross a setting that is simply MISSING from the
+// board — not a losing one, an absent one — however low the money bar went.
+// `reach` is that distance and it defaults to 1, which is what it always was.
+// A word-valued dial pulled out of the slice has no notches, so any difference
+// on it is one step whatever the reach.
+function adjacent(a, b, reach = 1) {
   if (a.slice !== b.slice) return false;
+  const wordFrom = a.wordFrom == null ? a.pos.length : a.wordFrom;
+  const far = Number.isFinite(Number(reach)) && Number(reach) >= 1 ? Math.floor(Number(reach)) : 1;
   let diff = 0;
   for (let i = 0; i < a.pos.length; i++) {
     const d = Math.abs(a.pos[i] - b.pos[i]);
     if (d === 0) continue;
-    if (d !== 1) return false;
+    if (i < wordFrom && d > far) return false;
     diff += 1;
     if (diff > 1) return false;
   }
@@ -113,6 +130,16 @@ function widestRegion(rows, opts = {}) {
   // nonsense, and nonsense that returns a plausible-looking number.
   const both = ordered.filter((a) => categorical.includes(a));
   if (both.length) throw new Error(`${both.join(', ')} named as both an ordered and a categorical axis`);
+  // THE TWO WALLS THAT ARE NOT MONEY (3.65.0, owner order 2026-09-04: "write
+  // some code that expands the REGION SIZE as i wanted"). Loosening the money
+  // bar alone can only ever fill holes INSIDE one slice. Two settings that
+  // differ on any word-valued dial are in different slices and could never be
+  // one region however low the bar went; and a step was always exactly one
+  // notch, so a setting simply MISSING from the board walled the region off
+  // too. Both are now the owner's to move, and both default to what they were.
+  const across = (Array.isArray(opts.across) ? opts.across : []).filter((a) => categorical.includes(a));
+  const reach = Number.isFinite(Number(opts.reach)) && Number(opts.reach) >= 1 ? Math.floor(Number(opts.reach)) : 1;
+  const sliceBy = categorical.filter((a) => !across.includes(a));
   const all = Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object') : [];
   const good = all.filter((r) => clears(r, minTrades, atLeast));
   const base = {
@@ -125,19 +152,24 @@ function widestRegion(rows, opts = {}) {
     atLeast,
     papered: { atLeast, n: 0, of: 0, worst: null },
     // provenance: a region size means nothing without knowing what "next to"
-    // meant when it was cut
-    axes: { ordered, categorical },
+    // meant when it was cut -- and "next to" now has three parts, all of them
+    // reported so a size can never be read without the shape that produced it
+    axes: { ordered, categorical, across, sliceBy },
+    reach,
   };
   if (!good.length) return base;
 
   const idx = axisIndex(all, ordered);
-  const nodes = good.map((r) => ({ row: r, ...coordsOf(r, idx, ordered, categorical) }));
+  // a word-valued dial pulled out of the slice needs positions too; they carry
+  // no order, so the list is only a way of asking "same value or not"
+  for (const a of across) idx[a] = new Map([...new Set(all.map((r) => String(r[a])))].map((v, i) => [v, i]));
+  const nodes = good.map((r) => ({ row: r, ...coordsOf(r, idx, ordered, categorical, across) }));
 
   // neighbour lists, then connected components by flood fill
   const nbrs = nodes.map(() => []);
   for (let i = 0; i < nodes.length; i++) {
     for (let j = i + 1; j < nodes.length; j++) {
-      if (adjacent(nodes[i], nodes[j])) { nbrs[i].push(j); nbrs[j].push(i); }
+      if (adjacent(nodes[i], nodes[j], reach)) { nbrs[i].push(j); nbrs[j].push(i); }
     }
   }
   const seen = new Array(nodes.length).fill(false);
@@ -187,16 +219,26 @@ function widestRegion(rows, opts = {}) {
     let onEdge = false;
     for (let ax = 0; ax < pos.length && !onEdge; ax++) {
       if (pos[ax] < 0) continue; // axis absent for this cell (market has no dMult)
+      // A WORD-VALUED DIAL THE REGION WAS ALLOWED TO CROSS DOES NOT DECIDE THE
+      // MIDDLE (3.65.0). It has no order, so "one step further out" means
+      // nothing on it; only the ordered dials say how deep a cell sits.
+      if (ax >= (nodes[n].wordFrom == null ? pos.length : nodes[n].wordFrom)) continue;
       // An axis this run swept only ONE value of cannot make a cell interior or
       // exterior — there is no room to move along it. Counting its ends as edges
       // would mark every cell in the region as an edge cell and leave no middle.
       if (axisLen[ax] <= 1) continue;
+      // As far out as a step is allowed to reach, and no further: at the
+      // default reach of 1 this is the single probe it has always been.
       for (const step of [-1, 1]) {
-        const q = pos[ax] + step;
-        if (q < 0 || q >= axisLen[ax]) { onEdge = true; break; }
-        const probe = pos.slice();
-        probe[ax] = q;
-        if (!memberAt.has(`${slice}#${probe.join(',')}`)) { onEdge = true; break; }
+        let found = false;
+        for (let k = 1; k <= reach && !found; k++) {
+          const q = pos[ax] + step * k;
+          if (q < 0 || q >= axisLen[ax]) break;
+          const probe = pos.slice();
+          probe[ax] = q;
+          if (memberAt.has(`${slice}#${probe.join(',')}`)) found = true;
+        }
+        if (!found) { onEdge = true; break; }
       }
     }
     if (onEdge) { depth.set(n, 1); queue.push(n); }
@@ -248,8 +290,14 @@ function widestRegion(rows, opts = {}) {
     }
     if (lo != null) bounds[a] = { min: lo, max: hi };
   }
+  // A dial the region was allowed to cross may hold several values inside one
+  // region, so it hands back every one of them rather than the centre's (3.65.0).
   const values = {};
-  for (const a of categorical) values[a] = centreRow[a];
+  for (const a of categorical) {
+    values[a] = across.includes(a)
+      ? [...new Set(bestComp.map((n) => nodes[n].row[a]))]
+      : centreRow[a];
+  }
   // WHAT A BAR BELOW ZERO PAPERED OVER, counted on the region's OWN members
   // (3.64.0, owner: "and noted of course"). Only this function knows which
   // cells joined the region: a count taken afterwards from the region's edges

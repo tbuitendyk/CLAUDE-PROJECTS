@@ -4219,6 +4219,8 @@ const F_MARK_WORDS = {
   slices: 'accepted across slices with some not positive',
   regionNotWider: 'the widest region was not wider than the check',
   regionPapered: 'the region was widened over settings that lost money',
+  regionAcross: 'the region was joined across dials whose values are words, which have no order',
+  regionReach: 'the region was joined over settings missing from the board',
   checkIsHalves: 'no scrambled copies were kept, so the two halves stood in as the check',
 };
 
@@ -4316,6 +4318,8 @@ async function drawFunnel() {
       unit: st.unit,                                        // null: the set's first unit; 'all': the blend
       barPct: st.barPct,                                    // null: the engine's default share of the copies
       regionAtLeast: st.regionAtLeast,                      // step 5's bar; 0 is "made money", below 0 papers over dips
+      regionReach: st.regionReach,                          // how far one step may reach; 1 is neighbours only
+      regionAcross: st.regionAcross,                        // word-valued dials the region may step across
       // showing a Stage 4 record set: no step is drawn, so no step is read
       view: (st.cut && st.cut !== F_NEW) ? 'cut' : null,
     });
@@ -4798,13 +4802,36 @@ function fStep5(r, d, st) {
   // THE BAR A SETTING HAS TO CLEAR (3.64.0, owner order). Zero is what it has
   // always been. Below zero lets a shallow dip be walked through, so a wide
   // area is not split in two by one setting a cent under.
+  // THE THREE WALLS ROUND A REGION, ALL THREE THE OWNER'S TO MOVE (3.65.0,
+  // owner order). Money is only one of them: a board still free on a
+  // word-valued dial is cut into pieces a region may never cross, and a step
+  // was always exactly one notch, so a setting missing from the board walled it
+  // off too. Lowering the money bar alone can leave the size dead still.
+  const reach = Number.isFinite(Number(r.regionReach)) && Number(r.regionReach) >= 1 ? Math.floor(Number(r.regionReach)) : 1;
+  const crossOn = new Set(Array.isArray(r.regionAcross) ? r.regionAcross.map(String) : []);
+  const canCross = Array.isArray(r.canCross) ? r.canCross : [];
+  const acrossRow = canCross.length
+    ? `<div class="row" style="align-items:flex-end;margin-top:.5rem">
+      <span class="note">also join across:</span>
+      ${canCross.map((c) => `<label class="c" title="${esc(String(c.dial))} still has ${c.values.length} value(s) on this board: ${esc(c.values.join(', '))}"><input type="checkbox" data-facross="${esc(String(c.dial))}"
+        ${crossOn.has(String(c.dial)) ? 'checked' : ''}> ${esc(fDialLabel(c.dial))}</label>`).join('')}
+      <span class="note">these dials hold words, not numbers, so nothing is next to anything on them. A region never
+        crosses one unless you say so here - and while it does not, settings that differ on one of them can never be
+        in the same region however low the bar above goes.</span></div>`
+    : `<p class="note">Every dial whose values are words is already down to one value here, so there is nothing left
+       to join across.</p>`;
   const bar = `<div class="row" style="align-items:flex-end;margin-top:.5rem">
       <label class="f">count a setting in if it makes at least<input id="fRegionAtLeast" type="number" step="0.01"
         style="width:7rem" value="${esc(String(at))}"></label>
+      <label class="f">join settings up to this many apart<input id="fRegionReach" type="number" min="1" step="1"
+        style="width:6rem" value="${esc(String(reach))}"></label>
       <button id="fRegionRead">read the region again</button>
       <span class="note">dollars, per setting. <b>0</b> is "it made money", which is how this step has always read.
         A number below 0 papers over settings that lost that much or less, so one weak setting cannot split a wide
-        area in two. The scrambled copies are measured under the same number, or the comparison would be rigged.</span></div>`;
+        area in two. The scrambled copies are measured under the same number, or the comparison would be rigged.
+        <b>1</b> apart is neighbours only, which is how this step has always read; a bigger number lets the region
+        step over a setting that is missing from the board rather than stopping at it.</span></div>
+    ${acrossRow}`;
   const papered = at === 0
     ? `<p class="note">At <b>0</b> nothing is papered over: every setting in the region made money.</p>`
     : (pap.n
@@ -5449,6 +5476,8 @@ function fWire(st, d) {
     if (step === 3 && c.interact) mark('interact', 3, `${fDialLabel(st.dialA || '')} x ${fDialLabel(st.dialB || '')}`);
     if (step === 5 && c.regionNotWider) mark('regionNotWider', 5);
     if (step === 5 && c.regionPapered) mark('regionPapered', 5);
+    if (step === 5 && c.regionAcross) mark('regionAcross', 5);
+    if (step === 5 && c.regionReach) mark('regionReach', 5);
     if (c.checkIsHalves) mark('checkIsHalves', step);
   };
   // a row on step 1 opens step 2 with that dial chosen
@@ -5639,14 +5668,20 @@ function fWire(st, d) {
     st.step = 5; fSave(); drawFunnel();
   };
   const ra = $('#fRegionAtLeast');
+  const rre = $('#fRegionReach');
   const rr = $('#fRegionRead');
   const setAtLeast = () => {
     const v = ra && ra.value !== '' ? Number(ra.value) : 0;
     st.regionAtLeast = Number.isFinite(v) ? v : 0;
+    const n = rre && rre.value !== '' ? Math.floor(Number(rre.value)) : 1;
+    st.regionReach = Number.isFinite(n) && n >= 1 ? n : 1;
+    st.regionAcross = [...document.querySelectorAll('[data-facross]')].filter((x) => x.checked).map((x) => x.dataset.facross);
     fSave(); drawFunnel();
   };
   if (rr) rr.onclick = setAtLeast;
   if (ra) ra.onchange = setAtLeast;
+  if (rre) rre.onchange = setAtLeast;
+  document.querySelectorAll('[data-facross]').forEach((box) => { box.onchange = setAtLeast; });
   // THE OWNER'S OWN RULE, WHOLE, INTO STEP 6 (3.64.0, owner order). Nothing on
   // step 5 is written; the set will say the widest region was never kept.
   const km = $('#fKeepMine');
@@ -5669,7 +5704,12 @@ function fWire(st, d) {
     st.userRule = { ranges: JSON.parse(JSON.stringify(st.rule.ranges || {})), allowed: JSON.parse(JSON.stringify(st.rule.allowed || {})) };
     st.rule.ranges = ranges; st.rule.allowed = allowed;
     markStep(5);
-    st.steps.push({ n: 5, what: 'the widest region', chose: `kept as the rule (${Object.keys(ranges).length + Object.keys(allowed).length} dial(s))${st.regionAtLeast ? `, counted in at ${st.regionAtLeast}` : ''}` });
+    const loosened = [
+      st.regionAtLeast ? `counted in at ${st.regionAtLeast}` : '',
+      Number(st.regionReach) > 1 ? `joined up to ${Math.floor(Number(st.regionReach))} apart` : '',
+      (st.regionAcross || []).length ? `joined across ${st.regionAcross.map(fDialLabel).join(', ')}` : '',
+    ].filter(Boolean);
+    st.steps.push({ n: 5, what: 'the widest region', chose: `kept as the rule (${Object.keys(ranges).length + Object.keys(allowed).length} dial(s))${loosened.length ? `, ${loosened.join(', ')}` : ''}` });
     fSave(); drawFunnel();
   };
   const af = $('#fAddFloors');

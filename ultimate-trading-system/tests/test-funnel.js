@@ -2861,7 +2861,7 @@ module.exports = {
     // through one closure, so the bar cannot differ between them.
     const lib = src('lib/stages.js');
     const step5 = lib.slice(lib.indexOf('const atLeast = Number.isFinite(Number(state.regionAtLeast))'), lib.indexOf('out.conditions.regionNotWider'));
-    assert.ok(step5.includes('{ minTrades: 0, atLeast, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },'),
+    assert.ok(step5.includes('{ minTrades: 0, atLeast, across, reach, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },'),
       'the bar is not handed to the region reader, so it never reaches the copies');
     assert.equal((step5.match(/widestRegion\(/g) || []).length, 1, 'the region is read through more than one call, so the copies could be measured under a different bar than the real region');
   },
@@ -2897,6 +2897,79 @@ module.exports = {
     assert.ok(step.includes('At <b>0</b> nothing is papered over'), 'at the old bar the screen goes silent instead of saying nothing was papered over');
     assert.ok(step.includes('settings in this region LOST money'), 'the screen never says how many losers the region holds');
     assert.ok(step.includes('The scrambled copies are measured under the same number'), 'the screen does not say the check moves with the bar');
+  },
+
+  // OWNER, 2026-09-04: "i'm bumping up the value to crazy low settings like -50
+  // and it's not increasing the REGION SIZE ... i'm wanting the REGION ITSELF to
+  // increase". The money bar alone cannot: a board still free on a word-valued
+  // dial is cut into pieces a region may never cross.
+  aMoneyBarAloneCannotGrowARegionAcrossAWordValuedDial() {
+    const P = require('../lib/plateau');
+    // two settings of gate, four of t, every one of them making money: two
+    // pieces of four, and no bar however low joins them
+    const rows = [];
+    for (const g of ['active', 'directional']) for (const t of [1, 2, 3, 4]) rows.push({ tHours: t, gate: g, pnl: 5, trades: 10 });
+    const o = { orderedAxes: ['tHours'], categoricalAxes: ['gate'], minTrades: 0 };
+    assert.equal(P.widestRegion(rows, o).size, 4, 'the two halves of this board were already one region, so it proves nothing');
+    assert.equal(P.widestRegion(rows, { ...o, atLeast: -1000 }).size, 4,
+      'the money bar is doing something it cannot do -- every setting here already made money');
+    const across = P.widestRegion(rows, { ...o, across: ['gate'] });
+    assert.equal(across.size, 8, 'naming the word-valued dial does not join the two pieces, which is the whole point of naming it');
+    // and the rule it becomes keeps BOTH values, not the middle one's
+    const S4 = require('../lib/funnelset');
+    const rule = S4.regionRule(across, { ordered: ['tHours'], categorical: ['gate'] });
+    assert.deepEqual([...(rule.allowed.gate || [])].sort(), ['active', 'directional'],
+      'the rule keeps one value of a dial the region crossed, so it keeps a slice of the region and calls it the region');
+    // what it was read under is on the reading, or a size can be read without it
+    assert.deepEqual(across.axes.across, ['gate'], 'the reading does not say which dials it was allowed to cross');
+    assert.deepEqual(across.axes.sliceBy, [], 'the reading does not say what still cut the board into pieces');
+  },
+
+  // the other wall that is not money: a setting simply MISSING from the board
+  aRegionCanBeJoinedOverSettingsThatAreNotOnTheBoardAtAll() {
+    const P = require('../lib/plateau');
+    // t of 3 at d of 1 was never priced -- not a loser, absent. t of 3 exists on
+    // the board at d of 2, so this really is a hole and not a value nobody swept.
+    const at = (t, d) => ({ tHours: t, dMult: d, gate: 'x', pnl: 5, trades: 10 });
+    const rows = [at(1, 1), at(2, 1), at(4, 1), at(5, 1), at(3, 2)];
+    const o = { orderedAxes: ['tHours', 'dMult'], categoricalAxes: ['gate'], minTrades: 0 };
+    assert.equal(P.widestRegion(rows, o).size, 2, 'a hole in the board no longer stops a step of one, and it must');
+    assert.equal(P.widestRegion(rows, { ...o, atLeast: -1000 }).size, 2,
+      'the money bar steps over a setting that has no money at all, which it cannot');
+    assert.equal(P.widestRegion(rows, { ...o, reach: 2 }).size, 4, 'a step of two does not carry the region over the hole');
+    assert.equal(P.widestRegion(rows, { ...o, reach: 2 }).reach, 2, 'the reading does not say how far a step was allowed to reach');
+    assert.equal(P.widestRegion(rows, o).reach, 1, 'the reading does not say that a step was one notch');
+  },
+
+  // both are marked, and both are offered from the board rather than typed
+  loosening_theRegionBeyondMoneyIsOfferedByTheEngineAndMarkedOnTheSet() {
+    const S4 = require('../lib/funnelset');
+    assert.equal(S4.MARKS.regionAcross, 'the region was joined across dials whose values are words, which have no order', 'crossing a word dial has no words on the set');
+    assert.equal(S4.MARKS.regionReach, 'the region was joined over settings missing from the board', 'stepping over a hole has no words on the set');
+    const lib = src('lib/stages.js');
+    const step5 = lib.slice(lib.indexOf('const atLeast = Number.isFinite(Number(state.regionAtLeast))'), lib.indexOf('out.conditions.regionNotWider'));
+    assert.ok(step5.includes('{ minTrades: 0, atLeast, across, reach, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },'),
+      'the two new limits do not reach the region reader, so they reach neither the real region nor its copies');
+    assert.equal((step5.match(/widestRegion\(/g) || []).length, 1,
+      'the region is read through more than one call, so the copies could be measured under different limits than the real region');
+    assert.ok(step5.includes('out.reading.canCross = F.CATEGORICAL_DIALS'),
+      'the screen is not told which word-valued dials this board still has more than one value of, so it would have to guess');
+    assert.ok(step5.includes('out.conditions.regionAcross = across.length > 0;') && step5.includes('out.conditions.regionReach = reach > 1;'),
+      'a region joined past what money can explain leaves no mark');
+    const page = src('public/construct.js');
+    const step = page.slice(page.indexOf('function fStep5(r, d, st) {'), page.indexOf('// WHAT EACH LIMIT WOULD KEEP'));
+    assert.ok(step.includes('id="fRegionReach"'), 'there is no way to say how far a step may reach');
+    assert.ok(step.includes('join settings up to this many apart'), 'the reach control does not say what it does');
+    assert.ok(step.includes('also join across:'), 'there is no way to name a word-valued dial the region may cross');
+    assert.ok(step.includes('data-facross="'), 'the dials to cross are not offered as something to press');
+    assert.ok(!/data-facross="(entry|gate|decision)"/.test(step), 'the dials offered are typed into the page instead of read off the board (RULE FIVE)');
+    assert.ok(step.includes('canCross.length'), 'a board with nothing left to cross is not told so');
+    assert.ok(page.includes("if (step === 5 && c.regionAcross) mark('regionAcross', 5);")
+      && page.includes("if (step === 5 && c.regionReach) mark('regionReach', 5);"), 'walking past step 5 does not record the two new marks');
+    assert.ok(page.includes('regionReach: st.regionReach,') && page.includes('regionAcross: st.regionAcross,'),
+      'the two new limits are never sent with the read');
+    assert.ok(page.includes("st.regionAcross = [...document.querySelectorAll('[data-facross]')].filter((x) => x.checked).map((x) => x.dataset.facross);"),
+      'which dials were ticked is never read off the screen, so ticking one could never reach the read');
   },
 
   // "there should be another control that lets the entire user rule be retained

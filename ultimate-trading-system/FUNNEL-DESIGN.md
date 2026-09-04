@@ -995,6 +995,34 @@ Three defects, logged in `DEFECTS.md` under 2026-09-02:
     whether or not a region was found — a walk with no region is the case that
     needs it most — and the walk records that the region was refused.
 
+  **The money bar was not enough (owner, 2026-09-04):** *"i'm bumping up the
+  value to crazy low settings like -50 and it's not increasing the REGION SIZE
+  ... i'm wanting the REGION ITSELF to increase that we clear."*
+
+  Correct, and the reason is that money is only one of three walls round a
+  region. The other two were fixed in the code and are now the owner's:
+
+  - *The board is cut into pieces by every dial whose values are words*, and a
+    region has never been allowed to cross from one piece to another — one
+    value of such a dial is not "next to" another in any meaningful sense. So
+    on a board still free on one of them, every setting the lower bar lets in
+    is in a different piece and the size does not move at all, however low the
+    bar goes. **A tick per such dial**, offered only for the dials that still
+    hold more than one value on this board (RULE FIVE — read off the board,
+    never typed), pulls it out of the cutting and makes any two of its values
+    one step apart. The rule the region becomes then keeps EVERY value the
+    region reached on that dial, not the middle one's.
+  - *A step was always exactly one notch*, so a setting simply MISSING from the
+    board — never priced, not a loser — walled the region off as hard as a
+    losing one, and the money bar cannot help because an absent setting has no
+    money to be above or below. **How far a step may reach** is now a number,
+    and it is 1 by default, which is what it always was.
+
+  Both are recorded as marks — *the region was joined across dials whose values
+  are words, which have no order*, and *the region was joined over settings
+  missing from the board* — and both go to the scrambled copies unchanged, for
+  the same reason the money bar does.
+
 **Step 6 — exposure**
 
 - *Decision:* the two limits, as now.
