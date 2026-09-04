@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **4fc326f5afcc — what the box is serving**, not from the working tree.
+Generated from **5208406fa4d3 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -523,7 +523,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Funnel
 
-## What the controls are called (93)
+## What the controls are called (96)
 
 - `- chosen`
 - `- what each limit would keep of`
@@ -537,6 +537,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `also keep none`
 - `and`
 - `and the other with`
+- `avg test`
 - `beats`
 - `boards, read one at a time`
 - `bold when a value beats at least`
@@ -578,6 +579,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `other coin-and-shape unit`
 - `other units positive;`
 - `out of`
+- `over`
 - `Passed over:`
 - `Press`
 - `Read across`
@@ -594,6 +596,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `second dial`
 - `Set`
 - `set's`
+- `settings`
 - `settings survive`
 - `settings that cleared,`
 - `shape:`
