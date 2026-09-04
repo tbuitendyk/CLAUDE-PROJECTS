@@ -521,7 +521,7 @@ const GUARDS = [
     'anUnchangedFileIsNotHashedAgainAndAChangedOneIs',
     'a candle file rewritten to the same length keeps its old hash, and the price-file check passes a parent whose data moved'],
   // ---- THE COUNT WITHOUT THE SETTINGS (3.46.3) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "    for (const band of bands) set.add(repOf.get(shapeKeyOf({ band, ...cell })));\n", "    for (const band of bands) set.add(shapeKeyOf({ band, ...cell }));\n",
+  [path.join(ROOT, 'lib', 'stages.js'), "      const key = `${it.g}|${repOf.get(shapeKeyOf(it.shape))}|${wkApplies ? (it.wk ? 1 : 0) : 0}`;", "      const key = `${it.g}|${shapeKeyOf(it.shape)}|${wkApplies ? (it.wk ? 1 : 0) : 0}`;",
     'theStageThreeCountIsTheLaunchsFoldWithoutTheSettings',
     'the cost line counts every band as its own trade, and says more settings than the launch will price'],
   // ---- THE BOARDS BOXES OFFER ONLY WHAT CAME OUT OF THE PICK ABOVE (3.46.2) ----
