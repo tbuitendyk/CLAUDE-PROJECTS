@@ -430,6 +430,7 @@ const MARKS = Object.freeze({
   interact: 'the two dials interact and the single-dial ranges were kept anyway',
   slices: 'accepted across slices with some not positive',
   regionNotWider: 'the widest region was not wider than the check',
+  regionPapered: 'the region was widened over settings that lost money',
   checkIsHalves: 'no scrambled copies were kept, so the two halves stood in as the check',
 });
 function recordMark(doc, mark) {

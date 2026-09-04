@@ -105,6 +105,19 @@ function reply(body) {
     } };
   }
   if (body.step === 3) return { ...base, reading: {} };
+  // step 5: the widest run of neighbouring settings, read at whatever bar the
+  // page sends (3.64.0). Seven in a row, one of them fifty cents under: the old
+  // bar splits them into three, a bar below that dip walks through it.
+  if (body.step === 5) {
+    const at = Number(body.regionAtLeast) || 0;
+    const loose = at <= -0.5;
+    const papered = loose ? { atLeast: at, n: 1, of: 7, worst: -0.5 } : { atLeast: at, n: 0, of: 3, worst: null };
+    return { ...base, conditions: { regionPapered: papered.n > 0 }, reading: {
+      size: loose ? 7 : 3, cellsClearing: loose ? 7 : 6, cellsConsidered: 40, atLeast: at, regionAtLeast: at, papered,
+      keep: { ranges: { tHours: { min: 1, max: loose ? 7 : 3 } }, allowed: { gate: ['directional'] }, keeps: loose ? 70 : 30 },
+      noise: { of: 20, used: 20, kind: 'scrambles', sizes: [2, 2], widest: 2, beatenBy: 20 },
+    } };
+  }
   // step 6: the numbers a sweep does not keep, with the exposure the two
   // limits are limits on (3.57.0)
   if (body.step === 6) {
@@ -292,6 +305,27 @@ function requirePlaywright() {
   expect(gridTables === 3, `the grid and its two checks are drawn as three lined-up tables: ${gridTables}`);
   const widths = await page.locator('#view table.fgrid').evaluateAll((ts) => ts.map((t) => [...t.querySelectorAll('thead th')].map((th) => Math.round(th.getBoundingClientRect().width)).join(',')));
   expect(widths.length === 3 && widths[0] === widths[1] && widths[1] === widths[2], `every column is the same width in all three tables: ${widths.join(' / ')}`);
+  // ---- STEP 5's BAR, AND THE WAY PAST IT (3.64.0, owner order) ----
+  await page.locator('[data-fstep="5"]').click().catch(() => {});
+  await page.waitForSelector('#fRegionAtLeast', { timeout: 15000 }).catch(() => {});
+  let five = await page.locator('#view').innerText();
+  expect(/region size 3 of 6 settings that cleared/.test(five), `at the old bar the region is what it always was: ${five.slice(0, 200)}`);
+  expect(/At 0 nothing is papered over/.test(five), 'at the old bar the screen does not say that nothing was papered over');
+  const ruleBeforeFive = JSON.stringify(posted[posted.length - 1].rule || {});
+  await page.locator('#fRegionAtLeast').fill('-1');
+  await page.locator('#fRegionRead').click();
+  await page.waitForTimeout(900);
+  five = await page.locator('#view').innerText();
+  expect(posted[posted.length - 1].regionAtLeast === -1, `the bar reaches the service: ${JSON.stringify(posted[posted.length - 1].regionAtLeast)}`);
+  expect(/region size 7 of 7 settings that cleared/.test(five), `a bar under the dip widens the region on screen: ${five.slice(0, 200)}`);
+  expect(/1 of the\s+7 settings in this region LOST money - the worst by -0.50/.test(five),
+    `the screen says what the bar papered over: ${five.slice(five.indexOf('settings in this region') - 60, five.indexOf('settings in this region') + 200)}`);
+  // and the way past step 5 leaves every range and value alone
+  await page.locator('#fKeepMine').click();
+  await page.waitForTimeout(900);
+  expect(/Step 6/.test(await heading()), `keep my own rule and go on lands on step 6: ${await heading()}`);
+  expect(JSON.stringify(posted[posted.length - 1].rule || {}) === ruleBeforeFive,
+    `the rule that goes on to step 6 is the one the owner built: ${JSON.stringify(posted[posted.length - 1].rule || {})}`);
   // step 6 says what its two limits are limits on (3.57.0)
   await page.locator('[data-fstep="6"]').click().catch(() => {});
   await page.waitForSelector('#fDD', { timeout: 15000 }).catch(() => {});

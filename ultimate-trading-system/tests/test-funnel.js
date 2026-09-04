@@ -2836,4 +2836,83 @@ module.exports = {
       'the service holds the reading under a different key from the one the page asks with');
   },
 
+  // ---- STEP 5 IS TOO RESTRICTIVE (3.64.0, owner order 2026-09-04) ----------
+  //
+  // "yes, the current functionality and report of the widest region should be
+  // kept, but ... we should also have a way of loosening the criteria such that
+  // weak spots within what would be a much larger area can be 'papered-over' by
+  // some threshold (and noted of course)."
+  theRegionBarCanBeLoosenedSoOneWeakSettingDoesNotSplitAWideArea() {
+    const P = require('../lib/plateau');
+    // seven neighbouring settings, one of them a shallow loser in the middle
+    const rows = [1, 2, 3, 4, 5, 6, 7].map((t) => ({ tHours: t, gate: 'x', pnl: t === 4 ? -0.5 : 5, trades: 10 }));
+    const o = { orderedAxes: ['tHours'], categoricalAxes: ['gate'], minTrades: 0 };
+    const strict = P.widestRegion(rows, o);
+    assert.equal(strict.size, 3, 'one setting a cent under used to split seven into three, and that is still what the strict bar must do');
+    assert.equal(strict.bar, 'pnl > 0 after fees', 'the strict bar no longer says what it is');
+    assert.equal(strict.atLeast, 0, 'the bar is not carried on the reading, so nothing downstream can say what it was');
+    const loose = P.widestRegion(rows, { ...o, atLeast: -1 });
+    assert.equal(loose.size, 7, 'a bar below zero does not walk through a shallow dip');
+    assert.equal(loose.bar, 'pnl > -1 after fees', 'a loosened region does not say what bar it was grown under');
+    // and a dip DEEPER than the bar is still a wall
+    assert.equal(P.widestRegion(rows, { ...o, atLeast: -0.2 }).size, 3, 'a dip deeper than the bar is walked through anyway');
+    // THE SAME BAR GOES TO THE COPIES. A region grown loose and compared with
+    // copies measured strict is not a comparison; the reading builds both
+    // through one closure, so the bar cannot differ between them.
+    const lib = src('lib/stages.js');
+    const step5 = lib.slice(lib.indexOf('const atLeast = Number.isFinite(Number(state.regionAtLeast))'), lib.indexOf('out.conditions.regionNotWider'));
+    assert.ok(step5.includes('{ minTrades: 0, atLeast, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },'),
+      'the bar is not handed to the region reader, so it never reaches the copies');
+    assert.equal((step5.match(/widestRegion\(/g) || []).length, 1, 'the region is read through more than one call, so the copies could be measured under a different bar than the real region');
+  },
+
+  // "and noted of course"
+  wideningTheRegionOverLosersIsCountedAndMarked() {
+    // THE COUNT IS TAKEN ON THE REGION'S OWN MEMBERS. Counted afterwards from
+    // the region's edges it would be a different set of settings -- the edges
+    // enclose the notches the region walked around -- and it would report
+    // losers at a bar of 0, where by definition nothing was papered over.
+    const P = require('../lib/plateau');
+    const rows = [1, 2, 3, 4, 5, 6, 7].map((t) => ({ tHours: t, gate: 'x', pnl: t === 4 ? -0.5 : 5, trades: 10 }));
+    const o = { orderedAxes: ['tHours'], categoricalAxes: ['gate'], minTrades: 0 };
+    assert.deepEqual(P.widestRegion(rows, o).papered, { atLeast: 0, n: 0, of: 3, worst: null },
+      'at the old bar the reading does not say that it papered over nothing');
+    assert.deepEqual(P.widestRegion(rows, { ...o, atLeast: -1 }).papered, { atLeast: -1, n: 1, of: 7, worst: -0.5 },
+      'a loosened region does not count and name the loser it walked through');
+    assert.deepEqual(P.widestRegion([], o).papered, { atLeast: 0, n: 0, of: 0, worst: null },
+      'a reading with no region at all says nothing about what it papered over');
+    const lib = src('lib/stages.js');
+    const step5 = lib.slice(lib.indexOf('out.reading.keep = { ...keep,'), lib.indexOf('out.conditions.regionNotWider'));
+    assert.ok(step5.includes('out.conditions.regionPapered = (out.reading.papered || {}).n > 0;'), 'widening over losers leaves no mark to record');
+    assert.equal((step5.match(/applyRule\(all, keepRule\)/g) || []).length, 1,
+      'the losers are counted a second time off the region edges, and those enclose settings the region walked around');
+    const S4 = require('../lib/funnelset');
+    assert.equal(S4.MARKS.regionPapered, 'the region was widened over settings that lost money', 'the mark has no words on the set');
+    const page = src('public/construct.js');
+    assert.ok(page.includes("if (step === 5 && c.regionPapered) mark('regionPapered', 5);"), 'walking past step 5 does not record the mark');
+    assert.ok(/F_MARK_WORDS = \{[\s\S]*?regionPapered: 'the region was widened over settings that lost money'/.test(page),
+      'the page and the set do not agree on what the mark says');
+    // the screen says what was papered over, and says so even at the old bar
+    const step = page.slice(page.indexOf('function fStep5(r, d, st) {'), page.indexOf('// WHAT EACH LIMIT WOULD KEEP'));
+    assert.ok(step.includes('At <b>0</b> nothing is papered over'), 'at the old bar the screen goes silent instead of saying nothing was papered over');
+    assert.ok(step.includes('settings in this region LOST money'), 'the screen never says how many losers the region holds');
+    assert.ok(step.includes('The scrambled copies are measured under the same number'), 'the screen does not say the check moves with the bar');
+  },
+
+  // "there should be another control that lets the entire user rule be retained
+  // into step 6"
+  theOwnersOwnRuleCanBeCarriedWholeIntoStepSix() {
+    const page = src('public/construct.js');
+    const step = page.slice(page.indexOf('function fStep5(r, d, st) {'), page.indexOf('// WHAT EACH LIMIT WOULD KEEP'));
+    assert.ok(step.includes('id="fKeepMine"'), 'there is no way past step 5 that keeps the rule you built');
+    assert.ok(step.includes('keep my own rule and go on'), 'the control does not say what it does');
+    // it is drawn whether or not there is a region to keep
+    assert.ok(step.indexOf('${mine}') > step.indexOf('No region:'), 'the way past step 5 is only offered when there IS a region, and a walk with none is the case that needs it most');
+    const wire = page.slice(page.indexOf("const km = $('#fKeepMine');"), page.indexOf("const kr = $('#fKeepRegion');"));
+    assert.ok(!/st\.rule\./.test(wire), 'the way past step 5 writes into the rule, and it is supposed to leave it alone');
+    assert.ok(wire.includes('st.step = 6;'), 'it does not move on to step 6');
+    assert.ok(wire.includes("chose: 'not kept - my own rule carried on whole'"), 'the walk does not record that the region was refused');
+    assert.ok(wire.includes('markStep(5);'), 'walking past step 5 this way drops the marks the step earned');
+  },
+
 };

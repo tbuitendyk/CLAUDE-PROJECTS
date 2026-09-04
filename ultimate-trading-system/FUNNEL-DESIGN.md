@@ -967,6 +967,34 @@ Three defects, logged in `DEFECTS.md` under 2026-09-02:
 - *Recorded:* size, the check's figure. Mark: not wider than every copy, or not
   wider on both halves.
 
+  **Loosened, and given a way past it (owner order, 2026-09-04):** *"this step
+  is too restrictive. yes, the current functionality and report of the widest
+  region should be kept, but... we should also have a way of loosening the
+  criteria such that weak spots within what would be a much larger area can be
+  papered-over by some threshold (and noted of course). also, there should be
+  another control that lets the entire user rule be retained into step 6."*
+
+  - *A bar, in dollars per setting.* A setting joins a region when it makes more
+    than the bar. `0` is what the step has always read, and it stays the
+    default. Below `0` a shallow dip is walked through, so one setting a cent
+    under does not split what is really one wide area into two narrow ones —
+    and a narrow area is precisely what this step warns about, so the split
+    misleads in the direction that matters.
+  - *The same bar goes to the scrambled copies.* A region grown under a loose
+    bar and called wider than copies measured under a strict one is not a
+    comparison at all. Both come out of one call, so they cannot differ.
+  - *What it papers over is counted on the region's own members* — how many lost
+    money and the worst of them — and recorded as a mark, `the region was
+    widened over settings that lost money`, which cannot be cleared. Counting
+    it afterwards from the region's edges would be a different set of settings,
+    because the edges enclose the notches the region walked around, and it
+    would report losers at a bar of `0` where by definition none were let in.
+  - *And a way past the step altogether.* Keeping the widest region REPLACES
+    the whole rule. The second control leaves every range and value the owner
+    chose exactly as it is and moves to step 6, writing nothing. It is offered
+    whether or not a region was found — a walk with no region is the case that
+    needs it most — and the walk records that the region was refused.
+
 **Step 6 — exposure**
 
 - *Decision:* the two limits, as now.

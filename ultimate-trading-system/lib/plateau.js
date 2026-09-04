@@ -24,8 +24,18 @@ const CATEGORICAL_AXES = ['entry', 'gate'];
 // number would be a knob that could be turned until the region looked good, which
 // is the shopping this exists to avoid. minTrades keeps a cell that never traded
 // from counting — $0 by absence is not the same as $0 by skill.
-function clears(row, minTrades) {
-  return Number.isFinite(row.pnl) && row.pnl > 0 && (row.trades || 0) >= minTrades;
+// THE BAR A SETTING HAS TO CLEAR TO BE PART OF A REGION (3.64.0, owner order
+// 2026-09-04: step 5 "is too restrictive ... weak spots within what would be a
+// much larger area can be papered-over by some threshold"). It has always been
+// "made money after fees", and one setting a cent under that splits a wide area
+// into two narrow ones. `atLeast` moves the bar: 0 is what it has always been,
+// and a negative number lets a shallow dip be walked through.
+//
+// The bar applies to the scrambled copies' regions too, or the comparison is
+// rigged: a real region grown under a looser bar being called wider than copies
+// measured under the strict one is not a comparison at all.
+function clears(row, minTrades, atLeast = 0) {
+  return Number.isFinite(row.pnl) && row.pnl > Number(atLeast) && (row.trades || 0) >= minTrades;
 }
 
 // Index the values of each ordered axis so "next to" means "one step along the
@@ -90,6 +100,7 @@ function axisListOf(given, fallback, what) {
 
 function widestRegion(rows, opts = {}) {
   const minTrades = opts.minTrades == null ? 1 : opts.minTrades;
+  const atLeast = Number.isFinite(Number(opts.atLeast)) ? Number(opts.atLeast) : 0;
   // WHICH DIALS HAVE AN ORDER IS A PROPERTY OF THE RUN, NOT OF THIS LIBRARY
   // (Funnel design, 2026-08-31). ORDERED_AXES named `quorum`, which the
   // three-stage system does not have — its agreement dials replaced it — so a
@@ -103,14 +114,16 @@ function widestRegion(rows, opts = {}) {
   const both = ordered.filter((a) => categorical.includes(a));
   if (both.length) throw new Error(`${both.join(', ')} named as both an ordered and a categorical axis`);
   const all = Array.isArray(rows) ? rows.filter((r) => r && typeof r === 'object') : [];
-  const good = all.filter((r) => clears(r, minTrades));
+  const good = all.filter((r) => clears(r, minTrades, atLeast));
   const base = {
     size: 0,
     centre: null,
     sliceLabel: null,
     cellsConsidered: all.length,
     cellsClearing: good.length,
-    bar: 'pnl > 0 after fees',
+    bar: atLeast === 0 ? 'pnl > 0 after fees' : `pnl > ${atLeast} after fees`,
+    atLeast,
+    papered: { atLeast, n: 0, of: 0, worst: null },
     // provenance: a region size means nothing without knowing what "next to"
     // meant when it was cut
     axes: { ordered, categorical },
@@ -237,8 +250,23 @@ function widestRegion(rows, opts = {}) {
   }
   const values = {};
   for (const a of categorical) values[a] = centreRow[a];
+  // WHAT A BAR BELOW ZERO PAPERED OVER, counted on the region's OWN members
+  // (3.64.0, owner: "and noted of course"). Only this function knows which
+  // cells joined the region: a count taken afterwards from the region's edges
+  // is a different set of settings -- the edges enclose the notches the region
+  // walked around -- and it would report losers at a bar of 0, where by
+  // definition nothing was papered over at all.
+  let weakN = 0;
+  let worst = null;
+  for (const n of bestComp) {
+    const v = nodes[n].row.pnl;
+    if (!Number.isFinite(v) || v > 0) continue;
+    weakN += 1;
+    if (worst == null || v < worst) worst = v;
+  }
   return {
     ...base,
+    papered: { atLeast, n: weakN, of: bestComp.length, worst },
     size: bestComp.length,
     sliceLabel: nodes[centreIdx].slice,
     centre,

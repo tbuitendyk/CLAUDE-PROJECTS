@@ -836,3 +836,48 @@ made while building it that the design did not already settle.
     read, 0 of them say something the two single-dial ranges cannot" is a
     result, and silence would read the same as it. Second digit: new behaviour
     and two new controls.
+97. **Step 5 can be loosened, and it can be walked past** (3.64.0, owner order
+    2026-09-04: step 5 "is too restrictive ... we should also have a way of
+    loosening the criteria such that weak spots within what would be a much
+    larger area can be 'papered-over' by some threshold (and noted of course).
+    also, there should be another control that lets the entire user rule be
+    retained into step 6").
+
+    **The bar a setting has to clear** has always been "it made money after
+    fees", and one setting a cent under it splits what would be one wide area
+    into two narrow ones. A narrow area is exactly the thing this step exists to
+    warn about, so the split misleads in the direction that matters. The bar is
+    a box now: 0 is what it has always been, and below 0 walks through a shallow
+    dip. A dip deeper than the bar is still a wall.
+
+    **The same bar goes to the scrambled copies.** A region grown under a loose
+    bar and called wider than copies measured under a strict one is not a
+    comparison at all. Both are built through one closure, so the bar cannot
+    differ between them, and a test requires the region reader to be reached
+    from exactly one place in the whole step.
+
+    **What it papers over is counted, named and marked.** How many settings in
+    the region lost money, and the worst of them; a new mark, `the region was
+    widened over settings that lost money`, that rides on the Stage 4 set and
+    cannot be cleared. At the old bar the screen says nothing was papered over
+    rather than going silent, because silence and "none" look the same.
+
+    **And that count is taken on the region's own members, not off its edges.**
+    The first build of this counted the losers among the settings the region's
+    from/to edges would keep, which is the number the step already prints beside
+    `keep the widest region` and is the right number for THAT. It is the wrong
+    number for this one: the edges enclose the notches the region walked around,
+    and they leave every dial the region does not bound wide open -- so at a bar
+    of `0`, where by definition nothing was papered over, it would have counted
+    losers and put the mark on the walk. Only the region reader knows which
+    cells joined, so it does the counting and hands back `n`, `of` and `worst`.
+
+    **And there is a way past step 5 altogether.** `keep the widest region`
+    REPLACES the whole rule; this leaves every range and value the owner chose
+    exactly as it is and moves to step 6. It writes nothing into the rule, it is
+    offered whether or not a region was found -- a walk with no region is the
+    case that needs it most -- and the walk records that the region was refused,
+    so the set says the widest region was never kept on it and the rule it holds
+    is the owner's own.
+
+    Second digit: new behaviour and three new controls.

@@ -597,6 +597,18 @@ window.HELP = {
         what: 'Records that you accepted the rule across these slices, and opens the next step.',
         more: 'What you accepted is written on the set in words - "accepted 4 of 6; the check managed 3 of 6" - as a mark, so anyone reading the set later can see how much of the board the rule held on and how much of that the check managed anyway. It is disabled when there is nothing to compare.',
       },
+      fRegionAtLeast: {
+        what: 'How much a setting is allowed to lose and still count as part of the region. 0 means it has to have made money, which is how this step has always read.',
+        more: 'The region is the widest run of neighbouring settings that all work. With the bar at 0 a single setting a cent under splits what would be one wide area into two narrow ones, and a narrow area is the thing this step exists to warn you about - so the split can mislead you in the direction that matters. Set the bar below 0 and a shallow dip is walked through instead. The scrambled copies are measured under exactly the same bar, or a region grown under a loose bar would be compared against copies measured under a strict one, which is not a comparison at all. Whatever it papers over is counted under the box, marked on the set, and cannot be cleared.',
+      },
+      fRegionRead: {
+        what: 'Reads the region again with the bar you have set.',
+        more: 'The bar is also read again when you leave the box, so this button is for when you want to be sure. Nothing is written into the rule by reading; that is the button below.',
+      },
+      fKeepMine: {
+        what: 'Leaves every range and value you chose exactly as it is and moves on to step 6.',
+        more: 'Keeping the widest region REPLACES the whole rule with the region\'s edges. This is the way past that: your own rule goes to step 6 whole. The set you cut then says the widest region was never kept on this walk, and the rule it holds is the one you built. Use it when the region is telling you less than your own narrowing already did.',
+      },
       fKeepRegion: {
         what: 'Replaces every range and value in the rule with the edges of the widest region.',
         more: 'The region is the widest run of neighbouring settings that all made money. Its edges on each dial ARE a rule - the most defensible narrowing this screen can make, because it was chosen by how many neighbours a setting has and never by its score. The count beside it says what keeping it would leave against your target.',

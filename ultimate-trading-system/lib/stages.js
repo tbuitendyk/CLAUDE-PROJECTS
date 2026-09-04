@@ -4810,16 +4810,27 @@ async function funnelRead(id, state = {}) {
   } else if (step === 5) {
     const ordered = F.ORDERED_DIALS.filter((d) => rows.some((r) => r[d] != null));
     // one list of cells at a time, and each is let go before the next is made
+    // THE BAR A SETTING HAS TO CLEAR (3.64.0). Zero is what it has always been.
+    // The SAME bar goes to every scrambled copy below, or a region grown under
+    // a looser bar would be compared against copies measured under a stricter
+    // one, which is not a comparison.
+    const atLeast = Number.isFinite(Number(state.regionAtLeast)) ? Number(state.regionAtLeast) : 0;
     const region = (list, moneyOf = F.money) => require('./plateau').widestRegion(
       list.map((r) => ({ ...r, pnl: moneyOf(r), trades: r.avgTrades == null ? 1 : r.avgTrades })),
-      { minTrades: 0, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },
+      { minTrades: 0, atLeast, orderedAxes: ordered, categoricalAxes: F.CATEGORICAL_DIALS },
     );
     out.reading = region(rows);
+    out.reading.atLeast = atLeast;
     // THE REGION AS A RULE (§16.4, step 5): its edges on every ordered dial and
     // its values on every word-valued one, with what keeping it would leave
     const keep = S4.regionRule(out.reading, { ordered, categorical: F.CATEGORICAL_DIALS });
     const keepRule = { ...rule, ranges: keep.ranges, allowed: keep.allowed };
     out.reading.keep = { ...keep, keeps: out.reading.size ? S4.applyRule(all, keepRule).length : 0 };
+    // WHAT THE THRESHOLD PAPERED OVER, marked on the walk (owner: "and noted of
+    // course"). The count itself is the region reader's, taken on the region's
+    // own members: the settings it holds that do NOT make money, and the worst
+    // of them. At the bar's old value there are none of either.
+    out.conditions.regionPapered = (out.reading.papered || {}).n > 0;
     // ALL of the copies here, unlike the readings above that only compare: "wider
     // than luck" off one copy is a coin toss; "wider than all ten" is the claim
     // the count on Sweep exists to buy. With halves, the size on each half.
@@ -4833,6 +4844,7 @@ async function funnelRead(id, state = {}) {
       beatenBy: mine == null ? null : each.filter((v) => v != null && mine > v).length,
     };
     out.conditions.regionNotWider = mine == null ? null : out.reading.noise.beatenBy < each.length;
+    out.reading.regionAtLeast = atLeast;
   } else if (step === 6) {
     // WHAT THE LIMITS ARE LIMITS ON (3.57.0): a limit in dollars means nothing
     // without the stake, and a count of trades means nothing without the

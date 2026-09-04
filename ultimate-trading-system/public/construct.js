@@ -4218,6 +4218,7 @@ const F_MARK_WORDS = {
   interact: 'the two dials interact and the single-dial ranges were kept anyway',
   slices: 'accepted across slices with some not positive',
   regionNotWider: 'the widest region was not wider than the check',
+  regionPapered: 'the region was widened over settings that lost money',
   checkIsHalves: 'no scrambled copies were kept, so the two halves stood in as the check',
 };
 
@@ -4314,6 +4315,7 @@ async function drawFunnel() {
       closing: st.closing || { key: 'rule' },
       unit: st.unit,                                        // null: the set's first unit; 'all': the blend
       barPct: st.barPct,                                    // null: the engine's default share of the copies
+      regionAtLeast: st.regionAtLeast,                      // step 5's bar; 0 is "made money", below 0 papers over dips
       // showing a Stage 4 record set: no step is drawn, so no step is read
       view: (st.cut && st.cut !== F_NEW) ? 'cut' : null,
     });
@@ -4390,7 +4392,7 @@ async function drawFunnel() {
     ${d.step <= 5 ? fCheckLine(d) : ''}
     ${r.why && d.step !== 2 ? `<p class="note neg">${esc(r.why)}</p>`
     : (d.step === 1 ? fStep1(r) : d.step === 2 ? fStep2(r, st) : d.step === 3 ? fStep3(r, st)
-      : d.step === 4 ? fStep4(r, st) : d.step === 5 ? fStep5(r, d) : d.step === 6 ? fStep6(d, st, r) : fStep7(d, st))}
+      : d.step === 4 ? fStep4(r, st) : d.step === 5 ? fStep5(r, d, st) : d.step === 6 ? fStep6(d, st, r) : fStep7(d, st))}
     ${fNoiseLine(r, d)}
   </div>
   <div class="panel">${fRuleBox(d, st)}</div>`;
@@ -4787,14 +4789,43 @@ function fStep4(r, st) {
       <span class="note">records what you accepted - "${esc(said)}" - as a mark on the set, and opens the next step</span></div>`;
 }
 
-function fStep5(r, d) {
+function fStep5(r, d, st) {
   const keep = r.keep || {};
   const ranges = Object.entries(keep.ranges || {});
   const allowed = Object.entries(keep.allowed || {});
+  const pap = r.papered || {};
+  const at = r.atLeast == null ? 0 : Number(r.atLeast);
+  // THE BAR A SETTING HAS TO CLEAR (3.64.0, owner order). Zero is what it has
+  // always been. Below zero lets a shallow dip be walked through, so a wide
+  // area is not split in two by one setting a cent under.
+  const bar = `<div class="row" style="align-items:flex-end;margin-top:.5rem">
+      <label class="f">count a setting in if it makes at least<input id="fRegionAtLeast" type="number" step="0.01"
+        style="width:7rem" value="${esc(String(at))}"></label>
+      <button id="fRegionRead">read the region again</button>
+      <span class="note">dollars, per setting. <b>0</b> is "it made money", which is how this step has always read.
+        A number below 0 papers over settings that lost that much or less, so one weak setting cannot split a wide
+        area in two. The scrambled copies are measured under the same number, or the comparison would be rigged.</span></div>`;
+  const papered = at === 0
+    ? `<p class="note">At <b>0</b> nothing is papered over: every setting in the region made money.</p>`
+    : (pap.n
+      ? `<p class="note neg"><b>${Number(pap.n).toLocaleString()}</b> of the
+         ${Number(pap.of || 0).toLocaleString()} settings in this region LOST money - the worst by
+         <b>${fFix(pap.worst, 2)}</b>. They are in it because you set the bar at ${fFix(at, 2)}. This is recorded on
+         the set as a mark and cannot be cleared.</p>`
+      : `<p class="note">The bar is at ${fFix(at, 2)}, but nothing in the region needed it: every setting in it made
+         money anyway.</p>`);
+  // AND THE WAY PAST STEP 5 ALTOGETHER (owner order 2026-09-04): the rule the
+  // owner built goes to step 6 whole, with nothing replaced.
+  const mine = `<div class="row" style="align-items:flex-end;margin-top:.5rem">
+      <button id="fKeepMine">keep my own rule and go on</button>
+      <span class="note">leaves every range and value you chose exactly as it is and moves to step 6. Nothing on this
+        step is written into the rule, and the set will say the widest region was never kept.</span></div>`;
   return `<p class="note">The widest run of neighbouring settings that all made money, and <b>its middle</b> - chosen
       by depth inside the region, never by score, so the best-scoring one cannot sneak back in.</p>
     <p class="note">region size <b>${r.size || 0}</b> of ${r.cellsClearing || 0} settings that cleared,
       out of ${r.cellsConsidered || 0} considered.</p>
+    ${bar}
+    ${papered}
     ${r.size ? `<table><thead><tr>${cth('dial', 'fRegionDial')}${cth('from', 'fRegionFrom')}${cth('to', 'fRegionTo')}</tr></thead><tbody>
       ${ranges.map(([k, b]) => `<tr><td>${esc(fDialLabel(k))}</td><td>${esc(String(b.min))}</td><td>${esc(String(b.max))}</td></tr>`).join('')}
       ${allowed.map(([k, v]) => `<tr><td>${esc(fDialLabel(k))}</td><td colspan="2">${esc(v.join(', '))}</td></tr>`).join('')}
@@ -4803,7 +4834,8 @@ function fStep5(r, d) {
       <button id="fKeepRegion" class="pri">keep the widest region</button>
       <span class="note">replaces every range and value in the rule with the region's edges above - keeps
         <b>${Number(keep.keeps || 0).toLocaleString()}</b> of ${Number(d.of || 0).toLocaleString()}${d.target ? ` - target ${Number(d.target).toLocaleString()}` : ''}</span></div>`
-    : '<p class="note neg">No region: nothing here has neighbours that also work, which is what an isolated fluke looks like.</p>'}`;
+    : '<p class="note neg">No region: nothing here has neighbours that also work, which is what an isolated fluke looks like.</p>'}
+    ${mine}`;
 }
 
 // WHAT EACH LIMIT WOULD KEEP, so the number is set with its cost in view.
@@ -5416,6 +5448,7 @@ function fWire(st, d) {
     if (step === 2 && c.spike) mark('spike', 2, st.dial || null);
     if (step === 3 && c.interact) mark('interact', 3, `${fDialLabel(st.dialA || '')} x ${fDialLabel(st.dialB || '')}`);
     if (step === 5 && c.regionNotWider) mark('regionNotWider', 5);
+    if (step === 5 && c.regionPapered) mark('regionPapered', 5);
     if (c.checkIsHalves) mark('checkIsHalves', step);
   };
   // a row on step 1 opens step 2 with that dial chosen
@@ -5605,6 +5638,23 @@ function fWire(st, d) {
     st.steps.push({ n: 4, what: 'does it hold elsewhere', chose: said });
     st.step = 5; fSave(); drawFunnel();
   };
+  const ra = $('#fRegionAtLeast');
+  const rr = $('#fRegionRead');
+  const setAtLeast = () => {
+    const v = ra && ra.value !== '' ? Number(ra.value) : 0;
+    st.regionAtLeast = Number.isFinite(v) ? v : 0;
+    fSave(); drawFunnel();
+  };
+  if (rr) rr.onclick = setAtLeast;
+  if (ra) ra.onchange = setAtLeast;
+  // THE OWNER'S OWN RULE, WHOLE, INTO STEP 6 (3.64.0, owner order). Nothing on
+  // step 5 is written; the set will say the widest region was never kept.
+  const km = $('#fKeepMine');
+  if (km) km.onclick = () => {
+    markStep(5);
+    st.steps.push({ n: 5, what: 'the widest region', chose: 'not kept - my own rule carried on whole' });
+    st.step = 6; fSave(); drawFunnel();
+  };
   const kr = $('#fKeepRegion');
   if (kr) kr.onclick = () => {
     const keep = (st.read || {}).keep;
@@ -5619,7 +5669,7 @@ function fWire(st, d) {
     st.userRule = { ranges: JSON.parse(JSON.stringify(st.rule.ranges || {})), allowed: JSON.parse(JSON.stringify(st.rule.allowed || {})) };
     st.rule.ranges = ranges; st.rule.allowed = allowed;
     markStep(5);
-    st.steps.push({ n: 5, what: 'the widest region', chose: `kept as the rule (${Object.keys(ranges).length + Object.keys(allowed).length} dial(s))` });
+    st.steps.push({ n: 5, what: 'the widest region', chose: `kept as the rule (${Object.keys(ranges).length + Object.keys(allowed).length} dial(s))${st.regionAtLeast ? `, counted in at ${st.regionAtLeast}` : ''}` });
     fSave(); drawFunnel();
   };
   const af = $('#fAddFloors');
