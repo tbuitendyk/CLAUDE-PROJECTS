@@ -1512,8 +1512,8 @@ module.exports = {
     assert.ok(s4.includes('<button id="fAcross" class="pri" ${asked ? \'disabled\' : \'\'}>read the other units</button>'), 'read by pressing');
     assert.ok(s4.includes("${r.others} boards, read one at a time"), 'the count of other boards is the set\'s, never typed');
     assert.ok(!/nine/.test(s4), 'no typed nine');
-    assert.ok(s4.includes("const a = st.across && st.across.ruleKey === JSON.stringify(st.rule) ? st.across : null;"),
-      'what was read is shown only for the rule it was read for');
+    assert.ok(s4.includes("const a = st.across && st.across.ruleKey === fAcrossKey(st) ? st.across : null;"),
+      'what was read is shown only for the rule and the bar it was read for');
     const draw = src.slice(src.indexOf('async function drawFunnel'), src.indexOf('\nfunction fHead('));
     assert.ok(draw.includes('accept: d.step === 4 && r.pressed')
       && draw.includes('(a4 ? { positive: a4.positive, of: a4.of, check: null, clearBar: a4.clearBar } : null)'),
@@ -1647,6 +1647,11 @@ module.exports = {
     const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     assert.ok(ui.includes("const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct]);"), 'the page has no key that carries the bar');
     assert.ok(ui.includes("const a4 = st.across && st.across.ruleKey === fAcrossKey(st) ? st.across : null;"), 'the kept reading is shown under a bar it was not read for');
+    // AND STEP 4 LOOKS UNDER THE SAME KEY (3.55.0): it looked under the rule
+    // alone, never found the reading, and read the other units read as dead
+    assert.ok(ui.includes("    const a = st.across && st.across.ruleKey === fAcrossKey(st) ? st.across : null;"), 'step 4 looks for the reading under a key the press never filed it under');
+    assert.ok(ui.includes("    const asked = !a && st.acrossAsked && st.acrossAsked.ruleKey === fAcrossKey(st);"), 'step 4 forgets a reading is in flight the moment the page redraws');
+    assert.ok(!/ruleKey === JSON\.stringify\(st\.rule\)/.test(ui), 'somewhere the reading is still looked for under the rule alone');
     assert.ok(ui.includes("    const ruleKey = fAcrossKey(st);"), 'the press does not remember the bar it asked under');
   },
 
@@ -1896,6 +1901,39 @@ module.exports = {
     assert.ok(fn.includes('return fFix(fin.reduce((s, x) => s + x, 0) / fin.length);'), 'the second grid does not average the copies');
     assert.ok(fn.includes("(r.checkGrids || []).map((g) => (g.grid || []).find((x) => x.a === a && x.b === b))"), 'the second grid does not read the same squares as the first');
     assert.ok(step.includes("${kind === 'halves' ? '' : table('The check - the average scrambled average in each square'"), 'with no copies there is nothing to average, and the grid must not pretend otherwise');
+  },
+
+  // EVERY CLAUSE OF THE RULE CAN BE REMOVED (3.55.0, owner order 2026-09-04:
+  // "fix the rule so that the irrelevant bit about false on 24/5 is entirely
+  // removed"). A clause on a dial with one value on this unit had no control
+  // that could take it out.
+  async everyClauseOfTheRuleHasItsOwnRemove() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(page.includes('<div class="panel">${fRuleBox(d, st)}</div>'), 'the rule box is drawn without the walk, so it cannot list the clauses');
+    const box = page.slice(page.indexOf('function fRuleClauses('), page.indexOf('\n// FOLLOWING A READING OF THE OTHER UNITS'));
+    assert.ok(box.includes("out.push({ kind: 'ranges', key: dial, text: `${fDialLabel(dial)} ${span}${also}` });"), 'a range clause is not listed with its dial named');
+    assert.ok(box.includes("out.push({ kind: 'allowed', key: dial, text: `${fDialLabel(dial)} is ${vals.join(' or ')}` });"), 'a word clause is not listed');
+    assert.ok(box.includes("out.push({ kind: 'floors', key: field, text: `${field} at least ${spec.min}` });"), 'a floor is not listed');
+    assert.ok(box.includes('<button data-frm="${esc(`${c.kind}|${c.key}`)}">remove</button>'), 'a clause has no remove of its own');
+    const wire = page.slice(page.indexOf("document.querySelectorAll('[data-frm]').forEach((b) => {"), page.indexOf("const cl = $('#fClear');"));
+    assert.ok(wire.includes('delete st.rule[kind][key];'), 'remove does not drop the clause');
+    assert.ok(wire.includes("st.steps.push({ n: st.step, what: `removed from the rule: ${gone}`, chose: 'removed' });"), 'a removal is not recorded in the walk\'s notes');
+    assert.ok(wire.includes('fSave(); drawFunnel();'), 'a removal is not saved and redrawn');
+  },
+
+  // THE THREE TABLES ON STEP 3 LINE UP (3.55.0, owner order 2026-09-04: "line
+  // up those two check tables and draw the cell boundaries").
+  async theGridAndItsTwoCheckTablesLineUpWithCellBoundaries() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const step = page.slice(page.indexOf('function fStep3('), page.indexOf('\nfunction ', page.indexOf('function fStep3(') + 10));
+    assert.ok(step.includes('<table class="fgrid"><thead>'), 'the grid tables carry no class to line them up by');
+    for (const call of ["table('The grid - bold squares beat the check", "table(kind === 'halves' ? 'The check - each half", "table('The check - the average scrambled average in each square'"]) {
+      assert.ok(step.includes(call), `not drawn through the one table helper: ${call}`);
+    }
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+    assert.ok(/table\.fgrid \{ table-layout:fixed; \}/.test(css), 'the columns are not fixed, so they cannot line up across tables');
+    assert.ok(/table\.fgrid th, table\.fgrid td \{ border:1px solid var\(--line\); \}/.test(css), 'the cell boundaries are not drawn');
+    assert.ok(/  table \{ width:100%;/.test(css), 'the tables are not the same width, so fixed columns would still differ');
   },
 
 };

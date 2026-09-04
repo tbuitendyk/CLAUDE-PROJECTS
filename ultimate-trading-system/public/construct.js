@@ -4365,7 +4365,7 @@ async function drawFunnel() {
       : d.step === 4 ? fStep4(r, st) : d.step === 5 ? fStep5(r, d) : d.step === 6 ? fStep6(d, st, r) : fStep7(d, st))}
     ${fNoiseLine(r, d)}
   </div>
-  <div class="panel">${fRuleBox(d)}</div>`;
+  <div class="panel">${fRuleBox(d, st)}</div>`;
   fWire(st);
 }
 
@@ -4594,7 +4594,10 @@ function fStep3(r, st) {
     if (!fin.length) return '-';
     return fFix(fin.reduce((s, x) => s + x, 0) / fin.length);
   };
-  const table = (title, cell) => `<p class="note"><b>${title}</b></p><table><thead><tr>${cth(`${esc(fDialLabel(r.dialA))} \\ ${esc(fDialLabel(r.dialB))}`, 'fGridCorner')}${(r.bVals || []).map((b) => cth(esc(b), 'fGridValue')).join('')}</tr></thead><tbody>
+  // THE THREE TABLES LINE UP (owner order, 2026-09-04: "line up those two
+  // check tables and draw the cell boundaries"): fixed, equal columns on the
+  // same width, so a square sits under the same square in every table
+  const table = (title, cell) => `<p class="note"><b>${title}</b></p><table class="fgrid"><thead><tr>${cth(`${esc(fDialLabel(r.dialA))} \\ ${esc(fDialLabel(r.dialB))}`, 'fGridCorner')}${(r.bVals || []).map((b) => cth(esc(b), 'fGridValue')).join('')}</tr></thead><tbody>
       ${(r.aVals || []).map((a) => `<tr><td><b>${esc(a)}</b></td>${(r.bVals || []).map((b) => cell(a, b)).join('')}</tr>`).join('')}</tbody></table>`;
   return `${howTo}${pickers}
     <p class="note"><b>${r.thin} of ${r.squares} squares are thin.</b> A square built from two settings tells you
@@ -4622,8 +4625,12 @@ function fStep4(r, st) {
   if (r.pressed) {
     // ON A UNIT'S BOARD, "elsewhere" IS THE OTHER UNITS (§17.3): the same rule
     // on each of their records, read one at a time when asked
-    const a = st.across && st.across.ruleKey === JSON.stringify(st.rule) ? st.across : null;
-    const asked = !a && st.acrossAsked && st.acrossAsked.ruleKey === JSON.stringify(st.rule);
+    // UNDER THE KEY THE PRESS FILED IT UNDER (3.55.0, owner: "looks like the
+    // 'read the other units' button doesn't do anything"): since 3.50.0 a
+    // reading is kept under the rule AND the bar; this looked under the rule
+    // alone, never found it, and the table never showed
+    const a = st.across && st.across.ruleKey === fAcrossKey(st) ? st.across : null;
+    const asked = !a && st.acrossAsked && st.acrossAsked.ruleKey === fAcrossKey(st);
     return `<p class="note">Read across the <b>${r.others}</b> other coin-and-shape unit${r.others === 1 ? '' : 's'} of this set: the
         rule you have built here, applied to each of their records.</p>
       <div class="row" style="align-items:flex-end">
@@ -4739,8 +4746,39 @@ function fStep7(d, st) {
     <p class="note">An empty or one-setting result is written with a warning, never refused.</p>`;
 }
 
-function fRuleBox(d) {
+// EVERY CLAUSE OF THE RULE, EACH WITH ITS OWN remove (3.55.0, owner order,
+// 2026-09-04: the clause "weekdaysOnly is false" was stuck in a rule built
+// on a weekly unit -- step 2 offers its tick boxes only where the dial has
+// two or more values, and after the fold it had one there -- so nothing on
+// the screen could take it out, and applied to the daily units it halved
+// them). The sentence stays the service's; the list under it is the rule as
+// the page holds it, one line per clause, and remove drops that clause only.
+function fRuleClauses(st) {
+  const out = [];
+  const R = st.rule || {};
+  for (const [dial, spec] of Object.entries(R.ranges || {})) {
+    if (!spec) continue;
+    const lo = spec.min != null ? spec.min : null;
+    const hi = spec.max != null ? spec.max : null;
+    const also = Array.isArray(spec.also) && spec.also.length ? ` or ${spec.also.join('/')}` : '';
+    const span = lo != null && hi != null ? `${lo} to ${hi}` : lo != null ? `${lo} or more` : hi != null ? `${hi} or less` : 'anything';
+    out.push({ kind: 'ranges', key: dial, text: `${fDialLabel(dial)} ${span}${also}` });
+  }
+  for (const [dial, vals] of Object.entries(R.allowed || {})) {
+    if (!Array.isArray(vals) || !vals.length) continue;
+    out.push({ kind: 'allowed', key: dial, text: `${fDialLabel(dial)} is ${vals.join(' or ')}` });
+  }
+  for (const [field, spec] of Object.entries(R.floors || {})) {
+    if (!spec) continue;
+    if (spec.min != null) out.push({ kind: 'floors', key: field, text: `${field} at least ${spec.min}` });
+    if (spec.max != null) out.push({ kind: 'floors', key: field, text: `${field} at most ${spec.max}` });
+  }
+  return out;
+}
+function fRuleBox(d, st) {
+  const clauses = st ? fRuleClauses(st) : [];
   return `<h3 style="margin-top:0">The rule so far</h3><p class="note">${esc(fRuleWords(d.ruleSentence))}</p>
+    ${clauses.length ? `<ul class="note frule">${clauses.map((c) => `<li>${esc(c.text)} <button data-frm="${esc(`${c.kind}|${c.key}`)}">remove</button></li>`).join('')}</ul>` : ''}
     <div class="row"><button id="fClear">start the rule again</button>
       <span class="note">keeps the set open and clears every choice - recorded as going back</span></div>`;
 }
@@ -5028,6 +5066,18 @@ function fWire(st) {
       ? `${out.name} written for ${out.unitName || 'all units together'} with ${out.survivors} setting(s)${cd}${(out.warnings || []).length ? ` - ${out.warnings.join(' - ')}` : ''}`
       : '';
   };
+  // one clause out, the rest untouched, recorded in the walk's notes
+  document.querySelectorAll('[data-frm]').forEach((b) => {
+    b.onclick = () => {
+      const [kind, key] = String(b.dataset.frm).split('|');
+      if (!st.rule || !st.rule[kind] || !(key in st.rule[kind])) return;
+      const gone = fRuleClauses(st).filter((c) => c.kind === kind && c.key === key).map((c) => c.text).join('; ');
+      delete st.rule[kind][key];
+      if (!st.steps) st.steps = [];
+      st.steps.push({ n: st.step, what: `removed from the rule: ${gone}`, chose: 'removed' });
+      fSave(); drawFunnel();
+    };
+  });
   const cl = $('#fClear');
   if (cl) cl.onclick = () => {
     st.backSteps.push({ from: st.step, to: 1, why: 'started the rule again' });

@@ -131,6 +131,15 @@ function requirePlaywright() {
   await page.waitForTimeout(800);
   const wrote = posted.slice(before).map((b) => ((b.rule || {}).ranges || {}).dMult).filter(Boolean).pop();
   expect(JSON.stringify(wrote) === JSON.stringify({ min: 0.5, max: null, also: ['none'] }), `the rule carries 0.5 or more, or none: ${JSON.stringify(wrote)}`);
+  // every clause under The rule so far has its own remove (3.55.0)
+  const clauseText = await page.locator('ul.frule').innerText().catch(() => '');
+  expect(/dMult \(d\) 0\.5 or more or none/.test(clauseText) && /gate is directional/.test(clauseText), `the rule box lists each clause: ${clauseText.replace(/\n/g, ' | ')}`);
+  const beforeRm = posted.length;
+  await page.locator('[data-frm="ranges|dMult"]').click();
+  await page.waitForTimeout(800);
+  const afterRm = posted.slice(beforeRm).map((b) => (b.rule || {}).ranges || {}).pop();
+  expect(afterRm && !('dMult' in afterRm), `remove drops that clause and only that clause: ${JSON.stringify(posted.slice(beforeRm).map((b) => b.rule).pop())}`);
+  expect(/gate is directional/.test(await page.locator('#view').innerText()), 'the other clause stays');
   await page.locator('[data-fstep="3"]').click().catch(() => {});
   await page.waitForSelector('#fA', { timeout: 15000 }).catch(() => {});
   const aWords = await page.locator('#fA option').allTextContents().catch(() => []);
@@ -149,6 +158,11 @@ function requirePlaywright() {
   const highTable = tables.find((t) => /all\t3\.00\t2\.00/.test(t) || /^all\s+3\.00\s+2\.00/m.test(t)) || null;
   expect(!!highTable, `the highest grid reads all: 3.00, 2.00 (the higher of the two copies)${highTable ? '' : `: ${JSON.stringify(tables)}`}`);
   expect(!!avgTable, `the average grid reads all: 2.00, 1.00 (the mean of the two copies)${avgTable ? '' : `: ${JSON.stringify(tables)}`}`);
+  // the three tables line up: same class, same column count, fixed layout (3.55.0)
+  const gridTables = await page.locator('#view table.fgrid').count();
+  expect(gridTables === 3, `the grid and its two checks are drawn as three lined-up tables: ${gridTables}`);
+  const widths = await page.locator('#view table.fgrid').evaluateAll((ts) => ts.map((t) => [...t.querySelectorAll('thead th')].map((th) => Math.round(th.getBoundingClientRect().width)).join(',')));
+  expect(widths.length === 3 && widths[0] === widths[1] && widths[1] === widths[2], `every column is the same width in all three tables: ${widths.join(' / ')}`);
   expect(errors.length === 0, `no page errors and no dialogs${errors.length ? `: ${errors.join('; ')}` : ''}`);
   await browser.close();
   srv.kill();

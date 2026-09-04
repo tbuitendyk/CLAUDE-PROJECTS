@@ -478,3 +478,25 @@ made while building it that the design did not already settle.
     and the square is bold on that count. Drawn only when there are copies;
     with the two halves there is nothing to average. Pressed in the browser
     harness on a canned grid with two copies. Second digit: a new element.
+84. **read the other units shows what it read; every clause has its own
+    remove; the step 3 tables line up** (3.55.0, owner, 2026-09-04: "looks
+    like the 'read the other units' button doesn't do anything"; "fix the
+    rule so that the irrelevant bit about false on 24/5 is entirely removed
+    so that it's not used on the daily units"; "line up those two check
+    tables and draw the cell boundaries"). Three things. (1) Since 3.50.0 a
+    reading of the other units is kept under the rule AND the bar (#77), and
+    step 4 still looked for it under the rule alone, so the reading ran on
+    the box and the page never showed it: the button read as dead. The test
+    written for #77 pinned every other place and missed these two lines;
+    both are pinned now. (2) A clause on a dial that has one value on the
+    unit the walk is on could not be taken out: step 2 offers its boxes only
+    for a dial with two or more values there, and after the fold 24/5 has
+    one on a weekly unit, so "weekdaysOnly is false" -- a way round the
+    doubled records that the fold made pointless -- sat in the rule and
+    halved every daily unit it was applied to. Under The rule so far each
+    clause is now listed with its own `remove`, recorded in the walk's notes
+    like every other change; removing that clause leaves the daily units
+    with both values of 24/5. (3) The grid and its two check tables are
+    drawn with fixed, equal columns on one width and every cell bounded, so
+    a square sits under the same square in all three. Second digit: a new
+    control and a fix.

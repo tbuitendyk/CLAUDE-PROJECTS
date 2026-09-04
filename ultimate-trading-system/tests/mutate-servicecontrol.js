@@ -520,6 +520,14 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), ' <b class="fpick">Your block: ', ' <b>Your block: ',
     'theThirdStepSaysHowToWalkItAndShowsTheOwnersBlockInGreen',
     'the line that says which values the owner\'s block covers is drawn like any other note'],
+  // ---- STEP 4 FINDS THE READING UNDER THE KEY THE PRESS FILED IT UNDER (3.55.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "    const a = st.across && st.across.ruleKey === fAcrossKey(st) ? st.across : null;", "    const a = st.across && st.across.ruleKey === JSON.stringify(st.rule) ? st.across : null;",
+    'theAcrossIsKeyedOnTheBarAsWellAsTheRule',
+    'read the other units reads the boards and the page never shows what came back'],
+  // ---- remove DROPS THE CLAUSE (3.55.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      delete st.rule[kind][key];\n      if (!st.steps) st.steps = [];", "      if (!st.steps) st.steps = [];",
+    'everyClauseOfTheRuleHasItsOwnRemove',
+    'remove records a removal in the notes and leaves the clause in the rule'],
   // ---- THE SECOND CHECK GRID AVERAGES THE COPIES (3.54.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "    return fFix(fin.reduce((s, x) => s + x, 0) / fin.length);", "    return fFix(Math.max(...fin));",
     'theThirdStepShowsTheAverageScrambledAverageBesideTheHighest',
