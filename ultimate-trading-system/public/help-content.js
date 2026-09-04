@@ -590,15 +590,15 @@ window.HELP = {
         more: 'Nothing here changes the rule - this step is for looking. Only keep this block writes anything.',
       },
       fRebuild: {
-        what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, and how much of the result rests on guessing what happened inside a single bar.',
+        what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, and how much of the result rests on guessing what happened inside a single bar. Press it FIRST on this step: the two limits are read off the survivors, and no survivor carries these numbers until it has run.',
         more: 'These are calculated during the sweep and thrown away, because keeping them for every one of half a million settings is not worth the disk. Here they are re-calculated for the handful you have narrowed to, which takes seconds. It also re-checks the money and the trade count against what the sweep stored: if they disagree, something underneath has changed and it says so rather than mixing numbers from two different runs.',
       },
       fDD: {
-        what: 'The worst losing streak you are willing to accept, in dollars.',
+        what: 'The worst losing streak you are willing to accept, in dollars, per coin - the deepest the running total ever sat below its own best point, on the stake named at the top of this step.',
         more: 'A total says nothing about the ride. A setting that made money by sitting through a loss deep enough to end you is not a setting you want, and the total looks identical either way.',
       },
       fTrades: {
-        what: 'The fewest trades a setting must have made to stay in.',
+        what: 'The fewest trades a setting must have made to stay in, counted over the window named at the top of this step - not over a year. The line beside each rung says what a count comes to a year.',
         more: 'A handsome result from four trades is four coin flips. This is a blunt way of saying you want enough of them to mean something.',
       },
       fAddFloors: {

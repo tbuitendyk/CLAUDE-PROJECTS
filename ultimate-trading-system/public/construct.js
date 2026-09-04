@@ -4712,29 +4712,72 @@ function fStep5(r, d) {
 }
 
 // WHAT EACH LIMIT WOULD KEEP, so the number is set with its cost in view.
-function fLadder(name, l, word) {
+function fLadder(name, l, word, ex) {
   if (!l) return '';
-  if (!l.measured) return `<p class="note muted">${esc(name)}: no survivor carries this number yet - work out the missing numbers first.</p>`;
-  return `<p class="note">${esc(name)} - what each limit would keep of ${l.of}: ${l.rungs.map((x) => `${word} ${fFix(x.at)} keeps ${x.keeps}`).join('; ')}.</p>`;
+  if (!l.measured) return `<p class="note muted">${esc(name)}: no survivor carries this number yet - press work out the missing numbers first.</p>`;
+  // a trade count is put on a yearly footing beside each rung (3.57.0); a
+  // dollar figure is already in dollars at the stake named above
+  return `<p class="note">${esc(name)} - what each limit would keep of ${l.of}: ${l.rungs.map((x) => `${word} ${fFix(x.at)}${ex ? fPerYear(x.at, ex) : ''} keeps ${x.keeps}`).join('; ')}.</p>`;
 }
 
+// WHAT A TRADE COUNT COMES TO OVER A YEAR (3.57.0): the window the trades were
+// counted over is not a year, so a count means nothing until it is put on the
+// same footing. Worked out from the window's own length.
+const fPerYear = (n, ex) => {
+  const f = ex && ex.window && ex.window.perYearFactor;
+  return f && Number.isFinite(Number(n)) ? ` <span class="muted">(about ${Math.round(Number(n) * f).toLocaleString()} a year)</span>` : '';
+};
+const fDay = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '-');
 function fStep6(d, st, r) {
   const dd = (st.rule.floors || {}).maxDrawdown || {};
   const tr = (st.rule.floors || {}).avgTrades || {};
+  const ex = r.exposure || {};
+  const w = ex.window || null;
+  // WHAT THE TWO LIMITS ARE LIMITS ON (owner order, 2026-09-04: "how much are
+  // we trading per trade? how much can be on the table at once maximum? ...
+  // fewest trades? over what time period?"). Every number here is read off
+  // the set and the engine, never typed.
+  const money = ex.stake ? `<p class="note"><b>What these limits are limits on.</b> Every trade stakes
+      <b>$${Number(ex.stake).toLocaleString()}</b>, so every dollar figure on this walk is dollars at that stake.
+      A coin holds one position at a time, so <b>$${Number(ex.stake).toLocaleString()}</b> is the most that can be on
+      the table for one coin${ex.coins > 1 ? `, and <b>$${Number(ex.mostAtOnce).toLocaleString()}</b> across the
+      ${ex.coins} coins of this reading if every one of them is in a trade at once` : ''}.</p>` : '';
+  const when = w
+    ? `<p class="note"><b>The trades are counted over ${fDay(w.fromTs)} to ${fDay(w.toTs)}</b> -
+        ${Math.round(w.weeks)} weeks, or ${Math.round(w.days)} days. That is the test window: the part of the history
+        the money on this walk was made in. Held-back and sealed time sit after it and are not counted here.
+        <b>${Number(tr.min || 20).toLocaleString()}</b> trades over that window is
+        about <b>${w.perYearFactor ? Math.round((Number(tr.min) || 20) * w.perYearFactor).toLocaleString() : '-'}</b> a year.</p>`
+    : `<p class="note muted">The window the trades were counted over cannot be worked out${ex.why ? ` - ${esc(ex.why)}` : ''}, so a trade count here cannot be put on a yearly footing.</p>`;
+  const howTo = `<ol class="note fhow">
+      <li>Press <b>work out the missing numbers</b> FIRST. Nothing below can be read or set until it has run: the two
+        limits are read off the survivors themselves, and no survivor carries these numbers until this is pressed. It
+        changes no rule and no record; it prices the survivors again for the numbers a sweep does not keep.</li>
+      <li>Read the two lines under it: what each limit would keep, of the settings that survive.</li>
+      <li>Set <b>worst losing streak allowed</b> - in dollars, per coin: the deepest the running total ever sat below
+        its own best point. A setting whose worst streak is deeper than this is dropped.</li>
+      <li>Set <b>fewest trades</b> - counted over the window named above. A setting that traded fewer times is dropped.</li>
+      <li>Press <b>add these limits to the rule</b>. Both limits go into the rule together, and the survivor count at
+        the top moves.</li>
+    </ol>`;
   return `<p class="note">The numbers a sweep does not keep - the worst losing streak, the biggest single loss, how
       many trades won, and how much of the result rests on guessing what happened inside a single bar - are worked out
       here, for the <b>${Number(d.survivors).toLocaleString()}</b> settings that survive and no others. Totals
       flatter; an average losing streak hides the one that would have ended you.</p>
+    ${howTo}
+    ${money}
+    ${when}
     <div class="row"><button id="fRebuild" class="pri">work out the missing numbers</button>
-      <span id="fRebuildMsg" class="note">${st.rebuilt ? 'done for this set' : 'not done yet'}</span></div>
-    ${fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most')}
-    ${fLadder('trades', (r.ladders || {}).avgTrades, 'at least')}
+      <span id="fRebuildMsg" class="note">${st.rebuilt ? 'done for this set' : 'not done yet - press it first'}</span></div>
+    ${fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)}
+    ${fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex)}
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <label class="f">worst losing streak allowed<input id="fDD" type="number" style="width:8rem"
         value="${esc(String(dd.max == null ? '' : dd.max))}"></label>
       <label class="f">fewest trades<input id="fTrades" type="number" style="width:8rem"
         value="${esc(String(tr.min == null ? '' : tr.min))}"></label>
-      <button id="fAddFloors">add these limits to the rule</button></div>`;
+      <button id="fAddFloors">add these limits to the rule</button>
+      <span class="note">${w ? `a trade count here is over ${Math.round(w.weeks)} weeks${tr.min ? fPerYear(tr.min, ex) : ''}` : 'the window these trades were counted over is not known for this set'}</span></div>`;
 }
 
 function fStep7(d, st) {

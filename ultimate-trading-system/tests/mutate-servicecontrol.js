@@ -528,6 +528,13 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      delete st.rule[kind][key];\n      if (!st.steps) st.steps = [];", "      if (!st.steps) st.steps = [];",
     'everyClauseOfTheRuleHasItsOwnRemove',
     'remove records a removal in the notes and leaves the clause in the rule'],
+  // ---- STEP 6 SAYS WHAT ITS LIMITS ARE LIMITS ON (3.57.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "  const toTs = workEnd - nHold * stepMs;", "  const toTs = workEnd;",
+    'theSixthStepSaysWhatItsLimitsAreLimitsOn',
+    'the window the trades are counted over runs into the held-back time, so a trade count is measured against the wrong stretch of history'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    mostAtOnce: NOTIONAL * coins,", "    mostAtOnce: NOTIONAL,",
+    'theSixthStepSaysWhatItsLimitsAreLimitsOn',
+    'the most that can be on the table reads as one stake however many coins the rule covers'],
   // ---- A TIE BETWEEN BLOCKS IS BROKEN BY THE CHECK (3.56.0) ----
   [path.join(ROOT, 'lib', 'funnel.js'), "          if (!best || n > best.squares || (lead != null && (best.lead == null || lead > best.lead))) best = { a0, a1, b0, b1, squares: n, lead };",
     "          if (!best || n > best.squares) best = { a0, a1, b0, b1, squares: n, lead };",

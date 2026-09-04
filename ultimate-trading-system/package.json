@@ -1,6 +1,6 @@
 {
   "name": "ultimate-trading-system",
-  "version": "3.56.0",
+  "version": "3.57.0",
   "description": "Ultimate Trading System: finds candidate trading rules in hourly market data, measures them against random-data baselines, and runs the survivors forward on paper and live. Deterministic arithmetic only.",
   "main": "server.js",
   "type": "commonjs",

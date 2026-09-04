@@ -60,6 +60,16 @@ function reply(body) {
     } };
   }
   if (body.step === 3) return { ...base, reading: {} };
+  // step 6: the numbers a sweep does not keep, with the exposure the two
+  // limits are limits on (3.57.0)
+  if (body.step === 6) {
+    const day = 86400000; const from = Date.UTC(2025, 5, 2);
+    return { ...base, rebuilt: true, reading: { rebuilt: true,
+      exposure: { stake: 100, coins: 2, units: 2, mostAtOnce: 200,
+        window: { fromTs: from, toTs: from + 140 * day, days: 140, weeks: 20, perYearFactor: 365.25 / 140 }, why: null },
+      ladders: { maxDrawdown: { field: 'maxDrawdown', dir: 'max', of: 40, measured: 40, rungs: [{ at: 12, keeps: 10 }, { at: 30, keeps: 40 }] },
+        avgTrades: { field: 'avgTrades', dir: 'min', of: 40, measured: 40, rungs: [{ at: 6, keeps: 40 }, { at: 20, keeps: 12 }] } } } };
+  }
   return { ...base, reading: { why: 'not canned' } };
 }
 function requirePlaywright() {
@@ -169,6 +179,17 @@ function requirePlaywright() {
   expect(gridTables === 3, `the grid and its two checks are drawn as three lined-up tables: ${gridTables}`);
   const widths = await page.locator('#view table.fgrid').evaluateAll((ts) => ts.map((t) => [...t.querySelectorAll('thead th')].map((th) => Math.round(th.getBoundingClientRect().width)).join(',')));
   expect(widths.length === 3 && widths[0] === widths[1] && widths[1] === widths[2], `every column is the same width in all three tables: ${widths.join(' / ')}`);
+  // step 6 says what its two limits are limits on (3.57.0)
+  await page.locator('[data-fstep="6"]').click().catch(() => {});
+  await page.waitForSelector('#fDD', { timeout: 15000 }).catch(() => {});
+  const six = await page.locator('#view').innerText();
+  expect(/Every trade stakes \$100/.test(six), `step 6 says what a trade stakes: ${six.slice(0, 200)}`);
+  expect(/\$200 across the 2 coins/.test(six), 'step 6 says what can be on the table across the coins');
+  expect(/The trades are counted over 2025-06-02 to 2025-10-20/.test(six), `step 6 names the window: ${six.slice(six.indexOf('The trades are counted'), six.indexOf('The trades are counted') + 160)}`);
+  expect(/20 weeks, or 140 days/.test(six), 'step 6 says how long the window is');
+  expect(/at least 20\.00 \(about 52 a year\) keeps 12/.test(six), `the trades ladder is put on a yearly footing: ${six.slice(six.indexOf('trades - what'), six.indexOf('trades - what') + 200)}`);
+  expect(/at most 12\.00 keeps 10/.test(six) && !/at most 12\.00 \(about/.test(six), 'the dollar ladder is drawn, and must not be read as a rate');
+  expect(/Press work out the missing numbers FIRST/.test(six), 'step 6 says which button to press first');
   expect(errors.length === 0, `no page errors and no dialogs${errors.length ? `: ${errors.join('; ')}` : ''}`);
   await browser.close();
   srv.kill();

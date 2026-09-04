@@ -517,3 +517,30 @@ made while building it that the design did not already settle.
     square of the grid now carries "beats N of K" under its money, from the
     same pass that decided bold, in the words step 2 already uses -- so the
     grid, the bold, and the two check tables say one thing. Second digit.
+86. **Step 6 says what its two limits are limits ON** (3.57.0, owner order
+    2026-09-04: "more context is needed to set the worst losing streak
+    allowed and fewest trades. how much are we trading per trade? how much
+    can be on the table at once maximum? that's a context for size of loss
+    that would be acceptable. fewest trades? over what time period? ... i'm
+    ok with 20 trades in a year. or 5 in three months. but not 5 in a year";
+    and "should i be hitting the work out the missing numbers NOW or is that
+    something that is done AFTER supplying those other two fields. there's a
+    serious lack of information and instructions on that step 6").
+    The step offered two boxes and no way to know what either meant. A
+    dollar limit means nothing without the stake; a trade count means
+    nothing without the stretch of history it was counted over. Now, above
+    the boxes: every trade stakes the engine's own position size, so every
+    dollar figure on the walk is dollars at that stake; a coin holds one
+    position at a time, so that is the most that can be on the table for one
+    coin, and that times the coins of this reading if every one is in a
+    trade at once; and the window the trades were counted over, by date and
+    in weeks, with what a count over it comes to a year -- beside the box
+    and beside every rung of the trades ladder. The window is DERIVED from
+    the sealed bounds the records already carry (3.51.0) and the split the
+    run used: the sealed part is the last 13% of the whole, the held-back
+    part the last 15% of what is left, and the test window the 15% before
+    that, stepped by the unit's own chunk length. A set whose bounds cannot
+    be read says so instead of inventing a window. Five numbered steps say
+    to press `work out the missing numbers` FIRST -- nothing below can be
+    read until it has run, and pressing it changes no rule and no record.
+    Second digit: the answer carries a new block and the step draws it.

@@ -1983,4 +1983,97 @@ module.exports = {
     assert.ok(/- beats \$\{v\.beaten == null \? '-' : v\.beaten\} of \$\{c\.length\}/.test(s2), 'step 2 no longer says it that way, so the two screens have drifted');
   },
 
+  // STEP 6 SAYS WHAT ITS TWO LIMITS ARE LIMITS ON (3.57.0, owner order
+  // 2026-09-04: "how much are we trading per trade? how much can be on the
+  // table at once maximum? that's a context for size of loss that would be
+  // acceptable ... fewest trades? over what time period? ... i'm ok with 20
+  // trades in a year. or 5 in three months. but not 5 in a year").
+  //
+  // A dollar limit means nothing without the stake, and a trade count means
+  // nothing without the window it was counted over. Both are read off the
+  // engine and the set -- never typed onto the page.
+  async theSixthStepSaysWhatItsLimitsAreLimitsOn() {
+    const stages = require('../lib/stages');
+    const { NOTIONAL } = require('../lib/paper');
+    const day = 86400000;
+    const from = Date.UTC(2025, 0, 6);
+    // A UNIT'S TEST WINDOW, worked out from the sealed bounds its record
+    // carries and the split the run used: the sealed part is the last 13% of
+    // the whole, the held-back part the last 15% of what is left, and the
+    // test window the 15% before that.
+    const weekly = stages.testWindowOfUnit({ geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } });
+    assert.ok(weekly, 'a unit with sealed bounds has no test window worked out');
+    assert.strictEqual(weekly.chunks, 20, '20 sealed chunks of 13% means 134 work chunks, and 15% of those is 20');
+    assert.strictEqual(Math.round(weekly.days), 140, 'twenty weekly chunks is 140 days');
+    assert.strictEqual(weekly.toTs, from - 20 * 7 * day, 'the window ends where the held-back part begins, which is 20 chunks before the sealed part');
+    assert.ok(weekly.perYearFactor > 2.5 && weekly.perYearFactor < 2.7, `140 days is about 2.6 of them in a year, not ${weekly.perYearFactor}`);
+    // a daily unit steps a day, not a week, so the same chunk count is a
+    // shorter window -- the step is the unit's own
+    const daily = stages.testWindowOfUnit({ geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } });
+    assert.strictEqual(Math.round(daily.days), 60, 'sixty daily chunks is 60 days');
+    // a set with no sealed bounds says so rather than inventing a window
+    assert.strictEqual(stages.testWindowOfUnit({ geometry: 'daily-1d', reserve: null }), null);
+    // THE EXPOSURE over the units a reading covers
+    const ex = stages.exposureOf({ params: { windowLayout: 'reserve61' } }, [
+      { trade: 'XRPUSDT', geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } },
+      { trade: 'BTCUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } },
+    ]);
+    assert.strictEqual(ex.stake, NOTIONAL, 'the stake is the engine\'s, never a number typed on the page');
+    assert.strictEqual(ex.stake, 100);
+    assert.strictEqual(ex.coins, 2, 'two coins');
+    assert.strictEqual(ex.mostAtOnce, 200, 'a coin holds one position at a time, so two coins can have two stakes on the table');
+    assert.strictEqual(Math.round(ex.window.days), 140, 'the window spans the longest of the units\' own');
+    assert.strictEqual(Math.round(20 * ex.window.perYearFactor), 52, '20 trades over 140 days is about 52 a year');
+    // the same coin twice under two shapes is ONE coin on the table
+    const twice = stages.exposureOf({ params: { windowLayout: 'reserve61' } }, [
+      { trade: 'XRPUSDT', geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } },
+      { trade: 'XRPUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } },
+    ]);
+    assert.strictEqual(twice.coins, 1, 'one coin under two shapes is one coin');
+    assert.strictEqual(twice.mostAtOnce, 100);
+    // and a set the window cannot be worked out for says why
+    const none = stages.exposureOf({ params: { windowLayout: 'split70' } }, [{ trade: 'X', geometry: 'daily-1d', reserve: null }]);
+    assert.strictEqual(none.window, null);
+    assert.ok(/only reserve61 records the bounds/.test(none.why), `it must say why: ${none.why}`);
+    // ---- and the step prints it ----
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const step = page.slice(page.indexOf('function fStep6('), page.indexOf('\nfunction ', page.indexOf('function fStep6(') + 10));
+    assert.ok(step.includes('Every trade stakes\n      <b>$${Number(ex.stake).toLocaleString()}</b>'), 'the step does not say what a trade stakes');
+    assert.ok(step.includes('is the most that can be on\n      the table for one coin'), 'the step does not say the most that can be on the table for one coin');
+    assert.ok(step.includes('across the\n      ${ex.coins} coins of this reading if every one of them is in a trade at once'), 'the step does not say what can be on the table across the coins');
+    assert.ok(step.includes('The trades are counted over ${fDay(w.fromTs)} to ${fDay(w.toTs)}'), 'the step does not name the window the trades were counted over');
+    assert.ok(step.includes('${Math.round(w.weeks)} weeks, or ${Math.round(w.days)} days'), 'the step does not say how long that window is');
+    assert.ok(/is\s+about <b>\$\{w\.perYearFactor \? Math\.round\(\(Number\(tr\.min\) \|\| 20\) \* w\.perYearFactor\)/.test(step),
+      'the step does not put a trade count on a yearly footing');
+    assert.ok(step.includes('The window the trades were counted over cannot be worked out'), 'a set with no bounds is not told that it has none');
+    // the numbered steps, and the first of them says press rebuild FIRST
+    const how = step.slice(step.indexOf('<ol class="note fhow">'), step.indexOf('</ol>'));
+    assert.strictEqual(how.split('<li>').length - 1, 5, 'step 6 does not carry its five numbered steps');
+    assert.ok(/Press <b>work out the missing numbers<\/b> FIRST/.test(how), 'the steps do not say to press work out the missing numbers first');
+    assert.ok(how.includes('It\n        changes no rule and no record'), 'the steps do not say that pressing it is safe');
+    assert.ok(how.includes('in dollars, per coin'), 'the steps do not say what the losing streak is measured in');
+    assert.ok(how.includes('counted over the window named above'), 'the steps do not say what the trade count is counted over');
+    for (const control of ['<b>work out the missing numbers</b>', '<b>worst losing streak allowed</b>', '<b>fewest trades</b>', '<b>add these limits to the rule</b>']) {
+      assert.ok(how.includes(control), `the steps do not name ${control}`);
+    }
+    for (const label of ['work out the missing numbers', 'worst losing streak allowed', 'fewest trades', 'add these limits to the rule']) {
+      assert.ok(step.includes(`>${label}<`) || step.includes(`${label}<input`), `the steps name "${label}", which step 6 does not draw`);
+    }
+    assert.ok(step.includes("not done yet - press it first"), 'the line beside the button does not say to press it');
+    // the trades ladder is put on a yearly footing and the dollar one is not
+    assert.ok(step.includes("fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex)"), 'the trades ladder is not given the window');
+    assert.ok(step.includes("fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)"), 'the dollar ladder must not be read as a rate');
+    const lad = page.slice(page.indexOf('function fLadder('), page.indexOf('function fStep6('));
+    assert.ok(lad.includes('${ex ? fPerYear(x.at, ex) : \'\'}'), 'a rung does not say what it comes to a year');
+    assert.ok(lad.includes('press work out the missing numbers first'), 'the empty ladder does not say what to press');
+    // the answer carries it, for the units the reading covers
+    const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    assert.ok(lib.includes('exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || []))'), 'step 6\'s answer does not carry the exposure');
+    assert.ok(lib.includes("const { NOTIONAL } = require('./paper');"), 'the stake is not read from the engine');
+    const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+    assert.ok(/Press it FIRST on this step/.test(help), 'the help for the button does not say to press it first');
+    assert.ok(/in dollars, per coin - the deepest the running total ever sat below its own best point/.test(help), 'the help for the losing streak does not say what it measures');
+    assert.ok(/counted over the window named at the top of this step - not over a year/.test(help), 'the help for the trade count does not say what it is counted over');
+  },
+
 };

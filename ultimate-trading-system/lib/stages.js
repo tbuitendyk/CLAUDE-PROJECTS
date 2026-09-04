@@ -1592,6 +1592,66 @@ function sealedFromUnits(layout, units) {
   };
 }
 
+// WHAT THE STEP 6 LIMITS ARE LIMITS ON (3.57.0, owner order 2026-09-04: "more
+// context is needed to set the worst losing streak allowed and fewest trades
+// ... how much are we trading per trade? how much can be on the table at once
+// maximum? ... fewest trades? over what time period?").
+//
+// THE STAKE is one number in the engine and is not a choice: every trade is
+// priced on a NOTIONAL position, so every money figure on every screen is
+// dollars at that stake. ON THE TABLE AT ONCE: a coin holds one position at a
+// time, so a coin can never have more than the stake at risk, and a reading
+// over several coins can have the stake on each.
+//
+// THE WINDOW the trades are counted over is the test window, and its bounds
+// are DERIVED, never typed: a reserve61 run seals the last 13% of a unit's
+// chunks and records those bounds on the record (3.51.0), so the work window
+// ends where the sealed one begins; of the work window the last 15% is held
+// back and the 15% before that is the test window. The chunk step is the
+// unit's own (a daily shape steps a day, a weekly one a week), and the sealed
+// record says how many chunks it holds, so the work window's length is read
+// off the same arithmetic the run split on rather than guessed from months.
+const TEST_SHARE = 0.15;         // of the work window, the same split the run used
+const HOLD_SHARE = 0.15;         // held back after it
+const RESERVE_SHARE = 0.13;      // sealed off the whole, before the work window
+function testWindowOfUnit(unit) {
+  const res = unit && unit.reserve;
+  if (!res || !res.fromTs || !res.toTs || !res.chunks) return null;
+  const geo = (require('./dataset').GEOMETRIES || {})[unit.geometry] || null;
+  const stepMs = geo && geo.stepHours ? geo.stepHours * 3600 * 1000 : ((res.toTs - res.fromTs) / res.chunks);
+  if (!(stepMs > 0)) return null;
+  const whole = Math.round(res.chunks / RESERVE_SHARE);      // the sealed part is that share of it
+  const work = Math.max(1, whole - res.chunks);
+  const nHold = Math.max(2, Math.round(work * HOLD_SHARE));
+  const nTest = Math.max(2, Math.round(work * TEST_SHARE));
+  const workEnd = res.fromTs;                                // the sealed window starts where work ended
+  const toTs = workEnd - nHold * stepMs;
+  const fromTs = toTs - nTest * stepMs;
+  const days = (toTs - fromTs) / 86400000;
+  return { fromTs, toTs, chunks: nTest, days, weeks: days / 7, perYearFactor: days > 0 ? 365.25 / days : null };
+}
+// the same, for every unit a reading covers: the window each was tested over,
+// and the stake that can be on the table at once across them
+function exposureOf(doc, units) {
+  const { NOTIONAL } = require('./paper');
+  const list = (units || []).map((u) => ({ ...u, window: testWindowOfUnit(u) }));
+  const coins = new Set(list.map((u) => u.trade).filter(Boolean)).size;
+  const windows = list.map((u) => u.window).filter(Boolean);
+  const from = windows.length ? Math.min(...windows.map((w) => w.fromTs)) : null;
+  const to = windows.length ? Math.max(...windows.map((w) => w.toTs)) : null;
+  const days = windows.length ? Math.max(...windows.map((w) => w.days)) : null;
+  return {
+    stake: NOTIONAL,
+    coins,
+    units: list.length,
+    mostAtOnce: NOTIONAL * coins,
+    window: from && to ? { fromTs: from, toTs: to, days, weeks: days / 7, perYearFactor: days > 0 ? 365.25 / days : null } : null,
+    why: windows.length ? null : (((doc || {}).params || {}).windowLayout === 'reserve61'
+      ? 'the units carry no sealed window, so the window they were tested over cannot be worked out'
+      : `this set's window layout is ${((doc || {}).params || {}).windowLayout || 'unrecorded'} — only reserve61 records the bounds this is worked out from`),
+  };
+}
+
 // ---- FILLING IN THE SEALED WINDOW (3.51.0, RULE NINE) ------------------------
 // A stage 2 set whose records carry no sealed bounds is behind: its units are
 // its parent's, and the parent's records carry the bounds for each of them.
@@ -4621,8 +4681,17 @@ async function funnelRead(id, state = {}) {
     };
     out.conditions.regionNotWider = mine == null ? null : out.reading.noise.beatenBy < each.length;
   } else if (step === 6) {
+    // WHAT THE LIMITS ARE LIMITS ON (3.57.0): a limit in dollars means nothing
+    // without the stake, and a count of trades means nothing without the
+    // window it was counted over -- so both travel with the step's answer,
+    // for the units this reading covers and no others
+    // the sealed bounds sit on the stage 2 parent's records, which this
+    // already resolves for the set's own choice of units (3.51.0)
+    const sealed = sealedWindowOf(doc);
+    const mineOnly = board && board.key ? (sealed.units || []).filter((u) => unitKeyOf(u) === board.key) : (sealed.units || []);
     out.reading = {
       rebuilt: out.rebuilt,
+      exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || [])),
       // WHAT EACH LIMIT WOULD KEEP, read off the survivors themselves
       ladders: {
         maxDrawdown: F.ladderFor(rows, 'maxDrawdown', 'max'),
@@ -5317,6 +5386,7 @@ module.exports = {
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
   cutFunnelSet, listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
   unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
+  testWindowOfUnit, exposureOf,
   funnelAcrossStart, funnelAcrossStatus,
   sealedWindowOf, sealedFromUnits, sealedBehind, startSealedFill, sealedFillWaiting, sealedFillPromise, noiseTwinOf, needsBoardNullStamp,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
