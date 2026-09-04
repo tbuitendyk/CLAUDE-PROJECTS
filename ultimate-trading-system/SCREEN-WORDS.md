@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **339e16d5afac — what the box is serving**, not from the working tree.
+Generated from **4fc326f5afcc — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -523,7 +523,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Funnel
 
-## What the controls are called (92)
+## What the controls are called (93)
 
 - `- chosen`
 - `- what each limit would keep of`
@@ -589,6 +589,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `records "accepted`
 - `records what you accepted - "`
 - `region size`
+- `remove`
 - `scrambled copies of the table`
 - `second dial`
 - `Set`
@@ -720,10 +721,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - keeps the set open and clears every choice - recorded as going back
 - : no survivor carries this number yet - work out the missing numbers first.
 
-## Every word, flat (469)
+## Every word, flat (470)
 
 ```
-...then about above accept accepted across add again against agree agreeBar agreeBoth agreeCopy agreePct agreePersist agreeRule all allowed alone also an An and any anything Anything anyway. apart applied are ARE armMult as asks at average averaged averages avg avoid back back. bandMode bar bar. be beat beats because been below below. beside best-looking best-scoring biggest blended block block. board Boards boards bold Bold BOTH box boxes boxes. brackets build built but button. by came can cannot cannot. carries carry chance Changing check check. checked choice choices chose chosen claim clear cleared clears click coin coin-and-shape coins column columns come compare. compared. comparing considered. copies copy corner could count counts covers... cut cut-off. data decision deleted depth dial dials disagree dMult do do. does down. drawn dropped. each edges effect else else. empty ended entry evenly Every every everything exists far far. few fewer fewest figure final finding finish first first. flat flat. flatter floor fluke for forecast forward four from Funnel funnel further. gate gets gives Going going green greyed grid Grouping groups guessing half halves happened happens has have held held-back here hides hill holding How how if in in. inside instead into is isolated it It it. its itself judging. just keep keeps kept knows largest leads least like like. limit limits line looks losing loss made makes. managed many mark marked means measurable menu message middle missing money money. more movement much name name. narrow needs neighbouring neighbours never new next next. no No none not Not Nothing nothing number numbers of offered often on once one One one-setting one. only Only Open open open. opened opens opposite or Or ordering other other. others others. otherwise out outlined over own own... page part partly Passed peak per pick picker picking positive positive. Press press ramp range RANGE ranges reach reaches read Read reading reads real real. really reason Recommended recommended record recorded records records. rectangle refused. region relationship. renamed replaces replacing rests result row rows rule rule. run same says score scrambled screen sealed second seconds section section. seen set Set set. setting settings settings. settle shape shopping shopping. short shows shuffle single sit size slices small sneak so some spike Split-half spread square squares STABLE stage Stage start Step step stop streak such survive survives. survivor survivors sweep swept swing table take takes Taking target tells test tests than that That the The their them them. There there These these they thin Thin thin. This this those tHours tighten time times to today together too. top Totals toward trades trailMult turns two under unit unit. units until use value values varies walk walked walks warning was weaker wearing weekdaysOnly what What when whether which whichever widest will window with won work worked worst would would. write writes written yet you you. your Your yours
+...then about above accept accepted across add again against agree agreeBar agreeBoth agreeCopy agreePct agreePersist agreeRule all allowed alone also an An and any anything Anything anyway. apart applied are ARE armMult as asks at average averaged averages avg avoid back back. bandMode bar bar. be beat beats because been below below. beside best-looking best-scoring biggest blended block block. board Boards boards bold Bold BOTH box boxes boxes. brackets build built but button. by came can cannot cannot. carries carry chance Changing check check. checked choice choices chose chosen claim clear cleared clears click coin coin-and-shape coins column columns come compare. compared. comparing considered. copies copy corner could count counts covers... cut cut-off. data decision deleted depth dial dials disagree dMult do do. does down. drawn dropped. each edges effect else else. empty ended entry evenly Every every everything exists far far. few fewer fewest figure final finding finish first first. flat flat. flatter floor fluke for forecast forward four from Funnel funnel further. gate gets gives Going going green greyed grid Grouping groups guessing half halves happened happens has have held held-back here hides hill holding How how if in in. inside instead into is isolated it It it. its itself judging. just keep keeps kept knows largest leads least like like. limit limits line looks losing loss made makes. managed many mark marked means measurable menu message middle missing money money. more movement much name name. narrow needs neighbouring neighbours never new next next. no No none not Not Nothing nothing number numbers of offered often on once one One one-setting one. only Only Open open open. opened opens opposite or Or ordering other other. others others. otherwise out outlined over own own... page part partly Passed peak per pick picker picking positive positive. Press press ramp range RANGE ranges reach reaches read Read reading reads real real. really reason Recommended recommended record recorded records records. rectangle refused. region relationship. remove renamed replaces replacing rests result row rows rule rule. run same says score scrambled screen sealed second seconds section section. seen set Set set. setting settings settings. settle shape shopping shopping. short shows shuffle single sit size slices small sneak so some spike Split-half spread square squares STABLE stage Stage start Step step stop streak such survive survives. survivor survivors sweep swept swing table take takes Taking target tells test tests than that That the The their them them. There there These these they thin Thin thin. This this those tHours tighten time times to today together too. top Totals toward trades trailMult turns two under unit unit. units until use value values varies walk walked walks warning was weaker wearing weekdaysOnly what What when whether which whichever widest will window with won work worked worst would would. write writes written yet you you. your Your yours
 ```
 
 ---
