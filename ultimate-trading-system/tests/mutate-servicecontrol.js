@@ -535,6 +535,18 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "      if (mismatches.length < 20) mismatches.push({ label, stored: Number(want), rebuilt: mine });", "      mismatches.push({ label, stored: Number(want), rebuilt: mine });",
     'theProofComparesTheFigureTheBoardActuallyHolds',
     'the list of disagreements is unbounded again, and a set where everything differs sends every name to the screen'],
+  // ---- NONE ON ITS OWN (3.62.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      st.rule.allowed[st.dial] = ['none'];", "",
+    'noneCanBeKeptOnItsOwnOnStepTwo',
+    'clearing both boxes with the tick on writes nothing at all, so none can only ever be added to a range again'],
+  // breaks BOTH copies, which is the point: neither branch may leave a
+  // none-only clause standing beside a range
+  [path.join(ROOT, 'public', 'construct.js'), "      delete st.rule.allowed[st.dial];", "",
+    'noneCanBeKeptOnItsOwnOnStepTwo',
+    'a range written after none-only leaves both clauses on the dial, and the two together keep nothing at all'],
+  [path.join(ROOT, 'public', 'construct.js'), "  const onlyNone = hasNone && alsoNone && lo === '' && hi === '';", "  const onlyNone = false;",
+    'noneCanBeKeptOnItsOwnOnStepTwo',
+    'the count drawn with the table says a cleared pair of boxes keeps everything, which is the opposite of what pressing does'],
   // ---- THE RULE THE OWNER BUILT, AND A BOX WORTH READING (3.61.0) ----
   [path.join(ROOT, 'lib', 'funnelset.js'), "  const dialOf = (text) => String(text || '').trim().split(/[\\s(]/)[0].trim();",
     "  const dialOf = (text) => String(text || '').trim().split(' (')[0].trim();",

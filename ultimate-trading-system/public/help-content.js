@@ -562,8 +562,8 @@ window.HELP = {
         more: 'Together with the lowest value this becomes one clause of the rule, and you can come back and change it at any point.',
       },
       fAlsoNone: {
-        what: 'Keeps the settings that have no value for this dial as well as the range. Without it a range drops them, because "none" is not a number.',
-        more: 'Shown only when the table above has a none row. In the rule it reads "or none", and the count beside the button follows it.',
+        what: 'Keeps the settings that have no value for this dial as well as the range. Without it a range drops them, because "none" is not a number. Clear both range boxes and it keeps those settings and NOTHING else.',
+        more: 'Shown only when the table above has a none row. With a range in the boxes the rule reads "or none"; with both boxes clear it reads "is none" instead, and keeps only the settings that have no value for this dial at all. That is the one value on an ordered dial that can be kept on its own, because it is not a point on the dial\'s scale - it is a different kind of setting, so keeping it is choosing a kind rather than picking a peak. The count beside the button follows whichever of the two you have set up, before you press it.',
       },
       fAddRange: {
         what: 'Adds the range you have chosen for this dial to the rule.',

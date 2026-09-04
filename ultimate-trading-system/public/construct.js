@@ -4521,19 +4521,26 @@ function fStep2(r, st) {
   // recommendation. Either way the boxes show where the count line comes from.
   const have = (st.rule.ranges || {})[st.dial] || {};
   const rr = rec.recommend || {};
-  const lo = have.min != null ? have.min : (rr.min != null ? rr.min : '');
-  const hi = have.max != null ? have.max : (rr.max != null ? rr.max : '');
+  // NONE ON ITS OWN IS A CLAUSE OF ITS OWN (3.62.0, owner order): it is kept as
+  // a VALUE, not as a range with no ends, because that is what it is -- the
+  // settings that have no value for this dial at all. The boxes show blank for
+  // it, or the screen would offer back a range the rule does not hold.
+  const noneAlone = ((st.rule.allowed || {})[st.dial] || []).map(String).join(',') === 'none';
+  const lo = noneAlone ? '' : (have.min != null ? have.min : (rr.min != null ? rr.min : ''));
+  const hi = noneAlone ? '' : (have.max != null ? have.max : (rr.max != null ? rr.max : ''));
   // A DIAL SOME SETTINGS HAVE NO VALUE FOR (3.53.0, owner order 2026-09-04:
   // "how can the range 0.5-none be selected"): a market entry carries no d,
   // and "none" is not a number, so a range alone drops every such setting.
   // The rule has always been able to say "or none"; now the screen can.
   const hasNone = r.groups.some((g) => String(g.value) === 'none');
-  const alsoNone = Array.isArray(have.also) && have.also.map(String).includes('none');
+  const alsoNone = noneAlone || (Array.isArray(have.also) && have.also.map(String).includes('none'));
   const total = r.groups.reduce((a, g) => a + g.n, 0);
+  // both boxes clear with the tick on means NONE AND NOTHING ELSE
+  const onlyNone = hasNone && alsoNone && lo === '' && hi === '';
   const inRange = (val) => {
     const n = Number(val);
     if (!Number.isFinite(n)) return String(val) === 'none' && alsoNone;
-    return (lo === '' || n >= Number(lo)) && (hi === '' || n <= Number(hi));
+    return !onlyNone && (lo === '' || n >= Number(lo)) && (hi === '' || n <= Number(hi));
   };
   const keptByRange = rec.ordered === false ? null : r.groups.filter((g) => inRange(g.value)).reduce((a, g) => a + g.n, 0);
   // a LIST of values, from the rule or the recommendation -- never anything
@@ -4562,7 +4569,12 @@ function fStep2(r, st) {
         ${hasNone ? `<label class="c"><input type="checkbox" id="fAlsoNone" ${alsoNone ? 'checked' : ''}> also keep none</label>` : ''}
         <button id="fAddRange" class="pri">add this range to the rule</button>
         <span class="note" id="fKeepCount">keeps ${Number(keptByRange).toLocaleString()} of ${Number(total).toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}</span>
-        <span class="note">a RANGE, never a value - picking the peak is the shopping this walk exists to avoid</span></div>`}`;
+        <span class="note">a RANGE, never a value - picking the peak is the shopping this walk exists to avoid</span></div>
+      ${hasNone ? `<p class="note"><b>To keep none and nothing else:</b> clear both boxes, tick <b>also keep none</b>, and press
+        <b>add this range to the rule</b>. The count beside the button says what that leaves before you press it.
+        <b>none</b> is the one value that can be kept on its own here: it is not a point on this dial's scale, it is the
+        settings that have no ${esc(fDialLabel(st.dial))} at all, so keeping it is choosing a kind of setting rather
+        than picking a peak. The rule then reads <b>${esc(fDialLabel(st.dial))} is none</b>.</p>` : ''}`}`;
 }
 
 function fStep3(r, st) {
@@ -5332,10 +5344,29 @@ function fWire(st, d) {
     const lo = $('#fMin').value;
     const hi = $('#fMax').value;
     const alsoNone = !!($('#fAlsoNone') && $('#fAlsoNone').checked);
-    if (lo === '' && hi === '') delete st.rule.ranges[st.dial];
-    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi), ...(alsoNone ? { also: ['none'] } : {}) };
-    markStep(2);
-    st.steps.push({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}${alsoNone ? ' or none' : ''}` });
+    if (!st.rule.allowed) st.rule.allowed = {};
+    if (lo === '' && hi === '' && alsoNone) {
+      // NONE AND NOTHING ELSE (3.62.0, owner order). Kept as a VALUE, which is
+      // the shape the rule already has for "this dial is one of these" -- the
+      // settings with no value for the dial answer to the name none, so nothing
+      // new had to be invented and the rule reads "dMult (d) is none".
+      delete st.rule.ranges[st.dial];
+      st.rule.allowed[st.dial] = ['none'];
+      markStep(2);
+      st.steps.push({ n: 2, what: `the values of ${fDialLabel(st.dial)}`, chose: 'none' });
+    } else if (lo === '' && hi === '') {
+      delete st.rule.ranges[st.dial];
+      delete st.rule.allowed[st.dial];
+      markStep(2);
+      st.steps.push({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}` });
+    } else {
+      st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi), ...(alsoNone ? { also: ['none'] } : {}) };
+      // A RANGE REPLACES A none-ONLY CLAUSE on the same dial. Left in place the
+      // two would both apply, and a range plus "is none" keeps nothing at all.
+      delete st.rule.allowed[st.dial];
+      markStep(2);
+      st.steps.push({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}${alsoNone ? ' or none' : ''}` });
+    }
     fSave(); drawFunnel();
   };
   // the count line follows the boxes as they are edited, from the table on
@@ -5343,11 +5374,13 @@ function fWire(st, d) {
   const countRange = () => {
     const lo = $('#fMin').value; const hi = $('#fMax').value;
     const none = !!($('#fAlsoNone') && $('#fAlsoNone').checked);
+    // both boxes clear with the tick on keeps none and nothing else (3.62.0)
+    const onlyNone = none && lo === '' && hi === '';
     let kept = 0; let total = 0;
     for (const [val, n] of ((st.read || {}).groups || [])) {
       const v = Number(val);
       total += n;
-      if (Number.isFinite(v) ? ((lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;
+      if (Number.isFinite(v) ? (!onlyNone && (lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;
     }
     const kc = $('#fKeepCount');
     if (kc) kc.textContent = `keeps ${kept.toLocaleString()} of ${total.toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}`;

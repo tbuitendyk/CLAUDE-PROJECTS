@@ -774,3 +774,31 @@ made while building it that the design did not already settle.
       window whole, heading and all.
 
     Second digit: new behaviour and a new section on the heading.
+95. **`none` can be kept on its own** (3.62.0, owner order 2026-09-04: "as a
+    principle when a none or other word-based setting is allowed also with a
+    range it should be allowed as the sole choice in step 2 selections"). The
+    tick could only ever ADD the settings with no value for a dial to a range;
+    with both boxes clear the whole clause was deleted instead, so the only way
+    to keep them alone was a range no value could satisfy -- `2 to 2 or none` --
+    which records the workaround rather than the decision.
+
+    Clearing both boxes with the tick on now keeps none and nothing else. It is
+    written as a VALUE, `allowed[dial] = ['none']`, not as a range with no ends:
+    the settings with no value for a dial already answer to the name `none`
+    everywhere else in the engine, so nothing new was invented, the rule reads
+    `dMult (d) is none`, the clause gets its own remove under The rule so far,
+    and the replay of a walk's recorded steps already understood it.
+
+    Three things had to follow it: the boxes show blank when the rule holds a
+    none-only clause (they fall back to the recommended range otherwise, and
+    would have offered back a range the rule does not hold); both the count
+    beside the button and the one drawn with the table follow the new meaning;
+    and writing a range now CLEARS a none-only clause on the same dial, because
+    a range plus "is none" both applying keeps nothing at all -- a fault that
+    could not exist until this release created the second clause.
+
+    The screen says all of it: a line under the boxes gives the three presses,
+    says what the rule will read, and says why `none` is the one value on an
+    ordered dial that may be kept alone -- it is not a point on the scale, it is
+    a different kind of setting, so keeping it is choosing a kind rather than
+    picking a peak. Second digit: new behaviour on an existing control.

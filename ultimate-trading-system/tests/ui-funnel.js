@@ -192,9 +192,28 @@ function requirePlaywright() {
   await page.locator('#fMax').fill('');
   await page.locator('#fMax').dispatchEvent('input');
   expect(/^keeps 135 of 175/.test(await keepsD()), `0.5 or more, or none, keeps everything but 0.25: ${await keepsD()}`);
+  // NONE ON ITS OWN (3.62.0, owner order): clear BOTH boxes with the tick on
+  await page.locator('#fMin').fill('');
+  await page.locator('#fMin').dispatchEvent('input');
+  expect(/^keeps 15 of 175/.test(await keepsD()), `both boxes clear with the tick on keeps only the 15 with no d: ${await keepsD()}`);
+  const beforeNone = posted.length;
+  await page.locator('#fAddRange').click();
+  await page.waitForTimeout(800);
+  const alone = posted.slice(beforeNone).map((b) => b.rule).filter(Boolean).pop() || {};
+  expect(JSON.stringify((alone.allowed || {}).dMult) === JSON.stringify(['none']),
+    `the rule keeps none as a value of its own: ${JSON.stringify(alone)}`);
+  expect(!((alone.ranges || {}).dMult), 'and carries no range on that dial at the same time');
+  expect((await page.locator('#fMin').inputValue()) === '' && (await page.locator('#fMax').inputValue()) === '',
+    'the boxes offer back a range the rule does not hold');
+  expect(/dMult \(d\) is none/.test(await page.locator('#view').innerText()), 'the rule so far does not read "is none"');
+  // and writing a range again CLEARS it, or the two together keep nothing
+  await page.locator('#fMin').fill('0.5');
+  await page.locator('#fMin').dispatchEvent('input');
   const before = posted.length;
   await page.locator('#fAddRange').click();
   await page.waitForTimeout(800);
+  const back = posted.slice(before).map((b) => b.rule).filter(Boolean).pop() || {};
+  expect(!((back.allowed || {}).dMult), `a range clears the none-only clause on the same dial: ${JSON.stringify(back)}`);
   const wrote = posted.slice(before).map((b) => ((b.rule || {}).ranges || {}).dMult).filter(Boolean).pop();
   expect(JSON.stringify(wrote) === JSON.stringify({ min: 0.5, max: null, also: ['none'] }), `the rule carries 0.5 or more, or none: ${JSON.stringify(wrote)}`);
   // every clause under The rule so far has its own remove (3.55.0)

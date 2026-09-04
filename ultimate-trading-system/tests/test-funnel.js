@@ -974,7 +974,9 @@ module.exports = {
     assert.ok(s2.includes("cth('check', 'fCheck')"), 'step 2 draws the check column');
     assert.ok(s2.includes('id="fKeepValues"') && s2.includes('data-fval='), 'a word-valued dial gets a box per value');
     assert.ok(s2.includes('id="fKeepCount"'), 'the count line follows the boxes');
-    assert.ok(/const lo = have\.min != null \? have\.min : \(rr\.min != null \? rr\.min : ''\);/.test(s2),
+    // pre-filled from the rule, else from the recommendation -- and blank when
+    // the rule keeps none ALONE, which is not a range at all (3.62.0)
+    assert.ok(/const lo = noneAlone \? '' : \(have\.min != null \? have\.min : \(rr\.min != null \? rr\.min : ''\)\);/.test(s2),
       'the boxes are pre-filled from the rule, else from the recommendation');
     const s3 = fn('fStep3', 'fStep4');
     assert.ok(s3.includes('<select id="fA">') && s3.includes('<select id="fB">'), 'the two dials are pickers, not typed names');
@@ -1867,7 +1869,8 @@ module.exports = {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const step = page.slice(page.indexOf('function fStep2('), page.indexOf('\nfunction fStep3('));
     assert.ok(step.includes("const hasNone = r.groups.some((g) => String(g.value) === 'none');"), 'step 2 does not notice a none row');
-    assert.ok(step.includes("const alsoNone = Array.isArray(have.also) && have.also.map(String).includes('none');"), 'the tick does not read what the rule already holds');
+    assert.ok(step.includes("const alsoNone = noneAlone || (Array.isArray(have.also) && have.also.map(String).includes('none'));"),
+      'the tick does not read what the rule already holds - a range with "or none" on it, or none kept on its own');
     assert.ok(step.includes('${hasNone ? `<label class="c"><input type="checkbox" id="fAlsoNone" ${alsoNone ? \'checked\' : \'\'}> also keep none</label>` : \'\'}'),
       'the also keep none tick is not drawn beside the range boxes when the table has a none row');
     assert.ok(step.includes("if (!Number.isFinite(n)) return String(val) === 'none' && alsoNone;"), 'the count line does not count the none row when it is kept');
@@ -1875,8 +1878,8 @@ module.exports = {
     assert.ok(wire.includes("const alsoNone = !!($('#fAlsoNone') && $('#fAlsoNone').checked);"), 'pressing add this range does not read the tick');
     assert.ok(wire.includes("...(alsoNone ? { also: ['none'] } : {}) };"), 'the tick is not written into the rule as "or none"');
     assert.ok(wire.includes("chose: `${lo} to ${hi}${alsoNone ? ' or none' : ''}`"), 'the walk\'s note does not say none was kept');
-    assert.ok(wire.includes("if (Number.isFinite(v) ? ((lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;"),
-      'the live count does not follow the tick');
+    assert.ok(wire.includes("if (Number.isFinite(v) ? (!onlyNone && (lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;"),
+      'the live count does not follow the tick, or it still counts every number when both boxes are clear (3.62.0)');
     assert.ok(wire.includes("const an = $('#fAlsoNone');\n  if (an) an.onchange = countRange;"), 'ticking the box does not move the count');
     // and the rule underneath really keeps them
     const S4 = require('../lib/funnelset');
@@ -2693,6 +2696,41 @@ module.exports = {
         assert.equal(second.set.userStamped, false, 'the record is replayed again on every read instead of being read back');
       } finally { try { fs.rmSync(oldFile, { force: true }); } catch (_) { /* fixture */ } }
     } finally { f.cleanup(); }
+  },
+
+  // "as a principle when a none or other word-based setting is allowed also
+  // with a range it should be allowed as the sole choice in step 2 selections"
+  // (owner order, 2026-09-04).
+  noneCanBeKeptOnItsOwnOnStepTwo() {
+    const page = src('public/construct.js');
+    const press = page.slice(page.indexOf("const ar = $('#fAddRange');"), page.indexOf('const countRange ='));
+    assert.ok(press.includes("if (lo === '' && hi === '' && alsoNone) {"), 'clearing both boxes with the tick on still deletes the whole clause');
+    assert.ok(press.includes("st.rule.allowed[st.dial] = ['none'];"), 'none alone is not kept as a value, which is what it is');
+    assert.ok(press.includes("st.steps.push({ n: 2, what: `the values of ${fDialLabel(st.dial)}`, chose: 'none' });"),
+      'the walk records it as a shape rather than as the value it kept, so the replay of the steps would rebuild a range');
+    // A RANGE MUST CLEAR IT. Both clauses applying at once keeps nothing at all,
+    // and that fault could not exist until this release made the second clause.
+    const rangeArm = press.slice(press.indexOf('} else {'));
+    assert.ok(rangeArm.includes('delete st.rule.allowed[st.dial];'),
+      'writing a range leaves a none-only clause on the same dial in place, and the two together keep nothing');
+    // the screen shows what the rule holds, not the recommendation it does not
+    const step2 = page.slice(page.indexOf('const have = (st.rule.ranges || {})[st.dial] || {};'), page.indexOf('function fStep3('));
+    assert.ok(step2.includes("const noneAlone = ((st.rule.allowed || {})[st.dial] || []).map(String).join(',') === 'none';"),
+      'nothing notices that the rule keeps none alone');
+    assert.ok(step2.includes("const lo = noneAlone ? '' :") && step2.includes("const hi = noneAlone ? '' :"),
+      'the boxes offer back a range the rule does not hold');
+    assert.ok(step2.includes("const onlyNone = hasNone && alsoNone && lo === '' && hi === '';"), 'the count drawn with the table does not follow the new meaning');
+    assert.ok(step2.includes('To keep none and nothing else:'), 'the screen never says how to keep none on its own');
+    // and the count line beside the button follows it as the boxes are edited
+    const live = page.slice(page.indexOf('const countRange ='), page.indexOf("for (const id of ['fMin', 'fMax'])"));
+    assert.ok(live.includes("const onlyNone = none && lo === '' && hi === '';"), 'the live count still says a cleared pair of boxes keeps everything');
+    // THE ENGINE ALREADY KNEW THE NAME. Settings with no value for a dial answer
+    // to `none` everywhere, so keeping it needed no new shape in the rule.
+    const rows = [{ label: 'a', dMult: 0.5 }, { label: 'b', dMult: 1 }, { label: 'c', dMult: null }, { label: 'd' }];
+    const kept = FS4.applyRule(rows, { ranges: {}, allowed: { dMult: ['none'] }, floors: {} });
+    assert.deepStrictEqual(kept.map((r) => r.label), ['c', 'd'], 'is none does not keep exactly the settings with no value for the dial');
+    assert.equal(FS4.ruleSentence(FS4.normaliseRule({ ranges: {}, allowed: { dMult: ['none'] }, floors: {} })), 'dMult is none',
+      'the rule does not read back as "is none"');
   },
 
 };
