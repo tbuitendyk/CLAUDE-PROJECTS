@@ -170,6 +170,7 @@ function requirePlaywright() {
   const rowsAsked = [];                    // every ask for a Stage 4 set's rows, so sorting and paging can be checked
   const renamed = [];                      // the one write this screen is allowed to make
   let cutSent = null;                      // what write the Stage 4 set sent
+  let cutPolls = 0;                        // how many times the page asked how far it had got
   await page.route('**/api/stageset/*/name', async (route) => {
     const body = JSON.parse(route.request().postData() || '{}');
     renamed.push({ url: route.request().url(), name: body.name });
@@ -182,15 +183,26 @@ function requirePlaywright() {
       if (req.method() === 'POST') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: false, token: 'cx1', done: 6, of: 6, msEach: 688, result: CROSSES }) });
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: false, token: 'cx1', done: 6, of: 6, msEach: 688, result: CROSSES }) });
     }
+    // THE CUT IS STARTED AND POLLED (3.67.0): the press comes straight back and
+    // the page asks how far it is, so this answers twice -- once still running,
+    // so the following is really exercised, and once done.
     if (/\/cut$/.test(req.url()) && req.method() === 'POST') {
       cutSent = JSON.parse(req.postData() || '{}');
+      cutPolls = 0;
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: true, token: 'cut1', done: 0, of: 137760, error: null, result: null }) });
+    }
+    if (/\/cut$/.test(req.url())) {
+      cutPolls++;
+      if (cutPolls < 2) {
+        return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: true, token: 'cut1', done: 40000, of: 137760, error: null, result: null }) });
+      }
       const made = { ...CUT, id: 's4-ui-2', seq: 2, name: 'S4 #2 - XRPUSDT weekly-8d', ruleSentence: 'written just now' };
-      CUTS = [made, ...CUTS];
-      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+      if (!CUTS.some((c) => c.id === made.id)) CUTS = [made, ...CUTS];
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: false, token: 'cut1', done: 137760, of: 137760, error: null, result: {
         id: made.id, name: made.name, seq: 2, unit: UNIT, unitName: 'XRPUSDT weekly-8d',
         survivors: 116, target: 400, ruleSentence: made.ruleSentence, warnings: [],
         closing: { key: 'rule', label: 'accept what the rule gives', detail: null }, replayChecked: { same: true }, marks: [],
-      }) });
+      } }) });
     }
     if (/\/rows(\?|$)/.test(req.url())) {
       const q = new URL(req.url()).searchParams;
@@ -584,7 +596,8 @@ function requirePlaywright() {
   expect(await page.locator('#fCutPick option').count() === 2, 'before the write, the drop-down offers one set and new rule');
   await page.locator('#fName').fill('the XRP weekly rule again');
   await page.locator('#fCut').click();
-  await page.waitForTimeout(1500);
+  await page.waitForTimeout(3500);
+  expect(cutPolls >= 2, `the press starts the cut and then asks how far it has got: ${cutPolls} ask(s)`);
   expect(cutSent !== null && cutSent.name === 'the XRP weekly rule again', `the write carries the name typed in the box: ${JSON.stringify(cutSent && cutSent.name)}`);
   expect(await page.locator('#fCutPick option').count() === 3, `the set just written joined the list at the top: ${JSON.stringify(await page.locator('#fCutPick option').allTextContents())}`);
   expect((await page.locator('#fCutPick').inputValue()) === 's4-ui-2', `and the list is showing it: ${await page.locator('#fCutPick').inputValue()}`);

@@ -889,18 +889,15 @@ app.post('/api/funnel/:id/crosses', (req, res) => {
 });
 app.get('/api/funnel/:id/crosses', (req, res) => res.json(stages.funnelCrossesStatus(req.params.id)));
 
-app.post('/api/funnel/:id/cut', async (req, res) => {
-  try {
-    const doc = await stages.cutFunnelSet(req.params.id, req.body || {});
-    return res.json({
-      id: doc.id, name: doc.name, seq: doc.seq, unit: doc.unit || null, unitName: doc.unitName || null,
-      survivors: doc.counts.survivors, target: doc.counts.target,
-      ruleSentence: doc.ruleSentence, warnings: doc.warnings,
-      closing: doc.closing, replayChecked: doc.replayChecked,
-      marks: doc.marks || [],
-    });
-  } catch (err) { return res.status(400).json({ error: err.message }); }
+// STARTED, THEN POLLED (3.67.0, owner order): the press starts it and comes
+// straight back, the page asks how far it is, and no request is held open long
+// enough for the gateway in front to give up on it -- which is what happened,
+// and which also made every other screen look dead while it ran.
+app.post('/api/funnel/:id/cut', (req, res) => {
+  try { return res.json(stages.cutFunnelSetStart(req.params.id, req.body || {})); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
 });
+app.get('/api/funnel/:id/cut', (req, res) => res.json(stages.cutFunnelSetStatus(req.params.id)));
 
 app.get('/api/funnel/sets', (req, res) => {
   const parent = req.query.parent ? String(req.query.parent) : null;

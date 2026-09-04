@@ -550,17 +550,47 @@ function finishFunnelSet(doc, survivors, closing) {
 // A STAGE 4 SET MUST REPLAY. Re-running its recorded rule against its parent's
 // rows has to give exactly the same settings back — otherwise the record is a
 // story about a decision rather than the decision itself.
-function replay(doc, parentRows) {
-  const got = applyRule(parentRows, doc.rule).map((r) => r.label).sort();
+// THE TWO LISTS ARE COMPARED THROUGH SETS, NOT THROUGH `includes` (3.67.0,
+// owner report: the press froze the whole box and the browser gave up at the
+// gateway). `had.filter((l) => !got.includes(l))` walks the whole of `got` for
+// every name in `had`: a rule keeping 116 settings is 13,000 comparisons and
+// costs nothing, and one keeping 20,000 is four hundred MILLION -- on the one
+// thread that also answers every other screen. Same answer, in one pass.
+//
+// It may already be handed the survivors it just worked out, which is the same
+// list this would work out again over the whole parent board.
+function replay(doc, parentRows, survivors = null) {
+  const got = (survivors || applyRule(parentRows, doc.rule)).map((r) => r.label).sort();
   const had = (doc.survivors || []).map((s) => s.label).sort();
   const same = got.length === had.length && got.every((l, i) => l === had[i]);
+  const gotSet = new Set(got);
+  const hadSet = new Set(had);
   return {
     same,
     got: got.length,
     had: had.length,
-    missing: had.filter((l) => !got.includes(l)).slice(0, 20),
-    extra: got.filter((l) => !had.includes(l)).slice(0, 20),
+    missing: had.filter((l) => !gotSet.has(l)).slice(0, 20),
+    extra: got.filter((l) => !hadSet.has(l)).slice(0, 20),
   };
+}
+
+// THE SAME RULE, IN CHUNKS, LETTING GO OF THE THREAD BETWEEN THEM (3.67.0,
+// owner order: "items like that need to leave a few cpu cycles to service going
+// to the Setup | Compute tab"). One pass over a board of 137,760 settings is
+// not long on its own; several of them back to back, on the one thread that
+// answers every screen, is long enough for another tab to time out. Same
+// answer as applyRule, chunk by chunk.
+const APPLY_CHUNK = 20000;
+async function applyRuleSlowly(rows, rule, note = null) {
+  const all = rows || [];
+  const kept = [];
+  for (let i = 0; i < all.length; i += APPLY_CHUNK) {
+    kept.push(...applyRule(all.slice(i, i + APPLY_CHUNK), rule));
+    if (note) note(Math.min(all.length, i + APPLY_CHUNK), all.length);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => { setImmediate(resolve); });
+  }
+  return kept;
 }
 
 module.exports = {
@@ -568,6 +598,6 @@ module.exports = {
   regionRule, MARKS, recordMark,
   EMPTY_RULE, CLOSINGS,
   normaliseRule, inRange, applyRule, ruleSentence,
-  newFunnelSet, recordStep, recordBackStep, warningsFor, finishFunnelSet, replay,
+  newFunnelSet, recordStep, recordBackStep, warningsFor, finishFunnelSet, replay, applyRuleSlowly,
   userRuleFromSteps,
 };

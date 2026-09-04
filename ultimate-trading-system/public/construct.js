@@ -83,14 +83,20 @@ async function post(p, body) {
 // back "FAILED - nothing changed. HTTP 504" while the run had started). The
 // service may still be working on what was asked; say so, and say where the
 // answer will show, instead of claiming nothing happened.
-const tryPost = async (p, body) => {
+// AND IT SAYS WHERE **THIS** PRESS'S ANSWER WILL SHOW (3.67.0, owner report).
+// It named Sweep and Boards whatever had been pressed, so a press on the Funnel
+// sent the owner to two screens that know nothing about it. Every caller that
+// is not a Sweep press says where its own answer lands.
+const WHERE_SWEEP = 'The status line at the top of Sweep says what is going; Boards lists what landed.';
+const tryPost = async (p, body, where = WHERE_SWEEP) => {
   try { return await post(p, body); } catch (e) {
     alert(/HTTP 50[24]\b/.test(String(e.message))
-      ? 'NO ANSWER IN TIME — the service may still be working on it.\n\n' + e.message + '\n\nThe status line at the top of Sweep says what is going; Boards lists what landed.'
+      ? 'NO ANSWER IN TIME — the service may still be working on it.\n\n' + e.message + '\n\n' + where
       : 'FAILED — nothing changed.\n\n' + e.message);
     return null;
   }
 };
+const WHERE_FUNNEL = 'The Stage 4 record set box at the top of this screen lists what landed - choose it there.';
 // A POST that ASKS rather than acts: it changes nothing, so a failure is a
 // blank answer, never a dialog. The cost line asks on every keystroke and a
 // popup there would be unusable.
@@ -5017,6 +5023,23 @@ function fRuleClauses(st) {
 // quietly show a different set under the same name.
 const F_NEW = 'new';
 
+// HOW FAR THE CUT HAS GOT, asked every second until it is done (3.67.0). The
+// count on the line beside the button is the settings the rule has been read
+// against so far, so a long cut says it is moving rather than sitting silent.
+async function fCutFollow(st) {
+  const msg = () => $('#fCutMsg');
+  for (;;) {
+    // eslint-disable-next-line no-await-in-loop
+    const s = await api(`api/funnel/${encodeURIComponent(st.set)}/cut`).catch(() => null);
+    if (!s) { if (msg()) msg().textContent = 'the service stopped answering - nothing was written'; return null; }
+    if (s.error) { if (msg()) msg().textContent = `FAILED - ${s.error}`; return null; }
+    if (s.result) return s.result;
+    if (msg()) msg().textContent = s.of ? `writing - ${Number(s.done).toLocaleString()} of ${Number(s.of).toLocaleString()} settings read` : 'writing';
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((r) => setTimeout(r, 1000));
+  }
+}
+
 function fCutChosen(st, d) {
   const cuts = (d && d.cuts) || [];
   if (!cuts.length) return null;                     // none cut here: the walk, always
@@ -5734,7 +5757,8 @@ function fWire(st, d) {
     // THE RULE, NOT A LIST OF NAMES (3.57.1): the walk holds the rule, the
     // service holds the settings, and the survivors are worked out there --
     // the same rule, the same unit and the same bar every other read sends
-    const out = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct });
+    const out = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct },
+      'The numbers are written beside the record set - press it again when it has finished and this step will read them.');
     rb.disabled = false;
     if (!out) { $('#fRebuildMsg').textContent = ''; return; }
     if (out.totalling || out.waiting) {
@@ -5787,14 +5811,20 @@ function fWire(st, d) {
   if (cut) cut.onclick = async () => {
     cut.disabled = true;
     $('#fCutMsg').textContent = 'writing';
-    const out = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/cut`, {
+    // STARTED, THEN FOLLOWED (3.67.0, owner order: the press must not freeze the
+    // page). The service comes straight back and this asks how far it is, the
+    // same way step 3's reading of every pair and step 4's reading across the
+    // other units already do -- so nothing is held open long enough for the
+    // gateway to give up, and every other screen keeps answering while it runs.
+    const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/cut`, {
       name: $('#fName').value || null, target: st.target, rule: st.rule,
       steps: st.steps, backSteps: st.backSteps, closing: st.closing || { key: 'rule' },
       marks: st.marks || [],
       userRule: st.userRule || null,               // what step 5 replaced, if it ran
       unit: st.unit,
       barPct: st.barPct,
-    });
+    }, WHERE_FUNNEL);
+    const out = started ? await fCutFollow(st) : null;
     cut.disabled = false;
     if (!out) { $('#fCutMsg').textContent = ''; return; }
     // THE SET JUST WRITTEN IS WHAT IS SHOWN (3.66.0, owner order 2026-09-04:

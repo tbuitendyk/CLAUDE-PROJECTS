@@ -218,7 +218,8 @@ module.exports = {
     assert.ok(after.includes('the cost line and the launch disagree, so nothing was priced'), 'and a disagreement says so and stops');
     assert.ok(after.includes('settingLabels: settings.map((s) => s.label),'), 'the names are written onto the plan once the block exists');
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    const tp = ui.slice(ui.indexOf('const tryPost = async (p, body) => {'), ui.indexOf('const tryPost = async (p, body) => {') + 700);
+    const tp = ui.slice(ui.indexOf('const tryPost = async (p, body, where = WHERE_SWEEP) => {'),
+      ui.indexOf('const tryPost = async (p, body, where = WHERE_SWEEP) => {') + 700);
     assert.ok(/HTTP 50\[24\]/.test(tp) && tp.includes('NO ANSWER IN TIME — the service may still be working on it.'),
       'a gateway give-up is told apart from a refusal');
     assert.ok(tp.includes("'FAILED — nothing changed.\\n\\n' + e.message"), 'a real refusal still says nothing changed');

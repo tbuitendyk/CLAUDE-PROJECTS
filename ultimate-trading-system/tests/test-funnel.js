@@ -572,7 +572,7 @@ module.exports = {
     // different shape
     const foldAt = body.indexOf('const closed = S4.ruleWithClosing');
     const ruleAt = body.indexOf('doc.rule = closed.rule;');
-    const applyAt = body.indexOf('S4.applyRule(ranked, doc.rule)');
+    const applyAt = body.indexOf('S4.applyRuleSlowly(ranked, doc.rule');
     assert.ok(foldAt > 0 && ruleAt > foldAt && applyAt > ruleAt,
       'the fold must come first, then the rule it produced, then the survivors from that rule');
     assert.ok(!/doc\.rule = S4\.normaliseRule\(state\.rule\);/.test(body),
@@ -1028,7 +1028,10 @@ module.exports = {
     const st = src('lib/stages.js');
     assert.ok(st.includes("for (const m of (state.marks || [])) S4.recordMark(doc,"), 'the cut writes them through recordMark');
     const sv = src('server.js');
-    assert.ok(sv.includes('marks: doc.marks || [],') && sv.includes('marks: d.marks || [],'), 'the cut reply and the set list carry them');
+    // the cut's own reply is built where the cut is started (3.67.0), the set
+    // list's in the door that serves it
+    assert.ok(st.includes('marks: doc.marks || [],'), 'the cut reply does not carry them');
+    assert.ok(sv.includes('marks: d.marks || [],'), 'the set list does not carry them');
   },
 
   // The read hands every step what §16 says it shows, and says which check it
@@ -1500,7 +1503,7 @@ module.exports = {
     const wire = src.slice(src.indexOf('function fWire('));
     assert.ok(/\/across`, \{ rule: st\.rule, unit: st\.unit, barPct: st\.barPct \}/.test(wire), 'the across carries the unit');
     const cutAt = wire.indexOf('/cut`');
-    assert.ok(cutAt > 0 && /unit: st\.unit,\n\s*barPct: st\.barPct,\n\s*\}\);/.test(wire.slice(cutAt, cutAt + 700)), 'the cut carries the unit');
+    assert.ok(cutAt > 0 && /unit: st\.unit,\n\s*barPct: st\.barPct,\n\s*\}, WHERE_FUNNEL\);/.test(wire.slice(cutAt, cutAt + 700)), 'the cut carries the unit');
     assert.ok(src.includes('<select id="fUnit"><option value="all"'), 'the picker offers the blend as all');
     assert.ok(src.includes('${(d.units || []).map((u) => `<option value="${esc(u.key)}"'), 'and every unit the reply listed');
     // a walk is saved per unit, and never under no unit
@@ -1793,7 +1796,7 @@ module.exports = {
     assert.ok(!/\bst\.bar\b/.test(src), 'nothing on the page still carries the bar as a count');
     const wire = src.slice(src.indexOf('function fWire('));
     assert.ok(wire.includes("{ rule: st.rule, unit: st.unit, barPct: st.barPct }"), 'the across carries the share');
-    assert.ok(/unit: st\.unit,\n\s*barPct: st\.barPct,\n\s*\}\);/.test(wire), 'the cut carries the share');
+    assert.ok(/unit: st\.unit,\n\s*barPct: st\.barPct,\n\s*\}, WHERE_FUNNEL\);/.test(wire), 'the cut carries the share');
     assert.ok(wire.includes("Math.max(1, Math.min(100, Math.floor(Number(bb.value) || 0)))") && wire.includes("st.barPct = v; fRememberForSet(st.set, { barPct: v }); fSave(); drawFunnel();"),
       'the box is held to 1..100 and changing it re-reads');
     const s1 = src.slice(src.indexOf('function fStep1('), src.indexOf('\nfunction fStep2('));
@@ -2132,7 +2135,7 @@ module.exports = {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const press = page.slice(page.indexOf("const rb = $('#fRebuild');"), page.indexOf("const rb = $('#fRebuild');") + 1400);
     assert.ok(!/labels: \[\]/.test(press), 'the press asks for an empty list of settings again, which the service refuses');
-    assert.ok(press.includes("/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct })"),
+    assert.ok(press.includes("/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct },"),
       'the press does not name the rule, the unit and the bar the way every other read does');
     assert.ok(press.includes('if (out.totalling || out.waiting) {'), 'a set whose tables are not built yet is reported as a failure rather than as work in flight');
     // the service works out the survivors through the ONE function that
@@ -2971,6 +2974,66 @@ module.exports = {
       'the two new limits are never sent with the read');
     assert.ok(page.includes("st.regionAcross = [...document.querySelectorAll('[data-facross]')].filter((x) => x.checked).map((x) => x.dataset.facross);"),
       'which dials were ticked is never read off the screen, so ticking one could never reach the read');
+  },
+
+  // owner, 2026-09-04: "you must not allow the page processing to freeze ...
+  // items like that need to leave a few cpu cycles to service going to the
+  // Setup | Compute tab for example without this kind of thing: NO ANSWER IN
+  // TIME ... HTTP 504"
+  async theCutStartsAndIsPolledSoNoOneRequestIsHeldOpen() {
+    const S = require('../lib/stages');
+    assert.equal(typeof S.cutFunnelSetStart, 'function', 'the cut cannot be started without being waited on');
+    assert.equal(typeof S.cutFunnelSetStatus, 'function', 'nothing can ask how far the cut has got');
+    // asking about a set nothing is being written for answers, it does not throw
+    const idle = S.cutFunnelSetStatus('s3-nothing-here');
+    assert.equal(idle.running, false, 'a set with no cut going reads as running');
+    assert.equal(idle.result, null, 'a set with no cut going hands back a result');
+    const srv = src('server.js');
+    assert.ok(srv.includes("app.get('/api/funnel/:id/cut'"), 'there is no door to ask how far the cut has got');
+    assert.ok(srv.includes('stages.cutFunnelSetStart(req.params.id, req.body || {})'), 'the press still waits for the whole cut on one request');
+    assert.ok(!/await stages\.cutFunnelSet\(/.test(srv), 'the door still holds the request open for the whole cut');
+    const page = src('public/construct.js');
+    assert.ok(page.includes('async function fCutFollow(st) {'), 'the page does not follow the cut it started');
+    assert.ok(/const out = started \? await fCutFollow\(st\) : null;/.test(page), 'the press does not wait on the following, so it lands on nothing');
+  },
+
+  // the passes over the whole board hand the thread back, and the check that
+  // used to be quadratic is not any more
+  theCutHandsTheThreadBackAndNeverComparesEveryNameAgainstEveryName() {
+    const S4 = require('../lib/funnelset');
+    const lib = src('lib/funnelset.js');
+    const rep = lib.slice(lib.indexOf('function replay(doc, parentRows'), lib.indexOf('const APPLY_CHUNK'));
+    assert.ok(!/\.includes\(l\)/.test(rep), 'the two lists are compared name against name again, which is millions of comparisons on a big rule');
+    assert.ok(rep.includes('const gotSet = new Set(got);') && rep.includes('const hadSet = new Set(had);'), 'the comparison is not made through sets');
+    // and it takes the survivors it was handed rather than working them out again
+    assert.ok(rep.includes('(survivors || applyRule(parentRows, doc.rule))'), 'the replay reads the whole board a second time');
+    const cut = src('lib/stages.js');
+    const body = cut.slice(cut.indexOf('async function cutFunnelSet(parentId'), cut.indexOf('// ---- THE CUT, STARTED AND POLLED'));
+    assert.ok(body.includes('await S4.applyRuleSlowly(ranked, doc.rule, note);'), 'the cut reads the whole board without ever handing the thread back');
+    assert.ok(body.includes('S4.replay(doc, ranked, survivors)'), 'the cut works its survivors out twice');
+    // the chunked pass gives the same answer as the one-shot one
+    const rows = Array.from({ length: 250 }, (_, i) => ({ tHours: i, gate: i % 2 ? 'a' : 'b', label: `r${i}` }));
+    const rule = { ranges: { tHours: { min: 10, max: 200 } }, allowed: { gate: ['a'] }, floors: {} };
+    return S4.applyRuleSlowly(rows, rule).then((slow) => {
+      assert.deepEqual(slow.map((r) => r.label), S4.applyRule(rows, rule).map((r) => r.label),
+        'the chunked pass keeps a different set of settings from the one-shot pass');
+    });
+  },
+
+  // "Notice too that this is the wrong message for hitting that button on the
+  // Funnel tab."
+  aPressThatTimesOutSaysWhereItsOwnAnswerWillShow() {
+    const page = src('public/construct.js');
+    assert.ok(page.includes('const tryPost = async (p, body, where = WHERE_SWEEP) => {'),
+      'every press that times out is told to look at the same two screens, whatever was pressed');
+    assert.ok(page.includes("+ e.message + '\\n\\n' + where"), 'the message does not use what the caller said');
+    assert.ok(page.includes("const WHERE_FUNNEL = 'The Stage 4 record set box at the top of this screen lists what landed"),
+      'there is no line for a press on this screen');
+    // the two presses on this screen that can take a while use it
+    const cutWire = page.slice(page.indexOf("const cut = $('#fCut');"), page.indexOf("document.querySelectorAll('[data-frm]')"));
+    assert.ok(cutWire.includes('}, WHERE_FUNNEL);'), 'writing a set still points at Sweep and Boards, which know nothing about it');
+    const rb = page.slice(page.indexOf("const rb = $('#fRebuild');"), page.indexOf("const cs = $('#fClose');"));
+    assert.ok(/The numbers are written beside the record set/.test(rb), 'working out the missing numbers still points at Sweep and Boards');
   },
 
   // owner, 2026-09-04: "on 'write the Stage 4 set' the behavior needs to be

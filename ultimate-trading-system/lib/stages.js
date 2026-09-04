@@ -5020,7 +5020,7 @@ function withFunnelRich(rows, rich) {
 //
 // AN EMPTY OR ONE-SETTING RESULT IS WRITTEN WITH A WARNING, NEVER REFUSED
 // (owner ruling 6). Refusing would take the decision away invisibly.
-async function cutFunnelSet(parentId, state = {}) {
+async function cutFunnelSet(parentId, state = {}, note = null) {
   {
     const sealing = sealedFillWaiting(getSet(String(parentId || '')));
     if (sealing) throw new Error(`${sealing} — the cut waits for it, so the set it writes can say the window is sealed`);
@@ -5076,18 +5076,70 @@ async function cutFunnelSet(parentId, state = {}) {
   doc.userRule = state.userRule ? S4.normaliseRule(state.userRule) : null;
   const closed = S4.ruleWithClosing(ranked, state.rule, state.closing, doc.target);
   doc.rule = closed.rule;
-  const survivors = S4.applyRule(ranked, doc.rule);
+  // IN CHUNKS, LETTING GO OF THE THREAD BETWEEN THEM (3.67.0, owner order). A
+  // pass over the whole parent board is not long on its own; this one runs on
+  // the thread that answers every other screen, so it hands it back as it goes.
+  const survivors = await S4.applyRuleSlowly(ranked, doc.rule, note);
   S4.finishFunnelSet(doc, survivors, { key: closed.key, detail: closed.detail });
   // THE REPLAY IS CHECKED BEFORE THE SET IS SAVED, not asserted in a test and
   // hoped for in production. A set whose rule does not reproduce its own
   // survivors is a story about a decision rather than the decision.
-  const check = S4.replay(doc, ranked);
+  // It is handed the survivors just worked out rather than working the same
+  // list out a second time over the same board.
+  const check = S4.replay(doc, ranked, survivors);
   if (!check.same) {
     throw new Error(`the rule does not reproduce its own survivors (${check.got} vs ${check.had}) — refusing to write it`);
   }
   doc.replayChecked = { at: new Date().toISOString(), ...check };
   saveSet(doc);
   return doc;
+}
+
+// ---- THE CUT, STARTED AND POLLED (3.67.0, owner order 2026-09-04) ----------
+//
+// "when i use a button such as 'write the Stage 4 set' you must not allow the
+// page processing to freeze ... items like that need to leave a few cpu cycles
+// to service going to the Setup | Compute tab for example without this kind of
+// thing: NO ANSWER IN TIME ... HTTP 504".
+//
+// Yielding keeps the box answering while the cut runs; it does not make the cut
+// FINISH sooner, so the browser can still give up waiting on the one request.
+// The reading of every pair on step 3 and the reading across the other units
+// already work this way: the press starts it, the page asks how far it is, and
+// nothing is held open. The cut is the third.
+let cutRun = null;
+function cutStatus(run) {
+  return {
+    running: !run.result && !run.error,
+    token: run.token, done: run.done, of: run.of,
+    error: run.error, result: run.result,
+  };
+}
+function cutFunnelSetStart(parentId, state = {}) {
+  if (cutRun && !cutRun.result && !cutRun.error) {
+    if (cutRun.id === String(parentId)) return cutStatus(cutRun);
+    throw new Error('another Stage 4 set is being written right now — one at a time');
+  }
+  const run = { id: String(parentId), token: `${parentId}:${Date.now()}`, done: 0, of: 0, result: null, error: null, promise: null };
+  cutRun = run;
+  run.promise = cutFunnelSet(parentId, state, (done, of) => { run.done = done; run.of = of; })
+    .then((doc) => {
+      run.result = {
+        id: doc.id, name: doc.name, seq: doc.seq, unit: doc.unit || null, unitName: doc.unitName || null,
+        survivors: doc.counts.survivors, target: doc.counts.target,
+        ruleSentence: doc.ruleSentence, warnings: doc.warnings,
+        closing: doc.closing, replayChecked: doc.replayChecked, marks: doc.marks || [],
+      };
+      run.done = run.of;
+    })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return cutStatus(run);
+}
+function cutFunnelSetStatus(parentId) {
+  if (!cutRun || cutRun.id !== String(parentId)) {
+    return { running: false, none: true, token: null, done: 0, of: 0, error: null, result: null };
+  }
+  return cutStatus(cutRun);
 }
 
 function listFunnelSets(parentId = null) {
@@ -5736,7 +5788,8 @@ module.exports = {
   missingSettingsIn, nextSettingNumber,
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
-  cutFunnelSet, listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
+  cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus,
+  listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
   unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
   testWindowOfUnit, exposureOf,
   funnelAcrossStart, funnelAcrossStatus, funnelCrossesStart, funnelCrossesStatus, funnelCrosses,

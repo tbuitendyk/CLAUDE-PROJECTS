@@ -973,3 +973,36 @@ made while building it that the design did not already settle.
 
      Second digit: new behaviour.
 
+101. **Writing a Stage 4 record set held the whole box, and the message when it
+     timed out pointed at the wrong screens** (2026-09-04, owner report).
+
+     Three separate faults behind one press.
+
+     **The replay was quadratic.** A set is not saved until its rule is replayed
+     and the names it keeps compared against the names it wrote down. That
+     comparison used `includes` on an array, so it walked the whole of one list
+     for every name in the other. At 116 settings that is 13,000 comparisons and
+     invisible; at 20,000 it is four hundred million, on the single thread that
+     also answers every other screen. Sets on both sides fixes it, and the
+     replay is now handed the survivors the cut just worked out rather than
+     reading the same board again.
+
+     **The passes did not yield.** Reading the whole parent board through the
+     rule now runs in chunks with the thread handed back between them, so
+     another tab is answered while the cut works.
+
+     **And yielding is not enough by itself.** It keeps the box answering; it
+     does not make the cut FINISH sooner, so one held-open request can still be
+     given up on by the gateway in front. The press starts the cut and comes
+     straight back, and the page asks how far it has got -- the third thing on
+     this screen to work that way, after step 3's reading of every pair and step
+     4's reading across the other units. If a press can take a minute, it does
+     not get to hold a request open.
+
+     **The timeout message was a template with one screen's name baked in.** It
+     said to look at Sweep's status line and Boards, whatever had been pressed.
+     The sentence belongs to the caller: Sweep's presses keep the old one, and
+     the presses on this screen say where their own answer lands.
+
+     Second digit: new behaviour.
+
