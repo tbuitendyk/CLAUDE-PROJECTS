@@ -693,3 +693,13 @@ made while building it that the design did not already settle.
       was written and never throws away a walk that produced nothing.
 
     Second digit: new behaviour and a rearranged screen.
+92. **The two heading slots with no held-back figure say so with a dash**
+    (3.59.1). They held `&nbsp;` to keep the two lines of the heading the same
+    height, and the check that walks from the page TO the word list read that
+    as a word on the screen called `nbsp` -- which is exactly the fault that
+    check exists to catch, pointed at my own markup. A dash keeps the height,
+    reads as "there is nothing here", matches every other missing figure on the
+    page, and carries no letters, so the word list ignores it. The hover on
+    both says in full that there is no held-back figure for that column. Third
+    digit: a fix.
+
