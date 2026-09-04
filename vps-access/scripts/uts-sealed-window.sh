@@ -15,6 +15,8 @@ const parent = st.getSet(doc.parent.id);
 console.log("parent", parent.name, "layout", (parent.params || {}).windowLayout, "engine", parent.engineVersion);
 const rows = rs.readAll(parent.id, "records");
 console.log("parent records", rows.length, "with reserve:", rows.filter((r) => r.reserve).length, "sample reserve:", JSON.stringify((rows.find((r) => r.reserve) || {}).reserve || null));
+console.log("parent record keys:", Object.keys(rows[0] || {}).join(","));
+console.log("parent doc fields:", Object.keys(parent).filter((k) => /money|fill|migrat|recordsVersion|behind/i.test(k)).map((k) => k + "=" + JSON.stringify(parent[k])).join("  "));
 const gp = parent.parent ? st.getSet(parent.parent.id) : null;
-if (gp) { const g = rs.readAll(gp.id, "records"); console.log("grandparent", gp.name, "layout", (gp.params || {}).windowLayout, "engine", gp.engineVersion, "records", g.length, "with reserve:", g.filter((r) => r.reserve).length); }
+if (gp) { const g = rs.readAll(gp.id, "records"); console.log("grandparent", gp.name, "layout", (gp.params || {}).windowLayout, "engine", gp.engineVersion, "records", g.length, "with reserve:", g.filter((r) => r.reserve).length); console.log("grandparent record keys:", Object.keys(g[0] || {}).join(",")); console.log("grandparent reserve sample:", JSON.stringify(g[0].reserve)); }
 '
