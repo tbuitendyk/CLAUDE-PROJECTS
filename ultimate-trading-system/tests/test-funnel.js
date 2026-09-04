@@ -2140,12 +2140,28 @@ module.exports = {
       'the survivors are read off a board without the rebuilt numbers, so a second press would disagree with the first');
     assert.ok(fn.includes('if (!t) return null;'), 'a set with no tables must fall through to a totalling, not throw');
     const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-    const route = srv.slice(srv.indexOf("app.post('/api/funnel/:id/rebuild'"), srv.indexOf("app.post('/api/funnel/:id/rebuild'") + 1800);
+    const route = srv.slice(srv.indexOf("app.post('/api/funnel/:id/rebuild'"), srv.indexOf("app.post('/api/funnel/:id/rebuild'") + 3000);
     assert.ok(route.includes('if (!labels.length && (req.body || {}).rule) {'), 'the route does not work out the survivors from the rule it is sent');
     assert.ok(route.includes('const got = await stages.survivorLabelsOf(req.params.id, req.body || {});'), 'the route does not ask the engine who the survivors are');
     assert.ok(/the rule keeps none of this set's \$\{got\.of\.toLocaleString\(\)\} settings/.test(route),
       'a rule that keeps nothing must say so in those words, not "nothing was asked for"');
     assert.ok(route.includes('funnelRebuild = null;'), 'a refusal must free the rebuild slot, or the next press is told one is already going');
+    // AND THE REBUILD CHECKS ITSELF (3.57.2, owner question 2026-09-04 about
+    // "NOT checked against the sweep (the caller supplied nothing to check
+    // against)"). The check only ran when the caller supplied the stored
+    // figures and the page has none, so it never ran. The service reads them
+    // beside the survivors.
+    assert.ok(fn.includes('for (const r of rows) if (Number.isFinite(Number(r.avgTest))) stored[r.label] = Number(r.avgTest);'),
+      'the survivors come back without the money the sweep stored for them, so nothing can be checked against it');
+    assert.ok(fn.includes('return { labels: rows.map((r) => r.label), of: all.length, stored };'), 'the stored figures do not travel with the names');
+    assert.ok(route.includes('if (!expect || !Object.keys(expect).length) expect = got.stored;'),
+      'the route does not fall back to the stored figures it just read, so the check stays skipped');
+    assert.ok(route.includes('const proof = stages.proveRebuild(got.perSetting, expect);'), 'the proof is still handed only what the caller sent');
+    assert.ok(!/proveRebuild\(got\.perSetting, \(req\.body \|\| \{\}\)\.expect \|\| null\)/.test(route), 'the proof reads the body again instead of what was resolved');
+    // and the proof itself still refuses to claim a check it did not make
+    const prove = lib.slice(lib.indexOf('function proveRebuild('), lib.indexOf('function proveRebuild(') + 700);
+    assert.ok(prove.includes("why: 'the caller supplied nothing to check against'") && prove.includes('ran: false'),
+      'a rebuild with nothing to check against must still say it was not checked');
     // and a list, when one IS sent, still works: the route has not lost its old door
     assert.ok(route.includes("const labels = Array.isArray((req.body || {}).labels)") || route.includes("let labels = Array.isArray((req.body || {}).labels)"),
       'the route no longer accepts a list of names at all');

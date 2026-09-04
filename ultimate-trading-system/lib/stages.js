@@ -3396,6 +3396,15 @@ function proveRebuild(perSetting, expect, tol = 1e-6) {
 // out HERE, through S4.applyRule -- the one function that applies a rule
 // (lib/funnelset.js) -- so the settings rebuilt are the very settings the
 // count at the top of the walk is counting, and the two cannot drift.
+//
+// AND WITH WHAT THE SWEEP STORED FOR EACH OF THEM (3.57.2, owner question
+// 2026-09-04 about "NOT checked against the sweep (the caller supplied nothing
+// to check against)"). A rebuild re-prices a setting and re-works its average
+// test money, and comparing that against the money the sweep stored is what
+// says the two runs are the same world. That comparison only ever happened
+// when the CALLER supplied the stored figures, and the page holds none -- so
+// it never happened. The rows read here carry them, so they travel back with
+// the names and the check always has something to check.
 async function survivorLabelsOf(id, state = {}) {
   const S4 = require('./funnelset');
   const t = readTally(id);
@@ -3404,7 +3413,9 @@ async function survivorLabelsOf(id, state = {}) {
   const rich = readFunnelRich(id);
   const all = withFunnelRich(board.all, rich);
   const rows = S4.applyRule(all, S4.normaliseRule(state.rule));
-  return { labels: rows.map((r) => r.label), of: all.length };
+  const stored = {};
+  for (const r of rows) if (Number.isFinite(Number(r.avgTest))) stored[r.label] = Number(r.avgTest);
+  return { labels: rows.map((r) => r.label), of: all.length, stored };
 }
 async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   const busy = stageRunning();

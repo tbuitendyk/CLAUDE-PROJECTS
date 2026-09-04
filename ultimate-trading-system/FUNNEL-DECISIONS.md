@@ -572,3 +572,18 @@ made while building it that the design did not already settle.
     from the unit's own step and the longest hold the rule still allows, and
     added up over the units of the reading; the screen says it per unit,
     because a weekly unit and a daily one differ by six times.
+88. **The rebuild checks itself against what the sweep stored** (3.57.2,
+    owner question 2026-09-04: what does "done for 192 setting(s) - NOT
+    checked against the sweep (the caller supplied nothing to check against)"
+    mean). It meant the work was done and the safety check on it was not.
+    Every rebuilt setting has its average test money re-worked, and comparing
+    that against the money the sweep stored is what says the two runs are the
+    same world -- different price data or a changed engine shows up there and
+    nowhere else. The comparison only ever ran when the CALLER supplied the
+    stored figures, and the page holds none, so it never ran once. The
+    service holds them: the board rows it already reads to work out who the
+    survivors are carry each setting's stored money, so they travel back with
+    the names and the route uses them unless the caller sent its own. An
+    unchecked rebuild is now only what it always claimed to be -- one with
+    genuinely nothing to check against -- and it still says so rather than
+    looking checked. Third digit: a fix.

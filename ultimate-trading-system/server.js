@@ -822,6 +822,10 @@ app.post('/api/funnel/:id/rebuild', async (req, res) => {
   // at the top of the walk is counting. The rule is what the walk holds, so
   // the rule is what is sent, and the survivors are worked out here.
   let labels = Array.isArray((req.body || {}).labels) ? req.body.labels.map(String) : [];
+  // WHAT TO CHECK THE REBUILD AGAINST (3.57.2): the caller may send it, but
+  // the page never has it to send, so the service reads it beside the
+  // survivors and the check always runs.
+  let expect = (req.body || {}).expect || null;
   funnelRebuild = req.params.id;
   try {
     if (!labels.length && (req.body || {}).rule) {
@@ -832,6 +836,7 @@ app.post('/api/funnel/:id/rebuild', async (req, res) => {
         return res.json({ totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null });
       }
       labels = got.labels;
+      if (!expect || !Object.keys(expect).length) expect = got.stored;
       if (!labels.length) {
         funnelRebuild = null;
         return res.status(400).json({ error: `the rule keeps none of this set's ${got.of.toLocaleString()} settings, so there is nothing to work out` });
@@ -841,7 +846,7 @@ app.post('/api/funnel/:id/rebuild', async (req, res) => {
     // THE PROOF TRAVELS WITH THE ANSWER. An unproved rebuild is allowed and
     // must never look proved, so the verdict is part of the reply rather than
     // something the screen can forget to ask for.
-    const proof = stages.proveRebuild(got.perSetting, (req.body || {}).expect || null);
+    const proof = stages.proveRebuild(got.perSetting, expect);
     // KEPT, NOT THROWN AWAY. The rebuilt numbers used to leave with this reply
     // and nothing held them, so a limit on the worst losing streak at step 6
     // refused every row -- no row carried one. They are written beside the set

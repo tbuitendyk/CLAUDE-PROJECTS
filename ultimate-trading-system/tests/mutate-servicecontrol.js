@@ -528,6 +528,10 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      delete st.rule[kind][key];\n      if (!st.steps) st.steps = [];", "      if (!st.steps) st.steps = [];",
     'everyClauseOfTheRuleHasItsOwnRemove',
     'remove records a removal in the notes and leaves the clause in the rule'],
+  // ---- THE REBUILD CHECKS ITSELF AGAINST THE SWEEP (3.57.2) ----
+  [path.join(ROOT, 'server.js'), "      if (!expect || !Object.keys(expect).length) expect = got.stored;", "",
+    'pressingWorkOutTheMissingNumbersAsksForTheSurvivorsOfTheRule',
+    'every rebuild goes back to reading NOT checked against the sweep, so a run against moved price data looks the same as a sound one'],
   // ---- THE PRESS NAMES THE RULE (3.57.1) ----
   [path.join(ROOT, 'public', 'construct.js'), "/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct })", "/rebuild`, { labels: [] })",
     'pressingWorkOutTheMissingNumbersAsksForTheSurvivorsOfTheRule',

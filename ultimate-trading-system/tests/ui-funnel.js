@@ -207,6 +207,7 @@ function requirePlaywright() {
   expect(asked !== null && !Array.isArray(asked.labels), `the press names the rule rather than an empty list: ${JSON.stringify(asked)}`);
   expect(asked !== null && !!asked.rule, `the press carries the rule: ${JSON.stringify(asked)}`);
   expect(/all 12 match what the sweep stored/.test(await page.locator('#view').innerText()), 'the answer is reported beside the button');
+  expect(!/NOT checked against the sweep/.test(await page.locator('#view').innerText()), 'a checked rebuild must not read as unchecked');
   expect(errors.length === 0, `no page errors and no dialogs${errors.length ? `: ${errors.join('; ')}` : ''}`);
   await browser.close();
   srv.kill();
