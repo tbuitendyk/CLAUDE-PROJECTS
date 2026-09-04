@@ -2499,8 +2499,8 @@ module.exports = {
   // must be frozen so scrolling down does not lose the context."
   theStageFourTableIsThreeRowsPerSettingAndCannotScrollSideways() {
     const page = src('public/construct.js');
-    const table = page.slice(page.indexOf('function fCutTable('), page.indexOf('function fWireCutPick('));
-    assert.ok(!/overflow-x/.test(table), 'the table is back inside a sideways scroller');
+    const table = page.slice(page.indexOf('function fCutTable('), page.indexOf('function fSizeCutBox('));
+    assert.ok(!/overflow-x:auto|overflow-x: auto/.test(table), 'the table is back inside a sideways scroller');
     assert.ok(!/white-space:nowrap/.test(table), 'the cells refuse to wrap, which is what pushes the table sideways');
     assert.ok(/<table class="s4">/.test(table), 'the table does not use the fixed layout that keeps it inside the panel');
     // three rows per setting: what it is, then test, then hold
@@ -2523,6 +2523,45 @@ module.exports = {
     const css = src('public/construct.html');
     assert.ok(/table\.s4 thead th \{[^}]*position:sticky[^}]*top:0/.test(css), 'the heading is not frozen, so scrolling loses it');
     assert.ok(/table\.s4 \{ table-layout:fixed/.test(css), 'the table can still be pushed wider than the panel by one long cell');
+  },
+
+  // "that stage 4 table needs to be in its own box with its own scrollbar so
+  // that an appropriate number of records are displayed (based on the vertical
+  // screen real estate available that the browser should be able to probe) and
+  // the headings must always be at the top" (owner order, 2026-09-04).
+  theStageFourRowsHaveTheirOwnBoxSizedToTheScreen() {
+    const page = src('public/construct.js');
+    const table = page.slice(page.indexOf('function fCutTable('), page.indexOf('function fSizeCutBox('));
+    assert.ok(table.includes('<div class="s4box" id="fCutRows">'), 'the rows are not in a box of their own');
+    assert.ok(table.includes('</table></div>'), 'the box is opened and never closed');
+    // the paging bars sit OUTSIDE it, above and below, so they never scroll away
+    assert.ok(table.indexOf('${pager}') < table.indexOf('<div class="s4box"'), 'the first paging bar is inside the scrolling box');
+    assert.ok(table.lastIndexOf('${pager}') > table.indexOf('</table></div>'), 'the second paging bar is inside the scrolling box');
+    // the height is MEASURED off the window, not a number somebody picked
+    const sizer = page.slice(page.indexOf('function fSizeCutBox('), page.indexOf('let fCutBoxWatched'));
+    assert.ok(sizer.includes('const below = window.innerHeight - b.top - under - 8;')
+      && sizer.includes('const scrolled = window.innerHeight - under - 24;'),
+      'the box height is guessed rather than measured against the window');
+    assert.ok(sizer.includes('const room = below >= share ? below : Math.min(scrolled, share);'),
+      'a tall heading leaves the box a sliver, and a sliver is not an appropriate number of records');
+    assert.ok(sizer.includes("panel.getBoundingClientRect().bottom - b.bottom"),
+      'the box does not leave room for what is drawn under it, so the last paging bar falls off the window');
+    assert.ok(sizer.includes("getComputedStyle(panel).marginBottom"),
+      'the panel\'s own bottom margin is not counted, so the box overhangs the window by exactly that much');
+    assert.ok(sizer.includes('if (!box) return;'), 'the sizer reaches for a box that is not on screen');
+    assert.ok(/Math\.max\(200,/.test(sizer), 'a short window can squeeze the box down to nothing');
+    // re-measured on a resize, and ONE listener for the life of the page
+    const watch = page.slice(page.indexOf('function fWatchCutBox('), page.indexOf('function fWireCutPick('));
+    assert.ok(watch.includes("window.addEventListener('resize', fSizeCutBox);"), 'the box is not re-measured when the window changes size');
+    assert.ok(watch.includes('if (fCutBoxWatched) return;'), 'a resize listener is added on every draw, so they pile up');
+    assert.ok(page.includes('  fWatchCutBox();'), 'nothing sizes the box after the screen is drawn');
+    // and the box scrolls, with the heading stuck to ITS top
+    const css = src('public/construct.html');
+    assert.ok(/div\.s4box \{[^}]*overflow-y:auto/.test(css), 'the box has no scroll bar of its own');
+    assert.ok(/div\.s4box \{[^}]*overflow-x:hidden/.test(css), 'the box can still scroll sideways');
+    assert.ok(/table\.s4 thead th \{[^}]*position:sticky[^}]*top:0/.test(css), 'the heading does not stay at the top of the box');
+    assert.ok(/table\.s4 thead th \{[^}]*box-shadow:inset 0 -1px 0/.test(css),
+      'the line under the heading is a collapsed border, which scrolls away from a sticky cell');
   },
 
 };

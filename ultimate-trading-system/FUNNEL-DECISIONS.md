@@ -702,4 +702,34 @@ made while building it that the design did not already settle.
     page, and carries no letters, so the word list ignores it. The hover on
     both says in full that there is no held-back figure for that column. Third
     digit: a fix.
+93. **The Stage 4 rows have their own box, their own scroll bar and a height
+    the browser measures** (3.60.0, owner order 2026-09-04: "that stage 4 table
+    needs to be in its own box with its own scrollbar so that an appropriate
+    number of records are displayed (based on the vertical screen real estate
+    available that the browser should be able to probe) and the headings must
+    always be at the top"). The heading was already frozen, but to the PAGE:
+    everything above the rows -- the title and its two selectors, the record's
+    own heading, the ordering line, the paging bar -- scrolled away with them.
+    Now the rows sit in a box of their own with its own scroll bar, and its
+    height is measured off `window.innerHeight` rather than picked: the room
+    where the box actually stands when there is enough of it, and otherwise 45%
+    of the window, which the page then scrolls to. That second case is the
+    common one and it is a MEASUREMENT, not a guess -- on a 1440x1000 window
+    this screen's heading leaves the rows 192 pixels, about two settings, and
+    two settings is not "an appropriate number of records". Scrolling the page
+    to the box costs nothing because the heading is stuck to the TOP OF THE BOX
+    and travels with it. What sits under the box is measured as the panel's
+    bottom edge minus the box's, which picks up the panel's own padding and
+    margin; summing the boxes drawn after it did not, and the box overhung the
+    window by exactly that much (found by the harness measuring it rather than
+    trusting the arithmetic). It is re-measured on a resize, by ONE listener
+    registered for the life of the page.
 
+    Reported to the owner and NOT touched: the heading above the rows is what
+    is eating the screen. Both paging bars sit
+    outside the box, so neither scrolls away. The line under the heading is a
+    shadow rather than a collapsed border, because a collapsed border on a
+    sticky cell scrolls away from it. The browser harness scrolls the box to the
+    bottom and MEASURES that it scrolled, that it ends inside the window, that
+    it uses a real share of the height, and that the heading is still at its top
+    afterwards. Second digit: new behaviour.

@@ -70,8 +70,18 @@
      underneath it and set to the right. Fixed layout so nothing can push the
      table wider than the panel -- a sideways scroll bar is not allowed here --
      and the headings stay put while the rows scroll under them. */
+  /* THE ROWS GET THEIR OWN BOX AND THEIR OWN SCROLL BAR (3.60.0, owner order).
+     Its height is set from the room the browser measures below it, so the box
+     ends at the bottom of the window and everything above it -- the title, the
+     record's own heading, the ordering line and the paging bar -- stays on
+     screen. The heading is sticky to THIS box, so it is always at the top of
+     the rows however far down them you are. */
+  div.s4box { overflow-y:auto; overflow-x:hidden; }
   table.s4 { table-layout:fixed; }
-  table.s4 thead th { position:sticky; top:0; background:var(--panel); z-index:2; vertical-align:bottom; }
+  /* the line under the heading is a shadow, not a border: a collapsed border on
+     a sticky cell scrolls away with the row it was collapsed against */
+  table.s4 thead th { position:sticky; top:0; background:var(--panel); z-index:2; vertical-align:bottom;
+                      box-shadow:inset 0 -1px 0 var(--line); }
   table.s4 thead th span.t, table.s4 thead th span.h { display:block; padding:.12rem 0; }
   table.s4 thead th span.h { border-top:1px solid var(--line); }
   table.s4 td { vertical-align:top; }

@@ -4927,6 +4927,7 @@ async function fDrawCut(d, st, cutId) {
     <div class="panel">${fCutHead(cd)}</div>
     <div class="panel">${fCutTable(cd, st)}</div>`;
   fWireCut(d, st, cd);
+  fWatchCutBox();
 }
 
 // THE DROP-DOWN IS ON BOTH HEADINGS (3.58.0). It was on the Stage 4 heading
@@ -5055,7 +5056,7 @@ function fCutTable(cd, st) {
     <p class="note"><b>Order the whole set by</b> setting${fcSort('label', cd)}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))}${fcSort(k, cd)}`).join('')}${has('members') ? ` &middot; members${fcSort('members', cd)}` : ''}${has('avgRung') ? ` &middot; rung${fcSort('avgRung', cd)}` : ''}${has('avgVoices') ? ` &middot; voices${fcSort('avgVoices', cd)}` : ''}
       - or press any heading in the table below.</p>
     ${pager}
-    <table class="s4"><thead>
+    <div class="s4box" id="fCutRows"><table class="s4"><thead>
       <tr>
         <th style="width:5rem" title="which of the two rows under each setting you are reading: its test window first, its held-back window under it."><span class="t">test</span><span class="h">hold</span></th>
         <th title="top: average test-window dollars for this setting, the money every one of the steps was read on. Bottom: dollars on the held-back window - the once-only look at days no part of the search touched."><span class="t">avg test $${fcSort('avgTest', cd)}</span><span class="h">avg held-back $${fcSort('avgHold', cd)}</span></th>
@@ -5092,8 +5093,52 @@ function fCutTable(cd, st) {
         ${c7 ? '<td></td>' : ''}
         ${c8 ? '<td></td>' : ''}
       </tr>`).join('')}</tbody>
-    </table>
+    </table></div>
     ${pager}`;
+}
+
+// HOW TALL THE BOX IS, MEASURED RATHER THAN GUESSED (3.60.0, owner order: "based
+// on the vertical screen real estate available that the browser should be able
+// to probe"). The box runs from wherever it starts on screen to the bottom of
+// the window, less whatever is drawn under it -- the second paging bar -- and a
+// little breathing room. Re-measured whenever the window changes size.
+function fSizeCutBox() {
+  const box = $('#fCutRows');
+  if (!box) return;                                  // another screen is drawn
+  // WHAT SITS UNDER THE BOX, MEASURED THE SAME WAY. Summing the boxes drawn
+  // after it left out the panel's own bottom padding and its margin, so the
+  // box ran off the bottom of the window by exactly that much (found by the
+  // browser harness measuring it rather than trusting the arithmetic). The
+  // panel's bottom edge minus the box's bottom edge is every one of them at
+  // once, whatever the stylesheet says they are.
+  const panel = box.closest('.panel') || box.parentElement;
+  const b = box.getBoundingClientRect();
+  const under = panel.getBoundingClientRect().bottom - b.bottom
+    + (parseFloat(getComputedStyle(panel).marginBottom) || 0);
+  // TWO NUMBERS, AND THE BOX TAKES WHICHEVER SERVES THE OWNER. `below` is the
+  // room where the box actually stands; `scrolled` is the room it would have if
+  // the page were scrolled so the box began at the top of the window. On this
+  // screen the heading above the rows is tall enough on a laptop to leave almost
+  // nothing below it -- measured at 190px of a 1000px window -- and two settings
+  // is not "an appropriate number of records". So: use the room below when
+  // there is enough of it, and otherwise take a share of the window and let the
+  // page scroll to the box, which costs nothing because the heading is stuck to
+  // the TOP OF THE BOX and comes with it.
+  const below = window.innerHeight - b.top - under - 8;
+  const scrolled = window.innerHeight - under - 24;
+  const share = Math.round(window.innerHeight * 0.45);
+  const room = below >= share ? below : Math.min(scrolled, share);
+  // never so short that the box is useless: three settings is nine rows
+  box.style.maxHeight = `${Math.max(200, Math.round(room))}px`;
+}
+// ONE listener for the life of the page. fSizeCutBox does nothing when the box
+// is not on screen, so it costs nothing on the other sections.
+let fCutBoxWatched = false;
+function fWatchCutBox() {
+  fSizeCutBox();
+  if (fCutBoxWatched) return;
+  fCutBoxWatched = true;
+  window.addEventListener('resize', fSizeCutBox);
 }
 
 // the drop-down is wired the same on both screens, by one function, because two

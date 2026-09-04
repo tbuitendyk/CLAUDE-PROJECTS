@@ -24,7 +24,7 @@ const CUT = { id: 's4-ui-1', seq: 1, name: 'S4 #1 - XRPUSDT weekly-8d', createdA
   ruleSentence: 'gate is directional' };
 function cutRows(q) {
   const rows = [];
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 40; i++) {          // enough to overflow the box and prove it scrolls
     rows.push({ si: i, label: `q1 directional t${65 + i * 24} · argmax auto 24/7`, tHours: 65 + i * 24, gate: 'directional',
       avgTest: 8.4 - i, avgHold: 2.1 - i * 0.5, avgTrades: 24 - i, avgVsLong: 1.2, beat: 19, pairs: 20, avgLead: 2.1,
       maxDrawdown: 12 + i, worstTrade: -3.2, bestTrade: 9.1, wins: 14, stops: 3, grossPerTrade: 0.42,
@@ -118,7 +118,10 @@ function requirePlaywright() {
   const { chromium } = requirePlaywright();
   const exe = process.env.PLAYWRIGHT_CHROMIUM || (fs.existsSync('/opt/pw-browsers/chromium') ? '/opt/pw-browsers/chromium' : undefined);
   const browser = await chromium.launch(exe ? { executablePath: exe } : {});
-  const page = await browser.newPage();
+  // A REAL DESKTOP WINDOW. The default 1280x720 is shorter than this screen's
+  // own heading, so the box can only ever start below the fold there and
+  // "does it end inside the window" is unanswerable (3.60.0).
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(`page error: ${e.message}`));
   page.on('dialog', async (d) => { errors.push(`dialog: ${d.message()}`); await d.dismiss(); });
@@ -288,8 +291,8 @@ function requirePlaywright() {
     'the two selectors are drawn once each, in the title section');
   // the table: three rows a setting, the two stacked rows named on the row
   const tags = await page.locator('#view td.s4tag').allTextContents();
-  expect(tags.length === 6 && tags[0].trim() === 'test' && tags[1].trim() === 'hold',
-    `each of the three settings is a what-it-is row plus a test row and a hold row: ${JSON.stringify(tags)}`);
+  expect(tags.length === 80 && tags[0].trim() === 'test' && tags[1].trim() === 'hold',
+    `each of the forty settings is a what-it-is row plus a test row and a hold row: ${tags.length} tag(s)`);
   expect(/gate \(gate\) directional; decision \(decision\) argmax/.test(cutText) || /gate directional; decision argmax/.test(cutText),
     `a dial the rule pinned is said once above the table: ${cutText.slice(cutText.indexOf('Every one of these'), cutText.indexOf('Every one of these') + 200)}`);
   expect(/116 rows · page/.test(cutText), 'the table says how many rows the whole set holds');
@@ -302,9 +305,42 @@ function requirePlaywright() {
     return { page: document.documentElement.scrollWidth > document.documentElement.clientWidth + 1, over };
   });
   expect(!wide.page && !wide.over.length, `nothing on this screen scrolls sideways: ${JSON.stringify(wide)}`);
-  // AND THE HEADING IS FROZEN
-  const stuck = await page.locator('#view table.s4 thead th').first().evaluate((el) => getComputedStyle(el).position);
-  expect(stuck === 'sticky', `the heading stays put while the rows scroll: ${stuck}`);
+  // AND THE ROWS HAVE THEIR OWN BOX, SIZED TO THE WINDOW, WITH THE HEADING
+  // ALWAYS AT ITS TOP (3.60.0, owner order) -- measured, not assumed
+  const boxed = await page.locator('#fCutRows').evaluate((box) => {
+    const th = box.querySelector('thead th');
+    const panel = box.closest('.panel') || box.parentElement;
+    const under = panel.getBoundingClientRect().bottom - box.getBoundingClientRect().bottom
+      + (parseFloat(getComputedStyle(panel).marginBottom) || 0);
+    box.scrollTop = box.scrollHeight;                 // all the way down
+    const b = box.getBoundingClientRect();
+    return {
+      position: getComputedStyle(th).position,
+      overflowY: getComputedStyle(box).overflowY,
+      scrolls: box.scrollHeight > box.clientHeight + 1,
+      scrolled: box.scrollTop > 0,
+      fitsWindow: b.bottom <= window.innerHeight + 1,
+      // and, when it does not, that it CAN be brought fully into view: its
+      // height plus what sits under it inside the panel fits a whole window
+      fitsScrolled: b.height + under + 24 <= window.innerHeight + 1,
+      roomBelow: Math.round(window.innerHeight - b.top - under - 8),
+      share: Math.round(window.innerHeight * 0.45),
+      height: Math.round(b.height),
+      headTop: Math.round(th.getBoundingClientRect().top - b.top),
+      pagerBelow: !!box.nextElementSibling,
+    };
+  });
+  expect(boxed.overflowY === 'auto' && boxed.scrolls && boxed.scrolled,
+    `the rows have their own scroll bar and it scrolls: ${JSON.stringify(boxed)}`);
+  // it either ends inside the window where it stands, or it is a size worth
+  // scrolling to -- and either way a whole one fits in the window once scrolled
+  expect(boxed.fitsScrolled, `the box can be brought fully into view: ${JSON.stringify(boxed)}`);
+  expect(boxed.height >= Math.min(boxed.roomBelow, boxed.share),
+    `the box uses the room the browser measured: ${JSON.stringify(boxed)}`);
+  expect(boxed.height > 200, `the box height came from the room measured, not from the floor: ${JSON.stringify(boxed)}`);
+  expect(boxed.position === 'sticky' && boxed.headTop <= 1,
+    `the heading is still at the top of the box after scrolling to the bottom: ${JSON.stringify(boxed)}`);
+  expect(boxed.pagerBelow, 'the paging bar under the rows is inside the box, so it scrolls away with them');
   expect(/is shopping the held-back window/.test(cutText), 'the screen says what sorting by the held-back column costs');
   // sorting asks the service for the whole set in that order, never the page
   const beforeSort = rowsAsked.length;

@@ -535,6 +535,16 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "      if (mismatches.length < 20) mismatches.push({ label, stored: Number(want), rebuilt: mine });", "      mismatches.push({ label, stored: Number(want), rebuilt: mine });",
     'theProofComparesTheFigureTheBoardActuallyHolds',
     'the list of disagreements is unbounded again, and a set where everything differs sends every name to the screen'],
+  // ---- THE ROWS HAVE THEIR OWN BOX (3.60.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), '<div class="s4box" id="fCutRows">', '<div>',
+    'theStageFourRowsHaveTheirOwnBoxSizedToTheScreen',
+    'the rows lose their own box and scroll bar, and the whole page scrolls again'],
+  [path.join(ROOT, 'public', 'construct.js'), "  const room = below >= share ? below : Math.min(scrolled, share);", "  const room = 600;",
+    'theStageFourRowsHaveTheirOwnBoxSizedToTheScreen',
+    'the box height is a number somebody picked instead of the room the browser measures, so it overflows a laptop and wastes a monitor'],
+  [path.join(ROOT, 'public', 'construct.html'), "div.s4box { overflow-y:auto; overflow-x:hidden; }", "div.s4box { }",
+    'theStageFourRowsHaveTheirOwnBoxSizedToTheScreen',
+    'the box has no scroll bar, so a set of five hundred settings runs off the bottom of the window'],
   // ---- THE OWNER'S FOUR FORMATTING ORDERS (3.59.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "      ${fCutPickBox(d, st)}\n", "",
     'theTitleAndTheTwoSelectorsAreAlwaysAtTheTop',
