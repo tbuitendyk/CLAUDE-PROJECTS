@@ -617,3 +617,17 @@ carried out 2026-08-28 under its own GO — decision 50.
     refused while the set being written names it as parent, because that run
     rewrites its own document as it goes. The counter is still kept on every
     set for its id; the name no longer depends on it. Second digit.
+65. **The sealed window rides on stage 2 records, and a set written without
+    it is filled in from its parent** (3.51.0, owner order 2026-09-04: "fix
+    and deploy the no sealed window deficiency"). The Funnel said "5 of 5
+    units carry no sealed window" on every stage 3 set: stage 2 carried the
+    bounds into each unit's stores and never onto the record the Funnel
+    reads (#28 said it did). Read on the box: S2 #2's 25 records carried
+    none, S1 #2's 25 carried all. Now the stage 2 record carries them, and a
+    stage 2 set on disk without them is filled in from its stage 1 parent by
+    unit (RULE NINE: beside, verified, swapped), announced by the Funnel's
+    read and run once in the background; the cut waits for it rather than
+    writing "no sealed window" onto a Stage 4 set. A parent that carries no
+    bounds itself -- S1 #1, written before the bounds existed -- cannot fill
+    its child, and the set says so by name: re-running that chain is the
+    owner's call. Second digit: a record field and a fill.

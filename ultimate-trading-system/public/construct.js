@@ -4293,7 +4293,7 @@ async function drawFunnel() {
       ? `${tp.phase || 'totalling the tables'}: ${Number(tp.done || 0).toLocaleString()} of ${Number(tp.total || 0).toLocaleString()} ${tp.word || 'parts'}`
       : String(d.totalling || d.waiting);
     $('#view').innerHTML = `<div class="panel"><h3 style="margin-top:0">Funnel</h3>
-      <p class="note">the tables for this set are being worked out - <b>${esc(said)}</b> - this page asks again in a few seconds</p></div>`;
+      <p class="note">${d.totalling ? 'the tables for this set are being worked out - ' : ''}<b>${esc(said)}</b> - this page asks again in a few seconds</p></div>`;
     setTimeout(() => { if (tab === 'funnel') drawFunnel(); }, 4000);
     return;
   }

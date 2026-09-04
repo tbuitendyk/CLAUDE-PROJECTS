@@ -599,6 +599,13 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), '  if (shared.barPct !== undefined) fState.barPct = shared.barPct;\n', '',
     'theBarAndTheTargetStayWhereTheyAreLeftForTheWholeSet',
     'every switch of coin and shape puts the bar back to the default and the owner reads every unit twice'],
+  // 3.51.0: the sealed window rides on stage 2 records and a set without it is filled in
+  [path.join(ROOT, 'lib', 'stages.js'), '          reserve: rec.reserve || null,\n          specs: merged.members.map(', '          specs: merged.members.map(',
+    'aStageTwoSetWithoutItsSealedWindowIsFilledInFromItsParent',
+    'every stage 2 set written from now on is behind on its sealed window the day it lands'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  const run = startSealedFill(parent.id);\n  run.behindOf = behind.parent;', '  return null;',
+    'aStageTwoSetWithoutItsSealedWindowIsFilledInFromItsParent',
+    'the read sees a parent behind on its sealed window and never starts the fill — the line stays "no sealed window" for ever'],
 ];
 
 const only = process.argv[2] || '';

@@ -1123,6 +1123,9 @@ function startStage2(params) {
           carriedRank: i + 1,
           trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
           bandPct: rec.bandPct, counts: rec.counts,
+          // THE SEALED BOUNDS RIDE ON THE RECORD (3.51.0): a stage 3 set's
+          // units are these records, and the sealed window is read off them
+          reserve: rec.reserve || null,
           specs: merged.members.map((m) => ({ ...m.spec, picked: m.picked })),
           voices: voicesOf(merged.members, merged.ts.test.length),
           voices3: voicesOf(merged.members.slice(0, rec.specs.length), merged.ts.test.length),
@@ -1542,6 +1545,105 @@ function sealedFromUnits(layout, units) {
     why: missing ? `${missing} of ${units.length} units carry no sealed window` : null,
   };
 }
+
+// ---- FILLING IN THE SEALED WINDOW (3.51.0, RULE NINE) ------------------------
+// A stage 2 set whose records carry no sealed bounds is behind: its units are
+// its parent's, and the parent's records carry the bounds for each of them.
+// It is filled in from the parent by unit, written BESIDE and swapped only
+// after the copy is checked; announced on the Funnel and run once in the
+// background, the way the totalling is. A parent that carries no bounds
+// itself cannot fill anything, and the set says so rather than guessing.
+function sealedBehind(doc) {
+  if (!doc || doc.stage !== 2) return null;
+  if (doc.status !== 'done' && doc.status !== 'incomplete') return null;
+  const recs = allRecords(doc.id);
+  if (!recs.length || recs.every((r) => r.reserve)) return null;
+  const parent = getSet((doc.parent || {}).id);
+  if (!parent) return { fillable: false, parent: null, why: `${doc.name} names a parent that is no longer on disk, so its sealed window cannot be filled in` };
+  const from = allRecords(parent.id);
+  const source = (r) => from.find((x) => x.u === r.s1u && unitKeyOf(x) === unitKeyOf(r)) || null;
+  const missing = recs.filter((r) => !(source(r) || {}).reserve).length;
+  if (missing) return { fillable: false, parent, why: `${parent.name} carries no sealed window for ${missing} of ${recs.length} units, so ${doc.name} cannot be filled in from it` };
+  return { fillable: true, parent, why: null };
+}
+const sealedFills = new Map();   // set id -> the fill going, so a read never starts a second
+function startSealedFill(id) {
+  if (sealedFills.has(id)) return sealedFills.get(id);
+  const doc = getSet(id);
+  const behind = sealedBehind(doc);
+  if (!behind) throw new Error(`${(doc || {}).name || id} carries its sealed window — there is nothing to fill in`);
+  if (!behind.fillable) throw new Error(behind.why);
+  const busy = stageBusy();
+  if (busy) throw new Error(`${busy} is running — filling in the sealed window waits rather than competing for the box`);
+  const recs = allRecords(id);
+  const from = allRecords(behind.parent.id);
+  const was = doc.status;
+  activeSet = doc;
+  doc.status = 'filling';
+  doc.progress = `filling in the sealed window from ${behind.parent.name}`;
+  saveSet(doc);
+  const run = { id, done: 0, total: recs.length, error: null, promise: null };
+  run.promise = (async () => {
+    const SPARE = 'records-sealing';
+    for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
+      rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
+      try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
+    }
+    const w = rowstore.writer(id, SPARE, { offThread: true });
+    for (const rec of recs) {
+      const src = from.find((x) => x.u === rec.s1u && unitKeyOf(x) === unitKeyOf(rec));
+      w.push({ ...rec, reserve: src.reserve });
+      w.flush();
+      run.done++;
+      doc.progress = `filling in the sealed window from ${behind.parent.name}: ${run.done} of ${run.total} records`;
+      saveSet(doc);
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((resolve) => { setImmediate(resolve); });
+    }
+    await w.close();
+    // VERIFY BEFORE ANYTHING IS REPLACED: the same records in the same order,
+    // every one of them carrying the bounds
+    const got = rowstore.readAll(id, SPARE);
+    if (got.length !== recs.length) throw new Error(`the copy holds ${got.length} records and the set has ${recs.length} — nothing was replaced`);
+    if (got.some((r, i) => !r.reserve || r.u !== recs[i].u)) throw new Error('a record in the copy carries no sealed window, or the order moved — nothing was replaced');
+    // SWAP.
+    const fromFile = rowstore.storeFile(id, SPARE);
+    const to = rowstore.storeFile(id, 'records');
+    fs.renameSync(`${fromFile}.meta.json`, `${to}.meta.json`);
+    fs.renameSync(fromFile, to);
+    recordsInHand.id = null; recordsInHand.rows = null;      // the old rows must never be served again
+    doc.sealedFilledAt = new Date().toISOString();
+    doc.status = was;
+    doc.progress = '';
+    saveSet(doc);
+  })().catch((err) => {
+    run.error = String((err && err.message) || err);
+    doc.status = was;
+    doc.progress = `the sealed-window fill failed: ${run.error}`;
+    saveSet(doc);
+  }).finally(() => {
+    if (activeSet && activeSet.id === doc.id) activeSet = null;
+    sealedFills.delete(id);
+  });
+  sealedFills.set(id, run);
+  return run;
+}
+// What a stage 3 reader says while its parent is being filled in, or null when
+// there is nothing to wait for. Starts the fill itself when the box is free.
+function sealedFillWaiting(doc) {
+  const parent = getSet(((doc || {}).parent || {}).id);
+  if (!parent) return null;
+  const line = (run) => `filling in the sealed window of ${parent.name} from ${((run.behindOf || {}).name) || 'its parent'}: ${run.done} of ${run.total} records`;
+  const going = sealedFills.get(parent.id);
+  if (going) return line(going);
+  const behind = sealedBehind(parent);
+  if (!behind || !behind.fillable) return null;
+  if (stageBusy()) return null;                  // read on as it is; the fill runs when the box is free
+  const run = startSealedFill(parent.id);
+  run.behindOf = behind.parent;
+  return line(run);
+}
+const sealedFillPromise = (id) => (sealedFills.has(id) ? sealedFills.get(id).promise : null);
 
 // WHETHER A BOARD-WIDE NOISE READING EXISTS, SAID BY EVERY SET IN THE SAME
 // WORDS (RULE NINE). Per-setting deals are stored as beat/pairs/lead, but the
@@ -3981,6 +4083,10 @@ async function funnelRead(id, state = {}) {
   const doc = getSet(id);
   if (!doc) throw new Error(`unknown record set '${id}'`);
   if (doc.stage !== 3) throw new Error(`${doc.name || id} is a stage ${doc.stage} set — the Funnel reads stage 3`);
+  // A PARENT BEHIND ON ITS SEALED WINDOW IS FILLED IN FIRST (3.51.0, RULE
+  // NINE): announced here, run once in the background, and the page asks again
+  const sealing = sealedFillWaiting(doc);
+  if (sealing) return { waiting: sealing };
   const t = readTally(id);
   if (!t) return null;                       // the caller starts a totalling, exactly as the tables do
 
@@ -4347,6 +4453,10 @@ function withFunnelRich(rows, rich) {
 // AN EMPTY OR ONE-SETTING RESULT IS WRITTEN WITH A WARNING, NEVER REFUSED
 // (owner ruling 6). Refusing would take the decision away invisibly.
 async function cutFunnelSet(parentId, state = {}) {
+  {
+    const sealing = sealedFillWaiting(getSet(String(parentId || '')));
+    if (sealing) throw new Error(`${sealing} — the cut waits for it, so the set it writes can say the window is sealed`);
+  }
   const busy = stageRunning();
   if (busy) throw new Error(`${busy} is running — the cut reads the same tables it writes from`);
   const parent = getSet(parentId);
@@ -4889,7 +4999,7 @@ module.exports = {
   cutFunnelSet, listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
   unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
   funnelAcrossStart, funnelAcrossStatus,
-  sealedWindowOf, sealedFromUnits, noiseTwinOf, needsBoardNullStamp,
+  sealedWindowOf, sealedFromUnits, sealedBehind, startSealedFill, sealedFillWaiting, sealedFillPromise, noiseTwinOf, needsBoardNullStamp,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn, isAlwaysLabel, alwaysLabelsOf, needsAlwaysStrip, stripAlwaysGate, alwaysStripPending,
   tallyRunPromise: () => (tallyRun ? tallyRun.promise : null),

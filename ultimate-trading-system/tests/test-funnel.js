@@ -1641,6 +1641,86 @@ module.exports = {
     assert.ok(wire.includes('fRememberForSet(st.set, { target: st.target }); fSave(); drawFunnel();'), 'changing the target does not remember it for the set');
   },
 
+  // THE SEALED WINDOW RIDES ON STAGE 2 RECORDS, AND A SET WRITTEN WITHOUT IT
+  // IS FILLED IN FROM ITS PARENT (3.51.0, owner order 2026-09-04: "fix and
+  // deploy the no sealed window deficiency"). Stage 2 carried the bounds into
+  // each unit's stores and not onto the record the Funnel reads, so every
+  // stage 3 set said "5 of 5 units carry no sealed window". Now the record
+  // carries them, and a stage 2 set on disk without them is filled in from
+  // its stage 1 parent by unit -- beside, verified, swapped -- announced by
+  // the read and run once in the background.
+  async aStageTwoSetWithoutItsSealedWindowIsFilledInFromItsParent() {
+    const rowstore = require('../lib/rowstore');
+    const s = src('lib/stages.js');
+    assert.ok(s.includes('          reserve: rec.reserve || null,\n          specs: merged.members.map('), 'the stage 2 record does not carry the sealed bounds');
+    const stamp = Date.now().toString(36);
+    const ids = { s1: `s1-test-${stamp}-sw`, s2: `s2-test-${stamp}-sw`, s3: `s3-test-${stamp}-sw` };
+    const SETS = path.join(__dirname, '..', 'data', 'stagesets');
+    const units = [['AAAUSDT', 'daily-2d'], ['BBBUSDT', 'weekly-8d'], ['CCCUSDT', 'daily-1d']];
+    const mk = (id, over) => fs.writeFileSync(path.join(SETS, `${id}.json`), JSON.stringify({ id, seq: 999970, status: 'done', createdAt: new Date().toISOString(), plan: { units: 3 }, ...over }));
+    try {
+      fs.mkdirSync(SETS, { recursive: true });
+      mk(ids.s1, { stage: 1, name: 'S1 #sw', params: { windowLayout: 'reserve61' } });
+      mk(ids.s2, { stage: 2, name: 'S2 #sw', parent: { id: ids.s1, name: 'S1 #sw' }, params: { windowLayout: 'reserve61' } });
+      mk(ids.s3, { stage: 3, name: 'S3 #sw', parent: { id: ids.s2, name: 'S2 #sw' }, params: { windowLayout: 'reserve61', carry: 0, selected: null } });
+      const w1 = rowstore.writer(ids.s1, 'records');
+      units.forEach(([trade, geometry], u) => w1.push({ u, trade, ctx1: null, ctx2: null, size: 1, geometry, bandPct: 2, reserve: { chunks: 45, fromTs: 1759104000000 + u }, specs: [], blocks: {} }));
+      w1.close();
+      const w2 = rowstore.writer(ids.s2, 'records');
+      units.forEach(([trade, geometry], u) => w2.push({ u, s1u: u, s1rank: u + 1, carriedRank: u + 1, trade, ctx1: null, ctx2: null, size: 1, geometry, bandPct: 2, specs: [], scoreAll: 1, blocks: { votes: [u, u] } }));
+      w2.close();
+      const s3 = stages.getSet(ids.s3);
+      assert.strictEqual(stages.sealedWindowOf(s3).sealed, false);
+      assert.strictEqual(stages.sealedWindowOf(s3).why, '3 of 3 units carry no sealed window', 'the words the owner saw');
+      const behind = stages.sealedBehind(stages.getSet(ids.s2));
+      assert.ok(behind && behind.fillable, 'a stage 2 set without the bounds, whose parent has them, is fillable');
+      const waiting = stages.sealedFillWaiting(s3);
+      assert.ok(/^filling in the sealed window of S2 #sw from S1 #sw: \d+ of 3 records$/.test(waiting), `the read says what it is waiting for: ${waiting}`);
+      assert.ok(/filling in the sealed window/.test(stages.sealedFillWaiting(s3)), 'asked again while it goes, it says so again and starts nothing new');
+      await stages.sealedFillPromise(ids.s2);
+      const after = rowstore.readAll(ids.s2, 'records');
+      assert.strictEqual(after.length, 3, 'same rows');
+      assert.deepStrictEqual(after.map((r) => r.u), [0, 1, 2], 'same order');
+      assert.deepStrictEqual(after.map((r) => r.reserve.fromTs), [1759104000000, 1759104000001, 1759104000002], 'each record carries its own unit\'s bounds from the parent');
+      assert.deepStrictEqual(after[1].blocks, { votes: [1, 1] }, 'everything else on the record is untouched');
+      assert.strictEqual(stages.sealedBehind(stages.getSet(ids.s2)), null, 'filled in, it is no longer behind');
+      assert.strictEqual(stages.sealedFillWaiting(s3), null, 'and the read has nothing to wait for');
+      assert.strictEqual(stages.sealedWindowOf(s3).sealed, true, 'the stage 3 set now reads sealed');
+      const d2 = stages.getSet(ids.s2);
+      assert.strictEqual(d2.status, 'done');
+      assert.ok(d2.sealedFilledAt, 'the fill is stamped on the set');
+      // a parent without the bounds cannot fill anything, and says so by name:
+      // a second chain, whose stage 1 set was written before the bounds existed
+      ids.s1n = `s1-test-${stamp}-swn`; ids.s2n = `s2-test-${stamp}-swn`; ids.s3n = `s3-test-${stamp}-swn`;
+      mk(ids.s1n, { stage: 1, name: 'S1 #old', params: { windowLayout: 'reserve61' } });
+      mk(ids.s2n, { stage: 2, name: 'S2 #old', parent: { id: ids.s1n, name: 'S1 #old' }, params: { windowLayout: 'reserve61' } });
+      mk(ids.s3n, { stage: 3, name: 'S3 #old', parent: { id: ids.s2n, name: 'S2 #old' }, params: { windowLayout: 'reserve61', carry: 0, selected: null } });
+      const w1b = rowstore.writer(ids.s1n, 'records');
+      units.forEach(([trade, geometry], u) => w1b.push({ u, trade, ctx1: null, ctx2: null, size: 1, geometry, bandPct: 2, specs: [], blocks: {} }));
+      w1b.close();
+      const w2b = rowstore.writer(ids.s2n, 'records');
+      units.forEach(([trade, geometry], u) => w2b.push({ u, s1u: u, s1rank: u + 1, carriedRank: u + 1, trade, ctx1: null, ctx2: null, size: 1, geometry, bandPct: 2, specs: [], scoreAll: 1, blocks: {} }));
+      w2b.close();
+      const stuck = stages.sealedBehind(stages.getSet(ids.s2n));
+      assert.ok(stuck && !stuck.fillable && /S1 #old carries no sealed window for 3 of 3 units/.test(stuck.why), stuck && stuck.why);
+      assert.strictEqual(stages.sealedFillWaiting(stages.getSet(ids.s3n)), null, 'nothing to wait for when nothing can be filled');
+      assert.throws(() => stages.startSealedFill(ids.s2n), /carries no sealed window for 3 of 3 units/);
+      assert.strictEqual(stages.sealedWindowOf(stages.getSet(ids.s3n)).why, '3 of 3 units carry no sealed window', 'and the stage 3 set still says so');
+    } finally {
+      for (const id of Object.values(ids)) {
+        try { fs.rmSync(path.join(SETS, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      }
+    }
+    // and the read and the cut both go through the wait
+    const read = s.slice(s.indexOf('async function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
+    assert.ok(read.includes('  const sealing = sealedFillWaiting(doc);\n  if (sealing) return { waiting: sealing };'), 'the read does not wait for the fill');
+    const cut = s.slice(s.indexOf('async function cutFunnelSet('), s.indexOf('async function cutFunnelSet(') + 600);
+    assert.ok(cut.includes('const sealing = sealedFillWaiting(getSet(String(parentId || \'\')));') && cut.includes('if (sealing) throw new Error(`${sealing} — the cut waits for it'), 'the cut does not wait for the fill');
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(ui.includes("${d.totalling ? 'the tables for this set are being worked out - ' : ''}<b>${esc(said)}</b>"), 'the page calls every wait a totalling');
+  },
+
   theScreenOffersTheBarAndSendsItWithEveryRead() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const head = src.slice(src.indexOf('function fHead('), src.indexOf('\nfunction fRail('));
