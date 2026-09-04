@@ -535,6 +535,14 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "      if (mismatches.length < 20) mismatches.push({ label, stored: Number(want), rebuilt: mine });", "      mismatches.push({ label, stored: Number(want), rebuilt: mine });",
     'theProofComparesTheFigureTheBoardActuallyHolds',
     'the list of disagreements is unbounded again, and a set where everything differs sends every name to the screen'],
+  // ---- THE NUMBERS JUST WORKED OUT ARE ON SCREEN (3.65.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      : `done for ${out.settings} setting(s) - NOT checked against the sweep (${String(pr.why || '')})`;\n    fSave(); drawFunnel();",
+    "      : `done for ${out.settings} setting(s) - NOT checked against the sweep (${String(pr.why || '')})`;",
+    'theNumbersJustWorkedOutAreOnScreenBeforeTheAnswerBesideTheButtonIs',
+    'the press works the numbers out and never reads them back, so the two limits below it go on saying no survivor carries one'],
+  [path.join(ROOT, 'public', 'construct.js'), "    st.rebuiltSaid = pr.ran", "    const rebuiltSaid = pr.ran",
+    'theNumbersJustWorkedOutAreOnScreenBeforeTheAnswerBesideTheButtonIs',
+    'what the press said is not kept on the walk, so the redraw that fetches the numbers wipes the proof off the screen'],
   // ---- THE TWO WALLS THAT ARE NOT MONEY (3.65.0) ----
   [path.join(ROOT, 'lib', 'plateau.js'), "  const cross = across.filter((a) => categorical.includes(a));", "  const cross = [];",
     'aMoneyBarAloneCannotGrowARegionAcrossAWordValuedDial',

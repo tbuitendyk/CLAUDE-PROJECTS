@@ -4275,7 +4275,7 @@ function fLoad() {
   if (saved && 'bar' in saved) delete saved.bar;
   fState = (saved && saved.set === set) ? { ...saved, unit }
     : { set, unit, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
-      dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false,
+      dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false, rebuiltSaid: null,
       closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {}, across: null, barPct: null };
   // the set's own bar and target win over whatever this unit's walk last saw
   const shared = fSetMemory(set);
@@ -4933,7 +4933,7 @@ function fStep6(d, st, r) {
     ${money}
     ${when}
     <div class="row"><button id="fRebuild" class="pri">work out the missing numbers</button>
-      <span id="fRebuildMsg" class="note">${st.rebuilt ? 'done for this set' : 'not done yet - press it first'}</span></div>
+      <span id="fRebuildMsg" class="note">${st.rebuiltSaid ? esc(st.rebuiltSaid) : (st.rebuilt ? 'done for this set' : 'not done yet - press it first')}</span></div>
     ${fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)}
     ${fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex)}
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
@@ -5324,7 +5324,7 @@ function fFreshWalk(st) {
   st.steps = []; st.backSteps = []; st.marks = [];
   st.pick = null; st.leaders = []; st.conditions = {}; st.across = null; st.userRule = null;
   st.crosses = null; st.crossesAsked = null; st.crossesFailed = null;
-  st.acrossAsked = null; st.read = null; st.rebuilt = false;
+  st.acrossAsked = null; st.read = null; st.rebuilt = false; st.rebuiltSaid = null;
 }
 // and one for the coin-and-shape box, for the same reason: this walk keeps its
 // place, the chosen board is remembered, and the next load is that board's own
@@ -5736,17 +5736,26 @@ function fWire(st, d) {
       $('#fRebuildMsg').textContent = out.waiting || 'the tables of this set are being worked out - press it again when they are done';
       return;
     }
-    st.rebuilt = true; fSave();
+    st.rebuilt = true;
     // THE PROOF IS SHOWN, NOT ASSUMED. An unchecked rebuild must never look
     // checked, so the absence of a check is printed as plainly as a failed one.
     const pr = out.proof || {};
     // THE TRUE COUNT, NOT THE LENGTH OF A CAPPED LIST (3.57.3)
     const off = pr.differed == null ? (pr.mismatches || []).length : pr.differed;
-    $('#fRebuildMsg').textContent = pr.ran
+    // AND IT IS KEPT ON THE WALK, NOT WRITTEN STRAIGHT ONTO THE SCREEN (3.65.1,
+    // owner report). The numbers this button works out are laid onto the
+    // survivors by the next READ, and this handler used to paint its answer and
+    // stop -- so the two limits below it went on saying "no survivor carries
+    // this number yet - press work out the missing numbers first" directly
+    // underneath "all 640 match what the sweep stored". Both were on screen at
+    // once and one of them was false. The walk holds what was said, the screen
+    // is drawn again, and the proof survives the redraw.
+    st.rebuiltSaid = pr.ran
       ? (off
         ? `${off} of ${pr.checked} setting(s) came back different from what the sweep stored - this is not the same run`
         : `done for ${out.settings} setting(s); all ${pr.checked} match what the sweep stored`)
       : `done for ${out.settings} setting(s) - NOT checked against the sweep (${String(pr.why || '')})`;
+    fSave(); drawFunnel();
   };
   // THE CLOSING IS A CHOICE THAT CHANGES THE COUNT, so it redraws like every
   // other choice does. Picking 'take the top N by a column' seeds the count
@@ -5812,7 +5821,7 @@ function fWire(st, d) {
     st.backSteps.push({ from: st.step, to: 1, why: 'started the rule again' });
     st.rule = { ranges: {}, allowed: {}, floors: {} };
     st.closing = { key: 'rule' }; st.userRule = null;
-    st.step = 1; st.rebuilt = false; fSave(); drawFunnel();
+    st.step = 1; st.rebuilt = false; st.rebuiltSaid = null; fSave(); drawFunnel();
   };
 }
 

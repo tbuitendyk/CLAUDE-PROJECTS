@@ -2972,6 +2972,31 @@ module.exports = {
       'which dials were ticked is never read off the screen, so ticking one could never reach the read');
   },
 
+  // OWNER REPORT, 2026-09-04: "work out the missing numbers / done for 640
+  // setting(s); all 640 match what the sweep stored / worst losing streak: no
+  // survivor carries this number yet - press work out the missing numbers
+  // first." Both lines on screen at once, one of them false.
+  theNumbersJustWorkedOutAreOnScreenBeforeTheAnswerBesideTheButtonIs() {
+    const page = src('public/construct.js');
+    const wire = page.slice(page.indexOf("const rb = $('#fRebuild');"), page.indexOf("const cs = $('#fClose');"));
+    // the numbers are laid onto the survivors by the next READ, so the press
+    // has to ask for one -- painting the answer and stopping is the fault
+    assert.ok(/drawFunnel\(\);/.test(wire), 'the press works the numbers out and never reads them back, so the two limits below it go on saying nothing carries them');
+    assert.ok(!/\$\('#fRebuildMsg'\)\.textContent = pr\.ran/.test(wire),
+      'the proof is written straight onto the screen, so the redraw that fetches the numbers wipes it');
+    assert.ok(/st\.rebuiltSaid = pr\.ran/.test(wire), 'the walk does not keep what the press said, so nothing survives the redraw');
+    // and an unchecked rebuild must still never read as checked
+    assert.ok(/NOT checked against the sweep/.test(wire), 'an unproved rebuild no longer says so');
+    const six = page.slice(page.indexOf('function fStep6(d, st, r) {'), page.indexOf('function fStep7('));
+    assert.ok(six.includes('${st.rebuiltSaid ? esc(st.rebuiltSaid) : (st.rebuilt ?'),
+      'the screen does not print what the press said, so a proof kept on the walk never reaches the owner');
+    // a proof may never outlive the rebuild it is about: it is cleared wherever
+    // the flag beside it is
+    const cleared = (page.match(/st\.rebuilt = false;/g) || []).length;
+    const said = (page.match(/st\.rebuiltSaid = null;/g) || []).length;
+    assert.equal(said, cleared, 'a walk can start again carrying the proof of a rebuild it no longer has');
+  },
+
   // "there should be another control that lets the entire user rule be retained
   // into step 6"
   theOwnersOwnRuleCanBeCarriedWholeIntoStepSix() {

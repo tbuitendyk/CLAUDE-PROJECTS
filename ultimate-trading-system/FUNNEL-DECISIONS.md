@@ -913,3 +913,30 @@ made while building it that the design did not already settle.
     set and the marks cannot be cleared.
 
     Second digit: new behaviour and two new controls.
+
+99. **`work out the missing numbers` worked them out and did not put them on
+    the screen** (2026-09-04, owner report: *"done for 640 setting(s); all 640
+    match what the sweep stored"* sitting directly above *"worst losing streak:
+    no survivor carries this number yet - press work out the missing numbers
+    first"*).
+
+    Everything behind the button was right. The rebuild ran, the numbers were
+    written beside the set, and all 640 settings carry a worst losing streak in
+    that file, per unit as well as averaged. What was wrong is that those
+    numbers reach the survivors through the next READ, and the press painted its
+    answer beside the button and stopped. So the limits underneath went on
+    showing the reading taken BEFORE the press, and the two lines contradicted
+    each other on the screen at the moment the owner pressed it.
+
+    Anything else that redrew the screen fixed it, which is worse rather than
+    better: the fault was invisible a minute later and only ever showed at the
+    moment it mattered.
+
+    The press now asks for a read. The proof has to survive that read, and it
+    could not while it lived only in the screen's own text, so it is kept on the
+    walk and drawn from there — cleared in both the places the flag beside it
+    is, because a proof that outlives the rebuild it is about is exactly the
+    "must never look checked" failure pointing the other way.
+
+    Third digit: a fix.
+

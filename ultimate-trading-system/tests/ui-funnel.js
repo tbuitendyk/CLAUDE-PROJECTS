@@ -56,6 +56,11 @@ function cutRows(q) {
     sort: q.get('sort') || 'avgTest', dir: q.get('dir') || 'desc', rows,
   };
 }
+// THE WORST LOSING STREAK IS NOT ON THE BOARD UNTIL THE REBUILD HAS RUN
+// (3.65.1). The box writes those numbers beside the set and the next READ lays
+// them onto the survivors, so a press that does not read again leaves the limit
+// below it saying nothing carries one.
+let worked = false;
 function reply(body) {
   const rule = body.rule || {};
   const gateFixed = Array.isArray((rule.allowed || {}).gate);
@@ -134,7 +139,8 @@ function reply(body) {
         perUnit: [{ name: 'XRPUSDT weekly-8d', geometry: 'weekly-8d', stepHours: 168, atOnce: 1, mostAtOnce: 100 },
           { name: 'BTCUSDT daily-4d', geometry: 'daily-4d', stepHours: 24, atOnce: 6, mostAtOnce: 600 }],
         window: { fromTs: from, toTs: from + 140 * day, days: 140, weeks: 20, perYearFactor: 365.25 / 140 }, why: null },
-      ladders: { maxDrawdown: { field: 'maxDrawdown', dir: 'max', of: 40, measured: 40, rungs: [{ at: 12, keeps: 10 }, { at: 30, keeps: 40 }] },
+      ladders: { maxDrawdown: worked ? { field: 'maxDrawdown', dir: 'max', of: 40, measured: 40, rungs: [{ at: 12, keeps: 10 }, { at: 30, keeps: 40 }] }
+        : { field: 'maxDrawdown', dir: 'max', of: 40, measured: 0, rungs: [] },
         avgTrades: { field: 'avgTrades', dir: 'min', of: 40, measured: 40, rungs: [{ at: 6, keeps: 40 }, { at: 20, keeps: 12 }] } } } };
   }
   return { ...base, reading: { why: 'not canned' } };
@@ -368,20 +374,30 @@ function requirePlaywright() {
   expect(/The trades are counted over 2025-06-02 to 2025-10-20/.test(six), `step 6 names the window: ${six.slice(six.indexOf('The trades are counted'), six.indexOf('The trades are counted') + 160)}`);
   expect(/20 weeks, or 140 days/.test(six), 'step 6 says how long the window is');
   expect(/at least 20\.00 \(about 52 a year\) keeps 12/.test(six), `the trades ladder is put on a yearly footing: ${six.slice(six.indexOf('trades - what'), six.indexOf('trades - what') + 200)}`);
-  expect(/at most 12\.00 keeps 10/.test(six) && !/at most 12\.00 \(about/.test(six), 'the dollar ladder is drawn, and must not be read as a rate');
   expect(/Press work out the missing numbers FIRST/.test(six), 'step 6 says which button to press first');
+  // before the press, the worst losing streak is on nothing and says so (3.65.1)
+  expect(/worst losing streak: no survivor carries this number yet/.test(six),
+    `before the press the dollar limit says nothing carries it: ${six.slice(six.indexOf('worst losing streak'), six.indexOf('worst losing streak') + 140)}`);
   // pressing it asks for the survivors of the rule, not for an empty list (3.57.1)
   let asked = null;
   await page.route('**/api/funnel/*/rebuild', async (route) => {
     asked = JSON.parse(route.request().postData() || '{}');
+    worked = true;
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ settings: 12, units: 2, failures: [], proof: { ran: true, checked: 12, mismatches: [] }, kept: 12 }) });
   });
   await page.locator('#fRebuild').click();
-  await page.waitForTimeout(800);
+  await page.waitForTimeout(1200);
   expect(asked !== null && !Array.isArray(asked.labels), `the press names the rule rather than an empty list: ${JSON.stringify(asked)}`);
   expect(asked !== null && !!asked.rule, `the press carries the rule: ${JSON.stringify(asked)}`);
-  expect(/all 12 match what the sweep stored/.test(await page.locator('#view').innerText()), 'the answer is reported beside the button');
-  expect(!/NOT checked against the sweep/.test(await page.locator('#view').innerText()), 'a checked rebuild must not read as unchecked');
+  const after = await page.locator('#view').innerText();
+  expect(/all 12 match what the sweep stored/.test(after), 'the answer is reported beside the button');
+  expect(!/NOT checked against the sweep/.test(after), 'a checked rebuild must not read as unchecked');
+  // AND THE NUMBERS IT JUST WORKED OUT ARE ON SCREEN (3.65.1, owner report):
+  // the limit below the button must not still be asking for the press
+  expect(!/no survivor carries this number yet/.test(after),
+    `the limit still says nothing carries it, under an answer saying it was just worked out: ${after.slice(after.indexOf('worst losing streak'), after.indexOf('worst losing streak') + 200)}`);
+  expect(/at most 12\.00 keeps 10/.test(after) && !/at most 12\.00 \(about/.test(after),
+    'the dollar ladder is drawn after the press, and must not be read as a rate');
   // ---- THE STAGE 4 RECORD SETS OF THIS COIN AND SHAPE (3.58.0) ----
   // everything above ran with NONE cut, which is the other half of the owner's
   // order: with no Stage 4 record set on this coin and shape, the seven steps
