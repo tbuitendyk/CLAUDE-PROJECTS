@@ -65,7 +65,9 @@ function reply(body) {
   if (body.step === 6) {
     const day = 86400000; const from = Date.UTC(2025, 5, 2);
     return { ...base, rebuilt: true, reading: { rebuilt: true,
-      exposure: { stake: 100, coins: 2, units: 2, mostAtOnce: 200,
+      exposure: { stake: 100, coins: 2, units: 2, mostAtOnce: 700, holdHours: 137,
+        perUnit: [{ name: 'XRPUSDT weekly-8d', geometry: 'weekly-8d', stepHours: 168, atOnce: 1, mostAtOnce: 100 },
+          { name: 'BTCUSDT daily-4d', geometry: 'daily-4d', stepHours: 24, atOnce: 6, mostAtOnce: 600 }],
         window: { fromTs: from, toTs: from + 140 * day, days: 140, weeks: 20, perYearFactor: 365.25 / 140 }, why: null },
       ladders: { maxDrawdown: { field: 'maxDrawdown', dir: 'max', of: 40, measured: 40, rungs: [{ at: 12, keeps: 10 }, { at: 30, keeps: 40 }] },
         avgTrades: { field: 'avgTrades', dir: 'min', of: 40, measured: 40, rungs: [{ at: 6, keeps: 40 }, { at: 20, keeps: 12 }] } } } };
@@ -184,12 +186,27 @@ function requirePlaywright() {
   await page.waitForSelector('#fDD', { timeout: 15000 }).catch(() => {});
   const six = await page.locator('#view').innerText();
   expect(/Every trade stakes \$100/.test(six), `step 6 says what a trade stakes: ${six.slice(0, 200)}`);
-  expect(/\$200 across the 2 coins/.test(six), 'step 6 says what can be on the table across the coins');
+  expect(/BTCUSDT daily-4d starts one every 24 hours, so up to 6 can be open at once - \$600/.test(six),
+    `step 6 says how many can be open at once on a daily unit: ${six.slice(six.indexOf('With the longest hold'), six.indexOf('With the longest hold') + 300)}`);
+  expect(/XRPUSDT weekly-8d starts one every 168 hours, so up to 1 can be open at once - \$100/.test(six), 'and one at a time on a weekly unit');
+  expect(/Across this reading that is \$700 on the table at once/.test(six), 'step 6 says what can be on the table across the reading');
+  expect(!/holds one position at a time/.test(six), 'the false one-at-a-time sentence is gone');
   expect(/The trades are counted over 2025-06-02 to 2025-10-20/.test(six), `step 6 names the window: ${six.slice(six.indexOf('The trades are counted'), six.indexOf('The trades are counted') + 160)}`);
   expect(/20 weeks, or 140 days/.test(six), 'step 6 says how long the window is');
   expect(/at least 20\.00 \(about 52 a year\) keeps 12/.test(six), `the trades ladder is put on a yearly footing: ${six.slice(six.indexOf('trades - what'), six.indexOf('trades - what') + 200)}`);
   expect(/at most 12\.00 keeps 10/.test(six) && !/at most 12\.00 \(about/.test(six), 'the dollar ladder is drawn, and must not be read as a rate');
   expect(/Press work out the missing numbers FIRST/.test(six), 'step 6 says which button to press first');
+  // pressing it asks for the survivors of the rule, not for an empty list (3.57.1)
+  let asked = null;
+  await page.route('**/api/funnel/*/rebuild', async (route) => {
+    asked = JSON.parse(route.request().postData() || '{}');
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ settings: 12, units: 2, failures: [], proof: { ran: true, checked: 12, mismatches: [] }, kept: 12 }) });
+  });
+  await page.locator('#fRebuild').click();
+  await page.waitForTimeout(800);
+  expect(asked !== null && !Array.isArray(asked.labels), `the press names the rule rather than an empty list: ${JSON.stringify(asked)}`);
+  expect(asked !== null && !!asked.rule, `the press carries the rule: ${JSON.stringify(asked)}`);
+  expect(/all 12 match what the sweep stored/.test(await page.locator('#view').innerText()), 'the answer is reported beside the button');
   expect(errors.length === 0, `no page errors and no dialogs${errors.length ? `: ${errors.join('; ')}` : ''}`);
   await browser.close();
   srv.kill();

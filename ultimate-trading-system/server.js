@@ -816,9 +816,27 @@ app.post('/api/funnel/:id/rebuild', async (req, res) => {
   if (funnelRebuild) return res.status(409).json({ error: `a rebuild is already going (${funnelRebuild})` });
   const doc = stages.getSet(req.params.id);
   if (!doc) return res.status(400).json({ error: 'unknown record set' });
-  const labels = Array.isArray((req.body || {}).labels) ? req.body.labels.map(String) : [];
+  // THE PRESS NAMES THE RULE, NOT A LIST (3.57.1, owner report: pressing it
+  // said "nothing was asked for"). A list of names typed by the page can be
+  // empty, or stale, or a different set of survivors from the ones the count
+  // at the top of the walk is counting. The rule is what the walk holds, so
+  // the rule is what is sent, and the survivors are worked out here.
+  let labels = Array.isArray((req.body || {}).labels) ? req.body.labels.map(String) : [];
   funnelRebuild = req.params.id;
   try {
+    if (!labels.length && (req.body || {}).rule) {
+      const got = await stages.survivorLabelsOf(req.params.id, req.body || {});
+      if (!got) {
+        funnelRebuild = null;
+        const t = stages.ensureTally(req.params.id);
+        return res.json({ totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null });
+      }
+      labels = got.labels;
+      if (!labels.length) {
+        funnelRebuild = null;
+        return res.status(400).json({ error: `the rule keeps none of this set's ${got.of.toLocaleString()} settings, so there is nothing to work out` });
+      }
+    }
     const got = await stages.rebuildRichFor(doc, labels, {});
     // THE PROOF TRAVELS WITH THE ANSWER. An unproved rebuild is allowed and
     // must never look proved, so the verdict is part of the reply rather than

@@ -2011,8 +2011,20 @@ module.exports = {
     // shorter window -- the step is the unit's own
     const daily = stages.testWindowOfUnit({ geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } });
     assert.strictEqual(Math.round(daily.days), 60, 'sixty daily chunks is 60 days');
+    // AND A REAL RECORD CARRIES NO END TIMESTAMP (owner, 2026-09-04: "'The
+    // window the trades were counted over cannot be worked out' ... i don't
+    // believe you"). The stored bounds are { chunks, fromTs } and nothing
+    // else, and demanding a toTs made every set on the box say it could not
+    // be worked out. The step comes from the shape; the anchor is where the
+    // sealed window begins.
+    const real = stages.testWindowOfUnit({ geometry: 'weekly-8d', reserve: { chunks: 46, fromTs: 1758499200000 } });
+    assert.ok(real, 'a record with chunks and fromTs and no toTs must still give a window — that is the shape every record on the box has');
+    assert.strictEqual(new Date(real.fromTs).toISOString().slice(0, 10), '2023-12-18');
+    assert.strictEqual(new Date(real.toTs).toISOString().slice(0, 10), '2024-11-04');
+    assert.strictEqual(Math.round(real.days), 322, '46 weekly chunks is 322 days');
     // a set with no sealed bounds says so rather than inventing a window
     assert.strictEqual(stages.testWindowOfUnit({ geometry: 'daily-1d', reserve: null }), null);
+    assert.strictEqual(stages.testWindowOfUnit({ geometry: 'daily-1d', reserve: { chunks: 10 } }), null, 'no anchor, no window');
     // THE EXPOSURE over the units a reading covers
     const ex = stages.exposureOf({ params: { windowLayout: 'reserve61' } }, [
       { trade: 'XRPUSDT', geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } },
@@ -2021,7 +2033,22 @@ module.exports = {
     assert.strictEqual(ex.stake, NOTIONAL, 'the stake is the engine\'s, never a number typed on the page');
     assert.strictEqual(ex.stake, 100);
     assert.strictEqual(ex.coins, 2, 'two coins');
-    assert.strictEqual(ex.mostAtOnce, 200, 'a coin holds one position at a time, so two coins can have two stakes on the table');
+    // ON THE TABLE AT ONCE IS NOT ONE PER COIN (owner, 2026-09-04: "which is
+    // of course not true. in the case of the weekly shape it's true"). With a
+    // 137-hour hold the weekly unit (a start every 168 hours) holds one, and
+    // the daily one (a start every 24) holds six.
+    assert.strictEqual(ex.holdHours, null, 'with no hold named nothing about overlap can be claimed');
+    const held = stages.exposureOf({ params: { windowLayout: 'reserve61' } }, [
+      { trade: 'XRPUSDT', geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } },
+      { trade: 'BTCUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } },
+    ], { holdHours: 137 });
+    assert.deepStrictEqual(held.perUnit.map((u) => [u.stepHours, u.atOnce, u.mostAtOnce]), [[168, 1, 100], [24, 6, 600]],
+      'a weekly unit holds one at a time at a 137-hour hold; a daily one holds six');
+    assert.strictEqual(held.mostAtOnce, 700, 'the most on the table is every unit\'s own overlap added up, not one stake per coin');
+    const short = stages.exposureOf({ params: { windowLayout: 'reserve61' } },
+      [{ trade: 'BTCUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } }], { holdHours: 17 });
+    assert.strictEqual(short.perUnit[0].atOnce, 1, 'a 17-hour hold on a daily start holds one at a time');
+    assert.strictEqual(short.mostAtOnce, 100);
     assert.strictEqual(Math.round(ex.window.days), 140, 'the window spans the longest of the units\' own');
     assert.strictEqual(Math.round(20 * ex.window.perYearFactor), 52, '20 trades over 140 days is about 52 a year');
     // the same coin twice under two shapes is ONE coin on the table
@@ -2030,7 +2057,14 @@ module.exports = {
       { trade: 'XRPUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } },
     ]);
     assert.strictEqual(twice.coins, 1, 'one coin under two shapes is one coin');
-    assert.strictEqual(twice.mostAtOnce, 100);
+    // ...but two shapes of it can both be in a trade, so what is on the table
+    // is both of them, not one
+    const twiceHeld = stages.exposureOf({ params: { windowLayout: 'reserve61' } }, [
+      { trade: 'XRPUSDT', geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } },
+      { trade: 'XRPUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } },
+    ], { holdHours: 65 });
+    assert.deepStrictEqual(twiceHeld.perUnit.map((u) => u.atOnce), [1, 3], 'a 65-hour hold is one weekly start and three daily ones');
+    assert.strictEqual(twiceHeld.mostAtOnce, 400, 'one coin under two shapes can still have four stakes on the table');
     // and a set the window cannot be worked out for says why
     const none = stages.exposureOf({ params: { windowLayout: 'split70' } }, [{ trade: 'X', geometry: 'daily-1d', reserve: null }]);
     assert.strictEqual(none.window, null);
@@ -2039,8 +2073,15 @@ module.exports = {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const step = page.slice(page.indexOf('function fStep6('), page.indexOf('\nfunction ', page.indexOf('function fStep6(') + 10));
     assert.ok(step.includes('Every trade stakes\n      <b>$${Number(ex.stake).toLocaleString()}</b>'), 'the step does not say what a trade stakes');
-    assert.ok(step.includes('is the most that can be on\n      the table for one coin'), 'the step does not say the most that can be on the table for one coin');
-    assert.ok(step.includes('across the\n      ${ex.coins} coins of this reading if every one of them is in a trade at once'), 'the step does not say what can be on the table across the coins');
+    assert.ok(!/holds one position at a time/.test(step), 'the step says a coin holds one position at a time, which is false whenever the hold outruns the gap between starts');
+    assert.ok(step.includes('so a coin can hold more than one at a time\n      whenever the hold runs longer than the gap between starts'),
+      'the step does not say that positions overlap');
+    assert.ok(step.includes('starts one every ${Number(u.stepHours).toLocaleString()} hours, so up to\n          <b>${u.atOnce}</b> can be open at once'),
+      'the step does not say how many can be open at once on each unit');
+    assert.ok(step.includes('Across this reading that is <b>$${Number(ex.mostAtOnce).toLocaleString()}</b> on the table'),
+      'the step does not say what can be on the table across the reading');
+    assert.ok(step.includes('With the longest hold your rule still allows, <b>${Number(ex.holdHours).toLocaleString()} hours</b>'),
+      'the step does not say which hold the overlap was worked out at');
     assert.ok(step.includes('The trades are counted over ${fDay(w.fromTs)} to ${fDay(w.toTs)}'), 'the step does not name the window the trades were counted over');
     assert.ok(step.includes('${Math.round(w.weeks)} weeks, or ${Math.round(w.days)} days'), 'the step does not say how long that window is');
     assert.ok(/is\s+about <b>\$\{w\.perYearFactor \? Math\.round\(\(Number\(tr\.min\) \|\| 20\) \* w\.perYearFactor\)/.test(step),
@@ -2068,12 +2109,46 @@ module.exports = {
     assert.ok(lad.includes('press work out the missing numbers first'), 'the empty ladder does not say what to press');
     // the answer carries it, for the units the reading covers
     const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
-    assert.ok(lib.includes('exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || []))'), 'step 6\'s answer does not carry the exposure');
+    assert.ok(lib.includes('exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || []),'), 'step 6\'s answer does not carry the exposure');
+    assert.ok(lib.includes("{ holdHours: rows.reduce((a, r) => (Number.isFinite(Number(r.tHours)) && Number(r.tHours) > a ? Number(r.tHours) : a), 0) })"),
+      'the overlap is not worked out at the longest hold the SURVIVORS still carry, so it stands at the block\'s widest whatever the rule says');
     assert.ok(lib.includes("const { NOTIONAL } = require('./paper');"), 'the stake is not read from the engine');
     const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
     assert.ok(/Press it FIRST on this step/.test(help), 'the help for the button does not say to press it first');
     assert.ok(/in dollars, per coin - the deepest the running total ever sat below its own best point/.test(help), 'the help for the losing streak does not say what it measures');
     assert.ok(/counted over the window named at the top of this step - not over a year/.test(help), 'the help for the trade count does not say what it is counted over');
+  },
+
+  // THE PRESS NAMES THE RULE (3.57.1, owner report 2026-09-04: pressing "work
+  // out the missing numbers" answered "FAILED -- nothing changed. nothing was
+  // asked for"). The page sent `{ labels: [] }` -- an empty list -- and the
+  // service refuses an empty ask, so the button had never once worked. Two
+  // source-scanning tests covered this step and neither pressed it.
+  async pressingWorkOutTheMissingNumbersAsksForTheSurvivorsOfTheRule() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const press = page.slice(page.indexOf("const rb = $('#fRebuild');"), page.indexOf("const rb = $('#fRebuild');") + 1400);
+    assert.ok(!/labels: \[\]/.test(press), 'the press asks for an empty list of settings again, which the service refuses');
+    assert.ok(press.includes("/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct })"),
+      'the press does not name the rule, the unit and the bar the way every other read does');
+    assert.ok(press.includes('if (out.totalling || out.waiting) {'), 'a set whose tables are not built yet is reported as a failure rather than as work in flight');
+    // the service works out the survivors through the ONE function that
+    // applies a rule, so the settings rebuilt are the ones being counted
+    const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const fn = lib.slice(lib.indexOf('async function survivorLabelsOf('), lib.indexOf('async function rebuildRichFor('));
+    assert.ok(fn.includes('S4.applyRule(all, S4.normaliseRule(state.rule))'), 'the survivors are worked out by some other arithmetic than the rule\'s own');
+    assert.ok(fn.includes('const rich = readFunnelRich(id);') && fn.includes('withFunnelRich(board.all, rich)'),
+      'the survivors are read off a board without the rebuilt numbers, so a second press would disagree with the first');
+    assert.ok(fn.includes('if (!t) return null;'), 'a set with no tables must fall through to a totalling, not throw');
+    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const route = srv.slice(srv.indexOf("app.post('/api/funnel/:id/rebuild'"), srv.indexOf("app.post('/api/funnel/:id/rebuild'") + 1800);
+    assert.ok(route.includes('if (!labels.length && (req.body || {}).rule) {'), 'the route does not work out the survivors from the rule it is sent');
+    assert.ok(route.includes('const got = await stages.survivorLabelsOf(req.params.id, req.body || {});'), 'the route does not ask the engine who the survivors are');
+    assert.ok(/the rule keeps none of this set's \$\{got\.of\.toLocaleString\(\)\} settings/.test(route),
+      'a rule that keeps nothing must say so in those words, not "nothing was asked for"');
+    assert.ok(route.includes('funnelRebuild = null;'), 'a refusal must free the rebuild slot, or the next press is told one is already going');
+    // and a list, when one IS sent, still works: the route has not lost its old door
+    assert.ok(route.includes("const labels = Array.isArray((req.body || {}).labels)") || route.includes("let labels = Array.isArray((req.body || {}).labels)"),
+      'the route no longer accepts a list of names at all');
   },
 
 };

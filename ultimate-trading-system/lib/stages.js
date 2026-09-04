@@ -1599,9 +1599,17 @@ function sealedFromUnits(layout, units) {
 //
 // THE STAKE is one number in the engine and is not a choice: every trade is
 // priced on a NOTIONAL position, so every money figure on every screen is
-// dollars at that stake. ON THE TABLE AT ONCE: a coin holds one position at a
-// time, so a coin can never have more than the stake at risk, and a reading
-// over several coins can have the stake on each.
+// dollars at that stake.
+//
+// ON THE TABLE AT ONCE: NOT one stake per coin (owner, 2026-09-04: "which is
+// of course not true. in the case of the weekly shape it's true"). A unit
+// starts a new chunk every stepHours and holds a position for tHours, so the
+// positions OVERLAP whenever the hold outruns the step: a daily shape steps 24
+// hours and a hold of 137 leaves six open at once, six stakes on that coin. A
+// weekly shape steps 168 and holds at most 161, so it really does hold one at
+// a time -- which is why the single-position reading looked right. The most on
+// the table is worked out per unit, from the unit's OWN step and the longest
+// hold the rule still allows, and summed over the units the reading covers.
 //
 // THE WINDOW the trades are counted over is the test window, and its bounds
 // are DERIVED, never typed: a reserve61 run seals the last 13% of a unit's
@@ -1616,9 +1624,17 @@ const HOLD_SHARE = 0.15;         // held back after it
 const RESERVE_SHARE = 0.13;      // sealed off the whole, before the work window
 function testWindowOfUnit(unit) {
   const res = unit && unit.reserve;
-  if (!res || !res.fromTs || !res.toTs || !res.chunks) return null;
+  // WHAT A RECORD ACTUALLY CARRIES (owner, 2026-09-04: "'The window the trades
+  // were counted over cannot be worked out' ... i don't believe you"). Right:
+  // the record holds `chunks` and `fromTs` and NO end timestamp, and this
+  // demanded one, so every set on the box said the window could not be worked
+  // out. It never needed one -- the step comes from the shape, and where the
+  // sealed window BEGINS is where the work window ended, which is the only
+  // anchor the arithmetic below uses.
+  if (!res || !res.fromTs || !res.chunks) return null;
   const geo = (require('./dataset').GEOMETRIES || {})[unit.geometry] || null;
-  const stepMs = geo && geo.stepHours ? geo.stepHours * 3600 * 1000 : ((res.toTs - res.fromTs) / res.chunks);
+  const stepMs = geo && geo.stepHours ? geo.stepHours * 3600 * 1000
+    : (res.toTs ? (res.toTs - res.fromTs) / res.chunks : 0);
   if (!(stepMs > 0)) return null;
   const whole = Math.round(res.chunks / RESERVE_SHARE);      // the sealed part is that share of it
   const work = Math.max(1, whole - res.chunks);
@@ -1632,19 +1648,34 @@ function testWindowOfUnit(unit) {
 }
 // the same, for every unit a reading covers: the window each was tested over,
 // and the stake that can be on the table at once across them
-function exposureOf(doc, units) {
+function exposureOf(doc, units, opts = {}) {
   const { NOTIONAL } = require('./paper');
-  const list = (units || []).map((u) => ({ ...u, window: testWindowOfUnit(u) }));
+  const GEO = require('./dataset').GEOMETRIES || {};
+  // the longest hold still allowed: read off the settings on screen, so it
+  // narrows as the rule does rather than standing at the block's widest
+  const holdHours = Number.isFinite(Number(opts.holdHours)) && Number(opts.holdHours) > 0 ? Number(opts.holdHours) : null;
+  const list = (units || []).map((u) => {
+    const stepHours = (GEO[u.geometry] || {}).stepHours || null;
+    // how many can be open at once on this unit: a new start every step, each
+    // held for the hold, so the hold divided by the step, rounded up
+    const atOnce = stepHours && holdHours ? Math.max(1, Math.ceil(holdHours / stepHours)) : (stepHours ? 1 : null);
+    return { ...u, window: testWindowOfUnit(u), stepHours, atOnce, mostAtOnce: atOnce == null ? null : NOTIONAL * atOnce };
+  });
   const coins = new Set(list.map((u) => u.trade).filter(Boolean)).size;
   const windows = list.map((u) => u.window).filter(Boolean);
   const from = windows.length ? Math.min(...windows.map((w) => w.fromTs)) : null;
   const to = windows.length ? Math.max(...windows.map((w) => w.toTs)) : null;
   const days = windows.length ? Math.max(...windows.map((w) => w.days)) : null;
+  const known = list.filter((u) => u.mostAtOnce != null);
   return {
     stake: NOTIONAL,
     coins,
     units: list.length,
-    mostAtOnce: NOTIONAL * coins,
+    holdHours,
+    perUnit: list.map((u) => ({ name: unitNameOf(u), geometry: u.geometry, stepHours: u.stepHours, atOnce: u.atOnce, mostAtOnce: u.mostAtOnce })),
+    // the most on the table across this reading: every unit's own overlap,
+    // added up, and null when a unit's step is not known rather than guessed
+    mostAtOnce: known.length === list.length && list.length ? known.reduce((a, u) => a + u.mostAtOnce, 0) : null,
     window: from && to ? { fromTs: from, toTs: to, days, weeks: days / 7, perYearFactor: days > 0 ? 365.25 / days : null } : null,
     why: windows.length ? null : (((doc || {}).params || {}).windowLayout === 'reserve61'
       ? 'the units carry no sealed window, so the window they were tested over cannot be worked out'
@@ -3358,6 +3389,23 @@ function proveRebuild(perSetting, expect, tol = 1e-6) {
   };
 }
 
+// THE SURVIVORS OF A RULE, BY NAME (3.57.1). The rebuild used to be handed a
+// list of setting names by the page, and the page had none to hand: it sent an
+// empty list and the service refused it, so `work out the missing numbers` had
+// never once run. The press names the rule now, and the survivors are worked
+// out HERE, through S4.applyRule -- the one function that applies a rule
+// (lib/funnelset.js) -- so the settings rebuilt are the very settings the
+// count at the top of the walk is counting, and the two cannot drift.
+async function survivorLabelsOf(id, state = {}) {
+  const S4 = require('./funnelset');
+  const t = readTally(id);
+  if (!t) return null;                        // no tables yet: the caller starts a totalling
+  const board = await funnelBoard(id, t, state.unit);
+  const rich = readFunnelRich(id);
+  const all = withFunnelRich(board.all, rich);
+  const rows = S4.applyRule(all, S4.normaliseRule(state.rule));
+  return { labels: rows.map((r) => r.label), of: all.length };
+}
 async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   const busy = stageRunning();
   if (busy) {
@@ -4691,7 +4739,8 @@ async function funnelRead(id, state = {}) {
     const mineOnly = board && board.key ? (sealed.units || []).filter((u) => unitKeyOf(u) === board.key) : (sealed.units || []);
     out.reading = {
       rebuilt: out.rebuilt,
-      exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || [])),
+      exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || []),
+        { holdHours: rows.reduce((a, r) => (Number.isFinite(Number(r.tHours)) && Number(r.tHours) > a ? Number(r.tHours) : a), 0) }),
       // WHAT EACH LIMIT WOULD KEEP, read off the survivors themselves
       ladders: {
         maxDrawdown: F.ladderFor(rows, 'maxDrawdown', 'max'),
@@ -5389,6 +5438,7 @@ module.exports = {
   testWindowOfUnit, exposureOf,
   funnelAcrossStart, funnelAcrossStatus,
   sealedWindowOf, sealedFromUnits, sealedBehind, startSealedFill, sealedFillWaiting, sealedFillPromise, noiseTwinOf, needsBoardNullStamp,
+  survivorLabelsOf,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn, isAlwaysLabel, alwaysLabelsOf, needsAlwaysStrip, stripAlwaysGate, alwaysStripPending,
   tallyRunPromise: () => (tallyRun ? tallyRun.promise : null),

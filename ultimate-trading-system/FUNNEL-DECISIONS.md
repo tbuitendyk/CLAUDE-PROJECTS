@@ -544,3 +544,31 @@ made while building it that the design did not already settle.
     to press `work out the missing numbers` FIRST -- nothing below can be
     read until it has run, and pressing it changes no rule and no record.
     Second digit: the answer carries a new block and the step draws it.
+87. **`work out the missing numbers` asks for the survivors of the rule**
+    (3.57.1, owner report 2026-09-04: pressing it answered "failed -- nothing
+    changed. nothing was asked for"). The press sent an empty list of setting
+    names, and the service refuses an empty ask, so the button had never once
+    worked -- and step 6 cannot be walked at all until it does, because both
+    its limits are read off numbers only it produces. Two tests covered this
+    step and neither pressed the button; the browser harness now does. The
+    press names the RULE, the unit and the bar, the same three things every
+    other read on the walk sends, and the survivors are worked out in the
+    service through `applyRule` -- the one function that applies a rule -- so
+    what is rebuilt is exactly what the count at the top of the walk is
+    counting. A rule that keeps nothing says so in those words; a set whose
+    tables are still being worked out says that instead of failing. Third
+    digit: a fix.
+
+    And the same release corrected what 3.57.0 had just put on that screen
+    (owner, same day: "'A coin holds one position at a time, so $100 is the
+    most that can be on the table for one coin' ... which is of course not
+    true. in the case of the weekly shape it's true"). Right: a unit opens a
+    position at the start of a chunk and holds it for the hold, so positions
+    OVERLAP whenever the hold outruns the gap between starts. A weekly shape
+    steps 168 hours and holds at most 161, so it does hold one at a time --
+    which is why the wrong sentence looked right on the unit being read. A
+    daily shape steps 24, so a 137-hour hold leaves six open at once, six
+    stakes on that coin. The most on the table is now worked out per unit
+    from the unit's own step and the longest hold the rule still allows, and
+    added up over the units of the reading; the screen says it per unit,
+    because a weekly unit and a daily one differ by six times.

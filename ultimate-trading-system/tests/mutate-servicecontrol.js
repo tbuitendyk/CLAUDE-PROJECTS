@@ -528,13 +528,18 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      delete st.rule[kind][key];\n      if (!st.steps) st.steps = [];", "      if (!st.steps) st.steps = [];",
     'everyClauseOfTheRuleHasItsOwnRemove',
     'remove records a removal in the notes and leaves the clause in the rule'],
+  // ---- THE PRESS NAMES THE RULE (3.57.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), "/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct })", "/rebuild`, { labels: [] })",
+    'pressingWorkOutTheMissingNumbersAsksForTheSurvivorsOfTheRule',
+    'the button goes back to asking for nothing, and every press answers "nothing was asked for"'],
   // ---- STEP 6 SAYS WHAT ITS LIMITS ARE LIMITS ON (3.57.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "  const toTs = workEnd - nHold * stepMs;", "  const toTs = workEnd;",
     'theSixthStepSaysWhatItsLimitsAreLimitsOn',
     'the window the trades are counted over runs into the held-back time, so a trade count is measured against the wrong stretch of history'],
-  [path.join(ROOT, 'lib', 'stages.js'), "    mostAtOnce: NOTIONAL * coins,", "    mostAtOnce: NOTIONAL,",
+  [path.join(ROOT, 'lib', 'stages.js'), "    const atOnce = stepHours && holdHours ? Math.max(1, Math.ceil(holdHours / stepHours)) : (stepHours ? 1 : null);",
+    "    const atOnce = stepHours ? 1 : null;",
     'theSixthStepSaysWhatItsLimitsAreLimitsOn',
-    'the most that can be on the table reads as one stake however many coins the rule covers'],
+    'every unit reads as one position at a time, so a daily shape holding six overlapping positions is reported as one stake'],
   // ---- A TIE BETWEEN BLOCKS IS BROKEN BY THE CHECK (3.56.0) ----
   [path.join(ROOT, 'lib', 'funnel.js'), "          if (!best || n > best.squares || (lead != null && (best.lead == null || lead > best.lead))) best = { a0, a1, b0, b1, squares: n, lead };",
     "          if (!best || n > best.squares) best = { a0, a1, b0, b1, squares: n, lead };",

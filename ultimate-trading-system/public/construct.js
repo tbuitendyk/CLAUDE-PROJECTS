@@ -4737,11 +4737,22 @@ function fStep6(d, st, r) {
   // we trading per trade? how much can be on the table at once maximum? ...
   // fewest trades? over what time period?"). Every number here is read off
   // the set and the engine, never typed.
+  // HOW MANY CAN BE OPEN AT ONCE: not one per coin. A unit starts a new
+  // position every step and holds it for the hold, so they overlap whenever
+  // the hold outruns the step (owner, 2026-09-04). Said per unit, because a
+  // weekly shape and a daily one differ by six times.
+  const perUnit = Array.isArray(ex.perUnit) ? ex.perUnit.filter((u) => u.atOnce != null) : [];
+  const overlap = perUnit.length && ex.holdHours
+    ? `<p class="note">With the longest hold your rule still allows, <b>${Number(ex.holdHours).toLocaleString()} hours</b>:
+        ${perUnit.map((u) => `${esc(u.name)} starts one every ${Number(u.stepHours).toLocaleString()} hours, so up to
+          <b>${u.atOnce}</b> can be open at once - <b>$${Number(u.mostAtOnce).toLocaleString()}</b>`).join('; ')}.
+        ${ex.mostAtOnce != null ? `Across this reading that is <b>$${Number(ex.mostAtOnce).toLocaleString()}</b> on the table
+          at once if every one of them is in a trade.` : ''}</p>`
+    : '';
   const money = ex.stake ? `<p class="note"><b>What these limits are limits on.</b> Every trade stakes
       <b>$${Number(ex.stake).toLocaleString()}</b>, so every dollar figure on this walk is dollars at that stake.
-      A coin holds one position at a time, so <b>$${Number(ex.stake).toLocaleString()}</b> is the most that can be on
-      the table for one coin${ex.coins > 1 ? `, and <b>$${Number(ex.mostAtOnce).toLocaleString()}</b> across the
-      ${ex.coins} coins of this reading if every one of them is in a trade at once` : ''}.</p>` : '';
+      A position is opened at the start of a chunk and held for the hold, so a coin can hold more than one at a time
+      whenever the hold runs longer than the gap between starts.</p>${overlap}` : '';
   const when = w
     ? `<p class="note"><b>The trades are counted over ${fDay(w.fromTs)} to ${fDay(w.toTs)}</b> -
         ${Math.round(w.weeks)} weeks, or ${Math.round(w.days)} days. That is the test window: the part of the history
@@ -5074,9 +5085,16 @@ function fWire(st) {
   if (rb) rb.onclick = async () => {
     rb.disabled = true;
     $('#fRebuildMsg').textContent = 'working them out - this prices the survivors again from their parent set';
-    const out = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { labels: [] });
+    // THE RULE, NOT A LIST OF NAMES (3.57.1): the walk holds the rule, the
+    // service holds the settings, and the survivors are worked out there --
+    // the same rule, the same unit and the same bar every other read sends
+    const out = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct });
     rb.disabled = false;
     if (!out) { $('#fRebuildMsg').textContent = ''; return; }
+    if (out.totalling || out.waiting) {
+      $('#fRebuildMsg').textContent = out.waiting || 'the tables of this set are being worked out - press it again when they are done';
+      return;
+    }
     st.rebuilt = true; fSave();
     // THE PROOF IS SHOWN, NOT ASSUMED. An unchecked rebuild must never look
     // checked, so the absence of a check is printed as plainly as a failed one.
