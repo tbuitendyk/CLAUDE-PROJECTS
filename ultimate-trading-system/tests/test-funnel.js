@@ -2294,7 +2294,7 @@ module.exports = {
 
   // Sorting orders the WHOLE set before the page is cut, so page one really is
   // the top of everything; and it never changes who is in it.
-  async theStageFourTableSortsTheWholeSetAndPagesIt() {
+  async theStageFourTableSortsTheWholeSetAndSendsEveryRowOfIt() {
     const f = await unitFixture();
     try {
       const rule = { ranges: {}, allowed: {}, floors: {} };
@@ -2310,13 +2310,14 @@ module.exports = {
         assert.deepEqual(m(up), [...m(up)].sort((a, b) => a - b), 'low to high does not order the rows low to high');
         assert.deepEqual([...down.rows.map((r) => r.label)].sort(), [...up.rows.map((r) => r.label)].sort(),
           'flipping the order changes WHO is in the table, which a sort must never do');
-        // the page is a window on the sorted whole, and the count is the whole
-        const p1 = await stages.funnelSetRows(cut.id, { n: 2, from: 0, sort: 'avgTest', dir: 'desc' });
-        const p2 = await stages.funnelSetRows(cut.id, { n: 2, from: 2, sort: 'avgTest', dir: 'desc' });
-        assert.equal(p1.total, all.total, 'the paging bar would say the page is the whole set');
-        assert.equal(p1.rows.length, 2, 'a page of two came back a different size');
-        assert.deepEqual(p1.rows.concat(p2.rows).map((r) => r.label), down.rows.slice(0, 4).map((r) => r.label),
-          'the pages do not join up into the sorted whole, so a row falls between them');
+        // EVERY ROW COMES BACK (3.61.0, owner order: a page selector under a box
+        // that scrolls is a waste of space). Nothing the caller says can cut it
+        // into pages any more, and nothing was clipped.
+        assert.equal(all.rows.length, all.total, 'the reply holds fewer rows than the set does, so the box cannot scroll to them');
+        assert.equal(all.clipped, 0, 'a set this size reports rows it did not send');
+        const asked = await stages.funnelSetRows(cut.id, { n: 2, from: 2, sort: 'avgTest', dir: 'desc' });
+        assert.equal(asked.rows.length, asked.total, 'asking for a page of two still cuts the set into pages');
+        assert.deepEqual(asked.rows.map((r) => r.label), down.rows.map((r) => r.label), 'and it is the same sorted whole');
         // a column nothing can be sorted by falls back rather than throwing
         const junk = await stages.funnelSetRows(cut.id, { n: 500, sort: 'notAColumn' });
         assert.equal(junk.sort, 'avgTest', 'an unknown column is not refused for the default one');
@@ -2367,11 +2368,28 @@ module.exports = {
     const head = page.slice(page.indexOf('function fHead(d) {'), page.indexOf('function fNoiseLine('));
     assert.ok(!head.includes('fUnitPicker(d)') && !head.includes('fCutPickBox('),
       'the walk\'s own heading still draws a picker; both belong to the title section above it (3.59.0)');
-    // the heading the owner drew, line by line
-    for (const line of ['Rule:', 'Rule build settings:', 'settings survive', 'The sealed window is intact on',
-      'This set carries', 'scrambled copies of the whole table']) {
-      assert.ok(cut.includes(line), `the heading is missing the line "${line}" the owner drew`);
+    // THE HEADING READS TOP TO BOTTOM AS ONE PROGRESSION (3.61.0, owner order:
+    // "all of the little bits and scraps of information ... in a logical and
+    // meaningful progressive order, so it doesn't look like random notes spread
+    // around the box"). Every line the owner drew is on it, in this order.
+    const hd = page.slice(page.indexOf('function fCutHead('), page.indexOf('// the sort button on a column'));
+    const order = ['id="fCutRename"', 'The rules below were built on test money', 'User Rule:', 'Final Rule:',
+      'Rule build settings:', 'How every step of this walk was checked.', 'The sealed window is intact on',
+      'Step 7 - ', 'Written with warnings:'];
+    let last = -1;
+    for (const line of order) {
+      const at = hd.indexOf(line);
+      assert.ok(at >= 0, `the heading is missing the line "${line}"`);
+      assert.ok(at > last, `the heading draws "${line}" out of order - it reads as notes scattered round a box`);
+      last = at;
     }
+    assert.ok(hd.includes('The rules below'), 'the frame still speaks of one rule when the heading now carries two');
+    assert.ok(!/The rule below were|The rule below was/.test(hd), 'the frame still speaks of one rule');
+    // and both of those two lines are about THIS set, not boilerplate
+    assert.ok(/\$\{esc\(unitName\)\}<\/b>'s own table was scrambled <b>\$\{c\.k\}<\/b> times/.test(hd),
+      'the scrambled-copies line does not name this unit and its own count');
+    assert.ok(/The sealed window is intact on <b>\$\{esc\(unitName\)\}<\/b>/.test(hd),
+      'the sealed line does not name the unit it is about');
     // the name of the set is shown after the header, and it is the set's own
     const table = page.slice(page.indexOf('function fCutTable('), page.indexOf('function fWireCut('));
     // the name is in the title section at the top now (3.59.0), not above the table
@@ -2534,9 +2552,12 @@ module.exports = {
     const table = page.slice(page.indexOf('function fCutTable('), page.indexOf('function fSizeCutBox('));
     assert.ok(table.includes('<div class="s4box" id="fCutRows">'), 'the rows are not in a box of their own');
     assert.ok(table.includes('</table></div>'), 'the box is opened and never closed');
-    // the paging bars sit OUTSIDE it, above and below, so they never scroll away
-    assert.ok(table.indexOf('${pager}') < table.indexOf('<div class="s4box"'), 'the first paging bar is inside the scrolling box');
-    assert.ok(table.lastIndexOf('${pager}') > table.indexOf('</table></div>'), 'the second paging bar is inside the scrolling box');
+    // NO PAGE SELECTOR AT ALL (3.61.0, owner order): under a box that scrolls it
+    // is a waste of the space the rows need.
+    assert.ok(!/bPager\(|data-bpage/.test(table), 'the page selector is back under a box that scrolls');
+    assert.ok(/All <b>\$\{Number\(cd\.total\)\.toLocaleString\(\)\}<\/b> of them are in the box below/.test(table),
+      'the screen does not say that every setting is in the box');
+    assert.ok(table.includes('${cd.clipped ?'), 'a set too big to draw whole is clipped without saying so');
     // the height is MEASURED off the window, not a number somebody picked
     const sizer = page.slice(page.indexOf('function fSizeCutBox('), page.indexOf('let fCutBoxWatched'));
     assert.ok(sizer.includes('const below = window.innerHeight - b.top - under - 8;')
@@ -2550,6 +2571,9 @@ module.exports = {
       'the panel\'s own bottom margin is not counted, so the box overhangs the window by exactly that much');
     assert.ok(sizer.includes('if (!box) return;'), 'the sizer reaches for a box that is not on screen');
     assert.ok(/Math\.max\(200,/.test(sizer), 'a short window can squeeze the box down to nothing');
+    // and the share is the one that fits about eight settings, not four
+    assert.ok(/window\.innerHeight \* 0\.8\)/.test(sizer),
+      'the box is back to a share that fits four settings, and the owner asked for about eight');
     // re-measured on a resize, and ONE listener for the life of the page
     const watch = page.slice(page.indexOf('function fWatchCutBox('), page.indexOf('function fWireCutPick('));
     assert.ok(watch.includes("window.addEventListener('resize', fSizeCutBox);"), 'the box is not re-measured when the window changes size');
@@ -2562,6 +2586,113 @@ module.exports = {
     assert.ok(/table\.s4 thead th \{[^}]*position:sticky[^}]*top:0/.test(css), 'the heading does not stay at the top of the box');
     assert.ok(/table\.s4 thead th \{[^}]*box-shadow:inset 0 -1px 0/.test(css),
       'the line under the heading is a collapsed border, which scrolls away from a sticky cell');
+  },
+
+  // ---- THE RULE THE OWNER BUILT (3.61.0) -----------------------------------
+  //
+  // Owner order, 2026-09-04: "The user created rule and the number of records
+  // included which feeds into '5. a plateau or a knife edge' needs to be
+  // retained so that the cutting down of the ranges that happens at step 5 does
+  // not forever hide the 'user ranges' that were chosen."
+  theRuleTheOwnerBuiltIsKeptWhenStepFiveReplacesIt() {
+    // the walk keeps it at the moment the button throws it away, and it rides
+    // to the cut and onto the set
+    const page = src('public/construct.js');
+    const keep = page.slice(page.indexOf("const kr = $('#fKeepRegion');"), page.indexOf("const af = $('#fAddFloors');"));
+    assert.ok(keep.includes('st.userRule = {'), 'keep the widest region still throws away what the owner chose with no copy of it');
+    assert.ok(keep.indexOf('st.userRule = {') < keep.indexOf('st.rule.ranges = ranges;'),
+      'the copy is taken after the rule has already been replaced, so it copies the replacement');
+    assert.ok(page.includes('userRule: st.userRule || null,'), 'the cut does not carry the rule the owner built');
+    const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    assert.ok(lib.includes('doc.userRule = state.userRule ? S4.normaliseRule(state.userRule) : null;'),
+      'the set is written without the rule the owner built');
+    // and a set cut before that has it replayed from its own recorded steps
+    // and STAMPED on, so nothing reads it twice
+    assert.ok(lib.includes('if (userRule) { doc.userRule = userRule; saveSet(doc); userStamped = true; }'),
+      'a set cut before this was written never gets the rule stamped onto it, so every read replays it again');
+  },
+
+  // The replay itself, against the shapes the walk really records -- these are
+  // the twenty-one steps of the one Stage 4 set on the box, verbatim.
+  theOwnersRuleIsReplayedFromTheStepsTheWalkRecorded() {
+    const steps = [
+      { n: 1, what: 'which dial to narrow next', chose: 'gate' },
+      { n: 2, what: 'the values of gate', chose: 'directional' },
+      { n: 2, what: 'the shape of tHours', chose: '65 to 137' },
+      { n: 1, what: 'which dial to narrow next', chose: 'weekdaysOnly' },
+      { n: 2, what: 'the values of weekdaysOnly', chose: 'false' },
+      { n: 1, what: 'which dial to narrow next', chose: 'agreePersist' },
+      { n: 2, what: 'the shape of agreePersist', chose: '0 to 0' },
+      { n: 2, what: 'the values of decision', chose: 'directional' },
+      { n: 3, what: 'a block on agreeBar x agreePct', chose: 'all..own x 10..30' },
+      { n: 1, what: 'which dial to narrow next', chose: 'entry' },
+      { n: 2, what: 'the values of entry', chose: 'breakout, market' },
+      { n: 1, what: 'which dial to narrow next', chose: 'dMult (d)' },
+      { n: 2, what: 'the shape of dMult (d)', chose: '0.5 to 1.5 or none' },
+      { n: 3, what: 'removed from the rule: entry is breakout or market', chose: 'removed' },
+      { n: 3, what: 'removed from the rule: weekdaysOnly (24/5) is false', chose: 'removed' },
+      { n: 4, what: 'does it hold elsewhere', chose: 'accepted 1 of 4 other units positive; 0 clear the bar' },
+      { n: 5, what: 'the widest region', chose: 'kept as the rule (13 dial(s))' },
+      { n: 6, what: 'exposure', chose: 'worst streak 40, fewest trades 20' },
+    ];
+    const got = FS4.userRuleFromSteps(steps, { agreeBar: ['all', 'own'] });
+    assert.deepStrictEqual(got.ranges, {
+      tHours: { min: 65, max: 137 },
+      agreePersist: { min: 0, max: 0 },
+      agreePct: { min: 10, max: 30 },
+      dMult: { min: 0.5, max: 1.5, also: ['none'] },
+    }, 'the ranges the owner chose are not replayed back');
+    assert.deepStrictEqual(got.allowed, {
+      gate: ['directional'], decision: ['directional'], agreeBar: ['all', 'own'],
+    }, 'the values the owner chose are not replayed back');
+    // what the owner REMOVED stays removed, and step 6's limits are not part of
+    // the rule that fed step 5
+    assert.ok(!('entry' in got.allowed) && !('weekdaysOnly' in got.allowed), 'a clause the owner removed is replayed back in');
+    assert.deepStrictEqual(got.floors, {}, 'step 6 came after step 5, so its limits are not part of the rule that fed it');
+    // a word-valued block with no list of that dial's values claims its two ends
+    // and nothing between them, rather than inventing what sat there
+    const bare = FS4.userRuleFromSteps(steps, {});
+    assert.deepStrictEqual(bare.allowed.agreeBar, ['all', 'own'], 'a block with no value list invents what sat between its ends');
+    // a walk that never kept the region has no separate rule of the owner's
+    assert.equal(FS4.userRuleFromSteps(steps.filter((s) => s.n !== 5), { agreeBar: ['all', 'own'] }), null,
+      'a walk that never pressed keep the widest region reports a rule that was never replaced');
+    assert.equal(FS4.userRuleFromSteps(null), null, 'a set with no steps at all throws instead of answering');
+  },
+
+  // and the whole way through: cut a set, and the screen gets both rules with a
+  // count each, read off the same board
+  async aStageFourSetCarriesBothRulesAndACountForEach() {
+    const f = await unitFixture();
+    try {
+      const rule = { ranges: {}, allowed: { gate: ['active'] }, floors: {} };
+      const userRule = { ranges: { tHours: { min: 41, max: 65 } }, allowed: {} };
+      const cut = await stages.cutFunnelSet(f.id, { unit: f.keys[0], rule, userRule, target: 2 });
+      const file = path.join(SETS_DIR, `${cut.id}.json`);
+      try {
+        assert.deepStrictEqual(cut.userRule.ranges, { tHours: { min: 41, max: 65 } }, 'the set was written without the rule the owner built');
+        const out = await stages.funnelSetRows(cut.id, {});
+        assert.ok(out.set.userSentence && /tHours/.test(out.set.userSentence), 'the screen is not given the owner\'s rule in words');
+        assert.ok(Number.isFinite(out.set.userSurvivors), 'the screen is not given how many settings the owner\'s rule kept');
+        assert.ok(out.set.userSurvivors >= out.set.survivors,
+          'the rule that fed step 5 kept FEWER settings than the rule step 5 wrote, which is the wrong way round for a narrowing');
+        assert.equal(out.set.userStamped, false, 'a set written with the rule on it is reported as recovered');
+      } finally { try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ } }
+      // AND A SET CUT BEFORE ANY OF THIS gets it replayed from its own recorded
+      // steps and STAMPED ON -- once. The second read finds it on the record.
+      const old = await stages.cutFunnelSet(f.id, { unit: f.keys[0], rule, target: 2,
+        steps: [{ n: 2, what: 'the shape of tHours', chose: '41 to 65' }, { n: 5, what: 'the widest region', chose: 'kept as the rule (1 dial(s))' }] });
+      const oldFile = path.join(SETS_DIR, `${old.id}.json`);
+      try {
+        assert.equal(old.userRule, null, 'the fixture was meant to stand in for a set cut before the rule was kept');
+        const first = await stages.funnelSetRows(old.id, {});
+        assert.equal(first.set.userStamped, true, 'a set with no rule of the owner\'s on it is not recovered from its own steps');
+        assert.deepStrictEqual(first.set.userRule.ranges, { tHours: { min: 41, max: 65 } }, 'the recovered rule is not what the steps recorded');
+        const onDisk = JSON.parse(fs.readFileSync(oldFile, 'utf8'));
+        assert.deepStrictEqual(onDisk.userRule.ranges, { tHours: { min: 41, max: 65 } }, 'the recovered rule was not written onto the record');
+        const second = await stages.funnelSetRows(old.id, {});
+        assert.equal(second.set.userStamped, false, 'the record is replayed again on every read instead of being read back');
+      } finally { try { fs.rmSync(oldFile, { force: true }); } catch (_) { /* fixture */ } }
+    } finally { f.cleanup(); }
   },
 
 };

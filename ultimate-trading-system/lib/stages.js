@@ -4980,6 +4980,10 @@ async function cutFunnelSet(parentId, state = {}) {
   // THE CLOSING IS PART OF THE RULE, not a note beside it. A closing recorded
   // on the set but dropped before the arithmetic writes a set whose record
   // claims a narrowing its rule does not carry.
+  // THE RULE THE OWNER BUILT (3.61.0). The page hands it over at the moment step
+  // 5 replaced it; a walk that never pressed that button has none, and its final
+  // rule IS the owner's.
+  doc.userRule = state.userRule ? S4.normaliseRule(state.userRule) : null;
   const closed = S4.ruleWithClosing(ranked, state.rule, state.closing, doc.target);
   doc.rule = closed.rule;
   const survivors = S4.applyRule(ranked, doc.rule);
@@ -5060,6 +5064,21 @@ async function funnelSetRows(id, opts = {}) {
   for (const r of all) if (want.has(r.label)) byLabel.set(r.label, r);
   const rows = wanted.map((s) => byLabel.get(s.label) || { si: s.si, label: s.label, gone: true });
   const gone = rows.filter((r) => r.gone).length;
+  // THE RULE THE OWNER BUILT, BEFORE STEP 5 REPLACED IT (3.61.0). Recorded on
+  // every set cut from now on; recovered from the walk's own steps for one cut
+  // before that, and STAMPED onto the record then, so it is read back and never
+  // replayed twice (RULE NINE).
+  let userRule = doc.userRule || null;
+  let userStamped = false;
+  if (!userRule) {
+    const axes = {};
+    for (const dial of F.CATEGORICAL_DIALS) {
+      axes[dial] = F.sortedValues(dial, [...new Set(all.map((r) => F.keyOf(r[dial])))]);
+    }
+    userRule = S4.userRuleFromSteps(doc.steps, axes);
+    if (userRule) { doc.userRule = userRule; saveSet(doc); userStamped = true; }
+  }
+  const userRows = userRule ? S4.applyRule(all, S4.normaliseRule(userRule)) : null;
   // DOES THE RULE STILL GIVE THIS LIST? Applied once against the same board, and
   // the answer travels to the screen -- never acted on here.
   const now = S4.applyRule(all, S4.normaliseRule(doc.rule));
@@ -5105,9 +5124,13 @@ async function funnelSetRows(id, opts = {}) {
     }
     return String(x.label).localeCompare(String(y.label));
   });
+  // EVERY ROW, NOT A PAGE OF THEM (3.61.0, owner order: a page selector under a
+  // box that scrolls is "a COMPLETE WASTE OF SPACE"). The cap is a guard against
+  // a set nobody meant to cut, and when it bites the screen says so rather than
+  // quietly showing part of a decision.
   const total = rows.length;
-  const per = Math.max(1, Math.min(500, Math.floor(Number(opts.n) || 50)));
-  const from = Math.max(0, Math.min(Math.max(0, total - 1), Math.floor(Number(opts.from) || 0)));
+  const per = 2000;
+  const from = 0;
   // THE SEALED WINDOW ON THIS UNIT, not across the parent's ten. A set cut on one
   // coin and shape is graded on that one, and "intact on all 10 unit(s)" beside a
   // one-unit set answers a question nobody asked.
@@ -5129,6 +5152,10 @@ async function funnelSetRows(id, opts = {}) {
       target: (doc.counts || {}).target ?? doc.target ?? null,
       survivors: (doc.counts || {}).survivors ?? wanted.length,
       rule: doc.rule, ruleSentence: doc.ruleSentence || S4.ruleSentence(doc.rule),
+      userRule,
+      userSentence: userRule ? S4.ruleSentence(S4.normaliseRule(userRule)) : null,
+      userSurvivors: userRows ? userRows.length : null,
+      userStamped,
       closing: doc.closing || null, warnings: doc.warnings || [],
       check: doc.check || null, boardNull: doc.boardNull || null,
       steps: (doc.steps || []).length, backSteps: (doc.backSteps || []).length,
@@ -5138,7 +5165,7 @@ async function funnelSetRows(id, opts = {}) {
     sealedOn,
     record: { same, now: now.length, had: wanted.length, gone },
     varying, fixed, has,
-    total, from, per, sort, dir: dir === 1 ? 'asc' : 'desc',
+    total, from, per, clipped: Math.max(0, total - per), sort, dir: dir === 1 ? 'asc' : 'desc',
     rows: rows.slice(from, from + per),
   };
 }

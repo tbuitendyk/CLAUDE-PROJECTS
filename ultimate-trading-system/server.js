@@ -915,7 +915,7 @@ app.get('/api/funnel/set/:id/rows', async (req, res) => {
   let out;
   try {
     out = await stages.funnelSetRows(req.params.id, {
-      from: req.query.from, n: req.query.n, sort: req.query.sort, dir: req.query.dir,
+      sort: req.query.sort, dir: req.query.dir,
     });
   } catch (err) { return res.status(400).json({ error: err.message }); }
   if (out && out.needsTally) {

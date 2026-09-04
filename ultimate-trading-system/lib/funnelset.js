@@ -322,6 +322,100 @@ function regionRule(region, dials) {
   return R;
 }
 
+// ---- THE RULE THE OWNER BUILT, BEFORE STEP 5 REPLACED IT ----------------------
+//
+// (3.61.0, owner order 2026-09-04: "The user created rule and the number of
+// records included which feeds into '5. a plateau or a knife edge' needs to be
+// retained so that the cutting down of the ranges that happens at step 5 does
+// not forever hide the 'user ranges' that were chosen.")
+//
+// `keep the widest region` REPLACES every range and every value on the rule.
+// What the owner chose on steps 2 and 3 to arrive there then survives only as
+// words in the walk's own recorded steps -- which is a record of the decision
+// with the decision taken out of it.
+//
+// A walk cut from now on carries the rule itself: the page hands it over at the
+// moment step 5 replaces it. This replays the words instead, for a set cut
+// before that, and the answer is STAMPED ONTO THE RECORD the first time the set
+// is opened, so nothing ever reads it twice (RULE NINE).
+//
+// A word-valued block spans every value between its two ends, and the ends are
+// all the step recorded; `axes` supplies that dial's values in the board's own
+// order so the same slice can be taken again. Without it the two ends are all
+// that is claimed, which is honest rather than invented.
+function spanIntoRule(rule, dial, span, values) {
+  if (!dial || !span) return;
+  const cut = String(span).split('..');
+  if (cut.length !== 2) return;
+  const [from, to] = cut;
+  const nums = [Number(from), Number(to)];
+  if (String(from).trim() !== '' && String(to).trim() !== '' && nums.every((n) => Number.isFinite(n))) {
+    rule.ranges[dial] = { min: Math.min(...nums), max: Math.max(...nums) };
+    delete rule.allowed[dial];
+    return;
+  }
+  const list = Array.isArray(values) ? values.map(String) : [];
+  const i = list.indexOf(String(from));
+  const j = list.indexOf(String(to));
+  rule.allowed[dial] = (i >= 0 && j >= 0)
+    ? list.slice(Math.min(i, j), Math.max(i, j) + 1)
+    : [...new Set([String(from), String(to)])];
+  delete rule.ranges[dial];
+}
+function userRuleFromSteps(steps, axes = {}) {
+  const list = Array.isArray(steps) ? steps : [];
+  const at = list.findIndex((s) => s && Number(s.n) === 5 && String(s.what || '').trim() === 'the widest region');
+  if (at < 0) return null;                  // the region was never kept: the final rule IS the owner's
+  const rule = { ranges: {}, allowed: {}, floors: {} };
+  // THE DIAL IS THE FIRST TOKEN, whatever follows it. "the shape of dMult (d)"
+  // carries the Sweep label in brackets; "removed from the rule: entry is
+  // breakout or market" carries the whole clause. Splitting on " (" alone read
+  // that second one as a dial called "entry is breakout or market", and the
+  // clause the owner removed was replayed straight back in.
+  const dialOf = (text) => String(text || '').trim().split(/[\s(]/)[0].trim();
+  for (const s of list.slice(0, at)) {
+    const what = String((s && s.what) || '');
+    const chose = String((s && s.chose) || '');
+    let m = what.match(/^the values of (.+)$/);
+    if (m) {
+      const dial = dialOf(m[1]);
+      const vals = chose.split(',').map((x) => x.trim()).filter(Boolean);
+      if (vals.length) { rule.allowed[dial] = vals; delete rule.ranges[dial]; }
+      continue;
+    }
+    m = what.match(/^the shape of (.+)$/);
+    if (m) {
+      const dial = dialOf(m[1]);
+      const alsoNone = / or none$/.test(chose);
+      const ends = chose.replace(/ or none$/, '').split(' to ');
+      const lo = String(ends[0] ?? '').trim();
+      const hi = String(ends[1] ?? '').trim();
+      if (lo === '' && hi === '' && !alsoNone) { delete rule.ranges[dial]; continue; }
+      const r = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi) };
+      if (alsoNone) r.also = ['none'];
+      rule.ranges[dial] = r;
+      delete rule.allowed[dial];
+      continue;
+    }
+    m = what.match(/^a block on (.+?) x (.+)$/);
+    if (m) {
+      const a = dialOf(m[1]);
+      const b = dialOf(m[2]);
+      const sides = chose.replace(/ \(recommended\)$/, '').split(' x ');
+      spanIntoRule(rule, a, sides[0], axes[a]);
+      spanIntoRule(rule, b, sides[1], axes[b]);
+      continue;
+    }
+    m = what.match(/^removed from the rule: (.+)$/);
+    if (m) {
+      const dial = dialOf(m[1]);
+      delete rule.ranges[dial];
+      delete rule.allowed[dial];
+    }
+  }
+  return rule;
+}
+
 // ---- marks (§16.5) -------------------------------------------------------------
 //
 // A MARK IS AN OBSERVATION THE WALK WAS CARRIED PAST. It is not a warning that
@@ -469,4 +563,5 @@ module.exports = {
   EMPTY_RULE, CLOSINGS,
   normaliseRule, inRange, applyRule, ruleSentence,
   newFunnelSet, recordStep, recordBackStep, warningsFor, finishFunnelSet, replay,
+  userRuleFromSteps,
 };

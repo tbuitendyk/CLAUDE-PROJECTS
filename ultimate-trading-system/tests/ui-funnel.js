@@ -37,12 +37,15 @@ function cutRows(q) {
       rule: {}, ruleSentence: 'tHours 65 to 137; gate is directional', nameEditedAt: null,
       closing: { key: 'rule', label: 'accept what the rule gives', detail: null },
       warnings: [], check: { kind: 'scrambles', k: 20, barPct: 90, bar: 18, chance: 0.14 },
-      steps: 21, backSteps: 5, marks: [], replayChecked: { same: true } },
+      steps: 21, backSteps: 5, marks: [], replayChecked: { same: true },
+      // the rule the OWNER built, before step 5 replaced it (3.61.0)
+      userSentence: 'tHours 65 to 137; gate is directional; agreeBar is all or own',
+      userSurvivors: 4820, userStamped: true },
     of: 137760, sealedOn: { sealed: true, of: 1, missing: 0, why: null },
     record: { same: true, now: 116, had: 116, gone: 0 },
     varying: ['tHours'], fixed: { gate: 'directional', decision: 'argmax' },
     has: Object.fromEntries(on.map((k) => [k, true])),
-    total: 116, from: Number(q.get('from') || 0), per: 50,
+    total: 116, from: 0, per: 2000, clipped: 0,
     sort: q.get('sort') || 'avgTest', dir: q.get('dir') || 'desc', rows,
   };
 }
@@ -276,15 +279,27 @@ function requirePlaywright() {
     'the heading is display only except for the rename control');
   const cutText = await page.locator('#view').innerText();
   expect(/S3 #ui - XRPUSDT weekly-8d - 116 of 137,760 settings/.test(cutText), `the heading names the set, the coin and shape and the counts: ${cutText.slice(0, 200)}`);
-  expect(/Rule: tHours \(t\) 65 to 137; gate is directional/.test(cutText), 'the rule is on the heading with its dials named');
+  expect(/Final Rule:\s*\n?\s*tHours \(t\) 65 to 137; gate is directional/.test(cutText.replace(/\n+/g, '\n')),
+    `the final rule follows its own label with its dials named: ${cutText.slice(cutText.indexOf('Final Rule:'), cutText.indexOf('Final Rule:') + 140)}`);
   expect(/116 of 137,760 settings survive and the target is 400/.test(cutText), 'the survive line is on the heading');
   expect(/bold when a value beats at least 90% of the 20 copies - that is 18 of them - by chance about 14% of values would/.test(cutText),
     'the rule build settings line is on the heading');
-  expect(/This set carries 20 scrambled copies of the whole table/.test(cutText), 'the scrambled copies line is on the heading');
-  expect(/The sealed window is intact on this unit\./.test(cutText), `the sealed line is on the heading and speaks of this unit: ${cutText.slice(cutText.indexOf('sealed'), cutText.indexOf('sealed') + 120)}`);
+  expect(/The sealed window is intact on XRPUSDT weekly-8d/.test(cutText),
+    `the sealed line is on the heading and names the unit: ${cutText.slice(cutText.indexOf('The sealed'), cutText.indexOf('The sealed') + 130)}`);
   expect(/Step 7 - declare and cut: accept what the rule gives/.test(cutText), 'the last step and the closing are on the heading');
   expect(/21 choice\(s\) recorded on the way, 5 step\(s\) back/.test(cutText), 'how the walk went is on the heading');
   expect(/S4 #1 - XRPUSDT weekly-8d/.test(cutText), "the Stage 4 record set's own name is the bold name at the top");
+  expect(/The rules below were built on test money/.test(cutText), 'the frame speaks of both rules on the heading');
+  expect(/User Rule:/.test(cutText) && /Final Rule:/.test(cutText), 'the heading carries both rules by name');
+  expect(cutText.indexOf('User Rule:') < cutText.indexOf('Final Rule:'), 'the rule the owner built comes before the one that replaced it');
+  expect(/tHours \(t\) 65 to 137; gate is directional; agreeBar \(quorum bar\) is all or own/.test(cutText),
+    `the owner's own rule is on the heading with its dials named: ${cutText.slice(cutText.indexOf('User Rule:'), cutText.indexOf('User Rule:') + 220)}`);
+  expect(/4,820 of 137,760 settings survive/.test(cutText), 'the count the owner\'s rule kept is not on the heading');
+  expect(/Recovered from this walk/.test(cutText), 'a rule recovered from the recorded steps does not say so');
+  // and the lines the owner asked to be specific to THIS set are
+  expect(/XRPUSDT weekly-8d's own table was scrambled 20 times/.test(cutText),
+    `the scrambled-copies line names this unit and its own count: ${cutText.slice(cutText.indexOf('How every step'), cutText.indexOf('How every step') + 200)}`);
+  expect(/The sealed window is intact on XRPUSDT weekly-8d/.test(cutText), 'the sealed line names the unit it is about');
   expect((await page.locator('#fTitleName').innerText()).trim() === 'S4 #1 - XRPUSDT weekly-8d',
     'the bold name at the top is the Stage 4 record set showing');
   expect(await page.locator('#fUnit').count() === 1 && await page.locator('#fCutPick').count() === 1,
@@ -295,7 +310,9 @@ function requirePlaywright() {
     `each of the forty settings is a what-it-is row plus a test row and a hold row: ${tags.length} tag(s)`);
   expect(/gate \(gate\) directional; decision \(decision\) argmax/.test(cutText) || /gate directional; decision argmax/.test(cutText),
     `a dial the rule pinned is said once above the table: ${cutText.slice(cutText.indexOf('Every one of these'), cutText.indexOf('Every one of these') + 200)}`);
-  expect(/116 rows · page/.test(cutText), 'the table says how many rows the whole set holds');
+  expect(await page.locator('#view [data-bpage]').count() === 0 && await page.locator('#view [data-bpageto]').count() === 0,
+    'the page selector is back under a box that scrolls, which is space the rows need');
+  expect(/All 116 of them are in the box below/.test(cutText), 'the screen does not say every setting is in the box');
   const heads = await page.locator('#view thead tr').first().innerText();
   expect(/avg test \$/i.test(heads) && /avg held-back \$/i.test(heads) && /worst losing streak \$/i.test(heads),
     `every heading carries both names: ${heads.replace(/\n/g, ' | ')}`);
@@ -327,7 +344,6 @@ function requirePlaywright() {
       share: Math.round(window.innerHeight * 0.45),
       height: Math.round(b.height),
       headTop: Math.round(th.getBoundingClientRect().top - b.top),
-      pagerBelow: !!box.nextElementSibling,
     };
   });
   expect(boxed.overflowY === 'auto' && boxed.scrolls && boxed.scrolled,
@@ -338,26 +354,31 @@ function requirePlaywright() {
   expect(boxed.height >= Math.min(boxed.roomBelow, boxed.share),
     `the box uses the room the browser measured: ${JSON.stringify(boxed)}`);
   expect(boxed.height > 200, `the box height came from the room measured, not from the floor: ${JSON.stringify(boxed)}`);
+  // ABOUT EIGHT COMPLETE SETTINGS AT ONCE (owner order, 2026-09-04: it was
+  // showing four). Counted, not estimated: the box's own height less its
+  // heading, over the height of one setting's three rows.
+  const fits = await page.locator('#fCutRows').evaluate((box) => {
+    const rows = [...box.querySelectorAll('tbody tr')];
+    const per = rows.slice(0, 3).reduce((a, r) => a + r.getBoundingClientRect().height, 0);
+    const head = box.querySelector('thead tr').getBoundingClientRect().height;
+    return { per: Math.round(per), head: Math.round(head), box: Math.round(box.getBoundingClientRect().height),
+      settings: Math.floor((box.getBoundingClientRect().height - head) / per) };
+  });
+  expect(fits.settings >= 8, `about eight complete settings are readable at once: ${JSON.stringify(fits)}`);
   expect(boxed.position === 'sticky' && boxed.headTop <= 1,
     `the heading is still at the top of the box after scrolling to the bottom: ${JSON.stringify(boxed)}`);
-  expect(boxed.pagerBelow, 'the paging bar under the rows is inside the box, so it scrolls away with them');
   expect(/is shopping the held-back window/.test(cutText), 'the screen says what sorting by the held-back column costs');
   // sorting asks the service for the whole set in that order, never the page
   const beforeSort = rowsAsked.length;
   await page.locator('[data-fcsort="avgHold"]').click();
   await page.waitForTimeout(600);
   const sorted = rowsAsked.slice(beforeSort).pop();
-  expect(!!sorted && sorted.sort === 'avgHold' && sorted.dir === 'desc' && Number(sorted.from) === 0,
-    `pressing a column sorts the whole set by it, high to low, from the first page: ${JSON.stringify(sorted)}`);
+  expect(!!sorted && sorted.sort === 'avgHold' && sorted.dir === 'desc' && sorted.from === undefined,
+    `pressing a column sorts the whole set by it, high to low, and asks for no page: ${JSON.stringify(sorted)}`);
   await page.locator('[data-fcsort="avgHold"]').click();
   await page.waitForTimeout(600);
   expect((rowsAsked.pop() || {}).dir === 'asc', 'pressing it again flips the order');
   // the paging bar moves a page and keeps the order
-  const beforePage = rowsAsked.length;
-  await page.locator('[data-bpage^="S4R:"]').last().click();
-  await page.waitForTimeout(600);
-  const paged = rowsAsked.slice(beforePage).pop();
-  expect(!!paged && Number(paged.from) === 50 && paged.sort === 'avgHold', `next moves one page of 50 and keeps the order: ${JSON.stringify(paged)}`);
   // the rename is the one thing on this screen that writes
   const rowsBefore = rowsAsked.length;
   await page.locator('#fCutName').fill('the XRP weekly rule');

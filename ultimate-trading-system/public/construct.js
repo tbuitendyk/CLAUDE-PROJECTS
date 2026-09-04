@@ -4882,7 +4882,6 @@ function fRuleClauses(st) {
 // set WROTE DOWN, not the settings its rule picks today, so the screen cannot
 // quietly show a different set under the same name.
 const F_NEW = 'new';
-const F_CUT_PER = 50;
 
 function fCutChosen(st, d) {
   const cuts = (d && d.cuts) || [];
@@ -4896,8 +4895,7 @@ async function fDrawCut(d, st, cutId) {
   waitStart();
   let cd = null;
   let bad = null;
-  const q = `from=${Math.max(0, Number(st.cutFrom) || 0)}&n=${F_CUT_PER}`
-    + `&sort=${encodeURIComponent(st.cutSort || '')}&dir=${encodeURIComponent(st.cutDir || '')}`;
+  const q = `sort=${encodeURIComponent(st.cutSort || '')}&dir=${encodeURIComponent(st.cutDir || '')}`;
   try { cd = await api(`api/funnel/set/${encodeURIComponent(cutId)}/rows?${q}`); }
   catch (e) { bad = e.message; }
   finally { waitEnd(); }
@@ -4959,9 +4957,13 @@ function fTitle(d, st, name) {
 // what the bold name says while the steps are being walked
 const F_NEW_NAME = 'new rule';
 
-// THE HEADING, AS THE OWNER DREW IT (2026-09-04). Display only, one control on
-// it: the name. Every line is read off the SET, never off today's walk -- what
-// the check was, what the target was, what the closing was, how the walk went.
+// THE HEADING, AS THE OWNER DREW IT (2026-09-04, reordered 3.61.0). Display
+// only, one control on it: the name. It reads top to bottom as one progression
+// rather than notes scattered round a box -- what the money is, the rule the
+// OWNER built, the rule that was written, how both were checked, what history
+// was held back, how the walk went, and anything wrong with it. Every line is
+// read off THIS SET: what its check was, how many copies it kept, which unit's
+// window is sealed, what the closing was, how the walk went.
 function fCutHead(cd) {
   const s = cd.set;
   const c = s.check || {};
@@ -4970,34 +4972,52 @@ function fCutHead(cd) {
   const unitName = s.unit ? (s.unitName || s.unit) : 'all units together';
   const parentName = (s.parent || {}).name || (s.parent || {}).id || 'its stage 3 set';
   const marks = (s.marks || []).map((m) => m.what).filter(Boolean);
+  const of = Number(cd.of).toLocaleString();
+  const who = `${esc(parentName)} - ${esc(unitName)}`;
   return `<div class="row" style="align-items:flex-end">
       <label class="f">name<input id="fCutName" value="${esc(s.name || '')}" maxlength="80" style="width:26rem"></label>
       <button id="fCutRename">rename</button>
       <span id="fCutNameMsg" class="note">${s.nameEditedAt ? `renamed ${esc(String(s.nameEditedAt).slice(0, 16))}` : `cut ${esc(String(s.createdAt || '').slice(0, 16))}`}${s.release ? ` by release ${esc(s.release)}` : ''}</span>
     </div>
-    <p class="note"><b>The rule below was built on test money</b> - the seven steps read the test window and nothing
+    <p class="note"><b>The rules below were built on test money</b> - the steps read the test window and nothing
       else. The held-back window is opened once, at the cut, on what survives, and <b>avg held-back $</b> in the table
       is that one look. Reading down that column and taking the best of these
       ${Number(s.survivors).toLocaleString()} is shopping the held-back window, which is the one thing it does not
       survive. It is here because <b>Verify</b>, <b>History</b>, <b>Tune</b> and <b>Greenlight</b> are where a survivor
       is graded, and they start from what is on this screen.</p>
-    <p class="note"><b>Rule:</b> ${esc(fRuleWords(s.ruleSentence))}</p>
-    <p class="note"><b>${esc(parentName)} - ${esc(unitName)}</b> - ${Number(s.survivors).toLocaleString()} of
-      ${Number(cd.of).toLocaleString()} settings survive${s.target ? ` and the target is ${Number(s.target).toLocaleString()}` : ''}.
+
+    <h4 style="margin:1rem 0 .3rem">User Rule:</h4>
+    ${s.userSentence ? `<p class="note">${esc(fRuleWords(s.userSentence))}</p>
+    <p class="note">${who} - <b>${s.userSurvivors == null ? '-' : Number(s.userSurvivors).toLocaleString()}</b> of ${of}
+      settings survive. These are the ranges and values you chose yourself, and they are what step 5 read to find its
+      widest region; keeping that region replaced every one of them with the rule below.
+      ${s.userStamped ? '<b>Recovered from this walk\'s own recorded steps and written onto the record</b>, because it was cut before the rule feeding step 5 was kept.' : ''}</p>`
+    : `<p class="note">The widest region was never kept on this walk, so nothing of yours was replaced - the rule
+      below is the one you built.</p>`}
+
+    <h4 style="margin:1rem 0 .3rem">Final Rule:</h4>
+    <p class="note">${esc(fRuleWords(s.ruleSentence))}</p>
+    <p class="note">${who} - <b>${Number(s.survivors).toLocaleString()}</b> of ${of} settings survive${s.target ? ` and the target is ${Number(s.target).toLocaleString()}` : ''}.
       ${rec.same ? 'Re-applying this rule to the same board today gives back exactly these settings.'
     : `<b class="neg">Re-applying this rule to the same board today gives ${Number(rec.now || 0).toLocaleString()} settings, not
         ${Number(rec.had || 0).toLocaleString()}</b> - the board has moved since the cut. The rows below are the ones the set
         wrote down, which is what it decided.`}
       ${rec.gone ? `<b class="neg">${Number(rec.gone).toLocaleString()} of them are no longer on the board at all</b> and are shown with no numbers.` : ''}</p>
+
     <p class="note"><b>Rule build settings:</b> target size ${s.target == null ? 'not set' : Number(s.target).toLocaleString()}${c.kind === 'scrambles'
     ? `; bold when a value beats at least ${c.barPct}% of the ${c.k} copies - that is ${c.bar} of them - by chance about ${fPct(c.chance)} of values would`
     : '; this walk had no scrambled copies to set a bar against'}.</p>
-    <p class="note">${c.kind === 'scrambles'
-    ? `This set carries ${c.k} scrambled copies of the whole table, each one the same days in a jumbled order. Every step of the walk was read once against the real table and again against each of those.`
-    : '<b>No scrambled copies on this set</b> - every step of the walk was read against the two halves of the settings instead, which tests whether a reading is STABLE and never whether the effect is real.'}</p>
+    <p class="note"><b>How every step of this walk was checked.</b> ${c.kind === 'scrambles'
+    ? `<b>${esc(unitName)}</b>'s own table was scrambled <b>${c.k}</b> times, each copy the same days in a jumbled
+       order. Every one of the ${Number(s.steps || 0)} choices recorded below was read once against the real table and
+       again against each of those ${c.k}, and a value counted only when it beat at least <b>${c.bar}</b> of them.`
+    : `<b class="neg">This set kept no scrambled copies</b>, so every step was read against the two halves of
+       <b>${esc(unitName)}</b>'s settings instead - which tests whether a reading is STABLE and never whether the
+       effect is real, and is marked as such on this set.`}</p>
     <p class="note">${se.sealed
-    ? `The sealed window is intact on ${se.of === 1 ? 'this unit' : `all ${se.of} unit(s)`}.`
-    : `<b class="neg">No sealed window</b> - ${esc(String(se.why || 'not recorded'))}`}</p>
+    ? `The sealed window is intact on <b>${esc(unitName)}</b>${se.of > 1 ? ` and on the other ${se.of - 1} unit(s) this set was cut across` : ''} - a final stretch of that unit's history no part of this walk touched.`
+    : `<b class="neg">No sealed window on ${esc(unitName)}</b> - ${esc(String(se.why || 'not recorded'))}.`}</p>
+
     <p class="note"><b>Step 7 - ${esc(F_STEPS[6][0])}:</b> ${esc((s.closing || {}).label || 'accept what the rule gives')}${(s.closing || {}).detail ? ` - ${esc(String(s.closing.detail))}` : ''}.
       ${Number(s.steps || 0)} choice(s) recorded on the way, ${Number(s.backSteps || 0)} step(s) back.
       ${marks.length ? `<b>${marks.length} mark(s)</b> - ${esc(marks.join('; '))}.` : 'No marks were recorded.'}</p>
@@ -5045,7 +5065,6 @@ function fCutTable(cd, st) {
     return `<p class="note neg">This Stage 4 record set kept no settings at all. An empty result is written with a
       warning rather than refused, because the choice is yours - the warning is on the heading above.</p>`;
   }
-  const pager = bPager(cd.total, cd.from, cd.per, 'S4R');
   return `<p class="note">Every one of these ${Number(cd.total).toLocaleString()} settings has the same
       ${fixedLine ? `<b>${esc(fixedLine)}</b>` : 'nothing'} - the rule fixed those, so they are said here once rather
       than repeated on every row.</p>
@@ -5055,7 +5074,8 @@ function fCutTable(cd, st) {
       <b>new rule</b>, walk to step 6, press it, and they appear here for every setting.</p>` : ''}
     <p class="note"><b>Order the whole set by</b> setting${fcSort('label', cd)}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))}${fcSort(k, cd)}`).join('')}${has('members') ? ` &middot; members${fcSort('members', cd)}` : ''}${has('avgRung') ? ` &middot; rung${fcSort('avgRung', cd)}` : ''}${has('avgVoices') ? ` &middot; voices${fcSort('avgVoices', cd)}` : ''}
       - or press any heading in the table below.</p>
-    ${pager}
+    <p class="note">All <b>${Number(cd.total).toLocaleString()}</b> of them are in the box below, in whatever order
+      you set - scroll it. ${cd.clipped ? `<b class="neg">${Number(cd.clipped).toLocaleString()} are not shown</b>: this screen draws at most ${Number(cd.per).toLocaleString()} settings at once.` : ''}</p>
     <div class="s4box" id="fCutRows"><table class="s4"><thead>
       <tr>
         <th style="width:5rem" title="which of the two rows under each setting you are reading: its test window first, its held-back window under it."><span class="t">test</span><span class="h">hold</span></th>
@@ -5093,8 +5113,7 @@ function fCutTable(cd, st) {
         ${c7 ? '<td></td>' : ''}
         ${c8 ? '<td></td>' : ''}
       </tr>`).join('')}</tbody>
-    </table></div>
-    ${pager}`;
+    </table></div>`;
 }
 
 // HOW TALL THE BOX IS, MEASURED RATHER THAN GUESSED (3.60.0, owner order: "based
@@ -5126,7 +5145,12 @@ function fSizeCutBox() {
   // the TOP OF THE BOX and comes with it.
   const below = window.innerHeight - b.top - under - 8;
   const scrolled = window.innerHeight - under - 24;
-  const share = Math.round(window.innerHeight * 0.45);
+  // 45% of the window fitted FOUR settings on the owner's screen and they asked
+  // for about eight (2026-09-04, measured at 78 pixels a setting on a 1000-pixel
+  // window). The box is not held to the room where it stands, so the share is
+  // what decides how many are readable at once; `scrolled` still caps it at a
+  // box that fits the window whole, heading and all.
+  const share = Math.round(window.innerHeight * 0.8);
   const room = below >= share ? below : Math.min(scrolled, share);
   // never so short that the box is useless: three settings is nine rows
   box.style.maxHeight = `${Math.max(200, Math.round(room))}px`;
@@ -5154,7 +5178,7 @@ function fWireCutPick(st, d) {
     // sentence the set it wrote carries -- so this works on sets cut before it
     // was written, and never resets a walk that produced nothing.
     if (cs.value === F_NEW && fWalkWasAlreadyCut(d)) fFreshWalk(st);
-    st.cut = cs.value; st.cutFrom = 0; fSave(); drawFunnel();
+    st.cut = cs.value; fSave(); drawFunnel();
   };
 }
 const fWalkWasAlreadyCut = (d) => !!(d && d.ruleSentence
@@ -5165,7 +5189,7 @@ function fFreshWalk(st) {
   st.closing = { key: 'rule' };
   st.dial = null; st.dialA = null; st.dialB = null;
   st.steps = []; st.backSteps = []; st.marks = [];
-  st.pick = null; st.leaders = []; st.conditions = {}; st.across = null;
+  st.pick = null; st.leaders = []; st.conditions = {}; st.across = null; st.userRule = null;
   st.acrossAsked = null; st.read = null; st.rebuilt = false;
 }
 // and one for the coin-and-shape box, for the same reason: this walk keeps its
@@ -5208,29 +5232,8 @@ function fWireCut(d, st, cd) {
       if (st.cutSort !== k) { st.cutSort = k; st.cutDir = k === 'label' ? 'asc' : 'desc'; }
       else if (st.cutDir === 'desc') st.cutDir = 'asc';
       else { st.cutSort = null; st.cutDir = null; }
-      st.cutFrom = 0;                                // a new order makes page seven meaningless
       fSave(); drawFunnel();
     };
-  });
-  const goTo = (from) => { st.cutFrom = Math.max(0, Number(from) || 0); fSave(); drawFunnel(); };
-  document.querySelectorAll('[data-bpage^="S4R:"]').forEach((b) => {
-    b.onclick = () => goTo(String(b.dataset.bpage).split(':')[1]);
-  });
-  document.querySelectorAll('[data-bpageto="S4R"]').forEach((el) => {
-    let jumped = false;
-    const jump = () => {
-      if (jumped) return;
-      const pages = Math.max(1, Number(el.dataset.bpages) || 1);
-      const per = Math.max(1, Number(el.dataset.bper) || F_CUT_PER);
-      const want = Math.round(Number(el.value));
-      if (!Number.isFinite(want)) { el.value = String(Math.floor(Number(el.defaultValue) || 1)); return; }
-      const page = Math.min(pages, Math.max(1, want));
-      if (page === Number(el.defaultValue)) { el.value = String(page); return; }
-      jumped = true;
-      goTo((page - 1) * per);
-    };
-    el.onchange = jump;
-    el.onblur = jump;
   });
 }
 
@@ -5447,6 +5450,11 @@ function fWire(st, d) {
     const ranges = {}; const allowed = {};
     for (const [dial, b] of Object.entries(keep.ranges)) ranges[dial] = { min: b.min, max: b.max };
     for (const [dial, v] of Object.entries(keep.allowed)) allowed[dial] = v.slice();
+    // THE RULE THE OWNER BUILT IS KEPT BEFORE IT IS REPLACED (3.61.0, owner
+    // order). This button throws away every range and value chosen on steps 2
+    // and 3, and until now the only trace left was the words in the walk's
+    // recorded steps. The rule itself now rides to the cut and onto the set.
+    st.userRule = { ranges: JSON.parse(JSON.stringify(st.rule.ranges || {})), allowed: JSON.parse(JSON.stringify(st.rule.allowed || {})) };
     st.rule.ranges = ranges; st.rule.allowed = allowed;
     markStep(5);
     st.steps.push({ n: 5, what: 'the widest region', chose: `kept as the rule (${Object.keys(ranges).length + Object.keys(allowed).length} dial(s))` });
@@ -5517,6 +5525,7 @@ function fWire(st, d) {
       name: $('#fName').value || null, target: st.target, rule: st.rule,
       steps: st.steps, backSteps: st.backSteps, closing: st.closing || { key: 'rule' },
       marks: st.marks || [],
+      userRule: st.userRule || null,               // what step 5 replaced, if it ran
       unit: st.unit,
       barPct: st.barPct,
     });
@@ -5550,7 +5559,7 @@ function fWire(st, d) {
   if (cl) cl.onclick = () => {
     st.backSteps.push({ from: st.step, to: 1, why: 'started the rule again' });
     st.rule = { ranges: {}, allowed: {}, floors: {} };
-    st.closing = { key: 'rule' };
+    st.closing = { key: 'rule' }; st.userRule = null;
     st.step = 1; st.rebuilt = false; fSave(); drawFunnel();
   };
 }

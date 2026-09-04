@@ -733,3 +733,44 @@ made while building it that the design did not already settle.
     bottom and MEASURES that it scrolled, that it ends inside the window, that
     it uses a real share of the height, and that the heading is still at its top
     afterwards. Second digit: new behaviour.
+94. **The rule the OWNER built is kept, and the Stage 4 heading reads as one
+    progression** (3.61.0, owner orders 2026-09-04).
+
+    * **`keep the widest region` used to erase the owner's own work.** It
+      replaces every range and every value on the rule, and what was chosen on
+      steps 2 and 3 to get there survived only as words in the walk's recorded
+      steps -- a record of a decision with the decision taken out of it. The
+      walk now keeps that rule at the moment the button throws it away, it
+      rides to the cut, and it is written on the set as `userRule`.
+    * **The one set cut before that is RECOVERED, once.** `userRuleFromSteps`
+      replays the recorded choices -- values, shapes, blocks and removals -- back
+      into a rule, and the first read stamps it onto the record so nothing ever
+      replays it twice (RULE NINE). A word-valued block records only its two
+      ends, so the board's own ordered values for that dial are used to take the
+      same slice the grid took; with no such list it claims the two ends and
+      nothing between, which is honest rather than invented. The dial is the
+      FIRST TOKEN of the recorded text: splitting on " (" alone read "removed
+      from the rule: entry is breakout or market" as a dial of that whole name,
+      and replayed the removed clause straight back in.
+    * **Both rules are on the heading**, `User Rule:` above `Final Rule:`, each
+      with its sentence and its own count of what survives, read off the same
+      board. The count is derived rather than recorded, exactly as the final
+      rule's is, so there is one reader and no second era.
+    * **The heading is ordered**: the name, the money frame, the owner's rule,
+      the final rule, the settings the walk was built under, how every step was
+      checked, what history was held back, how the walk went, anything wrong. A
+      test walks that list and fails if any line moves out of order.
+    * **The two lines the owner called out are specific to the set**: the
+      scrambled copies line names the unit, its own count of copies, the number
+      of choices recorded and the bar they had to beat; the sealed line names
+      the unit whose window is intact.
+    * **The page selector is gone** (owner: "a COMPLETE WASTE OF SPACE under
+      this required design change"). Every setting comes back in one reply and
+      the box scrolls; a cap of 2,000 guards against a set nobody meant to cut,
+      and the screen says so when it bites.
+    * **The box shows about eight settings, not four.** 45% of the window fitted
+      four at 78 pixels a setting; the share is 80% now and the harness COUNTS
+      nine on a 1440x1000 window. It still never exceeds a box that fits the
+      window whole, heading and all.
+
+    Second digit: new behaviour and a new section on the heading.
