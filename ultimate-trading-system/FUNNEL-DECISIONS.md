@@ -940,3 +940,36 @@ made while building it that the design did not already settle.
 
     Third digit: a fix.
 
+100. **Writing a Stage 4 record set lands on the set it wrote, the name box
+     takes the room the row has left, and the rows box is a little shorter**
+     (2026-09-04, three owner orders in a row).
+
+     **`write the Stage 4 set`.** *"the behavior needs to be refresh the new
+     item into the Stage 4 record set list at the top and then display that new
+     record set."* It used to force the walk to stay on screen and print one
+     line beside the button. That was deliberate in 3.58.0 -- a redraw with
+     nothing chosen would land on the newest set, so pressing a step button
+     after writing would have thrown the owner out of the walk -- but the answer
+     to that was to keep the owner where they were, and the better answer is to
+     put them where the new set is. The redraw re-reads the list from the box,
+     so the set is on the drop-down at the top, and landing on it shows its
+     name, its rule, its count, what the closing did and any warning it carries:
+     everything that one line said, and the whole set besides. A reply with no
+     id still prints the line, because there would be nothing to land on.
+
+     **The name box.** *"the name field in step 7 should be wider."* It was a
+     fixed 14rem and the names it holds run to sixty characters. It now takes
+     the room the row has left and shrinks rather than pushing the write button
+     off: `flex:1 1 30rem;min-width:14rem` on the label, the box filling it.
+     Measured in the browser at 838px on a 1440px window, with the button still
+     on the same line (RULE FOUR).
+
+     **The rows box.** *"make that s4 record set display a tiny bit shorter."*
+     80% of the window ran to nine settings and stood a little past the bottom;
+     72% is eight, which is what was asked for in the first place. No new test
+     for it: the one 3.60.0 wrote already pins the share and the browser harness
+     measures how many settings come out of it, so a second of each would have
+     been duplication rather than cover.
+
+     Second digit: new behaviour.
+

@@ -535,6 +535,14 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "      if (mismatches.length < 20) mismatches.push({ label, stored: Number(want), rebuilt: mine });", "      mismatches.push({ label, stored: Number(want), rebuilt: mine });",
     'theProofComparesTheFigureTheBoardActuallyHolds',
     'the list of disagreements is unbounded again, and a set where everything differs sends every name to the screen'],
+  // ---- WRITING A SET LANDS ON IT; THE NAME BOX AND THE ROWS BOX (3.66.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "    if (out.id) { st.cut = out.id; fSave(); return drawFunnel(); }", "",
+    'writingAStageFourSetLandsOnTheSetItJustWrote',
+    'writing a set leaves the walk on screen with a line of text, and the set is nowhere the owner can see'],
+  [path.join(ROOT, 'public', 'construct.js'), "<label class=\"f\" style=\"flex:1 1 30rem;min-width:14rem\">name<input id=\"fName\" style=\"width:100%\"",
+    "<label class=\"f\">name<input id=\"fName\" style=\"width:14rem\"",
+    'theNameBoxOnStepSevenTakesTheRoomTheRowHasLeft',
+    'the name box is a fixed 14rem again and the names it holds run out of it'],
   // ---- THE NUMBERS JUST WORKED OUT ARE ON SCREEN (3.65.1) ----
   [path.join(ROOT, 'public', 'construct.js'), "      : `done for ${out.settings} setting(s) - NOT checked against the sweep (${String(pr.why || '')})`;\n    fSave(); drawFunnel();",
     "      : `done for ${out.settings} setting(s) - NOT checked against the sweep (${String(pr.why || '')})`;",
@@ -621,7 +629,7 @@ const GUARDS = [
     "    st.userRule = { ranges: JSON.parse(JSON.stringify(st.rule.ranges || {})), allowed: JSON.parse(JSON.stringify(st.rule.allowed || {})) };", "",
     'theRuleTheOwnerBuiltIsKeptWhenStepFiveReplacesIt',
     'keep the widest region goes back to throwing away everything the owner chose with no copy of it anywhere'],
-  [path.join(ROOT, 'public', 'construct.js'), "  const share = Math.round(window.innerHeight * 0.8);", "  const share = Math.round(window.innerHeight * 0.45);",
+  [path.join(ROOT, 'public', 'construct.js'), "  const share = Math.round(window.innerHeight * 0.72);", "  const share = Math.round(window.innerHeight * 0.45);",
     'theStageFourRowsHaveTheirOwnBoxSizedToTheScreen',
     'the box goes back to showing four settings at once when the owner asked for about eight'],
   [path.join(ROOT, 'public', 'construct.js'), '<h4 style="margin:1rem 0 .3rem">User Rule:</h4>', '<h4 style="margin:1rem 0 .3rem">Rule:</h4>',

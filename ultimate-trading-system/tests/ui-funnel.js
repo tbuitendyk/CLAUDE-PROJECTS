@@ -110,6 +110,10 @@ function reply(body) {
     } };
   }
   if (body.step === 3) return { ...base, reading: {} };
+  // step 7: nothing is read for it -- the count and the sentence above are the
+  // whole of it -- but an answer with a `why` on it draws the why INSTEAD of
+  // the step, so it must come back empty rather than uncanned
+  if (body.step === 7) return { ...base, reading: {} };
   // step 5: the widest run of neighbouring settings, read at whatever bar the
   // page sends (3.64.0). Seven in a row, one of them fifty cents under: the old
   // bar splits them into three, a bar below that dip walks through it.
@@ -165,6 +169,7 @@ function requirePlaywright() {
   const posted = [];                       // every read the page asked for, so what it wrote into the rule can be checked
   const rowsAsked = [];                    // every ask for a Stage 4 set's rows, so sorting and paging can be checked
   const renamed = [];                      // the one write this screen is allowed to make
+  let cutSent = null;                      // what write the Stage 4 set sent
   await page.route('**/api/stageset/*/name', async (route) => {
     const body = JSON.parse(route.request().postData() || '{}');
     renamed.push({ url: route.request().url(), name: body.name });
@@ -176,6 +181,16 @@ function requirePlaywright() {
     if (/\/crosses$/.test(req.url())) {
       if (req.method() === 'POST') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: false, token: 'cx1', done: 6, of: 6, msEach: 688, result: CROSSES }) });
       return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: false, token: 'cx1', done: 6, of: 6, msEach: 688, result: CROSSES }) });
+    }
+    if (/\/cut$/.test(req.url()) && req.method() === 'POST') {
+      cutSent = JSON.parse(req.postData() || '{}');
+      const made = { ...CUT, id: 's4-ui-2', seq: 2, name: 'S4 #2 - XRPUSDT weekly-8d', ruleSentence: 'written just now' };
+      CUTS = [made, ...CUTS];
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+        id: made.id, name: made.name, seq: 2, unit: UNIT, unitName: 'XRPUSDT weekly-8d',
+        survivors: 116, target: 400, ruleSentence: made.ruleSentence, warnings: [],
+        closing: { key: 'rule', label: 'accept what the rule gives', detail: null }, replayChecked: { same: true }, marks: [],
+      }) });
     }
     if (/\/rows(\?|$)/.test(req.url())) {
       const q = new URL(req.url()).searchParams;
@@ -398,6 +413,26 @@ function requirePlaywright() {
     `the limit still says nothing carries it, under an answer saying it was just worked out: ${after.slice(after.indexOf('worst losing streak'), after.indexOf('worst losing streak') + 200)}`);
   expect(/at most 12\.00 keeps 10/.test(after) && !/at most 12\.00 \(about/.test(after),
     'the dollar ladder is drawn after the press, and must not be read as a rate');
+  // THE NAME BOX ON STEP 7 TAKES THE ROOM THE ROW HAS LEFT (3.65.2, owner
+  // order) -- measured, not assumed, and the button beside it must stay on the
+  // same line and on the screen
+  await page.locator('[data-fstep="7"]').click().catch(() => {});
+  await page.waitForSelector('#fName', { timeout: 15000 }).catch(() => {});
+  const nameBox = await page.evaluate(() => {
+    const n = document.querySelector('#fName');
+    const b = document.querySelector('#fCut');
+    const nb = n.getBoundingClientRect();
+    const bb = b.getBoundingClientRect();
+    return {
+      name: Math.round(nb.width), right: Math.round(nb.right), cutRight: Math.round(bb.right),
+      win: window.innerWidth, sameLine: Math.abs(nb.bottom - bb.bottom) < 2,
+    };
+  });
+  expect(nameBox.name > 320, `the name box is wider than the 224px it was: ${JSON.stringify(nameBox)}`);
+  expect(nameBox.cutRight <= nameBox.win, `write the Stage 4 set is still on the screen beside it: ${JSON.stringify(nameBox)}`);
+  expect(nameBox.sameLine, `the name box and the button still sit on one line (RULE FOUR): ${JSON.stringify(nameBox)}`);
+  await page.locator('[data-fstep="6"]').click().catch(() => {});
+  await page.waitForTimeout(600);
   // ---- THE STAGE 4 RECORD SETS OF THIS COIN AND SHAPE (3.58.0) ----
   // everything above ran with NONE cut, which is the other half of the owner's
   // order: with no Stage 4 record set on this coin and shape, the seven steps
@@ -541,6 +576,19 @@ function requirePlaywright() {
     `and it starts with an empty rule: ${JSON.stringify(lastRead)}`);
   expect(await page.locator('#fCutPick').count() === 1, 'and the drop-down stays on the heading, so a set already cut is one press away');
   expect(await page.locator('#fCutPick option').count() === 2, 'the drop-down still offers the set and new rule');
+  // ---- WRITE THE STAGE 4 SET LANDS ON THE SET IT JUST WROTE (3.66.0) ----
+  // owner order: "refresh the new item into the Stage 4 record set list at the
+  // top and then display that new record set"
+  await page.locator('[data-fstep="7"]').click().catch(() => {});
+  await page.waitForSelector('#fCut', { timeout: 15000 }).catch(() => {});
+  expect(await page.locator('#fCutPick option').count() === 2, 'before the write, the drop-down offers one set and new rule');
+  await page.locator('#fName').fill('the XRP weekly rule again');
+  await page.locator('#fCut').click();
+  await page.waitForTimeout(1500);
+  expect(cutSent !== null && cutSent.name === 'the XRP weekly rule again', `the write carries the name typed in the box: ${JSON.stringify(cutSent && cutSent.name)}`);
+  expect(await page.locator('#fCutPick option').count() === 3, `the set just written joined the list at the top: ${JSON.stringify(await page.locator('#fCutPick option').allTextContents())}`);
+  expect((await page.locator('#fCutPick').inputValue()) === 's4-ui-2', `and the list is showing it: ${await page.locator('#fCutPick').inputValue()}`);
+  expect(await page.locator('[data-fstep="1"]').count() === 0, 'the set just written is on screen, not the walk that wrote it');
   expect(errors.length === 0, `no page errors and no dialogs${errors.length ? `: ${errors.join('; ')}` : ''}`);
   await browser.close();
   srv.kill();

@@ -4962,7 +4962,8 @@ function fStep7(d, st) {
     ? ` against a target of ${Number(d.target).toLocaleString()}` : ''}.</p>
     ${detail ? `<p class="note">${esc(detail)}</p>` : ''}
     <div class="row" style="align-items:flex-end">
-      <label class="f">name<input id="fName" style="width:14rem" placeholder="left blank, it is numbered"></label>
+      <label class="f" style="flex:1 1 30rem;min-width:14rem">name<input id="fName" style="width:100%"
+        placeholder="left blank, it is numbered"></label>
       <label class="f">how to reach the target<select id="fClose">${vocabOptions('funnelClosing', cl.key)}</select></label>
       ${top}
       <button id="fCut" class="pri">write the Stage 4 set</button><span id="fCutMsg" class="note"></span></div>
@@ -5283,7 +5284,11 @@ function fSizeCutBox() {
   // window). The box is not held to the room where it stands, so the share is
   // what decides how many are readable at once; `scrolled` still caps it at a
   // box that fits the window whole, heading and all.
-  const share = Math.round(window.innerHeight * 0.8);
+  //
+  // 80% ran to nine settings and stood a little past the bottom of the window
+  // on that measurement; the owner asked for it "a tiny bit shorter" (3.66.0).
+  // 72% is eight, which is what they asked for in the first place.
+  const share = Math.round(window.innerHeight * 0.72);
   const room = below >= share ? below : Math.min(scrolled, share);
   // never so short that the box is useless: three settings is nine rows
   box.style.maxHeight = `${Math.max(200, Math.round(room))}px`;
@@ -5791,18 +5796,22 @@ function fWire(st, d) {
       barPct: st.barPct,
     });
     cut.disabled = false;
-    // WHAT THE CLOSING DID, in the reply, not only on the record. 'tighten the
-    // ranges toward the middle' can stop short of the target, and a set written
-    // with 480 against a target of 400 has to say it narrowed and stopped.
-    // THE WALK STAYS ON SCREEN (3.58.0). Without this the next redraw finds a
-    // Stage 4 set on this coin and shape with nothing chosen, and opens on it --
-    // so pressing a step button after writing a set would leave the walk. The
-    // set just written is on the drop-down at the top of this heading.
-    if (out) { st.cut = F_NEW; fSave(); }
-    const cd = (out && out.closing && out.closing.detail) ? ` - ${out.closing.detail}` : '';
-    $('#fCutMsg').textContent = out
-      ? `${out.name} written for ${out.unitName || 'all units together'} with ${out.survivors} setting(s)${cd}${(out.warnings || []).length ? ` - ${out.warnings.join(' - ')}` : ''}`
-      : '';
+    if (!out) { $('#fCutMsg').textContent = ''; return; }
+    // THE SET JUST WRITTEN IS WHAT IS SHOWN (3.66.0, owner order 2026-09-04:
+    // "the behavior needs to be refresh the new item into the Stage 4 record
+    // set list at the top and then display that new record set"). The redraw
+    // re-reads the list from the box, so the set is on the box at the top, and
+    // landing on it puts its name, its rule, its count, what the closing did
+    // and any warning it was written with on the screen -- everything the one
+    // line beside this button used to say, and the whole set besides.
+    if (out.id) { st.cut = out.id; fSave(); return drawFunnel(); }
+    // no id came back, so there is nothing to land on: say it here instead.
+    // 'tighten the ranges toward the middle' can stop short of the target, and
+    // a set written with 480 against a target of 400 has to say it narrowed.
+    const cd = (out.closing && out.closing.detail) ? ` - ${out.closing.detail}` : '';
+    $('#fCutMsg').textContent = `${out.name} written for ${out.unitName || 'all units together'} `
+      + `with ${out.survivors} setting(s)${cd}${(out.warnings || []).length ? ` - ${out.warnings.join(' - ')}` : ''}`;
+    return undefined;
   };
   // one clause out, the rest untouched, recorded in the walk's notes
   document.querySelectorAll('[data-frm]').forEach((b) => {

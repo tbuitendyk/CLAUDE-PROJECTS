@@ -2575,7 +2575,8 @@ module.exports = {
     assert.ok(sizer.includes('if (!box) return;'), 'the sizer reaches for a box that is not on screen');
     assert.ok(/Math\.max\(200,/.test(sizer), 'a short window can squeeze the box down to nothing');
     // and the share is the one that fits about eight settings, not four
-    assert.ok(/window\.innerHeight \* 0\.8\)/.test(sizer),
+    // (0.72 since 3.66.0 -- 0.8 was nine and stood past the bottom of the window)
+    assert.ok(/window\.innerHeight \* 0\.72\)/.test(sizer),
       'the box is back to a share that fits four settings, and the owner asked for about eight');
     // re-measured on a resize, and ONE listener for the life of the page
     const watch = page.slice(page.indexOf('function fWatchCutBox('), page.indexOf('function fWireCutPick('));
@@ -2970,6 +2971,37 @@ module.exports = {
       'the two new limits are never sent with the read');
     assert.ok(page.includes("st.regionAcross = [...document.querySelectorAll('[data-facross]')].filter((x) => x.checked).map((x) => x.dataset.facross);"),
       'which dials were ticked is never read off the screen, so ticking one could never reach the read');
+  },
+
+  // owner, 2026-09-04: "on 'write the Stage 4 set' the behavior needs to be
+  // refresh the new item into the Stage 4 record set list at the top and then
+  // display that new record set"
+  writingAStageFourSetLandsOnTheSetItJustWrote() {
+    const page = src('public/construct.js');
+    const wire = page.slice(page.indexOf("const cut = $('#fCut');"), page.indexOf("document.querySelectorAll('[data-frm]')"));
+    assert.ok(wire.includes('if (out.id) { st.cut = out.id; fSave(); return drawFunnel(); }'),
+      'writing a set does not land on it, so the owner is left on the walk with a line of text');
+    assert.ok(!/st\.cut = F_NEW;/.test(wire), 'writing a set still forces the walk back on screen');
+    // the list at the top comes off the read, so the redraw is what refreshes it
+    const draw = page.slice(page.indexOf('async function drawFunnel('), page.indexOf('function fCutChosen('));
+    assert.ok(/cuts/.test(draw) || page.includes('const cutId = fCutChosen(st, d);'),
+      'the list at the top is not read again on a redraw, so a set just written could not appear on it');
+    // and a reply with no id still says what happened rather than going silent
+    assert.ok(wire.includes("$('#fCutMsg').textContent = `${out.name} written for"),
+      'a write that comes back without an id says nothing at all');
+    assert.ok(wire.includes("if (!out) { $('#fCutMsg').textContent = ''; return; }"), 'a failed write is not cleared');
+  },
+
+  // owner, 2026-09-04: "the name field in step 7 should be wider"
+  theNameBoxOnStepSevenTakesTheRoomTheRowHasLeft() {
+    const page = src('public/construct.js');
+    const seven = page.slice(page.indexOf('function fStep7(d, st) {'), page.indexOf('function fRuleClauses(st) {'));
+    assert.ok(seven.includes('<label class="f" style="flex:1 1 30rem;min-width:14rem">name<input id="fName" style="width:100%"'),
+      'the name box is a fixed width again, and the names it holds are long enough to run out of it');
+    assert.ok(!/id="fName" style="width:1[0-9]rem"/.test(seven), 'the fixed width is back on the box itself');
+    // and it may never push the row's own button off: it shrinks, and the row
+    // it sits in is the page's own, which wraps
+    assert.ok(seven.includes('<div class="row" style="align-items:flex-end">'), 'the name box left the row that keeps the controls lined up');
   },
 
   // OWNER REPORT, 2026-09-04: "work out the missing numbers / done for 640
