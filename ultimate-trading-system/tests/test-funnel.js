@@ -804,7 +804,7 @@ module.exports = {
       't41 sits below the copies and t113 loses on copy 1, so neither counts');
     // and the recommendation is the widest run of counting neighbours
     const rec = F.recommendRange(rows, 'tHours', { k: 2 });
-    assert.deepStrictEqual(rec.recommend, { min: 65, max: 89, values: 2 });
+    assert.deepStrictEqual(rec.recommend, { min: 65, max: 89, n: 2 }, 'a range recommendation carries its count as n');
     // halves: above each half's own average on BOTH halves. Under seed 'x' the
     // odd-k settings land in one half and the even-k in the other (worked out
     // with splitHalf, not assumed), so t89 is made rich on the odd side only:
@@ -1719,6 +1719,33 @@ module.exports = {
     assert.ok(cut.includes('const sealing = sealedFillWaiting(getSet(String(parentId || \'\')));') && cut.includes('if (sealing) throw new Error(`${sealing} — the cut waits for it'), 'the cut does not wait for the fill');
     const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     assert.ok(ui.includes("${d.totalling ? 'the tables for this set are being worked out - ' : ''}<b>${esc(said)}</b>"), 'the page calls every wait a totalling');
+  },
+
+  // TWO FAULTS THE OWNER MET ON STEP 2 (2026-09-04: "it's like the interface
+  // is broken and was never tested"). After keeping gate = directional, step 2
+  // answered with a reason and the page drew the reason ALONE, so the dial box
+  // that picks the next dial was gone. Then `narrow this one` on t did nothing:
+  // the recommendation for a range carried its count under `values`, the page
+  // took it for a list, the draw threw before it painted, and the page stayed
+  // on step 1 with nothing said. Both are pinned here; tests/ui-funnel.js
+  // presses the buttons for real in a browser against the box's own answer.
+  theStepTwoScreenKeepsItsDialBoxAndSurvivesARecommendedRange() {
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(ui.includes("${r.why && d.step !== 2 ? `<p class=\"note neg\">${esc(r.why)}</p>`"), 'a reason on step 2 replaces the whole step, dial box included');
+    const s2 = ui.slice(ui.indexOf('function fStep2('), ui.indexOf('\nfunction fStep3('));
+    assert.ok(s2.includes("const chosen = new Set((Array.isArray(kept) ? kept : (Array.isArray(rr.values) ? rr.values : [])).map(String));"), 'step 2 takes whatever rides under values for a list');
+    assert.ok(s2.includes("Array.isArray(rr.values) && rr.values.length ? `keep ${esc(rr.values.join(', '))}"), 'the recommended line takes whatever rides under values for a list');
+    assert.ok(s2.includes('<p class="note${r.why ? \' neg\' : \'\'}">${esc(r.why || \'pick a dial to read its shape\')}</p>'), 'step 2 with a reason does not draw the dial box beside it');
+    const F = require('../lib/funnel');
+    const rows = [];
+    for (let k = 0; k < 10; k++) for (const t of [17, 41, 65]) rows.push({ label: `r${k}${t}`, tHours: t, avgTest: t === 41 ? 9 : 1, noiseTest: Array.from({ length: 10 }, () => 0) });
+    const rec = F.recommendRange(rows, 'tHours', { k: 10, barPct: 80 });
+    assert.ok(rec.recommend && !('values' in rec.recommend) && rec.recommend.n >= 1, `a range recommendation names its count n, never values: ${JSON.stringify(rec.recommend)}`);
+    // the box's own answer for t on XRP, as the page received it, is a range with a count
+    const real = JSON.parse(fs.readFileSync(path.join(__dirname, 'fixtures', 'funnel-step2-thours.json'), 'utf8'));
+    assert.strictEqual(typeof real.reading.rec.recommend.values, 'number', 'the fixture is the answer that broke the page');
+    const one = F.movement([{ label: 'a', gate: 'directional', avgTest: 1, noiseTest: [] }], 'gate');
+    assert.strictEqual(one.why, 'only one value of this dial is left on this board, so there is no shape to read - pick another dial', 'a dial with one value left says so and says what to do');
   },
 
   theScreenOffersTheBarAndSendsItWithEveryRead() {

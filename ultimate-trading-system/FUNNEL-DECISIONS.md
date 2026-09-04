@@ -406,3 +406,18 @@ made while building it that the design did not already settle.
     so switching units loaded a walk that had never seen the bar and fell
     back to the default, and every unit was read twice. Both are remembered
     once per set; a unit's walk takes them from there. Third digit.
+79. **Step 2 keeps its dial box, and a count is not a list** (3.51.1, owner
+    report 2026-09-04: "it's like the interface is broken and was never
+    tested"). Two faults, both met on XRP after keeping gate = directional.
+    A reason on step 2 ("only one value ... was swept" -- wrong too: the rule
+    had fixed it) replaced the whole step, dial box included, so the next
+    dial could only be reached by going back. Then `narrow this one` on t
+    did nothing: a range recommendation carried its count under `values`,
+    the page took it for a list, the draw threw before it painted, and the
+    page stayed on step 1 in silence. The reason now says what is true and
+    what to do; step 2 always draws its box; the count is `n`; the page takes
+    a list only from a list. Neither fault could be seen by the tests, which
+    read the source and never pressed anything. tests/ui-funnel.js now
+    drives the Funnel in a browser with the box's own answer for t (kept as
+    a fixture) and presses the buttons the owner pressed; it is run by hand
+    (`npm run test:ui:funnel`) because it needs a browser. Third digit.

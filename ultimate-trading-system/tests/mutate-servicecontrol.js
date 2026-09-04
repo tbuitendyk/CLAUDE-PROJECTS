@@ -606,6 +606,14 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), '  const run = startSealedFill(parent.id);\n  run.behindOf = behind.parent;', '  return null;',
     'aStageTwoSetWithoutItsSealedWindowIsFilledInFromItsParent',
     'the read sees a parent behind on its sealed window and never starts the fill — the line stays "no sealed window" for ever'],
+  // 3.51.1: step 2 keeps its dial box, and a count under `values` is not a list
+  [path.join(ROOT, 'public', 'construct.js'), '    ${r.why && d.step !== 2 ? `<p class="note neg">${esc(r.why)}</p>`', '    ${r.why ? `<p class="note neg">${esc(r.why)}</p>`',
+    'theStepTwoScreenKeepsItsDialBoxAndSurvivesARecommendedRange',
+    'a dial the rule fixed leaves step 2 with a sentence and no way to pick the next dial'],
+  [path.join(ROOT, 'public', 'construct.js'), '  const chosen = new Set((Array.isArray(kept) ? kept : (Array.isArray(rr.values) ? rr.values : [])).map(String));',
+    '  const chosen = new Set((kept || rr.values || []).map(String));',
+    'theStepTwoScreenKeepsItsDialBoxAndSurvivesARecommendedRange',
+    'a recommended range with a count throws before the page paints and narrow this one does nothing'],
 ];
 
 const only = process.argv[2] || '';

@@ -4330,7 +4330,7 @@ async function drawFunnel() {
     <h3 style="margin-top:0">Step ${d.step} - ${esc(F_STEPS[d.step - 1][0])}</h3>
     <p class="note">${esc(F_STEPS[d.step - 1][1])}</p>
     ${d.step <= 5 ? fCheckLine(d) : ''}
-    ${r.why ? `<p class="note neg">${esc(r.why)}</p>`
+    ${r.why && d.step !== 2 ? `<p class="note neg">${esc(r.why)}</p>`
     : (d.step === 1 ? fStep1(r) : d.step === 2 ? fStep2(r, st) : d.step === 3 ? fStep3(r, st)
       : d.step === 4 ? fStep4(r, st) : d.step === 5 ? fStep5(r, d) : d.step === 6 ? fStep6(d, st, r) : fStep7(d, st))}
     ${fNoiseLine(r, d)}
@@ -4451,7 +4451,10 @@ function fStep1(r) {
 function fStep2(r, st) {
   const pick = `<label class="f">dial<select id="fDial">${vocabOptions('funnelDial', st.dial || '')}</select></label>`;
   if (!r.groups || !r.groups.length) {
-    return `<div class="row">${pick}</div><p class="note">${esc(r.why || 'pick a dial to read its shape')}</p>`;
+    // THE DIAL BOX STAYS whatever the reason: a dial the rule has already fixed
+    // has no shape to read, and the box is how the next one is picked (owner,
+    // 2026-09-04: "there's nothing i can do to narrow another candidate")
+    return `<div class="row">${pick}</div><p class="note${r.why ? ' neg' : ''}">${esc(r.why || 'pick a dial to read its shape')}</p>`;
   }
   const sh = r.splitHalf || {};
   const rec = r.rec || {};
@@ -4476,7 +4479,10 @@ function fStep2(r, st) {
     return (lo === '' || n >= Number(lo)) && (hi === '' || n <= Number(hi));
   };
   const keptByRange = rec.ordered === false ? null : r.groups.filter((g) => inRange(g.value)).reduce((a, g) => a + g.n, 0);
-  const chosen = new Set(((st.rule.allowed || {})[st.dial] || (rr.values || [])).map(String));
+  // a LIST of values, from the rule or the recommendation -- never anything
+  // else, whatever else rides under those names
+  const kept = (st.rule.allowed || {})[st.dial];
+  const chosen = new Set((Array.isArray(kept) ? kept : (Array.isArray(rr.values) ? rr.values : [])).map(String));
   const keptByValues = rec.ordered === false ? r.groups.filter((g) => chosen.has(String(g.value))).reduce((a, g) => a + g.n, 0) : null;
   return `<div class="row">${pick}</div>
     <p class="note">shape: <b>${esc(r.shape)}</b>, and the two halves read ${esc(String(sh.a))} and
@@ -4486,7 +4492,7 @@ function fStep2(r, st) {
     <table><thead><tr>${cth('value', 'fValue')}${cth('settings', 'fSettings')}${cth('avg test', 'fAvgTest')}${cth('check', 'fCheck')}</tr></thead>
       <tbody>${r.groups.map((g) => { const v = byVal.get(String(g.value)); return `<tr class="${v && v.counts === false ? 'dim' : (v && v.counts ? 'cnt' : '')}"><td>${esc(g.value)}</td><td>${g.n}</td><td>${fFix(g.mean)}</td><td>${esc(checkOf(v))}</td></tr>`; }).join('')}</tbody></table>
     <p class="note"><b>Recommended:</b> ${rr.min != null ? `keep ${esc(String(rr.min))} to ${esc(String(rr.max))} - the widest run of neighbouring values that beat the check`
-    : (rr.values && rr.values.length ? `keep ${esc(rr.values.join(', '))} - every value that beats the check`
+    : (Array.isArray(rr.values) && rr.values.length ? `keep ${esc(rr.values.join(', '))} - every value that beats the check`
       : `nothing - ${esc(rec.why || 'no value beats the check')}. A range can still be kept; it is then a choice the check did not support, and the set will say so.`)}</p>
     ${rec.ordered === false
     ? `<div class="row" style="align-items:flex-end;margin-top:.5rem">

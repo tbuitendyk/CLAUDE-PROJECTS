@@ -120,7 +120,9 @@ function movement(rows, dial, moneyOf = money) {
     groups: [], m: null, range: null, within: null, between: null, why: null,
   };
   if (keys.length < 2) {
-    return { ...base, why: keys.length ? 'only one value of this dial was swept' : 'no priced settings' };
+    // one value LEFT: swept at one value, or fixed by the rule already -- either
+    // way there is no shape to read here, and the next move is another dial
+    return { ...base, why: keys.length ? 'only one value of this dial is left on this board, so there is no shape to read - pick another dial' : 'no priced settings' };
   }
   const groups = keys.map((k) => {
     const g = by.get(k);
@@ -519,7 +521,9 @@ function recommendRange(rows, dial, check, opts = {}) {
   close();
   return {
     ...c, ordered,
-    recommend: best ? { min: Number(best[0].value), max: Number(best[best.length - 1].value), values: best.length } : null,
+    // n, not values: `values` is the LIST a word-valued dial recommends, and a
+    // count under the same name broke the page the first time it met one
+    recommend: best ? { min: Number(best[0].value), max: Number(best[best.length - 1].value), n: best.length } : null,
     why: best ? null : 'no value beats the check',
   };
 }

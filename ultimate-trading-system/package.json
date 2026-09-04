@@ -1,6 +1,6 @@
 {
   "name": "ultimate-trading-system",
-  "version": "3.51.0",
+  "version": "3.51.1",
   "description": "Ultimate Trading System: finds candidate trading rules in hourly market data, measures them against random-data baselines, and runs the survivors forward on paper and live. Deterministic arithmetic only.",
   "main": "server.js",
   "type": "commonjs",
@@ -8,6 +8,7 @@
     "start": "node server.js",
     "test": "node tests/run.js",
     "test:ui": "node tests/browser.js",
+    "test:ui:funnel": "node tests/ui-funnel.js",
     "test:ui:fixture": "node tests/make-ui-fixture.js",
     "test:ui:pilot": "node tests/browser-pilot-states.js",
     "test:adversarial": "node tests/adversarial/run.js"
