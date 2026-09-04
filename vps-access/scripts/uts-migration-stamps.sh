@@ -18,8 +18,8 @@ console.log(`         gates ${JSON.stringify(d.gates??null)} | unitSettings ${Ar
   store=$(find "$D" -path "*${id}*" -name "records.jsonl.gz" 2>/dev/null | head -1)
   if [ -n "$store" ]; then
     zcat "$store" 2>/dev/null | head -c 20000 | node -e '
-let raw="";process.stdin.on("data",c=>raw+=c).on("end",()=>{const line=raw.split("\n").find(l=>l.trim().startsWith("{"))||"";let r=null;try{r=JSON.parse(line)}catch(e){}
-if(!r){console.log("         records: could not read the first record");return}const row=r.row||r;const keys=Object.keys(row);
+let raw="";process.stdin.on("data",c=>raw+=c).on("end",()=>{const lines=raw.split("\n").filter(l=>l.trim().startsWith("{"));let r=null;for(const line of lines){let o=null;try{o=JSON.parse(line)}catch(e){continue}const cand=o.row||o;if(cand&&("u"in cand||"trade"in cand||"si"in cand)){r=cand;break}}
+if(!r){console.log("         records: no record among the first lines ("+lines.length+" lines; first keys "+(lines[0]?Object.keys(JSON.parse(lines[0])).join(","):"-")+")");return}const row=r;const keys=Object.keys(row);
 console.log(`         first record: money ${"money" in row?("present ("+row.money+")"):"ABSENT"} | reserve ${"reserve" in row?(row.reserve?"present":"null"):"ABSENT"} | si ${row.si??"-"} u ${row.u??"-"} | ${keys.length} fields`);});'
   else
     echo "         records: no store found"
