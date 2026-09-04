@@ -4203,16 +4203,22 @@ function fUnitChoose(set, unit) {
   fUnitMemory[set] = unit;
   try { localStorage.setItem(fUnitKeyFor(set), unit); } catch (_) { /* private window */ }
 }
+// WHAT A READING OF THE OTHER UNITS WAS READ FOR: the rule AND the bar. The
+// same rule under another share of the copies is another reading.
+const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct]);
 function fLoad() {
   const set = pickedSet3();
   const unit = fUnitChosen(set);
   if (fState && fState.set === set && (fState.unit || null) === unit) return fState;
   let saved = null;
   if (unit) { try { saved = JSON.parse(localStorage.getItem(fWalkKeyFor(set, unit)) || 'null'); } catch (_) { saved = null; } }
+  // a walk saved while the bar was a count holds that count; it is dropped
+  // for the default share rather than read as a percent
+  if (saved && 'bar' in saved) delete saved.bar;
   fState = (saved && saved.set === set) ? { ...saved, unit }
     : { set, unit, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
       dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false,
-      closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {}, across: null, bar: null };
+      closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {}, across: null, barPct: null };
   return fState;
 }
 function fSave() {
@@ -4248,7 +4254,7 @@ async function drawFunnel() {
       dialA: st.dialA, dialB: st.dialB, floor: st.floor, rebuilt: st.rebuilt,
       closing: st.closing || { key: 'rule' },
       unit: st.unit,                                        // null: the set's first unit; 'all': the blend
-      bar: st.bar,                                          // null: the engine's default bar
+      barPct: st.barPct,                                    // null: the engine's default share of the copies
     });
   } finally { waitEnd(); }
   if (d && !d.totalling && !d.waiting && d.rebuilt) st.rebuilt = true;
@@ -4294,7 +4300,7 @@ async function drawFunnel() {
   // recommended block on step 3, the counts on step 4, the region's edges on 5
   // on a unit's board step 4 is read by pressing (§17.3), and what was read
   // for THIS rule is what the accept records
-  const a4 = st.across && st.across.ruleKey === JSON.stringify(st.rule) ? st.across : null;
+  const a4 = st.across && st.across.ruleKey === fAcrossKey(st) ? st.across : null;
   st.read = {
     groups: d.step === 2 && Array.isArray(r.groups) ? r.groups.map((g) => [String(g.value), g.n]) : null,
     grid: d.step === 3 && r.grid ? { aVals: r.aVals, bVals: r.bVals, block: (r.block || {}).block || null } : null,
@@ -4339,9 +4345,9 @@ function fHead(d) {
       ${Number(d.of).toLocaleString()} settings survive${d.target ? ` and the target is ${Number(d.target).toLocaleString()}` : ''}</span>
       <label class="f">target size<input id="fTarget" type="number" min="0" style="width:6rem"
         value="${d.target == null ? '' : d.target}"></label>
-      ${c.kind === 'scrambles' ? `<label class="f">bold when a value beats at least<input id="fBar" type="number" min="1" max="${c.k}" step="1" style="width:4.5rem"
-        value="${c.bar}"></label>
-      <span class="note">of <b>${c.k}</b> copies - by chance about <b>${fPct(c.chance)}</b> of values would</span>` : ''}</div>
+      ${c.kind === 'scrambles' ? `<label class="f">bold when a value beats at least<input id="fBar" type="number" min="1" max="100" step="1" style="width:4.5rem"
+        value="${c.barPct}"></label>
+      <span class="note">% of the <b>${c.k}</b> copies - that is <b>${c.bar}</b> of them - by chance about <b>${fPct(c.chance)}</b> of values would</span>` : ''}</div>
     <p class="note">${n.available ? `This set carries ${Number(d.set.keptScrambles || n.kept || 0)} scrambled copies of the whole table, each one the same days in a jumbled order. Every step below is read once against the real table and again against each of those, and the second reading is drawn beside the first.`
     : `<b>No scrambled copies on this set</b> - ${esc(String(n.why || 'not captured'))}. Every step below is read
        against the two halves of the settings instead, which tests whether a reading is STABLE and never whether the effect is real.`}</p>
@@ -4379,7 +4385,7 @@ function fCheckLine(d) {
   if (c.kind === 'scrambles') {
     return `<p class="note"><b>The check:</b> every reading on this step is drawn beside the same reading on each of this
       set's <b>${c.k}</b> scrambled copies of the table${c.k === 1 ? ' - one copy is a single draw, and the page says so' : ''}.
-      A value counts when it beats at least <b>${c.bar}</b> of them; with no forecast at all about <b>${fPct(c.chance)}</b> of values
+      A value counts when it beats at least <b>${c.bar}</b> of them, your <b>${c.barPct}%</b>; with no forecast at all about <b>${fPct(c.chance)}</b> of values
       would clear that bar.</p>`;
   }
   return `<p class="note"><b>The check:</b> this set kept no scrambled copies, so every reading is drawn beside the same
@@ -4699,8 +4705,8 @@ function fWire(st) {
   if (t) t.onchange = () => { st.target = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value) || 0)); fSave(); drawFunnel(); };
   const bb = $('#fBar');
   if (bb) bb.onchange = () => {
-    const v = bb.value === '' ? null : Math.max(1, Math.floor(Number(bb.value) || 0));
-    st.bar = v; fSave(); drawFunnel();
+    const v = bb.value === '' ? null : Math.max(1, Math.min(100, Math.floor(Number(bb.value) || 0)));
+    st.barPct = v; fSave(); drawFunnel();
   };
   const un = $('#fUnit');
   if (un) un.onchange = () => {
@@ -4815,8 +4821,8 @@ function fWire(st) {
   const ax = $('#fAcross');
   if (ax) ax.onclick = async () => {
     ax.disabled = true;
-    const ruleKey = JSON.stringify(st.rule);
-    const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/across`, { rule: st.rule, unit: st.unit, bar: st.bar });
+    const ruleKey = fAcrossKey(st);
+    const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/across`, { rule: st.rule, unit: st.unit, barPct: st.barPct });
     if (!started) { ax.disabled = false; return; }
     st.acrossAsked = { ruleKey, token: started.token, at: new Date().toISOString() };
     fSave();
@@ -4909,7 +4915,7 @@ function fWire(st) {
       steps: st.steps, backSteps: st.backSteps, closing: st.closing || { key: 'rule' },
       marks: st.marks || [],
       unit: st.unit,
-      bar: st.bar,
+      barPct: st.barPct,
     });
     cut.disabled = false;
     // WHAT THE CLOSING DID, in the reply, not only on the record. 'tighten the

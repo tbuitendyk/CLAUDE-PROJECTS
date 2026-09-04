@@ -289,14 +289,17 @@ module.exports = {
   // refused before anything is written.
   async theLaunchTakesTheOwnersNameAndRefusesADuplicate() {
     const pid = writeLaunchParent('name');
+    // a name of this run's own, so a set a broken earlier run left behind can
+    // never be the duplicate this test is about
+    const mine = `Named by hand ${pid.slice(-8)}`;
     try {
-      const first = stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: '  Named by hand  ' });
-      assert.strictEqual(first.name, 'Named by hand', 'the answer carries the owner\'s name, trimmed');
-      assert.strictEqual(stages.getSet(first.id).name, 'Named by hand', 'and the set on disk is called that');
+      const first = stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: `  ${mine}  ` });
+      assert.strictEqual(first.name, mine, 'the answer carries the owner\'s name, trimmed');
+      assert.strictEqual(stages.getSet(first.id).name, mine, 'and the set on disk is called that');
       await untilEnded(first.id);
       let refused = null;
-      try { stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: 'named BY hand' }); } catch (err) { refused = err.message; }
-      assert.ok(refused && /a record set called "named BY hand" already exists/.test(refused),
+      try { stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: mine.toUpperCase() }); } catch (err) { refused = err.message; }
+      assert.ok(refused && new RegExp(`a record set called "${mine.toUpperCase()}" already exists`).test(refused),
         `the same name in another case is the same name, and is refused — got: ${refused || 'a launch'}`);
       assert.strictEqual(stages.listSets().filter((x) => (x.parent || {}).id === pid).length, 1,
         'a refused launch wrote nothing');

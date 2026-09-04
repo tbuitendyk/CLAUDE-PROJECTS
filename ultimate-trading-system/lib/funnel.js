@@ -409,24 +409,35 @@ const checkKindOf = (check) => (check && Number(check.k) > 0 ? 'scrambles' : 'ha
 const cents = (v) => Math.round(Number(v) * 100);
 const beats = (real, other) => real != null && other != null && cents(real) > cents(other);
 
-// THE BAR (owner order, 2026-09-02): a value counts when it beats AT LEAST
-// `bar` of the K scrambled copies, not every one of them. The owner's point:
-// the money comes from the combination of settings, and a single value's
-// average is diluted by every combination of the other dials, so "all K" on
-// one value asks too much of a diluted number. The bar is the owner's to set
-// on the screen; it is saved with the walk and written on the set. What a
-// bar buys is printed beside it: with no forecast at all the real figure is
-// one more draw among K + 1, so it clears a bar of `bar` about
-// (K + 1 - bar) / (K + 1) of the time -- 9% at all ten, 27% at eight, 55%
-// at five. The default is eight of ten, the lowest bar that still says
-// something; K is the ceiling, so a set that kept three copies bars at three.
-const DEFAULT_BAR = 8;
+// THE BAR (owner order, 2026-09-02; A SHARE, owner order 2026-09-04: "make the
+// box a percentage of the null tables beat"): a value counts when it beats AT
+// LEAST the bar's worth of the K scrambled copies, not every one of them. The
+// owner's point: the money comes from the combination of settings, and a
+// single value's average is diluted by every combination of the other dials,
+// so "all K" on one value asks too much of a diluted number. The bar is set
+// on the screen AS A SHARE OF THE COPIES, because a count written when sets
+// kept ten copies (eight of ten) silently became eight of twenty on a set
+// that kept twenty -- a weaker bar than anyone chose. The share is resolved to
+// a count per set, ROUNDED UP: at least 80% of 20 copies is 16, of 10 is 8, of
+// 19 is 16, because "at least this share" is the smallest count not below it;
+// never below 1 and never above K. A count handed in under the old name is
+// ignored, never read as a share. What a bar buys is printed beside it: with
+// no forecast at all the real figure is one more draw among K + 1, so it
+// clears a bar of `bar` about (K + 1 - bar) / (K + 1) of the time -- 9% at
+// all ten, 27% at eight of ten, 24% at sixteen of twenty, 55% at five of ten.
+const DEFAULT_BAR_PCT = 80;
+const barPctOf = (check) => {
+  const asked = (check || {}).barPct;
+  const want = asked == null || asked === '' ? DEFAULT_BAR_PCT : Math.floor(Number(asked));
+  return Math.max(1, Math.min(100, Number.isFinite(want) ? want : DEFAULT_BAR_PCT));
+};
 const barOf = (check) => {
   const K = Math.max(0, Math.floor(Number((check || {}).k) || 0));
   if (!K) return 0;
-  const asked = (check || {}).bar;
-  const want = asked == null || asked === '' ? DEFAULT_BAR : Math.floor(Number(asked));
-  return Math.max(1, Math.min(K, Number.isFinite(want) ? want : DEFAULT_BAR));
+  // K * pct is a whole number, so the quotient is exact whenever it is whole
+  // and the ceiling is the true one
+  const want = Math.ceil((K * barPctOf(check)) / 100);
+  return Math.max(1, Math.min(K, want));
 };
 const chanceOf = (bar, K) => (K > 0 && bar >= 1 && bar <= K ? (K + 1 - bar) / (K + 1) : null);
 // HOW FAR AHEAD, not only how often: the real figure against the copies'
@@ -522,7 +533,7 @@ function recommendBlock(real, checkGrids, kind, opts = {}) {
   const A = real.aVals || []; const B = real.bVals || [];
   // the same bar as a value's: a square counts when it beats at least `bar`
   // of the copies' squares; the halves are both, as ever
-  const bar = kind === 'halves' ? checkGrids.length : barOf({ k: checkGrids.length, bar: opts.bar });
+  const bar = kind === 'halves' ? checkGrids.length : barOf({ k: checkGrids.length, barPct: opts.barPct });
   const at = (g, a, b) => (g.grid || []).find((x) => x.a === a && x.b === b) || null;
   const gridGrand = (g) => {
     let s = 0; let n = 0;
@@ -587,7 +598,7 @@ function ladderFor(rows, field, dir) {
 
 module.exports = {
   ORDERED_DIALS, CATEGORICAL_DIALS, ALL_DIALS, HOLDS_AXES, TEST_MONEY,
-  money, moneyAt, beats, cents, DEFAULT_BAR, barOf, chanceOf, leadOf, keyOf, sortedValues, hash32, splitHalf,
+  money, moneyAt, beats, cents, DEFAULT_BAR_PCT, barPctOf, barOf, chanceOf, leadOf, keyOf, sortedValues, hash32, splitHalf,
   groupsFor, movement, balanceOf, step1, shapeClass, step2, step3, floorCost,
   holdsAcross, holdsAxisFor,
   checkKindOf, countsFor, recommendRange, recommendBlock, ladderFor,

@@ -3905,7 +3905,7 @@ async function funnelAcross(id, state = {}, note = null) {
   const out = { unit: here, rule, units: [] };
   const others = units.filter((u) => u.key !== here).length;
   // the same bar the walk is read under, per unit against that unit's own copies
-  const barFor = (k) => F.barOf({ k, bar: state.bar });
+  const barFor = (k) => F.barOf({ k, barPct: state.barPct });
   if (note) note(0, others);
   for (const u of units) {
     if (u.key === here) continue;
@@ -3930,6 +3930,7 @@ async function funnelAcross(id, state = {}, note = null) {
   out.of = usable.length;
   out.clearBar = usable.filter((x) => x.clears).length;
   out.bar = usable.length && usable[0].k ? usable[0].bar : null;
+  out.barPct = F.barPctOf(state);
   // the walked unit's board comes back into hand for the next read
   if (here) await loadUnitBoard(id, t, here);
   return out;
@@ -3945,7 +3946,9 @@ async function funnelAcross(id, state = {}, note = null) {
 let acrossRun = null;   // { key, token, id, startedAt, done, of, result, error, promise }
 function acrossKeyOf(id, state) {
   const S4 = require('./funnelset');
-  return JSON.stringify([id, state.unit == null ? '' : String(state.unit), S4.normaliseRule(state.rule)]);
+  // the bar is part of what was read: the same rule under another share of
+  // the copies is another reading, and must not be answered from this one
+  return JSON.stringify([id, state.unit == null ? '' : String(state.unit), S4.normaliseRule(state.rule), require('./funnel').barPctOf(state)]);
 }
 const acrossStatus = (run) => ({
   running: !run.result && !run.error,
@@ -4080,13 +4083,16 @@ async function funnelRead(id, state = {}) {
   // under the same rule -- ranges, allowed values and the rebuilt-number
   // limits never read the money. Only the cut does, and it is folded in at
   // step 7 alone, where no reading is drawn.
-  // THE BAR (owner order, 2026-09-02): a value counts when it beats at least
-  // `bar` of the K copies; the owner sets it on the screen, it travels with
-  // every read, and what it clears by chance is said beside it
-  const bar = keptN ? F.barOf({ k: keptN, bar: state.bar }) : 2;
-  const check = keptN ? { k: keptN, bar } : { seed };
+  // THE BAR (owner order, 2026-09-02; a share since 2026-09-04): a value
+  // counts when it beats at least the bar's worth of the K copies; the owner
+  // sets the share on the screen, it travels with every read, it resolves to
+  // a count on this set, and what it clears by chance is said beside it
+  const bar = keptN ? F.barOf({ k: keptN, barPct: state.barPct }) : 2;
+  // the share travels INSIDE the check, so every reader that resolves it
+  // again -- a dial's values, a grid's squares -- lands on the same count
+  const check = keptN ? { k: keptN, barPct: F.barPctOf(state), bar } : { seed };
   const kind = F.checkKindOf(check);
-  out.check = { kind, k: keptN, bar, chance: kind === 'scrambles' ? F.chanceOf(bar, keptN) : null };
+  out.check = { kind, k: keptN, barPct: F.barPctOf(state), bar, chance: kind === 'scrambles' ? F.chanceOf(bar, keptN) : null };
   out.conditions.checkIsHalves = kind === 'halves';
   const [ha, hb] = kind === 'halves' ? F.splitHalf(rows, seed) : [null, null];
 
@@ -4142,7 +4148,7 @@ async function funnelRead(id, state = {}) {
     const g = F.step3(rows, a, b, { floor });
     const readers = kind === 'scrambles' ? Array.from({ length: keptN }, (_, d) => [rows, F.moneyAt(d)]) : [[ha, F.money], [hb, F.money]];
     const checkGrids = (a && b) ? readers.map(([x, m]) => F.step3(x, a, b, { floor, moneyOf: m })) : [];
-    const block = (a && b) ? F.recommendBlock(g, checkGrids, kind, { bar }) : null;
+    const block = (a && b) ? F.recommendBlock(g, checkGrids, kind, { barPct: F.barPctOf(state) }) : null;
     out.reading = { ...g, floorCost: F.floorCost(g, state.floorChoices), checkGrids, block, noise: { of: keptN, used: keptN, kind } };
     // THE DIALS INTERACT when the best block does not span every value the
     // rule currently keeps on both axes -- the good part of one dial sits at
@@ -4372,8 +4378,8 @@ async function cutFunnelSet(parentId, state = {}) {
     // the check this walk was read against, bar included
     check: (() => {
       const k = ranked.length && Array.isArray(ranked[0].noiseTest) ? ranked[0].noiseTest.length : 0;
-      const b = k ? require('./funnel').barOf({ k, bar: state.bar }) : 2;
-      return { kind: k ? 'scrambles' : 'halves', k, bar: b, chance: k ? require('./funnel').chanceOf(b, k) : null };
+      const b = k ? require('./funnel').barOf({ k, barPct: state.barPct }) : 2;
+      return { kind: k ? 'scrambles' : 'halves', k, barPct: require('./funnel').barPctOf(state), bar: b, chance: k ? require('./funnel').chanceOf(b, k) : null };
     })(),
   });
   // The walk as it happened, forward steps and back-steps alike. Going back is

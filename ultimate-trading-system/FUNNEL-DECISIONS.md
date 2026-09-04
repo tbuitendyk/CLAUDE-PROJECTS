@@ -383,3 +383,20 @@ made while building it that the design did not already settle.
     ten, with the chance rate beside it and the board's honesty line on step
     1; and step 2 prints how far ahead each value sits, not only how often.
     The cut writes the bar on the set. FUNNEL-DESIGN.md §18.
+77. **The bar is a share of the copies, resolved to a count per set**
+    (3.50.0, owner order 2026-09-04: "make the box a percentage of the null
+    tables beat"). #76's default of eight was a count written for sets that
+    kept ten copies; on S3 #2, which kept twenty, it silently meant eight of
+    twenty, and the page said 62% of forecast-free values would clear it. The
+    owner had asked, before the twenty-copy set existed, whether the box
+    would "default to 16 or what" -- it did not. The box is now a percentage,
+    default 80, worked out as a count on each set and rounded up (80% of 20
+    is 16, of 19 is 16, of 3 is 3), with the count and the chance printed
+    beside it; a count handed in under the old name is ignored, never read as
+    a share, and a walk saved in the browser under the old count drops it
+    for the default. The Stage 4 set records both the share and the count.
+    Found while sweeping every use: the across was kept per rule only, so
+    the same rule asked again under another bar was answered from the old
+    reading; it is keyed on the bar now, on the box and on the page. No
+    Stage 4 set exists on the box, so nothing on disk is migrated. Second
+    digit: the control's meaning changed and the record gained a field.

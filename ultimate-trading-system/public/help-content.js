@@ -527,8 +527,8 @@ window.HELP = {
         more: 'This is the honest form of "does it hold elsewhere": the same rule on other coins and shapes, judged against each of their own scrambled copies. It is pressed rather than automatic because it reads every other unit\'s board, one at a time. The result is kept for this exact rule; change the rule and it asks again.',
       },
       fBar: {
-        what: 'How many of the scrambled copies a value has to beat to count as real - to go bold, to be recommended, to be a square in a block. Eight of ten unless you change it.',
-        more: 'With no forecast at all the real figure is one more draw among the copies, so it beats at least N of K about (K + 1 - N) in (K + 1) of the time: 9% at all ten, 27% at eight, 36% at seven, 55% at five. That rate is printed beside the box so you see what a bar buys, and the line at the top of step 1 says how many values clear the bar against how many would by chance. The bar is saved with this walk and written on the set it cuts, because a bold row means one thing under eight of ten and another under five.',
+        what: 'The share of the scrambled copies a value has to beat to count as real - to go bold, to be recommended, to be a square in a block. 80% unless you change it, and the count that comes to on this set is printed beside the box.',
+        more: 'The share is worked out as a count per set, rounded up: 80% of 20 copies is 16, of 10 is 8, of 3 is 3. With no forecast at all the real figure is one more draw among the copies, so it beats at least N of K about (K + 1 - N) in (K + 1) of the time: 24% at 16 of 20, 27% at 8 of 10, 62% at 8 of 20. That rate is printed beside the box so you see what a bar buys, and the line at the top of step 1 says how many values clear the bar against how many would by chance. The bar is saved with this walk and written on the set it cuts, as the share and as the count it resolved to, because a bold row means one thing under 16 of 20 and another under 8.',
       },
       fTarget: {
         what: 'Roughly how many settings you are hoping to end up with. It is a guide, not a knife - nothing is ever trimmed to reach it.',

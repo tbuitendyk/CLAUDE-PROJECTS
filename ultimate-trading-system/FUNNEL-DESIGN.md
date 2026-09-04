@@ -1142,6 +1142,16 @@ and is written on the Stage 4 set as `check.bar` beside `check.k` and
 `check.chance`, because a bold row means one thing under eight of ten and
 another under five.
 
+**A share, not a count (3.50.0, owner order 2026-09-04: "make the box a
+percentage of the null tables beat").** The count above was written when
+sets kept ten copies, and on a set that kept twenty it silently meant eight
+of twenty -- a weaker bar than anyone chose. The box is now a percentage of
+the copies, default 80, resolved to a count on each set and rounded up (80%
+of 20 is 16, of 19 is 16, of 3 is 3), with the count and the chance printed
+beside it. The Stage 4 set writes both, `check.barPct` and `check.bar`. The
+across is keyed on the bar as well as the rule, because the same rule under
+another share is another reading.
+
 ### 18.2 Where it applies
 
 - A value on steps 1 and 2 counts when it beats at least N of the K copies.

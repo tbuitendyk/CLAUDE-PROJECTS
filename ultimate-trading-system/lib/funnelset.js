@@ -380,11 +380,12 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     unit: unit || null,
     unitName: unitName || null,
     // THE CHECK THIS WALK WAS READ AGAINST: the kind (scrambled copies or the
-    // two halves), how many copies, the bar a value had to clear (beats at
-    // least `bar` of `k`), and what a bar like that clears by chance. Written
-    // here because a bold row means one thing under eight of ten and another
-    // under five, and the set has to say which it was cut under.
-    check: check ? { kind: check.kind || null, k: check.k ?? null, bar: check.bar ?? null, chance: check.chance ?? null } : null,
+    // two halves), how many copies, the share of them a value had to beat and
+    // the count that share came to on this set (beats at least `bar` of `k`),
+    // and what a bar like that clears by chance. Written here because a bold
+    // row means one thing under sixteen of twenty and another under eight,
+    // and the set has to say which it was cut under.
+    check: check ? { kind: check.kind || null, k: check.k ?? null, barPct: check.barPct ?? null, bar: check.bar ?? null, chance: check.chance ?? null } : null,
     steps: [],
     backSteps: [],
     rule: { ...EMPTY_RULE },
