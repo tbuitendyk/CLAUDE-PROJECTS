@@ -500,3 +500,20 @@ made while building it that the design did not already settle.
     drawn with fixed, equal columns on one width and every cell bounded, so
     a square sits under the same square in all three. Second digit: a new
     control and a fix.
+85. **A tie between blocks is broken by the check, what each block is worth
+    is printed beside it, and every square says how many copies it beats**
+    (3.56.0, owner order 2026-09-04: "OK on your three items"). (1) Two
+    rectangles of bold squares of the same size were settled by whichever
+    the loops met first, which is an accident of the order the dials'
+    values happen to be in. The one whose squares sit further ahead of
+    their scrambled copies wins now -- the lead, averaged over the
+    rectangle -- and a bigger rectangle still beats a smaller one whatever
+    the leads say. Money is read nowhere in the recommendation and a test
+    holds that: the recommendation comes from the check alone, which is
+    what stops the walk from shopping (FUNNEL-DESIGN.md 4.5). (2) What a
+    block is worth IS printed, beside the outlined block and beside the
+    owner's own: its average test money weighted by the settings in each
+    square, and the settings it holds. Shown, never obeyed. (3) Every
+    square of the grid now carries "beats N of K" under its money, from the
+    same pass that decided bold, in the words step 2 already uses -- so the
+    grid, the bold, and the two check tables say one thing. Second digit.

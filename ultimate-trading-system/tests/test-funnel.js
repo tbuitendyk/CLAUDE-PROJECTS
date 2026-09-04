@@ -1936,4 +1936,51 @@ module.exports = {
     assert.ok(/  table \{ width:100%;/.test(css), 'the tables are not the same width, so fixed columns would still differ');
   },
 
+  // A TIE BETWEEN TWO BLOCKS IS BROKEN BY THE CHECK, AND WHAT A BLOCK IS
+  // WORTH IS PRINTED BESIDE IT (3.56.0, owner order 2026-09-04). Two
+  // rectangles of the same size were settled by whichever the loops met
+  // first. Money still decides nothing: it is shown, not obeyed.
+  async aTieBetweenBlocksIsBrokenByTheCheckAndTheMoneyIsOnlyShown() {
+    const F = require('../lib/funnel');
+    // TWO one-square blocks, kept apart by a middle square that does not beat
+    // its copies, so neither can grow and the tie is a real one. Both beat
+    // both copies; the second sits further ahead of them, so it wins.
+    const grid = (vals) => ({ aVals: ['x'], bVals: ['p', 'm', 'q'],
+      grid: [{ a: 'x', b: 'p', mean: vals[0], n: 10, thin: false }, { a: 'x', b: 'm', mean: vals[1], n: 10, thin: false }, { a: 'x', b: 'q', mean: vals[2], n: 10, thin: false }] });
+    const real = grid([10, 0, 4]);
+    const copies = [grid([9.5, 5, 1]), grid([9.4, 5, 1.2])];
+    const out = F.recommendBlock(real, copies, 'scrambles', { barPct: 100 });
+    assert.deepStrictEqual([out.block.b.from, out.block.b.to], ['q', 'q'],
+      'the tie went to the square found first, not to the one further ahead of its copies');
+    assert.ok(out.block.lead > 0, 'the block does not carry the lead it was chosen by');
+    // and money is not what chose it: q makes 4 where p makes 10
+    const cell = (g, b) => g.grid.find((x) => x.b === b).mean;
+    assert.ok(cell(real, 'p') > cell(real, 'q'), 'the fixture must have the richer square lose the tie, or it proves nothing');
+    // how many copies each square beats travels with the answer
+    assert.deepStrictEqual(out.beaten['x|p'], { won: 2, of: 2 });
+    assert.deepStrictEqual(out.beaten['x|q'], { won: 2, of: 2 });
+    assert.deepStrictEqual(out.beaten['x|m'], { won: 0, of: 2 }, 'the square that keeps the two blocks apart beats nothing');
+    assert.deepStrictEqual(out.counting.sort(), ['x|p', 'x|q'], 'only the two squares that beat their copies count');
+    // a bigger rectangle still wins whatever the leads say
+    const wide = { aVals: ['x'], bVals: ['p', 'q'], grid: [{ a: 'x', b: 'p', mean: 10, n: 10, thin: false }, { a: 'x', b: 'q', mean: 9, n: 10, thin: false }] };
+    const low = [{ aVals: ['x'], bVals: ['p', 'q'], grid: [{ a: 'x', b: 'p', mean: 1, n: 10, thin: false }, { a: 'x', b: 'q', mean: 1, n: 10, thin: false }] },
+      { aVals: ['x'], bVals: ['p', 'q'], grid: [{ a: 'x', b: 'p', mean: 1.2, n: 10, thin: false }, { a: 'x', b: 'q', mean: 2, n: 10, thin: false }] }];
+    const two = F.recommendBlock(wide, low, 'scrambles', { barPct: 100 });
+    assert.strictEqual(two.block.squares, 2, 'a bigger rectangle must still win — the lead only breaks ties');
+    // the page prints what each block is worth, and never chooses by it
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const step = page.slice(page.indexOf('function fStep3('), page.indexOf('\nfunction ', page.indexOf('function fStep3(') + 10));
+    assert.ok(step.includes('const worthOf = (a0, a1, b0, b1) => {') && step.includes('avg test ${fFix(sum / n)} over ${n.toLocaleString()} settings'),
+      'the page does not say what a block is worth');
+    assert.ok(step.includes('${blk.squares} square(s).${worthOf(blk.a.from, blk.a.to, blk.b.from, blk.b.to)}'), 'the outlined block does not carry its money');
+    assert.ok(step.includes('${esc(pk.b1)}.</b>${worthOf(pk.a0, pk.a1, pk.b0, pk.b1)}'), 'the owner\'s own block does not carry its money');
+    const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'funnel.js'), 'utf8');
+    const fn = lib.slice(lib.indexOf('function recommendBlock('), lib.indexOf('\nfunction ladderFor('));
+    assert.ok(!/moneyOf|avgTest|\bmoney\b/.test(fn), 'the recommendation reads money — it must come from the check alone');
+    // every square carries how many copies it beats, in step 2's words
+    assert.ok(step.includes('beats ${bt.won} of ${bt.of}'), 'a square does not say how many copies it beats');
+    const s2 = page.slice(page.indexOf('function fStep2('), page.indexOf('\nfunction fStep3('));
+    assert.ok(/- beats \$\{v\.beaten == null \? '-' : v\.beaten\} of \$\{c\.length\}/.test(s2), 'step 2 no longer says it that way, so the two screens have drifted');
+  },
+
 };

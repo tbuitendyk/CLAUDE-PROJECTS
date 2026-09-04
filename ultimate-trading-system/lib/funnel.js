@@ -546,22 +546,44 @@ function recommendBlock(real, checkGrids, kind, opts = {}) {
   };
   const grands = kind === 'halves' ? checkGrids.map(gridGrand) : null;
   const counts = new Map();
+  // HOW MANY COPIES EACH SQUARE BEATS, and how far ahead it sits (3.56.0):
+  // worked out here, where the squares are already being judged, so the screen
+  // shows the same numbers the bold came from rather than a second arithmetic.
+  const beaten = new Map();
+  const leads = new Map();
   for (const a of A) {
     for (const b of B) {
       const x = at(real, a, b);
       let ok = !!x && x.mean != null && !x.thin && checkGrids.length > 0;
-      if (ok) {
-        let won = 0;
+      let won = 0;
+      const copies = [];
+      if (x && x.mean != null) {
         for (let i = 0; i < checkGrids.length; i++) {
           const y = at(checkGrids[i], a, b);
           if (!y || y.mean == null) continue;
+          copies.push(y.mean);
           if (kind === 'halves' ? beats(y.mean, grands[i]) : beats(x.mean, y.mean)) won++;
         }
-        ok = won >= bar;
+        beaten.set(`${a}|${b}`, { won, of: copies.length });
+        leads.set(`${a}|${b}`, kind === 'halves' ? null : leadOf(x.mean, copies));
       }
+      if (ok) ok = won >= bar;
       counts.set(`${a}|${b}`, ok);
     }
   }
+  // THE BIGGEST RECTANGLE OF SQUARES THAT COUNT, AND A TIE IS BROKEN BY THE
+  // CHECK (3.56.0, owner order: "break ties by the check, not by luck"). Two
+  // rectangles of the same size used to be settled by whichever the loops met
+  // first, which is an accident of the dials' order. The one whose squares sit
+  // further ahead of their copies wins instead -- the lead, averaged over the
+  // rectangle. Money is NOT read here and must not be: the recommendation
+  // comes from the check alone, and what a block is worth is PRINTED beside it
+  // so the owner chooses with their eyes open (FUNNEL-DESIGN.md 4.5).
+  const leadOver = (a0, a1, b0, b1) => {
+    const vals = [];
+    for (let i = a0; i <= a1; i++) for (let j = b0; j <= b1; j++) { const v = leads.get(`${A[i]}|${B[j]}`); if (v != null && Number.isFinite(v)) vals.push(v); }
+    return vals.length ? vals.reduce((s, v) => s + v, 0) / vals.length : null;
+  };
   let best = null;
   for (let a0 = 0; a0 < A.length; a0++) {
     for (let a1 = a0; a1 < A.length; a1++) {
@@ -571,16 +593,21 @@ function recommendBlock(real, checkGrids, kind, opts = {}) {
           for (let i = a0; i <= a1 && all; i++) for (let j = b0; j <= b1 && all; j++) if (!counts.get(`${A[i]}|${B[j]}`)) all = false;
           if (!all) continue;
           const n = (a1 - a0 + 1) * (b1 - b0 + 1);
-          if (!best || n > best.squares) best = { a0, a1, b0, b1, squares: n };
+          if (best && n < best.squares) continue;
+          const lead = leadOver(a0, a1, b0, b1);
+          if (!best || n > best.squares || (lead != null && (best.lead == null || lead > best.lead))) best = { a0, a1, b0, b1, squares: n, lead };
         }
       }
     }
   }
   const squares = [...counts.entries()].filter(([, v]) => v).map(([k]) => k);
-  if (!best) return { counting: squares, block: null, why: 'no square beats the check' };
+  const beatenOut = {};
+  for (const [k, v] of beaten) beatenOut[k] = v;
+  if (!best) return { counting: squares, beaten: beatenOut, block: null, why: 'no square beats the check' };
   return {
     counting: squares,
-    block: { a: { from: A[best.a0], to: A[best.a1] }, b: { from: B[best.b0], to: B[best.b1] }, squares: best.squares },
+    beaten: beatenOut,
+    block: { a: { from: A[best.a0], to: A[best.a1] }, b: { from: B[best.b0], to: B[best.b1] }, squares: best.squares, lead: best.lead },
     why: null,
   };
 }

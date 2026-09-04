@@ -570,7 +570,7 @@ window.HELP = {
         more: 'A word-valued dial cannot be kept as a range - there is no order to "active" and "directional". The ticked values become part of the rule, so a scrambled copy handed the same rule keeps the same values. The recommended values are ticked when you arrive; untick or tick as you see fit. Ticking none removes this dial from the rule.',
       },
       fKeepBlock: {
-        what: 'Writes a range on BOTH dials at once from a block of squares on the grid, replacing whatever the rule held for those two dials.',
+        what: 'Writes a range on BOTH dials at once from a block of squares on the grid, replacing whatever the rule held for those two dials. The money each block is worth is printed beside it; it is never what the recommendation is chosen by.',
         more: 'Your own block if you pressed two corners; otherwise the recommended one - the largest rectangle of squares that beat the check and are not thin. Use it when the good part of one dial sits at particular values of the other; two ranges set one at a time cannot say that. The step records whether the two dials interact.',
       },
       fAccept4: {

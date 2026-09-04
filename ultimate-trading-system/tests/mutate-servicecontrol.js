@@ -528,6 +528,16 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      delete st.rule[kind][key];\n      if (!st.steps) st.steps = [];", "      if (!st.steps) st.steps = [];",
     'everyClauseOfTheRuleHasItsOwnRemove',
     'remove records a removal in the notes and leaves the clause in the rule'],
+  // ---- A TIE BETWEEN BLOCKS IS BROKEN BY THE CHECK (3.56.0) ----
+  [path.join(ROOT, 'lib', 'funnel.js'), "          if (!best || n > best.squares || (lead != null && (best.lead == null || lead > best.lead))) best = { a0, a1, b0, b1, squares: n, lead };",
+    "          if (!best || n > best.squares) best = { a0, a1, b0, b1, squares: n, lead };",
+    'aTieBetweenBlocksIsBrokenByTheCheckAndTheMoneyIsOnlyShown',
+    'two blocks of the same size are settled by whichever the loops met first, which is the order of the dials and nothing else'],
+  // ---- EVERY SQUARE SAYS HOW MANY COPIES IT BEATS (3.56.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "${bt && bt.of ? `<br><span class=\"muted\">beats ${bt.won} of ${bt.of}</span>` : ''}",
+    "",
+    'aTieBetweenBlocksIsBrokenByTheCheckAndTheMoneyIsOnlyShown',
+    'the grid goes back to showing money alone, and bold is the only sign of how a square did against the copies'],
   // ---- THE SECOND CHECK GRID AVERAGES THE COPIES (3.54.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "    return fFix(fin.reduce((s, x) => s + x, 0) / fin.length);", "    return fFix(Math.max(...fin));",
     'theThirdStepShowsTheAverageScrambledAverageBesideTheHighest',

@@ -157,7 +157,7 @@ const COL = {
   fDialName: 'one of the settings a sweep can be told to vary. This table lists only the dials this run swept more than one value of. A dial swept at a single value has nothing to measure against anything, so it is named on the "Not measurable here" line below instead of appearing here as flat.',
   fAcrossUnit: 'one of the other coin-and-shape units of this set. The rule built on this walk was applied to that unit\'s own records.',
   fAcrossSurvivors: 'how many of that unit\'s settings the rule keeps, out of all it has.',
-  fGridCorner: 'the first dial down the side, the second across the top. Each square is the average test money of the settings that carry both values, with the count in brackets when the square is thin.',
+  fGridCorner: 'the first dial down the side, the second across the top. Each square is the average test money of the settings that carry both values, with the count in brackets when the square is thin, and under it how many of the scrambled copies of that same square it beats - the same count step 2 shows for a value.',
   fGridValue: 'one value of the second dial. Read down this column to see how the first dial behaves at this value of the second.',
   fRegionDial: 'a dial the widest region spans. Keeping the region writes these edges into the rule.',
   fRegionFrom: 'the lowest value of this dial inside the region, or the one value a word-valued dial takes there.',
@@ -4568,6 +4568,24 @@ function fStep3(r, st) {
   const kind = (r.noise || {}).kind;
   const blk = (r.block || {}).block;
   const counting = new Set((r.block || {}).counting || []);
+  // HOW MANY COPIES EACH SQUARE BEATS (3.56.0), from the same pass that
+  // decided bold -- the words step 2 uses, so the grid reads the same way
+  const beatenAt = (r.block || {}).beaten || {};
+  // WHAT A BLOCK IS WORTH, printed beside it and never used to choose it: the
+  // average money of its squares, weighted by the settings in each, and the
+  // settings it holds
+  const worthOf = (a0, a1, b0, b1) => {
+    const ai = [r.aVals.indexOf(a0), r.aVals.indexOf(a1)].sort((x, y) => x - y);
+    const bi = [r.bVals.indexOf(b0), r.bVals.indexOf(b1)].sort((x, y) => x - y);
+    let sum = 0; let n = 0;
+    for (let i = ai[0]; i <= ai[1]; i++) {
+      for (let j = bi[0]; j <= bi[1]; j++) {
+        const c = r.grid.find((x) => x.a === r.aVals[i] && x.b === r.bVals[j]);
+        if (c && c.mean != null && c.n) { sum += c.mean * c.n; n += c.n; }
+      }
+    }
+    return n ? ` <span class="muted">avg test ${fFix(sum / n)} over ${n.toLocaleString()} settings</span>` : '';
+  };
   const idx = (list, v) => list.indexOf(v);
   const inBlock = (a, b) => blk && idx(r.aVals, a) >= idx(r.aVals, blk.a.from) && idx(r.aVals, a) <= idx(r.aVals, blk.a.to)
     && idx(r.bVals, b) >= idx(r.bVals, blk.b.from) && idx(r.bVals, b) <= idx(r.bVals, blk.b.to);
@@ -4608,14 +4626,15 @@ function fStep3(r, st) {
       const c = r.grid.find((x) => x.a === a && x.b === b) || {};
       const k = `${a}|${b}`;
       const cls = [c.thin ? 'muted' : '', counting.has(k) ? 'cnt' : '', inBlock(a, b) ? 'blk' : '', inPick(a, b) ? 'pick' : '', 'pickable'].filter(Boolean).join(' ');
-      return `<td class="${cls}" data-fcell="${esc(k)}">${fFix(c.mean)}${c.thin ? ` (${c.n || 0})` : ''}</td>`;
+      const bt = beatenAt[k];
+      return `<td class="${cls}" data-fcell="${esc(k)}">${fFix(c.mean)}${c.thin ? ` (${c.n || 0})` : ''}${bt && bt.of ? `<br><span class="muted">beats ${bt.won} of ${bt.of}</span>` : ''}</td>`;
     })}
     ${table(kind === 'halves' ? 'The check - each half\'s average, first / second' : 'The check - the highest scrambled average in each square', (a, b) => `<td>${esc(checkAt(a, b))}</td>`)}
     ${kind === 'halves' ? '' : table('The check - the average scrambled average in each square', (a, b) => `<td>${esc(checkAvgAt(a, b))}</td>`)}
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
-      <span class="note">${blk ? `Recommended block: ${esc(fDialLabel(r.dialA))} ${esc(blk.a.from)} to ${esc(blk.a.to)}, ${esc(fDialLabel(r.dialB))} ${esc(blk.b.from)} to ${esc(blk.b.to)} - ${blk.squares} square(s).`
+      <span class="note">${blk ? `Recommended block: ${esc(fDialLabel(r.dialA))} ${esc(blk.a.from)} to ${esc(blk.a.to)}, ${esc(fDialLabel(r.dialB))} ${esc(blk.b.from)} to ${esc(blk.b.to)} - ${blk.squares} square(s).${worthOf(blk.a.from, blk.a.to, blk.b.from, blk.b.to)}`
       : `No block - ${esc((r.block || {}).why || 'no square beats the check')}.`}
-      ${pk && pk.a1 != null ? ` <b class="fpick">Your block: ${esc(fDialLabel(r.dialA))} ${esc(pk.a0)} to ${esc(pk.a1)}, ${esc(fDialLabel(r.dialB))} ${esc(pk.b0)} to ${esc(pk.b1)}.</b>` : (pk && pk.a0 != null ? ' <b class="fpick">One corner chosen - press the other.</b>' : '')}</span>
+      ${pk && pk.a1 != null ? ` <b class="fpick">Your block: ${esc(fDialLabel(r.dialA))} ${esc(pk.a0)} to ${esc(pk.a1)}, ${esc(fDialLabel(r.dialB))} ${esc(pk.b0)} to ${esc(pk.b1)}.</b>${worthOf(pk.a0, pk.a1, pk.b0, pk.b1)}` : (pk && pk.a0 != null ? ' <b class="fpick">One corner chosen - press the other.</b>' : '')}</span>
       <button id="fKeepBlock" class="pri" ${(pk && pk.a1 != null) || blk ? '' : 'disabled'}>keep this block</button>
       <span class="note">writes a range on BOTH dials in one step, replacing what the rule held for them. Your own block if you chose one, else the recommended one.</span></div>`;
 }

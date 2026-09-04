@@ -54,7 +54,9 @@ function reply(body) {
       grid: [cell('all', '10', 5, 100), cell('all', '20', 3, 100), cell('own', '10', 7, 100), cell('own', '20', 4, 100)],
       checkGrids: [{ grid: [cell('all', '10', 1, 100), cell('all', '20', 2, 100), cell('own', '10', 3, 100), cell('own', '20', 4, 100)] },
         { grid: [cell('all', '10', 3, 100), cell('all', '20', 0, 100), cell('own', '10', 1, 100), cell('own', '20', 6, 100)] }],
-      noise: { kind: 'scrambles' }, block: { counting: ['all|10', 'own|10'], block: { a: { from: 'all', to: 'own' }, b: { from: '10', to: '10' }, squares: 2 } },
+      noise: { kind: 'scrambles' },
+      block: { counting: ['all|10', 'own|10'], beaten: { 'all|10': { won: 2, of: 2 }, 'all|20': { won: 1, of: 2 }, 'own|10': { won: 2, of: 2 }, 'own|20': { won: 0, of: 2 } },
+        block: { a: { from: 'all', to: 'own' }, b: { from: '10', to: '10' }, squares: 2, lead: 1.4 } },
     } };
   }
   if (body.step === 3) return { ...base, reading: {} };
@@ -158,6 +160,10 @@ function requirePlaywright() {
   const highTable = tables.find((t) => /all\t3\.00\t2\.00/.test(t) || /^all\s+3\.00\s+2\.00/m.test(t)) || null;
   expect(!!highTable, `the highest grid reads all: 3.00, 2.00 (the higher of the two copies)${highTable ? '' : `: ${JSON.stringify(tables)}`}`);
   expect(!!avgTable, `the average grid reads all: 2.00, 1.00 (the mean of the two copies)${avgTable ? '' : `: ${JSON.stringify(tables)}`}`);
+  // every square says how many copies it beats, and each block says what it is
+  // worth (3.56.0)
+  expect(/beats 2 of 2/.test(gridText) && /beats 0 of 2/.test(gridText), `every square carries its count of copies beaten: ${gridText.slice(0, 400)}`);
+  expect(/Recommended block: [^]*avg test 6\.00 over 200 settings/.test(gridText), `the outlined block says what it is worth: ${gridText.slice(gridText.indexOf('Recommended block'), gridText.indexOf('Recommended block') + 200)}`);
   // the three tables line up: same class, same column count, fixed layout (3.55.0)
   const gridTables = await page.locator('#view table.fgrid').count();
   expect(gridTables === 3, `the grid and its two checks are drawn as three lined-up tables: ${gridTables}`);
