@@ -536,6 +536,9 @@ const GUARDS = [
     'theProofComparesTheFigureTheBoardActuallyHolds',
     'the list of disagreements is unbounded again, and a set where everything differs sends every name to the screen'],
   // ---- THE OWNER'S FOUR FORMATTING ORDERS (3.59.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      ${fCutPickBox(d, st)}\n", "",
+    'theTitleAndTheTwoSelectorsAreAlwaysAtTheTop',
+    'the Stage 4 record set box leaves the title section, so on the walk there is no control on screen to reach a set already cut'],
   [path.join(ROOT, 'public', 'construct.js'), "    if (cs.value === F_NEW && fWalkWasAlreadyCut(d)) fFreshWalk(st);", "",
     'aNewRuleStartsAtStepOneWhenTheWalkHasAlreadyBeenCut',
     'new rule drops back into the finished walk at step 7 with its own rule still on it, which is the old rule wearing the words'],
