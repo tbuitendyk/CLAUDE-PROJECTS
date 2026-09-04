@@ -549,6 +549,10 @@ window.HELP = {
         what: 'The highest value of this dial to keep. Blank means no upper limit.',
         more: 'Together with the lowest value this becomes one clause of the rule, and you can come back and change it at any point.',
       },
+      fAlsoNone: {
+        what: 'Keeps the settings that have no value for this dial as well as the range. Without it a range drops them, because "none" is not a number.',
+        more: 'Shown only when the table above has a none row. In the rule it reads "or none", and the count beside the button follows it.',
+      },
       fAddRange: {
         what: 'Adds the range you have chosen for this dial to the rule.',
         more: 'The survivor count at the top updates straight away. Nothing is written to disk until the last step.',

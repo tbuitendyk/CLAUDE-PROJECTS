@@ -1802,7 +1802,7 @@ module.exports = {
   // never moved. Both read the table on screen, the same way.
   async theKeepsCountBesideTheTickBoxesFollowsTheTicks() {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    const wire = page.slice(page.indexOf("for (const id of ['fMin', 'fMax']) {"), page.indexOf('const readGrid = () => {'));
+    const wire = page.slice(page.indexOf('const countRange = () => {'), page.indexOf('const readGrid = () => {'));
     assert.ok(wire.includes("document.querySelectorAll('[data-fval]').forEach((box) => {") && wire.includes('box.onchange = () => {'),
       'the tick boxes have no change handler, so the count line beside keep these values never moves');
     assert.ok(wire.includes("for (const [val, n] of ((st.read || {}).groups || [])) { total += n; if (on.has(String(val))) kept += n; }"),
@@ -1849,6 +1849,37 @@ module.exports = {
     assert.ok(/--pickbg:#1c3a2a; --pickfg:#7ee0b0;/.test(css), 'the dark theme has no block colours of its own');
     const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
     assert.ok(/Changing a dial box reads the grid again by itself; a new thin below number needs this button/.test(help), 'the help for read the grid does not say what the button is for');
+  },
+
+  // A DIAL SOME SETTINGS HAVE NO VALUE FOR CAN BE KEPT WITH THEM (3.53.0,
+  // owner 2026-09-04: "with step 2 - the shape of a dial with dMult selected,
+  // how can the range 0.5-none be selected (i.e., everything except 0.25)?").
+  // The rule could always say "or none" (lib/funnelset.js inRange); the
+  // screen had no box for it, so a range on d silently dropped every market
+  // setting. RULE FIVE.
+  async aRangeCanKeepTheSettingsThatHaveNoValueForTheDial() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const step = page.slice(page.indexOf('function fStep2('), page.indexOf('\nfunction fStep3('));
+    assert.ok(step.includes("const hasNone = r.groups.some((g) => String(g.value) === 'none');"), 'step 2 does not notice a none row');
+    assert.ok(step.includes("const alsoNone = Array.isArray(have.also) && have.also.map(String).includes('none');"), 'the tick does not read what the rule already holds');
+    assert.ok(step.includes('${hasNone ? `<label class="c"><input type="checkbox" id="fAlsoNone" ${alsoNone ? \'checked\' : \'\'}> also keep none</label>` : \'\'}'),
+      'the also keep none tick is not drawn beside the range boxes when the table has a none row');
+    assert.ok(step.includes("if (!Number.isFinite(n)) return String(val) === 'none' && alsoNone;"), 'the count line does not count the none row when it is kept');
+    const wire = page.slice(page.indexOf("const ar = $('#fAddRange');"), page.indexOf('const readGrid = () => {'));
+    assert.ok(wire.includes("const alsoNone = !!($('#fAlsoNone') && $('#fAlsoNone').checked);"), 'pressing add this range does not read the tick');
+    assert.ok(wire.includes("...(alsoNone ? { also: ['none'] } : {}) };"), 'the tick is not written into the rule as "or none"');
+    assert.ok(wire.includes("chose: `${lo} to ${hi}${alsoNone ? ' or none' : ''}`"), 'the walk\'s note does not say none was kept');
+    assert.ok(wire.includes("if (Number.isFinite(v) ? ((lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;"),
+      'the live count does not follow the tick');
+    assert.ok(wire.includes("const an = $('#fAlsoNone');\n  if (an) an.onchange = countRange;"), 'ticking the box does not move the count');
+    // and the rule underneath really keeps them
+    const S4 = require('../lib/funnelset');
+    const rows = [{ dMult: 0.25, label: 'a' }, { dMult: 0.5, label: 'b' }, { dMult: 2, label: 'c' }, { dMult: null, label: 'd' }];
+    assert.deepStrictEqual(S4.applyRule(rows, { ranges: { dMult: { min: 0.5, max: null } }, allowed: {}, floors: {} }).map((r) => r.label), ['b', 'c'], 'a range alone drops the none row');
+    assert.deepStrictEqual(S4.applyRule(rows, { ranges: { dMult: { min: 0.5, max: null, also: ['none'] } }, allowed: {}, floors: {} }).map((r) => r.label), ['b', 'c', 'd'], 'or none keeps it');
+    assert.strictEqual(S4.ruleSentence({ ranges: { dMult: { min: 0.5, max: null, also: ['none'] } }, allowed: {}, floors: {} }), 'dMult 0.5 or more or none');
+    const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+    assert.ok(/fAlsoNone: \{/.test(help) && /Without it a range drops them, because "none" is not a number/.test(help), 'the tick has no help, or the help does not say why it exists');
   },
 
 };

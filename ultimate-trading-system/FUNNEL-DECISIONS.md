@@ -452,3 +452,15 @@ made while building it that the design did not already settle.
     that make a block of the owner's own. The boxes of that block are shaded
     green and the line saying which values it covers is bold in dark green,
     in both themes. Third digit: wording and colour.
+82. **A range can keep the settings that have no value for the dial**
+    (3.53.0, owner order 2026-09-04: "with step 2 - the shape of a dial with
+    dMult selected, how can the range 0.5-none be selected (i.e., everything
+    except 0.25)?"). It could not. The rule has held "or none" since the cut
+    was built (`also: ['none']` on a range, printed "or none" in the
+    sentence), and no control on step 2 set it, so a range on d silently
+    dropped every market setting, which carries no d. A RULE FIVE fault. Now
+    a tick, `also keep none`, sits beside `to` whenever the table has a none
+    row; it is written into the rule as "or none", the count beside the
+    button follows it, and the walk's note says it. Pressed in the browser
+    harness: the tick appears for d and not for t, the count moves, and the
+    rule the page sends carries it. Second digit: a new control.

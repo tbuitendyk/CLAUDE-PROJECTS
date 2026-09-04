@@ -4502,10 +4502,16 @@ function fStep2(r, st) {
   const rr = rec.recommend || {};
   const lo = have.min != null ? have.min : (rr.min != null ? rr.min : '');
   const hi = have.max != null ? have.max : (rr.max != null ? rr.max : '');
+  // A DIAL SOME SETTINGS HAVE NO VALUE FOR (3.53.0, owner order 2026-09-04:
+  // "how can the range 0.5-none be selected"): a market entry carries no d,
+  // and "none" is not a number, so a range alone drops every such setting.
+  // The rule has always been able to say "or none"; now the screen can.
+  const hasNone = r.groups.some((g) => String(g.value) === 'none');
+  const alsoNone = Array.isArray(have.also) && have.also.map(String).includes('none');
   const total = r.groups.reduce((a, g) => a + g.n, 0);
   const inRange = (val) => {
     const n = Number(val);
-    if (!Number.isFinite(n)) return false;
+    if (!Number.isFinite(n)) return String(val) === 'none' && alsoNone;
     return (lo === '' || n >= Number(lo)) && (hi === '' || n <= Number(hi));
   };
   const keptByRange = rec.ordered === false ? null : r.groups.filter((g) => inRange(g.value)).reduce((a, g) => a + g.n, 0);
@@ -4532,6 +4538,7 @@ function fStep2(r, st) {
     : `<div class="row" style="align-items:flex-end;margin-top:.5rem">
         <label class="f">keep from<input id="fMin" style="width:7rem" value="${esc(String(lo))}"></label>
         <label class="f">to<input id="fMax" style="width:7rem" value="${esc(String(hi))}"></label>
+        ${hasNone ? `<label class="c"><input type="checkbox" id="fAlsoNone" ${alsoNone ? 'checked' : ''}> also keep none</label>` : ''}
         <button id="fAddRange" class="pri">add this range to the rule</button>
         <span class="note" id="fKeepCount">keeps ${Number(keptByRange).toLocaleString()} of ${Number(total).toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}</span>
         <span class="note">a RANGE, never a value - picking the peak is the shopping this walk exists to avoid</span></div>`}`;
@@ -4817,27 +4824,33 @@ function fWire(st) {
     if (!st.dial) return;
     const lo = $('#fMin').value;
     const hi = $('#fMax').value;
+    const alsoNone = !!($('#fAlsoNone') && $('#fAlsoNone').checked);
     if (lo === '' && hi === '') delete st.rule.ranges[st.dial];
-    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi) };
+    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi), ...(alsoNone ? { also: ['none'] } : {}) };
     markStep(2);
-    st.steps.push({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}` });
+    st.steps.push({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}${alsoNone ? ' or none' : ''}` });
     fSave(); drawFunnel();
   };
-  // the count line follows the boxes as they are edited, from the table on screen
+  // the count line follows the boxes as they are edited, from the table on
+  // screen -- the range boxes and the also keep none tick alike
+  const countRange = () => {
+    const lo = $('#fMin').value; const hi = $('#fMax').value;
+    const none = !!($('#fAlsoNone') && $('#fAlsoNone').checked);
+    let kept = 0; let total = 0;
+    for (const [val, n] of ((st.read || {}).groups || [])) {
+      const v = Number(val);
+      total += n;
+      if (Number.isFinite(v) ? ((lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) : (String(val) === 'none' && none)) kept += n;
+    }
+    const kc = $('#fKeepCount');
+    if (kc) kc.textContent = `keeps ${kept.toLocaleString()} of ${total.toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}`;
+  };
   for (const id of ['fMin', 'fMax']) {
     const el = $(`#${id}`);
-    if (el) el.oninput = () => {
-      const lo = $('#fMin').value; const hi = $('#fMax').value;
-      let kept = 0; let total = 0;
-      for (const [val, n] of ((st.read || {}).groups || [])) {
-        const v = Number(val);
-        total += n;
-        if (Number.isFinite(v) && (lo === '' || v >= Number(lo)) && (hi === '' || v <= Number(hi))) kept += n;
-      }
-      const kc = $('#fKeepCount');
-      if (kc) kc.textContent = `keeps ${kept.toLocaleString()} of ${total.toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}`;
-    };
+    if (el) el.oninput = countRange;
   }
+  const an = $('#fAlsoNone');
+  if (an) an.onchange = countRange;
   // AND THE TICK BOXES (owner, 2026-09-04: "why when i uncheck the 'true'
   // checkbox on the weekdaysOnly dial does the record count not change?").
   // The count line beside keep these values follows the ticks the same way

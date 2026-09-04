@@ -520,6 +520,11 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), ' <b class="fpick">Your block: ', ' <b>Your block: ',
     'theThirdStepSaysHowToWalkItAndShowsTheOwnersBlockInGreen',
     'the line that says which values the owner\'s block covers is drawn like any other note'],
+  // ---- A RANGE CAN KEEP THE SETTINGS WITH NO VALUE FOR THE DIAL (3.53.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi), ...(alsoNone ? { also: ['none'] } : {}) };",
+    "    else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi) };",
+    'aRangeCanKeepTheSettingsThatHaveNoValueForTheDial',
+    'the tick is drawn and counted and never written into the rule, so the cut drops every market setting anyway'],
   // ---- THE TICK BOXES MOVE THE COUNT (3.52.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "      for (const [val, n] of ((st.read || {}).groups || [])) { total += n; if (on.has(String(val))) kept += n; }", "      for (const [val, n] of ((st.read || {}).groups || [])) { total += n; kept += n; }",
     'theKeepsCountBesideTheTickBoxesFollowsTheTicks',

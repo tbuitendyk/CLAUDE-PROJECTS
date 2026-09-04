@@ -34,6 +34,13 @@ function reply(body) {
     if (dial === 'gate') return { ...base, reading: { groups: [{ value: 'active', n: 100 }, { value: 'directional', n: 175 }], shape: 'flat', splitHalf: { a: 'flat', b: 'flat', agrees: true },
       rec: { dial: 'gate', kind: 'scrambles', ordered: false, values: [{ value: 'active', counts: false, check: [1, 2], beaten: 0 }, { value: 'directional', counts: true, check: [1, 2], beaten: 2 }], recommend: { values: ['directional'] } } } };
     if (dial === 'tHours') return { ...REAL_THOURS, set: { ...REAL_THOURS.set, id: SET, name: 'S3 #ui' } };
+    // d: a dial some settings have no value for (market entries), so step 2
+    // offers the also keep none tick (3.53.0)
+    if (dial === 'dMult') {
+      const groups = [{ value: '0.25', n: 40, mean: -1 }, { value: '0.5', n: 40, mean: 2 }, { value: '1', n: 40, mean: 3 }, { value: '2', n: 40, mean: 2.5 }, { value: 'none', n: 15, mean: 1 }];
+      return { ...base, reading: { groups, shape: 'hill', splitHalf: { a: 'hill', b: 'hill', agrees: true },
+        rec: { dial: 'dMult', kind: 'scrambles', ordered: true, values: groups.map((g) => ({ value: g.value, counts: g.value !== '0.25', check: [0, 1], beaten: g.value !== '0.25' ? 2 : 0, lead: 1 })), recommend: { min: 0.5, max: 2, n: 120 } } } };
+    }
     return { ...base, reading: { why: 'pick a dial' } };
   }
   // step 3 before the grid is read: the two dial boxes and the read button
@@ -54,9 +61,10 @@ function requirePlaywright() {
   const errors = [];
   page.on('pageerror', (e) => errors.push(`page error: ${e.message}`));
   page.on('dialog', async (d) => { errors.push(`dialog: ${d.message()}`); await d.dismiss(); });
+  const posted = [];                       // every read the page asked for, so what it wrote into the rule can be checked
   await page.route('**/api/funnel/**', async (route) => {
     const req = route.request();
-    if (req.url().endsWith('/read')) return route.fulfill({ contentType: 'application/json', body: JSON.stringify(reply(JSON.parse(req.postData() || '{}'))) });
+    if (req.url().endsWith('/read')) { const body = JSON.parse(req.postData() || '{}'); posted.push(body); return route.fulfill({ contentType: 'application/json', body: JSON.stringify(reply(body)) }); }
     return route.fulfill({ contentType: 'application/json', body: '{}' });
   });
   await page.addInitScript(({ set }) => { localStorage.setItem('cx-tab', 'funnel'); localStorage.setItem('cx-boards-view', JSON.stringify({ s3: set })); }, { set: SET });
@@ -90,6 +98,26 @@ function requirePlaywright() {
   await page.waitForSelector('#fAddRange', { timeout: 15000 }).catch(() => {});
   expect(/Step 2/.test(await heading()) && await page.locator('#fAddRange').count() === 1, "narrow this one on t opens step 2 with the box's own answer, range boxes and all");
   expect(/gate is directional/.test(await page.locator('#view').innerText()), 'the rule sentence reads gate once, not "gate (gate)"');
+  expect(await page.locator('#fAlsoNone').count() === 0, 't has no none row, so no also keep none tick');
+  // d has a none row: the tick is there, the count follows it, and pressing
+  // add this range writes "or none" into the rule (3.53.0)
+  await page.locator('[data-fstep="1"]').click();
+  await page.waitForSelector('[data-fnarrow="dMult"]', { timeout: 15000 });
+  await page.locator('[data-fnarrow="dMult"]').click();
+  await page.waitForSelector('#fAlsoNone', { timeout: 15000 }).catch(() => {});
+  expect(await page.locator('#fAlsoNone').count() === 1, 'd has a none row, so step 2 offers also keep none');
+  const keepsD = async () => (await page.locator('#fKeepCount').innerText()).trim();
+  expect(/^keeps 120 of 175/.test(await keepsD()), `the recommended range 0.5 to 2 keeps 120: ${await keepsD()}`);
+  await page.locator('#fAlsoNone').check();
+  expect(/^keeps 135 of 175/.test(await keepsD()), `ticking also keep none adds the 15 with no d: ${await keepsD()}`);
+  await page.locator('#fMax').fill('');
+  await page.locator('#fMax').dispatchEvent('input');
+  expect(/^keeps 135 of 175/.test(await keepsD()), `0.5 or more, or none, keeps everything but 0.25: ${await keepsD()}`);
+  const before = posted.length;
+  await page.locator('#fAddRange').click();
+  await page.waitForTimeout(800);
+  const wrote = posted.slice(before).map((b) => ((b.rule || {}).ranges || {}).dMult).filter(Boolean).pop();
+  expect(JSON.stringify(wrote) === JSON.stringify({ min: 0.5, max: null, also: ['none'] }), `the rule carries 0.5 or more, or none: ${JSON.stringify(wrote)}`);
   await page.locator('[data-fstep="3"]').click().catch(() => {});
   await page.waitForSelector('#fA', { timeout: 15000 }).catch(() => {});
   const aWords = await page.locator('#fA option').allTextContents().catch(() => []);
