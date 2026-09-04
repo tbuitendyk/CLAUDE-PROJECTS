@@ -631,3 +631,41 @@ carried out 2026-08-28 under its own GO — decision 50.
     bounds itself -- S1 #1, written before the bounds existed -- cannot fill
     its child, and the set says so by name: re-running that chain is the
     owner's call. Second digit: a record field and a fill.
+66. **A unit holds only the settings that place different orders on it, and
+    24/5 is ghosted when no unit being priced has a weekday version** (3.52.0,
+    owner order 2026-09-04: "OBVIOUSLY the system should not permute 24/5 on
+    any weekly shape. Ever. ... two changes are NECESSARY: ghost 24/5 and its
+    permute when no daily shape is being priced, the way arm is ghosted under
+    static; AND fold duplicates per unit"). The fold was across every unit: a
+    setting was dropped only if it priced the same trade on ALL of them, so
+    XRPUSDT weekly-8d held both values of 24/5 as two records of one trade
+    -- 275,520 settings where 137,760 differ -- and the Funnel read the
+    doubles as evidence. Now the fold is per unit: a unit keeps the first of
+    each set of settings that place the same orders ON IT (the same resolved
+    geometry, the same effective 24/5 -- a shape with no weekday version
+    reads both values alike -- and the same everything else), units hold
+    different counts, the plan says what each holds (`unitSettings`,
+    `pricings`), the parts, the kept-scramble fill, the missing-settings
+    pricing, the drop and the audit all read that, and the cost line and the
+    disk gate read the sum of what the units hold rather than settings ×
+    units. A set on disk priced before this is folded per unit in the tally
+    slot the first time it is read (RULE NINE: beside, verified, swapped,
+    tables re-totalled); one whose block cannot be rebuilt today is stamped
+    with what its records hold and says the fold did not run. On Sweep, 24/5
+    and its permute are ghosted, never hidden, when the count says no unit
+    being priced has a weekday version. And the count line beside keep these
+    values on the Funnel follows the ticks as they change (owner, same day:
+    "why when i uncheck the 'true' checkbox on the weekdaysOnly dial does
+    the record count not change?"). Second digit: a record field, a
+    migration and a control's behaviour.
+    Places are matched by NAME between a set and the block rebuilt today,
+    because a set that had settings filled in holds the block's names with
+    the new ones at the end; and neither a drop nor an append stamps a set
+    the fold has not reached, or the stamp would stop the fold from running.
+    Two limits, stated rather than hidden: a blended row on Boards averages
+    the units that hold the setting, so a 24/5 row rests on the daily units
+    alone while its 24/7 twin rests on all of them (the coins column says how
+    many); and dropping a setting that a unit kept in place of its folded
+    twin leaves that twin unpriced on that unit -- the check on Boards says
+    so ("every unit holds exactly the settings that place different orders
+    on it"), and the fix is the missing-settings fill, not a silent repair.

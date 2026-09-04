@@ -1083,12 +1083,15 @@ app.post('/api/stage3-count', (req, res) => {
     // launch will enforce — so the cost line and the refusal can never be
     // two different numbers
     const d = stages.stage3Declared(b);
-    const out = { settings: d.settings };
+    // what the units hold between them (3.52.0): a unit prices only the
+    // settings that place different orders on it, so the disk gate and the
+    // cost line read the sum of what each holds, never settings × units
+    const out = { settings: d.settings, declared: d.declared, folded: d.folded, pricings: d.pricings, unitSettings: d.unitSettings, weekdaysApply: d.weekdaysApply };
     const units = d.units ?? Math.max(0, Math.floor(Number(b.units) || 0));
     const coins = d.coins ?? Math.max(1, Math.floor(Number(b.coins) || 1));
     if (units > 0) {
       out.heap = stages.tallyBudgetFor({ settings: d.settings, coins });
-      out.disk = stages.storeBudgetFor({ rows: d.settings * units });
+      out.disk = stages.storeBudgetFor({ rows: d.units != null ? d.pricings : d.settings * units });
     }
     return res.json(out);
   } catch (err) { return res.status(400).json({ error: err.message }); }

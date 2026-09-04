@@ -421,3 +421,18 @@ made while building it that the design did not already settle.
     drives the Funnel in a browser with the box's own answer for t (kept as
     a fixture) and presses the buttons the owner pressed; it is run by hand
     (`npm run test:ui:funnel`) because it needs a browser. Third digit.
+
+80. **A dial carries its Sweep name everywhere the Funnel shows it** (3.52.0,
+    owner order 2026-09-04: "you must give me the actual FULL NAMES OF THESE
+    DIALS IN ALL OF THE CONTROLS ... you've neglected to add to ALL OF THE
+    DROP DOWNS AND INTERFACES IN THE FUNNEL"). The step 1 table named a dial
+    with its Sweep label in brackets (#71) and nothing else did: the `dial`
+    box on step 2, `first dial` and `second dial` on step 3, the rule
+    sentence at the top and the notes the walk keeps all printed the bare
+    key, so the owner read `dMult` in one place and `dMult (d)` in another
+    and had to guess they were one thing. Now one helper names a dial, the
+    dial boxes draw the engine's list through it (RULE FIVE: the list is
+    still the engine's), the rule sentence is read through it before it is
+    shown, and every note and mark uses it. A key that is its own Sweep
+    label (gate, entry, decision) is written once, never "gate (gate)".
+    Pressed in the browser harness. Ships inside 3.52.0.

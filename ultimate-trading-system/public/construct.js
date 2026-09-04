@@ -133,7 +133,24 @@ const DIAL_ON_SWEEP = {
   agreeBar: 'quorum bar',
   agreeBoth: 'both kinds',
 };
-const fDialLabel = (d) => (DIAL_ON_SWEEP[d] ? `${d} (${DIAL_ON_SWEEP[d]})` : String(d));
+// A DIAL IS NAMED WITH ITS SWEEP LABEL EVERYWHERE THE FUNNEL SHOWS IT (owner
+// order, 2026-09-04: "give me the actual FULL NAMES OF THESE DIALS IN ALL OF
+// THE CONTROLS"): the step 1 table, the dial boxes on steps 2 and 3, the
+// rule sentence, the step notes and the marks. A key that IS its Sweep label
+// (gate, entry, decision) is written once, not "gate (gate)".
+const fDialLabel = (d) => (DIAL_ON_SWEEP[d] && DIAL_ON_SWEEP[d] !== d ? `${d} (${DIAL_ON_SWEEP[d]})` : String(d));
+// the dial boxes: the engine's list of dials (RULE FIVE), each named as above
+function fDialOptions(selected) {
+  const list = VOCAB && VOCAB.funnelDial;
+  if (!list) return '<option value="">(choices unavailable)</option>';
+  return list.map((o) => `<option value="${esc(o.value)}"${String(o.value) === String(selected) ? ' selected' : ''}>${esc(fDialLabel(o.value))}</option>`).join('');
+}
+// the rule sentence comes from the service with the dials' keys ("tHours 65
+// to 137; gate is directional"); each part opens with its dial, so the key at
+// the front of each part is named the same way before it is shown
+function fRuleWords(sentence) {
+  return String(sentence || '').split('; ').map((part) => part.replace(/^([A-Za-z]+)(?= )/, (k) => (DIAL_ON_SWEEP[k] ? fDialLabel(k) : k))).join('; ');
+}
 
 const COL = {
   // Funnel
@@ -922,7 +939,12 @@ async function swCounts() {
     let html = null;
     if (r.ok) {
       const got = r.data;
-      const sims = units ? got.settings * units * per3() : null;
+      // 24/5 IS GHOSTED WHEN NO UNIT BEING PRICED HAS A WEEKDAY VERSION (owner
+      // order, 2026-09-04: "the system should not permute 24/5 on any weekly
+      // shape. Ever."). Weekly shapes span weekends whichever way the box is
+      // set, so with only those units the box and its tick would change
+      // nothing -- ghosted the way arm is under a static stop, never hidden.
+      swGhostGroup('#swGrpWk', got.weekdaysApply === false);
       // the budget verdict comes from the SAME arithmetic the launch enforces:
       // a refusal is said here, before the button is pressed
       const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
@@ -932,7 +954,15 @@ async function swCounts() {
       // quietly shrank would be as much of a surprise as one that grew.
       const fold = got.declared && got.folded ? ` <span class="muted">(${got.declared.toLocaleString()} declared, `
         + `${got.folded.toLocaleString()} priced the same trade and were folded into one)</span>` : '';
-      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${units ? ` × ${units.toLocaleString()} units × ${per3().toLocaleString()} readings ≈ ${sims.toLocaleString()} pricings — no trainings` : ''}`
+      // WHAT THE UNITS HOLD (3.52.0): a unit prices only the settings that
+      // place different orders on it, so the pricings are the sum of what each
+      // unit holds, never settings × units, and a unit holding fewer is said
+      const perUnit = Array.isArray(got.unitSettings) ? got.unitSettings.map((x) => Number(x.held) || 0) : [];
+      const fewer = perUnit.filter((n) => n < got.settings).length;
+      const pricings = Number(got.pricings) || 0;
+      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${units && perUnit.length ? ` — ${perUnit.length.toLocaleString()} units hold ${pricings.toLocaleString()} between them`
+        + (fewer ? ` <span class="muted">(${fewer.toLocaleString()} of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)</span>` : '')
+        + ` × ${per3().toLocaleString()} readings ≈ ${(pricings * per3()).toLocaleString()} pricings — no trainings` : ''}`
         + (refuse ? `<br><b class="neg">start stage 3 will refuse: ${esc(refuse.message)}</b>`
           : tight ? `<br><span class="warn">${esc(tight.message)}</span>` : '');
     }
@@ -2535,7 +2565,7 @@ async function drawSweep() {
         <label class="f">band % (or auto)<input id="swBand" value="auto" style="width:5rem"></label>
         <label class="c"><input type="checkbox" id="swPermBand"> permute</label>
       </div>
-      <div style="display:flex;align-items:flex-end;gap:.45rem">
+      <div id="swGrpWk" style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="c"><input type="checkbox" id="swWk"> 24/5</label>
         <label class="c"><input type="checkbox" id="swPermWk"> permute</label>
       </div>
@@ -2893,7 +2923,7 @@ async function drawBoards() {
     ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
       ${stage === 1 ? namePanel1(doc) : stage === 2 ? namePanel2(doc) : namePanel3(doc)}${stage === 1 ? notesPanel1(doc) : stage === 2 ? notesPanel2(doc) : notesPanel3(doc)}${bKeptFillPanel(doc)}
-      ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}
+      ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${doc.plan.pricings ? ` · ${Number(doc.plan.pricings).toLocaleString()} records, each unit holding only the settings that place different orders on it` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}
       <div id="bT${stage}"></div>`;
     wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null, String(stage));
     wireRename(`api/stageset/${encodeURIComponent(doc.id)}/name`, String(stage));
@@ -3908,7 +3938,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="average held-back entries per record.">avg trades${bCoinSortBtn(view, 'trades', '↓')}</th>
         <th ${bth} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${bCoinSortBtn(view, 'vslong', '↓')}</th>
         <th ${bth} title="what ACTUALLY agreed at the moments this coin's records spoke, averaged over the records underneath. Every rule fires at or above its bar, so this sits at the share or above it. Measured on the test window.">share that agreed${bCoinSortBtn(view, 'agreed', '↓')}</th>
-        <th ${bth} title="how many records this row averages — one per decision, band and 24/5 variant of the setting.">rows${bCoinSortBtn(view, 'rows', '↓')}</th>
+        <th ${bth} title="how many records this row averages — one per decision, band and 24/5 variant of the setting that this coin's units hold; a unit holds only the variants that place different orders on it.">rows${bCoinSortBtn(view, 'rows', '↓')}</th>
         <th ${bth} title="opens the records themselves below the row.">records</th></tr></thead>
       <tbody id="bCoinBody">${cr.map((r) => {
     const k = keyOf(r);
@@ -4449,7 +4479,7 @@ function fStep1(r) {
 }
 
 function fStep2(r, st) {
-  const pick = `<label class="f">dial<select id="fDial">${vocabOptions('funnelDial', st.dial || '')}</select></label>`;
+  const pick = `<label class="f">dial<select id="fDial">${fDialOptions(st.dial || '')}</select></label>`;
   if (!r.groups || !r.groups.length) {
     // THE DIAL BOX STAYS whatever the reason: a dial the rule has already fixed
     // has no shape to read, and the box is how the next one is picked (owner,
@@ -4511,8 +4541,8 @@ function fStep3(r, st) {
   const a0 = st.dialA || (st.leaders || [])[0] || '';
   const b0 = st.dialB || (st.leaders || [])[1] || '';
   const pickers = `<div class="row" style="align-items:flex-end">
-      <label class="f">first dial<select id="fA">${vocabOptions('funnelDial', a0)}</select></label>
-      <label class="f">second dial<select id="fB">${vocabOptions('funnelDial', b0)}</select></label>
+      <label class="f">first dial<select id="fA">${fDialOptions(a0)}</select></label>
+      <label class="f">second dial<select id="fB">${fDialOptions(b0)}</select></label>
       <label class="f">thin below<input id="fFloor" type="number" min="0" style="width:6rem" value="${st.floor || 0}"></label>
       <button id="fGrid" class="pri">read the grid</button></div>`;
   if (!r.grid) return `${pickers}<p class="note">name two dials and read the grid</p>`;
@@ -4662,7 +4692,7 @@ function fStep7(d, st) {
         value="${esc(String(cl.n == null ? '' : cl.n))}"></label>`;
   return `<p class="note">The choices you made ARE the rule. This is what gets written - not the rows it happens to
       pick today - because a rule can be checked against scrambled data and a single row cannot.</p>
-    <p class="note"><b>${esc(d.ruleSentence)}</b></p>
+    <p class="note"><b>${esc(fRuleWords(d.ruleSentence))}</b></p>
     <p class="note">${Number(d.survivors).toLocaleString()} settings survive${d.target
     ? ` against a target of ${Number(d.target).toLocaleString()}` : ''}.</p>
     ${detail ? `<p class="note">${esc(detail)}</p>` : ''}
@@ -4679,7 +4709,7 @@ function fStep7(d, st) {
 }
 
 function fRuleBox(d) {
-  return `<h3 style="margin-top:0">The rule so far</h3><p class="note">${esc(d.ruleSentence)}</p>
+  return `<h3 style="margin-top:0">The rule so far</h3><p class="note">${esc(fRuleWords(d.ruleSentence))}</p>
     <div class="row"><button id="fClear">start the rule again</button>
       <span class="note">keeps the set open and clears every choice - recorded as going back</span></div>`;
 }
@@ -4751,13 +4781,13 @@ function fWire(st) {
     const c = st.conditions || {};
     if (step === 1) { if (c.halvesDisagree) mark('halvesDisagree', 1); if (c.leadNotEven) mark('leadNotEven', 1); }
     if (step === 2 && c.spike) mark('spike', 2, st.dial || null);
-    if (step === 3 && c.interact) mark('interact', 3, `${st.dialA || ''} x ${st.dialB || ''}`);
+    if (step === 3 && c.interact) mark('interact', 3, `${fDialLabel(st.dialA || '')} x ${fDialLabel(st.dialB || '')}`);
     if (step === 5 && c.regionNotWider) mark('regionNotWider', 5);
     if (c.checkIsHalves) mark('checkIsHalves', step);
   };
   // a row on step 1 opens step 2 with that dial chosen
   document.querySelectorAll('[data-fnarrow]').forEach((b) => {
-    b.onclick = () => { markStep(1); st.dial = b.dataset.fnarrow; st.step = 2; st.steps.push({ n: 1, what: 'which dial to narrow next', chose: st.dial }); fSave(); drawFunnel(); };
+    b.onclick = () => { markStep(1); st.dial = b.dataset.fnarrow; st.step = 2; st.steps.push({ n: 1, what: 'which dial to narrow next', chose: fDialLabel(st.dial) }); fSave(); drawFunnel(); };
   });
   // a word-valued dial keeps a list of values, not a range
   const kv = $('#fKeepValues');
@@ -4767,7 +4797,7 @@ function fWire(st) {
     if (!st.rule.allowed) st.rule.allowed = {};
     if (!vals.length) delete st.rule.allowed[st.dial]; else st.rule.allowed[st.dial] = vals;
     markStep(2);
-    st.steps.push({ n: 2, what: `the values of ${st.dial}`, chose: vals.join(', ') || 'none' });
+    st.steps.push({ n: 2, what: `the values of ${fDialLabel(st.dial)}`, chose: vals.join(', ') || 'none' });
     fSave(); drawFunnel();
   };
   const ar = $('#fAddRange');
@@ -4778,7 +4808,7 @@ function fWire(st) {
     if (lo === '' && hi === '') delete st.rule.ranges[st.dial];
     else st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi) };
     markStep(2);
-    st.steps.push({ n: 2, what: `the shape of ${st.dial}`, chose: `${lo} to ${hi}` });
+    st.steps.push({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}` });
     fSave(); drawFunnel();
   };
   // the count line follows the boxes as they are edited, from the table on screen
@@ -4796,6 +4826,19 @@ function fWire(st) {
       if (kc) kc.textContent = `keeps ${kept.toLocaleString()} of ${total.toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}`;
     };
   }
+  // AND THE TICK BOXES (owner, 2026-09-04: "why when i uncheck the 'true'
+  // checkbox on the weekdaysOnly dial does the record count not change?").
+  // The count line beside keep these values follows the ticks the same way
+  // the range boxes' line follows their edits, from the table on screen.
+  document.querySelectorAll('[data-fval]').forEach((box) => {
+    box.onchange = () => {
+      const on = new Set([...document.querySelectorAll('[data-fval]')].filter((x) => x.checked).map((x) => String(x.dataset.fval)));
+      let kept = 0; let total = 0;
+      for (const [val, n] of ((st.read || {}).groups || [])) { total += n; if (on.has(String(val))) kept += n; }
+      const kc = $('#fKeepCount');
+      if (kc) kc.textContent = `keeps ${kept.toLocaleString()} of ${total.toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}`;
+    };
+  });
   const readGrid = () => {
     st.dialA = $('#fA').value || null; st.dialB = $('#fB').value || null;
     st.floor = Math.max(0, Math.floor(Number($('#fFloor').value) || 0));
@@ -4837,7 +4880,7 @@ function fWire(st) {
     const va = put(st.dialA, aVals, span.a[0], span.a[1]);
     const vb = put(st.dialB, bVals, span.b[0], span.b[1]);
     markStep(3);
-    st.steps.push({ n: 3, what: `a block on ${st.dialA} x ${st.dialB}`, chose: `${va[0]}..${va[va.length - 1]} x ${vb[0]}..${vb[vb.length - 1]}${pk ? '' : ' (recommended)'}` });
+    st.steps.push({ n: 3, what: `a block on ${fDialLabel(st.dialA)} x ${fDialLabel(st.dialB)}`, chose: `${va[0]}..${va[va.length - 1]} x ${vb[0]}..${vb[vb.length - 1]}${pk ? '' : ' (recommended)'}` });
     fSave(); drawFunnel();
   };
   const ax = $('#fAcross');

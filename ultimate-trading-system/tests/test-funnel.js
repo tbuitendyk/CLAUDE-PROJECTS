@@ -781,6 +781,31 @@ module.exports = {
     // measured must not be bracketed too -- two pairs in a row reads as one
     assert.ok(/\$\{esc\(fDialLabel\(x\.dial\)\)\} - \$\{esc\(x\.why\)\}/.test(f1),
       'the not-measurable reason must follow a dash, not a second pair of brackets');
+
+    // ---- AND EVERY OTHER PLACE THE FUNNEL SHOWS A DIAL (3.52.0, owner order:
+    // "ALL OF THE DROP DOWNS AND INTERFACES IN THE FUNNEL") ----------------
+    // the dial boxes on steps 2 and 3 draw the engine's list, each named
+    assert.ok(s.includes("<select id=\"fDial\">${fDialOptions(st.dial || '')}</select>"), 'the step 2 dial box names its dials bare');
+    assert.ok(s.includes("<select id=\"fA\">${fDialOptions(a0)}</select>") && s.includes("<select id=\"fB\">${fDialOptions(b0)}</select>"),
+      'the step 3 dial boxes name their dials bare');
+    const funnel = s.slice(s.indexOf('function fStep1('), s.indexOf('function drawFunnel('));
+    assert.ok(!/vocabOptions\('funnelDial'/.test(funnel), 'a dial box still draws the bare keys');
+    const opts = s.slice(s.indexOf('function fDialOptions('), s.indexOf('function fRuleWords('));
+    assert.ok(opts.includes('VOCAB.funnelDial') && opts.includes('esc(fDialLabel(o.value))'), 'the dial boxes must read the engine\'s list and name each entry');
+    // the rule sentence names its dials before it is shown, both places
+    assert.strictEqual(s.split('esc(fRuleWords(d.ruleSentence))').length - 1, 2, 'the rule sentence is shown with bare keys somewhere');
+    assert.ok(!/esc\(d\.ruleSentence\)/.test(s), 'the rule sentence is still shown bare somewhere');
+    // and the notes the walk keeps
+    for (const place of ["chose: fDialLabel(st.dial) }", 'what: `the values of ${fDialLabel(st.dial)}`', 'what: `the shape of ${fDialLabel(st.dial)}`',
+      'what: `a block on ${fDialLabel(st.dialA)} x ${fDialLabel(st.dialB)}`', "mark('interact', 3, `${fDialLabel(st.dialA || '')} x ${fDialLabel(st.dialB || '')}`)"]) {
+      assert.ok(s.includes(place), `a dial name in the walk's notes is still bare: ${place}`);
+    }
+    // a key that IS its Sweep label is written once
+    assert.ok(s.includes("const fDialLabel = (d) => (DIAL_ON_SWEEP[d] && DIAL_ON_SWEEP[d] !== d ? `${d} (${DIAL_ON_SWEEP[d]})` : String(d));"),
+      'gate would be written "gate (gate)"');
+    // and the sentence reader names the dial at the front of each part only
+    const words = s.slice(s.indexOf('function fRuleWords('), s.indexOf('function fRuleWords(') + 400);
+    assert.ok(words.includes("split('; ')") && words.includes('/^([A-Za-z]+)(?= )/'), 'the sentence reader must name the dial that opens each part, and nothing else in it');
   },
 
   // ---- §16: the check and what it recommends --------------------------------
@@ -1770,4 +1795,22 @@ module.exports = {
     assert.ok(s2.includes('- lead ${Number(v.lead).toFixed(1)}'), 'and how far ahead');
     assert.ok(!/beatsAll|beat every copy/.test(src), 'nothing on the page still asks for every copy');
   },
+  // THE COUNT FOLLOWS THE TICKS (3.52.0, owner 2026-09-04: "why when i
+  // uncheck the 'true' checkbox on the weekdaysOnly dial does the record
+  // count not change?"). The range boxes' count line has followed their
+  // edits since the walk was built; the tick boxes' line was drawn once and
+  // never moved. Both read the table on screen, the same way.
+  async theKeepsCountBesideTheTickBoxesFollowsTheTicks() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const wire = page.slice(page.indexOf("for (const id of ['fMin', 'fMax']) {"), page.indexOf('const readGrid = () => {'));
+    assert.ok(wire.includes("document.querySelectorAll('[data-fval]').forEach((box) => {") && wire.includes('box.onchange = () => {'),
+      'the tick boxes have no change handler, so the count line beside keep these values never moves');
+    assert.ok(wire.includes("for (const [val, n] of ((st.read || {}).groups || [])) { total += n; if (on.has(String(val))) kept += n; }"),
+      'the tick count does not read the table on screen the way the range count does');
+    assert.strictEqual(wire.split("if (kc) kc.textContent = `keeps ${kept.toLocaleString()} of ${total.toLocaleString()}").length - 1, 2,
+      'the two count lines are not written the same way');
+    const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+    assert.ok(/The count beside it follows the ticks as you change them/.test(help), 'the help for keep these values does not say the count follows the ticks');
+  },
+
 };

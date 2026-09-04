@@ -48,6 +48,9 @@ const GEOMETRIES = {
 //   4d: Mon only       -> features Mon-Thu, enter Fri 01:00 —
 //       the exit lands Saturday 18:00, accepted by design        (1 per week)
 // weekly-8d has no entry: 8 straight days always span a weekend.
+// A SHAPE WITH NO ENTRY HERE HAS NO WEEKDAY VERSION: 24/5 changes nothing on it,
+// and a setting is folded accordingly (3.52.0).
+function weekdaysApply(geometry) { return !!WEEKDAY_STARTS[geometry]; }
 const WEEKDAY_STARTS = {
   'daily-1d': [1, 2, 3, 4],
   'daily-2d': [1, 2, 3],
@@ -252,6 +255,7 @@ function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed'
 }
 
 module.exports = {
+  weekdaysApply, WEEKDAY_STARTS,
   toHourlyMap,
   forwardFill,
   mondayStarts,

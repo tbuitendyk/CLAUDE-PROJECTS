@@ -207,12 +207,14 @@ module.exports = {
     assert.ok(before.includes('const counted = countDeclared(params, sizes, parentRecords);'), 'the gates read the count, not the built block');
     assert.ok(!before.includes('settingsFor(params, sizes)') && !before.includes('foldSameTradeSettings('), 'nothing before the answer builds or folds the settings');
     assert.ok(before.includes("if (!counted.kept) throw new Error('the block declared no settings');"), 'an empty block still refuses at the press');
-    assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, coins: coinsN })') && before.includes('storeBudgetFor({ rows: counted.kept * parentRecords.length })'),
-      'both budget gates are the count\'s arithmetic');
+    assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, coins: coinsN })') && before.includes('storeBudgetFor({ rows: counted.pricings })'),
+      'both budget gates are the count\'s arithmetic — and the disk gate reads what the units hold between them, never settings × units');
     assert.ok(after.includes('const declaredSettings = settingsFor(params, sizes);') && after.includes('foldSameTradeSettings(declaredSettings, parentRecords)'),
       'the block is built and folded behind the answer');
-    assert.ok(after.indexOf('settings.length !== counted.kept || declaredSettings.length !== counted.declared') < after.indexOf('s3Payload({ doc, parent, rec, settings, fee, nullN })'),
+    assert.ok(after.indexOf('settings.length !== counted.kept || declaredSettings.length !== counted.declared') < after.indexOf('s3Payload({ doc, parent, rec, settings: mine, fee, nullN })'),
       'the built block is held against the count before any unit is handed out');
+    assert.ok(after.indexOf('if (heldOn[u].length !== counted.perUnit[u]) {') < after.indexOf('s3Payload({ doc, parent, rec, settings: mine, fee, nullN })'),
+      'and what each unit holds is held against the count too, unit by unit');
     assert.ok(after.includes('the cost line and the launch disagree, so nothing was priced'), 'and a disagreement says so and stops');
     assert.ok(after.includes('settingLabels: settings.map((s) => s.label),'), 'the names are written onto the plan once the block exists');
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
@@ -381,18 +383,25 @@ module.exports = {
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     const start = src.indexOf('function startStage3(params) {');
     const fn = src.slice(start, src.indexOf('\n}\n', src.indexOf('return { id, name: doc.name', start)));
-    assert.ok(fn.includes('const partsPerUnit = Math.max(1, Math.min(settings.length, workersN * 4));'), 'enough parts to feed every worker several times over, never more parts than settings');
-    assert.ok(fn.includes('const whole = s3Payload({ doc, parent, rec, settings, fee, nullN });'), 'the votes are read once per unit');
-    assert.ok(fn.includes('payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: from });'), 'each part carries its settings and its place in the block');
+    // THE UNIT'S OWN LIST (3.52.0): a unit is handed only the settings that
+    // place different orders on it, each carrying its place in the block, so
+    // its records file there whichever part priced them
+    assert.ok(fn.includes('const mine = heldOn[pi].map((i) => ({ ...settings[i], si: i }));'), 'a unit is handed its own list, each setting carrying its place in the block');
+    assert.ok(fn.includes('const partsPerUnit = Math.max(1, Math.min(mine.length, workersN * 4));'), 'enough parts to feed every worker several times over, never more parts than the unit holds');
+    assert.ok(fn.includes('const whole = s3Payload({ doc, parent, rec, settings: mine, fee, nullN });'), 'the votes are read once per unit');
+    assert.ok(fn.includes('payloads.push({ ...whole, settings: mine.slice(from, to) });'), 'each part carries its slice of the unit\'s own list');
+    assert.ok(!/siFrom/.test(fn), 'a part no longer numbers its rows from an offset — the place travels on the setting');
     assert.ok(fn.includes("phase: 'pricing the settings', done: doc.perf.partsDone, total: parts.length, word: 'parts', startedMs: tPrice,"), 'progress counts parts as they land');
-    assert.ok(fn.includes('if (landed[part.u] === partsOfUnit) doc.perf.unitsDone++;'), 'a unit is finished when all its parts have landed');
+    assert.ok(fn.includes('if (landed[part.u] === partsOf[part.u]) doc.perf.unitsDone++;'), 'a unit is finished when all of ITS parts have landed — units are cut into different numbers of parts now');
     assert.ok(fn.includes('} else if (!settled.ok && !failedUnits.has(part.u)) {'), 'a unit fails once, whichever part failed first');
     assert.ok(fn.includes('doc.perf.cyclesDone = pricedSettings * (1 + nullN + keepN);'), 'the pricings done follow the settings priced, not the units');
     // and the unit task numbers its rows from the part's place in the block
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     const task = sw.slice(sw.indexOf('async function s3UnitTask(task) {'), sw.indexOf('\n}\n', sw.indexOf('async function s3UnitTask(task) {')));
-    assert.ok(task.includes('const siFrom = Math.max(0, Math.floor(Number(task.siFrom) || 0));'), 'a part knows where it starts');
-    assert.strictEqual(task.split('si: siFrom + si').length - 1, 2, 'both row shapes number from the part\'s place, so a record files under the same setting number whichever part priced it');
+    assert.ok(task.includes('if (!Number.isInteger(st.si) || st.si < 0) throw new Error(`the setting "${st.label}" was handed to a unit without its place in the block`);'),
+      'a setting handed over without its place in the block is refused, not filed at zero');
+    assert.strictEqual(task.split('si: st.si').length - 1, 2, 'both row shapes file the record at the setting\'s own place, whichever part priced it');
+    assert.ok(!/siFrom/.test(task), 'the unit task no longer numbers rows from an offset');
   },
 
   // THE COUNT IS THE LAUNCH'S FOLD WITHOUT THE SETTINGS (owner order,
@@ -409,9 +418,12 @@ module.exports = {
       const fold = stages.foldSameTradeSettings(slow, records);
       const fast = stages.countDeclared(b, sizes, records);
       assert.deepStrictEqual([fast.declared, fast.kept, fast.folded], [slow.length, fold.kept.length, fold.folded.length], why);
+      // AND UNIT BY UNIT (3.52.0): what each unit will price, and the sum
+      assert.deepStrictEqual(fast.perUnit, fold.heldOn.map((h) => h.length), `${why}: the count and the fold disagree about what a unit holds`);
+      assert.strictEqual(fast.pricings, fold.heldOn.reduce((a, h) => a + h.length, 0), `${why}: the pricings are not the sum of what the units hold`);
       return fast;
     };
-    const unit = (trade, bandPct, size = 1) => ({ trade, ctx1: size > 1 ? 'ETHUSDT' : null, ctx2: null, size, geometry: 'daily-4d', bandPct });
+    const unit = (trade, bandPct, size = 1, geometry = 'daily-4d') => ({ trade, ctx1: size > 1 ? 'ETHUSDT' : null, ctx2: null, size, geometry, bandPct });
     const spread = [unit('AAAUSDT', 2.1), unit('BBBUSDT', 4.4), unit('CCCUSDT', 6.3, 2)];
     const onFive = [unit('AAAUSDT', 5), unit('BBBUSDT', 5), unit('CCCUSDT', 5)];
     const cell = { entry: 'breakout', gate: 'active', dMult: 1, tHours: 41, trailMult: 1, armMult: 0 };
@@ -426,9 +438,189 @@ module.exports = {
     same({ cell, permuteBand: true }, [1], spread, 'one breakout shape across the bands: nothing to fold');
     same({ cell }, [1], [], 'no units yet: declared is kept');
     same({ cell, cellPermute: { dMult: true, trail: true, arm: true }, permuteBand: true, agreePermuteRule: true }, [1, 3], onFive, 'shapes and bands with the voices rule and its copies');
+    // A UNIT WITH NO WEEKDAY VERSION holds one of each pair of 24/5 values and
+    // the daily unit beside it holds both: different counts, one block
+    const weekly = [unit('AAAUSDT', 2.1), unit('WWWUSDT', 2.1, 1, 'weekly-8d')];
+    const w = same({ cell, permuteWeekdays: true, permuteBand: true }, [1], weekly, 'a daily unit and a weekly unit, 24/5 both ways');
+    assert.strictEqual(w.perUnit[1] * 2, w.perUnit[0], 'the weekly unit holds half of what the daily unit holds');
+    assert.strictEqual(w.kept, w.perUnit[0], 'nothing is folded out of the block itself while the daily unit still prices both values');
+    assert.strictEqual(w.weekdaysApply, true, 'a daily unit is being priced, so 24/5 applies');
+    const onlyWeekly = same({ cell, permuteWeekdays: true }, [1], [unit('WWWUSDT', 2.1, 1, 'weekly-8d'), unit('VVVUSDT', 3.3, 1, 'weekly-8d')], 'weekly units only');
+    assert.strictEqual(onlyWeekly.weekdaysApply, false, 'no unit being priced has a weekday version, so 24/5 is ghosted');
+    assert.strictEqual(onlyWeekly.kept * 2, onlyWeekly.declared, 'with only weekly units the second value of 24/5 leaves the block altogether');
     // and it is the count the cost line reads
     const d = stages.stage3Declared({ ...big });
     assert.strictEqual(d.settings, stages.countDeclared(big, null, []).kept, 'with no parent named the count is the block itself');
+    assert.deepStrictEqual([d.pricings, d.unitSettings, d.weekdaysApply], [0, [], true], 'with no parent named there is nothing per unit yet, and 24/5 is not ghosted');
+  },
+
+  // WHAT EACH UNIT HOLDS (3.52.0, owner order 2026-09-04: "fold duplicates
+  // per unit, which would let units hold different setting counts"). Two
+  // settings are one ON A UNIT when they place the same orders there: the
+  // same resolved geometry (auto and a fixed band can be one geometry on
+  // this unit and two on that), the same effective 24/5 (a shape with no
+  // weekday version reads both values alike), the same everything else.
+  async aUnitHoldsOnlyTheSettingsThatPlaceDifferentOrdersOnIt() {
+    const unit = (trade, bandPct, geometry) => ({ trade, ctx1: null, ctx2: null, size: 1, geometry, bandPct });
+    const cell = { entry: 'breakout', gate: 'active', dMult: 1, tHours: 41, trailMult: 1, armMult: 0 };
+    // 24/5 both ways: the daily unit holds both, the weekly unit the first of each pair
+    const both = stages.settingsFor({ cell, permuteWeekdays: true }, [1]);
+    assert.strictEqual(both.length, 2);
+    const held = stages.heldOnFor(both, [unit('AAAUSDT', 2, 'daily-4d'), unit('WWWUSDT', 2, 'weekly-8d')]);
+    assert.deepStrictEqual(held, [[0, 1], [0]], 'the weekly unit reads 24/5 both ways alike, so it prices the pair once, keeping the first in block order');
+    // auto against a fixed band: one geometry on the unit whose own band IS
+    // that number, two on any other
+    const bands = stages.settingsFor({ cell, permuteBand: true }, [1]);
+    const auto = bands.findIndex((s) => s.band === 'auto');
+    const five = bands.findIndex((s) => Number(s.band) === 5);
+    assert.ok(auto >= 0 && five >= 0, 'the fixture block holds auto and the 5% band');
+    const onFive = stages.heldOnFor(bands, [unit('AAAUSDT', 5, 'daily-4d'), unit('BBBUSDT', 2.1, 'daily-4d')]);
+    assert.ok(onFive[0].length === bands.length - 1 && !(onFive[0].includes(auto) && onFive[0].includes(five)),
+      'on a unit whose own band is 5%, auto and 5% place the same orders and only one is held');
+    assert.strictEqual(onFive[1].length, bands.length, 'on a unit whose own band is 2.1%, auto and 5% differ and both are held');
+    // the whole-block fold is the union: a setting no unit holds leaves the
+    // block, everything else stays and heldOn points into what stays
+    const fold = stages.foldSameTradeSettings(both, [unit('WWWUSDT', 2, 'weekly-8d'), unit('VVVUSDT', 3, 'weekly-8d')]);
+    assert.strictEqual(fold.kept.length, 1, 'with only weekly units the second value of 24/5 is priced by nobody and leaves');
+    assert.deepStrictEqual(fold.heldOn, [[0], [0]]);
+    assert.deepStrictEqual(fold.folded.map((f) => [f.dropped, f.kept]), [[both[1].label, both[0].label]], 'the fold says what was dropped into what');
+    assert.deepStrictEqual(fold.unitFolded, [0, 0], 'nothing kept was folded on either unit');
+    const mixed = stages.foldSameTradeSettings(both, [unit('AAAUSDT', 2, 'daily-4d'), unit('WWWUSDT', 2, 'weekly-8d')]);
+    assert.strictEqual(mixed.kept.length, 2, 'the daily unit prices both, so both stay in the block');
+    assert.deepStrictEqual([mixed.heldOn, mixed.unitFolded], [[[0, 1], [0]], [0, 1]], 'and the weekly unit is one short of the block');
+    // what a set says it holds adds up to its pricings; a set that does not
+    // say is not judged
+    assert.strictEqual(stages.pricingsOf({ plan: { unitSettings: [{ u: 0, held: 2 }, { u: 3, held: 1 }] } }), 3);
+    assert.strictEqual(stages.pricingsOf({ plan: { settingLabels: ['x'] } }), null);
+  },
+
+  // A SET PRICED BEFORE THE FOLD WAS PER UNIT IS FOLDED ON DISK (RULE NINE):
+  // beside, verified, swapped, its tables gone with the old records, the plan
+  // told what each unit holds. A set whose block cannot be rebuilt today is
+  // stamped with what it holds and says the fold did not run.
+  async aSetPricedBeforeTheFoldIsFoldedPerUnitOnceOnDisk() {
+    const { stampManifest, MANIFEST_DIR } = require('../lib/manifest');
+    const tag = Date.now().toString(36);
+    const pid = `s2-test-${tag}-foldp`;
+    const id = `s3-test-${tag}-foldc`;
+    const universe = ['ZZZTESTUSDT', 'ZZWEEKUSDT'];
+    const params = { from: pid, carry: 0, pick: 'count', ...LAUNCH_BLOCK, permuteWeekdays: true };
+    delete params.from; params.from = pid;
+    const clean = () => {
+      for (const x of [pid, id]) {
+        try { fs.rmSync(path.join(SETS_DIR, `${x}.json`), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(path.join(SETS_DIR, `${x}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(rowstore.storeDir(x), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(path.join(MANIFEST_DIR, `${x}.json`), { force: true }); } catch (_) { /* fixture */ }
+      }
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(path.join(SETS_DIR, `${pid}.json`), JSON.stringify({
+        id: pid, stage: 2, seq: 999983, name: `S2 #fold ${tag}`, status: 'done', createdAt: new Date().toISOString(),
+        engineVersion: require('../package.json').version, measurements: require('../lib/features').MEASUREMENTS_VERSION,
+        params: { universe, allLoaded: true, windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-03', nullN: 3 },
+        dataManifest: stampManifest(pid, universe), plan: { units: 2 },
+      }));
+      const prec = rowstore.writer(pid, 'records');
+      const base = { carriedRank: 1, s1rank: 1, ctx1: null, ctx2: null, size: 1, bandPct: 2, specs: [], score3: 1, scoreAll: 1, helped: 0, beat: 0, pairs: 3, lead: 0, blocks: {} };
+      prec.push({ ...base, u: 0, trade: 'ZZZTESTUSDT', geometry: 'daily-4d' });
+      prec.push({ ...base, u: 1, trade: 'ZZWEEKUSDT', geometry: 'weekly-8d' });
+      await prec.close();
+      const sts = stages.settingsFor(params, [1]);
+      const labels = sts.map((s) => s.label);
+      assert.strictEqual(labels.length, 2, 'the fixture block is the two values of 24/5');
+      // a record carries the setting's own fields, the way a launch writes it,
+      // so the audit's rebuilt name is the one on disk
+      const rowOf = (st, u) => ({ ...st, bandMode: st.band, bandPct: 3, trailMult: null, armMult: null, label: st.label, u, trade: u ? 'ZZWEEKUSDT' : 'ZZZTESTUSDT', geometry: u ? 'weekly-8d' : 'daily-4d', pnl: 1 });
+      // the child, written the old way: every setting on every unit, no word on what each holds
+      fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify({
+        id, stage: 3, seq: 999982, name: `S3 #fold ${tag}`, status: 'done', createdAt: new Date().toISOString(),
+        parent: { id: pid, name: `S2 #fold ${tag}` }, params, recordsVersion: stages.RECORDS_V,
+        plan: { units: 2, settings: 2, settingLabels: labels.slice() }, counts: { settings: 2, rows: 4 },
+      }));
+      const w = rowstore.writer(id, 'records');
+      for (let u = 0; u < 2; u++) for (let si = 0; si < 2; si++) w.push({ ...rowOf(sts[si], u), si });
+      await w.close();
+      fs.writeFileSync(path.join(SETS_DIR, `${id}-tally.json.gz`), 'stale');
+      let doc = stages.getSet(id);
+      assert.strictEqual(stages.foldBehind(doc), true, 'a done set with names and no word on what each unit holds is behind');
+      const got = await stages.foldRecordsPerUnit(doc);
+      assert.deepStrictEqual(got, { kept: 3, dropped: 1 }, 'the weekly unit\'s second value of 24/5 is dropped, nothing else');
+      assert.strictEqual(rowstore.count(id, 'records'), 3, 'and the store holds what was kept');
+      doc = stages.getSet(id);
+      assert.deepStrictEqual(doc.plan.unitSettings, [{ u: 0, held: 2 }, { u: 1, held: 1 }], 'the plan says what each unit holds');
+      assert.strictEqual(doc.plan.pricings, 3);
+      assert.strictEqual(stages.foldBehind(doc), false, 'folded once, never asked again');
+      assert.ok(!fs.existsSync(path.join(SETS_DIR, `${id}-tally.json.gz`)), 'the tables went with the old records');
+      assert.deepStrictEqual([doc.plan.foldedPerUnit.kept, doc.plan.foldedPerUnit.dropped], [3, 1]);
+      const rows = [];
+      for (let b = 0; b < (rowstore.blocksOf(id, 'records') || []).length; b++) for (const x of rowstore.readBlocks(id, 'records', [b])) rows.push([x.row.u, x.row.si]);
+      assert.deepStrictEqual(rows.sort(), [[0, 0], [0, 1], [1, 0]], 'the kept records sit where they sat');
+      // the audit reads the same: sound, and the block check ran
+      const audit = stages.auditRecordSet(doc);
+      assert.strictEqual(audit.ok, true, JSON.stringify(audit.checks.filter((c) => !c.ok)));
+      const exact = audit.checks.find((c) => c.name === 'every unit holds exactly the settings that place different orders on it');
+      assert.ok(exact && exact.ok && !/not checked/.test(exact.detail), 'with the parent on the box, which settings each unit holds is checked against the block');
+      assert.strictEqual(audit.pricings, 3);
+      // a second run with nothing to fold stamps and leaves the records alone
+      delete doc.plan.unitSettings;
+      const again = await stages.foldRecordsPerUnit(doc);
+      assert.deepStrictEqual(again, { kept: 3, dropped: 0 }, 'a set already folded per unit folds nothing');
+      // and with the parent gone, the set is stamped from its records and says so
+      fs.rmSync(path.join(SETS_DIR, `${pid}.json`), { force: true });
+      delete doc.plan.unitSettings;
+      const orphan = await stages.foldRecordsPerUnit(doc);
+      assert.strictEqual(orphan.dropped, 0);
+      assert.ok(/no longer on the box/.test(orphan.notFolded), `the set says why the fold did not run: ${orphan.notFolded}`);
+      doc = stages.getSet(id);
+      assert.deepStrictEqual(doc.plan.unitSettings, [{ u: 0, held: 2 }, { u: 1, held: 1 }], 'stamped from the records themselves');
+      assert.ok(doc.plan.foldedPerUnit.notFolded, 'and the plan carries the reason');
+      const orphanAudit = stages.auditRecordSet(doc);
+      const unchecked = orphanAudit.checks.find((c) => c.name === 'every unit holds exactly the settings that place different orders on it');
+      assert.ok(unchecked && unchecked.ok && /not checked/.test(unchecked.detail), 'the audit says the block check could not run rather than failing or staying silent');
+      // A SET THAT HOLDS THE BLOCK'S NAMES IN ANOTHER ORDER (one that had
+      // settings filled in) folds by NAME: the weekly unit's 24/5 record goes
+      // whichever place it sits at, and the audit matches the same way
+      fs.writeFileSync(path.join(SETS_DIR, `${pid}.json`), JSON.stringify({
+        id: pid, stage: 2, seq: 999983, name: `S2 #fold ${tag}`, status: 'done', createdAt: new Date().toISOString(),
+        engineVersion: require('../package.json').version, measurements: require('../lib/features').MEASUREMENTS_VERSION,
+        params: { universe, allLoaded: true, windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-03', nullN: 3 },
+        dataManifest: stampManifest(pid, universe), plan: { units: 2 },
+      }));
+      const id2 = `${id}-r`;
+      const flipped = [labels[1], labels[0]];
+      try {
+        fs.writeFileSync(path.join(SETS_DIR, `${id2}.json`), JSON.stringify({
+          id: id2, stage: 3, seq: 999981, name: `S3 #fold ${tag} r`, status: 'done', createdAt: new Date().toISOString(),
+          parent: { id: pid, name: `S2 #fold ${tag}` }, params, recordsVersion: stages.RECORDS_V,
+          plan: { units: 2, settings: 2, settingLabels: flipped.slice() }, counts: { settings: 2, rows: 4 },
+        }));
+        const w2 = rowstore.writer(id2, 'records');
+        for (let u = 0; u < 2; u++) for (let si = 0; si < 2; si++) w2.push({ ...rowOf(sts[1 - si], u), si });
+        await w2.close();
+        const d2 = stages.getSet(id2);
+        const got2 = await stages.foldRecordsPerUnit(d2);
+        assert.deepStrictEqual(got2, { kept: 3, dropped: 1 }, 'the names in another order still fold — by name, not by place');
+        const rows2 = [];
+        for (let b = 0; b < (rowstore.blocksOf(id2, 'records') || []).length; b++) for (const x of rowstore.readBlocks(id2, 'records', [b])) rows2.push([x.row.u, x.row.si]);
+        assert.deepStrictEqual(rows2.sort(), [[0, 0], [0, 1], [1, 1]], 'the weekly unit keeps the 24/7 value, which sits at place 1 in this set');
+        const audit2 = stages.auditRecordSet(stages.getSet(id2));
+        assert.strictEqual(audit2.ok, true, JSON.stringify(audit2.checks.filter((c) => !c.ok)));
+        const exact2 = audit2.checks.find((c) => c.name === 'every unit holds exactly the settings that place different orders on it');
+        assert.ok(exact2 && exact2.ok && !/not checked/.test(exact2.detail), 'the audit matched the set\'s places to the block\'s by name');
+      } finally {
+        try { fs.rmSync(path.join(SETS_DIR, `${id2}.json`), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(rowstore.storeDir(id2), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      }
+      // and neither a drop nor an append stamps a set the fold has not reached,
+      // or the stamp would stop the fold from ever running
+      const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+      assert.ok(src.includes('  if (Array.isArray(plan.unitSettings)) stampUnitSettingsFromRows(doc);'), 'the drop stamps a set that has not been folded per unit, so the fold never runs on it');
+      assert.ok(src.includes('  if (Array.isArray(plan.unitSettings)) {\n    plan.unitSettings = records.map((rec, i) => {'), 'the append stamps a set that has not been folded per unit, so the fold never runs on it');
+      const detail = src.slice(src.indexOf('function unfinishedAppendDetail('), src.indexOf('async function undoUnfinishedAppend('));
+      assert.ok(detail.includes('(n === (expect.has(u) ? expect.get(u) : settings) ? whole : part)'), 'a unit that holds fewer of the filled-in settings reads as torn');
+    } finally { clean(); }
   },
 
   // The counter behind the Sweep cost line resolves the SAME units the
@@ -1760,12 +1952,14 @@ module.exports = {
     // and the count, which no longer builds the settings (3.46.3), must read
     // the SAME shape pass the fold reads, or the number on the cost line and
     // the number that runs are two different numbers
-    assert.strictEqual(src.split('shapeRepsFor(').length - 1, 3,
-      'the shape pass is read somewhere other than its definition, the fold and the count — or by fewer than both');
-    const fold = src.slice(src.indexOf('function foldSameTradeSettings('), src.indexOf('function foldSameTradeSettings(') + 400);
+    assert.strictEqual(src.split('shapeRepsFor(').length - 1, 4,
+      'the shape pass is read somewhere other than its definition, the per-unit holdings, the fold\'s dropped-into names and the count — or by fewer than all three');
+    const held = src.slice(src.indexOf('function heldOnFor('), src.indexOf('function foldSameTradeSettings('));
+    const fold = src.slice(src.indexOf('function foldSameTradeSettings('), src.indexOf('function pricingsOf('));
     const count = src.slice(src.indexOf('function countDeclared('), src.indexOf('function stage3Declared('));
-    assert.ok(fold.includes('shapeRepsFor(settings, records)') && count.includes('shapeRepsFor(shapes, records)'),
-      'the fold and the count both work out which shapes are the same trade through shapeRepsFor');
+    assert.ok(held.includes('shapeRepsFor(settings, [rec])') && count.includes('shapeRepsFor(items.map((x) => x.shape), [rec])'),
+      'the holdings and the count both work out which shapes are the same trade ON ONE UNIT through shapeRepsFor');
+    assert.ok(fold.includes('const heldOn = heldOnFor(settings, records);'), 'the fold is built from the per-unit holdings, not beside them');
   },
 
   // NEITHER HEAVY JOB CAN FIRE DURING THE OTHER (owner order, 2026-08-29: "fix
@@ -2559,7 +2753,8 @@ module.exports = {
   async theAuditCatchesEveryWayThesePassesCouldDamageASet() {
     const mkDoc = (id, names, units) => ({
       id, stage: 3, seq: 999960, name: 'S3 #aud', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units, settings: names.length, settingLabels: names.slice() },
+      plan: { units, settings: names.length, settingLabels: names.slice(),
+        unitSettings: Array.from({ length: units }, (_, u) => ({ u, held: names.length })), pricings: units * names.length },
       params: {}, recordsVersion: stages.RECORDS_V,
     });
     // names built the way a launch builds them, so a sound set really is sound
@@ -2610,18 +2805,25 @@ module.exports = {
       const res = stages.auditRecordSet(await build(id, () => {}));
       assert.deepStrictEqual(failing(res), [], `a sound set does not read as sound: ${JSON.stringify(res.checks.filter((c) => !c.ok), null, 1)}`);
       assert.strictEqual(res.ok, true);
+      // this fixture has no stage 2 parent, so WHICH settings each unit holds
+      // cannot be checked against the block — and the audit says so
+      const exact = res.checks.find((c) => c.name === 'every unit holds exactly the settings that place different orders on it');
+      assert.ok(exact && /not checked/.test(exact.detail), 'a block that cannot be rebuilt is said to be unchecked, never silently passed');
     } finally { clean(id); }
 
     // ---- each way it can be broken, one at a time ----
     const bends = [
       ['a record lost', (rows) => { rows.pop(); },
-        ['every setting has one record per unit', 'none has more or fewer records than there are units', 'every setting covers every unit, none twice']],
+        ['the records add up to what the units say they hold', 'every unit holds the records it says it does']],
       ['a record filed at the wrong place', (rows) => { rows[1].si = 0; },
-        ['every record sits at its own setting’s place', 'none has more or fewer records than there are units', 'every setting covers every unit, none twice']],
+        ['every record sits at its own setting’s place', 'no unit holds a setting twice']],
       ['a record past the end of the list', (rows) => { rows[2].si = 99; },
         // 'every setting has a record' correctly stays quiet: setting 2 still has
         // its other unit's record. The audit was right and this list was wrong.
-        ['no record sits past the end of the list', 'none has more or fewer records than there are units', 'every setting covers every unit, none twice']],
+        // A record past the end is not one of the unit's, so that unit is short.
+        ['no record sits past the end of the list', 'every unit holds the records it says it does']],
+      ['the set says a unit holds more than it does', (rows, doc) => { doc.plan.unitSettings[0].held = 99; },
+        ['the records add up to what the units say they hold', 'every unit holds the records it says it does']],
       ['a name today would not write', (rows, doc) => {
         rows.forEach((r) => { if (r.si === 2) r.label = 'voices 75% active d1x t65h · argmax 3% 24/7'; });
         doc.plan.settingLabels[2] = 'voices 75% active d1x t65h · argmax 3% 24/7';
@@ -2629,7 +2831,7 @@ module.exports = {
       ['two settings sharing a name', (rows, doc) => { doc.plan.settingLabels[1] = doc.plan.settingLabels[0]; },
         ['no two settings share a name', 'every record sits at its own setting’s place']],
       ['one unit counted twice and another not at all', (rows) => { rows[3].u = 0; },
-        ['every setting covers every unit, none twice']],
+        ['every unit holds the records it says it does', 'no unit holds a setting twice']],
     ];
     for (const [what, bend, expect] of bends) {
       id = `s3-test-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`;
@@ -2693,7 +2895,7 @@ module.exports = {
     };
     const doc = {
       id, stage: 3, seq: 999959, name: 'S3 #fld', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 2, settings: 2, settingLabels: NAMES.slice() },
+      plan: { units: 2, settings: 2, settingLabels: NAMES.slice(), unitSettings: [{ u: 0, held: 2 }, { u: 1, held: 2 }], pricings: 4 },
       params: {}, recordsVersion: stages.RECORDS_V,
     };
     try {
@@ -2754,7 +2956,7 @@ module.exports = {
     });
     const doc = {
       id, stage: 3, seq: 999971, name: 'S3 #half', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 3, settings: 2, settingLabels: names.slice() },
+      plan: { units: 3, settings: 2, settingLabels: names.slice(), unitSettings: [{ u: 0, held: 2 }, { u: 1, held: 2 }, { u: 2, held: 2 }], pricings: 6 },
       params: { nullN: 9 }, recordsVersion: stages.RECORDS_V,
     };
     try {
@@ -2829,7 +3031,7 @@ module.exports = {
     });
     const doc = {
       id, stage: 3, seq: 999969, name: 'S3 #uvf', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 2, settings: 1, settingLabels: names.slice() },
+      plan: { units: 2, settings: 1, settingLabels: names.slice(), unitSettings: [{ u: 0, held: 1 }, { u: 1, held: 1 }], pricings: 2 },
       params: {}, recordsVersion: stages.RECORDS_V,
     };
     try {
@@ -3352,7 +3554,8 @@ module.exports = {
     // NOTHING ALREADY PRICED IS RENUMBERED. Records are filed under their
     // setting's number and the tables group by it; a reused number silently
     // merges two settings into one row.
-    assert.ok(/si: nextSi \+ row\.si,/.test(fn), 'new settings do not take numbers after everything on disk');
+    assert.ok(/const newSi = new Map\(missing\.map\(\(st, k\) => \[st\.si, nextSi \+ k\]\)\);/.test(fn) && /si: row\.si,/.test(fn),
+      'new settings do not take numbers after everything on disk, carried on the setting to the worker');
     assert.ok(/if \(nextSi !== held\.length\)/.test(fn),
       'nothing checks that the names on the set and the numbers in its records agree before adding to them');
     // both gates, before a row is priced
@@ -3361,8 +3564,8 @@ module.exports = {
     assert.ok(/storeBudgetFor\(/.test(fn), 'the disk gate is not asked at all');
     assert.ok(/const busy = stageBusy\(\);/.test(fn), 'it can start on top of another heavy job');
     // one payload builder, so what is appended is priced exactly as the first rows were
-    assert.ok(/s3Payload\(\{ doc, parent, rec, settings: missing, fee, nullN \}\)/.test(fn),
-      'the append builds its own payload, so it can drift from what the launch hands the workers');
+    assert.ok(/s3Payload\(\{ doc, parent, rec, settings: missing\.filter\(\(st\) => mine\.has\(st\.si\)\)\.map\(\(st\) => \(\{ \.\.\.st, si: newSi\.get\(st\.si\) \}\)\), fee, nullN \}\)/.test(fn),
+      'the append builds its own payload, so it can drift from what the launch hands the workers — and a unit is handed only the missing settings it holds, each carrying its new place');
     assert.strictEqual((src.match(/function s3Payload\(/g) || []).length, 1, 'there is more than one payload builder');
     // derived files go; the set owns up to having been added to
     assert.ok(/rmSync\(tallyFile\(id\)/.test(fn) && /rmSync\(agreedFile\(id\)/.test(fn),

@@ -36,6 +36,8 @@ function reply(body) {
     if (dial === 'tHours') return { ...REAL_THOURS, set: { ...REAL_THOURS.set, id: SET, name: 'S3 #ui' } };
     return { ...base, reading: { why: 'pick a dial' } };
   }
+  // step 3 before the grid is read: the two dial boxes and the read button
+  if (body.step === 3) return { ...base, reading: {} };
   return { ...base, reading: { why: 'not canned' } };
 }
 function requirePlaywright() {
@@ -67,7 +69,17 @@ function requirePlaywright() {
   await page.locator('[data-fnarrow="gate"]').click();
   await page.waitForSelector('#fKeepValues', { timeout: 15000 });
   expect(await page.locator('#fDial').count() === 1, 'narrow this one on gate opens step 2 with the dial box');
+  // every dial in the box carries its Sweep name (3.52.0)
+  const dialWords = await page.locator('#fDial option').allTextContents();
+  expect(dialWords.includes('tHours (t)') && dialWords.includes('dMult (d)') && dialWords.includes('gate'), `the dial box names its dials with their Sweep labels: ${dialWords.join(' | ')}`);
+  // the count line follows the ticks (3.52.0): directional alone keeps 175,
+  // both keep 275, none keeps 0
+  const keeps = async () => (await page.locator('#fKeepCount').innerText()).trim();
   await page.locator('[data-fval="directional"]').check();
+  await page.locator('[data-fval="active"]').check();
+  expect(/^keeps 275 of 275/.test(await keeps()), `ticking active too moves the count to both values: ${await keeps()}`);
+  await page.locator('[data-fval="active"]').uncheck();
+  expect(/^keeps 175 of 275/.test(await keeps()), `unticking it moves the count back: ${await keeps()}`);
   await page.locator('#fKeepValues').click();
   await page.waitForTimeout(800);
   expect(/Step 2/.test(await heading()) && await page.locator('#fDial').count() === 1, 'after keep these values, step 2 still has its dial box');
@@ -77,6 +89,11 @@ function requirePlaywright() {
   await page.locator('[data-fnarrow="tHours"]').click();
   await page.waitForSelector('#fAddRange', { timeout: 15000 }).catch(() => {});
   expect(/Step 2/.test(await heading()) && await page.locator('#fAddRange').count() === 1, "narrow this one on t opens step 2 with the box's own answer, range boxes and all");
+  expect(/gate is directional/.test(await page.locator('#view').innerText()), 'the rule sentence reads gate once, not "gate (gate)"');
+  await page.locator('[data-fstep="3"]').click().catch(() => {});
+  await page.waitForSelector('#fA', { timeout: 15000 }).catch(() => {});
+  const aWords = await page.locator('#fA option').allTextContents().catch(() => []);
+  expect(aWords.includes('dMult (d)') && aWords.includes('agreePct (share)'), `the first dial box on step 3 names its dials with their Sweep labels: ${aWords.join(' | ')}`);
   expect(errors.length === 0, `no page errors and no dialogs${errors.length ? `: ${errors.join('; ')}` : ''}`);
   await browser.close();
   srv.kill();

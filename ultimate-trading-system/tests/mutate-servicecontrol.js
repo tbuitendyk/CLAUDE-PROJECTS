@@ -370,6 +370,13 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), '<td>${esc(fDialLabel(x.dial))}</td>', '<td>${esc(x.dial)}</td>',
     'theDialNamesCarryTheirSweepLabel',
     'the first step goes back to naming dials dMult and agreePct, which are on no screen the owner can open'],
+  // ---- THE DIAL BOXES NAME THEIR DIALS (3.52.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "<select id=\"fDial\">${fDialOptions(st.dial || '')}</select>", "<select id=\"fDial\">${vocabOptions('funnelDial', st.dial || '')}</select>",
+    'theDialNamesCarryTheirSweepLabel',
+    'the dial box on step 2 offers dMult and agreePct bare, which are on no screen the owner can open'],
+  [path.join(ROOT, 'public', 'construct.js'), "<p class=\"note\"><b>${esc(fRuleWords(d.ruleSentence))}</b></p>", "<p class=\"note\"><b>${esc(d.ruleSentence)}</b></p>",
+    'theDialNamesCarryTheirSweepLabel',
+    'the rule sentence names dials by their keys again'],
   [path.join(ROOT, 'public', 'construct.js'), 'This table lists only the dials this run swept more than one value of.',
     'Every dial on the record is listed, including the ones this run only swept a single value of.',
     'theDialColumnsDescriptionMatchesWhatTheColumnHolds',
@@ -489,10 +496,26 @@ const GUARDS = [
     "      barPct: null,                                         // null: the engine's default share of the copies\n",
     'theScreenOffersTheBarAndSendsItWithEveryRead',
     'the box is drawn and saved but every read ignores it — the walk is always read at the default share'],
-  // ---- A PART NUMBERS ITS ROWS FROM ITS PLACE IN THE BLOCK (3.47.0) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "        payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: from });", "        payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: 0 });",
+  // ---- A SETTING CARRIES ITS PLACE IN THE BLOCK TO THE UNIT (3.52.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "      const mine = heldOn[pi].map((i) => ({ ...settings[i], si: i }));", "      const mine = heldOn[pi].map((i, k) => ({ ...settings[i], si: k }));",
     'theStageThreePricingIsHandedOutInParts',
-    'every part numbers its rows from zero, and sixteen records of a unit claim setting number 0 while the plan names one'],
+    'a unit numbers its settings from its own list, and a weekly unit files its records at places the plan names differently'],
+  // ---- A UNIT WITH NO WEEKDAY VERSION READS 24/5 BOTH WAYS ALIKE (3.52.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false)}`;", "      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, !!st.weekdaysOnly)}`;",
+    'aUnitHoldsOnlyTheSettingsThatPlaceDifferentOrdersOnIt',
+    'a weekly unit holds both values of 24/5 as two records of one trade, which is the fault this release exists to end'],
+  // ---- THE COUNT READS THE SAME PER-UNIT KEY (3.52.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "      const key = `${it.g}|${repOf.get(shapeKeyOf(it.shape))}|${wkApplies ? (it.wk ? 1 : 0) : 0}`;", "      const key = `${it.g}|${repOf.get(shapeKeyOf(it.shape))}|${it.wk ? 1 : 0}`;",
+    'theStageThreeCountIsTheLaunchsFoldWithoutTheSettings',
+    'the cost line counts both values of 24/5 on a weekly unit while the launch prices one, so the launch refuses every block with a weekly unit'],
+  // ---- THE FOLD MIGRATION KEEPS ONLY WHAT THE UNIT HOLDS (3.52.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "      if (mine && mine.has(r.si)) { w.push(r); kept++; } else dropped++;", "      if (mine) { w.push(r); kept++; } else dropped++;",
+    'aSetPricedBeforeTheFoldIsFoldedPerUnitOnceOnDisk',
+    'the migration rewrites every record and drops none, and the set is stamped as folded while the doubles are still on disk'],
+  // ---- THE TICK BOXES MOVE THE COUNT (3.52.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      for (const [val, n] of ((st.read || {}).groups || [])) { total += n; if (on.has(String(val))) kept += n; }", "      for (const [val, n] of ((st.read || {}).groups || [])) { total += n; kept += n; }",
+    'theKeepsCountBesideTheTickBoxesFollowsTheTicks',
+    'the count line beside keep these values says every setting is kept whatever is ticked'],
   // ---- THE FILE-HASH CACHE READS SIZE AND TIME, NOT SIZE ALONE (3.47.0) ----
   [path.join(ROOT, 'lib', 'manifest.js'), "  if (known && known.size === st.size && known.mtimeMs === st.mtimeMs) return", "  if (known && known.size === st.size) return",
     'anUnchangedFileIsNotHashedAgainAndAChangedOneIs',

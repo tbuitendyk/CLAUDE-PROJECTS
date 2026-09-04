@@ -1349,32 +1349,78 @@ function shapeRepsFor(shapes, records) {
   }
   return repOf;
 }
-function foldSameTradeSettings(settings, records) {
-  if (!Array.isArray(records) || !records.length) return { kept: settings, folded: [] };
-  const shapeKey = shapeKeyOf;
-  const repOf = shapeRepsFor(settings, records);
-  // ...and now a setting's identity is everything that is NOT the geometry,
-  // plus which geometry it resolved to.
-  // THE BAR IS PART OF WHAT MAKES A SETTING ITSELF. It was missing here, so
-  // the same way of weighing at the same share against the two different bars
-  // read as one setting and half the block was dropped without a word. Two
-  // settings are the same trade only when EVERY dial that can change a call
-  // matches, and the bar changes when the committee is judged to have spoken.
-  const rest = (st) => [st.decision, st.band === 'auto' ? 'a' : 'f', st.weekdaysOnly, st.entry, st.gate, st.tHours,
+// THE FOLD IS PER UNIT (3.52.0, owner order 2026-09-04: "OBVIOUSLY the system
+// should not permute 24/5 on any weekly shape. Ever."). Two settings are one
+// setting ON A UNIT when they place the same orders there: the same resolved
+// geometry (a band 'auto' and a fixed band can land on one geometry on this
+// unit and two on another), the same effective 24/5 (a shape with no weekday
+// version -- weekly-8d -- prices both values of 24/5 identically), and the
+// same everything else. Each unit keeps the first of its duplicates in block
+// order and prices nothing else. A setting no unit keeps is not in the block
+// at all, which is exactly the fold that used to be the whole rule.
+//
+// THE BAR IS PART OF WHAT MAKES A SETTING ITSELF: the same way of weighing at
+// the same share against the two different bars is two settings, because the
+// bar changes when the committee is judged to have spoken.
+function weekdaysApplyTo(rec) { return require('./dataset').weekdaysApply(rec.geometry); }
+function foldKeyRest(st, wk) {
+  return [st.decision, wk ? 1 : 0, st.entry, st.gate, st.tHours,
     st.agreeRule, st.agreeBar, st.agreePct, st.agreeRule === 'voices' ? st.agreeCopy : 0,
     st.agreeBoth, st.agreePersist].join('|');
+}
+// heldOn[u]: the settings unit u prices, as indexes into `settings`, in block order
+function heldOnFor(settings, records) {
+  const heldOn = [];
+  for (const rec of records) {
+    const repOf = shapeRepsFor(settings, [rec]);          // one unit's own geometry classes
+    const wkApplies = weekdaysApplyTo(rec);
+    const seen = new Set();
+    const mine = [];
+    for (let i = 0; i < settings.length; i++) {
+      const st = settings[i];
+      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false)}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      mine.push(i);
+    }
+    heldOn.push(mine);
+  }
+  return heldOn;
+}
+function foldSameTradeSettings(settings, records) {
+  if (!Array.isArray(records) || !records.length) return { kept: settings, folded: [], heldOn: [], unitFolded: [] };
+  const heldOn = heldOnFor(settings, records);
+  const keptOnAny = new Uint8Array(settings.length);
+  for (const list of heldOn) for (const i of list) keptOnAny[i] = 1;
   const kept = [];
   const folded = [];
-  const seen = new Map();
-  for (const st of settings) {
-    // an auto setting and a fixed one that price the same trade on every unit
-    // are still one setting, so the auto/fixed marker is dropped from the key
-    const key = `${repOf.get(shapeKey(st))}|${rest(st).replace(/\|[af]\|/, '|')}`;
-    if (seen.has(key)) { folded.push({ dropped: st.label, kept: seen.get(key) }); continue; }
-    seen.set(key, st.label);
-    kept.push(st);
+  const newIndex = new Int32Array(settings.length).fill(-1);
+  // what a dropped setting was folded INTO: the setting unit 0 keeps for its key
+  const firstOn0 = new Map();
+  if (heldOn.length) {
+    const repOf = shapeRepsFor(settings, [records[0]]);
+    const wk0 = weekdaysApplyTo(records[0]);
+    for (const i of heldOn[0]) firstOn0.set(`${repOf.get(shapeKeyOf(settings[i]))}|${foldKeyRest(settings[i], wk0 ? !!settings[i].weekdaysOnly : false)}`, settings[i].label);
+    for (let i = 0; i < settings.length; i++) {
+      if (keptOnAny[i]) continue;
+      const st = settings[i];
+      folded.push({ dropped: st.label, kept: firstOn0.get(`${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wk0 ? !!st.weekdaysOnly : false)}`) || null });
+    }
   }
-  return { kept, folded };
+  for (let i = 0; i < settings.length; i++) {
+    if (!keptOnAny[i]) continue;
+    newIndex[i] = kept.length;
+    kept.push(settings[i]);
+  }
+  const held = heldOn.map((list) => list.map((i) => newIndex[i]));
+  return { kept, folded, heldOn: held, unitFolded: held.map((list) => kept.length - list.length) };
+}
+// what a set's units hold, summed: the pricings its records stand for; null
+// until the set says so (a set behind on the per-unit fold does not)
+function pricingsOf(doc) {
+  const us = ((doc || {}).plan || {}).unitSettings;
+  if (!Array.isArray(us)) return null;
+  return us.reduce((a, x) => a + (Number(x.held) || 0), 0);
 }
 
 // The trade shapes a block declares — the SAME enumerator the sweep launcher
@@ -1713,25 +1759,40 @@ function countDeclared(params, sizes, records) {
   const agrees = agreementsFor(params, sizes);
   const { decisions, bands, weekdays } = blockAxesFor(params);
   const declared = decisions.length * bands.length * weekdays.length * cells.length * agrees.length;
-  if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0 };
-  const shapes = [];
-  for (const cell of cells) {
-    for (const band of bands) shapes.push({ band, dMult: cell.dMult ?? null, trailMult: cell.trailMult ?? null, armMult: cell.armMult ?? null });
+  if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0, perUnit: [], pricings: 0, weekdaysApply: true };
+  // THE FOLD'S KEY, LESS WHAT THE PRODUCT CARRIES: decision and agreement are
+  // the same on every unit and multiply whatever is left, so the fold is
+  // counted on the (band, 24/5, shape) items alone -- in the block's own
+  // order, so "the first of its duplicates" is the one the launch keeps.
+  const items = [];
+  for (const band of bands) {
+    for (const wk of weekdays) {
+      for (const cell of cells) items.push({ g: `${cell.entry}|${cell.gate}|${cell.tHours}`, wk, shape: { band, dMult: cell.dMult ?? null, trailMult: cell.trailMult ?? null, armMult: cell.armMult ?? null } });
+    }
   }
-  const repOf = shapeRepsFor(shapes, records);
-  // the fold's key, less the geometry: everything else that can change a call
-  // is either on the cell (entry, gate, t) or on an axis the product carries
-  const groups = new Map();
-  for (const cell of cells) {
-    const g = `${cell.entry}|${cell.gate}|${cell.tHours}`;
-    let set = groups.get(g);
-    if (!set) { set = new Set(); groups.set(g, set); }
-    for (const band of bands) set.add(repOf.get(shapeKeyOf({ band, ...cell })));
+  const keptOnAny = new Uint8Array(items.length);
+  const perUnit = [];
+  let weekdaysApply = false;
+  for (const rec of records) {
+    const repOf = shapeRepsFor(items.map((x) => x.shape), [rec]);
+    const wkApplies = weekdaysApplyTo(rec);
+    if (wkApplies) weekdaysApply = true;
+    const seen = new Set();
+    let mine = 0;
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      const key = `${it.g}|${repOf.get(shapeKeyOf(it.shape))}|${wkApplies ? (it.wk ? 1 : 0) : 0}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      keptOnAny[i] = 1;
+      mine++;
+    }
+    perUnit.push(decisions.length * agrees.length * mine);
   }
-  let geometries = 0;
-  for (const set of groups.values()) geometries += set.size;
-  const kept = decisions.length * weekdays.length * agrees.length * geometries;
-  return { declared, kept, folded: declared - kept };
+  let union = 0;
+  for (let i = 0; i < items.length; i++) if (keptOnAny[i]) union++;
+  const kept = decisions.length * agrees.length * union;
+  return { declared, kept, folded: declared - kept, perUnit, pricings: perUnit.reduce((a, b) => a + b, 0), weekdaysApply };
 }
 function stage3Declared(b) {
   const out = { units: null, coins: null };
@@ -1758,6 +1819,11 @@ function stage3Declared(b) {
   out.settings = counted.kept;
   out.declared = counted.declared;
   out.folded = counted.folded;
+  // what the units will actually price, unit by unit, and whether any unit
+  // being priced has a weekday version at all (24/5 is ghosted when none does)
+  out.pricings = counted.pricings;
+  out.unitSettings = records ? counted.perUnit.map((held, i) => ({ u: records[i].u, held })) : [];
+  out.weekdaysApply = counted.weekdaysApply;
   return out;
 }
 function startStage3(params) {
@@ -1810,7 +1876,7 @@ function startStage3(params) {
   const coinsN = new Set(parentRecords.map((r) => r.trade)).size;
   const heapGate = tallyBudgetFor({ settings: counted.kept, coins: coinsN });
   if (heapGate.band === 'refuse') throw new Error(heapGate.message);
-  const diskGate = storeBudgetFor({ rows: counted.kept * parentRecords.length });
+  const diskGate = storeBudgetFor({ rows: counted.pricings });
   if (diskGate.band === 'refuse') throw new Error(diskGate.message);
 
   const setName = nameOrRefuse(params.name, 3);
@@ -1874,10 +1940,14 @@ function startStage3(params) {
       // the same trade — reported so the difference is never silent
       declaredSettings: counted.declared,
       sameTradeFolded: counted.folded,
+      // WHAT EACH UNIT HOLDS (3.52.0): the settings that place different
+      // orders on it, and the pricings that comes to over the run
+      unitSettings: counted.perUnit.map((held, i) => ({ u: parentRecords[i].u, held })),
+      pricings: counted.pricings,
     },
     perf: {
       unitsDone: 0, unitsTotal: parentRecords.length, elapsedMs: 0, etaMs: null, workers: null,
-      cyclesDone: 0, cyclesTotal: parentRecords.length * counted.kept * (1 + nullN + keepN), cyclesWord: 'pricings',
+      cyclesDone: 0, cyclesTotal: counted.pricings * (1 + nullN + keepN), cyclesWord: 'pricings',
     },
     failures: [],
     counts: null,
@@ -1914,10 +1984,16 @@ function startStage3(params) {
     saveSet(doc);
     await new Promise((resolve) => { setImmediate(resolve); });
     const declaredSettings = settingsFor(params, sizes);
-    const { kept: settings, folded: sameTrade } = foldSameTradeSettings(declaredSettings, parentRecords);
+    const { kept: settings, folded: sameTrade, heldOn } = foldSameTradeSettings(declaredSettings, parentRecords);
     if (settings.length !== counted.kept || declaredSettings.length !== counted.declared) {
       throw new Error(`the count said ${counted.kept.toLocaleString()} settings (${counted.declared.toLocaleString()} declared) and the block `
         + `built ${settings.length.toLocaleString()} (${declaredSettings.length.toLocaleString()} declared) — the cost line and the launch disagree, so nothing was priced`);
+    }
+    for (let u = 0; u < parentRecords.length; u++) {
+      if (heldOn[u].length !== counted.perUnit[u]) {
+        throw new Error(`the count said unit ${parentRecords[u].trade} ${parentRecords[u].geometry} would price ${counted.perUnit[u].toLocaleString()} settings and the `
+          + `block folded to ${heldOn[u].length.toLocaleString()} — the cost line and the launch disagree, so nothing was priced`);
+      }
     }
     Object.assign(doc.plan, {
       settingLabels: settings.map((s) => s.label),
@@ -1938,25 +2014,31 @@ function startStage3(params) {
     // its place in the block so its records file under the same setting
     // numbers they always did, and the line moves as parts land.
     const workersN = pool.parallel ? pool.workers.length : 1;
-    const partsPerUnit = Math.max(1, Math.min(settings.length, workersN * 4));
-    const partSize = Math.ceil(settings.length / partsPerUnit);
-    const parts = [];                     // { u: index into parentRecords, from, to }
+    const parts = [];                     // { u: index into parentRecords, from, to } -- into the unit's OWN list
+    const partsOf = [];                   // how many parts each unit was cut into
     const payloads = [];
     const agreedMap = {};
     for (let pi = 0; pi < parentRecords.length; pi++) {
       const rec = parentRecords[pi];
-      const whole = s3Payload({ doc, parent, rec, settings, fee, nullN });     // the votes are read once per unit
-      for (let from = 0; from < settings.length; from += partSize) {
-        const to = Math.min(settings.length, from + partSize);
-        payloads.push({ ...whole, settings: settings.slice(from, to), siFrom: from });
+      // THE UNIT'S OWN LIST (3.52.0): the settings that place different orders
+      // on it, each carrying its place in the block so its records file there
+      const mine = heldOn[pi].map((i) => ({ ...settings[i], si: i }));
+      const partsPerUnit = Math.max(1, Math.min(mine.length, workersN * 4));
+      const partSize = Math.max(1, Math.ceil(mine.length / partsPerUnit));
+      const whole = s3Payload({ doc, parent, rec, settings: mine, fee, nullN });     // the votes are read once per unit
+      let n = 0;
+      for (let from = 0; from < mine.length; from += partSize) {
+        const to = Math.min(mine.length, from + partSize);
+        payloads.push({ ...whole, settings: mine.slice(from, to) });
         parts.push({ u: pi, from, to });
+        n++;
       }
+      partsOf.push(n);
       if (pi % 5 === 4 || pi === parentRecords.length - 1) {
         phaseNote(doc, { phase: 'reading the kept votes', done: pi + 1, total: parentRecords.length, word: 'units', startedMs: tRead });
         saveSet(doc);
       }
     }
-    const partsOfUnit = Math.ceil(settings.length / partSize);
     // the pricing clock starts when the pricing does, and the screen is told
     // at once that this phase has begun with nothing finished yet — otherwise
     // the previous phase's line sits there looking like the current one
@@ -1996,7 +2078,7 @@ function startStage3(params) {
         doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
       }
       landed[part.u]++;
-      if (landed[part.u] === partsOfUnit) doc.perf.unitsDone++;
+      if (landed[part.u] === partsOf[part.u]) doc.perf.unitsDone++;
       doc.perf.partsDone++;
       doc.perf.elapsedMs = Date.now() - t0;
       doc.perf.etaMs = doc.perf.partsDone ? Math.round(((Date.now() - tPrice) / doc.perf.partsDone) * (parts.length - doc.perf.partsDone)) : null;
@@ -2244,10 +2326,46 @@ function auditRecordSet(doc) {
     return { ok: false, checks: out };
   }
 
+  // WHAT EACH UNIT HOLDS (3.52.0): a unit prices only the settings that place
+  // different orders on it, so "one record per unit" is per unit that holds
+  // it. The set says HOW MANY each holds, and that is checked against the
+  // records themselves; the block rebuilt today says WHICH, and that is
+  // checked too whenever the stage 2 parent is still on the box to rebuild
+  // it from -- and said to be unchecked, never skipped silently, when it is not.
+  const unitSettings = (doc.plan || {}).unitSettings;
+  if (!Array.isArray(unitSettings)) {
+    say('the set records what each unit holds', false, doc.status === 'done' || doc.status === 'incomplete'
+      ? 'it does not say how many settings each unit holds — open it on Boards and its records are folded per unit first'
+      : 'it does not say how many settings each unit holds, and a set that did not finish is not folded per unit');
+    return { ok: false, checks: out };
+  }
+  const saidHeld = new Map(unitSettings.map((x) => [Number(x.u), Number(x.held) || 0]));
+  const expectedRows = [...saidHeld.values()].reduce((a, b) => a + b, 0);
+  let heldOn = null;
+  let recordsOf = null;
+  let blockSettings = null;
+  let noBlock = null;
+  try { ({ heldOn, records: recordsOf, settings: blockSettings } = relaunchShapeOf(doc)); } catch (err) { noBlock = String(err.message || err); }
+  // the set's places are matched to the block's by NAME (a filled-in set
+  // holds the block's names in another order), and a set whose names are not
+  // the block's cannot have its holdings checked against it
+  const holders = new Int32Array(held.length);          // how many units hold each setting, by the block
+  const holderBits = new Int32Array(held.length);       // and which, as bits
+  if (heldOn) {
+    const blockAt = new Map(blockSettings.map((st) => [st.label, st.si]));
+    const placeOf = new Map();                          // block place -> place in the set
+    held.forEach((L, p) => { if (blockAt.has(L)) placeOf.set(blockAt.get(L), p); });
+    if (blockSettings.length !== held.length || placeOf.size !== held.length) {
+      noBlock = `the block rebuilt today holds ${blockSettings.length.toLocaleString()} settings and this set ${held.length.toLocaleString()}, not all under the same names`;
+      heldOn = null;
+    } else {
+      heldOn.forEach((list, i) => { const u = recordsOf[i].u; for (const k of list) { const p = placeOf.get(k); holders[p]++; if (u < 31) holderBits[p] |= (1 << u); } });
+    }
+  }
   const rows = rowstore.count(id, 'records');
-  say('every setting has one record per unit', rows === held.length * units,
+  say('the records add up to what the units say they hold', rows === expectedRows,
     `${rows.toLocaleString()} records for ${held.length.toLocaleString()} settings over ${units} units `
-    + `(${(held.length * units).toLocaleString()} expected)`);
+    + `(${expectedRows.toLocaleString()} expected)`);
 
   // no two settings may share a name, or one hides the other everywhere
   const names = new Set(held);
@@ -2256,8 +2374,10 @@ function auditRecordSet(doc) {
 
   const seenUnits = new Int32Array(held.length);        // which units, as bits
   const perSetting = new Int32Array(held.length);       // and how many records
+  const perUnit = new Map();                            // records counted per unit
   const checked = new Uint8Array(held.length);          // name rebuilt once each
   const tooManyUnits = units > 30;                      // more than fits in the bits
+  let twice = 0;                                        // a unit holding one setting twice
   let misplaced = 0;
   let beyond = 0;
   let misnamed = 0;
@@ -2278,7 +2398,11 @@ function auditRecordSet(doc) {
         continue;
       }
       perSetting[r.si]++;
-      if (!tooManyUnits) seenUnits[r.si] |= (1 << r.u);
+      perUnit.set(r.u, (perUnit.get(r.u) || 0) + 1);
+      if (!tooManyUnits) {
+        if (seenUnits[r.si] & (1 << r.u)) twice++;
+        seenUnits[r.si] |= (1 << r.u);
+      }
       if (held[r.si] !== r.label) {
         misplaced++;
         note('misplaced', `position ${r.si} carries "${r.label}" and the list says "${held[r.si]}"`);
@@ -2324,26 +2448,37 @@ function auditRecordSet(doc) {
       : `all of them carry the same ${columns.size}`);
 
   let empty = 0;
-  let wrongCount = 0;
-  let missingUnit = 0;
-  const whole = tooManyUnits ? 0 : (units >= 31 ? -1 : (2 ** units) - 1);
+  let wrongUnits = 0;
   for (let i = 0; i < held.length; i++) {
     if (perSetting[i] === 0) { empty++; continue; }
-    if (perSetting[i] !== units) wrongCount++;
-    if (!tooManyUnits && seenUnits[i] !== whole) missingUnit++;
+    if (heldOn && (perSetting[i] !== holders[i] || (!tooManyUnits && seenUnits[i] !== holderBits[i]))) wrongUnits++;
   }
   say('every setting has a record', empty === 0,
     empty ? `${empty.toLocaleString()} settings have none` : 'all of them do');
-  say('none has more or fewer records than there are units', wrongCount === 0,
-    wrongCount ? `${wrongCount.toLocaleString()} settings do not hold exactly ${units}` : `all hold exactly ${units}`);
+  // each unit holds as many records as the set says it does -- counted from
+  // the records that sit inside the list, so a record past its end is not one
+  const unitShort = [];
+  for (const [u, n] of saidHeld) if ((perUnit.get(u) || 0) !== n) unitShort.push(`unit ${u} holds ${(perUnit.get(u) || 0).toLocaleString()} and the set says ${n.toLocaleString()}`);
+  for (const u of perUnit.keys()) if (!saidHeld.has(u)) unitShort.push(`unit ${u} holds ${perUnit.get(u).toLocaleString()} and the set does not name it`);
+  say('every unit holds the records it says it does', unitShort.length === 0,
+    unitShort.length ? unitShort.slice(0, 3).join('; ') : 'all of them do');
   if (tooManyUnits) {
-    say('every setting covers every unit', true, `not checked \u2014 ${units} units is more than this check can hold in one number`);
+    say('no unit holds a setting twice', true, `not checked \u2014 ${units} units is more than this check can hold in one number`);
   } else {
-    say('every setting covers every unit, none twice', missingUnit === 0,
-      missingUnit ? `${missingUnit.toLocaleString()} settings miss a unit or hold one twice` : 'all of them do');
+    say('no unit holds a setting twice', twice === 0,
+      twice ? `${twice.toLocaleString()} records repeat a setting a unit already holds` : 'none does');
+  }
+  // and WHICH settings each unit holds, against the block rebuilt today
+  if (noBlock) {
+    say('every unit holds exactly the settings that place different orders on it', true, `not checked \u2014 ${noBlock}`);
+  } else if (tooManyUnits) {
+    say('every unit holds exactly the settings that place different orders on it', true, `not checked \u2014 ${units} units is more than this check can hold in one number`);
+  } else {
+    say('every unit holds exactly the settings that place different orders on it', wrongUnits === 0,
+      wrongUnits ? `${wrongUnits.toLocaleString()} settings are not held by exactly the units that price them differently` : 'all of them do');
   }
 
-  return { ok: out.every((c) => c.ok), checks: out, rows, settings: held.length, units };
+  return { ok: out.every((c) => c.ok), checks: out, rows, settings: held.length, units, pricings: expectedRows };
 }
 // AND THE ONE CHECK THAT NEEDS THE BLOCK ITSELF: does the set hold exactly
 // what a launch with these same choices would price today, no more and no
@@ -2380,8 +2515,9 @@ function unfinishedAppend(doc) {
   const held = ((doc || {}).plan || {}).settingLabels || [];
   const units = Number(((doc || {}).plan || {}).units) || 0;
   if (!held.length || !units) return null;
+  const whole = pricingsOf(doc);
+  if (whole == null) return null;                   // behind on the per-unit fold: judged once that has run
   const rows = rowstore.count(doc.id, 'records');
-  const whole = held.length * units;
   if (rows === whole) return null;
   return { rows, whole, extra: rows - whole, held: held.length, units };
 }
@@ -2406,10 +2542,18 @@ function unfinishedAppendDetail(doc) {
     }
   }
   const settings = reach - held;
-  // a unit is WHOLE only if it carries one record for every new setting
+  // a unit is WHOLE only if it carries one record for every new setting IT
+  // HOLDS (3.52.0): read off the block when the stage 2 parent is on the box
+  // to rebuild it from, else every new setting is taken to be one it holds
+  const expect = new Map();
+  try {
+    const shape = relaunchShapeOf(doc);
+    const heldNames = new Set((doc.plan || {}).settingLabels || []);
+    shape.records.forEach((rec, i) => expect.set(rec.u, shape.heldOn[i].filter((k) => !heldNames.has(shape.settings[k].label)).length));
+  } catch (_) { /* judged by the count alone */ }
   const whole = [];
   const part = [];
-  for (const [u, n] of [...perUnit].sort((a, b) => a[0] - b[0])) (n === settings ? whole : part).push({ u, rows: n });
+  for (const [u, n] of [...perUnit].sort((a, b) => a[0] - b[0])) (n === (expect.has(u) ? expect.get(u) : settings) ? whole : part).push({ u, rows: n });
   return { held, reach, settings, extra, unitsWhole: whole, unitsPart: part };
 }
 // UNDO IT. Everything at a position past the end of the list goes, and the set
@@ -2630,6 +2774,10 @@ async function dropSettingsNamed(doc, doomed, note = null, why = null, { inTally
 
   const plan = doc.plan || {};
   plan.settingLabels = kept;
+  // what each unit holds moves with the drop -- on a set that says what it
+  // holds. One not yet folded per unit is left unstamped, or the fold would
+  // read the stamp and never run (the strip runs before the fold on open)
+  if (Array.isArray(plan.unitSettings)) stampUnitSettingsFromRows(doc);
   plan.settings = kept.length;
   doc.plan = plan;
   doc.counts = { ...(doc.counts || {}), settings: kept.length, rows: gotRows };
@@ -2933,7 +3081,7 @@ async function appendMissingSettings(doc, pool = null, note = null, asked = null
     throw new Error(`this set holds ${halfDone.extra.toLocaleString()} records past the end of its own list of names, `
       + 'left by a run that did not finish — undo that first');
   }
-  const { parent, records, settings } = relaunchShapeOf(doc);
+  const { parent, records, settings, heldOn } = relaunchShapeOf(doc);
   // AND THE SAME FOR THE SETTINGS THAT ARE ALREADY DUPLICATES (owner order,
   // 2026-08-30). This guard was written for the names and NOT for these, and the
   // owner pressed straight past the gap and paid seven hours for it. A pass that
@@ -2960,12 +3108,19 @@ async function appendMissingSettings(doc, pool = null, note = null, asked = null
   const coinsN = Array.isArray((doc.params || {}).universe) ? doc.params.universe.length : 1;
   const heapGate = tallyBudgetFor({ settings: held.length + missing.length, coins: coinsN });
   if (heapGate.band === 'refuse') throw new Error(heapGate.message);
-  const diskGate = storeBudgetFor({ rows: missing.length * records.length });
+  const diskGate = storeBudgetFor({ rows: missing.length * records.length });   // the ceiling; the units hold at most this
   if (diskGate.band === 'refuse') throw new Error(diskGate.message);
 
   const fee = Number((doc.params || {}).fee) || 0;
   const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
-  const payloads = records.map((rec) => s3Payload({ doc, parent, rec, settings: missing, fee, nullN }));
+  // a missing setting takes the next free number, and is priced only on the
+  // units that hold it in the block it is missing from
+  const newSi = new Map(missing.map((st, k) => [st.si, nextSi + k]));
+  const payloads = records.map((rec, i) => {
+    const mine = new Set(heldOn[i]);
+    return s3Payload({ doc, parent, rec, settings: missing.filter((st) => mine.has(st.si)).map((st) => ({ ...st, si: newSi.get(st.si) })), fee, nullN });
+  });
+  const addedPerUnit = records.map((rec, i) => { const mine = new Set(heldOn[i]); return missing.filter((st) => mine.has(st.si)).length; });
   // appended, not rewritten: the writer opens the store for appending and
   // carries on its own row count, its own columns and its own block list
   const w = rowstore.writer(id, 'records', { offThread: true });
@@ -2977,12 +3132,12 @@ async function appendMissingSettings(doc, pool = null, note = null, asked = null
     const rec = records[i];
     if (settled.ok && settled.value) {
       for (const row of settled.value.rows) {
-        // the worker numbers the settings it was handed from zero; they sit
+        // each setting carries its place in the set to the worker; they sit
         // after everything already on disk. storedRecordOf for the same reason
         // the first writer uses it: one place decides what reaches disk.
         w.push({
           ...require('./stagework').storedRecordOf(row),
-          si: nextSi + row.si,
+          si: row.si,
           u: rec.u, trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
         });
       }
@@ -3026,6 +3181,15 @@ async function appendMissingSettings(doc, pool = null, note = null, asked = null
 
   const plan = doc.plan || {};
   plan.settingLabels = held.concat(missing.map((st) => st.label));
+  // and what each unit holds moves with it -- on a set that says what it
+  // holds; one not yet folded per unit is left unstamped, so the fold still runs
+  if (Array.isArray(plan.unitSettings)) {
+    plan.unitSettings = records.map((rec, i) => {
+      const was = plan.unitSettings.find((x) => x.u === rec.u);
+      return { u: rec.u, held: (was ? Number(was.held) || 0 : 0) + addedPerUnit[i] };
+    });
+    plan.pricings = plan.unitSettings.reduce((a, x) => a + x.held, 0);
+  }
   plan.settings = plan.settingLabels.length;
   doc.plan = plan;
   doc.counts = { ...(doc.counts || {}), settings: plan.settings, rows: rowstore.count(id, 'records') };
@@ -3069,8 +3233,10 @@ function relaunchShapeOf(doc) {
   const { records } = stage3UnitsFor(parent, choice.carry, choice.selected);
   if (!records.length) throw new Error(`${parent.name} holds no records — the units cannot be rebuilt`);
   const sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
-  const { kept } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), records);
-  return { parent, records, settings: kept };
+  const { kept, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), records);
+  // every setting carries its place in the block, and heldOn[i] lists the
+  // places records[i] holds
+  return { parent, records, settings: kept.map((st, si) => ({ ...st, si })), heldOn };
 }
 // ---- REBUILDING THE NUMBERS STAGE 3 DID NOT STORE ------------------------------
 //
@@ -3099,7 +3265,7 @@ function firstDigitOf(v) { return String(v || '').split('.')[0] || null; }
 // it. When the caller supplies none, the result says so: an unproved rebuild is
 // allowed, but it may never look like a proved one.
 // EXPECT IS KEYED BY LABEL, and that is not a detail. si comes back per BLOCK —
-// the worker numbers the settings it was handed from zero — so proving against
+// each setting carries its place in the set to the worker — so proving against
 // si would line setting 0 of the rebuild up with setting 0 of the whole board.
 // Every one would "match" and not one of them would be the same setting.
 function proveRebuild(perSetting, expect, tol = 1e-6) {
@@ -3146,7 +3312,7 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   }
   const wanted = new Set((wantedLabels || []).map(String));
   if (!wanted.size) throw new Error('nothing was asked for');
-  const { parent, records, settings } = relaunchShapeOf(doc);
+  const { parent, records, settings, heldOn } = relaunchShapeOf(doc);
   const use = settings.filter((st) => wanted.has(st.label));
   const missing = [...wanted].filter((L) => !settings.some((st) => st.label === L));
   if (missing.length) {
@@ -3155,7 +3321,10 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   }
   const fee = Number((doc.params || {}).fee) || 0;
   const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
-  const payloads = records.map((rec) => s3Payload({ doc, parent, rec, settings: use, fee, nullN }));
+  const payloads = records.map((rec, i) => {
+    const mine = new Set(heldOn[i]);
+    return s3Payload({ doc, parent, rec, settings: use.filter((st) => mine.has(st.si)), fee, nullN });
+  });
 
   // si is per-BLOCK on the way back — the worker numbers what it was handed
   // from zero — so the label is what identifies a setting across units.
@@ -3214,10 +3383,10 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false 
 
 async function buildAgreedTable(doc, pool = null, note = null) {
   const sw = require('./stagework');
-  const { parent, records, settings } = relaunchShapeOf(doc);
+  const { parent, records, settings, heldOn } = relaunchShapeOf(doc);
   const p = doc.params || {};
   const payloads = records.map((rec, i) => s3Payload({
-    doc, parent, rec, settings, fee: Number(p.fee) || 0, nullN: 0, agreedOnly: true, note: note && (() => note(i, records.length)),
+    doc, parent, rec, settings: heldOn[i].map((k) => settings[k]), fee: Number(p.fee) || 0, nullN: 0, agreedOnly: true, note: note && (() => note(i, records.length)),
   }));
   const map = {};
   let done = 0;
@@ -3380,6 +3549,112 @@ async function buildTally(doc, pool = null, note = null) {
 // the screen rather than retried into the same wall.
 let tallyRun = null;   // { id, done, total, startedAt, error, promise }
 
+// ---- FOLDING A SET'S RECORDS PER UNIT (3.52.0, RULE NINE) --------------------
+function foldBehind(doc) {
+  if (!doc || doc.stage !== 3) return false;
+  if (doc.status !== 'done' && doc.status !== 'incomplete') return false;
+  if (!Array.isArray(((doc.plan || {}).settingLabels)) || !doc.plan.settingLabels.length) return false;
+  return !Array.isArray((doc.plan || {}).unitSettings);
+}
+// what each unit holds, counted off the records themselves -- after a pass
+// that changed what is on disk, the set says what it now holds
+function stampUnitSettingsFromRows(doc) {
+  const per = new Map();
+  const blocks = rowstore.blocksOf(doc.id, 'records') || [];
+  for (let b = 0; b < blocks.length; b++) {
+    for (const x of rowstore.readBlocks(doc.id, 'records', [b]) || []) {
+      const r = x.row || x;
+      per.set(r.u, (per.get(r.u) || 0) + 1);
+    }
+  }
+  const order = Array.isArray((doc.plan || {}).unitSettings) ? doc.plan.unitSettings.map((x) => x.u) : [...per.keys()].sort((a, b) => a - b);
+  for (const u of per.keys()) if (!order.includes(u)) order.push(u);
+  doc.plan.unitSettings = order.map((u) => ({ u, held: per.get(u) || 0 }));
+  doc.plan.pricings = doc.plan.unitSettings.reduce((a, x) => a + x.held, 0);
+}
+async function foldRecordsPerUnit(doc, note = null) {
+  const id = doc.id;
+  const labels = (doc.plan || {}).settingLabels || [];
+  // A SET WHOSE BLOCK CANNOT BE REBUILT TODAY is not left unusable: its stage
+  // 2 parent may be gone, or its names may be behind. It is stamped with what
+  // its records hold, unit by unit, and the plan says the fold did not run
+  // and why -- the audit on Boards says the same, and the owner decides.
+  const stampOnly = (why) => {
+    stampUnitSettingsFromRows(doc);
+    doc.plan.foldedPerUnit = { at: new Date().toISOString(), dropped: 0, kept: rowstore.count(id, 'records'), notFolded: why };
+    saveSet(doc);
+    return { kept: doc.plan.foldedPerUnit.kept, dropped: 0, notFolded: why };
+  };
+  let shape;
+  try { shape = relaunchShapeOf(doc); } catch (err) { return stampOnly(String(err.message || err)); }
+  const { records, settings, heldOn } = shape;
+  // THE SET'S OWN ORDER, MATCHED BY NAME: a set that has had settings filled
+  // in holds the block's names with the new ones at the end, so a place in
+  // the set is found from its name, never assumed to be the block's place
+  const blockAt = new Map(settings.map((st) => [st.label, st.si]));
+  const planToBlock = labels.map((L) => blockAt.get(L));
+  if (settings.length !== labels.length || planToBlock.some((k) => k === undefined)) {
+    return stampOnly(`the block rebuilt today (${settings.length.toLocaleString()} settings) is not the one this set holds `
+      + `(${labels.length.toLocaleString()}) — bring the set's settings up to date first`);
+  }
+  // holds.get(u): the places IN THE SET that unit u holds
+  const holds = new Map(records.map((rec, i) => {
+    const blockHeld = new Set(heldOn[i]);
+    return [rec.u, new Set(labels.map((L, p) => p).filter((p) => blockHeld.has(planToBlock[p])))];
+  }));
+  // nothing to fold when every unit holds the whole block: the set is
+  // stamped and its records are not rewritten
+  if (heldOn.every((list) => list.length === settings.length)) {
+    doc.plan.unitSettings = records.map((rec, i) => ({ u: rec.u, held: heldOn[i].length }));
+    doc.plan.pricings = doc.plan.unitSettings.reduce((a, x) => a + x.held, 0);
+    doc.plan.foldedPerUnit = { at: new Date().toISOString(), dropped: 0, kept: rowstore.count(id, 'records') };
+    saveSet(doc);
+    return { kept: doc.plan.foldedPerUnit.kept, dropped: 0 };
+  }
+  const SPARE = 'records-folding';
+  for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
+    rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
+    try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
+  }
+  const blocks = rowstore.blocksOf(id, 'records') || [];
+  const w = rowstore.writer(id, SPARE, { offThread: true });
+  let kept = 0;
+  let dropped = 0;
+  let beyond = 0;
+  if (note) note(0, blocks.length);
+  for (let b = 0; b < blocks.length; b++) {
+    for (const x of rowstore.readBlocks(id, 'records', [b]) || []) {
+      const r = x.row || x;
+      if (!(r.si >= 0 && r.si < labels.length)) { beyond++; continue; }
+      const mine = holds.get(r.u);
+      if (mine && mine.has(r.si)) { w.push(r); kept++; } else dropped++;
+    }
+    w.flush();
+    if (note) note(b + 1, blocks.length);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => { setImmediate(resolve); });
+  }
+  await w.close();
+  if (beyond) throw new Error(`${beyond.toLocaleString()} records sit past the end of this set's list of names — undo that first, nothing was replaced`);
+  const got = rowstore.count(id, SPARE);
+  if (got !== kept) throw new Error(`the copy holds ${got.toLocaleString()} records and ${kept.toLocaleString()} were kept — nothing was replaced`);
+  // SWAP, and everything derived from the records goes with the old ones
+  const from = rowstore.storeFile(id, SPARE);
+  const to = rowstore.storeFile(id, 'records');
+  fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
+  fs.renameSync(from, to);
+  recordsInHand.id = null; recordsInHand.rows = null;
+  try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  try { fs.rmSync(funnelRichFile(id), { force: true }); } catch (_) { /* nothing there */ }
+  if (tallyInHand.id === id) { tallyInHand.id = null; tallyInHand.tally = null; }
+  if (tallyInHand.staleId === id) tallyInHand.staleId = null;
+  doc.plan.unitSettings = records.map((rec, i) => ({ u: rec.u, held: heldOn[i].length }));
+  doc.plan.pricings = doc.plan.unitSettings.reduce((a, x) => a + x.held, 0);
+  doc.plan.foldedPerUnit = { at: new Date().toISOString(), dropped, kept };
+  if (doc.counts) doc.counts.rows = kept;
+  saveSet(doc);
+  return { kept, dropped };
+}
 function ensureTally(id) {
   // A totalling in flight answers FIRST, before any file is touched (the
   // third out-of-memory death): the old order consulted readTally on every
@@ -3419,6 +3694,30 @@ function ensureTally(id) {
       }
       // the slot is freed; the next ask finds no tables and totals them
       tallyRun = null;
+    })();
+    return { totalling: { done: 0, total: 0, phase: run.phase, word: run.word } };
+  }
+  // THE FOLD IS PER UNIT (3.52.0): a set priced before that holds, on a unit
+  // whose shape has no weekday version, both values of 24/5 as two records of
+  // one trade, and never says what each unit holds. Brought up to date in this
+  // slot, before its tables: the duplicate records dropped, the plan told what
+  // each unit holds, the tables re-totalled from what is left.
+  const fold = getSet(id);
+  if (fold && foldBehind(fold)) {
+    if (batch.batchRunning() || activeSet) return { waiting: 'a run is going — the records are folded per unit when the box is free' };
+    const run = { id, done: 0, total: 0, phase: 'folding the settings per unit', word: 'parts', startedAt: Date.now(), error: null, promise: null };
+    tallyRun = run;
+    run.promise = (async () => {
+      try {
+        await foldRecordsPerUnit(fold, (dn, tn) => { run.done = dn; run.total = tn; });
+        if (fold.tallyError) { delete fold.tallyError; saveSet(fold); }
+      } catch (err) {
+        run.error = String(err.message || err);
+        const d = getSet(id);
+        if (d && d.tallyError !== run.error) { d.tallyError = run.error; saveSet(d); }
+        return;
+      }
+      tallyRun = null;              // the slot is freed; the next ask finds no tables and totals them
     })();
     return { totalling: { done: 0, total: 0, phase: run.phase, word: run.word } };
   }
@@ -4653,7 +4952,10 @@ function readUnitFigures(dir, u, want) {
   if ((note.from || 0) !== (want.from || 0)) stale.push(`it starts at scramble ${note.from || 0} and this asks to start at ${want.from || 0}`);
   if (stale.length) return { stale };
   const bad = [];
-  if (note.priced !== want.settings) bad.push(`only ${note.priced} of ${want.settings} settings were priced into it`);
+  // a unit prices only the settings that place different orders on it
+  // (3.52.0), so what must have been priced into its file is ITS count
+  const mustPrice = want.priced != null ? want.priced : want.settings;
+  if (note.priced !== mustPrice) bad.push(`only ${note.priced} of ${mustPrice} settings were priced into it`);
   const expectBytes = want.settings * want.width * 4;
   if (buf.length !== expectBytes) bad.push(`it is ${buf.length} bytes and should be ${expectBytes}`);
   if (!bad.length && crypto.createHash('sha256').update(buf).digest('hex') !== note.sha) {
@@ -4699,7 +5001,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
   const from = dryRun ? 0 : Math.min(have, keep);
   const add = keep - from;
 
-  const { parent, records, settings } = relaunchShapeOf(doc);
+  const { parent, records, settings, heldOn } = relaunchShapeOf(doc);
   const blocks = rowstore.blocksOf(id, 'records') || [];
   if (!blocks.length) throw new Error(`${doc.name} has no rows on disk to fill in`);
   const fee = Number((doc.params || {}).fee) || 0;
@@ -4712,7 +5014,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
   doc.perf = {
     unitsDone: 0, unitsTotal: records.length, elapsedMs: 0, etaMs: null, workers: null,
     cyclesDone: 0,
-    cyclesTotal: records.length * settings.length * (1 + add * 2), cyclesWord: 'pricings',
+    cyclesTotal: heldOn.reduce((a, h) => a + h.length, 0) * (1 + add * 2), cyclesWord: 'pricings',
   };
   saveSet(doc);
 
@@ -4741,7 +5043,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       if (!force && now - lastSay < 2000) return;
       lastSay = now;
       doc.perf.unitsDone = unitsSaved;
-      doc.perf.cyclesDone = unitsSaved * settings.length * (1 + keep * 2);
+      doc.perf.cyclesDone = heldOn.slice(0, unitsSaved).reduce((a, h) => a + h.length, 0) * (1 + keep * 2);
       doc.perf.elapsedMs = now - t0;
       doc.perf.etaMs = unitsSaved ? Math.round(((now - t0) / unitsSaved) * (records.length - unitsSaved)) : null;
       doc.progress = `${asked} — ${phase}: ${unitsSaved} of ${records.length} units saved`
@@ -4763,7 +5065,9 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       throw new Error(`this set declares ${settings.length} settings under ${labelIdx.size} names — `
         + 'the fill joins its figures on the name, so two settings sharing one would take each other\'s');
     }
-    const want = { settings: settings.length, width, keep, from };
+    // the file is block-wide (a place per setting of the block); what must be
+    // priced into it is the unit's own count
+    const wantFor = (u) => ({ settings: settings.length, priced: heldOn[u].length, width, keep, from });
     const lanes = Math.max(1, (pool.parallel && pool.workers ? pool.workers.length : 1));
 
     try {
@@ -4771,7 +5075,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       for (let u = 0; u < records.length; u++) {
         if (onlyUnit != null && u !== onlyUnit) continue;
         const rec = records[u];
-        const already = readUnitFigures(FIGS, u, want);
+        const already = readUnitFigures(FIGS, u, wantFor(u));
         if (already && already.vals) {
           // ALREADY DONE AND STILL SOUND. This is what makes a death at hour
           // four cost minutes: it is not trusted for existing, it is re-read
@@ -4790,9 +5094,10 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
             + 'Delete them and run this again rather than filling in from a file that does not say what it holds');
         }
         const base = { ...s3Payload({ doc, parent, rec, settings, fee, nullN }), keepN: keep, keepFrom: from, noiseOnly: true };
-        const per = Math.ceil(settings.length / lanes);
+        const mine = heldOn[u].map((k) => settings[k]);          // the unit's own list, block places on each
+        const per = Math.max(1, Math.ceil(mine.length / lanes));
         const shards = [];
-        for (let at = 0; at < settings.length; at += per) shards.push({ ...base, settings: settings.slice(at, at + per) });
+        for (let at = 0; at < mine.length; at += per) shards.push({ ...base, settings: mine.slice(at, at + per) });
         const vals = new Int32Array(settings.length * width).fill(NIL);
         const has = new Uint8Array(settings.length);
         let lanesDone = 0;
@@ -4825,7 +5130,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
         // READ BACK BEFORE MOVING ON. The owner's words: confirm it in the code
         // before going forward. Not "it returned without throwing" -- read the
         // bytes off the disk and check them against what they claim to be.
-        const back = readUnitFigures(FIGS, u, want);
+        const back = readUnitFigures(FIGS, u, wantFor(u));
         if (!back || !back.vals) {
           throw new Error(`the figures for ${rec.trade} did not read back${back && back.bad ? ` — ${back.bad.join('; ')}` : ''}`);
         }
@@ -4845,7 +5150,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
       const loaded = new Map();            // unit -> vals, at most two at a time
       const figuresFor = (u) => {
         if (loaded.has(u)) return loaded.get(u);
-        const got = readUnitFigures(FIGS, u, want);
+        const got = readUnitFigures(FIGS, u, wantFor(u));
         if (!got || !got.vals) {
           if (onlyUnit != null) { loaded.set(u, null); return null; }   // a rehearsal has only one unit's figures
           throw new Error(`the figures for unit ${u} are missing or unusable${got && got.bad ? ` — ${got.bad.join('; ')}` : ''}`);
@@ -4971,8 +5276,8 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
     units: records.length,
     settings: settings.length,
     pricings: dryRun
-      ? settings.length * (1 + keep * 2)
-      : records.length * settings.length * (1 + keep * 2),
+      ? (heldOn[0] || []).length * (1 + keep * 2)
+      : heldOn.reduce((a, h) => a + h.length, 0) * (1 + keep * 2),
   };
 }
 
@@ -4983,7 +5288,7 @@ module.exports = {
   // the shape of its source, which rotted the moment a second share column
   // arrived
   sortValue,
-  sameEngineLine, stageBusy, foldSameTradeSettings, SAME_TRADE_TOLERANCE,
+  sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, foldBehind, foldRecordsPerUnit, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,

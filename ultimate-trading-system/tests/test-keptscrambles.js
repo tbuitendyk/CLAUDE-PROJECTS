@@ -204,7 +204,7 @@ module.exports = {
     const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
     const fill = src.slice(src.indexOf('function startKeptScrambleFill('));
     assert.ok(fill.includes('const from = dryRun ? 0 : Math.min(have, keep);') && fill.includes('const add = keep - from;'));
-    assert.ok(fill.includes('cyclesTotal: records.length * settings.length * (1 + add * 2)'), 'the cost is sized by what is added');
+    assert.ok(fill.includes('cyclesTotal: heldOn.reduce((a, h) => a + h.length, 0) * (1 + add * 2)'), 'the cost is sized by what is added, over what the units hold between them');
     assert.ok(fill.includes('const width = add * 2 + 1;'), 'the figures file holds only the added positions');
     assert.ok(fill.includes('keepN: keep, keepFrom: from, noiseOnly: true'), 'the task is told where to start');
     assert.ok(fill.includes('const keptT = sw.appendKept(x.row.noiseTest, from, freshT);'), 'the rewrite appends');
@@ -257,8 +257,8 @@ module.exports = {
     const body = fill.slice(0, fill.indexOf('\nasync function ', 1) + 1 || undefined);
     assert.ok(/pool\.forEach\('s3Unit', shards,/.test(body),
       'the fill must hand the pool every slice at once, not one unit at a time');
-    assert.ok(body.includes('settings.slice(at, at + per)'),
-      'the slices must be slices of the SETTINGS — splitting units instead is what the memory bound forbids');
+    assert.ok(body.includes('mine.slice(at, at + per)') && body.includes('const mine = heldOn[u].map((k) => settings[k]);'),
+      'the slices must be slices of the SETTINGS the unit holds — splitting units instead is what the memory bound forbids');
     assert.ok(/const lanes = Math\.max\(1, \(pool\.parallel/.test(body),
       'how many slices must come from how many workers there actually are');
     assert.ok(!/pool\.forEach\('s3Unit', \[\{/.test(body),
@@ -278,9 +278,9 @@ module.exports = {
     // the note beside each saved unit, so an incomplete unit is caught when it
     // is read back a second later rather than five hours later against a row
     // that cannot find its figures.
-    assert.ok(src.includes('note.priced !== want.settings'),
-      'a saved unit must record how many settings were priced into it, and be rejected if it is short');
-    assert.ok(src.includes('only ${note.priced} of ${want.settings} settings were priced into it'),
+    assert.ok(src.includes('const mustPrice = want.priced != null ? want.priced : want.settings;') && src.includes('note.priced !== mustPrice'),
+      'a saved unit must record how many settings were priced into it, and be rejected if it is short of what that unit holds');
+    assert.ok(src.includes('only ${note.priced} of ${mustPrice} settings were priced into it'),
       'and it must say how short, not merely refuse');
   },
 
@@ -356,8 +356,16 @@ module.exports = {
     // The rewrite reports too — that is the stretch that looked stuck.
     assert.ok(/rowsDone\+\+/.test(body) && /records written/.test(body),
       'the rewrite must report how many records it has written, or it looks stuck for hours');
-    assert.ok(body.includes('doc.perf.cyclesDone = unitsSaved * settings.length * (1 + keep * 2)'),
-      'cyclesDone must count real pricings, or the Sweep line shows no rate and no finish time');
+    assert.ok(body.includes('doc.perf.cyclesDone = heldOn.slice(0, unitsSaved).reduce((a, h) => a + h.length, 0) * (1 + keep * 2)'),
+      'cyclesDone must count real pricings — what the saved units hold — or the Sweep line shows no rate and no finish time');
+    assert.ok(body.includes('const mine = heldOn[u].map((k) => settings[k]);'), 'a unit is filled in for its own list only, each setting carrying its place in the block');
+    // and its figures file is judged by what IT holds, not by the block
+    assert.ok(body.includes('const wantFor = (u) => ({ settings: settings.length, priced: heldOn[u].length, width, keep, from });'),
+      'the fill asks every unit for the whole block, so a unit holding fewer is judged damaged');
+    assert.strictEqual(body.split('readUnitFigures(FIGS, u, wantFor(u))').length - 1, 3, 'every read of a unit\'s figures asks for that unit\'s count');
+    const read = src.slice(src.indexOf('function readUnitFigures('), src.indexOf('function readUnitFigures(') + 2200);
+    assert.ok(read.includes('const mustPrice = want.priced != null ? want.priced : want.settings;') && read.includes('if (note.priced !== mustPrice)'),
+      'the figures check compares against the block count, not the unit\'s');
 
     // Throttled, or a 5.2-million-row walk writes the set document 5.2 million
     // times.
@@ -514,7 +522,7 @@ module.exports = {
     const at = src.indexOf('function startKeptScrambleFill');
     const body = src.slice(at, src.indexOf('\nmodule.exports', at));
     const write = body.indexOf('writeUnitFigures(FIGS, u, vals, has');
-    const back = body.indexOf('const back = readUnitFigures(FIGS, u, want)');
+    const back = body.indexOf('const back = readUnitFigures(FIGS, u, wantFor(u))');
     const counted = body.indexOf('unitsSaved++;\n        note = `${rec.trade} saved and checked`');
     assert.ok(write > 0, 'a unit must be written to disk as soon as it is priced');
     assert.ok(back > write, 'and read straight back — "it returned without throwing" is not the same as saved');
@@ -532,7 +540,7 @@ module.exports = {
       ['how many settings it is for', 'note.settings !== want.settings'],
       ['how many figures a setting', 'note.width !== want.width'],
       ['how many scrambles it kept', 'note.keep !== want.keep'],
-      ['whether every setting was priced into it', 'note.priced !== want.settings'],
+      ['whether every setting the unit holds was priced into it', 'note.priced !== mustPrice'],
       ['its length in bytes', 'buf.length !== expectBytes'],
       ['its fingerprint', "createHash('sha256')"],
     ]) {

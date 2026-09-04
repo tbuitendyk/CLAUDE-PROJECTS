@@ -224,8 +224,11 @@ window.HELP = {
       swPermDec: { what: 'Price both ways of deciding, each as its own setting in the block.' },
       swBand: { what: 'The size a move must reach to count as a move, for pricing the rails. auto uses the width each unit trained at, worked out from its own history.' },
       swPermBand: { what: 'Price every band on the menu as its own setting in the block.' },
-      swWk: { what: 'Price this setting on weekday starts only. Weekly chunk shapes always span weekends, so for those units this reads the same either way.' },
-      swPermWk: { what: 'Price it both ways — weekdays only, and every day.' },
+      swWk: {
+        what: 'Price this setting on weekday starts only. Weekly chunk shapes always span weekends, so on those units the two values place the same orders and only one is priced. Ghosted while '
+          + 'no unit being priced has a weekday version of its chunk shape: nothing in the block reads it then.',
+      },
+      swPermWk: { what: 'Price it both ways — weekdays only, and every day. Ghosted with the 24/5 box whenever nothing in the block can read it.' },
       swEntry: {
         what: 'How the position is opened. market buys or sells at the opening price of the hour, in whichever direction was called. breakout waits until the price reaches a level set d away from where it started, and opens there.',
         more: 'market carries no gate, d, trail or arm — those four boxes disappear while it is chosen, because none of them means anything to it.',
@@ -520,7 +523,7 @@ window.HELP = {
     controls: {
       fUnit: {
         what: 'Which coin-and-shape unit this walk is on. One rule per unit - ten units, ten rules.',
-        more: 'A unit\'s board is its own records: one row per setting, every dial on it, its own test money and its own scrambled copies. The units are listed in the order of the parent\'s stage 2 table on Boards - its saved sort - and the walk opens on the first of them. Each unit keeps its own walk, so you can leave one half-done and come back. "all units together" is the blended table, one row per setting averaged over every unit; it hides what any one coin does and is kept only so the choice is yours.',
+        more: 'A unit\'s board is its own records: one row per setting it holds (a unit holds only the settings that place different orders on it), every dial on it, its own test money and its own scrambled copies. The units are listed in the order of the parent\'s stage 2 table on Boards - its saved sort - and the walk opens on the first of them. Each unit keeps its own walk, so you can leave one half-done and come back. "all units together" is the blended table, one row per setting averaged over the units that hold it; it hides what any one coin does and is kept only so the choice is yours.',
       },
       fAcross: {
         what: 'Applies the rule you have built on this unit to each of the other units\' records, one at a time, and reports how many come out positive.',
@@ -536,7 +539,7 @@ window.HELP = {
       },
       fDial: {
         what: 'Which setting to look at the shape of.',
-        more: 'The list is every dial a sweep can vary, read from the engine rather than typed into this page, so it cannot quietly disagree with what your records actually hold.',
+        more: 'The list is every dial a sweep can vary, read from the engine rather than typed into this page, so it cannot quietly disagree with what your records actually hold. Each is listed with the name of its box on Sweep in brackets, the way the table on step 1 lists them.',
       },
       fMin: {
         what: 'The lowest value of this dial to keep.',
@@ -551,7 +554,7 @@ window.HELP = {
         more: 'The survivor count at the top updates straight away. Nothing is written to disk until the last step.',
       },
       fA: {
-        what: 'The first of two dials to lay against each other on a grid. The list is every dial the engine knows; it starts on the leading dial from step 1.',
+        what: 'The first of two dials to lay against each other on a grid. The list is every dial the engine knows, each with the name of its box on Sweep in brackets; it starts on the leading dial from step 1.',
         more: 'This is where you see things like a short distance only working when the holding time is long - which no ranked list can show you.',
       },
       fB: {
@@ -559,7 +562,7 @@ window.HELP = {
         more: 'Each square shows the average for the settings that carry both values, and the second grid underneath shows the same square on the check - so a square that only looks good is told apart from one that beats the check.',
       },
       fKeepValues: {
-        what: 'Keeps the ticked values of this dial and drops the rest. For dials whose values are words rather than numbers.',
+        what: 'Keeps the ticked values of this dial and drops the rest. For dials whose values are words rather than numbers. The count beside it follows the ticks as you change them.',
         more: 'A word-valued dial cannot be kept as a range - there is no order to "active" and "directional". The ticked values become part of the rule, so a scrambled copy handed the same rule keeps the same values. The recommended values are ticked when you arrive; untick or tick as you see fit. Ticking none removes this dial from the rule.',
       },
       fKeepBlock: {

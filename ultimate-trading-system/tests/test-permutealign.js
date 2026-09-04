@@ -112,6 +112,15 @@ module.exports = {
     assert.ok(sync.includes("const notVoices = $('#swAgreeRule') && $('#swAgreeRule').value !== 'voices'\n      && !($('#swPermAgreeRule') && $('#swPermAgreeRule').checked);"),
       'one voice at does not wait on quorum by being something other than voices with its permute unticked');
     assert.ok(sync.includes("swGhostGroup('#swGrpCopy', notVoices);"), 'one voice at and its tick are not ghosted under count, conviction or families');
+    // 24/5 AND ITS TICK (3.52.0): ghosted when the count says no unit being
+    // priced has a weekday version of its chunk shape -- read off the same
+    // answer the cost line reads, so the two can never disagree
+    const count3 = PAGE.slice(PAGE.indexOf("const r = await swAsk('api/stage3-count', {"), PAGE.indexOf("swSayCount(c3, html, r.why);"));
+    assert.ok(count3.includes("swGhostGroup('#swGrpWk', got.weekdaysApply === false);"), '24/5 and its tick are not ghosted when the count says no unit being priced has a weekday version');
+    assert.ok(/<div id="swGrpWk"[^>]*>\s*<label class="c"><input type="checkbox" id="swWk"> 24\/5<\/label>\s*<label class="c"><input type="checkbox" id="swPermWk"> permute<\/label>/.test(PAGE),
+      '24/5 and its tick are not one group, so they cannot be ghosted as one');
+    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    assert.ok(srv.includes('weekdaysApply: d.weekdaysApply'), 'the count route does not say whether 24/5 applies, so the page cannot ghost it');
     const grp = groupAround('swAgreeCopy');
     assert.ok(grp.startsWith('<div id="swGrpCopy"'), 'one voice at and its tick are not one group, so they cannot be ghosted as one');
     assert.ok(grp.includes('id="swPermAgreeCopy"'), 'the one voice at tick is outside its group');
@@ -122,5 +131,7 @@ module.exports = {
     const H = sandbox.HELP.sweep.controls;
     assert.ok(/Ghosted while trail is static/.test(H.swArm.what), 'the arm help does not say when the box is ghosted');
     assert.ok(/Ghosted unless quorum by is voices/.test(H.swAgreeCopy.what), 'the one voice at help does not say when the box is ghosted');
+    assert.ok(/Ghosted while no unit being priced has a weekday version/.test(H.swWk.what), 'the 24/5 help does not say when the box is ghosted');
+    assert.ok(/Ghosted with the 24\/5 box/.test(H.swPermWk.what), 'the 24/5 permute help does not say it is ghosted with its box');
   },
 };

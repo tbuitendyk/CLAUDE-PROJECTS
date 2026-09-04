@@ -467,10 +467,13 @@ const agreedKeyOfRecord = (r) => agreedKey(r.decision, agrOf(r));
 
 async function s3UnitTask(task) {
   const { combo, geometry, params: p, unit, settings, fee, nullN, seed, unitKey, agreedOnly = false } = task;
-  // A PART OF A UNIT'S BLOCK NUMBERS ITS ROWS FROM ITS PLACE IN THE BLOCK (3.47.0):
-  // the launch hands a unit's settings out in parts so every worker is busy,
-  // and a record's setting number must be the same whichever part priced it.
-  const siFrom = Math.max(0, Math.floor(Number(task.siFrom) || 0));
+  // EVERY SETTING CARRIES ITS OWN PLACE IN THE BLOCK (3.52.0). A unit prices
+  // only the settings that place different orders on it, so its list is not
+  // the block and a position in the list says nothing; the record files under
+  // the setting's block number, which rides on the setting itself.
+  for (const st of (task.settings || [])) {
+    if (!Number.isInteger(st.si) || st.si < 0) throw new Error(`the setting "${st.label}" was handed to a unit without its place in the block`);
+  }
   // HOW MANY OF THE SCRAMBLES TO WRITE DOWN (owner order, 2026-08-31: "keep 10").
   // Never more than there are: a set swept with 4 scrambles cannot keep 10, and
   // silently keeping 4 while the set document claims 10 is how a reader ends up
@@ -769,7 +772,7 @@ async function s3UnitTask(task) {
       }
       // The label rides along so the merge joins on a name, never on a position.
       // Setting indexes are per block and two blocks both start at zero.
-      rows.push({ si: siFrom + si, label: st.label, pnl: tRes.pnl, noiseTest, noiseHold: holdChunks.length ? noiseHold : null });
+      rows.push({ si: st.si, label: st.label, pnl: tRes.pnl, noiseTest, noiseHold: holdChunks.length ? noiseHold : null });
       continue;
     }
     let holdout = null;
@@ -817,7 +820,7 @@ async function s3UnitTask(task) {
       dealShape = shapeOf(dealPnls);
     }
     rows.push({
-      si: siFrom + si,
+      si: st.si,
       label: st.label,
       decision: stream.decision,
       bandMode: stream.band === 'auto' ? 'auto' : Number(stream.band),
