@@ -157,6 +157,12 @@ const COL = {
   fDialName: 'one of the settings a sweep can be told to vary. This table lists only the dials this run swept more than one value of. A dial swept at a single value has nothing to measure against anything, so it is named on the "Not measurable here" line below instead of appearing here as flat.',
   fAcrossUnit: 'one of the other coin-and-shape units of this set. The rule built on this walk was applied to that unit\'s own records.',
   fAcrossSurvivors: 'how many of that unit\'s settings the rule keeps, out of all it has.',
+  fCrossPair: 'the two dials this row is about. Every pair of dials whose values still vary among the settings your rule keeps is read; this is one of the pairs that turned out to say something.',
+  fCrossBlock: 'the largest rectangle of boxes on that pair\'s grid that all beat the check, corner to corner. Pressing load this grid opens it so you can see it and keep it.',
+  fCrossSquares: 'how many boxes that block covers, of how many boxes the whole grid has. A block covering the whole grid is not listed at all: it says nothing the two dials could not say separately.',
+  fCrossBeats: 'across every box inside the block, against every scrambled copy of the table: how many of those comparisons the real box won, of how many there were. This is what the list is ordered by, and it is the only thing it is ordered by until two pairs tie.',
+  fCrossLead: 'how far above the copies\' typical the block sits, in units of how far apart the copies are. Breaks a tie after the beats column and the size.',
+  fCrossSays: 'what the pair is telling you: which dial\'s good part depends on the other. That dependence is the whole reason to grid two dials together instead of setting a range on each.',
   fGridCorner: 'the first dial down the side, the second across the top. Each square is the average test money of the settings that carry both values, with the count in brackets when the square is thin, and under it how many of the scrambled copies of that same square it beats - the same count step 2 shows for a value.',
   fGridValue: 'one value of the second dial. Read down this column to see how the first dial behaves at this value of the second.',
   fRegionDial: 'a dial the widest region spans. Keeping the region writes these edges into the rule.',
@@ -4248,6 +4254,13 @@ function fRememberForSet(set, fields) {
 // WHAT A READING OF THE OTHER UNITS WAS READ FOR: the rule AND the bar. The
 // same rule under another share of the copies is another reading.
 const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct]);
+// WHAT A CROSSES READING IS HELD UNDER (§18.4): the rule, the bar AND the thin
+// floor, because the floor decides which squares count and so changes every
+// block on every pair. A reading whose key has moved is not shown -- a list
+// worked out under a rule that no longer holds is worse than no list.
+const fCrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct, Math.max(0, Math.floor(Number(st.floor) || 0))]);
+const fSecs = (ms) => (ms == null || !Number.isFinite(Number(ms)) ? '-'
+  : (ms < 60000 ? `${Math.max(1, Math.round(ms / 1000))} second(s)` : `${Math.round(ms / 60000)} minute(s)`));
 function fLoad() {
   const set = pickedSet3();
   const unit = fUnitChosen(set);
@@ -4577,6 +4590,55 @@ function fStep2(r, st) {
         than picking a peak. The rule then reads <b>${esc(fDialLabel(st.dial))} is none</b>.</p>` : ''}`}`;
 }
 
+// WHICH CROSSES ARE WORTH READING (§18, owner order 2026-09-04). Always on the
+// screen, above the two pickers; the switch and the button start it. It lists
+// only the pairs that say something the two single-dial ranges cannot, scored
+// on how many of the scrambled copies each block beats -- never on money.
+function fCrosses(r, st) {
+  const off = r.crossesOffer || {};
+  const key = fCrossKey(st);
+  const held = st.crosses && st.crosses.key === key ? st.crosses.result : null;
+  const going = st.crossesAsked && st.crossesAsked.key === key;
+  const head = `<div class="row" style="align-items:flex-end">
+      <label class="c"><input type="checkbox" id="fCrossOn" ${st.crossesOn ? 'checked' : ''}> keep this list up to date</label>
+      <button id="fCrosses" ${going ? 'disabled' : ''}>read every pair</button>
+      <span class="note" id="fCrossMsg">${going ? 'starting' : ''}</span></div>`;
+  const cost = `<p class="note"><b>${Number(off.dials ? off.dials.length : 0)}</b> dial(s) still vary across the
+      <b>${Number(off.rows || 0).toLocaleString()}</b> settings your rule keeps, which is <b>${Number(off.pairs || 0)}</b>
+      pair(s) to read. On this box that is about <b>${fSecs(off.msAll)}</b>${off.k ? ` - each pair is read once for real and once against each of the ${off.k} scrambled copies` : ''}.
+      Nothing here is ranked by money: a block is scored only on how many of those copies it beats.</p>`;
+  if (going) {
+    return `${head}${cost}<p class="note">reading them now - this page follows it and shows the list when it is done.</p>`;
+  }
+  const failed = st.crossesFailed && st.crossesFailed.key === key ? st.crossesFailed.why : null;
+  if (failed) {
+    return `${head}${cost}<p class="note neg">The last reading of these pairs failed: ${esc(failed)}. Press
+      <b>read every pair</b> to try again - it is not started again by itself, or a reading that cannot work would
+      be started on every draw.</p>`;
+  }
+  if (!held) {
+    return `${head}${cost}<p class="note">Press <b>read every pair</b> for the list, or tick
+      <b>keep this list up to date</b> and it is read again by itself every time your rule changes.</p>`;
+  }
+  const list = held.crosses || [];
+  // THE COUNT LINE STAYS WHEN NOTHING IS FOUND (owner, 2026-09-04): silence and
+  // "nothing found" look identical otherwise.
+  const counted = `<p class="note"><b>${Number(held.read || 0)}</b> pair(s) read, <b>${list.length}</b> of them
+      say something the two single-dial ranges cannot${list.length ? '' : ' - none of these dials interact on this board'}.</p>`;
+  if (!list.length) return `${head}${counted}`;
+  return `${head}${counted}
+    <table><thead><tr>${cth('cross', 'fCrossPair')}${cth('the block it finds', 'fCrossBlock')}${cth('squares', 'fCrossSquares')}${cth('beats', 'fCrossBeats')}${cth('lead', 'fCrossLead')}${cth('what it says', 'fCrossSays')}<th ${bth}></th></tr></thead>
+      <tbody>${list.map((x) => `<tr>
+        <td ${btd0}>${esc(fDialLabel(x.a))} x ${esc(fDialLabel(x.b))}</td>
+        <td ${btd}>${esc(x.block.a.from)}..${esc(x.block.a.to)} x ${esc(x.block.b.from)}..${esc(x.block.b.to)}</td>
+        <td ${btd}>${Number(x.squares)} of ${Number(x.ofSquares)}</td>
+        <td ${btd}>${Number(x.won)} of ${Number(x.of)}</td>
+        <td ${btd}>${fFix(x.lead, 1)}</td>
+        <td ${btd0}>${esc(fDialLabel(x.a))} pays only at <b>${esc(x.block.a.from)}..${esc(x.block.a.to)}</b>, and only while ${esc(fDialLabel(x.b))} is <b>${esc(x.block.b.from)}..${esc(x.block.b.to)}</b></td>
+        <td ${btd}><button data-fcross="${esc(x.a)}|${esc(x.b)}">load this grid</button></td>
+      </tr>`).join('')}</tbody></table>`;
+}
+
 function fStep3(r, st) {
   const a0 = st.dialA || (st.leaders || [])[0] || '';
   const b0 = st.dialB || (st.leaders || [])[1] || '';
@@ -4597,7 +4659,7 @@ function fStep3(r, st) {
       <li>...then click the box at the opposite corner to finish it. Your block turns green, and the green line under the grid says which values it covers...</li>
       <li>...then press <b>keep this block</b> to write your block into the rule instead of the outlined one.</li>
     </ol>`;
-  if (!r.grid) return `${howTo}${pickers}<p class="note">name two dials and read the grid</p>`;
+  if (!r.grid) return `${fCrosses(r, st)}${howTo}${pickers}<p class="note">name two dials and read the grid</p>`;
   const kind = (r.noise || {}).kind;
   const blk = (r.block || {}).block;
   const counting = new Set((r.block || {}).counting || []);
@@ -4650,7 +4712,7 @@ function fStep3(r, st) {
   // same width, so a square sits under the same square in every table
   const table = (title, cell) => `<p class="note"><b>${title}</b></p><table class="fgrid"><thead><tr>${cth(`${esc(fDialLabel(r.dialA))} \\ ${esc(fDialLabel(r.dialB))}`, 'fGridCorner')}${(r.bVals || []).map((b) => cth(esc(b), 'fGridValue')).join('')}</tr></thead><tbody>
       ${(r.aVals || []).map((a) => `<tr><td><b>${esc(a)}</b></td>${(r.bVals || []).map((b) => cell(a, b)).join('')}</tr>`).join('')}</tbody></table>`;
-  return `${howTo}${pickers}
+  return `${fCrosses(r, st)}${howTo}${pickers}
     <p class="note"><b>${r.thin} of ${r.squares} squares are thin.</b> A square built from two settings tells you
       nothing, but it looks like every other square - and it is often the best-looking one on the grid, because small
       groups swing further. Thin squares are marked and keep their count; none is dropped.</p>
@@ -5202,6 +5264,7 @@ function fFreshWalk(st) {
   st.dial = null; st.dialA = null; st.dialB = null;
   st.steps = []; st.backSteps = []; st.marks = [];
   st.pick = null; st.leaders = []; st.conditions = {}; st.across = null; st.userRule = null;
+  st.crosses = null; st.crossesAsked = null; st.crossesFailed = null;
   st.acrossAsked = null; st.read = null; st.rebuilt = false;
 }
 // and one for the coin-and-shape box, for the same reason: this walk keeps its
@@ -5261,6 +5324,38 @@ function fRuleBox(d, st) {
 // polled every two seconds, the count of boards read on the line beside the
 // button. The result is kept under the rule it was read for; a result the box
 // holds for some other reading (another rule, another window) is left alone.
+// FOLLOWING A READING OF THE CROSSES (§18): started on the box and polled every
+// two seconds, with what is left worked out from the pairs already read rather
+// than from the estimate the screen showed before it began.
+async function fCrossFollow(st, status) {
+  const asked = st.crossesAsked;
+  if (!asked) return;
+  let s = status;
+  for (;;) {
+    if (!s) {
+      try { s = await api(`api/funnel/${encodeURIComponent(st.set)}/crosses`); } catch (_) { s = null; }
+      if (!s || s.none || s.token !== asked.token) { st.crossesAsked = null; fSave(); if ($('#fCrosses')) drawFunnel(); return; }
+    }
+    if (s.error) {
+      st.crossesAsked = null;
+      st.crossesFailed = { key: asked.key, why: s.error };
+      fSave(); drawFunnel();
+      return;
+    }
+    if (s.result) {
+      st.crosses = { key: asked.key, result: s.result };
+      st.crossesAsked = null; st.crossesFailed = null;
+      fSave(); drawFunnel();
+      return;
+    }
+    const m = $('#fCrossMsg');
+    if (m) m.textContent = `read ${s.done} of ${s.of}${s.msEach ? ` - about ${fSecs((s.of - s.done) * s.msEach)} left` : ''}`;
+    await new Promise((resolve) => { setTimeout(resolve, 2000); });
+    if (fState !== st) return;                       // the walk on screen is another one now
+    s = null;
+  }
+}
+
 async function fAcrossFollow(st, status) {
   const asked = st.acrossAsked;
   if (!asked) return;
@@ -5448,6 +5543,40 @@ function fWire(st, d) {
     st.steps.push({ n: 3, what: `a block on ${fDialLabel(st.dialA)} x ${fDialLabel(st.dialB)}`, chose: `${va[0]}..${va[va.length - 1]} x ${vb[0]}..${vb[vb.length - 1]}${pk ? '' : ' (recommended)'}` });
     fSave(); drawFunnel();
   };
+  // WHICH CROSSES ARE WORTH READING (§18). The switch keeps the list up to date
+  // as the rule narrows; the button reads them once. Both are always drawn.
+  const startCrosses = async () => {
+    const key = fCrossKey(st);
+    const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/crosses`,
+      { rule: st.rule, unit: st.unit, barPct: st.barPct, floor: st.floor });
+    if (!started) { const b = $('#fCrosses'); if (b) b.disabled = false; return; }
+    st.crossesAsked = { key, token: started.token };
+    fSave();
+    fCrossFollow(st, started);
+  };
+  const cx = $('#fCrosses');
+  if (cx) cx.onclick = () => { cx.disabled = true; st.crossesFailed = null; startCrosses(); };
+  const cxOn = $('#fCrossOn');
+  if (cxOn) cxOn.onchange = () => { st.crossesOn = cxOn.checked; st.crossesFailed = null; fSave(); if (st.crossesOn) startCrosses(); else drawFunnel(); };
+  // ON THE SWITCH, A RULE THAT HAS MOVED READS ITSELF AGAIN (§18.4) -- and a
+  // reading that FAILED is not, or a reading that cannot work would be started
+  // on every single draw.
+  const crossKey = fCrossKey(st);
+  const crossHeld = st.crosses && st.crosses.key === crossKey;
+  const crossBad = st.crossesFailed && st.crossesFailed.key === crossKey;
+  if (cx && st.crossesOn && !crossHeld && !crossBad && !st.crossesAsked) startCrosses();
+  // a reading started before the page was left is followed again, not asked twice
+  else if (cx && st.crossesAsked && st.crossesAsked.key === crossKey && !crossHeld) fCrossFollow(st, null);
+  document.querySelectorAll('[data-fcross]').forEach((b) => {
+    b.onclick = () => {
+      const [ca, cb] = String(b.dataset.fcross).split('|');
+      st.dialA = ca; st.dialB = cb;
+      // §15.6: a choice the machine put in front of the owner is recorded as
+      // such, in the same shape a hand-picked one is
+      st.steps.push({ n: 3, what: 'the cross to read', chose: `${fDialLabel(ca)} x ${fDialLabel(cb)}`, fromList: true });
+      fSave(); drawFunnel();
+    };
+  });
   const ax = $('#fAcross');
   if (ax) ax.onclick = async () => {
     ax.disabled = true;

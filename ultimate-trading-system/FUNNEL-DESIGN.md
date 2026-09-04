@@ -1175,3 +1175,118 @@ Null with fewer than two copies or no spread at all.
 At the top of step 1: `N of M values clear the bar on this board; by chance
 about X would`, summed across every dial the board swept more than one value
 of. A board below its chance count is telling you something too.
+
+---
+
+## 18. Which crosses are worth reading — step 3's own guidance (owner order, 2026-09-04)
+
+The owner's words: "i certainly would like an automated process on this 'step 3
+- do two dials interact' in order to get automated guidance on this step
+regarding what pair permutations should be linked in this step ... my
+expectation would be that i get some kind of list of the crosses that add value,
+scored by value (of course always in terms of beating nulls) ... the combos that
+don't add value don't need to be listed ... a button beside each to load that
+grid ... once an added value cross is used it will affect the availability and
+value of those that remain. so when the mode is activated the list should auto
+regenerate."
+
+Before this, the only guidance on step 3 was that the two pickers default to
+step 1's top two dials. Nothing scored pairs, and §15's auto mode -- designed
+2026-09-01, not built -- never said which pair a machine should look at either.
+
+### 18.1 When a cross adds value: two conditions, both already in the code
+
+A pair is offered only when BOTH hold:
+
+1. **It has a block at all** — at least one square beats the bar's worth of the
+   scrambled copies. That is `recommendBlock`'s own `counting`.
+2. **The block does not span both axes.** A block stretching across every value
+   of both dials says nothing the two single-dial ranges at step 2 cannot
+   already say. This is the identical test behind the `the two dials interact`
+   mark that `funnelRead` already computes.
+
+Fail either and the pair is not listed. Nothing new was invented for this: both
+conditions are read off machinery the manual walk already runs.
+
+### 18.2 The score: three levels, every one of them against the copies
+
+1. **How many copies the block beats**, counted over every square INSIDE the
+   block against every kept copy, as a share. The owner's stated currency:
+   "always in terms of beating nulls".
+2. **The block's size in squares.** A wider region is harder for a shuffle to
+   reach; the whole tab says so everywhere else.
+3. **The block's lead** — how far above the copies' typical it sits, in units of
+   their own spread. Already `recommendBlock`'s tie-break.
+
+Ties after all three break on the dials' names, so the same board always gives
+the same order.
+
+**It may never rank by money.** §15.2's rule applies with full force here: a
+machine that tries many pairs and keeps the best-earning one is shopping at
+machine speed. The squares' money is never compared between pairs, only each
+square against its own scrambled selves. A test scans for it.
+
+**The corner refused in §16 stays refused**: no margin scaled to the scatter, no
+chosen multiple. The bar the owner set on the heading is the only threshold.
+
+### 18.3 Which pairs are eligible, and why the list shortens
+
+A dial is eligible when the settings that survive the rule hold two or more of
+its values. A dial the rule has pinned cannot form a grid and drops out.
+
+Using a cross writes ranges on BOTH its dials, so every pair containing either
+of them leaves the list at once. That is the owner's "it will affect the
+availability and value of those that remain", and it is why the list is a
+function of the rule rather than something computed once.
+
+### 18.4 The list regenerates on the rule, never on a timer
+
+The reading is held under a key of (record set, coin and shape, rule, bar, thin
+floor). A redraw that changes none of those shows the held list at once. A rule
+that has moved changes the key, and the held list is not shown for it — a list
+computed under a rule that no longer holds is worse than no list.
+
+With the switch on, a changed key STARTS a fresh reading by itself. With it off,
+the button is the only way. Both controls are always on the screen; the switch
+decides whether the list keeps itself up to date.
+
+### 18.5 What it costs, measured
+
+Measured on the owner's own board, 2026-09-04: one pair — the real grid plus all
+twenty kept scrambled copies — took **688ms over 1,904 surviving settings**.
+
+The work is one pass over the survivors per grid, so it scales with both the
+survivor count and the number of kept copies. Two ends of the range:
+
+- after some narrowing (1,904 survivors, six to eight free dials, fifteen to
+  twenty-eight pairs): **ten to twenty seconds**;
+- cold, with nothing fixed (137,760 survivors, up to 105 pairs): **the better
+  part of an hour**.
+
+So it is a started-and-polled reading with a count on the line beside it, the
+same shape as `read the other units`, and **it says what it will cost before it
+runs**. The first estimate comes from a measured rate; once the first pair is
+read the estimate is re-worked from the time that pair actually took, so a slow
+box corrects itself rather than lying twice.
+
+The owner refused a cap (2026-09-04): the estimate is shown and the decision is
+theirs. Capping would be curating what they may ask for.
+
+### 18.6 What is shown
+
+Above the two pickers, always. Per row: the two dials by their Sweep names, the
+block corner to corner, how many squares of the grid it covers, how many copies
+it beats of how many comparisons, its lead, and **which axis the block does not
+span** — that last is the finding itself, not decoration. Beside each, a button
+that loads that grid: it fills both pickers and reads it, exactly as pressing
+them by hand does.
+
+**The count line stays even when nothing is found** (owner, 2026-09-04): "N
+pairs read, none of them interact" is a result. Silence and "nothing found" look
+identical otherwise.
+
+### 18.7 What it records
+
+Loading a cross from the list writes the same recorded step a hand-picked pair
+writes, plus a flag saying it came from the list — §15.6's rule for a choice a
+machine put in front of the owner.

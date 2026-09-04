@@ -4540,6 +4540,60 @@ function funnelAcrossStatus(id) {
   return acrossStatus(acrossRun);
 }
 
+// ---- WHICH CROSSES ARE WORTH READING, STARTED AND POLLED (§18) -------------
+//
+// Same shape as `read the other units`: one reading at a time, keyed on
+// everything that could change the answer, polled by the page. Keyed on the
+// FLOOR as well as the rule and the bar, because a thin-square floor changes
+// which squares count and so changes every block on every pair.
+let crossesRun = null;
+function crossesKeyOf(id, state) {
+  const S4 = require('./funnelset');
+  return JSON.stringify([id, state.unit == null ? '' : String(state.unit), S4.normaliseRule(state.rule),
+    require('./funnel').barPctOf(state), Math.max(0, Math.floor(Number(state.floor) || 0))]);
+}
+const crossesStatus = (run) => ({
+  running: !run.result && !run.error,
+  token: run.token, done: run.done, of: run.of, msEach: run.msEach,
+  startedAt: new Date(run.startedAt).toISOString(),
+  error: run.error, result: run.result,
+});
+async function funnelCrosses(id, state = {}, note = null) {
+  const doc = getSet(id);
+  if (!doc) throw new Error(`unknown record set '${id}'`);
+  const t = readTally(id);
+  if (!t) throw new Error('this set has no totalled tables yet');
+  const F = require('./funnel');
+  const S4 = require('./funnelset');
+  const board = await funnelBoard(id, t, state.unit);
+  const all = withFunnelRich(board.all, readFunnelRich(id));
+  const rows = S4.applyRule(all, S4.normaliseRule(state.rule));
+  return F.crossesWorthReading(rows, { floor: state.floor, barPct: state.barPct, seed: state.seed || id }, note);
+}
+function funnelCrossesStart(id, state = {}) {
+  const key = crossesKeyOf(id, state);
+  if (crossesRun) {
+    if (crossesRun.key === key && !crossesRun.error) return crossesStatus(crossesRun);
+    if (!crossesRun.result && !crossesRun.error) throw new Error('the crosses are still being read for another rule — one reading at a time');
+  }
+  const startedAt = Date.now();
+  const run = { key, token: `${id}:${startedAt}`, id, startedAt, done: 0, of: 0, msEach: null, result: null, error: null, promise: null };
+  crossesRun = run;
+  run.promise = funnelCrosses(id, state, (done, of) => {
+    run.done = done; run.of = of;
+    // THE ESTIMATE CORRECTS ITSELF off the pairs actually read, so a box slower
+    // than the one this was measured on stops promising the measured time.
+    run.msEach = done > 0 ? (Date.now() - startedAt) / done : null;
+  })
+    .then((result) => { run.result = result; run.done = run.of; })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return crossesStatus(run);
+}
+function funnelCrossesStatus(id) {
+  if (!crossesRun || crossesRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, msEach: null, error: null, result: null };
+  return crossesStatus(crossesRun);
+}
+
 async function funnelRead(id, state = {}) {
   const doc = getSet(id);
   if (!doc) throw new Error(`unknown record set '${id}'`);
@@ -4724,6 +4778,10 @@ async function funnelRead(id, state = {}) {
     const checkGrids = (a && b) ? readers.map(([x, m]) => F.step3(x, a, b, { floor, moneyOf: m })) : [];
     const block = (a && b) ? F.recommendBlock(g, checkGrids, kind, { barPct: F.barPctOf(state) }) : null;
     out.reading = { ...g, floorCost: F.floorCost(g, state.floorChoices), checkGrids, block, noise: { of: keptN, used: keptN, kind } };
+    // WHAT READING EVERY PAIR WOULD COST, on the screen before it is started
+    // (§18.5). Cheap: one pass over the survivors to see which dials still
+    // have two values, and arithmetic from there.
+    out.reading.crossesOffer = F.crossesOffer(rows, { floor });
     // THE DIALS INTERACT when the best block does not span every value the
     // rule currently keeps on both axes -- the good part of one dial sits at
     // particular values of the other
@@ -5649,7 +5707,7 @@ module.exports = {
   cutFunnelSet, listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
   unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
   testWindowOfUnit, exposureOf,
-  funnelAcrossStart, funnelAcrossStatus,
+  funnelAcrossStart, funnelAcrossStatus, funnelCrossesStart, funnelCrossesStatus, funnelCrosses,
   sealedWindowOf, sealedFromUnits, sealedBehind, startSealedFill, sealedFillWaiting, sealedFillPromise, noiseTwinOf, needsBoardNullStamp,
   survivorLabelsOf, funnelCutsFor, funnelSetRows,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,

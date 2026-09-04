@@ -2733,4 +2733,107 @@ module.exports = {
       'the rule does not read back as "is none"');
   },
 
+  // ---- WHICH CROSSES ARE WORTH READING (3.63.0, FUNNEL-DESIGN.md §18) ------
+  //
+  // A board where one dial is flat, one pair genuinely interacts, and the rest
+  // do not: gate pays only at x, and only while entry is 1. decision does
+  // nothing at all.
+  async theListOffersOnlyTheCrossesThatSaySomething() {
+    const F = require('../lib/funnel');
+    const rows = [];
+    let si = 0;
+    for (const gate of ['x', 'y']) {
+      for (const entry of ['1', '2']) {
+        for (const decision of ['p', 'q']) {
+          for (let i = 0; i < 20; i++) {
+            rows.push({ si: si++, label: `${gate}${entry}${decision}#${i}`, gate, entry, decision,
+              avgTest: (gate === 'x' && entry === '1') ? 10 : 0, noiseTest: Array.from({ length: 6 }, () => 0) });
+          }
+        }
+      }
+    }
+    const out = await F.crossesWorthReading(rows, { floor: 0, barPct: 80 });
+    assert.deepStrictEqual(out.dials.slice().sort(), ['decision', 'entry', 'gate'], 'a dial with two values among the survivors is not eligible');
+    assert.equal(out.pairs, 3, 'the pairs are not every combination of the eligible dials');
+    assert.equal(out.read, 3, 'not every pair was read');
+    // ONLY THE ONE THAT SAYS SOMETHING. A block spanning one axis whole says
+    // nothing a single-dial range at step 2 does not.
+    assert.equal(out.crosses.length, 1, `only the genuine interaction is listed: ${JSON.stringify(out.crosses.map((x) => `${x.a}x${x.b}`))}`);
+    const one = out.crosses[0];
+    assert.deepStrictEqual([one.a, one.b], ['entry', 'gate'], 'the pair listed is not the one that interacts');
+    assert.deepStrictEqual(one.block, { a: { from: '1', to: '1' }, b: { from: 'x', to: 'x' } }, 'the block is not the corner the money actually sits in');
+    assert.ok(one.squares === 1 && one.ofSquares === 4, 'the row does not say how much of the grid the block covers');
+    assert.ok(one.won === one.of && one.of > 0, 'the row does not count the copies the block beat');
+    // and a dial the rule has pinned to one value is not eligible at all
+    const pinned = rows.map((r) => ({ ...r, decision: 'p' }));
+    const out2 = await F.crossesWorthReading(pinned, { floor: 0, barPct: 80 });
+    assert.ok(!out2.dials.includes('decision'), 'a dial with one value on the board is still offered as a grid axis');
+    assert.equal(out2.pairs, 1, 'pinning a dial does not shorten the list of pairs');
+  },
+
+  // The strict test is the point of the list, and it is NOT the looser one the
+  // step 3 mark uses. Both are kept, named apart, and this holds them apart.
+  theListNeedsABlockBoundedOnBOTHAxesNotJustOne() {
+    const F = require('../lib/funnel');
+    const g = { aVals: ['1', '2', '3'], bVals: ['x', 'y'] };
+    const whole = F.blockSpans({ a: { from: '1', to: '3' }, b: { from: 'x', to: 'y' } }, g);
+    assert.ok(!whole.interact && !whole.joint, 'a block covering the whole grid reads as saying something');
+    const strip = F.blockSpans({ a: { from: '1', to: '3' }, b: { from: 'x', to: 'x' } }, g);
+    assert.ok(strip.interact, 'the step 3 mark stops firing on a block that does not cover the grid');
+    assert.ok(!strip.joint, 'a block spanning one whole axis is offered as a cross worth reading, and it says only what a single range says');
+    const box = F.blockSpans({ a: { from: '2', to: '3' }, b: { from: 'x', to: 'x' } }, g);
+    assert.ok(box.interact && box.joint, 'a block bounded on both axes is not recognised as the interaction it is');
+  },
+
+  // It must stay answerable while it runs, and it must never rank by money.
+  theCrossReadingYieldsBetweenPairsAndNeverRanksByMoney() {
+    const lib = src('lib/funnel.js');
+    const fn = lib.slice(lib.indexOf('async function crossesWorthReading('), lib.indexOf('module.exports = {'));
+    assert.ok(/await new Promise\(\(resolve\) => \{ setImmediate\(resolve\); \}\);/.test(fn),
+      'a hundred pairs over a hundred thousand settings runs without yielding, and every other screen stops dead while it does');
+    assert.ok(fn.includes('async function crossesWorthReading('), 'the reading is synchronous, so it cannot yield at all');
+    // the score is the copies beaten, then size, then lead -- never the money
+    assert.ok(/crosses\.sort\(\(x, y\) => \(\(y\.share \?\? -1\) - \(x\.share \?\? -1\)\)/.test(fn), 'the list is not ordered by how many copies each block beat');
+    assert.ok(!/avgTest|\bmoney\(|meanOf|\.mean\b/.test(fn.slice(fn.indexOf('crosses.sort'))), 'the ordering reads money');
+    assert.ok(/\|\| \(y\.squares - x\.squares\)/.test(fn) && /y\.lead \?\? -Infinity/.test(fn), 'size and lead do not break the ties');
+    assert.ok(/\|\| `\$\{x\.a\}\|\$\{x\.b\}`\.localeCompare/.test(fn), 'two pairs that tie on everything can come back in either order, so the same board gives two different lists');
+  },
+
+  // The screen: always there, above the pickers, with the count line that stays
+  // when nothing is found, and a reading that failed is never restarted alone.
+  theCrossListIsAlwaysOnStepThreeAboveThePickers() {
+    const page = src('public/construct.js');
+    const step3 = page.slice(page.indexOf('function fStep3(r, st) {'), page.indexOf('function fStep4('));
+    assert.equal((step3.match(/\$\{fCrosses\(r, st\)\}/g) || []).length, 2,
+      'the list is not drawn on both of step 3\'s paths - before a grid is read and after');
+    for (const path of step3.split('return `').slice(1)) {
+      if (!path.includes('${pickers}')) continue;
+      assert.ok(path.indexOf('${fCrosses(r, st)}') < path.indexOf('${pickers}'), 'the list is drawn below the pickers, and the owner asked for above');
+    }
+    const panel = page.slice(page.indexOf('function fCrosses(r, st) {'), page.indexOf('function fStep3(r, st) {'));
+    assert.ok(panel.includes('id="fCrossOn"') && panel.includes('id="fCrosses"'), 'the switch and the button are not both always drawn');
+    assert.ok(panel.indexOf('const head =') < panel.indexOf('if (going)'), 'the controls are drawn only in some states; the owner asked for always present');
+    // THE COUNT LINE STAYS WHEN NOTHING IS FOUND (owner, 2026-09-04)
+    assert.ok(panel.includes('none of these dials interact on this board'), 'a reading that finds nothing says nothing, which reads exactly like a reading that never ran');
+    assert.ok(panel.indexOf('if (!list.length) return `${head}${counted}`;') > 0, 'an empty list drops the count line with it');
+    // and it says what it will cost before it is started
+    assert.ok(/pair\(s\) to read\. On this box that is about <b>\$\{fSecs\(off\.msAll\)\}<\/b>/.test(panel),
+      'the screen does not say what reading every pair will cost before it is started');
+    assert.ok(panel.includes('Nothing here is ranked by money'), 'the screen does not say what the list is ordered on');
+    // a failed reading is shown and is NOT started again by itself
+    const wire = page.slice(page.indexOf('const startCrosses = async () =>'), page.indexOf("const ax = $('#fAcross');"));
+    assert.ok(wire.includes('if (cx && st.crossesOn && !crossHeld && !crossBad && !st.crossesAsked) startCrosses();'),
+      'a reading that failed is started again on every single draw, or a moved rule never reads itself again');
+    assert.ok(panel.includes('The last reading of these pairs failed:'), 'a failure is silent');
+    // loading a cross records it as a choice the machine put in front of you
+    assert.ok(wire.includes("what: 'the cross to read', chose: `${fDialLabel(ca)} x ${fDialLabel(cb)}`, fromList: true"),
+      'loading a cross from the list is recorded as though it were hand-picked');
+    // held under the floor as well as the rule and the bar
+    assert.ok(page.includes("const fCrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct, Math.max(0, Math.floor(Number(st.floor) || 0))]);"),
+      'the list is not held under the thin floor, and the floor changes every block on every pair');
+    const lib = src('lib/stages.js');
+    assert.ok(lib.includes("require('./funnel').barPctOf(state), Math.max(0, Math.floor(Number(state.floor) || 0))]);"),
+      'the service holds the reading under a different key from the one the page asks with');
+  },
+
 };

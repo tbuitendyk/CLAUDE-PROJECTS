@@ -537,6 +537,14 @@ window.HELP = {
         what: 'Saves the name typed beside it.',
         more: 'It is the only control on this screen that changes anything. Everything else on it is the record of a decision already made, and a record you can edit is not a record.',
       },
+      fCrosses: {
+        what: 'Reads every pair of dials whose values still vary, and lists the ones where the two dials genuinely depend on each other. Ordered by how many scrambled copies each one beats.',
+        more: 'Step 3 asks whether two dials interact, and this reads every pair of them so you do not have to guess which two are worth looking at. A pair is listed only when it has a block at all - at least one box beating the bar - AND that block does not stretch across every value of both dials, because one that does says nothing the two separate ranges cannot. It is never ordered by money: a block is scored on how many of the copies the boxes inside it beat, then on how big it is, then on how far above the copies it sits. The line above the button says how many pairs there are and roughly how long it will take before you start it, because on a board with nothing narrowed yet that can be a long wait; once it is going, what is left is worked out from the pairs already read. Each row has a button that opens that pair\'s grid.',
+      },
+      fCrossOn: {
+        what: 'Keeps the list of pairs up to date by itself: every time your rule changes, the pairs are read again.',
+        more: 'Using a cross writes ranges on both of its dials, so every pair containing either of them drops off the list and the ones left are worth different amounts than they were. With this ticked that happens without you asking. With it clear, the button is the only way, and a list worked out under a rule you have since changed is not shown at all - it would be worse than no list. A reading that FAILED is never started again by itself; press the button to try it again.',
+      },
       fAcross: {
         what: 'Applies the rule you have built on this unit to each of the other units\' records, one at a time, and reports how many come out positive.',
         more: 'This is the honest form of "does it hold elsewhere": the same rule on other coins and shapes, judged against each of their own scrambled copies. It is pressed rather than automatic because it reads every other unit\'s board, one at a time. The result is kept for this exact rule; change the rule and it asks again.',

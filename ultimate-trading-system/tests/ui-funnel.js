@@ -16,6 +16,13 @@ const dials = ['gate', 'tHours', 'dMult', 'entry'];
 // THE STAGE 4 RECORD SETS OF THIS COIN AND SHAPE (3.58.0). Empty until the
 // second half of the run turns them on, so the first half proves the other half
 // of the owner's order: with none cut, the seven steps are what is drawn.
+// what reading every pair comes back with (3.63.0): two crosses worth reading
+// out of six pairs, so the count line and the rows can both be checked
+const CROSSES = { kind: 'scrambles', k: 20, floor: 0, dials: ['agreeBar', 'agreePct', 'tHours', 'dMult'], pairs: 6, read: 6,
+  crosses: [
+    { a: 'agreeBar', b: 'agreePct', block: { a: { from: 'own', to: 'own' }, b: { from: '10', to: '30' } }, squares: 3, ofSquares: 8, won: 58, of: 60, share: 58 / 60, lead: 2.1, spansA: false, spansB: false },
+    { a: 'tHours', b: 'dMult', block: { a: { from: '65', to: '137' }, b: { from: '0.5', to: '1' } }, squares: 4, ofSquares: 20, won: 70, of: 80, share: 70 / 80, lead: 1.4, spansA: false, spansB: false },
+  ] };
 let CUTS = [];
 const CUT = { id: 's4-ui-1', seq: 1, name: 'S4 #1 - XRPUSDT weekly-8d', createdAt: '2026-09-04T10:00:00Z',
   survivors: 116, target: 400,
@@ -92,6 +99,7 @@ function reply(body) {
       checkGrids: [{ grid: [cell('all', '10', 1, 100), cell('all', '20', 2, 100), cell('own', '10', 3, 100), cell('own', '20', 4, 100)] },
         { grid: [cell('all', '10', 3, 100), cell('all', '20', 0, 100), cell('own', '10', 1, 100), cell('own', '20', 6, 100)] }],
       noise: { kind: 'scrambles' },
+      crossesOffer: { rows: 1904, k: 20, kind: 'scrambles', dials: ['agreeBar', 'agreePct', 'tHours', 'dMult'], pairs: 6, msEach: 688, msAll: 4128, floor: 0 },
       block: { counting: ['all|10', 'own|10'], beaten: { 'all|10': { won: 2, of: 2 }, 'all|20': { won: 1, of: 2 }, 'own|10': { won: 2, of: 2 }, 'own|20': { won: 0, of: 2 } },
         block: { a: { from: 'all', to: 'own' }, b: { from: '10', to: '10' }, squares: 2, lead: 1.4 } },
     } };
@@ -139,6 +147,10 @@ function requirePlaywright() {
   await page.route('**/api/funnel/**', async (route) => {
     const req = route.request();
     if (req.url().endsWith('/read')) { const body = JSON.parse(req.postData() || '{}'); posted.push(body); return route.fulfill({ contentType: 'application/json', body: JSON.stringify(reply(body)) }); }
+    if (/\/crosses$/.test(req.url())) {
+      if (req.method() === 'POST') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: false, token: 'cx1', done: 6, of: 6, msEach: 688, result: CROSSES }) });
+      return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: false, token: 'cx1', done: 6, of: 6, msEach: 688, result: CROSSES }) });
+    }
     if (/\/rows(\?|$)/.test(req.url())) {
       const q = new URL(req.url()).searchParams;
       rowsAsked.push(Object.fromEntries(q));
@@ -247,6 +259,34 @@ function requirePlaywright() {
   // worth (3.56.0)
   expect(/beats 2 of 2/.test(gridText) && /beats 0 of 2/.test(gridText), `every square carries its count of copies beaten: ${gridText.slice(0, 400)}`);
   expect(/Recommended block: [^]*avg test 6\.00 over 200 settings/.test(gridText), `the outlined block says what it is worth: ${gridText.slice(gridText.indexOf('Recommended block'), gridText.indexOf('Recommended block') + 200)}`);
+  // WHICH CROSSES ARE WORTH READING (3.63.0): always there, above the pickers
+  const cxText = await page.locator('#view').innerText();
+  expect(await page.locator('#fCrosses').count() === 1 && await page.locator('#fCrossOn').count() === 1,
+    'the switch and the button for reading every pair are both on step 3');
+  expect(/4 dial\(s\) still vary across the 1,904 settings your rule keeps, which is 6 pair\(s\) to read/.test(cxText),
+    `the panel says how many pairs there are: ${cxText.slice(0, 260)}`);
+  expect(/Nothing here is ranked by money/.test(cxText), 'the panel does not say what the list is ordered on');
+  const viewText = await page.locator('#view').innerText();
+  expect(viewText.indexOf('still vary across the') < viewText.indexOf('read the grid'), 'the list sits below the pickers, and the owner asked for above');
+  await page.locator('#fCrosses').click();
+  await page.waitForTimeout(900);
+  const listed = await page.locator('#view').innerText();
+  expect(/6 pair\(s\) read, 2 of them say something the two single-dial ranges cannot/.test(listed),
+    `the count line says how many were read and how many said something: ${listed.slice(listed.indexOf('pair(s) read') - 40, listed.indexOf('pair(s) read') + 120)}`);
+  expect(/agreeBar \(quorum bar\) x agreePct \(share\)/.test(listed), 'the rows name the dials with their Sweep labels');
+  expect(/58 of 60/.test(listed) && /70 of 80/.test(listed), 'the rows do not say how many copies each block beat');
+  expect(listed.indexOf('58 of 60') < listed.indexOf('70 of 80'), 'the list is not ordered by the copies beaten, strongest first');
+  expect(await page.locator('[data-fcross]').count() === 2, 'each row has a button to load that grid');
+  const beforeCross = posted.length;
+  await page.locator('[data-fcross="tHours|dMult"]').click();
+  await page.waitForTimeout(900);
+  const loaded = posted.slice(beforeCross).pop() || {};
+  expect(loaded.dialA === 'tHours' && loaded.dialB === 'dMult', `pressing load this grid reads that pair: ${JSON.stringify({ a: loaded.dialA, b: loaded.dialB })}`);
+  // put the walk back on the pair the rest of this run reads
+  await page.locator('#fA').selectOption('agreeBar');
+  await page.locator('#fB').selectOption('agreePct');
+  await page.locator('#fGrid').click().catch(() => {});
+  await page.waitForSelector('[data-fcell]', { timeout: 15000 }).catch(() => {});
   // the three tables line up: same class, same column count, fixed layout (3.55.0)
   const gridTables = await page.locator('#view table.fgrid').count();
   expect(gridTables === 3, `the grid and its two checks are drawn as three lined-up tables: ${gridTables}`);

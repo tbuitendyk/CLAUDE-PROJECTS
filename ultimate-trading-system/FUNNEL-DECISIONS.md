@@ -802,3 +802,37 @@ made while building it that the design did not already settle.
     ordered dial that may be kept alone -- it is not a point on the scale, it is
     a different kind of setting, so keeping it is choosing a kind rather than
     picking a peak. Second digit: new behaviour on an existing control.
+96. **Step 3 says which crosses are worth reading** (3.63.0, owner order
+    2026-09-04; the design is FUNNEL-DESIGN.md §18, written before a line of it
+    was coded). Choosing which two dials to grid was guesswork with step 1's top
+    two filled in. Now every pair whose values still vary is read, and the ones
+    that say something are listed, ordered by how many scrambled copies each
+    block beats.
+
+    Nothing new was invented to decide it. A pair is kept when `recommendBlock`
+    finds a block at all and that block does NOT span every value of both dials
+    -- the same test behind the `the two dials interact` mark. It may never rank
+    by money (§15.2), and a test scans for that.
+
+    Four things the build had to get right:
+
+    * **It yields between pairs.** A hundred pairs over a hundred thousand
+      settings is minutes of arithmetic, and a synchronous loop that long stops
+      every other screen dead. It yields the way a unit's board yields between
+      blocks, and it is started-and-polled like `read the other units`.
+    * **It says what it will cost first.** Measured on the owner's board: one
+      pair took 688ms over 1,904 survivors. That rate gives the first estimate;
+      once the first pair is read the rest is re-worked from the time it
+      actually took, so a slower box corrects itself instead of lying twice.
+      The owner refused a cap -- the estimate is shown and the choice is theirs.
+    * **The list is held under the rule, the bar AND the thin floor.** The floor
+      decides which squares count, so it changes every block on every pair. A
+      list whose key has moved is not shown.
+    * **A reading that FAILED is never restarted by itself.** With the switch on
+      a moved rule reads itself again; a failure would otherwise be re-attempted
+      on every single draw. It is shown, and the button tries again.
+
+    The count line stays when nothing is found (owner, 2026-09-04): "N pair(s)
+    read, 0 of them say something the two single-dial ranges cannot" is a
+    result, and silence would read the same as it. Second digit: new behaviour
+    and two new controls.

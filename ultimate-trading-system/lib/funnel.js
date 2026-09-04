@@ -627,10 +627,126 @@ function ladderFor(rows, field, dir) {
   };
 }
 
+// ---- WHICH CROSSES ARE WORTH READING (§18, owner order 2026-09-04) ----------
+//
+// Step 3 asks whether two dials interact. Until now the only guidance on WHICH
+// two was that the pickers defaulted to step 1's top two. This reads every pair
+// still worth gridding and keeps the ones that say something.
+//
+// Nothing here is new arithmetic. A pair is kept when recommendBlock finds a
+// block at all -- at least one square beating the bar's worth of the copies --
+// AND that block does not span every value of both dials, which is the same
+// test funnelRead already uses for the `the two dials interact` mark. A block
+// spanning both axes says nothing the two single-dial ranges do not.
+//
+// IT MAY NEVER RANK BY MONEY (§15.2). Money is never compared between pairs;
+// each square is compared against its own scrambled selves and nothing else.
+const between = (list, x, y) => {
+  const i = list.indexOf(x); const j = list.indexOf(y);
+  if (i < 0 || j < 0) return [];
+  return list.slice(Math.min(i, j), Math.max(i, j) + 1);
+};
+function blockSpans(blk, g) {
+  const spansA = blk.a.from === g.aVals[0] && blk.a.to === g.aVals[g.aVals.length - 1];
+  const spansB = blk.b.from === g.bVals[0] && blk.b.to === g.bVals[g.bVals.length - 1];
+  // TWO TESTS, AND THE LIST WANTS THE STRICT ONE. `interact` is the loose test
+  // the step 3 mark has always used: the block does not cover the whole grid.
+  // `joint` is the one §18 needs: the block is strictly inside on BOTH axes.
+  //
+  // The difference is not academic (found by testing the list on a fixture
+  // where one dial is flat, 2026-09-04). A block spanning one axis whole says
+  // only "the other dial has a good range" -- which is a single-dial range at
+  // step 2 and nothing more. Only a block bounded on both axes says the good
+  // part of each dial sits at particular values of the other, which is the
+  // whole reason to grid two dials together.
+  return { spansA, spansB, interact: !(spansA && spansB), joint: !spansA && !spansB };
+}
+// A DIAL IS ELIGIBLE when the settings that survive hold two or more of its
+// values. One value is not a grid axis, and a dial the rule has pinned has
+// exactly one -- which is why the list shortens as the rule narrows (§18.3).
+function eligibleDials(rows) {
+  return ALL_DIALS.filter((d) => {
+    const seen = new Set();
+    for (const r of rows || []) { seen.add(keyOf(r[d])); if (seen.size > 1) return true; }
+    return false;
+  });
+}
+// WHAT THE READING WILL COST, BEFORE IT IS STARTED (§18.5). Measured on the
+// owner's own board, 2026-09-04: one pair -- the real grid and all twenty kept
+// scrambled copies -- took 688ms over 1,904 surviving settings. That is the
+// rate below, and it is a FIRST estimate only: once the first pair has been
+// read the screen re-works the rest from the time that pair actually took, so
+// a box slower or faster than this one corrects itself instead of lying twice.
+const MS_PER_ROW_PER_GRID = 688 / (1904 * 21);
+function crossesOffer(rows, opts = {}) {
+  const list = rows || [];
+  const k = list.length && Array.isArray(list[0].noiseTest) ? list[0].noiseTest.length : 0;
+  const dials = eligibleDials(list);
+  const pairs = (dials.length * (dials.length - 1)) / 2;
+  const msEach = list.length * (k + 1) * MS_PER_ROW_PER_GRID;
+  return { rows: list.length, k, kind: k ? 'scrambles' : 'halves', dials, pairs, msEach, msAll: msEach * pairs, floor: opts.floor == null ? 0 : opts.floor };
+}
+// THE SERVICE MUST STAY ANSWERABLE WHILE THIS RUNS. A hundred pairs over a
+// hundred thousand settings is minutes of arithmetic, and a synchronous loop
+// that long stops every other screen dead. It yields between pairs, the same
+// way a unit's board yields between blocks.
+async function crossesWorthReading(rows, opts = {}, note = null) {
+  const floor = opts.floor == null ? 0 : Math.max(0, Math.floor(Number(opts.floor) || 0));
+  const seed = opts.seed || 'funnel';
+  const k = rows.length && Array.isArray(rows[0].noiseTest) ? rows[0].noiseTest.length : 0;
+  const kind = k ? 'scrambles' : 'halves';
+  const [ha, hb] = kind === 'halves' ? splitHalf(rows, seed) : [null, null];
+  // A DIAL IS ELIGIBLE when the survivors hold two or more of its values. One
+  // value is not a grid axis, and a dial the rule has pinned has exactly one --
+  // which is why the list shortens as the rule narrows (§18.3).
+  const free = eligibleDials(rows);
+  const pairs = [];
+  for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) pairs.push([free[i], free[j]]);
+  const crosses = [];
+  let read = 0;
+  for (const [a, b] of pairs) {
+    const g = step3(rows, a, b, { floor });
+    const readers = kind === 'scrambles'
+      ? Array.from({ length: k }, (_, d) => [rows, moneyAt(d)])
+      : [[ha, money], [hb, money]];
+    const checkGrids = readers.map(([x, m]) => step3(x, a, b, { floor, moneyOf: m }));
+    const rec = recommendBlock(g, checkGrids, kind, { barPct: opts.barPct });
+    read++;
+    if (note) note(read, pairs.length);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => { setImmediate(resolve); });
+    const blk = rec && rec.block;
+    if (!blk) continue;                       // no square in this grid counts
+    const sp = blockSpans(blk, g);
+    if (!sp.joint) continue;                  // says nothing the two ranges do not
+    // THE SCORE, over the squares INSIDE the block and no others: how many of
+    // the copies they beat, of how many comparisons there were.
+    let won = 0;
+    let of = 0;
+    for (const av of between(g.aVals, blk.a.from, blk.a.to)) {
+      for (const bv of between(g.bVals, blk.b.from, blk.b.to)) {
+        const bt = (rec.beaten || {})[`${av}|${bv}`];
+        if (bt) { won += Number(bt.won) || 0; of += Number(bt.of) || 0; }
+      }
+    }
+    crosses.push({
+      a, b, block: { a: blk.a, b: blk.b }, squares: blk.squares, ofSquares: (g.grid || []).length,
+      won, of, share: of ? won / of : null, lead: blk.lead == null ? null : blk.lead,
+      spansA: sp.spansA, spansB: sp.spansB,
+    });
+  }
+  crosses.sort((x, y) => ((y.share ?? -1) - (x.share ?? -1))
+    || (y.squares - x.squares)
+    || ((y.lead ?? -Infinity) - (x.lead ?? -Infinity))
+    || `${x.a}|${x.b}`.localeCompare(`${y.a}|${y.b}`));
+  return { kind, k, floor, dials: free, pairs: pairs.length, read, crosses };
+}
+
 module.exports = {
   ORDERED_DIALS, CATEGORICAL_DIALS, ALL_DIALS, HOLDS_AXES, TEST_MONEY,
   money, moneyAt, beats, cents, DEFAULT_BAR_PCT, barPctOf, barOf, chanceOf, leadOf, keyOf, sortedValues, hash32, splitHalf,
   groupsFor, movement, balanceOf, step1, shapeClass, step2, step3, floorCost,
   holdsAcross, holdsAxisFor,
   checkKindOf, countsFor, recommendRange, recommendBlock, ladderFor,
+  crossesWorthReading, crossesOffer, eligibleDials, blockSpans,
 };
