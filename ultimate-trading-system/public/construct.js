@@ -5099,9 +5099,11 @@ function fWire(st) {
     // THE PROOF IS SHOWN, NOT ASSUMED. An unchecked rebuild must never look
     // checked, so the absence of a check is printed as plainly as a failed one.
     const pr = out.proof || {};
+    // THE TRUE COUNT, NOT THE LENGTH OF A CAPPED LIST (3.57.3)
+    const off = pr.differed == null ? (pr.mismatches || []).length : pr.differed;
     $('#fRebuildMsg').textContent = pr.ran
-      ? ((pr.mismatches && pr.mismatches.length)
-        ? `${pr.mismatches.length} setting(s) came back different from what the sweep stored - this is not the same run`
+      ? (off
+        ? `${off} of ${pr.checked} setting(s) came back different from what the sweep stored - this is not the same run`
         : `done for ${out.settings} setting(s); all ${pr.checked} match what the sweep stored`)
       : `done for ${out.settings} setting(s) - NOT checked against the sweep (${String(pr.why || '')})`;
   };

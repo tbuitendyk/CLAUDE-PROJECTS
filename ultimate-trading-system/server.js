@@ -846,7 +846,9 @@ app.post('/api/funnel/:id/rebuild', async (req, res) => {
     // THE PROOF TRAVELS WITH THE ANSWER. An unproved rebuild is allowed and
     // must never look proved, so the verdict is part of the reply rather than
     // something the screen can forget to ask for.
-    const proof = stages.proveRebuild(got.perSetting, expect);
+    // the board these figures were read on: the walk's unit, or the blend
+    const onUnit = (req.body || {}).unit && String((req.body || {}).unit) !== 'all' ? String((req.body || {}).unit) : null;
+    const proof = stages.proveRebuild(got.perSetting, expect, undefined, onUnit);
     // KEPT, NOT THROWN AWAY. The rebuilt numbers used to leave with this reply
     // and nothing held them, so a limit on the worst losing streak at step 6
     // refused every row -- no row carried one. They are written beside the set

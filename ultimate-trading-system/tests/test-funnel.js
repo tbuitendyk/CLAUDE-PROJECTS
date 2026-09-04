@@ -401,6 +401,7 @@ module.exports = {
 
     const drift = stages.proveRebuild(per, { 't65 active': 10, 't89 active': 20.5 });
     assert.strictEqual(drift.matched, 1);
+    assert.strictEqual(drift.differed, 1, 'the true count of disagreements travels, not just the list');
     assert.strictEqual(drift.mismatches[0].label, 't89 active', 'and it names which setting disagreed');
     assert.strictEqual(drift.mismatches[0].stored, 20.5);
     assert.strictEqual(drift.mismatches[0].rebuilt, 20);
@@ -2156,7 +2157,7 @@ module.exports = {
     assert.ok(fn.includes('return { labels: rows.map((r) => r.label), of: all.length, stored };'), 'the stored figures do not travel with the names');
     assert.ok(route.includes('if (!expect || !Object.keys(expect).length) expect = got.stored;'),
       'the route does not fall back to the stored figures it just read, so the check stays skipped');
-    assert.ok(route.includes('const proof = stages.proveRebuild(got.perSetting, expect);'), 'the proof is still handed only what the caller sent');
+    assert.ok(route.includes('const proof = stages.proveRebuild(got.perSetting, expect, undefined, onUnit);'), 'the proof is still handed only what the caller sent');
     assert.ok(!/proveRebuild\(got\.perSetting, \(req\.body \|\| \{\}\)\.expect \|\| null\)/.test(route), 'the proof reads the body again instead of what was resolved');
     // and the proof itself still refuses to claim a check it did not make
     const prove = lib.slice(lib.indexOf('function proveRebuild('), lib.indexOf('function proveRebuild(') + 700);
@@ -2165,6 +2166,59 @@ module.exports = {
     // and a list, when one IS sent, still works: the route has not lost its old door
     assert.ok(route.includes("const labels = Array.isArray((req.body || {}).labels)") || route.includes("let labels = Array.isArray((req.body || {}).labels)"),
       'the route no longer accepts a list of names at all');
+  },
+
+  // THE PROOF COMPARES LIKE WITH LIKE, AND COUNTS WHAT IT FOUND (3.57.3,
+  // owner report 2026-09-04: "20 setting(s) came back different from what the
+  // sweep stored - this is not the same run"). It was the same run. On a
+  // unit's board the stored money is THAT UNIT'S; the rebuild's own figure is
+  // the average over every unit of the set. Measured on the box, 120,291 of
+  // 137,760 settings differ between the two, so the check could only disagree.
+  async theProofComparesTheFigureTheBoardActuallyHolds() {
+    // one setting, two units: this unit made 4, the other made 40, so the
+    // average over both is 22 and none of the three is the same number
+    const per = new Map([['t65 active', { label: 't65 active', avgTest: 22,
+      units: [{ trade: 'XRPUSDT', ctx1: null, ctx2: null, geometry: 'weekly-8d', pnl: 4 },
+        { trade: 'ZECUSDT', ctx1: null, ctx2: null, geometry: 'daily-2d', pnl: 40 }] }]]);
+    const stored = { 't65 active': 4 };                 // what THIS unit's board holds
+    // read on the unit: it matches, because it is the same figure
+    const onUnit = stages.proveRebuild(per, stored, undefined, 'XRPUSDT|||weekly-8d');
+    assert.strictEqual(onUnit.ran, true);
+    assert.strictEqual(onUnit.matched, 1, 'a unit board\'s stored money must be checked against that unit\'s rebuilt money');
+    assert.strictEqual(onUnit.differed, 0);
+    assert.strictEqual(onUnit.onUnit, 'XRPUSDT|||weekly-8d', 'the answer says which board it was checked on');
+    // read on all units together: the average is the right figure there
+    const blended = stages.proveRebuild(per, { 't65 active': 22 });
+    assert.strictEqual(blended.matched, 1, 'all units together is checked against the average');
+    assert.strictEqual(blended.onUnit, null);
+    // and the old way -- one unit's stored money against the average -- is the
+    // false alarm this fixes
+    const wrong = stages.proveRebuild(per, stored);
+    assert.strictEqual(wrong.differed, 1, 'the fixture must reproduce the false alarm, or it proves nothing');
+    // a setting the rebuild priced on other units but not this one is not a
+    // disagreement: it is counted and said
+    const missing = stages.proveRebuild(per, stored, undefined, 'AAAUSDT|||daily-1d');
+    assert.strictEqual(missing.checked, 0);
+    assert.strictEqual(missing.differed, 0, 'no figure for this unit is not a disagreement');
+    assert.strictEqual(missing.noFigure, 1);
+    assert.ok(/carry no money for this unit/.test(missing.why), missing.why);
+    // THE COUNT IS THE COUNT, NOT THE LENGTH OF A CAPPED LIST
+    const many = new Map();
+    const expect = {};
+    for (let i = 0; i < 30; i++) { many.set(`s${i}`, { label: `s${i}`, avgTest: i }); expect[`s${i}`] = i + 5; }
+    const capped = stages.proveRebuild(many, expect);
+    assert.strictEqual(capped.differed, 30, 'the true number of disagreements must travel');
+    assert.strictEqual(capped.mismatches.length, 20, 'and the list stays capped for the screen');
+    assert.strictEqual(capped.matched, 0);
+    // the route names the board, and the page prints the count rather than the list
+    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    assert.ok(srv.includes("const onUnit = (req.body || {}).unit && String((req.body || {}).unit) !== 'all' ? String((req.body || {}).unit) : null;")
+      && srv.includes('stages.proveRebuild(got.perSetting, expect, undefined, onUnit)'),
+      'the route does not tell the proof which board the figures came from');
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(page.includes('const off = pr.differed == null ? (pr.mismatches || []).length : pr.differed;')
+      && page.includes('`${off} of ${pr.checked} setting(s) came back different from what the sweep stored'),
+      'the page still reports the length of a capped list as the count');
   },
 
 };

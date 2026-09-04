@@ -528,6 +528,13 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      delete st.rule[kind][key];\n      if (!st.steps) st.steps = [];", "      if (!st.steps) st.steps = [];",
     'everyClauseOfTheRuleHasItsOwnRemove',
     'remove records a removal in the notes and leaves the clause in the rule'],
+  // ---- THE PROOF COMPARES LIKE WITH LIKE (3.57.3) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "      const u = (got.units || []).find((x) => unitKeyOf(x) === onUnit);", "      const u = (got.units || [])[0];",
+    'theProofComparesTheFigureTheBoardActuallyHolds',
+    'the check reads whichever unit was priced first instead of the one the board is showing, so a sound rebuild reads as a different run'],
+  [path.join(ROOT, 'lib', 'stages.js'), "      if (mismatches.length < 20) mismatches.push({ label, stored: Number(want), rebuilt: mine });", "      mismatches.push({ label, stored: Number(want), rebuilt: mine });",
+    'theProofComparesTheFigureTheBoardActuallyHolds',
+    'the list of disagreements is unbounded again, and a set where everything differs sends every name to the screen'],
   // ---- THE REBUILD CHECKS ITSELF AGAINST THE SWEEP (3.57.2) ----
   [path.join(ROOT, 'server.js'), "      if (!expect || !Object.keys(expect).length) expect = got.stored;", "",
     'pressingWorkOutTheMissingNumbersAsksForTheSurvivorsOfTheRule',

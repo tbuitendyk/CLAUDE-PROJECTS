@@ -587,3 +587,19 @@ made while building it that the design did not already settle.
     unchecked rebuild is now only what it always claimed to be -- one with
     genuinely nothing to check against -- and it still says so rather than
     looking checked. Third digit: a fix.
+89. **The proof compares the figure the board actually holds, and counts what
+    it found** (3.57.3, owner report 2026-09-04: "20 setting(s) came back
+    different from what the sweep stored - this is not the same run"). It was
+    the same run, and both faults were in the check 3.57.2 had just added.
+    First: on a unit's board the stored money is THAT UNIT'S, while the
+    rebuild's own figure is the average over every unit of the set -- read off
+    the box, 120,291 of 137,760 settings differ between the two, so the
+    comparison could only ever disagree. The route now names the board the
+    figures were read on and the proof takes that unit's own rebuilt money,
+    which the rebuild already keeps; on `all units together` it takes the
+    average, which is right there and nowhere else. A setting the rebuild
+    priced on other units but not this one is counted and said, never treated
+    as a disagreement. Second: the list of disagreements stops at 20 and the
+    screen printed its length, so "20 setting(s)" meant "at least 20" -- the
+    true count travels now and the screen reads "N of M setting(s) came back
+    different". Third digit: a fix to a fix.

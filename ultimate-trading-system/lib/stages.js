@@ -3359,33 +3359,62 @@ function firstDigitOf(v) { return String(v || '').split('.')[0] || null; }
 // each setting carries its place in the set to the worker — so proving against
 // si would line setting 0 of the rebuild up with setting 0 of the whole board.
 // Every one would "match" and not one of them would be the same setting.
-function proveRebuild(perSetting, expect, tol = 1e-6) {
+// LIKE FOR LIKE, OR IT IS NOT A CHECK (3.57.3, owner report 2026-09-04: "20
+// setting(s) came back different from what the sweep stored - this is not the
+// same run"). It was the same run: on a unit's board the stored money is THAT
+// UNIT'S, and the rebuild's own avgTest is the average across every unit of
+// the set. Comparing them disagreed on 120,291 of 137,760 settings by
+// construction. `onUnit` names the unit the figures were read on, and the
+// rebuilt figure is then that unit's own; without it the comparison is
+// against the average, which is right for `all units together` and right
+// nowhere else.
+function proveRebuild(perSetting, expect, tol = 1e-6, onUnit = null) {
   if (!expect || !Object.keys(expect).length) {
     return { ran: false, checked: 0, matched: 0, mismatches: [], why: 'the caller supplied nothing to check against' };
   }
   const mismatches = [];
   let checked = 0;
   let unmatched = 0;
+  let differed = 0;
+  let noFigure = 0;
   for (const [label, got] of perSetting) {
     const want = expect[label];
     // A setting the caller asked about and the rebuild did not return is not a
     // silent skip: it is counted and reported, because "checked 3 of 40" and
     // "checked 40 of 40" are different claims.
     if (want == null || !Number.isFinite(Number(want))) { unmatched++; continue; }
+    // the figure for the board this was read on: one unit's, or the average
+    // over all of them
+    let mine = got.avgTest;
+    if (onUnit) {
+      const u = (got.units || []).find((x) => unitKeyOf(x) === onUnit);
+      if (!u) { noFigure++; continue; }
+      mine = u.pnl == null || !Number.isFinite(Number(u.pnl)) ? null : Number(u.pnl);
+    }
     checked++;
-    const mine = got.avgTest;
     const scale = Math.max(1, Math.abs(Number(want)));
     if (mine == null || Math.abs(mine - Number(want)) / scale > tol) {
-      mismatches.push({ label, stored: Number(want), rebuilt: mine });
+      differed++;
+      // THE LIST IS CAPPED AND THE COUNT IS NOT (3.57.3): the screen printed
+      // the length of this list, so "20 setting(s) came back different" meant
+      // "at least 20". `differed` is the true number; `mismatches` is what
+      // there is room to name.
+      if (mismatches.length < 20) mismatches.push({ label, stored: Number(want), rebuilt: mine });
     }
   }
+  const why = [];
+  if (unmatched) why.push(`${unmatched} rebuilt setting(s) had nothing to check against`);
+  if (noFigure) why.push(`${noFigure} rebuilt setting(s) carry no money for this unit`);
   return {
     ran: true,
     checked,
-    matched: checked - mismatches.length,
+    matched: checked - differed,
+    differed,
     unmatched,
-    mismatches: mismatches.slice(0, 20),
-    why: unmatched ? `${unmatched} rebuilt setting(s) had nothing to check against` : null,
+    noFigure,
+    onUnit: onUnit || null,
+    mismatches,
+    why: why.length ? why.join('; ') : null,
   };
 }
 
