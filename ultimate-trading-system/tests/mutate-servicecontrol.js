@@ -535,6 +535,10 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "      if (mismatches.length < 20) mismatches.push({ label, stored: Number(want), rebuilt: mine });", "      mismatches.push({ label, stored: Number(want), rebuilt: mine });",
     'theProofComparesTheFigureTheBoardActuallyHolds',
     'the list of disagreements is unbounded again, and a set where everything differs sends every name to the screen'],
+  // ---- THE NAME THE OWNER TYPED STAYS IN THE BOX (3.67.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), "    if (got) { rememberSweepForm(); say('#swOut1',", "    if (got) { $('#swName1').value = ''; rememberSweepForm(); say('#swOut1',",
+    'theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt',
+    'the stage 1 name box empties itself the moment the start goes through, so what says which set was just launched disappears'],
   // ---- THE CUT DOES NOT HOLD THE BOX (3.67.0) ----
   [path.join(ROOT, 'lib', 'funnelset.js'), "    missing: had.filter((l) => !gotSet.has(l)).slice(0, 20),", "    missing: had.filter((l) => !got.includes(l)).slice(0, 20),",
     'theCutHandsTheThreadBackAndNeverComparesEveryNameAgainstEveryName',

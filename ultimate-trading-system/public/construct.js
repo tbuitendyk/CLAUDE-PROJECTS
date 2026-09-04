@@ -2636,6 +2636,15 @@ async function drawSweep() {
 
   wireCampaignPanel(() => drawSweep());
   const say = (sel, msg, bad) => { $(sel).innerHTML = `<p class="note${bad ? ' warn' : ''}" style="margin:.4rem 0 0">${msg}</p>`; };
+  // THE NAME THE OWNER TYPED STAYS IN THE BOX (3.67.1, owner report 2026-09-04:
+  // "when i create a new Stage 1 sweep and give it a name such as 'S1 #3' then
+  // the code needs to retain *THAT NAME* in the Stage 1 name field after the
+  // start stage 1 button is used"). All three of these used to empty their own
+  // name box the moment the start went through, so the one thing that says
+  // which set was just launched vanished at the moment it became true. The box
+  // is saved and restored with the rest of this screen's boxes, so leaving it
+  // alone is the whole fix -- and a second start under the same name is refused
+  // by the service, in words, which is better than an empty box that hides it.
   $('#swGo1').onclick = async () => {
     const body = {
       universe: ($('#swUni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
@@ -2648,7 +2657,7 @@ async function drawSweep() {
     };
     if (!body.universe.length) delete body.universe;
     const got = await tryPost('api/stage1', body);
-    if (got) { $('#swName1').value = ''; rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); swProgress(); }
+    if (got) { rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); swProgress(); }
   };
   $('#swGo2').onclick = async () => {
     const got = await tryPost('api/stage2', {
@@ -2656,7 +2665,7 @@ async function drawSweep() {
       carry: Number($('#swCarry').value) || 0, desc: $('#swDesc2').value,
       name: $('#swName2').value,
     });
-    if (got) { $('#swName2').value = ''; rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); swProgress(); }
+    if (got) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); swProgress(); }
   };
   $('#swGo3').onclick = async () => {
     const got = await tryPost('api/stage3', {
@@ -2667,7 +2676,7 @@ async function drawSweep() {
       name: $('#swName3').value,
       ...swBlockParams(),
     });
-    if (got) { $('#swName3').value = ''; rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
+    if (got) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
   };
   // EVERY BOX THAT CHANGES THE COUNT RE-ASKS IT, AND ON TYPING AS WELL AS ON
   // LEAVING THE BOX (owner, 2026-08-29: "especially it's not working with the

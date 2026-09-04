@@ -367,8 +367,16 @@ module.exports = {
       assert.ok(ui.includes(`      <label class="f">name<input id="swName${n}" placeholder="\${esc(nextNames[${n}] || '')}" maxlength="80" style="width:10rem"></label>\n      <label class="f" style="flex:1">description<input id="swDesc${n}" style="width:100%"></label>`),
         `the stage ${n} name box is not beside description with the next free name greyed in it`);
       assert.ok(ui.includes(`      name: $('#swName${n}').value,`), `the stage ${n} launch does not send the name`);
-      assert.ok(ui.includes(`if (got) { $('#swName${n}').value = ''; rememberSweepForm(); say('#swOut${n}'`),
-        `the stage ${n} box keeps a name a launch has already taken`);
+      // THE NAME THE OWNER TYPED STAYS IN THE BOX (3.67.1, owner report). This
+      // used to require the opposite -- the box emptied itself the moment the
+      // launch went through -- so the one thing on screen saying which set had
+      // just been started disappeared at the moment it became true. A second
+      // launch under the same name is refused by the service in words, which
+      // is what stops a name being taken twice; an emptied box only hid it.
+      assert.ok(ui.includes(`if (got) { rememberSweepForm(); say('#swOut${n}'`),
+        `the stage ${n} launch does not save the form with the name still in it`);
+      assert.ok(!ui.includes(`$('#swName${n}').value = '';`),
+        `the stage ${n} box empties itself of the name the owner typed`);
     }
     assert.ok(ui.includes("for (const n of [1, 2, 3]) { const b = $(`#swName${n}`); if (b && st.nextNames) b.placeholder = st.nextNames[n] || ''; }"),
       'the greyed suggestion does not move when a launch takes a name');
