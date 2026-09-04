@@ -15,13 +15,10 @@ const fs=require("fs");const p=process.argv[1];const d=JSON.parse(fs.readFileSyn
 console.log(`${String(d.name).padEnd(8)} stage ${d.stage} ${d.id.padEnd(16)} ${d.status} engine ${d.engineVersion||(d.params||{}).engineVersion||"-"} recordsVersion ${d.recordsVersion??"-"}`);
 console.log(`         gates ${JSON.stringify(d.gates??null)} | unitSettings ${Array.isArray(plan.unitSettings)?plan.unitSettings.length+" units, pricings "+plan.pricings:"none"} | foldedPerUnit ${JSON.stringify(plan.foldedPerUnit||null)} | boardNull ${d.boardNull?"yes":"no"} | settings ${plan.settings} units ${plan.units}`);
 ' "$f"
-  store=$(find "$D" -path "*${id}*" -name "records.jsonl.gz" 2>/dev/null | head -1)
-  if [ -n "$store" ]; then
-    zcat "$store" 2>/dev/null | head -c 20000 | node -e '
-let raw="";process.stdin.on("data",c=>raw+=c).on("end",()=>{const lines=raw.split("\n").filter(l=>l.trim().startsWith("{"));let r=null;for(const line of lines){let o=null;try{o=JSON.parse(line)}catch(e){continue}const cand=o.row||o;if(cand&&("u"in cand||"trade"in cand||"si"in cand)){r=cand;break}}
-if(!r){console.log("         records: no record among the first lines ("+lines.length+" lines; first keys "+(lines[0]?Object.keys(JSON.parse(lines[0])).join(","):"-")+")");return}const row=r;const keys=Object.keys(row);
-console.log(`         first record: money ${"money" in row?("present ("+row.money+")"):"ABSENT"} | reserve ${"reserve" in row?(row.reserve?"present":"null"):"ABSENT"} | si ${row.si??"-"} u ${row.u??"-"} | ${keys.length} fields`);});'
-  else
-    echo "         records: no store found"
-  fi
+  node -e '
+const rs=require("/opt/ultimate-trading-system/lib/rowstore");const id=process.argv[1];
+let rows=[];try{rows=rs.readBlocks(id,"records",[0])||[]}catch(e){console.log("         records: cannot read the first block -- "+e.message);process.exit(0)}
+const x=rows[0];if(!x){console.log("         records: the first block is empty");process.exit(0)}const row=x.row||x;
+console.log(`         first record: money ${"money" in row?("present ("+row.money+")"):"ABSENT"} | reserve ${"reserve" in row?(row.reserve?"present":"null"):"ABSENT"} | si ${row.si??"-"} u ${row.u??"-"} | ${Object.keys(row).length} fields | ${rs.count(id,"records")} records`);
+' "$id"
 done
