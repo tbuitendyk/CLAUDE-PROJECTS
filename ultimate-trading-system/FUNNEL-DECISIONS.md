@@ -436,3 +436,19 @@ made while building it that the design did not already settle.
     shown, and every note and mark uses it. A key that is its own Sweep
     label (gate, entry, decision) is written once, never "gate (gate)".
     Pressed in the browser harness. Ships inside 3.52.0.
+81. **Step 3 says how to walk it, and the owner's block is green** (3.52.1,
+    owner order 2026-09-04: "you need to have plain steps to walk this step
+    3 ... MAKE THE USER SELECTED BLOCK SHADED LIGHT GREEN ... make the text
+    area 'Your block: ...' BOLD DARK GREEN so it's obvious what's going on").
+    The step drew its controls and a one-line note and left the owner to
+    guess what `read the grid` was for and how a block of their own is
+    chosen. Now seven numbered steps sit above the controls, before the grid
+    is read and after, each naming the control as it is drawn and saying
+    what pressing it does: the two dial boxes, `thin below` (a box holding
+    fewer settings than the number is greyed out with its count in brackets
+    and can never be bold or part of a block), `read the grid` (builds the
+    grid; a dial box re-reads by itself, a new thin below number needs the
+    button), `keep this block` for the outlined block, and the two clicks
+    that make a block of the owner's own. The boxes of that block are shaded
+    green and the line saying which values it covers is bold in dark green,
+    in both themes. Third digit: wording and colour.

@@ -669,3 +669,10 @@ carried out 2026-08-28 under its own GO — decision 50.
     twin leaves that twin unpriced on that unit -- the check on Boards says
     so ("every unit holds exactly the settings that place different orders
     on it"), and the fix is the missing-settings fill, not a silent repair.
+67. **A set behind on the per-unit fold is not served its old tables**
+    (3.52.1, found on the box the same day #66 shipped). The fold runs in
+    the tally slot, and a set that already has tables never reaches that
+    slot, so S3 #2 was served as it stood after the 3.52.0 deploy and its
+    weekly unit stayed doubled. The tables' reader now refuses a set behind
+    on the fold, the same door the 3.44.0 strip uses, so every screen falls
+    through to the slot that folds it and totals it again. Third digit.

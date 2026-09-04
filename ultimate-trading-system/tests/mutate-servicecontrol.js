@@ -512,6 +512,14 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "      if (mine && mine.has(r.si)) { w.push(r); kept++; } else dropped++;", "      if (mine) { w.push(r); kept++; } else dropped++;",
     'aSetPricedBeforeTheFoldIsFoldedPerUnitOnceOnDisk',
     'the migration rewrites every record and drops none, and the set is stamped as folded while the doubles are still on disk'],
+  // ---- A SET BEHIND ON THE FOLD IS NOT SERVED ITS OLD TABLES (3.52.1) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "  if (alwaysStripPending(id) || foldPending(id)) return null;", "  if (alwaysStripPending(id)) return null;",
+    'aSetPricedBeforeTheFoldIsFoldedPerUnitOnceOnDisk',
+    'a set that already has tables is served as it stands and the per-unit fold never runs on it, which is how S3 #2 stayed doubled after the 3.52.0 deploy'],
+  // ---- THE OWNER'S BLOCK IS DRAWN IN ITS OWN COLOUR (3.52.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), ' <b class="fpick">Your block: ', ' <b>Your block: ',
+    'theThirdStepSaysHowToWalkItAndShowsTheOwnersBlockInGreen',
+    'the line that says which values the owner\'s block covers is drawn like any other note'],
   // ---- THE TICK BOXES MOVE THE COUNT (3.52.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "      for (const [val, n] of ((st.read || {}).groups || [])) { total += n; if (on.has(String(val))) kept += n; }", "      for (const [val, n] of ((st.read || {}).groups || [])) { total += n; kept += n; }",
     'theKeepsCountBesideTheTickBoxesFollowsTheTicks',

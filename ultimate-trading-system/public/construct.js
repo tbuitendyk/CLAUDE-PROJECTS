@@ -4545,7 +4545,19 @@ function fStep3(r, st) {
       <label class="f">second dial<select id="fB">${fDialOptions(b0)}</select></label>
       <label class="f">thin below<input id="fFloor" type="number" min="0" style="width:6rem" value="${st.floor || 0}"></label>
       <button id="fGrid" class="pri">read the grid</button></div>`;
-  if (!r.grid) return `${pickers}<p class="note">name two dials and read the grid</p>`;
+  // HOW TO WALK THIS STEP, ON THE SCREEN (owner order, 2026-09-04: "you need
+  // to have plain steps to walk this step 3"). Every control is named as it
+  // is drawn below, and every sentence says what pressing it does.
+  const howTo = `<ol class="note fhow">
+      <li>Set <b>first dial</b> and <b>second dial</b> to the two dials to compare.</li>
+      <li>Set <b>thin below</b>: a box on the grid holding fewer settings than this number is greyed out, shows its count in brackets, and can never be bold or part of a block.</li>
+      <li>Press <b>read the grid</b> to build the grid for those two dials with that cut-off. Changing a dial box reads the grid again by itself; a new thin below number needs the button.</li>
+      <li>Bold boxes beat the check. The outlined block is the largest rectangle of bold boxes. Press <b>keep this block</b> to write it into the rule.</li>
+      <li>Or click one box on the grid to start a block of your own...</li>
+      <li>...then click the box at the opposite corner to finish it. Your block turns green, and the green line under the grid says which values it covers...</li>
+      <li>...then press <b>keep this block</b> to write your block into the rule instead of the outlined one.</li>
+    </ol>`;
+  if (!r.grid) return `${howTo}${pickers}<p class="note">name two dials and read the grid</p>`;
   const kind = (r.noise || {}).kind;
   const blk = (r.block || {}).block;
   const counting = new Set((r.block || {}).counting || []);
@@ -4566,7 +4578,7 @@ function fStep3(r, st) {
   };
   const table = (title, cell) => `<p class="note"><b>${title}</b></p><table><thead><tr>${cth(`${esc(fDialLabel(r.dialA))} \\ ${esc(fDialLabel(r.dialB))}`, 'fGridCorner')}${(r.bVals || []).map((b) => cth(esc(b), 'fGridValue')).join('')}</tr></thead><tbody>
       ${(r.aVals || []).map((a) => `<tr><td><b>${esc(a)}</b></td>${(r.bVals || []).map((b) => cell(a, b)).join('')}</tr>`).join('')}</tbody></table>`;
-  return `${pickers}
+  return `${howTo}${pickers}
     <p class="note"><b>${r.thin} of ${r.squares} squares are thin.</b> A square built from two settings tells you
       nothing, but it looks like every other square - and it is often the best-looking one on the grid, because small
       groups swing further. Thin squares are marked and keep their count; none is dropped.</p>
@@ -4581,7 +4593,7 @@ function fStep3(r, st) {
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <span class="note">${blk ? `Recommended block: ${esc(fDialLabel(r.dialA))} ${esc(blk.a.from)} to ${esc(blk.a.to)}, ${esc(fDialLabel(r.dialB))} ${esc(blk.b.from)} to ${esc(blk.b.to)} - ${blk.squares} square(s).`
       : `No block - ${esc((r.block || {}).why || 'no square beats the check')}.`}
-      ${pk && pk.a1 != null ? ` Your block: ${esc(fDialLabel(r.dialA))} ${esc(pk.a0)} to ${esc(pk.a1)}, ${esc(fDialLabel(r.dialB))} ${esc(pk.b0)} to ${esc(pk.b1)}.` : (pk && pk.a0 != null ? ' One corner chosen - press the other.' : '')}</span>
+      ${pk && pk.a1 != null ? ` <b class="fpick">Your block: ${esc(fDialLabel(r.dialA))} ${esc(pk.a0)} to ${esc(pk.a1)}, ${esc(fDialLabel(r.dialB))} ${esc(pk.b0)} to ${esc(pk.b1)}.</b>` : (pk && pk.a0 != null ? ' <b class="fpick">One corner chosen - press the other.</b>' : '')}</span>
       <button id="fKeepBlock" class="pri" ${(pk && pk.a1 != null) || blk ? '' : 'disabled'}>keep this block</button>
       <span class="note">writes a range on BOTH dials in one step, replacing what the rule held for them. Your own block if you chose one, else the recommended one.</span></div>`;
 }

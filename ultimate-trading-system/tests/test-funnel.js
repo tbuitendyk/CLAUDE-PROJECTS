@@ -1813,4 +1813,42 @@ module.exports = {
     assert.ok(/The count beside it follows the ticks as you change them/.test(help), 'the help for keep these values does not say the count follows the ticks');
   },
 
+  // STEP 3 SAYS HOW TO WALK IT, ON THE SCREEN (3.52.1, owner order 2026-09-04:
+  // "you need to have plain steps to walk this step 3 ... MAKE THE USER
+  // SELECTED BLOCK SHADED LIGHT GREEN ... make the text area 'Your block: ...'
+  // BOLD DARK GREEN"). Every control the steps name is a control the step
+  // draws, and the owner's own block is drawn in its own colour.
+  async theThirdStepSaysHowToWalkItAndShowsTheOwnersBlockInGreen() {
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const step = page.slice(page.indexOf('function fStep3('), page.indexOf('\nfunction ', page.indexOf('function fStep3(') + 10));
+    const how = step.slice(step.indexOf('<ol class="note fhow">'), step.indexOf('</ol>'));
+    assert.ok(how.length > 0, 'step 3 carries no numbered steps');
+    assert.strictEqual(how.split('<li>').length - 1, 7, 'the walk is seven steps, the ones the owner wrote');
+    for (const control of ['<b>first dial</b>', '<b>second dial</b>', '<b>thin below</b>', '<b>read the grid</b>', '<b>keep this block</b>']) {
+      assert.ok(how.includes(control), `the steps do not name ${control}`);
+    }
+    // every control the steps name is one this step draws, with that label
+    for (const label of ['first dial', 'second dial', 'thin below', 'read the grid', 'keep this block']) {
+      assert.ok(step.includes(`>${label}<`) || step.includes(`${label}<input`) || step.includes(`${label}<select`), `the steps name "${label}", which step 3 does not draw`);
+    }
+    assert.ok(how.includes('greyed out, shows its count in brackets, and can never be bold or part of a block'), 'thin below is not explained in plain words');
+    assert.ok(how.includes('Changing a dial box reads the grid again by itself; a new thin below number needs the button'), 'what read the grid is for is not said');
+    // the steps are on the screen before the grid is read and after
+    assert.strictEqual(step.split('${howTo}${pickers}').length - 1, 2, 'the steps are not shown both before and after the grid is read');
+    // and it is true: the dial boxes re-read by themselves, the floor does not
+    const wire = page.slice(page.indexOf('const readGrid = () => {'), page.indexOf('const readGrid = () => {') + 600);
+    assert.ok(wire.includes("for (const id of ['fA', 'fB']) { const el = $(`#${id}`); if (el) el.onchange = readGrid; }"), 'changing a dial box does not read the grid again, so the step lies');
+    assert.ok(!/fFloor.*onchange|fFloor.*oninput/.test(wire), 'thin below reads the grid by itself now, so the step lies the other way');
+    // the owner's block is green, and its line is bold dark green
+    assert.ok(step.includes('<b class="fpick">Your block: '), 'the owner\'s block line is not drawn in its own colour');
+    assert.ok(step.includes('<b class="fpick">One corner chosen - press the other.</b>'), 'the half-chosen block line is not drawn in its own colour');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+    assert.ok(/td\.pick \{ background:var\(--pickbg\); \}/.test(css), 'the chosen boxes are not shaded in the block colour');
+    assert.ok(/\.fpick \{ color:var\(--pickfg\); font-weight:700; \}/.test(css), 'the block line is not bold in the block colour');
+    assert.ok(/--pickbg:#d6f5e2; --pickfg:#0a5d3a;/.test(css), 'the light theme does not shade light green with dark green text');
+    assert.ok(/--pickbg:#1c3a2a; --pickfg:#7ee0b0;/.test(css), 'the dark theme has no block colours of its own');
+    const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+    assert.ok(/Changing a dial box reads the grid again by itself; a new thin below number needs this button/.test(help), 'the help for read the grid does not say what the button is for');
+  },
+
 };

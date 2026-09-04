@@ -3857,6 +3857,20 @@ let tallyUnreadable = null;
 // half a million setting names. The strip saves the document, so the stat
 // changes and the answer is worked out again exactly once.
 const stripPending = new Map();   // id -> { mtimeMs, size, needs }
+// A SET BEHIND ON THE PER-UNIT FOLD IS NOT SERVED ITS OLD TABLES (3.52.1).
+// The fold runs in the tally slot, and a set that already has tables never
+// reaches that slot: S3 #2 was served as it stood after the 3.52.0 deploy and
+// never folded. Same door as the strip, cached the same way.
+const foldPendingCache = new Map();   // id -> { mtimeMs, size, needs }
+function foldPending(id) {
+  let st = null;
+  try { st = fs.statSync(setFile(id)); } catch (_) { foldPendingCache.delete(id); return false; }
+  const hit = foldPendingCache.get(id);
+  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.needs;
+  const needs = foldBehind(getSet(id));
+  foldPendingCache.set(id, { mtimeMs: st.mtimeMs, size: st.size, needs });
+  return needs;
+}
 function alwaysStripPending(id) {
   let st = null;
   try { st = fs.statSync(setFile(id)); } catch (_) { stripPending.delete(id); return false; }
@@ -3875,7 +3889,7 @@ function readTally(id) {
   // screen falls through to ensureTally, which brings the records up to date
   // and totals them again. Serving the old tables would show a third of a
   // board the engine cannot price any more, on every screen, indefinitely.
-  if (alwaysStripPending(id)) return null;
+  if (alwaysStripPending(id) || foldPending(id)) return null;
   let st = null;
   try { st = fs.statSync(tallyFile(id)); } catch (_) { return null; }
   if (tallyInHand.id === id && tallyInHand.tally && tallyInHand.mtimeMs === st.mtimeMs && tallyInHand.size === st.size) {
@@ -5288,7 +5302,7 @@ module.exports = {
   // the shape of its source, which rotted the moment a second share column
   // arrived
   sortValue,
-  sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, foldBehind, foldRecordsPerUnit, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
+  sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, foldBehind, foldPending, foldRecordsPerUnit, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,

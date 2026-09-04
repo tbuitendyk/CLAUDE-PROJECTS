@@ -582,8 +582,8 @@ window.HELP = {
         more: 'Squares below this are greyed and show their count instead of being hidden. A square built from two settings looks exactly like one built from two thousand, and it will often be the best-looking square on the grid precisely because small groups swing further. The line above the grid tells you how many squares each choice of floor would keep, so you are not picking the number blind.',
       },
       fGrid: {
-        what: 'Reads the grid for the two dials and the floor you have set.',
-        more: 'Nothing here changes the rule - this step is for looking.',
+        what: 'Builds the grid for the two dials named in the boxes, with the thin below cut-off. Changing a dial box reads the grid again by itself; a new thin below number needs this button.',
+        more: 'Nothing here changes the rule - this step is for looking. Only keep this block writes anything.',
       },
       fRebuild: {
         what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, and how much of the result rests on guessing what happened inside a single bar.',

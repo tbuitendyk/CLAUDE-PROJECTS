@@ -12,12 +12,14 @@
     --panel:#12161d; --tile:#171c24; --line:#232a35;
     --pos:#4ec9a5; --neg:#e06c75; --warn:#e5c07b; --accent:#9db4d0;
     --paper:#3b3320; --paperln:#e5c07b; --tabbg:#171c24; --tabon:#0e1116;
+    --pickbg:#1c3a2a; --pickfg:#7ee0b0;
   }
   :root[data-theme="light"] {
     --bg:#f6f7f9; --fg:#1a2028; --muted:#8a94a2; --dim:#5a6472;
     --panel:#ffffff; --tile:#ffffff; --line:#dde2e8;
     --pos:#0a7d55; --neg:#c02a33; --warn:#8a6d00; --accent:#2c5fa8;
     --paper:#fff6da; --paperln:#8a6d00; --tabbg:#eceef1; --tabon:#ffffff;
+    --pickbg:#d6f5e2; --pickfg:#0a5d3a;
   }
   * { box-sizing:border-box; }
   body { font-family:-apple-system,system-ui,sans-serif; margin:0; padding:1.1rem;
@@ -58,7 +60,9 @@
   tr.clickable { cursor:pointer; } tr.clickable:hover td { background:var(--tile); }
   /* the Funnel's grid: a square that beats the check, the recommended block, and the block the owner chose */
   td.cnt, tr.cnt td { font-weight:600; } td.blk { outline:1px solid var(--accent); outline-offset:-1px; }
-  td.pick { background:var(--tabon); } td.pickable { cursor:pointer; }
+  td.pick { background:var(--pickbg); } td.pickable { cursor:pointer; }
+  .fpick { color:var(--pickfg); font-weight:700; }
+  ol.fhow { margin:.2rem 0 .6rem 1.2rem; padding:0; } ol.fhow li { margin:.15rem 0; }
   tr.dim td { color:var(--muted); }
   tr.selected td { background:var(--tile); box-shadow: inset 3px 0 0 var(--accent); }
   .tile { background:var(--tile); border:1px solid var(--line); border-radius:8px; padding:.55rem .7rem; }

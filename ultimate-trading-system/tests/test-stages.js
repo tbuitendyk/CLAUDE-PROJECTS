@@ -545,6 +545,13 @@ module.exports = {
       fs.writeFileSync(path.join(SETS_DIR, `${id}-tally.json.gz`), 'stale');
       let doc = stages.getSet(id);
       assert.strictEqual(stages.foldBehind(doc), true, 'a done set with names and no word on what each unit holds is behind');
+      // AND ITS OLD TABLES ARE NOT SERVED MEANWHILE (3.52.1): the tables' reader
+      // refuses, so every screen falls through to the slot that folds it -- a
+      // set that already had tables was never folded at all before this
+      assert.strictEqual(stages.foldPending(id), true, 'a set behind on the fold must read as pending');
+      assert.strictEqual(stages.readTally(id), null, 'a set behind on the fold was served its old tables, so the fold never runs on a set that has them');
+      const srcGate = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+      assert.ok(srcGate.includes('  if (alwaysStripPending(id) || foldPending(id)) return null;'), 'the tables\' reader does not refuse a set behind on the fold');
       const got = await stages.foldRecordsPerUnit(doc);
       assert.deepStrictEqual(got, { kept: 3, dropped: 1 }, 'the weekly unit\'s second value of 24/5 is dropped, nothing else');
       assert.strictEqual(rowstore.count(id, 'records'), 3, 'and the store holds what was kept');
@@ -552,6 +559,7 @@ module.exports = {
       assert.deepStrictEqual(doc.plan.unitSettings, [{ u: 0, held: 2 }, { u: 1, held: 1 }], 'the plan says what each unit holds');
       assert.strictEqual(doc.plan.pricings, 3);
       assert.strictEqual(stages.foldBehind(doc), false, 'folded once, never asked again');
+      assert.strictEqual(stages.foldPending(id), false, 'and no longer pending, so its tables are served again once totalled');
       assert.ok(!fs.existsSync(path.join(SETS_DIR, `${id}-tally.json.gz`)), 'the tables went with the old records');
       assert.deepStrictEqual([doc.plan.foldedPerUnit.kept, doc.plan.foldedPerUnit.dropped], [3, 1]);
       const rows = [];
