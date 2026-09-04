@@ -1625,6 +1625,22 @@ module.exports = {
     assert.ok(ui.includes("    const ruleKey = fAcrossKey(st);"), 'the press does not remember the bar it asked under');
   },
 
+  // THE BAR AND THE TARGET STAY WHERE THEY ARE LEFT (owner order, 2026-09-04:
+  // "i put it on 75% and every single selection you set it back to 80%").
+  // A walk is saved per unit, so switching coin and shape loaded a walk that
+  // had never seen the bar and fell back to the default, and the owner read
+  // every unit twice. Both are remembered once per set now.
+  theBarAndTheTargetStayWhereTheyAreLeftForTheWholeSet() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(src.includes('const fSetKeyFor = (set) => `cx-funnel-set-${set}`;'), 'the set has no memory of its own');
+    const load = src.slice(src.indexOf('function fLoad('), src.indexOf('\nfunction fSave('));
+    assert.ok(load.includes('if (shared.barPct !== undefined) fState.barPct = shared.barPct;'), 'a unit\'s walk does not take the set\'s bar');
+    assert.ok(load.includes('if (shared.target !== undefined) fState.target = shared.target;'), 'a unit\'s walk does not take the set\'s target');
+    const wire = src.slice(src.indexOf('function fWire('));
+    assert.ok(wire.includes('fRememberForSet(st.set, { barPct: v }); fSave(); drawFunnel();'), 'changing the bar does not remember it for the set');
+    assert.ok(wire.includes('fRememberForSet(st.set, { target: st.target }); fSave(); drawFunnel();'), 'changing the target does not remember it for the set');
+  },
+
   theScreenOffersTheBarAndSendsItWithEveryRead() {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const head = src.slice(src.indexOf('function fHead('), src.indexOf('\nfunction fRail('));

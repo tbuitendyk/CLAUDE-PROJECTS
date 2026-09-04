@@ -4203,6 +4203,18 @@ function fUnitChoose(set, unit) {
   fUnitMemory[set] = unit;
   try { localStorage.setItem(fUnitKeyFor(set), unit); } catch (_) { /* private window */ }
 }
+// THE BAR AND THE TARGET STAY WHERE THEY ARE LEFT, FOR THE WHOLE SET (owner
+// order, 2026-09-04: "i put it on 75% and every single selection you set it
+// back to 80%"). Both sit on the standing line above every unit's walk, so
+// they are remembered once per set and every unit's walk reads them from
+// there; the walk's own copy is what the read, the across and the cut post.
+const fSetKeyFor = (set) => `cx-funnel-set-${set}`;
+function fSetMemory(set) {
+  try { return JSON.parse(localStorage.getItem(fSetKeyFor(set)) || 'null') || {}; } catch (_) { return {}; }
+}
+function fRememberForSet(set, fields) {
+  try { localStorage.setItem(fSetKeyFor(set), JSON.stringify({ ...fSetMemory(set), ...fields })); } catch (_) { /* private window */ }
+}
 // WHAT A READING OF THE OTHER UNITS WAS READ FOR: the rule AND the bar. The
 // same rule under another share of the copies is another reading.
 const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct]);
@@ -4219,6 +4231,10 @@ function fLoad() {
     : { set, unit, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
       dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false,
       closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {}, across: null, barPct: null };
+  // the set's own bar and target win over whatever this unit's walk last saw
+  const shared = fSetMemory(set);
+  if (shared.barPct !== undefined) fState.barPct = shared.barPct;
+  if (shared.target !== undefined) fState.target = shared.target;
   return fState;
 }
 function fSave() {
@@ -4702,11 +4718,11 @@ function fWire(st) {
   };
   document.querySelectorAll('[data-fstep]').forEach((b) => { b.onclick = () => go(Number(b.dataset.fstep)); });
   const t = $('#fTarget');
-  if (t) t.onchange = () => { st.target = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value) || 0)); fSave(); drawFunnel(); };
+  if (t) t.onchange = () => { st.target = t.value === '' ? null : Math.max(0, Math.floor(Number(t.value) || 0)); fRememberForSet(st.set, { target: st.target }); fSave(); drawFunnel(); };
   const bb = $('#fBar');
   if (bb) bb.onchange = () => {
     const v = bb.value === '' ? null : Math.max(1, Math.min(100, Math.floor(Number(bb.value) || 0)));
-    st.barPct = v; fSave(); drawFunnel();
+    st.barPct = v; fRememberForSet(st.set, { barPct: v }); fSave(); drawFunnel();
   };
   const un = $('#fUnit');
   if (un) un.onchange = () => {
