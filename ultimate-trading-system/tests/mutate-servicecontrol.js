@@ -595,6 +595,10 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "  if (saved && 'bar' in saved) delete saved.bar;\n", '',
     'theScreenOffersTheBarAndSendsItWithEveryRead',
     'a walk saved under the old count keeps it, and the page silently carries a stale field'],
+  // 3.50.1: the bar stays where it is left, for every unit of the set
+  [path.join(ROOT, 'public', 'construct.js'), '  if (shared.barPct !== undefined) fState.barPct = shared.barPct;\n', '',
+    'theBarAndTheTargetStayWhereTheyAreLeftForTheWholeSet',
+    'every switch of coin and shape puts the bar back to the default and the owner reads every unit twice'],
 ];
 
 const only = process.argv[2] || '';

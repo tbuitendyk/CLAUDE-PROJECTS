@@ -1654,7 +1654,7 @@ module.exports = {
     const wire = src.slice(src.indexOf('function fWire('));
     assert.ok(wire.includes("{ rule: st.rule, unit: st.unit, barPct: st.barPct }"), 'the across carries the share');
     assert.ok(/unit: st\.unit,\n\s*barPct: st\.barPct,\n\s*\}\);/.test(wire), 'the cut carries the share');
-    assert.ok(wire.includes("Math.max(1, Math.min(100, Math.floor(Number(bb.value) || 0)))") && wire.includes("st.barPct = v; fSave(); drawFunnel();"),
+    assert.ok(wire.includes("Math.max(1, Math.min(100, Math.floor(Number(bb.value) || 0)))") && wire.includes("st.barPct = v; fRememberForSet(st.set, { barPct: v }); fSave(); drawFunnel();"),
       'the box is held to 1..100 and changing it re-reads');
     const s1 = src.slice(src.indexOf('function fStep1('), src.indexOf('\nfunction fStep2('));
     assert.ok(s1.includes('values clear the bar on this board; by chance about'), 'the honesty line on step 1');

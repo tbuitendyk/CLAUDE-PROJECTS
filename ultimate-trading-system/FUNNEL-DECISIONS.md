@@ -400,3 +400,9 @@ made while building it that the design did not already settle.
     reading; it is keyed on the bar now, on the box and on the page. No
     Stage 4 set exists on the box, so nothing on disk is migrated. Second
     digit: the control's meaning changed and the record gained a field.
+78. **The bar and the target stay where they are left, for the whole set**
+    (3.50.1, owner order 2026-09-04: "i put it on 75% and every single
+    selection you set it back to 80%"). A walk is saved per coin and shape,
+    so switching units loaded a walk that had never seen the bar and fell
+    back to the default, and every unit was read twice. Both are remembered
+    once per set; a unit's walk takes them from there. Third digit.
