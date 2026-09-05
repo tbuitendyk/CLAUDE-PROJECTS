@@ -4217,6 +4217,16 @@ module.exports = {
     assert.deepStrictEqual(holdsOf([]), [], 'no records, nothing to read');
     assert.deepStrictEqual(holdsOf([{ geometry: 'not-a-shape' }]), [],
       'a shape the system does not implement contributes no length rather than a wrong one');
+    // AND THE COUNTER HANDS THEM TO THE SCREEN. The control has no other way
+    // to learn them, and without this the whole thing degrades in silence:
+    // the boxes fill, t is left on whatever was there, and the owner prices
+    // something else believing it is the training setup.
+    const pid = writeLaunchParent('holds');
+    try {
+      const said = stages.stage3Declared({ ...LAUNCH_BLOCK, from: pid });
+      assert.deepStrictEqual(said.holds, [41],
+        'the counter must answer with the hold lengths of the records it would price (daily-4d is 41h)');
+    } finally { cleanLaunchParent(pid); }
     // and every length it can produce is a value t can actually be set to
     for (const g of Object.keys(GEOMETRIES)) {
       const [h] = holdsOf([{ geometry: g }]);
