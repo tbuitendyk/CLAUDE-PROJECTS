@@ -760,7 +760,7 @@ function swProvenance() {
       : (c('#swSingles') !== !!sz.singles || c('#swDoubles') !== !!sz.doubles || c('#swTriples') !== !!sz.triples) ? 'the singles / doubles / triples ticks no longer match'
         : (c('#swPermGeom') !== (geos.length > 1) || (!c('#swPermGeom') && geos[0] !== v('#swGeom'))) ? 'the chunk shape no longer matches'
           : v('#swLayout') !== (p.windowLayout || '') ? 'the window layout no longer matches'
-            : c('#swByMoney') !== ((p.trainOn || 'direction') === 'money') ? 'weigh each week by the money it was worth no longer matches'
+            : c('#swByMoney') !== ((p.trainOn || 'direction') === 'money') ? 'weigh each trade by the money it was worth no longer matches'
               : Number(v('#swNull1')) !== Number(p.nullN) ? 'the null set size no longer matches'
               : c('#swAllData') !== (p.allLoaded !== false) ? 'the all loaded data tick no longer matches'
                 : (!c('#swAllData') && (v('#swStart') !== (p.startMonth || '') || v('#swEnd') !== (p.endMonth || ''))) ? 'the start / end months no longer match'
@@ -1287,13 +1287,13 @@ function getSelRow(doc) {
 // from one path. Top-level and called by name, so the word list and the
 // control reader follow them onto both screens.
 function campaignNoteHtml(doc) {
-  // AND HOW ITS UNITS WERE TRAINED (3.69.0). A set trained on what each week
+  // AND HOW ITS UNITS WERE TRAINED (3.69.0). A set trained on what each trade
   // was worth is not comparable with one trained on direction alone, so the
   // set says which it was wherever it is named rather than leaving it to the
   // release it was made under.
   const p = (doc && doc.params) || {};
   const trained = (p.trainOn === 'money')
-    ? `trained by the money each week was worth${Number(p.weightCap) > 0 ? `, one week worth at most ${Number(p.weightCap)}` : ''}`
+    ? `trained by the money each trade was worth${Number(p.weightCap) > 0 ? `, one trade worth at most ${Number(p.weightCap)}` : ''}`
     : 'trained by direction only';
   return doc ? `<span class="note">campaign: ${esc(p.campaign || '—')} · ${esc(doc.status)} · ${esc(p.windowLayout || '')} · ${esc(trained)}</span>` : '';
 }
@@ -2543,13 +2543,15 @@ async function drawSweep() {
       <label class="f">fee % each way<input id="swFee1" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
-      <label class="c" title="off: every week teaches one lesson whatever it was worth. On: a week is weighed by the gap between the best and the worst its decision could have done, in dollars."><input type="checkbox" id="swByMoney"> weigh each week by the money it was worth</label>
-      <label class="f">the most one week may count for<input id="swCap1" type="number" value="10" min="0" step="1" style="width:6rem"></label>
-      <span class="note">Off, a week the price moved 0.6% and a week it moved 14% are the same one lesson, so a
+      <label class="c" title="off: every trade teaches one lesson whatever it was worth. On: a trade is weighed by the gap between the best and the worst its decision could have done, in dollars. One chunk of history is one decision and one trade -- a week on the weekly shape, a day on the daily ones."><input type="checkbox" id="swByMoney"> weigh each trade by the money it was worth</label>
+      <label class="f">the most one trade may count for<input id="swCap1" type="number" value="10" min="0" step="1" style="width:6rem"></label>
+      <span class="note">One chunk of history is one decision and one trade - a week on the weekly shape, a day on the
+        daily ones. Off, a trade where the price moved 0.6% and one where it moved 14% are the same single lesson, so a
         forecast right nine times on crumbs and wrong once on a landslide trains as a good one. On, the landslide
-        teaches more. A still week is never weightless - getting it wrong wastes the fees, and that is worth learning.
-        The number beside it is how many ordinary weeks the biggest may count for, so one freak week cannot be the
-        whole training; 0 turns that limit off. This carries to stage 2 by itself, so a committee is trained one way.</span>
+        teaches more. A trade too small to cover the fees is never weightless - taking it the wrong way wastes them,
+        and staying out is worth learning. The number beside it is how many ordinary trades the biggest may count for,
+        so one freak trade cannot be the whole training; 0 turns that limit off. This carries to stage 2 by itself, so
+        a committee is trained one way.</span>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName1" placeholder="${esc(nextNames[1] || '')}" maxlength="80" style="width:10rem"></label>
@@ -2674,7 +2676,7 @@ async function drawSweep() {
       startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
       nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,
       name: $('#swName1').value,
-      // what each training week is worth (3.69.0)
+      // what each training trade is worth (3.69.0)
       trainOn: $('#swByMoney').checked ? 'money' : 'direction',
       weightCap: $('#swCap1').value === '' ? undefined : Number($('#swCap1').value),
     };

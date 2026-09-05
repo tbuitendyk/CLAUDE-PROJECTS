@@ -362,7 +362,7 @@ module.exports = {
   // lose badly to one large inaccurate call, and that training would learn to
   // "emphasize MORE a large winning trade than a small one". It was not done.
   // This is it, and these are the numbers it turns on.
-  theWeightOfATrainingWeekIsWhatItsDecisionWasWorth() {
+  theWeightOfATrainingTradeIsWhatItsDecisionWasWorth() {
     const sw = require('../lib/stagework');
     const wk = (d) => ({ diffPct: d });
     const fee = 0.0005;                       // 0.05% a leg -> a 10 cent round trip on $100
@@ -389,7 +389,7 @@ module.exports = {
     assert.ok(Array.isArray(sw.weightsFor({ trainOn: 'money' }, [wk(5), wk(1)], fee)), 'money is not being weighed by money');
     // AND A SET SAYS WHAT IT WAS ACTUALLY TRAINED UNDER, not what was asked for
     assert.deepEqual(sw.weightsSaid({ trainOn: 'money' }, null),
-      { by: 'direction', asked: 'money', why: 'no training week carried a move to weigh by' },
+      { by: 'direction', asked: 'money', why: 'no training trade carried a move to weigh by' },
       'a run that could not weigh by money reads as though it did');
     assert.equal(sw.weightsSaid({}, null).by, 'direction', 'a plain run does not say how it was trained');
   },
@@ -399,7 +399,7 @@ module.exports = {
   // kinds for real on a board where the two ways of counting disagree, and the
   // owner's sentence is the assertion: "a bunch of small accurate calls can,
   // when money comes into play, lose badly to a single large inaccurate call".
-  async countingMoneyRatherThanWeeksChangesWhatBothForecastsLearn() {
+  async countingMoneyRatherThanTradesChangesWhatBothForecastsLearn() {
     const sw = require('../lib/stagework');
     // At the first spot the market went UP by a crumb nine times in ten and
     // DOWN by a landslide the tenth. Counting weeks, up wins nine to one.
@@ -468,16 +468,16 @@ module.exports = {
     assert.ok(/trainOn,\n    weightCap,/.test(launch), 'the setting never reaches the workers, so the tick does nothing');
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     assert.ok(ui.includes('id="swByMoney"'), 'there is no way to ask for it');
-    assert.ok(ui.includes('weigh each week by the money it was worth'), 'the control does not say what it does');
+    assert.ok(ui.includes('weigh each trade by the money it was worth'), 'the control does not say what it does');
     assert.ok(ui.includes('id="swCap1"'), 'there is no way to hold one freak week down');
     assert.ok(ui.includes("trainOn: $('#swByMoney').checked ? 'money' : 'direction',"), 'the launch does not carry the tick');
     assert.ok(ui.includes("weightCap: $('#swCap1').value === '' ? undefined : Number($('#swCap1').value),"), 'the launch does not carry the limit');
     // and a record set says how it was trained wherever it is named
-    assert.ok(ui.includes('trained by the money each week was worth') && ui.includes('trained by direction only'),
+    assert.ok(ui.includes('trained by the money each trade was worth') && ui.includes('trained by direction only'),
       'a set does not say how its units were trained, so two sets that cannot be compared look alike');
     assert.ok(ui.includes("setC('#swByMoney', (p.trainOn || 'direction') === 'money');"),
       'choosing a set does not show how it was trained');
-    assert.ok(ui.includes("'weigh each week by the money it was worth no longer matches'"),
+    assert.ok(ui.includes("'weigh each trade by the money it was worth no longer matches'"),
       'a form that disagrees with the set stage 2 reads from says nothing');
   },
 

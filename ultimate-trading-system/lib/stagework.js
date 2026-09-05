@@ -210,13 +210,20 @@ function moneyAgainstNull({ chunks, calls, tradeMap, geo, fee, seed, unitKey, nu
 
 // ---- TRAINING BY WHAT WAS ACTUALLY AT STAKE (3.69.0, owner order) -----------
 //
-// Every training chunk used to count the same. A week the price moved 0.6% and
-// a week it moved 14% were one lesson each -- "up" -- because the label throws
-// the size away (dataset.js scoreDiff). So a forecast right nine times on
-// crumbs and wrong once on a landslide trained as a GOOD forecast and lost
-// money. That is the fault the owner named, and this is the answer to it.
+// ONE CHUNK IS ONE DECISION AND ONE TRADE (said in these words after the owner
+// asked, 3.70.1: "that is per trade, not per week"). A chunk is a week on the
+// weekly shape and a day on the daily ones; either way the forecast makes
+// exactly one call on it and that call is at most one trade. So weighing a
+// chunk IS weighing a trade, and the screen says trade, which is the word that
+// is true on every shape.
 //
-// A CHUNK IS WORTH WHAT ITS DECISION IS WORTH: the gap between the best it
+// Every training trade used to count the same. One where the price moved 0.6%
+// and one where it moved 14% were a single lesson each -- "up" -- because the
+// label throws the size away (dataset.js scoreDiff). So a forecast right nine
+// times on crumbs and wrong once on a landslide trained as a GOOD forecast and
+// lost money. That is the fault the owner named, and this is the answer to it.
+//
+// A TRADE IS WORTH WHAT ITS DECISION IS WORTH: the gap between the best it
 // could do and the worst it could do, in dollars on the same stake the rest of
 // the system prices at.
 //
@@ -226,12 +233,15 @@ function moneyAgainstNull({ chunks, calls, tradeMap, geo, fee, seed, unitKey, nu
 //   worst = -(m + trip)           call it backwards
 //   stake = best - worst
 //
-// On a week that moved, that comes to about twice the move: the fees are paid
-// whichever way you call it, so they cancel out of the gap. On a week that
-// barely moved it comes to the round trip: standing aside earns nothing and
-// trading it the wrong way wastes the fees, and THAT is what a still week is
-// worth teaching. So nothing gets a weight of zero and no floor has to be
-// invented -- the arithmetic of the trade sets it.
+// On a trade that moved, that comes to about twice the move: the fees are paid
+// whichever way you call it, so they cancel out of the gap. On one that barely
+// moved it comes to the round trip: staying out earns nothing and taking it the
+// wrong way wastes the fees, and THAT is what teaches the forecast when to stay
+// out. The owner chose this over weighing by what a right call earns alone
+// (3.70.1), which would have given a trade too small to cover its fees a weight
+// of zero -- and a forecast that never learns to stay out takes every crumb and
+// bleeds the fees. So nothing gets a weight of zero and no floor has to be
+// invented: the arithmetic of the trade sets it.
 //
 // TAKEN FROM THE TRAINING CHUNKS ONLY, never the test or the held-back window,
 // the same discipline the band already follows.
@@ -240,14 +250,14 @@ function moneyAgainstNull({ chunks, calls, tradeMap, geo, fee, seed, unitKey, nu
 // regularisation meaning what it meant, and lets a run with this off and a run
 // with it on be told apart by the setting rather than by a scale factor.
 //
-// AND CAPPED, because one 40% week can otherwise outweigh fifty ordinary ones
-// and a fit to one week is not a fit. `capMult` is how many ordinary weeks the
+// AND CAPPED, because one 40% move can otherwise outweigh fifty ordinary trades
+// and a fit to one trade is not a fit. `capMult` is how many ordinary trades the
 // biggest may count for. Clipping after the normalising pulls the average a
 // little under 1; that is a uniform scale on the whole objective and changes
 // nothing, and the strength is chosen against the same weighted objective
 // anyway. 0 turns the cap off.
 const WEIGHT_CAP_DEFAULT = 10;
-// The launch's answer to "weigh each week by the money it was worth", read the
+// The launch's answer to "weigh each trade by the money it was worth", read the
 // same way in both stages. Anything but the word for money is direction only,
 // which is what every set before 3.69.0 was trained under.
 const TRAIN_ON = ['direction', 'money'];
@@ -265,7 +275,7 @@ function weightsFor(p, trainChunks, fee) {
 function weightsSaid(p, weights) {
   const asked = trainOnOf(p);
   if (asked !== 'money') return { by: 'direction' };
-  if (!weights) return { by: 'direction', asked: 'money', why: 'no training week carried a move to weigh by' };
+  if (!weights) return { by: 'direction', asked: 'money', why: 'no training trade carried a move to weigh by' };
   let hi = 0;
   for (const w of weights) if (w > hi) hi = w;
   return { by: 'money', cap: capOf(p), biggest: Math.round(hi * 100) / 100, of: weights.length };

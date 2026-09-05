@@ -1130,3 +1130,31 @@ made while building it that the design did not already settle.
      Second digit: new behaviour. Nothing on disk changes shape; a set without
      the table says so and gets one.
 
+105. **The screen says TRADE, because that is what it is** (2026-09-05, owner:
+     *"we need each amount earned by making the right decision to have its
+     associated training weight applied during the training process ... that is
+     per trade, not per week. are you doing this right?"*).
+
+     The arithmetic was right and the words were wrong. One chunk of history is
+     one decision and at most one trade: a week on the weekly shape, a DAY on
+     the four daily ones. The weight has always been attached to that chunk, so
+     it was already per trade -- but "week" was written on the control, and on
+     four of the five shapes there are no weeks. Every label, note, help entry
+     and comment now says trade.
+
+     **And the owner chose the version that teaches staying out.** Weighing by
+     what a right call earns alone -- their literal words -- gives a trade too
+     small to cover its fees a weight of zero, so the forecast would never learn
+     to stay out and would take every crumb and bleed the fees. The gap between
+     the best and the worst outcome gives that trade the round trip instead, and
+     leaves everything larger weighted in proportion to its size, because a
+     constant factor washes out of a set of weights scaled to average 1.
+     Confirmed by the owner: *"the version that teaches the system when to stay
+     out also of course"*.
+
+     **The cap stays at 10 and stays exposed.** On a realistic run the biggest
+     trade comes out around four ordinary ones and it never bites; it exists so
+     one crash cannot be the whole training. 0 gives strict proportionality.
+
+     Third digit: the words, and a decision recorded. No arithmetic changed.
+
