@@ -4945,8 +4945,29 @@ const RICH_FIELDS = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 
 // 2 (3.41.0): each setting's numbers are kept PER UNIT beside the average
 // across units, because a unit's board reads its own (§17).
 const FUNNEL_RICH_V = 2;
+// IT ADDS TO WHAT IS ALREADY THERE. IT NEVER REPLACES IT (3.68.0, owner order
+// 2026-09-05: "if we support multiple passes through the same stage 3 data,
+// saving stage 4 data sets to look for alternate rules, and then your design
+// doesn't bother saving the stage 4 data properly, THEN THAT'S JUST BAD
+// DESIGN").
+//
+// This used to write only the settings the press had just worked out, over the
+// top of every setting any earlier press had worked out. So a second walk on
+// the same stage 3 records silently took these numbers away from the first
+// walk's Stage 4 set -- and the two limits on step 6 read them, so that set's
+// rule went from keeping 116 settings to keeping none, while its screen went on
+// showing the 116 names it wrote down. Measured on the owner's box: 116 written
+// down, 116 still on the board, 0 still carrying a worst losing streak.
+//
+// Adding is safe because these numbers are a property of the setting and the
+// records it was priced from, not of the press: the same setting priced again
+// gives the same answer, which is what the proof beside the press checks.
 function saveFunnelRich(id, perSetting) {
-  const out = { v: FUNNEL_RICH_V, savedAt: new Date().toISOString(), release: require('../package.json').version, settings: {} };
+  const had = readFunnelRich(id);
+  const out = {
+    v: FUNNEL_RICH_V, savedAt: new Date().toISOString(), release: require('../package.json').version,
+    settings: had && had.settings ? { ...had.settings } : {},
+  };
   for (const [label, e] of perSetting) {
     const acc = {};
     const thirds = [];
@@ -4986,7 +5007,12 @@ function saveFunnelRich(id, perSetting) {
     out.settings[label] = row;
   }
   atomicWrite(funnelRichFile(id), JSON.stringify(out));
-  return { settings: Object.keys(out.settings).length, fields: RICH_FIELDS };
+  return {
+    settings: Object.keys(out.settings).length,
+    added: [...perSetting.keys()].length,
+    kept: had && had.settings ? Object.keys(had.settings).length : 0,
+    fields: RICH_FIELDS,
+  };
 }
 function readFunnelRich(id) {
   let x = null;
@@ -4996,6 +5022,23 @@ function readFunnelRich(id) {
   // again and the file is written back in today's shape -- the same way a
   // tally of an older shape is re-totalled rather than read around.
   return x && x.v === FUNNEL_RICH_V ? x : null;
+}
+// A STAGE 4 SET'S OWN COPY OF THE REBUILT NUMBERS, laid onto board rows
+// (3.68.0). The parent's file goes on first and this fills what it did not: so
+// the set's own screen is complete whatever has happened to the parent's file
+// since, and a set whose parent has been re-totalled still shows its columns.
+function withOwnRich(rows, own) {
+  if (!own || !Object.keys(own).length) return rows;
+  return rows.map((r) => {
+    const x = own[r.label];
+    if (!x) return r;
+    const o = { ...r };
+    // == null, not === undefined: the parent's file leaves a field it does not
+    // hold absent, and a board row can carry an explicit null. Both are "not
+    // there" and both are what this exists to fill.
+    for (const [f, v] of Object.entries(x)) if (o[f] == null) o[f] = Array.isArray(v) ? v.slice() : v;
+    return o;
+  });
 }
 // lay the rebuilt numbers onto rows by label; a row keeps what it already has
 function withFunnelRich(rows, rich) {
@@ -5091,8 +5134,33 @@ async function cutFunnelSet(parentId, state = {}, note = null) {
     throw new Error(`the rule does not reproduce its own survivors (${check.got} vs ${check.had}) — refusing to write it`);
   }
   doc.replayChecked = { at: new Date().toISOString(), ...check };
+  // AND THE SET KEEPS ITS OWN COPY OF THE REBUILT NUMBERS (3.68.0, owner order).
+  // The shared file beside the parent adds rather than replaces now, but it is
+  // still the PARENT's, and the parent can be re-totalled, re-folded or deleted
+  // -- every one of which takes it away. A Stage 4 set is a record of a
+  // decision; it does not get to depend on a file somebody else owns. Its own
+  // survivors' numbers ride on the set, and its screen reads them from there.
+  doc.rich = richForSurvivors(survivors);
   saveSet(doc);
   return doc;
+}
+
+// The rebuilt numbers of a list of board rows, by setting name -- only the
+// fields the rebuild produces, and only where there is a number to keep. A row
+// that never had them contributes nothing rather than a row of nulls.
+function richForSurvivors(rows) {
+  const out = {};
+  for (const r of rows || []) {
+    const one = {};
+    for (const f of RICH_FIELDS) {
+      const v = r[f];
+      if (v == null || !Number.isFinite(Number(v))) continue;
+      one[f] = Number(v);
+    }
+    if (Array.isArray(r.pnlThirds) && r.pnlThirds.some((x) => x != null)) one.pnlThirds = r.pnlThirds.slice();
+    if (Object.keys(one).length) out[r.label] = one;
+  }
+  return out;
 }
 
 // ---- THE CUT, STARTED AND POLLED (3.67.0, owner order 2026-09-04) ----------
@@ -5140,6 +5208,58 @@ function cutFunnelSetStatus(parentId) {
     return { running: false, none: true, token: null, done: 0, of: 0, error: null, result: null };
   }
   return cutStatus(cutRun);
+}
+
+// ---- PUTTING A STAGE 4 SET'S REBUILT NUMBERS BACK (3.68.0, owner order) -----
+//
+// A set cut before 3.68.0 kept no copy of its own, and a later pass over the
+// same stage 3 records replaced the shared file beside the parent. Those
+// numbers are then nowhere on the box -- they cannot be copied from anything,
+// only worked out again from the parent's records, which is exactly what the
+// press on step 6 does. This aims that same machinery at ONE Stage 4 set's own
+// survivors, adds the answer to the shared file and stamps the set's own copy.
+//
+// Started and polled: it prices, so it takes minutes, and a press must never
+// hold a request open (3.67.0). It refuses while a sweep is going, the same as
+// the step 6 press, because it reads the same units.
+let setRichRun = null;
+function setRichStatus(run) {
+  return { running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, error: run.error, result: run.result };
+}
+function rebuildSetRichStart(setId) {
+  if (setRichRun && !setRichRun.result && !setRichRun.error) {
+    if (setRichRun.id === String(setId)) return setRichStatus(setRichRun);
+    throw new Error('another record set is having its numbers worked out right now — one at a time');
+  }
+  const doc = getSet(setId);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${setId}'`);
+  const parent = getSet((doc.parent || {}).id);
+  if (!parent) throw new Error(`the stage 3 set this was cut from is gone, so its numbers cannot be worked out again`);
+  const labels = (doc.survivors || []).map((x) => x.label);
+  if (!labels.length) throw new Error('this set wrote down no settings, so there is nothing to work out');
+  const run = { id: String(setId), token: `${setId}:${Date.now()}`, done: 0, of: labels.length, result: null, error: null, promise: null };
+  setRichRun = run;
+  run.promise = rebuildRichFor(parent, labels, { note: (done, of) => { run.done = done; run.of = of; } })
+    .then((got) => {
+      const kept = saveFunnelRich(parent.id, got.perSetting);
+      // and the set's own copy is written from the board it was just priced on
+      const t = readTally(parent.id);
+      return funnelBoard(parent.id, t, doc.unit || 'all').then((b) => {
+        const all = withFunnelRich(b.all, readFunnelRich(parent.id));
+        const want = new Set(labels);
+        const fresh = getSet(setId);
+        fresh.rich = richForSurvivors(all.filter((r) => want.has(r.label)));
+        saveSet(fresh);
+        run.result = { settings: got.settings, units: got.units, failures: got.failures, kept, own: Object.keys(fresh.rich).length };
+        run.done = run.of;
+      });
+    })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return setRichStatus(run);
+}
+function rebuildSetRichStatus(setId) {
+  if (!setRichRun || setRichRun.id !== String(setId)) return { running: false, none: true, token: null, done: 0, of: 0, error: null, result: null };
+  return setRichStatus(setRichRun);
 }
 
 function listFunnelSets(parentId = null) {
@@ -5196,14 +5316,31 @@ async function funnelSetRows(id, opts = {}) {
   const S4 = require('./funnelset');
   const F = require('./funnel');
   const board = await funnelBoard(parentId, t, doc.unit || 'all');
+  // TWO VIEWS OF THE SAME BOARD (3.68.0). `all` is the parent's board as it
+  // stands today, which is what "does this rule still give this list" has to be
+  // asked against. `mine` is that board with the set's OWN copy of the rebuilt
+  // numbers laid over it, which is what its rows are read from -- so its
+  // columns are complete whatever has happened to the parent's file since.
   const all = withFunnelRich(board.all, readFunnelRich(parentId));
   const wanted = doc.survivors || [];
+  // A SET CUT BEFORE THE SET KEPT ITS OWN COPY IS FILLED IN AND STAMPED, ONCE
+  // (RULE NINE). Whatever the parent's file still holds for this set's
+  // survivors becomes the set's own; what the parent has lost cannot be
+  // invented here and is reported instead of guessed at.
+  let richStamped = false;
+  if (!doc.rich) {
+    const want0 = new Set(wanted.map((x) => x.label));
+    doc.rich = richForSurvivors(all.filter((r) => want0.has(r.label)));
+    saveSet(doc);
+    richStamped = true;
+  }
+  const mine = withOwnRich(all, doc.rich);
   // ONLY THE SURVIVORS ARE HELD IN HAND. A map of every label on the board is a
   // second copy of a 137,760-row index built on every sort and every page turn;
   // the set names a hundred or so, and a hundred is what is kept.
   const want = new Set(wanted.map((s) => s.label));
   const byLabel = new Map();
-  for (const r of all) if (want.has(r.label)) byLabel.set(r.label, r);
+  for (const r of mine) if (want.has(r.label)) byLabel.set(r.label, r);
   const rows = wanted.map((s) => byLabel.get(s.label) || { si: s.si, label: s.label, gone: true });
   const gone = rows.filter((r) => r.gone).length;
   // THE RULE THE OWNER BUILT, BEFORE STEP 5 REPLACED IT (3.61.0). Recorded on
@@ -5226,6 +5363,19 @@ async function funnelSetRows(id, opts = {}) {
   const now = S4.applyRule(all, S4.normaliseRule(doc.rule));
   const had = new Set(wanted.map((s) => s.label));
   const same = now.length === wanted.length && now.every((r) => had.has(r.label));
+  // AND THE SAME QUESTION ASKED OF THE SET'S OWN NUMBERS (3.68.0). When the two
+  // answers differ, the rule has not changed and the board has not changed --
+  // what has gone is a number the rule READS, off the parent's shared file,
+  // taken away by a later pass over the same stage 3 records. Saying which
+  // number and how many rows still carry it is the difference between a set
+  // that looks broken and one that says what happened to it.
+  const nowOwn = S4.applyRule(mine, S4.normaliseRule(doc.rule));
+  const sameOwn = nowOwn.length === wanted.length && nowOwn.every((r) => had.has(r.label));
+  const readsRebuilt = Object.keys((S4.normaliseRule(doc.rule).floors) || {}).filter((f) => RICH_FIELDS.includes(f));
+  const onParent = {};
+  for (const f of readsRebuilt) onParent[f] = all.reduce((n, r) => n + (r[f] == null ? 0 : 1), 0);
+  const onMine = {};
+  for (const f of readsRebuilt) onMine[f] = rows.reduce((n, r) => n + (r[f] == null ? 0 : 1), 0);
   // WHICH DIALS STILL VARY among the survivors, and what the rest are fixed at.
   // A dial the same on every row is a fact about the whole set: said once above
   // the table rather than repeated down a column of one repeated value.
@@ -5305,7 +5455,15 @@ async function funnelSetRows(id, opts = {}) {
     },
     of: all.length,
     sealedOn,
-    record: { same, now: now.length, had: wanted.length, gone },
+    record: {
+      same, now: now.length, had: wanted.length, gone,
+      // 3.68.0: the same question asked of the set's own copy of the rebuilt
+      // numbers, and which of the numbers its rule reads are still on the
+      // parent's board -- so a set can say what happened to it rather than
+      // just reading as broken.
+      sameOwn, own: nowOwn.length, stamped: richStamped,
+      reads: readsRebuilt, onParent, onMine, ofOwn: Object.keys(doc.rich || {}).length,
+    },
     varying, fixed, has,
     total, from, per, clipped: Math.max(0, total - per), sort, dir: dir === 1 ? 'asc' : 'desc',
     rows: rows.slice(from, from + per),
@@ -5788,13 +5946,13 @@ module.exports = {
   missingSettingsIn, nextSettingNumber,
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
-  cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus,
+  cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
   unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
   testWindowOfUnit, exposureOf,
   funnelAcrossStart, funnelAcrossStatus, funnelCrossesStart, funnelCrossesStatus, funnelCrosses,
   sealedWindowOf, sealedFromUnits, sealedBehind, startSealedFill, sealedFillWaiting, sealedFillPromise, noiseTwinOf, needsBoardNullStamp,
-  survivorLabelsOf, funnelCutsFor, funnelSetRows,
+  survivorLabelsOf, funnelCutsFor, funnelSetRows, rebuildSetRichStart, rebuildSetRichStatus,
   stampBoardNullOnEverySet, BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn, isAlwaysLabel, alwaysLabelsOf, needsAlwaysStrip, stripAlwaysGate, alwaysStripPending,
   tallyRunPromise: () => (tallyRun ? tallyRun.promise : null),

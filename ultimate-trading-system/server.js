@@ -899,6 +899,15 @@ app.post('/api/funnel/:id/cut', (req, res) => {
 });
 app.get('/api/funnel/:id/cut', (req, res) => res.json(stages.cutFunnelSetStatus(req.params.id)));
 
+// PUTTING A STAGE 4 SET'S REBUILT NUMBERS BACK (3.68.0, owner order). Its own
+// survivors, priced again from the parent's records, added to the shared file
+// and stamped onto the set. Started and polled, like everything that prices.
+app.post('/api/funnel/set/:id/rebuild', (req, res) => {
+  try { return res.json(stages.rebuildSetRichStart(req.params.id)); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.get('/api/funnel/set/:id/rebuild', (req, res) => res.json(stages.rebuildSetRichStatus(req.params.id)));
+
 app.get('/api/funnel/sets', (req, res) => {
   const parent = req.query.parent ? String(req.query.parent) : null;
   return res.json({

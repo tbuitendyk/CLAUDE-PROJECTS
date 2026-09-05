@@ -1034,6 +1034,49 @@ Three defects, logged in `DEFECTS.md` under 2026-09-02:
 
 **Step 7 — declare and cut.** As built in 3.38.0. Unchanged.
 
+### 16.4a A Stage 4 record set is saved whole (owner order, 2026-09-05)
+
+*"if we support multiple passes through the same stage 3 data, saving stage 4
+data sets to look for alternate rules, and then your design doesn't bother
+saving the stage 4 data properly, THEN THAT'S JUST BAD DESIGN, AND THAT'S ON
+YOU."*
+
+Six numbers are not stored by a sweep — the worst losing streak, the biggest
+single loss, the best single trade, how many trades won, how many were stopped
+out, and the gross per trade. They are worked out by the press on step 6 and
+were kept in ONE file beside the stage 3 record set, written fresh on every
+press. So a second walk over the same records took them away from the first
+walk's Stage 4 set: its columns emptied, and where its rule limited the worst
+losing streak or the trade count, its rule stopped keeping anything at all
+while its screen went on showing the settings it had written down.
+
+Measured on the owner's box before the fix: 116 written down, 116 still on the
+board, 116 still carrying a trade count, **0** still carrying a worst losing
+streak, and the rule keeping **0**.
+
+Three things, and all three are needed:
+
+1. **The file beside the parent ADDS, it never replaces.** These numbers are a
+   property of the setting and the records it was priced from, not of the
+   press — the same setting priced again gives the same answer, which is what
+   the proof beside the press checks. So accumulating is not just safe, it is
+   the only shape that supports more than one pass.
+2. **Every Stage 4 set keeps its own copy for its own survivors.** The shared
+   file is still the PARENT's, and a parent can be re-totalled, re-folded or
+   deleted — each of which takes it away. A record of a decision does not get
+   to depend on a file somebody else owns.
+3. **A set cut before that says what happened and can put it right.** Its
+   numbers are nowhere on the box; they cannot be copied from anything, only
+   priced again. `work out the missing numbers` on the set's own heading does
+   exactly that, for its own settings, and keeps the answer on the set.
+
+The rule check stays honest: *does this rule, on the parent's board as it
+stands today, still give this list* is asked of the parent's board, not of the
+set's private copy. The same question is asked a second time of the copy, and
+when the two answers differ the screen says which number is missing and from
+how many settings — the difference between a set that looks broken and one that
+says what happened to it.
+
 ### 16.5 Marks
 
 A mark is a recorded observation that the walk was carried past. The full list:

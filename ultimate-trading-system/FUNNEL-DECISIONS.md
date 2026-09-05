@@ -1006,3 +1006,44 @@ made while building it that the design did not already settle.
 
      Second digit: new behaviour.
 
+102. **A Stage 4 record set is saved whole** (2026-09-05, owner: *"if we support
+     multiple passes through the same stage 3 data, saving stage 4 data sets to
+     look for alternate rules, and then your design doesn't bother saving the
+     stage 4 data properly, THEN THAT'S JUST BAD DESIGN, AND THAT'S ON YOU."*).
+
+     Correct, and the whole of it is mine. The design supports exactly the thing
+     it then broke: more than one walk over the same stage 3 records, each
+     writing a Stage 4 set. The six numbers a sweep does not keep were held in
+     one file beside the PARENT, rewritten from scratch on every press of `work
+     out the missing numbers` -- so the second walk deleted the first walk's.
+
+     What that cost, measured on the box: `S4 #2 ... 116 of 137,760 settings`
+     had all 116 settings still on the board, all 116 still carrying a trade
+     count, and none carrying a worst losing streak. Its rule limits that, so
+     the rule kept 0 while the screen kept showing 116. A record of a decision
+     that quietly stops meaning what it meant is worse than one that is deleted.
+
+     **The file adds, never replaces.** The numbers belong to the setting and
+     the records it was priced from, not to the press; the same setting priced
+     again gives the same answer, which is what the proof beside the press
+     already checks. Accumulating is the only shape that supports two passes.
+
+     **Every set keeps its own copy of its own survivors' numbers.** The shared
+     file is the parent's, and a parent can be re-totalled, re-folded or
+     deleted. Its rows and columns are read from the set's copy first.
+
+     **A set cut before this can put itself right.** Its numbers are nowhere --
+     they can only be priced again -- so `work out the missing numbers` is on
+     the set's own heading now, aimed at its own settings, started and polled,
+     refusing while a sweep runs.
+
+     **And the rule check stays honest.** "Does this rule still give this list"
+     is asked of the PARENT's board, not of the set's private copy, or a real
+     change to the records would be hidden. The same question is asked again of
+     the copy, and when the two answers differ the screen names the number that
+     is missing and says how many settings still carry it.
+
+     Second digit: new behaviour and a new control. The shape on disk only
+     gains a field, and a set without it is filled in and stamped on first read
+     (RULE NINE), so nothing already written refuses.
+

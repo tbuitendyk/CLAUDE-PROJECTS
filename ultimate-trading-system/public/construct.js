@@ -5088,7 +5088,7 @@ async function fDrawCut(d, st, cutId) {
     return;
   }
   $('#view').innerHTML = `<div class="panel">${fTitle(d, st, cd.set.name)}</div>
-    <div class="panel">${fCutHead(cd)}</div>
+    <div class="panel">${fCutHead(cd, st)}</div>
     <div class="panel">${fCutTable(cd, st)}</div>`;
   fWireCut(d, st, cd);
   fWatchCutBox();
@@ -5130,7 +5130,38 @@ const F_NEW_NAME = 'new rule';
 // was held back, how the walk went, and anything wrong with it. Every line is
 // read off THIS SET: what its check was, how many copies it kept, which unit's
 // window is sealed, what the closing was, how the walk went.
-function fCutHead(cd) {
+// WHAT HAPPENED TO THE NUMBERS THIS SET'S RULE READS (3.68.0, owner order
+// 2026-09-05). Two of the limits on step 6 read numbers the sweep does not
+// store; they are worked out on the press and kept in one file beside the
+// PARENT record set. Until 3.68.0 a later pass over the same stage 3 records
+// wrote that file fresh, so an earlier set's numbers went with it: its rule
+// then kept nothing, while its rows carried on showing the names it wrote down.
+// The file adds rather than replaces now, and every set keeps its own copy --
+// but a set cut before that has nothing to copy, so it says so and offers the
+// one thing that can put it right: pricing its own settings again.
+// The two numbers a rule can put a limit on, in the words the table heading
+// above them uses. Nothing else in a rule reads a number the sweep did not keep.
+const F_LIMIT_WORDS = { maxDrawdown: 'worst losing streak', avgTrades: 'trades' };
+function fCutNumbers(rec) {
+  const reads = Array.isArray(rec.reads) ? rec.reads : [];
+  if (!reads.length) return '';
+  const lost = reads.filter((f) => Number((rec.onParent || {})[f] || 0) < Number(rec.had || 0));
+  if (!lost.length) return '';
+  const names = lost.map((f) => `<b>${esc(F_LIMIT_WORDS[f] || f)}</b>`).join(' and ');
+  const mine = lost.map((f) => Number((rec.onMine || {})[f] || 0));
+  const haveAll = mine.every((n) => n >= Number(rec.had || 0));
+  return `<p class="note neg">This rule reads ${names}, and ${lost.map((f) => Number((rec.onParent || {})[f] || 0).toLocaleString()).join(' and ')}
+      of its ${Number(rec.had || 0).toLocaleString()} settings still carry ${lost.length > 1 ? 'them' : 'it'} on the parent's board. Those numbers are not
+      stored by a sweep - they are worked out on the press at step 6 and kept beside the parent record set, and a later
+      walk over the same records used to write that file fresh. ${haveAll
+    ? 'This set kept its own copy, so the rows below and their columns are complete.'
+    : 'This set has no copy of its own, so the columns below are empty and the rule cannot be re-applied.'}</p>
+    <div class="row" style="align-items:flex-end;margin-top:.4rem">
+      <button id="fSetRebuild">work out the missing numbers</button>
+      <span id="fSetRebuildMsg" class="note">prices this set's own ${Number(rec.had || 0).toLocaleString()} settings again from the
+        parent's records and keeps the answer on this set. Minutes, and it waits for any sweep that is running.</span></div>`;
+}
+function fCutHead(cd, st) {
   const s = cd.set;
   const c = s.check || {};
   const rec = cd.record || {};
@@ -5166,9 +5197,11 @@ function fCutHead(cd) {
     <p class="note">${who} - <b>${Number(s.survivors).toLocaleString()}</b> of ${of} settings survive${s.target ? ` and the target is ${Number(s.target).toLocaleString()}` : ''}.
       ${rec.same ? 'Re-applying this rule to the same board today gives back exactly these settings.'
     : `<b class="neg">Re-applying this rule to the same board today gives ${Number(rec.now || 0).toLocaleString()} settings, not
-        ${Number(rec.had || 0).toLocaleString()}</b> - the board has moved since the cut. The rows below are the ones the set
+        ${Number(rec.had || 0).toLocaleString()}</b>${rec.sameOwn ? '' : ' - the board has moved since the cut'}. The rows below are the ones the set
         wrote down, which is what it decided.`}
       ${rec.gone ? `<b class="neg">${Number(rec.gone).toLocaleString()} of them are no longer on the board at all</b> and are shown with no numbers.` : ''}</p>
+    ${fCutNumbers(rec)}
+    ${(st && st.setRebuiltSaid) ? `<p class="note">${esc(st.setRebuiltSaid)}</p>` : ''}
 
     <p class="note"><b>Rule build settings:</b> target size ${s.target == null ? 'not set' : Number(s.target).toLocaleString()}${c.kind === 'scrambles'
     ? `; bold when a value beats at least ${c.barPct}% of the ${c.k} copies - that is ${c.bar} of them - by chance about ${fPct(c.chance)} of values would`
@@ -5235,9 +5268,10 @@ function fCutTable(cd, st) {
       ${fixedLine ? `<b>${esc(fixedLine)}</b>` : 'nothing'} - the rule fixed those, so they are said here once rather
       than repeated on every row.</p>
     ${gaps ? `<p class="note muted">The numbers a sweep does not keep - worst losing streak, biggest single loss, best
-      single trade, trades won, stopped out, gross per trade - are not on this set. They are worked out by
-      <b>work out the missing numbers</b> on step 6 of a walk, and this one was cut without pressing it. Choose
-      <b>new rule</b>, walk to step 6, press it, and they appear here for every setting.</p>` : ''}
+      single trade, trades won, stopped out, gross per trade - are not on this set. Either it was cut without pressing
+      <b>work out the missing numbers</b> on step 6, or it was cut before a set kept its own copy of them.
+      <b>work out the missing numbers</b> on the heading above prices this set's own settings again and keeps the
+      answer here, for good.</p>` : ''}
     <p class="note"><b>Order the whole set by</b> setting${fcSort('label', cd)}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))}${fcSort(k, cd)}`).join('')}${has('members') ? ` &middot; members${fcSort('members', cd)}` : ''}${has('avgRung') ? ` &middot; rung${fcSort('avgRung', cd)}` : ''}${has('avgVoices') ? ` &middot; voices${fcSort('avgVoices', cd)}` : ''}
       - or press any heading in the table below.</p>
     <p class="note">All <b>${Number(cd.total).toLocaleString()}</b> of them are in the box below, in whatever order
@@ -5348,7 +5382,7 @@ function fWireCutPick(st, d) {
     // sentence the set it wrote carries -- so this works on sets cut before it
     // was written, and never resets a walk that produced nothing.
     if (cs.value === F_NEW && fWalkWasAlreadyCut(d)) fFreshWalk(st);
-    st.cut = cs.value; fSave(); drawFunnel();
+    st.cut = cs.value; st.setRebuiltSaid = null; fSave(); drawFunnel();
   };
 }
 const fWalkWasAlreadyCut = (d) => !!(d && d.ruleSentence
@@ -5396,6 +5430,30 @@ function fWireCut(d, st, cd) {
     if (title) title.textContent = out.name || '';
     const sel = $('#fCutPick');
     if (sel) [...sel.options].forEach((o) => { if (o.value === cd.set.id) o.textContent = out.name || ''; });
+  };
+  // PUTTING THIS SET'S OWN NUMBERS BACK (3.68.0, owner order). Started and
+  // polled, because it prices; it refuses while a sweep is going and says so.
+  const sr = $('#fSetRebuild');
+  if (sr) sr.onclick = async () => {
+    sr.disabled = true;
+    $('#fSetRebuildMsg').textContent = 'working them out - this prices this set\'s own settings again';
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(cd.set.id)}/rebuild`, {}, WHERE_FUNNEL);
+    if (!started) { sr.disabled = false; $('#fSetRebuildMsg').textContent = ''; return; }
+    for (;;) {
+      // eslint-disable-next-line no-await-in-loop
+      const p = await api(`api/funnel/set/${encodeURIComponent(cd.set.id)}/rebuild`).catch(() => null);
+      if (!p) { sr.disabled = false; $('#fSetRebuildMsg').textContent = 'the service stopped answering - nothing was written'; return; }
+      if (p.error) { sr.disabled = false; $('#fSetRebuildMsg').textContent = `FAILED - ${p.error}`; return; }
+      if (p.result) {
+        sr.disabled = false;
+        st.setRebuiltSaid = `worked out for ${Number(p.result.own || 0).toLocaleString()} of this set's settings and kept on it`;
+        fSave(); drawFunnel();
+        return;
+      }
+      $('#fSetRebuildMsg').textContent = p.of ? `working them out - ${Number(p.done).toLocaleString()} of ${Number(p.of).toLocaleString()} settings` : 'working them out';
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 1500));
+    }
   };
   document.querySelectorAll('[data-fcsort]').forEach((b) => {
     b.onclick = () => {

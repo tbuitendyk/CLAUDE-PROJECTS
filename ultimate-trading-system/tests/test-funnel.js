@@ -2359,8 +2359,13 @@ module.exports = {
     const cut = page.slice(page.indexOf('function fCutPickBox('), page.indexOf('function fWireCut('));
     assert.ok(!/data-fstep/.test(cut), 'the Stage 4 view still draws the seven step buttons');
     assert.ok(!/The rule so far/.test(cut), 'the Stage 4 view still draws the rule-building box');
-    assert.ok(!/fClear|fAddRange|fKeepValues|fCutBtn|fRebuild/.test(cut), 'the Stage 4 view carries a control that changes the rule');
+    // `fSetRebuild` is taken out first: it is the SECOND control this screen is
+    // allowed (3.68.0, owner order), and it changes no rule -- it works out the
+    // numbers the rule READS and keeps them on the set.
+    const noSetRebuild = cut.split('fSetRebuild').join('');
+    assert.ok(!/fClear|fAddRange|fKeepValues|fCutBtn|fRebuild/.test(noSetRebuild), 'the Stage 4 view carries a control that changes the rule');
     assert.ok(/id="fCutName"/.test(cut) && /id="fCutRename"/.test(cut), 'the Stage 4 view has no rename control, and the owner asked for exactly that one');
+    assert.ok(/id="fSetRebuild"/.test(cut), 'a set whose numbers were taken away has no way to get them back');
     // the drop-down offers every set cut from this board plus the way back
     assert.ok(/id="fCutPick"/.test(cut), 'there is no Stage 4 record set drop-down');
     // AND IT IS NOT THE CUT BUTTON'S OWN ID. `fCut` is the button on step 7 that
@@ -2411,8 +2416,14 @@ module.exports = {
     assert.ok(wire.indexOf('fWireUnit(st);') < wire.indexOf('if (!cd) return;')
       && wire.indexOf('fWireCutPick(st);') < wire.indexOf('if (!cd) return;'),
       'the two ways out of a set that will not open are wired after the guard that returns early');
+    // EXACTLY TWO WRITES, AND BOTH ARE NAMED. The rename, and (3.68.0) working
+    // out the numbers this set's rule reads. Neither changes the rule or the
+    // settings the set wrote down; a third would be a rule-changing control on
+    // a screen that records a decision already made.
     const posts = wire.match(/tryPost\(/g) || [];
-    assert.equal(posts.length, 1, `the Stage 4 view makes ${posts.length} writes; it may make exactly one, the rename`);
+    assert.equal(posts.length, 2, `the Stage 4 view makes ${posts.length} writes; it may make exactly two, the rename and working out its numbers`);
+    assert.ok(/api\/stageset\/\$\{encodeURIComponent\(cd\.set\.id\)\}\/name/.test(wire), 'the rename is not one of them');
+    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(cd\.set\.id\)\}\/rebuild/.test(wire), 'working out this set\'s own numbers is not one of them');
     assert.ok(wire.includes('api/stageset/${encodeURIComponent(cd.set.id)}/name'), 'the rename does not use the record sets\' own name door');
     // and the money warning is on it: this screen shows the one look
     assert.ok(/avg held-back \$/.test(table), 'the held-back money is not on the table the next sections read');
@@ -2475,7 +2486,7 @@ module.exports = {
   renamingAStageFourSetChangesTheBoldNameOnTheSpot() {
     const page = src('public/construct.js');
     const wire = page.slice(page.indexOf('function fWireCut('), page.indexOf('function fRuleBox('));
-    const rn = wire.slice(wire.indexOf("$('#fCutRename')"), wire.indexOf("document.querySelectorAll('[data-fcsort]')"));
+    const rn = wire.slice(wire.indexOf("$('#fCutRename')"), wire.indexOf("const sr = $('#fSetRebuild');"));
     assert.ok(rn.includes("const title = $('#fTitleName');") && rn.includes('title.textContent = out.name'),
       'the rename does not change the bold name at the top');
     assert.ok(rn.includes("if (o.value === cd.set.id) o.textContent = out.name"),
@@ -2974,6 +2985,82 @@ module.exports = {
       'the two new limits are never sent with the read');
     assert.ok(page.includes("st.regionAcross = [...document.querySelectorAll('[data-facross]')].filter((x) => x.checked).map((x) => x.dataset.facross);"),
       'which dials were ticked is never read off the screen, so ticking one could never reach the read');
+  },
+
+  // OWNER, 2026-09-05: "if we support multiple passes through the same stage 3
+  // data, saving stage 4 data sets to look for alternate rules, and then your
+  // design doesn't bother saving the stage 4 data properly, THEN THAT'S JUST
+  // BAD DESIGN, AND THAT'S ON YOU." Measured on the owner's box before the fix:
+  // a Stage 4 set that wrote down 116 settings had all 116 still on the board,
+  // all 116 still carrying a trade count, and NONE carrying a worst losing
+  // streak -- so its rule, which limits that, kept nothing at all.
+  aSecondPassNeverTakesTheRebuiltNumbersOffAnEarlierSet() {
+    const lib = src('lib/stages.js');
+    const save = lib.slice(lib.indexOf('function saveFunnelRich(id, perSetting) {'), lib.indexOf('function readFunnelRich(id) {'));
+    assert.ok(save.includes('const had = readFunnelRich(id);'), 'the file is written without reading what is already in it');
+    assert.ok(save.includes('settings: had && had.settings ? { ...had.settings } : {},'),
+      'a press writes only its own settings over the top of every setting an earlier press worked out');
+    assert.ok(save.includes('kept: had && had.settings ? Object.keys(had.settings).length : 0,'),
+      'the answer does not say how many were already there, so nothing can tell adding from replacing');
+  },
+
+  // and a set does not depend on a file its parent owns
+  aStageFourSetKeepsItsOwnCopyOfTheNumbersItsRuleReads() {
+    const S = require('../lib/stages');
+    // the copy itself: only real numbers, only for rows that have them
+    assert.deepEqual(S.richForSurvivors([
+      { label: 'a', maxDrawdown: 12, wins: 3, pnlThirds: [1, null, 2] },
+      { label: 'b', maxDrawdown: null },
+      { label: 'c' },
+    ]), { a: { maxDrawdown: 12, wins: 3, pnlThirds: [1, null, 2] } },
+    'the set keeps rows of nothing, or drops numbers it has');
+    // laying it back on fills what the parent no longer holds, and nothing else
+    const rows = [{ label: 'a', maxDrawdown: null, avgTest: 5 }, { label: 'b', maxDrawdown: 99 }, { label: 'c' }];
+    assert.deepEqual(S.withOwnRich(rows, { a: { maxDrawdown: 12 }, b: { maxDrawdown: 1 } }), [
+      { label: 'a', maxDrawdown: 12, avgTest: 5 },
+      { label: 'b', maxDrawdown: 99 },
+      { label: 'c' },
+    ], 'the set\'s own copy either does not fill an empty column or overwrites a number the board still has');
+    assert.equal(S.withOwnRich(rows, null), rows, 'a set with no copy of its own is copied for nothing');
+    // the cut writes it, and the reader lays it on
+    const lib = src('lib/stages.js');
+    const cut = lib.slice(lib.indexOf('async function cutFunnelSet(parentId'), lib.indexOf('function richForSurvivors(rows) {'));
+    assert.ok(cut.includes('doc.rich = richForSurvivors(survivors);'), 'the cut does not keep the numbers of the settings it wrote down');
+    const rd = lib.slice(lib.indexOf('async function funnelSetRows(id, opts = {}) {'), lib.indexOf('function stage3Ranked('));
+    assert.ok(rd.includes('const mine = withOwnRich(all, doc.rich);'), 'the set is read without its own copy, so a lost column stays lost');
+    assert.ok(rd.includes('for (const r of mine) if (want.has(r.label)) byLabel.set(r.label, r);'), 'the rows are still taken off the parent-only board');
+    // AND A SET CUT BEFORE THIS IS FILLED IN AND STAMPED, ONCE (RULE NINE)
+    assert.ok(rd.includes('if (!doc.rich) {') && rd.includes('saveSet(doc);'), 'a set cut before the copy existed is never given one');
+  },
+
+  // the rule is still asked of the parent's board, and the answer says why when
+  // the two differ -- a set must not look broken when what is missing is a number
+  aSetSaysWhichNumbersItsRuleReadsAreGoneAndOffersToWorkThemOut() {
+    const lib = src('lib/stages.js');
+    const rd = lib.slice(lib.indexOf('async function funnelSetRows(id, opts = {}) {'), lib.indexOf('function stage3Ranked('));
+    assert.ok(rd.includes('const now = S4.applyRule(all, S4.normaliseRule(doc.rule));'),
+      'the rule is asked of the set\'s own numbers, which would hide a board that really has moved');
+    assert.ok(rd.includes('const nowOwn = S4.applyRule(mine, S4.normaliseRule(doc.rule));'), 'the same question is never asked of the set\'s own copy');
+    assert.ok(rd.includes('.filter((f) => RICH_FIELDS.includes(f))'), 'nothing works out which of the rule\'s limits read a rebuilt number');
+    assert.ok(/sameOwn, own: nowOwn\.length, stamped: richStamped,/.test(rd), 'the answer does not travel to the screen');
+    // the screen says it, and offers the one thing that puts it right
+    const page = src('public/construct.js');
+    const nb = page.slice(page.indexOf('function fCutNumbers(rec) {'), page.indexOf('function fCutHead(cd, st) {'));
+    assert.ok(nb.includes('id="fSetRebuild"'), 'there is no way to put back the numbers a later pass took away');
+    assert.ok(nb.includes('work out the missing numbers'), 'the control does not say what it does');
+    assert.ok(nb.includes("This set kept its own copy, so the rows below and their columns are complete."),
+      'a set that kept its own copy is not told so, and reads as broken');
+    assert.ok(nb.includes('This set has no copy of its own, so the columns below are empty and the rule cannot be re-applied.'),
+      'a set with nothing to fall back on is not told so');
+    assert.ok(/const F_LIMIT_WORDS = \{ maxDrawdown: 'worst losing streak', avgTrades: 'trades' \};/.test(page),
+      'the two limits are named to the owner in words that are not on the screen (RULE ONE)');
+    // and the door it presses is started and polled, because it prices
+    const srv = src('server.js');
+    assert.ok(srv.includes("app.post('/api/funnel/set/:id/rebuild'") && srv.includes("app.get('/api/funnel/set/:id/rebuild'"),
+      'there is no door to work a set\'s own numbers out, or no door to ask how far it has got');
+    const S = require('../lib/stages');
+    assert.equal(typeof S.rebuildSetRichStart, 'function', 'nothing can start it');
+    assert.equal(S.rebuildSetRichStatus('s4-nothing-here').running, false, 'asking about a set nothing is running for reads as running');
   },
 
   // owner, 2026-09-04: "you must not allow the page processing to freeze ...

@@ -49,7 +49,12 @@ function cutRows(q) {
       userSentence: 'tHours 65 to 137; gate is directional; agreeBar is all or own',
       userSurvivors: 4820, userStamped: true },
     of: 137760, sealedOn: { sealed: true, of: 1, missing: 0, why: null },
-    record: { same: true, now: 116, had: 116, gone: 0 },
+    // A SET WHOSE WORST LOSING STREAK WAS TAKEN AWAY BY A LATER PASS (3.68.0).
+    // The rule keeps nothing against the parent's board, keeps all 116 against
+    // the set's own copy, and the screen has to say which number is missing.
+    record: { same: false, now: 0, had: 116, gone: 0,
+      sameOwn: true, own: 116, stamped: false,
+      reads: ['maxDrawdown'], onParent: { maxDrawdown: 0 }, onMine: { maxDrawdown: 116 }, ofOwn: 116 },
     varying: ['tHours'], fixed: { gate: 'directional', decision: 'argmax' },
     has: Object.fromEntries(on.map((k) => [k, true])),
     total: 116, from: 0, per: 2000, clipped: 0,
@@ -588,6 +593,33 @@ function requirePlaywright() {
     `and it starts with an empty rule: ${JSON.stringify(lastRead)}`);
   expect(await page.locator('#fCutPick').count() === 1, 'and the drop-down stays on the heading, so a set already cut is one press away');
   expect(await page.locator('#fCutPick option').count() === 2, 'the drop-down still offers the set and new rule');
+  // ---- A SET SAYS WHICH NUMBER ITS RULE READS IS GONE (3.68.0, owner order) ----
+  await page.locator('#fCutPick').selectOption('s4-ui-1');
+  await page.waitForSelector('#fSetRebuild', { timeout: 15000 }).catch(() => {});
+  const lost = await page.locator('#view').innerText();
+  expect(await page.locator('#fSetRebuild').count() === 1, 'a set whose numbers were taken away offers no way to get them back');
+  expect(/This rule reads worst losing streak, and 0 of its 116 settings still carry it/.test(lost),
+    `the screen names the missing number and how many still carry it: ${lost.slice(lost.indexOf('This rule reads'), lost.indexOf('This rule reads') + 200)}`);
+  expect(/This set kept its own copy, so the rows below and their columns are complete/.test(lost),
+    'the screen does not say the set can still be read from its own copy');
+  expect(!/the board has moved since the cut/.test(lost),
+    'the screen blames the board for moving when what went is a number the rule reads');
+  // and pressing it starts the pricing and follows it
+  let setAsked = 0;
+  await page.route('**/api/funnel/set/*/rebuild', async (route) => {
+    setAsked++;
+    if (route.request().method() === 'POST') return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: true, token: 'sr1', done: 0, of: 116, error: null, result: null }) });
+    if (setAsked < 3) return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: true, token: 'sr1', done: 40, of: 116, error: null, result: null }) });
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ running: false, token: 'sr1', done: 116, of: 116, error: null, result: { settings: 116, units: 5, failures: [], kept: { settings: 756 }, own: 116 } }) });
+  });
+  await page.locator('#fSetRebuild').click();
+  await page.waitForTimeout(4000);
+  expect(setAsked >= 3, `the press starts the pricing and then asks how far it has got: ${setAsked} call(s)`);
+  expect(/worked out for 116 of this set's settings and kept on it/.test(await page.locator('#view').innerText()),
+    `the screen says what the press did: ${(await page.locator('#view').innerText()).slice(0, 300)}`);
+  await page.locator('#fCutPick').selectOption('new');
+  await page.waitForSelector('[data-fstep="1"]', { timeout: 15000 }).catch(() => {});
+
   // ---- WRITE THE STAGE 4 SET LANDS ON THE SET IT JUST WROTE (3.66.0) ----
   // owner order: "refresh the new item into the Stage 4 record set list at the
   // top and then display that new record set"
