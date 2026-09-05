@@ -466,6 +466,37 @@ async function s1UnitTask(task) {
   };
 }
 
+// ---- TASK: the four things a rule has to beat, for ONE unit --------------------
+//
+// (3.70.0, RULE NINE: a set priced before these were kept has none, and they
+// cannot be invented from the records -- but they can be worked out again from
+// the price data alone, with no member trained and no setting priced. Seconds a
+// unit, not minutes, because being long every period, being short every period,
+// buying and holding and shorting and holding do not depend on any setting.)
+//
+// The same call the pricing makes, on the same chunks, at every hold length on
+// the menu and in both 24/7 and 24/5 -- so what this fills in is identical to
+// what a fresh run would have written.
+async function s3ControlsTask(task) {
+  const { combo, geometry, params: p, fee } = task;
+  const { geo, maps, split } = await unitChunks(combo, geometry, p);
+  const { holdChunks } = split;
+  const wkKeep = new Set(bracketLib.buildComboChunks(maps, geometry, true).chunks.map((c) => c.startTs));
+  const idx = {
+    all: holdChunks.map((_, i) => i),
+    wk: holdChunks.map((c, i) => (wkKeep.has(c.startTs) ? i : -1)).filter((i) => i >= 0),
+  };
+  const out = {};
+  for (const [mode, list] of Object.entries(idx)) {
+    if (!list.length) continue;
+    const chunks = list.map((i) => holdChunks[i]);
+    for (const tHours of bracketLib.T_HOURS) {
+      out[`${mode}|${tHours}`] = bracketLib.holdControls(chunks, maps.trade, geo, tHours, fee);
+    }
+  }
+  return { controls: out, chunks: holdChunks.length };
+}
+
 // ---- TASK: one stage 2 unit ----------------------------------------------------
 //
 // Train ONLY the boost members for one carried unit; the logreg members'
@@ -966,7 +997,22 @@ async function s3UnitTask(task) {
       },
     });
   }
-  return { rows, agreed: agreedMapFor(settings), counts: { test: testChunks.length, hold: holdChunks.length } };
+  // THE FOUR THINGS A RULE HAS TO BEAT, KEPT BESIDE THE SET (3.70.0, owner
+  // order 2026-09-05). They were worked out here already and thrown away with
+  // the rest of the analysis block, so nothing on any screen ever showed them.
+  //
+  // They belong beside the set and not on 329,280 records, because they do not
+  // depend on the setting at all: being long every period, being short every
+  // period, buying and holding, and shorting and holding are properties of the
+  // UNIT's held-back window and the horizon. That is exactly what this cache
+  // already holds, keyed the way it was filled -- 24/7 or 24/5, and the hold
+  // length -- so handing it back costs nothing.
+  const controls = {};
+  for (const [k, v] of holdCtlCache) controls[k] = v;
+  return {
+    rows, agreed: agreedMapFor(settings), controls,
+    counts: { test: testChunks.length, hold: holdChunks.length },
+  };
 }
 
 // ---- the stage 3 tally, foldable and shardable --------------------------------
@@ -1149,7 +1195,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 // came out once the box served a vocabulary without it.
 
 module.exports = {
-  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
+  s1UnitTask, s2UnitTask, s3UnitTask, s3ControlsTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
   moneyWeights, weightsFor, weightsSaid, trainOnOf, capOf, TRAIN_ON, WEIGHT_CAP_DEFAULT,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,

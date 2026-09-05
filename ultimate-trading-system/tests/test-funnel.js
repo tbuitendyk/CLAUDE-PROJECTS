@@ -2987,6 +2987,93 @@ module.exports = {
       'which dials were ticked is never read off the screen, so ticking one could never reach the read');
   },
 
+  // OWNER, 2026-09-05: "if those XRPUSDT funnels were just working under
+  // conditions that don't make sense for building rules then better to know
+  // that up front and not waste a bunch of time trying to make rules."
+  aBoardSaysWhatItHasToBeatBesidesLuckBeforeAnythingIsNarrowed() {
+    const S = require('../lib/stages');
+    const doc = { controls: { units: { 'X|||w': {
+      'all|65': { alwaysLong: -20, alwaysShort: 5, buyHold: 40, shortHold: -45 },
+      'wk|137': { alwaysLong: -30, alwaysShort: 9, buyHold: 52, shortHold: -56 },
+    } } } };
+    // EVERY SETTING AT ITS OWN HOLD LENGTH AND ITS OWN 24/7-or-24/5. A rule
+    // keeping settings at three horizons is not being read at one of them.
+    const rows = [{ tHours: 65, weekdaysOnly: false, avgHold: 10 }, { tHours: 137, weekdaysOnly: true, avgHold: 20 }];
+    const got = S.againstControls(doc, 'X|||w', rows);
+    assert.equal(got.known, true, 'a set that kept them says it did not');
+    assert.equal(got.real, 15, 'the survivors\' own money is not the plain average of what they made');
+    assert.deepEqual(got.buyHold, { lo: 40, hi: 52 }, 'the span across the hold lengths in use is wrong');
+    // BEATEN MEANS BEATEN AT THE WORST OF THEM, never at the kindest
+    assert.equal(got.beatsBuyHold, false, '15 must not read as beating a 40-to-52 span');
+    assert.equal(got.beatsShortHold, true, '15 must beat a -56-to-45 span');
+    assert.equal(got.beatsAlwaysLong, true, '15 must beat a -30-to-20 span');
+    // a set that kept nothing says so instead of reading as zero
+    assert.equal(S.controlsOf({}, 'X|||w', ['all|65']).known, false, 'a set with nothing kept reads as though it had');
+    assert.ok(/priced before/.test(S.controlsOf({}, 'X|||w', ['all|65']).why), 'and it does not say why');
+    assert.equal(S.controlsOf(doc, 'OTHER', ['all|65']).known, false, 'a coin and shape it knows nothing about reads as known');
+    assert.equal(S.controlsOf(doc, 'X|||w', ['all|999']).known, false, 'a hold length it kept nothing at reads as known');
+    assert.equal(S.controlKeyOf({ tHours: 65, weekdaysOnly: true }), 'wk|65', 'the 24/5 settings are read against the 24/7 numbers');
+  },
+
+  // it is a mark on every step, not a note that scrolls away
+  losingToBuyingTheCoinAndGoingAwayIsRecordedOnTheSet() {
+    const S4 = require('../lib/funnelset');
+    assert.equal(S4.MARKS.losesToBuyHold, 'the settings it keeps made less than buying the coin and going away',
+      'losing to the obvious thing has no words on the set');
+    assert.equal(S4.MARKS.losesToShortHold, 'the settings it keeps made less than shorting the coin and going away',
+      'losing to the other obvious thing has no words on the set');
+    const lib = src('lib/stages.js');
+    assert.ok(lib.includes('out.conditions.losesToBuyHold = against.keeping.beatsBuyHold === false;'),
+      'nothing works out whether the rule lost to buying the coin and going away');
+    assert.ok(lib.includes('against,'), 'the reading never reaches the screen');
+    const page = src('public/construct.js');
+    assert.ok(page.includes("if (c.losesToBuyHold) mark('losesToBuyHold', step);"), 'walking past a step does not record it');
+    assert.ok(!/step === \d && c\.losesToBuyHold/.test(page), 'it is recorded on one step only, and it is a fact about the rule');
+    // and both readings are on the heading, before any narrowing
+    const head = page.slice(page.indexOf('function fHead(d) {'), page.indexOf('function fRail('));
+    assert.ok(head.includes("fAgainst((d.against || {}).board, 'every setting on this board')"),
+      'the whole board is never held up to them, so a board with nothing in it is walked anyway');
+    assert.ok(head.includes("fAgainst((d.against || {}).keeping, 'the settings this rule keeps')"),
+      'the survivors are never held up to them');
+    assert.ok(page.includes('Buying the coin and going away made'), 'the screen does not name what it is comparing with');
+    assert.ok(page.includes('shorting it and going away made'), 'the screen names one of them and not the other');
+    assert.ok(page.includes('there is a simpler thing that did better'), 'the screen does not say what losing to it means');
+  },
+
+  // RULE NINE: a set priced before they were kept gets them, and they are the
+  // same numbers a fresh run would have written
+  aSetPricedBeforeTheseWereKeptHasThemWorkedOutAgain() {
+    const S = require('../lib/stages');
+    assert.equal(S.needsControlFill({ stage: 3, status: 'done' }), true, 'a set with none is not filled in');
+    assert.equal(S.needsControlFill({ stage: 3, status: 'done', controls: { units: {} } }), false, 'a set that has them is filled in again');
+    assert.equal(S.needsControlFill({ stage: 1, status: 'done' }), false, 'a stage 1 set is being asked for stage 3 numbers');
+    assert.equal(S.controlFillWaiting({ id: 'x', stage: 3, status: 'done', controls: { units: {} } }), null,
+      'a set with nothing to do announces a fill anyway');
+    const lib = src('lib/stages.js');
+    assert.ok(lib.includes('const filling = controlFillWaiting(doc);'), 'the fill is never started');
+    assert.ok(lib.includes('if (stageBusy()) return null;'), 'a fill can start while a sweep is running');
+    // AND IT NEVER HOLDS THE READ UP. Blocking on it would leave every set made
+    // before this release unopenable until a background job finished, and these
+    // four decide whether a rule is worth having, not whether it is honest.
+    assert.ok(!/const filling = controlFillWaiting\(doc\);\n  if \(filling\) return/.test(lib),
+      'the walk cannot be opened at all until the fill has finished');
+    assert.ok(lib.includes('const filled = (x) => (x.known || !filling ? x : { ...x, why: filling });'),
+      'a walk read while the fill runs does not say that is what is happening');
+    // a set whose block cannot be rebuilt is finished with nothing, not retried
+    assert.ok(lib.includes('try { records = (relaunchShapeOf(doc) || {}).records || []; }'),
+      'a set that cannot be rebuilt throws on every single read');
+    // it is the SAME call the pricing makes, not a second opinion
+    const work = src('lib/stagework.js');
+    const task = work.slice(work.indexOf('async function s3ControlsTask(task) {'), work.indexOf('// ---- TASK: one stage 2 unit'));
+    assert.ok(task.includes('bracketLib.holdControls(chunks, maps.trade, geo, tHours, fee)'),
+      'the fill works the numbers out its own way, so a filled set and a fresh one would disagree');
+    assert.ok(task.includes('for (const tHours of bracketLib.T_HOURS)'), 'the fill covers only some hold lengths');
+    assert.ok(!/trainProbMember|s3Payload/.test(task), 'the fill trains members or prices settings, which it never needs to do');
+    for (const f of ['lib/pool.js', 'lib/worker.js']) {
+      assert.ok(src(f).includes("s3Controls: require('./stagework').s3ControlsTask,"), `${f} cannot run the fill`);
+    }
+  },
+
   // OWNER, 2026-09-05: "if we support multiple passes through the same stage 3
   // data, saving stage 4 data sets to look for alternate rules, and then your
   // design doesn't bother saving the stage 4 data properly, THEN THAT'S JUST

@@ -1090,3 +1090,43 @@ made while building it that the design did not already settle.
      shape and a set without the setting reads as direction, which is what it
      was.
 
+104. **A board says what it has to beat besides a shuffle, before anything is
+     narrowed** (2026-09-05, owner: *"if those XRPUSDT funnels were just working
+     under conditions that don't make sense for building rules then better to
+     know that up front and not waste a bunch of time trying to make rules"*).
+
+     The scrambled copies only ever asked "is this better than noise". They
+     never asked "is this better than the obvious thing", and buying the coin
+     and going away IS the obvious thing. The 328-setting rule on XRPUSDT
+     weekly-8d cleared 20 of 20 copies on the stretch it was tuned on and was
+     $316.75 behind simply holding.
+
+     All four were being worked out during the pricing already and thrown away
+     with the rest of the analysis block. They are kept now -- **beside the set,
+     not on 329,280 records**, because being long every period, being short
+     every period, buying and holding and shorting and holding are properties of
+     the unit's held-back window and the hold length and have nothing to do with
+     any setting.
+
+     **Every setting is held up to them at its own hold length and its own 24/7
+     or 24/5.** A rule keeping settings at three horizons is not being read at
+     one of them, and a single number across three would be a number about
+     nothing. Beaten means beaten at the WORST of the horizons in use, never the
+     kindest.
+
+     **Both readings, on every step**: the whole board, so a board with nothing
+     in it can be left alone rather than walked; and the survivors, so it cannot
+     drift out of sight while they narrow. Losing to either hold is a mark, on
+     whichever step it is true -- it is a fact about the rule, not about a step.
+
+     **RULE NINE, and it does NOT block.** A set priced before this has none;
+     they cannot be read off the records but they can be worked out again from
+     the price data alone, with no member trained and no setting priced. That
+     runs in the background, once, never while a sweep is going -- and the walk
+     opens and reads perfectly well while it does. The sealed window blocks
+     because it decides whether a reading is honest; these decide whether a rule
+     is worth having, which is a different kind of answer.
+
+     Second digit: new behaviour. Nothing on disk changes shape; a set without
+     the table says so and gets one.
+

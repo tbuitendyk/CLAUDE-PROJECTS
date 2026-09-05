@@ -434,6 +434,8 @@ const MARKS = Object.freeze({
   slices: 'accepted across slices with some not positive',
   regionNotWider: 'the widest region was not wider than the check',
   regionPapered: 'the region was widened over settings that lost money',
+  losesToBuyHold: 'the settings it keeps made less than buying the coin and going away',
+  losesToShortHold: 'the settings it keeps made less than shorting the coin and going away',
   regionAcross: 'the region was joined across dials whose values are words, which have no order',
   regionReach: 'the region was joined over settings missing from the board',
   checkIsHalves: 'no scrambled copies were kept, so the two halves stood in as the check',

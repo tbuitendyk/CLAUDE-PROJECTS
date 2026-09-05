@@ -4257,6 +4257,8 @@ const F_MARK_WORDS = {
   slices: 'accepted across slices with some not positive',
   regionNotWider: 'the widest region was not wider than the check',
   regionPapered: 'the region was widened over settings that lost money',
+  losesToBuyHold: 'the settings it keeps made less than buying the coin and going away',
+  losesToShortHold: 'the settings it keeps made less than shorting the coin and going away',
   regionAcross: 'the region was joined across dials whose values are words, which have no order',
   regionReach: 'the region was joined over settings missing from the board',
   checkIsHalves: 'no scrambled copies were kept, so the two halves stood in as the check',
@@ -4453,6 +4455,30 @@ function fUnitPicker(d) {
 // whether the sealed window is intact. A missing comparison shown as nothing
 // reads as 'nothing to report', which is the opposite of the truth.
 const fPct = (x) => (x == null ? '-' : `${Math.round(Number(x) * 100)}%`);
+// WHAT THIS BOARD HAS TO BEAT BESIDES A SHUFFLE (3.70.0, owner order).
+// The scrambled copies only ask whether a reading beats noise. They never ask
+// whether it beats the obvious thing, and buying the coin and going away IS
+// the obvious thing -- so a rule can clear every copy and still be the worse
+// of two choices. Printed before any narrowing, so a board where there is
+// nothing to find can be left alone instead of walked.
+const fMoneySpan = (c) => (!c ? '-' : (Math.abs(c.hi - c.lo) < 0.005
+  ? `<b>${fFix(c.lo, 2)}</b>` : `<b>${fFix(c.lo, 2)}</b> to <b>${fFix(c.hi, 2)}</b>`));
+function fAgainst(a, what) {
+  if (!a || !a.known) {
+    return `<p class="note muted">What ${esc(what)} would have to beat besides the scrambled copies is not known here -
+      ${esc(String((a && a.why) || 'nothing was kept'))}.</p>`;
+  }
+  const many = (a.keys || []).length > 1;
+  const lost = [];
+  if (a.beatsBuyHold === false) lost.push('buying the coin and going away');
+  if (a.beatsShortHold === false) lost.push('shorting the coin and going away');
+  return `<p class="note${lost.length ? ' neg' : ''}">On the held-back window, ${esc(what)} made
+      <b>${fFix(a.real, 2)}</b> a setting. Buying the coin and going away made ${fMoneySpan(a.buyHold)};
+      shorting it and going away made ${fMoneySpan(a.shortHold)}; being long every period made
+      ${fMoneySpan(a.alwaysLong)}; being short every period made ${fMoneySpan(a.alwaysShort)}.${many
+    ? ` These settings use ${a.keys.length} different hold lengths, so each is a span across them and beaten means beaten at the worst of them.` : ''}
+      ${lost.length ? `<b>It made less than ${esc(lost.join(' and '))}</b>, so there is a simpler thing that did better.` : ''}</p>`;
+}
 function fHead(d) {
   const c = d.check || {};
   const n = (d.set && d.set.noiseTwin) || {};
@@ -4472,6 +4498,8 @@ function fHead(d) {
       ${c.kind === 'scrambles' ? `<label class="f">bold when a value beats at least<input id="fBar" type="number" min="1" max="100" step="1" style="width:4.5rem"
         value="${c.barPct}"></label>
       <span class="note">% of the <b>${c.k}</b> copies - that is <b>${c.bar}</b> of them - by chance about <b>${fPct(c.chance)}</b> of values would</span>` : ''}</div>
+    ${fAgainst((d.against || {}).board, 'every setting on this board')}
+    ${fAgainst((d.against || {}).keeping, 'the settings this rule keeps')}
     <p class="note">${n.available ? `This set carries ${Number(d.set.keptScrambles || n.kept || 0)} scrambled copies of the whole table, each one the same days in a jumbled order. Every step below is read once against the real table and again against each of those, and the second reading is drawn beside the first.`
     : `<b>No scrambled copies on this set</b> - ${esc(String(n.why || 'not captured'))}. Every step below is read
        against the two halves of the settings instead, which tests whether a reading is STABLE and never whether the effect is real.`}</p>
@@ -5594,6 +5622,11 @@ function fWire(st, d) {
     if (step === 3 && c.interact) mark('interact', 3, `${fDialLabel(st.dialA || '')} x ${fDialLabel(st.dialB || '')}`);
     if (step === 5 && c.regionNotWider) mark('regionNotWider', 5);
     if (step === 5 && c.regionPapered) mark('regionPapered', 5);
+    // ON EVERY STEP, not one of them (3.70.0): losing to the obvious thing is
+    // not a fact about step 5, it is a fact about the rule, and walking past
+    // any step with it true is walking past it.
+    if (c.losesToBuyHold) mark('losesToBuyHold', step);
+    if (c.losesToShortHold) mark('losesToShortHold', step);
     if (step === 5 && c.regionAcross) mark('regionAcross', 5);
     if (step === 5 && c.regionReach) mark('regionReach', 5);
     if (c.checkIsHalves) mark('checkIsHalves', step);

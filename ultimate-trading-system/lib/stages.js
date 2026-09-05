@@ -2128,6 +2128,10 @@ function startStage3(params) {
     const partsOf = [];                   // how many parts each unit was cut into
     const payloads = [];
     const agreedMap = {};
+    // THE FOUR THINGS A RULE HAS TO BEAT, kept beside the set (3.70.0). They are
+    // properties of the unit's held-back window and the hold length, not of any
+    // setting, so one small table serves the whole board.
+    const controlsMap = {};
     for (let pi = 0; pi < parentRecords.length; pi++) {
       const rec = parentRecords[pi];
       // THE UNIT'S OWN LIST (3.52.0): the settings that place different orders
@@ -2179,6 +2183,10 @@ function startStage3(params) {
         // the unit's realised agreements, already worked out on the same walk
         // the pricing used — kept beside the set, never on 329,280 records
         for (const [k, v] of Object.entries(settled.value.agreed || {})) agreedMap[`${rec.u}|${k}`] = v;
+        if (settled.value.controls) {
+          const key = unitKeyOf(rec);
+          controlsMap[key] = { ...(controlsMap[key] || {}), ...settled.value.controls };
+        }
         w.records.flush();
         pricedSettings += part.to - part.from;
       } else if (!settled.ok && !failedUnits.has(part.u)) {
@@ -2219,6 +2227,7 @@ function startStage3(params) {
     // what the members actually did, written before the tables are totalled
     // because the totalling is what joins it onto every record
     try { writeAgreed(doc.id, agreedMap); } catch (err) { doc.tallyError = `the agreements could not be saved: ${err.message}`; }
+    doc.controls = { at: new Date().toISOString(), units: controlsMap };
     if (tallyGate.band === 'refuse') doc.tallyError = tallyGate.message;
     else { try { await buildTally(doc, pool, tallyNote); } catch (err) { doc.tallyError = String(err.message || err); } }
     doc.progress = doc.status === 'incomplete' ? doc.progress : '';
@@ -4621,6 +4630,14 @@ async function funnelRead(id, state = {}) {
   // NINE): announced here, run once in the background, and the page asks again
   const sealing = sealedFillWaiting(doc);
   if (sealing) return { waiting: sealing };
+  // AND THE FOUR THINGS A RULE HAS TO BEAT, for a set priced before they were
+  // kept (3.70.0, RULE NINE). Started here and run in the background -- but it
+  // NEVER holds the read up, unlike the sealed window above. The sealed window
+  // decides whether a reading is honest; these four decide whether a rule is
+  // worth having, and a walk can be read perfectly well while they are being
+  // worked out. Blocking on them would leave every set made before this
+  // release unopenable until a background job finished.
+  const filling = controlFillWaiting(doc);
   const t = readTally(id);
   if (!t) return null;                       // the caller starts a totalling, exactly as the tables do
 
@@ -4671,6 +4688,17 @@ async function funnelRead(id, state = {}) {
       freeDials,
     });
 
+  // WHAT THIS BOARD HAS TO BEAT BESIDES LUCK (3.70.0, owner order). Both
+  // readings, on every step: the whole board, so the owner knows before
+  // choosing anything whether there is a rule worth hunting here at all, and
+  // the survivors, so it cannot drift out of sight while they narrow.
+  const filled = (x) => (x.known || !filling ? x : { ...x, why: filling });
+  const against = board.unit
+    ? { board: filled(againstControls(doc, board.unit, all)), keeping: filled(againstControls(doc, board.unit, rows)) }
+    : { board: { known: false, why: 'the four things a rule has to beat are kept per coin and shape, and this is the blend of all of them' }, keeping: { known: false } };
+  // AND IT IS A MARK, not a note that scrolls away. Losing to buying the coin
+  // and going away is not a detail about a rule; it is a reason the rule has
+  // no business existing, and the set has to carry it.
   const out = {
     set: {
       id: doc.id,
@@ -4703,10 +4731,19 @@ async function funnelRead(id, state = {}) {
     // THE STAGE 4 SETS ALREADY CUT FROM THIS COIN AND SHAPE (3.58.0). One read,
     // one truth about which sets belong to the board on screen.
     cuts: funnelCutsFor(id, board.unit),
+    // what this board and these survivors have to beat besides luck (3.70.0)
+    against,
     reading: null,
     // the conditions a mark is recorded for, worked out for THIS step (§16.5)
     conditions: {},
   };
+  // ON EVERY STEP, not only where the rule is finished: a rule that already
+  // loses to buying the coin and going away is not going to be rescued by the
+  // next narrowing, and the owner should be able to stop.
+  if (against.keeping.known) {
+    out.conditions.losesToBuyHold = against.keeping.beatsBuyHold === false;
+    out.conditions.losesToShortHold = against.keeping.beatsShortHold === false;
+  }
   if (!rows.length) {
     out.reading = { why: 'this rule keeps nothing, so there is nothing to read' };
     return out;
@@ -5178,6 +5215,120 @@ function richForSurvivors(rows) {
     }
     if (Array.isArray(r.pnlThirds) && r.pnlThirds.some((x) => x != null)) one.pnlThirds = r.pnlThirds.slice();
     if (Object.keys(one).length) out[r.label] = one;
+  }
+  return out;
+}
+
+// ---- FILLING THEM IN FOR A SET PRICED BEFORE THEY WERE KEPT (RULE NINE) -----
+//
+// They cannot be read off the records -- they were never stored -- but they can
+// be worked out again from the price data alone: no member trained, no setting
+// priced, seconds a unit. Announced on the screen, run once in the background
+// and never twice, exactly the way the sealed window is filled in (3.51.0).
+const controlFills = new Map();
+function needsControlFill(doc) {
+  return !!(doc && doc.stage === 3 && (doc.status === 'done' || doc.status === 'incomplete')
+    && !((doc.controls || {}).units));
+}
+function startControlFill(id) {
+  if (controlFills.has(id)) return controlFills.get(id);
+  const doc = getSet(id);
+  const run = { id, done: 0, total: 0, error: null, promise: null };
+  controlFills.set(id, run);
+  run.promise = (async () => {
+    // A SET WHOSE BLOCK CANNOT BE REBUILT IS FINISHED WITH NOTHING, not tried
+    // again on every read: it has no units to work them out from, and saying
+    // so once is the honest answer.
+    let records = [];
+    try { records = (relaunchShapeOf(doc) || {}).records || []; } catch (err) { run.error = String(err.message || err); }
+    run.total = records.length;
+    const fee = Number((doc.params || {}).fee) || 0;
+    const payloads = records.map((rec) => ({
+      combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
+      geometry: rec.geometry, params: doc.params, fee,
+    }));
+    const units = {};
+    if (!payloads.length) return;
+    const pool = createPool();
+    await pool.forEach('s3Controls', payloads, (settled, i) => {
+      if (settled.ok && settled.value) units[unitKeyOf(records[i])] = settled.value.controls;
+      run.done++;
+    });
+    const fresh = getSet(id);
+    if (fresh) {
+      fresh.controls = { at: new Date().toISOString(), filledIn: true, units, why: run.error || null };
+      saveSet(fresh);
+    }
+  })().catch((err) => { run.error = String((err && err.message) || err); })
+    .finally(() => { controlFills.delete(id); });
+  return run;
+}
+// The line the Funnel prints while it runs, and nothing at all when there is
+// nothing to do. It never starts while the box is busy: a reading is worth
+// less than a sweep.
+function controlFillWaiting(doc) {
+  if (!doc) return null;
+  const line = (run) => `working out what ${doc.name} has to beat besides luck: ${run.done} of ${run.total} coin-and-shape pairs`;
+  const going = controlFills.get(doc.id);
+  if (going) return line(going);
+  if (!needsControlFill(doc)) return null;
+  if (stageBusy()) return null;
+  return line(startControlFill(doc.id));
+}
+
+// ---- WHAT A RULE HAS TO BEAT BESIDES LUCK (3.70.0, owner order 2026-09-05) --
+//
+// "if those XRPUSDT funnels were just working under conditions that don't make
+// sense for building rules then better to know that up front and not waste a
+// bunch of time trying to make rules."
+//
+// The scrambled copies only ask "is this better than noise". They never ask
+// "is this better than the obvious thing" -- and buying the coin and going
+// away IS the obvious thing. A rule that loses to it has no reason to exist,
+// whatever it does against a shuffle.
+//
+// The four numbers are on the set, per unit, per 24/7-or-24/5, per hold length
+// (they are properties of the window and the horizon, never of a setting). A
+// reading takes the hold lengths the rows in front of the owner actually use:
+// one number when they agree, the span when they do not, because a single
+// number over several horizons would be a number about nothing.
+const CONTROL_KEYS = ['alwaysLong', 'alwaysShort', 'buyHold', 'shortHold'];
+// EVERY SETTING IS HELD UP TO THE FOUR AT ITS OWN HORIZON AND ITS OWN 24/7 or
+// 24/5. A rule keeping settings at three hold lengths is not being read at one
+// of them, and a single number over three would be a number about nothing.
+const controlKeyOf = (r) => `${r && r.weekdaysOnly ? 'wk' : 'all'}|${Number(r && r.tHours)}`;
+function controlsOf(doc, unitKey, keys) {
+  const table = ((doc || {}).controls || {}).units || null;
+  if (!table) return { known: false, why: 'this record set was priced before the four things a rule has to beat were kept' };
+  const mine = table[unitKey] || null;
+  if (!mine) return { known: false, why: `this record set kept nothing to beat for ${unitKey}` };
+  const want = [...new Set(keys || [])].sort();
+  const rows = want.map((k) => mine[k]).filter(Boolean);
+  if (!rows.length) return { known: false, why: 'nothing was kept at the hold lengths these settings use' };
+  const out = { known: true, keys: want, of: rows.length, missing: want.length - rows.length };
+  for (const k of CONTROL_KEYS) {
+    const vals = rows.map((r) => r[k]).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);
+    out[k] = vals.length ? { lo: Math.min(...vals), hi: Math.max(...vals) } : null;
+  }
+  return out;
+}
+// The rows' own money against them. `real` and the controls are the same
+// arithmetic on the same window at the same stake, so they subtract.
+function againstControls(doc, unitKey, rows) {
+  const F = require('./funnel');
+  const got = controlsOf(doc, unitKey, (rows || []).map(controlKeyOf));
+  let sum = 0;
+  let n = 0;
+  for (const r of rows) { const v = r.avgHold; if (v != null && Number.isFinite(Number(v))) { sum += Number(v); n++; } }
+  const real = n ? sum / n : null;
+  const out = { ...got, real, of: n };
+  if (!got.known || real == null) return out;
+  // BEATEN MEANS BEATEN AT THE WORST OF THE HOLD LENGTHS IN USE, not at the
+  // kindest of them: a rule that only clears the easiest horizon it touches
+  // has not cleared the bar it is actually being read at.
+  for (const k of CONTROL_KEYS) {
+    const c = got[k];
+    out[`beats${k[0].toUpperCase()}${k.slice(1)}`] = c ? F.beats(real, c.hi) : null;
   }
   return out;
 }
@@ -5966,6 +6117,8 @@ module.exports = {
   renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
+  controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
+  needsControlFill, startControlFill, controlFillWaiting,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
   unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
   testWindowOfUnit, exposureOf,
