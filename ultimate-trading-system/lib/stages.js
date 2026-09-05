@@ -870,8 +870,10 @@ const DERIVED = {
   _gate: (r) => (r.entry === 'market' ? 'does not apply' : String(r.gate || '')),
   // WHICH BAR A ROW USED, in the words the screen shows rather than the word
   // the record stores. Nothing is interpreted here: a record says which bar it
-  // used because it was migrated to say so.
-  _bar: (r) => (r.agreeBar === 'own' ? 'its own history' : 'all of them'),
+  // used because it was migrated to say so — and a row written under a way of
+  // weighing that reads no bar stores none, so it reads as not applying here
+  // for the same reason a market row's gate does.
+  _bar: (r) => (r.agreeBar == null ? 'does not apply' : r.agreeBar === 'own' ? 'its own history' : 'all of them'),
   _sharePct: (r) => (r.share == null ? null : r.share * 100),
 };
 const readsField = (field) => DERIVED[field] || ((r) => r[field]);
@@ -1224,6 +1226,14 @@ function shapeLabel(cell) {
 // this committee reaches — and a name that hid the difference would put two
 // unlike settings under one heading.
 function agreeLabel(a) {
+  // A WAY OF WEIGHING THAT READS NO BAR CARRIES NO BAR IN ITS NAME. Printing a
+  // share and a bar on a setting that never consults either is the same fault
+  // as printing the one-voice threshold on a rule that cannot read it, one
+  // step further along: it would say two settings differ when they are one
+  // trade, and it would tell the owner a number was used when it was not.
+  if (agreement.READS_NO_BAR.has(a.rule)) {
+    return `${a.rule}${a.bothModels ? ' +both' : ''}${a.persist ? ` +hold${a.persist}` : ''}`;
+  }
   // the one-voice threshold rides the name only where it can change anything —
   // no other way of weighing reads it, and a name that carried it everywhere
   // would say two settings differ when they are the same trade.
@@ -1260,6 +1270,20 @@ function agreementsFor(params, sizes) {
     // it for the others would pay for identical settings under different
     // names — the same fold the shares already get, applied one dial along.
     for (const copy of (rule === 'voices' ? copies : copies.slice(0, 1))) {
+      // A WAY OF WEIGHING THAT READS NO BAR HAS NO BAR AND NO SHARE, so it is
+      // ONE setting however many of either are being permuted -- and the two
+      // it does not read are stored as nothing rather than as whichever value
+      // the boxes happened to hold, so a record can never say a number was
+      // used when the rule never looked at it (RULE NINE: a record says what
+      // it is). Only both kinds and hold still multiply it; those it reads.
+      if (agreement.READS_NO_BAR.has(rule)) {
+        for (const bothModels of boths) {
+          for (const persist of persists) {
+            out.push({ rule, bar: null, pct: null, copy, bothModels, persist });
+          }
+        }
+        continue;
+      }
       for (const bar of bars) {
         for (const pct of pcts) {
           // the rungs this share lands on, one per committee size in the run
@@ -1920,6 +1944,12 @@ function stage3Declared(b) {
       sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
       out.units = records.length;
       out.coins = new Set(records.map((r) => r.trade)).size;
+      // HOW LONG STAGES 1 AND 2 HELD EACH CHUNK ON THE UNITS THIS WILL PRICE
+      // (3.71.0). Read from the chunk shapes the records carry, so the load
+      // training setup control can fill t with the length the units were
+      // actually scored on rather than a number somebody typed -- and can say
+      // so, rather than pick one, when the records carry more than one shape.
+      out.holds = holdsOf(records);
     }
   }
   // the count is of what will actually be PRICED: two settings that place the
@@ -1935,6 +1965,20 @@ function stage3Declared(b) {
   out.unitSettings = records ? counted.perUnit.map((held, i) => ({ u: records[i].u, held })) : [];
   out.weekdaysApply = counted.weekdaysApply;
   return out;
+}
+// The hold lengths of a set of records' chunk shapes, smallest first. One
+// definition, read from the same GEOMETRIES the trainings themselves read, so
+// the number the control fills in cannot drift from the number stage 1 scored.
+function holdsOf(records) {
+  const G = require('./dataset').GEOMETRIES || {};
+  const hs = new Set();
+  for (const r of (records || [])) {
+    const g = G[r.geometry];
+    if (!g) continue;
+    const h = g.exitOffsetH - g.entryOffsetH;
+    if (Number.isInteger(h) && h > 0) hs.add(h);
+  }
+  return [...hs].sort((a, b) => a - b);
 }
 function startStage3(params) {
   claimOrRefuse();
@@ -6107,7 +6151,7 @@ module.exports = {
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, stage3Declared, holdsOf, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,

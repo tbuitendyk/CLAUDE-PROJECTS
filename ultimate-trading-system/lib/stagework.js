@@ -596,8 +596,13 @@ async function s2UnitTask(task) {
 // the bar became a dial is migrated to say so (RULE NINE), never interpreted.
 const agrOf = (st) => ({
   rule: st.agreeRule || 'count',
-  bar: st.agreeBar === 'own' ? 'own' : 'all',
-  pct: Number(st.agreePct) || 50,
+  // A WAY OF WEIGHING THAT READS NO BAR KEEPS NOTHING WHERE THE BAR GOES.
+  // Defaulting these to 'all' and 50 here would put a bar and a share back on
+  // a setting that was written with neither, so the row would report numbers
+  // the rule never looked at -- and the cache key would stop telling two
+  // genuinely different settings apart the day a second no-bar rule exists.
+  bar: agreement.READS_NO_BAR.has(st.agreeRule || 'count') ? null : (st.agreeBar === 'own' ? 'own' : 'all'),
+  pct: agreement.READS_NO_BAR.has(st.agreeRule || 'count') ? null : (Number(st.agreePct) || 50),
   // how alike two members must be to count as one voice. Only the voices way
   // of weighing reads it, but it is part of the quorum's identity all the same
   // — a key that left it out would hand one setting's cached calls to another.
@@ -768,13 +773,19 @@ async function s3UnitTask(task) {
   // before any stream is; both build the same shape.
   const barCtx = (agr, decision) => ({
     calls: callsFor(decision, -1, 'test'), models, families,
-    probs: agr.rule === 'conviction' ? probsFor(-1, 'test') : null,
+    probs: agreement.READS_LEANS.has(agr.rule) ? probsFor(-1, 'test') : null,
     weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy).weights : null,
   });
   // WHAT IS ENOUGH, for this unit, this way of weighing and this bar.
-  const levelFor = (agr, decision) => ((agr.bar === 'own')
-    ? cutoffFor(decision, agr)
-    : rungFor(agr, decision));
+  //
+  // null, not a number, for a way of weighing that reads no bar: there is
+  // nothing to clear, and the row's rung it landed on must stay EMPTY rather
+  // than print the rung some other rule would have landed on. The per-coin
+  // average skips a null rung and counts the rest, so one trained setting in a
+  // block cannot drag the average of the settings that did read a bar.
+  const levelFor = (agr, decision) => (agreement.READS_NO_BAR.has(agr.rule) ? null
+    : (agr.bar === 'own') ? cutoffFor(decision, agr)
+      : rungFor(agr, decision));
 
   // The votes and the extras a rule reads, built once per way of asking.
   // Pulled out of streamFor so the agreement REACHED can be read off exactly
@@ -786,7 +797,7 @@ async function s3UnitTask(task) {
     if (ctxCache.has(key)) return ctxCache.get(key);
     const ctx = {
       calls: callsFor(decision, dealIdx, slice), models, families,
-      probs: agr.rule === 'conviction' ? probsFor(dealIdx, slice) : null,
+      probs: agreement.READS_LEANS.has(agr.rule) ? probsFor(dealIdx, slice) : null,
       weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy).weights : null,
     };
     ctxCache.set(key, ctx);

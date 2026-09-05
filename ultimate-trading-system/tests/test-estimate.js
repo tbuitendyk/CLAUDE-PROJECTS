@@ -100,8 +100,8 @@ module.exports = {
         declared: { entry: 'breakout', gate: 'active', dMult: 0.25, tHours: 17, quorumSingles: 1 },
         declaredPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true, agree: true },
       }, { poolSize: 4 });
-      assert.strictEqual(out.plan.declaredConfigs, 5502, 'every declared permute ticked is 5,502 configurations: 917 trade shapes (2 gates × 5 d × 7 t × 13 stop choices, plus 7 market) × 6 quorums');
-      assert.strictEqual(out.rows.replication, out.plan.promoteUnits * 5502,
+      assert.strictEqual(out.plan.declaredConfigs, 6288, 'every declared permute ticked is 6,288 configurations: 1,048 trade shapes (2 gates × 5 d × 8 t × 13 stop choices, plus 8 market) × 6 quorums');
+      assert.strictEqual(out.rows.replication, out.plan.promoteUnits * 6288,
         'one row per promoted unit per configuration — that product is the whole problem');
       // built from the rows and their measured stored size, not from a round
       // number — the multiplier is whatever the store currently costs

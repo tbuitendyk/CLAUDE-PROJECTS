@@ -2590,6 +2590,10 @@ async function drawSweep() {
       <label class="f">null set size<input id="swNull3" type="number" value="19" min="0" style="width:4.5rem"></label>
       <label class="f" title="how many of the null set's money figures to write down, rather than just counting them. Keeping some builds a whole second copy of the stage 3 tables out of scrambled money alone, which is the only thing the Funnel can measure a real result against. Costs one extra pricing per setting per coin for each one kept, so 10 makes the run about 10% longer. 0 keeps none, which is how every run before this one worked.">null set money kept<input id="swKeep3" type="number" value="10" min="0" style="width:4.5rem"></label>
     </div>
+    <div class="row" style="margin-top:.5rem">
+      <button id="swTrained3" title="fills the boxes below with the conditions the units were actually trained and scored under in stages 1 and 2, so what those stages did can be priced here as one setting and read against everything else on the same table. Those stages open at the close of the chunk and hold to the chunk's own end, add every member's lean together and take the winning side whatever the margin, with no head count and nothing to clear. Nothing is started: the boxes are filled and you press start stage 3 yourself.">load training setup</button>
+      <span id="swTrainedSaid" class="note"></span>
+    </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <div style="display:flex;align-items:flex-end;gap:.45rem">
         <label class="f">decision<select id="swDec">${vocabOptions('decision', 'argmax')}</select></label>
@@ -2629,7 +2633,7 @@ async function drawSweep() {
       </div>
       <p class="note" style="margin:.6rem 0 .1rem"><b>Quorum</b> — every coin is judged by 8 members. These four boxes decide when enough of them agree to act.</p>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f" title="WHAT IS WEIGHED when the members are polled. count is how many say the same thing — the plain head count. conviction is how hard they lean, added up, so six that are certain outweigh six that barely lean. voices is a head count in which members that almost always call the same way as each other share one vote between them, so a crowd of near-copies cannot outvote a real disagreement. families is how many different KINDS of evidence agree — the members read four different slices of the numbers, and this asks that several slices line up rather than several members. This box is only half the quorum: quorum bar decides how much of it is enough.">quorum by<select id="swAgreeRule">${vocabOptions('agreeRule', 'count')}</select></label>
+        <label class="f" title="WHAT IS WEIGHED when the members are polled. count is how many say the same thing — the plain head count. conviction is how hard they lean, added up, so six that are certain outweigh six that barely lean. voices is a head count in which members that almost always call the same way as each other share one vote between them, so a crowd of near-copies cannot outvote a real disagreement. families is how many different KINDS of evidence agree — the members read four different slices of the numbers, and this asks that several slices line up rather than several members. trained is the way stages 1 and 2 added the members up when they scored these units: every lean added together and the winning side taken, whatever the margin and whoever the head count would have picked. It is the only choice here that reads no bar at all, because those stages had none — so quorum bar and share are left out of its name and off its records, and it is one setting however many of either are being priced. This box is only half the quorum: quorum bar decides how much of it is enough.">quorum by<select id="swAgreeRule">${vocabOptions('agreeRule', 'count')}</select></label>
         <label class="c" title="price every quorum by choice as its own setting."><input type="checkbox" id="swPermAgreeRule"> permute</label>
         <label class="f" title="WHAT THE BAR IS A SHARE OF. all of them means a share of what EXISTS — 75% of 8 members is 6 of them, worked out from the committee's size and nothing else. its own history means a share of what this committee ACTUALLY REACHES — the moments are sorted and 75% admits only the strongest quarter of them. The second matters because a bar set as a share of what exists only makes sense when the thing weighed reaches its maximum in practice: a head count does, a sum of how hard eight members lean does not. Read from the test window only; the held-back window is never used for it, though the same window did the ordering, so the bar is set knowing the window it will be scored on.">quorum bar<select id="swAgreeBar">${vocabOptions('agreeBar', 'all')}</select></label>
         <label class="c" title="price both bars as their own settings."><input type="checkbox" id="swPermAgreeBar"> permute</label>
@@ -2702,6 +2706,64 @@ async function drawSweep() {
       ...swBlockParams(),
     });
     if (got) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
+  };
+  // THE CONDITIONS THE UNITS WERE TRAINED UNDER, AS ONE SETTING (3.71.0, owner
+  // question 2026-09-05: "is there a fixed set of Stage 3 settings that
+  // accurately represents exactly the conditions under which the Stage 1 and
+  // Stage 2 unit trainings work? Does it make sense to put a button 'load
+  // training setup' on the Stage 3 sweep").
+  //
+  // It FILLS BOXES AND STOPS. Nothing is launched, nothing is hidden, and the
+  // owner can change any of it before pressing start stage 3 — which is the
+  // only reason this can exist at all under RULE FIVE: a hidden setting the
+  // system priced for itself would be a setting the owner never chose.
+  //
+  // The hold length is the one thing here that is not a constant: stages 1 and
+  // 2 hold each chunk from its own entry hour to its own exit hour, so the
+  // right value depends on which chunk shapes the records being priced carry.
+  // It is asked for rather than assumed, and when the records carry more than
+  // one shape the box is LEFT ALONE and the lengths are named — picking one of
+  // them would be choosing for the owner, silently, which is the whole of what
+  // RULE FIVE forbids.
+  $('#swTrained3').onclick = async () => {
+    const said = $('#swTrainedSaid');
+    const setV = (sel, v) => { const el = $(sel); if (el) el.value = String(v); };
+    const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
+    said.textContent = 'reading the chunk shapes of the records this would price…';
+    const r = await swAsk('api/stage3-count', {
+      ...swBlockParams(),
+      from: $('#swFrom3').value || '',
+      carry: Number($('#swCarry3') && $('#swCarry3').value) || 0,
+      pick: ($('#swPick3') && $('#swPick3').value) || 'count',
+    });
+    const holds = r.ok && Array.isArray(r.data.holds) ? r.data.holds : [];
+    if (!r.ok) { said.innerHTML = `<span class="warn">${esc(r.why || 'no answer')}</span>`; return; }
+    // everything except t, which the hold lengths decide
+    setV('#swAgreeRule', 'trained'); setC('#swPermAgreeRule', false);
+    setC('#swPermAgreeBar', false); setC('#swPermAgreeShare', false); setC('#swPermAgreeCopy', false);
+    setC('#swAgreeBoth', false); setC('#swPermAgreeBoth', false);
+    setV('#swAgreeHold', '0'); setC('#swPermAgreeHold', false);
+    setV('#swEntry', 'market'); setC('#swPermEntry', false);
+    setC('#swPermGate', false); setC('#swPermD', false);
+    setV('#swTrail', ''); setC('#swPermTrail', false); setC('#swPermArm', false);
+    setV('#swDec', 'argmax'); setC('#swPermDec', false);
+    setV('#swBand', 'auto'); setC('#swPermBand', false);
+    setC('#swWk', false); setC('#swPermWk', false);
+    setC('#swPermT', false);
+    const filled = 'quorum by trained, entry market, band % (or auto) auto, decision argmax, 24/5 off, every permute off';
+    if (holds.length === 1) {
+      setV('#swT', String(holds[0]));
+      said.textContent = `filled in: ${filled}, t ${holds[0]}h. That is how long stages 1 and 2 held each chunk on these records, and how they added the members up.`;
+    } else if (holds.length > 1) {
+      said.innerHTML = `filled in: ${filled} — but <b>not t</b>. The records this would price carry chunk shapes held for `
+        + `${esc(holds.map((h) => `${h}h`).join(', '))}, so no one t matches them all. Pick one, or price one chunk shape at a time.`;
+    } else {
+      said.innerHTML = `filled in: ${filled} — but <b>not t</b>: there are no records to read a chunk shape from yet. `
+        + 'Pick a from stage 2 record set above and press this again.';
+    }
+    rememberSweepForm();
+    swProvenance();
+    swCounts();
   };
   // EVERY BOX THAT CHANGES THE COUNT RE-ASKS IT, AND ON TYPING AS WELL AS ON
   // LEAVING THE BOX (owner, 2026-08-29: "especially it's not working with the

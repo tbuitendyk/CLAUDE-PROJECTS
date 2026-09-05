@@ -946,4 +946,35 @@ module.exports = {
     const ok = simBracket(period(t0), [1], m, geo, { dPct: 2, tHours: 17, gate: 'active', feePerLeg: FEE });
     assert.ok(ok.trades >= 0, 'the gates the engine has still price');
   },
+
+  // THE HOLD LENGTHS THE SYSTEM ITSELF SCORES BY ARE ON THE LADDER (3.71.0,
+  // owner question 2026-09-05). Stages 1 and 2 hold each chunk from its own
+  // entry hour to its own exit hour; two of those lengths -- 17 and 41 -- were
+  // rungs of the 17h+24k ladder by coincidence, and 60, which is what a weekly
+  // 8-day chunk is held for, was not. So the one setting that says "do exactly
+  // what the trainings did" could not be asked for on the grid.
+  //
+  // Derived from GEOMETRIES, never typed: this walks every chunk shape the
+  // system implements, so a shape added tomorrow fails here until its own hold
+  // length reaches the ladder -- which it does by itself.
+  everyTrainingHoldLengthIsOnTheLadder() {
+    const { GEOMETRIES } = require('../lib/dataset');
+    const menu = new Set(T_HOURS);
+    for (const [name, g] of Object.entries(GEOMETRIES)) {
+      const hold = g.exitOffsetH - g.entryOffsetH;
+      assert.ok(menu.has(hold),
+        `${name} is scored on a ${hold}h hold in stages 1 and 2 and t cannot be set to it (${[...menu].join(', ')})`);
+    }
+    // and the ladder is still ordered and free of duplicates, because two of
+    // those lengths already sat on it and a union that repeated them would
+    // double every t-permuted block
+    const sorted = T_HOURS.slice().sort((a, b) => a - b);
+    assert.deepStrictEqual(T_HOURS, sorted, 'the hold ladder must read smallest first');
+    assert.strictEqual(new Set(T_HOURS).size, T_HOURS.length, 'a repeated hold length would double every t-permuted block');
+    // the original seven rungs all survive: every board recorded so far names
+    // one of them, and a rung that vanished would orphan those records
+    for (const h of [17, 41, 65, 89, 113, 137, 161]) {
+      assert.ok(menu.has(h), `the ${h}h rung is on boards already recorded and must not leave the ladder`);
+    }
+  },
 };

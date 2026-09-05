@@ -431,7 +431,24 @@ const D_MULTS = [0.25, 0.5, 0.75, 1.0, 1.5];
 // horizon exits at the same clock hour. Longer holds carry more drift and
 // more overlap (t/24 concurrent positions): judge them by vs-control and
 // per-dollar-deployed, never raw net.
-const T_HOURS = [17, 41, 65, 89, 113, 137, 161];
+//
+// AND EVERY HOLD LENGTH THE SYSTEM ITSELF SCORES BY (3.71.0, owner question
+// 2026-09-05: "is there a fixed set of Stage 3 settings that accurately
+// represents exactly the conditions under which the Stage 1 and Stage 2 unit
+// trainings work?"). Stages 1 and 2 hold each chunk from its own entry hour to
+// its own exit hour and score that; those lengths were on this ladder by
+// accident for the daily shapes (17 and 41 both happen to be rungs) and NOT
+// for the weekly one, which holds 60 hours. So the one thing every unit in the
+// system is actually trained on could not be asked for on the stage 3 grid.
+//
+// Derived, never typed: a chunk shape added to lib/dataset.js brings its own
+// hold length to this ladder without anybody adding it, which is the same
+// discipline lib/vocabulary.js keeps for every other menu.
+const T_BASE_HOURS = [17, 41, 65, 89, 113, 137, 161];
+const T_TRAINED_HOURS = [...new Set(Object.values(GEOMETRIES)
+  .map((g) => g.exitOffsetH - g.entryOffsetH)
+  .filter((h) => Number.isInteger(h) && h > 0))].sort((a, b) => a - b);
+const T_HOURS = [...new Set([...T_BASE_HOURS, ...T_TRAINED_HOURS])].sort((a, b) => a - b);
 
 // TRAILING GRID, band-relative like d. null = the static opposite-rail stop
 // this lab has always used. ARM delays the trail until price has moved that
@@ -633,4 +650,4 @@ function predictMember(saved, x) {
   return out.label;
 }
 
-module.exports = { comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET };
+module.exports = { comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET, T_TRAINED_HOURS };

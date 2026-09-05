@@ -1146,7 +1146,7 @@ app.post('/api/stage3-count', (req, res) => {
     // what the units hold between them (3.52.0): a unit prices only the
     // settings that place different orders on it, so the disk gate and the
     // cost line read the sum of what each holds, never settings × units
-    const out = { settings: d.settings, declared: d.declared, folded: d.folded, pricings: d.pricings, unitSettings: d.unitSettings, weekdaysApply: d.weekdaysApply };
+    const out = { settings: d.settings, declared: d.declared, folded: d.folded, pricings: d.pricings, unitSettings: d.unitSettings, weekdaysApply: d.weekdaysApply, holds: d.holds || [] };
     const units = d.units ?? Math.max(0, Math.floor(Number(b.units) || 0));
     const coins = d.coins ?? Math.max(1, Math.floor(Number(b.coins) || 1));
     if (units > 0) {

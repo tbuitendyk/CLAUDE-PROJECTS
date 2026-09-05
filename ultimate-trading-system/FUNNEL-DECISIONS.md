@@ -1158,3 +1158,41 @@ made while building it that the design did not already settle.
 
      Third digit: the words, and a decision recorded. No arithmetic changed.
 
+
+106. **Training's own conditions are one stage 3 setting, not an approximation
+     of one** (2026-09-05, owner: *"is there a fixed set of Stage 3 settings
+     that accurately represents exactly the conditions under which the Stage 1
+     and Stage 2 unit trainings work? Does it make sense to put a button 'load
+     training setup' on the Stage 3 sweep"*).
+
+     It could not be asked for, for two separate reasons, and both are engine
+     faults rather than missing controls.
+
+     **The hold length was not on the menu.** Stages 1 and 2 open at the close
+     of each chunk and hold to that chunk's own end. On the four daily shapes
+     that is 17 or 41 hours, both of which happen to be rungs of the 17h+24k
+     ladder; on the weekly one it is 60 hours, which is not. So the one thing
+     every weekly unit in the system is trained on was unreachable from the
+     grid. The ladder is now the union of those seven rungs and the hold length
+     of every chunk shape the system implements -- derived, so a shape added
+     tomorrow brings its own length without anybody adding it.
+
+     **Nothing on the quorum could express how the units are scored.** Stages 1
+     and 2 add every member's lean together and take the sign. There is no head
+     count in that, no majority, and nothing to clear. `count` follows the heads;
+     `conviction` follows the leans but makes them agree with the heads first,
+     so on the very moments the two disagree it stands aside and training does
+     not. `trained` is the missing one, and it is the only way of weighing that
+     reads no bar at all -- so it stores none, prints none in its name, and is
+     ONE setting however many bars and shares are being permuted beside it.
+
+     **The control fills boxes and starts nothing.** t is read from the chunk
+     shapes of the records that would be priced rather than assumed, and when
+     those records carry more than one shape the box is left alone and the
+     lengths are named -- picking one would be choosing for the owner in
+     silence, which is what RULE FIVE exists to stop.
+
+     Second digit: two new engine behaviours and a new control. Nothing already
+     on disk stops being readable -- an existing record keeps its own t and its
+     own bar, and `does not apply` in the bar column belongs only to rows a
+     no-bar rule writes.

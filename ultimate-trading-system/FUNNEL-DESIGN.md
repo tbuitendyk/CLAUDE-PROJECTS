@@ -1389,3 +1389,44 @@ identical otherwise.
 Loading a cross from the list writes the same recorded step a hand-picked pair
 writes, plus a flag saying it came from the list — §15.6's rule for a choice a
 machine put in front of the owner.
+
+## 19. The training setup as one stage 3 setting (owner question, 2026-09-05)
+
+Stage 3 prices settings from votes stages 1 and 2 already took. Until 3.71.0 it
+could not price the setting those stages themselves used, which made "how does
+this rule compare with simply doing what the training did" a question with no
+row on the table.
+
+**What the trainings actually do**, read from the code rather than remembered:
+
+| | where | what |
+|---|---|---|
+| when it opens | `lib/dataset.js` `GEOMETRIES` | at the close of the chunk, `entryOffsetH` |
+| when it closes | the same | at the chunk's own end, `exitOffsetH` — 60h on `weekly-8d`, 17h on `daily-1d`/`daily-2d`, 41h on `daily-3d`/`daily-4d` |
+| how it opens | `lib/stagework.js` `simMarket` | at the market, no rails, no stop, no trailing |
+| the band | `scoreDiff(c.diffPct/100, bandPct/100)` | the unit's own width, worked out from its own history |
+| how the members are read | `directionCalls` | every member's lean added together, the winning side taken — no per-member call, no majority, nothing to clear |
+
+Every one of those is a stage 3 control except the last two, and 60h was not on
+the `t` ladder. Both are fixed in the engine, not worked around on the page:
+
+- **`T_HOURS` is the seven-rung ladder plus every chunk shape's own hold
+  length**, derived from `GEOMETRIES`. Daily shapes already contributed 17 and
+  41; the weekly one adds 60. A shape added later brings its length by itself.
+- **`trained` is a way of weighing on the quorum**: the sign of the summed lean.
+  It is the only one that reads no bar, so `READS_NO_BAR` in `lib/agreement.js`
+  says so once and the block builder, the pricer, the name and the screen all
+  read that one statement. It stores no bar and no share, its rung is empty
+  rather than borrowed, and permuting a bar or a share cannot multiply it.
+
+**The control** is `load training setup` on the stage 3 set-up. It fills
+`quorum by`, `entry`, `band % (or auto)`, `decision`, `24/5`, every permute, and
+`t` — and it starts nothing. `t` is the only value it reads rather than knows:
+the counter answers with the hold lengths of the chunk shapes the records being
+priced carry, and when there is more than one the box is left alone and the
+lengths are named on screen.
+
+**What it is for.** One row on the stage 3 table that is exactly what the
+trainings did, scored on the same window, against the same null set, beside
+every other setting — and on the Funnel, one value of every dial that says "the
+setting the units were built under" rather than a setting nobody chose.

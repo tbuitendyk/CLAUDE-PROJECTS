@@ -127,11 +127,14 @@ module.exports = {
   async theSettingsBlockCountsByHand() {
     const base = { entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65 };
     assert.strictEqual(stages.settingsFor({ cell: base }).length, 1, 'no permute → one setting');
-    assert.strictEqual(stages.settingsFor({ cell: base, cellPermute: { tHours: true } }).length, 7, 'seven holding times');
+    // eight holding times since 3.71.0: the seven-rung 17h+24k ladder plus the
+    // 60h a weekly 8-day chunk is held for, which is what stages 1 and 2 score
+    // that shape on and was the one length the grid could not ask for
+    assert.strictEqual(stages.settingsFor({ cell: base, cellPermute: { tHours: true } }).length, 8, 'eight holding times');
     assert.strictEqual(stages.settingsFor({ cell: base, permuteDecision: true, permuteBand: true, permuteWeekdays: true }).length,
       2 * 4 * 2, 'decision × band menu × 24/5');
-    // the TRADE SHAPE block, on its own: breakout gates(2) × d(5) × t(7) ×
-    // (static + 4 trails × 3 arms)(13) + market t(7) = 1,372 shapes. The
+    // the TRADE SHAPE block, on its own: breakout gates(2) × d(5) × t(8) ×
+    // (static + 4 trails × 3 arms)(13) + market t(8) = 1,048 shapes. The
     // agreement is no longer multiplied in here — it is its own dimension
     // (owner loop, 2026-08-28), which is what stopped a run declaring 8x the
     // settings it could ever tell apart.
@@ -139,7 +142,7 @@ module.exports = {
       cell: base,
       cellPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true },
     });
-    assert.strictEqual(shapes.length, 917, 'the shape block must count exactly what the sweep\'s enumerator declares');
+    assert.strictEqual(shapes.length, 1048, 'the shape block must count exactly what the sweep\'s enumerator declares');
     const labels = new Set(shapes.map((x) => x.label));
     assert.strictEqual(labels.size, shapes.length, 'every setting carries a distinct name');
     // and an 'agree' permute on the shape side is IGNORED, never multiplied:
@@ -148,7 +151,7 @@ module.exports = {
       cell: { ...base, quorumSingles: 2, quorumContexts: 3 },
       cellPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true, agree: true },
     });
-    assert.strictEqual(withAgree.length, 917, 'the old agree permute must not reach the shape enumerator');
+    assert.strictEqual(withAgree.length, 1048, 'the old agree permute must not reach the shape enumerator');
   },
 
   // NO COMMITTEE SIZE APPEARS IN A SETTING'S NAME, EVER (owner, 2026-08-27:
@@ -162,7 +165,10 @@ module.exports = {
     }, [1]);
     for (const x of all) {
       assert.ok(!/\/6|\/8|\/10|q\d/.test(x.label), `a committee size leaked into a name: ${x.label}`);
-      assert.ok(/^(count|conviction|voices|families) \d+%/.test(x.label), `name must open with the rule and its share: ${x.label}`);
+      // trained reads no bar and no share, so it carries neither in its name;
+      // every other way of weighing opens with its rule and its share
+      assert.ok(/^(count|conviction|voices|families) \d+%/.test(x.label) || /^trained\b/.test(x.label),
+        `name must open with the rule and its share: ${x.label}`);
     }
     // ONE dial, every committee size: the same share is a legal setting for a
     // run of coins on their own and for a run read alongside others
@@ -173,7 +179,7 @@ module.exports = {
     assert.strictEqual(singles[0].label, mixed[0].label, 'one share, one name, whatever the committee holds');
     // every way of weighing reaches the block, and each is named on the setting
     const rules = new Set(stages.settingsFor({ cell: { entry: 'market', tHours: 89 }, agreePermuteRule: true }, [1]).map((x) => x.agreeRule));
-    assert.deepStrictEqual([...rules].sort(), ['conviction', 'count', 'families', 'voices'],
+    assert.deepStrictEqual([...rules].sort(), ['conviction', 'count', 'families', 'trained', 'voices'],
       'unusual was never a way of weighing — it is count against the own history bar, and the bar is its own dial now');
     // ...AND SO DOES EACH BAR, with the bar written into the name, because the
     // same share means two different things under the two of them
@@ -2449,8 +2455,11 @@ module.exports = {
       cell: { entry: 'market', tHours: 89 }, agreePermuteRule: true, agreePermuteBar: true, agreePct: 75,
     }, [1]);
     const after = stages.foldSameTradeSettings(grid, [{ trade: 'AAA', bandPct: 2 }]).kept;
-    assert.strictEqual(new Set(after.map((k) => `${k.agreeRule}|${k.agreeBar}`)).size, 8,
-      'four ways of weighing against two bars is eight settings, and every one must reach the block');
+    assert.deepStrictEqual(after.map((k) => `${k.agreeRule}|${k.agreeBar}`).sort(),
+      ['conviction|all', 'conviction|own', 'count|all', 'count|own', 'families|all', 'families|own',
+        'trained|null', 'voices|all', 'voices|own'],
+      'four ways of weighing against two bars is eight settings, and every one must reach the block — '
+      + 'and trained, which reads no bar, is the ninth, ONCE, carrying no bar at all');
   },
 
   // NO CACHE INSIDE THE PRICING MAY LIST THE QUORUM'S DIALS BY HAND
@@ -4128,6 +4137,149 @@ module.exports = {
         if (stage === 2 && key === 'money') continue;
         assert.doesNotThrow(() => stages.validateSort(stage, [{ key, dir: 'desc' }]), `${key} sorts the stage ${stage} table`);
       }
+    }
+  },
+
+  // THE TRAINING SETUP IS ONE SETTING, NOT AN APPROXIMATION OF ONE (3.71.0,
+  // owner question 2026-09-05: "is there a fixed set of Stage 3 settings that
+  // accurately represents exactly the conditions under which the Stage 1 and
+  // Stage 2 unit trainings work?").
+  //
+  // The answer only holds if the way of weighing that reads no bar behaves
+  // like one setting everywhere: one row in the block however many bars and
+  // shares are being permuted beside it, carrying neither on the record and
+  // neither in its name. If a bar or a share leaks back in, the block gains
+  // copies of one trade and every record starts reporting a number the rule
+  // never looked at.
+  async theTrainingSetupIsOneSettingWithNoBarAndNoShare() {
+    const agreement = require('../lib/agreement');
+    const cell = { entry: 'market', tHours: 60 };
+    const alone = stages.settingsFor({ cell, agreeRule: 'trained', agreeBar: 'own', agreePct: 75 }, [1]);
+    assert.strictEqual(alone.length, 1, 'one way of weighing, one setting');
+    assert.strictEqual(alone[0].agreeBar, null, 'a rule that reads no bar must store none');
+    assert.strictEqual(alone[0].agreePct, null, 'a rule that reads no bar must store no share');
+    assert.strictEqual(alone[0].label.split(' \u00b7 ')[0], 'trained market t60h',
+      'the name must carry neither the bar nor the share, because the rule read neither');
+    // every bar and every share permuted at once: still ONE trained setting
+    const swept = stages.settingsFor({
+      cell, agreeRule: 'trained', agreePermuteBar: true, agreePermutePct: true, agreePermuteCopy: true,
+    }, [1]);
+    assert.strictEqual(swept.length, 1,
+      'permuting a bar and a share that the rule cannot read must not multiply the block');
+    // ...while the two it CAN read still do multiply it, because those are not
+    // bars: both kinds is a make-up requirement and hold is a noise filter
+    const mods = stages.settingsFor({ cell, agreeRule: 'trained', agreePermuteBoth: true, agreePermutePersist: true }, [1]);
+    assert.ok(mods.length > 1, 'both kinds and hold are not bars and must still reach the block');
+    for (const st of mods) {
+      assert.strictEqual(st.agreeBar, null, `${st.label} gained a bar`);
+      assert.strictEqual(st.agreePct, null, `${st.label} gained a share`);
+    }
+    // and the list of rules that read no bar is the engine's, not a copy: a
+    // second one added tomorrow is held to all of the above without anybody
+    // remembering to come back here
+    for (const rule of agreement.AGREE_RULES) {
+      if (!agreement.READS_NO_BAR.has(rule)) continue;
+      const one = stages.settingsFor({ cell, agreeRule: rule, agreePermuteBar: true, agreePermutePct: true }, [1]);
+      assert.strictEqual(one.length, 1, `${rule} reads no bar and must be one setting`);
+      assert.deepStrictEqual([one[0].agreeBar, one[0].agreePct], [null, null], `${rule} must store neither`);
+    }
+  },
+
+  // A ROW WRITTEN UNDER A NO-BAR RULE SAYS SO ON THE SCREEN rather than
+  // reading as the default bar. The bar column is derived from the stored
+  // value, and 'all of them' is what a missing bar used to read as -- which
+  // would tell the owner a bar was used when none was.
+  async aRowWithNoBarSaysTheBarDoesNotApply() {
+    const rows = [
+      { label: 'none', agreeBar: null }, { label: 'own', agreeBar: 'own' }, { label: 'all', agreeBar: 'all' },
+    ];
+    // the bar filter reads the same derived value the column prints, so
+    // filtering on it is the column's own answer put to a question
+    const said = (want) => stages.applyFilters(3, rows, { bar: want }).map((r) => r.label);
+    assert.deepStrictEqual(said('does not apply'), ['none'],
+      'a row written under a rule that reads no bar must not read as the default bar');
+    assert.deepStrictEqual(said('its own history'), ['own']);
+    assert.deepStrictEqual(said('all of them'), ['all']);
+  },
+
+  // WHAT THE CONTROL FILLS t WITH IS READ, NEVER ASSUMED. The hold length of a
+  // unit is decided by its chunk shape, and it comes from the same GEOMETRIES
+  // the trainings themselves read, so the number the box gets cannot drift
+  // from the number stage 1 scored on.
+  async theTrainingHoldLengthsComeFromTheRecordsOwnChunkShapes() {
+    const { GEOMETRIES } = require('../lib/dataset');
+    const holdsOf = stages.holdsOf;
+    assert.deepStrictEqual(holdsOf([{ geometry: 'weekly-8d' }]), [60]);
+    assert.deepStrictEqual(holdsOf([{ geometry: 'daily-1d' }, { geometry: 'daily-2d' }]), [17],
+      'two shapes held for the same length are one length, not two');
+    assert.deepStrictEqual(holdsOf([{ geometry: 'daily-4d' }, { geometry: 'weekly-8d' }, { geometry: 'daily-1d' }]),
+      [17, 41, 60], 'smallest first, so the screen can name them in order');
+    assert.deepStrictEqual(holdsOf([]), [], 'no records, nothing to read');
+    assert.deepStrictEqual(holdsOf([{ geometry: 'not-a-shape' }]), [],
+      'a shape the system does not implement contributes no length rather than a wrong one');
+    // and every length it can produce is a value t can actually be set to
+    for (const g of Object.keys(GEOMETRIES)) {
+      const [h] = holdsOf([{ geometry: g }]);
+      assert.ok(require('../lib/bracket').T_HOURS.includes(h),
+        `${g} holds ${h}h and the t menu cannot offer it`);
+    }
+  },
+
+  // THE PRICER MUST NOT PUT BACK WHAT THE BLOCK LEFT OUT. A setting written
+  // under a way of weighing that reads no bar carries no bar and no share, and
+  // both of those are read back through one function -- so a default there
+  // would quietly restore them on every row, and the record would report a bar
+  // that was never consulted. The rung is the same fault one step along: it is
+  // what the setting had to clear, and a rule with nothing to clear must leave
+  // it EMPTY rather than print the number some other rule would have landed on.
+  //
+  // Read from the source because both live inside the pricing closure and
+  // neither is reachable without a unit's real chunks; the arithmetic they
+  // guard is held by tests/test-agreement.js (trainedReadsNoBarAtAnyLevel).
+  async theNoBarRuleIsNotGivenABarBackInsideThePricing() {
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    const agr = sw.slice(sw.indexOf('const agrOf = (st) => ({'), sw.indexOf('});', sw.indexOf('const agrOf = (st) => ({')));
+    assert.ok(agr.includes("bar: agreement.READS_NO_BAR.has(st.agreeRule || 'count') ? null : (st.agreeBar === 'own' ? 'own' : 'all'),"),
+      'the bar read off a setting must stay empty for a rule that reads none');
+    assert.ok(agr.includes("pct: agreement.READS_NO_BAR.has(st.agreeRule || 'count') ? null : (Number(st.agreePct) || 50),"),
+      'the share read off a setting must stay empty for a rule that reads none');
+    assert.ok(sw.includes('const levelFor = (agr, decision) => (agreement.READS_NO_BAR.has(agr.rule) ? null'),
+      'the rung a setting had to clear must be empty for a rule with nothing to clear');
+    // and the tally skips an empty rung rather than counting it as zero: one
+    // trained setting in a block must not drag the average of the settings
+    // that did read a bar
+    assert.ok(sw.includes('if (r.rung != null) { c.rung += r.rung; c.rungN++; }'),
+      'an empty rung must be left out of the average, not counted as nothing');
+  },
+
+  // A RULE THAT READS THE MEMBERS' LEANS MUST BE HANDED THEM. Building the
+  // leans is not free, so the pricer builds them only for the rules that read
+  // them -- and a rule left off that list is handed null and crashes at the
+  // first moment it is priced, on a whole run, after the trainings are done.
+  //
+  // The list lives in lib/agreement.js beside the rules themselves, and BOTH
+  // halves are checked: that the pricer asks the list rather than naming a
+  // rule, and that the list is the true set of rules that need the leans --
+  // read by trying each rule with none and seeing which ones cannot cope.
+  async everyRuleThatReadsTheMembersLeansIsHandedThem() {
+    const agreement = require('../lib/agreement');
+    const swSrc = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    const asked = [...swSrc.matchAll(/probs: ([^\n]+?) \? probsFor\(/g)].map((m) => m[1]);
+    assert.strictEqual(asked.length, 2, 'both places that build a quorum must decide whether to build the leans');
+    for (const test of asked) {
+      assert.strictEqual(test, 'agreement.READS_LEANS.has(agr.rule)',
+        `the pricer names a rule instead of asking the list (${test}), so the next rule that reads leans gets none`);
+    }
+    // and the list is the truth: a rule NOT on it must survive with no leans
+    // at all, a rule ON it must be the reason it is on it
+    const calls = [[1, -1], [1, 1]];
+    const noProbs = { calls, probs: null, models: ['logreg', 'boost'], families: ['a', 'b'], weights: [1, 1] };
+    for (const rule of agreement.AGREE_RULES) {
+      const copes = (() => {
+        try { agreement.agreementStream(noProbs, rule, 1); return true; } catch (_) { return false; }
+      })();
+      assert.strictEqual(copes, !agreement.READS_LEANS.has(rule),
+        `${rule} ${copes ? 'does not need' : 'needs'} the leans, and the list says the opposite`);
     }
   },
 };

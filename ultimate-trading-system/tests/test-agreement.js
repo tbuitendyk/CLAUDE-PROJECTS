@@ -109,6 +109,18 @@ module.exports = {
     const { weights } = a.voiceGroups(calls, 4);
     const ctx = { calls, probs, families, weights };
     for (const rule of a.AGREE_RULES) {
+      // A WAY OF WEIGHING THAT READS NO BAR IS NOT EXEMPTED FROM THIS TEST,
+      // it is held to the opposite of it: the dial must do NOTHING, at either
+      // end. Skipping it would let a bar creep back in unnoticed, which is
+      // exactly the thing that would make it stop being training's own rule.
+      if (a.READS_NO_BAR.has(rule)) {
+        assert.strictEqual(a.ownHistoryBar(ctx, 4, rule, 100), -Infinity, `${rule} reads no bar and must be given none`);
+        assert.deepStrictEqual(
+          a.agreementStream(ctx, rule, a.ownHistoryBar(ctx, 4, rule, 100)),
+          a.agreementStream(ctx, rule, a.ownHistoryBar(ctx, 4, rule, 10)),
+          `${rule} reads no bar, so the strictest and the loosest share must give the identical stream`);
+        continue;
+      }
       const strict = a.ownHistoryBar(ctx, 4, rule, 100);
       const loose = a.ownHistoryBar(ctx, 4, rule, 10);
       assert.ok(strict > loose, `${rule}: a higher share must demand more, not less (${strict} vs ${loose})`);
@@ -243,7 +255,11 @@ module.exports = {
       const { weights, voices } = a.voiceGroups(calls, T);
       const ctx = { calls, probs, weights, families, models: calls.map((_, m) => (m % 2 ? 'boost' : 'logreg')) };
       for (const rule of a.AGREE_RULES) {
-        if (rule === 'unusual') continue;            // its bar is a percentile, checked on its own above
+        // "never below the bar" is a statement about rules that HAVE one. A
+        // way of weighing that reads none has nothing to be below, and its
+        // own promise -- that no bar can change what it does -- is held
+        // above, in theOwnHistoryBarIsStrictestAtTheTopForEveryWayOfWeighing.
+        if (a.READS_NO_BAR.has(rule)) continue;
         const denom = rule === 'voices' ? voices : rule === 'families' ? new Set(families).size : M;
         for (let level = 1; level <= denom; level++) {
           const stream = a.agreementStream(ctx, rule, level);
@@ -259,5 +275,67 @@ module.exports = {
         }
       }
     }
+  },
+
+  // TRAINING'S OWN RULE, AND NOTHING ELSE (3.71.0, owner question 2026-09-05:
+  // "is there a fixed set of Stage 3 settings that accurately represents
+  // exactly the conditions under which the Stage 1 and Stage 2 unit trainings
+  // work?").
+  //
+  // Stages 1 and 2 add every member's lean together and take the sign. There
+  // is no head count in that, no majority, and nothing to clear -- so this
+  // pins the one case that tells the two apart: a moment where MOST members
+  // call one way while the leaning as a whole goes the other. count follows
+  // the heads; trained follows the money-shaped thing training followed. If
+  // this ever agrees with count on this fixture, the rule has stopped being
+  // the one the units were trained under and is quietly something else.
+  trainedIsTheSignOfTheSummedLeanAndNotAHeadCount() {
+    // three members lean up a little, one leans down hard
+    const probs = [[P(0.30, 0.35, 0.35)], [P(0.30, 0.35, 0.35)], [P(0.30, 0.35, 0.35)], [P(0.85, 0.10, 0.05)]];
+    const calls = [[1], [1], [1], [-1]];
+    const ctx = { calls, probs, models: ['logreg', 'boost', 'logreg', 'boost'], families: ['a', 'b', 'c', 'd'], weights: [1, 1, 1, 1] };
+    // heads: 3 up against 1 down. leans: +0.05 x3 against -0.80 -> -0.65 down.
+    assert.strictEqual(a.agreementStream(ctx, 'count', 3)[0], 1, 'the head count follows the three');
+    assert.strictEqual(a.agreementStream(ctx, 'trained', 1)[0], -1,
+      'trained must follow the summed lean, which is the one thing the trainings themselves followed');
+    // conviction is NOT the same rule: it makes the leaning back the majority
+    // before it will act, so on this moment it stands aside and trained does not
+    assert.strictEqual(a.agreementStream(ctx, 'conviction', 1)[0], 0,
+      'conviction needs the lean to agree with the heads; trained never asks about the heads at all');
+  },
+
+  // NO BAR MEANS NO BAR: not a low one, not one that happens to be cleared.
+  // Every level from the smallest to an absurd one must give the identical
+  // stream, and the amount reported as agreeing must be the size of the lean.
+  trainedReadsNoBarAtAnyLevel() {
+    const probs = [[P(0.1, 0.2, 0.7), P(0.7, 0.2, 0.1)], [P(0.2, 0.3, 0.5), P(0.4, 0.3, 0.3)]];
+    const calls = [[1, -1], [1, -1]];
+    const ctx = { calls, probs, models: ['logreg', 'boost'], families: ['a', 'b'], weights: [1, 1] };
+    const base = a.agreementStream(ctx, 'trained', 1);
+    assert.deepStrictEqual(base, [1, -1], 'both moments must speak: up first, down second');
+    for (const level of [0, 1, 2, 1e6, -Infinity, null]) {
+      assert.deepStrictEqual(a.agreementStream(ctx, 'trained', level), base,
+        `a bar of ${level} changed what trained did, and it must read no bar at all`);
+    }
+    // what it reports as agreeing is the size of the summed lean: 0.6 + 0.3
+    assert.ok(Math.abs(a.achievedAt(ctx, 0, 'trained', 1) - 0.9) < 1e-9,
+      'the amount reported must be the leaning trained actually added up');
+    assert.strictEqual(a.ownHistoryBar(ctx, 2, 'trained', 100), -Infinity,
+      'the own history bar must refuse to give a no-bar rule a number');
+  },
+
+  // The two modifiers still apply, because the units' own scoring had them
+  // available and they are not bars: both kinds is a make-up requirement and
+  // hold is a noise filter. Off by default, and off is what the control loads.
+  trainedStillObeysBothKindsAndHold() {
+    const up = P(0.1, 0.2, 0.7);
+    const ctx = {
+      calls: [[1, 1], [1, 1]], probs: [[up, up], [up, up]],
+      models: ['logreg', 'logreg'], families: ['a', 'b'], weights: [1, 1],
+    };
+    assert.deepStrictEqual(a.agreementStream(ctx, 'trained', null, { bothModels: true }), [0, 0],
+      'one kind of member can never satisfy both kinds, whatever the rule');
+    assert.deepStrictEqual(a.agreementStream(ctx, 'trained', null, { persist: 1 }), [0, 1],
+      'a hold still needs the call to have stood already');
   },
 };

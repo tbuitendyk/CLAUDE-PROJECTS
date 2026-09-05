@@ -228,6 +228,10 @@ window.HELP = {
           + 'Funnel reads, and the money on the held-back window, which is free because working out beat its own '
           + 'null set prices it anyway. Both are rounded to the cent.',
       },
+      swTrained3: {
+        what: 'Fills the boxes below with the conditions the units were actually trained and scored under in stages 1 and 2, so what those stages did can be priced here as one setting and read on the same table as everything else. Nothing is started: press start stage 3 yourself.',
+        more: 'It sets quorum by to trained, entry to market, band % (or auto) to auto, decision to argmax, 24/5 off and every permute off, and it sets t to how long stages 1 and 2 held each chunk on the records this would price. That last one is read from those records rather than assumed, because it is the chunk shape that decides it: a weekly 8-day chunk is held 60 hours, a daily 1-day or 2-day 17, a daily 3-day or 4-day 41. When the records carry more than one chunk shape there is no single t that matches them all, so the box is left alone and the lengths are named instead of one being chosen for you.',
+      },
       swDec: { what: 'The decision to price: argmax takes whichever outcome the votes lean to most; directional acts only when the sureness clears the fee-priced bar.' },
       swPermDec: { what: 'Price both ways of deciding, each as its own setting in the block.' },
       swBand: { what: 'The size a move must reach to count as a move, for pricing the rails. auto uses the width each unit trained at, worked out from its own history.' },

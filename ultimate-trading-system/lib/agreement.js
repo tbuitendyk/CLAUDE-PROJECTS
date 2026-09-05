@@ -87,7 +87,13 @@ function voiceGroups(callArrays, upTo, threshold = COPY_DEFAULT / 100) {
 // (RULE NINE) — a reader that has to ask which era a record is from is the
 // defect, and the bug that proved it was two readers translating a key while
 // a third did not.
-const AGREE_RULES = ['count', 'conviction', 'voices', 'families'];
+// `trained` (3.71.0, owner order 2026-09-05) is the way the UNITS THEMSELVES
+// were trained and scored in stages 1 and 2: every member's lean added up, and
+// the side that wins is taken -- whatever the margin, and whoever the head
+// count would have picked. It is the only way of weighing that reads no bar,
+// because training had none, and it exists so the conditions a unit was
+// trained under can be said as one stage 3 setting instead of approximately.
+const AGREE_RULES = ['count', 'conviction', 'voices', 'families', 'trained'];
 const AGREE_BARS = ['all', 'own'];
 // HOW ALIKE TWO MEMBERS HAVE TO BE TO COUNT AS ONE VOICE. This was a default
 // argument nobody ever passed, so a single number decided whether the voices
@@ -102,7 +108,17 @@ const RULE_WORDS = {
   conviction: 'how strongly the members lean, added up',
   voices: 'how many INDEPENDENT voices say the same thing',
   families: 'how many different kinds of evidence agree',
+  trained: 'the way the units were trained: every lean added up, the winning side taken whatever the margin',
 };
+// The one way of weighing that reads no bar. Said once, here, so the screen,
+// the block builder and the pricing cannot disagree about it.
+const READS_NO_BAR = new Set(['trained']);
+// THE WAYS OF WEIGHING THAT READ HOW HARD EACH MEMBER LEANS, rather than only
+// which side it picked. The caller builds the leans only for these, because
+// building them is not free — and a rule missing from this list reads `null`
+// and crashes at the first moment it is asked about. Said once, here, for the
+// same reason as the line above: two lists of the same fact drift.
+const READS_LEANS = new Set(['conviction', 'trained']);
 
 // The winning side and its plain counts at one moment.
 function sides(callArrays, i) {
@@ -138,6 +154,16 @@ function agreementAt(ctx, i, rule, level) {
   if (!AGREE_RULES.includes(rule)) {
     throw new Error(`"${rule}" is not an agreement rule (${AGREE_RULES.join('/')})`);
   }
+  // THE TRAINED RULE ANSWERS BEFORE THE HEAD COUNT IS ASKED, and before any
+  // bar. Training summed every member's lean and took the sign; it never
+  // formed a per-member call, never asked who the majority was, and never had
+  // a threshold to clear. Deferring to `sides` here would add a gate training
+  // did not have, and the whole point of this rule is that it has none.
+  if (rule === 'trained') {
+    let s2 = 0;
+    for (let m = 0; m < calls.length; m++) s2 += netLean(ctx.probs[m][i]);
+    return Math.sign(s2);
+  }
   const { winner } = sides(calls, i);
   if (!winner) return 0;
   if (rule === 'conviction') {
@@ -169,6 +195,10 @@ function agreementAt(ctx, i, rule, level) {
 // on, so the bar is chosen knowing the window it will be scored on — mild, and
 // said on the screen. It never reads the held-back window.
 function ownHistoryBar(ctx, nTest, rule, strictPct) {
+  // A rule that reads no bar cannot be given one: -Infinity is the bar that
+  // nothing can fail, which is what "no bar" means in the one comparison every
+  // rule goes through.
+  if (READS_NO_BAR.has(rule)) return -Infinity;
   const reached = [];
   for (let i = 0; i < nTest; i++) {
     const { winner } = sides(ctx.calls, i);
@@ -200,7 +230,7 @@ function achievedAt(ctx, i, rule, winner) {
     for (let m = 0; m < calls.length; m++) if (calls[m][i] === winner) w += ctx.weights[m];
     return w;
   }
-  if (rule === 'conviction') {
+  if (rule === 'conviction' || rule === 'trained') {
     let s = 0;
     for (let m = 0; m < calls.length; m++) s += netLean(ctx.probs[m][i]);
     return Math.abs(s);
@@ -248,6 +278,6 @@ function agreementStream(ctx, rule, level, mods = {}) {
 }
 
 module.exports = {
-  AGREE_RULES, AGREE_BARS, COPY_PCTS, COPY_DEFAULT, RULE_WORDS, voiceGroups, argmaxCall,
+  AGREE_RULES, AGREE_BARS, COPY_PCTS, COPY_DEFAULT, RULE_WORDS, READS_NO_BAR, READS_LEANS, voiceGroups, argmaxCall,
   agreementStream, agreementAt, achievedAt, ownHistoryBar, netLean, sides,
 };
