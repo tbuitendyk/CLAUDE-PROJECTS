@@ -1047,3 +1047,46 @@ made while building it that the design did not already settle.
      gains a field, and a set without it is filled in and stamped on first read
      (RULE NINE), so nothing already written refuses.
 
+103. **Training now counts what each week was WORTH, not just which way it
+     went** (2026-09-05, owner: *"i was told earlier this week that the logreg
+     and boost training mechanisms were only setting the training knowledge
+     into the units BY SIMPLY UP or DOWN ... so you sold me on the idea of
+     TRAINING BY ACTUAL AMOUNTS EARNED BY FOLLOWING THE DECISION ... IS THAT OR
+     IS THAT NOT THE CASE?"*).
+
+     It was not the case. It had not been built at all. The label is made by
+     `scoreDiff` (lib/dataset.js), which returns `0`, `+1` or `-1` and throws
+     the size of the move away on that line; both trainers were then fitted
+     with no per-sample weights, though both have accepted them all along.
+
+     **A week is worth the gap between the best its decision could do and the
+     worst.** In dollars on the same stake everything else is priced at: on a
+     week that moved, about twice the move (the fees are paid whichever way you
+     call it, so they cancel out of the gap); on a week that barely moved, the
+     round trip (standing aside earns nothing, trading it the wrong way wastes
+     the fees). So a still week is never weightless and no floor had to be
+     invented -- the arithmetic of the trade sets it.
+
+     Read off the TRAINING weeks only. Scaled so the average week counts 1, so
+     the strength of the fit means what it meant. Capped, because one 40% week
+     can otherwise outweigh fifty ordinary ones and a fit to one week is not a
+     fit; measured on a realistic run of two hundred weeks the biggest counts
+     about four ordinary ones and the cap never bites, which is what a piece of
+     insurance should look like.
+
+     **Proved on the fit, not on the wiring.** A test trains both kinds for
+     real on a board where the market went up by a crumb nine times in ten and
+     down by a landslide the tenth. Counting weeks, both say up. Counting
+     money, both say down. A spot where the two ways agree does not move. A
+     source scan would have proved none of that.
+
+     **It is the owner's, and it rides on the record.** A tick and a cap on the
+     stage 1 launch; refused rather than coerced if mistyped; carried to stage 2
+     with the rest of the parent's settings so both halves of a committee are
+     trained one way; and printed wherever a record set is named, because a set
+     trained on money is not comparable with one trained on direction.
+
+     Second digit: new behaviour and two new controls. Nothing on disk changes
+     shape and a set without the setting reads as direction, which is what it
+     was.
+

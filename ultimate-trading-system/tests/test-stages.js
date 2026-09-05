@@ -357,6 +357,130 @@ module.exports = {
   // The box is on every stage of Sweep, beside description, with the next free
   // name greyed in it; the launch sends what is typed and empties the box once
   // a launch has taken it; and the list carries the suggestion from the server.
+  // OWNER, 2026-09-05: told earlier in the week that training set the units'
+  // knowledge "BY SIMPLY UP or DOWN", that a bunch of small accurate calls can
+  // lose badly to one large inaccurate call, and that training would learn to
+  // "emphasize MORE a large winning trade than a small one". It was not done.
+  // This is it, and these are the numbers it turns on.
+  theWeightOfATrainingWeekIsWhatItsDecisionWasWorth() {
+    const sw = require('../lib/stagework');
+    const wk = (d) => ({ diffPct: d });
+    const fee = 0.0005;                       // 0.05% a leg -> a 10 cent round trip on $100
+    // A WEEK THAT MOVED IS WORTH ABOUT TWICE THE MOVE; a still week is worth the
+    // round trip, never nothing -- calling a still week wrong wastes the fees.
+    const raw = sw.moneyWeights([wk(10), wk(0.0001)], fee, 0);
+    // 10% of $100 = $10: best +9.90, worst -10.10, so the gap is $20.00
+    // ~0%       : best 0, worst -0.10, so the gap is $0.10
+    assert.ok(raw[0] / raw[1] > 150 && raw[0] / raw[1] < 250,
+      `a landslide must outweigh a crumb by about the ratio of their stakes, not by a made-up number: ${raw[0] / raw[1]}`);
+    assert.ok(raw[1] > 0, 'a still week is weightless, so nothing teaches the forecast to stand aside');
+    // THE AVERAGE WEEK COUNTS 1, so the strength of the fit means what it meant
+    const many = sw.moneyWeights(Array.from({ length: 50 }, (_, i) => wk(1 + (i % 7))), fee, 0);
+    const mean = many.reduce((a, b) => a + b, 0) / many.length;
+    assert.ok(Math.abs(mean - 1) < 1e-9, `the average weight must be 1, and it is ${mean}`);
+    // AND ONE FREAK WEEK CANNOT BE THE WHOLE TRAINING
+    const crash = [...Array.from({ length: 200 }, () => wk(3)), wk(-62)];
+    assert.ok(Math.max(...sw.moneyWeights(crash, fee, 0)) > 10, 'this fixture does not actually hold an outlier, so the cap proves nothing');
+    assert.ok(Math.max(...sw.moneyWeights(crash, fee, 10)) <= 10 + 1e-9, 'the cap does not hold the biggest week down');
+    assert.ok(Math.max(...sw.moneyWeights(crash, fee, 5)) <= 5 + 1e-9, 'the cap is not the number the owner set');
+    // NOTHING IS WEIGHED UNLESS THE LAUNCH ASKED FOR IT
+    assert.equal(sw.weightsFor({}, [wk(5)], fee), null, 'a launch that said nothing is weighing by money anyway');
+    assert.equal(sw.weightsFor({ trainOn: 'direction' }, [wk(5)], fee), null, 'direction is being weighed by money');
+    assert.ok(Array.isArray(sw.weightsFor({ trainOn: 'money' }, [wk(5), wk(1)], fee)), 'money is not being weighed by money');
+    // AND A SET SAYS WHAT IT WAS ACTUALLY TRAINED UNDER, not what was asked for
+    assert.deepEqual(sw.weightsSaid({ trainOn: 'money' }, null),
+      { by: 'direction', asked: 'money', why: 'no training week carried a move to weigh by' },
+      'a run that could not weigh by money reads as though it did');
+    assert.equal(sw.weightsSaid({}, null).by, 'direction', 'a plain run does not say how it was trained');
+  },
+
+  // THE ONE THAT MATTERS: it changes what the forecast LEARNS. A source scan
+  // proves the wiring and proves nothing about the fit, so this trains both
+  // kinds for real on a board where the two ways of counting disagree, and the
+  // owner's sentence is the assertion: "a bunch of small accurate calls can,
+  // when money comes into play, lose badly to a single large inaccurate call".
+  async countingMoneyRatherThanWeeksChangesWhatBothForecastsLearn() {
+    const sw = require('../lib/stagework');
+    // At the first spot the market went UP by a crumb nine times in ten and
+    // DOWN by a landslide the tenth. Counting weeks, up wins nine to one.
+    // Counting money, the one landslide outweighs the nine crumbs together.
+    // The second spot is clean and must not move either way.
+    const rows = [];
+    for (let i = 0; i < 200; i++) {
+      const big = i % 10 === 4;
+      rows.push({ x: [1, 0], label: big ? -1 : 1, diffPct: big ? -12 : 0.3 });
+    }
+    for (let i = 0; i < 100; i++) rows.push({ x: [0, 1], label: 1, diffPct: 0.4 });
+    // dealt through the run, so the validation tail is not one group
+    const chunks = [];
+    for (let i = 0; i < rows.length; i++) chunks.push(rows[(i * 7 + 3) % rows.length]);
+    const weights = sw.moneyWeights(chunks, 0.0005, 0);
+    const call = (probs) => { let b = 0; for (let k = 1; k < 3; k++) if (probs[k] > probs[b]) b = k; return [-1, 0, 1][b]; };
+    const ask = [{ x: [1, 0] }, { x: [0, 1] }];
+    for (const model of ['logreg', 'boost']) {
+      // eslint-disable-next-line no-await-in-loop
+      const weeks = await sw.trainProbMember({ model, viewIdx: [0, 1], trainChunks: chunks, predictChunks: ask });
+      // eslint-disable-next-line no-await-in-loop
+      const money = await sw.trainProbMember({ model, viewIdx: [0, 1], trainChunks: chunks, predictChunks: ask, weights });
+      assert.equal(call(weeks.probs[0]), 1,
+        `${model}: counting weeks must follow the nine crumbs -- if it does not, this board proves nothing`);
+      assert.equal(call(money.probs[0]), -1,
+        `${model}: counting money still follows the nine crumbs and ignores the landslide, which is the whole fault`);
+      assert.equal(call(weeks.probs[1]), 1, `${model}: the clean spot moved when nothing there was in dispute`);
+      assert.equal(call(money.probs[1]), 1, `${model}: weighing by money scrambled a spot where the two ways agree`);
+    }
+  },
+
+  // the weights reach BOTH trainers, and the probe fit is graded on the same
+  // yardstick it was trained on
+  bothKindsOfForecastAreFittedOnTheWeightsAndGradedOnThem() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    const fit = src.slice(src.indexOf('async function trainProbMember('), src.indexOf('// Shared unit plumbing'));
+    assert.ok(fit.includes('tuneAndTrain(Ztr, ytr, { onProgress: () => {}, exampleWeights: wAll })'),
+      'the first kind of forecast is still fitted with every week counting the same');
+    assert.ok(fit.includes('trainSoftmax(Ztr.slice(0, nSub), ytr.slice(0, nSub), chosenLambda, { weights: wSub })'),
+      'its probe fit is unweighted, so the threshold is tuned against a different objective than the model');
+    assert.ok(fit.includes('weights: wSub, valWeights: wVal,'),
+      'the second kind of forecast is trained weighted and graded unweighted, which is the one mistake its own note warns about');
+    assert.ok(fit.includes('trainBoost(Xtr, ytr, { rounds: probe.bestRound, weights: wAll })'),
+      'the second kind of forecast is still fitted with every week counting the same');
+    // a length that does not line up is refused rather than silently ignored
+    assert.ok(fit.includes('throw new Error(`training weights are ${weights.length} long and there are ${Xtr.length} training chunks`)'),
+      'weights of the wrong length are quietly dropped, and the run would read as weighted');
+    // both stages, and stage 2 cannot differ from its parent
+    assert.ok(src.includes('const weights = weightsFor(p, trainChunks, fee);'), 'a stage trains without asking what its weeks are worth');
+    assert.equal((src.match(/const weights = weightsFor\(p, trainChunks, fee\);/g) || []).length, 2,
+      'only one of the two stages weighs its training, so half a committee is trained differently from the other half');
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(st.includes("params: { ...parent.params, carry: carried.length,"),
+      'stage 2 no longer copies its parent\'s settings, so the two halves of a committee could be trained differently');
+  },
+
+  // it is the owner's, it is refused rather than coerced, and the set says it
+  howAUnitWasTrainedIsTheOwnersChoiceAndRidesOnTheRecord() {
+    const S = require('../lib/stages');
+    assert.throws(() => S.startStage1({ sizes: { singles: true }, fee: 0.05, name: 'x', trainOn: 'nonsense' }),
+      /is not a way to train/, 'a mistyped way of training quietly becomes the old one');
+    assert.throws(() => S.startStage1({ sizes: { singles: true }, fee: 0.05, name: 'x', weightCap: -2 }),
+      /must be 0 or more/, 'a nonsense limit is accepted');
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const launch = st.slice(st.indexOf('function startStage1(params) {'), st.indexOf('const units = unitsFor('));
+    assert.ok(/trainOn,\n    weightCap,/.test(launch), 'the setting never reaches the workers, so the tick does nothing');
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(ui.includes('id="swByMoney"'), 'there is no way to ask for it');
+    assert.ok(ui.includes('weigh each week by the money it was worth'), 'the control does not say what it does');
+    assert.ok(ui.includes('id="swCap1"'), 'there is no way to hold one freak week down');
+    assert.ok(ui.includes("trainOn: $('#swByMoney').checked ? 'money' : 'direction',"), 'the launch does not carry the tick');
+    assert.ok(ui.includes("weightCap: $('#swCap1').value === '' ? undefined : Number($('#swCap1').value),"), 'the launch does not carry the limit');
+    // and a record set says how it was trained wherever it is named
+    assert.ok(ui.includes('trained by the money each week was worth') && ui.includes('trained by direction only'),
+      'a set does not say how its units were trained, so two sets that cannot be compared look alike');
+    assert.ok(ui.includes("setC('#swByMoney', (p.trainOn || 'direction') === 'money');"),
+      'choosing a set does not show how it was trained');
+    assert.ok(ui.includes("'weigh each week by the money it was worth no longer matches'"),
+      'a form that disagrees with the set stage 2 reads from says nothing');
+  },
+
   async theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');

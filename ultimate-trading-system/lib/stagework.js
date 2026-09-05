@@ -28,6 +28,7 @@ const { buildCombo, splitAndLabel, quorumCall, declaredQuorumFor } = require('./
 const agreement = require('./agreement');
 const { standardizeFit, standardizeApply, tuneAndTrain, trainSoftmax, predict: predictLogreg } = require('./logreg');
 const { trainBoost, predictBoost } = require('./boost');
+const { NOTIONAL, feeRate } = require('./paper');
 const { tuneTau } = require('./pipeline');
 const { directionalCall } = require('./paper');
 const { nullRng } = require('./walkforward');
@@ -207,7 +208,87 @@ function moneyAgainstNull({ chunks, calls, tradeMap, geo, fee, seed, unitKey, nu
   return { money, trades: real.trades, chunks: chunks.length, nullMoney, beat, pairs: nullN, lead: leadOver(money, nullMoney) };
 }
 
-async function trainProbMember({ model, viewIdx, trainChunks, predictChunks }) {
+// ---- TRAINING BY WHAT WAS ACTUALLY AT STAKE (3.69.0, owner order) -----------
+//
+// Every training chunk used to count the same. A week the price moved 0.6% and
+// a week it moved 14% were one lesson each -- "up" -- because the label throws
+// the size away (dataset.js scoreDiff). So a forecast right nine times on
+// crumbs and wrong once on a landslide trained as a GOOD forecast and lost
+// money. That is the fault the owner named, and this is the answer to it.
+//
+// A CHUNK IS WORTH WHAT ITS DECISION IS WORTH: the gap between the best it
+// could do and the worst it could do, in dollars on the same stake the rest of
+// the system prices at.
+//
+//   the move, in dollars      m    = NOTIONAL x |diff| / 100
+//   the round trip, in dollars trip = NOTIONAL x 2 x the fee rate
+//   best  = max(0, m - trip)      call it right, or stand aside on a crumb
+//   worst = -(m + trip)           call it backwards
+//   stake = best - worst
+//
+// On a week that moved, that comes to about twice the move: the fees are paid
+// whichever way you call it, so they cancel out of the gap. On a week that
+// barely moved it comes to the round trip: standing aside earns nothing and
+// trading it the wrong way wastes the fees, and THAT is what a still week is
+// worth teaching. So nothing gets a weight of zero and no floor has to be
+// invented -- the arithmetic of the trade sets it.
+//
+// TAKEN FROM THE TRAINING CHUNKS ONLY, never the test or the held-back window,
+// the same discipline the band already follows.
+//
+// NORMALISED so the average weight is 1, which leaves the strength of the
+// regularisation meaning what it meant, and lets a run with this off and a run
+// with it on be told apart by the setting rather than by a scale factor.
+//
+// AND CAPPED, because one 40% week can otherwise outweigh fifty ordinary ones
+// and a fit to one week is not a fit. `capMult` is how many ordinary weeks the
+// biggest may count for. Clipping after the normalising pulls the average a
+// little under 1; that is a uniform scale on the whole objective and changes
+// nothing, and the strength is chosen against the same weighted objective
+// anyway. 0 turns the cap off.
+const WEIGHT_CAP_DEFAULT = 10;
+// The launch's answer to "weigh each week by the money it was worth", read the
+// same way in both stages. Anything but the word for money is direction only,
+// which is what every set before 3.69.0 was trained under.
+const TRAIN_ON = ['direction', 'money'];
+const trainOnOf = (p) => (TRAIN_ON.includes((p || {}).trainOn) ? p.trainOn : 'direction');
+const capOf = (p) => {
+  const v = Number((p || {}).weightCap);
+  return Number.isFinite(v) && v >= 0 ? v : WEIGHT_CAP_DEFAULT;
+};
+function weightsFor(p, trainChunks, fee) {
+  return trainOnOf(p) === 'money' ? moneyWeights(trainChunks, fee, capOf(p)) : null;
+}
+// WHAT THE UNIT WAS ACTUALLY TRAINED UNDER, written onto its record. A setting
+// that was asked for and could not be honoured -- no chunk with a move on it,
+// so nothing to weigh by -- must not read as though it was.
+function weightsSaid(p, weights) {
+  const asked = trainOnOf(p);
+  if (asked !== 'money') return { by: 'direction' };
+  if (!weights) return { by: 'direction', asked: 'money', why: 'no training week carried a move to weigh by' };
+  let hi = 0;
+  for (const w of weights) if (w > hi) hi = w;
+  return { by: 'money', cap: capOf(p), biggest: Math.round(hi * 100) / 100, of: weights.length };
+}
+function moneyWeights(chunks, feePerLeg, capMult = WEIGHT_CAP_DEFAULT) {
+  const list = Array.isArray(chunks) ? chunks : [];
+  if (!list.length) return null;
+  const trip = NOTIONAL * 2 * feeRate(feePerLeg, 'moneyWeights');
+  const stakes = list.map((c) => {
+    const d = Number(c && c.diffPct);
+    // a chunk with no move on the record teaches nothing about size; it is
+    // still worth the fees a wrong call would waste
+    const m = Number.isFinite(d) ? (NOTIONAL * Math.abs(d)) / 100 : 0;
+    return Math.max(0, m - trip) + m + trip;
+  });
+  const total = stakes.reduce((a2, b2) => a2 + b2, 0);
+  if (!(total > 0)) return null;                       // nothing to weigh by
+  const avg = total / stakes.length;
+  const cap = Number.isFinite(Number(capMult)) && Number(capMult) > 0 ? Number(capMult) : Infinity;
+  return stakes.map((x) => Math.min(cap, x / avg));
+}
+
+async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, weights = null }) {
   const Xtr = trainChunks.map((c) => viewIdx.map((i) => c.x[i]));
   const ytr = trainChunks.map((c) => c.label);
   const Xte = predictChunks.map((c) => viewIdx.map((i) => c.x[i]));
@@ -217,23 +298,36 @@ async function trainProbMember({ model, viewIdx, trainChunks, predictChunks }) {
   let picked;
   let probs;
   let tauProbs;
+  // THE WEIGHTS ARE SLICED EXACTLY AS THE ROWS ARE (3.69.0). The probe fit sees
+  // the first nSub rows and is graded on the rest, so it takes the same two
+  // pieces of the weights -- a weighted fit graded on an unweighted yardstick
+  // would choose its stopping point against a different objective than it was
+  // trained on, which is the one mistake lib/boost.js's own note warns about.
+  const wAll = Array.isArray(weights) && weights.length === Xtr.length ? weights : null;
+  if (Array.isArray(weights) && !wAll) {
+    throw new Error(`training weights are ${weights.length} long and there are ${Xtr.length} training chunks`);
+  }
+  const wSub = wAll ? wAll.slice(0, nSub) : null;
+  const wVal = wAll ? wAll.slice(nSub) : null;
   if (model === 'logreg') {
     const scaler = standardizeFit(Xtr);
     const Ztr = standardizeApply(Xtr, scaler);
     const Zte = standardizeApply(Xte, scaler);
-    const { model: m, chosenLambda } = await tuneAndTrain(Ztr, ytr, { onProgress: () => {} });
+    const { model: m, chosenLambda } = await tuneAndTrain(Ztr, ytr, { onProgress: () => {}, exampleWeights: wAll });
     saved = { kind: 'logreg', lambda: chosenLambda, f: m.f, W: Array.from(m.W),
       mean: Array.from(scaler.mean), std: Array.from(scaler.std) };
     picked = `lambda=${chosenLambda}`;
     probs = Zte.map((z) => probsArr(predictLogreg(m, z).probs));
-    const probe = await trainSoftmax(Ztr.slice(0, nSub), ytr.slice(0, nSub), chosenLambda, {});
+    const probe = await trainSoftmax(Ztr.slice(0, nSub), ytr.slice(0, nSub), chosenLambda, { weights: wSub });
     tauProbs = [];
     for (let i = nSub; i < Ztr.length; i++) tauProbs.push(probsArr(predictLogreg(probe, Ztr[i]).probs));
   } else {
-    const probe = await trainBoost(Xtr.slice(0, nSub), ytr.slice(0, nSub), { Xval: Xtr.slice(nSub), yval: ytr.slice(nSub) });
+    const probe = await trainBoost(Xtr.slice(0, nSub), ytr.slice(0, nSub), {
+      Xval: Xtr.slice(nSub), yval: ytr.slice(nSub), weights: wSub, valWeights: wVal,
+    });
     tauProbs = [];
     for (let i = nSub; i < Xtr.length; i++) tauProbs.push(probsArr(predictBoost(probe, Xtr[i]).probs));
-    const m = await trainBoost(Xtr, ytr, { rounds: probe.bestRound });
+    const m = await trainBoost(Xtr, ytr, { rounds: probe.bestRound, weights: wAll });
     saved = { kind: 'boost', rounds: m.bestRound, priors: m.priors, trees: m.trees };
     picked = `rounds=${m.bestRound}`;
     probs = Xte.map((x) => probsArr(predictBoost(m, x).probs));
@@ -320,9 +414,14 @@ async function s1UnitTask(task) {
   const views = viewsFor(combo, geo);
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
   const specs = require('./bracketwork').slimViewsFor(combo.size).map((view) => ({ model: 'logreg', view }));
+  // WHAT EACH TRAINING WEEK IS WORTH (3.69.0, owner order). Off unless the
+  // launch asked for it, and off is what every set before this was trained
+  // under -- so a set says how it was trained rather than leaving it to be
+  // guessed at from the release it was made under.
+  const weights = weightsFor(p, trainChunks, fee);
   const members = [];
   for (const spec of specs) {
-    const m = await trainProbMember({ model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks });
+    const m = await trainProbMember({ model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights });
     members.push({ spec, ...m });
   }
   const testLabels = testChunks.map((c) => c.label);
@@ -363,6 +462,7 @@ async function s1UnitTask(task) {
     labels: { test: testLabels, hold: holdChunks.map((c) => c.label) },
     score, nullScores, beat, pairs: nullN, lead: leadOver(score, nullScores),
     tuning,
+    trainedOn: weightsSaid(p, weights),
   };
 }
 
@@ -388,9 +488,14 @@ async function s2UnitTask(task) {
   const views = viewsFor(combo, geo);
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
   const specs = require('./bracketwork').slimViewsFor(combo.size).map((view) => ({ model: 'boost', view }));
+  // THE SAME WEIGHTING THE STAGE 1 HALF OF THIS COMMITTEE WAS TRAINED UNDER
+  // (3.69.0). A stage 2 set copies its parent's settings at launch, so this
+  // cannot differ -- half a committee trained on direction and half on money
+  // would be two different committees wearing one name.
+  const weights = weightsFor(p, trainChunks, fee);
   const members = [];
   for (const spec of specs) {
-    const m = await trainProbMember({ model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks });
+    const m = await trainProbMember({ model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights });
     members.push({ spec, ...m });
   }
   const testLabels = testChunks.map((c) => c.label);
@@ -427,6 +532,7 @@ async function s2UnitTask(task) {
     score3, scoreAll, helped: scoreAll - score3,
     beat, pairs: nullN, lead: leadOver(scoreAll, nullScores), nullScores,
     tuning3, tuning,
+    trainedOn: weightsSaid(p, weights),
   };
 }
 
@@ -1044,6 +1150,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 
 module.exports = {
   s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
+  moneyWeights, weightsFor, weightsSaid, trainOnOf, capOf, TRAIN_ON, WEIGHT_CAP_DEFAULT,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,

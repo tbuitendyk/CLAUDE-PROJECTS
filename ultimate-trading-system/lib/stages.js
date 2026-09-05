@@ -521,11 +521,30 @@ function startStage1(params) {
   const windowLayout = ['split70', 'reserve61', 'legacy80'].includes(params.windowLayout) ? params.windowLayout : 'reserve61';
   const nullN = Math.max(0, Math.floor(num(params.nullN, 19)));
   const fee = feeOrRefuse(params.fee, 'it prices the tuning-slice $ every unit is read by');
+  // WHAT EACH TRAINING WEEK IS WORTH (3.69.0, owner order). `direction` is what
+  // every set before this was trained under: every week one lesson, whatever
+  // it was worth. `money` weighs each week by the gap between the best and the
+  // worst its decision could have done, in dollars -- so a landslide teaches
+  // more than a crumb. Refused rather than coerced: a mistyped word must not
+  // quietly train a whole run the old way while the record says otherwise.
+  const sw = require('./stagework');
+  const trainOn = params.trainOn === undefined || params.trainOn === null || params.trainOn === ''
+    ? 'direction' : String(params.trainOn);
+  if (!sw.TRAIN_ON.includes(trainOn)) {
+    throw new Error(`"${trainOn}" is not a way to train (${sw.TRAIN_ON.join('/')})`);
+  }
+  const weightCap = params.weightCap === undefined || params.weightCap === null || params.weightCap === ''
+    ? sw.WEIGHT_CAP_DEFAULT : Number(params.weightCap);
+  if (!Number.isFinite(weightCap) || weightCap < 0) {
+    throw new Error(`the most one week may count for must be 0 or more — got ${JSON.stringify(params.weightCap)}`);
+  }
   const p = {
     allLoaded: params.allLoaded !== false,
     startMonth: params.startMonth || '2018-01',
     endMonth: params.endMonth || '2026-06',
     windowLayout,
+    trainOn,
+    weightCap,
   };
   const units = unitsFor(universe, sizes, geometries);
   if (!units.length) throw new Error('nothing to score — the universe and sizes produced no units');

@@ -760,7 +760,8 @@ function swProvenance() {
       : (c('#swSingles') !== !!sz.singles || c('#swDoubles') !== !!sz.doubles || c('#swTriples') !== !!sz.triples) ? 'the singles / doubles / triples ticks no longer match'
         : (c('#swPermGeom') !== (geos.length > 1) || (!c('#swPermGeom') && geos[0] !== v('#swGeom'))) ? 'the chunk shape no longer matches'
           : v('#swLayout') !== (p.windowLayout || '') ? 'the window layout no longer matches'
-            : Number(v('#swNull1')) !== Number(p.nullN) ? 'the null set size no longer matches'
+            : c('#swByMoney') !== ((p.trainOn || 'direction') === 'money') ? 'weigh each week by the money it was worth no longer matches'
+              : Number(v('#swNull1')) !== Number(p.nullN) ? 'the null set size no longer matches'
               : c('#swAllData') !== (p.allLoaded !== false) ? 'the all loaded data tick no longer matches'
                 : (!c('#swAllData') && (v('#swStart') !== (p.startMonth || '') || v('#swEnd') !== (p.endMonth || ''))) ? 'the start / end months no longer match'
                   : null;
@@ -1048,6 +1049,8 @@ function fillStageForm(doc) {
     if (geos.length) setV('#swGeom', geos[0]);
     setC('#swPermGeom', geos.length > 1);
     setV('#swLayout', p.windowLayout || 'reserve61');
+    setC('#swByMoney', (p.trainOn || 'direction') === 'money');
+    setV('#swCap1', p.weightCap ?? 10);
     setV('#swNull1', p.nullN ?? 19);
     setV('#swFee1', p.fee != null ? p.fee * 100 : 0.125);
     setV('#swDesc1', doc.desc || '');
@@ -1284,7 +1287,15 @@ function getSelRow(doc) {
 // from one path. Top-level and called by name, so the word list and the
 // control reader follow them onto both screens.
 function campaignNoteHtml(doc) {
-  return doc ? `<span class="note">campaign: ${esc((doc.params && doc.params.campaign) || '—')} · ${esc(doc.status)} · ${(doc.params && doc.params.windowLayout) || ''}</span>` : '';
+  // AND HOW ITS UNITS WERE TRAINED (3.69.0). A set trained on what each week
+  // was worth is not comparable with one trained on direction alone, so the
+  // set says which it was wherever it is named rather than leaving it to the
+  // release it was made under.
+  const p = (doc && doc.params) || {};
+  const trained = (p.trainOn === 'money')
+    ? `trained by the money each week was worth${Number(p.weightCap) > 0 ? `, one week worth at most ${Number(p.weightCap)}` : ''}`
+    : 'trained by direction only';
+  return doc ? `<span class="note">campaign: ${esc(p.campaign || '—')} · ${esc(doc.status)} · ${esc(p.windowLayout || '')} · ${esc(trained)}</span>` : '';
 }
 // bold is Boards's (owner order, 2026-08-27: the description set on Sweep
 // reads BOLD when its record set is opened); Boards passes nothing and keeps
@@ -2532,6 +2543,15 @@ async function drawSweep() {
       <label class="f">fee % each way<input id="swFee1" type="number" value="0.125" min="0" max="5" step="0.005" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
+      <label class="c" title="off: every week teaches one lesson whatever it was worth. On: a week is weighed by the gap between the best and the worst its decision could have done, in dollars."><input type="checkbox" id="swByMoney"> weigh each week by the money it was worth</label>
+      <label class="f">the most one week may count for<input id="swCap1" type="number" value="10" min="0" step="1" style="width:6rem"></label>
+      <span class="note">Off, a week the price moved 0.6% and a week it moved 14% are the same one lesson, so a
+        forecast right nine times on crumbs and wrong once on a landslide trains as a good one. On, the landslide
+        teaches more. A still week is never weightless - getting it wrong wastes the fees, and that is worth learning.
+        The number beside it is how many ordinary weeks the biggest may count for, so one freak week cannot be the
+        whole training; 0 turns that limit off. This carries to stage 2 by itself, so a committee is trained one way.</span>
+    </div>
+    <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName1" placeholder="${esc(nextNames[1] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc1" style="width:100%"></label>
       <button id="swGo1" class="pri">start stage 1</button>
@@ -2654,6 +2674,9 @@ async function drawSweep() {
       startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
       nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,
       name: $('#swName1').value,
+      // what each training week is worth (3.69.0)
+      trainOn: $('#swByMoney').checked ? 'money' : 'direction',
+      weightCap: $('#swCap1').value === '' ? undefined : Number($('#swCap1').value),
     };
     if (!body.universe.length) delete body.universe;
     const got = await tryPost('api/stage1', body);

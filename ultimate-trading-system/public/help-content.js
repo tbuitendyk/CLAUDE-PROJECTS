@@ -162,6 +162,14 @@ window.HELP = {
         what: 'How the price history is divided up between learning, testing and the held-back look. 70/15/15 keeps one block back to check against. 61/13/13/13 keeps a second block back, sealed, to be looked at once at the very end.',
         more: 'Use the sealed one when you intend to search hard, because the honest end of a search is a block of data the search never touched.',
       },
+      swByMoney: {
+        what: 'Weighs each training week by the money its decision was worth, instead of counting every week the same.',
+        more: 'Off - which is how every record set before this one was trained - a week the price moved 0.6% and a week it moved 14% are one lesson each, because the label only says up, flat or down and throws the size away. A forecast that is right nine times on crumbs and wrong once on a landslide therefore trains as a good forecast and loses money. On, a week is weighed by the gap between the best its decision could have done and the worst: on a week that moved, about twice the move, because the fees are paid whichever way you call it; on a week that barely moved, the round trip, because standing aside earns nothing and trading it the wrong way wastes the fees. So a still week is never weightless, and no floor had to be invented - the arithmetic of the trade sets it. The weights are read off the training weeks only, never the test or the held-back window, and are scaled so the average week counts 1, which leaves the strength of the fit meaning what it meant. This carries to stage 2 with the rest of the settings, so both halves of a committee are trained the same way.',
+      },
+      swCap1: {
+        what: 'How many ordinary weeks the biggest week may count for. 0 turns the limit off.',
+        more: 'One freak week can otherwise outweigh fifty ordinary ones, and a fit to one week is not a fit. Measured on a realistic run of two hundred weeks the biggest counts about four ordinary ones and this limit never bites; it is insurance against a genuine outlier, such as a week the market fell by half. It only does anything when weighing by money is on.',
+      },
       swNull1: {
         what: 'How many shuffled companions make up each unit\'s null set. Each one is the same kept votes with their dates shuffled away, given the same forecast score — no training, ever.',
         more: 'The ordering IS the against-null-set result: beat its own null set, ties broken by lead over null set. The null set always feeds the pick. '
