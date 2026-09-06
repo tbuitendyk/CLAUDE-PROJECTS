@@ -359,6 +359,41 @@ const coinsOfParent = (parent) => {
   const got = coinsOfUnits(list);
   return got.length ? got : [...new Set(((parent || {}).params || {}).universe || [])].sort();
 };
+// THE COINS TO RE-FINGERPRINT ARE THE ONES THE RECORD ALREADY NAMES (3.77.1,
+// owner 2026-09-06: "this message on the s3 sweep is wrong ... the price files
+// changed since S2 #1 was written (all 16 coins listed)").
+//
+// Nothing had changed. A stage 1 set's plan carries its unit list, so
+// coinsOfParent reads all seventeen coins off it and that is what the set is
+// fingerprinted over. A STAGE 2 set's plan carries only a count -- there is no
+// unit list on it -- so coinsOfParent fell through to its trade coins and
+// returned ONE. The stage 3 launch then held a seventeen-coin fingerprint up to
+// a one-coin fingerprint, found sixteen coins in the first and not the second,
+// and reported them as price files that had changed. Every stage 3 launch out
+// of a stage 2 set was refused, on a comparison that was never like for like.
+//
+// The stored record lists exactly which coins were fingerprinted. Re-stamping
+// THOSE answers the only question being asked -- have those files moved --
+// and the two sides cover the same coins by construction, so the comparison
+// can never again be between different sets of them.
+const coinsFingerprinted = (doc) => {
+  const was = ((doc || {}).dataManifest || {}).symbols;
+  const names = was && typeof was === 'object' ? Object.keys(was) : [];
+  return names.length ? names.sort() : coinsOfParent(doc);
+};
+// AND A COVERAGE DIFFERENCE IS NOT A PRICE-FILE CHANGE. Lumping the two
+// together is what let the fault above read as a data problem for a whole
+// afternoon. `changed` is a file that moved; a coin on one side and not the
+// other is the two fingerprints not covering the same ground, which is a fault
+// in the asking, not in the data, and it says so.
+function manifestComplaint(diff, name) {
+  if (diff.changed.length) {
+    return `the price files changed since ${name} was written (${diff.changed.join(', ')})`;
+  }
+  const off = [...diff.onlyA, ...diff.onlyB];
+  return `the price-file record of ${name} covers ${diff.onlyA.length ? 'coins this check did not read' : 'fewer coins than this check read'}`
+    + ` (${off.join(', ')}) — the two were not measured over the same coins, so nothing can be concluded about the data`;
+}
 const unitKeyOf = (u) => `${u.trade}|${u.ctx1 || ''}|${u.ctx2 || ''}|${u.geometry}`;
 
 function writers(id) {
@@ -664,12 +699,11 @@ function unitFillRefusal(doc) {
     return `${doc.name} was written by engine ${doc.engineVersion} and this box runs ${ENGINE_VERSION} — `
       + 'a unit trained here could not be compared with the ones already in it.';
   }
-  const fresh = stampManifest(`unitfill-${Date.now().toString(36)}`, coinsOfUnits(((doc.plan || {}).unitList) || []));
+  const fresh = stampManifest(`unitfill-${Date.now().toString(36)}`, coinsFingerprinted(doc));
   const diff = manifestDiff(doc.dataManifest, fresh);
   if (!diff) return `${doc.name} carries no readable price-file record, so nothing can prove the data is unchanged`;
   if (!diff.same) {
-    const names = [...diff.changed, ...diff.onlyA, ...diff.onlyB];
-    return `the price files changed since ${doc.name} was written (${names.join(', ')}) — a unit trained on today's `
+    return `${manifestComplaint(diff, doc.name)} — a unit trained on today's `
       + 'data would not be comparable with the ones already in it, so this refuses rather than mixing them.';
   }
   return null;
@@ -865,12 +899,11 @@ function parentOrRefuse(fromId, wantStage) {
       + 'votes kept by one version of the arithmetic cannot be priced by another without saying so. The first '
       + 'number is the one that means yesterday\'s records no longer compare, and it has moved.');
   }
-  const fresh = stampManifest(`check-${Date.now().toString(36)}`, coinsOfParent(parent));
+  const fresh = stampManifest(`check-${Date.now().toString(36)}`, coinsFingerprinted(parent));
   const diff = manifestDiff(parent.dataManifest, fresh);
   if (!diff) throw new Error(`${parent.name} carries no readable price-file record, so nothing can prove the data is unchanged`);
   if (!diff.same) {
-    const names = [...diff.changed, ...diff.onlyA, ...diff.onlyB];
-    throw new Error(`the price files changed since ${parent.name} was written (${names.join(', ')}) — a mismatch refuses, it never mixes`);
+    throw new Error(`${manifestComplaint(diff, parent.name)} — a mismatch refuses, it never mixes`);
   }
   return parent;
 }
@@ -5776,7 +5809,7 @@ module.exports = {
   // the shape of its source, which rotted the moment a second share column
   // arrived
   sortValue,
-  sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
+  coinsFingerprinted, manifestComplaint, sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,

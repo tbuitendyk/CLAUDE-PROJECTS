@@ -3759,6 +3759,70 @@ module.exports = {
       'the draw builds its options a second time instead of the one it seeded with, so the two can drift apart');
   },
 
+  // A STAGE 3 LAUNCH WAS REFUSED FOR PRICE FILES THAT NEVER MOVED (3.77.1,
+  // owner 2026-09-06: "this message on the s3 sweep is wrong ... the price
+  // files changed since S2 #1 was written (all 16 coins listed)").
+  //
+  // Nothing had changed. A stage 1 set's plan carries its unit list, so the set
+  // is fingerprinted over every coin in it -- seventeen for the owner's LTCUSDT
+  // triples. A STAGE 2 set's plan carries only a count, so working the coins
+  // out that way fell through to its trade coins and gave ONE. The stage 3
+  // launch held a seventeen-coin fingerprint up to a one-coin fingerprint,
+  // found sixteen coins in the first and not the second, and called them price
+  // files that had changed. Every stage 3 launch out of a stage 2 set was
+  // refused on a comparison that was never like for like.
+  //
+  // Two things are wrong there and both are tested: which coins get read again,
+  // and calling a coverage difference a change in the data.
+  theCoinsReadAgainAreTheOnesTheRecordWasFingerprintedOver() {
+    const seventeen = ['LTCUSDT', 'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT', 'DOGEUSDT', 'LINKUSDT',
+      'DOTUSDT', 'AVAXUSDT', 'TRXUSDT', 'XLMUSDT', 'ETCUSDT', 'ATOMUSDT', 'BCHUSDT', 'UNIUSDT', 'ZECUSDT'];
+    const manifest = { overallDigest: 'abc', symbols: Object.fromEntries(seventeen.map((c) => [c, { digest: 'd', files: 1, bytes: 1 }])) };
+
+    // the owner's own stage 2 set: a plan with a count and no unit list
+    const s2 = { name: 'S2 #1', stage: 2, plan: { units: 600 }, params: { universe: ['LTCUSDT'] }, dataManifest: manifest };
+    assert.deepStrictEqual(stages.coinsFingerprinted(s2).slice().sort(), seventeen.slice().sort(),
+      'the coins read again come from the set\'s trade coins rather than from what it was actually fingerprinted over, '
+      + 'so a seventeen-coin record is held up to a one-coin reading and sixteen coins report as changed');
+
+    // a stage 1 set answers the same, off the same record
+    const s1 = {
+      name: 'S1 #1', stage: 1, dataManifest: manifest,
+      plan: { units: 2, unitList: [{ trade: 'LTCUSDT', ctx1: 'ETHUSDT', ctx2: 'BNBUSDT' }] },
+      params: { universe: ['LTCUSDT'] },
+    };
+    assert.deepStrictEqual(stages.coinsFingerprinted(s1).slice().sort(), seventeen.slice().sort(),
+      'a set with a unit list is read over something other than its own price-file record');
+
+    // and a set with no record at all still answers, off its units
+    const bare = { name: 'S1 #new', stage: 1, plan: { units: 1, unitList: [{ trade: 'AAAUSDT', ctx1: 'BBBUSDT' }] }, params: {} };
+    assert.deepStrictEqual(stages.coinsFingerprinted(bare), ['AAAUSDT', 'BBBUSDT'],
+      'a set carrying no price-file record yet cannot say which coins to read');
+
+    // A COVERAGE DIFFERENCE IS NOT A PRICE-FILE CHANGE, and must not say it is.
+    const moved = stages.manifestComplaint({ same: false, changed: ['LTCUSDT'], onlyA: [], onlyB: [] }, 'S2 #1');
+    assert.ok(/price files changed since S2 #1 was written \(LTCUSDT\)/.test(moved), moved);
+    const uneven = stages.manifestComplaint({ same: false, changed: [], onlyA: ['ETHUSDT', 'BNBUSDT'], onlyB: [] }, 'S2 #1');
+    assert.ok(!/price files changed/.test(uneven),
+      `two fingerprints over different coins are reported as changed data: ${uneven}`);
+    assert.ok(/not measured over the same coins/.test(uneven) && /ETHUSDT, BNBUSDT/.test(uneven), uneven);
+    // a real change is named even when the coverage differs too -- the moved
+    // file is the thing that stops a launch, and it is what gets said
+    const both = stages.manifestComplaint({ same: false, changed: ['XRPUSDT'], onlyA: ['ETHUSDT'], onlyB: [] }, 'S2 #1');
+    assert.ok(/price files changed/.test(both) && /XRPUSDT/.test(both), both);
+
+    // and both readers go through the one pair, so neither can drift
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    for (const who of ['check-', 'unitfill-']) {
+      const call = src.slice(src.indexOf(`stampManifest(\`${who}`));
+      assert.ok(/^stampManifest\(`[a-z-]+\$\{Date\.now\(\)\.toString\(36\)\}`, coinsFingerprinted\(/.test(call),
+        `the ${who.replace('-', '')} check works the coins out its own way instead of reading them off the record, `
+        + 'so it can compare a set against a reading over different coins again');
+    }
+    assert.ok(!/\[\.\.\.diff\.changed, \.\.\.diff\.onlyA, \.\.\.diff\.onlyB\]/.test(src),
+      'a refusal still lumps coins that moved together with coins that were never read, and calls them all changed');
+  },
+
   // A FIELD THE CHECK READS AND THE SERVICE DOES NOT SEND (3.76.5, owner:
   // "still red — the line says trade coins don't match").
   //
