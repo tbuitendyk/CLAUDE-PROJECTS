@@ -4232,6 +4232,28 @@ module.exports = {
     const own = stages.settingsFor({ cell: { entry: 'market', tHours: b.T_OWN }, agreeRule: 'trained' }, [1]);
     assert.strictEqual(own.length, 1);
     assert.ok(own[0].label.startsWith('trained market t own '), `the name must carry the choice: ${own[0].label}`);
+    // AND THE PRICING RESOLVES IT ONCE, WITH EVERY USE READING THAT ONE NUMBER.
+    // Read from the source because s3UnitTask cannot run without a real unit's
+    // chunks -- and without this nothing at all reads the line: deleting the
+    // resolution left the whole suite green while every unit would have died
+    // at the first setting the training setup priced.
+    //
+    // Three uses have to agree or the run is incoherent: the trade is placed at
+    // one hold, the four hold controls it is measured against are worked out at
+    // a second, and the record reports a third.
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    const task = sw.slice(sw.indexOf('async function s3UnitTask(task) {'), sw.indexOf('\n}\n', sw.indexOf('async function s3UnitTask(task) {')));
+    assert.ok(task.includes('const tHours = bracketLib.tHoursOn(st.tHours, geometry);'),
+      'the pricing must resolve t against the unit it is pricing, through the one resolver');
+    assert.ok(task.includes('const cell = { entry: st.entry, gate: st.gate, dMult: st.dMult, tHours, trailMult'),
+      'the trade must be placed at the resolved hold');
+    assert.ok(task.includes("holdControlsFor(holdChunks, hIdx, tHours, stream.weekdaysOnly ? 'wk' : 'all')"),
+      'the four hold controls must be worked out at the SAME hold the trade was placed at, or the row is measured against a different trade');
+    assert.ok(/entry: st\.entry, gate: st\.gate, dMult: st\.dMult \?\? null, tHours,/.test(task),
+      'the record must keep the hold it was actually priced at');
+    const afterResolve = task.slice(task.indexOf('const tHours = bracketLib.tHoursOn') + 'const tHours = bracketLib.tHoursOn(st.tHours, geometry);'.length);
+    assert.ok(!/st\.tHours/.test(afterResolve),
+      'nothing after the resolution may read the unresolved value again');
   },
 
   // AND THE FOLD RESOLVES IT THE SAME WAY. On a daily 3-day unit the chunk's
