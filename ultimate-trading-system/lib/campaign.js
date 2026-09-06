@@ -207,12 +207,62 @@ function campaignContents(name) {
 
   // Stage record sets stamped with this campaign (2026-08-27), counted like
   // everything else — the owner is told what they hold BEFORE being asked.
+  //
+  // AND EVERY SET THAT CAME OUT OF THEM, whether it carries the campaign name
+  // or not (owner order, 2026-09-06: "can't delete stuff. fix that").
+  //
+  // A set another set names as its parent refuses to be deleted, and a set
+  // written under no campaign — a Stage 4 set cut from a stage 3 table, say —
+  // is not stamped with one. So a campaign whose stage 3 set had children
+  // could not be deleted AT ALL: the stage 3 set refused because of them, the
+  // stage 2 set refused because of the stage 3 set, the stage 1 set refused
+  // because of the stage 2 set, and the screen listed three record sets it
+  // was about to remove and then removed none of them. That is what the owner
+  // met.
+  //
+  // The descendants belong to this campaign's work whatever they are stamped
+  // with, so they are collected here, LISTED like everything else, and removed
+  // deepest first. Nothing is deleted that the owner was not shown.
   const stageSets = [];
   try {
-    for (const s of require('./stages').listSets()) {
-      if (((s.params || {}).campaign || null) !== clean) continue;
-      stageSets.push({ id: s.id, name: s.name, stage: s.stage, status: s.status });
+    const all = require('./stages').listSets();
+    const own = all.filter((s) => ((s.params || {}).campaign || null) === clean);
+    const byParent = new Map();
+    for (const s of all) {
+      const pid = (s.parent || {}).id || null;
+      if (!pid) continue;
+      if (!byParent.has(pid)) byParent.set(pid, []);
+      byParent.get(pid).push(s);
     }
+    const seen = new Set();
+    // INHERITED IS WHAT THE SET IS, NOT HOW THE WALK REACHED IT. A stage 2 set
+    // stamped with this campaign is reached as a child of its stage 1 set, and
+    // marking it from the traversal told the owner it "carries no campaign
+    // name of its own" -- which is false, and would have read as the delete
+    // reaching outside the campaign when it was not.
+    const walk = (s) => {
+      if (seen.has(s.id)) return;
+      seen.add(s.id);
+      stageSets.push({
+        id: s.id, name: s.name, stage: s.stage, status: s.status,
+        inherited: ((s.params || {}).campaign || null) !== clean,
+      });
+      for (const kid of (byParent.get(s.id) || [])) {
+        // A CHILD STAMPED WITH ANOTHER CAMPAIGN IS NOT THIS CAMPAIGN'S TO
+        // TAKE. It belongs to somebody else's work, and deleting it here
+        // would reach outside what the owner asked for. The walk stops at it
+        // — the parent then refuses, is left behind, and the delete NAMES the
+        // child that protected it, which is what it has always done.
+        //
+        // A child carrying NO campaign is the case this walk exists for: a
+        // Stage 4 set cut from this chain is stamped with nothing, and it has
+        // to go before its parent can.
+        const kc = (kid.params || {}).campaign || null;
+        if (kc !== null && kc !== clean) continue;
+        walk(kid);
+      }
+    };
+    for (const s of own) walk(s);
   } catch (_) { /* stage modules absent in some test contexts */ }
 
   const active = activeStates();
@@ -303,12 +353,13 @@ function deleteCampaign(name) {
     removed.runs += 1;
   }
 
-  // Stage record sets go children-first — stage 3, then 2, then 1 — because a
-  // set another set names as its parent refuses deletion (lib/stages.js), and
-  // inside one campaign the chain runs 1 → 2 → 3. A refusal that still fires
-  // (a child in ANOTHER campaign naming this set as its parent) leaves that
-  // set behind and SAYS SO — a delete that half-lies about what went is the
-  // fault class this file keeps naming.
+  // Stage record sets go DEEPEST FIRST, because a set another set names as its
+  // parent refuses deletion (lib/stages.js). Sorting on the stage number does
+  // that for a 1 → 2 → 3 chain and used to be the whole rule; it is not enough
+  // once the list carries the sets that came OUT of those, which sit at stage
+  // 4 and above and have to go before their parents. A refusal that still
+  // fires leaves that set behind and SAYS SO — a delete that half-lies about
+  // what went is the fault class this file keeps naming.
   const leftBehind = [];
   for (const s of [...found.stageSets].sort((a, b) => b.stage - a.stage)) {
     try {

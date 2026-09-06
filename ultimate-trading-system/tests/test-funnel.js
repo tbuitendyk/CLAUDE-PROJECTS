@@ -2416,14 +2416,29 @@ module.exports = {
     assert.ok(wire.indexOf('fWireUnit(st);') < wire.indexOf('if (!cd) return;')
       && wire.indexOf('fWireCutPick(st);') < wire.indexOf('if (!cd) return;'),
       'the two ways out of a set that will not open are wired after the guard that returns early');
-    // EXACTLY TWO WRITES, AND BOTH ARE NAMED. The rename, and (3.68.0) working
-    // out the numbers this set's rule reads. Neither changes the rule or the
-    // settings the set wrote down; a third would be a rule-changing control on
-    // a screen that records a decision already made.
+    // EVERY WRITE ON THIS SCREEN IS NAMED, AND THERE ARE THREE CONTROLS. The
+    // rename; (3.68.0) working out the numbers this set's rule reads; and
+    // (3.74.0) deleting the set outright. None of them changes the rule or the
+    // settings the set wrote down, which is what "display only" has always
+    // meant here — a fourth that edited either would be the fault this guard
+    // exists for.
+    //
+    // The delete earned its place the hard way: a stage 4 set had no delete
+    // control anywhere, and a record set another set was cut from refuses to
+    // be deleted while that set is still here — so one stage 4 set left behind
+    // made its stage 3, stage 2 and stage 1 parents undeletable too (owner,
+    // 2026-09-06: "s1/2/3 wont delete cause 4 exists"). It counts TWO writes
+    // because it asks the service what it is about to remove before it removes
+    // it, which is the same two steps the stage 1, 2 and 3 deletes take.
     const posts = wire.match(/tryPost\(/g) || [];
-    assert.equal(posts.length, 2, `the Stage 4 view makes ${posts.length} writes; it may make exactly two, the rename and working out its numbers`);
+    assert.equal(posts.length, 4, `the Stage 4 view makes ${posts.length} writes; it may make exactly four — the rename, working out its numbers, and the delete's preview and confirm`);
     assert.ok(/api\/stageset\/\$\{encodeURIComponent\(cd\.set\.id\)\}\/name/.test(wire), 'the rename is not one of them');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(cd\.set\.id\)\}\/rebuild/.test(wire), 'working out this set\'s own numbers is not one of them');
+    assert.strictEqual((wire.match(/api\/stageset\/\$\{encodeURIComponent\(id\)\}\/delete/g) || []).length, 2,
+      'the delete must be the preview and the confirm, and nothing else');
+    // and it still changes NOTHING about the rule or the rows
+    assert.ok(!/\/rows|\/step|userRule|ruleSentence/.test(wire.slice(wire.indexOf("const dl = $('#fCutDelete');"), wire.indexOf('if (!cd) return;'))),
+      'the delete reaches for the rule or the rows — it may only remove the set');
     assert.ok(wire.includes('api/stageset/${encodeURIComponent(cd.set.id)}/name'), 'the rename does not use the record sets\' own name door');
     // and the money warning is on it: this screen shows the one look
     assert.ok(/avg held-back \$/.test(table), 'the held-back money is not on the table the next sections read');

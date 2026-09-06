@@ -554,6 +554,10 @@ window.HELP = {
         what: 'The name of the Stage 4 record set showing. Type a new one and press rename.',
         more: 'Eighty characters at most, and no two record sets may share a name. The name is what every list and heading shows, so changing it here changes it everywhere.',
       },
+      fCutDelete: {
+        what: 'Permanently deletes the Stage 4 record set chosen beside it, and nothing else. It asks for the record set id typed back first.',
+        more: 'It is here because this is the only screen a Stage 4 record set appears on, and because without it whole chains could not be cleared: a record set that another set was cut from refuses to be deleted while that set is still here, so one Stage 4 set left behind made its stage 3 parent undeletable, and the stage 2 and stage 1 sets above that with it. Deleting the Stage 4 sets first is what clears the way. The screen drops back to new rule afterwards, because the set it was showing is gone.',
+      },
       fCutRename: {
         what: 'Saves the name typed beside it.',
         more: 'It is the only control on this screen that changes anything. Everything else on it is the record of a decision already made, and a record you can edit is not a record.',

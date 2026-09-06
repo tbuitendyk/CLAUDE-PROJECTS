@@ -1220,11 +1220,18 @@ function wireCampaignPanel(redraw) {
     }
 
     const c = found.counts;
+    // WHAT CAME OUT OF THIS CAMPAIGN'S SETS IS COUNTED SEPARATELY (2026-09-06).
+    // A record set cut from one of these carries no campaign name of its own,
+    // and it has to go first or its parent refuses -- so it IS deleted, and
+    // showing it folded into one number would be deleting something the owner
+    // was never shown.
+    const inherited = (found.stageSets || []).filter((x) => x.inherited);
     const lines = [
       ['saved runs', c.runs],
       ['greenlights', c.greenlights],
       ['setups (none deployed)', c.setups],
-      ['record sets', c.stageSets],
+      ['record sets', c.stageSets - inherited.length],
+      ['record sets that came out of them', inherited.length],
       ['saved model files', c.modelFiles],
       ['tuning files', c.tuningFiles],
     ].filter(([, n]) => n > 0);
@@ -1233,6 +1240,9 @@ function wireCampaignPanel(redraw) {
       ${lines.length ? `<ul style="margin:.3rem 0 0 1.1rem">${lines.map(([what, n]) =>
     `<li><b>${n}</b> ${esc(what)}</li>`).join('')}</ul>`
     : '<div style="margin-top:.3rem">nothing but the name — this campaign holds no runs, greenlights or setups.</div>'}
+      ${inherited.length ? `<div style="margin-top:.4rem">The ${inherited.length} that came out of them carry no campaign name of their own, and
+        they are named here because they go too — a set another set was cut from cannot be removed while it is still there:
+        <b>${inherited.map((x) => esc(x.name || x.id)).join(' · ')}</b></div>` : ''}
       <div class="muted" style="margin-top:.4rem">This cannot be undone.</div></div>`;
 
     // THE LIST HAS TO BE ON SCREEN BEFORE THE BOX APPEARS (owner, 2026-08-22).
@@ -5288,9 +5298,25 @@ function fCutPickBox(d, st) {
 // not". Only the section BELOW this one changes with what is chosen, so the
 // screen never rearranges itself under the owner.
 function fTitle(d, st, name) {
+  // A STAGE 4 RECORD SET CAN BE DELETED FROM THE SCREEN IT LIVES ON (owner
+  // order, 2026-09-06: "there's no way to delete s4 data" and "s1/2/3 wont
+  // delete cause 4 exists").
+  //
+  // The engine has always been able to delete one -- the endpoint takes any
+  // record set -- and Boards only ever drew the control for stages 1, 2 and 3,
+  // because those are the sections it has. A stage 4 set is drawn here and
+  // nowhere else, so here is the only place the control can go, and without it
+  // the owner was walled in: a set another set was cut from refuses to be
+  // deleted while its children exist, so one undeletable stage 4 set made its
+  // stage 3, stage 2 and stage 1 parents undeletable too, all the way up the
+  // chain. That is not a stage 4 problem, it is the whole chain (RULE FIVE:
+  // what the system can do, the interface exposes).
+  const chosen = st.cut && st.cut !== F_NEW ? st.cut : null;
   return `<div class="row" style="align-items:flex-end">
       ${fUnitPicker(d)}
       ${fCutPickBox(d, st)}
+      <button id="fCutDelete" class="danger" ${chosen ? '' : 'disabled'}
+        title="permanently deletes the Stage 4 record set chosen beside this, and nothing else. Its parent stage 3 set, and the stage 2 and stage 1 sets above that, cannot be deleted while a set cut from them is still here — so this is what clears the way.">Delete Stage 4 record set…</button>
       <span class="note">${(d.cuts || []).length} Stage 4 record set(s) have been cut from this coin and shape.
         Choose <b>new rule</b> to walk the steps again and cut another.</span>
     </div>
@@ -5588,6 +5614,30 @@ function fWireUnit(st) {
 function fWireCut(d, st, cd) {
   fWireUnit(st);
   fWireCutPick(st, d);
+  // WIRED BEFORE THE EARLY RETURN, with the two pickers. A set that will not
+  // OPEN is exactly the one most likely to want deleting, and a control drawn
+  // above a panel that never rendered has to be wired above it too.
+  const dl = $('#fCutDelete');
+  if (dl && st.cut && st.cut !== F_NEW) {
+    dl.onclick = async () => {
+      const id = st.cut;
+      const look = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, {});
+      if (!look) return;
+      if (!look.preview) { alert('Nothing was deleted — the service answered strangely.'); return; }
+      const typed = prompt(`Permanently delete ${look.name} (stage ${look.stage}, ${look.status})?\n\n`
+        + `${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
+        + `${look.desc ? `\n"${look.desc}"` : ''}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
+      if (typed === null) return;
+      if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return; }
+      const done = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, { confirm: typed.trim() });
+      if (done && done.deleted) {
+        alert(`Deleted ${done.name} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
+        // the same two lines the picker uses when it is moved to new rule:
+        // the set that was chosen is gone, so the screen cannot stay in it
+        st.cut = F_NEW; st.setRebuiltSaid = null; fSave(); drawFunnel();
+      }
+    };
+  }
   // the panels below exist only when the set opened; the two above are the way
   // out of one that did not, so they are wired first and unconditionally
   if (!cd) return;

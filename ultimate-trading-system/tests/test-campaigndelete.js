@@ -236,4 +236,60 @@ module.exports = {
     assert.ok(clears < writes,
       'the delete summary writes the panel before clearing the open-tree record — one press of View tree would then wipe the warning');
   },
+
+  // A CAMPAIGN WHOSE SETS HAVE CHILDREN CAN ACTUALLY BE DELETED (owner order,
+  // 2026-09-06: "can't delete stuff. fix that", then "s1/2/3 wont delete cause
+  // 4 exists").
+  //
+  // A record set another set was cut from refuses to be deleted while that set
+  // is still there. A Stage 4 set carries NO campaign name of its own, so the
+  // campaign delete never touched it -- and then the stage 3 set refused
+  // because of it, the stage 2 set refused because of the stage 3 set, and the
+  // stage 1 set refused because of the stage 2 set. The screen listed three
+  // record sets it was about to remove and removed NONE of them.
+  //
+  // The descendants are collected, LISTED, and removed deepest first.
+  async aCampaignTakesTheSetsThatCameOutOfItsOwn() {
+    const campaign = require('../lib/campaign');
+    const SETS_DIR = path.join(ROOT, 'data', 'stagesets');
+    fs.mkdirSync(SETS_DIR, { recursive: true });
+    const made = [];
+    const put = (id, over) => {
+      const doc = {
+        id, stage: over.stage, seq: 1, name: over.name, status: 'done',
+        createdAt: new Date().toISOString(), params: { campaign: over.campaign ?? null },
+        ...(over.parent ? { parent: { id: over.parent } } : {}),
+      };
+      fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify(doc));
+      made.push(id);
+    };
+    const CAMP = 'ZZZ delete-chain test';
+    try {
+      put('s1-zzzchain', { stage: 1, name: 'ZS1', campaign: CAMP });
+      put('s2-zzzchain', { stage: 2, name: 'ZS2', campaign: CAMP, parent: 's1-zzzchain' });
+      put('s3-zzzchain', { stage: 3, name: 'ZS3', campaign: CAMP, parent: 's2-zzzchain' });
+      // cut from the stage 3 set, and carrying NO campaign -- the shape that broke it
+      put('s4-zzzchain-a', { stage: 4, name: 'ZS4a', campaign: null, parent: 's3-zzzchain' });
+      put('s4-zzzchain-b', { stage: 4, name: 'ZS4b', campaign: null, parent: 's3-zzzchain' });
+
+      const found = campaign.campaignContents(CAMP);
+      const ids = found.stageSets.map((x) => x.id).sort();
+      assert.deepStrictEqual(ids, ['s1-zzzchain', 's2-zzzchain', 's3-zzzchain', 's4-zzzchain-a', 's4-zzzchain-b'],
+        'the sets cut from this campaign\'s own must be listed too, or they are deleted unseen or not at all');
+      assert.deepStrictEqual(found.stageSets.filter((x) => x.inherited).map((x) => x.id).sort(),
+        ['s4-zzzchain-a', 's4-zzzchain-b'],
+        'and they must be MARKED as inherited, so the screen can name them separately before anything goes');
+      assert.strictEqual(found.counts.stageSets, 5, 'the count is what will actually be removed');
+
+      const out = campaign.deleteCampaign(CAMP);
+      assert.deepStrictEqual(out.leftBehind || [], [],
+        `nothing may be left behind: ${(out.leftBehind || []).join(' | ')}`);
+      assert.strictEqual(out.removed.stageSets, 5, 'all five go');
+      for (const id of made) {
+        assert.strictEqual(fs.existsSync(path.join(SETS_DIR, `${id}.json`)), false, `${id} is still on disk`);
+      }
+    } finally {
+      for (const id of made) { try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ } }
+    }
+  },
 };

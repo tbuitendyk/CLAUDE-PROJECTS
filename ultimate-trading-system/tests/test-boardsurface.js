@@ -150,6 +150,37 @@ module.exports = {
       'wired only on a stage 1 set that is actually short');
   },
 
+
+  // A STAGE 4 RECORD SET CAN BE DELETED (owner order, 2026-09-06: "there's no
+  // way to delete s4 data" and "s1/2/3 wont delete cause 4 exists").
+  //
+  // Boards drew Delete record set… for stages 1, 2 and 3 because those are the
+  // sections it has. A stage 4 set is drawn on the Funnel and nowhere else, so
+  // it had no delete anywhere -- and a set another set was cut from refuses to
+  // be deleted while that set is still there, so ONE undeletable stage 4 set
+  // made its stage 3, stage 2 and stage 1 parents undeletable too. The whole
+  // chain was walled in behind a missing button.
+  theStageFourRecordSetCanBeDeletedFromTheScreenItLivesOn() {
+    assert.ok(UI.includes('<button id="fCutDelete" class="danger"'), 'the Stage 4 heading carries a delete');
+    const at = UI.indexOf('function fWireCut(d, st, cd) {');
+    assert.ok(at > 0, 'and it is wired');
+    const fn = UI.slice(at, UI.indexOf('\n}\n', at));
+    const wire = fn.indexOf("const dl = $('#fCutDelete');");
+    const bail = fn.indexOf('if (!cd) return;');
+    assert.ok(wire > 0 && bail > 0 && wire < bail,
+      'it must be wired BEFORE the early return: a set that will not open is the one most likely to want deleting');
+    // it asks first, and it takes the id typed back -- the same two steps the
+    // stage 1, 2 and 3 deletes take, because this removes just as much
+    assert.ok(fn.includes("await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, {})"), 'it previews first');
+    assert.ok(fn.includes("if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return; }"),
+      'and refuses anything but the record set id typed back');
+    // ...and it only ever deletes the set that is CHOSEN, never the walk
+    assert.ok(fn.includes('if (dl && st.cut && st.cut !== F_NEW)'),
+      'nothing is offered to delete while the screen is on new rule — there is no set there to delete');
+    assert.ok(UI.includes('<button id="fCutDelete" class="danger" ${chosen ? \'\' : \'disabled\'}'),
+      'and the control is dead on screen rather than silently doing nothing');
+  },
+
 };
 
 // EVERY CONTROL CARRIES ITS HELP AS HOVER TEXT (owner order, 2026-08-26:
