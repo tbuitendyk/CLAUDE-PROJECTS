@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **6f71419f135c — what the box is serving**, not from the working tree.
+Generated from **6ab69f7def5b — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -293,7 +293,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (132)
+## What the controls are called (134)
 
 - `— nothing came out of`
 - `— pick a stage`
@@ -383,6 +383,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `prev`
 - `Pricing them is`
 - `pricings over`
+- `put the missing units back`
 - `quorum by`
 - `record set`
 - `records`
@@ -404,6 +405,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `Stage 2`
 - `stage 2 order`
 - `Stage 3`
+- `still missing`
 - `stop after this unit`
 - `t`
 - `test $`
