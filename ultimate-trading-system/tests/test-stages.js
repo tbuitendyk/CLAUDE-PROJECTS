@@ -486,7 +486,7 @@ module.exports = {
       'a set does not say how its units were trained, so two sets that cannot be compared look alike');
     assert.ok(ui.includes("setC('#swByMoney', (p.trainOn || 'direction') === 'money');"),
       'choosing a set does not show how it was trained');
-    assert.ok(ui.includes("'weigh each trade by the money it was worth no longer matches'"),
+    assert.ok(ui.includes("['weigh each trade by the money it was worth', c('#swByMoney') ? 'on' : 'off',"),
       'a form that disagrees with the set stage 2 reads from says nothing');
   },
 
@@ -3754,6 +3754,103 @@ module.exports = {
       'the draw builds its options a second time instead of the one it seeded with, so the two can drift apart');
   },
 
+  // THE STAGE HEADINGS, RUN RATHER THAN GREPPED (3.76.4, owner: "STILL RED").
+  //
+  // The tests around these colours all scanned the source for spellings, and a
+  // spelling test cannot answer the only question that matters: given a record
+  // set that WAS launched from these boxes, what colour comes out? So this one
+  // lifts swProvenance out of the page, gives it a stub screen and the exact
+  // params the owner's own S1 #1 recorded, and reads the answer.
+  //
+  // It also reads the line the screen now prints under a red heading, because
+  // a colour with no way to act on it cost three sittings: the reason lived in
+  // the heading's hover and nowhere else.
+  theStageHeadingsAnswerBlackGreenGreenForASetLaunchedFromTheseBoxes() {
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const at = UI.indexOf('function swProvenance() {');
+    assert.ok(at > 0, 'swProvenance is gone');
+    const body = UI.slice(at, UI.indexOf('\n}\n', at) + 3);
+    const DEFAULTS = require('../lib/batch').DEFAULT_PAIRS;
+
+    // the owner's own set, read off the box 2026-09-06
+    const S1 = {
+      id: 's1-a', name: 'S1 #1',
+      params: {
+        universe: ['LTCUSDT'], compare: DEFAULTS.slice(),
+        sizes: { singles: false, doubles: false, triples: true },
+        geometries: ['weekly-8d', 'daily-1d', 'daily-2d', 'daily-3d', 'daily-4d'],
+        windowLayout: 'reserve61', trainOn: 'money', weightCap: 5, nullN: 20, fee: 0.00125,
+        allLoaded: true, startMonth: '2019-11', endMonth: '2026-09',
+      },
+    };
+    const S2 = { id: 's2-a', name: 'S2 #1', parent: { id: 's1-a', name: 'S1 #1', carry: 600, of: 600 } };
+    const run = (over = {}, ticksOver = {}) => {
+      const BOX = {
+        '#swUni': 'LTCUSDT', '#swCompare': '', '#swLayout': 'reserve61', '#swGeom': 'daily-4d',
+        '#swNull1': '20', '#swStart': '2019-11', '#swEnd': '2026-09',
+        '#swFrom2': 's1-a', '#swFrom3': 's2-a', '#swCarry': '600', ...over,
+      };
+      const TICK = {
+        '#swSingles': false, '#swDoubles': false, '#swTriples': true,
+        '#swPermGeom': true, '#swByMoney': true, '#swAllData': true, ...ticksOver,
+      };
+      const el = {};
+      // eslint-disable-next-line no-unused-vars
+      const $ = (sel) => {
+        if (/^#sw(H|Why)/.test(sel)) { el[sel] = el[sel] || { style: { color: 'UNSET' }, title: '', innerHTML: '' }; return el[sel]; }
+        if (sel in TICK) return { checked: TICK[sel], value: '' };
+        return { value: BOX[sel] === undefined ? '' : BOX[sel] };
+      };
+      // eslint-disable-next-line no-unused-vars
+      const esc = (x) => String(x);
+      // eslint-disable-next-line no-unused-vars
+      const VOCAB = { defaultPairs: DEFAULTS.map((x) => ({ value: x, label: x })) };
+      // eslint-disable-next-line no-unused-vars
+      const swSetsCache = [S1, S2];
+      // eslint-disable-next-line no-eval
+      eval(`${body}\nswProvenance();`);
+      const colour = (k) => {
+        const c = (el[k] || { style: {} }).style.color;
+        return c === '' ? 'black' : c === 'var(--pos)' ? 'green' : c === 'var(--neg)' ? 'red' : c;
+      };
+      return {
+        h1: colour('#swH1'), h2: colour('#swH2'), h3: colour('#swH3'),
+        why2: (el['#swWhy2'] || {}).innerHTML || '', why3: (el['#swWhy3'] || {}).innerHTML || '',
+      };
+    };
+
+    // THE WHOLE POINT: boxes as the run was launched, and nothing is red.
+    const asLaunched = run();
+    assert.deepStrictEqual([asLaunched.h1, asLaunched.h2, asLaunched.h3], ['black', 'green', 'green'],
+      `a chain whose boxes still hold what launched it must read black, green, green — got ${JSON.stringify(asLaunched)}`);
+    assert.strictEqual(asLaunched.why2, '', 'a green section still prints a reason');
+    assert.strictEqual(asLaunched.why3, '', 'a green section still prints a reason');
+
+    // AND EVERY WAY OF BREAKING IT NAMES THE CONTROL AND BOTH VALUES.
+    const cases = [
+      ['null set size', { '#swNull1': '19' }, {}, 'h2', 'why2', ['19', '20']],
+      ['chunk shape', {}, { '#swPermGeom': false }, 'h2', 'why2', ['daily-4d', 'every chunk shape']],
+      ['compare coins', { '#swCompare': 'BTCUSDT' }, {}, 'h2', 'why2', ['BTCUSDT', 'LTCUSDT']],
+      ['weigh each trade by the money it was worth', {}, { '#swByMoney': false }, 'h2', 'why2', ['off', 'on']],
+      ['trade coins', { '#swUni': 'BTCUSDT' }, {}, 'h2', 'why2', ['BTCUSDT', 'LTCUSDT']],
+      ['carry forward', { '#swCarry': '100' }, {}, 'h3', 'why3', ['100', '600 of 600']],
+    ];
+    for (const [what, box, tick, head, line, values] of cases) {
+      const r = run(box, tick);
+      assert.strictEqual(r[head], 'red', `${what} disagrees with the record set and the heading is ${r[head]}`);
+      const said = r[line].replace(/<[^>]+>/g, '');
+      assert.ok(said.includes(what), `the screen does not name the control that disagrees: ${said}`);
+      for (const val of values) {
+        assert.ok(said.includes(val), `the screen does not say ${val}, so there is no way to act on it: ${said}`);
+      }
+    }
+
+    // and an empty box claims nothing, at either stage
+    const none = run({ '#swFrom2': '', '#swFrom3': '' });
+    assert.deepStrictEqual([none.h1, none.h2, none.h3], ['black', 'black', 'black'],
+      'a section naming no record set still claims a colour for a comparison it never made');
+  },
+
   // A BOX IS COMPARED AS THE LAUNCH RESOLVED IT (3.76.3, owner: "you've got
   // state 2 red that matches exactly with stage 1. that's dumb. it should be
   // green" / "if nothing's loaded how can nothing match or not match the
@@ -3782,15 +3879,14 @@ module.exports = {
       'the launch no longer resolves the compare coins this way — the screen below copies this rule and has to move with it');
     assert.ok(/const wantCmp = \(\(c\('#swDoubles'\) \|\| c\('#swTriples'\)\) \? \(boxCmp\.length \? boxCmp : defaults\) : \[\]\)/.test(fn),
       'the compare coins are compared as typed, so a blank box reads as disagreeing with the seventeen default pairs the run actually read — Stage 2 is red for ever');
-    assert.ok(/wantCmp !== setCmp \? 'the compare coins no longer match'/.test(fn),
+    assert.ok(/\['compare coins', wantCmp \? wantCmp\.split/.test(fn),
       'the resolved compare coins are worked out and then not the thing compared');
     assert.ok(!/boxCmp !== setCmp/.test(fn), 'the raw box is still what decides');
 
     // THE MONTHS, the same fault in the same shape
     assert.ok(LIB.includes("startMonth: params.startMonth || '2018-01',") && LIB.includes("endMonth: params.endMonth || '2026-06',"),
       'the launch no longer falls back to those months — the screen below copies them and has to move with it');
-    assert.ok(/\(v\('#swStart'\) \|\| '2018-01'\) !== \(p\.startMonth \|\| ''\)/.test(fn)
-      && /\(v\('#swEnd'\) \|\| '2026-06'\) !== \(p\.endMonth \|\| ''\)/.test(fn),
+    assert.ok(/months\(c\('#swAllData'\), v\('#swStart'\) \|\| '2018-01', v\('#swEnd'\) \|\| '2026-06'\)/.test(fn),
       'a blank month box reads as disagreeing with the month the run actually used');
 
     // AND THE THIRD COLOUR. A heading with nothing to check claims nothing.

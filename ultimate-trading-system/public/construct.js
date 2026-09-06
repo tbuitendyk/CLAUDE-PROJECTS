@@ -817,6 +817,21 @@ function swProvenance() {
       ? 'green: this section reads from what the section above it shows'
       : `red: ${why}. Set the boxes back and this goes green again.`;
   };
+  // AND A RED HEADING SAYS WHY ON THE SCREEN, NOT IN A HOVER (3.76.4, owner:
+  // "STILL RED"). The reason was written into the heading's hover text and
+  // nowhere else, so a red heading was a colour with no way to act on it: the
+  // owner could see that something disagreed and not which box, or what it
+  // disagreed with. Three sittings were spent on that. The line names the
+  // control, what the box holds now, and what the record set was actually run
+  // with -- which is everything needed to set it back.
+  const sayWhy = (sel, m) => {
+    const p = $(sel);
+    if (!p) return;
+    if (!m) { p.innerHTML = ''; p.style.display = 'none'; return; }
+    p.style.display = '';
+    p.innerHTML = `<b>${esc(m.what)}</b> — the box holds ${esc(m.box)}, and ${esc(m.setName)} was run with ${esc(m.set)}. `
+      + 'Set the box back and this section goes green again.';
+  };
   const v = (sel) => { const e = $(sel); return e ? e.value : ''; };
   const c = (sel) => { const e = $(sel); return !!(e && e.checked); };
 
@@ -828,6 +843,8 @@ function swProvenance() {
 
   // stage 2: the stage 1 record set its box names, held up to the stage 1 section
   const s1row = rowOf(v('#swFrom2'));
+  sayWhy('#swWhy2', null);
+  sayWhy('#swWhy3', null);
   if (!v('#swFrom2')) paint('#swH2', null, 'this section names no stage 1 record set yet, so there is nothing for it to agree or disagree with');
   else if (!s1row) paint('#swH2', false, 'the stage 1 record set named here is not on this box any more');
   else {
@@ -862,18 +879,29 @@ function swProvenance() {
     const setCmp = (p.compare || []).slice().sort().join(',');
     const sz = p.sizes || {};
     const geos = p.geometries || [];
-    const mismatch = wantUni !== setUni ? 'the trade coins no longer match'
-      : wantCmp !== setCmp ? 'the compare coins no longer match'
-      : (c('#swSingles') !== !!sz.singles || c('#swDoubles') !== !!sz.doubles || c('#swTriples') !== !!sz.triples) ? 'the singles / doubles / triples ticks no longer match'
-        : (c('#swPermGeom') !== (geos.length > 1) || (!c('#swPermGeom') && geos[0] !== v('#swGeom'))) ? 'the chunk shape no longer matches'
-          : v('#swLayout') !== (p.windowLayout || '') ? 'the window layout no longer matches'
-            : c('#swByMoney') !== ((p.trainOn || 'direction') === 'money') ? 'weigh each trade by the money it was worth no longer matches'
-              : Number(v('#swNull1')) !== Number(p.nullN) ? 'the null set size no longer matches'
-              : c('#swAllData') !== (p.allLoaded !== false) ? 'the all loaded data tick no longer matches'
-                : (!c('#swAllData') && ((v('#swStart') || '2018-01') !== (p.startMonth || '') || (v('#swEnd') || '2026-06') !== (p.endMonth || ''))) ? 'the start / end months no longer match'
-                  : null;
-    paint('#swH2', !mismatch,
-      `${mismatch} — the stage 1 section above no longer shows the provenance of ${s1row.name}, the record set this box reads from`);
+    // ONE ROW PER THING COMPARED, each carrying what the box holds and what
+    // the run recorded, so the screen can say both. A bare "no longer match"
+    // is a colour with no way to act on it.
+    const ticks = (a, b, cc) => `${a ? 'singles' : ''}${b ? ' doubles' : ''}${cc ? ' triples' : ''}`.trim() || 'none ticked';
+    const shape = (perm, one) => (perm ? 'every chunk shape' : one);
+    const months = (all, from, to) => (all ? 'all loaded data' : `${from} to ${to}`);
+    const CHECKS = [
+      ['trade coins', wantUni.split(',').join(', '), setUni.split(',').join(', ')],
+      ['compare coins', wantCmp ? wantCmp.split(',').join(', ') : 'none', setCmp ? setCmp.split(',').join(', ') : 'none'],
+      ['singles / doubles / triples', ticks(c('#swSingles'), c('#swDoubles'), c('#swTriples')), ticks(!!sz.singles, !!sz.doubles, !!sz.triples)],
+      ['chunk shape', shape(c('#swPermGeom'), v('#swGeom')), shape(geos.length > 1, geos[0] || 'unrecorded')],
+      ['window layout', v('#swLayout'), p.windowLayout || 'unrecorded'],
+      ['weigh each trade by the money it was worth', c('#swByMoney') ? 'on' : 'off', (p.trainOn || 'direction') === 'money' ? 'on' : 'off'],
+      ['null set size', String(Number(v('#swNull1'))), String(Number(p.nullN))],
+      ['all loaded data', c('#swAllData') ? 'on' : 'off', p.allLoaded !== false ? 'on' : 'off'],
+      ['start / end months', months(c('#swAllData'), v('#swStart') || '2018-01', v('#swEnd') || '2026-06'),
+        months(p.allLoaded !== false, p.startMonth || '', p.endMonth || '')],
+    ];
+    const off = CHECKS.find(([, box, set]) => box !== set);
+    const mismatch = off ? { what: off[0], box: off[1], set: off[2], setName: s1row.name } : null;
+    paint('#swH2', !mismatch, mismatch
+      && `${mismatch.what} no longer matches — the stage 1 section above no longer shows the provenance of ${s1row.name}, the record set this box reads from`);
+    sayWhy('#swWhy2', mismatch);
   }
 
   // stage 3: the stage 2 record set its box names, held up to the stage 2 section
@@ -886,11 +914,15 @@ function swProvenance() {
     const carryMatch = carryBox === 0
       ? (par.carry != null && par.of != null ? par.carry === par.of : true)
       : carryBox === par.carry;
+    const named = rowOf(v('#swFrom2'));
     const mismatch = v('#swFrom2') !== (par.id || '')
-      ? `the stage 1 record set the stage 2 box names is not the one ${s2row.name} was carried out of (${par.name || par.id || 'unrecorded'})`
-      : (!carryMatch ? `carry forward no longer matches what ${s2row.name} carried` : null);
-    paint('#swH3', !mismatch,
-      `${mismatch} — ${s2row.name}, the record set this box reads from, does not come out of the stage 2 section above`);
+      ? { what: 'from stage 1 record set', box: (named && named.name) || 'nothing', set: par.name || par.id || 'unrecorded', setName: s2row.name }
+      : (!carryMatch
+        ? { what: 'carry forward', box: String(carryBox), set: `${par.carry} of ${par.of}`, setName: s2row.name }
+        : null);
+    paint('#swH3', !mismatch, mismatch
+      && `${mismatch.what} no longer matches — ${s2row.name}, the record set this box reads from, does not come out of the stage 2 section above`);
+    sayWhy('#swWhy3', mismatch);
   }
 }
 
@@ -2703,6 +2735,7 @@ async function drawSweep() {
 
   <div class="panel">
     <h3 id="swH2" style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
+    <p class="note warn" id="swWhy2" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
       <label class="f" title="the carry takes the top of the parent's table in the sort saved on it — pick the sort on Boards. The fixed rule (beat its own null set, ties by lead over null set) when none is saved.">carry forward (0 = all)<input id="swCarry" type="number" value="0" min="0" style="width:5.5rem"></label>
@@ -2720,6 +2753,7 @@ async function drawSweep() {
 
   <div class="panel">
     <h3 id="swH3" style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
+    <p class="note warn" id="swWhy3" style="margin:.2rem 0 .5rem;display:none"></p>
     <div class="row" style="align-items:flex-end">
       <label class="f">from stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
       <label class="f" title="which of the parent's records get priced. N records: the carry forward box beside this decides — 0 prices every record, N prices the top N of the parent's table in the sort saved on it. Selected records: exactly the records ticked on the parent's stage 2 table on Boards, however many that is.">records to price<select id="swPick3">${vocabOptions('stage3Pick', 'count')}</select></label>

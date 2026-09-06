@@ -513,7 +513,7 @@ module.exports = {
     assert.ok(SWEEP.includes("setV('#swCompare', (p.compare || []).join(','));"), 'a remembered set must restore the compare coins');
     // and the provenance line watches both, or a changed compare box reads as
     // a chain that still matches
-    assert.ok(SWEEP.includes("'the trade coins no longer match'") && SWEEP.includes("'the compare coins no longer match'"),
+    assert.ok(SWEEP.includes("['trade coins', wantUni") && SWEEP.includes("['compare coins', wantCmp"),
       'the provenance check must watch both boxes and name them separately');
     // NOTHING READS IT UNDER SINGLES, SO IT IS GREYED (owner, 2026-09-06:
     // "what are you allowing that compare coins box for when only singles is
