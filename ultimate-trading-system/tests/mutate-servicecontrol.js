@@ -236,7 +236,7 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'agreement.js'), "    for (let k = 1; k <= p; k++) { if (i - k < 0 || out[i - k] !== out[i]) { ok = false; break; } }", '    for (let k = 1; k <= p; k++) { if (false) { ok = false; break; } }',
     'bothKindsAndHoldDoWhatTheySay', 'a hold is named on the setting and never actually holds anything'],
   [path.join(ROOT, 'lib', 'agreement.js'), "  const frac = Math.max(0, Math.min(1, (100 - strictPct) / 100));", "  const frac = Math.max(0, Math.min(1, strictPct / 100));",
-    'unusualIsStrictestAtTheTop', 'the unusual dial runs backwards and a higher share quietly means looser'],
+    'theOwnHistoryBarIsStrictestAtTheTopForEveryWayOfWeighing', 'the strictness share runs backwards and a higher share quietly means looser'],
   [path.join(ROOT, 'lib', 'stages.js'), "  if (pm !== MEASUREMENTS_VERSION) {", '  if (false) {',
     'aSetFromAnOlderMeasurementBlockIsRefusedAsAParent', 'a set trained on measurements that no longer exist is carried forward and every number after it is nonsense'],
   [path.join(ROOT, 'lib', 'stages.js'), "  if (!active.length) return rows;", '  return rows;',
@@ -818,7 +818,7 @@ const GUARDS = [
     'theFeeIsDeclaredOnTheStageOnePanelAndSentWithTheLaunch',
     'the fee box is drawn and never sent, and every stage 1 launch is refused for a fee the owner typed'],
   // ---- THE TWO BOXES THAT NAME A PARENT FOLLOW THE BOX (3.76.1) ----
-  [path.join(ROOT, 'public', 'construct.js'), "  if (swRefillParents(swSetsCache)) {", "  if (false) {",
+  [path.join(ROOT, 'public', 'construct.js'), "  const swMoved = swRefillParents(swSetsCache);", "  const swMoved = false;",
     'theTwoBoxesThatNameAParentAreRebuiltWhenWhatIsOnTheBoxMoves',
     'a stage 1 run watched from this screen lands and the box below still says there is no finished stage 1 record set, exactly as the owner found it'],
   [path.join(ROOT, 'public', 'construct.js'), "    box.innerHTML = swSetOptions(sets, stage, box.value || null);", "    box.innerHTML = swSetOptions(sets, stage, null);",
@@ -830,6 +830,9 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "    if (swParentShown.get(sel) === shape) continue;\n", "",
     'theTwoBoxesThatNameAParentAreRebuiltWhenWhatIsOnTheBoxMoves',
     'both boxes are rewritten on every tick whether anything moved or not'],
+  [path.join(ROOT, 'public', 'construct.js'), "  swProvenance();\n  if (swMoved) {\n    rememberSweepForm();", "  if (swMoved) {\n    swProvenance();\n    rememberSweepForm();",
+    'theTwoBoxesThatNameAParentAreRebuiltWhenWhatIsOnTheBoxMoves',
+    'the heading colours are set only when the option list moved, so a heading judged off the section above it or off the row behind the set its box names goes on saying what was true a tick ago'],
   // ---- THE ALWAYS GATE IS GONE (3.44.0) ----
   [path.join(ROOT, 'lib', 'bracket.js'), "  if (!GATES.includes(gate)) throw new Error(`gate must be one of ${GATES.join('/')} — not \"${gate}\"`);\n", "",
     'theAlwaysGateIsGoneAndAGateTheEngineDoesNotHaveIsRefused',
@@ -1039,6 +1042,44 @@ for (const sig of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
 process.on('exit', restoreAll);
 process.on('uncaughtException', (err) => { restoreAll(); throw err; });
 
+// WHICH FILE HOLDS A TEST, IN EITHER SHAPE THIS REPO WRITES THEM IN
+// (2026-09-06). This looked only for an INDENTED `name(` -- the member-of-the-
+// exported-object shape most of these files use -- so every test in
+// tests/test-uicontracts.js was invisible to it: that file declares its tests
+// as `function name() {` at column 0 and hands each one out on its own line.
+// A guard aimed at one of them reported "no test file holds a test by that
+// name", which reads as a guard left pointing at a deleted test and is the
+// opposite of the truth. The guard was fine; the harness could not see it.
+//
+// RUNNABLE, not merely written: run.js runs a file's EXPORTS and nothing else.
+// An indented member of the exported object is handed out by being written; a
+// top-level function has to be named in module.exports, and one that is not is
+// a helper, not a test.
+const rx = (str) => str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// DECLARED, never merely called: `^\\s+name(` alone matches `  assert(...)`
+// as readily as `  theTest() {`, and a guard aimed at a name some file happens
+// to CALL would be run against the wrong file. run.js calls every test with no
+// arguments, so an empty argument list and an opening brace tell the two apart.
+function fileHoldsTest(src, testName) {
+  const n = rx(testName);
+  // a member of the exported object: `  theTest() {`
+  if (new RegExp(`^\\s+(?:async\\s+)?${n}\\s*\\(\\s*\\)\\s*\\{`, 'm').test(src)) return true;
+  // handed out on its own line: `module.exports.theTest = function () {`
+  if (new RegExp(`^module\\.exports\\.${n}\\s*=\\s*(?:async\\s+)?function\\s*\\(\\s*\\)\\s*\\{`, 'm').test(src)) return true;
+  // declared at the top level and handed out by name somewhere below
+  return new RegExp(`^(?:async\\s+)?function\\s+${n}\\s*\\(\\s*\\)\\s*\\{`, 'm').test(src)
+    && new RegExp(`module\\.exports(?:\\.${n}\\s*=|\\s*=\\s*\\{[^}]*\\b${n}\\b)`).test(src);
+}
+module.exports = { GUARDS, fileHoldsTest };
+
+// REQUIRING THIS FILE MUST NOT RUN IT (2026-09-06). It is a script AND, since
+// the finder above is worth testing from the suite, a module. Written without
+// this line it was both at once: a `require` of it started deleting guards out
+// of the product files, and killing that mid-flight left a line of lib/stages.js
+// mutated in the working tree. Nothing about reading what this file knows may
+// touch a file on disk.
+if (require.main !== module) return;
+
 let missed = 0;
 for (const [file, from, to, testName, consequence] of GUARDS) {
   if (only && !testName.toLowerCase().includes(only.toLowerCase())) continue;
@@ -1058,7 +1099,7 @@ for (const [file, from, to, testName, consequence] of GUARDS) {
   // nothing and is reported as such rather than run against everything.
   const holders = fs.readdirSync(path.join(ROOT, 'tests'))
     .filter((f) => /^test-.*\.js$/.test(f))
-    .filter((f) => new RegExp(`^\\s+(?:async\\s+)?${testName}\\s*\\(`, 'm').test(fs.readFileSync(path.join(ROOT, 'tests', f), 'utf8')));
+    .filter((f) => fileHoldsTest(fs.readFileSync(path.join(ROOT, 'tests', f), 'utf8'), testName));
   if (!holders.length) {
     fs.writeFileSync(file, orig);
     inFlight.delete(file);

@@ -3717,15 +3717,27 @@ module.exports = {
     assert.ok(/if \(swParentShown\.get\(sel\) === shape\) continue;/.test(fn),
       'a box with nothing new in it is rewritten anyway, which closes a dropdown the owner has open');
 
-    // the three duties a box changed by hand carries out, and ONLY when it
-    // moved: swCountsSoon blanks the cost lines to an asking note, so on every
-    // tick it would flicker them for as long as the page is open
-    const guard = UI.indexOf('if (swRefillParents(swSetsCache)) {', prog);
-    assert.ok(guard >= 0 && guard <= refill, 'the follow-up work is not gated on the boxes actually moving');
-    const gated = UI.slice(guard, guard + 300);
-    for (const duty of ['rememberSweepForm();', 'swProvenance();', 'swCountsSoon();']) {
+    // THE COLOURS ARE SET ON EVERY TICK, NOT ONLY WHEN A BOX MOVED (3.76.2).
+    // Filling the box and setting the colour are two answers to one event, and
+    // hanging the second off the first is what leaves them disagreeing: a
+    // heading is judged from the set its own box names, the row behind that
+    // set, and the boxes in the section above -- and rebuilding the options
+    // only ever watches the first.
+    const paint = UI.indexOf('swProvenance();', prog);
+    const guard = UI.indexOf('if (swMoved) {', prog);
+    assert.ok(paint > refill, 'the poll never repaints the stage headings');
+    assert.ok(guard > paint,
+      'the heading colours are set only when the boxes moved, so a colour judged off the section above it or off the '
+      + 'row behind the named set is left saying what was true a tick ago');
+    // re-asking the counts is NOT free -- it blanks both cost lines to an
+    // asking note -- so it stays behind the boxes actually having moved, or it
+    // would flicker them for as long as the page is open
+    const gated = UI.slice(guard, guard + 200);
+    for (const duty of ['rememberSweepForm();', 'swCountsSoon();']) {
       assert.ok(gated.indexOf(duty) > 0, `a rebuilt box does not ${duty.slice(0, -3)} the way one changed by hand does`);
     }
+    assert.ok(!/swCountsSoon\(\);[\s\S]{0,40}\n  \}/.test(UI.slice(paint, guard)),
+      'the counts are re-asked on every tick, which blanks both cost lines to an asking note every four seconds');
 
     // the draw tells the poll what it put on screen, so the first tick after
     // opening Sweep rewrites neither box

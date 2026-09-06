@@ -693,10 +693,27 @@ async function swProgress() {
   // cost line are both judged off it, so a stale copy would answer for a box
   // that has just moved.
   swSetsCache = st.sets || [];
-  if (swRefillParents(swSetsCache)) {
-    // the same three duties changing a box by hand carries out
+  const swMoved = swRefillParents(swSetsCache);
+  // THE HEADING COLOURS ARE REPAINTED ON EVERY TICK, NOT ONLY WHEN A BOX MOVED
+  // (3.76.2, owner order 2026-09-06: "JUST THINK ABOUT IT AND CODE IT RIGHT SO
+  // THE DROP DOWNS FILL AND THE COLORS SET").
+  //
+  // Filling the box and setting the colour are two answers to one event, and
+  // hanging the second off the first is what leaves them disagreeing. A heading
+  // is judged from THREE things -- the record set its own box names, the row
+  // behind that set, and the boxes in the section above it -- and rebuilding
+  // the options only ever watches the first. So the colour is worked out from
+  // scratch every four seconds, unconditionally, and can never be left saying
+  // something that was true one tick ago.
+  //
+  // It is free to do that: three string comparisons and a colour written to
+  // three headings. Writing the same colour again is nothing at all. Re-asking
+  // the COUNTS is not free -- it blanks both cost lines to an asking note --
+  // so that stays behind the boxes actually having moved, with the draft
+  // memory that only has something new to save when they have.
+  swProvenance();
+  if (swMoved) {
     rememberSweepForm();
-    swProvenance();
     swCountsSoon();
   }
   // the start buttons sleep while a run is going — one heavy job at a time,

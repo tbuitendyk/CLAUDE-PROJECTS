@@ -32,7 +32,63 @@ function withFakeSystemctl(replies = {}) {
 
 const changed = (calls) => calls.filter((c) => c[0] === 'systemctl' && ['start', 'stop', 'restart', 'set-property'].includes(c[1]));
 
+// EVERY LIVE GUARD NAMES A TEST THE HARNESS CAN ACTUALLY FIND (2026-09-06).
+//
+// tests/mutate-servicecontrol.js locates a guard's test by scanning the test
+// files for its name. It scanned for ONE of the three shapes these files
+// declare a test in, so every test in tests/test-uicontracts.js -- and two in
+// other files -- was invisible to it. A guard aimed at one reported "no test
+// file holds a test by that name" and skipped: a guard that looks stale, is
+// not, and protects nothing while reading as protection. That is the exact
+// fault the harness exists to catch, in the harness itself.
+//
+// Silence is what made it survive, so it is not left to whoever reads the
+// harness's output. A LIVE guard -- one whose line is still in the product
+// file -- has to name a test exactly one file declares AND hands out, because
+// run.js runs a file's exports and nothing else.
+//
+// A guard whose LINE has gone is not this fault and is not judged here: the
+// harness already reports that one in its own words, and what to do about it
+// is the owner's call, not a suite failure.
+function everyLiveGuardNamesATestTheHarnessCanFind() {
+  const { GUARDS, fileHoldsTest } = require('./mutate-servicecontrol.js');
+  const dir = path.join(__dirname);
+  const files = fs.readdirSync(dir).filter((f) => /^test-.*\.js$/.test(f));
+  const src = new Map(files.map((f) => [f, fs.readFileSync(path.join(dir, f), 'utf8')]));
+  assert(GUARDS.length > 100, `the guard list reads as ${GUARDS.length} entries — it is not being read`);
+  const bad = [];
+  for (const [file, from, , testName] of GUARDS) {
+    let product = '';
+    try { product = fs.readFileSync(file, 'utf8'); } catch (_) { product = ''; }
+    if (!product.includes(from)) continue;          // the line has gone; the harness says so itself
+    const holders = files.filter((f) => fileHoldsTest(src.get(f), testName));
+    if (holders.length !== 1) bad.push(`${testName} -> ${holders.length ? holders.join(', ') : 'no test file'}`);
+  }
+  assert.deepStrictEqual(bad, [],
+    'a live guard names a test the harness cannot find in exactly one file, so it skips instead of being checked:\n      '
+    + bad.join('\n      '));
+}
+
+// And the finder knows a test from a call. `^\s+name(` matches `  assert(...)`
+// as readily as `  theTest() {`, which would run a guard against whichever file
+// happens to CALL that name.
+function theGuardFinderKnowsATestFromACallToOne() {
+  const { fileHoldsTest } = require('./mutate-servicecontrol.js');
+  const member = 'module.exports = {\n  theThing() {\n    assert(true);\n  },\n};\n';
+  const handed = 'module.exports.theThing = async function () {\n  assert(true);\n};\n';
+  const top = 'function theThing() {\n  assert(true);\n}\nmodule.exports.theThing = theThing;\n';
+  const unexported = 'function theThing() {\n  assert(true);\n}\n';
+  const called = 'function other() {\n  theThing(1);\n}\nmodule.exports.other = other;\n';
+  for (const [what, text] of [['a member of the exported object', member], ['one handed out on its own line', handed], ['one declared at the top level', top]]) {
+    assert(fileHoldsTest(text, 'theThing'), `the finder cannot see ${what}`);
+  }
+  assert(!fileHoldsTest(unexported, 'theThing'), 'a function nothing exports reads as a test, and run.js would never run it');
+  assert(!fileHoldsTest(called, 'theThing'), 'a CALL reads as a declaration, so a guard runs against whatever file mentions the name');
+}
+
 module.exports = {
+  everyLiveGuardNamesATestTheHarnessCanFind,
+  theGuardFinderKnowsATestFromACallToOne,
   // The boundary: only the units on the fixed list, ever.
   async aServiceNotOnTheListIsRefusedAndNothingRuns() {
     const { mod, calls, restore } = withFakeSystemctl();
