@@ -509,13 +509,6 @@ const GUARDS = [
     'theStageThreeCountIsTheLaunchsFoldWithoutTheSettings',
     'the cost line counts both values of 24/5 on a weekly unit while the launch prices one, so the launch refuses every block with a weekly unit'],
   // ---- THE FOLD MIGRATION KEEPS ONLY WHAT THE UNIT HOLDS (3.52.0) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "      if (mine && mine.has(r.si)) { w.push(r); kept++; } else dropped++;", "      if (mine) { w.push(r); kept++; } else dropped++;",
-    'aSetPricedBeforeTheFoldIsFoldedPerUnitOnceOnDisk',
-    'the migration rewrites every record and drops none, and the set is stamped as folded while the doubles are still on disk'],
-  // ---- A SET BEHIND ON THE FOLD IS NOT SERVED ITS OLD TABLES (3.52.1) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "  if (alwaysStripPending(id) || foldPending(id)) return null;", "  if (alwaysStripPending(id)) return null;",
-    'aSetPricedBeforeTheFoldIsFoldedPerUnitOnceOnDisk',
-    'a set that already has tables is served as it stands and the per-unit fold never runs on it, which is how S3 #2 stayed doubled after the 3.52.0 deploy'],
   // ---- THE OWNER'S BLOCK IS DRAWN IN ITS OWN COLOUR (3.52.1) ----
   [path.join(ROOT, 'public', 'construct.js'), ' <b class="fpick">Your block: ', ' <b>Your block: ',
     'theThirdStepSaysHowToWalkItAndShowsTheOwnersBlockInGreen',
@@ -546,9 +539,6 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stagework.js'), "  for (const [k, v] of holdCtlCache) controls[k] = v;", "",
     'aBoardSaysWhatItHasToBeatBesidesLuckBeforeAnythingIsNarrowed',
     'the four are worked out during the pricing and thrown away again, so no screen can ever show them'],
-  [path.join(ROOT, 'lib', 'stages.js'), "  const filling = controlFillWaiting(doc);", "  const filling = null;",
-    'aSetPricedBeforeTheseWereKeptHasThemWorkedOutAgain',
-    'a set priced before these were kept never gets them, and says nothing about why'],
   // ---- TRAINING BY WHAT EACH TRADE WAS WORTH (3.69.0) ----
   [path.join(ROOT, 'lib', 'stagework.js'), "    return Math.max(0, m - trip) + m + trip;", "    return m;",
     'theWeightOfATrainingTradeIsWhatItsDecisionWasWorth',
@@ -822,21 +812,15 @@ const GUARDS = [
     'theTuningSliceMoneyPricesTheLeanOfTheVotesAgainstItsNullSet',
     'a unit beats a copy whose money equals its own to the cent, and a flat slice reads as beating every copy'],
   [path.join(ROOT, 'lib', 'stages.js'), "  beatMoney: ['beatMoney', 'pairs'],\n", "  beatMoney: ['beat', 'pairs'],\n",
-    'theStageTablesServeTheTuningSliceMoneyAndSayWhenASetIsBehind',
+    'theStageTablesServeTheTuningSliceMoney',
     'the beat its own null set — tuning-slice $ column sorts by the forecast-score beat while looking like it sorts by money'],
   [path.join(ROOT, 'public', 'construct.js'), "      nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,", "      nullN: Number($('#swNull1').value) || 0, desc: $('#swDesc1').value,",
     'theFeeIsDeclaredOnTheStageOnePanelAndSentWithTheLaunch',
     'the fee box is drawn and never sent, and every stage 1 launch is refused for a fee the owner typed'],
   // ---- THE ALWAYS GATE IS GONE (3.44.0) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "  return alwaysLabelsOf(doc).size > 0;", "  return false;",
-    'aSetPricedWithTheAlwaysGateIsBroughtUpToDateOnFirstOpen',
-    'a set priced with the always gate opens as it is, a third of its board forecast-free, and nothing ever brings it up to date'],
   [path.join(ROOT, 'lib', 'bracket.js'), "  if (!GATES.includes(gate)) throw new Error(`gate must be one of ${GATES.join('/')} — not \"${gate}\"`);\n", "",
     'theAlwaysGateIsGoneAndAGateTheEngineDoesNotHaveIsRefused',
     'a stored row naming the always gate is priced as directional and nobody is told'],
-  [path.join(ROOT, 'lib', 'stages.js'), "  if (alwaysStripPending(id)) return null;\n", "",
-    'aSetPricedWithTheAlwaysGateIsBroughtUpToDateOnFirstOpen',
-    'the old tables, a third of them a gate the engine no longer has, are served on every screen and the strip never starts'],
   // ---- PICKED RECORDS (3.42.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "    records = records.filter((r) => want.has(r.u));", "    records = records.slice();",
     'thePickedRecordsSaveOnTheSetAndTheStageThreeLaunchPricesExactlyThose',
@@ -906,13 +890,10 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), '  if (shared.barPct !== undefined) fState.barPct = shared.barPct;\n', '',
     'theBarAndTheTargetStayWhereTheyAreLeftForTheWholeSet',
     'every switch of coin and shape puts the bar back to the default and the owner reads every unit twice'],
-  // 3.51.0: the sealed window rides on stage 2 records and a set without it is filled in
+  // 3.51.0: the sealed window rides on the stage 2 record the Funnel reads
   [path.join(ROOT, 'lib', 'stages.js'), '          reserve: rec.reserve || null,\n          specs: merged.members.map(', '          specs: merged.members.map(',
-    'aStageTwoSetWithoutItsSealedWindowIsFilledInFromItsParent',
-    'every stage 2 set written from now on is behind on its sealed window the day it lands'],
-  [path.join(ROOT, 'lib', 'stages.js'), '  const run = startSealedFill(parent.id);\n  run.behindOf = behind.parent;', '  return null;',
-    'aStageTwoSetWithoutItsSealedWindowIsFilledInFromItsParent',
-    'the read sees a parent behind on its sealed window and never starts the fill — the line stays "no sealed window" for ever'],
+    'theStageTwoRecordCarriesTheSealedWindowTheFunnelReads',
+    'every stage 2 set written from now on carries no sealed window the day it lands'],
   // 3.51.1: step 2 keeps its dial box, and a count under `values` is not a list
   [path.join(ROOT, 'public', 'construct.js'), '    ${r.why && d.step !== 2 ? `<p class="note neg">${esc(r.why)}</p>`', '    ${r.why ? `<p class="note neg">${esc(r.why)}</p>`',
     'theStepTwoScreenKeepsItsDialBoxAndSurvivesARecommendedRange',

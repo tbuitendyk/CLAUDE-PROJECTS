@@ -415,129 +415,6 @@ function feeOrRefuse(raw, where) {
   }
   return fee;
 }
-// A STAGE 1 OR 2 SET WRITTEN BEFORE THE TUNING-SLICE MONEY EXISTED (3.46.0) is
-// behind: its records carry no money. Read from the records, never from a
-// version number, so a set half-filled by a crash reads as behind too.
-function tuningMoneyBehind(doc) {
-  if (!doc || (doc.stage !== 1 && doc.stage !== 2)) return false;
-  if (doc.status !== 'done' && doc.status !== 'incomplete') return false;
-  const recs = allRecords(doc.id);
-  if (!recs.length) return false;
-  return recs.some((r) => !Number.isFinite(Number(r.money)));
-}
-
-// ---- FILLING IN THE TUNING-SLICE MONEY (3.46.0, RULE NINE) -----------------------
-//
-// A stage 1 or stage 2 set written before the money existed is brought up to
-// date here, the way the kept null money is: announced on Boards, a fee
-// declared by the owner because the set never had one, run once in the
-// background, written BESIDE and swapped only after the copy is checked. No
-// reader ever learns an older shape -- a set is either up to date, or it is
-// behind and says so on its table.
-function startTuningMoneyFill(id, feeRaw) {
-  const busy = stageBusy();
-  if (busy) throw new Error(`${busy} is running — filling in the tuning-slice money waits rather than competing for the box`);
-  const doc = getSet(id);
-  if (!doc || (doc.stage !== 1 && doc.stage !== 2)) throw new Error('that is not a stage 1 or stage 2 record set');
-  if (doc.status !== 'done' && doc.status !== 'incomplete') throw new Error(`${doc.name} is ${doc.status} — a fill waits until the set has landed`);
-  const here = require('../package.json').version;
-  const there = doc.engineVersion || null;
-  if (there && firstDigitOf(there) !== firstDigitOf(here)) {
-    throw new Error(`${doc.name} was written by release ${there} and this box runs ${here} — `
-      + 'a figure filled in now would come from a different engine than the ones beside it');
-  }
-  if (!tuningMoneyBehind(doc)) throw new Error(`${doc.name} already carries the tuning-slice money — there is nothing to fill in`);
-  const fee = feeOrRefuse(feeRaw, 'it prices the tuning-slice $ this fill writes');
-  const parent = doc.stage === 2 ? getSet((doc.parent || {}).id) : null;
-  if (doc.stage === 2 && !parent) throw new Error(`${doc.name} names a parent that is no longer on disk — its null set cannot be dealt again`);
-  // the deals are the parent's for a stage 2 set: same seed, same tags, the
-  // orders the stage 1 members were read against (decision record #57)
-  const seed = doc.stage === 2 ? parent.seed : doc.seed;
-  const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
-  const recs = allRecords(id);
-  const dp = doc.params || {};
-  const p = { allLoaded: dp.allLoaded !== false, startMonth: dp.startMonth, endMonth: dp.endMonth, windowLayout: dp.windowLayout };
-  const was = doc.status;
-  activeSet = doc;
-  doc.status = 'filling';
-  doc.progress = 'filling in the tuning-slice money — starting';
-  saveSet(doc);
-  (async () => {
-    const sw = require('./stagework');
-    const t0 = Date.now();
-    const SPARE = 'records-moneying';
-    for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
-      rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
-      try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
-    }
-    const w = rowstore.writer(id, SPARE, { offThread: true });
-    let done = 0;
-    const idx = (n) => Array.from({ length: n }, (_, i) => i);
-    for (const rec of recs) {
-      const unitKey = unitKeyOf(rec);
-      // eslint-disable-next-line no-await-in-loop
-      const { geo, maps, split } = await sw.unitChunks({ trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size }, rec.geometry, p);
-      const tauRows = unitRows(id, 'tau', rec.blocks.tau, rec.u);
-      const tauProbs = rec.specs.map((_, mi) => (tauRows.find((t) => t.mi === mi) || {}).probs || []);
-      const slice = sw.tuningSliceOf(split.trainChunks, tauProbs);
-      const priced = (use) => sw.moneyAgainstNull({
-        chunks: slice, calls: sw.directionCalls(tauProbs, use, slice.length), tradeMap: maps.trade, geo, fee, seed, unitKey, nullN,
-      });
-      const tuning = priced(idx(tauProbs.length));
-      const out = {
-        ...rec, money: tuning.money, moneyTrades: tuning.trades, moneyChunks: tuning.chunks,
-        nullMoney: tuning.nullMoney, beatMoney: tuning.beat, leadMoney: tuning.lead,
-      };
-      if (doc.stage === 2) {
-        // the merged members' own reading against the parent's null set, in
-        // place of the stage 1 numbers this record used to copy; the stage 1
-        // members are the first specs (the launch writes the parent's first)
-        const n3 = rec.specs.filter((sp) => sp.model === 'logreg').length;
-        out.money3 = priced(idx(n3)).money;
-        const votes = unitRows(id, 'votes', rec.blocks.votes, rec.u).filter((v) => v.w === 0).sort((a, b) => a.i - b.i);
-        const y = votes.map((v) => v.y);
-        const probs = rec.specs.map((_, mi) => votes.map((v) => v.m[mi]));
-        const scoreAll = sw.forecastScore(probs, y);
-        const nullScores = [];
-        for (let d = 0; d < nullN; d++) nullScores.push(sw.forecastScore(probs, y, sw.dealOrder(seed, unitKey, `s1#${d}`, votes.length)));
-        let beat = 0;
-        for (const sc of nullScores) if (scoreAll > sc) beat++;
-        out.beat = beat; out.pairs = nullN; out.lead = sw.leadOver(scoreAll, nullScores); out.nullScores = nullScores;
-      }
-      w.push(out);
-      w.flush();
-      done++;
-      phaseNote(doc, { phase: 'filling in the tuning-slice money', done, total: recs.length, word: 'units', startedMs: t0 });
-      saveSet(doc);
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) => { setImmediate(resolve); });
-    }
-    await w.close();
-    // VERIFY BEFORE ANYTHING IS REPLACED: one record per unit, every unit,
-    // every one of them carrying money
-    const got = rowstore.readAll(id, SPARE);
-    if (got.length !== recs.length) throw new Error(`the copy holds ${got.length} records and the set has ${recs.length} — nothing was replaced`);
-    if (got.some((r) => !Number.isFinite(Number(r.money)))) throw new Error('a record in the copy carries no money — nothing was replaced');
-    // SWAP.
-    const from = rowstore.storeFile(id, SPARE);
-    const to = rowstore.storeFile(id, 'records');
-    fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
-    fs.renameSync(from, to);
-    recordsInHand.id = null; recordsInHand.rows = null;      // the old rows must never be served again
-    doc.params = { ...(doc.params || {}), fee };
-    doc.tuningMoneyAt = new Date().toISOString();
-    doc.status = was;
-    doc.progress = '';
-    saveSet(doc);
-  })().catch((err) => {
-    doc.status = was;
-    doc.progress = `the fill failed: ${String(err.message || err)}`;
-    saveSet(doc);
-  }).finally(() => {
-    if (activeSet && activeSet.id === doc.id) activeSet = null;
-  });
-  return { id, name: doc.name, units: recs.length, fee };
-}
 
 // ---- STAGE 1 --------------------------------------------------------------------
 function startStage1(params) {
@@ -798,13 +675,14 @@ function unitFillRefusal(doc) {
 // Written here as `rowstore.remove(id, 'ranking')` on 2026-09-06, in the belief
 // that the second argument named one store, it destroyed an eighteen-hour run
 // of 10,200 units the first time the owner pressed the control. The warning was
-// already in this file, above renameSettingsToV3, and I wrote the call anyway.
+// already in this file, beside a pass that had always got it right, and I wrote
+// the call anyway.
 //
 // So: the files are named one at a time, the new ordering is written under its
 // own name, its row count is checked against what it was built from, and only
 // then does it take the real name -- one rename, atomic, nothing removed first.
-// That is the same shape RULE NINE demands of a record store and the same shape
-// renameSettingsToV3 has always used.
+// That is the same shape RULE NINE demands of a record store, and the same shape
+// every pass that rewrites one uses.
 const RANKING_SPARE = 'ranking-rebuilding';
 function wipeOneStore(id, name) {
   for (const f of [rowstore.plainFile(id, name), `${rowstore.plainFile(id, name)}.meta.json`,
@@ -1302,14 +1180,6 @@ function startStage2(params) {
   const ranking = rankingOf(parent.id);
   if (!ranking.length) throw new Error(`${parent.name} holds no ranking — nothing to carry`);
   const parentRecords = new Map(allRecords(parent.id).map((r) => [r.u, r]));
-  // A PARENT WITHOUT THE TUNING-SLICE MONEY IS BROUGHT UP TO DATE FIRST (RULE
-  // NINE): stage 2 deals the parent's null set again and checks its stage 1
-  // members' money against the parent's, and a set written before the money
-  // existed has nothing to check against.
-  if (tuningMoneyBehind(parent)) {
-    throw new Error(`${parent.name} was written before the tuning-slice money existed — open it on Boards and press `
-      + 'fill in the tuning-slice money, then launch');
-  }
   const parentFee = Number((parent.params || {}).fee);
   if (!Number.isFinite(parentFee)) throw new Error(`${parent.name} declares no fee % each way, so its tuning-slice $ cannot be read again here`);
   const parentNullN = Math.max(0, Math.floor(num((parent.params || {}).nullN, 19)));
@@ -2039,104 +1909,6 @@ function exposureOf(doc, units, opts = {}) {
   };
 }
 
-// ---- FILLING IN THE SEALED WINDOW (3.51.0, RULE NINE) ------------------------
-// A stage 2 set whose records carry no sealed bounds is behind: its units are
-// its parent's, and the parent's records carry the bounds for each of them.
-// It is filled in from the parent by unit, written BESIDE and swapped only
-// after the copy is checked; announced on the Funnel and run once in the
-// background, the way the totalling is. A parent that carries no bounds
-// itself cannot fill anything, and the set says so rather than guessing.
-function sealedBehind(doc) {
-  if (!doc || doc.stage !== 2) return null;
-  if (doc.status !== 'done' && doc.status !== 'incomplete') return null;
-  const recs = allRecords(doc.id);
-  if (!recs.length || recs.every((r) => r.reserve)) return null;
-  const parent = getSet((doc.parent || {}).id);
-  if (!parent) return { fillable: false, parent: null, why: `${doc.name} names a parent that is no longer on disk, so its sealed window cannot be filled in` };
-  const from = allRecords(parent.id);
-  const source = (r) => from.find((x) => x.u === r.s1u && unitKeyOf(x) === unitKeyOf(r)) || null;
-  const missing = recs.filter((r) => !(source(r) || {}).reserve).length;
-  if (missing) return { fillable: false, parent, why: `${parent.name} carries no sealed window for ${missing} of ${recs.length} units, so ${doc.name} cannot be filled in from it` };
-  return { fillable: true, parent, why: null };
-}
-const sealedFills = new Map();   // set id -> the fill going, so a read never starts a second
-function startSealedFill(id) {
-  if (sealedFills.has(id)) return sealedFills.get(id);
-  const doc = getSet(id);
-  const behind = sealedBehind(doc);
-  if (!behind) throw new Error(`${(doc || {}).name || id} carries its sealed window — there is nothing to fill in`);
-  if (!behind.fillable) throw new Error(behind.why);
-  const busy = stageBusy();
-  if (busy) throw new Error(`${busy} is running — filling in the sealed window waits rather than competing for the box`);
-  const recs = allRecords(id);
-  const from = allRecords(behind.parent.id);
-  const was = doc.status;
-  activeSet = doc;
-  doc.status = 'filling';
-  doc.progress = `filling in the sealed window from ${behind.parent.name}`;
-  saveSet(doc);
-  const run = { id, done: 0, total: recs.length, error: null, promise: null };
-  run.promise = (async () => {
-    const SPARE = 'records-sealing';
-    for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
-      rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
-      try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
-    }
-    const w = rowstore.writer(id, SPARE, { offThread: true });
-    for (const rec of recs) {
-      const src = from.find((x) => x.u === rec.s1u && unitKeyOf(x) === unitKeyOf(rec));
-      w.push({ ...rec, reserve: src.reserve });
-      w.flush();
-      run.done++;
-      doc.progress = `filling in the sealed window from ${behind.parent.name}: ${run.done} of ${run.total} records`;
-      saveSet(doc);
-      // eslint-disable-next-line no-await-in-loop
-      await new Promise((resolve) => { setImmediate(resolve); });
-    }
-    await w.close();
-    // VERIFY BEFORE ANYTHING IS REPLACED: the same records in the same order,
-    // every one of them carrying the bounds
-    const got = rowstore.readAll(id, SPARE);
-    if (got.length !== recs.length) throw new Error(`the copy holds ${got.length} records and the set has ${recs.length} — nothing was replaced`);
-    if (got.some((r, i) => !r.reserve || r.u !== recs[i].u)) throw new Error('a record in the copy carries no sealed window, or the order moved — nothing was replaced');
-    // SWAP.
-    const fromFile = rowstore.storeFile(id, SPARE);
-    const to = rowstore.storeFile(id, 'records');
-    fs.renameSync(`${fromFile}.meta.json`, `${to}.meta.json`);
-    fs.renameSync(fromFile, to);
-    recordsInHand.id = null; recordsInHand.rows = null;      // the old rows must never be served again
-    doc.sealedFilledAt = new Date().toISOString();
-    doc.status = was;
-    doc.progress = '';
-    saveSet(doc);
-  })().catch((err) => {
-    run.error = String((err && err.message) || err);
-    doc.status = was;
-    doc.progress = `the sealed-window fill failed: ${run.error}`;
-    saveSet(doc);
-  }).finally(() => {
-    if (activeSet && activeSet.id === doc.id) activeSet = null;
-    sealedFills.delete(id);
-  });
-  sealedFills.set(id, run);
-  return run;
-}
-// What a stage 3 reader says while its parent is being filled in, or null when
-// there is nothing to wait for. Starts the fill itself when the box is free.
-function sealedFillWaiting(doc) {
-  const parent = getSet(((doc || {}).parent || {}).id);
-  if (!parent) return null;
-  const line = (run) => `filling in the sealed window of ${parent.name} from ${((run.behindOf || {}).name) || 'its parent'}: ${run.done} of ${run.total} records`;
-  const going = sealedFills.get(parent.id);
-  if (going) return line(going);
-  const behind = sealedBehind(parent);
-  if (!behind || !behind.fillable) return null;
-  if (stageBusy()) return null;                  // read on as it is; the fill runs when the box is free
-  const run = startSealedFill(parent.id);
-  run.behindOf = behind.parent;
-  return line(run);
-}
-const sealedFillPromise = (id) => (sealedFills.has(id) ? sealedFills.get(id).promise : null);
 
 // WHETHER A BOARD-WIDE NOISE READING EXISTS, SAID BY EVERY SET IN THE SAME
 // WORDS (RULE NINE). Per-setting deals are stored as beat/pairs/lead, but the
@@ -2150,40 +1922,15 @@ const BOARD_NULL_NONE = Object.freeze({
   why: 'no board-wide noise reading was captured when this set was priced',
 });
 
-// Pure, so the migration's decision can be tested apart from its write.
-function needsBoardNullStamp(doc) {
-  return !(doc && doc.boardNull && typeof doc.boardNull === 'object');
-}
-
 function noiseTwinOf(doc) {
   const bn = (doc || {}).boardNull;
-  if (needsBoardNullStamp(doc)) {
+  if (!(bn && typeof bn === 'object')) {
     throw new Error(`${(doc || {}).id || 'this set'} carries no board-wide noise stamp — `
-      + 'the set documents have not been brought up to date');
+      + 'every set is stamped at birth, so this one cannot be read');
   }
   return { available: !!bn.captured, why: bn.captured ? null : (bn.why || 'not captured') };
 }
 
-// Stamps every set that has not got one. Additive, instant, and idempotent —
-// it never touches a record and never rewrites a stamp that is already there.
-// It refuses while a stage job is going rather than write under a running
-// writer, and says so instead of half-finishing.
-function stampBoardNullOnEverySet() {
-  const busy = stageRunning();
-  if (busy) return { stamped: 0, already: 0, refused: `${busy} is running` };
-  let stamped = 0;
-  let already = 0;
-  for (const s of listSets()) {
-    let doc;
-    try { doc = getSet(s.id); } catch (_) { doc = null; }
-    if (!doc) continue;
-    if (!needsBoardNullStamp(doc)) { already++; continue; }
-    doc.boardNull = { ...BOARD_NULL_NONE };
-    saveSet(doc);
-    stamped++;
-  }
-  return { stamped, already, refused: null };
-}
 // The counter the cost line asks rides the SAME resolution the launch runs —
 // same records, same carry cut, same declared bars — so the number on the
 // screen and the number that runs can never be two different numbers. When
@@ -2348,7 +2095,6 @@ function startStage3(params) {
       : { captured: false, kept: 0, why: 'null set money kept was 0 when this set was priced' },
     // THE GATES ITS RECORDS HOLD -- every one the engine has. A set priced
     // before the always gate was removed carries no stamp, and is migrated the
-    // first time it is opened (needsAlwaysStrip).
     gates: bracketLib.GATES.slice(),
     parent: {
       id: parent.id, name: parent.name,
@@ -2718,46 +2464,6 @@ const TALLY_V = 6;
 // era a set came from.
 const RECORDS_V = 3;
 
-// ---- ONE-OFF: the setting names gained the one-voice share ----------------
-//
-// Owner order, 2026-08-30: "rename the voices first".
-//
-// Putting the one-voice share on screen also put it into the NAME of every
-// setting that weighs by `voices`: what was written `voices 75%` is written
-// `voices 75% +voice98` now. NOTHING UNDERNEATH CHANGED — a record with no
-// share stored on it already resolves to 98, which is the number that was in
-// the code — so this is a rename and only a rename.
-//
-// But the name is what a block's declared list is matched against. Until it is
-// done the set reads as holding 65,856 settings its own block does not declare,
-// and filling in the missing ones would price every one of them a SECOND time
-// under the new name.
-//
-// RULE NINE: the records move with the process, so no reader anywhere has to
-// ask which era a name came from. This goes out with the job once every set on
-// the box is at v3.
-function renamedLabelOf(r) {
-  const agr = require('./stagework').agrOf(r);
-  const parts = String(r.label || '').split(' · ');
-  const head = `${agreeLabel({
-    rule: agr.rule, pct: agr.pct, bar: agr.bar, copy: agr.copy, bothModels: agr.both, persist: agr.persist,
-  })} ${shapeLabel(r)}`;
-  return head === parts[0] ? null : [head, ...parts.slice(1)].join(' · ');
-}
-// HOW MANY ARE BEHIND, off the set's OWN list of names rather than a walk over
-// three million records — this is asked every time the screen draws.
-//
-// The test is a string one, and that is safe here for one reason: agreeLabel
-// puts +voiceN straight after the share, for the voices way of weighing and
-// for nothing else. A test holds those two together. The MIGRATION itself
-// never reads a name — it rebuilds each one from the record's own fields.
-const BEHIND_V3 = (label) => /^voices \d+%/.test(label) && !/ \+voice\d+/.test(label);
-function settingsBehind(doc) {
-  const held = ((doc || {}).plan || {}).settingLabels || [];
-  let n = 0;
-  for (const L of held) if (BEHIND_V3(L)) n++;
-  return n;
-}
 // ---- IS THIS SET SOUND? ---------------------------------------------------
 //
 // Owner, 2026-08-30: "with all the screw ups i have little confidence in the
@@ -3136,11 +2842,6 @@ async function dropSettingsNamed(doc, doomed, note = null, why = null, { inTally
   // stageBusy would refuse the very job that holds it
   const busy = inTallySlot ? null : stageBusy();
   if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
-  const behind = settingsBehind(doc);
-  if (behind) {
-    throw new Error(`${behind.toLocaleString()} of this set's settings are named in the older way — bring the setting `
-      + 'names up to date first, or dropping now would delete every one of them');
-  }
   const held = (doc.plan || {}).settingLabels || [];
   if (!held.length) throw new Error(`${doc.name} does not record which settings it holds, so nothing can be dropped from it safely`);
   if (!doomed.size) return { already: true, held: held.length };
@@ -3234,10 +2935,8 @@ async function dropSettingsNamed(doc, doomed, note = null, why = null, { inTally
 
   const plan = doc.plan || {};
   plan.settingLabels = kept;
-  // what each unit holds moves with the drop -- on a set that says what it
-  // holds. One not yet folded per unit is left unstamped, or the fold would
-  // read the stamp and never run (the strip runs before the fold on open)
-  if (Array.isArray(plan.unitSettings)) stampUnitSettingsFromRows(doc);
+  // what each unit holds moves with the drop: the set says what it now holds
+  stampUnitSettingsFromRows(doc);
   plan.settings = kept.length;
   doc.plan = plan;
   doc.counts = { ...(doc.counts || {}), settings: kept.length, rows: gotRows };
@@ -3253,116 +2952,6 @@ async function dropSettingsNamed(doc, doomed, note = null, why = null, { inTally
   return { settings: doomed.size, rows: gone, held: kept.length, left: gotRows };
 }
 
-// MIGRATE BESIDE, VERIFY, THEN SWAP (RULE NINE). The records are hours of
-// compute that cannot be re-derived from anything but a full re-run, so the
-// one on disk is not touched until a whole new one has been written and
-// counted. An interrupted run leaves a half-written spare and the real store
-// exactly as it was.
-//
-// BLOCK BOUNDARIES: one source block in, one flush out, so they line up. The
-// new names are nine characters longer, so a block at the size limit can still
-// split in two — which is why the check below is on ROWS and not on blocks.
-// Nothing outside the totals indexes a stage 3 block, and the totals are
-// deleted here and rebuilt.
-// THE ALWAYS GATE IS GONE (owner order, 2026-09-02), AND THE RECORDS FOLLOW
-// IT (RULE NINE: when a process changes, the records change with it). A stage
-// 3 set priced before 3.44.0 holds settings whose gate ignored the forecast.
-// The first time such a set is opened, those settings are dropped -- beside,
-// verified, swapped, exactly as `drop the settings the block does not
-// declare` does -- the tables are put aside and totalled again, and the set
-// is stamped with the gates its records hold, so it is never asked again.
-// Announced on the screen as the totalling is, in the background, once.
-const isAlwaysLabel = (label) => / always d[0-9.]+x t\d+h/.test(String(label || ''));
-function alwaysLabelsOf(doc) {
-  const held = ((doc || {}).plan || {}).settingLabels || [];
-  return new Set(held.filter(isAlwaysLabel));
-}
-function needsAlwaysStrip(doc) {
-  if (!doc || doc.stage !== 3 || (doc.status !== 'done' && doc.status !== 'incomplete')) return false;
-  if (Array.isArray(doc.gates)) return false;      // stamped: its records hold only gates the engine has
-  return alwaysLabelsOf(doc).size > 0;
-}
-async function stripAlwaysGate(doc, note = null, { inTallySlot = false } = {}) {
-  const doomed = alwaysLabelsOf(doc);
-  const out = doomed.size
-    ? await dropSettingsNamed(doc, doomed, note, 'the always gate was removed from the engine (3.44.0)', { inTallySlot })
-    : { already: true, settings: 0, rows: 0 };
-  doc.gates = bracketLib.GATES.slice();
-  saveSet(doc);
-  return out;
-}
-
-async function renameSettingsToV3(doc, note = null) {
-  const id = doc.id;
-  const busy = stageBusy();
-  if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
-  const wasRows = rowstore.count(id, 'records');
-  const blocks = rowstore.blocksOf(id, 'records');
-  const n = Array.isArray(blocks) ? blocks.length : 0;
-  if (!n || !wasRows) throw new Error(`${doc.name} has no records to rename`);
-
-  const SPARE = 'records-renaming';
-  // never rowstore.remove(): that takes the WHOLE store directory with it
-  for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
-    rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
-    try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
-  }
-
-  const w = rowstore.writer(id, SPARE, { offThread: true });
-  const renames = new Map();
-  let touched = 0;
-  if (note) note(0, n);
-  for (let b = 0; b < n; b++) {
-    for (const x of rowstore.readBlocks(id, 'records', [b]) || []) {
-      const r = x.row || x;
-      const to = renamedLabelOf(r);
-      if (!to) { w.push(r); continue; }
-      renames.set(r.label, to);
-      touched++;
-      // the share is written out rather than left to be assumed: a record
-      // says what it is (RULE NINE)
-      w.push({ ...r, label: to, agreeCopy: require('./stagework').agrOf(r).copy });
-    }
-    // DRAIN, NOT FLUSH. flush only QUEUES a block for compression; the queue
-    // is drained by close, at the very end. This loop never awaits, so every
-    // block of a five-million-record store sat in memory at once and the
-    // service reached 1.9 GB of its 1.8 GB ceiling on a store it had already
-    // died on once today. Draining every so often costs nothing and holds the
-    // memory flat — and it yields, so the service can answer while it works.
-    if ((b + 1) % 40 === 0) await w.drain(); else w.flush();
-    if (note) note(b + 1, n);
-  }
-  await w.close();
-
-  // VERIFY BEFORE ANYTHING IS REPLACED.
-  const gotRows = rowstore.count(id, SPARE);
-  if (gotRows !== wasRows) {
-    throw new Error(`the renamed copy holds ${gotRows} records and the set holds ${wasRows} — nothing was replaced`);
-  }
-  const check = (rowstore.readBlocks(id, SPARE, [0]) || []).map((x) => x.row || x);
-  if (!check.length) throw new Error('the renamed copy reads back empty — nothing was replaced');
-  for (const r of check) {
-    if (renamedLabelOf(r)) throw new Error(`a renamed record still reads as needing renaming: ${r.label}`);
-  }
-
-  // SWAP. Two renames inside one directory.
-  const from = rowstore.storeFile(id, SPARE);
-  const to = rowstore.storeFile(id, 'records');
-  fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
-  fs.renameSync(from, to);
-
-  // the set's own list of names, moved by the SAME map the records moved by
-  const plan = doc.plan || {};
-  const held = plan.settingLabels || [];
-  plan.settingLabels = held.map((L) => renames.get(L) || L);
-  doc.plan = plan;
-  doc.recordsVersion = RECORDS_V;
-  saveSet(doc);
-  // derived, so rebuilt rather than patched (RULE NINE)
-  try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* nothing there */ }
-  try { fs.rmSync(agreedFile(id), { force: true }); } catch (_) { /* nothing there */ }
-  return { records: touched, settings: renames.size, rows: gotRows };
-}
 
 // WHAT A SET'S OWN BLOCK DECLARES AND ITS RECORDS DO NOT HOLD. Read-only, and
 // through the launch's own enumerator, so the number on the screen and the
@@ -3387,9 +2976,9 @@ async function renameSettingsToV3(doc, note = null) {
 //     nothing here looks at live prices or at anything outside those two.
 //
 // AND IT DOES NOT READ THE SET'S LIST OF SETTING NAMES. That is the property
-// worth having: renaming, dropping and filling in all change that list and
-// none of them can change what the block DECLARES, so the answer stands
-// through every one of them — which are exactly the moments the owner is sat
+// worth having: dropping and filling in both change that list and neither of
+// them can change what the block DECLARES, so the answer stands
+// through both of them — which are exactly the moments the owner is sat
 // watching a screen redraw.
 //
 // Only the NAMES are kept. The enumerator builds half a million setting
@@ -3487,7 +3076,6 @@ function missingSettingsOf(id) {
       * (1 + Math.max(0, Math.floor(num((doc.params || {}).nullN, 19))) + Math.max(0, Math.floor(num((doc.params || {}).keepN, 0)))),
     gate: tallyBudgetFor({ settings: declared.length, coins }),
     appends: (doc.appends || []).length,
-    behind: settingsBehind(doc),
     surplus,
     drops: (doc.drops || []).length,
   };
@@ -3518,16 +3106,6 @@ async function appendMissingSettings(doc, pool = null, note = null, asked = null
   const id = doc.id;
   const busy = stageBusy();
   if (busy) throw new Error(`${busy} is going — one heavy job at a time`);
-  // ORDER MATTERS AND THE SCREEN CANNOT BE THE ONLY THING SAYING SO. A setting
-  // whose name is behind reads as one the block does not declare, so pricing
-  // the block's missing settings first would price every one of them a SECOND
-  // time under its new name — which is exactly what this pass promises never to
-  // do (owner order, 2026-08-30: no duplicate records).
-  const behind = settingsBehind(doc);
-  if (behind) {
-    throw new Error(`${behind.toLocaleString()} of this set's settings are named in the older way — bring the setting `
-      + 'names up to date first, or every one of them would be priced a second time under its new name');
-  }
   // READ BEFORE THE GUARDS THAT USE IT. This sat below them and a const read
   // before its own line throws — the whole pass would have died on the spot.
   const held = (doc.plan || {}).settingLabels || [];
@@ -3641,15 +3219,13 @@ async function appendMissingSettings(doc, pool = null, note = null, asked = null
 
   const plan = doc.plan || {};
   plan.settingLabels = held.concat(missing.map((st) => st.label));
-  // and what each unit holds moves with it -- on a set that says what it
-  // holds; one not yet folded per unit is left unstamped, so the fold still runs
-  if (Array.isArray(plan.unitSettings)) {
-    plan.unitSettings = records.map((rec, i) => {
-      const was = plan.unitSettings.find((x) => x.u === rec.u);
-      return { u: rec.u, held: (was ? Number(was.held) || 0 : 0) + addedPerUnit[i] };
-    });
-    plan.pricings = plan.unitSettings.reduce((a, x) => a + x.held, 0);
-  }
+  // and what each unit holds moves with it: the set says what it now holds
+  const wasPerUnit = Array.isArray(plan.unitSettings) ? plan.unitSettings : [];
+  plan.unitSettings = records.map((rec, i) => {
+    const was = wasPerUnit.find((x) => x.u === rec.u);
+    return { u: rec.u, held: (was ? Number(was.held) || 0 : 0) + addedPerUnit[i] };
+  });
+  plan.pricings = plan.unitSettings.reduce((a, x) => a + x.held, 0);
   plan.settings = plan.settingLabels.length;
   doc.plan = plan;
   doc.counts = { ...(doc.counts || {}), settings: plan.settings, rows: rowstore.count(id, 'records') };
@@ -4066,13 +3642,6 @@ async function buildTally(doc, pool = null, note = null) {
 // the screen rather than retried into the same wall.
 let tallyRun = null;   // { id, done, total, startedAt, error, promise }
 
-// ---- FOLDING A SET'S RECORDS PER UNIT (3.52.0, RULE NINE) --------------------
-function foldBehind(doc) {
-  if (!doc || doc.stage !== 3) return false;
-  if (doc.status !== 'done' && doc.status !== 'incomplete') return false;
-  if (!Array.isArray(((doc.plan || {}).settingLabels)) || !doc.plan.settingLabels.length) return false;
-  return !Array.isArray((doc.plan || {}).unitSettings);
-}
 // what each unit holds, counted off the records themselves -- after a pass
 // that changed what is on disk, the set says what it now holds
 function stampUnitSettingsFromRows(doc) {
@@ -4089,89 +3658,6 @@ function stampUnitSettingsFromRows(doc) {
   doc.plan.unitSettings = order.map((u) => ({ u, held: per.get(u) || 0 }));
   doc.plan.pricings = doc.plan.unitSettings.reduce((a, x) => a + x.held, 0);
 }
-async function foldRecordsPerUnit(doc, note = null) {
-  const id = doc.id;
-  const labels = (doc.plan || {}).settingLabels || [];
-  // A SET WHOSE BLOCK CANNOT BE REBUILT TODAY is not left unusable: its stage
-  // 2 parent may be gone, or its names may be behind. It is stamped with what
-  // its records hold, unit by unit, and the plan says the fold did not run
-  // and why -- the audit on Boards says the same, and the owner decides.
-  const stampOnly = (why) => {
-    stampUnitSettingsFromRows(doc);
-    doc.plan.foldedPerUnit = { at: new Date().toISOString(), dropped: 0, kept: rowstore.count(id, 'records'), notFolded: why };
-    saveSet(doc);
-    return { kept: doc.plan.foldedPerUnit.kept, dropped: 0, notFolded: why };
-  };
-  let shape;
-  try { shape = relaunchShapeOf(doc); } catch (err) { return stampOnly(String(err.message || err)); }
-  const { records, settings, heldOn } = shape;
-  // THE SET'S OWN ORDER, MATCHED BY NAME: a set that has had settings filled
-  // in holds the block's names with the new ones at the end, so a place in
-  // the set is found from its name, never assumed to be the block's place
-  const blockAt = new Map(settings.map((st) => [st.label, st.si]));
-  const planToBlock = labels.map((L) => blockAt.get(L));
-  if (settings.length !== labels.length || planToBlock.some((k) => k === undefined)) {
-    return stampOnly(`the block rebuilt today (${settings.length.toLocaleString()} settings) is not the one this set holds `
-      + `(${labels.length.toLocaleString()}) — bring the set's settings up to date first`);
-  }
-  // holds.get(u): the places IN THE SET that unit u holds
-  const holds = new Map(records.map((rec, i) => {
-    const blockHeld = new Set(heldOn[i]);
-    return [rec.u, new Set(labels.map((L, p) => p).filter((p) => blockHeld.has(planToBlock[p])))];
-  }));
-  // nothing to fold when every unit holds the whole block: the set is
-  // stamped and its records are not rewritten
-  if (heldOn.every((list) => list.length === settings.length)) {
-    doc.plan.unitSettings = records.map((rec, i) => ({ u: rec.u, held: heldOn[i].length }));
-    doc.plan.pricings = doc.plan.unitSettings.reduce((a, x) => a + x.held, 0);
-    doc.plan.foldedPerUnit = { at: new Date().toISOString(), dropped: 0, kept: rowstore.count(id, 'records') };
-    saveSet(doc);
-    return { kept: doc.plan.foldedPerUnit.kept, dropped: 0 };
-  }
-  const SPARE = 'records-folding';
-  for (const f of [rowstore.storeFile(id, SPARE), `${rowstore.storeFile(id, SPARE)}.meta.json`,
-    rowstore.gzFile(id, SPARE), `${rowstore.gzFile(id, SPARE)}.meta.json`]) {
-    try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
-  }
-  const blocks = rowstore.blocksOf(id, 'records') || [];
-  const w = rowstore.writer(id, SPARE, { offThread: true });
-  let kept = 0;
-  let dropped = 0;
-  let beyond = 0;
-  if (note) note(0, blocks.length);
-  for (let b = 0; b < blocks.length; b++) {
-    for (const x of rowstore.readBlocks(id, 'records', [b]) || []) {
-      const r = x.row || x;
-      if (!(r.si >= 0 && r.si < labels.length)) { beyond++; continue; }
-      const mine = holds.get(r.u);
-      if (mine && mine.has(r.si)) { w.push(r); kept++; } else dropped++;
-    }
-    w.flush();
-    if (note) note(b + 1, blocks.length);
-    // eslint-disable-next-line no-await-in-loop
-    await new Promise((resolve) => { setImmediate(resolve); });
-  }
-  await w.close();
-  if (beyond) throw new Error(`${beyond.toLocaleString()} records sit past the end of this set's list of names — undo that first, nothing was replaced`);
-  const got = rowstore.count(id, SPARE);
-  if (got !== kept) throw new Error(`the copy holds ${got.toLocaleString()} records and ${kept.toLocaleString()} were kept — nothing was replaced`);
-  // SWAP, and everything derived from the records goes with the old ones
-  const from = rowstore.storeFile(id, SPARE);
-  const to = rowstore.storeFile(id, 'records');
-  fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
-  fs.renameSync(from, to);
-  recordsInHand.id = null; recordsInHand.rows = null;
-  try { fs.rmSync(tallyFile(id), { force: true }); } catch (_) { /* nothing there */ }
-  try { fs.rmSync(funnelRichFile(id), { force: true }); } catch (_) { /* nothing there */ }
-  if (tallyInHand.id === id) { tallyInHand.id = null; tallyInHand.tally = null; }
-  if (tallyInHand.staleId === id) tallyInHand.staleId = null;
-  doc.plan.unitSettings = records.map((rec, i) => ({ u: rec.u, held: heldOn[i].length }));
-  doc.plan.pricings = doc.plan.unitSettings.reduce((a, x) => a + x.held, 0);
-  doc.plan.foldedPerUnit = { at: new Date().toISOString(), dropped, kept };
-  if (doc.counts) doc.counts.rows = kept;
-  saveSet(doc);
-  return { kept, dropped };
-}
 function ensureTally(id) {
   // A totalling in flight answers FIRST, before any file is touched (the
   // third out-of-memory death): the old order consulted readTally on every
@@ -4184,59 +3670,6 @@ function ensureTally(id) {
     }
     if (!tallyRun.error) return { waiting: `the tables of another record set are totalling right now — one totalling at a time` };
     tallyRun = null;   // a dead attempt for another set does not block this one
-  }
-  // THE RECORDS COME FIRST (3.44.0): a set still holding settings whose gate
-  // ignored the forecast is brought up to date before anything is read from
-  // it, in this same slot, so the screen sees one job: the drop, then the
-  // tables. A set that never held one is stamped here and never asked again.
-  const strip = getSet(id);
-  if (strip && strip.stage === 3 && !Array.isArray(strip.gates) && !needsAlwaysStrip(strip)
-    && (strip.status === 'done' || strip.status === 'incomplete')) {
-    strip.gates = bracketLib.GATES.slice();
-    saveSet(strip);
-  }
-  if (strip && needsAlwaysStrip(strip)) {
-    if (batch.batchRunning() || activeSet) return { waiting: 'a run is going — the records are brought up to date when the box is free' };
-    const run = { id, done: 0, total: 0, phase: 'removing the settings whose gate ignored the forecast', word: 'parts', startedAt: Date.now(), error: null, promise: null };
-    tallyRun = run;
-    run.promise = (async () => {
-      try {
-        await stripAlwaysGate(strip, (dn, tn) => { run.done = dn; run.total = tn; }, { inTallySlot: true });
-        if (strip.tallyError) { delete strip.tallyError; saveSet(strip); }
-      } catch (err) {
-        run.error = String(err.message || err);
-        const d = getSet(id);
-        if (d && d.tallyError !== run.error) { d.tallyError = run.error; saveSet(d); }
-        return;
-      }
-      // the slot is freed; the next ask finds no tables and totals them
-      tallyRun = null;
-    })();
-    return { totalling: { done: 0, total: 0, phase: run.phase, word: run.word } };
-  }
-  // THE FOLD IS PER UNIT (3.52.0): a set priced before that holds, on a unit
-  // whose shape has no weekday version, both values of 24/5 as two records of
-  // one trade, and never says what each unit holds. Brought up to date in this
-  // slot, before its tables: the duplicate records dropped, the plan told what
-  // each unit holds, the tables re-totalled from what is left.
-  const fold = getSet(id);
-  if (fold && foldBehind(fold)) {
-    if (batch.batchRunning() || activeSet) return { waiting: 'a run is going — the records are folded per unit when the box is free' };
-    const run = { id, done: 0, total: 0, phase: 'folding the settings per unit', word: 'parts', startedAt: Date.now(), error: null, promise: null };
-    tallyRun = run;
-    run.promise = (async () => {
-      try {
-        await foldRecordsPerUnit(fold, (dn, tn) => { run.done = dn; run.total = tn; });
-        if (fold.tallyError) { delete fold.tallyError; saveSet(fold); }
-      } catch (err) {
-        run.error = String(err.message || err);
-        const d = getSet(id);
-        if (d && d.tallyError !== run.error) { d.tallyError = run.error; saveSet(d); }
-        return;
-      }
-      tallyRun = null;              // the slot is freed; the next ask finds no tables and totals them
-    })();
-    return { totalling: { done: 0, total: 0, phase: run.phase, word: run.word } };
   }
   // readTally is the arbiter, not the file's existence: a tally of an older
   // shape sits on disk and still reads as absent, and this is the door the
@@ -4368,45 +3801,10 @@ function parseTally(buf) {
 // WHY the last unreadable tally could not be read, so it can be said on the
 // screen instead of silently answered with another build.
 let tallyUnreadable = null;
-// WHETHER A SET STILL HOLDS SETTINGS WHOSE GATE IGNORED THE FORECAST, answered
-// from a stat of its document rather than a parse of it: the answer is asked
-// on every read of every table, and the document of the owner's set carries
-// half a million setting names. The strip saves the document, so the stat
-// changes and the answer is worked out again exactly once.
-const stripPending = new Map();   // id -> { mtimeMs, size, needs }
-// A SET BEHIND ON THE PER-UNIT FOLD IS NOT SERVED ITS OLD TABLES (3.52.1).
-// The fold runs in the tally slot, and a set that already has tables never
-// reaches that slot: S3 #2 was served as it stood after the 3.52.0 deploy and
-// never folded. Same door as the strip, cached the same way.
-const foldPendingCache = new Map();   // id -> { mtimeMs, size, needs }
-function foldPending(id) {
-  let st = null;
-  try { st = fs.statSync(setFile(id)); } catch (_) { foldPendingCache.delete(id); return false; }
-  const hit = foldPendingCache.get(id);
-  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.needs;
-  const needs = foldBehind(getSet(id));
-  foldPendingCache.set(id, { mtimeMs: st.mtimeMs, size: st.size, needs });
-  return needs;
-}
-function alwaysStripPending(id) {
-  let st = null;
-  try { st = fs.statSync(setFile(id)); } catch (_) { stripPending.delete(id); return false; }
-  const hit = stripPending.get(id);
-  if (hit && hit.mtimeMs === st.mtimeMs && hit.size === st.size) return hit.needs;
-  const needs = needsAlwaysStrip(getSet(id));
-  stripPending.set(id, { mtimeMs: st.mtimeMs, size: st.size, needs });
-  return needs;
-}
 function readTally(id) {
   // A totalling in flight is about to replace this very file — nothing reads
   // it meanwhile, least of all the screens' four-second polls.
   if (tallyRun && tallyRun.id === id && !tallyRun.error) return null;
-  // TABLES TOTALLED OVER A GATE THE ENGINE NO LONGER HAS ARE NOT SERVED (3.44.0):
-  // a set still holding always settings reads as having no tables, so every
-  // screen falls through to ensureTally, which brings the records up to date
-  // and totals them again. Serving the old tables would show a third of a
-  // board the engine cannot price any more, on every screen, indefinitely.
-  if (alwaysStripPending(id) || foldPending(id)) return null;
   let st = null;
   try { st = fs.statSync(tallyFile(id)); } catch (_) { return null; }
   if (tallyInHand.id === id && tallyInHand.tally && tallyInHand.mtimeMs === st.mtimeMs && tallyInHand.size === st.size) {
@@ -4573,9 +3971,6 @@ function stage1Table(id, from, n, filters = null) {
   rows = applyFilters(1, rows, filters);
   return {
     total: rows.length, of, from, sort: doc.sort || [],
-    // a set written before the tuning-slice money existed says so with its
-    // table, and Boards offers to fill it in there (RULE NINE)
-    behind: tuningMoneyBehind(doc) ? 'tuning-slice money' : null,
     rows: rows.slice(from, from + n).map(({ _i, ...rest }) => rest),
   };
 }
@@ -4607,7 +4002,6 @@ function stage2Table(id, from, n, filters = null) {
   rows = applyFilters(2, rows, filters);
   return {
     total: rows.length, of, from, sort: doc.sort || [], picked: pickedOf(doc),
-    behind: tuningMoneyBehind(doc) ? 'tuning-slice money' : null,
     rows: rows.slice(from, from + n),
   };
 }
@@ -4967,18 +4361,6 @@ async function funnelRead(id, state = {}) {
   const doc = getSet(id);
   if (!doc) throw new Error(`unknown record set '${id}'`);
   if (doc.stage !== 3) throw new Error(`${doc.name || id} is a stage ${doc.stage} set — the Funnel reads stage 3`);
-  // A PARENT BEHIND ON ITS SEALED WINDOW IS FILLED IN FIRST (3.51.0, RULE
-  // NINE): announced here, run once in the background, and the page asks again
-  const sealing = sealedFillWaiting(doc);
-  if (sealing) return { waiting: sealing };
-  // AND THE FOUR THINGS A RULE HAS TO BEAT, for a set priced before they were
-  // kept (3.70.0, RULE NINE). Started here and run in the background -- but it
-  // NEVER holds the read up, unlike the sealed window above. The sealed window
-  // decides whether a reading is honest; these four decide whether a rule is
-  // worth having, and a walk can be read perfectly well while they are being
-  // worked out. Blocking on them would leave every set made before this
-  // release unopenable until a background job finished.
-  const filling = controlFillWaiting(doc);
   const t = readTally(id);
   if (!t) return null;                       // the caller starts a totalling, exactly as the tables do
 
@@ -5033,9 +4415,8 @@ async function funnelRead(id, state = {}) {
   // readings, on every step: the whole board, so the owner knows before
   // choosing anything whether there is a rule worth hunting here at all, and
   // the survivors, so it cannot drift out of sight while they narrow.
-  const filled = (x) => (x.known || !filling ? x : { ...x, why: filling });
   const against = board.unit
-    ? { board: filled(againstControls(doc, board.unit, all)), keeping: filled(againstControls(doc, board.unit, rows)) }
+    ? { board: againstControls(doc, board.unit, all), keeping: againstControls(doc, board.unit, rows) }
     : { board: { known: false, why: 'the four things a rule has to beat are kept per coin and shape, and this is the blend of all of them' }, keeping: { known: false } };
   // AND IT IS A MARK, not a note that scrolls away. Losing to buying the coin
   // and going away is not a detail about a rule; it is a reason the rule has
@@ -5461,10 +4842,6 @@ function withFunnelRich(rows, rich) {
 // AN EMPTY OR ONE-SETTING RESULT IS WRITTEN WITH A WARNING, NEVER REFUSED
 // (owner ruling 6). Refusing would take the decision away invisibly.
 async function cutFunnelSet(parentId, state = {}, note = null) {
-  {
-    const sealing = sealedFillWaiting(getSet(String(parentId || '')));
-    if (sealing) throw new Error(`${sealing} — the cut waits for it, so the set it writes can say the window is sealed`);
-  }
   const busy = stageRunning();
   if (busy) throw new Error(`${busy} is running — the cut reads the same tables it writes from`);
   const parent = getSet(parentId);
@@ -5558,63 +4935,6 @@ function richForSurvivors(rows) {
     if (Object.keys(one).length) out[r.label] = one;
   }
   return out;
-}
-
-// ---- FILLING THEM IN FOR A SET PRICED BEFORE THEY WERE KEPT (RULE NINE) -----
-//
-// They cannot be read off the records -- they were never stored -- but they can
-// be worked out again from the price data alone: no member trained, no setting
-// priced, seconds a unit. Announced on the screen, run once in the background
-// and never twice, exactly the way the sealed window is filled in (3.51.0).
-const controlFills = new Map();
-function needsControlFill(doc) {
-  return !!(doc && doc.stage === 3 && (doc.status === 'done' || doc.status === 'incomplete')
-    && !((doc.controls || {}).units));
-}
-function startControlFill(id) {
-  if (controlFills.has(id)) return controlFills.get(id);
-  const doc = getSet(id);
-  const run = { id, done: 0, total: 0, error: null, promise: null };
-  controlFills.set(id, run);
-  run.promise = (async () => {
-    // A SET WHOSE BLOCK CANNOT BE REBUILT IS FINISHED WITH NOTHING, not tried
-    // again on every read: it has no units to work them out from, and saying
-    // so once is the honest answer.
-    let records = [];
-    try { records = (relaunchShapeOf(doc) || {}).records || []; } catch (err) { run.error = String(err.message || err); }
-    run.total = records.length;
-    const fee = Number((doc.params || {}).fee) || 0;
-    const payloads = records.map((rec) => ({
-      combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
-      geometry: rec.geometry, params: doc.params, fee,
-    }));
-    const units = {};
-    if (!payloads.length) return;
-    const pool = createPool();
-    await pool.forEach('s3Controls', payloads, (settled, i) => {
-      if (settled.ok && settled.value) units[unitKeyOf(records[i])] = settled.value.controls;
-      run.done++;
-    });
-    const fresh = getSet(id);
-    if (fresh) {
-      fresh.controls = { at: new Date().toISOString(), filledIn: true, units, why: run.error || null };
-      saveSet(fresh);
-    }
-  })().catch((err) => { run.error = String((err && err.message) || err); })
-    .finally(() => { controlFills.delete(id); });
-  return run;
-}
-// The line the Funnel prints while it runs, and nothing at all when there is
-// nothing to do. It never starts while the box is busy: a reading is worth
-// less than a sweep.
-function controlFillWaiting(doc) {
-  if (!doc) return null;
-  const line = (run) => `working out what ${doc.name} has to beat besides luck: ${run.done} of ${run.total} coin-and-shape pairs`;
-  const going = controlFills.get(doc.id);
-  if (going) return line(going);
-  if (!needsControlFill(doc)) return null;
-  if (stageBusy()) return null;
-  return line(startControlFill(doc.id));
 }
 
 // ---- WHAT A RULE HAS TO BEAT BESIDES LUCK (3.70.0, owner order 2026-09-05) --
@@ -6439,12 +5759,12 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
 
 module.exports = {
   startKeptScrambleFill,
-  feeOrRefuse, tuningMoneyBehind, startTuningMoneyFill, moneyDriftOf,
+  feeOrRefuse, moneyDriftOf,
   // exported so the sort can be checked by BEHAVIOUR rather than by matching
   // the shape of its source, which rotted the moment a second share column
   // arrived
   sortValue,
-  sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, foldBehind, foldPending, foldRecordsPerUnit, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
+  sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
@@ -6456,19 +5776,17 @@ module.exports = {
   spreadOf, S3_COIN_FILTERS,
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
   missingSettingsIn, nextSettingNumber,
-  renamedLabelOf, settingsBehind, renameSettingsToV3, BEHIND_V3,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
-  needsControlFill, startControlFill, controlFillWaiting,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
   unitKeyOf, unitNameOf, unitsOfSet, boardRowOf, loadUnitBoard, funnelBoard, funnelAcross, FUNNEL_RICH_V,
   testWindowOfUnit, exposureOf,
   funnelAcrossStart, funnelAcrossStatus, funnelCrossesStart, funnelCrossesStatus, funnelCrosses,
-  sealedWindowOf, sealedFromUnits, sealedBehind, startSealedFill, sealedFillWaiting, sealedFillPromise, noiseTwinOf, needsBoardNullStamp,
+  sealedWindowOf, sealedFromUnits, noiseTwinOf,
   survivorLabelsOf, funnelCutsFor, funnelSetRows, rebuildSetRichStart, rebuildSetRichStatus,
-  stampBoardNullOnEverySet, BOARD_NULL_NONE,
-  dropUndeclaredSettings, dropSettingsNamed, undeclaredIn, isAlwaysLabel, alwaysLabelsOf, needsAlwaysStrip, stripAlwaysGate, alwaysStripPending,
+  BOARD_NULL_NONE,
+  dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,
   tallyRunPromise: () => (tallyRun ? tallyRun.promise : null),
   unfinishedAppend, unfinishedAppendDetail, undoUnfinishedAppend,
   declaredLabelsFor, declaredKeyFor,

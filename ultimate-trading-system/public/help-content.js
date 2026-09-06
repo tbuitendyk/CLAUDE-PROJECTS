@@ -417,28 +417,14 @@ window.HELP = {
         what: 'Re-runs exactly the units a stage 1 run lost, and marks the record set finished when it matches its plan again. Only the absent ones are trained \u2014 eighteen units out of ten thousand costs minutes, not another whole run.',
         more: 'It uses the record set\u2019s OWN saved choices, never the boxes on Sweep. A unit trained on a different window would sit in the same table, be ranked against the rest and be carried forward beside them, with nothing able to tell them apart \u2014 so the window, the fee, the null set size and how the units were trained all come off the set itself. Three things would make a new unit incomparable and each refuses by name before anything runs: a different measurement block, a different first digit of the release, and price files that have changed since the set was written. Nothing already in the set is read, touched or trained again.',
       },
-      bRename: {
-        what: 'Brings this record set\'s setting names up to date. Names only — nothing is priced again and no result moves.',
-        more: 'A setting that weighs by voices is named with the share that decides whether two forecasts count as one '
-          + 'voice, like "voices 75% +voice98". Some of this set\'s names do not carry that share.\n\n'
-          + 'Nothing underneath differs. A record with no share stored on it reads as 98, so every result on this '
-          + 'screen is the result it has always been.\n\n'
-          + 'But the name is what a set is matched against when working out which of its own block\'s settings it does '
-          + 'not hold. While the names disagree, those settings read as ones the set does not have — and pricing them '
-          + 'would price every one of them a second time under its new name. So this comes first, and filling in the '
-          + 'missing settings is not offered until it is done.\n\n'
-          + 'The new records are written BESIDE the old ones and counted before anything is replaced, so an '
-          + 'interruption leaves the set exactly as it was. The tables are worked out again afterwards.',
-      },
       bDropUndeclared: {
         what: 'Deletes the settings this record set holds that its own block does not declare, and renumbers what is left.',
         more: 'A setting entered at market opens at the candle\'s open with no price levels, so the band cannot change one '
           + 'cent of what it does. Four settings that differ only by their band are therefore four copies of one trade, '
           + 'and the enumerator keeps one of them.\n\n'
           + 'A set priced before the enumerator worked that out holds all four. This deletes the copies.\n\n'
-          + 'IT DELETES PRICED RECORDS AND CANNOT BE UNDONE without running the whole set again. Every way it could delete '
-          + 'the wrong thing is a refusal instead: it will not run while any setting name is behind, because a name that '
-          + 'is merely behind also reads as one the block does not declare; and a record is filed under its setting\'s '
+          + 'IT DELETES PRICED RECORDS AND CANNOT BE UNDONE without running the whole set again. The one way it could delete '
+          + 'the wrong thing is a refusal instead: a record is filed under its setting\'s '
           + 'position in the set\'s list of names, so every record is checked against that list before anything is '
           + 'written, and any disagreement stops it.\n\n'
           + 'What is kept is written BESIDE the old records, counted, and checked for gaps in the numbering before '
@@ -468,15 +454,6 @@ window.HELP = {
           + 'the moment the fill starts. The box refuses while anything else heavy is running, because it reads '
           + 'the same units they do.',
       },
-      bMoneyGoS1: {
-        what: 'Fills in the tuning-slice $ on a stage 1 set written before it existed: every unit\'s own votes priced on the tuning slice at the fee typed beside it, against the same null set. Written beside and swapped in after its checks, once, in the background.',
-        more: 'Until it is filled in, the table cannot sort or carry by the tuning-slice $ and a stage 2 launch from this set refuses.',
-      },
-      bMoneyFeeS1: { what: 'The fee % each way the fill prices at. This set never declared one, so it is yours to type; it is stamped on the set.' },
-      bMoneyGoS2: {
-        what: 'Fills in the tuning-slice $ on a stage 2 set written before it existed, and reads every member on the row against the parent\'s null set in place of the stage 1 numbers copied onto it. Written beside and swapped in after its checks, once, in the background.',
-      },
-      bMoneyFeeS2: { what: 'The fee % each way the fill prices at. Use the parent\'s fee if it has one, or the stage 1 members\' figure will not match the parent\'s.' },
       bCheckSet: {
         what: 'Reads every record in this set and says whether it is sound. It adds nothing and changes nothing.',
         more: 'Each line is a plain statement about the records that is either true or it is not, and a false one says '

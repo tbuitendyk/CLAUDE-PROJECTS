@@ -3556,10 +3556,6 @@ function bPinnedRecord(r) {
 //
 // Every number here comes from the launch's own enumerator, so what is offered
 // and what would run are the same thing.
-// THE SETTING NAMES ARE BEHIND (owner order, 2026-08-30). Drawn above the
-// fill-in line on purpose: filling in BEFORE renaming prices every one of
-// these a second time under its new name, so the order matters and the screen
-// has to make it obvious.
 // AN UNFINISHED FILL-IN (owner order, 2026-08-30). It writes its rows unit by
 // unit and its list of names once, at the end — so a run that stops or dies
 // leaves records at positions the list does not reach, and NOTHING is written
@@ -3606,26 +3602,8 @@ function bUndoLine(doc, undoing) {
     again then prices the whole thing once.
     <button id="bUndoAppend" data-bundoappend="${esc(doc.id)}">undo the unfinished run</button></p>`;
 }
-function bRenameLine(doc, renaming) {
-  if (renaming && renaming.error) {
-    return `<p class="note warn">renaming the settings failed: ${esc(renaming.error)} — nothing was replaced; the records are exactly as they were.</p>`;
-  }
-  if (renaming && renaming.running) {
-    const pct = renaming.total ? ` (${Math.floor((renaming.done / renaming.total) * 100)}%)` : '';
-    return `<p class="note">renaming the settings: <b>${Number(renaming.done).toLocaleString()} of ${Number(renaming.total).toLocaleString()} parts</b>${pct}
-      — the new names are written beside the old records and only swapped in once they are all there. This page asks again every few seconds.</p>`;
-  }
-  const behind = (renaming && renaming.behind) || 0;
-  if (!behind) return '';
-  return `<p class="note warn"><b>${Number(behind).toLocaleString()} of this set’s settings are named without the share that decides
-    whether two forecasts count as one voice.</b> The names written today carry it, so this set’s own block reads as not declaring
-    them — and filling in the missing settings first would price every one of them a second time under its new name.
-    Renaming changes names only: nothing is priced again, and no result moves.
-    <button id="bRename" data-brename="${esc(doc.id)}">bring the setting names up to date</button></p>`;
-}
-// SETTINGS THE BLOCK NO LONGER DECLARES (owner order, 2026-08-30). Drawn
-// between the rename and the fill-in, which is the order they have to happen
-// in: a name that is only behind reads as undeclared too, and filling in
+// SETTINGS THE BLOCK NO LONGER DECLARES (owner order, 2026-08-30). Drawn above
+// the fill-in line, which is the order they have to happen in: filling in
 // before dropping prices rows that are about to go.
 function bDropLine(doc, gap, dropping) {
   if (dropping && dropping.error) {
@@ -3643,7 +3621,6 @@ function bDropLine(doc, gap, dropping) {
   // done to a set is still on the set itself.
   const surplus = (gap && gap.surplus) || 0;
   if (!surplus) return '';
-  if (gap && gap.behind) return '';   // the rename comes first and says so
   return `<p class="note warn"><b>this set holds ${Number(surplus).toLocaleString()} settings its own block does not declare.</b>
     They price a trade that another setting it holds already prices, so every one of them is a second copy of a row that is
     already here. Dropping them deletes those rows and renumbers what is left; nothing else is touched, and the tables are
@@ -3651,10 +3628,6 @@ function bDropLine(doc, gap, dropping) {
     <button id="bDropUndeclared" data-bdrop="${esc(doc.id)}">drop the settings the block does not declare</button></p>`;
 }
 function bFillInLine(doc, gap, filling) {
-  // NOT OFFERED WHILE THE NAMES ARE BEHIND. Pressed in that order it would
-  // price every behind-named setting a second time; the pass refuses too, and
-  // this is so the owner never gets as far as the refusal.
-  const behind = (gap && gap.behind) || 0;
   if (filling && filling.error) {
     return `<p class="note warn">filling in the missing settings failed: ${esc(filling.error)} — nothing already priced was touched.</p>`;
   }
@@ -3680,9 +3653,7 @@ function bFillInLine(doc, gap, filling) {
     The missing ${Number(gap.missing).toLocaleString()} are ways of asking that did not exist when it ran, so nothing here can answer for them.
     Pricing them is ${Number(gap.pricings).toLocaleString()} pricings over ${gap.units} unit(s); nothing already priced is read, touched or priced again.
     ${stop ? `<b>It cannot be done on this set:</b> ${esc(gap.gate.message)}`
-    : behind ? `<b>Bring the setting names up to date first</b> — ${Number(behind).toLocaleString()} of this set’s
-      settings are named the older way, and pricing now would price every one of them a second time under its new name.`
-      : `<button id="bFillIn" data-bfillin="${esc(doc.id)}">fill in the missing settings</button>`}</p>`;
+    : `<button id="bFillIn" data-bfillin="${esc(doc.id)}">fill in the missing settings</button>`}</p>`;
 }
 
 // A TABLE WRITES INTO ITS MOUNT ONLY IF THE MOUNT IS STILL THERE (2026-08-29).
@@ -3710,62 +3681,6 @@ function bShown(t) {
   return of > total ? `<p class="note">${total.toLocaleString()} of ${of.toLocaleString()} rows — the rest are held back by the filters above.</p>` : '';
 }
 
-// FILLING IN THE TUNING-SLICE MONEY on a stage 1 or 2 set written before it
-// existed (3.46.0, RULE NINE). A USER function beside the table it changes:
-// the set never declared a fee, so one is asked for here, and the fill runs
-// once, in the background, written beside and swapped in after its checks.
-function bMoneyFillPanel(doc, t, key) {
-  if (!t || !t.behind) return '';
-  const off = doc.status !== 'done' && doc.status !== 'incomplete';
-  const fee = (doc.params || {}).fee;
-  const feeV = fee != null ? fee * 100 : 0.125;
-  const dis = off ? 'disabled title="the set is still working — a fill waits until it has landed"' : '';
-  // ONE LITERAL SET OF IDS PER TABLE: a stage 2 set shows its stage 1 parent
-  // beside it, so both fill-ins can be on the page at once, and each control
-  // is named so the Help tab can describe it and a press reaches the right one.
-  const controls = key === 'S1'
-    ? `<label class="f">fee % each way<input id="bMoneyFeeS1" type="number" value="${feeV}" min="0" max="5" step="0.005" style="width:5.5rem"></label>
-        <button id="bMoneyGoS1" ${dis}>fill in the tuning-slice money</button>
-        <span id="bMoneyMsgS1" class="note"></span>`
-    : `<label class="f">fee % each way<input id="bMoneyFeeS2" type="number" value="${feeV}" min="0" max="5" step="0.005" style="width:5.5rem"></label>
-        <button id="bMoneyGoS2" ${dis}>fill in the tuning-slice money</button>
-        <span id="bMoneyMsgS2" class="note"></span>`;
-  return `<div class="panel" data-role="money-fill">
-      <h3 style="margin-top:0">Filling in the tuning-slice money</h3>
-      <p class="note">This set was written before the tuning-slice $ existed, so its table cannot sort or carry by it, and
-        a stage 2 launch from it refuses. Filling it in prices every unit's own votes on the tuning slice at the fee below,
-        against the same null set, and rewrites the records beside before swapping them in — about a second per unit.</p>
-      <div class="row" style="align-items:flex-end">
-        ${controls}
-      </div>
-    </div>`;
-}
-function wireMoneyFill(doc, key) {
-  const go = $(`#bMoneyGo${key}`);
-  if (!go) return;
-  go.onclick = async () => {
-    const fee = Number(($(`#bMoneyFee${key}`) || {}).value) / 100;
-    go.disabled = true;
-    waitStart();
-    let out;
-    try {
-      out = await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/tuning-money-fill`, { fee });
-    } finally {
-      waitEnd();
-    }
-    if (!out) { go.disabled = false; return; }
-    $(`#bMoneyMsg${key}`).textContent = `filling in ${out.units} unit(s) — the table is redrawn when it lands.`;
-    // the set is asked every two seconds until it lands, then the page redraws
-    const tick = async () => {
-      const got = await apiOr(`api/stageset/${encodeURIComponent(doc.id)}`, null);
-      const st = got && got.set && got.set.status;
-      if (st === 'filling') { setTimeout(tick, 2000); return; }
-      draw();
-    };
-    setTimeout(tick, 2000);
-  };
-}
-
 async function bDrawStage1(doc, incomplete, view, mount) {
   const heading = `Stage 1 — every unit's LOGREG members, scored once (${esc(doc.name)})`;
   if (!bTableOpen('S1')) {
@@ -3780,7 +3695,6 @@ async function bDrawStage1(doc, incomplete, view, mount) {
   const rows = (t && t.rows) || [];
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S1', heading)}
-    ${bMoneyFillPanel(doc, t, 'S1')}
     ${bFilterGrid('S1', [
     ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
     ['ctx', 'alongside', 'text', 'shows only rows read against a coin containing what you type. Empty shows every row.'],
@@ -3834,7 +3748,6 @@ async function bDrawStage1(doc, incomplete, view, mount) {
   bWireSort(doc, mount);
   bWireFilters(mount);
   bWireTableFold(mount);
-  wireMoneyFill(doc, 'S1');
 }
 
 async function bDrawStage2(doc, incomplete, view, mount) {
@@ -3854,7 +3767,6 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   const picked = new Set((t && t.picked) || []);
   if (!bPut(mount, `${incomplete}<div class="panel">
     ${bFoldBtn('S2', heading)}
-    ${bMoneyFillPanel(doc, t, 'S2')}
     ${bFilterGrid('S2', [
     ['trade', 'coin', 'text', 'shows only rows whose coin contains what you type. Empty shows every coin.'],
     ['ctx', 'alongside', 'text', 'shows only rows read against a coin containing what you type. Empty shows every row.'],
@@ -3925,7 +3837,6 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   bWirePicks(doc, mount, t);
   bWireFilters(mount);
   bWireTableFold(mount);
-  wireMoneyFill(doc, 'S2');
 }
 
 // PICKING RECORDS (owner order, 2026-09-02): a tick on the left of every
@@ -3980,12 +3891,11 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
   const rankQs = new URLSearchParams({ from, n: 100, ...bFilters('S3R') }).toString();
-  const [ranked, coins, gap, filling, renaming, dropping, undoing] = await Promise.all([
+  const [ranked, coins, gap, filling, dropping, undoing] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
     apiOr(`api/stageset/${doc.id}/missing`, null),
     apiOr(`api/stageset/${doc.id}/fill-in/status`, null),
-    apiOr(`api/stageset/${doc.id}/rename-settings/status`, null),
     apiOr(`api/stageset/${doc.id}/drop-undeclared/status`, null),
     apiOr(`api/stageset/${doc.id}/undo-append/status`, null),
   ]);
@@ -4019,7 +3929,6 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ${!bTableOpen('S3R') ? '<p class="note">put away — press the arrow to bring it back.</p>' : `
     ${bCheckLine(doc, bView().checked && bView().checked.id === doc.id ? bView().checked.res : null)}
     ${bUndoLine(doc, undoing)}
-    ${(undoing && undoing.half) ? '' : bRenameLine(doc, renaming)}
     ${(undoing && undoing.half) ? '' : bDropLine(doc, gap, dropping)}
     ${(undoing && undoing.half && !(filling && (filling.running || filling.stopped))) ? '' : bFillInLine(doc, gap, filling)}
     <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per permuted Sweep Stage 3 setting, averaged over its coin/chunk-shape combinations promoted from Stage 2</p>
@@ -4249,19 +4158,6 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       drawBoards().then(() => restoreScroll(tab));
     };
   });
-  $(mount).querySelectorAll('[data-brename]').forEach((btn) => {
-    btn.onclick = async () => {
-      // eslint-disable-next-line no-alert
-      if (!confirm('Bring this set’s setting names up to date?\n\n'
-        + 'Names only. Nothing is priced again and no result moves. The new records are written beside the old ones '
-        + 'and swapped in only once they are all there, so an interruption leaves the set exactly as it is. The tables '
-        + 'are worked out again afterwards.')) return;
-      btn.disabled = true;
-      btn.textContent = 'starting…';
-      try { await post(`api/stageset/${btn.dataset.brename}/rename-settings`, {}); } catch (err) { alert(err.message); }
-      drawBoards().then(() => restoreScroll(tab));
-    };
-  });
   $(mount).querySelectorAll('[data-bfillin]').forEach((btn) => {
     btn.onclick = async () => {
       const n = Number((gap && gap.missing) || 0).toLocaleString();
@@ -4275,7 +4171,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       drawBoards().then(() => restoreScroll(tab));
     };
   });
-  if ((filling && filling.running) || (renaming && renaming.running)
+  if ((filling && filling.running)
     || (dropping && dropping.running) || (undoing && undoing.running)) {
     bTallyPoll = setTimeout(() => { if (tab === 'boards') bPollRedraw(); }, 4000);
   }

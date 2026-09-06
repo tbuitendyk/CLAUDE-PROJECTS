@@ -587,6 +587,48 @@ translated a key and one did not, so a lookup missed on 65,856 rows.
   convenient than now.
 
 
+## RULE TEN — a repair is deleted the day it has served every set (owner order, 2026-09-06)
+
+**Code that brings old records up to date is written to be DELETED. It goes out
+the moment the last set on the box has been through it — not "when convenient",
+not "once more sets exist", not left behind because it costs nothing to keep.**
+
+The owner's words: "get rid of your code that fixes your broken data sets" and,
+after a session hedged, "i already said i don't want any crap around that fixes
+broken data sets. you cant understand that?"
+
+RULE NINE says the records move when the process moves. That is right and it
+stays right. RULE TEN is the other half of it, and without this half RULE NINE
+quietly builds the very thing it forbids: seven repairs had accumulated in
+`lib/stages.js`, every one of them finished, every one still read on every draw
+and every launch. A repair nobody can retire is a legacy branch wearing a
+migration's clothes.
+
+- **It is written knowing the date it dies.** A repair is a temporary shape, so
+  it is kept in one block, under its own heading, calling nothing that only it
+  calls — never threaded through a reader as an extra condition. A repair that
+  cannot be lifted out in one cut was written wrong.
+- **DONE means every set on the box has been through it, measured, not assumed.**
+  Count the sets it would still act on. Zero, on the box, with nothing running:
+  that is the only evidence that retires it. A version number is not evidence.
+- **What is deleted is the whole of it**: the predicate, the pass, the endpoint,
+  the control on the screen, the help entry, the worker task, the test and the
+  mutation guard. Half a repair left in place is worse than all of it — it reads
+  as live code with no way in.
+- **The refusal STAYS when the refusal is about a real set.** "This set carries
+  no board-wide noise stamp" is a reader saying it will not guess; that is not a
+  repair and it does not go. What goes is the code that would have fixed it.
+- **The cost of keeping one is not zero and it is not obvious.** Each of the
+  seven read something on every screen draw: one walked every record of the
+  owner's set to decide whether to offer a button nobody would ever press again.
+- **It is the owner's set that says when, and only the owner's.** A repair still
+  needed by one set on the box is still needed. Measure the box, say what is
+  left, and if the honest answer is "delete the set instead", that is theirs to
+  decide (RULE NINE), never a session's.
+- **The record of what it did stays in the commit, never in the code.** Whoever
+  needs to know what happened to those records reads the history; nobody has to
+  read a dead branch to find out.
+
 ## Working style (all sessions)
 
 ### Answer short by default — `/plain` is the standing style, not a request

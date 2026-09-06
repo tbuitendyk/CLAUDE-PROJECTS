@@ -772,7 +772,6 @@ app.get('/api/stageset/:id/stage2', (req, res) => {
 // instead of a bare refusal, and the page asks again until the tables land.
 // one filling-in at a time, in the service that owns the pool
 let fillIn = null;
-let renaming = null;   // the one-off that brings a set's setting names up to date
 let dropping = null;   // the pass that drops settings the block no longer declares
 let undoing = null;    // the pass that undoes what an unfinished fill-in left
 app.get('/api/stageset/:id/ranked', (req, res) => {
@@ -1006,37 +1005,6 @@ app.get('/api/stageset/:id/check', (req, res) => {
     return res.json({ ...own, block });
   } catch (err) { return res.status(500).json({ error: err.message }); }
 });
-app.post('/api/stageset/:id/rename-settings', (req, res) => {
-  if (renaming && !renaming.done) return res.json({ running: renaming.id, done: renaming.progress.done, total: renaming.progress.total });
-  const id = String(req.params.id || '');
-  const doc = stages.getSet(id);
-  if (!doc || doc.stage !== 3) return res.status(404).json({ error: 'no such stage 3 record set' });
-  const behind = stages.settingsBehind(doc);
-  if (!behind) return res.json({ already: true });
-  const run = { id, done: false, error: null, settings: 0, records: 0, progress: { done: 0, total: 0 } };
-  renaming = run;
-  run.promise = (async () => {
-    try {
-      const out = await stages.renameSettingsToV3(doc, (dn, tn) => { run.progress = { done: dn, total: tn }; });
-      run.settings = out.settings;
-      run.records = out.records;
-    } catch (err) {
-      run.error = String(err.message || err);
-    } finally {
-      run.done = true;
-    }
-  })();
-  return res.json({ started: true, settings: behind });
-});
-app.get('/api/stageset/:id/rename-settings/status', (req, res) => {
-  const doc = stages.getSet(String(req.params.id || ''));
-  const behind = doc ? stages.settingsBehind(doc) : 0;
-  if (!renaming || renaming.id !== String(req.params.id || '')) return res.json({ idle: true, behind });
-  return res.json({
-    running: !renaming.done, done: renaming.progress.done, total: renaming.progress.total,
-    settings: renaming.settings, records: renaming.records, error: renaming.error, behind,
-  });
-});
 app.post('/api/stageset/:id/fill-in', (req, res) => {
   if (fillIn && !fillIn.done) return res.json({ running: fillIn.id, done: fillIn.progress.done, total: fillIn.progress.total });
   const id = String(req.params.id || '');
@@ -1197,12 +1165,6 @@ app.post('/api/stageset/:id/kept-fill', (req, res) => {
       { dryRun: !!b.dryRun, onlyUnit: b.onlyUnit }));
   }
   catch (err) { return res.status(409).json({ error: err.message }); }
-});
-// FILLING IN THE TUNING-SLICE MONEY on a stage 1 or 2 set written before it
-// existed (3.46.0, RULE NINE): the fee is the owner's, typed on Boards.
-app.post('/api/stageset/:id/tuning-money-fill', (req, res) => {
-  try { return res.json(stages.startTuningMoneyFill(req.params.id, (req.body || {}).fee)); }
-  catch (err) { return res.status(409).json({ error: String(err.message || err) }); }
 });
 // THE UNITS A STAGE 1 RUN LOST, PUT BACK (3.73.0, owner order 2026-09-06).
 // Started once and watched by asking, like every other long job here. Every
@@ -2143,16 +2105,4 @@ app.use((err, req, res, next) => {
 
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`ultimate-trading-system listening on 127.0.0.1:${PORT}`);
-  // WHEN THE PROCESS CHANGES, THE RECORDS CHANGE WITH IT (RULE NINE). Every set
-  // says in the same words whether a board-wide noise reading was captured on
-  // it, so no reader ever has to notice a field is absent and infer the answer.
-  // Additive, instant, idempotent, and it refuses while a stage job is going —
-  // announced here rather than left to somebody remembering to run it.
-  try {
-    const r = stages.stampBoardNullOnEverySet();
-    if (r.refused) console.log(`set documents: not brought up to date — ${r.refused}`);
-    else if (r.stamped) console.log(`set documents: brought ${r.stamped} up to date (${r.already} already were)`);
-  } catch (err) {
-    console.log(`set documents: could not be brought up to date — ${err.message}`);
-  }
 });

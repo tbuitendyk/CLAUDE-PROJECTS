@@ -37,7 +37,6 @@ const TASKS = {
   s1Unit: require('./stagework').s1UnitTask,
   s2Unit: require('./stagework').s2UnitTask,
   s3Unit: require('./stagework').s3UnitTask,
-  s3Controls: require('./stagework').s3ControlsTask,
   s3Tally: require('./stagework').s3TallyShardTask,
   nullRotation: work.nullRotationTask,
   menuGrid: work.menuGridTask,

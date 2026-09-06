@@ -636,143 +636,6 @@ module.exports = {
     assert.strictEqual(stages.pricingsOf({ plan: { settingLabels: ['x'] } }), null);
   },
 
-  // A SET PRICED BEFORE THE FOLD WAS PER UNIT IS FOLDED ON DISK (RULE NINE):
-  // beside, verified, swapped, its tables gone with the old records, the plan
-  // told what each unit holds. A set whose block cannot be rebuilt today is
-  // stamped with what it holds and says the fold did not run.
-  async aSetPricedBeforeTheFoldIsFoldedPerUnitOnceOnDisk() {
-    const { stampManifest, MANIFEST_DIR } = require('../lib/manifest');
-    const tag = Date.now().toString(36);
-    const pid = `s2-test-${tag}-foldp`;
-    const id = `s3-test-${tag}-foldc`;
-    const universe = ['ZZZTESTUSDT', 'ZZWEEKUSDT'];
-    const params = { from: pid, carry: 0, pick: 'count', ...LAUNCH_BLOCK, permuteWeekdays: true };
-    delete params.from; params.from = pid;
-    const clean = () => {
-      for (const x of [pid, id]) {
-        try { fs.rmSync(path.join(SETS_DIR, `${x}.json`), { force: true }); } catch (_) { /* fixture */ }
-        try { fs.rmSync(path.join(SETS_DIR, `${x}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
-        try { fs.rmSync(rowstore.storeDir(x), { recursive: true, force: true }); } catch (_) { /* fixture */ }
-        try { fs.rmSync(path.join(MANIFEST_DIR, `${x}.json`), { force: true }); } catch (_) { /* fixture */ }
-      }
-    };
-    try {
-      fs.mkdirSync(SETS_DIR, { recursive: true });
-      fs.writeFileSync(path.join(SETS_DIR, `${pid}.json`), JSON.stringify({
-        id: pid, stage: 2, seq: 999983, name: `S2 #fold ${tag}`, status: 'done', createdAt: new Date().toISOString(),
-        engineVersion: require('../package.json').version, measurements: require('../lib/features').MEASUREMENTS_VERSION,
-        params: { universe, allLoaded: true, windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-03', nullN: 3 },
-        dataManifest: stampManifest(pid, universe), plan: { units: 2 },
-      }));
-      const prec = rowstore.writer(pid, 'records');
-      const base = { carriedRank: 1, s1rank: 1, ctx1: null, ctx2: null, size: 1, bandPct: 2, specs: [], score3: 1, scoreAll: 1, helped: 0, beat: 0, pairs: 3, lead: 0, blocks: {} };
-      prec.push({ ...base, u: 0, trade: 'ZZZTESTUSDT', geometry: 'daily-4d' });
-      prec.push({ ...base, u: 1, trade: 'ZZWEEKUSDT', geometry: 'weekly-8d' });
-      await prec.close();
-      const sts = stages.settingsFor(params, [1]);
-      const labels = sts.map((s) => s.label);
-      assert.strictEqual(labels.length, 2, 'the fixture block is the two values of 24/5');
-      // a record carries the setting's own fields, the way a launch writes it,
-      // so the audit's rebuilt name is the one on disk
-      const rowOf = (st, u) => ({ ...st, bandMode: st.band, bandPct: 3, trailMult: null, armMult: null, label: st.label, u, trade: u ? 'ZZWEEKUSDT' : 'ZZZTESTUSDT', geometry: u ? 'weekly-8d' : 'daily-4d', pnl: 1 });
-      // the child, written the old way: every setting on every unit, no word on what each holds
-      fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify({
-        id, stage: 3, seq: 999982, name: `S3 #fold ${tag}`, status: 'done', createdAt: new Date().toISOString(),
-        parent: { id: pid, name: `S2 #fold ${tag}` }, params, recordsVersion: stages.RECORDS_V,
-        plan: { units: 2, settings: 2, settingLabels: labels.slice() }, counts: { settings: 2, rows: 4 },
-      }));
-      const w = rowstore.writer(id, 'records');
-      for (let u = 0; u < 2; u++) for (let si = 0; si < 2; si++) w.push({ ...rowOf(sts[si], u), si });
-      await w.close();
-      fs.writeFileSync(path.join(SETS_DIR, `${id}-tally.json.gz`), 'stale');
-      let doc = stages.getSet(id);
-      assert.strictEqual(stages.foldBehind(doc), true, 'a done set with names and no word on what each unit holds is behind');
-      // AND ITS OLD TABLES ARE NOT SERVED MEANWHILE (3.52.1): the tables' reader
-      // refuses, so every screen falls through to the slot that folds it -- a
-      // set that already had tables was never folded at all before this
-      assert.strictEqual(stages.foldPending(id), true, 'a set behind on the fold must read as pending');
-      assert.strictEqual(stages.readTally(id), null, 'a set behind on the fold was served its old tables, so the fold never runs on a set that has them');
-      const srcGate = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-      assert.ok(srcGate.includes('  if (alwaysStripPending(id) || foldPending(id)) return null;'), 'the tables\' reader does not refuse a set behind on the fold');
-      const got = await stages.foldRecordsPerUnit(doc);
-      assert.deepStrictEqual(got, { kept: 3, dropped: 1 }, 'the weekly unit\'s second value of 24/5 is dropped, nothing else');
-      assert.strictEqual(rowstore.count(id, 'records'), 3, 'and the store holds what was kept');
-      doc = stages.getSet(id);
-      assert.deepStrictEqual(doc.plan.unitSettings, [{ u: 0, held: 2 }, { u: 1, held: 1 }], 'the plan says what each unit holds');
-      assert.strictEqual(doc.plan.pricings, 3);
-      assert.strictEqual(stages.foldBehind(doc), false, 'folded once, never asked again');
-      assert.strictEqual(stages.foldPending(id), false, 'and no longer pending, so its tables are served again once totalled');
-      assert.ok(!fs.existsSync(path.join(SETS_DIR, `${id}-tally.json.gz`)), 'the tables went with the old records');
-      assert.deepStrictEqual([doc.plan.foldedPerUnit.kept, doc.plan.foldedPerUnit.dropped], [3, 1]);
-      const rows = [];
-      for (let b = 0; b < (rowstore.blocksOf(id, 'records') || []).length; b++) for (const x of rowstore.readBlocks(id, 'records', [b])) rows.push([x.row.u, x.row.si]);
-      assert.deepStrictEqual(rows.sort(), [[0, 0], [0, 1], [1, 0]], 'the kept records sit where they sat');
-      // the audit reads the same: sound, and the block check ran
-      const audit = stages.auditRecordSet(doc);
-      assert.strictEqual(audit.ok, true, JSON.stringify(audit.checks.filter((c) => !c.ok)));
-      const exact = audit.checks.find((c) => c.name === 'every unit holds exactly the settings that place different orders on it');
-      assert.ok(exact && exact.ok && !/not checked/.test(exact.detail), 'with the parent on the box, which settings each unit holds is checked against the block');
-      assert.strictEqual(audit.pricings, 3);
-      // a second run with nothing to fold stamps and leaves the records alone
-      delete doc.plan.unitSettings;
-      const again = await stages.foldRecordsPerUnit(doc);
-      assert.deepStrictEqual(again, { kept: 3, dropped: 0 }, 'a set already folded per unit folds nothing');
-      // and with the parent gone, the set is stamped from its records and says so
-      fs.rmSync(path.join(SETS_DIR, `${pid}.json`), { force: true });
-      delete doc.plan.unitSettings;
-      const orphan = await stages.foldRecordsPerUnit(doc);
-      assert.strictEqual(orphan.dropped, 0);
-      assert.ok(/no longer on the box/.test(orphan.notFolded), `the set says why the fold did not run: ${orphan.notFolded}`);
-      doc = stages.getSet(id);
-      assert.deepStrictEqual(doc.plan.unitSettings, [{ u: 0, held: 2 }, { u: 1, held: 1 }], 'stamped from the records themselves');
-      assert.ok(doc.plan.foldedPerUnit.notFolded, 'and the plan carries the reason');
-      const orphanAudit = stages.auditRecordSet(doc);
-      const unchecked = orphanAudit.checks.find((c) => c.name === 'every unit holds exactly the settings that place different orders on it');
-      assert.ok(unchecked && unchecked.ok && /not checked/.test(unchecked.detail), 'the audit says the block check could not run rather than failing or staying silent');
-      // A SET THAT HOLDS THE BLOCK'S NAMES IN ANOTHER ORDER (one that had
-      // settings filled in) folds by NAME: the weekly unit's 24/5 record goes
-      // whichever place it sits at, and the audit matches the same way
-      fs.writeFileSync(path.join(SETS_DIR, `${pid}.json`), JSON.stringify({
-        id: pid, stage: 2, seq: 999983, name: `S2 #fold ${tag}`, status: 'done', createdAt: new Date().toISOString(),
-        engineVersion: require('../package.json').version, measurements: require('../lib/features').MEASUREMENTS_VERSION,
-        params: { universe, allLoaded: true, windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-03', nullN: 3 },
-        dataManifest: stampManifest(pid, universe), plan: { units: 2 },
-      }));
-      const id2 = `${id}-r`;
-      const flipped = [labels[1], labels[0]];
-      try {
-        fs.writeFileSync(path.join(SETS_DIR, `${id2}.json`), JSON.stringify({
-          id: id2, stage: 3, seq: 999981, name: `S3 #fold ${tag} r`, status: 'done', createdAt: new Date().toISOString(),
-          parent: { id: pid, name: `S2 #fold ${tag}` }, params, recordsVersion: stages.RECORDS_V,
-          plan: { units: 2, settings: 2, settingLabels: flipped.slice() }, counts: { settings: 2, rows: 4 },
-        }));
-        const w2 = rowstore.writer(id2, 'records');
-        for (let u = 0; u < 2; u++) for (let si = 0; si < 2; si++) w2.push({ ...rowOf(sts[1 - si], u), si });
-        await w2.close();
-        const d2 = stages.getSet(id2);
-        const got2 = await stages.foldRecordsPerUnit(d2);
-        assert.deepStrictEqual(got2, { kept: 3, dropped: 1 }, 'the names in another order still fold — by name, not by place');
-        const rows2 = [];
-        for (let b = 0; b < (rowstore.blocksOf(id2, 'records') || []).length; b++) for (const x of rowstore.readBlocks(id2, 'records', [b])) rows2.push([x.row.u, x.row.si]);
-        assert.deepStrictEqual(rows2.sort(), [[0, 0], [0, 1], [1, 1]], 'the weekly unit keeps the 24/7 value, which sits at place 1 in this set');
-        const audit2 = stages.auditRecordSet(stages.getSet(id2));
-        assert.strictEqual(audit2.ok, true, JSON.stringify(audit2.checks.filter((c) => !c.ok)));
-        const exact2 = audit2.checks.find((c) => c.name === 'every unit holds exactly the settings that place different orders on it');
-        assert.ok(exact2 && exact2.ok && !/not checked/.test(exact2.detail), 'the audit matched the set\'s places to the block\'s by name');
-      } finally {
-        try { fs.rmSync(path.join(SETS_DIR, `${id2}.json`), { force: true }); } catch (_) { /* fixture */ }
-        try { fs.rmSync(rowstore.storeDir(id2), { recursive: true, force: true }); } catch (_) { /* fixture */ }
-      }
-      // and neither a drop nor an append stamps a set the fold has not reached,
-      // or the stamp would stop the fold from ever running
-      const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-      assert.ok(src.includes('  if (Array.isArray(plan.unitSettings)) stampUnitSettingsFromRows(doc);'), 'the drop stamps a set that has not been folded per unit, so the fold never runs on it');
-      assert.ok(src.includes('  if (Array.isArray(plan.unitSettings)) {\n    plan.unitSettings = records.map((rec, i) => {'), 'the append stamps a set that has not been folded per unit, so the fold never runs on it');
-      const detail = src.slice(src.indexOf('function unfinishedAppendDetail('), src.indexOf('async function undoUnfinishedAppend('));
-      assert.ok(detail.includes('(n === (expect.has(u) ? expect.get(u) : settings) ? whole : part)'), 'a unit that holds fewer of the filled-in settings reads as torn');
-    } finally { clean(); }
-  },
-
   // The counter behind the Sweep cost line resolves the SAME units the
   // launch will price — the carry cut decides which bars exist, so the
   // number on the screen and the number that runs are one number.
@@ -3007,7 +2870,7 @@ module.exports = {
   // streams the reading. It survived; it should not have had to.
   async everyWholeStoreRewriteDrainsAsItGoes() {
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    for (const fn of ['renameSettingsToV3', 'dropSettingsNamed', 'undoUnfinishedAppend']) {
+    for (const fn of ['dropSettingsNamed', 'undoUnfinishedAppend']) {
       const at = src.indexOf(`async function ${fn}(`);
       assert.ok(at > 0, `${fn} is gone`);
       const body = src.slice(at, src.indexOf('\n}\n', src.indexOf('return {', at)));
@@ -3238,13 +3101,12 @@ module.exports = {
     }
   },
 
-  // The three refusals are in the pass itself, in the order they have to be
+  // The two refusals are in the pass itself, in the order they have to be
   // asked, and each names what to do about it.
   async everyRefusalIsInThePassAndNotOnlyOnTheScreen() {
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     const fn = src.slice(src.indexOf('async function appendMissingSettings('), src.indexOf('const AGREED_V ='));
     const at = (needle) => fn.indexOf(needle);
-    assert.ok(at('settingsBehind(doc)') > 0, 'nothing refuses while a setting name is behind');
     // the CALL is not enough: `if (false)` around the throw leaves the call
     // sitting there and the refusal gone. The branch itself has to be checked.
     assert.ok(at('undeclaredIn(held,') > 0, 'nothing works out whether the set still holds settings its block does not declare');
@@ -3341,32 +3203,6 @@ module.exports = {
     }
   },
 
-  // A NAME THAT IS ONLY BEHIND ALSO READS AS UNDECLARED. Dropping before
-  // renaming would have deleted 65,856 settings on the owner's set that are
-  // nothing worse than badly named.
-  async nothingIsDroppedWhileANameIsMerelyBehind() {
-    const id = `s3-test-${Date.now().toString(36)}-dbh`;
-    const file = path.join(SETS_DIR, `${id}.json`);
-    const doc = {
-      id, stage: 3, seq: 999973, name: 'S3 #dbh', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 1, settings: 1, settingLabels: ['voices 75% active d1x t17h · argmax auto 24/7'] },
-      params: { nullN: 9 }, recordsVersion: 2,
-    };
-    try {
-      fs.mkdirSync(SETS_DIR, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(doc));
-      let threw = null;
-      try { await stages.dropSettingsNamed(stages.getSet(id), new Set(['anything'])); } catch (err) { threw = err.message; }
-      assert.ok(threw && /named in the older way/.test(threw),
-        `a set with a behind name was dropped from, which deletes settings that are only badly named: ${threw}`);
-    } finally {
-      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
-    }
-  },
-
-  // A record is filed under its setting's POSITION in the set's list of names,
-  // and dropping renumbers on exactly that. If the two ever disagree,
-  // renumbering scrambles the set — so it refuses rather than guesses.
   async aRecordFiledUnderTheWrongPositionStopsTheWholeThing() {
     const id = `s3-test-${Date.now().toString(36)}-dps`;
     const file = path.join(SETS_DIR, `${id}.json`);
@@ -3396,201 +3232,6 @@ module.exports = {
     } finally {
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
       try { rowstore.remove(id); } catch (_) { /* fixture */ }
-    }
-  },
-
-  // THE RENAME, RUN END TO END ON A REAL RECORD STORE (owner order,
-  // 2026-08-30: "regarding the rename the voices first option ... GO NOW!").
-  //
-  // Exposing the one-voice share put it into the NAME of every setting that
-  // weighs by `voices`. The fields underneath never moved — a record with no
-  // share stored already resolves to 98, the number that was in the code — so
-  // this is a rename and only a rename. But the name is what a block's declared
-  // list is matched against, so until it is done the owner's set reads as
-  // holding 65,856 settings its own block does not declare.
-  //
-  // A real store, written and read back, because every way this can go wrong is
-  // in the writing: a row lost, a name half-changed, the spare left in place, a
-  // record that is not a `voices` one quietly rewritten.
-  async theSettingNamesAreBroughtUpToDateWithoutTouchingAResult() {
-    const id = `s3-test-${Date.now().toString(36)}-rn`;
-    const file = path.join(SETS_DIR, `${id}.json`);
-    const mk = (si, rule, tHours, extra) => ({
-      si,
-      label: `${rule} 75%${extra && extra.persist ? ` +hold${extra.persist}` : ''} active d0.25x t${tHours}h · argmax auto 24/7`,
-      decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
-      entry: 'breakout', gate: 'active', dMult: 0.25, tHours, trailMult: null, armMult: null,
-      agreeRule: rule, agreeBar: 'all', agreePct: 75,
-      agreeBoth: false, agreePersist: (extra && extra.persist) || 0,
-      members: 6, pnl: 10, trades: 3,
-      holdout: { pnl: 30, trades: 4, stops: 1, vsAlwaysLong: 2 },
-      beat: 3, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
-    });
-    // four settings, two of which weigh by voices; one of those carries a hold
-    const made = [mk(0, 'count', 17), mk(1, 'voices', 41), mk(2, 'families', 65), mk(3, 'voices', 89, { persist: 2 })];
-    const doc = {
-      id, stage: 3, seq: 999977, name: 'S3 #rn', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 1, settings: 4, settingLabels: made.map((r) => r.label) },
-      params: { nullN: 9 }, recordsVersion: 2,
-    };
-    try {
-      fs.mkdirSync(SETS_DIR, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(doc));
-      const w = rowstore.writer(id, 'records');
-      // two blocks, so the walk really walks
-      for (const r of made.slice(0, 2)) w.push(r);
-      w.flush();
-      for (const r of made.slice(2)) w.push(r);
-      await w.close();
-
-      assert.strictEqual(stages.settingsBehind(doc), 2, 'the two voices settings do not read as behind');
-
-      const out = await stages.renameSettingsToV3(stages.getSet(id));
-      assert.strictEqual(out.settings, 2, 'it did not rename exactly the two voices settings');
-      assert.strictEqual(out.rows, made.length, 'the renamed store holds a different number of records');
-
-      const back = rowstore.readAll(id, 'records').map((x) => x.row || x);
-      assert.strictEqual(back.length, made.length, 'a record was lost or gained');
-      const byLabel = new Map(back.map((r) => [r.label, r]));
-      assert.ok(byLabel.has('voices 75% +voice98 active d0.25x t41h · argmax auto 24/7'),
-        `the voices setting was not renamed: ${back.map((r) => r.label).join(' | ')}`);
-      assert.ok(byLabel.has('voices 75% +voice98 +hold2 active d0.25x t89h · argmax auto 24/7'),
-        'the share goes in the wrong place when the setting also holds its call');
-      assert.ok(byLabel.has('count 75% active d0.25x t17h · argmax auto 24/7'),
-        'a setting that does not weigh by voices was renamed too');
-      assert.ok(byLabel.has('families 75% active d0.25x t65h · argmax auto 24/7'),
-        'a setting that does not weigh by voices was renamed too');
-
-      // NOT ONE RESULT MOVED. This is the whole promise the screen makes.
-      for (const r of back) {
-        const was = made.find((m) => m.si === r.si);
-        assert.deepStrictEqual(
-          { pnl: r.pnl, trades: r.trades, beat: r.beat, pairs: r.pairs, lead: r.lead, hold: r.holdout.pnl },
-          { pnl: was.pnl, trades: was.trades, beat: was.beat, pairs: was.pairs, lead: was.lead, hold: was.holdout.pnl },
-          `renaming moved a result on setting ${r.si}`);
-      }
-      // and every voices record now SAYS its share rather than leaving it assumed
-      for (const r of back) if (r.agreeRule === 'voices') assert.strictEqual(r.agreeCopy, 98, 'a renamed record does not carry its share');
-
-      const after = stages.getSet(id);
-      assert.strictEqual(stages.settingsBehind(after), 0, 'the set still reads as behind after being brought up to date');
-      assert.strictEqual(after.recordsVersion, stages.RECORDS_V, 'the set does not record which shape it is at');
-      assert.deepStrictEqual(after.plan.settingLabels.slice().sort(), back.map((r) => r.label).sort(),
-        'the set’s own list of names and the names on its records do not agree');
-
-      // the spare is gone: left behind it would be counted as part of the set
-      assert.ok(!rowstore.exists(id, 'records-renaming'), 'the copy it wrote beside the records was left on disk');
-
-      // RUNNING IT TWICE CHANGES NOTHING. A migration that is not safe to
-      // repeat is one nobody can press again after an interruption.
-      const again = await stages.renameSettingsToV3(stages.getSet(id));
-      assert.strictEqual(again.settings, 0, 'running it a second time renamed something');
-      assert.strictEqual(rowstore.count(id, 'records'), made.length, 'running it a second time changed the record count');
-    } finally {
-      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
-      try { rowstore.remove(id); } catch (_) { /* fixture */ }
-    }
-  },
-
-  // MIGRATE BESIDE, VERIFY, THEN SWAP (RULE NINE). The check that the copy
-  // holds as many records as the set did is the only thing standing between a
-  // short write and a truncated store swapped in over hours of compute that
-  // cannot be re-derived from anything but a full re-run.
-  //
-  // The happy path cannot show that check working, because on the happy path
-  // the counts agree and removing it changes nothing. So this makes them
-  // disagree — a sidecar claiming more records than the blocks hold, which is
-  // what a service killed mid-write leaves behind — and asks for a refusal.
-  async aShortCopyIsRefusedAndTheRecordsAreLeftExactlyAsTheyWere() {
-    const id = `s3-test-${Date.now().toString(36)}-vfy`;
-    const file = path.join(SETS_DIR, `${id}.json`);
-    const mk = (si, rule) => ({
-      si, label: `${rule} 75% active d0.25x t17h · argmax auto 24/7`,
-      decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
-      entry: 'breakout', gate: 'active', dMult: 0.25, tHours: 17, trailMult: null, armMult: null,
-      agreeRule: rule, agreeBar: 'all', agreePct: 75, agreeBoth: false, agreePersist: 0,
-      members: 6, pnl: 10, trades: 3, holdout: { pnl: 30, trades: 4, stops: 1, vsAlwaysLong: 2 },
-      beat: 3, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
-    });
-    const made = [mk(0, 'voices'), mk(1, 'count')];
-    const doc = {
-      id, stage: 3, seq: 999975, name: 'S3 #vfy', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 1, settings: 2, settingLabels: made.map((r) => r.label) },
-      params: { nullN: 9 }, recordsVersion: 2,
-    };
-    try {
-      fs.mkdirSync(SETS_DIR, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(doc));
-      const w = rowstore.writer(id, 'records');
-      for (const r of made) w.push(r);
-      await w.close();
-
-      const before = fs.readFileSync(rowstore.storeFile(id, 'records'));
-      // a sidecar that claims a record the blocks do not hold
-      const meta = `${rowstore.storeFile(id, 'records')}.meta.json`;
-      const m = JSON.parse(fs.readFileSync(meta, 'utf8'));
-      m.rows += 1;
-      fs.writeFileSync(meta, JSON.stringify(m));
-
-      let threw = null;
-      try { await stages.renameSettingsToV3(stages.getSet(id)); } catch (err) { threw = err.message; }
-      assert.ok(threw && /nothing was replaced/.test(threw),
-        `a copy holding fewer records than the set was swapped in anyway: ${threw}`);
-      assert.ok(before.equals(fs.readFileSync(rowstore.storeFile(id, 'records'))),
-        'the records were replaced despite the copy being short — this is hours of compute that cannot be got back');
-      assert.strictEqual(stages.getSet(id).recordsVersion, 2,
-        'the set was marked as moved even though it was not');
-    } finally {
-      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
-      try { rowstore.remove(id); } catch (_) { /* fixture */ }
-    }
-  },
-
-  // Pricing the missing settings BEFORE renaming prices every behind-named
-  // setting a second time under its new name. The screen says so; this is the
-  // guard that actually holds, because the screen is not the only way in.
-  async theMissingSettingsCannotBePricedWhileTheNamesAreBehind() {
-    const id = `s3-test-${Date.now().toString(36)}-ord`;
-    const file = path.join(SETS_DIR, `${id}.json`);
-    const doc = {
-      id, stage: 3, seq: 999976, name: 'S3 #ord', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 1, settings: 2, settingLabels: ['voices 75% active d1x t17h · argmax auto 24/7', 'count 75% active d1x t17h · argmax auto 24/7'] },
-      params: { nullN: 9 }, recordsVersion: 2,
-    };
-    try {
-      fs.mkdirSync(SETS_DIR, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(doc));
-      let threw = null;
-      try { await stages.appendMissingSettings(stages.getSet(id)); } catch (err) { threw = err.message; }
-      assert.ok(threw && /named in the older way/.test(threw),
-        `pricing was allowed while a name was behind, so those settings would be priced twice: ${threw}`);
-    } finally {
-      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
-    }
-  },
-
-  // The cheap count on the screen and the rename itself must agree about which
-  // names are behind — one reads the set's list of names, the other rebuilds
-  // each name from its record's own fields, and they are two different reads.
-  async theCountOnTheScreenAgreesWithWhatTheRenameWouldActuallyDo() {
-    const agreement = require('../lib/agreement');
-    for (const rule of agreement.AGREE_RULES) {
-      for (const bar of agreement.AGREE_BARS) {
-        for (const persist of [0, 2]) {
-          const r = {
-            entry: 'breakout', gate: 'active', dMult: 1, tHours: 17, trailMult: null, armMult: null,
-            agreeRule: rule, agreeBar: bar, agreePct: 75, agreeBoth: false, agreePersist: persist,
-          };
-          // the name as it was written before the share went into it
-          const today = stages.renamedLabelOf({ ...r, label: 'x · argmax auto 24/7' });
-          const head = String(today).split(' · ')[0];
-          const older = head.replace(/ \+voice\d+/, '');
-          assert.strictEqual(stages.BEHIND_V3(older), rule === 'voices',
-            `the screen and the rename disagree about "${older}"`);
-          assert.strictEqual(stages.BEHIND_V3(head), false,
-            `a name written today already reads as behind: "${head}"`);
-        }
-      }
     }
   },
 
@@ -3896,76 +3537,6 @@ module.exports = {
   },
 
 
-  // THE ALWAYS GATE IS GONE AND THE RECORDS FOLLOW IT (3.44.0, RULE NINE): a
-  // stage 3 set priced with it is brought up to date the first time it is
-  // opened -- the always settings dropped beside, verified, swapped; the
-  // tables put aside; the set stamped with the gates its records hold, so it
-  // is never asked again. Announced in the totalling's own slot and words.
-  async aSetPricedWithTheAlwaysGateIsBroughtUpToDateOnFirstOpen() {
-    const id = `s3-test-${Date.now().toString(36)}-strip`;
-    const file = path.join(SETS_DIR, `${id}.json`);
-    const names = [
-      'count 75% always d1x t17h · argmax auto 24/7',
-      'count 75% active d1x t17h · argmax auto 24/7',
-      'count 75% always d1x t41h · argmax auto 24/7',
-      'count 75% directional d1x t41h · argmax auto 24/7',
-    ];
-    const gateOf = (label) => (label.includes(' always ') ? 'always' : label.includes(' active ') ? 'active' : 'directional');
-    const doc = { id, stage: 3, seq: 999984, name: 'S3 #strip', status: 'done', createdAt: new Date().toISOString(),
-      plan: { units: 1, settings: 4, settingLabels: names.slice() }, params: { universe: ['AAA'], nullN: 0, keepN: 0 },
-      boardNull: { captured: false, kept: 0, why: 'test' } };
-    try {
-      fs.mkdirSync(SETS_DIR, { recursive: true });
-      fs.writeFileSync(file, JSON.stringify(doc));
-      const w = rowstore.writer(id, 'records');
-      names.forEach((label, si) => w.push({ si, label, u: 0, agreeRule: 'count', agreeBar: 'all', agreePct: 75, agreePersist: 0,
-        entry: 'breakout', gate: gateOf(label), dMult: 1, tHours: si < 2 ? 17 : 41, trailMult: null, armMult: null,
-        decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2, rung: 6, members: 8, voices: 8, pnl: 10 + si, trades: 3,
-        holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 }, beat: 5, pairs: 9, lead: 1,
-        trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d' }));
-      w.close();
-      // tables totalled over the always settings exist and are NOT served: the
-      // set reads as having none, so every screen falls through to the strip
-      await stages.buildTally(doc);
-      assert.ok(fs.existsSync(path.join(SETS_DIR, `${id}-tally.json.gz`)), 'the fixture has tables');
-      assert.strictEqual(stages.alwaysStripPending(id), true);
-      assert.strictEqual(stages.readTally(id), null, 'tables totalled over a gate the engine no longer has are not served');
-      assert.strictEqual(stages.isAlwaysLabel(names[0]), true);
-      assert.strictEqual(stages.isAlwaysLabel(names[1]), false);
-      assert.strictEqual(stages.isAlwaysLabel('voices 75% +voice98 +hold2 always d0.25x t89h · argmax auto 24/7'), true,
-        'the gate sits after the agreement, whatever the agreement says');
-      assert.strictEqual(stages.isAlwaysLabel('count 75% market t17h · argmax auto 24/7'), false, 'a market setting has no gate');
-      assert.deepStrictEqual([...stages.alwaysLabelsOf(doc)], [names[0], names[2]]);
-      assert.strictEqual(stages.needsAlwaysStrip(doc), true);
-      // opening the set starts the strip, in the totalling's own slot and words
-      const first = stages.ensureTally(id);
-      assert.ok(first.totalling && first.totalling.phase === 'removing the settings whose gate ignored the forecast', JSON.stringify(first));
-      await stages.tallyRunPromise();
-      const after = stages.getSet(id);
-      assert.deepStrictEqual(after.gates, ['active', 'directional'], 'stamped with the gates its records hold');
-      assert.strictEqual(stages.needsAlwaysStrip(after), false, 'and never asked again');
-      assert.deepStrictEqual(after.plan.settingLabels, [names[1], names[3]], 'the always settings are gone from the list');
-      assert.strictEqual(after.plan.settings, 2);
-      assert.strictEqual(after.drops.length, 1);
-      assert.ok(/always gate was removed/.test(after.drops[0].why), 'the set says why they were dropped');
-      assert.strictEqual(after.tallyError, undefined);
-      const rows = rowstore.readAll(id, 'records');
-      assert.deepStrictEqual(rows.map((r) => [r.si, r.gate, r.label]), [[0, 'active', names[1]], [1, 'directional', names[3]]],
-        'the records that remain, renumbered to their new places');
-      assert.ok(!fs.existsSync(path.join(SETS_DIR, `${id}-tally.json.gz`)), 'the tables were put aside for totalling again');
-      assert.strictEqual(stages.tallyRunPromise(), null, 'the slot is free for the totalling');
-      assert.strictEqual(stages.alwaysStripPending(id), false, 'and the saved document answers the question the other way now');
-      // a set that never held one needs nothing
-      const clean = { ...doc, id: `${id}-clean`, plan: { units: 1, settings: 2, settingLabels: [names[1], names[3]] } };
-      assert.strictEqual(stages.needsAlwaysStrip(clean), false);
-      assert.strictEqual(stages.needsAlwaysStrip({ ...doc, gates: ['active', 'directional'] }), false, 'a stamped set is never scanned');
-    } finally {
-      for (const f of [file, path.join(SETS_DIR, `${id}-tally.json.gz`), path.join(SETS_DIR, `${id}-agreed.json.gz`)]) {
-        try { fs.rmSync(f, { force: true }); } catch (_) { /* fixture */ }
-      }
-      rowstore.remove(id);
-    }
-  },
   // TUNING-SLICE MONEY (3.46.0): the members' lean priced on the label window,
   // pencilled by hand, and held against copies dealt onto other days of the
   // same slice. A copy whose money equals the real to the cent is NOT beaten.
@@ -4029,7 +3600,7 @@ module.exports = {
   // The stage 1 and 2 tables serve the tuning-slice money, sort and filter by
   // it through the same saved-sort machinery, and say when a set was written
   // before the money existed -- and the fill refuses without a fee.
-  async theStageTablesServeTheTuningSliceMoneyAndSayWhenASetIsBehind() {
+  async theStageTablesServeTheTuningSliceMoney() {
     const id = `s1-test-${Date.now().toString(36)}-m`;
     const file = path.join(SETS_DIR, `${id}.json`);
     const idOld = `${id}-old`;
@@ -4057,7 +3628,6 @@ module.exports = {
       rk.push({ rank: 3, u: 1, beat: 2, pairs: 4, lead: 1, score: 9, money: 12.25, beatMoney: 4, leadMoney: 2.1 });
       rk.close();
       const page = stages.stage1Table(id, 0, 10);
-      assert.strictEqual(page.behind, null, 'a set carrying the money is not behind');
       assert.deepStrictEqual(page.rows.map((r) => [r.trade, r.money, r.beatMoney, r.leadMoney]),
         [['C0', -3.5, 0, -1.2], ['C2', 1, 2, 0.3], ['C1', 12.25, 4, 2.1]], 'the fixed rule still orders; the money rides on every row');
       stages.setSetSort(id, [{ key: 'beatMoney', dir: 'desc' }]);
@@ -4067,8 +3637,7 @@ module.exports = {
       assert.deepStrictEqual(stages.stage1Table(id, 0, 10, { moneyMin: 0 }).rows.map((r) => r.trade), ['C2', 'C1'], 'a floor on the money');
       assert.deepStrictEqual(stages.stage1Table(id, 0, 10, { beatMoneyMin: 60 }).rows.map((r) => r.trade), ['C1'], 'a floor on the money share, in percent');
       assert.strictEqual(stages.sortLabel([{ key: 'beatMoney', dir: 'desc' }]), 'beat its own null set — tuning-slice $ high to low', 'the chain line says the column\'s own words');
-      assert.throws(() => stages.startTuningMoneyFill(id, 0.00125), /already carries the tuning-slice money/, 'a set that has it is not filled again');
-      // a set written before the money existed: behind, and the fill wants a fee
+      // a record carrying no money reads as nothing, never as zero
       fs.writeFileSync(fileOld, JSON.stringify({ id: idOld, stage: 1, seq: 999980, name: 'S1 #old', status: 'done', createdAt: new Date().toISOString(), plan: { units: 1 }, params: { nullN: 4 } }));
       const old = rowstore.writer(idOld, 'records');
       old.push({ u: 0, trade: 'C0', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2, counts: {}, specs: [], score: 10, beat: 4, pairs: 4, lead: 2, nullScores: [], blocks: {} });
@@ -4076,20 +3645,14 @@ module.exports = {
       const rko = rowstore.writer(idOld, 'ranking');
       rko.push({ rank: 1, u: 0, beat: 4, pairs: 4, lead: 2, score: 10 });
       rko.close();
-      const oldDoc = JSON.parse(fs.readFileSync(fileOld, 'utf8'));
-      assert.strictEqual(stages.tuningMoneyBehind(oldDoc), true);
-      assert.strictEqual(stages.stage1Table(idOld, 0, 10).behind, 'tuning-slice money', 'the table says so');
       assert.deepStrictEqual(stages.stage1Table(idOld, 0, 10).rows.map((r) => [r.money, r.beatMoney, r.leadMoney]), [[null, null, null]], 'and the money reads as nothing, never as zero');
-      assert.throws(() => stages.startTuningMoneyFill(idOld, undefined), /fee % each way must be a real cost/, 'the fill wants the fee the set never declared');
-      assert.throws(() => stages.startTuningMoneyFill(idOld, 0.5), /fee % each way must be a real cost/, 'and refuses a fee outside 0 to 5%');
-      // the stage 2 table: both money readings, the sort, the behind flag
+      // the stage 2 table: both money readings and the sort
       fs.writeFileSync(file2, JSON.stringify({ id: id2, stage: 2, seq: 999979, name: 'S2 #money', status: 'done', createdAt: new Date().toISOString(), plan: { units: 2 }, params: { nullN: 4, fee: 0.00125 } }));
       const rec2 = rowstore.writer(id2, 'records');
       rec2.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'C0', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 4, scoreAll: 5, helped: 1, beat: 3, pairs: 4, lead: 2.5, money3: -3.5, money: 2, nullMoney: [0, 0, 0, 0], beatMoney: 3, leadMoney: 0.8 });
       rec2.push({ u: 1, carriedRank: 2, s1rank: 2, trade: 'C1', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8, scoreAll: 9, helped: 1, beat: 4, pairs: 4, lead: 4, money3: 12.25, money: -1, nullMoney: [0, 0, 0, 0], beatMoney: 1, leadMoney: -0.4 });
       rec2.close();
       const t2 = stages.stage2Table(id2, 0, 10);
-      assert.strictEqual(t2.behind, null);
       assert.deepStrictEqual(t2.rows.map((r) => [r.trade, r.money3, r.moneyAll, r.beatMoney, r.leadMoney]), [['C1', 12.25, -1, 1, -0.4], ['C0', -3.5, 2, 3, 0.8]]);
       stages.setSetSort(id2, [{ key: 'moneyAll', dir: 'desc' }]);
       assert.deepStrictEqual(stages.stage2Table(id2, 0, 10).rows.map((r) => r.trade), ['C0', 'C1'], 'sorted by the tuning-slice $ with every member pooled');
@@ -4120,18 +3683,12 @@ module.exports = {
       assert.ok(s1.includes(th), `the stage 1 table has the column ${th}`);
     }
     assert.ok(s1.includes('colspan="12"'), 'the empty row spans the new columns');
-    assert.ok(s1.includes("${bMoneyFillPanel(doc, t, 'S1')}") && s1.includes("wireMoneyFill(doc, 'S1');"), 'the fill-in sits beside the stage 1 table');
     const s2 = UI.slice(UI.indexOf('async function bDrawStage2('), UI.indexOf('\nasync function bDrawStage3('));
     for (const th of ["tuning-slice $ — stage 1 members${bSortBtn(doc, 'money3', 'desc')}", "tuning-slice $ — all members${bSortBtn(doc, 'moneyAll', 'desc')}", "beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}", "lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}"]) {
       assert.ok(s2.includes(th), `the stage 2 table has the column ${th}`);
     }
     assert.ok(s2.includes('colspan="17"'), 'the empty row spans the new columns');
-    assert.ok(s2.includes("${bMoneyFillPanel(doc, t, 'S2')}") && s2.includes("wireMoneyFill(doc, 'S2');"), 'the fill-in sits beside the stage 2 table');
     assert.ok(!s2.includes('the BOOST members never face a null set'), 'the sentence that said the BOOST members never face a null set is gone');
-    const panel = UI.slice(UI.indexOf('function bMoneyFillPanel('), UI.indexOf('\nasync function bDrawStage1('));
-    assert.ok(panel.includes('<button id="bMoneyGoS1"') && panel.includes('<button id="bMoneyGoS2"') && panel.includes('>fill in the tuning-slice money</button>'),
-      'one button per table, each named so the Help tab can describe it, both saying what they do');
-    assert.ok(panel.includes("await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/tuning-money-fill`, { fee });"), 'and it sends the fee typed beside it');
     // every sortable key on the stage 1 and 2 tables has the words the chain line prints
     for (const key of Object.keys(stages.FILTER_DEFS[1]).concat(Object.keys(stages.FILTER_DEFS[2]))) assert.ok(key, key);
     for (const stage of [1, 2]) {
