@@ -3665,6 +3665,79 @@ module.exports = {
     }
   },
 
+  // THE TWO BOXES THAT NAME A PARENT FOLLOW WHAT IS ON THE BOX (3.76.1, owner
+  // order 2026-09-06: "the stage one sweep just finished. the stage two box
+  // still says no finished stage one record set on this box. Fix that. When
+  // the stage one sweep finishes, you must refresh the stage two boxes. When
+  // the stage two sweep finishes, obviously, you must refresh the stage three
+  // box.").
+  //
+  // Both were filled once, when the screen was drawn, and never again -- so a
+  // run watched from this screen landed, its set finished and on disk, and the
+  // only way to see it in the box below was to reload the page.
+  //
+  // The half that already worked is the model: the poll refreshes the greyed
+  // name suggestion in each name box on every tick. The boxes that name a
+  // parent now do the same, off the same fetch, through the same builder a
+  // fresh draw uses -- and on the tick that finds the run has ENDED, which is
+  // the one the owner is sitting there waiting for.
+  theTwoBoxesThatNameAParentAreRebuiltWhenWhatIsOnTheBoxMoves() {
+    // whole-line comments stripped: a test that matches the sentence
+    // DESCRIBING a fault passes without the fault being fixed
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
+      .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    const prog = UI.indexOf('async function swProgress(');
+    assert.ok(prog >= 0, 'swProgress is gone');
+    const ended = UI.indexOf('if (!st.running) {', prog);
+    const refill = UI.indexOf('swRefillParents(', prog);
+    assert.ok(refill >= 0, 'the poll never rebuilds the two boxes that name a parent');
+    assert.ok(refill < ended,
+      'the rebuild sits after the not-running branch returns, so the tick that finds the run has ENDED -- the only '
+      + 'one that matters -- skips it, and the box goes on saying there is no finished set');
+    // the list held in hand moves with them: the heading colours and the stage
+    // 3 cost line are both judged off it, so a stale copy answers for a box
+    // that has just changed
+    const cache = UI.indexOf('swSetsCache = st.sets', prog);
+    assert.ok(cache >= 0 && cache < refill, 'the set list held in hand is not refreshed before the boxes are rebuilt');
+
+    const i = UI.indexOf('function swRefillParents(');
+    assert.ok(i >= 0, 'swRefillParents is gone');
+    const fn = UI.slice(i, UI.indexOf('\n}\n', i));
+    assert.ok(/\['#swFrom2', 1\], \['#swFrom3', 2\]/.test(fn),
+      'both boxes are not covered -- the owner asked for the stage 2 box on a stage 1 landing AND the stage 3 box on a stage 2 one');
+    assert.strictEqual((fn.match(/swSetOptions\(/g) || []).length, 2,
+      'the rebuild does not go through the same builder the draw uses, so the two screens can say different things');
+    assert.ok(/swSetOptions\(sets, stage, box\.value \|\| null\)/.test(fn),
+      "the rebuild drops the owner's choice instead of keeping the set the box already names");
+    // COMPARED WITHOUT THE SELECTION, or the owner picking a set reads as the
+    // list having moved and the next tick rewrites the box under their cursor,
+    // which closes an open dropdown -- every four seconds
+    assert.ok(/swSetOptions\(sets, stage, null\)/.test(fn),
+      'the comparison includes which option is selected, so the owner picking a set counts as the list moving');
+    assert.ok(/if \(swParentShown\.get\(sel\) === shape\) continue;/.test(fn),
+      'a box with nothing new in it is rewritten anyway, which closes a dropdown the owner has open');
+
+    // the three duties a box changed by hand carries out, and ONLY when it
+    // moved: swCountsSoon blanks the cost lines to an asking note, so on every
+    // tick it would flicker them for as long as the page is open
+    const guard = UI.indexOf('if (swRefillParents(swSetsCache)) {', prog);
+    assert.ok(guard >= 0 && guard <= refill, 'the follow-up work is not gated on the boxes actually moving');
+    const gated = UI.slice(guard, guard + 300);
+    for (const duty of ['rememberSweepForm();', 'swProvenance();', 'swCountsSoon();']) {
+      assert.ok(gated.indexOf(duty) > 0, `a rebuilt box does not ${duty.slice(0, -3)} the way one changed by hand does`);
+    }
+
+    // the draw tells the poll what it put on screen, so the first tick after
+    // opening Sweep rewrites neither box
+    const draw = UI.indexOf('async function drawSweep(');
+    const seed = UI.slice(draw, draw + 1200);
+    assert.ok(/swParentShown\.set\('#swFrom2', swOpt1\);/.test(seed) && /swParentShown\.set\('#swFrom3', swOpt2\);/.test(seed),
+      'the draw does not tell the poll what it put on screen, so the first tick rewrites both boxes');
+    assert.ok(/<select id="swFrom2" style="min-width:24rem">\$\{swOpt1\}<\/select>/.test(UI)
+      && /<select id="swFrom3" style="min-width:24rem">\$\{swOpt2\}<\/select>/.test(UI),
+      'the draw builds its options a second time instead of the one it seeded with, so the two can drift apart');
+  },
+
   // The fee is the owner's, typed on the stage 1 panel and sent with the
   // launch as a share of the position; a launch without one is refused by
   // sentence before anything is written.

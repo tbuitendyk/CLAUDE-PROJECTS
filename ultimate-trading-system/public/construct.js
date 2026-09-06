@@ -641,6 +641,45 @@ function swSetOptions(sets, stage, selected) {
   return list.map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${x.plan.units.toLocaleString()} units${x.stage === 1 ? ', votes kept' : ''}</option>`).join('');
 }
 
+// THE PARENT PICKERS FOLLOW WHAT IS ON THE BOX (3.76.1, owner order 2026-09-06:
+// "when the stage one sweep finishes, you must refresh the stage two boxes ...
+// when the stage two sweep finishes, obviously, you must refresh the stage
+// three box").
+//
+// They were filled once, when the screen was drawn, and never again. So a
+// stage 1 run watched from this screen landed and left `from stage 1 record
+// set` still reading "no finished stage 1 record set on this box" -- the set
+// was there, finished, on disk, and the only way to see it was to reload.
+//
+// The poll below already fetches the list every four seconds, INCLUDING on the
+// tick that finds the run has ended, which is the tick that matters. This
+// rebuilds both boxes off that same list, through the same builder a fresh
+// draw uses, so the two can never say different things.
+//
+// TWO THINGS IT MUST NOT DO. It must not take the owner's choice away: the box
+// keeps whatever it names as long as that set is still on the list. And it must
+// not rewrite a box that has not changed -- a select rebuilt under an open
+// dropdown closes it, and this ticks every four seconds. So the comparison is
+// made on the list WITHOUT the selection marked, and the owner changing the box
+// therefore never reads as the list having changed.
+const swParentShown = new Map();   // box -> the options last written, unselected
+function swRefillParents(sets) {
+  let moved = false;
+  for (const [sel, stage] of [['#swFrom2', 1], ['#swFrom3', 2]]) {
+    const box = $(sel);
+    if (!box) continue;
+    const shape = swSetOptions(sets, stage, null);
+    if (swParentShown.get(sel) === shape) continue;
+    swParentShown.set(sel, shape);
+    // a box naming a set that is still there keeps it; one naming nothing, or
+    // naming a set that has gone, takes the first on the list -- which is
+    // exactly what a fresh draw of this screen shows
+    box.innerHTML = swSetOptions(sets, stage, box.value || null);
+    moved = true;
+  }
+  return moved;
+}
+
 async function swProgress() {
   const el = $('#swProg');
   if (!el) return;
@@ -649,6 +688,17 @@ async function swProgress() {
   // the greyed suggestion in each name box is the next free name, and it
   // moves the moment a launch takes one
   for (const n of [1, 2, 3]) { const b = $(`#swName${n}`); if (b && st.nextNames) b.placeholder = st.nextNames[n] || ''; }
+  // and the two parent boxes follow the same fresh list, on every tick and on
+  // the last one. The cache goes with them: the heading colours and the stage 3
+  // cost line are both judged off it, so a stale copy would answer for a box
+  // that has just moved.
+  swSetsCache = st.sets || [];
+  if (swRefillParents(swSetsCache)) {
+    // the same three duties changing a box by hand carries out
+    rememberSweepForm();
+    swProvenance();
+    swCountsSoon();
+  }
   // the start buttons sleep while a run is going — one heavy job at a time,
   // said on the button instead of by a refusal after the press
   const going = !!st.running;
@@ -2540,6 +2590,12 @@ async function drawSweep() {
   // the next free name per stage, shown greyed in each name box as the
   // suggestion an empty box takes
   const nextNames = st.nextNames || {};
+  // built once and remembered unselected, so the poll's comparison starts level
+  // with what is on screen and the first tick does not rewrite either box
+  const swOpt1 = swSetOptions(sets, 1, null);
+  const swOpt2 = swSetOptions(sets, 2, null);
+  swParentShown.set('#swFrom2', swOpt1);
+  swParentShown.set('#swFrom3', swOpt2);
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Sweep — the three stages, live</h3>
     <p class="note">Each stage writes a record set the next one reads, and every set names its parent. What is
@@ -2594,7 +2650,7 @@ async function drawSweep() {
   <div class="panel">
     <h3 id="swH2" style="margin-top:0">Stage 2 — carry the best forward, add the BOOST members</h3>
     <div class="row" style="align-items:flex-end">
-      <label class="f">from stage 1 record set<select id="swFrom2" style="min-width:24rem">${swSetOptions(sets, 1, null)}</select></label>
+      <label class="f">from stage 1 record set<select id="swFrom2" style="min-width:24rem">${swOpt1}</select></label>
       <label class="f" title="the carry takes the top of the parent's table in the sort saved on it — pick the sort on Boards. The fixed rule (beat its own null set, ties by lead over null set) when none is saved.">carry forward (0 = all)<input id="swCarry" type="number" value="0" min="0" style="width:5.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
@@ -2611,7 +2667,7 @@ async function drawSweep() {
   <div class="panel">
     <h3 id="swH3" style="margin-top:0">Stage 3 — price any settings from the kept votes, no training</h3>
     <div class="row" style="align-items:flex-end">
-      <label class="f">from stage 2 record set<select id="swFrom3" style="min-width:24rem">${swSetOptions(sets, 2, null)}</select></label>
+      <label class="f">from stage 2 record set<select id="swFrom3" style="min-width:24rem">${swOpt2}</select></label>
       <label class="f" title="which of the parent's records get priced. N records: the carry forward box beside this decides — 0 prices every record, N prices the top N of the parent's table in the sort saved on it. Selected records: exactly the records ticked on the parent's stage 2 table on Boards, however many that is.">records to price<select id="swPick3">${vocabOptions('stage3Pick', 'count')}</select></label>
       <label class="f">carry forward (0 = all)<input id="swCarry3" type="number" value="0" min="0" style="width:5.5rem"></label>
       <span id="swPicked3" class="note"></span>
