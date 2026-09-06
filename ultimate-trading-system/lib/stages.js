@@ -177,9 +177,21 @@ function publicParams(d) {
     selected: Array.isArray(p.selected) ? p.selected.length : null,
     campaign: p.campaign || null,
     sizes: p.sizes || null,
-    // what the Sweep provenance check reads a stage 1 set by (owner order,
-    // 2026-08-27: the section titles go red at the point of provenance break)
-    universe: p.universe || null, geometries: p.geometries || null,
+    // EVERY FIELD THE SWEEP PROVENANCE CHECK READS A STAGE 1 SET BY (owner
+    // order, 2026-08-27: the section titles go red at the point of provenance
+    // break). `compare` and `trainOn` were missing, and a field the check reads
+    // and the service does not send is not a near miss -- it reads as a set
+    // that disagrees with the boxes on every draw. Both were added to a run's
+    // record without being added here, so every set launched with doubles or
+    // triples, and every set trained by the money each trade was worth, painted
+    // Stage 2 red the moment its own record set appeared in the box below
+    // (owner, 2026-09-06: "STILL RED").
+    //
+    // theProvenanceCheckIsSentEveryFieldItReads holds the two together: it runs
+    // the screen's own check against THIS function's output, so a field added
+    // to one side and not the other fails the suite.
+    universe: p.universe || null, compare: p.compare || null, geometries: p.geometries || null,
+    trainOn: p.trainOn || null,
     allLoaded: p.allLoaded !== false, startMonth: p.startMonth || null, endMonth: p.endMonth || null,
   };
 }
@@ -5759,7 +5771,7 @@ function startKeptScrambleFill(id, wantKeep, opts = {}) {
 
 module.exports = {
   startKeptScrambleFill,
-  feeOrRefuse, moneyDriftOf,
+  feeOrRefuse, moneyDriftOf, publicParams,
   // exported so the sort can be checked by BEHAVIOUR rather than by matching
   // the shape of its source, which rotted the moment a second share column
   // arrived

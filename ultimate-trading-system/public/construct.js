@@ -635,10 +635,22 @@ function msWords(ms) {
 
 let swPoll = null;
 
+// EVERY PICKER CARRIES AN EMPTY ENTRY, AND IT IS THE DEFAULT (3.77.0, owner
+// order 2026-09-06: "each drop down selector box should have an -empty- entry
+// as well which is the default when nothing has been set. it should always be
+// selectable. if it is selected then that item goes black and no longer links
+// in either direction").
+//
+// Before this the box took the first record set on the list the moment one
+// existed, so a set was named that the owner had never chosen -- and there was
+// no way back to naming nothing. `— none —` is always there, always
+// selectable, and always what an unset box shows.
 function swSetOptions(sets, stage, selected) {
   const list = sets.filter((x) => x.stage === stage && (x.status === 'done'));
-  if (!list.length) return `<option value="">— no finished stage ${stage} record set on this box —</option>`;
-  return list.map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${x.plan.units.toLocaleString()} units${x.stage === 1 ? ', votes kept' : ''}</option>`).join('');
+  const on = selected ? '' : ' selected';
+  if (!list.length) return `<option value=""${on}>— none — no finished stage ${stage} record set on this box</option>`;
+  return `<option value=""${on}>— none —</option>`
+    + list.map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${x.plan.units.toLocaleString()} units${x.stage === 1 ? ', votes kept' : ''}</option>`).join('');
 }
 
 // THE PARENT PICKERS FOLLOW WHAT IS ON THE BOX (3.76.1, owner order 2026-09-06:
@@ -814,7 +826,7 @@ function swProvenance() {
     }
     h.style.color = ok ? 'var(--pos)' : 'var(--neg)';
     h.title = ok
-      ? 'green: this section reads from what the section above it shows'
+      ? 'green: this section is part of one linked chain with the green sections above it'
       : `red: ${why}. Set the boxes back and this goes green again.`;
   };
   // AND A RED HEADING SAYS WHY ON THE SCREEN, NOT IN A HOVER (3.76.4, owner:
@@ -835,17 +847,43 @@ function swProvenance() {
   const v = (sel) => { const e = $(sel); return e ? e.value : ''; };
   const c = (sel) => { const e = $(sel); return !!(e && e.checked); };
 
-  // stage 1 is the root. It reads from no record set at all, so it is the same
-  // case as an empty box and it takes the same colour -- the owner's rule, in
-  // their words: "if nothing's loaded how can nothing match or not match the
-  // previous?". It was green, which claimed a check that had never been made.
-  paint('#swH1', null, 'stage 1 reads from no record set — it is where a chain starts, so there is nothing for it to agree or disagree with');
+  // THE OWNER'S TRUTH TABLE, WRITTEN OUT (3.77.0, 2026-09-06), and this
+  // function does nothing that is not one of these six rows:
+  //
+  //   black black black   all empty
+  //   green black black   s1 set, others empty
+  //   green red   black   s1 set, s2 doesn't match, s3 empty
+  //   green green black   s1 set, s2 matches, s3 empty
+  //   green green red     s1 set, s2 matches, s3 doesn't match
+  //   green green green   s1 set, s2 matches, s3 matches
+  //
+  // Read down the column and each section answers for ITS OWN box:
+  //
+  //   * black is "nothing set here". It claims nothing and links in neither
+  //     direction -- the owner's words for the empty entry in a picker.
+  //   * red is "what is set here does not match the section above". The red
+  //     lands on the section whose own box holds the break, never the one
+  //     above it.
+  //   * green is "set, and matching". The greens together are what show the
+  //     chain is linked.
+  //
+  // EACH SECTION ANSWERS FOR ITS OWN BOX AND NOTHING ELSE. The owner's later
+  // rows settle it: `green black red` -- stage 2 empty and stage 3 still red
+  // for a set that does not match -- and `green red green`, stage 3 green over
+  // a stage 2 that is not. So no section's colour is ever gated on the one
+  // above it being green; each is only ever describing what is in its own box.
+  //
+  // STAGE 1 HAS NO PICKER, so "s1 set" is its own section being set up at all:
+  // a run needs at least one of singles / doubles / triples, and with none of
+  // them ticked there is no stage 1 to link anything to. It is never red --
+  // it names no record set, so it can never be the section that disagrees.
+  paint('#swH1', (c('#swSingles') || c('#swDoubles') || c('#swTriples')) ? true : null,
+    'stage 1 is set up once singles, doubles or triples is ticked — until then there is nothing here for the sections below to link to');
 
-  // stage 2: the stage 1 record set its box names, held up to the stage 1 section
   const s1row = rowOf(v('#swFrom2'));
   sayWhy('#swWhy2', null);
   sayWhy('#swWhy3', null);
-  if (!v('#swFrom2')) paint('#swH2', null, 'this section names no stage 1 record set yet, so there is nothing for it to agree or disagree with');
+  if (!v('#swFrom2')) paint('#swH2', null, 'this section names no stage 1 record set yet, so nothing is linked to the stage 1 section above');
   else if (!s1row) paint('#swH2', false, 'the stage 1 record set named here is not on this box any more');
   else {
     const p = s1row.params || {};
@@ -905,8 +943,12 @@ function swProvenance() {
   }
 
   // stage 3: the stage 2 record set its box names, held up to the stage 2 section
+  //
+  // An empty stage 2 box above does NOT excuse this one: `green black red` is
+  // the owner's own row -- a stage 3 set naming a chain the stage 2 box no
+  // longer shows is a break in THIS box, and it is red whatever is above it.
   const s2row = rowOf(v('#swFrom3'));
-  if (!v('#swFrom3')) paint('#swH3', null, 'this section names no stage 2 record set yet, so there is nothing for it to agree or disagree with');
+  if (!v('#swFrom3')) paint('#swH3', null, 'this section names no stage 2 record set yet, so there is nothing set here to link');
   else if (!s2row) paint('#swH3', false, 'the stage 2 record set named here is not on this box any more');
   else {
     const par = s2row.parent || {};

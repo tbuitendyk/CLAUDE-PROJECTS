@@ -1428,12 +1428,17 @@ module.exports = {
       // Stage 1 is the root: it reads from no record set, so it is never
       // painted red -- and since 3.76.3 it is not painted green either, because
       // green claims a check it has never made.
-      assert.ok(/paint\('#swH1', null,/.test(fn), 'stage 1 claims a colour for a comparison it never makes');
-      assert.ok(!/paint\('#swH1', (?:true|false|!)/.test(fn), 'stage 1 is the root and is never painted red or green');
+      assert.ok(/paint\('#swH1', \(c\('#swSingles'\)/.test(fn),
+        'stage 1 does not go green off its own section being set up');
+      assert.ok(!/paint\('#swH1', (?:false|!)/.test(fn), 'stage 1 names no record set, so it can never be the section painted red');
       const s2 = fn.slice(fn.indexOf("const s1row = rowOf(v('#swFrom2'));"), fn.indexOf("const s2row = rowOf(v('#swFrom3'));"));
-      assert.ok(s2.includes("paint('#swH2', !mismatch,") && !s2.includes("'#swH1'"), 'a stage 1 set that no longer matches the stage 1 boxes paints STAGE 2, whose box names it');
+      // the RED lands on stage 2, whose box names the set
+      assert.ok(s2.includes("paint('#swH2', !mismatch,"), 'a stage 1 set that no longer matches the stage 1 boxes paints STAGE 2, whose box names it');
+      assert.ok(!/paint\('#swH1'/.test(s2), 'the stage 2 block paints the section above it');
       const s3 = fn.slice(fn.indexOf("const s2row = rowOf(v('#swFrom3'));"));
-      assert.ok(s3.includes("paint('#swH3', !mismatch,") && !s3.includes("'#swH2'"), 'a stage 2 set that was not carried out of the stage 1 set the stage 2 box names paints STAGE 3, whose box names it');
+      assert.ok(s3.includes("paint('#swH3', !mismatch,"),
+        'a stage 2 set that was not carried out of the stage 1 set the stage 2 box names paints STAGE 3, whose box names it');
+      assert.ok(!/paint\('#swH2'/.test(s3), 'the stage 3 block paints the section above it');
       const swBody = screens.drawBody('drawSweep');
       assert.ok(swBody.includes('swProvenance()'), 'the colors are wired on the page');
       assert.ok(swBody.includes("b.disabled = going"), 'the start buttons sleep while a run is going');
@@ -3754,6 +3759,41 @@ module.exports = {
       'the draw builds its options a second time instead of the one it seeded with, so the two can drift apart');
   },
 
+  // A FIELD THE CHECK READS AND THE SERVICE DOES NOT SEND (3.76.5, owner:
+  // "still red — the line says trade coins don't match").
+  //
+  // The screen judges a stage 1 record set on nine things. The service hands
+  // the page a TRIMMED copy of a set's params, and two of the nine -- `compare`
+  // and `trainOn` -- were never in it. Both were added to what a run records
+  // without being added to what is served, so on the page they read as absent:
+  // every set launched with doubles or triples disagreed about the compare
+  // coins, and every set trained by the money each trade was worth disagreed
+  // about that. Stage 2 was red on arrival and no box could clear it.
+  //
+  // The two sides are held together here by NAME. Every field the check names
+  // is looked up in what publicParams actually returns, so adding a comparison
+  // to one side and not the other fails the suite instead of painting a
+  // heading red for ever.
+  theProvenanceCheckIsSentEveryFieldItReads() {
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const at = UI.indexOf('function swProvenance() {');
+    const whole = UI.slice(at, UI.indexOf('\n}\n', at));
+    // ONLY the block where `p` IS the record set's params. Scanned whole, this
+    // also picks up the `p` that is a paragraph element further down, and a
+    // test that reports style and innerHTML as missing fields is noise.
+    const from = whole.indexOf('const p = s1row.params || {};');
+    const fn = whole.slice(from, whole.indexOf("paint('#swH2'", from));
+    assert.ok(fn.length > 300, 'the stage 2 judgement is gone');
+    const sent = stages.publicParams({ params: {} });
+    const reads = [...new Set([...fn.matchAll(/\bp\.([A-Za-z][A-Za-z0-9]*)/g)].map((m) => m[1]))];
+    assert.ok(reads.length >= 6, `the check reads only ${reads.length} fields off the record set — it is not being read`);
+    const absent = reads.filter((k) => !(k in sent));
+    assert.deepStrictEqual(absent, [],
+      `the stage heading judges a record set by ${absent.join(', ')}, and the service never sends `
+      + `${absent.length > 1 ? 'those fields' : 'that field'} to the page — so every set disagrees about `
+      + `${absent.length > 1 ? 'them' : 'it'} and the heading is red whatever the owner types`);
+  },
+
   // THE STAGE HEADINGS, RUN RATHER THAN GREPPED (3.76.4, owner: "STILL RED").
   //
   // The tests around these colours all scanned the source for spellings, and a
@@ -3765,7 +3805,7 @@ module.exports = {
   // It also reads the line the screen now prints under a red heading, because
   // a colour with no way to act on it cost three sittings: the reason lived in
   // the heading's hover and nowhere else.
-  theStageHeadingsAnswerBlackGreenGreenForASetLaunchedFromTheseBoxes() {
+  theStageHeadingsFollowTheOwnersTruthTableRowForRow() {
     const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const at = UI.indexOf('function swProvenance() {');
     assert.ok(at > 0, 'swProvenance is gone');
@@ -3773,15 +3813,22 @@ module.exports = {
     const DEFAULTS = require('../lib/batch').DEFAULT_PAIRS;
 
     // the owner's own set, read off the box 2026-09-06
+    // THROUGH publicParams, WHICH IS WHAT THE PAGE ACTUALLY RECEIVES. Handing
+    // this test the whole set document is how the last fault got through: the
+    // check read `compare` and `trainOn`, the service sent neither, and a test
+    // fed the full document could never see it (owner, 2026-09-06: "STILL
+    // RED"). What the screen is given is what the screen is tested on.
     const S1 = {
       id: 's1-a', name: 'S1 #1',
-      params: {
-        universe: ['LTCUSDT'], compare: DEFAULTS.slice(),
-        sizes: { singles: false, doubles: false, triples: true },
-        geometries: ['weekly-8d', 'daily-1d', 'daily-2d', 'daily-3d', 'daily-4d'],
-        windowLayout: 'reserve61', trainOn: 'money', weightCap: 5, nullN: 20, fee: 0.00125,
-        allLoaded: true, startMonth: '2019-11', endMonth: '2026-09',
-      },
+      params: stages.publicParams({
+        params: {
+          universe: ['LTCUSDT'], compare: DEFAULTS.slice(),
+          sizes: { singles: false, doubles: false, triples: true },
+          geometries: ['weekly-8d', 'daily-1d', 'daily-2d', 'daily-3d', 'daily-4d'],
+          windowLayout: 'reserve61', trainOn: 'money', weightCap: 5, nullN: 20, fee: 0.00125,
+          allLoaded: true, startMonth: '2019-11', endMonth: '2026-09',
+        },
+      }),
     };
     const S2 = { id: 's2-a', name: 'S2 #1', parent: { id: 's1-a', name: 'S1 #1', carry: 600, of: 600 } };
     const run = (over = {}, ticksOver = {}) => {
@@ -3819,14 +3866,48 @@ module.exports = {
       };
     };
 
-    // THE WHOLE POINT: boxes as the run was launched, and nothing is red.
-    const asLaunched = run();
-    assert.deepStrictEqual([asLaunched.h1, asLaunched.h2, asLaunched.h3], ['black', 'green', 'green'],
-      `a chain whose boxes still hold what launched it must read black, green, green — got ${JSON.stringify(asLaunched)}`);
-    assert.strictEqual(asLaunched.why2, '', 'a green section still prints a reason');
-    assert.strictEqual(asLaunched.why3, '', 'a green section still prints a reason');
+    // THE OWNER'S TRUTH TABLE, 2026-09-06, ROW FOR ROW. Nothing else decides
+    // these colours, and every row here is one line they wrote.
+    const ROWS = [
+      ['all empty',
+        { '#swFrom2': '', '#swFrom3': '' }, { '#swSingles': false, '#swDoubles': false, '#swTriples': false },
+        ['black', 'black', 'black']],
+      ['s1 set, others empty',
+        { '#swFrom2': '', '#swFrom3': '' }, {},
+        ['green', 'black', 'black']],
+      ["s1 set, s2 doesn't match, s3 empty",
+        { '#swNull1': '19', '#swFrom3': '' }, {},
+        ['green', 'red', 'black']],
+      ['s1 set, s2 matches, s3 empty',
+        { '#swFrom3': '' }, {},
+        ['green', 'green', 'black']],
+      ["s1 set, s2 matches, s3 doesn't match",
+        { '#swCarry': '100' }, {},
+        ['green', 'green', 'red']],
+      ['s1 set, s2 matches, s3 matches',
+        {}, {},
+        ['green', 'green', 'green']],
+      // and the three the owner added after, which settle it: no section's
+      // colour is gated on the one above it being green -- each answers for
+      // its own box and nothing else
+      ["s1 set, s2 empty, s3 doesn't match",
+        { '#swFrom2': '' }, {},
+        ['green', 'black', 'red']],
+      ["s1 set, s2 doesn't match, s3 matches s1",
+        { '#swNull1': '19' }, {},
+        ['green', 'red', 'green']],
+      ["s1 set, s2 doesn't match, s3 doesn't match",
+        { '#swNull1': '19', '#swCarry': '100' }, {},
+        ['green', 'red', 'red']],
+    ];
+    for (const [label, box, tick, want] of ROWS) {
+      const r = run(box, tick);
+      assert.deepStrictEqual([r.h1, r.h2, r.h3], want,
+        `${label} must read ${want.join(' ')} — got ${[r.h1, r.h2, r.h3].join(' ')}`);
+    }
 
-    // AND EVERY WAY OF BREAKING IT NAMES THE CONTROL AND BOTH VALUES.
+    // AND EVERY WAY OF BREAKING IT NAMES THE CONTROL AND BOTH VALUES, because a
+    // colour with no way to act on it cost three sittings.
     const cases = [
       ['null set size', { '#swNull1': '19' }, {}, 'h2', 'why2', ['19', '20']],
       ['chunk shape', {}, { '#swPermGeom': false }, 'h2', 'why2', ['daily-4d', 'every chunk shape']],
@@ -3844,11 +3925,14 @@ module.exports = {
         assert.ok(said.includes(val), `the screen does not say ${val}, so there is no way to act on it: ${said}`);
       }
     }
+    assert.strictEqual(run().why2, '', 'a green section still prints a reason');
 
-    // and an empty box claims nothing, at either stage
-    const none = run({ '#swFrom2': '', '#swFrom3': '' });
-    assert.deepStrictEqual([none.h1, none.h2, none.h3], ['black', 'black', 'black'],
-      'a section naming no record set still claims a colour for a comparison it never made');
+    // AND THE PICKER ALWAYS OFFERS THAT EMPTY ENTRY, whatever is on the box.
+    const opts = UI.slice(UI.indexOf('function swSetOptions('), UI.indexOf('\n}\n', UI.indexOf('function swSetOptions(')));
+    assert.ok(/<option value=""\$\{on\}>— none —<\/option>/.test(opts),
+      'a box with record sets on it offers no way back to naming nothing');
+    assert.ok(/const on = selected \? '' : ' selected';/.test(opts),
+      'the empty entry is not what an unset box shows, so the first record set on the list is named without the owner choosing it');
   },
 
   // A BOX IS COMPARED AS THE LAUNCH RESOLVED IT (3.76.3, owner: "you've got
@@ -3892,7 +3976,8 @@ module.exports = {
     // AND THE THIRD COLOUR. A heading with nothing to check claims nothing.
     assert.ok(/if \(ok === null\) \{\n      h\.style\.color = '';/.test(fn),
       'there are only two colours, so a heading with nothing to compare still claims green');
-    assert.ok(/paint\('#swH1', null,/.test(fn), 'stage 1 claims green while reading from no record set at all');
+    assert.ok(/paint\('#swH1', \(c\('#swSingles'\) \|\| c\('#swDoubles'\) \|\| c\('#swTriples'\)\) \? true : null,/.test(fn),
+      'stage 1 does not go green off its own section being set up, so the top of the truth table cannot hold');
     assert.ok(/if \(!v\('#swFrom2'\)\) paint\('#swH2', null,/.test(fn), 'an empty stage 1 box still paints Stage 2 green');
     assert.ok(/if \(!v\('#swFrom3'\)\) paint\('#swH3', null,/.test(fn), 'an empty stage 2 box still paints Stage 3 green');
     assert.ok(!/names no record set yet\)/.test(fn), 'green still claims to cover the case that is now black');
