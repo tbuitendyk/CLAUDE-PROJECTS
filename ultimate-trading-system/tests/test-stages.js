@@ -4409,6 +4409,20 @@ module.exports = {
         'a different first digit of the release must refuse by name');
       assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: null }))), /no readable price-file record/,
         'a set that cannot prove its data is unchanged must refuse');
+      // AND A SET WHOSE PRICE FILES HAVE MOVED, which is the one that actually
+      // bites: the record is perfectly readable and simply no longer describes
+      // what is on disk. A unit trained on today's candles would join units
+      // trained on yesterday's with nothing able to tell them apart, so the
+      // refusal has to NAME the coins that moved.
+      const moved = {
+        at: new Date().toISOString(),
+        overallDigest: 'a-digest-that-is-not-the-one-on-disk',
+        symbols: { ZZZTESTUSDT: { files: 1, bytes: 1, digest: 'moved' } },
+      };
+      assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: moved }))), /the price files changed since/,
+        'price files that moved since the set was written must refuse rather than mixing two kinds of unit');
+      assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: moved }))), /ZZZTESTUSDT/,
+        'and the refusal must name what moved, or there is nothing to act on');
       assert.match(String(stages.unitFillRefusal(withDoc({ stage: 3 }))), /only a stage 1 record set/,
         'only stage 1 holds units to put back');
       assert.match(String(stages.unitFillRefusal(withDoc({ status: 'running' }))), /still going/,
