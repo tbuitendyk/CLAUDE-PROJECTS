@@ -296,21 +296,42 @@ function markInterrupted(reason) {
 // ---- shared launch plumbing ---------------------------------------------------
 const num = (v, dflt) => (Number.isFinite(Number(v)) ? Number(v) : dflt);
 
-function unitsFor(universe, sizes, geometries) {
+// WHAT IS TRADED AND WHAT IT IS READ AGAINST ARE TWO LISTS (owner order,
+// 2026-09-06: "just make two boxes: trade coins and compare coins so LTCUSDT
+// can be compared to the universe of others").
+//
+// They used to be one, and the coins a unit was read against were always the
+// other members of that same list. So asking for ONE coin against everything
+// else was impossible: with one coin in the list there was no second or third
+// to draw, doubles and triples produced nothing at all, and the launch refused
+// with "the universe and sizes produced no units" -- which is true, useless,
+// and reads as a fault in the system rather than in the boxes.
+//
+// `compare` defaults to `trade` when it is not given, so a run that names one
+// list behaves exactly as every run before this did.
+function unitsFor(trade, sizes, geometries, compare = null) {
   const combos = [];
-  const u = universe;
+  const u = trade;
+  const c = (compare && compare.length) ? compare : trade;
+  // a coin is never read against itself, whichever list it came from
+  const others = (a) => c.filter((x) => x !== a);
   if (sizes.singles) for (const a of u) combos.push({ trade: a, ctx1: null, ctx2: null, size: 1 });
-  if (sizes.doubles) for (const a of u) for (const b of u) if (b !== a) combos.push({ trade: a, ctx1: b, ctx2: null, size: 2 });
+  if (sizes.doubles) for (const a of u) for (const b of others(a)) combos.push({ trade: a, ctx1: b, ctx2: null, size: 2 });
   if (sizes.triples) {
     for (const a of u) {
-      const rest = u.filter((x) => x !== a);
+      const rest = others(a);
       for (let i = 0; i < rest.length; i++) for (let j = i + 1; j < rest.length; j++) combos.push({ trade: a, ctx1: rest[i], ctx2: rest[j], size: 3 });
     }
   }
   const units = [];
-  for (const c of combos) for (const g of geometries) units.push({ ...c, geometry: g });
+  for (const co of combos) for (const g of geometries) units.push({ ...co, geometry: g });
   return units;
 }
+// Every coin a run touches, traded or read against, once each. The price-file
+// record is stamped over THIS -- a run that read a coin whose candles are not
+// in its own fingerprint could be handed different data later and nothing
+// would notice.
+const coinsTouched = (trade, compare) => [...new Set([...(trade || []), ...((compare && compare.length) ? compare : (trade || []))])];
 const unitKeyOf = (u) => `${u.trade}|${u.ctx1 || ''}|${u.ctx2 || ''}|${u.geometry}`;
 
 function writers(id) {
@@ -509,6 +530,13 @@ function startStage1(params) {
   const universe = Array.isArray(params.universe) && params.universe.length
     ? params.universe.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
     : batch.DEFAULT_PAIRS;
+  // THE COINS EACH TRADED COIN IS READ AGAINST (3.75.0, owner order). Left
+  // empty it is the traded coins themselves, which is what every run before
+  // this did — so an old set relaunched from its own params comes out
+  // identical, and nothing on disk means anything different than it did.
+  const compare = Array.isArray(params.compare) && params.compare.length
+    ? params.compare.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+    : [];
   const sizes = {
     singles: !!(params.sizes || {}).singles,
     doubles: !!(params.sizes || {}).doubles,
@@ -546,8 +574,22 @@ function startStage1(params) {
     trainOn,
     weightCap,
   };
-  const units = unitsFor(universe, sizes, geometries);
-  if (!units.length) throw new Error('nothing to score — the universe and sizes produced no units');
+  const units = unitsFor(universe, sizes, geometries, compare);
+  // A REFUSAL SAYS WHICH BOX IS WRONG AND BY HOW MUCH (owner, 2026-09-06:
+  // "what's this nonsense?"). "the universe and sizes produced no units" is
+  // true and useless: it names both boxes, neither number, and nothing to do
+  // about it. Every way of getting here is a coin count that cannot fill the
+  // shape asked for, so the sentence says exactly that.
+  if (!units.length) {
+    const reads = (compare.length ? compare : universe);
+    const need = sizes.triples ? 3 : sizes.doubles ? 2 : 1;
+    const what = sizes.triples ? 'triples' : sizes.doubles ? 'doubles' : 'singles';
+    throw new Error(`nothing to score: ${what} reads each traded coin against `
+      + `${need - 1} other ${need - 1 === 1 ? 'coin' : 'coins'}, and compare coins holds `
+      + `${reads.length} (${reads.join(', ') || 'nothing'})`
+      + `${compare.length ? '' : ' — the same list as trade coins, because compare coins is empty'}. `
+      + `Put ${need - 1} or more other coin(s) in compare coins, or tick singles.`);
+  }
 
   const setName = nameOrRefuse(params.name, 1);
   const seq = seqFor(1);
@@ -562,7 +604,7 @@ function startStage1(params) {
     boardNull: { ...BOARD_NULL_NONE },
     // The owner's current campaign name rides on every launch, exactly as it
     // does on the sweeps (owner order, 2026-08-04; carried here 2026-08-27).
-    params: { universe, sizes, geometries, windowLayout, nullN, fee, ...p, campaign: require('./campaign').getCampaign() || null },
+    params: { universe, compare, sizes, geometries, windowLayout, nullN, fee, ...p, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: units.length, unitList: units },
     perf: {
@@ -572,7 +614,7 @@ function startStage1(params) {
     failures: [],
     counts: null,
   };
-  doc.dataManifest = stampManifest(id, universe);
+  doc.dataManifest = stampManifest(id, coinsTouched(universe, compare));
   activeSet = doc;
   saveSet(doc);
 
@@ -710,7 +752,7 @@ function unitFillRefusal(doc) {
     return `${doc.name} was written by engine ${doc.engineVersion} and this box runs ${ENGINE_VERSION} — `
       + 'a unit trained here could not be compared with the ones already in it.';
   }
-  const fresh = stampManifest(`unitfill-${Date.now().toString(36)}`, (doc.params || {}).universe);
+  const fresh = stampManifest(`unitfill-${Date.now().toString(36)}`, coinsTouched((doc.params || {}).universe, (doc.params || {}).compare));
   const diff = manifestDiff(doc.dataManifest, fresh);
   if (!diff) return `${doc.name} carries no readable price-file record, so nothing can prove the data is unchanged`;
   if (!diff.same) {
@@ -910,7 +952,7 @@ function parentOrRefuse(fromId, wantStage) {
       + 'votes kept by one version of the arithmetic cannot be priced by another without saying so. The first '
       + 'number is the one that means yesterday\'s records no longer compare, and it has moved.');
   }
-  const fresh = stampManifest(`check-${Date.now().toString(36)}`, parent.params.universe);
+  const fresh = stampManifest(`check-${Date.now().toString(36)}`, coinsTouched(parent.params.universe, parent.params.compare));
   const diff = manifestDiff(parent.dataManifest, fresh);
   if (!diff) throw new Error(`${parent.name} carries no readable price-file record, so nothing can prove the data is unchanged`);
   if (!diff.same) {
@@ -1293,7 +1335,7 @@ function startStage2(params) {
     failures: [],
     counts: null,
   };
-  doc.dataManifest = stampManifest(id, parent.params.universe);
+  doc.dataManifest = stampManifest(id, coinsTouched(parent.params.universe, parent.params.compare));
   activeSet = doc;
   saveSet(doc);
 
@@ -2338,7 +2380,7 @@ function startStage3(params) {
     failures: [],
     counts: null,
   };
-  doc.dataManifest = stampManifest(id, parent.params.universe);
+  doc.dataManifest = stampManifest(id, coinsTouched(parent.params.universe, parent.params.compare));
   activeSet = doc;
   saveSet(doc);
 

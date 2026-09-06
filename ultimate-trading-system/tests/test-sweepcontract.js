@@ -492,4 +492,28 @@ module.exports = {
     assert.ok(SWEEP.includes("const cell = { tHours: tRaw === 'own' ? 'own' : Number(tRaw) };"),
       'the block builder must send the chunk\'s own whole, not as NaN');
   },
+
+  // THE COST LINE AND THE LAUNCH READ THE TWO BOXES THE SAME WAY (3.75.0).
+  // They are two separate resolutions of "what does an empty compare box
+  // mean", and if they ever disagree the screen promises a number of units the
+  // launch will not produce — which is exactly the shape of surprise the owner
+  // met when a one-coin triples run counted fine and then refused.
+  theTradeAndCompareBoxesReachBothTheCountAndTheLaunch() {
+    for (const box of ['swUni', 'swCompare']) {
+      assert.ok(SWEEP.includes(`id="${box}"`), `the stage 1 set-up must carry #${box}`);
+    }
+    // both launch bodies carry compare, and both drop it when it is empty --
+    // an empty list must reach the service as ABSENT, because absent is what
+    // the engine reads as "the trade coins themselves"
+    const sends = (SWEEP.match(/compare: \(\$\('#swCompare'\)\.value \|\| ''\)/g) || []).length;
+    assert.strictEqual(sends, 2, `compare reaches ${sends} of the two bodies; it must reach the cost line AND the launch`);
+    const drops = (SWEEP.match(/if \(!body\.compare\.length\) delete body\.compare;/g) || []).length;
+    assert.strictEqual(drops, 2, 'an empty compare box must be dropped from both, or the engine is handed [] where it expects nothing');
+    // a remembered set puts both back
+    assert.ok(SWEEP.includes("setV('#swCompare', (p.compare || []).join(','));"), 'a remembered set must restore the compare coins');
+    // and the provenance line watches both, or a changed compare box reads as
+    // a chain that still matches
+    assert.ok(SWEEP.includes("'the trade coins no longer match'") && SWEEP.includes("'the compare coins no longer match'"),
+      'the provenance check must watch both boxes and name them separately');
+  },
 };

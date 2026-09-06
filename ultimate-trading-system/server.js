@@ -1124,11 +1124,16 @@ app.post('/api/stage1-count', (req, res) => {
   const b = req.body || {};
   try {
     const universe = Array.isArray(b.universe) && b.universe.length ? b.universe.map((s) => String(s).toUpperCase()) : batch.DEFAULT_PAIRS;
-    if (universe.some((p) => !SYMBOL_RE.test(p))) return res.status(400).json({ error: 'universe must be symbols like DOTUSDT' });
+    if (universe.some((p) => !SYMBOL_RE.test(p))) return res.status(400).json({ error: 'trade coins must be symbols like DOTUSDT' });
+    // the coins each traded coin is read against (3.75.0). Empty means the
+    // traded coins themselves, which is the launch's own rule — the cost line
+    // and the launch must never resolve it two different ways.
+    const compare = Array.isArray(b.compare) && b.compare.length ? b.compare.map((s) => String(s).toUpperCase()) : [];
+    if (compare.some((p) => !SYMBOL_RE.test(p))) return res.status(400).json({ error: 'compare coins must be symbols like DOTUSDT' });
     const geometries = b.permuteGeometry ? Object.keys(require('./lib/dataset').GEOMETRIES) : [b.geometry || 'daily-4d'];
     const units = stages.unitsFor(universe, {
       singles: !!(b.sizes || {}).singles, doubles: !!(b.sizes || {}).doubles, triples: !!(b.sizes || {}).triples,
-    }, geometries);
+    }, geometries, compare);
     const { slimViewsFor } = require('./lib/bracketwork');
     const trainings = units.reduce((n, u) => n + slimViewsFor(u.size === 1 ? 1 : 2).length, 0);
     return res.json({ units: units.length, trainings });

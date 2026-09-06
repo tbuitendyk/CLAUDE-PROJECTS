@@ -4577,4 +4577,61 @@ module.exports = {
       assert.strictEqual(rowstore.count(pid, 'ranking'), 1, 'the ordering was rebuilt from the records that are there');
     } finally { cleanLaunchParent(pid); }
   },
+
+  // ONE COIN READ AGAINST A WHOLE FIELD (3.75.0, owner order 2026-09-06: "just
+  // make two boxes: trade coins and compare coins so LTCUSDT can be compared
+  // to the universe of others").
+  //
+  // What is traded and what it is read against used to be ONE list, so the
+  // coins a unit was read against were always the other members of that same
+  // list. Asking for one coin against everything else was therefore
+  // impossible: with one coin in the list there is no second or third to draw
+  // from, doubles and triples produced nothing, and the launch refused with
+  // "the universe and sizes produced no units" -- which is true, useless, and
+  // reads as a fault in the system rather than in the boxes.
+  async oneTradedCoinCanBeReadAgainstAWholeFieldOfOthers() {
+    const g = ['daily-4d'];
+    const field = ['AAAUSDT', 'BBBUSDT', 'CCCUSDT', 'DDDUSDT'];
+    // THE CASE THAT FAILED: one traded coin, triples
+    const tri = stages.unitsFor(['LTCUSDT'], { triples: true }, g, field);
+    assert.strictEqual(tri.length, 6, 'one coin against four others is every PAIR of them: 4 choose 2');
+    for (const u of tri) {
+      assert.strictEqual(u.trade, 'LTCUSDT', 'only the trade coins are ever traded');
+      assert.ok(field.includes(u.ctx1) && field.includes(u.ctx2), 'and it is read against the compare coins');
+    }
+    const dbl = stages.unitsFor(['LTCUSDT'], { doubles: true }, g, field);
+    assert.strictEqual(dbl.length, 4, 'one coin against four others is four doubles');
+    // A COIN IS NEVER READ AGAINST ITSELF, whichever list it came from
+    const both = stages.unitsFor(['AAAUSDT'], { doubles: true }, g, ['AAAUSDT', 'BBBUSDT']);
+    assert.deepStrictEqual(both.map((u) => u.ctx1), ['BBBUSDT'],
+      'a coin in both lists must not be read against itself');
+    // AND NOTHING CHANGES FOR A RUN THAT NAMES ONE LIST. Every set on disk was
+    // written that way, and a relaunch from its own params has to come out
+    // identical or the two are not comparable.
+    const u3 = ['AAAUSDT', 'BBBUSDT', 'CCCUSDT'];
+    for (const sizes of [{ singles: true }, { doubles: true }, { triples: true }, { singles: true, doubles: true, triples: true }]) {
+      assert.deepStrictEqual(stages.unitsFor(u3, sizes, g, []), stages.unitsFor(u3, sizes, g),
+        'an empty compare list must behave exactly as the single-list version always did');
+      assert.deepStrictEqual(stages.unitsFor(u3, sizes, g, u3), stages.unitsFor(u3, sizes, g),
+        'and so must a compare list that IS the trade coins');
+    }
+  },
+
+  // AND THE REFUSAL NAMES WHICH BOX IS WRONG AND BY HOW MUCH (owner, 2026-09-06:
+  // "what's this nonsense?"). "the universe and sizes produced no units" names
+  // both boxes, neither number, and nothing to do about it.
+  async aLaunchWithNothingToScoreSaysWhichBoxIsShortAndByHowMany() {
+    const base = { sizes: { triples: true }, nullN: 3, fee: 0.00125, universe: ['LTCUSDT'], name: `t-${Date.now().toString(36)}` };
+    let msg = '';
+    try { stages.startStage1(base); } catch (err) { msg = String(err.message); }
+    assert.match(msg, /triples reads each traded coin against 2 other coins/, 'it must say what the shape needs');
+    assert.match(msg, /compare coins holds 1 \(LTCUSDT\)/, 'and what the box actually holds, by name');
+    assert.match(msg, /the same list as trade coins, because compare coins is empty/,
+      'and that the list it counted was the trade coins, since that is the part that surprises');
+    assert.match(msg, /or tick singles/, 'and what to do about it');
+    // doubles is short by one, and says so in its own words
+    let msg2 = '';
+    try { stages.startStage1({ ...base, sizes: { doubles: true } }); } catch (err) { msg2 = String(err.message); }
+    assert.match(msg2, /doubles reads each traded coin against 1 other coin/, 'one coin, not "1 coins"');
+  },
 };

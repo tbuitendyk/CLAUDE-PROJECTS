@@ -754,9 +754,12 @@ function swProvenance() {
     const boxUni = (v('#swUni') || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
     const wantUni = (boxUni.length ? boxUni : defaults).slice().sort().join(',');
     const setUni = (p.universe || []).slice().sort().join(',');
+    const boxCmp = (v('#swCompare') || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean).slice().sort().join(',');
+    const setCmp = (p.compare || []).slice().sort().join(',');
     const sz = p.sizes || {};
     const geos = p.geometries || [];
-    const mismatch = wantUni !== setUni ? 'the universe no longer matches'
+    const mismatch = wantUni !== setUni ? 'the trade coins no longer match'
+      : boxCmp !== setCmp ? 'the compare coins no longer match'
       : (c('#swSingles') !== !!sz.singles || c('#swDoubles') !== !!sz.doubles || c('#swTriples') !== !!sz.triples) ? 'the singles / doubles / triples ticks no longer match'
         : (c('#swPermGeom') !== (geos.length > 1) || (!c('#swPermGeom') && geos[0] !== v('#swGeom'))) ? 'the chunk shape no longer matches'
           : v('#swLayout') !== (p.windowLayout || '') ? 'the window layout no longer matches'
@@ -909,10 +912,12 @@ async function swCounts() {
   if (c1) {
     const body = {
       universe: ($('#swUni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
+      compare: ($('#swCompare').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
     };
     if (!body.universe.length) delete body.universe;
+    if (!body.compare.length) delete body.compare;
     const r = await swAsk('api/stage1-count', body);
     if (current()) {
       swSayCount(c1, r.ok
@@ -1046,6 +1051,7 @@ function fillStageForm(doc) {
   const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
   if (doc.stage === 1) {
     setV('#swUni', (p.universe || []).join(','));
+    setV('#swCompare', (p.compare || []).join(','));
     setC('#swSingles', (p.sizes || {}).singles); setC('#swDoubles', (p.sizes || {}).doubles); setC('#swTriples', (p.sizes || {}).triples);
     setC('#swAllData', p.allLoaded !== false);
     setV('#swStart', p.startMonth || ''); setV('#swEnd', p.endMonth || '');
@@ -2541,7 +2547,8 @@ async function drawSweep() {
       The fee prices only the tuning-slice $ on Boards: each unit's own votes on the last quarter of its training window,
       one buy or sell per chunk in the direction they lean, read against the same null set.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f">universe (blank = all 17 default pairs)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:20rem"></label>
+      <label class="f" title="the coins this run actually buys and sells. Blank means all 17 default pairs.">trade coins (blank = all 17 default pairs)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:16rem"></label>
+      <label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means the trade coins themselves, which is how every run before this worked. Fill it in to read one coin against a whole field: trade coins LTCUSDT with a dozen compare coins gives you LTCUSDT alongside every pair of them, and none of those coins is ever traded.">compare coins (blank = the trade coins)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
       <label class="c"><input type="checkbox" id="swTriples"> triples</label>
@@ -2688,6 +2695,7 @@ async function drawSweep() {
   $('#swGo1').onclick = async () => {
     const body = {
       universe: ($('#swUni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
+      compare: ($('#swCompare').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
       windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,
@@ -2699,6 +2707,7 @@ async function drawSweep() {
       weightCap: $('#swCap1').value === '' ? undefined : Number($('#swCap1').value),
     };
     if (!body.universe.length) delete body.universe;
+    if (!body.compare.length) delete body.compare;
     const got = await tryPost('api/stage1', body);
     if (got) { rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); swProgress(); }
   };

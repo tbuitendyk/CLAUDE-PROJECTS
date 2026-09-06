@@ -138,7 +138,11 @@ window.HELP = {
     ],
     controls: {
       ...CAMPAIGN_PANEL_CONTROLS,
-      swUni: { what: 'Which coins stage 1 scores. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
+      swUni: { what: 'The coins this run buys and sells. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
+      swCompare: {
+        what: 'The coins each traded coin is READ AGAINST. They are context only \u2014 never bought, never sold. Left blank they are the trade coins themselves, which is how every run before this one worked.',
+        more: 'It exists so one coin can be read against a whole field. With both lists the same, asking for triples on a single coin gives nothing at all: a triple reads a coin against two OTHERS, and a list of one holds no others \u2014 which is what made a one-coin triples run refuse. Put the coin in trade coins and the field in compare coins and you get that coin alongside every pair of them, with none of the field ever traded. A coin in both lists is never read against itself. Doubles need one other coin, triples need two.',
+      },
       swSingles: {
         what: 'Include each coin judged on its own price history alone — 4 members after stage 1, and 8 once stage 2 has added the BOOST members.',
         more: 'Each member reads a different slice of the same prices, so a coin on its own has four slices to read and one member for each. Stage 2 adds a second member per slice, which is what doubles the count.',
