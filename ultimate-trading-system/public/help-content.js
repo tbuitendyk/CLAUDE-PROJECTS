@@ -140,8 +140,8 @@ window.HELP = {
       ...CAMPAIGN_PANEL_CONTROLS,
       swUni: { what: 'The coins this run buys and sells. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
       swCompare: {
-        what: 'The coins each traded coin is READ AGAINST. They are context only \u2014 never bought, never sold. Left blank they are the trade coins themselves, which is how every run before this one worked.',
-        more: 'It exists so one coin can be read against a whole field. With both lists the same, asking for triples on a single coin gives nothing at all: a triple reads a coin against two OTHERS, and a list of one holds no others \u2014 which is what made a one-coin triples run refuse. Put the coin in trade coins and the field in compare coins and you get that coin alongside every pair of them, with none of the field ever traded. A coin in both lists is never read against itself. Doubles need one other coin, triples need two.',
+        what: 'The coins each traded coin is READ AGAINST. They are context only \u2014 never bought, never sold. Left blank they are all 17 default pairs, the same as the box beside it, so one coin in trade coins and nothing here is that coin against everything.',
+        more: 'Only doubles and triples read it. A single is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing anywhere reads what is in it. It exists so one coin can be read against a whole field: with one list, asking for triples on a single coin gave nothing at all, because a triple reads a coin against two OTHERS and a list of one holds no others. A coin appearing in both lists is never read against itself. Doubles need one other coin, triples need two.',
       },
       swSingles: {
         what: 'Include each coin judged on its own price history alone — 4 members after stage 1, and 8 once stage 2 has added the BOOST members.',

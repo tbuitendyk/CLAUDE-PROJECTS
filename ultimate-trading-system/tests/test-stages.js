@@ -116,10 +116,13 @@ module.exports = {
   async theUnitCountsMatchTheEnginesComboRules() {
     const u3 = ['A', 'B', 'C'];
     const geos = ['weekly-8d', 'daily-4d'];
-    assert.strictEqual(stages.unitsFor(u3, { singles: true }, geos).length, 6);
-    assert.strictEqual(stages.unitsFor(u3, { doubles: true }, geos).length, 12);
-    assert.strictEqual(stages.unitsFor(u3, { triples: true }, geos).length, 6);
-    assert.strictEqual(stages.unitsFor(u3, { singles: true, doubles: true, triples: true }, geos).length, 24);
+    // both lists named: this test is about the combo arithmetic, and a blank
+    // compare list means all 17 default pairs now (3.75.0), which is a
+    // different question and is held in its own test below
+    assert.strictEqual(stages.unitsFor(u3, { singles: true }, geos, u3).length, 6);
+    assert.strictEqual(stages.unitsFor(u3, { doubles: true }, geos, u3).length, 12);
+    assert.strictEqual(stages.unitsFor(u3, { triples: true }, geos, u3).length, 6);
+    assert.strictEqual(stages.unitsFor(u3, { singles: true, doubles: true, triples: true }, geos, u3).length, 24);
   },
 
   // The settings block is the sweep's own expandDeclared times the decision,
@@ -4605,30 +4608,47 @@ module.exports = {
     const both = stages.unitsFor(['AAAUSDT'], { doubles: true }, g, ['AAAUSDT', 'BBBUSDT']);
     assert.deepStrictEqual(both.map((u) => u.ctx1), ['BBBUSDT'],
       'a coin in both lists must not be read against itself');
-    // AND NOTHING CHANGES FOR A RUN THAT NAMES ONE LIST. Every set on disk was
-    // written that way, and a relaunch from its own params has to come out
-    // identical or the two are not comparable.
-    const u3 = ['AAAUSDT', 'BBBUSDT', 'CCCUSDT'];
-    for (const sizes of [{ singles: true }, { doubles: true }, { triples: true }, { singles: true, doubles: true, triples: true }]) {
-      assert.deepStrictEqual(stages.unitsFor(u3, sizes, g, []), stages.unitsFor(u3, sizes, g),
-        'an empty compare list must behave exactly as the single-list version always did');
-      assert.deepStrictEqual(stages.unitsFor(u3, sizes, g, u3), stages.unitsFor(u3, sizes, g),
-        'and so must a compare list that IS the trade coins');
-    }
+    // BLANK COMPARE COINS IS THE UNIVERSE, not the trade coins (owner,
+    // 2026-09-06: "BLANK = THE UNIVERSE"). One coin typed into trade coins
+    // with nothing beside it is somebody asking for that coin against
+    // everything, which is the whole reason the box exists — and the trade box
+    // already reads blank the same way, on its own label.
+    const DEF = require('../lib/batch').DEFAULT_PAIRS;
+    const blank = stages.unitsFor(['LTCUSDT'], { triples: true }, g, []);
+    const spelled = stages.unitsFor(['LTCUSDT'], { triples: true }, g, DEF);
+    assert.deepStrictEqual(blank, spelled, 'blank must be the default pairs spelled out, exactly');
+    assert.ok(blank.length > 0, 'and it must produce units — this is the case that refused');
+    // a coin in trade coins that is ALSO in the default pairs is still never
+    // read against itself, so the count is over the others alone
+    const n = DEF.length - (DEF.includes('LTCUSDT') ? 1 : 0);
+    assert.strictEqual(blank.length, (n * (n - 1)) / 2, 'every pair of the others, and no pair holding the coin itself');
+    // AND SINGLES NEVER READS IT. There is nothing for a coin on its own to be
+    // read against, so whatever is in the box changes nothing at all.
+    assert.deepStrictEqual(stages.unitsFor(['LTCUSDT'], { singles: true }, g, ['AAAUSDT', 'BBBUSDT']),
+      stages.unitsFor(['LTCUSDT'], { singles: true }, g, []),
+      'the compare coins must not change a singles run in any way');
   },
 
   // AND THE REFUSAL NAMES WHICH BOX IS WRONG AND BY HOW MUCH (owner, 2026-09-06:
   // "what's this nonsense?"). "the universe and sizes produced no units" names
   // both boxes, neither number, and nothing to do about it.
   async aLaunchWithNothingToScoreSaysWhichBoxIsShortAndByHowMany() {
-    const base = { sizes: { triples: true }, nullN: 3, fee: 0.00125, universe: ['LTCUSDT'], name: `t-${Date.now().toString(36)}` };
+    // compare coins spelled out and holding nothing but the traded coin: there
+    // is no OTHER coin in it, so a triple has nothing to read LTCUSDT against.
+    // (Blank would be the 17 default pairs and would run — that is the point
+    // of the box, and it is held in the test above.)
+    const base = { sizes: { triples: true }, nullN: 3, fee: 0.00125, universe: ['LTCUSDT'], compare: ['LTCUSDT'], name: `t-${Date.now().toString(36)}` };
     let msg = '';
     try { stages.startStage1(base); } catch (err) { msg = String(err.message); }
     assert.match(msg, /triples reads each traded coin against 2 other coins/, 'it must say what the shape needs');
-    assert.match(msg, /compare coins holds 1 \(LTCUSDT\)/, 'and what the box actually holds, by name');
-    assert.match(msg, /the same list as trade coins, because compare coins is empty/,
-      'and that the list it counted was the trade coins, since that is the part that surprises');
+    assert.match(msg, /compare coins offers 0 that are not itself/, 'and how many the box really offers, which is the number that matters');
     assert.match(msg, /or tick singles/, 'and what to do about it');
+    // and a BLANK box is the universe, so the same shape has plenty to score.
+    // Asked of the enumerator, not of startStage1: launching a real run inside
+    // a test claims the one heavy-job slot and every assertion after it reads
+    // "one heavy job at a time" instead of what it was checking.
+    assert.ok(stages.unitsFor(['LTCUSDT'], { triples: true }, ['daily-4d'], []).length > 0,
+      'one coin with a blank compare box must have plenty to score — it is that coin against every default pair');
     // doubles is short by one, and says so in its own words
     let msg2 = '';
     try { stages.startStage1({ ...base, sizes: { doubles: true } }); } catch (err) { msg2 = String(err.message); }

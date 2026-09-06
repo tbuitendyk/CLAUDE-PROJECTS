@@ -312,7 +312,12 @@ const num = (v, dflt) => (Number.isFinite(Number(v)) ? Number(v) : dflt);
 function unitsFor(trade, sizes, geometries, compare = null) {
   const combos = [];
   const u = trade;
-  const c = (compare && compare.length) ? compare : trade;
+  // BLANK COMPARE COINS MEANS THE UNIVERSE (owner, 2026-09-06: "BLANK = THE
+  // UNIVERSE"). The trade box already reads blank as all the default pairs and
+  // says so on its own label; the compare box reads it the same way, because a
+  // coin typed into trade coins with nothing beside it is somebody asking for
+  // that coin against everything, which is the whole reason this box exists.
+  const c = (compare && compare.length) ? compare : batch.DEFAULT_PAIRS;
   // a coin is never read against itself, whichever list it came from
   const others = (a) => c.filter((x) => x !== a);
   if (sizes.singles) for (const a of u) combos.push({ trade: a, ctx1: null, ctx2: null, size: 1 });
@@ -327,11 +332,21 @@ function unitsFor(trade, sizes, geometries, compare = null) {
   for (const co of combos) for (const g of geometries) units.push({ ...co, geometry: g });
   return units;
 }
-// Every coin a run touches, traded or read against, once each. The price-file
-// record is stamped over THIS -- a run that read a coin whose candles are not
-// in its own fingerprint could be handed different data later and nothing
-// would notice.
-const coinsTouched = (trade, compare) => [...new Set([...(trade || []), ...((compare && compare.length) ? compare : (trade || []))])];
+// Every coin a run actually touches, read off the UNITS it built rather than
+// off the boxes it was given. The price-file record is stamped over this -- a
+// run that read a coin whose candles are not in its own fingerprint could be
+// handed different data later and nothing would notice, and a run fingerprinted
+// over coins it never opened refuses for a file it never read.
+const coinsOfUnits = (units) => [...new Set((units || []).flatMap((u) => [u.trade, u.ctx1, u.ctx2]).filter(Boolean))].sort();
+// A CHILD READS EXACTLY THE COINS ITS PARENT'S UNITS NAME, so its fingerprint
+// is over the same set and the two can be compared at all. Read from the
+// parent's own plan; a parent too old to carry one falls back to its trade
+// coins, which is what it would have been stamped over then.
+const coinsOfParent = (parent) => {
+  const list = ((parent || {}).plan || {}).unitList;
+  const got = coinsOfUnits(list);
+  return got.length ? got : [...new Set(((parent || {}).params || {}).universe || [])].sort();
+};
 const unitKeyOf = (u) => `${u.trade}|${u.ctx1 || ''}|${u.ctx2 || ''}|${u.geometry}`;
 
 function writers(id) {
@@ -575,19 +590,27 @@ function startStage1(params) {
     weightCap,
   };
   const units = unitsFor(universe, sizes, geometries, compare);
+  // WHAT THE RUN ACTUALLY READ, WRITTEN DOWN. A set that recorded an empty box
+  // would depend for ever on what empty happened to mean the day it is read
+  // back (RULE NINE: a record says what it is, in today's words).
+  const compareUsed = (compare.length ? compare : batch.DEFAULT_PAIRS)
+    .filter(() => sizes.doubles || sizes.triples);
   // A REFUSAL SAYS WHICH BOX IS WRONG AND BY HOW MUCH (owner, 2026-09-06:
   // "what's this nonsense?"). "the universe and sizes produced no units" is
   // true and useless: it names both boxes, neither number, and nothing to do
   // about it. Every way of getting here is a coin count that cannot fill the
   // shape asked for, so the sentence says exactly that.
   if (!units.length) {
-    const reads = (compare.length ? compare : universe);
+    const reads = (compare.length ? compare : batch.DEFAULT_PAIRS);
     const need = sizes.triples ? 3 : sizes.doubles ? 2 : 1;
     const what = sizes.triples ? 'triples' : sizes.doubles ? 'doubles' : 'singles';
+    // the coins that are actually AVAILABLE to read a traded coin against: a
+    // compare list holding only the coin being traded offers it nothing
+    const spare = reads.filter((x) => !universe.includes(x)).length;
     throw new Error(`nothing to score: ${what} reads each traded coin against `
-      + `${need - 1} other ${need - 1 === 1 ? 'coin' : 'coins'}, and compare coins holds `
-      + `${reads.length} (${reads.join(', ') || 'nothing'})`
-      + `${compare.length ? '' : ' — the same list as trade coins, because compare coins is empty'}. `
+      + `${need - 1} other ${need - 1 === 1 ? 'coin' : 'coins'}, and compare coins offers `
+      + `${spare} that ${spare === 1 ? 'is' : 'are'} not itself (${reads.join(', ') || 'nothing'})`
+      + `${compare.length ? '' : ' — all 17 default pairs, because compare coins is blank'}. `
       + `Put ${need - 1} or more other coin(s) in compare coins, or tick singles.`);
   }
 
@@ -604,7 +627,7 @@ function startStage1(params) {
     boardNull: { ...BOARD_NULL_NONE },
     // The owner's current campaign name rides on every launch, exactly as it
     // does on the sweeps (owner order, 2026-08-04; carried here 2026-08-27).
-    params: { universe, compare, sizes, geometries, windowLayout, nullN, fee, ...p, campaign: require('./campaign').getCampaign() || null },
+    params: { universe, compare: compareUsed, sizes, geometries, windowLayout, nullN, fee, ...p, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: units.length, unitList: units },
     perf: {
@@ -614,7 +637,7 @@ function startStage1(params) {
     failures: [],
     counts: null,
   };
-  doc.dataManifest = stampManifest(id, coinsTouched(universe, compare));
+  doc.dataManifest = stampManifest(id, coinsOfUnits(units));
   activeSet = doc;
   saveSet(doc);
 
@@ -752,7 +775,7 @@ function unitFillRefusal(doc) {
     return `${doc.name} was written by engine ${doc.engineVersion} and this box runs ${ENGINE_VERSION} — `
       + 'a unit trained here could not be compared with the ones already in it.';
   }
-  const fresh = stampManifest(`unitfill-${Date.now().toString(36)}`, coinsTouched((doc.params || {}).universe, (doc.params || {}).compare));
+  const fresh = stampManifest(`unitfill-${Date.now().toString(36)}`, coinsOfUnits(((doc.plan || {}).unitList) || []));
   const diff = manifestDiff(doc.dataManifest, fresh);
   if (!diff) return `${doc.name} carries no readable price-file record, so nothing can prove the data is unchanged`;
   if (!diff.same) {
@@ -952,7 +975,7 @@ function parentOrRefuse(fromId, wantStage) {
       + 'votes kept by one version of the arithmetic cannot be priced by another without saying so. The first '
       + 'number is the one that means yesterday\'s records no longer compare, and it has moved.');
   }
-  const fresh = stampManifest(`check-${Date.now().toString(36)}`, coinsTouched(parent.params.universe, parent.params.compare));
+  const fresh = stampManifest(`check-${Date.now().toString(36)}`, coinsOfParent(parent));
   const diff = manifestDiff(parent.dataManifest, fresh);
   if (!diff) throw new Error(`${parent.name} carries no readable price-file record, so nothing can prove the data is unchanged`);
   if (!diff.same) {
@@ -1335,7 +1358,7 @@ function startStage2(params) {
     failures: [],
     counts: null,
   };
-  doc.dataManifest = stampManifest(id, coinsTouched(parent.params.universe, parent.params.compare));
+  doc.dataManifest = stampManifest(id, coinsOfParent(parent));
   activeSet = doc;
   saveSet(doc);
 
@@ -2380,7 +2403,7 @@ function startStage3(params) {
     failures: [],
     counts: null,
   };
-  doc.dataManifest = stampManifest(id, coinsTouched(parent.params.universe, parent.params.compare));
+  doc.dataManifest = stampManifest(id, coinsOfParent(parent));
   activeSet = doc;
   saveSet(doc);
 

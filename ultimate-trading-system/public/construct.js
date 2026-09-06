@@ -907,6 +907,14 @@ async function swCounts() {
     const notVoices = $('#swAgreeRule') && $('#swAgreeRule').value !== 'voices'
       && !($('#swPermAgreeRule') && $('#swPermAgreeRule').checked);
     swGhostGroup('#swGrpCopy', notVoices);
+    // NOTHING READS THE COMPARE COINS WHEN ONLY SINGLES IS TICKED (owner,
+    // 2026-09-06: "what are you allowing that compare coins box for when only
+    // singles is selected? ... that makes NO SENSE AT ALL"). A single is a
+    // coin on its own price history alone -- there is nothing for it to be
+    // read against, so a box that takes a list and changes nothing is a box
+    // that lies. Greyed, never hidden, exactly as arm is under a static stop.
+    swGhostGroup('#swGrpCompare', !($('#swDoubles') && $('#swDoubles').checked)
+      && !($('#swTriples') && $('#swTriples').checked));
   }
   const c1 = $('#swCost1');
   if (c1) {
@@ -2548,7 +2556,7 @@ async function drawSweep() {
       one buy or sell per chunk in the direction they lean, read against the same null set.</p>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="the coins this run actually buys and sells. Blank means all 17 default pairs.">trade coins (blank = all 17 default pairs)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:16rem"></label>
-      <label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means the trade coins themselves, which is how every run before this worked. Fill it in to read one coin against a whole field: trade coins LTCUSDT with a dozen compare coins gives you LTCUSDT alongside every pair of them, and none of those coins is ever traded.">compare coins (blank = the trade coins)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label>
+      <span id="swGrpCompare"><label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means all 17 default pairs, the same as the box beside it, so one coin typed into trade coins with nothing here is that coin against everything. Only doubles and triples read this: singles is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing reads it.">compare coins (blank = all 17 default pairs)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label></span>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
       <label class="c"><input type="checkbox" id="swTriples"> triples</label>

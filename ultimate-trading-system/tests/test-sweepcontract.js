@@ -515,5 +515,15 @@ module.exports = {
     // a chain that still matches
     assert.ok(SWEEP.includes("'the trade coins no longer match'") && SWEEP.includes("'the compare coins no longer match'"),
       'the provenance check must watch both boxes and name them separately');
+    // NOTHING READS IT UNDER SINGLES, SO IT IS GREYED (owner, 2026-09-06:
+    // "what are you allowing that compare coins box for when only singles is
+    // selected?"). A box that takes a list and changes nothing is a box that
+    // lies; greyed, never hidden, the same as arm under a static stop.
+    assert.ok(SWEEP.includes('<span id="swGrpCompare">'), 'the compare box needs a group the ghoster can reach');
+    assert.ok(/swGhostGroup\('#swGrpCompare', !\(\$\('#swDoubles'\)[\s\S]{0,140}?swTriples/.test(SWEEP),
+      'the compare box must be greyed whenever neither doubles nor triples is ticked');
+    // and its own label says what blank means, in the same words as the box beside it
+    assert.ok(SWEEP.includes('compare coins (blank = all 17 default pairs)'),
+      'blank is the universe, and the label must say so — the same way trade coins does');
   },
 };
