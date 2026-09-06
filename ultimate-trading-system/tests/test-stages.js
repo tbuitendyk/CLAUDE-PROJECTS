@@ -4470,4 +4470,111 @@ module.exports = {
     assert.ok(!/notPublished\.add/.test(bin.replace('if (res.status === 404) { notPublished.add(nk); return null; }', '')),
       'a NETWORK failure must never be remembered as "does not exist" — that would hide an outage as missing data');
   },
+
+  // REBUILDING THE ORDERING MUST NOT TAKE THE RECORD SET WITH IT (3.73.1).
+  //
+  // This is the test that was missing. On 2026-09-06 the fill-in rebuilt the
+  // ordering with `rowstore.remove(id, 'ranking')`, believing the second
+  // argument named one store. It does not exist: remove takes the record set
+  // and deletes the WHOLE store directory. An eighteen-hour run of 10,200
+  // units was destroyed the first time the owner pressed the control -- the
+  // records, the votes, the tau votes and the models, all of them, with only
+  // the freshly written ordering left behind.
+  //
+  // Nothing caught it because every test around it read SOURCE or checked
+  // arithmetic. This one builds a real store on disk, rebuilds the ordering
+  // through the real code, and reads every other store back afterwards.
+  async rebuildingTheOrderingLeavesEveryOtherStoreExactlyWhereItWas() {
+    const id = `s1-rebuild-${Date.now().toString(36)}`;
+    try {
+      // a real store, in the shape a finished stage 1 run leaves behind
+      const rows = {
+        records: [
+          { u: 0, trade: 'AAAUSDT', beat: 5, pairs: 10, lead: 0.5, score: 1, money: 10, beatMoney: 5, leadMoney: 0.5 },
+          { u: 1, trade: 'BBBUSDT', beat: 9, pairs: 10, lead: 2.0, score: 2, money: 20, beatMoney: 9, leadMoney: 2.0 },
+          { u: 2, trade: 'CCCUSDT', beat: 7, pairs: 10, lead: 1.0, score: 3, money: 30, beatMoney: 7, leadMoney: 1.0 },
+        ],
+        votes: [{ u: 0, w: 0, ts: 1, m: [[0.1, 0.2, 0.7]] }, { u: 1, w: 0, ts: 1, m: [[0.3, 0.3, 0.4]] }],
+        tau: [{ u: 0, mi: 0, probs: [0.5] }],
+        models: [{ u: 0, mi: 0, saved: { w: [1, 2, 3] } }],
+        ranking: [{ rank: 1, u: 0, beat: 5, pairs: 10, lead: 0.5, score: 1, money: 10, beatMoney: 5, leadMoney: 0.5 }],
+      };
+      for (const [name, list] of Object.entries(rows)) {
+        const w = rowstore.writer(id, name);
+        for (const r of list) w.push(r);
+        await w.close();
+      }
+      // every store is really there before the rebuild, or this proves nothing
+      for (const name of Object.keys(rows)) {
+        assert.strictEqual(rowstore.count(id, name), rows[name].length, `the fixture did not write ${name}`);
+      }
+      const out = await stages.rebuildRanking(id, rows.records);
+      assert.strictEqual(out.rows, 3, 'the rebuilt ordering holds one row per record');
+      // THE WHOLE POINT: everything else is untouched, row for row
+      for (const name of ['records', 'votes', 'tau', 'models']) {
+        assert.strictEqual(rowstore.count(id, name), rows[name].length,
+          `rebuilding the ordering destroyed ${name} — this is exactly the fault that cost an 18-hour run`);
+        assert.deepStrictEqual(rowstore.readAll(id, name), rows[name], `${name} came back changed`);
+      }
+      // and the ordering itself is right: beat high to low, lead breaking ties
+      assert.deepStrictEqual(rowstore.readAll(id, 'ranking').map((r) => [r.rank, r.u]), [[1, 1], [2, 2], [3, 0]],
+        'the ordering must be the same total order the launch settles on');
+      // the spare it was built under is not left lying about
+      assert.strictEqual(rowstore.exists(id, 'ranking-rebuilding'), false,
+        'the copy it was built as must take the real name, not sit beside it for ever');
+    } finally {
+      try { rowstore.remove(id); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // AND THE WHOLE FILL, PRESSED FOR REAL. The units cannot train -- the coin
+  // has no price files -- so every one of them fails, which is the case that
+  // matters: a fill that achieves nothing must still leave the set exactly as
+  // it found it, and must say what failed rather than going quiet.
+  async aFillThatTrainsNothingStillLeavesTheSetWhole() {
+    const pid = writeLaunchParent('wholefill');
+    try {
+      const file = path.join(SETS_DIR, `${pid}.json`);
+      const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+      doc.stage = 1;
+      doc.status = 'incomplete';
+      doc.seed = 1;
+      doc.plan = {
+        units: 2,
+        unitList: [
+          { trade: 'ZZZTESTUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d' },
+          { trade: 'ZZZTESTUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-3d' },
+        ],
+      };
+      doc.counts = { unitsScored: 1, failures: 1 };
+      doc.failures = [{ unit: 'ZZZTESTUSDT||daily-3d', error: 'fetch failed' }];
+      fs.writeFileSync(file, JSON.stringify(doc));
+      // the set holds unit 0 and everything a finished run writes beside it
+      const before = {
+        votes: [{ u: 0, w: 0, ts: 1, m: [[0.2, 0.3, 0.5]] }],
+        tau: [{ u: 0, mi: 0, probs: [0.5] }],
+        models: [{ u: 0, mi: 0, saved: { w: [1] } }],
+      };
+      for (const [name, list] of Object.entries(before)) {
+        const w = rowstore.writer(pid, name);
+        for (const r of list) w.push(r);
+        await w.close();
+      }
+      const gaps = stages.missingUnitsOf(stages.getSet(pid));
+      assert.deepStrictEqual(gaps.missing.map((m) => m.i), [1], 'the fixture must be short exactly one unit');
+      const run = stages.fillMissingUnitsStart(pid);
+      await run.promise;
+      // NOTHING TRAINED, AND NOTHING WAS LOST
+      assert.strictEqual(run.added, 0, 'a coin with no price files cannot train');
+      for (const [name, list] of Object.entries(before)) {
+        assert.strictEqual(rowstore.count(pid, name), list.length,
+          `the fill destroyed ${name} — a fill that achieves nothing must leave the set exactly as it found it`);
+      }
+      assert.strictEqual(rowstore.count(pid, 'records'), 1, 'the record already there is still there');
+      const after = stages.getSet(pid);
+      assert.strictEqual(after.status, 'incomplete', 'a set still short a unit must not be stamped finished');
+      assert.strictEqual((after.failures || []).length, 1, 'and it must say which unit is still missing, not go quiet');
+      assert.strictEqual(rowstore.count(pid, 'ranking'), 1, 'the ordering was rebuilt from the records that are there');
+    } finally { cleanLaunchParent(pid); }
+  },
 };

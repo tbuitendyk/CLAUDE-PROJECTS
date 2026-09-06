@@ -1004,6 +1004,25 @@ const GUARDS = [
     "  if (false) {\n    const names = [...diff.changed, ...diff.onlyA, ...diff.onlyB];\n    return `the price files changed since",
     'fillingInUnitsRefusesAnythingThatWouldNotBeComparable',
     'a unit trained on today\'s data joins a set trained on yesterday\'s, with nothing able to tell them apart'],
+  // ---- THE ORDERING IS REBUILT BESIDE THE SET (3.73.1) ----
+  // The first of these puts back the EXACT line that destroyed an eighteen-hour
+  // run on 2026-09-06. If the suite ever stops noticing it, the test that reads
+  // a real store back has stopped doing its job.
+  [path.join(ROOT, 'lib', 'stages.js'), "  const rk = rowstore.writer(id, RANKING_SPARE);",
+    "  rowstore.remove(id, 'ranking');\n  const rk = rowstore.writer(id, RANKING_SPARE);",
+    'rebuildingTheOrderingLeavesEveryOtherStoreExactlyWhereItWas',
+    'the records, the votes, the tau votes and the models are all deleted to rebuild one ordering — the fault that cost an 18-hour run'],
+  // NOT GUARDED, AND SAID SO RATHER THAN PRETENDED: the row-count check in
+  // rebuildRanking (`if (got !== all.length)`) fires only when the writer
+  // hands back fewer rows than it was given, which nothing in a test can make
+  // happen without contriving the store on disk. A guard on it read as
+  // protection and caught nothing, so it is gone rather than left lying. The
+  // check itself stays in the code -- it costs one comparison and it is the
+  // last thing standing between a half-written ordering and the real name.
+  [path.join(ROOT, 'lib', 'stages.js'), "  fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);\n  fs.renameSync(from, to);\n  // an unsquashed ordering",
+    "  fs.renameSync(from, to);\n  // an unsquashed ordering",
+    'rebuildingTheOrderingLeavesEveryOtherStoreExactlyWhereItWas',
+    'the ordering takes the real name while its row count stays behind, so the set reads back with the old number of rows'],
 ];
 
 const only = process.argv[2] || '';

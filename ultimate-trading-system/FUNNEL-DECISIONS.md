@@ -1318,3 +1318,46 @@ made while building it that the design did not already settle.
      that left the stamp alone would have fixed nothing anybody can use.
 
      Second digit: a new control and a new thing the engine can do.
+
+111. **rowstore.remove takes the WHOLE store directory, and I called it as if
+     it took one store** (2026-09-06). It destroyed an eighteen-hour run of
+     10,200 units the first time the owner pressed `put the missing units back`.
+
+     `remove(runId)` has one parameter. `remove(id, 'ranking')` silently ignores
+     the second and deletes the record set's entire store directory: the
+     records, the votes, the tau votes and the models. The control worked
+     correctly right up to that line -- it trained the eighteen absent units and
+     appended them -- and then deleted everything. Only the freshly written
+     ordering survived. No snapshot, no backup, nothing recoverable. Stage 2
+     needs the votes and the models, so the set could not be a parent and the
+     run had to be done again.
+
+     **The warning was already in this file**, above `renameSettingsToV3`:
+     *"never rowstore.remove(): that takes the WHOLE store directory with it"*.
+     I wrote the call without reading the signature, because the name read the
+     way I wanted it to.
+
+     **And nothing caught it.** Eight guards and three tests went with that
+     release. Every one of them read SOURCE or checked arithmetic; not one
+     built a store on disk and read it back. The test count was reported as if
+     it were coverage.
+
+     The rebuild now writes the new ordering under its own name, checks its row
+     count against the records it was built from, and takes the real name in a
+     single rename -- nothing is deleted first, so a crash anywhere above leaves
+     the set exactly as it was. That is what RULE NINE has always said for a
+     record store and what `renameSettingsToV3` has always done.
+
+     `rebuildingTheOrderingLeavesEveryOtherStoreExactlyWhereItWas` builds a real
+     store with all five collections, rebuilds the ordering through the real
+     code, and reads every other one back. Its guard puts the exact destroying
+     line back and the test fails, which is the only evidence worth anything
+     here. A second test presses the whole control on a set whose units cannot
+     train, and holds every store intact through a fill that achieves nothing.
+
+     **One guard was written and then removed rather than left**: the row-count
+     check cannot be reached without contriving the store on disk, so a guard on
+     it caught nothing while reading as protection. Saying that is the point --
+     a guard that misses is worse than no guard.
+
+     Third digit: a fix, and two tests that read disk instead of source.

@@ -721,6 +721,67 @@ function unitFillRefusal(doc) {
   return null;
 }
 
+// THE ORDERING, REBUILT BESIDE THE SET, VERIFIED, THEN SWAPPED IN.
+//
+// It has to be rebuilt rather than appended to: it is one row per unit in
+// score order, so a unit put back anywhere changes every rank after it, and
+// appending would leave the new units at the bottom whatever they scored.
+//
+// NEVER rowstore.remove(). It takes ONE argument -- the record set -- and
+// deletes the WHOLE store directory: the records, the votes, the tau votes and
+// the models, all of them. There is no per-store remove and there never was.
+// Written here as `rowstore.remove(id, 'ranking')` on 2026-09-06, in the belief
+// that the second argument named one store, it destroyed an eighteen-hour run
+// of 10,200 units the first time the owner pressed the control. The warning was
+// already in this file, above renameSettingsToV3, and I wrote the call anyway.
+//
+// So: the files are named one at a time, the new ordering is written under its
+// own name, its row count is checked against what it was built from, and only
+// then does it take the real name -- one rename, atomic, nothing removed first.
+// That is the same shape RULE NINE demands of a record store and the same shape
+// renameSettingsToV3 has always used.
+const RANKING_SPARE = 'ranking-rebuilding';
+function wipeOneStore(id, name) {
+  for (const f of [rowstore.plainFile(id, name), `${rowstore.plainFile(id, name)}.meta.json`,
+    rowstore.gzFile(id, name), `${rowstore.gzFile(id, name)}.meta.json`]) {
+    try { fs.rmSync(f, { force: true }); } catch (_) { /* nothing there */ }
+  }
+}
+async function rebuildRanking(id, records) {
+  const all = records.slice();
+  // the SAME total order the launch settles on: beat, then lead, then the
+  // unit's own place in the plan -- so two runs of one set rank identically
+  all.sort((a, b) => (b.beat - a.beat) || ((b.lead ?? -1e9) - (a.lead ?? -1e9)) || (a.u - b.u));
+  wipeOneStore(id, RANKING_SPARE);          // anything a stopped run left behind
+  const rk = rowstore.writer(id, RANKING_SPARE);
+  for (let r = 0; r < all.length; r++) {
+    rk.push({
+      rank: r + 1, u: all[r].u, beat: all[r].beat, pairs: all[r].pairs, lead: all[r].lead, score: all[r].score,
+      money: all[r].money, beatMoney: all[r].beatMoney, leadMoney: all[r].leadMoney,
+    });
+  }
+  await rk.close();
+  // VERIFY BEFORE ANYTHING IS REPLACED
+  const got = rowstore.count(id, RANKING_SPARE);
+  if (got !== all.length) {
+    wipeOneStore(id, RANKING_SPARE);
+    throw new Error(`the rebuilt ordering holds ${got} row(s) and the set holds ${all.length} record(s) — the ordering was left exactly as it was`);
+  }
+  const from = rowstore.storeFile(id, RANKING_SPARE);
+  if (!from.endsWith('.gz')) throw new Error('the rebuilt ordering is not in the form the swap expects — nothing was replaced');
+  const to = rowstore.gzFile(id, 'ranking');
+  // ONE RENAME, and the old ordering is only gone once the new one has its
+  // name. Nothing is deleted first, so a crash anywhere above leaves the set
+  // exactly as it was.
+  fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
+  fs.renameSync(from, to);
+  // an unsquashed ordering from an older era would otherwise shadow the one
+  // just written -- storeFile prefers the plain file when it has any size
+  try { fs.rmSync(rowstore.plainFile(id, 'ranking'), { force: true }); } catch (_) { /* nothing there */ }
+  try { fs.rmSync(`${rowstore.plainFile(id, 'ranking')}.meta.json`, { force: true }); } catch (_) { /* nothing there */ }
+  return { rows: got };
+}
+
 const unitFills = new Map();
 function fillMissingUnitsStart(id) {
   if (unitFills.has(id)) return unitFills.get(id);
@@ -781,21 +842,8 @@ function fillMissingUnitsStart(id) {
       pool.abort();
     }
     recordsInHand.id = null; recordsInHand.rows = null;      // the appended rows must be served, not the old list
-    // THE ORDERING IS REBUILT, NOT APPENDED TO. It is one row per unit in
-    // score order, so a unit inserted anywhere changes every rank after it --
-    // appending would leave the new units at the bottom whatever they scored,
-    // which is a lie about where they stand.
     const all = allRecords(id).slice();
-    all.sort((a, b) => (b.beat - a.beat) || ((b.lead ?? -1e9) - (a.lead ?? -1e9)) || (a.u - b.u));
-    rowstore.remove(id, 'ranking');
-    const rk = rowstore.writer(id, 'ranking');
-    for (let r = 0; r < all.length; r++) {
-      rk.push({
-        rank: r + 1, u: all[r].u, beat: all[r].beat, pairs: all[r].pairs, lead: all[r].lead, score: all[r].score,
-        money: all[r].money, beatMoney: all[r].beatMoney, leadMoney: all[r].leadMoney,
-      });
-    }
-    await rk.close();
+    await rebuildRanking(id, all);
     const fresh = getSet(id);
     if (fresh) {
       const left = missingUnitsOf(fresh);
@@ -6334,7 +6382,7 @@ module.exports = {
   sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, foldBehind, foldPending, foldRecordsPerUnit, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
-  missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus,
+  missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
