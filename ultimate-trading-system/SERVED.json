@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "9c92360217e56e7e43b7950e6b9f30ba9b9b99cc",
-  "subject": "3.74.0 - a Stage 4 record set can be deleted, and a campaign takes the sets that came out of its own",
-  "capturedAt": "2026-09-06T04:34:56Z",
+  "commit": "b6082b93a75647af93e114bfc42c4476355c474d",
+  "subject": "3.75.0 - trade coins and compare coins are two boxes",
+  "capturedAt": "2026-09-06T04:57:06Z",
   "files": {
     "public/construct.js": {
-      "sha256": "6b9546d3efe57d88407ba0ba2cd3854609b169acf511ec602c3cc78acb9079fa",
-      "bytes": 433133
+      "sha256": "d19f55f4e59519a1112bf093086bb34c9bb79525f5ef325ec7f016a5b0e40d4b",
+      "bytes": 434363
     },
     "public/help-content.js": {
-      "sha256": "1744b631f11c78ecb60809e54fc8745caae950d4b285f85747e95065e9118c5d",
-      "bytes": 78676
+      "sha256": "a8d907e4b8a1182dfd2c53abfba098f957ffc3d0cbd4a52498ead33bddc0326f",
+      "bytes": 79458
     },
     "public/setup.html": {
       "sha256": "35a91fa5d8880c5026670fe6644875f8c0d7af867c20c53e69a046cdfac3a08e",
