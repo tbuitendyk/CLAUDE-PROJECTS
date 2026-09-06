@@ -704,7 +704,14 @@ function validateDeclared(raw, menus) {
   };
   const entry = raw.entry === undefined ? 'breakout' : String(raw.entry);
   if (!m.entries.includes(entry)) throw new Error(`declared.entry must be one of ${m.entries.join('/')} (this run's grid)`);
-  const tHours = Number(raw.tHours);
+  // t IS A NUMBER OF HOURS, OR THE ONE VALUE THAT IS NOT (3.72.0). The chunk's
+  // own hold length is resolved against each unit when it is priced, so it
+  // travels through here whole rather than being coerced to NaN -- and it is
+  // legal only where the RUN'S OWN GRID offers it, which is the stage 3 block
+  // and nowhere else. The old sweep path passes the plain numeric ladder and
+  // therefore still refuses it, with the same message as any other value it
+  // does not hold.
+  const tHours = raw.tHours === bracketLib.T_OWN ? bracketLib.T_OWN : Number(raw.tHours);
   if (!m.tHours.includes(tHours)) throw new Error(`declared.tHours must be one of ${m.tHours.join('/')} (this run's grid)`);
 
   // MARKET entry is the classifier's own trade: enter at the open in the
@@ -825,7 +832,7 @@ function expandDeclared(raw, permute, menus) {
     // MARKET has no rails: no gate, no distance, no trail, no arm. Expanding
     // those for a market cell would build configs validateDeclared refuses, so
     // the market branch carries only the horizon and the agreement counts.
-    const tList = pick(on.tHours, m.tHours, Number(raw.tHours));
+    const tList = pick(on.tHours, m.tHours, raw.tHours === bracketLib.T_OWN ? bracketLib.T_OWN : Number(raw.tHours));
     if (entry === 'market') {
       for (const tHours of tList) out.push({ entry, tHours });
       continue;

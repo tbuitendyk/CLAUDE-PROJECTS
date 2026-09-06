@@ -1418,13 +1418,36 @@ the `t` ladder. Both are fixed in the engine, not worked around on the page:
   says so once and the block builder, the pricer, the name and the screen all
   read that one statement. It stores no bar and no share, its rung is empty
   rather than borrowed, and permuting a bar or a share cannot multiply it.
+- **`t` gains a value that is not a number of hours** (3.72.0, owner order
+  2026-09-06: *"the chunk's own, no new field"*). `the chunk's own` is resolved
+  against the unit being priced — `bracketLib.tHoursOn(st.tHours, geometry)` —
+  so ONE setting is 60 hours on a weekly unit and 41 on a daily 3-day one. This
+  is the same shape as a band of `auto`, which has always resolved to each
+  unit's own width; nothing about it is new machinery.
+
+**Nothing is recalculated to do either.** Stage 1 works the auto band out once,
+from that unit's own training chunks, and writes it on the record; stage 2
+copies it across; stage 3 reads it. The hold length is the chunk shape's own two
+declared hours, and every record already carries its chunk shape. Both are
+lookups.
+
+**Three readers, one resolver.** The fold (`foldKeyRest`), the cost line
+(`countDeclared`) and the pricing (`s3UnitTask`) all call `tHoursOn`. That
+matters most in the fold: on a daily 3-day unit `the chunk's own` IS 41h, so a
+setting asking for each places the identical orders there and they are ONE
+setting on that unit — while on a weekly unit they are two. Keying on the
+unresolved value would price the same trade twice on every daily unit in a run.
+
+**No record changes shape** (RULE NINE, and the owner's "no new field"). A row
+keeps storing the hold it was actually priced at — a plain number — exactly as
+it stores `bandPct` beside `bandMode`. So the `t` column, the `t` filters and
+the Funnel's `t` dial are untouched, and nothing on disk needs migrating. Which
+setting asked for it is on the setting's own name, which reads `t own`.
 
 **The control** is `load training setup` on the stage 3 set-up. It fills
-`quorum by`, `entry`, `band % (or auto)`, `decision`, `24/5`, every permute, and
-`t` — and it starts nothing. `t` is the only value it reads rather than knows:
-the counter answers with the hold lengths of the chunk shapes the records being
-priced carry, and when there is more than one the box is left alone and the
-lengths are named on screen.
+`quorum by`, `entry`, `t`, `band % (or auto)`, `decision`, `24/5` and every
+permute — and it starts nothing. There is nothing left for it to guess at: two
+of the values it sets are themselves per-unit.
 
 **What it is for.** One row on the stage 3 table that is exactly what the
 trainings did, scored on the same window, against the same null set, beside

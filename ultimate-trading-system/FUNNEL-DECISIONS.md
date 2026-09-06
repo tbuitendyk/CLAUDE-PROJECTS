@@ -1196,3 +1196,65 @@ made while building it that the design did not already settle.
      on disk stops being readable -- an existing record keeps its own t and its
      own bar, and `does not apply` in the bar column belongs only to rows a
      no-bar rule writes.
+
+107. **The chunk's own hold length, resolved per unit — and no new field on any
+     record** (2026-09-06, owner: *"the individual units would be trained and
+     tested on stage three with the same settings ... you need to set some other
+     setting in the stage three processing which can read how each unit was
+     actually trained on stage one and stage two and replicate that exact setup
+     for each unit individually. That is what is required under this design."*).
+
+     3.71.0 put 60h on the menu and left the control naming the lengths when a
+     run carried more than one chunk shape. That was honest and it was not the
+     design: one setting has to be right on every unit, not right on the units
+     that happen to share a shape.
+
+     `t` now takes a value that is not a number of hours. It is resolved against
+     the unit being priced, through one function every reader calls, so the
+     fold, the cost line and the pricing cannot disagree about what a unit is
+     being asked to do. The fold is the one that would have bitten: on a daily
+     3-day unit the chunk's own hold length IS 41 hours, so asking for it and
+     asking for 41h are the same trade there and must be priced once — and on a
+     weekly unit they are two different trades.
+
+     **And nothing is recalculated.** The owner's qualification — *"if the band
+     percent or auto field is already calculated and stored on the stage one,
+     stage two record sets, then it doesn't make sense to have to recalculate
+     that"* — is already how it works, and was checked rather than assumed:
+     stage 1 works the auto band out once and writes it on the record, stage 2
+     copies it across, stage 3 reads it. The hold length is the chunk shape's
+     own two declared hours and every record carries its chunk shape. Both are
+     lookups.
+
+     **No new field**, by the owner's decision. A row keeps storing the hours it
+     was actually priced at, the way it already stores the resolved band beside
+     the band mode, so the t column, the t filters and the Funnel's t dial are
+     untouched and nothing on disk is migrated. Which setting asked for it is on
+     the setting's name.
+
+     Second digit: a new value a control can take, and a new resolution step in
+     the pricing. Nothing on disk stops being readable.
+
+108. **The coin column was printing the next column as well** (2026-09-06,
+     owner: *"what's wrong with this stage 1 table formatting on boards -- hint:
+     you've got rows taking one or two lines, all because you're wasting an
+     enormous amount of space on each row"*).
+
+     Three faults, one appearance. The `coin` cell printed the traded coin AND
+     the coins it is read against, and the `alongside` cell beside it printed
+     those same coins again — so every three-coin row spent 27 characters saying
+     what its neighbour says in 17, and it was the widest column on the table.
+     Its own hover text already promised only the traded coin.
+
+     Second, the HEADINGS were setting the column widths: `beat its own null set
+     — tuning-slice $` is 37 characters over cells holding `55.0% 11/20`. A
+     heading is written once and read once; it can wrap. Capped at 7.5rem and
+     sat on the bottom so a wrapped one stays level with its neighbours and its
+     own sort button (RULE FOUR).
+
+     Third, the cells were free to wrap, so some rows were one line and some
+     were two — and a table you cannot read down a column is not a table. The
+     stage 1 and stage 2 cells never wrap now. The stage 3 tables carry whole
+     setting names and are deliberately left alone.
+
+     Third digit: nothing but layout, and no number moves.

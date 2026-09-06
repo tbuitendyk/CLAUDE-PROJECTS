@@ -225,7 +225,9 @@ module.exports = {
       ['swEntry', bracketLib.ENTRIES.map(String)],
       ['swGate', bracketLib.GATES.map(String)],
       ['swD', bracketLib.D_MULTS.map(String)],
-      ['swT', bracketLib.T_HOURS.map(String)],
+      // the stage 3 grid is the hours ladder PLUS the chunk's own, which is
+      // resolved against each unit as it is priced (lib/stages.js shapeCellsFor)
+      ['swT', [...bracketLib.T_HOURS.map(String), bracketLib.T_OWN]],
       ['swArm', bracketLib.ARM_MULTS.map(String)],
     ];
     for (const [id, allowed] of cases) {
@@ -450,30 +452,44 @@ module.exports = {
     const at = SWEEP.indexOf("$('#swTrained3').onclick");
     assert.ok(at > 0, 'the load training setup control must be wired');
     const fn = SWEEP.slice(at, SWEEP.indexOf('\n  };', at));
-    // it asks the counter and it posts nothing else -- in particular not the
-    // launch endpoint, which is the whole of the first promise above
-    assert.ok(fn.includes("swAsk('api/stage3-count'"), 'it reads the hold lengths from the counter');
+    // it must not launch: a control that fills the form is the owner's
+    // servant; one that presses start for them takes the decision away
+    // (RULE FIVE), and the difference is one line of code away at all times
     assert.ok(!/api\/stage3'/.test(fn) && !/tryPost/.test(fn), 'it must fill the boxes and start nothing');
-    // every dropdown it sets must offer the value it sets
+    // every dropdown it sets must offer the value it sets. A fill that sets a
+    // dropdown to a string not among its options leaves the box on whatever it
+    // was, silently, and the owner launches something else entirely believing
+    // they launched the trainings' own conditions.
     const sets = [...fn.matchAll(/setV\('#(sw[A-Za-z0-9]+)', '([^']*)'\)/g)].map((m) => [m[1], m[2]]);
-    assert.ok(sets.length >= 5, `the fill sets suspiciously few boxes (${sets.length})`);
+    assert.ok(sets.length >= 6, `the fill sets suspiciously few boxes (${sets.length})`);
     for (const [id, value] of sets) {
       const offered = optionValues(SWEEP, id);
       if (!offered.length) continue;                      // a typed box, not a dropdown
       assert.ok(offered.includes(value),
         `load training setup sets #${id} to "${value}", which is not one of its choices (${offered.join(', ')})`);
     }
-    // and the conditions themselves: the trainings open at the close of the
-    // chunk, hold to the chunk's own end, and add every lean up
-    const wants = { swAgreeRule: 'trained', swEntry: 'market', swDec: 'argmax', swBand: 'auto', swAgreeHold: '0' };
+    // the conditions themselves: the trainings open at the close of the chunk,
+    // hold to that chunk's own end, price at the unit's own band, and add
+    // every lean up
+    const wants = {
+      swAgreeRule: 'trained', swEntry: 'market', swT: require('../lib/bracket').T_OWN,
+      swDec: 'argmax', swBand: 'auto', swAgreeHold: '0',
+    };
     for (const [id, want] of Object.entries(wants)) {
       assert.ok(fn.includes(`setV('#${id}', '${want}')`), `load training setup must set #${id} to ${want}`);
     }
-    // t is the one value it may leave alone, because the chunk shapes decide
-    // it -- but its permute is switched off either way, so the box the owner
-    // ends up looking at is the one that gets priced
-    assert.ok(fn.includes("setC('#swPermT', false)"), 'the t permute must be switched off with the rest');
-    assert.ok(!/setV\('#swT', '\d/.test(fn), 't must come from the records, never from a number typed here');
-    assert.ok(fn.includes("setV('#swT', String(holds[0]))"), 't is filled from the hold length those records were scored on');
+    // t IS NEVER A NUMBER HERE. A number would be right on one chunk shape and
+    // wrong on every other, which is the whole fault this control was rebuilt
+    // to remove -- so a digit appearing in this fill is a regression.
+    assert.ok(!/setV\('#swT', ['"`]?\d/.test(fn) && !/setV\('#swT', String\(/.test(fn),
+      't must be the chunk\'s own, never a number picked for the owner');
+    // and every permute is switched off, so the boxes the owner ends up
+    // looking at are the setting that gets priced
+    for (const id of ['swPermT', 'swPermDec', 'swPermBand', 'swPermWk', 'swPermEntry', 'swPermAgreeRule']) {
+      assert.ok(fn.includes(`setC('#${id}', false)`), `load training setup must switch off #${id}`);
+    }
+    // the page must not coerce the choice to a number on its way to the launch
+    assert.ok(SWEEP.includes("const cell = { tHours: tRaw === 'own' ? 'own' : Number(tRaw) };"),
+      'the block builder must send the chunk\'s own whole, not as NaN');
   },
 };

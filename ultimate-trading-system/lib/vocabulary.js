@@ -57,7 +57,13 @@ function vocabulary() {
     // directional, the same two the live side accepts
     gate: asChoices(bracket.GATES),
     dMult: asChoices(bracket.D_MULTS, mult),
-    tHours: asChoices(bracket.T_HOURS, (h) => `${h}h`),
+    // ...AND THE ONE VALUE OF t THAT IS NOT A NUMBER OF HOURS (3.71.0/3.72.0).
+    // Stages 1 and 2 hold each chunk from its own entry hour to its own exit
+    // hour, which is a different number on each chunk shape -- so no single
+    // hours value can say "do what the trainings did" on a run carrying more
+    // than one shape. This one is resolved against each unit as it is priced,
+    // exactly as a band of auto already is. Only the stage 3 grid accepts it.
+    tHours: [...asChoices(bracket.T_HOURS, (h) => `${h}h`), { value: bracket.T_OWN, label: "the chunk's own" }],
     // 'static' is the absence of a trailing stop, which is not a multiple and
     // so is not in the engine's ladder. It is a real choice and belongs here.
     trailMult: [{ value: '', label: 'static' }, ...asChoices(bracket.TRAIL_MULTS, mult)],

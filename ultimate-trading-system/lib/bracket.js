@@ -445,10 +445,43 @@ const D_MULTS = [0.25, 0.5, 0.75, 1.0, 1.5];
 // hold length to this ladder without anybody adding it, which is the same
 // discipline lib/vocabulary.js keeps for every other menu.
 const T_BASE_HOURS = [17, 41, 65, 89, 113, 137, 161];
-const T_TRAINED_HOURS = [...new Set(Object.values(GEOMETRIES)
-  .map((g) => g.exitOffsetH - g.entryOffsetH)
-  .filter((h) => Number.isInteger(h) && h > 0))].sort((a, b) => a - b);
+// HOW LONG STAGES 1 AND 2 HOLD ONE CHUNK OF THIS SHAPE: from the hour it opens
+// at to the hour it closes at, both of which the shape itself declares. Said
+// once, here, because five different things now need it and five copies of an
+// arithmetic that simple is still five places to get it wrong.
+function holdHoursOf(geometry) {
+  const g = GEOMETRIES[geometry];
+  if (!g) return null;
+  const h = g.exitOffsetH - g.entryOffsetH;
+  return Number.isInteger(h) && h > 0 ? h : null;
+}
+const T_TRAINED_HOURS = [...new Set(Object.keys(GEOMETRIES).map(holdHoursOf).filter((h) => h != null))].sort((a, b) => a - b);
 const T_HOURS = [...new Set([...T_BASE_HOURS, ...T_TRAINED_HOURS])].sort((a, b) => a - b);
+
+// t SET TO THE CHUNK'S OWN HOLD LENGTH (3.72.0, owner order 2026-09-06: "the
+// chunk's own, no new field").
+//
+// A number on this ladder is the same number on every unit, and that is what
+// made the training setup impossible to state as ONE setting: a weekly unit is
+// held 60 hours and a daily one 17 or 41, so no single number is right for a
+// run carrying more than one shape. This value is not a number. It is resolved
+// against the unit being priced, at the moment it is priced, exactly the way a
+// band of `auto` already resolves to that unit's own width.
+//
+// NOTHING IS RECALCULATED to do it. Every record already carries its chunk
+// shape, and the hold length is that shape's own two declared hours -- a
+// lookup, not a pricing.
+const T_OWN = 'own';
+// The hold length a setting actually prices at ON THIS UNIT. Every reader goes
+// through this -- the fold, the cost line, the pricing -- so none of them can
+// resolve it differently from another. A shape the system does not implement
+// throws rather than quietly picking a number.
+function tHoursOn(tHours, geometry) {
+  if (tHours !== T_OWN) return Number(tHours);
+  const h = holdHoursOf(geometry);
+  if (h == null) throw new Error(`t is set to the chunk's own hold length and "${geometry}" is not a chunk shape this system implements`);
+  return h;
+}
 
 // TRAILING GRID, band-relative like d. null = the static opposite-rail stop
 // this lab has always used. ARM delays the trail until price has moved that
@@ -650,4 +683,4 @@ function predictMember(saved, x) {
   return out.label;
 }
 
-module.exports = { comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET, T_TRAINED_HOURS };
+module.exports = { comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET, T_TRAINED_HOURS, T_OWN, holdHoursOf, tHoursOn };

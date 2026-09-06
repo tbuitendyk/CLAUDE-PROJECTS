@@ -989,7 +989,11 @@ async function swCounts() {
 function swBlockParams() {
   const entry = $('#swEntry').value;
   const permEntry = $('#swPermEntry').checked;
-  const cell = { tHours: Number($('#swT').value) };
+  // t IS HOURS, OR THE ONE CHOICE THAT IS NOT (3.72.0). Coercing it here would
+  // send NaN and the launch would refuse with a message about the grid, which
+  // is true and useless.
+  const tRaw = $('#swT').value;
+  const cell = { tHours: tRaw === 'own' ? 'own' : Number(tRaw) };
   if (entry !== 'market' || permEntry) {
     cell.entry = entry === 'market' ? 'breakout' : entry;
     cell.gate = $('#swGate').value;
@@ -2620,7 +2624,7 @@ async function drawSweep() {
         <label class="c"><input type="checkbox" id="swPermD"> permute</label>
       </div>
       <div style="display:flex;align-items:flex-end;gap:.45rem">
-        <label class="f">t<select id="swT">${vocabOptions('tHours', '65')}</select></label>
+        <label class="f" title="how long a position is held before it is closed on time. The hours are the same on every unit. the chunk's own is not a number: it holds each unit for exactly as long as its own chunk shape is held when stages 1 and 2 score it - 60 hours on a weekly 8-day chunk, 17 on a daily 1-day or 2-day, 41 on a daily 3-day or 4-day - so one setting can be right on every unit at once.">t<select id="swT">${vocabOptions('tHours', '65')}</select></label>
         <label class="c"><input type="checkbox" id="swPermT"> permute</label>
       </div>
       <div id="swGrpTrail" style="display:flex;align-items:flex-end;gap:.45rem">
@@ -2718,27 +2722,17 @@ async function drawSweep() {
   // only reason this can exist at all under RULE FIVE: a hidden setting the
   // system priced for itself would be a setting the owner never chose.
   //
-  // The hold length is the one thing here that is not a constant: stages 1 and
-  // 2 hold each chunk from its own entry hour to its own exit hour, so the
-  // right value depends on which chunk shapes the records being priced carry.
-  // It is asked for rather than assumed, and when the records carry more than
-  // one shape the box is LEFT ALONE and the lengths are named — picking one of
-  // them would be choosing for the owner, silently, which is the whole of what
-  // RULE FIVE forbids.
-  $('#swTrained3').onclick = async () => {
+  // ONE SETTING, RIGHT ON EVERY UNIT (3.72.0, owner: "the chunk's own, no new
+  // field"). The first version of this filled everything except t, because the
+  // hold length is a different number on each chunk shape and picking one
+  // would have been choosing for the owner in silence. It is not a number any
+  // more: t is set to the chunk's own hold length, which each unit turns into
+  // its own when it is priced, the way a band of auto already does. So there
+  // is nothing left for this to guess at and nothing left for it to ask.
+  $('#swTrained3').onclick = () => {
     const said = $('#swTrainedSaid');
     const setV = (sel, v) => { const el = $(sel); if (el) el.value = String(v); };
     const setC = (sel, v) => { const el = $(sel); if (el) el.checked = !!v; };
-    said.textContent = 'reading the chunk shapes of the records this would price…';
-    const r = await swAsk('api/stage3-count', {
-      ...swBlockParams(),
-      from: $('#swFrom3').value || '',
-      carry: Number($('#swCarry3') && $('#swCarry3').value) || 0,
-      pick: ($('#swPick3') && $('#swPick3').value) || 'count',
-    });
-    const holds = r.ok && Array.isArray(r.data.holds) ? r.data.holds : [];
-    if (!r.ok) { said.innerHTML = `<span class="warn">${esc(r.why || 'no answer')}</span>`; return; }
-    // everything except t, which the hold lengths decide
     setV('#swAgreeRule', 'trained'); setC('#swPermAgreeRule', false);
     setC('#swPermAgreeBar', false); setC('#swPermAgreeShare', false); setC('#swPermAgreeCopy', false);
     setC('#swAgreeBoth', false); setC('#swPermAgreeBoth', false);
@@ -2749,18 +2743,10 @@ async function drawSweep() {
     setV('#swDec', 'argmax'); setC('#swPermDec', false);
     setV('#swBand', 'auto'); setC('#swPermBand', false);
     setC('#swWk', false); setC('#swPermWk', false);
-    setC('#swPermT', false);
-    const filled = 'quorum by trained, entry market, band % (or auto) auto, decision argmax, 24/5 off, every permute off';
-    if (holds.length === 1) {
-      setV('#swT', String(holds[0]));
-      said.textContent = `filled in: ${filled}, t ${holds[0]}h. That is how long stages 1 and 2 held each chunk on these records, and how they added the members up.`;
-    } else if (holds.length > 1) {
-      said.innerHTML = `filled in: ${filled} — but <b>not t</b>. The records this would price carry chunk shapes held for `
-        + `${esc(holds.map((h) => `${h}h`).join(', '))}, so no one t matches them all. Pick one, or price one chunk shape at a time.`;
-    } else {
-      said.innerHTML = `filled in: ${filled} — but <b>not t</b>: there are no records to read a chunk shape from yet. `
-        + 'Pick a from stage 2 record set above and press this again.';
-    }
+    setV('#swT', 'own'); setC('#swPermT', false);
+    said.textContent = 'filled in: quorum by trained, entry market, t the chunk\u2019s own, band % (or auto) auto, '
+      + 'decision argmax, 24/5 off, every permute off. That is one setting, and it prices every unit at the hold '
+      + 'length and the band its own stage 1 worked out \u2014 press start stage 3 when you are ready.';
     rememberSweepForm();
     swProvenance();
     swCounts();
@@ -2839,7 +2825,13 @@ function bShare(share, beat, pairs) {
   return `<b class="${share > 0.5 ? 'pos' : ''}">${(share * 100).toFixed(1)}%</b> <span class="muted">${Number(beat).toLocaleString()}/${Number(pairs).toLocaleString()}</span>`;
 }
 const bLead = (v) => (v == null ? bDash() : `×${Number(v).toFixed(1)}`);
-const bCoin = (r) => `<b>${esc(r.trade)}</b>${r.ctx1 ? ` + ${esc(r.ctx1)}` : ''}${r.ctx2 ? ` + ${esc(r.ctx2)}` : ''}`;
+// THE COIN COLUMN IS THE COIN (owner order, 2026-09-06). It printed the traded
+// coin AND the coins it is read alongside, and the very next column prints
+// those same coins again -- so every three-coin row spent 27 characters saying
+// what the column beside it says in 17, and it was the widest column on the
+// table for no information at all. Its own heading already promised only the
+// traded coin: "Anything listed under alongside is context only".
+const bCoin = (r) => `<b>${esc(r.trade)}</b>`;
 const bGeo = (g) => { const v = (HELPVOCAB && HELPVOCAB.geometry) || []; const hit = v.find((o) => o.value === g); return hit ? hit.label : g; };
 
 async function drawBoards() {
@@ -3057,7 +3049,22 @@ async function drawBoards() {
 }
 const btd = 'style="padding:.25rem .5rem"';
 const btd0 = 'style="padding:.25rem .5rem .25rem 0"';
-const bth = 'style="padding:.3rem .5rem"';
+// A ROW IS ONE LINE (owner order, 2026-09-06: "rows taking one or two lines,
+// all because you're wasting an enormous amount of space on each row"). A cell
+// holding one number or one coin has nothing to gain from wrapping, and a
+// table where some rows are two lines and some are one cannot be read down a
+// column at all. Used on the stage 1 and stage 2 tables, whose cells are all
+// short; the stage 3 tables carry whole setting names and are left to wrap.
+const btdN = 'style="padding:.25rem .5rem;white-space:nowrap"';
+const btdN0 = 'style="padding:.25rem .5rem .25rem 0;white-space:nowrap"';
+// AND A HEADING NEVER DECIDES HOW WIDE A COLUMN IS. Left alone, a column is as
+// wide as the longest thing in it, and the longest thing was the WORDS AT THE
+// TOP -- "beat its own null set - tuning-slice $" is 37 characters over a cell
+// holding "55.0% 11/20". Capped, the heading wraps onto two or three lines
+// ONCE, at the top, and every row underneath is as narrow as its own numbers.
+// Sitting on the bottom keeps a wrapped heading level with the one-line
+// headings beside it and with its own sort button (RULE FOUR).
+const bth = 'style="padding:.3rem .5rem;max-width:7.5rem;white-space:normal;vertical-align:bottom"';
 
 // THE PAGE NUMBER IS TYPED, NOT WALKED TO (owner order, 2026-08-29). prev and
 // next move one page; on a table 4,116 pages long that is not a way of getting
@@ -3721,18 +3728,18 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <th ${bth} title="of its null set — the same votes dealt onto other days of the tuning slice — how many this unit's tuning-slice $ beat">beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}</th>
         <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
-        <td ${btd0}>${Number(r.rank).toLocaleString()}</td>
-        <td ${btd}>${bCoin(r)}</td>
-        <td ${btd}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
-        <td ${btd}>${esc(bGeo(r.geometry))}</td>
-        <td ${btd}>${r.members == null ? '—' : r.members}</td>
-        <td ${btd}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}</td>
-        <td ${btd}>${r.score == null ? '—' : r.score.toFixed(1)}</td>
-        <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${btd}>${bLead(r.lead)}</td>
-        <td ${btd}>${bMoney(r.money)}</td>
-        <td ${btd}>${bShare(r.pairs && r.beatMoney != null ? r.beatMoney / r.pairs : null, r.beatMoney, r.pairs)}</td>
-        <td ${btd}>${bLead(r.leadMoney)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btdN0}>${Number(r.rank).toLocaleString()}</td>
+        <td ${btdN}>${bCoin(r)}</td>
+        <td ${btdN}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
+        <td ${btdN}>${esc(bGeo(r.geometry))}</td>
+        <td ${btdN}>${r.members == null ? '—' : r.members}</td>
+        <td ${btdN}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}</td>
+        <td ${btdN}>${r.score == null ? '—' : r.score.toFixed(1)}</td>
+        <td ${btdN}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+        <td ${btdN}>${bLead(r.lead)}</td>
+        <td ${btdN}>${bMoney(r.money)}</td>
+        <td ${btdN}>${bShare(r.pairs && r.beatMoney != null ? r.beatMoney / r.pairs : null, r.beatMoney, r.pairs)}</td>
+        <td ${btdN}>${bLead(r.leadMoney)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${bShown(t)}
     ${bPager((t && t.total) || 0, from, 100, 'S1')}
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
@@ -3802,23 +3809,23 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <th ${bth} title="of its null set — the same votes dealt onto other days of the tuning slice — how many this row's tuning-slice $ with every member pooled beat">beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}</th>
         <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread — every member pooled">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
-        <td ${btd0}><input type="checkbox" data-bpick="S2:${r.u}"${picked.has(r.u) ? ' checked' : ''} title="picks this record. Saved on this record set the moment it changes."></td>
-        <td ${btd}>${Number(r.rank).toLocaleString()}</td>
-        <td ${btd}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
-        <td ${btd}>${bCoin(r)}</td>
-        <td ${btd}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
-        <td ${btd}>${esc(bGeo(r.geometry))}</td>
-        <td ${btd}>${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST</td>
-        <td ${btd}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}${r.voices3 == null ? '' : ` <span class="muted">(${r.voices3} before BOOST)</span>`}</td>
-        <td ${btd}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
-        <td ${btd}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
-        <td ${btd}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td>
-        <td ${btd}>${bMoney(r.money3)}</td>
-        <td ${btd}>${bMoney(r.moneyAll)}</td>
-        <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
-        <td ${btd}>${bLead(r.lead)}</td>
-        <td ${btd}>${bShare(r.pairs && r.beatMoney != null ? r.beatMoney / r.pairs : null, r.beatMoney, r.pairs)}</td>
-        <td ${btd}>${bLead(r.leadMoney)}</td></tr>`).join('') || '<tr><td colspan="17" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btdN0}><input type="checkbox" data-bpick="S2:${r.u}"${picked.has(r.u) ? ' checked' : ''} title="picks this record. Saved on this record set the moment it changes."></td>
+        <td ${btdN}>${Number(r.rank).toLocaleString()}</td>
+        <td ${btdN}>${r.s1rank == null ? '—' : Number(r.s1rank).toLocaleString()}</td>
+        <td ${btdN}>${bCoin(r)}</td>
+        <td ${btdN}${r.ctx1 ? '' : ' class="muted"'}>${r.ctx1 ? esc([r.ctx1, r.ctx2].filter(Boolean).join(' + ')) : '—'}</td>
+        <td ${btdN}>${esc(bGeo(r.geometry))}</td>
+        <td ${btdN}>${r.members} — ${r.logreg} LOGREG + ${r.boost} BOOST</td>
+        <td ${btdN}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}${r.voices3 == null ? '' : ` <span class="muted">(${r.voices3} before BOOST)</span>`}</td>
+        <td ${btdN}>${r.score3 == null ? '—' : r.score3.toFixed(1)}</td>
+        <td ${btdN}>${r.scoreAll == null ? '—' : r.scoreAll.toFixed(1)}</td>
+        <td ${btdN}>${r.helped == null ? '—' : `<span class="${r.helped >= 0 ? 'pos' : 'neg'}">${r.helped >= 0 ? '+' : ''}${r.helped.toFixed(1)}</span>`}</td>
+        <td ${btdN}>${bMoney(r.money3)}</td>
+        <td ${btdN}>${bMoney(r.moneyAll)}</td>
+        <td ${btdN}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+        <td ${btdN}>${bLead(r.lead)}</td>
+        <td ${btdN}>${bShare(r.pairs && r.beatMoney != null ? r.beatMoney / r.pairs : null, r.beatMoney, r.pairs)}</td>
+        <td ${btdN}>${bLead(r.leadMoney)}</td></tr>`).join('') || '<tr><td colspan="17" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${bShown(t)}
     ${bPager((t && t.total) || 0, from, 100, 'S2')}
     <p class="note"><b data-bpickcount="S2">${picked.size.toLocaleString()}</b> picked on this record set

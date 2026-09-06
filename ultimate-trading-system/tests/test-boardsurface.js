@@ -36,7 +36,9 @@ module.exports = {
   // moment they change, the way a column sort does.
   theStageTwoTableOffersATickOnEveryRecordThatSavesOnTheSet() {
     const body = UI.slice(UI.indexOf('async function bDrawStage2('), UI.indexOf('\nasync function bDrawStage3('));
-    assert.ok(body.includes('<td ${btd0}><input type="checkbox" data-bpick="S2:${r.u}"${picked.has(r.u) ? \' checked\' : \'\'}'),
+    // btdN0 is the first-column cell that never wraps (3.72.0): on the stage 1
+    // and stage 2 tables a row is one line, so a column can be read down
+    assert.ok(body.includes('<td ${btdN0}><input type="checkbox" data-bpick="S2:${r.u}"${picked.has(r.u) ? \' checked\' : \'\'}'),
       'every record carries a tick named by its record number, drawn ticked when the set says so');
     assert.ok(body.includes('<input type="checkbox" data-bpickpage="S2"'), 'the heading tick picks or clears the page');
     assert.ok(body.includes('<button data-bpickclear="S2"'), 'and every pick can be cleared at once');

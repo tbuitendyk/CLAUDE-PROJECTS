@@ -49,8 +49,14 @@ module.exports = {
   async theEngineSLaddersAreServedComplete() {
     const v = vocabulary();
     const served = (name) => v[name].map((o) => o.value);
-    assert.deepStrictEqual(served('tHours'), bracket.T_HOURS.map(String),
+    // every hour on the engine's ladder, in its order, AND the one value that
+    // is not a number of hours: the chunk's own, which each unit turns into
+    // its own hold length when it is priced. Served last, so the numbers read
+    // in order and the odd one out is where the eye expects it.
+    assert.deepStrictEqual(served('tHours'), [...bracket.T_HOURS.map(String), bracket.T_OWN],
       'the holding-time list does not match the engine\'s. It stopped at 137h while the engine implements 161h.');
+    assert.strictEqual(v.tHours[v.tHours.length - 1].label, "the chunk's own",
+      'the choice that is not a number of hours must say so in words, not read as an hours value');
     assert.deepStrictEqual(served('dMult'), bracket.D_MULTS.map(String),
       'the rail-distance list does not match the engine\'s');
     assert.deepStrictEqual(served('armMult'), bracket.ARM_MULTS.map(String),

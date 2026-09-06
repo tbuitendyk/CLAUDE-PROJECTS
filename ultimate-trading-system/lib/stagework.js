@@ -894,7 +894,15 @@ async function s3UnitTask(task) {
     const tIdx = stream.weekdaysOnly ? wkTest : testChunks.map((_, i) => i);
     const hIdx = stream.weekdaysOnly ? wkHold : holdChunks.map((_, i) => i);
     const agr = agrOf(st);
-    const cell = { entry: st.entry, gate: st.gate, dMult: st.dMult, tHours: st.tHours, trailMult: st.trailMult ?? null, armMult: st.armMult ?? null };
+    // t IS RESOLVED AGAINST THIS UNIT, HERE, ONCE (3.72.0). A setting asking
+    // for the chunk's own hold length means 60 hours on a weekly unit and 17
+    // or 41 on a daily one, and this is the only place that knows which unit
+    // is being priced. Every use below reads this number -- the trade, the
+    // four hold controls it is measured against, and the figure the record
+    // keeps -- so none of them can be priced at one hold and reported at
+    // another. An explicit number passes through untouched.
+    const tHours = bracketLib.tHoursOn(st.tHours, geometry);
+    const cell = { entry: st.entry, gate: st.gate, dMult: st.dMult, tHours, trailMult: st.trailMult ?? null, armMult: st.armMult ?? null };
     const testCallsAll = streamFor(stream.decision, agr, -1, 'test');
     const tRes = bracketLib.simCell(cell, pick(testChunks, tIdx), pick(testCallsAll, tIdx), maps.trade, geo, bandPct, fee);
     // THE KEPT SCRAMBLES ON THE TEST WINDOW (FUNNEL-DESIGN.md 4.5). Together
@@ -942,7 +950,7 @@ async function s3UnitTask(task) {
     if (holdChunks.length) {
       const holdCallsAll = streamFor(stream.decision, agr, -1, 'hold');
       const hRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(holdCallsAll, hIdx), maps.trade, geo, bandPct, fee);
-      const hc = holdControlsFor(holdChunks, hIdx, st.tHours, stream.weekdaysOnly ? 'wk' : 'all');
+      const hc = holdControlsFor(holdChunks, hIdx, tHours, stream.weekdaysOnly ? 'wk' : 'all');
       holdout = {
         pnl: hRes.pnl, trades: hRes.trades, stops: hRes.stops,
         vsAlwaysLong: hRes.pnl - hc.alwaysLong,
@@ -984,7 +992,12 @@ async function s3UnitTask(task) {
       bandMode: stream.band === 'auto' ? 'auto' : Number(stream.band),
       weekdaysOnly: !!stream.weekdaysOnly,
       bandPct,
-      entry: st.entry, gate: st.gate, dMult: st.dMult ?? null, tHours: st.tHours,
+      // THE RECORD KEEPS THE HOLD IT WAS ACTUALLY PRICED AT, never the word
+      // that asked for it -- the same way it keeps bandPct beside bandMode. So
+      // the t column, the t filters and the Funnel's t dial go on reading
+      // plain hours, and no record already on disk changes shape (RULE NINE).
+      // Which setting asked for it is on the setting's own name.
+      entry: st.entry, gate: st.gate, dMult: st.dMult ?? null, tHours,
       trailMult: st.trailMult ?? null, armMult: st.armMult ?? null,
       agreeRule: agr.rule, agreeBar: agr.bar, agreePct: agr.pct, agreeCopy: agr.copy,
       agreeBoth: agr.both, agreePersist: agr.persist,

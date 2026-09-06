@@ -1217,9 +1217,15 @@ const rungFor = (pct, n) => Math.max(1, Math.min(n, Math.ceil((pct / 100) * n)))
 // The trade shape's name, without any agreement in it.
 function shapeLabel(cell) {
   const trailBit = cell.trailMult == null ? '' : ` trail${cell.trailMult}x/arm${cell.armMult}x`;
+  // A NAME SAYS WHAT WAS ASKED FOR, not what one unit resolved it to. The
+  // chunk's own hold length is 60 hours on a weekly unit and 41 on a daily
+  // one, and a name carrying either would be wrong on the other half of the
+  // same block -- so the name carries the choice, and each row carries the
+  // number it was actually priced at.
+  const t = cell.tHours === bracketLib.T_OWN ? 't own' : `t${cell.tHours}h`;
   return cell.entry === 'market'
-    ? `market t${cell.tHours}h`
-    : `${cell.gate} d${cell.dMult}x t${cell.tHours}h${trailBit}`;
+    ? `market ${t}`
+    : `${cell.gate} d${cell.dMult}x ${t}${trailBit}`;
 }
 // A QUORUM'S NAME. The bar is in it because the same share means two different
 // things under the two bars — 75% of what exists, or the strongest 25% of what
@@ -1406,8 +1412,14 @@ function shapeRepsFor(shapes, records) {
 // the same share against the two different bars is two settings, because the
 // bar changes when the committee is judged to have spoken.
 function weekdaysApplyTo(rec) { return require('./dataset').weekdaysApply(rec.geometry); }
-function foldKeyRest(st, wk) {
-  return [st.decision, wk ? 1 : 0, st.entry, st.gate, st.tHours,
+// THE KEY IS WHAT THIS UNIT WILL ACTUALLY BE ASKED TO DO, so t is resolved
+// here and not carried as written (3.72.0). On a daily 3-day unit the chunk's
+// own hold length IS 41 hours, so a setting asking for it and a setting asking
+// for 41h place the identical orders there and are one setting on that unit --
+// and on a weekly unit, where it is 60, they are two. Keying on the unresolved
+// value would price the same trade twice on every daily unit in the run.
+function foldKeyRest(st, wk, geometry) {
+  return [st.decision, wk ? 1 : 0, st.entry, st.gate, bracketLib.tHoursOn(st.tHours, geometry),
     st.agreeRule, st.agreeBar, st.agreePct, st.agreeRule === 'voices' ? st.agreeCopy : 0,
     st.agreeBoth, st.agreePersist].join('|');
 }
@@ -1421,7 +1433,7 @@ function heldOnFor(settings, records) {
     const mine = [];
     for (let i = 0; i < settings.length; i++) {
       const st = settings[i];
-      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false)}`;
+      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false, rec.geometry)}`;
       if (seen.has(key)) continue;
       seen.add(key);
       mine.push(i);
@@ -1443,11 +1455,11 @@ function foldSameTradeSettings(settings, records) {
   if (heldOn.length) {
     const repOf = shapeRepsFor(settings, [records[0]]);
     const wk0 = weekdaysApplyTo(records[0]);
-    for (const i of heldOn[0]) firstOn0.set(`${repOf.get(shapeKeyOf(settings[i]))}|${foldKeyRest(settings[i], wk0 ? !!settings[i].weekdaysOnly : false)}`, settings[i].label);
+    for (const i of heldOn[0]) firstOn0.set(`${repOf.get(shapeKeyOf(settings[i]))}|${foldKeyRest(settings[i], wk0 ? !!settings[i].weekdaysOnly : false, records[0].geometry)}`, settings[i].label);
     for (let i = 0; i < settings.length; i++) {
       if (keptOnAny[i]) continue;
       const st = settings[i];
-      folded.push({ dropped: st.label, kept: firstOn0.get(`${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wk0 ? !!st.weekdaysOnly : false)}`) || null });
+      folded.push({ dropped: st.label, kept: firstOn0.get(`${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wk0 ? !!st.weekdaysOnly : false, records[0].geometry)}`) || null });
     }
   }
   for (let i = 0; i < settings.length; i++) {
@@ -1470,7 +1482,14 @@ function pricingsOf(doc) {
 // uses, so a block here can never contain a trade the old path would refuse.
 function shapeCellsFor(params) {
   const grid = {
-    dMults: bracketLib.D_MULTS, tHours: bracketLib.T_HOURS, gates: bracketLib.GATES,
+    dMults: bracketLib.D_MULTS,
+    // THE STAGE 3 GRID, AND ONLY THIS ONE, OFFERS THE CHUNK'S OWN HOLD LENGTH
+    // (3.72.0). Stage 3 prices unit by unit and knows each unit's chunk shape,
+    // so it can resolve it; the old sweep path prices before the units exist
+    // and passes the plain numeric ladder, so it refuses the value outright
+    // rather than being taught a second meaning for it.
+    tHours: [...bracketLib.T_HOURS, bracketLib.T_OWN],
+    gates: bracketLib.GATES,
     entries: bracketLib.ENTRIES, trailMults: bracketLib.TRAIL_MULTS, armMults: bracketLib.ARM_MULTS,
   };
   // the shape side only — the agreement never travels through the old
@@ -1901,7 +1920,11 @@ function countDeclared(params, sizes, records) {
   const items = [];
   for (const band of bands) {
     for (const wk of weekdays) {
-      for (const cell of cells) items.push({ g: `${cell.entry}|${cell.gate}|${cell.tHours}`, wk, shape: { band, dMult: cell.dMult ?? null, trailMult: cell.trailMult ?? null, armMult: cell.armMult ?? null } });
+      // t IS LEFT UNRESOLVED HERE ON PURPOSE (3.72.0): the chunk's own hold
+      // length is a different number on each unit, so it can only be resolved
+      // inside the per-record loop below -- the same place the launch's fold
+      // resolves it.
+      for (const cell of cells) items.push({ g: `${cell.entry}|${cell.gate}`, t: cell.tHours, wk, shape: { band, dMult: cell.dMult ?? null, trailMult: cell.trailMult ?? null, armMult: cell.armMult ?? null } });
     }
   }
   const keptOnAny = new Uint8Array(items.length);
@@ -1915,7 +1938,7 @@ function countDeclared(params, sizes, records) {
     let mine = 0;
     for (let i = 0; i < items.length; i++) {
       const it = items[i];
-      const key = `${it.g}|${repOf.get(shapeKeyOf(it.shape))}|${wkApplies ? (it.wk ? 1 : 0) : 0}`;
+      const key = `${it.g}|${bracketLib.tHoursOn(it.t, rec.geometry)}|${repOf.get(shapeKeyOf(it.shape))}|${wkApplies ? (it.wk ? 1 : 0) : 0}`;
       if (seen.has(key)) continue;
       seen.add(key);
       keptOnAny[i] = 1;
@@ -1944,12 +1967,6 @@ function stage3Declared(b) {
       sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
       out.units = records.length;
       out.coins = new Set(records.map((r) => r.trade)).size;
-      // HOW LONG STAGES 1 AND 2 HELD EACH CHUNK ON THE UNITS THIS WILL PRICE
-      // (3.71.0). Read from the chunk shapes the records carry, so the load
-      // training setup control can fill t with the length the units were
-      // actually scored on rather than a number somebody typed -- and can say
-      // so, rather than pick one, when the records carry more than one shape.
-      out.holds = holdsOf(records);
     }
   }
   // the count is of what will actually be PRICED: two settings that place the
@@ -1965,20 +1982,6 @@ function stage3Declared(b) {
   out.unitSettings = records ? counted.perUnit.map((held, i) => ({ u: records[i].u, held })) : [];
   out.weekdaysApply = counted.weekdaysApply;
   return out;
-}
-// The hold lengths of a set of records' chunk shapes, smallest first. One
-// definition, read from the same GEOMETRIES the trainings themselves read, so
-// the number the control fills in cannot drift from the number stage 1 scored.
-function holdsOf(records) {
-  const G = require('./dataset').GEOMETRIES || {};
-  const hs = new Set();
-  for (const r of (records || [])) {
-    const g = G[r.geometry];
-    if (!g) continue;
-    const h = g.exitOffsetH - g.entryOffsetH;
-    if (Number.isInteger(h) && h > 0) hs.add(h);
-  }
-  return [...hs].sort((a, b) => a - b);
 }
 function startStage3(params) {
   claimOrRefuse();
@@ -6151,7 +6154,7 @@ module.exports = {
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, stage3Declared, holdsOf, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,

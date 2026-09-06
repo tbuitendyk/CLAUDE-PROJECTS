@@ -127,14 +127,14 @@ module.exports = {
   async theSettingsBlockCountsByHand() {
     const base = { entry: 'breakout', gate: 'directional', dMult: 1.5, tHours: 65 };
     assert.strictEqual(stages.settingsFor({ cell: base }).length, 1, 'no permute → one setting');
-    // eight holding times since 3.71.0: the seven-rung 17h+24k ladder plus the
-    // 60h a weekly 8-day chunk is held for, which is what stages 1 and 2 score
-    // that shape on and was the one length the grid could not ask for
-    assert.strictEqual(stages.settingsFor({ cell: base, cellPermute: { tHours: true } }).length, 8, 'eight holding times');
+    // nine holding times: the seven-rung 17h+24k ladder, the 60h a weekly 8-day
+    // chunk is held for, and the chunk's own -- which is not a number of hours
+    // at all but each unit's own hold length, resolved when it is priced
+    assert.strictEqual(stages.settingsFor({ cell: base, cellPermute: { tHours: true } }).length, 9, 'eight holding times and the chunk\'s own');
     assert.strictEqual(stages.settingsFor({ cell: base, permuteDecision: true, permuteBand: true, permuteWeekdays: true }).length,
       2 * 4 * 2, 'decision × band menu × 24/5');
-    // the TRADE SHAPE block, on its own: breakout gates(2) × d(5) × t(8) ×
-    // (static + 4 trails × 3 arms)(13) + market t(8) = 1,048 shapes. The
+    // the TRADE SHAPE block, on its own: breakout gates(2) × d(5) × t(9) ×
+    // (static + 4 trails × 3 arms)(13) + market t(9) = 1,179 shapes. The
     // agreement is no longer multiplied in here — it is its own dimension
     // (owner loop, 2026-08-28), which is what stopped a run declaring 8x the
     // settings it could ever tell apart.
@@ -142,7 +142,7 @@ module.exports = {
       cell: base,
       cellPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true },
     });
-    assert.strictEqual(shapes.length, 1048, 'the shape block must count exactly what the sweep\'s enumerator declares');
+    assert.strictEqual(shapes.length, 1179, 'the shape block must count exactly what the sweep\'s enumerator declares');
     const labels = new Set(shapes.map((x) => x.label));
     assert.strictEqual(labels.size, shapes.length, 'every setting carries a distinct name');
     // and an 'agree' permute on the shape side is IGNORED, never multiplied:
@@ -151,7 +151,7 @@ module.exports = {
       cell: { ...base, quorumSingles: 2, quorumContexts: 3 },
       cellPermute: { entry: true, gate: true, dMult: true, tHours: true, trail: true, arm: true, agree: true },
     });
-    assert.strictEqual(withAgree.length, 1048, 'the old agree permute must not reach the shape enumerator');
+    assert.strictEqual(withAgree.length, 1179, 'the old agree permute must not reach the shape enumerator');
   },
 
   // NO COMMITTEE SIZE APPEARS IN A SETTING'S NAME, EVER (owner, 2026-08-27:
@@ -4202,37 +4202,66 @@ module.exports = {
     assert.deepStrictEqual(said('all of them'), ['all']);
   },
 
-  // WHAT THE CONTROL FILLS t WITH IS READ, NEVER ASSUMED. The hold length of a
-  // unit is decided by its chunk shape, and it comes from the same GEOMETRIES
-  // the trainings themselves read, so the number the box gets cannot drift
-  // from the number stage 1 scored on.
-  async theTrainingHoldLengthsComeFromTheRecordsOwnChunkShapes() {
+  // t SET TO THE CHUNK'S OWN HOLD LENGTH IS RESOLVED PER UNIT (3.72.0, owner
+  // order 2026-09-06: "the chunk's own, no new field").
+  //
+  // One setting, a different number of hours on each unit -- and every reader
+  // must get the SAME number for a unit or the run is incoherent: priced at
+  // one hold, measured against controls at another, reported as a third. They
+  // all go through one function, and this holds that function to the chunk
+  // shapes the system implements.
+  async theChunksOwnHoldLengthIsResolvedAgainstTheUnitBeingPriced() {
     const { GEOMETRIES } = require('../lib/dataset');
-    const holdsOf = stages.holdsOf;
-    assert.deepStrictEqual(holdsOf([{ geometry: 'weekly-8d' }]), [60]);
-    assert.deepStrictEqual(holdsOf([{ geometry: 'daily-1d' }, { geometry: 'daily-2d' }]), [17],
-      'two shapes held for the same length are one length, not two');
-    assert.deepStrictEqual(holdsOf([{ geometry: 'daily-4d' }, { geometry: 'weekly-8d' }, { geometry: 'daily-1d' }]),
-      [17, 41, 60], 'smallest first, so the screen can name them in order');
-    assert.deepStrictEqual(holdsOf([]), [], 'no records, nothing to read');
-    assert.deepStrictEqual(holdsOf([{ geometry: 'not-a-shape' }]), [],
-      'a shape the system does not implement contributes no length rather than a wrong one');
-    // AND THE COUNTER HANDS THEM TO THE SCREEN. The control has no other way
-    // to learn them, and without this the whole thing degrades in silence:
-    // the boxes fill, t is left on whatever was there, and the owner prices
-    // something else believing it is the training setup.
-    const pid = writeLaunchParent('holds');
-    try {
-      const said = stages.stage3Declared({ ...LAUNCH_BLOCK, from: pid });
-      assert.deepStrictEqual(said.holds, [41],
-        'the counter must answer with the hold lengths of the records it would price (daily-4d is 41h)');
-    } finally { cleanLaunchParent(pid); }
-    // and every length it can produce is a value t can actually be set to
+    const b = require('../lib/bracket');
+    assert.strictEqual(b.tHoursOn(b.T_OWN, 'weekly-8d'), 60);
+    assert.strictEqual(b.tHoursOn(b.T_OWN, 'daily-1d'), 17);
+    assert.strictEqual(b.tHoursOn(b.T_OWN, 'daily-2d'), 17);
+    assert.strictEqual(b.tHoursOn(b.T_OWN, 'daily-3d'), 41);
+    assert.strictEqual(b.tHoursOn(b.T_OWN, 'daily-4d'), 41);
+    assert.strictEqual(b.tHoursOn(89, 'weekly-8d'), 89, 'a number of hours passes through untouched');
+    assert.throws(() => b.tHoursOn(b.T_OWN, 'not-a-shape'), /not a chunk shape/,
+      'an unknown chunk shape must throw rather than quietly pick a number');
+    // every shape the system implements resolves, and to a value t can be set
+    // to flat as well -- otherwise a setting could price at a hold the grid
+    // cannot express and no other setting could ever be compared with it
     for (const g of Object.keys(GEOMETRIES)) {
-      const [h] = holdsOf([{ geometry: g }]);
-      assert.ok(require('../lib/bracket').T_HOURS.includes(h),
-        `${g} holds ${h}h and the t menu cannot offer it`);
+      const h = b.tHoursOn(b.T_OWN, g);
+      assert.ok(b.T_HOURS.includes(h), `${g} resolves to ${h}h and the t menu cannot offer it`);
     }
+    // THE NAME SAYS WHAT WAS ASKED FOR, not what one unit made of it
+    const own = stages.settingsFor({ cell: { entry: 'market', tHours: b.T_OWN }, agreeRule: 'trained' }, [1]);
+    assert.strictEqual(own.length, 1);
+    assert.ok(own[0].label.startsWith('trained market t own '), `the name must carry the choice: ${own[0].label}`);
+  },
+
+  // AND THE FOLD RESOLVES IT THE SAME WAY. On a daily 3-day unit the chunk's
+  // own hold length IS 41 hours, so a setting asking for it and a setting
+  // asking for 41h place the identical orders there and must be ONE setting on
+  // that unit -- while on a weekly unit, where it is 60, they are two. Getting
+  // this wrong prices the same trade twice on every daily unit in a run.
+  async theChunksOwnFoldsIntoTheHoursItLandsOnForThatUnit() {
+    const b = require('../lib/bracket');
+    const both = stages.settingsFor({
+      cell: { entry: 'market', tHours: 41 }, agreeRule: 'count', agreePct: 50,
+    }, [1]).concat(stages.settingsFor({
+      cell: { entry: 'market', tHours: b.T_OWN }, agreeRule: 'count', agreePct: 50,
+    }, [1]));
+    assert.strictEqual(both.length, 2, 'the fixture must offer both ways of asking for the same hold');
+    const daily = stages.foldSameTradeSettings(both, [{ trade: 'AAA', bandPct: 2, geometry: 'daily-3d' }]);
+    assert.strictEqual(daily.kept.length, 1,
+      'on a daily 3-day unit the chunk\'s own IS 41h, so the two are one setting and must be priced once');
+    assert.strictEqual(daily.kept[0].tHours, 41, 'and the one kept is the first of them in block order');
+    const weekly = stages.foldSameTradeSettings(both, [{ trade: 'AAA', bandPct: 2, geometry: 'weekly-8d' }]);
+    assert.strictEqual(weekly.kept.length, 2,
+      'on a weekly unit the chunk\'s own is 60h, which is a different trade from 41h');
+    // and a run holding both units keeps both settings, with the daily unit
+    // holding one of them and the weekly unit holding both
+    const mixed = stages.foldSameTradeSettings(both, [
+      { trade: 'AAA', bandPct: 2, geometry: 'daily-3d' }, { trade: 'AAA', bandPct: 2, geometry: 'weekly-8d' },
+    ]);
+    assert.strictEqual(mixed.kept.length, 2);
+    assert.deepStrictEqual(mixed.heldOn.map((l) => l.length), [1, 2],
+      'the daily unit prices one of them and the weekly unit prices both');
   },
 
   // THE PRICER MUST NOT PUT BACK WHAT THE BLOCK LEFT OUT. A setting written
