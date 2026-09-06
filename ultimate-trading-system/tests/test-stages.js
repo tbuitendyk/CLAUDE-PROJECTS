@@ -3759,6 +3759,94 @@ module.exports = {
       'the draw builds its options a second time instead of the one it seeded with, so the two can drift apart');
   },
 
+  // THE CARRY READS THE TABLE AS THE OWNER HAS IT (3.78.0, owner order
+  // 2026-09-06: "the carry from table 2 must NOT ignore filters!").
+  //
+  // The filters on the stage 2 table were a view and nothing more. The carry
+  // read the raw records, so the owner could cut the table to the rows they
+  // meant to carry, press start, and get the top N of a table they were not
+  // looking at -- silently, with the screen showing the other one.
+  //
+  // Two halves are tested: the filters live on the record set now, so a launch
+  // can read them at all; and the carry goes through the same rows, order and
+  // filters the screen does.
+  theCarryTakesTheTopOfTheTableTheOwnerIsLookingAt() {
+    const id = `s2-test-${Date.now().toString(36)}-flt`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({
+        id, stage: 2, seq: 999960, name: 'S2 #flt', status: 'done', createdAt: new Date().toISOString(),
+        plan: { units: 6 }, params: { nullN: 20 },
+      }));
+      // six units: three weekly, three daily, and a money order that does NOT
+      // line up with the shapes -- so a filter on shape and a cut by rank can
+      // be told apart
+      const w = rowstore.writer(id, 'records');
+      const units = [
+        { u: 0, geometry: 'weekly-8d', scoreAll: 9, beatMoney: 20 },
+        { u: 1, geometry: 'daily-4d', scoreAll: 8, beatMoney: 19 },
+        { u: 2, geometry: 'weekly-8d', scoreAll: 7, beatMoney: 18 },
+        { u: 3, geometry: 'daily-4d', scoreAll: 6, beatMoney: 17 },
+        { u: 4, geometry: 'weekly-8d', scoreAll: 5, beatMoney: 16 },
+        { u: 5, geometry: 'daily-4d', scoreAll: 4, beatMoney: 4 },
+      ];
+      for (const x of units) {
+        w.push({
+          u: x.u, carriedRank: x.u + 1, s1rank: x.u + 1, trade: `C${x.u}`, ctx1: null, ctx2: null,
+          geometry: x.geometry, specs: [], score3: 1, scoreAll: x.scoreAll, helped: 0,
+          beat: 10, pairs: 20, lead: 1, money: 5, beatMoney: x.beatMoney, leadMoney: 1, blocks: {},
+        });
+      }
+      w.close();
+
+      const carried = (carry) => stages.stage3UnitsFor(stages.getSet(id), carry).records.map((r) => r.u);
+
+      // with nothing saved, the carry is the whole table in its own order
+      assert.deepStrictEqual(carried(0), [0, 1, 2, 3, 4, 5], 'the unfiltered carry is not the whole table');
+      assert.deepStrictEqual(carried(3), [0, 1, 2], 'the unfiltered carry does not take the top of the table');
+
+      // THE FILTERS SAVE ON THE SET, through the one definition of what a
+      // filter is -- a box the table does not offer is refused by name
+      assert.throws(() => stages.setSetFilters(id, { notAFilter: '1' }), /is not a filter on the stage 2 table/,
+        'a filter the table never offered is saved anyway, and the launch would read something the owner cannot see');
+      stages.setSetFilters(id, { geometry: 'daily' });
+      assert.deepStrictEqual(stages.getSet(id).filters, { geometry: 'daily' }, 'the filters are not on the record set');
+
+      // ...AND THE CARRY READS THEM
+      assert.deepStrictEqual(carried(0), [1, 3, 5],
+        'carry forward 0 still prices every record on the set instead of every record the table is showing');
+      assert.deepStrictEqual(carried(2), [1, 3],
+        'the carry takes the top of the WHOLE set rather than the top of the table the owner filtered');
+
+      // a filter on a field that only exists once the row is built -- this is
+      // the class that would have matched nothing against a raw record
+      stages.setSetFilters(id, { beatMoneyMin: '80' });
+      assert.deepStrictEqual(carried(0), [0, 1, 2, 3, 4],
+        'a filter on a share worked out from two fields of the record does not reach the carry');
+
+      // TICKS ARE NOT FILTERED. A tick is the owner naming that record, and
+      // nothing may quietly take it back off the list.
+      const picked = stages.stage3UnitsFor(stages.getSet(id), 0, [0, 5]).records.map((r) => r.u);
+      assert.deepStrictEqual(picked, [0, 5], 'a saved filter cuts records the owner ticked by hand');
+
+      // and clearing them puts the whole table back
+      stages.setSetFilters(id, {});
+      assert.strictEqual(stages.getSet(id).filters, null, 'an empty filter list is stored rather than put away');
+      assert.deepStrictEqual(carried(0), [0, 1, 2, 3, 4, 5], 'cleared filters still cut the carry');
+
+      // THE SCREEN AND THE CARRY READ THE SAME THREE STEPS. Whatever the table
+      // shows for a filter is exactly what the carry takes the top of.
+      stages.setSetFilters(id, { geometry: 'weekly' });
+      const shown = stages.stage2Table(id, 0, 100, { geometry: 'weekly' }).rows.map((r) => r.u);
+      assert.deepStrictEqual(carried(0), shown,
+        `the table shows ${JSON.stringify(shown)} and the carry takes ${JSON.stringify(carried(0))} — they are two different tables`);
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
   // A STAGE 3 LAUNCH WAS REFUSED FOR PRICE FILES THAT NEVER MOVED (3.77.1,
   // owner 2026-09-06: "this message on the s3 sweep is wrong ... the price
   // files changed since S2 #1 was written (all 16 coins listed)").

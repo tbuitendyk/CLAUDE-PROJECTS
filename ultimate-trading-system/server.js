@@ -1119,7 +1119,7 @@ app.post('/api/stage3-count', (req, res) => {
     // what the units hold between them (3.52.0): a unit prices only the
     // settings that place different orders on it, so the disk gate and the
     // cost line read the sum of what each holds, never settings × units
-    const out = { settings: d.settings, declared: d.declared, folded: d.folded, pricings: d.pricings, unitSettings: d.unitSettings, weekdaysApply: d.weekdaysApply, holds: d.holds || [] };
+    const out = { settings: d.settings, declared: d.declared, folded: d.folded, pricings: d.pricings, unitSettings: d.unitSettings, weekdaysApply: d.weekdaysApply, holds: d.holds || [], filtered: d.filtered || null };
     const units = d.units ?? Math.max(0, Math.floor(Number(b.units) || 0));
     const coins = d.coins ?? Math.max(1, Math.floor(Number(b.coins) || 1));
     if (units > 0) {
@@ -1190,6 +1190,13 @@ app.post('/api/stageset/:id/notes', (req, res) => {
 app.post('/api/stageset/:id/name', (req, res) => {
   try { return res.json(stages.setSetName(req.params.id, (req.body || {}).name)); }
   catch (err) { return res.status(409).json({ error: err.message }); }
+});
+// THE STAGE 2 TABLE'S FILTERS, SAVED ON THE SET (3.78.0). Every other table's
+// filters are a view; these decide what a stage 3 launch prices, so they live
+// where the launch can read them — the same contract the sort has.
+app.post('/api/stageset/:id/filters', (req, res) => {
+  try { return res.json(stages.setSetFilters(req.params.id, (req.body || {}).filters)); }
+  catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
 });
 app.post('/api/stageset/:id/sort', (req, res) => {
   try { return res.json(stages.setSetSort(req.params.id, (req.body || {}).sort)); }

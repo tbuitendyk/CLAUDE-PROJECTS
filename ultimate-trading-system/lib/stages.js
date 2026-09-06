@@ -1193,6 +1193,29 @@ function setSetSort(id, spec) {
   return { id: doc.id, sort: doc.sort };
 }
 
+// SAVING THE FILTERS, the same contract the sort has (3.78.0). They have to
+// live on the record set and not in the browser, because the stage 3 carry
+// reads them: a filter that only existed on one screen could not be honoured
+// by a launch, which is exactly how the carry came to ignore them.
+//
+// Validated through applyFilters itself, against no rows -- one definition of
+// what a filter is and what it accepts, so a box the table offers and the
+// launch refuses cannot exist.
+function setSetFilters(id, filters) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error('unknown record set');
+  if (doc.status === 'running') throw new Error('the record set is still being written — the filters save after it finishes');
+  const clean = {};
+  for (const [k, v] of Object.entries(filters || {})) {
+    if (v === '' || v == null) continue;
+    clean[k] = String(v);
+  }
+  applyFilters(doc.stage, [], clean);
+  doc.filters = Object.keys(clean).length ? clean : null;
+  saveSet(doc);
+  return { id: doc.id, filters: doc.filters };
+}
+
 // PICKING RECORDS ON THE STAGE 2 TABLE (owner order, 2026-09-02). The ticks
 // save on the record set exactly as the sort does, because they are what the
 // stage 3 set-up prices when it is told Selected records. A record is named
@@ -1755,26 +1778,33 @@ function stage3UnitsFor(parent, carry, selected = null) {
   const savedS2 = Array.isArray(parent.sort) && parent.sort.length ? parent.sort : null;
   // SELECTED RECORDS (owner order, 2026-09-02): exactly the records picked on
   // the parent's table, in the parent's own record order; the carry count
-  // does not apply. Anything else is the carry: every record, or the top of
-  // the table.
+  // does not apply, and neither do the filters -- a tick is the owner naming
+  // that record, and nothing may quietly take it back off the list.
   if (Array.isArray(selected)) {
     const want = new Set(selected.map(Number));
     records = records.filter((r) => want.has(r.u));
     return { records, savedS2, selected: records.map((r) => r.u) };
   }
-  if (carry > 0) {
-    let ordered;
-    if (savedS2) {
-      ordered = applySort(2,
-        records.map((r) => ({ ...r, members: (r.specs || []).length })),
-        savedS2, (a, b) => a.carriedRank - b.carriedRank);
-    } else {
-      ordered = records.slice()
-        .sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
-    }
-    records = ordered.slice(0, carry);
-  }
-  return { records, savedS2, selected: null };
+  // THE CARRY IS OVER THE TABLE AS THE OWNER HAS IT (3.78.0, owner order
+  // 2026-09-06: "the carry from table 2 must NOT ignore filters!").
+  //
+  // It used to read the raw records, so the filters on the screen were a view
+  // and nothing more: the owner could cut the table to the rows they meant to
+  // carry, press start, and get the top N of a table they were not looking at.
+  // Now it goes through the same three steps the screen does -- the same rows,
+  // the same order, the same filters -- so `N records` means the top N of what
+  // is in front of them, and `carry forward` 0 means all of it.
+  // PAIRED BY POSITION, NOT BY THE UNIT NUMBER. stage2Rows maps the records
+  // one for one and in order, so the place in that list is the record --
+  // keying on `u` would quietly collapse every record of a set that does not
+  // carry one into a single entry, and hand the launch one unit instead of
+  // hundreds.
+  const rows = stage2Rows(parent.id).map((row, i) => ({ ...row, _at: i }));
+  const shown = applyFilters(2, stage2Ordered(parent, rows), parent.filters || null);
+  const held = shown.length;
+  const of = records.length;
+  records = (carry > 0 ? shown.slice(0, carry) : shown).map((row) => records[row._at]).filter(Boolean);
+  return { records, savedS2, filtered: { held, of }, selected: null };
 }
 // HOW A STAGE 3 SET SAYS WHICH OF ITS PARENT'S RECORDS IT PRICED: the exact
 // list it selected, or its carry count. One reader for every place that
@@ -2048,7 +2078,12 @@ function stage3Declared(b) {
     // cost line can say 0 while the launch says why
     const pick = String((b || {}).pick || 'count');
     const carry = Math.max(0, Math.floor(num((b || {}).carry, 0)));
-    ({ records } = pick === 'selected' ? stage3UnitsFor(parent, 0, pickedOf(parent)) : stage3UnitsFor(parent, carry));
+    let filtered = null;
+    ({ records, filtered } = pick === 'selected' ? stage3UnitsFor(parent, 0, pickedOf(parent)) : stage3UnitsFor(parent, carry));
+    // A FILTER SAVED ON THE PARENT'S TABLE CUTS THE CARRY, so the cost line has
+    // to say so before a start. A filter set days ago and forgotten would
+    // otherwise change what a launch prices with nothing on screen about it.
+    out.filtered = filtered && filtered.held !== filtered.of ? filtered : null;
     if (records.length) {
       sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
       out.units = records.length;
@@ -4020,10 +4055,19 @@ function stage1Table(id, from, n, filters = null) {
   };
 }
 
-function stage2Table(id, from, n, filters = null) {
-  const doc = getSet(id);
-  if (!doc) return null;
-  let rows = allRecords(id).map((r) => ({
+// THE STAGE 2 TABLE, IN ONE DEFINITION (3.78.0, owner order 2026-09-06: "the
+// carry from table 2 must NOT ignore filters!").
+//
+// The screen draws these rows and the stage 3 carry reads them, and the
+// owner's filters have to mean the same thing on both. They could not before:
+// the carry read RAW RECORDS, and half the filters name a field that only
+// exists once the row is built -- `members` is counted here, `moneyAll` is
+// called `money` on the record, and the place is not known until the table is
+// in order. A filter applied to a raw record would have matched nothing at
+// all. So the rows, the order and the place are worked out here, once, and
+// both callers take them.
+function stage2Rows(id) {
+  return allRecords(id).map((r) => ({
     u: r.u, carriedRank: r.carriedRank, s1rank: r.s1rank,
     trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
     members: r.specs.length,
@@ -4034,20 +4078,30 @@ function stage2Table(id, from, n, filters = null) {
     beat: r.beat, pairs: r.pairs, lead: r.lead,
     money3: r.money3 ?? null, moneyAll: r.money ?? null, beatMoney: r.beatMoney ?? null, leadMoney: r.leadMoney ?? null,
   }));
-  // the saved sort orders the whole table; best all-members forecast score
-  // first when none is saved. Ties keep their carry position either way, so
-  // the order is total and two reads page identically.
-  if (Array.isArray(doc.sort) && doc.sort.length) {
-    rows = applySort(2, rows, doc.sort, (a, b) => a.carriedRank - b.carriedRank);
-  } else {
-    rows.sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
-  }
-  rows = rows.map((r, i) => { const { carriedRank, ...rest } = r; return { rank: i + 1, ...rest }; });
-  const of = rows.length;
-  rows = applyFilters(2, rows, filters);
+}
+// the saved sort orders the whole table; best all-members forecast score
+// first when none is saved. Ties keep their carry position either way, so the
+// order is total and two reads page identically. The place is settled BEFORE
+// the filters, so a filtered table still says where each row stands in the
+// whole set -- and `stage 1 order at most` filters on that same number.
+function stage2Ordered(doc, rows) {
+  const out = Array.isArray(doc.sort) && doc.sort.length
+    ? applySort(2, rows, doc.sort, (a, b) => a.carriedRank - b.carriedRank)
+    : rows.slice().sort((a, b) => ((b.scoreAll ?? -1e9) - (a.scoreAll ?? -1e9)) || (a.carriedRank - b.carriedRank));
+  return out.map((r, i) => ({ ...r, rank: i + 1 }));
+}
+function stage2Table(id, from, n, filters = null) {
+  const doc = getSet(id);
+  if (!doc) return null;
+  const ordered = stage2Ordered(doc, stage2Rows(id));
+  const of = ordered.length;
+  const rows = applyFilters(2, ordered, filters);
   return {
     total: rows.length, of, from, sort: doc.sort || [], picked: pickedOf(doc),
-    rows: rows.slice(from, from + n),
+    // what the launch will read: the filters saved on the set, and how many
+    // rows they leave. The screen has to be able to say so before a start.
+    saved: doc.filters || null,
+    rows: rows.slice(from, from + n).map(({ carriedRank, ...rest }) => rest),
   };
 }
 
@@ -5816,7 +5870,7 @@ module.exports = {
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
-  setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
+  setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
   spreadOf, S3_COIN_FILTERS,
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,

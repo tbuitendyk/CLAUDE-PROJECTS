@@ -1164,9 +1164,20 @@ async function swCounts() {
       const perUnit = Array.isArray(got.unitSettings) ? got.unitSettings.map((x) => Number(x.held) || 0) : [];
       const fewer = perUnit.filter((n) => n < got.settings).length;
       const pricings = Number(got.pricings) || 0;
+      // A FILTER SAVED ON THE PARENT'S TABLE CUTS WHAT THE CARRY TAKES (3.78.0,
+      // owner order: "the carry from table 2 must NOT ignore filters!"). It is
+      // said HERE because the boxes that hold it are on another screen: a
+      // filter set days ago and forgotten would otherwise change what this
+      // launch prices with nothing in front of the owner about it.
+      const cut = got.filtered
+        ? `<br><span class="warn">the filters saved on the parent's table leave <b>${Number(got.filtered.held).toLocaleString()}</b> `
+          + `of its ${Number(got.filtered.of).toLocaleString()} records, and the carry takes the top of those. `
+          + 'Press clear filters under its table on Boards to carry from the whole set.</span>'
+        : '';
       html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${units && perUnit.length ? ` — ${perUnit.length.toLocaleString()} units hold ${pricings.toLocaleString()} between them`
         + (fewer ? ` <span class="muted">(${fewer.toLocaleString()} of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)</span>` : '')
         + ` × ${per3().toLocaleString()} readings ≈ ${(pricings * per3()).toLocaleString()} pricings — no trainings` : ''}`
+        + cut
         + (refuse ? `<br><b class="neg">start stage 3 will refuse: ${esc(refuse.message)}</b>`
           : tight ? `<br><span class="warn">${esc(tight.message)}</span>` : '');
     }
@@ -3585,9 +3596,19 @@ function bApplyState(root, key) {
   if (!btn) return;
   btn.disabled = bAuto(key) || bSameFilters(bBoxesNow(root, key), bFilters(key));
 }
-function bApplyFilters(root, key) {
-  bSetFilters(key, bBoxesNow(root, key));
+// THE STAGE 2 FILTERS SAVE ON THE RECORD SET (3.78.0, owner order 2026-09-06:
+// "the carry from table 2 must NOT ignore filters!"). Every other table's
+// filters are a view and stay one; these decide what a stage 3 launch prices,
+// so they have to live where the launch can read them, exactly as the sort and
+// the picks do. Saved the moment they change, so the table in front of the
+// owner and the table the carry reads are never two different tables.
+async function bApplyFilters(root, key, doc) {
+  const next = bBoxesNow(root, key);
+  bSetFilters(key, next);
   bSaveView({ [`from${key}`]: 0 });
+  if (key === 'S2' && doc && doc.id) {
+    await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: next });
+  }
   if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
   else drawBoards().then(() => restoreScroll(tab));
 }
@@ -3654,7 +3675,7 @@ function bFilterGrid(key, specs, spread) {
   key === 'S3C' && bView().s3cBeforePin ? '<button data-bunpin3b title="puts the filters back exactly as they were before show in 3.B took them off, and lets go of the setting it pinned.">revert filters</button>' : ''}</span></div>${
   sp4 ? `<p class="note">The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.</p>` : ''}`;
 }
-function bWireFilters(root) {
+function bWireFilters(root, doc) {
   if (!$(root)) return;   // the mount went with a redraw; the newer draw wires its own
   $(root).querySelectorAll('[data-bfilter]').forEach((el) => {
     const [key] = el.dataset.bfilter.split(':');
@@ -3662,10 +3683,10 @@ function bWireFilters(root) {
     // and go back to sleep the moment the old value is typed back, and change
     // only fires when the box is left.
     el.oninput = () => { if (!bAuto(key)) bApplyState(root, key); };
-    el.onchange = () => { if (bAuto(key)) bApplyFilters(root, key); else bApplyState(root, key); };
+    el.onchange = () => { if (bAuto(key)) bApplyFilters(root, key, doc); else bApplyState(root, key); };
   });
   $(root).querySelectorAll('[data-bapply]').forEach((btn) => {
-    btn.onclick = () => { if (!btn.disabled) bApplyFilters(root, btn.dataset.bapply); };
+    btn.onclick = () => { if (!btn.disabled) bApplyFilters(root, btn.dataset.bapply, doc); };
   });
   $(root).querySelectorAll('[data-bauto]').forEach((cb) => {
     cb.onchange = () => {
@@ -3687,11 +3708,13 @@ function bWireFilters(root) {
     };
   });
   $(root).querySelectorAll('[data-bfilterclear]').forEach((btn) => {
-    btn.onclick = () => {
+    btn.onclick = async () => {
       const key = btn.dataset.bfilterclear;
       const all = { ...(bView().filters || {}) };
       delete all[key];
       bSaveView({ filters: all, [`from${key}`]: 0, ...(key === 'S3C' ? { s3cBeforePin: null, s3cPin: null } : {}) });
+      // and off the record set too, or the boxes empty while the carry stays cut
+      if (key === 'S2' && doc && doc.id) await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/filters`, { filters: {} });
       if (key === 'S3C' || key === 'S3R') bRedrawPeggedToCoinHead();
       else drawBoards().then(() => restoreScroll(tab));
     };
@@ -4021,7 +4044,9 @@ async function bDrawStage2(doc, incomplete, view, mount) {
   bWirePager(mount);
   bWireSort(doc, mount);
   bWirePicks(doc, mount, t);
-  bWireFilters(mount);
+  // the set goes down with the wiring: these filters save on it, because the
+  // stage 3 carry reads them
+  bWireFilters(mount, doc);
   bWireTableFold(mount);
 }
 

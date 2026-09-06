@@ -86,7 +86,9 @@ module.exports = {
   async leavingABoxStartsNoWorkUnlessAutoApplyIsTicked() {
     const src = JS();
     const wire = src.slice(src.indexOf('function bWireFilters('), src.indexOf('function bWireFilters(') + 1600);
-    assert.ok(/el\.onchange = \(\) => \{ if \(bAuto\(key\)\) bApplyFilters\(root, key\); else bApplyState\(root, key\); \};/.test(wire),
+    // the set goes along since 3.78.0 -- the stage 2 filters save on it,
+    // because the stage 3 carry reads them -- but WHEN it applies is untouched
+    assert.ok(/el\.onchange = \(\) => \{ if \(bAuto\(key\)\) bApplyFilters\(root, key, doc\); else bApplyState\(root, key\); \};/.test(wire),
       'leaving a box still puts its filter on whatever the tick box says, which is the minutes-per-box '
       + 'behaviour the button exists to end');
     assert.ok(/el\.oninput = \(\) => \{ if \(!bAuto\(key\)\) bApplyState\(root, key\); \};/.test(wire),
@@ -100,9 +102,15 @@ module.exports = {
     assert.ok(/all\[key\] = \{ \.\.\.next \};/.test(set),
       'applying MERGES over what was already applied, so a box the owner emptied keeps filtering the '
       + 'table and nothing on screen says why');
-    const ap = src.slice(src.indexOf('function bApplyFilters('), src.indexOf('function bApplyFilters(') + 420);
-    assert.ok(/bSetFilters\(key, bBoxesNow\(root, key\)\)/.test(ap),
+    const ap = src.slice(src.indexOf('async function bApplyFilters('), src.indexOf('async function bApplyFilters(') + 700);
+    assert.ok(/const next = bBoxesNow\(root, key\);\n  bSetFilters\(key, next\);/.test(ap),
       'applying does not read the boxes, so it puts on something other than what is on screen');
+    // AND THE STAGE 2 FILTERS REACH THE RECORD SET (3.78.0, owner order: "the
+    // carry from table 2 must NOT ignore filters!"). Every other table's
+    // filters are a view; these decide what a stage 3 launch prices, so a
+    // launch has to be able to read them.
+    assert.ok(/key === 'S2' && doc && doc\.id/.test(ap) && /\/filters`, \{ filters: next \}/.test(ap),
+      'the stage 2 filters stay in the browser, so the carry goes on taking the top of a table the owner is not looking at');
     assert.ok(/from\$\{key\}`\]: 0/.test(ap),
       'applying leaves the table on the page it was on, which can be past the end of a smaller result');
   },
