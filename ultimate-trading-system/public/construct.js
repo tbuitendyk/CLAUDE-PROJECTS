@@ -797,43 +797,80 @@ async function swProgress() {
 function swProvenance() {
   const sets = swSetsCache || [];
   const rowOf = (id) => sets.find((x) => x.id === id) || null;
+  // A SECTION THAT NAMES NO RECORD SET CLAIMS NOTHING (3.76.3, owner order
+  // 2026-09-06: "you've got stage 3 that's got nothing in it green. that's
+  // dumb. it should be black"). Green is a statement -- this section reads from
+  // what the section above it shows -- and an empty box has not made it. So
+  // there are three states, not two, and the third is the page's own colour:
+  // the heading is left exactly as the stylesheet draws it, which is neither
+  // claim. Pass `ok` as null for it.
   const paint = (sel, ok, why) => {
     const h = $(sel);
     if (!h) return;
+    if (ok === null) {
+      h.style.color = '';
+      h.title = why;
+      return;
+    }
     h.style.color = ok ? 'var(--pos)' : 'var(--neg)';
     h.title = ok
-      ? 'green: this section reads from what the section above it shows (or names no record set yet)'
+      ? 'green: this section reads from what the section above it shows'
       : `red: ${why}. Set the boxes back and this goes green again.`;
   };
   const v = (sel) => { const e = $(sel); return e ? e.value : ''; };
   const c = (sel) => { const e = $(sel); return !!(e && e.checked); };
 
-  // stage 1 is the root: nothing above it to disagree with
-  paint('#swH1', true);
+  // stage 1 is the root. It reads from no record set at all, so it is the same
+  // case as an empty box and it takes the same colour -- the owner's rule, in
+  // their words: "if nothing's loaded how can nothing match or not match the
+  // previous?". It was green, which claimed a check that had never been made.
+  paint('#swH1', null, 'stage 1 reads from no record set — it is where a chain starts, so there is nothing for it to agree or disagree with');
 
   // stage 2: the stage 1 record set its box names, held up to the stage 1 section
   const s1row = rowOf(v('#swFrom2'));
-  if (!v('#swFrom2')) paint('#swH2', true);
+  if (!v('#swFrom2')) paint('#swH2', null, 'this section names no stage 1 record set yet, so there is nothing for it to agree or disagree with');
   else if (!s1row) paint('#swH2', false, 'the stage 1 record set named here is not on this box any more');
   else {
     const p = s1row.params || {};
+    // A BOX IS COMPARED AS THE LAUNCH RESOLVED IT, NEVER AS IT IS TYPED
+    // (3.76.3, owner: "you've got state 2 red that matches exactly with stage
+    // 1. that's dumb. it should be green").
+    //
+    // A stage 1 run writes down what it ACTUALLY read, not what was in the box
+    // -- that is RULE NINE, and it is right. Blank `compare coins` is recorded
+    // as the seventeen default pairs; blank month boxes are recorded as the
+    // months the launch fell back to. Held up to the raw box, every one of
+    // those reads as a disagreement, so a set launched from a blank compare
+    // coins box -- which is every set on the box -- painted Stage 2 red the
+    // moment its own record set appeared in the box below, and nothing the
+    // owner could type would ever make it green.
+    //
+    // So each box is put through the SAME resolution the launch uses before it
+    // is compared. The trade coins box has always been read this way; the other
+    // two were not. Where these two files must agree, they are named together:
+    // theStageHeadingsCompareABoxTheWayTheLaunchResolvesIt reads both.
     const defaults = ((VOCAB && VOCAB.defaultPairs) || []).map((o) => String(o.value));
-    const boxUni = (v('#swUni') || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+    const coinsIn = (sel) => (v(sel) || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
+    const boxUni = coinsIn('#swUni');
     const wantUni = (boxUni.length ? boxUni : defaults).slice().sort().join(',');
     const setUni = (p.universe || []).slice().sort().join(',');
-    const boxCmp = (v('#swCompare') || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean).slice().sort().join(',');
+    // ...and the compare coins are recorded EMPTY when nothing reads them:
+    // singles on their own put no coin alongside another
+    const boxCmp = coinsIn('#swCompare');
+    const wantCmp = ((c('#swDoubles') || c('#swTriples')) ? (boxCmp.length ? boxCmp : defaults) : [])
+      .slice().sort().join(',');
     const setCmp = (p.compare || []).slice().sort().join(',');
     const sz = p.sizes || {};
     const geos = p.geometries || [];
     const mismatch = wantUni !== setUni ? 'the trade coins no longer match'
-      : boxCmp !== setCmp ? 'the compare coins no longer match'
+      : wantCmp !== setCmp ? 'the compare coins no longer match'
       : (c('#swSingles') !== !!sz.singles || c('#swDoubles') !== !!sz.doubles || c('#swTriples') !== !!sz.triples) ? 'the singles / doubles / triples ticks no longer match'
         : (c('#swPermGeom') !== (geos.length > 1) || (!c('#swPermGeom') && geos[0] !== v('#swGeom'))) ? 'the chunk shape no longer matches'
           : v('#swLayout') !== (p.windowLayout || '') ? 'the window layout no longer matches'
             : c('#swByMoney') !== ((p.trainOn || 'direction') === 'money') ? 'weigh each trade by the money it was worth no longer matches'
               : Number(v('#swNull1')) !== Number(p.nullN) ? 'the null set size no longer matches'
               : c('#swAllData') !== (p.allLoaded !== false) ? 'the all loaded data tick no longer matches'
-                : (!c('#swAllData') && (v('#swStart') !== (p.startMonth || '') || v('#swEnd') !== (p.endMonth || ''))) ? 'the start / end months no longer match'
+                : (!c('#swAllData') && ((v('#swStart') || '2018-01') !== (p.startMonth || '') || (v('#swEnd') || '2026-06') !== (p.endMonth || ''))) ? 'the start / end months no longer match'
                   : null;
     paint('#swH2', !mismatch,
       `${mismatch} — the stage 1 section above no longer shows the provenance of ${s1row.name}, the record set this box reads from`);
@@ -841,7 +878,7 @@ function swProvenance() {
 
   // stage 3: the stage 2 record set its box names, held up to the stage 2 section
   const s2row = rowOf(v('#swFrom3'));
-  if (!v('#swFrom3')) paint('#swH3', true);
+  if (!v('#swFrom3')) paint('#swH3', null, 'this section names no stage 2 record set yet, so there is nothing for it to agree or disagree with');
   else if (!s2row) paint('#swH3', false, 'the stage 2 record set named here is not on this box any more');
   else {
     const par = s2row.parent || {};

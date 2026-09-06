@@ -1425,7 +1425,11 @@ module.exports = {
       // EACH TITLE IS JUDGED BY ITS OWN BOX (owner order, 2026-09-02: "why is
       // Stage 2 red ... should be GREEN and Stage 3 should be red"): the red
       // lands on the section whose box breaks the chain, never the one above it
-      assert.ok(fn.includes("paint('#swH1', true);"), 'stage 1 is the root and is never painted red');
+      // Stage 1 is the root: it reads from no record set, so it is never
+      // painted red -- and since 3.76.3 it is not painted green either, because
+      // green claims a check it has never made.
+      assert.ok(/paint\('#swH1', null,/.test(fn), 'stage 1 claims a colour for a comparison it never makes');
+      assert.ok(!/paint\('#swH1', (?:true|false|!)/.test(fn), 'stage 1 is the root and is never painted red or green');
       const s2 = fn.slice(fn.indexOf("const s1row = rowOf(v('#swFrom2'));"), fn.indexOf("const s2row = rowOf(v('#swFrom3'));"));
       assert.ok(s2.includes("paint('#swH2', !mismatch,") && !s2.includes("'#swH1'"), 'a stage 1 set that no longer matches the stage 1 boxes paints STAGE 2, whose box names it');
       const s3 = fn.slice(fn.indexOf("const s2row = rowOf(v('#swFrom3'));"));
@@ -3748,6 +3752,54 @@ module.exports = {
     assert.ok(/<select id="swFrom2" style="min-width:24rem">\$\{swOpt1\}<\/select>/.test(UI)
       && /<select id="swFrom3" style="min-width:24rem">\$\{swOpt2\}<\/select>/.test(UI),
       'the draw builds its options a second time instead of the one it seeded with, so the two can drift apart');
+  },
+
+  // A BOX IS COMPARED AS THE LAUNCH RESOLVED IT (3.76.3, owner: "you've got
+  // state 2 red that matches exactly with stage 1. that's dumb. it should be
+  // green" / "if nothing's loaded how can nothing match or not match the
+  // previous? OBVIOUSLY it should be black in that case").
+  //
+  // A stage 1 run writes down what it ACTUALLY read, never what was typed --
+  // RULE NINE, and right. Blank `compare coins` is recorded as the seventeen
+  // default pairs, blank month boxes as the months it fell back to. The stage
+  // heading held those up to the RAW box, so every set launched from a blank
+  // compare coins box painted Stage 2 red the moment it appeared in the box
+  // below, and nothing the owner could type would make it green.
+  //
+  // This reads BOTH files, because that is where the drift lives: the rule is
+  // written twice, once in the launch and once in the screen, and nothing else
+  // makes them move together.
+  theStageHeadingsCompareABoxTheWayTheLaunchResolvesIt() {
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
+      .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    const LIB = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const fn = UI.slice(UI.indexOf('function swProvenance() {'), UI.indexOf('\n}\n', UI.indexOf('function swProvenance() {')));
+    assert.ok(fn.length > 400, 'swProvenance is gone');
+
+    // THE COMPARE COINS. The launch records the resolved list, and records it
+    // EMPTY when neither doubles nor triples reads it; the screen must do both.
+    assert.ok(LIB.includes("const compareUsed = (compare.length ? compare : batch.DEFAULT_PAIRS)\n    .filter(() => sizes.doubles || sizes.triples);"),
+      'the launch no longer resolves the compare coins this way — the screen below copies this rule and has to move with it');
+    assert.ok(/const wantCmp = \(\(c\('#swDoubles'\) \|\| c\('#swTriples'\)\) \? \(boxCmp\.length \? boxCmp : defaults\) : \[\]\)/.test(fn),
+      'the compare coins are compared as typed, so a blank box reads as disagreeing with the seventeen default pairs the run actually read — Stage 2 is red for ever');
+    assert.ok(/wantCmp !== setCmp \? 'the compare coins no longer match'/.test(fn),
+      'the resolved compare coins are worked out and then not the thing compared');
+    assert.ok(!/boxCmp !== setCmp/.test(fn), 'the raw box is still what decides');
+
+    // THE MONTHS, the same fault in the same shape
+    assert.ok(LIB.includes("startMonth: params.startMonth || '2018-01',") && LIB.includes("endMonth: params.endMonth || '2026-06',"),
+      'the launch no longer falls back to those months — the screen below copies them and has to move with it');
+    assert.ok(/\(v\('#swStart'\) \|\| '2018-01'\) !== \(p\.startMonth \|\| ''\)/.test(fn)
+      && /\(v\('#swEnd'\) \|\| '2026-06'\) !== \(p\.endMonth \|\| ''\)/.test(fn),
+      'a blank month box reads as disagreeing with the month the run actually used');
+
+    // AND THE THIRD COLOUR. A heading with nothing to check claims nothing.
+    assert.ok(/if \(ok === null\) \{\n      h\.style\.color = '';/.test(fn),
+      'there are only two colours, so a heading with nothing to compare still claims green');
+    assert.ok(/paint\('#swH1', null,/.test(fn), 'stage 1 claims green while reading from no record set at all');
+    assert.ok(/if \(!v\('#swFrom2'\)\) paint\('#swH2', null,/.test(fn), 'an empty stage 1 box still paints Stage 2 green');
+    assert.ok(/if \(!v\('#swFrom3'\)\) paint\('#swH3', null,/.test(fn), 'an empty stage 2 box still paints Stage 3 green');
+    assert.ok(!/names no record set yet\)/.test(fn), 'green still claims to cover the case that is now black');
   },
 
   // The fee is the owner's, typed on the stage 1 panel and sent with the

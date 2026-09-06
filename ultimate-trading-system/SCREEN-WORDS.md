@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **60b93df192cd — what the box is serving**, not from the working tree.
+Generated from **debcfa2f28b3 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -297,7 +297,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Boards
 
-## What the controls are called (134)
+## What the controls are called (127)
 
 - `— nothing came out of`
 - `— pick a stage`
@@ -323,7 +323,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `beat the kept null money`
 - `before BOOST)`
 - `BOOST`
-- `bring the setting names up to date`
 - `call`
 - `campaign:`
 - `check this set`
@@ -345,12 +344,9 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `dropping the settings failed:`
 - `dropping the settings:`
 - `entry`
-- `fee % each way`
 - `fill in the kept null money`
 - `fill in the missing settings`
-- `fill in the tuning-slice money`
 - `Filling in the kept null money`
-- `Filling in the tuning-slice money`
 - `forecast score`
 - `forecast score — all members`
 - `forecast score — stage 1 members`
@@ -379,7 +375,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `null set money kept`
 - `of`
 - `of the`
-- `of this set’s`
 - `order`
 - `own`
 - `parts`
@@ -393,8 +388,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `records`
 - `records,`
 - `rename`
-- `renaming the settings failed:`
-- `renaming the settings:`
 - `revert filters`
 - `row(s)`
 - `rows`
@@ -450,7 +443,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `trained`
 - `voices`
 
-## Sentences the page prints (80)
+## Sentences the page prints (69)
 
 - Boards — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -493,9 +486,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - Table 3.B: Every coin of every setting
 - — one row for each "short" setting x (each coin + chunk shape); every row averages the "factored out" settings: decision, band and 24/5 variants of the short setting, which are provided as sub-rows
 - SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT
-- This set was written before the tuning-slice $ existed, so its table cannot sort or carry by it, and
-- a stage 2 launch from it refuses. Filling it in prices every unit's own votes on the tuning slice at the fee below,
-- against the same null set, and rewrites the records beside before swapping them in — about a second per unit.
 - The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.
 - rows — the rest are held back by the filters above.
 - reads every record and says whether the set is sound. It adds nothing and changes nothing.
@@ -509,12 +499,6 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - that stopped or died leaves these behind. They cover some of this set’s coins and not others, which would read on every
 - table as an ordinary row resting on fewer. Undoing puts the set back exactly as it was before that run started; filling in
 - again then prices the whole thing once.
-- — the new names are written beside the old records and only swapped in once they are all there. This page asks again every few seconds.
-- of this set’s settings are named without the share that decides
-- whether two forecasts count as one voice.
-- The names written today carry it, so this set’s own block reads as not declaring
-- them — and filling in the missing settings first would price every one of them a second time under its new name.
-- Renaming changes names only: nothing is priced again, and no result moves.
 - settings its own block does not declare.
 - They price a trade that another setting it holds already prices, so every one of them is a second copy of a row that is
 - already here. Dropping them deletes those rows and renumbers what is left; nothing else is touched, and the tables are
@@ -530,13 +514,11 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - settings its block declares.
 - are ways of asking that did not exist when it ran, so nothing here can answer for them.
 - unit(s); nothing already priced is read, touched or priced again.
-- Bring the setting names up to date first
-- settings are named the older way, and pricing now would price every one of them a second time under its new name.
 
-## Every word, flat (457)
+## Every word, flat (425)
 
 ```
-1v 3.A 3.B about above above. accordingly. active actually added adding adds after afterwards. again again. against agreed all alone alone. alongside already always-long an and another answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat before behind. belong below beside best block board Boards BOOST both bought box breakout bring Bring broken building but by call came campaign can cannot carry changes check child chunk clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons conviction copy cost could count cover Data date decides decision DECISION declare declare. declared declares declares. declaring Delete deletes did died directional disk DOES does done drop dropping Dropping each Each either else empty end entry every Every exactly exist existed exists factored FACTORED failed FAILED families fee few fewer fewer. fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast forecasts form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into is it It it. its Its ITS keep kept landed lands. last launch lead leaves left line list LOGREG looks. market MATCH maximum means median member members minimum missing money move moves. name name. named names near-copies never new next no NOT not not. notes nothing nothing. now null numbers of of. offers old older on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press prev price priced prices Pricing pricing pricing. pricings promoted proved provenance provided put puts quarter quorum ran ranked read reads real record records records. refuses. rename renaming Renaming renumbers replaced rest restart. resting rests result revert rewrites row rows rule. run rung running same save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show showed showing shows. Size slice smaller so some sort sound. stage Stage STAMP started still stop stopped stopping stops sub-rows suggests. swapped swapping Sweep table Table tables takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to today top totalled totalling touched touched. trade trades trail trained training tried tuning tuning-slice two under undo undoing Undoing unfinished unit unit. units units. up variants visible voice. voices votes vs was way way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you your
+1v 3.A 3.B above above. accordingly. active actually added adding adds after afterwards. again again. agreed all alone alone. alongside already always-long an and another answer any appear apply are argmax arm arrow as asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat before behind. belong below beside best block board Boards BOOST both bought box breakout bring broken building but by call came campaign can cannot carry changes check child chunk clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons conviction copy cost could count cover Data decision DECISION declare declare. declared declares declares. Delete deletes did died directional disk DOES does done drop dropping Dropping each Each either else empty end entry every Every exactly exist exists factored FACTORED failed FAILED families few fewer fewer. fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into is it It it. its Its ITS keep kept landed lands. last lead leaves left line list LOGREG looks. market MATCH maximum means median member members minimum missing money move name names near-copies never next NOT not not. notes nothing nothing. now null numbers of of. offers old on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press prev price priced prices Pricing pricing. pricings promoted proved provenance provided put puts quarter quorum ran ranked read reads real record records records. rename renumbers replaced rest restart. resting rests revert row rows rule. run rung running save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show showed showing shows. Size smaller so some sort sound. stage Stage STAMP started still stop stopped stopping stops sub-rows suggests. swapped Sweep table Table tables takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to top totalled totalling touched touched. trade trades trail trained training tried tuning-slice undo undoing Undoing unfinished unit unit. units units. variants visible voices votes vs was way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you your
 ```
 
 ---
