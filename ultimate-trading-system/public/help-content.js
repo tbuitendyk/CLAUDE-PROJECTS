@@ -356,6 +356,7 @@ window.HELP = {
       swDesc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
       swGo3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards.' },
       swStop: { what: 'Stops the stage run that is going. Everything already written stays; the set reports itself cancelled.' },
+
     },
   },
 
@@ -407,6 +408,10 @@ window.HELP = {
           + 'the row of Table 3.A you actually pressed. So the averages above and the one setting you asked about are '
           + 'both in front of you.\n\n'
           + 'Every coin opens its own records separately, so a setting priced on many coins takes a moment.',
+      },
+      bFillUnits: {
+        what: 'Re-runs exactly the units a stage 1 run lost, and marks the record set finished when it matches its plan again. Only the absent ones are trained \u2014 eighteen units out of ten thousand costs minutes, not another whole run.',
+        more: 'It uses the record set\u2019s OWN saved choices, never the boxes on Sweep. A unit trained on a different window would sit in the same table, be ranked against the rest and be carried forward beside them, with nothing able to tell them apart \u2014 so the window, the fee, the null set size and how the units were trained all come off the set itself. Three things would make a new unit incomparable and each refuses by name before anything runs: a different measurement block, a different first digit of the release, and price files that have changed since the set was written. Nothing already in the set is read, touched or trained again.',
       },
       bRename: {
         what: 'Brings this record set\'s setting names up to date. Names only — nothing is priced again and no result moves.',

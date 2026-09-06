@@ -121,6 +121,9 @@ function cachePath(symbol, year, month, interval = '1h') {
 // (pre-listing / post-delisting months 404 — callers surface them as
 // "missing", not fatal). Past months never change, so a parsed month is
 // cached on disk and reused forever.
+// The (symbol, month) pairs this process has already been told do not exist.
+// See the note inside monthlyKlines; never written for a network failure.
+const notPublished = new Set();
 async function monthlyKlines(symbol, year, month, interval = '1h') {
   const file = cachePath(symbol, year, month, interval);
   try {
@@ -141,9 +144,25 @@ async function monthlyKlines(symbol, year, month, interval = '1h') {
     /* no cache yet */
   }
   const mm = String(month).padStart(2, '0');
+  // A MONTH THAT IS NOT PUBLISHED IS NOT PUBLISHED THE SECOND TIME EITHER
+  // (owner order, 2026-09-06: "you make a system that gives me sept 1/26 end
+  // date on all data, then that data must be available").
+  //
+  // Four coins in the owner's universe were not listed on Binance until 2020,
+  // and the current month never has a whole-month bundle at all. Every one of
+  // those months answered 404, and nothing remembered it -- so a run asked the
+  // same question once per unit: about forty thousand requests over a ten
+  // thousand unit run, for answers that were all the same and all already
+  // known. Eighteen units died when one of them hit a network blip.
+  //
+  // Held for this process only, on purpose. A bundle published later is picked
+  // up the next time the service starts, and a NETWORK failure is never
+  // remembered -- only a definite "this does not exist".
+  const nk = `${symbol}|${interval}|${year}-${mm}`;
+  if (notPublished.has(nk)) return null;
   const url = `${DATA}/data/spot/monthly/klines/${symbol}/${interval}/${symbol}-${interval}-${year}-${mm}.zip`;
   const res = await fetch(url);
-  if (res.status === 404) return null;
+  if (res.status === 404) { notPublished.add(nk); return null; }
   if (!res.ok) throw new Error(`binance data ${res.status} for ${symbol} ${interval} ${year}-${mm}`);
   const buf = Buffer.from(await res.arrayBuffer());
   const rows = parseKlineCsv(unzipSingleEntry(buf).toString('utf8'), interval === '1m' ? 60_000 : HOUR_MS);

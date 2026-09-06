@@ -652,6 +652,187 @@ function startStage1(params) {
   return { id, name: doc.name, units: units.length };
 }
 
+// ---- THE UNITS A RUN LOST, PUT BACK (3.73.0) --------------------------------
+//
+// Owner order, 2026-09-06: "can you give me a button to fix issues like that
+// without wasting another 18 hours on a run?"
+//
+// A stage 1 unit that dies takes nothing else with it -- the other ten thousand
+// are whole and on disk -- but the SET is stamped incomplete, and a stage 2
+// launch refuses an incomplete parent. So eighteen units out of 10,200 cost the
+// whole run. That is the wrong price for the mistake.
+//
+// This re-runs exactly the units that are absent, under the set's OWN saved
+// choices, and appends them. Nothing already on disk is read, touched or
+// trained again.
+//
+// WHY IT MUST USE THE SET'S OWN CHOICES AND NOT TODAY'S BOXES. The units
+// already here were trained on a particular window; ones trained on a different
+// window would sit in the same table, be ranked against them, and be carried to
+// stage 2 beside them, with nothing anywhere able to tell them apart. A fill-in
+// that reads the boxes is not a fill-in, it is a second run wearing the same
+// name. The three things that would make the new units incomparable are checked
+// before anything runs, and each refuses by name.
+
+// Which of a stage 1 set's planned units have no record. A record carries its
+// own place in the plan (`u`), so this is subtraction, not guesswork.
+function missingUnitsOf(doc) {
+  if (!doc || doc.stage !== 1) return null;
+  const list = ((doc.plan || {}).unitList) || [];
+  if (!list.length) return null;
+  // THE ANSWER MUST NOT COME OUT OF A LIST THAT PREDATES THE FILL. Records are
+  // held in hand between reads, and this is the one question asked BEFORE and
+  // AFTER rows are appended -- so a cache that did not notice the append would
+  // report the same gaps for ever and the set would never be stamped finished.
+  // The row count is metadata, so asking costs nothing.
+  if (recordsInHand.id === doc.id && recordsInHand.rows
+    && recordsInHand.rows.length !== rowstore.count(doc.id, 'records')) {
+    recordsInHand.id = null; recordsInHand.rows = null;
+  }
+  const have = new Set(allRecords(doc.id).map((r) => r.u));
+  const missing = [];
+  for (let i = 0; i < list.length; i++) if (!have.has(i)) missing.push({ i, unit: list[i] });
+  return { total: list.length, have: have.size, missing };
+}
+
+// The reason this set cannot be filled in, or null. Said as one sentence the
+// screen prints, because a button that refuses without saying why is worse
+// than no button.
+function unitFillRefusal(doc) {
+  if (!doc || doc.stage !== 1) return 'only a stage 1 record set holds units to put back';
+  if (doc.status === 'running') return `${doc.name} is still going`;
+  const pm = doc.measurements || 0;
+  if (pm !== MEASUREMENTS_VERSION) {
+    return `${doc.name} was built on measurement block ${pm || 'v2 or older'} and this box builds ${MEASUREMENTS_VERSION} — `
+      + 'a unit trained here would be trained on numbers the rest of the set has never seen. Start a new stage 1.';
+  }
+  if (doc.engineVersion && !sameEngineLine(doc.engineVersion, ENGINE_VERSION)) {
+    return `${doc.name} was written by engine ${doc.engineVersion} and this box runs ${ENGINE_VERSION} — `
+      + 'a unit trained here could not be compared with the ones already in it.';
+  }
+  const fresh = stampManifest(`unitfill-${Date.now().toString(36)}`, (doc.params || {}).universe);
+  const diff = manifestDiff(doc.dataManifest, fresh);
+  if (!diff) return `${doc.name} carries no readable price-file record, so nothing can prove the data is unchanged`;
+  if (!diff.same) {
+    const names = [...diff.changed, ...diff.onlyA, ...diff.onlyB];
+    return `the price files changed since ${doc.name} was written (${names.join(', ')}) — a unit trained on today's `
+      + 'data would not be comparable with the ones already in it, so this refuses rather than mixing them.';
+  }
+  return null;
+}
+
+const unitFills = new Map();
+function fillMissingUnitsStart(id) {
+  if (unitFills.has(id)) return unitFills.get(id);
+  const doc = getSet(id);
+  if (!doc) throw new Error(`no record set called "${id}"`);
+  const why = unitFillRefusal(doc);
+  if (why) throw new Error(why);
+  claimOrRefuse();
+  const gaps = missingUnitsOf(doc);
+  if (!gaps) throw new Error(`${doc.name} does not record which units it planned, so nothing can be put back safely`);
+  if (!gaps.missing.length) return { id, already: true, done: 0, total: 0, added: 0, error: null, promise: Promise.resolve() };
+
+  const run = {
+    id, done: 0, total: gaps.missing.length, added: 0, error: null, failures: [], promise: null,
+  };
+  unitFills.set(id, run);
+  const p = doc.params || {};
+  const nullN = Math.max(0, Math.floor(num(p.nullN, 19)));
+  const fee = Number(p.fee) || 0;
+  run.promise = (async () => {
+    const w = writers(id);
+    const pool = createPool();
+    const payloads = gaps.missing.map(({ unit }) => ({
+      combo: { trade: unit.trade, ctx1: unit.ctx1, ctx2: unit.ctx2, size: unit.size },
+      geometry: unit.geometry, params: p, seed: doc.seed, unitKey: unitKeyOf(unit), nullN, fee,
+    }));
+    const stillFailed = [];
+    try {
+      await pool.forEach('s1Unit', payloads, (settled, k) => {
+        const { i, unit } = gaps.missing[k];
+        if (settled.ok && settled.value) {
+          const res = settled.value;
+          // THE RECORD IS FILED UNDER ITS OWN PLACE IN THE PLAN, never at the
+          // end of the file. Everything downstream joins on that number, and
+          // the stores are append-only, so a unit put back years later still
+          // lands where the plan always said it was.
+          const ranges = writeUnitStores(w, unit, i, res);
+          w.records.push({
+            u: i, trade: unit.trade, ctx1: unit.ctx1, ctx2: unit.ctx2, size: unit.size, geometry: unit.geometry,
+            bandPct: res.bandPct, counts: res.counts, reserve: res.reserve || null,
+            specs: res.members.map((m) => ({ ...m.spec, picked: m.picked })),
+            voices: voicesOf(res.members, (res.counts || {}).test || 0),
+            score: res.score, beat: res.beat, pairs: res.pairs, lead: res.lead,
+            nullScores: res.nullScores,
+            money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
+            nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
+            blocks: ranges,
+          });
+          w.records.flush();
+          run.added++;
+        } else if (!settled.ok) {
+          stillFailed.push({ unit: unitKeyOf(unit), error: String(settled.error || 'failed') });
+        }
+        run.done++;
+      });
+    } finally {
+      for (const k of ['votes', 'tau', 'models', 'records']) await w[k].close();
+      pool.abort();
+    }
+    recordsInHand.id = null; recordsInHand.rows = null;      // the appended rows must be served, not the old list
+    // THE ORDERING IS REBUILT, NOT APPENDED TO. It is one row per unit in
+    // score order, so a unit inserted anywhere changes every rank after it --
+    // appending would leave the new units at the bottom whatever they scored,
+    // which is a lie about where they stand.
+    const all = allRecords(id).slice();
+    all.sort((a, b) => (b.beat - a.beat) || ((b.lead ?? -1e9) - (a.lead ?? -1e9)) || (a.u - b.u));
+    rowstore.remove(id, 'ranking');
+    const rk = rowstore.writer(id, 'ranking');
+    for (let r = 0; r < all.length; r++) {
+      rk.push({
+        rank: r + 1, u: all[r].u, beat: all[r].beat, pairs: all[r].pairs, lead: all[r].lead, score: all[r].score,
+        money: all[r].money, beatMoney: all[r].beatMoney, leadMoney: all[r].leadMoney,
+      });
+    }
+    await rk.close();
+    const fresh = getSet(id);
+    if (fresh) {
+      const left = missingUnitsOf(fresh);
+      fresh.failures = stillFailed;
+      fresh.counts = { unitsScored: all.length, failures: stillFailed.length };
+      // A SET THAT MATCHES ITS OWN PLAN AGAIN IS FINISHED, and saying so is the
+      // whole point: an incomplete set is refused as a parent, so a fill-in
+      // that left the stamp alone would have fixed nothing anybody can use.
+      fresh.status = (left && left.missing.length === 0) ? 'done' : 'incomplete';
+      fresh.progress = fresh.status === 'done' ? ''
+        : `finished with ${left ? left.missing.length : stillFailed.length} unit(s) missing — the set does not match its own plan`;
+      fresh.unitsFilledAt = new Date().toISOString();
+      saveSet(fresh);
+    }
+    run.failures = stillFailed;
+  })().catch((err) => { run.error = String((err && err.message) || err); })
+    .finally(() => { unitFills.delete(id); });
+  return run;
+}
+function fillMissingUnitsStatus(id) {
+  const going = unitFills.get(id);
+  if (going) {
+    return { running: true, done: going.done, total: going.total, added: going.added, error: going.error };
+  }
+  const doc = getSet(id);
+  if (!doc) return { idle: true };
+  const gaps = missingUnitsOf(doc);
+  return {
+    idle: true,
+    missing: gaps ? gaps.missing.length : 0,
+    total: gaps ? gaps.total : 0,
+    have: gaps ? gaps.have : 0,
+    status: doc.status,
+    why: unitFillRefusal(doc),
+  };
+}
+
 // ---- parent checks ---------------------------------------------------------------
 // the stage 1 members' tuning-slice money, read again at stage 2, against
 // what the parent recorded: a sentence when they differ by a cent, else null
@@ -6153,6 +6334,7 @@ module.exports = {
   sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, foldBehind, foldPending, foldRecordsPerUnit, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
+  missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,

@@ -1,4 +1,5 @@
-const { monthlyKlines, cachedMonths, cachedDayMonths, monthFromDayFiles, HOUR_MS } = require('./binance');
+const fs = require('fs');
+const { monthlyKlines, cachedMonths, cachedDayMonths, monthFromDayFiles, cachePath, HOUR_MS } = require('./binance');
 const { pnlAt, directionalCall } = require('./paper');
 
 // Loading market history, and two small things everything downstream agrees on.
@@ -222,6 +223,33 @@ async function loadSymbol(symbol, months, onProgress) {
   for (const { year, month } of months) {
     throwIfAbortedSince(epoch);
     const mm = `${year}-${String(month).padStart(2, '0')}`;
+    // WHAT IS ON DISK IS READ BEFORE THE NETWORK IS ASKED (owner order,
+    // 2026-09-06: "if the date range data is incorrect or faulty, it's on you
+    // to fix the design to not make a system that says data is available when
+    // it isn't").
+    //
+    // It WAS available. A month with no whole-month bundle is still a month we
+    // hold when its day files are on disk -- which is how every recently
+    // refreshed month is held, including the one the screen reports as the
+    // last one. This loop asked the network for the bundle anyway, was told it
+    // does not exist, and only THEN read the day files that were there all
+    // along. Three coins a unit, two such months apiece, ten thousand units:
+    // about forty thousand requests for data the box already had, and the
+    // eighteen that met a network blip took their units down with them.
+    //
+    // The month still counts as one WITHOUT A BUNDLE, because that is what
+    // tells the refresh flow to keep the day files up to date -- the meaning
+    // has not changed, only the order the two places are looked in.
+    if (!fs.existsSync(cachePath(symbol, year, month))) {
+      const onDisk = monthFromDayFiles(symbol, year, month);
+      if (onDisk) {
+        onProgress(`reading ${symbol} ${mm} from the day files already here`);
+        missing.push(mm);
+        for (const r of onDisk) rows.push(r);
+        monthCounts[mm] = tally(onDisk);
+        continue;
+      }
+    }
     onProgress(`downloading ${symbol} ${mm}`);
     const monthRows = await monthlyKlines(symbol, year, month);
     if (monthRows === null) {

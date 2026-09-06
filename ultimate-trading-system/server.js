@@ -1199,6 +1199,21 @@ app.post('/api/stageset/:id/tuning-money-fill', (req, res) => {
   try { return res.json(stages.startTuningMoneyFill(req.params.id, (req.body || {}).fee)); }
   catch (err) { return res.status(409).json({ error: String(err.message || err) }); }
 });
+// THE UNITS A STAGE 1 RUN LOST, PUT BACK (3.73.0, owner order 2026-09-06).
+// Started once and watched by asking, like every other long job here. Every
+// refusal it can make is made inside stages, so the reason is one sentence and
+// there is only one copy of it.
+app.post('/api/stageset/:id/fill-units', (req, res) => {
+  try {
+    const run = stages.fillMissingUnitsStart(String(req.params.id || ''));
+    if (run.already) return res.json({ already: true });
+    return res.json({ started: true, units: run.total });
+  } catch (err) { return res.status(409).json({ error: String(err.message || err) }); }
+});
+app.get('/api/stageset/:id/fill-units/status', (req, res) => {
+  try { return res.json(stages.fillMissingUnitsStatus(String(req.params.id || ''))); }
+  catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
+});
 app.post('/api/stageset/:id/stop', (req, res) => res.json(stages.cancelStage(req.params.id)));
 app.post('/api/stageset/:id/notes', (req, res) => {
   try { return res.json(stages.setSetNotes(req.params.id, (req.body || {}).text)); }

@@ -126,6 +126,30 @@ module.exports = {
     assert.ok(/out\.notes \|\| ''/.test(UI),
       're-render from the RESPONSE: the stored value comes back truncated');
   },
+
+  // THE BUTTON THAT PUTS BACK THE UNITS A RUN LOST (3.73.0, owner order
+  // 2026-09-06). It only exists on a stage 1 set that is short, it never
+  // launches anything on its own, and the reason it cannot be pressed is the
+  // SERVICE's sentence printed word for word -- a second copy of those reasons
+  // on this page would be a second answer to one question.
+  theShortStageOneSetOffersToPutItsMissingUnitsBack() {
+    assert.ok(UI.includes('<button id="bFillUnits" data-bfillunits="${esc(doc.id)}">put the missing units back</button>'),
+      'a short stage 1 set carries the control');
+    const at = UI.indexOf('async function bWireFillUnits(doc) {');
+    assert.ok(at > 0, 'and it is wired');
+    const fn = UI.slice(at, UI.indexOf('\n}\n', at));
+    assert.ok(fn.includes('`api/stageset/${encodeURIComponent(doc.id)}/fill-units`'), 'it posts to the set it is drawn on');
+    assert.ok(fn.includes('await tryPost(path, {})'), 'and it sends nothing else — the choices come off the set, never off this page');
+    assert.ok(!/swT|swBand|swDec|swAllData|swStart|swEnd/.test(fn),
+      'it must never read a box on Sweep: a unit trained on a different window would be ranked against the rest with nothing able to tell them apart');
+    assert.ok(fn.includes('if (st && st.why) { btn.disabled = true;'),
+      'a set that cannot be filled says why BEFORE it is pressed, not after');
+    assert.ok(fn.includes('esc(st.why)') && !fn.includes('measurement block'),
+      'the reason is the service own sentence, printed, never a second copy of the rules on this page');
+    assert.ok(UI.includes("if (doc.stage === 1 && doc.status === 'incomplete') bWireFillUnits(doc);"),
+      'wired only on a stage 1 set that is actually short');
+  },
+
 };
 
 // EVERY CONTROL CARRIES ITS HELP AS HOVER TEXT (owner order, 2026-08-26:

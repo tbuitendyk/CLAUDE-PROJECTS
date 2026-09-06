@@ -3041,11 +3041,65 @@ async function drawBoards() {
       // harness report a perfectly honest record set as a broken screen, and
       // would have let a real outage hide behind a legitimate notice.
       ? `<div class="panel" data-role="set-incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
-       ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.</div>` : '';
+       ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.
+       ${doc.stage === 1 ? `<div class="row" style="margin-top:.5rem"><button id="bFillUnits" data-bfillunits="${esc(doc.id)}">put the missing units back</button>
+       <span id="bFillUnitsSaid" class="note"></span></div>` : ''}</div>` : '';
     if (doc.stage === 1) await bDrawStage1(doc, incomplete, view, `#bT${stage}`);
     else if (doc.stage === 2) await bDrawStage2(doc, incomplete, view, `#bT${stage}`);
     else await bDrawStage3(doc, incomplete, view, `#bT${stage}`);
+    if (doc.stage === 1 && doc.status === 'incomplete') bWireFillUnits(doc);
   }
+}
+
+// PUTTING BACK THE UNITS A RUN LOST (3.73.0, owner order 2026-09-06: "can you
+// give me a button to fix issues like that without wasting another 18 hours on
+// a run?").
+//
+// A stage 1 set that is short even one unit is refused as a stage 2 parent, so
+// eighteen units out of ten thousand used to cost the whole run. This re-runs
+// exactly the ones that are absent, under the set's OWN saved choices, and
+// stamps the set finished when it matches its plan again.
+//
+// The refusal is the service's, printed here word for word. There is only one
+// copy of the reasons and it is not on this page.
+async function bWireFillUnits(doc) {
+  const btn = $('#bFillUnits');
+  const said = $('#bFillUnitsSaid');
+  if (!btn || !said) return;
+  const path = `api/stageset/${encodeURIComponent(doc.id)}/fill-units`;
+  const poll = async () => {
+    let st = null;
+    try { st = await api(`${path}/status`); } catch (_) { st = null; }
+    if (!st) { said.textContent = 'the service did not answer — it may still be working'; return; }
+    if (st.running) {
+      said.textContent = `putting the units back: ${Number(st.done).toLocaleString()} of ${Number(st.total).toLocaleString()}`
+        + `${st.added ? ` — ${Number(st.added).toLocaleString()} back so far` : ''}`;
+      setTimeout(poll, 2000);
+      return;
+    }
+    if (st.error) { said.innerHTML = `<span class="warn">${esc(st.error)}</span>`; return; }
+    if (st.missing === 0) { said.textContent = 'every unit is back — reopening'; drawBoards(); return; }
+    said.innerHTML = `<span class="warn">${Number(st.missing || 0).toLocaleString()} still missing${st.why ? ` — ${esc(st.why)}` : ''}</span>`;
+  };
+  // WHY IT CANNOT BE PRESSED, BEFORE IT IS PRESSED. The service refuses a set
+  // whose price files have moved since it was written, and finding that out by
+  // pressing is finding it out too late to plan around.
+  try {
+    const st = await api(`${path}/status`);
+    if (st && st.running) { btn.disabled = true; poll(); return; }
+    if (st && st.why) { btn.disabled = true; said.innerHTML = `<span class="warn">${esc(st.why)}</span>`; return; }
+    if (st && st.missing != null) {
+      said.textContent = `${Number(st.missing).toLocaleString()} of ${Number(st.total).toLocaleString()} planned units are absent`;
+    }
+  } catch (_) { /* the line below still says what pressing does */ }
+  btn.onclick = async () => {
+    btn.disabled = true;
+    said.textContent = 'starting…';
+    const got = await tryPost(path, {});
+    if (!got) { btn.disabled = false; said.textContent = ''; return; }
+    if (got.already) { said.textContent = 'nothing is missing'; return; }
+    poll();
+  };
 }
 const btd = 'style="padding:.25rem .5rem"';
 const btd0 = 'style="padding:.25rem .5rem .25rem 0"';

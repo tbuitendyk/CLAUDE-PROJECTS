@@ -1258,3 +1258,63 @@ made while building it that the design did not already settle.
      setting names and are deliberately left alone.
 
      Third digit: nothing but layout, and no number moves.
+
+109. **The data was there. The loader asked the network anyway** (2026-09-06,
+     owner: *"you make a system that gives me sept 1/26 end date on all data,
+     then that data must be available. otherwise you're delivering a faulty
+     product ... fix it"*).
+
+     The owner was right and the screen was right. Checked on the box, every
+     coin, every month of the run's range: 2026-08 holds a full 744 candles and
+     2026-09 holds 24, both as DAY FILES. Nothing was missing.
+
+     `loadSymbol` asked for a WHOLE-MONTH file, was told by Binance that it does
+     not exist, and only then read the day files that were on disk all along.
+     Three coins a unit, two such months apiece, ten thousand units: about forty
+     thousand requests for data the box already had. Eighteen of them met a
+     network blip and took their units down with them.
+
+     Two changes, both about ORDER rather than about capability. The day files
+     are read first, and the network is only asked when there is neither a
+     whole-month file nor a day file. And a month the exchange has said does not
+     exist is not asked about a second time -- held for the process only, so a
+     bundle published later is still picked up, and NEVER written for a network
+     failure, which would hide an outage as missing data.
+
+     A month with no whole-month file still counts as one without a bundle, so
+     the refresh flow keeps its day files up to date exactly as before.
+
+     A side effect worth having: not downloading a bundle for a month already
+     covered by day files leaves the price-file fingerprint alone, and a moved
+     fingerprint is what refuses a record set as a parent for ever.
+
+110. **The units a run lost, put back** (2026-09-06, owner: *"can you give me a
+     button to fix issues like that without wasting another 18 hours on a
+     run?"*).
+
+     A stage 1 set short even one unit is stamped incomplete, and an incomplete
+     set is refused as a parent. So eighteen units out of 10,200 cost the whole
+     eighteen-hour run. That is the wrong price for the mistake.
+
+     Which units are absent is SUBTRACTION: every record carries its own place
+     in the plan, so the gaps are the plan positions no record claims -- in
+     whatever order the records were written, and wherever the gaps fall. The
+     record stores append and carry their own block list, so a unit put back
+     lands where the plan always said it was.
+
+     **It uses the set's OWN saved choices, never the boxes on Sweep.** A unit
+     trained on a different window would sit in the same table, be ranked
+     against the rest and be carried to stage 2 beside them, with nothing
+     anywhere able to tell them apart. Three things would make a new unit
+     incomparable and each refuses BY NAME before anything runs: a different
+     measurement block, a different first digit of the release, and price files
+     that have changed since the set was written.
+
+     The ordering is REBUILT rather than appended to -- it is one row per unit
+     in score order, so a unit inserted anywhere changes every rank after it,
+     and appending would have left the new units at the bottom whatever they
+     scored. The set is stamped finished when it matches its plan again, which
+     is the whole point: an incomplete set is refused as a parent, so a fill-in
+     that left the stamp alone would have fixed nothing anybody can use.
+
+     Second digit: a new control and a new thing the engine can do.

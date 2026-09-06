@@ -4343,4 +4343,117 @@ module.exports = {
         `${rule} ${copes ? 'does not need' : 'needs'} the leans, and the list says the opposite`);
     }
   },
+
+  // THE UNITS A RUN LOST, PUT BACK (3.73.0, owner order 2026-09-06: "can you
+  // give me a button to fix issues like that without wasting another 18 hours
+  // on a run?").
+  //
+  // Eighteen units out of 10,200 cost a whole eighteen-hour run, because a set
+  // short even one unit is stamped incomplete and an incomplete set is refused
+  // as a parent. Which units are absent is SUBTRACTION -- every record carries
+  // its own place in the plan -- and this pins that, both when nothing is
+  // missing and when the gaps are scattered rather than at the end.
+  async theUnitsARunLostAreFoundBySubtractingWhatIsThereFromThePlan() {
+    const pid = writeLaunchParent('gaps');
+    try {
+      const file = path.join(SETS_DIR, `${pid}.json`);
+      const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+      // a stage 1 set whose plan names five units, holding records for three
+      const unit = (trade, geometry) => ({ trade, ctx1: null, ctx2: null, size: 1, geometry });
+      doc.stage = 1;
+      doc.plan = {
+        units: 5,
+        unitList: [unit('AAAUSDT', 'daily-4d'), unit('BBBUSDT', 'daily-4d'), unit('CCCUSDT', 'daily-4d'),
+          unit('DDDUSDT', 'daily-4d'), unit('EEEUSDT', 'daily-4d')],
+      };
+      fs.writeFileSync(file, JSON.stringify(doc));
+      fs.rmSync(rowstore.storeDir(pid), { recursive: true, force: true });
+      const rec = rowstore.writer(pid, 'records');
+      // written OUT OF ORDER and with gaps at 1 and 3, because a run finishes
+      // its units in whatever order they land and the gaps are wherever they
+      // failed -- never conveniently at the end
+      for (const u of [2, 0, 4]) rec.push({ u, trade: 'ZZZ', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', blocks: {} });
+      rec.close();
+      const gaps = stages.missingUnitsOf(stages.getSet(pid));
+      assert.strictEqual(gaps.total, 5);
+      assert.strictEqual(gaps.have, 3);
+      assert.deepStrictEqual(gaps.missing.map((m) => m.i), [1, 3],
+        'the absent units are the plan positions no record claims, whatever order the records were written in');
+      assert.deepStrictEqual(gaps.missing.map((m) => m.unit.trade), ['BBBUSDT', 'DDDUSDT'],
+        'and each carries the unit the plan named at that position, so it can be run again exactly as planned');
+      // nothing missing reads as nothing missing, never as "cannot tell"
+      const rec2 = rowstore.writer(pid, 'records');
+      for (const u of [1, 3]) rec2.push({ u, trade: 'ZZZ', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', blocks: {} });
+      rec2.close();
+      const after = stages.missingUnitsOf(stages.getSet(pid));
+      assert.strictEqual(after.missing.length, 0, 'a whole set has no gaps');
+    } finally { cleanLaunchParent(pid); }
+  },
+
+  // AND IT REFUSES RATHER THAN MIXING. A unit trained under different
+  // conditions would sit in the same table, be ranked against the rest and be
+  // carried to stage 2 beside them, with nothing anywhere able to tell them
+  // apart. Three things make one incomparable and each has to refuse BY NAME,
+  // before anything runs -- a silent mismatch is the whole harm.
+  async fillingInUnitsRefusesAnythingThatWouldNotBeComparable() {
+    const pid = writeLaunchParent('refuse');
+    try {
+      const file = path.join(SETS_DIR, `${pid}.json`);
+      const base = JSON.parse(fs.readFileSync(file, 'utf8'));
+      base.stage = 1;
+      base.plan = { units: 1, unitList: [{ trade: 'ZZZTESTUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d' }] };
+      const withDoc = (over) => { fs.writeFileSync(file, JSON.stringify({ ...base, ...over })); return stages.getSet(pid); };
+      assert.match(String(stages.unitFillRefusal(withDoc({ measurements: 1 }))), /measurement block/,
+        'a different measurement block must refuse: the new unit would be trained on numbers the rest has never seen');
+      assert.match(String(stages.unitFillRefusal(withDoc({ engineVersion: '1.0.0' }))), /engine 1\.0\.0/,
+        'a different first digit of the release must refuse by name');
+      assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: null }))), /no readable price-file record/,
+        'a set that cannot prove its data is unchanged must refuse');
+      assert.match(String(stages.unitFillRefusal(withDoc({ stage: 3 }))), /only a stage 1 record set/,
+        'only stage 1 holds units to put back');
+      assert.match(String(stages.unitFillRefusal(withDoc({ status: 'running' }))), /still going/,
+        'a run that has not finished is not something to fill in');
+      // and an untouched set refuses nothing
+      assert.strictEqual(stages.unitFillRefusal(withDoc({})), null,
+        'a set written by this box on unchanged price files must be fillable');
+    } finally { cleanLaunchParent(pid); }
+  },
+
+  // WHAT IS ON DISK IS READ BEFORE THE NETWORK IS ASKED (3.73.0, owner order
+  // 2026-09-06: "you make a system that gives me sept 1/26 end date on all
+  // data, then that data must be available. otherwise you're delivering a
+  // faulty product").
+  //
+  // It WAS available. A month held as day files rather than as one whole-month
+  // file is still a month the box holds, and the loader asked the network for
+  // the whole-month file anyway, was told it does not exist, and only then read
+  // the day files that were there all along -- about forty thousand pointless
+  // requests over a ten thousand unit run, eighteen of which met a network blip
+  // and took their units down.
+  //
+  // Read from the source: reaching the network needs a network, which a test
+  // must never do. The ORDER is the whole fix and the order is what is pinned.
+  async theLoaderReadsWhatIsOnDiskBeforeAskingTheNetwork() {
+    const src = fs.readFileSync(path.join(ROOT, 'lib', 'pipeline.js'), 'utf8');
+    const fn = src.slice(src.indexOf('async function loadSymbol(symbol, months, onProgress)'),
+      src.indexOf('\n}\n', src.indexOf('async function loadSymbol(symbol, months, onProgress)')));
+    const disk = fn.indexOf('monthFromDayFiles(symbol, year, month)');
+    const net = fn.indexOf('await monthlyKlines(symbol, year, month)');
+    assert.ok(disk > 0 && net > 0, 'the loader must still have both a disk path and a network path');
+    assert.ok(disk < net, 'the day files on disk must be read BEFORE the network is asked, not after it refuses');
+    assert.ok(fn.includes('if (!fs.existsSync(cachePath(symbol, year, month))) {'),
+      'and the network is skipped only when there is no whole-month file, so a cached month still wins');
+    assert.ok(/missing\.push\(mm\);[\s\S]{0,200}?monthCounts\[mm\] = tally\(onDisk\);/.test(fn),
+      'a month with no whole-month file still counts as one without a bundle — that is what keeps the day files refreshed');
+    // AND A MONTH THE EXCHANGE SAYS DOES NOT EXIST IS NOT ASKED ABOUT TWICE.
+    // Four of the owner's coins were not listed until 2020 and the current
+    // month never has a whole-month file at all; every one of those answered
+    // 404, once per unit, for ever.
+    const bin = fs.readFileSync(path.join(ROOT, 'lib', 'binance.js'), 'utf8');
+    assert.ok(bin.includes('if (notPublished.has(nk)) return null;'), 'a month already known not to exist is not asked about again');
+    assert.ok(bin.includes('if (res.status === 404) { notPublished.add(nk); return null; }'),
+      'and only a definite "this does not exist" is remembered');
+    assert.ok(!/notPublished\.add/.test(bin.replace('if (res.status === 404) { notPublished.add(nk); return null; }', '')),
+      'a NETWORK failure must never be remembered as "does not exist" — that would hide an outage as missing data');
+  },
 };
