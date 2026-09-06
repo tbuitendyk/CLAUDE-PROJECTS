@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **b6082b93a756 — what the box is serving**, not from the working tree.
+Generated from **60b93df192cd — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -255,7 +255,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - The fee prices only the tuning-slice $ on Boards: each unit's own votes on the last quarter of its training window,
 - one buy or sell per chunk in the direction they lean, read against the same null set.
 - trade coins (blank = all 17 default pairs)
-- compare coins (blank = the trade coins)
+- compare coins (blank = all 17 default pairs)
 - weigh each trade by the money it was worth
 - One chunk of history is one decision and one trade - a week on the weekly shape, a day on the
 - daily ones. Off, a trade where the price moved 0.6% and one where it moved 14% are the same single lesson, so a
