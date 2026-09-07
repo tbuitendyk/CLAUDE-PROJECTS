@@ -808,62 +808,30 @@ app.post('/api/funnel/:id/read', async (req, res) => {
   return res.json(out);
 });
 
-// Step 6: rebuild the numbers stage 3 did not store, for the survivors only.
-// Minutes at most, and it says how many settings it will price before it runs.
-let funnelRebuild = null;
-app.post('/api/funnel/:id/rebuild', async (req, res) => {
-  if (funnelRebuild) return res.status(409).json({ error: `a rebuild is already going (${funnelRebuild})` });
-  const doc = stages.getSet(req.params.id);
-  if (!doc) return res.status(400).json({ error: 'unknown record set' });
-  // THE PRESS NAMES THE RULE, NOT A LIST (3.57.1, owner report: pressing it
-  // said "nothing was asked for"). A list of names typed by the page can be
-  // empty, or stale, or a different set of survivors from the ones the count
-  // at the top of the walk is counting. The rule is what the walk holds, so
-  // the rule is what is sent, and the survivors are worked out here.
-  let labels = Array.isArray((req.body || {}).labels) ? req.body.labels.map(String) : [];
-  // WHAT TO CHECK THE REBUILD AGAINST (3.57.2): the caller may send it, but
-  // the page never has it to send, so the service reads it beside the
-  // survivors and the check always runs.
-  let expect = (req.body || {}).expect || null;
-  funnelRebuild = req.params.id;
-  try {
-    if (!labels.length && (req.body || {}).rule) {
-      const got = await stages.survivorLabelsOf(req.params.id, req.body || {});
-      if (!got) {
-        funnelRebuild = null;
-        const t = stages.ensureTally(req.params.id);
-        return res.json({ totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null });
-      }
-      labels = got.labels;
-      if (!expect || !Object.keys(expect).length) expect = got.stored;
-      if (!labels.length) {
-        funnelRebuild = null;
-        return res.status(400).json({ error: `the rule keeps none of this set's ${got.of.toLocaleString()} settings, so there is nothing to work out` });
-      }
-    }
-    const got = await stages.rebuildRichFor(doc, labels, {});
-    // THE PROOF TRAVELS WITH THE ANSWER. An unproved rebuild is allowed and
-    // must never look proved, so the verdict is part of the reply rather than
-    // something the screen can forget to ask for.
-    // the board these figures were read on: the walk's unit, or the blend
-    const onUnit = (req.body || {}).unit && String((req.body || {}).unit) !== 'all' ? String((req.body || {}).unit) : null;
-    const proof = stages.proveRebuild(got.perSetting, expect, undefined, onUnit);
-    // KEPT, NOT THROWN AWAY. The rebuilt numbers used to leave with this reply
-    // and nothing held them, so a limit on the worst losing streak at step 6
-    // refused every row -- no row carried one. They are written beside the set
-    // and funnelRead lays them onto the survivors (Funnel design §16, step 6).
-    const kept = stages.saveFunnelRich(doc.id, got.perSetting);
-    return res.json({
-      settings: got.settings,
-      units: got.units,
-      failures: got.failures,
-      proof,
-      kept,
-      perSetting: [...got.perSetting.entries()].map(([label, e]) => [label, { avgTest: e.avgTest, units: e.units }]),
-    });
-  } catch (err) {
-    return res.status(400).json({ error: err.message });
-  } finally { funnelRebuild = null; }
+// Step 6: work out the numbers stage 3 did not store, for the survivors only.
+//
+// STARTED, THEN POLLED (3.81.0, owner order 2026-09-07: "needs to not time out
+// after 1 minute"). It used to do the pricing inside this POST, holding the
+// request open for as long as it took -- and the web server in front allows a
+// request sixty seconds, so any set big enough to matter timed out while the
+// work carried on behind the dead request. Everything else on this screen that
+// prices was moved to started-and-polled in 3.67.0; this was the one left.
+// The whole of what this handler used to do is in stages.funnelRichStart now,
+// so the refusals and the one-at-a-time gate live beside the other pressed
+// jobs rather than in the door.
+app.post('/api/funnel/:id/rebuild', (req, res) => {
+  try { return res.json(stages.funnelRichStart(req.params.id, req.body || {})); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.get('/api/funnel/:id/rebuild', (req, res) => res.json(stages.funnelRichStatus(req.params.id)));
+
+// HOW MANY THE RULE ON SCREEN WOULD KEEP (3.81.0, owner order). Asked while the
+// two limits on step 6 are being typed, so it must be cheap and it must be the
+// SAME arithmetic the walk uses -- the page sends a whole rule, this counts what
+// it keeps, and nothing here knows which boxes the caller was typing in.
+app.post('/api/funnel/:id/keeps', async (req, res) => {
+  try { return res.json((await stages.funnelKeeps(req.params.id, req.body || {})) || { keeps: null, of: null }); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
 });
 
 // Step 7: write the Stage 4 set. The rule is what is written, not the rows it

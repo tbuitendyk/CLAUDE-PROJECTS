@@ -79,6 +79,10 @@ function reply(body) {
       { key: 'XRPUSDT|||daily-1d', name: 'XRPUSDT daily-1d', trade: 'XRPUSDT', ctx1: null, ctx2: null, geometry: 'daily-1d' },
       { key: 'XRPUSDT|BTCUSDT||weekly-8d', name: 'XRPUSDT alongside BTCUSDT weekly-8d', trade: 'XRPUSDT', ctx1: 'BTCUSDT', ctx2: null, geometry: 'weekly-8d' }],
     survivors: gateFixed ? 141120 : 275520, of: 275520, target: body.target || null,
+    // 3.81.0: how much of step 6's work is already done. Before the press,
+    // none of it -- so the button is live; after it, all of it -- so the
+    // button is dead and a second press cannot re-price the lot.
+    richOn: { have: worked ? 12 : 0, need: 12, run: null },
     check: { kind: 'scrambles', k: 20, barPct: 75, bar: 15, chance: 0.28 },
     conditions: {}, ruleSentence: gateFixed ? 'gate is directional' : 'nothing yet',
     cuts: CUTS,
@@ -418,13 +422,35 @@ function requirePlaywright() {
     `before the press the dollar limit says nothing carries it: ${six.slice(six.indexOf('worst losing streak'), six.indexOf('worst losing streak') + 140)}`);
   // pressing it asks for the survivors of the rule, not for an empty list (3.57.1)
   let asked = null;
+  // 3.81.0: STARTED AND POLLED. The POST comes straight back saying it is
+  // going; the GET says how far it has got and then hands the answer over. One
+  // press: nothing here presses twice, and the page draws the values in itself.
+  let richPolls = 0;
   await page.route('**/api/funnel/*/rebuild', async (route) => {
-    asked = JSON.parse(route.request().postData() || '{}');
+    const req = route.request();
+    if (req.method() === 'POST') {
+      asked = JSON.parse(req.postData() || '{}');
+      return route.fulfill({ contentType: 'application/json',
+        body: JSON.stringify({ running: true, token: 'r1', done: 0, of: 12, cpu: { busy: 0.91, cores: 4 }, error: null, result: null }) });
+    }
+    richPolls++;
+    if (richPolls < 2) {
+      return route.fulfill({ contentType: 'application/json',
+        body: JSON.stringify({ running: true, token: 'r1', done: 5, of: 12, cpu: { busy: 0.91, cores: 4 }, error: null, result: null }) });
+    }
     worked = true;
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ settings: 12, units: 2, failures: [], proof: { ran: true, checked: 12, mismatches: [] }, kept: 12 }) });
+    return route.fulfill({ contentType: 'application/json',
+      body: JSON.stringify({ running: false, token: 'r1', done: 12, of: 12, cpu: { busy: 0.12, cores: 4 }, error: null,
+        result: { settings: 12, units: 2, failures: [], proof: { ran: true, checked: 12, mismatches: [] }, kept: 12 } }) });
   });
   await page.locator('#fRebuild').click();
-  await page.waitForTimeout(1200);
+  // the progress and the cpu load are on the line beside the button while it works
+  await page.waitForTimeout(400);
+  const during = await page.locator('#fRebuildMsg').innerText();
+  expect(/working them out/.test(during), `the line does not report progress while it works: ${during}`);
+  expect(/91% of 4 cores busy/.test(during), `the line does not report the cpu load while it works: ${during}`);
+  expect(await page.locator('#fRebuild').isDisabled(), 'the button is not ghosted while it works');
+  await page.waitForTimeout(2600);
   expect(asked !== null && !Array.isArray(asked.labels), `the press names the rule rather than an empty list: ${JSON.stringify(asked)}`);
   expect(asked !== null && !!asked.rule, `the press carries the rule: ${JSON.stringify(asked)}`);
   const after = await page.locator('#view').innerText();
@@ -434,6 +460,10 @@ function requirePlaywright() {
   // the limit below the button must not still be asking for the press
   expect(!/no survivor carries this number yet/.test(after),
     `the limit still says nothing carries it, under an answer saying it was just worked out: ${after.slice(after.indexOf('worst losing streak'), after.indexOf('worst losing streak') + 200)}`);
+  // AND IT IS NOT OFFERED AGAIN (3.81.0, owner order): pressing it a second
+  // time used to re-price every survivor from scratch.
+  expect(await page.locator('#fRebuild').isDisabled(), 'the button is live again after the work is done, so a second press re-prices everything');
+  expect(richPolls >= 2, `the page did not watch the run to the end: ${richPolls} poll(s)`);
   expect(/at most 12\.00 keeps 10/.test(after) && !/at most 12\.00 \(about/.test(after),
     'the dollar ladder is drawn after the press, and must not be read as a rate');
   // THE NAME BOX ON STEP 7 TAKES THE ROOM THE ROW HAS LEFT (3.65.2, owner

@@ -2062,7 +2062,11 @@ module.exports = {
     for (const label of ['work out the missing numbers', 'worst losing streak allowed', 'fewest trades', 'add these limits to the rule']) {
       assert.ok(step.includes(`>${label}<`) || step.includes(`${label}<input`), `the steps name "${label}", which step 6 does not draw`);
     }
-    assert.ok(step.includes("not done yet - press it first"), 'the line beside the button does not say to press it');
+    // 3.81.0: the line beside the button is no longer one fixed sentence -- it
+    // says how many of today's survivors already carry the numbers, the
+    // progress while it works, and the cpu load with it. One wording, drawn
+    // through fRichLine, so the first draw and every poll say the same thing.
+    assert.ok(step.includes('${esc(fRichLine(d))}'), 'the line beside the button no longer says what the press would do');
     // the trades ladder is put on a yearly footing and the dollar one is not
     assert.ok(step.includes("fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex)"), 'the trades ladder is not given the window');
     assert.ok(step.includes("fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)"), 'the dollar ladder must not be read as a rate');
@@ -2090,9 +2094,12 @@ module.exports = {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const press = page.slice(page.indexOf("const rb = $('#fRebuild');"), page.indexOf("const rb = $('#fRebuild');") + 1400);
     assert.ok(!/labels: \[\]/.test(press), 'the press asks for an empty list of settings again, which the service refuses');
-    assert.ok(press.includes("/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct },"),
+    assert.ok(/\/rebuild`,\s*\{ rule: st\.rule, unit: st\.unit, barPct: st\.barPct \},/.test(press),
       'the press does not name the rule, the unit and the bar the way every other read does');
-    assert.ok(press.includes('if (out.totalling || out.waiting) {'), 'a set whose tables are not built yet is reported as a failure rather than as work in flight');
+    // 3.81.0: the press starts a run and the watcher reads the answer, so the
+    // tables-not-built reply is handled where the answer arrives
+    const watch = page.slice(page.indexOf('async function fRichWatch(st) {'), page.indexOf('function fWire(st, d) {'));
+    assert.ok(watch.includes('if (out.totalling || out.waiting) {'), 'a set whose tables are not built yet is reported as a failure rather than as work in flight');
     // the service works out the survivors through the ONE function that
     // applies a rule, so the settings rebuilt are the ones being counted
     const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
@@ -2102,12 +2109,18 @@ module.exports = {
       'the survivors are read off a board without the rebuilt numbers, so a second press would disagree with the first');
     assert.ok(fn.includes('if (!t) return null;'), 'a set with no tables must fall through to a totalling, not throw');
     const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-    const route = srv.slice(srv.indexOf("app.post('/api/funnel/:id/rebuild'"), srv.indexOf("app.post('/api/funnel/:id/rebuild'") + 3000);
-    assert.ok(route.includes('if (!labels.length && (req.body || {}).rule) {'), 'the route does not work out the survivors from the rule it is sent');
-    assert.ok(route.includes('const got = await stages.survivorLabelsOf(req.params.id, req.body || {});'), 'the route does not ask the engine who the survivors are');
+    assert.ok(/app\.post\('\/api\/funnel\/:id\/rebuild', \(req, res\) => \{\s*try \{ return res\.json\(stages\.funnelRichStart\(/.test(srv),
+      'the door does something other than start the run and hand back how far it is');
+    const route = lib.slice(lib.indexOf('function funnelRichStart(id, state = {}) {'), lib.indexOf('function funnelRichStatus(id) {'));
+    // 3.81.0: the whole of what the route used to do lives in funnelRichStart,
+    // beside the other pressed jobs, so the door is two lines and this reads
+    // the engine instead.
+    assert.ok(route.includes('if (!labels.length && state.rule) {'), 'the press does not work out the survivors from the rule it is sent');
+    assert.ok(route.includes('const got = await survivorLabelsOf(String(id), state);'), 'it does not ask the engine who the survivors are');
     assert.ok(/the rule keeps none of this set's \$\{got\.of\.toLocaleString\(\)\} settings/.test(route),
       'a rule that keeps nothing must say so in those words, not "nothing was asked for"');
-    assert.ok(route.includes('funnelRebuild = null;'), 'a refusal must free the rebuild slot, or the next press is told one is already going');
+    assert.ok(/\.catch\(\(err\) => \{ run\.error = String\(\(err && err\.message\) \|\| err\); \}\);/.test(route),
+      'a refusal must land on the run as an error — a run that neither finished nor failed holds the slot for ever');
     // AND THE REBUILD CHECKS ITSELF (3.57.2, owner question 2026-09-04 about
     // "NOT checked against the sweep (the caller supplied nothing to check
     // against)"). The check only ran when the caller supplied the stored
@@ -2118,15 +2131,15 @@ module.exports = {
     assert.ok(fn.includes('return { labels: rows.map((r) => r.label), of: all.length, stored };'), 'the stored figures do not travel with the names');
     assert.ok(route.includes('if (!expect || !Object.keys(expect).length) expect = got.stored;'),
       'the route does not fall back to the stored figures it just read, so the check stays skipped');
-    assert.ok(route.includes('const proof = stages.proveRebuild(got.perSetting, expect, undefined, onUnit);'), 'the proof is still handed only what the caller sent');
+    assert.ok(route.includes('const proof = proveRebuild(got.perSetting, expect, undefined, onUnit);'), 'the proof is still handed only what the caller sent');
     assert.ok(!/proveRebuild\(got\.perSetting, \(req\.body \|\| \{\}\)\.expect \|\| null\)/.test(route), 'the proof reads the body again instead of what was resolved');
     // and the proof itself still refuses to claim a check it did not make
     const prove = lib.slice(lib.indexOf('function proveRebuild('), lib.indexOf('function proveRebuild(') + 700);
     assert.ok(prove.includes("why: 'the caller supplied nothing to check against'") && prove.includes('ran: false'),
       'a rebuild with nothing to check against must still say it was not checked');
     // and a list, when one IS sent, still works: the route has not lost its old door
-    assert.ok(route.includes("const labels = Array.isArray((req.body || {}).labels)") || route.includes("let labels = Array.isArray((req.body || {}).labels)"),
-      'the route no longer accepts a list of names at all');
+    assert.ok(route.includes('let labels = Array.isArray(state.labels) ? state.labels.map(String) : [];'),
+      'the press no longer accepts a list of names at all');
   },
 
   // THE PROOF COMPARES LIKE WITH LIKE, AND COUNTS WHAT IT FOUND (3.57.3,
@@ -2171,11 +2184,13 @@ module.exports = {
     assert.strictEqual(capped.differed, 30, 'the true number of disagreements must travel');
     assert.strictEqual(capped.mismatches.length, 20, 'and the list stays capped for the screen');
     assert.strictEqual(capped.matched, 0);
-    // the route names the board, and the page prints the count rather than the list
-    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
-    assert.ok(srv.includes("const onUnit = (req.body || {}).unit && String((req.body || {}).unit) !== 'all' ? String((req.body || {}).unit) : null;")
-      && srv.includes('stages.proveRebuild(got.perSetting, expect, undefined, onUnit)'),
-      'the route does not tell the proof which board the figures came from');
+    // the press names the board, and the page prints the count rather than the
+    // list. 3.81.0 moved the press out of the route and into funnelRichStart;
+    // the board it names has to travel with it.
+    const lib2 = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    assert.ok(lib2.includes("const onUnit = state.unit && String(state.unit) !== 'all' ? String(state.unit) : null;")
+      && lib2.includes('proveRebuild(got.perSetting, expect, undefined, onUnit)'),
+      'the press does not tell the proof which board the figures came from');
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     assert.ok(page.includes('const off = pr.differed == null ? (pr.mismatches || []).length : pr.differed;')
       && page.includes('`${off} of ${pr.checked} setting(s) came back different from what the sweep stored'),
@@ -3143,7 +3158,10 @@ module.exports = {
     const cutWire = page.slice(page.indexOf("const cut = $('#fCut');"), page.indexOf("document.querySelectorAll('[data-frm]')"));
     assert.ok(cutWire.includes('}, WHERE_FUNNEL);'), 'writing a set still points at Sweep and Boards, which know nothing about it');
     const rb = page.slice(page.indexOf("const rb = $('#fRebuild');"), page.indexOf("const cs = $('#fClose');"));
-    assert.ok(/The numbers are written beside the record set/.test(rb), 'working out the missing numbers still points at Sweep and Boards');
+    // 3.81.0: the press starts a run and comes straight back, so it can no
+    // longer time out -- but the start itself still can, and it points here.
+    assert.ok(/\{ rule: st\.rule, unit: st\.unit, barPct: st\.barPct \}, WHERE_FUNNEL\);/.test(rb),
+      'working out the missing numbers still points at Sweep and Boards, which know nothing about it');
   },
 
   // owner, 2026-09-04: "on 'write the Stage 4 set' the behavior needs to be
@@ -3183,9 +3201,10 @@ module.exports = {
   // first." Both lines on screen at once, one of them false.
   theNumbersJustWorkedOutAreOnScreenBeforeTheAnswerBesideTheButtonIs() {
     const page = src('public/construct.js');
-    const wire = page.slice(page.indexOf("const rb = $('#fRebuild');"), page.indexOf("const cs = $('#fClose');"));
-    // the numbers are laid onto the survivors by the next READ, so the press
-    // has to ask for one -- painting the answer and stopping is the fault
+    // 3.81.0: the press starts the run and fRichWatch reads the answer, so the
+    // redraw that lays the numbers on lives there. Still one press: the owner
+    // does nothing between starting it and seeing the values.
+    const wire = page.slice(page.indexOf('async function fRichWatch(st) {'), page.indexOf('function fWire(st, d) {'));
     assert.ok(/drawFunnel\(\);/.test(wire), 'the press works the numbers out and never reads them back, so the two limits below it go on saying nothing carries them');
     assert.ok(!/\$\('#fRebuildMsg'\)\.textContent = pr\.ran/.test(wire),
       'the proof is written straight onto the screen, so the redraw that fetches the numbers wipes it');
@@ -3193,7 +3212,7 @@ module.exports = {
     // and an unchecked rebuild must still never read as checked
     assert.ok(/NOT checked against the sweep/.test(wire), 'an unproved rebuild no longer says so');
     const six = page.slice(page.indexOf('function fStep6(d, st, r) {'), page.indexOf('function fStep7('));
-    assert.ok(six.includes('${st.rebuiltSaid ? esc(st.rebuiltSaid) : (st.rebuilt ?'),
+    assert.ok(six.includes('${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : \'\'}'),
       'the screen does not print what the press said, so a proof kept on the walk never reaches the owner');
     // a proof may never outlive the rebuild it is about: it is cleared wherever
     // the flag beside it is
@@ -3360,4 +3379,145 @@ module.exports.everyCallerOfTheCoinAndShapeWiringHandsItTheReply = function () {
     assert.strictEqual(fUnitOf(nothing, 'LTCUSDT|||daily-1d'), null, 'no reply is no board');
     assert.strictEqual(fUnitResolve(nothing, { trade: 'LTCUSDT' }), null, 'and resolves to nothing');
   }
+};
+
+// STEP 6's PRESS: ONE PRESS, START TO FINISH, AND DEAD WHEN THERE IS NOTHING
+// LEFT (3.81.0, owner orders 2026-09-07: "needs to not time out after 1
+// minute", "needs to put on the screen beside or under the button the progress
+// and the total cpu load", "during the work the button stays ghosted of course
+// and other loads are not allowed", and "the interface tells the user to use
+// the button again to load the values after the service is finished ... and
+// then when the services are resting using the button fires the entire process
+// again. absolutely horrible pathetic design").
+module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const svc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+
+  // NOTHING IS HELD OPEN. The door starts it and reports on it; the pricing is
+  // not inside the request any more, which is what the sixty-second gateway
+  // was killing.
+  assert.ok(/app\.post\('\/api\/funnel\/:id\/rebuild', \(req, res\) => \{\s*try \{ return res\.json\(stages\.funnelRichStart\(/.test(srv),
+    'the press is no longer started-and-returned — it is doing the work inside the request again');
+  assert.ok(srv.includes("app.get('/api/funnel/:id/rebuild', (req, res) => res.json(stages.funnelRichStatus(req.params.id)));"),
+    'and there is no door to ask how far it has got');
+  assert.ok(!/rebuild'[\s\S]{0,900}rebuildRichFor\(/.test(srv), 'the pricing is back inside the request handler');
+
+  // AND THE PAGE NEVER ASKS FOR A SECOND PRESS.
+  // scoped to step 6 and its watcher, and comment lines dropped: the comments
+  // quote the fault so the record survives, and "press it again to put them
+  // away" on the campaign tree is a different control doing a fair thing.
+  const step6 = [src.slice(src.indexOf('function fStep6(d, st, r) {'), src.indexOf('function fStep7(')),
+    src.slice(src.indexOf('async function fRichWatch(st) {'), src.indexOf('function fWire(st, d) {')),
+    src.slice(src.indexOf("const rb = $('#fRebuild');"), src.indexOf('// THE CLOSING IS A CHOICE THAT CHANGES THE COUNT'))]
+    .join('\n').split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+  assert.ok(step6.length > 500, 'step 6 and its watcher were not found');
+  assert.ok(!/press it again/i.test(step6), 'the page still tells the owner to press it again');
+  assert.ok(src.includes('async function fRichWatch(st) {') && src.includes('if (fRichGoing(d)) fRichWatch(st);'),
+    'a run already going is not picked back up, so a reload loses it and the owner presses again');
+
+  const lift = (head, end) => {
+    const at = src.indexOf(head);
+    assert.ok(at > 0, `${head} is gone`);
+    return src.slice(at, src.indexOf(end, at) + end.length);
+  };
+  // eslint-disable-next-line no-eval
+  const { fRichOff, fRichLine } = eval(`(() => { ${[
+    lift('const fRichOf = (d)', '\n'),
+    lift('const fRichGoing = (d)', '\n'),
+    lift('function fRichOff(d) {', '\n}\n'),
+    lift('function fCpuWords(cpu) {', '\n}\n'),
+    lift('function fRichLine(d) {', '\n}\n'),
+  ].join('\n')}\nreturn { fRichOff, fRichLine }; })()`);
+
+  // GHOSTED while it works, and ghosted when there is nothing left to work out
+  // -- which is the half that stopped a second press re-pricing everything.
+  assert.strictEqual(fRichOff({ richOn: { have: 0, need: 640, run: { running: true } } }), true, 'ghosted while it works');
+  assert.strictEqual(fRichOff({ richOn: { have: 640, need: 640, run: null } }), true, 'ghosted when every survivor already carries them');
+  assert.strictEqual(fRichOff({ richOn: { have: 0, need: 0, run: null } }), true, 'ghosted when no setting survives');
+  assert.strictEqual(fRichOff({ richOn: { have: 100, need: 640, run: null } }), false, 'live when some are still missing');
+  assert.strictEqual(fRichOff({}), true, 'and ghosted rather than throwing when the reply says nothing');
+
+  // THE PROGRESS AND THE CPU LOAD, on the line beside the button.
+  const going = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 128, of: 640, cpu: { busy: 0.87, cores: 4 } } } });
+  assert.ok(going.includes('128 of 640 settings'), `the progress is not on the line: ${going}`);
+  assert.ok(going.includes('87% of 4 cores busy'), `the cpu load is not on the line: ${going}`);
+  assert.ok(fRichLine({ richOn: { have: 640, need: 640, run: null } }).includes('done'), 'a finished one says so');
+  assert.ok(fRichLine({ richOn: { have: 100, need: 640, run: null } }).includes('the other 540'),
+    'and a part-done one says how many are left, not how many there are');
+  // a reading with nothing to difference against says nothing rather than 0%
+  assert.ok(!/busy/.test(fRichLine({ richOn: { have: 0, need: 9, run: { running: true, done: 1, of: 9, cpu: { busy: null, cores: 4 } } } })),
+    'an unknown cpu load prints as 0% busy, which reads as an idle box');
+
+  // OTHER LOADS ARE NOT ALLOWED while it runs -- said once, in stageBusy, so
+  // every refusal already built on it covers this without being told twice.
+  assert.ok(/function stageBusy\(\)[\s\S]{0,900}const rich = richBusy\(\);\s*if \(rich\) return rich;/.test(svc),
+    'stageBusy no longer names the step 6 press, so a stage launch can start on top of it');
+  assert.ok(/function funnelRichStart\([\s\S]{0,400}claimOrRefuse\(\);/.test(svc),
+    'and it can start on top of a sweep, a stage run or a totalling');
+  for (const fn of ['funnelAcrossStart', 'funnelCrossesStart', 'cutFunnelSetStart', 'rebuildSetRichStart']) {
+    assert.ok(new RegExp(`function ${fn}\\([^)]*\\) \\{\\s*//[^\\n]*\\n\\s*const richNow = richBusy\\(\\);`).test(svc),
+      `${fn} does not refuse while the step 6 press is working`);
+  }
+};
+
+// THE CPU READING IS THE REAL SHARE OF EVERY CORE (3.81.0), not the one-minute
+// load average -- which reports the idle box at the start of a run and the
+// finished run at the end of it, and is useless on a progress line.
+module.exports.theCpuReadingIsTheShareOfEveryCoreSinceTheLastOne = function () {
+  // THE VERY FIRST READING HAS NOTHING TO DIFFERENCE AGAINST and must say so
+  // rather than print a 0% that reads as an idle box. Read out of the source:
+  // by the time this test runs, something else in the suite has already taken
+  // a sample, so there is no first reading left to take.
+  const svc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+  assert.ok(svc.includes('if (!was || now.total <= was.total) return { busy: null, cores: now.cores };'),
+    'the first reading no longer says it has nothing to compare');
+
+  stages.cpuLoad();                                  // the baseline this one differences against
+  const until = Date.now() + 200;
+  while (Date.now() < until) { /* one core, busy */ }
+  const got = stages.cpuLoad();
+  assert.ok(got.cores >= 1, 'it does not know how many cores there are');
+  assert.ok(got.busy > 0 && got.busy <= 1, `busy came back ${got.busy} — it is a share of every core, 0 to 1`);
+  // one thread spinning is about one core's worth; well under half on any box
+  // with two or more, and never above 1
+  assert.ok(got.busy >= (0.5 / got.cores), `one core spinning read as ${(got.busy * 100).toFixed(1)}% of ${got.cores}`);
+};
+
+// THE REMAINING COUNT, CONTINUOUSLY (3.81.0, owner order 2026-09-07: "when
+// putting numbers in the worst losing streak allowed and fewest trades the
+// remaining settings size needs to be continuously displayed so we can try for
+// our target without shooting in the dark").
+module.exports.theRemainingCountIsAskedOnEveryKeystrokeAndTheLastAnswerWins = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const svc = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+
+  // BOTH boxes, on input -- not on change, which only fires when the box is left
+  assert.ok(/for \(const id of \['fDD', 'fTrades'\]\)[\s\S]{0,220}b\.oninput = \(\) => \{ clearTimeout\(timer\); timer = setTimeout\(ask, 200\); \};/.test(src),
+    'the two limit boxes no longer ask as they are typed in');
+  assert.ok(/const mine = \+\+asked;[\s\S]{0,400}if \(mine !== asked\) return;/.test(src),
+    'a slow answer to an older keystroke can overwrite the newer one');
+  assert.ok(/const out = await askPost\(`api\/funnel\/\$\{encodeURIComponent\(st\.set\)\}\/keeps`/.test(src),
+    'it asks through tryPost, which pops a dialog on every failed keystroke');
+
+  // IT IS THE SAME ARITHMETIC THE WALK USES. The page sends a whole rule built
+  // the way fAddFloors builds it; the service applies it. No second filter.
+  assert.ok(/function fRuleWithFloors\(st\) \{[\s\S]{0,500}floors\.maxDrawdown = \{ max: Number\(dd\) \}[\s\S]{0,200}floors\.avgTrades = \{ min: Number\(tr\) \}/.test(src),
+    'the typed limits are no longer folded into the rule the same way the press folds them');
+  assert.ok(/async function funnelKeeps\(id, state = \{\}\) \{[\s\S]{0,900}S4\.applyRule\(all, rule\)\.length/.test(svc),
+    'the count is no longer the same applyRule the walk uses');
+
+  const at = src.indexOf('function fKeepsWords(keeps, of, target) {');
+  assert.ok(at > 0, 'the wording is gone');
+  // eslint-disable-next-line no-eval
+  const fKeepsWords = eval(`(() => { ${src.slice(at, src.indexOf('\n}\n', at) + 3)}\nreturn fKeepsWords; })()`);
+  assert.ok(fKeepsWords(316, 12000, null).includes('316 of 12,000'), 'the count and what it is out of');
+  assert.ok(fKeepsWords(316, 12000, 300).includes('16 above the target of 300'), 'and how far from the target');
+  assert.ok(fKeepsWords(280, 12000, 300).includes('20 below the target of 300'));
+  assert.ok(fKeepsWords(300, 12000, 300).includes('exactly the target'));
+  assert.ok(fKeepsWords(null, null, 300).includes('not known yet'), 'and an unknown count never reads as zero');
+
+  // ONE wording: the first draw and every keystroke print through it
+  assert.ok(src.includes('${esc(fKeepsWords(d.survivors, d.of, d.target))}') && src.includes('fKeepsWords(out.keeps, out.of, st.target)'),
+    'the first draw and the keystrokes no longer share one wording');
 };

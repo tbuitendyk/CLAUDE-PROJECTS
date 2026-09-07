@@ -251,6 +251,12 @@ function stageRunning() { return activeSet ? activeSet.id : null; }
 function stageBusy() {
   if (activeSet) return `stage run ${activeSet.id}`;
   if (tallyRun && !tallyRun.error) return `the totalling of ${tallyRun.id}`;
+  // 3.81.0, owner order: "other loads are not allowed" while step 6's press is
+  // working. Named HERE rather than in a second gate of its own, so every
+  // refusal already built on stageBusy()/claimOrRefuse() -- the stage launches,
+  // the purge, the box-busy readout -- covers it without being told twice.
+  const rich = richBusy();
+  if (rich) return rich;
   return null;
 }
 function claimOrRefuse() {
@@ -4382,6 +4388,9 @@ const acrossStatus = (run) => ({
   error: run.error, result: run.result,
 });
 function funnelAcrossStart(id, state = {}) {
+  // 3.81.0, owner order: no other load while step 6's press is working.
+  const richNow = richBusy();
+  if (richNow) throw new Error(`${richNow} — reading across the other units would fight it for the same workers`);
   const key = acrossKeyOf(id, state);
   if (acrossRun) {
     // the same rule is the same reading -- unless that reading failed, in
@@ -4433,6 +4442,9 @@ async function funnelCrosses(id, state = {}, note = null) {
   return F.crossesWorthReading(rows, { floor: state.floor, barPct: state.barPct, seed: state.seed || id }, note);
 }
 function funnelCrossesStart(id, state = {}) {
+  // 3.81.0, owner order: no other load while step 6's press is working.
+  const richNow = richBusy();
+  if (richNow) throw new Error(`${richNow} — reading the pairs would fight it for the same workers`);
   const key = crossesKeyOf(id, state);
   if (crossesRun) {
     if (crossesRun.key === key && !crossesRun.error) return crossesStatus(crossesRun);
@@ -4485,6 +4497,20 @@ async function funnelRead(id, state = {}) {
     : { rule: S4.normaliseRule(state.rule), key: 'rule', detail: null };
   const rule = closed.rule;
   const rows = S4.applyRule(all, rule);
+  // HOW MUCH OF STEP 6's WORK IS ALREADY DONE (3.81.0, owner order 2026-09-07:
+  // "when the services are resting using the button fires the entire process
+  // again ... code it right"). Counted on the SURVIVORS under today's rule, on
+  // the board on screen, with the same lookup withFunnelRich uses -- so the
+  // press can be DEAD when there is nothing left to work out, instead of
+  // telling the owner to press it again and then quietly pricing the lot a
+  // second time. `run` is the press already going, so a page that was reloaded
+  // in the middle of one picks it back up rather than offering to start it.
+  const richHas = (r) => {
+    const x = (rich && rich.settings) ? rich.settings[r.label] : null;
+    if (!x) return false;
+    return !(r.unit && x.units && !x.units[r.unit]);
+  };
+  const richOn = { have: rows.filter(richHas).length, need: rows.length, run: funnelRichStatus(id) };
   const seed = state.seed || id;
   const floor = state.floor == null ? 0 : Math.max(0, Math.floor(state.floor));
 
@@ -4556,6 +4582,7 @@ async function funnelRead(id, state = {}) {
     of: all.length,
     holdsAxis,
     rebuilt: !!(rich && rich.settings),
+    richOn,
     // THE STAGE 4 SETS ALREADY CUT FROM THIS COIN AND SHAPE (3.58.0). One read,
     // one truth about which sets belong to the board on screen.
     cuts: funnelCutsFor(id, board.unit),
@@ -4770,6 +4797,33 @@ async function funnelRead(id, state = {}) {
     };
   }
   return out;
+}
+
+// HOW MANY THE RULE ON SCREEN WOULD KEEP, WHILE IT IS BEING TYPED (3.81.0,
+// owner order 2026-09-07: "when putting numbers in the worst losing streak
+// allowed and fewest trades the remaining settings size needs to be
+// continuously displayed so we can try for our target without shooting in the
+// dark").
+//
+// It takes a WHOLE RULE and answers with a count. It does not know about those
+// two boxes and must not: the page merges what is typed into the rule it
+// already holds and sends that, so the number under the boxes comes out of the
+// same applyRule the walk itself uses. A second filter written here to mean
+// "the same thing" is how two numbers that must agree stop agreeing.
+//
+// Cheap enough to ask on every keystroke: the board is the one already in hand
+// (unitBoardInHand, keyed on the set, its totalling and the unit), so this is a
+// pass over rows that are already in memory.
+async function funnelKeeps(id, state = {}) {
+  const doc = getSet(id);
+  if (!doc) throw new Error(`unknown record set '${id}'`);
+  const t = readTally(id);
+  if (!t) return null;                       // no tables yet; the caller starts a totalling as the read does
+  const S4 = require('./funnelset');
+  const board = await funnelBoard(id, t, state.unit);
+  const all = withFunnelRich(board.all, readFunnelRich(id));
+  const rule = S4.normaliseRule(state.rule);
+  return { keeps: S4.applyRule(all, rule).length, of: all.length };
 }
 
 function sliceRowsFor(rows, t, axis, rule, opts = {}) {
@@ -5121,6 +5175,9 @@ function cutStatus(run) {
   };
 }
 function cutFunnelSetStart(parentId, state = {}) {
+  // 3.81.0, owner order: no other load while step 6's press is working.
+  const richNow = richBusy();
+  if (richNow) throw new Error(`${richNow} — writing a Stage 4 set would fight it for the same workers`);
   if (cutRun && !cutRun.result && !cutRun.error) {
     if (cutRun.id === String(parentId)) return cutStatus(cutRun);
     throw new Error('another Stage 4 set is being written right now — one at a time');
@@ -5147,6 +5204,132 @@ function cutFunnelSetStatus(parentId) {
   return cutStatus(cutRun);
 }
 
+// ---- WHAT THE BOX IS ACTUALLY DOING, WHILE IT DOES IT (3.81.0, owner order
+// 2026-09-07: "needs to put on the screen beside or under the button the
+// progress and the total cpu load") ----------------------------------------
+//
+// Not the one-minute load average: that is an average over the minute just
+// gone, so at the start of a run it reports the idle box before it and at the
+// end it still reports the run that has stopped. This is the REAL share of
+// every core that was busy between this reading and the last one, read off the
+// kernel's own per-core counters -- so a page asking every two seconds gets a
+// two-second average, which is what somebody watching a progress line wants.
+//
+// Deterministic and local: os.cpus() and nothing else (RULE SEVEN).
+// REQUIRED HERE, EXPLICITLY. It worked without this line -- something else
+// on the box had put os on the global -- and code that runs because of an
+// accident somewhere else is code that stops running when that accident is
+// tidied up.
+const os = require('os');
+let cpuWas = null;
+function cpuSample() {
+  const cores = os.cpus() || [];
+  let idle = 0; let total = 0;
+  for (const c of cores) {
+    for (const k of Object.keys(c.times)) total += c.times[k];
+    idle += c.times.idle;
+  }
+  return { idle, total, cores: cores.length };
+}
+function cpuLoad() {
+  const now = cpuSample();
+  const was = cpuWas;
+  cpuWas = now;
+  // the first reading has nothing to difference against, and neither has one
+  // taken in the same millisecond as the last -- say so rather than print a 0%
+  // that reads as "the box is idle"
+  if (!was || now.total <= was.total) return { busy: null, cores: now.cores };
+  const busy = 1 - ((now.idle - was.idle) / (now.total - was.total));
+  return { busy: Math.max(0, Math.min(1, busy)), cores: now.cores };
+}
+
+// ---- STEP 6's PRESS, STARTED AND POLLED (3.81.0, owner order: "needs to not
+// time out after 1 minute") --------------------------------------------------
+//
+// It used to be done inside the POST, which held the request open for as long
+// as the pricing took. The web server in front allows sixty seconds, so any
+// set big enough to matter timed out and the owner was told nothing -- while
+// the work carried on behind the dead request. Every other pressing thing on
+// this screen was moved to started-and-polled in 3.67.0; this was the one left.
+//
+// AND NOTHING ELSE MAY LOAD THE BOX WHILE IT RUNS (same order: "other loads
+// are not allowed"). It is claimed through claimOrRefuse, so it will not start
+// on top of a sweep, a stage run or a totalling; and stageBusy() names it, so
+// those refuse on top of IT. The other four pressed jobs on this screen refuse
+// by name where they start.
+let richRun = null;
+function richStatus(run) {
+  return {
+    running: !run.result && !run.error,
+    token: run.token, done: run.done, of: run.of,
+    // beside the count, so the owner can see the box working and not just a
+    // number that has not moved
+    cpu: cpuLoad(),
+    error: run.error, result: run.result,
+  };
+}
+// What is stopping another load, in words fit for a refusal, or null.
+const richBusy = () => (richRun && !richRun.result && !richRun.error
+  ? `the missing numbers of ${richRun.id} are being worked out` : null);
+function funnelRichStart(id, state = {}) {
+  if (richRun && !richRun.result && !richRun.error) {
+    if (richRun.id === String(id)) return richStatus(richRun);
+    throw new Error('another record set is having its missing numbers worked out right now — one at a time');
+  }
+  const doc = getSet(id);
+  if (!doc) throw new Error(`unknown record set '${id}'`);
+  claimOrRefuse();
+  const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, result: null, error: null, promise: null };
+  richRun = run;
+  run.promise = (async () => {
+    // THE PRESS NAMES THE RULE, NOT A LIST (3.57.1, owner report: pressing it
+    // said "nothing was asked for"). A list of names typed by the page can be
+    // empty, or stale, or a different set of survivors from the ones the count
+    // at the top of the walk is counting. The rule is what the walk holds, so
+    // the rule is what is sent, and the survivors are worked out here.
+    let labels = Array.isArray(state.labels) ? state.labels.map(String) : [];
+    // WHAT TO CHECK THE REBUILD AGAINST (3.57.2): the caller may send it, but
+    // the page never has it to send, so the service reads it beside the
+    // survivors and the check always runs.
+    let expect = state.expect || null;
+    if (!labels.length && state.rule) {
+      const got = await survivorLabelsOf(String(id), state);
+      if (!got) {
+        const t = ensureTally(String(id));
+        return { totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null };
+      }
+      labels = got.labels;
+      if (!expect || !Object.keys(expect).length) expect = got.stored;
+      if (!labels.length) {
+        throw new Error(`the rule keeps none of this set's ${got.of.toLocaleString()} settings, so there is nothing to work out`);
+      }
+    }
+    run.of = labels.length;
+    const got = await rebuildRichFor(doc, labels, { note: (done, of) => { run.done = done; run.of = of; } });
+    // THE PROOF TRAVELS WITH THE ANSWER. An unproved rebuild is allowed and
+    // must never look proved, so the verdict is part of the reply rather than
+    // something the screen can forget to ask for.
+    // the board these figures were read on: the walk's unit, or the blend
+    const onUnit = state.unit && String(state.unit) !== 'all' ? String(state.unit) : null;
+    const proof = proveRebuild(got.perSetting, expect, undefined, onUnit);
+    // KEPT, NOT THROWN AWAY. The rebuilt numbers used to leave with this reply
+    // and nothing held them, so a limit on the worst losing streak at step 6
+    // refused every row -- no row carried one. They are written beside the set
+    // and funnelRead lays them onto the survivors (Funnel design §16, step 6).
+    const kept = saveFunnelRich(doc.id, got.perSetting);
+    return { settings: got.settings, units: got.units, failures: got.failures, proof, kept };
+  })()
+    .then((out) => { run.result = out; if (run.of) run.done = run.of; })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return richStatus(run);
+}
+function funnelRichStatus(id) {
+  if (!richRun || richRun.id !== String(id)) {
+    return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
+  }
+  return richStatus(richRun);
+}
+
 // ---- PUTTING A STAGE 4 SET'S REBUILT NUMBERS BACK (3.68.0, owner order) -----
 //
 // A set cut before 3.68.0 kept no copy of its own, and a later pass over the
@@ -5164,6 +5347,9 @@ function setRichStatus(run) {
   return { running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, error: run.error, result: run.result };
 }
 function rebuildSetRichStart(setId) {
+  // 3.81.0, owner order: no other load while step 6's press is working.
+  const richNow = richBusy();
+  if (richNow) throw new Error(`${richNow} — working out a Stage 4 set's numbers would fight it for the same workers`);
   if (setRichRun && !setRichRun.result && !setRichRun.error) {
     if (setRichRun.id === String(setId)) return setRichStatus(setRichRun);
     throw new Error('another record set is having its numbers worked out right now — one at a time');
@@ -5883,6 +6069,7 @@ module.exports = {
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
   missingSettingsIn, nextSettingNumber,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
+  funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,

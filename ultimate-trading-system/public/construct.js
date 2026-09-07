@@ -5284,6 +5284,85 @@ const fPerYear = (n, ex) => {
   return f && Number.isFinite(Number(n)) ? ` <span class="muted">(about ${Math.round(Number(n) * f).toLocaleString()} a year)</span>` : '';
 };
 const fDay = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '-');
+// WHAT THE TWO LIMITS WOULD LEAVE, AS THEY ARE TYPED (3.81.0, owner order
+// 2026-09-07: "the remaining settings size needs to be continuously displayed
+// so we can try for our target without shooting in the dark").
+//
+// ONE wording, used by the first draw and by every keystroke after it. Written
+// twice they drift, and a line that changes its shape the moment you touch a
+// box reads as two different facts about the same thing.
+function fKeepsWords(keeps, of, target) {
+  if (keeps == null) return 'how many these limits would leave is not known yet';
+  const n = Number(keeps);
+  const head = `these limits would leave ${n.toLocaleString()} of ${Number(of || 0).toLocaleString()} setting(s)`;
+  const t = target == null ? null : Number(target);
+  if (!t) return `${head}.`;
+  if (n === t) return `${head} — exactly the target.`;
+  return `${head} — ${n > t ? `${(n - t).toLocaleString()} above` : `${(t - n).toLocaleString()} below`} the target of ${t.toLocaleString()}.`;
+}
+// THE RULE THE WALK WOULD HOLD if the two boxes were added right now. Built the
+// same way fAddFloors builds it, from the same two boxes, so the count under
+// them is the count the press produces and never an estimate of it.
+function fRuleWithFloors(st) {
+  const dd = ($('#fDD') || {}).value;
+  const tr = ($('#fTrades') || {}).value;
+  const floors = { ...((st.rule || {}).floors || {}) };
+  if (dd === '' || dd == null) delete floors.maxDrawdown; else floors.maxDrawdown = { max: Number(dd) };
+  if (tr === '' || tr == null) delete floors.avgTrades; else floors.avgTrades = { min: Number(tr) };
+  return { ...(st.rule || {}), floors };
+}
+
+// STEP 6's PRESS: WHAT IT SAYS AND WHEN IT IS DEAD (3.81.0, owner order
+// 2026-09-07: "the interface tells the user to use the button again to load
+// the values after the service is finished ... and then when the services are
+// resting using the button fires the entire process again. absolutely horrible
+// pathetic design").
+//
+// Both halves of that were true. The press held the request open, the gateway
+// gave up at sixty seconds, and the page then told the owner to press it again
+// -- and a second press re-priced every survivor from scratch, because nothing
+// asked whether the numbers were already there.
+//
+// Now: the service says how many of TODAY's survivors already carry the
+// numbers (richOn.have of richOn.need), so the press is DEAD when there is
+// nothing left to work out, and one press finishes on its own -- it starts the
+// run, watches it, and draws the values in when it lands. Nothing is ever
+// pressed twice.
+// UNKNOWN IS LIVE, NEVER DEAD (found 2026-09-07 by pressing the page for
+// real). Written to fall back to need:0, a reply that carried no richOn at
+// all ghosted the button with no explanation -- which is the exact fault
+// this release is fixing, arriving by a different door. With nothing said
+// about what is already worked out, every survivor still needs it.
+const fRichOf = (d) => (d && d.richOn) || { have: 0, need: Number((d && d.survivors) || 0), run: null };
+const fRichGoing = (d) => !!(fRichOf(d).run && fRichOf(d).run.running);
+function fRichOff(d) {
+  const x = fRichOf(d);
+  if (fRichGoing(d)) return true;               // it is working; pressing again is the fault above
+  if (!x.need) return true;                     // no survivors, nothing to work out
+  return x.have >= x.need;                      // all of them already carry the numbers
+}
+// The CPU reading, in the same words on the progress line and nowhere else.
+// null while the service has only taken one sample and has nothing to compare.
+function fCpuWords(cpu) {
+  if (!cpu || cpu.busy == null) return '';
+  return ` · ${Math.round(cpu.busy * 100)}% of ${cpu.cores} core${cpu.cores === 1 ? '' : 's'} busy`;
+}
+function fRichLine(d) {
+  const x = fRichOf(d);
+  const run = x.run || {};
+  if (fRichGoing(d)) {
+    return (run.of ? `working them out — ${Number(run.done || 0).toLocaleString()} of ${Number(run.of).toLocaleString()} settings`
+      : 'working them out') + fCpuWords(run.cpu);
+  }
+  if (run.error) return `FAILED — ${String(run.error)}`;
+  if (!x.need) return 'no setting survives the rule, so there is nothing to work out';
+  if (x.have >= x.need) return `done — all ${Number(x.need).toLocaleString()} surviving setting(s) carry them`;
+  if (x.have) {
+    return `${Number(x.have).toLocaleString()} of ${Number(x.need).toLocaleString()} surviving setting(s) carry them — `
+      + `the press works out the other ${Number(x.need - x.have).toLocaleString()}`;
+  }
+  return `not done yet — one press works out all ${Number(x.need).toLocaleString()} of them and finishes on its own`;
+}
 function fStep6(d, st, r) {
   const dd = (st.rule.floors || {}).maxDrawdown || {};
   const tr = (st.rule.floors || {}).avgTrades || {};
@@ -5334,8 +5413,9 @@ function fStep6(d, st, r) {
     ${howTo}
     ${money}
     ${when}
-    <div class="row"><button id="fRebuild" class="pri">work out the missing numbers</button>
-      <span id="fRebuildMsg" class="note">${st.rebuiltSaid ? esc(st.rebuiltSaid) : (st.rebuilt ? 'done for this set' : 'not done yet - press it first')}</span></div>
+    <div class="row"><button id="fRebuild" class="pri"${fRichOff(d) ? ' disabled' : ''}>work out the missing numbers</button>
+      <span id="fRebuildMsg" class="note">${esc(fRichLine(d))}</span></div>
+    ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
     ${fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)}
     ${fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex)}
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
@@ -5344,7 +5424,8 @@ function fStep6(d, st, r) {
       <label class="f">fewest trades<input id="fTrades" type="number" style="width:8rem"
         value="${esc(String(tr.min == null ? '' : tr.min))}"></label>
       <button id="fAddFloors">add these limits to the rule</button>
-      <span class="note">${w ? `a trade count here is over ${Math.round(w.weeks)} weeks${tr.min ? fPerYear(tr.min, ex) : ''}` : 'the window these trades were counted over is not known for this set'}</span></div>`;
+      <span class="note">${w ? `a trade count here is over ${Math.round(w.weeks)} weeks${tr.min ? fPerYear(tr.min, ex) : ''}` : 'the window these trades were counted over is not known for this set'}</span></div>
+    <p class="note" id="fFloorsKeeps">${esc(fKeepsWords(d.survivors, d.of, d.target))}</p>`;
 }
 
 function fStep7(d, st) {
@@ -5997,6 +6078,61 @@ async function fAcrossFollow(st, status) {
   }
 }
 
+// WATCHING STEP 6's RUN (3.81.0). One at a time per page: a redraw re-enters
+// fWire, and two loops asking the same door would fight over the same line.
+let fRichWatching = false;
+async function fRichWatch(st) {
+  if (fRichWatching) return;
+  fRichWatching = true;
+  try {
+    for (;;) {
+      // eslint-disable-next-line no-await-in-loop
+      const p = await api(`api/funnel/${encodeURIComponent(st.set)}/rebuild`).catch(() => null);
+      const msg = $('#fRebuildMsg');
+      if (!p) { if (msg) msg.textContent = 'the service stopped answering — nothing was written'; return; }
+      if (p.error) { if (msg) msg.textContent = `FAILED — ${p.error}`; return; }
+      if (p.result) {
+        const out = p.result;
+        // the tables of the set are not built yet, so there were no survivors
+        // to work anything out for. Said plainly; nothing was priced.
+        if (out.totalling || out.waiting) {
+          if (msg) msg.textContent = out.waiting || 'the tables of this set are being worked out — this step reads them when they land';
+          return;
+        }
+        st.rebuilt = true;
+        // THE PROOF IS SHOWN, NOT ASSUMED. An unchecked rebuild must never look
+        // checked, so the absence of a check is printed as plainly as a failed one.
+        const pr = out.proof || {};
+        // THE TRUE COUNT, NOT THE LENGTH OF A CAPPED LIST (3.57.3)
+        const off = pr.differed == null ? (pr.mismatches || []).length : pr.differed;
+        // AND IT IS KEPT ON THE WALK, NOT WRITTEN STRAIGHT ONTO THE SCREEN (3.65.1,
+        // owner report). The numbers this button works out are laid onto the
+        // survivors by the next READ, and this used to paint its answer and stop --
+        // so the two limits below it went on saying "no survivor carries this number
+        // yet - press work out the missing numbers first" directly underneath "all
+        // 640 match what the sweep stored". Both were on screen at once and one of
+        // them was false. The walk holds what was said, the screen is drawn again,
+        // and the proof survives the redraw.
+        st.rebuiltSaid = pr.ran
+          ? (off
+            ? `${off} of ${pr.checked} setting(s) came back different from what the sweep stored - this is not the same run`
+            : `done for ${out.settings} setting(s); all ${pr.checked} match what the sweep stored`)
+          : `done for ${out.settings} setting(s) - NOT checked against the sweep (${String(pr.why || '')})`;
+        fSave();
+        fRichWatching = false;           // the redraw re-enters fWire, and by then there is nothing to watch
+        drawFunnel();
+        return;
+      }
+      if (msg) {
+        msg.textContent = (p.of ? `working them out — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} settings`
+          : 'working them out') + fCpuWords(p.cpu);
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+  } finally { fRichWatching = false; }
+}
+
 function fWire(st, d) {
   const go = (n, why) => {
     if (n < st.step) st.backSteps.push({ from: st.step, to: n, why: why || null });
@@ -6271,6 +6407,31 @@ function fWire(st, d) {
     st.steps.push({ n: 5, what: 'the widest region', chose: `kept as the rule (${Object.keys(ranges).length + Object.keys(allowed).length} dial(s))${loosened.length ? `, ${loosened.join(', ')}` : ''}` });
     fSave(); drawFunnel();
   };
+  // CONTINUOUSLY, AS THEY ARE TYPED (3.81.0). Debounced so a held-down key is
+  // one question and not thirty, and stamped so a slow answer to an older
+  // keystroke can never overwrite the newer one -- that is how a count ends up
+  // showing a number for a value that is no longer in the box.
+  const kp = $('#fFloorsKeeps');
+  if (kp) {
+    let asked = 0;
+    let timer = null;
+    const ask = async () => {
+      const mine = ++asked;
+      // askPost, never tryPost: this changes nothing, and a popup on every
+      // keystroke is unusable -- the line just says it could not be read.
+      const out = await askPost(`api/funnel/${encodeURIComponent(st.set)}/keeps`,
+        { rule: fRuleWithFloors(st), unit: st.unit }, null);
+      if (mine !== asked) return;                       // a newer keystroke is already out
+      const el = $('#fFloorsKeeps');
+      if (!el) return;
+      el.textContent = out ? fKeepsWords(out.keeps, out.of, st.target) : 'how many these limits would leave could not be read';
+    };
+    for (const id of ['fDD', 'fTrades']) {
+      const b = $(`#${id}`);
+      if (!b) continue;
+      b.oninput = () => { clearTimeout(timer); timer = setTimeout(ask, 200); };
+    }
+  }
   const af = $('#fAddFloors');
   if (af) af.onclick = () => {
     const dd = $('#fDD').value;
@@ -6281,42 +6442,28 @@ function fWire(st, d) {
     st.steps.push({ n: 6, what: 'exposure', chose: `worst streak ${dd}, fewest trades ${tr}` });
     fSave(); drawFunnel();
   };
+  // ONE PRESS, START TO FINISH (3.81.0). It starts the run, watches it, and
+  // draws the values in when it lands -- no second press, and nothing held
+  // open for the gateway to give up on. A page reloaded in the middle picks
+  // the run back up from the read, because the read carries it.
   const rb = $('#fRebuild');
-  if (rb) rb.onclick = async () => {
-    rb.disabled = true;
-    $('#fRebuildMsg').textContent = 'working them out - this prices the survivors again from their parent set';
-    // THE RULE, NOT A LIST OF NAMES (3.57.1): the walk holds the rule, the
-    // service holds the settings, and the survivors are worked out there --
-    // the same rule, the same unit and the same bar every other read sends
-    const out = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct },
-      'The numbers are written beside the record set - press it again when it has finished and this step will read them.');
-    rb.disabled = false;
-    if (!out) { $('#fRebuildMsg').textContent = ''; return; }
-    if (out.totalling || out.waiting) {
-      $('#fRebuildMsg').textContent = out.waiting || 'the tables of this set are being worked out - press it again when they are done';
-      return;
-    }
-    st.rebuilt = true;
-    // THE PROOF IS SHOWN, NOT ASSUMED. An unchecked rebuild must never look
-    // checked, so the absence of a check is printed as plainly as a failed one.
-    const pr = out.proof || {};
-    // THE TRUE COUNT, NOT THE LENGTH OF A CAPPED LIST (3.57.3)
-    const off = pr.differed == null ? (pr.mismatches || []).length : pr.differed;
-    // AND IT IS KEPT ON THE WALK, NOT WRITTEN STRAIGHT ONTO THE SCREEN (3.65.1,
-    // owner report). The numbers this button works out are laid onto the
-    // survivors by the next READ, and this handler used to paint its answer and
-    // stop -- so the two limits below it went on saying "no survivor carries
-    // this number yet - press work out the missing numbers first" directly
-    // underneath "all 640 match what the sweep stored". Both were on screen at
-    // once and one of them was false. The walk holds what was said, the screen
-    // is drawn again, and the proof survives the redraw.
-    st.rebuiltSaid = pr.ran
-      ? (off
-        ? `${off} of ${pr.checked} setting(s) came back different from what the sweep stored - this is not the same run`
-        : `done for ${out.settings} setting(s); all ${pr.checked} match what the sweep stored`)
-      : `done for ${out.settings} setting(s) - NOT checked against the sweep (${String(pr.why || '')})`;
-    fSave(); drawFunnel();
-  };
+  if (rb && !rb.disabled) {
+    rb.onclick = async () => {
+      rb.disabled = true;
+      $('#fRebuildMsg').textContent = 'working them out — this prices the survivors again from their parent set';
+      // THE RULE, NOT A LIST OF NAMES (3.57.1): the walk holds the rule, the
+      // service holds the settings, and the survivors are worked out there --
+      // the same rule, the same unit and the same bar every other read sends
+      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`,
+        { rule: st.rule, unit: st.unit, barPct: st.barPct }, WHERE_FUNNEL);
+      if (!started) { rb.disabled = false; $('#fRebuildMsg').textContent = fRichLine(d); return; }
+      await fRichWatch(st);
+    };
+  }
+  // and if one is already going -- another tab pressed it, or this page was
+  // reloaded -- it is watched without anything being pressed
+  if (fRichGoing(d)) fRichWatch(st);
+
   // THE CLOSING IS A CHOICE THAT CHANGES THE COUNT, so it redraws like every
   // other choice does. Picking 'take the top N by a column' seeds the count
   // from the target -- that is what the target was for -- and leaves it blank
