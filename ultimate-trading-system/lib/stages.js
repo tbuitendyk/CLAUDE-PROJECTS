@@ -132,6 +132,58 @@ function atomicWrite(file, text) {
   fs.renameSync(tmp, file);
 }
 const setFile = (id) => path.join(SETS_DIR, `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.json`);
+
+// ---- PAUSE AND START AGAIN (3.82.0, owner order 2026-09-07) ------------------
+//
+// "I wanna confirm that we can stop it and restart it without losing the work
+// that's been done" -- and it could not be. Everything a stage 3 run had priced
+// was on disk as it landed, but two things lived only in memory until the last
+// part finished: the agreements each unit reached and the four comparisons for
+// each unit. A stop threw both away for every finished unit, and nothing could
+// pick a stopped set back up. A deploy, which restarts the service, did the
+// same.
+//
+// Now the run writes those two things, and the order of its units, beside the
+// set once a minute and again the moment it is paused or fails -- the
+// CHECKPOINT -- and a paused set is started again from its own records and its
+// checkpoint: the settings already on disk are kept, the rest are priced, and
+// the run finishes through the same tail a launch does (continueStage3).
+//
+// The checkpoint is written by the run itself. A run on code older than this
+// has none; tools/capture-stage3.js pulls the same state out of ONE such run
+// through Node's own debugger and writes the same file, and is deleted once
+// that run has been started again (RULE TEN).
+const CHECKPOINT_V = 1;
+const CHECKPOINT_EVERY_MS = 60 * 1000;
+// IN A FOLDER OF ITS OWN, never beside the set: listSets reads every .json in
+// the sets folder as a set, and a checkpoint named <id>-checkpoint.json was
+// listed as a second, headless copy of its own set (found by the rehearsal,
+// 2026-09-07).
+const checkpointFile = (id) => path.join(SETS_DIR, 'checkpoints', `${String(id).replace(/[^A-Za-z0-9._-]+/g, '_')}.json`);
+function readCheckpoint(id) {
+  try {
+    const c = JSON.parse(fs.readFileSync(checkpointFile(id), 'utf8'));
+    return c && c.v === CHECKPOINT_V && c.id === id && c.agreedMap && c.controlsMap && Array.isArray(c.units) ? c : null;
+  } catch (_) { return null; }
+}
+const hasCheckpoint = (id) => readCheckpoint(id) != null;
+// `live` is what the run holds in memory and nowhere else while it prices.
+function writeCheckpoint(doc, live) {
+  atomicWrite(checkpointFile(doc.id), JSON.stringify({
+    v: CHECKPOINT_V, id: doc.id, at: new Date().toISOString(), release: ENGINE_VERSION, writtenBy: 'the run',
+    workersN: live.workersN, partsTotal: (doc.perf || {}).partsTotal || 0, partsDone: (doc.perf || {}).partsDone || 0,
+    units: live.units, agreedMap: live.agreedMap, controlsMap: live.controlsMap,
+    failures: doc.failures || [], pricedSettings: live.pricedSettings(),
+    storeRows: live.storeRows(), storeBlocks: live.storeBlocks(),
+  }));
+  live.checkpointedAt = Date.now();
+}
+function checkpointIfDue(doc, live) {
+  if (!live) return;
+  if (live.checkpointedAt && Date.now() - live.checkpointedAt < CHECKPOINT_EVERY_MS) return;
+  writeCheckpoint(doc, live);
+}
+function dropCheckpoint(id) { try { fs.rmSync(checkpointFile(id), { force: true }); } catch (_) { /* nothing there */ } }
 function saveSet(doc) { atomicWrite(setFile(doc.id), JSON.stringify(doc)); }
 function getSet(id) {
   try { return JSON.parse(fs.readFileSync(setFile(id), 'utf8')); } catch (_) { return null; }
@@ -160,6 +212,10 @@ function listSets() {
         // how many records are picked on a stage 2 set's table -- what the
         // stage 3 set-up prices when it is told Selected records
         picked: Array.isArray(d.picked) ? d.picked.length : 0,
+        // a paused stage 3 set can be started again when its checkpoint is
+        // there; the Sweep's stage 3 box offers exactly those (3.82.0)
+        checkpoint: d.stage === 3 && d.status !== 'running' && hasCheckpoint(d.id),
+        continued: Array.isArray(d.continued) ? d.continued.length : 0,
       });
     } catch (_) { /* an unreadable doc is skipped, never invented */ }
   }
@@ -451,7 +507,10 @@ function unitRows(id, name, range, unitIdx) {
 }
 
 function finishFail(doc, err, pool) {
-  doc.status = doc.cancelRequested ? 'cancelled' : 'error';
+  // A STOPPED STAGE 3 RUN THAT KEPT ITS CHECKPOINT IS PAUSED, NOT CANCELLED
+  // (3.82.0): the word says what can be done with it. Everything else ends the
+  // way it always did.
+  doc.status = doc.cancelRequested ? (doc.stage === 3 && hasCheckpoint(doc.id) ? 'paused' : 'cancelled') : 'error';
   doc.error = err ? String(err.message || err) : null;
   doc.finishedAt = new Date().toISOString();
   saveSet(doc);
@@ -2256,6 +2315,9 @@ function startStage3(params) {
     allLoaded: parent.params.allLoaded, startMonth: parent.params.startMonth,
     endMonth: parent.params.endMonth, windowLayout: parent.params.windowLayout,
   };
+  // what the run holds in memory and nowhere else, so a pause or a failure
+  // can write it down (3.82.0)
+  let live = null;
   (async () => {
     // THE BLOCK ITSELF, built now that the press has been answered: every
     // setting with its name, folded to one per trade (ONE SETTING PER TRADE:
@@ -2284,134 +2346,351 @@ function startStage3(params) {
       sameTradeFolded: sameTrade.length,
     });
     saveSet(doc);
-    // Reading every unit's kept votes back out of the store takes real time
-    // on a big set, and a screen that says "writing the plan" through all of
-    // it reads as stuck (owner, 2026-08-27). Say what is actually happening,
-    // as it happens.
-    // THE WORK IS HANDED OUT IN PARTS, NOT UNITS (owner order, 2026-09-02:
-    // "we're running 1.75M settings with 36.7M pricings and we're getting
-    // about 1 cpu worth of effort and no status updates"). One payload per
-    // unit kept one worker busy on a one-unit run and three idle, and said
-    // nothing until the unit landed. Each unit's settings are cut into enough
-    // parts to feed every worker several times over, each part numbered from
-    // its place in the block so its records file under the same setting
-    // numbers they always did, and the line moves as parts land.
-    const workersN = pool.parallel ? pool.workers.length : 1;
-    const parts = [];                     // { u: index into parentRecords, from, to } -- into the unit's OWN list
-    const partsOf = [];                   // how many parts each unit was cut into
-    const payloads = [];
-    const agreedMap = {};
-    // THE FOUR THINGS A RULE HAS TO BEAT, kept beside the set (3.70.0). They are
-    // properties of the unit's held-back window and the hold length, not of any
-    // setting, so one small table serves the whole board.
-    const controlsMap = {};
-    for (let pi = 0; pi < parentRecords.length; pi++) {
-      const rec = parentRecords[pi];
-      // THE UNIT'S OWN LIST (3.52.0): the settings that place different orders
-      // on it, each carrying its place in the block so its records file there
-      const mine = heldOn[pi].map((i) => ({ ...settings[i], si: i }));
-      const partsPerUnit = Math.max(1, Math.min(mine.length, workersN * 4));
-      const partSize = Math.max(1, Math.ceil(mine.length / partsPerUnit));
-      const whole = s3Payload({ doc, parent, rec, settings: mine, fee, nullN });     // the votes are read once per unit
-      let n = 0;
-      for (let from = 0; from < mine.length; from += partSize) {
-        const to = Math.min(mine.length, from + partSize);
-        payloads.push({ ...whole, settings: mine.slice(from, to) });
-        parts.push({ u: pi, from, to });
-        n++;
-      }
-      partsOf.push(n);
-      if (pi % 5 === 4 || pi === parentRecords.length - 1) {
-        phaseNote(doc, { phase: 'reading the kept votes', done: pi + 1, total: parentRecords.length, word: 'units', startedMs: tRead });
-        saveSet(doc);
-      }
-    }
-    // the pricing clock starts when the pricing does, and the screen is told
-    // at once that this phase has begun with nothing finished yet — otherwise
-    // the previous phase's line sits there looking like the current one
-    tPrice = Date.now();
-    doc.perf.partsTotal = parts.length;
-    doc.perf.partsDone = 0;
-    phaseNote(doc, { phase: 'pricing the settings', done: 0, total: parts.length, word: 'parts', startedMs: tPrice,
-      extra: `0 of ${parentRecords.length} units` });
-    saveSet(doc);
-    const landed = new Array(parentRecords.length).fill(0);
-    const failedUnits = new Set();
-    let pricedSettings = 0;
-    await pool.forEach('s3Unit', payloads, (settled, i) => {
-      if (doc.cancelRequested) return;
-      const part = parts[i];
-      const rec = parentRecords[part.u];
-      if (settled.ok && settled.value) {
-        for (const row of settled.value.rows) {
-          // storedRecordOf, not a spread: the pricing hands back everything it
-          // worked out, and exactly one place decides what reaches disk
-          // (ruling 4 — stage 3 does not grow). A spread here would put the
-          // analysis block on 5.2 million records.
-          w.records.push({
-            ...require('./stagework').storedRecordOf(row),
-            u: rec.u, trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
-          });
-        }
-        // the unit's realised agreements, already worked out on the same walk
-        // the pricing used — kept beside the set, never on 329,280 records
-        for (const [k, v] of Object.entries(settled.value.agreed || {})) agreedMap[`${rec.u}|${k}`] = v;
-        if (settled.value.controls) {
-          const key = unitKeyOf(rec);
-          controlsMap[key] = { ...(controlsMap[key] || {}), ...settled.value.controls };
-        }
-        w.records.flush();
-        pricedSettings += part.to - part.from;
-      } else if (!settled.ok && !failedUnits.has(part.u)) {
-        // one failure per unit, whichever of its parts failed first: the set is
-        // short that unit, and the count of failures is the count of units
-        failedUnits.add(part.u);
-        doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
-      }
-      landed[part.u]++;
-      if (landed[part.u] === partsOf[part.u]) doc.perf.unitsDone++;
-      doc.perf.partsDone++;
-      doc.perf.elapsedMs = Date.now() - t0;
-      doc.perf.etaMs = doc.perf.partsDone ? Math.round(((Date.now() - tPrice) / doc.perf.partsDone) * (parts.length - doc.perf.partsDone)) : null;
-      // the SAME per-setting count cyclesTotal was built from, or a run that
-      // keeps scrambles reports a progress bar that never reaches its end
-      doc.perf.cyclesDone = pricedSettings * (1 + nullN + keepN);
-      phaseNote(doc, {
-        phase: 'pricing the settings', done: doc.perf.partsDone, total: parts.length, word: 'parts', startedMs: tPrice,
-        extra: `${doc.perf.unitsDone} of ${parentRecords.length} units · ${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} pricings`,
-      });
-      saveSet(doc);
-    });
-    if (doc.cancelRequested) { finishFail(doc, null, pool); return; }
-    await w.records.close();
-    const okN = parentRecords.length - doc.failures.length;
-    doc.counts = { unitsScored: okN, settings: settings.length, rows: rowstore.count(id, 'records'), failures: doc.failures.length };
-    doc.status = okN === parentRecords.length ? 'done' : 'incomplete';
-    doc.progress = doc.status === 'incomplete' ? `finished with ${doc.failures.length} unit(s) missing — the set does not match its own plan` : 'totalling the tables';
-    saveSet(doc);
-    const tallyGate = tallyBudgetFor({ settings: settings.length, coins: coinsN });
-    let lastTallySave = 0;
-    const tTally = Date.now();
-    const tallyNote = (dn, tn) => {
-      phaseNote(doc, { phase: 'totalling the tables', done: dn, total: tn, word: 'parts', startedMs: tTally });
-      const now = Date.now();
-      if (now - lastTallySave > 1000 || dn === tn) { lastTallySave = now; saveSet(doc); }
-    };
-    // what the members actually did, written before the tables are totalled
-    // because the totalling is what joins it onto every record
-    try { writeAgreed(doc.id, agreedMap); } catch (err) { doc.tallyError = `the agreements could not be saved: ${err.message}`; }
-    doc.controls = { at: new Date().toISOString(), units: controlsMap };
-    if (tallyGate.band === 'refuse') doc.tallyError = tallyGate.message;
-    else { try { await buildTally(doc, pool, tallyNote); } catch (err) { doc.tallyError = String(err.message || err); } }
-    doc.progress = doc.status === 'incomplete' ? doc.progress : '';
-    doc.finishedAt = new Date().toISOString();
-    saveSet(doc);
-    if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
-    pool.abort();
-  })().catch((err) => finishFail(doc, err, pool));
+    // EVERYTHING A UNIT STILL NEEDS, per unit: at a launch that is every
+    // setting it holds, each carrying its place in the block (3.52.0)
+    const work = parentRecords.map((rec, pi) => ({ rec, settings: heldOn[pi].map((i) => ({ ...settings[i], si: i })), drop: null }));
+    live = liveStateFor(parentRecords, {}, {}, w);
+    const landed = await runStage3Parts({ doc, parent, pool, w, parentRecords, work, fee, nullN, keepN, live, t0, tRead });
+    if (!landed) return;
+    await finishStage3({ doc, pool, w, parentRecords, settings, coinsN, live });
+  })().catch((err) => {
+    // a run that failed keeps its checkpoint too: what it had priced is on
+    // disk, and this is what lets it be started again once the cause is fixed
+    if (live) { try { writeCheckpoint(doc, live); } catch (_) { /* the failure itself is what is reported */ } }
+    finishFail(doc, err, pool);
+  });
   // the count the gates read and the plan was written with — the built
   // block lives in the background part and is held equal to this count there
   return { id, name: doc.name, units: parentRecords.length, settings: counted.kept };
+}
+
+// ---- THE PRICING, SHARED BY A LAUNCH AND A START-AGAIN (3.82.0) --------------
+//
+// One loop, one tail. A launch prices every setting of every unit; a
+// start-again prices what its store does not yet hold. Two copies of this
+// loop would be two places for a pause to lose something.
+
+// What a run holds in memory and nowhere else while it prices, and what the
+// checkpoint is written from. `pricedBase` is what was already on disk when a
+// paused run was started again, so the progress line and the cycle count
+// carry on from where they were rather than starting at nothing.
+function liveStateFor(parentRecords, agreedMap, controlsMap, w, pricedBase = 0) {
+  return {
+    units: parentRecords.map((r) => r.u),
+    agreedMap, controlsMap,
+    workersN: null, priced: 0, pricedBase, checkpointedAt: 0,
+    pricedSettings() { return this.pricedBase + this.priced; },
+    storeRows: () => w.records.count,
+    storeBlocks: () => w.records.blockCount,
+  };
+}
+
+// Reading every unit's kept votes back out of the store takes real time
+// on a big set, and a screen that says "writing the plan" through all of
+// it reads as stuck (owner, 2026-08-27). Say what is actually happening,
+// as it happens.
+// THE WORK IS HANDED OUT IN PARTS, NOT UNITS (owner order, 2026-09-02:
+// "we're running 1.75M settings with 36.7M pricings and we're getting
+// about 1 cpu worth of effort and no status updates"). One payload per
+// unit kept one worker busy on a one-unit run and three idle, and said
+// nothing until the unit landed. Each unit's settings are cut into enough
+// parts to feed every worker several times over, each part numbered from
+// its place in the block so its records file under the same setting
+// numbers they always did, and the line moves as parts land.
+//
+// `work` is one entry per unit still to price: its parent record, the
+// settings to price (each carrying its place in the block), and `drop`, the
+// setting numbers whose rows are NOT wanted -- a setting priced again only so
+// its agreements and comparisons come back, because those two come back with
+// the pricing and from nowhere else (continueStage3). A launch drops nothing.
+//
+// Resolves true when every part landed; false when the run was paused on the
+// way, in which case the set has already been finished off as paused.
+async function runStage3Parts({ doc, parent, pool, w, parentRecords, work, fee, nullN, keepN, live, t0, tRead }) {
+  const { agreedMap, controlsMap } = live;
+  const workersN = pool.parallel ? pool.workers.length : 1;
+  const parts = [];                     // { k: index into work, from, to } -- into the unit's OWN list
+  const partsOf = [];                   // how many parts each unit was cut into
+  const payloads = [];
+  for (let k = 0; k < work.length; k++) {
+    const { rec, settings: mine } = work[k];
+    const partsPerUnit = Math.max(1, Math.min(mine.length, workersN * 4));
+    const partSize = Math.max(1, Math.ceil(mine.length / partsPerUnit));
+    const whole = s3Payload({ doc, parent, rec, settings: mine, fee, nullN });     // the votes are read once per unit
+    let n = 0;
+    for (let from = 0; from < mine.length; from += partSize) {
+      const to = Math.min(mine.length, from + partSize);
+      payloads.push({ ...whole, settings: mine.slice(from, to) });
+      parts.push({ k, from, to });
+      n++;
+    }
+    partsOf.push(n);
+    if (k % 5 === 4 || k === work.length - 1) {
+      phaseNote(doc, { phase: 'reading the kept votes', done: k + 1, total: work.length, word: 'units', startedMs: tRead });
+      saveSet(doc);
+    }
+  }
+  live.workersN = workersN;
+  // the pricing clock starts when the pricing does, and the screen is told
+  // at once that this phase has begun with nothing finished yet — otherwise
+  // the previous phase's line sits there looking like the current one
+  const tPrice = Date.now();
+  doc.perf.partsTotal = parts.length;
+  doc.perf.partsDone = 0;
+  phaseNote(doc, { phase: 'pricing the settings', done: 0, total: parts.length, word: 'parts', startedMs: tPrice,
+    extra: `${doc.perf.unitsDone} of ${parentRecords.length} units` });
+  saveSet(doc);
+  // the state as the pricing begins, so a restart in its first minute loses nothing
+  writeCheckpoint(doc, live);
+  const landed = new Array(work.length).fill(0);
+  const failedUnits = new Set();
+  await pool.forEach('s3Unit', payloads, (settled, i) => {
+    if (doc.cancelRequested) return;
+    const part = parts[i];
+    const { rec, drop } = work[part.k];
+    if (settled.ok && settled.value) {
+      let kept = 0;
+      for (const row of settled.value.rows) {
+        // a row already on disk, priced again only for what rides with it
+        if (drop && drop.has(row.si)) continue;
+        // storedRecordOf, not a spread: the pricing hands back everything it
+        // worked out, and exactly one place decides what reaches disk
+        // (ruling 4 — stage 3 does not grow). A spread here would put the
+        // analysis block on 5.2 million records.
+        w.records.push({
+          ...require('./stagework').storedRecordOf(row),
+          u: rec.u, trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size, geometry: rec.geometry,
+        });
+        kept++;
+      }
+      if (kept) { w.records.flush(); live.priced += kept; }
+      // the unit's realised agreements, already worked out on the same walk
+      // the pricing used — kept beside the set, never on 329,280 records
+      for (const [k, v] of Object.entries(settled.value.agreed || {})) agreedMap[`${rec.u}|${k}`] = v;
+      if (settled.value.controls) {
+        const key = unitKeyOf(rec);
+        controlsMap[key] = { ...(controlsMap[key] || {}), ...settled.value.controls };
+      }
+    } else if (!settled.ok && !failedUnits.has(part.k)) {
+      // one failure per unit, whichever of its parts failed first: the set is
+      // short that unit, and the count of failures is the count of units
+      failedUnits.add(part.k);
+      doc.failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
+    }
+    landed[part.k]++;
+    if (landed[part.k] === partsOf[part.k]) doc.perf.unitsDone++;
+    doc.perf.partsDone++;
+    doc.perf.elapsedMs = Date.now() - t0;
+    doc.perf.etaMs = doc.perf.partsDone ? Math.round(((Date.now() - tPrice) / doc.perf.partsDone) * (parts.length - doc.perf.partsDone)) : null;
+    // the SAME per-setting count cyclesTotal was built from, or a run that
+    // keeps scrambles reports a progress bar that never reaches its end
+    doc.perf.cyclesDone = live.pricedSettings() * (1 + nullN + keepN);
+    phaseNote(doc, {
+      phase: 'pricing the settings', done: doc.perf.partsDone, total: parts.length, word: 'parts', startedMs: tPrice,
+      extra: `${doc.perf.unitsDone} of ${parentRecords.length} units · ${doc.perf.cyclesDone.toLocaleString()} of ${doc.perf.cyclesTotal.toLocaleString()} pricings`,
+    });
+    saveSet(doc);
+    checkpointIfDue(doc, live);
+  });
+  if (doc.cancelRequested) {
+    // paused: the memory-only state goes to disk BEFORE the set is marked, so
+    // the mark can say what can be done with it
+    writeCheckpoint(doc, live);
+    doc.progress = `paused at ${Number(doc.perf.partsDone).toLocaleString()} of ${Number(doc.perf.partsTotal).toLocaleString()} parts · `
+      + `${Number(doc.perf.unitsDone).toLocaleString()} of ${parentRecords.length.toLocaleString()} units priced`;
+    finishFail(doc, null, pool);
+    return false;
+  }
+  return true;
+}
+
+// The tail every stage 3 run ends through: the store closed, the counts and
+// the status written, the agreements and the four comparisons kept beside the
+// set, the tables totalled, and the checkpoint gone because a finished set has
+// nothing to start again from.
+async function finishStage3({ doc, pool, w, parentRecords, settings, coinsN, live }) {
+  const { agreedMap, controlsMap } = live;
+  const id = doc.id;
+  await w.records.close();
+  const okN = parentRecords.length - doc.failures.length;
+  doc.counts = { unitsScored: okN, settings: settings.length, rows: rowstore.count(id, 'records'), failures: doc.failures.length };
+  doc.status = okN === parentRecords.length ? 'done' : 'incomplete';
+  doc.progress = doc.status === 'incomplete' ? `finished with ${doc.failures.length} unit(s) missing — the set does not match its own plan` : 'totalling the tables';
+  saveSet(doc);
+  const tallyGate = tallyBudgetFor({ settings: settings.length, coins: coinsN });
+  let lastTallySave = 0;
+  const tTally = Date.now();
+  const tallyNote = (dn, tn) => {
+    phaseNote(doc, { phase: 'totalling the tables', done: dn, total: tn, word: 'parts', startedMs: tTally });
+    const now = Date.now();
+    if (now - lastTallySave > 1000 || dn === tn) { lastTallySave = now; saveSet(doc); }
+  };
+  // what the members actually did, written before the tables are totalled
+  // because the totalling is what joins it onto every record
+  try { writeAgreed(doc.id, agreedMap); } catch (err) { doc.tallyError = `the agreements could not be saved: ${err.message}`; }
+  doc.controls = { at: new Date().toISOString(), units: controlsMap };
+  if (tallyGate.band === 'refuse') doc.tallyError = tallyGate.message;
+  else { try { await buildTally(doc, pool, tallyNote); } catch (err) { doc.tallyError = String(err.message || err); } }
+  doc.progress = doc.status === 'incomplete' ? doc.progress : '';
+  doc.finishedAt = new Date().toISOString();
+  saveSet(doc);
+  dropCheckpoint(id);
+  if (activeSet && activeSet.id === doc.id) { activeSet = null; activePool = null; }
+  pool.abort();
+}
+
+// A PAUSED RUN, STARTED AGAIN (3.82.0, owner order 2026-09-07: "an entry
+// written to the stage 3 sweep drop down list as in a paused record set which
+// can then be selected for start again perhaps using the existing start
+// button").
+//
+// What it keeps: every record its store already holds, and the agreements and
+// comparisons its checkpoint holds. What it prices: every setting of every
+// unit that is not on disk, plus a full re-pricing (rows thrown away) of any
+// unit whose rows are all there but whose agreements or comparisons are not --
+// they land with the rows and are written to the checkpoint once a minute, so
+// a restart can leave a unit in that state. What it refuses: a set that is not
+// paused (or interrupted, or failed) with a checkpoint; a parent that no
+// longer holds the same units; price files that moved since the launch; a
+// block that no longer rebuilds to the one the run declared; a store with a
+// duplicate row.
+function continueStage3(id) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 3) throw new Error(`unknown stage 3 record set '${id}'`);
+  if (!['paused', 'interrupted', 'error'].includes(doc.status)) {
+    throw new Error(`${doc.name} is ${doc.status} — only a paused run can be started again`);
+  }
+  const cp = readCheckpoint(id);
+  if (!cp) {
+    throw new Error(`${doc.name} kept no record of where it stopped — it was stopped by code that did not keep one, `
+      + 'so it cannot be started again. Delete it and launch it afresh.');
+  }
+  claimOrRefuse();
+  const parent = getSet((doc.parent || {}).id || (doc.params || {}).from || '');
+  if (!parent || parent.stage !== 2) throw new Error('the stage 2 record set this was priced from is no longer on the box');
+  // THE SAME PRICES. The rest of this run must be priced on exactly the price
+  // files the first part was, or the two halves of one set disagree.
+  const fresh = stampManifest(`${id}-continue`, coinsOfParent(parent));
+  const diff = manifestDiff(doc.dataManifest, fresh);
+  if (diff && !diff.same) {
+    throw new Error(`${manifestComplaint(diff, doc.name)} — the rest of this run would be priced on different prices from the part already done`);
+  }
+  // THE SAME UNITS, IN THE ORDER THE RUN HAD THEM: by record number on the
+  // parent, never by the parent's table, which may have been re-sorted or
+  // filtered since the launch (3.78.0).
+  const units = cp.units.length ? cp.units : ((doc.plan || {}).unitSettings || []).map((x) => x.u);
+  if (!units.length) throw new Error(`${doc.name} does not record which units it priced, so it cannot be started again`);
+  const byU = new Map(stage3UnitsFor(parent, 0, units).records.map((r) => [r.u, r]));
+  const parentRecords = units.map((u) => byU.get(u)).filter(Boolean);
+  if (parentRecords.length !== units.length) {
+    throw new Error(`${units.length - parentRecords.length} of the ${units.length} units this run priced are no longer on ${parent.name}`);
+  }
+  // THE SAME BLOCK: the same count and the same names in the same places, or
+  // a setting's number on disk would mean a different setting from here on.
+  const sizes = [...new Set(parentRecords.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
+  const { kept: settings, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), parentRecords);
+  const labels = (doc.plan || {}).settingLabels || [];
+  if (settings.length !== (doc.plan || {}).settings || labels.length !== settings.length || settings.some((st, i) => st.label !== labels[i])) {
+    throw new Error(`the block rebuilds to ${settings.length.toLocaleString()} settings and this run declared ${Number((doc.plan || {}).settings || 0).toLocaleString()} — `
+      + 'not the same block, so nothing was priced');
+  }
+  const fee = Number((doc.params || {}).fee) || 0;
+  const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
+  const keepN = Math.max(0, Math.floor(num((doc.params || {}).keepN, 0)));
+  // WHAT IS ON DISK. A block the writer reserved but never finished (a
+  // restart in mid-write) is cut off so the file and its sidecar agree; then
+  // every row's unit and setting number is read, and a duplicate refuses,
+  // because a store that already holds a row twice cannot be added to safely.
+  const trimmed = rowstore.trimToMeta(id, 'records');
+  const have = new Map();
+  let dup = 0;
+  rowstore.each(id, 'records', (r) => {
+    let set = have.get(r.u);
+    if (!set) { set = new Set(); have.set(r.u, set); }
+    if (set.has(r.si)) dup++; else set.add(r.si);
+  });
+  if (dup) throw new Error(`the records of ${doc.name} hold ${dup.toLocaleString()} duplicate row(s), so it cannot be started again without a repair`);
+  const agreedMap = { ...cp.agreedMap };
+  const controlsMap = { ...cp.controlsMap };
+  const swk = require('./stagework');
+  const work = [];
+  let doneUnits = 0;
+  let pricedBase = 0;
+  let settingsRepriced = 0;
+  for (let pi = 0; pi < parentRecords.length; pi++) {
+    const rec = parentRecords[pi];
+    const mine = heldOn[pi].map((i) => ({ ...settings[i], si: i }));
+    const got = have.get(rec.u) || new Set();
+    const todo = mine.filter((st) => !got.has(st.si));
+    pricedBase += mine.length - todo.length;
+    // THE AGREEMENTS AND THE COMPARISONS COME BACK WITH THE PRICING AND FROM
+    // NOWHERE ELSE, and a part hands back only the ones its own settings read:
+    // one agreement per decision-and-rule, one set of comparisons per 24/7-or-
+    // 24/5-and-hold-length. The checkpoint is written once a minute, so a
+    // restart can leave a unit with rows on disk whose agreements and
+    // comparisons were still in memory. Each one missing is recovered by
+    // pricing ONE setting on disk that reads it, its row thrown away -- never
+    // the whole unit again, and never guessed.
+    const prefix = `${rec.u}|`;
+    const haveA = new Set(Object.keys(agreedMap).filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length)));
+    const haveC = new Set(Object.keys(controlsMap[unitKeyOf(rec)] || {}));
+    const aKey = (st) => swk.agreedKey(st.decision, swk.agrOf(st));
+    const cKey = (st) => controlKeyOf({ weekdaysOnly: st.weekdaysOnly, tHours: bracketLib.tHoursOn(st.tHours, rec.geometry) });
+    const coveredA = new Set(todo.map(aKey));
+    const coveredC = new Set(todo.map(cKey));
+    const drop = new Set();
+    const extra = [];
+    for (const st of mine) {
+      if (!got.has(st.si)) continue;                       // not on disk: it is in todo already
+      const ka = aKey(st);
+      const kc = cKey(st);
+      if ((haveA.has(ka) || coveredA.has(ka)) && (haveC.has(kc) || coveredC.has(kc))) continue;
+      extra.push(st);
+      drop.add(st.si);
+      coveredA.add(ka);
+      coveredC.add(kc);
+    }
+    if (!todo.length && !extra.length) { doneUnits++; continue; }
+    settingsRepriced += extra.length;
+    work.push({ rec, settings: [...todo, ...extra].sort((a, b) => a.si - b.si), drop: drop.size ? drop : null });
+  }
+  const before = doc.status;
+  doc.status = 'running';
+  doc.cancelRequested = null;
+  doc.error = null;
+  doc.finishedAt = null;
+  doc.failures = [];                          // a unit that failed last time is tried again
+  doc.continued = [...(doc.continued || []), {
+    at: new Date().toISOString(), from: before, release: ENGINE_VERSION,
+    unitsKept: doneUnits, settingsKept: pricedBase, unitsToPrice: work.length, settingsRepriced, rowsTrimmed: trimmed,
+  }];
+  doc.perf = {
+    ...(doc.perf || {}), unitsDone: doneUnits, unitsTotal: parentRecords.length,
+    etaMs: null, workers: null, cyclesDone: pricedBase * (1 + nullN + keepN),
+  };
+  doc.progress = `starting again: ${doneUnits.toLocaleString()} of ${parentRecords.length.toLocaleString()} units were already priced`;
+  activeSet = doc;
+  saveSet(doc);
+  const pool = createPool();
+  activePool = pool;
+  doc.perf.workers = pool.parallel ? pool.workers.length : 1;
+  saveSet(doc);
+  const t0 = Date.now() - Number((doc.perf || {}).elapsedMs || 0);   // the clock carries on from where it was
+  const tRead = Date.now();
+  const w = { records: rowstore.writer(id, 'records', { offThread: true }) };
+  const coinsN = new Set(parentRecords.map((r) => r.trade)).size;
+  const live = liveStateFor(parentRecords, agreedMap, controlsMap, w, pricedBase);
+  (async () => {
+    if (work.length) {
+      const landed = await runStage3Parts({ doc, parent, pool, w, parentRecords, work, fee, nullN, keepN, live, t0, tRead });
+      if (!landed) return;
+    }
+    await finishStage3({ doc, pool, w, parentRecords, settings, coinsN, live });
+  })().catch((err) => {
+    try { writeCheckpoint(doc, live); } catch (_) { /* the failure itself is what is reported */ }
+    finishFail(doc, err, pool);
+  });
+  return { id, name: doc.name, units: parentRecords.length, unitsKept: doneUnits, unitsToPrice: work.length, settingsRepriced, settings: settings.length };
 }
 
 // ---- stage 3 tables -------------------------------------------------------------
@@ -3957,6 +4236,7 @@ function deleteSet(id, confirm) {
   rowstore.remove(doc.id);
   try { fs.rmSync(tallyFile(doc.id), { force: true }); } catch (_) { /* may not exist */ }
   try { fs.rmSync(setFile(doc.id), { force: true }); } catch (_) { /* reported below */ }
+  dropCheckpoint(doc.id);
   if (recordsInHand.id === doc.id) { recordsInHand.id = null; recordsInHand.rows = null; }
   if (tallyInHand.id === doc.id) { tallyInHand.id = null; tallyInHand.tally = null; }
   if (tallyInHand.staleId === doc.id) { tallyInHand.staleId = null; }
@@ -6070,6 +6350,7 @@ module.exports = {
   missingSettingsIn, nextSettingNumber,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
   funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
+  continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,

@@ -82,7 +82,10 @@ async function waitDone(id, label) {
   const p = {
     universe: [A, B], sizes: { singles: true }, geometry: 'daily-1d',
     windowLayout: 'split70', allLoaded: false, startMonth: '2024-01', endMonth: '2024-12',
-    nullN: 9, desc: 'adversarial end-to-end',
+    // the fee has been required at stage 1 since it priced the tuning-slice $
+    // every unit is read by; the exam had not been run since and refused at
+    // its first press (found 2026-09-07)
+    nullN: 9, fee: 0.00125, desc: 'adversarial end-to-end',
   };
   campaign.setCampaign(EXAM_CAMP);
   console.log('stage 1...');
@@ -145,22 +148,35 @@ async function waitDone(id, label) {
     agreeRule: 'count', agreePct: 50,
   });
   made.push(s3.id);
-  assert.strictEqual(s3.settings, 14, 'seven holding times × two decisions × one agreement');
+  // THE COUNT IS READ FROM THE LADDER AND THE FOLD, NOT PINNED (found
+  // 2026-09-07): the exam said 14 from the day it was written. Since 3.72.0
+  // the stage 3 grid offers the chunk's own hold length beside the numeric
+  // ladder, so a holding-time permute declares the whole ladder plus one; and
+  // since 3.52.0 a setting that places the same orders as another on every
+  // unit is paid for once, and on two daily-1d units the chunk's own length is
+  // a rung the ladder already holds. A number typed here goes stale the next
+  // time either moves; these are read from the run's own plan instead.
+  const T_N = require('../../lib/bracket').T_HOURS.length + 1;   // every holding time, plus the chunk's own
   const d3 = await waitDone(s3.id, 'stage 3');
   assert.strictEqual(d3.status, 'done', `stage 3 ended ${d3.status}: ${JSON.stringify(d3.failures)}`);
-  assert.strictEqual(d3.perf.cyclesTotal, 14 * 2 * 10, '14 settings × 2 units × (1 real + 9 deals) pricings declared');
+  assert.strictEqual(d3.plan.declaredSettings, T_N * 2, `${T_N} holding times × two decisions × one agreement declared`);
+  assert.strictEqual(d3.plan.sameTradeFolded, 2, 'the chunk\'s own length folds into the rung it equals on daily-1d, once per decision');
+  const S3_SETTINGS = d3.plan.declaredSettings - d3.plan.sameTradeFolded;
+  assert.strictEqual(s3.settings, S3_SETTINGS, 'the launch answers with the count it prices, the fold taken out');
+  assert.strictEqual(d3.plan.settings, S3_SETTINGS, 'and the plan records the same count');
+  assert.strictEqual(d3.perf.cyclesTotal, S3_SETTINGS * 2 * 10, `${S3_SETTINGS} settings × 2 units × (1 real + 9 deals) pricings declared`);
   assert.strictEqual(d3.perf.cyclesDone, d3.perf.cyclesTotal, 'a finished set has done every pricing it declared');
-  assert.strictEqual(rowstore.count(s3.id, 'records'), 14 * 2, 'one record per setting per unit');
+  assert.strictEqual(rowstore.count(s3.id, 'records'), S3_SETTINGS * 2, 'one record per setting per unit');
 
   const ranked = stages.stage3Ranked(s3.id, 0, 50);
-  assert.strictEqual(ranked.total, 14);
+  assert.strictEqual(ranked.total, S3_SETTINGS);
   for (const r of ranked.rows) {
     assert.strictEqual(r.coins, 2);
     assert.ok(r.coinsInMoney >= 0 && r.coinsInMoney <= 2);
     assert.strictEqual(r.pairs, 2 * 9, 'every setting read against the same nine deals per coin');
   }
   const coins = stages.stage3Coins(s3.id, { sort: 'share', limit: 50 });
-  assert.strictEqual(coins.total, 14, 'seven cells × two coins — the decision variants group UNDER each row');
+  assert.strictEqual(coins.total, S3_SETTINGS, `${T_N} cells × two coins — the decision variants group UNDER each row`);
   const rowA = coins.rows.find((r) => r.trade === A && / t65h/.test(r.cellLabel));
   assert.ok(rowA, 'the t65h cell must have a coin row for the planted coin');
   assert.strictEqual(rowA.rows, 2, 'the two decision variants are the records under the row');

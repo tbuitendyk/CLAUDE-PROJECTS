@@ -141,11 +141,16 @@ module.exports = {
     // THE THREE STAGES. Every out.<key> the message reads must be returned by
     // the function behind that stage's route, read from lib/stages.js rather
     // than restated here.
-    for (const [out, fn] of [['swOut1', 'function startStage1'], ['swOut2', 'function startStage2'], ['swOut3', 'function startStage3']]) {
-      const at = SWEEP.indexOf(`say('#${out}'`);
-      assert.ok(at > 0, `#${out} must still report what was launched`);
+    // ... and the start-again of a paused run (3.82.0) reads its keys from
+    // the function behind ITS route, the same way
+    for (const [out, fn, lead, answer] of [
+      ['swOut1', 'function startStage1', 'started <b>', 'got'], ['swOut2', 'function startStage2', 'started <b>', 'got'],
+      ['swOut3', 'function startStage3', 'started <b>', 'got'], ['swOut3', 'function continueStage3', 'started again <b>', 'again'],
+    ]) {
+      const at = SWEEP.indexOf(`say('#${out}', \`${lead}`);
+      assert.ok(at > 0, `#${out} must still report what was launched (${lead.trim()})`);
       const said = SWEEP.slice(at, SWEEP.indexOf('`)', at));
-      const keys = [...said.matchAll(/\bgot\.(\w+)/g)].map((m) => m[1]);
+      const keys = [...said.matchAll(new RegExp(`\\b${answer}\\.(\\w+)`, 'g'))].map((m) => m[1]);
       assert.ok(keys.length, `#${out} reports nothing about the launch it just made`);
       const fnAt = STAGES.indexOf(fn);
       assert.ok(fnAt > 0, `${fn} must still exist to read the contract from`);

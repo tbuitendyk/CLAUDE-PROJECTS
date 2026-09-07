@@ -204,7 +204,10 @@ window.HELP = {
       },
       swDesc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
       swGo2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
-      swFrom3: { what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever.' },
+      swFrom3: {
+        what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever. A paused stage 3 run is offered here too, and start stage 3 then starts it again where it stopped.',
+        more: 'A paused run keeps every record it had already priced and the state it held in memory when it was paused, so starting it again prices only what is left. While a paused run is chosen the boxes below are ghosted: it keeps the settings it was launched with, and none of them can be changed here. A run that was interrupted by a service restart, or that failed, is offered the same way when it kept that state.',
+      },
       swPick3: {
         what: 'Which of the parent\'s records get priced. N records: the carry forward box beside it decides — 0 for all, N for the top of the parent\'s table. Selected records: exactly the records ticked on the parent\'s stage 2 table on Boards.',
         more: 'The ticks on the stage 2 table save on that record set, so what is picked survives a page flip and a restart, and the count of picked records is shown beside this when Selected records is chosen. A launch with Selected records and nothing ticked refuses rather than pricing nothing or everything. The stage 3 set records the exact list it priced, so a rebuild or a relaunch prices those same records whatever is ticked later.',
@@ -358,8 +361,8 @@ window.HELP = {
         more: 'Left empty, it takes the next free number, which is what the box shows greyed. A name another record set already has is refused, so no two sets can share one; rename the other on Boards first.',
       },
       swDesc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
-      swGo3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards.' },
-      swStop: { what: 'Stops the stage run that is going. Everything already written stays; the set reports itself cancelled.' },
+      swGo3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards. With a paused run chosen in the box above, starts that run again where it stopped.' },
+      swStop: { what: 'Pauses a stage 3 run, or stops a stage 1 or 2 run. Everything already written stays. A paused stage 3 run keeps the state it held in memory as well, and is offered in the stage 3 section\'s box to be started again; a stopped stage 1 or 2 run reports itself cancelled and cannot be.' },
 
     },
   },

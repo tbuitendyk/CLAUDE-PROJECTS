@@ -676,3 +676,48 @@ carried out 2026-08-28 under its own GO — decision 50.
     weekly unit stayed doubled. The tables' reader now refuses a set behind
     on the fold, the same door the 3.44.0 strip uses, so every screen falls
     through to the slot that folds it and totals it again. Third digit.
+68. **A stage 3 run can be paused and started again, and the run that was
+    going when this shipped can be paused from outside** (3.82.0, owner order
+    2026-09-07: "build the debug code injection and save the state and memory
+    ... write the code that allows the continuation" and "a pause button ...
+    an entry written to the stage 3 sweep drop down list as in a paused record
+    set which can then be selected for start again perhaps using the existing
+    start button"). What a run holds in memory and nowhere else -- the unit
+    order, the agreements and the four comparisons per unit -- is written to a
+    checkpoint as the pricing begins, once a minute, on a pause and on a
+    failure, and dropped when the run lands. The checkpoint lives in
+    `data/stagesets/checkpoints/`, in a folder of its own: beside the set it
+    was read by the list as a second, headless copy of the set (the rehearsal
+    found it). A stopped stage 3 run that kept one reads as `paused`, not
+    `cancelled`, because the word says what can be done with it; stage 1 and
+    2 still cancel. Started again, a run prices only what its store lacks --
+    the same block, on the same price files, on the same units, or it refuses
+    by sentence -- and a torn last block the index never claimed is cut off
+    first. A unit whose rows are all on disk but whose agreements or
+    comparisons never reached the checkpoint (they come back with the pricing
+    and from nowhere else, and a checkpoint can be a minute behind) gets them
+    back by pricing ONE setting per missing answer with its row thrown away,
+    never the whole unit again. The screen: the control on the running line
+    reads `pause` on a stage 3 run and `stop` on the others; a paused run is
+    an entry in the stage 3 section's box, everything below the box is
+    ghosted while it is chosen, and `start stage 3` starts it again. The
+    rehearsal proves a paused run, a run killed outright and a run paused
+    through the debugger all land equal to the run that was never stopped on
+    everything that does not depend on the deals. Second digit: new
+    behaviour and a new control.
+    `tools/capture-stage3.js` serves ONE run, the one on 3.81.0 code that
+    keeps no checkpoint: it opens Node's debugger on the service with
+    SIGUSR1, breaks on the next part to land, writes the same checkpoint out
+    of the paused frame's own variables, asks the run to stop, and lets the
+    process go; the workers keep pricing through the second it is held.
+    RULE TEN: it, its test and its help go the day that run has been started
+    again. Two things the rehearsal taught, both written into the tool: a
+    paused frame sees an outer variable only if some inner function refers to
+    it (cancelStage is only ever exported and was invisible; activeSet and
+    activePool are referred to by every launch and are not), and the tool
+    must attach BEFORE the first part lands to be sure of a run this small.
+    The rehearsal itself needs two worker threads -- with none, the pricing
+    runs on the one thread that would answer the pause, and nothing gets a
+    turn until the run ends -- and sets that in the pool's settings file for
+    its own duration when the box it runs on has fewer, putting it back
+    exactly as it was.

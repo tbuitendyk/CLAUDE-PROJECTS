@@ -1150,6 +1150,12 @@ app.get('/api/stageset/:id/fill-units/status', (req, res) => {
   catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
 });
 app.post('/api/stageset/:id/stop', (req, res) => res.json(stages.cancelStage(req.params.id)));
+// A PAUSED STAGE 3 RUN, STARTED AGAIN (3.82.0, owner order). The same gate a
+// launch goes through: one heavy job at a time, refused in a sentence.
+app.post('/api/stageset/:id/continue', (req, res) => {
+  try { return res.json(stages.continueStage3(String(req.params.id || ''))); }
+  catch (err) { return res.status(409).json({ error: String(err.message || err) }); }
+});
 app.post('/api/stageset/:id/notes', (req, res) => {
   try { return res.json(stages.setSetNotes(req.params.id, (req.body || {}).text)); }
   catch (err) { return res.status(400).json({ error: err.message }); }

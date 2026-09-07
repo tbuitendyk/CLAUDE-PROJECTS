@@ -523,4 +523,25 @@ function blocksOf(runId, name) {
   return m && Array.isArray(m.blocks) ? m.blocks : null;
 }
 
-module.exports = { storeDir, storeFile, plainFile, gzFile, formatOf, writer, each, readAll, page, count, exists, bytes, remove, rebuildMeta, blocksOf, readBlocks };
+// A SQUASHED FILE'S TORN TAIL, CUT OFF (3.82.0). The sidecar names the blocks
+// that are whole; a service killed between a block's bytes landing and its
+// index being written leaves bytes past the last indexed block that no reader
+// will ever see, and a writer that opens the file next appends AFTER them.
+// Nothing is lost by cutting them -- the rows in them were never indexed, so
+// a run started again prices them afresh -- and the file then ends exactly
+// where its sidecar says it does. Returns the bytes cut; 0 when nothing was.
+function trimToMeta(runId, name) {
+  const file = storeFile(runId, name);
+  if (!isGz(file)) return 0;
+  const meta = readMeta(runId, name);
+  if (!meta || !Array.isArray(meta.blocks)) return 0;
+  const last = meta.blocks[meta.blocks.length - 1];
+  const expected = last ? Number(last.at) + Number(last.bytes) : 0;
+  let size = 0;
+  try { size = fs.statSync(file).size; } catch (_) { return 0; }
+  if (!(size > expected)) return 0;
+  fs.truncateSync(file, expected);
+  return size - expected;
+}
+
+module.exports = { storeDir, storeFile, plainFile, gzFile, formatOf, writer, each, readAll, page, count, exists, bytes, remove, rebuildMeta, blocksOf, readBlocks, trimToMeta };

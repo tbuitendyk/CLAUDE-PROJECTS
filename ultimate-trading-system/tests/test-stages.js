@@ -220,9 +220,12 @@ module.exports = {
       'both budget gates are the count\'s arithmetic — and the disk gate reads what the units hold between them, never settings × units');
     assert.ok(after.includes('const declaredSettings = settingsFor(params, sizes);') && after.includes('foldSameTradeSettings(declaredSettings, parentRecords)'),
       'the block is built and folded behind the answer');
-    assert.ok(after.indexOf('settings.length !== counted.kept || declaredSettings.length !== counted.declared') < after.indexOf('s3Payload({ doc, parent, rec, settings: mine, fee, nullN })'),
+    // 3.82.0: the hand-out lives in runStage3Parts, shared with a paused run
+    // started again; the launch checks the block, then calls it
+    assert.ok(after.indexOf('settings.length !== counted.kept || declaredSettings.length !== counted.declared') < after.indexOf('await runStage3Parts({'),
       'the built block is held against the count before any unit is handed out');
-    assert.ok(after.indexOf('if (heldOn[u].length !== counted.perUnit[u]) {') < after.indexOf('s3Payload({ doc, parent, rec, settings: mine, fee, nullN })'),
+    assert.ok(src.includes('s3Payload({ doc, parent, rec, settings: mine, fee, nullN })'), 'and the hand-out still reads each unit\'s votes once');
+    assert.ok(after.indexOf('if (heldOn[u].length !== counted.perUnit[u]) {') < after.indexOf('await runStage3Parts({'),
       'and what each unit holds is held against the count too, unit by unit');
     assert.ok(after.includes('the cost line and the launch disagree, so nothing was priced'), 'and a disagreement says so and stops');
     assert.ok(after.includes('settingLabels: settings.map((s) => s.label),'), 'the names are written onto the plan once the block exists');
@@ -524,19 +527,22 @@ module.exports = {
   async theStageThreePricingIsHandedOutInParts() {
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     const start = src.indexOf('function startStage3(params) {');
-    const fn = src.slice(start, src.indexOf('\n}\n', src.indexOf('return { id, name: doc.name', start)));
+    const launch = src.slice(start, src.indexOf('\n}\n', src.indexOf('return { id, name: doc.name', start)));
+    // 3.82.0: the loop is runStage3Parts, shared with a paused run started
+    // again; the launch builds each unit's own list and hands it over
+    const fn = src.slice(src.indexOf('async function runStage3Parts('), src.indexOf('\nasync function finishStage3('));
     // THE UNIT'S OWN LIST (3.52.0): a unit is handed only the settings that
     // place different orders on it, each carrying its place in the block, so
     // its records file there whichever part priced them
-    assert.ok(fn.includes('const mine = heldOn[pi].map((i) => ({ ...settings[i], si: i }));'), 'a unit is handed its own list, each setting carrying its place in the block');
+    assert.ok(launch.includes('settings: heldOn[pi].map((i) => ({ ...settings[i], si: i }))'), 'a unit is handed its own list, each setting carrying its place in the block');
     assert.ok(fn.includes('const partsPerUnit = Math.max(1, Math.min(mine.length, workersN * 4));'), 'enough parts to feed every worker several times over, never more parts than the unit holds');
     assert.ok(fn.includes('const whole = s3Payload({ doc, parent, rec, settings: mine, fee, nullN });'), 'the votes are read once per unit');
     assert.ok(fn.includes('payloads.push({ ...whole, settings: mine.slice(from, to) });'), 'each part carries its slice of the unit\'s own list');
     assert.ok(!/siFrom/.test(fn), 'a part no longer numbers its rows from an offset — the place travels on the setting');
     assert.ok(fn.includes("phase: 'pricing the settings', done: doc.perf.partsDone, total: parts.length, word: 'parts', startedMs: tPrice,"), 'progress counts parts as they land');
-    assert.ok(fn.includes('if (landed[part.u] === partsOf[part.u]) doc.perf.unitsDone++;'), 'a unit is finished when all of ITS parts have landed — units are cut into different numbers of parts now');
-    assert.ok(fn.includes('} else if (!settled.ok && !failedUnits.has(part.u)) {'), 'a unit fails once, whichever part failed first');
-    assert.ok(fn.includes('doc.perf.cyclesDone = pricedSettings * (1 + nullN + keepN);'), 'the pricings done follow the settings priced, not the units');
+    assert.ok(fn.includes('if (landed[part.k] === partsOf[part.k]) doc.perf.unitsDone++;'), 'a unit is finished when all of ITS parts have landed — units are cut into different numbers of parts now');
+    assert.ok(fn.includes('} else if (!settled.ok && !failedUnits.has(part.k)) {'), 'a unit fails once, whichever part failed first');
+    assert.ok(fn.includes('doc.perf.cyclesDone = live.pricedSettings() * (1 + nullN + keepN);'), 'the pricings done follow the settings priced, not the units');
     // and the unit task numbers its rows from the part's place in the block
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     const task = sw.slice(sw.indexOf('async function s3UnitTask(task) {'), sw.indexOf('\n}\n', sw.indexOf('async function s3UnitTask(task) {')));
@@ -1317,7 +1323,7 @@ module.exports = {
     // does not declare its cycle count shows no rate and no finish time.
     assert.strictEqual(lib.split('cyclesWord:').length - 1, 4,
       'every long job must declare its cycle count — the three launches and the kept-scramble fill');
-    assert.ok(/phase: 'reading the kept votes', done: pi \+ 1, total: parentRecords\.length/.test(lib),
+    assert.ok(/phase: 'reading the kept votes', done: k \+ 1, total: work\.length/.test(lib),
       'the long read before stage 3 dispatch says what it is doing instead of sitting on "writing the plan" — and it '
       + 'reports through the shared reporter, so it carries a rate and a finish time like every other phase');
   },
@@ -1431,11 +1437,11 @@ module.exports = {
       assert.ok(/paint\('#swH1', \(c\('#swSingles'\)/.test(fn),
         'stage 1 does not go green off its own section being set up');
       assert.ok(!/paint\('#swH1', (?:false|!)/.test(fn), 'stage 1 names no record set, so it can never be the section painted red');
-      const s2 = fn.slice(fn.indexOf("const s1row = rowOf(v('#swFrom2'));"), fn.indexOf("const s2row = rowOf(v('#swFrom3'));"));
+      const s2 = fn.slice(fn.indexOf("const s1row = rowOf(v('#swFrom2'));"), fn.indexOf("const s3v = v('#swFrom3');"));
       // the RED lands on stage 2, whose box names the set
       assert.ok(s2.includes("paint('#swH2', !mismatch,"), 'a stage 1 set that no longer matches the stage 1 boxes paints STAGE 2, whose box names it');
       assert.ok(!/paint\('#swH1'/.test(s2), 'the stage 2 block paints the section above it');
-      const s3 = fn.slice(fn.indexOf("const s2row = rowOf(v('#swFrom3'));"));
+      const s3 = fn.slice(fn.indexOf("const s3v = v('#swFrom3');"));
       assert.ok(s3.includes("paint('#swH3', !mismatch,"),
         'a stage 2 set that was not carried out of the stage 1 set the stage 2 box names paints STAGE 3, whose box names it');
       assert.ok(!/paint\('#swH2'/.test(s3), 'the stage 3 block paints the section above it');
@@ -1968,8 +1974,8 @@ module.exports = {
     // the launch and the rebuild must fold through the SAME function, or the
     // block that runs and the block read back for a set already priced are two
     // different ideas of which settings existed
-    assert.strictEqual(src.split('foldSameTradeSettings(').length - 1, 3,
-      'the fold is called somewhere other than its definition, the launch and the rebuild — those must be the '
+    assert.strictEqual(src.split('foldSameTradeSettings(').length - 1, 4,
+      'the fold is called somewhere other than its definition, the launch, the rebuild and a paused run started again (3.82.0) — those must be the '
       + 'only callers, or the number that runs and the number read back come from different arithmetic');
     // and the count, which no longer builds the settings (3.46.3), must read
     // the SAME shape pass the fold reads, or the number on the cost line and

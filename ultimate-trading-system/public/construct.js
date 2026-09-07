@@ -645,12 +645,45 @@ let swPoll = null;
 // existed, so a set was named that the owner had never chosen -- and there was
 // no way back to naming nothing. `— none —` is always there, always
 // selectable, and always what an unset box shows.
+// A PAUSED STAGE 3 RUN IS OFFERED WHERE A NEW ONE IS SET UP (3.82.0, owner
+// order 2026-09-07: "an entry written to the stage 3 sweep drop down list as in
+// a paused record set which can then be selected for start again perhaps
+// using the existing start button"). Its value says so -- continue:<id> --
+// and everything else on the section reads that value: the count line says
+// what is already priced, the boxes below are ghosted because the run keeps
+// its own, and start stage 3 starts it again instead of launching.
+const swContinueOf = () => { const v = ($('#swFrom3') && $('#swFrom3').value) || ''; return v.startsWith('continue:') ? v.slice('continue:'.length) : null; };
+function swPausedOptions(sets, selected) {
+  const list = sets.filter((x) => x.stage === 3 && x.checkpoint && ['paused', 'interrupted', 'error'].includes(x.status));
+  return list.map((x) => {
+    const v = `continue:${x.id}`;
+    const pf = x.perf || {};
+    const how = x.status === 'paused' ? 'paused' : x.status === 'interrupted' ? 'paused by a restart' : 'paused by a failure';
+    return `<option value="${esc(v)}"${v === selected ? ' selected' : ''}>${how} — ${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${Number(pf.unitsDone || 0).toLocaleString()} of ${Number(pf.unitsTotal || 0).toLocaleString()} units priced</option>`;
+  }).join('');
+}
 function swSetOptions(sets, stage, selected) {
   const list = sets.filter((x) => x.stage === stage && (x.status === 'done'));
   const on = selected ? '' : ' selected';
-  if (!list.length) return `<option value=""${on}>— none — no finished stage ${stage} record set on this box</option>`;
-  return `<option value=""${on}>— none —</option>`
+  // the stage 3 section's box (stage 2 parents) also offers the paused stage 3 runs
+  const paused = stage === 2 ? swPausedOptions(sets, selected) : '';
+  if (!list.length) return `<option value=""${on}>— none — no finished stage ${stage} record set on this box</option>${paused}`;
+  return `<option value=""${on}>— none —</option>${paused}`
     + list.map((x) => `<option value="${esc(x.id)}"${x.id === selected ? ' selected' : ''}>${esc(x.name)} — ${esc((x.createdAt || '').slice(0, 10))} — ${x.plan.units.toLocaleString()} units${x.stage === 1 ? ', votes kept' : ''}</option>`).join('');
+}
+// EVERYTHING BELOW THE BOX IS GHOSTED WHILE A PAUSED RUN IS CHOSEN: the run
+// keeps the settings it was launched with, and a live box that is not read is
+// worse than a dead one (RULE FOUR's sibling). Turned off again the moment a
+// parent is chosen instead; the count line then re-applies its own ghosting.
+function swContinueMode(on) {
+  const panel = $('#swH3') && $('#swH3').closest('.panel');
+  if (!panel) return;
+  for (const c of panel.querySelectorAll('select, input, button')) {
+    if (c.id === 'swFrom3' || c.id === 'swGo3') continue;
+    c.disabled = !!on;
+    const holder = c.closest('label') || c;
+    holder.classList.toggle('ctl-off', !!on);
+  }
 }
 
 // THE PARENT PICKERS FOLLOW WHAT IS ON THE BOX (3.76.1, owner order 2026-09-06:
@@ -788,7 +821,7 @@ async function swProgress() {
       ? `<span class="muted">no estimate until the first ${esc(String(pf.phaseWord || 'unit').replace(/s$/, ''))} lands</span>` : null,
   ].filter(Boolean).join(' · ');
   el.innerHTML = row
-    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="swStop" class="danger">stop</button>`
+    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="swStop" class="danger">${row.stage === 3 ? 'pause' : 'stop'}</button>`
     : `a stage run is going (${esc(st.running)})`;
   const stop = $('#swStop');
   if (stop) stop.onclick = async () => { await tryPost(`api/stageset/${st.running}/stop`, {}); swProgress(); };
@@ -947,8 +980,16 @@ function swProvenance() {
   // An empty stage 2 box above does NOT excuse this one: `green black red` is
   // the owner's own row -- a stage 3 set naming a chain the stage 2 box no
   // longer shows is a break in THIS box, and it is red whatever is above it.
-  const s2row = rowOf(v('#swFrom3'));
+  // a paused run chosen here is linked through ITS parent, the stage 2 set it
+  // was priced from, so the truth table reads exactly as it does for a launch
+  // (read off the box's own value here rather than through swContinueOf, so
+  // this function stays whole when a test lifts it out and runs it alone)
+  const s3v = v('#swFrom3');
+  const cont = s3v.startsWith('continue:') ? s3v.slice('continue:'.length) : null;
+  const pausedRow = cont ? rowOf(cont) : null;
+  const s2row = cont ? (pausedRow ? rowOf((pausedRow.parent || {}).id) : null) : rowOf(v('#swFrom3'));
   if (!v('#swFrom3')) paint('#swH3', null, 'this section names no stage 2 record set yet, so there is nothing set here to link');
+  else if (cont && !pausedRow) paint('#swH3', false, 'the paused record set named here is not on this box any more');
   else if (!s2row) paint('#swH3', false, 'the stage 2 record set named here is not on this box any more');
   else {
     const par = s2row.parent || {};
@@ -1113,6 +1154,20 @@ async function swCounts() {
   }
   if (!current()) return;   // a newer ask is in flight; its answer is the one to draw
   const c3 = $('#swCount');
+  if (c3 && swContinueOf()) {
+    // a paused run: nothing to count, everything to say
+    const sets = swSetsCache || [];
+    const x = sets.find((y) => y.id === swContinueOf());
+    swContinueMode(!!x);
+    const pf = (x && x.perf) || {};
+    const left = Math.max(0, Number(pf.cyclesTotal || 0) - Number(pf.cyclesDone || 0));
+    swSayCount(c3, x
+      ? `starts again where it was paused: <b>${Number(pf.unitsDone || 0).toLocaleString()} of ${Number(pf.unitsTotal || 0).toLocaleString()} units</b> are already priced and are kept`
+        + ` · about ${left.toLocaleString()} pricings still to go · the boxes below are this run's own and cannot be changed here`
+      : null, x ? null : 'the paused record set named here is not on this box any more');
+    return;
+  }
+  swContinueMode(false);
   if (c3) {
     const sets = swSetsCache || [];
     const parent = sets.find((x) => x.id === $('#swFrom3').value);
@@ -2925,7 +2980,10 @@ async function drawSweep() {
     if (got) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); swProgress(); }
   };
   $('#swGo3').onclick = async () => {
-    const got = await tryPost('api/stage3', {
+    // with a paused run chosen in the box nothing is launched: it is started
+    // again instead, below, with everything it had
+    const cont = swContinueOf();
+    const got = cont ? null : await tryPost('api/stage3', {
       from: $('#swFrom3').value, fee: Number($('#swFee').value) / 100,
       carry: Number($('#swCarry3').value) || 0,
       pick: $('#swPick3').value,
@@ -2934,6 +2992,14 @@ async function drawSweep() {
       ...swBlockParams(),
     });
     if (got) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
+    if (cont) {
+      const again = await tryPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});
+      if (again) {
+        rememberSweepForm();
+        say('#swOut3', `started again <b>${esc(again.name)}</b> — ${again.unitsKept.toLocaleString()} of ${again.units.toLocaleString()} units were already priced and are kept.`);
+        swProgress();
+      }
+    }
   };
   // THE CONDITIONS THE UNITS WERE TRAINED UNDER, AS ONE SETTING (3.71.0, owner
   // question 2026-09-05: "is there a fixed set of Stage 3 settings that
@@ -3269,7 +3335,10 @@ async function drawBoards() {
     wireRename(`api/stageset/${encodeURIComponent(doc.id)}/name`, String(stage));
     if (stage === 3) wireKeptFill(doc.id);
     if (doc.status !== 'done' && doc.status !== 'incomplete') {
-      $(`#bT${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}. Its tables appear when it lands.</p></div>`;
+      // whether it can be started again is on the LIST row (the set document
+      // itself does not carry it), and the list is already in hand
+      const canContinue = !!((sets.find((x) => x.id === doc.id) || {}).checkpoint);
+      $(`#bT${stage}`).innerHTML = `<div class="panel"><p class="note">${esc(doc.name)} is ${esc(doc.status)}${doc.progress ? ` — ${esc(doc.progress)}` : ''}.${canContinue ? ' It can be started again from the stage 3 section on Sweep.' : ''} Its tables appear when it lands.</p></div>`;
       continue;
     }
     const incomplete = doc.status === 'incomplete'
