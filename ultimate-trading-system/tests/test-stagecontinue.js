@@ -656,10 +656,32 @@ module.exports = {
     assert.ok(lines[real.lineNumber - 1].includes("pool.forEach('s3Unit', payloads, (settled, i) => {"));
     // a dry run reads and changes nothing; the real one writes the checkpoint
     // and asks the run to stop, in the shape lib/stages.js reads back
+    // A DRY RUN PROVES THE REAL ONE CAN WORK, or it proves nothing. Whether a
+    // paused frame can SEE a name is decided by what V8 kept, cannot be read
+    // off the file, and is the one thing the real capture turns on -- so the
+    // dry run asks about EVERY name the real capture uses on that shape, and
+    // asks with typeof, which answers for a name it cannot see instead of
+    // throwing on the first one.
     for (const shape of ['live', 'locals']) {
       const dry = tool.expressionFor(shape, true);
-      for (const word of ['cancelStage', 'writeCheckpoint', 'atomicWrite', 'saveSet']) assert.ok(!dry.includes(word), `a dry run on the ${shape} shape must not ${word}`);
+      for (const word of ['cancelStage(', 'writeCheckpoint(', 'atomicWrite(', 'saveSet(', 'cancelRequested = true']) {
+        assert.ok(!dry.includes(word), `a dry run on the ${shape} shape must not ${word.replace('(', '')}`);
+      }
       assert.ok(dry.includes('partsDone') && dry.includes('storeRows'), 'a dry run reads where the run is');
+      const real = tool.expressionFor(shape, false);
+      // Each name on the list is held against the real expression both ways:
+      // the dry run must ask about it, and the real capture must use it, so
+      // neither side can drift into asking about something that is not read
+      // or reading something nobody asks about by name. What this canNOT do
+      // is notice a name added to the real capture and to no list -- telling
+      // a read from an object key needs a parser, which is more machinery
+      // than it would protect. Whether the frame can actually SEE a name is
+      // not in the source at all: the live dry run answers that, and its
+      // `sees` line is read before the real capture is allowed to run.
+      for (const n of tool.NEEDS[shape]) {
+        assert.ok(dry.includes(`${n}: typeof ${n}`), `the dry run must ask whether the frame can see ${n}`);
+        assert.ok(new RegExp(`(^|[^.\\w$])${n.replace('$', '\\$')}\\b`).test(real), `the dry run asks about ${n} and the real ${shape} capture never uses it`);
+      }
     }
     const onLive = tool.expressionFor('live', false);
     assert.ok(onLive.includes('writeCheckpoint(doc, live);'), 'on the live shape the run\'s own writer is used');
@@ -669,10 +691,24 @@ module.exports = {
     for (const [shape, expr] of [['live', onLive], ['locals', tool.expressionFor('locals', false)]]) {
       assert.ok(!expr.includes('cancelStage'), `the ${shape} shape must not name cancelStage — the paused frame cannot see it`);
       assert.ok(expr.includes('activeSet.cancelRequested = true') && expr.includes('activePool.abort()'), `the ${shape} shape stops the run through activeSet and activePool`);
+      // NOTHING IS WRITTEN UNTIL THE STOP IS KNOWN TO BE REACHABLE. The state
+      // must reach disk before the run is asked to end, so the write comes
+      // first -- which is only safe if the stop cannot then turn out to be
+      // impossible, leaving a checkpoint beside a run that is still going.
+      const guard = expr.indexOf("typeof activeSet === 'undefined'");
+      assert.ok(guard >= 0, `the ${shape} shape must refuse before writing when it cannot see the stop`);
+      const writes = Math.min(...['writeCheckpoint(', 'atomicWrite('].map((w) => (expr.includes(w) ? expr.indexOf(w) : Infinity)));
+      assert.ok(guard < writes, `the ${shape} shape checks the stop is reachable BEFORE it writes anything`);
+      assert.ok(/nothing was written and it is untouched/.test(expr), `and the ${shape} refusal says the run is untouched`);
     }
     const onLocals = tool.expressionFor('locals', false);
     assert.ok(onLocals.includes("atomicWrite(path.join(SETS_DIR, 'checkpoints', doc.id + '.json')"), 'on the 3.81 shape the file is written by hand, where readCheckpoint looks');
-    assert.ok(onLocals.includes("fs.mkdirSync(path.join(SETS_DIR, 'checkpoints'), { recursive: true });"), 'and the folder is made first');
+    // and it needs no fs of its own: atomicWrite makes the folder (one fewer
+    // name that has to be visible in the frame)
+    assert.ok(!/\bfs\./.test(onLocals), 'the 3.81 expression must not reach for fs — atomicWrite makes its own folder');
+    const stagesSrc = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(/function atomicWrite\(file, text\) \{\n  fs\.mkdirSync\(path\.dirname\(file\), \{ recursive: true \}\);/.test(stagesSrc),
+      'which is only true while atomicWrite makes the folder itself');
     for (const field of ['v: 1,', 'id: doc.id', 'release: doc.engineVersion', 'workersN: doc.perf.workers', 'units: parentRecords.map((r) => r.u)', 'agreedMap, controlsMap', 'pricedSettings', "writtenBy: 'tools/capture-stage3.js through the inspector'"]) {
       assert.ok(onLocals.includes(field), `the hand-written checkpoint carries ${field}`);
     }

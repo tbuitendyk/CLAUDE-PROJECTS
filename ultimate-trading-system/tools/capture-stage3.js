@@ -90,14 +90,30 @@ function locateCallback(appDir) {
 // frame cannot see it (the rehearsal found this, 2026-09-07); its two lines
 // are written out here instead, on activeSet and activePool, which every
 // launch and every finish refer to and are therefore always reachable.
+// EVERY NAME THE REAL CAPTURE USES, and nothing else, per shape. The dry run
+// reports whether the paused frame can SEE each of them, because that is the
+// one thing that decides whether the real capture works and it cannot be
+// worked out by reading the file -- it depends on what V8 kept. A dry run that
+// read only the easy half would pass and prove nothing (found while preparing
+// the real capture, 2026-09-07).
+const NEEDS = {
+  live: ['doc', 'live', 'writeCheckpoint', 'activeSet', 'activePool'],
+  locals: ['doc', 'parts', 'parentRecords', 'agreedMap', 'controlsMap', 'pricedSettings', 'w', 'i',
+    'atomicWrite', 'path', 'SETS_DIR', 'activeSet', 'activePool'],
+};
+const seesEvery = (shape) => `{ ${NEEDS[shape].map((n) => `${n}: typeof ${n}`).join(', ')} }`;
+
 function expressionFor(shape, dryRun) {
   if (dryRun) {
+    // typeof, never a bare read: a name the frame cannot see answers
+    // "undefined" instead of throwing, so ONE probe reports on all of them
     return shape === 'live'
-      ? "JSON.stringify({ id: doc.id, status: doc.status, partsDone: doc.perf.partsDone, partsTotal: doc.perf.partsTotal, units: live.units.length, agreedKeys: Object.keys(live.agreedMap).length, controlsUnits: Object.keys(live.controlsMap).length, storeRows: live.storeRows(), storeBlocks: live.storeBlocks(), shape: 'live' })"
-      : "JSON.stringify({ id: doc.id, status: doc.status, partsDone: doc.perf.partsDone, partsTotal: parts.length, units: parentRecords.length, agreedKeys: Object.keys(agreedMap).length, controlsUnits: Object.keys(controlsMap).length, storeRows: w.records.count, storeBlocks: w.records.blockCount, shape: 'locals' })";
+      ? `JSON.stringify({ id: doc.id, status: doc.status, partsDone: doc.perf.partsDone, partsTotal: doc.perf.partsTotal, units: live.units.length, agreedKeys: Object.keys(live.agreedMap).length, controlsUnits: Object.keys(live.controlsMap).length, storeRows: live.storeRows(), storeBlocks: live.storeBlocks(), release: doc.engineVersion, workers: (doc.perf || {}).workers, sees: ${seesEvery('live')}, shape: 'live' })`
+      : `JSON.stringify({ id: doc.id, status: doc.status, partsDone: doc.perf.partsDone, partsTotal: parts.length, units: parentRecords.length, agreedKeys: Object.keys(agreedMap).length, controlsUnits: Object.keys(controlsMap).length, storeRows: w.records.count, storeBlocks: w.records.blockCount, release: doc.engineVersion, workers: (doc.perf || {}).workers, sees: ${seesEvery('locals')}, shape: 'locals' })`;
   }
   if (shape === 'live') {
     return `(() => {
+      if (typeof activeSet === 'undefined' || typeof activePool === 'undefined') throw new Error('this frame cannot see activeSet/activePool, so the run could be written down and not stopped — nothing was written and it is untouched');
       writeCheckpoint(doc, live);
       const stopped = (activeSet && activeSet.id === doc.id) ? (activeSet.cancelRequested = true, (activePool && activePool.abort()), { stopped: true }) : { stopped: false, why: 'that set is not the one running' };
       return JSON.stringify({ id: doc.id, partsDone: doc.perf.partsDone, partsTotal: doc.perf.partsTotal, units: live.units.length, agreedKeys: Object.keys(live.agreedMap).length, controlsUnits: Object.keys(live.controlsMap).length, storeRows: live.storeRows(), storeBlocks: live.storeBlocks(), stopped, shape: 'live' });
@@ -106,12 +122,12 @@ function expressionFor(shape, dryRun) {
   // the 3.81 shape: the checkpoint is built by hand from the loop's own locals,
   // in exactly the form lib/stages.js reads back from 3.82.0 on
   return `(() => {
+    if (typeof activeSet === 'undefined' || typeof activePool === 'undefined') throw new Error('this frame cannot see activeSet/activePool, so the run could be written down and not stopped — nothing was written and it is untouched');
     const at = new Date().toISOString();
     const cp = { v: 1, id: doc.id, at, release: doc.engineVersion, writtenBy: 'tools/capture-stage3.js through the inspector',
       workersN: doc.perf.workers, partsTotal: parts.length, partsDone: doc.perf.partsDone,
       units: parentRecords.map((r) => r.u), agreedMap, controlsMap, failures: doc.failures || [],
       pricedSettings, storeRows: w.records.count, storeBlocks: w.records.blockCount, atPart: i };
-    fs.mkdirSync(path.join(SETS_DIR, 'checkpoints'), { recursive: true });
     atomicWrite(path.join(SETS_DIR, 'checkpoints', doc.id + '.json'), JSON.stringify(cp));
     const stopped = (activeSet && activeSet.id === doc.id) ? (activeSet.cancelRequested = true, (activePool && activePool.abort()), { stopped: true }) : { stopped: false, why: 'that set is not the one running' };
     return JSON.stringify({ id: doc.id, partsDone: cp.partsDone, partsTotal: cp.partsTotal, units: cp.units.length, agreedKeys: Object.keys(agreedMap).length, controlsUnits: Object.keys(controlsMap).length, storeRows: cp.storeRows, storeBlocks: cp.storeBlocks, stopped, shape: 'locals' });
@@ -330,4 +346,4 @@ if (require.main === module) {
   })().catch((err) => { console.error(`FAILED: ${err.message}`); process.exit(1); });
 }
 
-module.exports = { locateCallback, expressionFor, capture, markPaused, connectWs, Cdp };
+module.exports = { locateCallback, expressionFor, capture, markPaused, connectWs, Cdp, NEEDS };
