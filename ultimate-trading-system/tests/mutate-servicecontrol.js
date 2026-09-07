@@ -1032,6 +1032,22 @@ const GUARDS = [
     '    rows = rows.filter((u) => (u[field] || \'\') === (val || \'\'));',
     'theCoinAndShapeBoxIsOneBoxPerPart',
     'changing one of the four boxes to something the boxes on its right cannot fit lands on no board at all, instead of dropping what cannot be honoured'],
+  // ---- step 6's press: one press, progress, and no other loads (2026-09-07) --
+  [path.join(ROOT, 'public', 'construct.js'),
+    "const fRichOf = (d) => (d && d.richOn) || { have: 0, need: Number((d && d.survivors) || 0), run: null };",
+    "const fRichOf = (d) => (d && d.richOn) || { have: 0, need: 0, run: null };",
+    'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft',
+    'a reply that carries no count of its own ghosts the press with no explanation, which is the fault this release fixes arriving by another door'],
+  [path.join(ROOT, 'public', 'construct.js'),
+    '      if (mine !== asked) return;                       // a newer keystroke is already out',
+    '',
+    'theRemainingCountIsAskedOnEveryKeystrokeAndTheLastAnswerWins',
+    'a slow answer to an older keystroke overwrites the newer one, so the count under the boxes is for a value no longer in them'],
+  [path.join(ROOT, 'lib', 'stages.js'),
+    '  const rich = richBusy();\n  if (rich) return rich;\n  return null;\n}',
+    '  return null;\n}',
+    'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft',
+    'a sweep, a stage run or a totalling can be started on top of the step 6 press and fight it for the same workers'],
 ];
 
 const only = process.argv[2] || '';

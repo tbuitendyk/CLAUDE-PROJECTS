@@ -3437,6 +3437,12 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
   assert.strictEqual(fRichOff({ richOn: { have: 0, need: 0, run: null } }), true, 'ghosted when no setting survives');
   assert.strictEqual(fRichOff({ richOn: { have: 100, need: 640, run: null } }), false, 'live when some are still missing');
   assert.strictEqual(fRichOff({}), true, 'and ghosted rather than throwing when the reply says nothing');
+  // UNKNOWN IS LIVE, NEVER DEAD -- found by pressing the page for real, and
+  // this is the assertion that was missing when it got through. A reply that
+  // carries no count of its own ghosted the button with no explanation, which
+  // is the exact fault this release fixes arriving by another door.
+  assert.strictEqual(fRichOff({ survivors: 640 }), false,
+    'a reply with no count of its own ghosts the press silently instead of leaving it live');
 
   // THE PROGRESS AND THE CPU LOAD, on the line beside the button.
   const going = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 128, of: 640, cpu: { busy: 0.87, cores: 4 } } } });
