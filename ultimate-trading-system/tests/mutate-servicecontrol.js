@@ -1026,6 +1026,12 @@ const GUARDS = [
     '<span class="muted">${esc(bGeo(r.geometry))}</span></td>',
     'theEveryCoinTableNamesTheCoinsARowIsReadAgainst',
     'a coin judged on its own and the same coin read against two others go back to being two rows with identical text and different money'],
+  // ---- the Funnel's coin and shape, one box per part (2026-09-07) --------
+  [path.join(ROOT, 'public', 'construct.js'),
+    '    const next = rows.filter((u) => (u[field] || \'\') === (val || \'\'));\n    if (next.length) rows = next;',
+    '    rows = rows.filter((u) => (u[field] || \'\') === (val || \'\'));',
+    'theCoinAndShapeBoxIsOneBoxPerPart',
+    'changing one of the four boxes to something the boxes on its right cannot fit lands on no board at all, instead of dropping what cannot be honoured'],
 ];
 
 const only = process.argv[2] || '';
