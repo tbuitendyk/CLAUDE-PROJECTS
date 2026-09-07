@@ -248,4 +248,9 @@ The owner's words: "start with writing any date ranges that are missing from rec
 - **Instrument hunted.** The fill chunked from the set's own pin without first asking whether the pin was intact; had a pinned file changed, the ranges written would have been today's, not the run's. Caught after the fact by the equality above (2,100 of 2,100), so nothing was written wrong. Moot now: the block has served every set on the box, measured, and goes in 3.85.1 (RULE TEN).
 - **Decision (loop).** 3.85.1 deletes the fill whole: the block, the worker task, the route's fill field, the screen's fill wording, the test and its helpers. The start-again's own recovery of a unit's ranges (one setting priced again) stays: it is the start-again's logic, S3 #1c still needs it, and it is covered by its own rehearsal. Parked for the owner: once S3 #1c has been started again, that branch and the `pausedBy` line are spent too, and go together.
 
+### Step 0a — 3.85.1 deployed (23:41 UTC)
+
+- **Fault, mine.** The deploy chain was written as three calls in a row, and the first (the busy check) came back as a proxy error instead of an answer; the chain went on and deployed anyway. Nothing was running (S3 #1c was paused, and still is, at 117 of 3,360 parts), so nothing was interrupted; but the rule "deploys inside the loop wait for the box to be free" was not enforced by anything. From here every deploy is two separate calls, and the second is made only on the words `busy: none`.
+- **Outcome.** The box serves e6395c7 (3.85.1); word lists regenerated from it.
+
 Nothing here is built. Every item waits for `GO NOW!` for that batch — or `LOOP NOW!` to process the entire document without interruption. A loop over this document starts only once section 8 is answered, because a loop may not decide for the owner; and what RULE SIX always stops still stops, so nothing that arms real money (section 6, the live path) is switched on inside it.
