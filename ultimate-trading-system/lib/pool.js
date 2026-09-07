@@ -38,6 +38,7 @@ const INLINE = {
   s2Unit: require('./stagework').s2UnitTask,
   s3Unit: require('./stagework').s3UnitTask,
   s3Tally: require('./stagework').s3TallyShardTask,
+  windows: require('./stagework').windowsTask,
   nullRotation: work.nullRotationTask,
   menuGrid: work.menuGridTask,
   wfUnit: require('./walkforward').wfUnitTask,

@@ -1678,7 +1678,9 @@ module.exports = {
   theStageTwoRecordCarriesTheSealedWindowTheFunnelReads() {
     const rowstore = require('../lib/rowstore');
     const s = src('lib/stages.js');
-    assert.ok(s.includes('          reserve: rec.reserve || null,\n          specs: merged.members.map('), 'the stage 2 record does not carry the sealed bounds');
+    // the sealed bounds and, since 3.85.0, the date ranges sit between the
+    // carried fields and the members on the stage 2 record
+    assert.ok(/          reserve: rec\.reserve \|\| null,\n(?:.*\n){0,8}?          specs: merged\.members\.map\(/.test(s), 'the stage 2 record does not carry the sealed bounds');
     const stamp = Date.now().toString(36);
     const ids = { s1: `s1-test-${stamp}-sw`, s2: `s2-test-${stamp}-sw`, s3: `s3-test-${stamp}-sw` };
     const SETS = path.join(__dirname, '..', 'data', 'stagesets');

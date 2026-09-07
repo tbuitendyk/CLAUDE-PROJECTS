@@ -1753,9 +1753,31 @@ function bKeptFillPanel(doc) {
       </div>
     </div>`;
 }
-function runIdentityPanelHtml(sizeLine, dm) {
+// THE DATE RANGES A RUN USED, ON ITS HEADER (3.85.0, owner order 2026-09-07).
+// Each window is the span across the run's units; the unread window runs from
+// where the seal began to the newest candle the box holds today, because
+// whatever reads it reads all the data there is.
+function windowsLineHtml(win, fill) {
+  if (!win) return '';
+  const day = (ts) => (Number.isFinite(ts) ? new Date(ts).toISOString().slice(0, 10) : '?');
+  const rng = (w) => (w ? `${day(w.fromTs)} → ${day(w.toTs)}` : null);
+  const parts = [];
+  if (win.train) parts.push(`training ${rng(win.train)}`);
+  if (win.test) parts.push(`test ${rng(win.test)}`);
+  if (win.hold) parts.push(`held-back ${rng(win.hold)}`);
+  if (win.unread) parts.push(`unread from ${day(win.unread.fromTs)} onward — the box holds data to ${day(win.unread.dataToTs)}, all of it unread`);
+  const f = fill || {};
+  const state = win.known >= win.units && win.units > 0 ? ''
+    : f.filling ? ` — being worked out for the rest: ${Number(f.filling.done).toLocaleString()} of ${Number(f.filling.total).toLocaleString()} units`
+      : f.waiting ? ` — ${esc(String(f.waiting))}`
+        : f.failed ? ` — <b class="warn">not worked out: ${esc(String(f.failed))}</b>`
+          : win.known ? ` — ${win.known} of ${win.units} units say so` : ' — being worked out';
+  return `<p class="note"><b>Date ranges:</b> ${parts.length ? parts.map((x) => esc(x)).join(' · ') : (win.units ? 'not recorded on this run yet' : 'no units')}${state}</p>`;
+}
+function runIdentityPanelHtml(sizeLine, dm, win = null, fill = null) {
   return `<div class="panel"><h3 style="margin-top:0">What this run actually is</h3>
           ${sizeLine || ''}
+          ${windowsLineHtml(win, fill)}
           <!-- dm.overallDigest / dm.symbols / dm.at are what lib/manifest.js
                actually writes. This read dm.digest, dm.coins, dm.files and
                dm.utc — four names nothing has ever written — so the fingerprint
@@ -3392,7 +3414,7 @@ async function drawBoards() {
     ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
       ${stage === 1 ? namePanel1(doc) : stage === 2 ? namePanel2(doc) : namePanel3(doc)}${stage === 1 ? notesPanel1(doc) : stage === 2 ? notesPanel2(doc) : notesPanel3(doc)}${bKeptFillPanel(doc)}
-      ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${doc.plan.pricings ? ` · ${Number(doc.plan.pricings).toLocaleString()} records, each unit holding only the settings that place different orders on it` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null)}
+      ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${doc.plan.pricings ? ` · ${Number(doc.plan.pricings).toLocaleString()} records, each unit holding only the settings that place different orders on it` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null, got.windows || null, got.windowsFill || null)}
       <div id="bT${stage}"></div>`;
     wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null, String(stage));
     wireRename(`api/stageset/${encodeURIComponent(doc.id)}/name`, String(stage));
@@ -4972,10 +4994,12 @@ function fHead(d) {
     : `<b>No scrambled copies on this set</b> - ${esc(String(n.why || 'not captured'))}. Every step below is read
        against the two halves of the settings instead, which tests whether a reading is STABLE and never whether the effect is real.`}</p>
     <p class="note">${sealed.sealed
-    ? `The sealed window is intact on all ${(sealed.units || []).length} unit(s).`
+    ? `The sealed window is intact on all ${(sealed.units || []).length} unit(s): unread from ${fDayOf(sealed.fromTs)} onward - the box holds data to ${fDayOf(sealed.dataToTs)}, and all of it counts as unread.`
     : `<b>No sealed window</b> - ${esc(String(sealed.why || 'not recorded'))}`}</p>`;
 }
 
+// a timestamp as the day it falls on, for the sealed window's two ends
+const fDayOf = (ts) => (Number.isFinite(Number(ts)) && ts != null ? new Date(Number(ts)).toISOString().slice(0, 10) : '?');
 function fNoiseLine(reading, d) {
   const n = reading && reading.noise;
   if (!n) return '';
@@ -5830,7 +5854,7 @@ function fCutHead(cd, st) {
        <b>${esc(unitName)}</b>'s settings instead - which tests whether a reading is STABLE and never whether the
        effect is real, and is marked as such on this set.`}</p>
     <p class="note">${se.sealed
-    ? `The sealed window is intact on <b>${esc(unitName)}</b>${se.of > 1 ? ` and on the other ${se.of - 1} unit(s) this set was cut across` : ''} - a final stretch of that unit's history no part of this walk touched.`
+    ? `The sealed window is intact on <b>${esc(unitName)}</b>${se.of > 1 ? ` and on the other ${se.of - 1} unit(s) this set was cut across` : ''} - a final stretch of that unit's history no part of this walk touched, from ${fDayOf(se.fromTs)} onward to the newest data the box holds.`
     : `<b class="neg">No sealed window on ${esc(unitName)}</b> - ${esc(String(se.why || 'not recorded'))}.`}</p>
 
     <p class="note"><b>Step 7 - ${esc(F_STEPS[6][0])}:</b> ${esc((s.closing || {}).label || 'accept what the rule gives')}${(s.closing || {}).detail ? ` - ${esc(String(s.closing.detail))}` : ''}.

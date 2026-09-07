@@ -736,9 +736,14 @@ app.get('/api/stageset/:id', (req, res) => {
   const doc = stages.getSet(req.params.id);
   if (!doc) return res.status(404).json({ error: `no record set called "${req.params.id}"` });
   const { plan, ...rest } = doc;
+  // the actual date ranges the set used (3.85.0); a set written before they
+  // were kept has them worked out from its own pinned files, announced, once
+  const windows = stages.windowsOfSet(doc);
+  const windowsFill = windows && windows.units > 0 && windows.known < windows.units ? stages.ensureWindows(doc.id) : { ready: true };
   return res.json({
     set: { ...rest, plan: plan ? { units: plan.units || 0, settings: plan.settings || 0 } : null },
     chain: stages.chainOf(doc.id),
+    windows, windowsFill,
   });
 });
 

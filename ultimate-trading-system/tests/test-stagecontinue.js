@@ -4,17 +4,14 @@
 // things. And while you're at it, write the code that allows the
 // continuation").
 //
-// Three ways a run stops are rehearsed for real, on two fabricated coins with
+// Two ways a run stops are rehearsed for real, on two fabricated coins with
 // a known answer, each against a reference run of the same block that was
 // never stopped:
 //   * paused from inside the service — the pause control on Sweep;
 //   * killed outright mid-run, the way a service restart kills it, so the
 //     only checkpoint on disk is the one from the start of the pricing and
 //     the rows on disk have outrun it;
-//   * stopped from outside through Node's own debugger by
-//     tools/capture-stage3.js, the one-time tool for the run that was going
-//     when this shipped, attached to a live process of its own.
-// The same numbers must come out of all three, every row priced before the
+// The same numbers must come out of both, every row priced before the
 // stop must be kept byte for byte, and every file the pause leaves behind
 // must be gone when the run lands.
 //
@@ -31,7 +28,6 @@ const { spawn } = require('child_process');
 const { assert } = require('./helpers');
 const stages = require('../lib/stages');
 const rowstore = require('../lib/rowstore');
-const tool = require('../tools/capture-stage3');
 const { generateFabricated } = require('../lib/planted');
 const { MANIFEST_DIR } = require('../lib/manifest');
 
@@ -45,7 +41,6 @@ const B = 'ZZZPAUSEBUSDT';   // a fair coin, rule never on
 const SPAN = { fromMonth: '2024-01', toDate: '2024-12-31' };
 const FEE = 0.00125;
 const NULL_N = 99;           // the null set is what makes a toy block take seconds — one pricing is microseconds
-const PORT = 9331;           // the inspector port the rehearsal child opens on SIGUSR1
 const PARTS_BEFORE_STOP = 3; // how many parts must have landed before a run is stopped
 const HOLE_DAY = '2024-06-20';   // the day held as a short day file: seven hours, not twenty-four
 
@@ -154,6 +149,26 @@ async function untilStartedAgain(id, ms = 60000) {
     await sleep(25);
   }
 }
+// the fill runs in the background; wait for its word
+async function untilFilled(id, ms = 120000) {
+  const t0 = Date.now();
+  for (;;) {
+    const st = stages.windowsFillStatus(id);
+    if (st.ready || st.failed) return st;
+    if (Date.now() - t0 > ms) throw new Error(`${id}'s date ranges were not worked out in ${ms / 1000} s (${JSON.stringify(st)})`);
+    await sleep(50);
+  }
+}
+// only the rehearsal's own sets count, or the dev box's own record sets would
+const windowsMissingNow = () => {
+  let sets = 0;
+  for (const row of stages.listSets()) {
+    if (!/^ZZZ pause/.test(row.name || '') || ![1, 2, 3].includes(row.stage) || !['done', 'incomplete'].includes(row.status)) continue;
+    const w = stages.windowsOfSet(stages.getSet(row.id));
+    if (w && w.units > w.known) sets++;
+  }
+  return { sets };
+};
 function rowsByKey(id) {
   const m = new Map();
   rowstore.each(id, 'records', (r) => { m.set(`${r.u}|${r.si}`, r); });
@@ -195,12 +210,14 @@ function sameAsReference(id, refId, what) {
   assert.strictEqual(doc.counts.rows, ref.counts.rows, `${what}: the counts differ`);
   assert.strictEqual(doc.counts.failures, 0, `${what}: ${doc.counts.failures} unit(s) failed`);
   assert.ok(!stages.hasCheckpoint(id) && !fs.existsSync(stages.checkpointFile(id)), `${what}: a landed set keeps no checkpoint`);
+  // and the actual date ranges every unit was priced on (3.85.0)
+  assert.ok(doc.windows && doc.windows.units && Object.keys(doc.windows.units).length === ref.plan.units, `${what}: the date ranges are not kept for every unit`);
+  assert.deepStrictEqual(doc.windows.units, ref.windows.units, `${what}: the date ranges differ from the reference's`);
 }
 // ---- a run in a process of its own ------------------------------------------------
-function spawnChild(block, name, { inspect = false, goFile = null } = {}) {
+function spawnChild(block, name, { goFile = null } = {}) {
   const beat = path.join(tmpDir(), `${name.replace(/\W+/g, '_')}.beat`);
   const args = [];
-  if (inspect) args.push(`--inspect-port=127.0.0.1:${PORT}`);
   args.push(FIXTURE, JSON.stringify({ ...block, from: state.s2.id, name, desc: 'pause rehearsal (a process of its own)' }), beat);
   if (goFile) args.push(goFile);
   const child = spawn(process.execPath, args, { cwd: ROOT, stdio: ['ignore', 'pipe', 'pipe'] });
@@ -224,17 +241,6 @@ function spawnChild(block, name, { inspect = false, goFile = null } = {}) {
   const readBeat = () => { try { return Number(fs.readFileSync(beat, 'utf8')); } catch (_) { return 0; } };
   const kill = async () => { try { child.kill('SIGKILL'); } catch (_) { /* gone */ } await Promise.race([exited, sleep(5000)]); };
   return { child, launched, readBeat, kill, stderr: () => err };
-}
-function inspectorList(port) {
-  return new Promise((resolve, reject) => {
-    const req = http.get({ host: '127.0.0.1', port, path: '/json/list', timeout: 1000 }, (res) => {
-      let body = '';
-      res.on('data', (d) => { body += d; });
-      res.on('end', () => { try { resolve(JSON.parse(body)); } catch (e) { reject(e); } });
-    });
-    req.on('error', reject);
-    req.on('timeout', () => req.destroy(new Error('timeout')));
-  });
 }
 function removeSet(id) {
   const safe = String(id).replace(/[^A-Za-z0-9._-]+/g, '_');
@@ -288,7 +294,7 @@ module.exports = {
     assert.strictEqual(fs.readdirSync(CACHE).filter((x) => x.startsWith(`${A}-1h-2024-06-`)).length, byDay.size, 'June is day files now');
     const s1 = stages.startStage1({
       universe: [A, B], sizes: { singles: true }, geometry: 'daily-1d',
-      windowLayout: 'split70', allLoaded: false, startMonth: '2024-01', endMonth: '2024-12',
+      windowLayout: 'reserve61', allLoaded: false, startMonth: '2024-01', endMonth: '2024-12',
       nullN: NULL_N, fee: FEE, name: `ZZZ pause stage 1 ${stamp()}`, desc: 'pause rehearsal',
     });
     made.push(s1.id);
@@ -325,6 +331,49 @@ module.exports = {
     assert.deepStrictEqual(pin, require('../lib/manifest').pinnedFilesOf(state.s2.dataManifest), 'the same pin as its parent');
     assert.deepStrictEqual(pin, require('../lib/manifest').pinnedFilesOf(state.s1.dataManifest), 'which is the root stage 1 set\'s');
     state.ref = s3.id;
+    // THE ACTUAL DATE RANGES ARE STORED ON EVERY STAGE (3.85.0, owner order):
+    // on each stage 1 and 2 record, and per unit beside the stage 3 set; the
+    // same all the way down the chain, because a chain reads one history; and
+    // the unread window has a start and no end
+    const rec1 = rowstore.readAll(state.s1.id, 'records');
+    const rec2 = rowstore.readAll(state.s2.id, 'records');
+    assert.ok(rec1.length === 2 && rec2.length === 2);
+    for (const r of rec1) {
+      const w = r.windows;
+      assert.ok(w && w.train && w.test && w.hold && w.unread, `a stage 1 record carries every window — got ${JSON.stringify(w)}`);
+      assert.strictEqual(w.layout, 'reserve61');
+      for (const k of ['train', 'test', 'hold']) assert.ok(Number.isFinite(w[k].fromTs) && Number.isFinite(w[k].toTs) && w[k].fromTs < w[k].toTs && w[k].chunks >= 2, `${k} is a real range`);
+      assert.ok(w.train.fromTs < w.test.fromTs && w.test.fromTs < w.hold.fromTs && w.hold.fromTs < w.unread.fromTs, 'the windows follow one another in time');
+      assert.ok(!('toTs' in w.unread), 'the unread window has a start and no end');
+      assert.ok(Number.isFinite(w.unread.seenToTs) && w.unread.seenToTs > w.unread.fromTs, 'and says only how far the data reached on the day');
+      const n = w.train.chunks + w.test.chunks + w.hold.chunks + w.unread.chunks;
+      assert.strictEqual(w.unread.chunks, Math.max(2, Math.round(n * 0.13)), 'the unread window is the last 13% of the chunks');
+      assert.deepStrictEqual({ fromTs: r.reserve.fromTs, chunks: r.reserve.chunks }, { fromTs: w.unread.fromTs, chunks: w.unread.chunks }, 'and it is the sealed window the record already carried');
+    }
+    for (const r of rec2) {
+      const mine = rec1.find((x) => x.trade === r.trade && x.geometry === r.geometry);
+      assert.deepStrictEqual(r.windows, mine.windows, 'stage 2, pinned to the same files, used the same date ranges');
+    }
+    for (const r of rec2) {
+      const w3 = doc.windows.units[`${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`];
+      assert.deepStrictEqual(w3, r.windows, 'and so did stage 3, per unit beside the set');
+    }
+    // the set-level reading the screens show
+    const sum = stages.windowsOfSet(doc);
+    assert.strictEqual(sum.units, 2);
+    assert.strictEqual(sum.known, 2);
+    assert.strictEqual(sum.layout, 'reserve61');
+    assert.ok(sum.train.fromTs <= sum.test.fromTs && sum.hold && sum.unread, 'every window is spanned across the units');
+    assert.strictEqual(sum.unread.fromTs, Math.min(...rec2.map((r) => r.windows.unread.fromTs)));
+    assert.ok(Number.isFinite(sum.unread.dataToTs) && sum.unread.dataToTs >= sum.unread.seenToTs, 'the unread window is read to the newest candle the box holds');
+    assert.strictEqual(new Date(sum.unread.dataToTs).toISOString().slice(0, 10), '2024-12-31', 'which for these fabricated coins is the last day of their span');
+    const sum1 = stages.windowsOfSet(state.s1);
+    assert.deepStrictEqual({ t: sum1.train, h: sum1.hold, u: sum1.unread.fromTs }, { t: sum.train, h: sum.hold, u: sum.unread.fromTs }, 'the stage 1 set reads the same spans off its records');
+    // the sealed verdict the Funnel reads carries the same start and the newest data
+    const se = stages.sealedWindowOf(doc);
+    assert.strictEqual(se.sealed, true);
+    assert.strictEqual(se.fromTs, sum.unread.fromTs);
+    assert.strictEqual(se.dataToTs, sum.unread.dataToTs);
   },
 
   // THE PAUSE CONTROL ON SWEEP: the run stops between parts, writes what it
@@ -436,6 +485,9 @@ module.exports = {
     assert.ok(wide && wide[A] && wide[B], 'the reference is pinned over both coins');
     doc.dataManifest = stampManifest(`${id}-narrow`, [A], { onlyFiles: { [A]: wide[A] } });
     assert.deepStrictEqual(Object.keys(pinnedFilesOf(doc.dataManifest)), [A], 'narrowed to the planted coin alone');
+    // and its date ranges never kept (a set from before 3.85.0): they come
+    // back with one setting priced again per unit, like the agreements
+    doc.windows = null;
     writeSet(doc);
     const before = rowsByKey(id);
     assert.strictEqual(before.size, src.plan.settings * 2, 'the copy holds every row of the reference');
@@ -464,6 +516,46 @@ module.exports = {
     const after = rowsByKey(id);
     for (const [k, r] of before) assert.deepStrictEqual(after.get(k), r, `row ${k} on disk was changed`);
     sameAsReference(id, state.ref, 'agreements recovered');
+  },
+
+  // THE SHAPE S3 #1c IS IN ON THE BOX (3.85.0): paused under a release that
+  // kept no date ranges, its checkpoint whole -- every agreement and every
+  // comparison for the units already priced, and no window for any of them.
+  // Started again, each such unit prices ONE setting for its date ranges, its
+  // row thrown away, and the run equals the reference.
+  async aPausedRunWhoseCheckpointKeepsNoDateRangesPricesOneSettingPerUnitForThem() {
+    needFixture();
+    await idle();
+    assert.ok(state.ref, 'no reference run');
+    const src = stages.getSet(state.ref);
+    const id = `s3-test-${stamp()}-cw`;
+    fs.cpSync(rowstore.storeDir(state.ref), rowstore.storeDir(id), { recursive: true });
+    const doc = { ...src, id, name: `ZZZ pause copied windows ${stamp()}`, status: 'paused', finishedAt: null, continued: [], counts: null, controls: null, windows: null, progress: 'paused at 0 of 0 parts', cancelRequested: true };
+    delete doc.tallyError;
+    writeSet(doc);
+    const before = rowsByKey(id);
+    const agreedMap = stages.readAgreed(state.ref);
+    assert.ok(agreedMap && Object.keys(agreedMap).length, 'the reference keeps its agreements beside itself');
+    const controlsMap = (src.controls || {}).units || {};
+    assert.ok(Object.keys(controlsMap).length === 2, 'and its comparisons for both units');
+    writeCheckpointFile(id, {
+      partsTotal: src.perf.partsTotal, partsDone: src.perf.partsTotal, units: [...new Set([...before.values()].map((r) => r.u))].sort(),
+      agreedMap, controlsMap,
+      pricedSettings: before.size, storeRows: before.size, storeBlocks: rowstore.blocksOf(id, 'records').length,
+    });
+    assert.ok(!('windowsMap' in stages.readCheckpoint(id)), 'the checkpoint names no date ranges, like one written before 3.85.0');
+    stages.continueStage3(id);
+    const c = (await untilStartedAgain(id)).continued[0];
+    assert.strictEqual(c.unitsKept, 0, 'a unit without its date ranges is not whole');
+    assert.strictEqual(c.unitsToPrice, 2);
+    assert.strictEqual(c.settingsRepriced, 2, 'exactly one setting per unit is priced again, for the date ranges alone');
+    const done = await untilLanded(id);
+    assert.strictEqual(done.status, 'done', `ended ${done.status}: ${done.progress} ${JSON.stringify(done.failures)}`);
+    assert.strictEqual(done.continued[0].settingsKept, before.size);
+    assert.strictEqual(rowstore.count(id, 'records'), before.size, 'not one row was added');
+    const after = rowsByKey(id);
+    for (const [k, r] of before) assert.deepStrictEqual(after.get(k), r, `row ${k} on disk was changed`);
+    sameAsReference(id, state.ref, 'date ranges recovered');
   },
 
   // A SERVICE RESTART: the process dies between one part and the next with
@@ -499,79 +591,6 @@ module.exports = {
     const done = await untilLanded(id);
     assert.strictEqual(done.status, 'done', `the start-again ended ${done.status}: ${done.progress} ${JSON.stringify(done.failures)} ${done.error || ''}`);
     sameAsReference(id, state.ref, 'killed mid-way');
-  },
-
-  // THE ONE-TIME TOOL, REHEARSED ON A LIVE PROCESS: it opens the inspector
-  // with SIGUSR1, breaks on the next part to land, reads the run's state out
-  // of the paused frame, and lets the process go. A dry run reads and writes
-  // nothing; the real run writes the checkpoint and asks the run to stop; the
-  // process is alive afterwards, and the run reads as paused.
-  async theCaptureToolPausesALiveRunThroughTheInspectorAndItIsStartedAgainEqualToTheReference() {
-    needFixture();
-    await idle();
-    assert.ok(state.ref, 'no reference run');
-    const go = path.join(tmpDir(), `capture-${stamp()}.go`);
-    const c = spawnChild(BLOCK, `ZZZ pause captured ${stamp()}`, { inspect: true, goFile: go });
-    // the tool attaches FIRST, then the run is let go, so the breakpoint is
-    // in place before the first part lands whatever the speed of this box
-    const dryRun = tool.capture({ pid: c.child.pid, port: PORT, appDir: ROOT, waitMinutes: 2, dryRun: true, quiet: true });
-    dryRun.catch(() => {});
-    const until = Date.now() + 15000;
-    let open = false;
-    while (!open && Date.now() < until) {
-      try { await inspectorList(PORT); open = true; } catch (_) { await sleep(100); }
-    }
-    assert.ok(open, 'SIGUSR1 opened the inspector on the child');
-    await sleep(500);              // the breakpoint is set within this
-    fs.writeFileSync(go, '1');
-    const { id } = await c.launched;
-    made.push(id);
-    const dry = await dryRun;
-    assert.strictEqual(dry.id, id, 'the frame the tool broke in belongs to the run');
-    assert.strictEqual(dry.shape, 'live', 'the loop of this release');
-    assert.strictEqual(dry.status, 'running');
-    assert.strictEqual(dry.units, 2);
-    assert.ok(dry.partsTotal >= 8 && dry.partsDone >= 0 && dry.partsDone < dry.partsTotal, `read in the frame of a part landing: ${dry.partsDone} of ${dry.partsTotal} counted before it`);
-    assert.ok(!dry.stopped, 'a dry run stops nothing');
-    // the dry run wrote nothing: the only checkpoint is the run's own, from
-    // the start of the pricing
-    const cp0 = stages.readCheckpoint(id);
-    assert.ok(cp0 && cp0.writtenBy === 'the run' && cp0.partsDone < cp0.partsTotal, 'the checkpoint on disk is the run\'s own, from before the pause');
-    assert.strictEqual(stages.getSet(id).status, 'running', 'the run was let go');
-    const b0 = c.readBeat();
-    await sleep(700);
-    assert.ok(c.readBeat() > b0, 'the process is alive after the dry run — not left paused in the debugger');
-
-    const real = await tool.capture({ pid: c.child.pid, port: PORT, appDir: ROOT, waitMinutes: 2, dryRun: false, set: id, quiet: true, closeInspector: true });
-    assert.strictEqual(real.id, id);
-    assert.strictEqual(real.shape, 'live');
-    assert.ok(real.stopped && real.stopped.stopped === true, `the run was asked to stop: ${JSON.stringify(real.stopped)}`);
-    assert.ok(real.partsDone >= 1 && real.partsDone < real.partsTotal, `stopped in the middle: ${real.partsDone} of ${real.partsTotal}`);
-    const status = await tool.markPaused({ appDir: ROOT }, id);
-    assert.strictEqual(status, 'paused');
-    const b1 = c.readBeat();
-    await sleep(700);
-    assert.ok(c.readBeat() > b1, 'the process is alive after the capture');
-    let shut = false;
-    try { await inspectorList(PORT); } catch (_) { shut = true; }
-    assert.ok(shut, 'the inspector port is closed again');
-    const paused = stages.getSet(id);
-    assert.strictEqual(paused.status, 'paused');
-    assert.ok(/^paused at \d+ of \d+ parts/.test(paused.progress), `got "${paused.progress}"`);
-    const cp = stages.readCheckpoint(id);
-    assert.ok(cp && cp.writtenBy === 'the run', 'the checkpoint written inside the paused frame is the run\'s own');
-    assert.strictEqual(cp.partsDone, real.partsDone, 'the checkpoint carries the parts landed at the moment of the capture');
-    assert.strictEqual(cp.partsDone, paused.perf.partsDone, 'and nothing landed after it');
-    assert.strictEqual(cp.storeRows, rowstore.count(id, 'records'), 'it counts the rows on disk');
-    await c.kill();
-    stages.continueStage3(id);
-    assert.ok(!('pausedBy' in stages.getSet(id)), 'the tool\'s mark is spent the moment the run is started again');
-    const startedAs = (await untilStartedAgain(id)).continued[0];
-    assert.ok(startedAs.unitsToPrice >= 1);
-    const done = await untilLanded(id);
-    assert.strictEqual(done.status, 'done', `the start-again ended ${done.status}: ${done.progress} ${JSON.stringify(done.failures)} ${done.error || ''}`);
-    assert.strictEqual(done.continued[0].from, 'paused');
-    sameAsReference(id, state.ref, 'captured through the inspector');
   },
 
   // ---- the pieces, on their own ----------------------------------------------------
@@ -741,94 +760,6 @@ module.exports = {
     }
   },
 
-  // THE TOOL READS THE LOOP'S SHAPE OFF THE CODE THE PROCESS RUNS, and
-  // refuses anything it does not know: a breakpoint on a guessed line is a
-  // pause with nothing to read.
-  async theCaptureToolReadsTheLoopShapeOffTheCodeAndRefusesAGuess() {
-    const CB = "  await pool.forEach('s3Unit', payloads, (settled, i) => {";
-    const CANCEL = '    if (doc.cancelRequested) return;';
-    let n = 0;
-    const shaped = (lines) => {
-      const dir = path.join(tmpDir(), `shape-${++n}`);
-      fs.mkdirSync(path.join(dir, 'lib'), { recursive: true });
-      fs.writeFileSync(path.join(dir, 'lib', 'stages.js'), lines.join('\n'));
-      return dir;
-    };
-    const locals = tool.locateCallback(shaped(['function startStage3(params) {', '  const agreedMap = {};', '  const controlsMap = {};', CB, CANCEL, '  });']));
-    assert.strictEqual(locals.shape, 'locals', 'the loop as it was to 3.81.0: its state in loose locals');
-    assert.strictEqual(locals.lineNumber, 4, 'the line to break on is the cancel check, counted from zero');
-    const live = tool.locateCallback(shaped(['async function runStage3Parts({ doc, live }) {', CB, CANCEL, '  });']));
-    assert.strictEqual(live.shape, 'live', 'the loop from 3.82.0 on: its state in `live`');
-    assert.strictEqual(live.lineNumber, 2);
-    assert.throws(() => tool.locateCallback(shaped(['function other() {', CB, CANCEL, '}'])), /not in a shape this tool knows/);
-    assert.throws(() => tool.locateCallback(shaped(['nothing here'])), /holds no stage 3 part-landed callback/);
-    assert.throws(() => tool.locateCallback(shaped([CB, '    something else'])), /the line after the callback is not the cancel check/);
-    const real = tool.locateCallback(ROOT);
-    assert.strictEqual(real.shape, 'live', 'this release runs the live shape');
-    const lines = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8').split('\n');
-    assert.strictEqual(lines[real.lineNumber].trim(), 'if (doc.cancelRequested) return;');
-    assert.ok(lines[real.lineNumber - 1].includes("pool.forEach('s3Unit', payloads, (settled, i) => {"));
-    // a dry run reads and changes nothing; the real one writes the checkpoint
-    // and asks the run to stop, in the shape lib/stages.js reads back
-    // A DRY RUN PROVES THE REAL ONE CAN WORK, or it proves nothing. Whether a
-    // paused frame can SEE a name is decided by what V8 kept, cannot be read
-    // off the file, and is the one thing the real capture turns on -- so the
-    // dry run asks about EVERY name the real capture uses on that shape, and
-    // asks with typeof, which answers for a name it cannot see instead of
-    // throwing on the first one.
-    for (const shape of ['live', 'locals']) {
-      const dry = tool.expressionFor(shape, true);
-      for (const word of ['cancelStage(', 'writeCheckpoint(', 'atomicWrite(', 'saveSet(', 'cancelRequested = true']) {
-        assert.ok(!dry.includes(word), `a dry run on the ${shape} shape must not ${word.replace('(', '')}`);
-      }
-      assert.ok(dry.includes('partsDone') && dry.includes('storeRows'), 'a dry run reads where the run is');
-      const real = tool.expressionFor(shape, false);
-      // Each name on the list is held against the real expression both ways:
-      // the dry run must ask about it, and the real capture must use it, so
-      // neither side can drift into asking about something that is not read
-      // or reading something nobody asks about by name. What this canNOT do
-      // is notice a name added to the real capture and to no list -- telling
-      // a read from an object key needs a parser, which is more machinery
-      // than it would protect. Whether the frame can actually SEE a name is
-      // not in the source at all: the live dry run answers that, and its
-      // `sees` line is read before the real capture is allowed to run.
-      for (const n of tool.NEEDS[shape]) {
-        assert.ok(dry.includes(`${n}: typeof ${n}`), `the dry run must ask whether the frame can see ${n}`);
-        assert.ok(new RegExp(`(^|[^.\\w$])${n.replace('$', '\\$')}\\b`).test(real), `the dry run asks about ${n} and the real ${shape} capture never uses it`);
-      }
-    }
-    const onLive = tool.expressionFor('live', false);
-    assert.ok(onLive.includes('writeCheckpoint(doc, live);'), 'on the live shape the run\'s own writer is used');
-    // the frame sees only what some inner function refers to: cancelStage is
-    // only ever exported, so its two lines are written out on the two module
-    // variables every launch refers to (the rehearsal found this)
-    for (const [shape, expr] of [['live', onLive], ['locals', tool.expressionFor('locals', false)]]) {
-      assert.ok(!expr.includes('cancelStage'), `the ${shape} shape must not name cancelStage — the paused frame cannot see it`);
-      assert.ok(expr.includes('activeSet.cancelRequested = true') && expr.includes('activePool.abort()'), `the ${shape} shape stops the run through activeSet and activePool`);
-      // NOTHING IS WRITTEN UNTIL THE STOP IS KNOWN TO BE REACHABLE. The state
-      // must reach disk before the run is asked to end, so the write comes
-      // first -- which is only safe if the stop cannot then turn out to be
-      // impossible, leaving a checkpoint beside a run that is still going.
-      const guard = expr.indexOf("typeof activeSet === 'undefined'");
-      assert.ok(guard >= 0, `the ${shape} shape must refuse before writing when it cannot see the stop`);
-      const writes = Math.min(...['writeCheckpoint(', 'atomicWrite('].map((w) => (expr.includes(w) ? expr.indexOf(w) : Infinity)));
-      assert.ok(guard < writes, `the ${shape} shape checks the stop is reachable BEFORE it writes anything`);
-      assert.ok(/nothing was written and it is untouched/.test(expr), `and the ${shape} refusal says the run is untouched`);
-    }
-    const onLocals = tool.expressionFor('locals', false);
-    assert.ok(onLocals.includes("atomicWrite(path.join(SETS_DIR, 'checkpoints', doc.id + '.json')"), 'on the 3.81 shape the file is written by hand, where readCheckpoint looks');
-    // and it needs no fs of its own: atomicWrite makes the folder (one fewer
-    // name that has to be visible in the frame)
-    assert.ok(!/\bfs\./.test(onLocals), 'the 3.81 expression must not reach for fs — atomicWrite makes its own folder');
-    const stagesSrc = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    assert.ok(/function atomicWrite\(file, text\) \{\n  fs\.mkdirSync\(path\.dirname\(file\), \{ recursive: true \}\);/.test(stagesSrc),
-      'which is only true while atomicWrite makes the folder itself');
-    for (const field of ['v: 1,', 'id: doc.id', 'release: doc.engineVersion', 'workersN: doc.perf.workers', 'units: parentRecords.map((r) => r.u)', 'agreedMap, controlsMap', 'pricedSettings', "writtenBy: 'tools/capture-stage3.js through the inspector'"]) {
-      assert.ok(onLocals.includes(field), `the hand-written checkpoint carries ${field}`);
-    }
-    assert.strictEqual(stages.CHECKPOINT_V, 1, 'and v: 1 is the shape readCheckpoint accepts');
-  },
-
   // THE SCREEN: a paused run is an entry in the stage 3 section's box, the
   // boxes below it are ghosted while it is chosen, the same start button
   // starts it again, and the running line's control reads pause for stage 3
@@ -881,6 +812,13 @@ module.exports = {
     const route = server.slice(server.indexOf("app.post('/api/stageset/:id/continue'"));
     assert.ok(route.startsWith("app.post('/api/stageset/:id/continue'"), 'the route exists');
     assert.ok(route.slice(0, 300).includes("stages.continueStage3(String(req.params.id || ''))") && route.slice(0, 300).includes('res.status(409).json({ error: String(err.message || err) })'));
+    // THE DATE RANGES ARE ON THE HEADER OF EVERY RUN ON BOARDS (3.85.0), and
+    // the Funnel says where the unread window runs
+    assert.ok(src.includes('function windowsLineHtml(win, fill)') && src.includes('${windowsLineHtml(win, fill)}'), 'the header carries the date ranges line');
+    for (const word of ['training ', 'test ', 'held-back ', 'unread from ', ' onward — the box holds data to ', ', all of it unread']) assert.ok(src.includes(word), `the line says ${JSON.stringify(word)}`);
+    assert.ok(src.includes('doc.dataManifest || null, got.windows || null, got.windowsFill || null)'), 'Boards hands the panel what the route sent');
+    assert.ok(src.includes(': unread from ${fDayOf(sealed.fromTs)} onward - the box holds data to ${fDayOf(sealed.dataToTs)}, and all of it counts as unread.'), 'the Funnel says where the unread window runs, to the newest data');
+    assert.ok(server.includes('windows, windowsFill,') && server.includes('stages.ensureWindows(doc.id)'), 'the route sends the date ranges and starts the fill for a set without them');
     // and the help says it, in the words on the screen
     const sandbox = {};
     // eslint-disable-next-line no-new-func
@@ -890,6 +828,71 @@ module.exports = {
     assert.ok(h.swFrom3.more.includes('While a paused run is chosen the boxes below are ghosted'));
     assert.ok(h.swGo3.what.includes('With a paused run chosen in the box above, starts that run again where it stopped.'));
     assert.ok(h.swStop.what.startsWith('Pauses a stage 3 run, or stops a stage 1 or 2 run.'));
+  },
+
+  // A SET WRITTEN BEFORE 3.85.0 HAS ITS DATE RANGES WORKED OUT FROM ITS OWN
+  // PINNED FILES, announced, once, when a screen reads it (RULE NINE), and the
+  // block that does it goes the day every set on the box has been through it
+  // (RULE TEN: windowsMissing counts what is left)
+  async aSetWrittenBeforeTheDateRangesWereKeptHasThemWorkedOutFromItsPinnedFiles() {
+    needFixture();
+    await idle();
+    assert.ok(state.ref, 'no reference run');
+    // a stage 3 set: its date ranges struck off, then read by a screen
+    const ref = stages.getSet(state.ref);
+    const kept = JSON.parse(JSON.stringify(ref.windows.units));
+    const id3 = `s3-test-${stamp()}-w3`;
+    fs.cpSync(rowstore.storeDir(state.ref), rowstore.storeDir(id3), { recursive: true });
+    writeSet({ ...ref, id: id3, name: `ZZZ pause windows 3 ${stamp()}`, windows: null });
+    assert.strictEqual(stages.windowsOfSet(stages.getSet(id3)).known, 0, 'nothing known yet');
+    const before = windowsMissingNow();
+    assert.ok(before.sets >= 1, 'the count of sets still to fill sees it');
+    let st = stages.ensureWindows(id3);
+    assert.ok(st.filling, `the fill starts on the first read — got ${JSON.stringify(st)}`);
+    assert.ok(/date ranges of .* being worked out/.test(stages.stageBusy() || ''), 'and the box counts as busy while it runs');
+    st = await untilFilled(id3);
+    assert.deepStrictEqual(st, { ready: true });
+    const got3 = stages.getSet(id3);
+    assert.strictEqual(got3.windows.filledIn, true, 'the set says its date ranges were filled in, not priced');
+    assert.deepStrictEqual(got3.windows.units, kept, 'and they are exactly the ones the run itself wrote');
+    assert.deepStrictEqual(stages.ensureWindows(id3), { ready: true });
+    // a stage 1 set: its records rewritten beside and swapped, count held
+    const id1 = `s1-test-${stamp()}-w1`;
+    const src1 = stages.getSet(state.s1.id);
+    fs.cpSync(rowstore.storeDir(state.s1.id), rowstore.storeDir(id1), { recursive: true });
+    writeSet({ ...src1, id: id1, name: `ZZZ pause windows 1 ${stamp()}` });
+    {
+      // strike the date ranges off the copy's records, the way an older set has none
+      const rows = rowstore.readAll(id1, 'records');
+      const w = rowstore.writer(id1, 'records-strip');
+      for (const r of rows) { const { windows, ...rest } = r; w.push(rest); }
+      await w.close();
+      const from = rowstore.storeFile(id1, 'records-strip');
+      const to = rowstore.gzFile(id1, 'records');
+      fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
+      fs.renameSync(from, to);
+      assert.ok(rowstore.readAll(id1, 'records').every((r) => !r.windows), 'struck off');
+    }
+    const rowsBefore = rowstore.readAll(id1, 'records');
+    st = stages.ensureWindows(id1);
+    assert.ok(st.filling, `the stage 1 fill starts — got ${JSON.stringify(st)}`);
+    st = await untilFilled(id1);
+    assert.deepStrictEqual(st, { ready: true });
+    const rowsAfter = rowstore.readAll(id1, 'records');
+    assert.strictEqual(rowsAfter.length, rowsBefore.length, 'the same number of records');
+    for (let i = 0; i < rowsBefore.length; i++) {
+      const { windows, ...rest } = rowsAfter[i];
+      assert.deepStrictEqual(rest, rowsBefore[i], `record ${i} is otherwise untouched`);
+      const original = rowstore.readAll(state.s1.id, 'records').find((r) => r.u === rowsAfter[i].u);
+      assert.deepStrictEqual(windows, original.windows, `record ${i} gets back exactly the date ranges the run wrote`);
+    }
+    assert.ok(stages.getSet(id1).windowsFilledAt, 'and the set says when');
+    assert.ok(!fs.existsSync(rowstore.gzFile(id1, 'records-filling')), 'nothing is left beside the records');
+    assert.strictEqual(windowsMissingNow().sets, before.sets - 1 - 0, 'one fewer set to fill (the stage 1 copy was made after the count)');
+    // a set with no pin cannot be worked out, and says so
+    const bare = { ...ref, id: `s3-test-${stamp()}-w0`, name: `ZZZ pause windows none ${stamp()}`, windows: null, dataManifest: null };
+    writeSet(bare);
+    assert.ok(/no record of the price files/.test(stages.ensureWindows(bare.id).failed || ''), 'a set that was never stamped says why');
   },
 
   // THE START BUTTONS SLEEP ON THE PRESS AND THE LINE AT THE TOP SAYS STARTING

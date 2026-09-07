@@ -368,15 +368,41 @@ async function unitChunks(combo, geometry, p) {
   });
   let workChunks = chunks;
   let reserve = null;
+  // a window runs from its first chunk's first hour to the last hour its last
+  // chunk's trade can reach
+  const reachOf = (c) => c.startTs + geo.exitOffsetH * 3600000;
   if (p.windowLayout === 'reserve61') {
     const nReserve = Math.max(2, Math.round(workChunks.length * 0.13));
     const sealed = workChunks.slice(workChunks.length - nReserve);
-    reserve = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: sealed[sealed.length - 1].endTs };
+    reserve = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
     workChunks = workChunks.slice(0, workChunks.length - nReserve);
   }
   const holdout = p.windowLayout !== 'legacy80';
   const split = splitAndLabel(workChunks, branch, holdout);
-  return { geo, maps, split, reserve, holdout };
+  // THE ACTUAL DATE RANGES EVERY RUN USED (3.85.0, owner order 2026-09-07: "on
+  // all s1/2/3 sweep runs the three actual date ranges for 70/15/15 and
+  // 61/13/13 should be stored"). Written on every stage 1 and 2 record and,
+  // per unit, beside every stage 3 set. THE UNREAD WINDOW HAS A START AND NO
+  // END: it runs from where the seal began to whatever data exists when it is
+  // finally read ("future runs that look at the last /13 should use all
+  // available data"); seenToTs is only how far the data reached on the day.
+  const span = (list) => (list && list.length ? { fromTs: list[0].startTs, toTs: reachOf(list[list.length - 1]), chunks: list.length } : null);
+  const windows = {
+    layout: p.windowLayout || null,
+    train: span(split.trainChunks), test: span(split.testChunks), hold: span(split.holdChunks),
+    unread: reserve ? { fromTs: reserve.fromTs, chunks: reserve.chunks, seenToTs: reserve.toTs } : null,
+  };
+  return { geo, maps, split, reserve, holdout, windows };
+}
+
+// ---- TASK: the date ranges of one unit and nothing else (3.85.0) ---------------
+// What a set written before 3.85.0 is filled in with: the same chunks, cut the
+// same way, from the same pinned files -- and no training, no pricing.
+async function windowsTask(task) {
+  const { combo, geometry } = task;
+  const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
+  const { windows } = await unitChunks(combo, geometry, p);
+  return { windows };
 }
 
 const viewsFor = (combo, geo) => bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
@@ -432,7 +458,7 @@ function appendKept(existing, from, fresh) {
 async function s1UnitTask(task) {
   const { combo, geometry, seed, unitKey, nullN, fee } = task;
   const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
-  const { geo, maps, split, reserve } = await unitChunks(combo, geometry, p);
+  const { geo, maps, split, reserve, windows } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks, bandPct } = split;
   const views = viewsFor(combo, geo);
   const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
@@ -468,6 +494,7 @@ async function s1UnitTask(task) {
   return {
     bandPct,
     reserve,
+    windows,
     counts: {
       train: trainChunks.length,
       test: testChunks.length,
@@ -498,7 +525,7 @@ async function s1UnitTask(task) {
 async function s2UnitTask(task) {
   const { combo, geometry, s1, seed, unitKey, nullN, fee } = task;
   const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
-  const { geo, maps, split } = await unitChunks(combo, geometry, p);
+  const { geo, maps, split, windows } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   // The stage 1 votes must be describing THESE chunks. Refuse a unit whose
   // stored timestamps disagree with the rebuild — a manifest mismatch should
@@ -557,6 +584,7 @@ async function s2UnitTask(task) {
     beat, pairs: nullN, lead: leadOver(scoreAll, nullScores), nullScores,
     tuning3, tuning,
     trainedOn: weightsSaid(p, weights),
+    windows,
   };
 }
 
@@ -634,7 +662,7 @@ async function s3UnitTask(task) {
   // null set -- those are already on disk and re-doing them would turn a
   // two-hour fill into a twelve-hour re-run.
   const noiseOnly = !!task.noiseOnly;
-  const { geo, maps, split } = await unitChunks(combo, geometry, p);
+  const { geo, maps, split, windows } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   const tsT = testChunks.map((c) => c.startTs);
   if (tsT.length !== unit.ts.test.length || tsT.some((t, i) => t !== unit.ts.test[i])) {
@@ -1028,7 +1056,7 @@ async function s3UnitTask(task) {
   const controls = {};
   for (const [k, v] of holdCtlCache) controls[k] = v;
   return {
-    rows, agreed: agreedMapFor(settings), controls,
+    rows, agreed: agreedMapFor(settings), controls, windows,
     counts: { test: testChunks.length, hold: holdChunks.length },
   };
 }
@@ -1213,7 +1241,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 // came out once the box served a vocabulary without it.
 
 module.exports = {
-  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
+  s1UnitTask, s2UnitTask, s3UnitTask, windowsTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
   moneyWeights, weightsFor, weightsSaid, trainOnOf, capOf, TRAIN_ON, WEIGHT_CAP_DEFAULT,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,

@@ -1,10 +1,8 @@
 // ONE STAGE 3 LAUNCH IN A PROCESS OF ITS OWN, kept alive until it is killed.
-// tests/test-stagecontinue.js uses it to rehearse two things the test process
-// cannot do to itself: a service restart in the middle of a run (the child is
-// killed outright), and tools/capture-stage3.js attaching through the
-// inspector to a live run. The heartbeat file says the process is alive and
-// not stuck paused. With a fourth argument, the launch waits until that file
-// exists, so the test can attach the debugger BEFORE the first part lands.
+// tests/test-stagecontinue.js uses it to rehearse what the test process cannot
+// do to itself: a service restart in the middle of a run (the child is killed
+// outright). The heartbeat file says the process is alive. With a fourth
+// argument, the launch waits until that file exists.
 const fs = require('fs');
 const stages = require('../../lib/stages');
 const params = JSON.parse(process.argv[2]);

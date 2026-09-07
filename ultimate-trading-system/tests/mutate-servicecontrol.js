@@ -1096,8 +1096,13 @@ const GUARDS = [
     'aChildIsStampedOverEveryCoinItsParentWasStampedOver', 'a child is stamped over its parent\'s trade coin alone, and the coins its units read alongside are never pinned'],
   [path.join(ROOT, 'lib', 'stages.js'), '    if (missing.length) {\n      const pc = pinnedIntact(parent.dataManifest);', '    if (false) {\n      const pc = pinnedIntact(parent.dataManifest);',
     'aUnitWhoseAgreementsWereLostGetsThemBackWithoutRepricingTheWholeUnit', 'a start-again of a set whose own record names one coin leaves the other coins reading whatever is on disk'],
-  [path.join(ROOT, 'tools', 'capture-stage3.js'), '(activeSet.cancelRequested = true, (activePool && activePool.abort()), { stopped: true })', '({ stopped: true })',
-    'theCaptureToolPausesALiveRunThroughTheInspectorAndItIsStartedAgainEqualToTheReference', 'the tool writes the checkpoint and the run goes on, and the owner deploys over a run that was never paused'],
+  // ---- the actual date ranges are stored on every stage; the unread window has a start and no end (3.85.0) ----
+  [path.join(ROOT, 'lib', 'stagework.js'), '    unread: reserve ? { fromTs: reserve.fromTs, chunks: reserve.chunks, seenToTs: reserve.toTs } : null,', '    unread: reserve ? { fromTs: reserve.fromTs, chunks: reserve.chunks, seenToTs: reserve.toTs, toTs: reserve.toTs } : null,',
+    'aRunThatWasNeverStoppedIsTheReference', 'the unread window is stored with an end, so data that arrives after the run is never counted as unread'],
+  [path.join(ROOT, 'lib', 'stages.js'), '          windows: res.windows || rec.windows || null,', '          windows: null,',
+    'aRunThatWasNeverStoppedIsTheReference', 'a stage 2 record carries no date ranges, and every stage 3 set cut from it has none to keep'],
+  [path.join(ROOT, 'lib', 'stages.js'), '      if (!windowsMap[unitKeyOf(rec)] && !todo.length && !extra.length) {', '      if (false && !windowsMap[unitKeyOf(rec)] && !todo.length && !extra.length) {',
+    'aPausedRunWhoseCheckpointKeepsNoDateRangesPricesOneSettingPerUnitForThem', 'a run paused before 3.85.0 and started again lands with no date ranges for the units it had already priced'],
 ];
 
 const only = process.argv[2] || '';

@@ -802,3 +802,33 @@ carried out 2026-08-28 under its own GO — decision 50.
     #1's files for those sixteen coins; units 1 to 90 read what was on disk
     at their time, which may have run a few days past the parent's files.
     That is the best record there is, and it is written down. Third digit.
+71. **The pause tool is gone; every run stores the date ranges it used; the
+    unread window has a start and no end** (3.85.0, owner order 2026-09-07:
+    "delete the pause tool. also, on all s1/2/3 sweep runs the three actual
+    date ranges for 70/15/15 and 61/13/13 should be stored. in the case of
+    61/13/13/13 future runs that look at the last /13 should use all
+    available data -- so if more data has become available it must be
+    automatically included in the final /13 sealed chunk").
+    The tool went whole (RULE TEN): the file, its two tests, its guard, the
+    test fixture's inspector plumbing, its box scripts. One line stays until
+    S3 #1c has been started again: the start-again drops the tool's mark
+    from that set's document. The unit chunking now returns the windows it
+    cut -- training, test, held-back, each from its first chunk's first hour
+    to the last hour its last chunk's trade can reach, with the chunk count;
+    and the unread window's start, its chunk count, and only how far the
+    data reached that day (seenToTs), never an end. Stage 1 and 2 write them
+    on every record; stage 3 keeps them per unit beside the set, in the
+    checkpoint too, and a start-again brings them back for a unit that lacks
+    them by pricing one setting again, as it does the agreements. Whatever
+    reads the unread window reads from its start to the newest candle the
+    box holds on the day (sealedFromUnits, windowsOfSet): the pin covers what
+    a chain was launched on, and the unread window is everything after it.
+    On screen: every run's header on Boards carries a Date ranges line, and
+    the Funnel's sealed line says where the unread window runs. A set
+    written before this has its date ranges worked out from its own pinned
+    files the first time a screen reads it -- in the workers, one set at a
+    time, never while a run is going, stage 1 and 2 records rewritten beside
+    and swapped once the count matches -- and the block that does it is
+    deleted the day every set on the box has been through it; windowsMissing
+    counts what is left. Second digit: new stored fields and a new line on
+    the screen.
