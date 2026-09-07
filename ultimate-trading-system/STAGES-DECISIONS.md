@@ -721,3 +721,37 @@ carried out 2026-08-28 under its own GO — decision 50.
     turn until the run ends -- and sets that in the pool's settings file for
     its own duration when the box it runs on has fewer, putting it back
     exactly as it was.
+69. **The start-again answers at once, and every start says so on the press**
+    (3.83.0, owner report 2026-09-07: "i did the start stage 3 on the paused
+    set and it just timed out ... you need to fix the start stage buttons on
+    sweep to ghost as soon as a button is pressed AND not start a time-out
+    that complains after one minute -- you need to give a status of
+    'starting...' or something like that at the top"). The run had in fact
+    started: reading 2.18 million rows back to learn what was on disk took
+    over a minute inside the request, and the gateway for the screens keeps
+    its default sixty seconds on purpose ("no long-lived requests"), so the
+    press came back as a failure while the run went on. The split is now the
+    launch's own (3.47.0): everything that can refuse in an instant still
+    refuses in the answer -- the set, its checkpoint, one heavy job at a time,
+    the parent, the price files, the units -- and the slow part happens after
+    the answer, on the running line: the block is rebuilt, the store is read
+    four blocks at a time with the loop let go in between so the screens keep
+    answering, and the work list is built. A refusal found there (a block
+    that no longer rebuilds, a duplicate row) puts the set back exactly as it
+    was with the sentence on its own line; the pause control pressed during
+    the reading leaves it paused. The answer carries only what is known at
+    once (id, name, units); what was kept and what is priced again is written
+    on the set when the reading is done, which is where the screen and the
+    tests now read it. The tool's mark on the 3.81 run is dropped the moment
+    it is started again.
+    On the screen: all three start buttons sleep the moment any one is
+    pressed, the status line at the top reads starting… before the box has
+    answered, and a gateway that gives up is not a dialog -- the line says the
+    box has not answered yet and the poll follows it for up to two minutes.
+    The poll no longer wakes the buttons under a press the box has not
+    answered. Second digit: the start-again's behaviour and the screen's.
+    Found and left as a report, not fixed: the closed word list cannot see a
+    label written as a bare quoted string inside an interpolation or assigned
+    straight to a line -- `pause`, `stop`, `nothing is running` and now the
+    starting… lines are on the screen and on no list, and the two-way check
+    reads through the same reader, so it cannot see the hole either.

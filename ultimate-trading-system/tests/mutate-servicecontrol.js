@@ -1074,6 +1074,14 @@ const GUARDS = [
     'theSweepOffersAPausedRunWhereANewOneIsSetUp', 'Boards shows a paused set and says nothing about where to start it again'],
   [path.join(ROOT, 'server.js'), "app.post('/api/stageset/:id/continue', (req, res) => {", "app.post('/api/stageset/:id/continue-gone', (req, res) => {",
     'theSweepOffersAPausedRunWhereANewOneIsSetUp', 'start stage 3 on a paused run posts to a route that is not there'],
+  // ---- the start-again answers at once; the start buttons sleep on the press (3.83.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "        doc.status = before;\n        doc.progress = `not started again — ${err.message}`;",
+    "        doc.status = 'error';\n        doc.progress = `not started again — ${err.message}`;",
+    'aStartAgainRefusesWhatItCannotResume', 'a start-again refused after the answer leaves the set reading as failed instead of exactly as it was'],
+  [path.join(ROOT, 'public', 'construct.js'), "    swStarting(cont ? 'again' : 3);\n", '',
+    'theStartButtonsSleepOnThePressAndTheLineAtTheTopSaysStarting', 'start stage 3 can be pressed twice inside the poll gap and the top line says nothing until the box answers'],
+  [path.join(ROOT, 'public', 'construct.js'), '      return { pending: true };', '      return null;',
+    'theStartButtonsSleepOnThePressAndTheLineAtTheTopSaysStarting', 'a gateway that gave up reads as the box refusing, while the run has started'],
   [path.join(ROOT, 'tools', 'capture-stage3.js'), '(activeSet.cancelRequested = true, (activePool && activePool.abort()), { stopped: true })', '({ stopped: true })',
     'theCaptureToolPausesALiveRunThroughTheInspectorAndItIsStartedAgainEqualToTheReference', 'the tool writes the checkpoint and the run goes on, and the owner deploys over a run that was never paused'],
 ];

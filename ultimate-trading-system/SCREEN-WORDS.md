@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **cac648b11f1c — what the box is serving**, not from the working tree.
+Generated from **18c4b2d254bc — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -90,7 +90,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Sweep
 
-## What the controls are called (79)
+## What the controls are called (83)
 
 - `— each says why:`
 - `— none —`
@@ -99,6 +99,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `, and`
 - `” will permanently remove:`
 - `all loaded data`
+- `are already priced and are kept`
 - `arm`
 - `band % (or auto)`
 - `both kinds`
@@ -134,6 +135,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `no runs yet`
 - `null set money kept`
 - `null set size`
+- `of`
 - `on this box —`
 - `one voice at`
 - `or a new name`
@@ -158,7 +160,8 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `start stage 3`
 - `start stage 3 will refuse:`
 - `started`
-- `stop`
+- `started again`
+- `starts again where it was paused:`
 - `Sweep — the three stages, live`
 - `t`
 - `The`
@@ -167,6 +170,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `trail`
 - `triples`
 - `units`
+- `units priced`
 - `UTC`
 - `View tree`
 - `was run with`
@@ -249,7 +253,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `XRPUSDT`
 - `ZECUSDT`
 
-## Sentences the page prints (40)
+## Sentences the page prints (41)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards.
@@ -277,6 +281,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - units. Progress above; the set lands on Boards.
 - carried units.
 - units.
+- units were already priced and are kept.
 - Every run launched while a campaign is set attaches to it: sweeps, null rounds, tuning passes,
 - scans, stage record sets. The campaign's whole chain travels with any greenlight minted from it.
 - ” — runs, record sets & greenlights
@@ -292,10 +297,10 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - the filters saved on the parent's table leave
 - of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)
 
-## Every word, flat (369)
+## Every word, flat (373)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above act. active ADAUSDT add against agree all alongside and another any are argmax arm as at ATOMUSDT attaches auto AVAXUSDT band bar BCHUSDT be because been belonging beside best biggest blank block BNBUSDT Boards Boards. BOOST both box boxes breakout but buy by came Campaign campaign campaigns cannot carried carries carry chain chunk coin coins committee compare conviction count cover crumbs Currently cut daily Daily data day decide decision declared default Delete deleted. Deleting deployed. description different direction directional DOGEUSDT DOTUSDT doubles Each each end ends enough entry estimate ETCUSDT ETHUSDT every Every everything evidence exam exist existing families fee fees fewer files filters finished first fit. folded for forecast forward four freak from gate go going good greenlight greenlights has here history hold holds how in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave legacy lesson limit LINKUSDT live load loaded locked LOGREG LTCUSDT many market may member members members. minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary others out own pairs parent parent. passes per permanently permute places plain price priced prices prices. Progress quarter Quorum quorum rank read reads record records refuse remove removed Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape share side side. single singles size small so SOLUSDT stage Stage stages start started static stayed staying still stop Sweep sweeps tab table taking teaches than that the The their them them. there These they this This those three times to too trade Trade trades trail train trained training trains travels tree triples TRXUSDT tuning tuning-slice turns undone. unit units units. UNIUSDT until up UTC View voice voices vote votes voting was wastes way way. week weekly Weekly weigh weightless were What when where while whole why will window with working worth writes wrong XLMUSDT XRPUSDT yet ZECUSDT
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above act. active ADAUSDT add again against agree all alongside already and another any are argmax arm as at ATOMUSDT attaches auto AVAXUSDT band bar BCHUSDT be because been belonging beside best biggest blank block BNBUSDT Boards Boards. BOOST both box boxes breakout but buy by came Campaign campaign campaigns cannot carried carries carry chain chunk coin coins committee compare conviction count cover crumbs Currently cut daily Daily data day decide decision declared default Delete deleted. Deleting deployed. description different direction directional DOGEUSDT DOTUSDT doubles Each each end ends enough entry estimate ETCUSDT ETHUSDT every Every everything evidence exam exist existing families fee fees fewer files filters finished first fit. folded for forecast forward four freak from gate go going good greenlight greenlights has here history hold holds how in into is it it. its itself judged keep keeps. kept kept. kind kinds known lands landslide last later launched layout lean learning. leave legacy lesson limit LINKUSDT live load loaded locked LOGREG LTCUSDT many market may member members members. minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary others out own pairs parent parent. passes paused per permanently permute places plain price priced prices prices. Progress quarter Quorum quorum rank read reads record records refuse remove removed Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape share side side. single singles size small so SOLUSDT stage Stage stages start started starts static stayed staying still Sweep sweeps tab table taking teaches than that the The their them them. there These they this This those three times to too trade Trade trades trail train trained training trains travels tree triples TRXUSDT tuning tuning-slice turns undone. unit units units. UNIUSDT until up UTC View voice voices vote votes voting was wastes way way. week weekly Weekly weigh weightless were What when where while whole why will window with working worth writes wrong XLMUSDT XRPUSDT yet ZECUSDT
 ```
 
 ---
@@ -455,7 +460,7 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - stage 2 and stage 1 sections with its parents; picking a stage 2 set fills its stage 1 parent; picking a
 - parent puts the child selections away. Each box offers only the record sets that came out of what is picked
 - above it. Each section can be put away and comes back as you left it.
-- . Its tables appear when it lands.
+- Its tables appear when it lands.
 - THIS SET DOES NOT MATCH ITS OWN PLAN.
 - unit(s) failed and are missing from every table below — read the numbers accordingly.
 - notes — why this run exists, what it showed, what it cost

@@ -509,7 +509,8 @@ module.exports = {
       // just been started disappeared at the moment it became true. A second
       // launch under the same name is refused by the service in words, which
       // is what stops a name being taken twice; an emptied box only hid it.
-      assert.ok(ui.includes(`if (got) { rememberSweepForm(); say('#swOut${n}'`),
+      // a press answers pending when the gateway dropped the answer (3.83.0); the form is saved on a real answer
+      assert.ok(ui.includes(`if (got && !got.pending) { rememberSweepForm(); say('#swOut${n}'`),
         `the stage ${n} launch does not save the form with the name still in it`);
       assert.ok(!ui.includes(`$('#swName${n}').value = '';`),
         `the stage ${n} box empties itself of the name the owner typed`);

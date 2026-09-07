@@ -263,7 +263,8 @@ module.exports = {
       'the stage 3 block must be built in one place — two copies are two different runs, the one priced and the one started');
     assert.ok(/swAsk\('api\/stage3-count', \{\n\s*\.\.\.swBlockParams\(\)/.test(ui),
       'and the count must be asked for THAT block');
-    const launch = ui.slice(ui.indexOf("tryPost('api/stage3', {"), ui.indexOf("tryPost('api/stage3', {") + 400);
+    // a start goes through the post that does not put up a dialog when the gateway gives up (3.83.0)
+    const launch = ui.slice(ui.indexOf("startPost('api/stage3', {"), ui.indexOf("startPost('api/stage3', {") + 400);
     assert.ok(/\.\.\.swBlockParams\(\),/.test(launch),
       'and the launch must send the same one — not a second hand-written copy of the block');
     // The cost has to be beside the button that spends it, or it is read after

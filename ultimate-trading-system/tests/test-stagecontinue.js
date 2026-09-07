@@ -139,6 +139,20 @@ async function untilPartsLanded(id, n, ms = 120000) {
     await sleep(5);
   }
 }
+// the start-again answers at once and reads the store after, so the record of
+// what it kept lands on the set a moment later; this waits for it, and refuses
+// a set that stopped without it
+async function untilStartedAgain(id, ms = 60000) {
+  const t0 = Date.now();
+  const had = ((stages.getSet(id) || {}).continued || []).length;
+  for (;;) {
+    const doc = stages.getSet(id);
+    if (doc && Array.isArray(doc.continued) && doc.continued.length > had) return doc;
+    if (doc && doc.status !== 'running') throw new Error(`${id} stopped (${doc.status}: ${doc.progress}) before recording its start-again`);
+    if (Date.now() - t0 > ms) throw new Error(`${id} recorded no start-again in ${ms / 1000} s (${doc && doc.progress})`);
+    await sleep(25);
+  }
+}
 function rowsByKey(id) {
   const m = new Map();
   rowstore.each(id, 'records', (r) => { m.set(`${r.u}|${r.si}`, r); });
@@ -325,19 +339,23 @@ module.exports = {
     assert.strictEqual(row.continued, 0);
 
     const again = stages.continueStage3(s3.id);
+    // THE ANSWER COMES AT ONCE (3.83.0): before the block is rebuilt or a row
+    // is read back, so nothing slow sits inside the request
+    assert.deepStrictEqual(Object.keys(again).sort(), ['id', 'name', 'units'], 'the answer carries only what is known at once');
     assert.strictEqual(again.id, s3.id);
     assert.strictEqual(again.units, 2);
-    assert.ok(again.unitsToPrice >= 1 && again.unitsToPrice <= 2, `${again.unitsToPrice} units still to price`);
-    assert.strictEqual(again.unitsKept + again.unitsToPrice, 2, 'every unit is either kept whole or priced');
-    assert.strictEqual(again.settings, paused.plan.settings, 'the same block');
     const going = stages.getSet(s3.id);
     assert.strictEqual(going.status, 'running');
-    assert.strictEqual(going.continued.length, 1);
-    assert.strictEqual(going.continued[0].from, 'paused');
-    assert.strictEqual(going.continued[0].settingsKept, before.size, 'the record says how many settings were kept from disk');
-    assert.strictEqual(going.continued[0].rowsTrimmed, 0, 'a clean pause leaves nothing to trim');
+    assert.ok(/^starting again/.test(going.progress), `the running line says what it is doing — got "${going.progress}"`);
     assert.strictEqual(stages.stageRunning(), s3.id, 'the start-again is the one heavy job');
+    const c = (await untilStartedAgain(s3.id)).continued[0];
+    assert.ok(c.unitsToPrice >= 1 && c.unitsToPrice <= 2, `${c.unitsToPrice} units still to price`);
+    assert.strictEqual(c.unitsKept + c.unitsToPrice, 2, 'every unit is either kept whole or priced');
+    assert.strictEqual(c.from, 'paused');
+    assert.strictEqual(c.settingsKept, before.size, 'the record says how many settings were kept from disk');
+    assert.strictEqual(c.rowsTrimmed, 0, 'a clean pause leaves nothing to trim');
     const done = await untilLanded(s3.id);
+    assert.strictEqual(done.plan.settings, paused.plan.settings, 'the same block');
     assert.strictEqual(done.status, 'done', `the start-again ended ${done.status}: ${done.progress} ${JSON.stringify(done.failures)}`);
     assert.strictEqual(done.continued.length, 1);
     assert.ok(!done.cancelRequested, 'the pause request does not outlive the start-again');
@@ -367,15 +385,16 @@ module.exports = {
       pricedSettings: before.size, storeRows: before.size, storeBlocks: rowstore.blocksOf(id, 'records').length,
     });
     assert.strictEqual(stages.readAgreed(id), null, 'nothing agreed is kept beside the copy yet');
-    const again = stages.continueStage3(id);
-    assert.strictEqual(again.unitsKept, 0, 'no unit is whole without its agreements and comparisons');
-    assert.strictEqual(again.unitsToPrice, 2);
-    assert.ok(again.settingsRepriced >= 4, `at least one setting per decision per unit is priced again — got ${again.settingsRepriced}`);
-    assert.ok(again.settingsRepriced < before.size, `far fewer settings than the ${before.size} on disk are priced again — got ${again.settingsRepriced}`);
+    stages.continueStage3(id);
+    const c = (await untilStartedAgain(id)).continued[0];
+    assert.strictEqual(c.unitsKept, 0, 'no unit is whole without its agreements and comparisons');
+    assert.strictEqual(c.unitsToPrice, 2);
+    assert.ok(c.settingsRepriced >= 4, `at least one setting per decision per unit is priced again — got ${c.settingsRepriced}`);
+    assert.ok(c.settingsRepriced < before.size, `far fewer settings than the ${before.size} on disk are priced again — got ${c.settingsRepriced}`);
     const done = await untilLanded(id);
     assert.strictEqual(done.status, 'done', `ended ${done.status}: ${done.progress} ${JSON.stringify(done.failures)}`);
     assert.strictEqual(done.continued[0].settingsKept, before.size);
-    assert.strictEqual(done.continued[0].settingsRepriced, again.settingsRepriced);
+    assert.strictEqual(done.continued[0].settingsRepriced, c.settingsRepriced);
     assert.strictEqual(rowstore.count(id, 'records'), before.size, 'not one row was added');
     const after = rowsByKey(id);
     for (const [k, r] of before) assert.deepStrictEqual(after.get(k), r, `row ${k} on disk was changed`);
@@ -407,11 +426,11 @@ module.exports = {
     assert.ok(cp.partsDone <= corpse.perf.partsDone, 'the checkpoint is at or behind the set');
     const again = stages.continueStage3(id);
     assert.strictEqual(again.units, 2);
-    assert.strictEqual(again.unitsKept, 0, 'nothing can be kept whole off a checkpoint with no agreements in it');
-    assert.ok(again.unitsToPrice >= 1);
-    const going = stages.getSet(id);
-    assert.strictEqual(going.continued[0].from, 'interrupted');
-    assert.ok(going.continued[0].rowsTrimmed >= 0);
+    const startedAs = (await untilStartedAgain(id)).continued[0];
+    assert.strictEqual(startedAs.unitsKept, 0, 'nothing can be kept whole off a checkpoint with no agreements in it');
+    assert.ok(startedAs.unitsToPrice >= 1);
+    assert.strictEqual(startedAs.from, 'interrupted');
+    assert.ok(startedAs.rowsTrimmed >= 0);
     const done = await untilLanded(id);
     assert.strictEqual(done.status, 'done', `the start-again ended ${done.status}: ${done.progress} ${JSON.stringify(done.failures)} ${done.error || ''}`);
     sameAsReference(id, state.ref, 'killed mid-way');
@@ -480,8 +499,10 @@ module.exports = {
     assert.strictEqual(cp.partsDone, paused.perf.partsDone, 'and nothing landed after it');
     assert.strictEqual(cp.storeRows, rowstore.count(id, 'records'), 'it counts the rows on disk');
     await c.kill();
-    const again = stages.continueStage3(id);
-    assert.ok(again.unitsToPrice >= 1);
+    stages.continueStage3(id);
+    assert.ok(!('pausedBy' in stages.getSet(id)), 'the tool\'s mark is spent the moment the run is started again');
+    const startedAs = (await untilStartedAgain(id)).continued[0];
+    assert.ok(startedAs.unitsToPrice >= 1);
     const done = await untilLanded(id);
     assert.strictEqual(done.status, 'done', `the start-again ended ${done.status}: ${done.progress} ${JSON.stringify(done.failures)} ${done.error || ''}`);
     assert.strictEqual(done.continued[0].from, 'paused');
@@ -555,7 +576,8 @@ module.exports = {
       for (const fn of ['function startStage3(', 'function continueStage3(']) {
         const body = src.slice(src.indexOf(fn));
         const catchAt = body.indexOf('.catch((err) => {');
-        assert.ok(catchAt > 0 && body.slice(catchAt, catchAt + 400).includes('writeCheckpoint(doc, live)'), `${fn.slice(9, -1)} writes it when the run fails`);
+        // the start-again's catch first puts back a run that never started (3.83.0), so its writer sits further down
+        assert.ok(catchAt > 0 && body.slice(catchAt, catchAt + 1600).includes('writeCheckpoint(doc, live)'), `${fn.slice(9, -1)} writes it when the run fails`);
       }
       const fail = src.slice(src.indexOf('function finishFail('), src.indexOf('function feeOrRefuse('));
       assert.ok(fail.includes("doc.stage === 3 && hasCheckpoint(doc.id) ? 'paused' : 'cancelled'"), 'a stopped stage 3 run with a checkpoint is paused; without one, cancelled, as before');
@@ -619,7 +641,18 @@ module.exports = {
     const block = { ...base(), id: `s3-test-${stamp()}-rf6`, name: `ZZZ pause refuse block ${stamp()}`, plan: { ...ref.plan, settings: 999, settingLabels: [] } };
     writeSet(block);
     writeCheckpointFile(block.id, {});
-    assert.throws(() => stages.continueStage3(block.id), /not the same block, so nothing was priced/);
+    // A BLOCK THAT NO LONGER REBUILDS IS FOUND AFTER THE ANSWER (3.83.0): the
+    // rebuild is the slow part, so the set is claimed and answered first, and
+    // the refusal puts it back exactly as it was with the sentence on its own
+    // line -- nothing was priced, nothing is recorded as started
+    const claimed = stages.continueStage3(block.id);
+    assert.strictEqual(claimed.id, block.id);
+    const back = await untilLanded(block.id);
+    assert.strictEqual(back.status, 'paused', 'put back to what it was');
+    assert.ok(/^not started again — .*not the same block, so nothing was priced/.test(back.progress), `the line says why — got "${back.progress}"`);
+    assert.ok(/not the same block/.test(back.error));
+    assert.ok(!(back.continued || []).length, 'no start-again is recorded for one that did not start');
+    assert.ok(stages.hasCheckpoint(block.id), 'its checkpoint is untouched');
     // none of the refusals started anything or marked anything
     assert.strictEqual(stages.stageRunning(), null);
     for (const d of [done, bare, orphan, moved, missing, block]) {
@@ -753,8 +786,8 @@ module.exports = {
     assert.ok(ghost.includes("if (c.id === 'swFrom3' || c.id === 'swGo3') continue;") && ghost.includes('c.disabled = !!on;') && ghost.includes("holder.classList.toggle('ctl-off', !!on);"),
       'every control of the stage 3 section but the box and the start button is ghosted while a paused run is chosen');
     assert.ok(src.includes('starts again where it was paused:') && src.includes('the boxes below are this run\'s own and cannot be changed here'), 'the count line says what a start-again does');
-    assert.ok(src.includes('await tryPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});'), 'start stage 3 posts the start-again for the chosen run');
-    assert.ok(src.includes('started again <b>${esc(again.name)}</b> — ${again.unitsKept.toLocaleString()} of ${again.units.toLocaleString()} units were already priced and are kept.'));
+    assert.ok(src.includes('await startPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});'), 'start stage 3 posts the start-again for the chosen run, through the post that does not put up a dialog when the gateway gives up');
+    assert.ok(src.includes('started again <b>${esc(again.name)}</b> — progress above; the set lands on Boards.'), 'the message beside the button points at the running line, which carries the reading and then the pricing');
     assert.ok(src.includes("<button id=\"swStop\" class=\"danger\">${row.stage === 3 ? 'pause' : 'stop'}</button>"), 'the running line\'s control reads pause on a stage 3 run and stop on the others');
     assert.ok(src.includes("const cont = s3v.startsWith('continue:') ? s3v.slice('continue:'.length) : null;") && src.includes('const pausedRow = cont ? rowOf(cont) : null;'),
       'the provenance colours judge a paused run through its own stage 2 parent');
@@ -776,6 +809,47 @@ module.exports = {
     assert.ok(h.swFrom3.more.includes('While a paused run is chosen the boxes below are ghosted'));
     assert.ok(h.swGo3.what.includes('With a paused run chosen in the box above, starts that run again where it stopped.'));
     assert.ok(h.swStop.what.startsWith('Pauses a stage 3 run, or stops a stage 1 or 2 run.'));
+  },
+
+  // THE START BUTTONS SLEEP ON THE PRESS AND THE LINE AT THE TOP SAYS STARTING
+  // (3.83.0, owner order: "ghost as soon as a button is pressed AND not start a
+  // time-out that complains after one minute -- you need to give a status of
+  // 'starting...' or something like that at the top")
+  async theStartButtonsSleepOnThePressAndTheLineAtTheTopSaysStarting() {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const helper = src.slice(src.indexOf('function swStarting('), src.indexOf('function swAfterStart('));
+    assert.ok(helper.includes("for (const bid of ['swGo1', 'swGo2', 'swGo3'])") && helper.includes('b.disabled = true;'), 'all three start buttons sleep the moment one is pressed');
+    for (const label of ['starting stage 1…', 'starting stage 2…', 'starting stage 3…', 'starting again…']) {
+      assert.ok(helper.includes(`<span>${label}</span>`), `the status line at the top reads ${label}`);
+    }
+    assert.ok(helper.includes("const el = $('#swProg');"), 'and it is the status line at the top of Sweep that says so');
+    // each press says starting BEFORE it asks the box
+    const go = (n) => { const at = src.indexOf(`$('#swGo${n}').onclick`); return src.slice(at, src.indexOf('\n  };', at)); };   // the whole press
+    assert.ok(go(1).includes('swStarting(1);') && go(1).indexOf('swStarting(1);') < go(1).indexOf('startPost('), 'stage 1 says starting before it asks');
+    assert.ok(go(2).includes('swStarting(2);') && go(2).indexOf('swStarting(2);') < go(2).indexOf('startPost('), 'stage 2 says starting before it asks');
+    assert.ok(go(3).includes("swStarting(cont ? 'again' : 3);") && go(3).indexOf('swStarting(') < go(3).indexOf('startPost('), 'stage 3 says starting — or starting again — before it asks');
+    assert.ok(!/tryPost\('api\/stage[123]'/.test(src) && !src.includes('tryPost(`api/stageset/${encodeURIComponent(cont)}/continue`'), 'no start goes through the post that puts up a dialog when the gateway gives up');
+    // a gateway that gave up is not a refusal, and not a dialog
+    const sp = src.slice(src.indexOf('async function startPost('), src.indexOf('function swAfterStart('));
+    assert.ok(/HTTP 50\[24\]/.test(sp) && sp.includes('return { pending: true };'), 'a 502/504 answers pending');
+    assert.ok(sp.includes('starting… the box has not answered yet — this line follows it'), 'and the line says the box has not answered yet');
+    assert.ok(sp.indexOf('alert(') > sp.indexOf('return { pending: true };'), 'the dialog is for a real refusal only, after the gateway case');
+    // the poll does not wake the buttons under a press the box has not answered
+    const prog = src.slice(src.indexOf('async function swProgress('), src.indexOf("el.innerHTML = 'nothing is running';"));
+    assert.ok(prog.includes('if (going) swPressed = null;') && prog.includes('if (!going && swPressed) {') && prog.includes('< 120000'),
+      'a press in flight keeps the buttons asleep for up to two minutes, and a run that appears ends the wait');
+    assert.ok(prog.indexOf('if (!going && swPressed) {') < prog.indexOf('b.disabled = going;'), 'checked before the buttons are set from the box');
+    // and every press hands its answer to the one place that wakes the buttons
+    assert.strictEqual((src.match(/swAfterStart\((got|again)\);/g) || []).length, 4, 'each of the four starts ends through swAfterStart');
+    // the service side answers before it reads: the record of what it kept is
+    // written on the running line, not in the answer
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    const cont = st.slice(st.indexOf('function continueStage3('), st.indexOf('// ---- stage 3 tables'));
+    assert.ok(cont.trimEnd().endsWith('return { id, name: doc.name, units: parentRecords.length };\n}'), 'the answer carries only what is known at once');
+    assert.ok(cont.indexOf("doc.progress = 'starting again: reading what is already on disk';") < cont.indexOf('(async () => {'), 'the running line says so before the slow part begins');
+    assert.ok(cont.indexOf('foldSameTradeSettings(') > cont.indexOf('(async () => {'), 'the block is rebuilt after the answer');
+    assert.ok(cont.includes("rowstore.readBlocks(id, 'records', idx)") && cont.includes('await yieldNow();'), 'the store is read a few blocks at a time with the loop let go in between');
+    assert.ok(cont.includes("phase: 'starting again: reading what is already on disk', done, total: blocks.length, word: 'blocks'"), 'and the reading is on the running line as it goes');
   },
 
   async theListRowSaysWhetherASetCanBeStartedAgain() {

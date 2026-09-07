@@ -634,6 +634,52 @@ function msWords(ms) {
 }
 
 let swPoll = null;
+// EVERY START GHOSTS THE MOMENT IT IS PRESSED, AND THE LINE AT THE TOP SAYS
+// STARTING (3.83.0, owner order 2026-09-07: "ghost as soon as a button is
+// pressed AND not start a time-out that complains after one minute -- you
+// need to give a status of 'starting...' or something like that at the top").
+//
+// The buttons used to sleep or wake only on the next tick of the four-second
+// poll, so a press could be repeated inside that gap; and when the gateway
+// gave up on a slow answer at sixty seconds the press came back as a failure
+// dialog while the run had in fact started. Now all three sleep on the press
+// itself, the status line at the top reads starting… before the box has
+// answered, and a start whose answer the gateway dropped is not a failure:
+// the line says the box has not answered yet and the poll goes and looks.
+let swPressed = null;      // which start is in flight
+let swPressedAt = 0;
+function swStarting(what) {
+  swPressed = String(what);
+  swPressedAt = Date.now();
+  for (const bid of ['swGo1', 'swGo2', 'swGo3']) {
+    const b = $(`#${bid}`);
+    if (b) { b.disabled = true; b.title = 'starting…'; }
+  }
+  const el = $('#swProg');
+  if (!el) return;
+  el.innerHTML = what === 'again' ? '<span>starting again…</span>'
+    : what === 1 ? '<span>starting stage 1…</span>'
+      : what === 2 ? '<span>starting stage 2…</span>' : '<span>starting stage 3…</span>';
+}
+// a start's POST. A gateway that gave up is not the box saying no -- the
+// service may well be working on it -- so it is not a dialog either; the line
+// says so, and the poll finds out. Anything else is a refusal, said plainly.
+async function startPost(p, body) {
+  try { return await post(p, body); } catch (e) {
+    if (/HTTP 50[24]\b/.test(String(e.message))) {
+      const el = $('#swProg');
+      if (el) el.innerHTML = '<span>starting… the box has not answered yet — this line follows it</span>';
+      return { pending: true };
+    }
+    alert('FAILED — nothing changed.\n\n' + e.message);
+    return null;
+  }
+}
+function swAfterStart(got) {
+  if (!(got && got.pending)) swPressed = null;
+  else if (!swPoll) swPoll = setInterval(swProgress, 4000);
+  swProgress();
+}
 
 // EVERY PICKER CARRIES AN EMPTY ENTRY, AND IT IS THE DEFAULT (3.77.0, owner
 // order 2026-09-06: "each drop down selector box should have an -empty- entry
@@ -764,6 +810,14 @@ async function swProgress() {
   // the start buttons sleep while a run is going — one heavy job at a time,
   // said on the button instead of by a refusal after the press
   const going = !!st.running;
+  // a press in flight keeps the buttons asleep and the line saying starting
+  // until the box reports the run -- for two minutes, in case the gateway
+  // dropped the answer -- and a run that appears ends the wait
+  if (going) swPressed = null;
+  if (!going && swPressed) {
+    if (Date.now() - swPressedAt < 120000) { if (!swPoll) swPoll = setInterval(swProgress, 4000); return; }
+    swPressed = null;
+  }
   for (const bid of ['swGo1', 'swGo2', 'swGo3']) {
     const b = $(`#${bid}`);
     if (b) { b.disabled = going; b.title = going ? 'a stage run is going — one heavy job at a time. The button wakes when it lands.' : ''; }
@@ -2953,6 +3007,7 @@ async function drawSweep() {
   // alone is the whole fix -- and a second start under the same name is refused
   // by the service, in words, which is better than an empty box that hides it.
   $('#swGo1').onclick = async () => {
+    swStarting(1);
     const body = {
       universe: ($('#swUni').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
       compare: ($('#swCompare').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
@@ -2968,22 +3023,26 @@ async function drawSweep() {
     };
     if (!body.universe.length) delete body.universe;
     if (!body.compare.length) delete body.compare;
-    const got = await tryPost('api/stage1', body);
-    if (got) { rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); swProgress(); }
+    const got = await startPost('api/stage1', body);
+    if (got && !got.pending) { rememberSweepForm(); say('#swOut1', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} units. Progress above; the set lands on Boards.`); }
+    swAfterStart(got);
   };
   $('#swGo2').onclick = async () => {
-    const got = await tryPost('api/stage2', {
+    swStarting(2);
+    const got = await startPost('api/stage2', {
       from: $('#swFrom2').value,
       carry: Number($('#swCarry').value) || 0, desc: $('#swDesc2').value,
       name: $('#swName2').value,
     });
-    if (got) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); swProgress(); }
+    if (got && !got.pending) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); }
+    swAfterStart(got);
   };
   $('#swGo3').onclick = async () => {
     // with a paused run chosen in the box nothing is launched: it is started
     // again instead, below, with everything it had
     const cont = swContinueOf();
-    const got = cont ? null : await tryPost('api/stage3', {
+    swStarting(cont ? 'again' : 3);
+    const got = cont ? null : await startPost('api/stage3', {
       from: $('#swFrom3').value, fee: Number($('#swFee').value) / 100,
       carry: Number($('#swCarry3').value) || 0,
       pick: $('#swPick3').value,
@@ -2991,15 +3050,19 @@ async function drawSweep() {
       name: $('#swName3').value,
       ...swBlockParams(),
     });
-    if (got) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); swProgress(); }
+    if (got && !got.pending) { rememberSweepForm(); say('#swOut3', `started <b>${esc(got.name)}</b> — ${got.settings.toLocaleString()} settings × ${got.units.toLocaleString()} units.`); }
     if (cont) {
-      const again = await tryPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});
-      if (again) {
+      // the box answers before it has read what is on disk; the line above
+      // says how far that reading has got, then how far the pricing has
+      const again = await startPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});
+      if (again && !again.pending) {
         rememberSweepForm();
-        say('#swOut3', `started again <b>${esc(again.name)}</b> — ${again.unitsKept.toLocaleString()} of ${again.units.toLocaleString()} units were already priced and are kept.`);
-        swProgress();
+        say('#swOut3', `started again <b>${esc(again.name)}</b> — progress above; the set lands on Boards.`);
       }
+      swAfterStart(again);
+      return;
     }
+    swAfterStart(got);
   };
   // THE CONDITIONS THE UNITS WERE TRAINED UNDER, AS ONE SETTING (3.71.0, owner
   // question 2026-09-05: "is there a fixed set of Stage 3 settings that

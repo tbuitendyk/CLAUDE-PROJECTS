@@ -189,8 +189,11 @@ function everyPollingSectionCancelsItsPreviousChain() {
 // What IS asserted is the half that holds: the sleep/wake path exists, it says
 // why on the way down, and hovers are wired from the Help tab at all.
 function enablingAControlDoesNotEraseItsDescription() {
-  const i = CX.indexOf('for (const bid of [\'swGo1\', \'swGo2\', \'swGo3\'])');
-  assert(i >= 0, 'the start buttons no longer sleep while a run is going');
+  // the poll's own loop, not the press's (3.83.0: the press puts all three to
+  // sleep first; the poll is what keeps them asleep while a run is going)
+  const poll = CX.indexOf('async function swProgress(');
+  const i = CX.indexOf('for (const bid of [\'swGo1\', \'swGo2\', \'swGo3\'])', poll);
+  assert(poll >= 0 && i >= 0, 'the start buttons no longer sleep while a run is going');
   const body = CX.slice(i, i + 400);
   assert(/b\.disabled = going;/.test(body), 'a start button stays live while a heavy job is already going');
   assert(/one heavy job at a time/.test(body),
