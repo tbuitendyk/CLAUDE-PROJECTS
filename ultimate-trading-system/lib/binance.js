@@ -439,4 +439,4 @@ function newestCandleTs(symbol) {
   return newest;
 }
 
-module.exports = { monthlyKlines, dailyKlines, recentKlines, socksServerTime, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, newestCandleTs, HOUR_MS, MINUTE_MS: 60_000 };
+module.exports = { monthlyKlines, dailyKlines, recentKlines, socksServerTime, unzipSingleEntry, parseKlineCsv, cacheState, cachedMonths, cachedDayMonths, coveredMonths, monthFromDayFiles, cachePath, newestCandleTs, CACHE_DIR, HOUR_MS, MINUTE_MS: 60_000 };

@@ -1,5 +1,6 @@
 const fs = require('fs');
-const { monthlyKlines, cachedMonths, cachedDayMonths, monthFromDayFiles, cachePath, HOUR_MS } = require('./binance');
+const path = require('path');
+const { monthlyKlines, cachedMonths, cachedDayMonths, monthFromDayFiles, cachePath, CACHE_DIR, HOUR_MS } = require('./binance');
 const { pnlAt, directionalCall } = require('./paper');
 
 // Loading market history, and two small things everything downstream agrees on.
@@ -295,6 +296,42 @@ async function loadSymbolAll(symbol, onProgress) {
   return { rows, missing: [], cachedMonthCount: list.length, quality: describeSeries(rows, monthCounts) };
 }
 
+// THE PINNED LOADER (3.84.0): exactly the files a run was launched on, read
+// the way the launch read them -- the month bundle when one is pinned, else
+// the pinned day files, in date order -- and nothing that has appeared since.
+// A pinned file that is gone is an error here, never a fetch: the run's data
+// has changed and the caller has already been told so by pinnedIntact.
+function loadSymbolPinned(symbol, files, onProgress = () => {}) {
+  const byMonth = new Map();   // 'YYYY-MM' -> { bundle: file|null, days: [file...] }
+  for (const f of files || []) {
+    let m = new RegExp(`^${symbol}-1h-(\\d{4}-\\d{2})\\.json$`).exec(f);
+    if (m) { const e = byMonth.get(m[1]) || { bundle: null, days: [] }; e.bundle = f; byMonth.set(m[1], e); continue; }
+    m = new RegExp(`^${symbol}-1h-(\\d{4}-\\d{2})-\\d{2}\\.json$`).exec(f);
+    if (m) { const e = byMonth.get(m[1]) || { bundle: null, days: [] }; e.days.push(f); byMonth.set(m[1], e); }
+  }
+  const rows = [];
+  const monthCounts = {};
+  const read = (f) => {
+    const got = JSON.parse(fs.readFileSync(path.join(CACHE_DIR, f), 'utf8'));
+    if (!Array.isArray(got)) throw new Error(`the pinned price file ${f} does not hold a list of candles`);
+    return got;
+  };
+  for (const mm of [...byMonth.keys()].sort()) {
+    const e = byMonth.get(mm);
+    onProgress(`reading pinned ${symbol} ${mm}`);
+    let monthRows = [];
+    try {
+      if (e.bundle) monthRows = read(e.bundle);
+      else for (const f of e.days.sort()) for (const r of read(f)) monthRows.push(r);
+    } catch (err) {
+      throw new Error(`a price file this run was launched on cannot be read (${symbol} ${mm}): ${err.message}`);
+    }
+    for (const r of monthRows) rows.push(r);
+    monthCounts[mm] = tally(monthRows);
+  }
+  return { rows, missing: [], pinned: true, cachedMonthCount: byMonth.size, quality: describeSeries(rows, monthCounts) };
+}
+
 // Map a fractional null-shift request (0..1) onto a pair's own cycle of n
 // weeks, keeping an 8-week buffer away from both ends. Distinct fractions
 // can collapse to the same integer once n < requested shifts — callers
@@ -305,4 +342,4 @@ function deriveShift(n, frac) {
   return Math.min(n - 1, Math.max(1, 8 + Math.round(frac * usable)));
 }
 
-module.exports = { monthList, deriveShift, loadSymbol, loadSymbolAll, MIN_CHUNKS, tuneTau, describeSeries, seriesIsClean };
+module.exports = { monthList, deriveShift, loadSymbol, loadSymbolAll, loadSymbolPinned, MIN_CHUNKS, tuneTau, describeSeries, seriesIsClean };

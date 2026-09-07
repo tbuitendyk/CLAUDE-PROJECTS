@@ -47,10 +47,11 @@ const FEE = 0.00125;
 const NULL_N = 99;           // the null set is what makes a toy block take seconds — one pricing is microseconds
 const PORT = 9331;           // the inspector port the rehearsal child opens on SIGUSR1
 const PARTS_BEFORE_STOP = 3; // how many parts must have landed before a run is stopped
+const HOLE_DAY = '2024-06-20';   // the day held as a short day file: seven hours, not twenty-four
 
 const made = [];             // every record set this file writes, removed at the end
 const children = [];         // every child process, killed at the end
-const state = { s1: null, s2: null, ref: null, tmp: null };
+const state = { s1: null, s2: null, ref: null, tmp: null, juneBundle: null };
 
 // the block every rehearsal prices: every holding time and the chunk's own,
 // every distance, every trail, both gates, two decisions, one agreement — 800
@@ -269,6 +270,22 @@ module.exports = {
     ensureWorkers();
     generateFabricated(SPAN, A, 515151, 0);   // plant on from day 0
     generateFabricated(SPAN, B, 515152, 1);   // rule never on — a fair coin
+    // ONE MONTH HELD AS DAY FILES, ONE DAY WITH A HOLE (3.84.0): exactly the
+    // shape the box was in when S3 #1c was launched -- LTCUSDT's August 2026
+    // was day files, and 2026-08-20 had seventeen hours missing that the
+    // refresh's month bundle later filled. Every run below is launched on
+    // these day files, and the bundle appears later, in the pause rehearsal.
+    const june = JSON.parse(fs.readFileSync(path.join(CACHE, `${A}-1h-2024-06.json`), 'utf8'));
+    assert.ok(Array.isArray(june) && june.length >= 24 * 28, 'the fabricated June is a whole month');
+    const byDay = new Map();
+    for (const c of june) { const day = new Date(c.ts).toISOString().slice(0, 10); if (!byDay.has(day)) byDay.set(day, []); byDay.get(day).push(c); }
+    for (const [day, rows] of byDay) {
+      const kept = day === HOLE_DAY ? rows.filter((c) => new Date(c.ts).getUTCHours() < 7) : rows;
+      fs.writeFileSync(path.join(CACHE, `${A}-1h-${day}.json`), JSON.stringify(kept));
+    }
+    fs.rmSync(path.join(CACHE, `${A}-1h-2024-06.json`), { force: true });
+    state.juneBundle = june;                    // the whole month, hole filled, for later
+    assert.strictEqual(fs.readdirSync(CACHE).filter((x) => x.startsWith(`${A}-1h-2024-06-`)).length, byDay.size, 'June is day files now');
     const s1 = stages.startStage1({
       universe: [A, B], sizes: { singles: true }, geometry: 'daily-1d',
       windowLayout: 'split70', allLoaded: false, startMonth: '2024-01', endMonth: '2024-12',
@@ -300,6 +317,13 @@ module.exports = {
     assert.ok(Date.now() - t0 >= 1500, `the reference landed in ${Date.now() - t0} ms — too quick for a stop to land in the middle of a run of this block on this box`);
     assert.ok(!stages.hasCheckpoint(s3.id), 'a run that landed keeps no checkpoint');
     assert.ok(!Array.isArray(doc.continued) || !doc.continued.length, 'a run that was never stopped records no start-again');
+    // THE RUN IS PINNED TO THE FILES IT WAS LAUNCHED ON (3.84.0): its stamp
+    // lists June as day files, handed down from stage 1 through stage 2
+    const pin = require('../lib/manifest').pinnedFilesOf(doc.dataManifest);
+    assert.ok(pin && Array.isArray(pin[A]), 'the stage 3 set carries a pin');
+    assert.ok(pin[A].includes(`${A}-1h-${HOLE_DAY}.json`) && !pin[A].includes(`${A}-1h-2024-06.json`), 'June is pinned as day files, the short day among them');
+    assert.deepStrictEqual(pin, require('../lib/manifest').pinnedFilesOf(state.s2.dataManifest), 'the same pin as its parent');
+    assert.deepStrictEqual(pin, require('../lib/manifest').pinnedFilesOf(state.s1.dataManifest), 'which is the root stage 1 set\'s');
     state.ref = s3.id;
   },
 
@@ -338,6 +362,16 @@ module.exports = {
     assert.strictEqual(row.checkpoint, true, 'the list says it can be started again');
     assert.strictEqual(row.continued, 0);
 
+    // THE REFRESH LANDS WHILE THE RUN IS PAUSED (3.84.0): June becomes a
+    // month bundle with the hole filled, exactly what happened to LTCUSDT's
+    // August on the box. What is on disk now is not what the run read; the
+    // run reads what it was launched on, so it is not refused and it lands
+    // equal to the reference, which never saw the bundle either.
+    fs.writeFileSync(path.join(CACHE, `${A}-1h-2024-06.json`), JSON.stringify(state.juneBundle));
+    const onDisk = await require('../lib/pipeline').loadSymbolAll(A, () => {});
+    const pinnedNow = require('../lib/pipeline').loadSymbolPinned(A, require('../lib/manifest').pinnedFilesOf(stages.getSet(s3.id).dataManifest)[A]);
+    assert.strictEqual(onDisk.rows.length - pinnedNow.rows.length, 17, 'the bundle would hand the run seventeen candles it never read');
+
     const again = stages.continueStage3(s3.id);
     // THE ANSWER COMES AT ONCE (3.83.0): before the block is rebuilt or a row
     // is read back, so nothing slow sits inside the request
@@ -362,6 +396,22 @@ module.exports = {
     const after = rowsByKey(s3.id);
     for (const [k, r] of before) assert.deepStrictEqual(after.get(k), r, `row ${k}, priced before the pause, was not kept as it was`);
     sameAsReference(s3.id, state.ref, 'paused from inside');
+  },
+
+  // A CHILD LAUNCHED AFTER THE BUNDLE APPEARED READS ITS PARENT'S FILES (3.84.0):
+  // the next start stage 3 from S2 #1 on the box is exactly this press
+  async aFreshLaunchAfterTheBundleAppearedIsPinnedToItsParentAndEqualsTheReference() {
+    needFixture();
+    await idle();
+    assert.ok(state.ref, 'no reference run');
+    assert.ok(fs.existsSync(path.join(CACHE, `${A}-1h-2024-06.json`)), 'the bundle is on disk beside the day files');
+    const s3 = stages.startStage3(launchParams(BLOCK, `ZZZ pause after bundle ${stamp()}`));
+    made.push(s3.id);
+    const doc = await untilLanded(s3.id);
+    assert.strictEqual(doc.status, 'done', `ended ${doc.status}: ${JSON.stringify(doc.failures)}`);
+    const pin = require('../lib/manifest').pinnedFilesOf(doc.dataManifest);
+    assert.ok(!pin[A].includes(`${A}-1h-2024-06.json`), 'the bundle that appeared after the parent was written is not this run\'s');
+    sameAsReference(s3.id, state.ref, 'launched after the bundle appeared');
   },
 
   // A CHECKPOINT CAN BE UP TO A MINUTE BEHIND THE ROWS. A unit whose rows are
@@ -630,10 +680,26 @@ module.exports = {
     writeCheckpointFile(orphan.id, {});
     assert.throws(() => stages.continueStage3(orphan.id), /no longer on the box/);
     const moved = { ...base(), id: `s3-test-${stamp()}-rf4`, name: `ZZZ pause refuse moved ${stamp()}` };
-    moved.dataManifest = { ...ref.dataManifest, overallDigest: 'not-the-same', symbols: { ...ref.dataManifest.symbols, [A]: { ...ref.dataManifest.symbols[A], digest: 'changed' } } };
     writeSet(moved);
     writeCheckpointFile(moved.id, {});
-    assert.throws(() => stages.continueStage3(moved.id), /would be priced on different prices/, 'price files that changed since the launch refuse');
+    // one pinned day file rewritten with different candles (3.84.0): the
+    // refusal names the FILE, and a bundle that merely appeared did not refuse
+    const dayFile = path.join(CACHE, `${A}-1h-2024-06-05.json`);
+    const bytes = fs.readFileSync(dayFile);
+    try {
+      const rows = JSON.parse(bytes.toString('utf8'));
+      rows[3] = { ...rows[3], close: rows[3].close * 1.5 };
+      fs.writeFileSync(dayFile, JSON.stringify(rows));
+      assert.throws(() => stages.continueStage3(moved.id), new RegExp(`1 of the price files .* was launched on has changed since \\(${A}-1h-2024-06-05\\.json\\) — the rest of this run would be priced on different prices`),
+        'a pinned price file that changed refuses, and names the file');
+    } finally {
+      fs.writeFileSync(dayFile, bytes);
+    }
+    const gone = { ...base(), id: `s3-test-${stamp()}-rf4b`, name: `ZZZ pause refuse gone ${stamp()}` };
+    gone.dataManifest = { ...ref.dataManifest, detailFile: 'manifests/zzz-no-such-detail.json' };
+    writeSet(gone);
+    writeCheckpointFile(gone.id, {});
+    assert.throws(() => stages.continueStage3(gone.id), /cannot be proved unchanged: the record of which price files it read is gone/, 'a set whose record of its files is gone cannot be proved unchanged');
     const missing = { ...base(), id: `s3-test-${stamp()}-rf5`, name: `ZZZ pause refuse missing ${stamp()}` };
     writeSet(missing);
     writeCheckpointFile(missing.id, { units: [0, 5] });
@@ -655,7 +721,7 @@ module.exports = {
     assert.ok(stages.hasCheckpoint(block.id), 'its checkpoint is untouched');
     // none of the refusals started anything or marked anything
     assert.strictEqual(stages.stageRunning(), null);
-    for (const d of [done, bare, orphan, moved, missing, block]) {
+    for (const d of [done, bare, orphan, moved, gone, missing, block]) {
       assert.strictEqual(stages.getSet(d.id).status, d.status, `${d.name} was left as it was`);
     }
   },

@@ -349,10 +349,22 @@ async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, wei
 // builds them, under the stages' fixed training branch — auto band, 24/7,
 // argmax-style labels (decision record #2). The reserve layout seals its
 // final 13% before the split, same as unitTask.
+// THE PIN A TASK CARRIES IS THE PATH OF ITS SET'S STAMP DETAIL (3.84.0),
+// read once per worker and kept: the list of files the run was launched on.
+const pinCache = new Map();
+function pinnedFilesFor(pin) {
+  if (!pin || typeof pin !== 'string') return null;
+  if (pinCache.has(pin)) return pinCache.get(pin);
+  const got = require('./pin').pinnedFilesOf({ detailFile: pin });
+  pinCache.set(pin, got);
+  if (pinCache.size > 8) pinCache.delete(pinCache.keys().next().value);
+  return got;
+}
 async function unitChunks(combo, geometry, p) {
   const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
   const { geo, maps, chunks } = await buildCombo(combo, branch, {
     allLoaded: !!p.allLoaded, startMonth: p.startMonth, endMonth: p.endMonth,
+    pinnedFiles: p.pinnedFiles || null,
   });
   let workChunks = chunks;
   let reserve = null;
@@ -418,7 +430,8 @@ function appendKept(existing, from, fresh) {
 // score the unit under the fixed rule, deal the null set from the kept votes
 // and read beat / lead. Returns everything the orchestrator writes.
 async function s1UnitTask(task) {
-  const { combo, geometry, params: p, seed, unitKey, nullN, fee } = task;
+  const { combo, geometry, seed, unitKey, nullN, fee } = task;
+  const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
   const { geo, maps, split, reserve } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks, bandPct } = split;
   const views = viewsFor(combo, geo);
@@ -483,7 +496,8 @@ async function s1UnitTask(task) {
 // retrained. Returns the boost members plus the unit's forecast score with
 // the stage 1 members alone and with every member pooled.
 async function s2UnitTask(task) {
-  const { combo, geometry, params: p, s1, seed, unitKey, nullN, fee } = task;
+  const { combo, geometry, s1, seed, unitKey, nullN, fee } = task;
+  const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
   const { geo, maps, split } = await unitChunks(combo, geometry, p);
   const { trainChunks, testChunks, holdChunks } = split;
   // The stage 1 votes must be describing THESE chunks. Refuse a unit whose
@@ -587,7 +601,8 @@ const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.bar}|${agr.p
 const agreedKeyOfRecord = (r) => agreedKey(r.decision, agrOf(r));
 
 async function s3UnitTask(task) {
-  const { combo, geometry, params: p, unit, settings, fee, nullN, seed, unitKey, agreedOnly = false } = task;
+  const { combo, geometry, unit, settings, fee, nullN, seed, unitKey, agreedOnly = false } = task;
+  const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
   // EVERY SETTING CARRIES ITS OWN PLACE IN THE BLOCK (3.52.0). A unit prices
   // only the settings that place different orders on it, so its list is not
   // the block and a position in the list says nothing; the record files under

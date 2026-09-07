@@ -16,7 +16,7 @@
 // before it is trusted.
 
 const { toHourlyMap, forwardFill, scoreDiff, balancedBandPct, GEOMETRIES } = require('./dataset');
-const { loadSymbol, loadSymbolAll, monthList, deriveShift, MIN_CHUNKS } = require('./pipeline');
+const { loadSymbol, loadSymbolAll, loadSymbolPinned, monthList, deriveShift, MIN_CHUNKS } = require('./pipeline');
 const bracketLib = require('./bracket');
 const { feeFracOf } = require('./paper');
 const { classifierMetrics } = require('./metrics');
@@ -53,7 +53,11 @@ async function getMap(sym, p) {
   // first — it broke a split-boundary diagnostic on 2026-07-30 by reporting
   // two different runs as identical. Per-job worker pools masked it in real
   // jobs; that is luck, not protection.
-  const rangeKey = p.allLoaded ? 'all' : `${p.startMonth || ''}..${p.endMonth || ''}`;
+  // A PINNED RUN READS ITS OWN FILES (3.84.0), and the key says which files,
+  // or a worker that priced one run's unit would hand the next run the map
+  const pin = p.pinnedFiles && Array.isArray(p.pinnedFiles[sym]) ? p.pinnedFiles[sym] : null;
+  const rangeKey = pin ? `pin:${require('crypto').createHash('sha256').update(pin.join('\n')).digest('hex').slice(0, 16)}`
+    : (p.allLoaded ? 'all' : `${p.startMonth || ''}..${p.endMonth || ''}`);
   const key = `${sym}|${rangeKey}`;
   if (mapCache.has(key)) {
     const v = mapCache.get(key);
@@ -61,9 +65,11 @@ async function getMap(sym, p) {
     mapCache.set(key, v); // LRU touch
     return v;
   }
-  const loaded = p.allLoaded
-    ? await loadSymbolAll(sym, () => {})
-    : await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {});
+  const loaded = pin
+    ? loadSymbolPinned(sym, pin, () => {})
+    : (p.allLoaded
+      ? await loadSymbolAll(sym, () => {})
+      : await loadSymbol(sym, monthList(p.startMonth, p.endMonth), () => {}));
   if (!loaded.rows.length) throw new Error(`no data for ${sym}`);
   const filled = forwardFill(toHourlyMap(loaded.rows)).map;
   mapCache.set(key, filled);

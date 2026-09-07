@@ -755,3 +755,37 @@ carried out 2026-08-28 under its own GO — decision 50.
     straight to a line -- `pause`, `stop`, `nothing is running` and now the
     starting… lines are on the screen and on no list, and the two-way check
     reads through the same reader, so it cannot see the hole either.
+70. **A run reads the price files it was launched on** (3.84.0, owner report
+    2026-09-07: "when i picked start stage 3 i got this immediately: FAILED
+    -- nothing changed. the price files changed since S3 #1c was written
+    (LTCUSDT) ... that is false. fix it"). It was true of the files and false
+    of the prices. The service's own refresh, sixty seconds after the 3.82.0
+    boot, consolidated August 2026 into a month bundle for every coin;
+    LTCUSDT's August had been day files when the run was launched, so its
+    file list moved. Its candles did not -- except seventeen hours on
+    2026-08-20, eleven months inside every unit's sealed window, that the day
+    files had never held. Three findings, in order of weight:
+    (a) the check fingerprinted files, so it could not tell packaging from
+    prices; (b) the sealed window is cut by COUNT at pricing time, never at
+    the boundary the record stores, so a hole filled deep inside it adds
+    chunks and can move the boundary for every unit that reads the coin --
+    the seal is a fixed date only within one launch; (c) a run that goes on
+    for forty hours reads whatever is on disk when each unit comes up, so the
+    refresh could put two histories inside one run -- and did: the first
+    start-again slipped in before the refresh reached LTCUSDT, so units 88 to
+    90 were priced on the filled August while 1 to 87 were not.
+    The fix closes (a) and (c) with one rule: the per-file detail the stamp
+    already writes beside every set is the run's pin. The loader reads those
+    files and no others -- the month bundle when one is pinned, else the
+    pinned day files -- and a bundle that appears, a day that gets filled or
+    a new day of data is not that run's. The start-again, the unit fill and
+    the chain check ask only whether the pinned files are still there with
+    the same bytes, and name the files that changed or went; a child launch
+    is stamped over its parent's pinned files, so a chain reads one history
+    by construction and the next start stage 3 from S2 #1 is not refused
+    either. Sets stamped before this carry the same detail files, so nothing
+    on disk is migrated; a set never stamped reads what is on disk, as it
+    always did. (b) is REPORTED, not fixed: pinning makes the seal a fixed
+    date within a chain, but across chains the boundary still slides as the
+    cache grows, and the "13% never seen" holds only for what a chain was
+    launched on. That is the owner's call. Second digit.

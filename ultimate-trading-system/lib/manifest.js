@@ -54,14 +54,20 @@ function hashOfFile(f) {
   return { bytes: buf.length, sha256, fresh: true };
 }
 
-function symbolManifest(symbol) {
+// `onlyFiles`: stamp exactly these files (a child pinned to its parent's
+// files); otherwise every file of the symbol on disk, as a launch reads.
+function symbolManifest(symbol, onlyFiles = null) {
   let files = [];
-  try {
-    files = fs.readdirSync(CACHE_DIR)
-      .filter((f) => f.startsWith(`${symbol}-1h-`) && f.endsWith('.json'))
-      .sort();
-  } catch {
-    files = [];
+  if (Array.isArray(onlyFiles)) {
+    files = onlyFiles.slice().sort();
+  } else {
+    try {
+      files = fs.readdirSync(CACHE_DIR)
+        .filter((f) => f.startsWith(`${symbol}-1h-`) && f.endsWith('.json'))
+        .sort();
+    } catch {
+      files = [];
+    }
   }
   const detail = [];
   let learned = false;
@@ -91,9 +97,9 @@ function symbolManifest(symbol) {
 // named by `stampId` (job id, or job id + phase for re-fired tools). Returns
 // the SUMMARY to store on the doc. Never throws — a manifest failure must
 // not kill a launch; it returns { error } instead so the absence is loud.
-function stampManifest(stampId, symbols) {
+function stampManifest(stampId, symbols, { onlyFiles = null } = {}) {
   try {
-    const per = [...new Set(symbols.filter(Boolean))].sort().map(symbolManifest);
+    const per = [...new Set(symbols.filter(Boolean))].sort().map((s) => symbolManifest(s, onlyFiles ? (onlyFiles[s] || []) : null));
     const overall = crypto.createHash('sha256');
     for (const p of per) overall.update(`${p.symbol}:${p.digest}\n`);
     const safe = String(stampId).replace(/[^A-Za-z0-9._-]+/g, '_');
@@ -117,6 +123,52 @@ function stampManifest(stampId, symbols) {
   }
 }
 
+// THE STAMP IS THE PIN (3.84.0, owner report 2026-09-07: "the price files
+// changed since S3 #1c was written (LTCUSDT) ... that is false").
+//
+// It was true of the files and false of the prices. The service's own refresh
+// had consolidated August 2026 into one month bundle for every coin; LTCUSDT's
+// August had been day files when the run was launched, so its file list moved
+// while its candles did not -- except for seventeen hours on one day, eleven
+// months inside the sealed window, that the day files had never held. A
+// fingerprint of files cannot tell that apart from a real change, and worse,
+// a run that goes on for forty hours reads whatever is on disk when each unit
+// comes up, so the refresh can put two histories inside ONE run.
+//
+// So a run reads the price files it was launched on. The per-file detail the
+// stamp writes beside the set is exactly that list; the loader reads those
+// files and no others (the bundle when one is pinned, else the pinned day
+// files), and a start-again, a fill, or a child launch asks only whether the
+// pinned files are still there with the same bytes. A bundle that appears, a
+// day that gets filled, a new day of data: none of it is this run's.
+// the readers live in lib/pin.js, which holds no state, because the pricing
+// workers need them and may not reach this module
+const { readDetail, pinnedFilesOf } = require('./pin');
+// Are the pinned files still there with the same bytes? Never throws. A set
+// whose detail is gone cannot be proved intact, and says so.
+function pinnedIntact(summary) {
+  if (!summary || summary.error || !summary.symbols) return { intact: true, pinned: false, checked: 0, gone: [], changed: [] };
+  const d = readDetail(summary);
+  if (!d || !d.detail) return { intact: false, pinned: false, checked: 0, gone: [], changed: [], why: 'the record of which price files it read is gone' };
+  const gone = [];
+  const changed = [];
+  let checked = 0;
+  let learned = false;
+  for (const list of Object.values(d.detail)) {
+    if (!Array.isArray(list)) continue;
+    for (const x of list) {
+      if (!x || typeof x.file !== 'string' || !x.sha256) continue;
+      checked++;
+      let h;
+      try { h = hashOfFile(x.file); } catch { gone.push(x.file); continue; }
+      if (h.fresh) learned = true;
+      if (h.sha256 !== x.sha256) changed.push(x.file);
+    }
+  }
+  if (learned) saveHashes();
+  return { intact: !gone.length && !changed.length, pinned: true, checked, gone, changed };
+}
+
 // Compare two summaries: null if either is absent (old runs), else the list
 // of symbols whose data differed plus symbols only one side read.
 function manifestDiff(a, b) {
@@ -133,4 +185,4 @@ function manifestDiff(a, b) {
   return { same: false, changed, onlyA, onlyB };
 }
 
-module.exports = { symbolManifest, stampManifest, manifestDiff, MANIFEST_DIR, CACHE_DIR, HASHES_FILE };
+module.exports = { symbolManifest, stampManifest, manifestDiff, pinnedFilesOf, pinnedIntact, readDetail, MANIFEST_DIR, CACHE_DIR, HASHES_FILE };

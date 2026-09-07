@@ -17,7 +17,7 @@ const path = require('path');
 
 const rowstore = require('./rowstore');
 const { createPool } = require('./pool');
-const { stampManifest, manifestDiff } = require('./manifest');
+const { stampManifest, manifestDiff, pinnedFilesOf, pinnedIntact } = require('./manifest');
 const { GEOMETRIES } = require('./dataset');
 const bracketLib = require('./bracket');
 const batch = require('./batch');
@@ -448,6 +448,25 @@ const coinsFingerprinted = (doc) => {
 // afternoon. `changed` is a file that moved; a coin on one side and not the
 // other is the two fingerprints not covering the same ground, which is a fault
 // in the asking, not in the data, and it says so.
+// A RUN READS THE PRICE FILES IT WAS LAUNCHED ON (3.84.0, owner report
+// 2026-09-07: "the price files changed since S3 #1c was written (LTCUSDT) ...
+// that is false"). The complaint below names the pinned files that have
+// changed or gone, never a coin, and never a file that has merely appeared
+// beside them -- that one is not this run's.
+function pinComplaint(check, name) {
+  if (check.why) return `${name} cannot be proved unchanged: ${check.why}`;
+  const list = (xs) => xs.slice(0, 5).join(', ') + (xs.length > 5 ? ` and ${xs.length - 5} more` : '');
+  const parts = [];
+  if (check.changed.length) {
+    parts.push(`${check.changed.length} of the price files ${name} was launched on ${check.changed.length === 1 ? 'has' : 'have'} changed since (${list(check.changed)})`);
+  }
+  if (check.gone.length) parts.push(`${check.gone.length} of the price files ${name} was launched on ${check.gone.length === 1 ? 'is' : 'are'} gone (${list(check.gone)})`);
+  return parts.join(', and ');
+}
+// the pin a unit's task carries: the path of its set's stamp detail, the
+// list of files the launch read. A set that was never stamped carries none
+// and reads what is on disk, as it always did.
+const pinOf = (doc) => { const dm = (doc || {}).dataManifest; return dm && !dm.error && typeof dm.detailFile === 'string' ? dm.detailFile : null; };
 function manifestComplaint(diff, name) {
   if (diff.changed.length) {
     return `the price files changed since ${name} was written (${diff.changed.join(', ')})`;
@@ -639,7 +658,7 @@ function startStage1(params) {
   (async () => {
     const payloads = units.map((u) => ({
       combo: { trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size },
-      geometry: u.geometry, params: p, seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee,
+      geometry: u.geometry, params: p, seed: doc.seed, unitKey: unitKeyOf(u), nullN, fee, pin: pinOf(doc),
     }));
     const records = new Array(units.length).fill(null);
     await pool.forEach('s1Unit', payloads, (settled, i) => {
@@ -764,12 +783,15 @@ function unitFillRefusal(doc) {
     return `${doc.name} was written by engine ${doc.engineVersion} and this box runs ${ENGINE_VERSION} — `
       + 'a unit trained here could not be compared with the ones already in it.';
   }
-  const fresh = stampManifest(`unitfill-${Date.now().toString(36)}`, coinsFingerprinted(doc));
-  const diff = manifestDiff(doc.dataManifest, fresh);
-  if (!diff) return `${doc.name} carries no readable price-file record, so nothing can prove the data is unchanged`;
-  if (!diff.same) {
-    return `${manifestComplaint(diff, doc.name)} — a unit trained on today's `
-      + 'data would not be comparable with the ones already in it, so this refuses rather than mixing them.';
+  // the filled-in units read the same pinned files the rest of the set read
+  // (3.84.0); the only question is whether those files are still intact
+  if (!doc.dataManifest || doc.dataManifest.error || !doc.dataManifest.symbols) {
+    return `${doc.name} carries no readable price-file record, so nothing can prove the data is unchanged`;
+  }
+  const pinned = pinnedIntact(doc.dataManifest);
+  if (!pinned.intact) {
+    return `${pinComplaint(pinned, doc.name)} — a unit trained on other data would not be comparable `
+      + 'with the ones already in it, so this refuses rather than mixing them.';
   }
   return null;
 }
@@ -860,7 +882,7 @@ function fillMissingUnitsStart(id) {
     const pool = createPool();
     const payloads = gaps.missing.map(({ unit }) => ({
       combo: { trade: unit.trade, ctx1: unit.ctx1, ctx2: unit.ctx2, size: unit.size },
-      geometry: unit.geometry, params: p, seed: doc.seed, unitKey: unitKeyOf(unit), nullN, fee,
+      geometry: unit.geometry, params: p, seed: doc.seed, unitKey: unitKeyOf(unit), nullN, fee, pin: pinOf(doc),
     }));
     const stillFailed = [];
     try {
@@ -964,11 +986,16 @@ function parentOrRefuse(fromId, wantStage) {
       + 'votes kept by one version of the arithmetic cannot be priced by another without saying so. The first '
       + 'number is the one that means yesterday\'s records no longer compare, and it has moved.');
   }
-  const fresh = stampManifest(`check-${Date.now().toString(36)}`, coinsFingerprinted(parent));
-  const diff = manifestDiff(parent.dataManifest, fresh);
-  if (!diff) throw new Error(`${parent.name} carries no readable price-file record, so nothing can prove the data is unchanged`);
-  if (!diff.same) {
-    throw new Error(`${manifestComplaint(diff, parent.name)} — a mismatch refuses, it never mixes`);
+  // A CHILD READS EXACTLY THE PRICE FILES ITS PARENT READ (3.84.0): the pin
+  // is handed down, so the only question is whether those files are still
+  // there with the same bytes. A bundle or a day that has appeared since is
+  // not this chain's, and does not refuse it.
+  if (!parent.dataManifest || parent.dataManifest.error || !parent.dataManifest.symbols) {
+    throw new Error(`${parent.name} carries no readable price-file record, so nothing can prove the data is unchanged`);
+  }
+  const pinned = pinnedIntact(parent.dataManifest);
+  if (!pinned.intact) {
+    throw new Error(`${pinComplaint(pinned, parent.name)} — a mismatch refuses, it never mixes`);
   }
   return parent;
 }
@@ -1361,7 +1388,9 @@ function startStage2(params) {
     failures: [],
     counts: null,
   };
-  doc.dataManifest = stampManifest(id, coinsOfParent(parent));
+  // the stamp lists the parent's pinned files -- what this run reads -- with
+  // their bytes as they are now, which parentOrRefuse has just proved equal
+  doc.dataManifest = stampManifest(id, coinsOfParent(parent), { onlyFiles: pinnedFilesOf(parent.dataManifest) });
   activeSet = doc;
   saveSet(doc);
 
@@ -1386,7 +1415,7 @@ function startStage2(params) {
       const probs = rec.specs.map((_, mi) => votes.map((v) => v.m[mi]));
       payloads.push({
         combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
-        geometry: rec.geometry, params: p,
+        geometry: rec.geometry, params: p, pin: pinOf(doc),
         s1: {
           probs,
           // the stage 1 members' votes on the tuning slice, so their money
@@ -2294,7 +2323,9 @@ function startStage3(params) {
     failures: [],
     counts: null,
   };
-  doc.dataManifest = stampManifest(id, coinsOfParent(parent));
+  // the stamp lists the parent's pinned files -- what this run reads -- with
+  // their bytes as they are now, which parentOrRefuse has just proved equal
+  doc.dataManifest = stampManifest(id, coinsOfParent(parent), { onlyFiles: pinnedFilesOf(parent.dataManifest) });
   activeSet = doc;
   saveSet(doc);
 
@@ -2580,12 +2611,16 @@ function continueStage3(id) {
   claimOrRefuse();
   const parent = getSet((doc.parent || {}).id || (doc.params || {}).from || '');
   if (!parent || parent.stage !== 2) throw new Error('the stage 2 record set this was priced from is no longer on the box');
-  // THE SAME PRICES. The rest of this run must be priced on exactly the price
-  // files the first part was, or the two halves of one set disagree.
-  const fresh = stampManifest(`${id}-continue`, coinsOfParent(parent));
-  const diff = manifestDiff(doc.dataManifest, fresh);
-  if (diff && !diff.same) {
-    throw new Error(`${manifestComplaint(diff, doc.name)} — the rest of this run would be priced on different prices from the part already done`);
+  // THE SAME PRICES (3.84.0). The rest of this run reads exactly the price
+  // files the first part read -- the pin -- so the only question is whether
+  // those files are still there with the same bytes. A bundle that has
+  // appeared beside them since, a day that was filled in, a new day of data:
+  // none of it is this run's, and none of it refuses.
+  if (doc.dataManifest && !doc.dataManifest.error && doc.dataManifest.symbols) {
+    const pinned = pinnedIntact(doc.dataManifest);
+    if (!pinned.intact) {
+      throw new Error(`${pinComplaint(pinned, doc.name)} — the rest of this run would be priced on different prices from the part already done`);
+    }
   }
   // THE SAME UNITS, IN THE ORDER THE RUN HAD THEM: by record number on the
   // parent, never by the parent's table, which may have been re-sorted or
@@ -3896,7 +3931,7 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false 
   const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
   return {
     combo: { trade: rec.trade, ctx1: rec.ctx1, ctx2: rec.ctx2, size: rec.size },
-    geometry: rec.geometry, params: doc.params,
+    geometry: rec.geometry, params: doc.params, pin: pinOf(doc),
     unit: {
       bandPct: rec.bandPct,
       probs: rec.specs.map((_, mi) => votes.map((v) => v.m[mi])),
@@ -3905,6 +3940,7 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false 
     },
     settings, fee, nullN, keepN: agreedOnly ? 0 : (Number((doc.params || {}).keepN) || 0), seed: doc.seed,
     unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
+    pin: pinOf(doc),
     ...(agreedOnly ? { agreedOnly: true } : {}),
   };
 }

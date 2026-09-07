@@ -897,7 +897,8 @@ module.exports = {
         /is a stage 1 set/i, 'a stage 3 launch must refuse a stage 1 parent by name');
       const drifted = mkSet({});
       cleanup.push(drifted.id);
-      assert.throws(() => stages.startStage2({ from: drifted.id }), /price files changed|refuses/i);
+      // a parent whose record of the files it read is gone cannot be proved unchanged (3.84.0: the pin)
+      assert.throws(() => stages.startStage2({ from: drifted.id }), /cannot be proved unchanged: the record of which price files it read is gone/);
       assert.throws(() => stages.startStage2({ from: drifted.id, orderBy: 'beat' }), /order by is gone/i,
         'the removed order by must be refused loudly, never silently ignored — the carry follows the saved sort now');
     } finally {
@@ -3906,14 +3907,18 @@ module.exports = {
     const both = stages.manifestComplaint({ same: false, changed: ['XRPUSDT'], onlyA: ['ETHUSDT'], onlyB: [] }, 'S2 #1');
     assert.ok(/price files changed/.test(both) && /XRPUSDT/.test(both), both);
 
-    // and both readers go through the one pair, so neither can drift
+    // and both readers read the record itself, so neither can drift: since
+    // 3.84.0 a set is pinned to the files its stamp lists, and the chain check
+    // and the fill ask whether THOSE files are intact -- nothing is stamped
+    // afresh over coins worked out some other way
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
     for (const who of ['check-', 'unitfill-']) {
-      const call = src.slice(src.indexOf(`stampManifest(\`${who}`));
-      assert.ok(/^stampManifest\(`[a-z-]+\$\{Date\.now\(\)\.toString\(36\)\}`, coinsFingerprinted\(/.test(call),
-        `the ${who.replace('-', '')} check works the coins out its own way instead of reading them off the record, `
-        + 'so it can compare a set against a reading over different coins again');
+      assert.ok(!src.includes(`stampManifest(\`${who}`), `the ${who.replace('-', '')} check stamps afresh instead of reading the pinned files off the record`);
     }
+    const chain = src.slice(src.indexOf('function parentOrRefuse('), src.indexOf('const recordsInHand'));
+    assert.ok(chain.includes('pinnedIntact(parent.dataManifest)') && chain.includes('pinComplaint(pinned, parent.name)'), 'the chain check asks whether the parent\'s pinned files are intact, and names the files');
+    const fill = src.slice(src.indexOf('function unitFillRefusal('), src.indexOf('function parentOrRefuse('));
+    assert.ok(fill.includes('pinnedIntact(doc.dataManifest)') && fill.includes('pinComplaint(pinned, doc.name)'), 'the fill asks whether the set\'s pinned files are intact, and names the files');
     assert.ok(!/\[\.\.\.diff\.changed, \.\.\.diff\.onlyA, \.\.\.diff\.onlyB\]/.test(src),
       'a refusal still lumps coins that moved together with coins that were never read, and calls them all changed');
   },
@@ -4450,16 +4455,28 @@ module.exports = {
       // bites: the record is perfectly readable and simply no longer describes
       // what is on disk. A unit trained on today's candles would join units
       // trained on yesterday's with nothing able to tell them apart, so the
-      // refusal has to NAME the coins that moved.
-      const moved = {
-        at: new Date().toISOString(),
-        overallDigest: 'a-digest-that-is-not-the-one-on-disk',
-        symbols: { ZZZTESTUSDT: { files: 1, bytes: 1, digest: 'moved' } },
-      };
-      assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: moved }))), /the price files changed since/,
-        'price files that moved since the set was written must refuse rather than mixing two kinds of unit');
-      assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: moved }))), /ZZZTESTUSDT/,
-        'and the refusal must name what moved, or there is nothing to act on');
+      // refusal has to NAME what moved. Since 3.84.0 a set is pinned to the
+      // files it was launched on, so what moved is a FILE: one is stamped,
+      // then rewritten with other candles.
+      const { stampManifest, MANIFEST_DIR } = require('../lib/manifest');
+      const priceFile = path.join(ROOT, 'data', 'cache', 'ZZZTESTUSDT-1h-2024-01.json');
+      fs.mkdirSync(path.dirname(priceFile), { recursive: true });
+      fs.writeFileSync(priceFile, JSON.stringify([{ ts: 1704067200000, open: 1, high: 2, low: 1, close: 1, quoteVolume: 1 }]));
+      try {
+        const moved = stampManifest(`${pid}-moved`, ['ZZZTESTUSDT']);
+        assert.strictEqual(stages.unitFillRefusal(withDoc({ dataManifest: moved })), null, 'freshly stamped, the pinned file is intact');
+        fs.writeFileSync(priceFile, JSON.stringify([{ ts: 1704067200000, open: 1, high: 2, low: 1, close: 9, quoteVolume: 1 }]));
+        assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: moved }))), /1 of the price files .* was launched on has changed since/,
+          'price files that moved since the set was written must refuse rather than mixing two kinds of unit');
+        assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: moved }))), /\(ZZZTESTUSDT-1h-2024-01\.json\)/,
+          'and the refusal must name the file that moved, or there is nothing to act on');
+        // a record whose list of files is gone cannot be proved either way
+        assert.match(String(stages.unitFillRefusal(withDoc({ dataManifest: { ...moved, detailFile: 'manifests/zzz-gone.json' } }))), /cannot be proved unchanged/,
+          'a set whose record of its files is gone must refuse');
+      } finally {
+        fs.rmSync(priceFile, { force: true });
+        fs.rmSync(path.join(MANIFEST_DIR, `${pid}-moved.json`), { force: true });
+      }
       assert.match(String(stages.unitFillRefusal(withDoc({ stage: 3 }))), /only a stage 1 record set/,
         'only stage 1 holds units to put back');
       assert.match(String(stages.unitFillRefusal(withDoc({ status: 'running' }))), /still going/,
