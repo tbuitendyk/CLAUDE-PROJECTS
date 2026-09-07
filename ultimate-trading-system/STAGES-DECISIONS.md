@@ -832,3 +832,18 @@ carried out 2026-08-28 under its own GO — decision 50.
     deleted the day every set on the box has been through it; windowsMissing
     counts what is left. Second digit: new stored fields and a new line on
     the screen.
+
+72. **The date-range fill is deleted, the day it served every set** (3.85.1,
+    RULE TEN; owner `LOOP NOW!` 2026-09-07: "start with writing any date ranges
+    that are missing from record sets"). The fill from #71 ran once on the box
+    through the set route, one set at a time: S1 #1, S2 #1, S3 #1a and S3 #1b,
+    2,100 units. Measured after: 2,100 of 2,100 unread windows equal to the
+    run's own sealed window, chunk for chunk; every pin intact; 0 sets left.
+    So the block goes whole: the fill, its status and count, the busy clauses,
+    the route's fill field, the screen's fill wording, the worker task, its
+    rehearsal and helpers. What stays is the run's own writing of the ranges
+    (every stage, every record) and the start-again's recovery of a unit that
+    lacks them by pricing one setting again -- S3 #1c, paused under 3.84.1,
+    still needs that. Once S3 #1c has been started again, that branch and the
+    `pausedBy` line are spent as well; parked for the owner. Third digit:
+    nothing new on any screen, nothing on disk changes shape.

@@ -149,26 +149,6 @@ async function untilStartedAgain(id, ms = 60000) {
     await sleep(25);
   }
 }
-// the fill runs in the background; wait for its word
-async function untilFilled(id, ms = 120000) {
-  const t0 = Date.now();
-  for (;;) {
-    const st = stages.windowsFillStatus(id);
-    if (st.ready || st.failed) return st;
-    if (Date.now() - t0 > ms) throw new Error(`${id}'s date ranges were not worked out in ${ms / 1000} s (${JSON.stringify(st)})`);
-    await sleep(50);
-  }
-}
-// only the rehearsal's own sets count, or the dev box's own record sets would
-const windowsMissingNow = () => {
-  let sets = 0;
-  for (const row of stages.listSets()) {
-    if (!/^ZZZ pause/.test(row.name || '') || ![1, 2, 3].includes(row.stage) || !['done', 'incomplete'].includes(row.status)) continue;
-    const w = stages.windowsOfSet(stages.getSet(row.id));
-    if (w && w.units > w.known) sets++;
-  }
-  return { sets };
-};
 function rowsByKey(id) {
   const m = new Map();
   rowstore.each(id, 'records', (r) => { m.set(`${r.u}|${r.si}`, r); });
@@ -814,11 +794,11 @@ module.exports = {
     assert.ok(route.slice(0, 300).includes("stages.continueStage3(String(req.params.id || ''))") && route.slice(0, 300).includes('res.status(409).json({ error: String(err.message || err) })'));
     // THE DATE RANGES ARE ON THE HEADER OF EVERY RUN ON BOARDS (3.85.0), and
     // the Funnel says where the unread window runs
-    assert.ok(src.includes('function windowsLineHtml(win, fill)') && src.includes('${windowsLineHtml(win, fill)}'), 'the header carries the date ranges line');
+    assert.ok(src.includes('function windowsLineHtml(win)') && src.includes('${windowsLineHtml(win)}'), 'the header carries the date ranges line');
     for (const word of ['training ', 'test ', 'held-back ', 'unread from ', ' onward — the box holds data to ', ', all of it unread']) assert.ok(src.includes(word), `the line says ${JSON.stringify(word)}`);
-    assert.ok(src.includes('doc.dataManifest || null, got.windows || null, got.windowsFill || null)'), 'Boards hands the panel what the route sent');
+    assert.ok(src.includes('doc.dataManifest || null, got.windows || null)'), 'Boards hands the panel what the route sent');
     assert.ok(src.includes(': unread from ${fDayOf(sealed.fromTs)} onward - the box holds data to ${fDayOf(sealed.dataToTs)}, and all of it counts as unread.'), 'the Funnel says where the unread window runs, to the newest data');
-    assert.ok(server.includes('windows, windowsFill,') && server.includes('stages.ensureWindows(doc.id)'), 'the route sends the date ranges and starts the fill for a set without them');
+    assert.ok(server.includes('chain: stages.chainOf(doc.id),\n    // the actual date ranges the set used (3.85.0)\n    windows: stages.windowsOfSet(doc),'), 'the route sends the date ranges');
     // and the help says it, in the words on the screen
     const sandbox = {};
     // eslint-disable-next-line no-new-func
@@ -828,71 +808,6 @@ module.exports = {
     assert.ok(h.swFrom3.more.includes('While a paused run is chosen the boxes below are ghosted'));
     assert.ok(h.swGo3.what.includes('With a paused run chosen in the box above, starts that run again where it stopped.'));
     assert.ok(h.swStop.what.startsWith('Pauses a stage 3 run, or stops a stage 1 or 2 run.'));
-  },
-
-  // A SET WRITTEN BEFORE 3.85.0 HAS ITS DATE RANGES WORKED OUT FROM ITS OWN
-  // PINNED FILES, announced, once, when a screen reads it (RULE NINE), and the
-  // block that does it goes the day every set on the box has been through it
-  // (RULE TEN: windowsMissing counts what is left)
-  async aSetWrittenBeforeTheDateRangesWereKeptHasThemWorkedOutFromItsPinnedFiles() {
-    needFixture();
-    await idle();
-    assert.ok(state.ref, 'no reference run');
-    // a stage 3 set: its date ranges struck off, then read by a screen
-    const ref = stages.getSet(state.ref);
-    const kept = JSON.parse(JSON.stringify(ref.windows.units));
-    const id3 = `s3-test-${stamp()}-w3`;
-    fs.cpSync(rowstore.storeDir(state.ref), rowstore.storeDir(id3), { recursive: true });
-    writeSet({ ...ref, id: id3, name: `ZZZ pause windows 3 ${stamp()}`, windows: null });
-    assert.strictEqual(stages.windowsOfSet(stages.getSet(id3)).known, 0, 'nothing known yet');
-    const before = windowsMissingNow();
-    assert.ok(before.sets >= 1, 'the count of sets still to fill sees it');
-    let st = stages.ensureWindows(id3);
-    assert.ok(st.filling, `the fill starts on the first read — got ${JSON.stringify(st)}`);
-    assert.ok(/date ranges of .* being worked out/.test(stages.stageBusy() || ''), 'and the box counts as busy while it runs');
-    st = await untilFilled(id3);
-    assert.deepStrictEqual(st, { ready: true });
-    const got3 = stages.getSet(id3);
-    assert.strictEqual(got3.windows.filledIn, true, 'the set says its date ranges were filled in, not priced');
-    assert.deepStrictEqual(got3.windows.units, kept, 'and they are exactly the ones the run itself wrote');
-    assert.deepStrictEqual(stages.ensureWindows(id3), { ready: true });
-    // a stage 1 set: its records rewritten beside and swapped, count held
-    const id1 = `s1-test-${stamp()}-w1`;
-    const src1 = stages.getSet(state.s1.id);
-    fs.cpSync(rowstore.storeDir(state.s1.id), rowstore.storeDir(id1), { recursive: true });
-    writeSet({ ...src1, id: id1, name: `ZZZ pause windows 1 ${stamp()}` });
-    {
-      // strike the date ranges off the copy's records, the way an older set has none
-      const rows = rowstore.readAll(id1, 'records');
-      const w = rowstore.writer(id1, 'records-strip');
-      for (const r of rows) { const { windows, ...rest } = r; w.push(rest); }
-      await w.close();
-      const from = rowstore.storeFile(id1, 'records-strip');
-      const to = rowstore.gzFile(id1, 'records');
-      fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
-      fs.renameSync(from, to);
-      assert.ok(rowstore.readAll(id1, 'records').every((r) => !r.windows), 'struck off');
-    }
-    const rowsBefore = rowstore.readAll(id1, 'records');
-    st = stages.ensureWindows(id1);
-    assert.ok(st.filling, `the stage 1 fill starts — got ${JSON.stringify(st)}`);
-    st = await untilFilled(id1);
-    assert.deepStrictEqual(st, { ready: true });
-    const rowsAfter = rowstore.readAll(id1, 'records');
-    assert.strictEqual(rowsAfter.length, rowsBefore.length, 'the same number of records');
-    for (let i = 0; i < rowsBefore.length; i++) {
-      const { windows, ...rest } = rowsAfter[i];
-      assert.deepStrictEqual(rest, rowsBefore[i], `record ${i} is otherwise untouched`);
-      const original = rowstore.readAll(state.s1.id, 'records').find((r) => r.u === rowsAfter[i].u);
-      assert.deepStrictEqual(windows, original.windows, `record ${i} gets back exactly the date ranges the run wrote`);
-    }
-    assert.ok(stages.getSet(id1).windowsFilledAt, 'and the set says when');
-    assert.ok(!fs.existsSync(rowstore.gzFile(id1, 'records-filling')), 'nothing is left beside the records');
-    assert.strictEqual(windowsMissingNow().sets, before.sets - 1 - 0, 'one fewer set to fill (the stage 1 copy was made after the count)');
-    // a set with no pin cannot be worked out, and says so
-    const bare = { ...ref, id: `s3-test-${stamp()}-w0`, name: `ZZZ pause windows none ${stamp()}`, windows: null, dataManifest: null };
-    writeSet(bare);
-    assert.ok(/no record of the price files/.test(stages.ensureWindows(bare.id).failed || ''), 'a set that was never stamped says why');
   },
 
   // THE START BUTTONS SLEEP ON THE PRESS AND THE LINE AT THE TOP SAYS STARTING

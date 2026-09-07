@@ -395,16 +395,6 @@ async function unitChunks(combo, geometry, p) {
   return { geo, maps, split, reserve, holdout, windows };
 }
 
-// ---- TASK: the date ranges of one unit and nothing else (3.85.0) ---------------
-// What a set written before 3.85.0 is filled in with: the same chunks, cut the
-// same way, from the same pinned files -- and no training, no pricing.
-async function windowsTask(task) {
-  const { combo, geometry } = task;
-  const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
-  const { windows } = await unitChunks(combo, geometry, p);
-  return { windows };
-}
-
 const viewsFor = (combo, geo) => bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
 
 // Every number simCell hands back, minus the two the record already stores.
@@ -1241,7 +1231,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 // came out once the box served a vocabulary without it.
 
 module.exports = {
-  s1UnitTask, s2UnitTask, s3UnitTask, windowsTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
+  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
   moneyWeights, weightsFor, weightsSaid, trainOnOf, capOf, TRAIN_ON, WEIGHT_CAP_DEFAULT,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,

@@ -237,4 +237,15 @@ Each item below is the owner's answer, recorded as given, with the one line that
 
 ---
 
+## 9. Loop record (owner `LOOP NOW!`, 2026-09-07 23:20 UTC)
+
+The owner's words: "start with writing any date ranges that are missing from record sets ... then go with (b) the batch and the follow-on tasks. DO IT ALL. LOOP NOW!" Scope: step 0 below, then the Verify batch (3.86.0), then, each its own release, V0; V6 and V7; the Funnel page sending each step's survivor count; the reserve grade; the Greenlight agreement; the live path built and never switched on; Tune's per-trade capture; the age dial's design document. Every rule below is written before its number exists. Decisions taken inside the loop are one line each, here. Anything RULE SIX stops, stops.
+
+### Step 0 — the date ranges the finished sets lacked (done 23:34 UTC)
+
+- **Rule, written first.** Every finished set on the box reads as many units with date ranges as it has units; the unread window the fill works out today starts where the run's own sealed window started, chunk for chunk, on every record (equal on all of them proves the fill and the pinned files at once); every set's pinned files intact; record counts unchanged; the count of sets still lacking ranges reads 0.
+- **Outcome.** S1 #1 600 of 600, S2 #1 600 of 600, S3 #1a 600 of 600, S3 #1b 300 of 300: 2,100 of 2,100 unread windows equal to the run's seal, 0 different; pinned files intact on all five sets (2,662 or 170 files each); 0 sets left. S3 #1c (paused) has none and gets them on its start-again, one setting per done unit; it was never the fill's to touch. Done through the set route, the same read a screen makes (`vps-access/scripts/uts-windows-fill.sh`); checked by `uts-windows-check.sh`. Both read-only for the session; the box's own fill wrote the records, beside and swapped.
+- **Instrument hunted.** The fill chunked from the set's own pin without first asking whether the pin was intact; had a pinned file changed, the ranges written would have been today's, not the run's. Caught after the fact by the equality above (2,100 of 2,100), so nothing was written wrong. Moot now: the block has served every set on the box, measured, and goes in 3.85.1 (RULE TEN).
+- **Decision (loop).** 3.85.1 deletes the fill whole: the block, the worker task, the route's fill field, the screen's fill wording, the test and its helpers. The start-again's own recovery of a unit's ranges (one setting priced again) stays: it is the start-again's logic, S3 #1c still needs it, and it is covered by its own rehearsal. Parked for the owner: once S3 #1c has been started again, that branch and the `pausedBy` line are spent too, and go together.
+
 Nothing here is built. Every item waits for `GO NOW!` for that batch — or `LOOP NOW!` to process the entire document without interruption. A loop over this document starts only once section 8 is answered, because a loop may not decide for the owner; and what RULE SIX always stops still stops, so nothing that arms real money (section 6, the live path) is switched on inside it.

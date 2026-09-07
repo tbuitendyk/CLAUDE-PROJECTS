@@ -1757,7 +1757,7 @@ function bKeptFillPanel(doc) {
 // Each window is the span across the run's units; the unread window runs from
 // where the seal began to the newest candle the box holds today, because
 // whatever reads it reads all the data there is.
-function windowsLineHtml(win, fill) {
+function windowsLineHtml(win) {
   if (!win) return '';
   const day = (ts) => (Number.isFinite(ts) ? new Date(ts).toISOString().slice(0, 10) : '?');
   const rng = (w) => (w ? `${day(w.fromTs)} → ${day(w.toTs)}` : null);
@@ -1766,18 +1766,14 @@ function windowsLineHtml(win, fill) {
   if (win.test) parts.push(`test ${rng(win.test)}`);
   if (win.hold) parts.push(`held-back ${rng(win.hold)}`);
   if (win.unread) parts.push(`unread from ${day(win.unread.fromTs)} onward — the box holds data to ${day(win.unread.dataToTs)}, all of it unread`);
-  const f = fill || {};
-  const state = win.known >= win.units && win.units > 0 ? ''
-    : f.filling ? ` — being worked out for the rest: ${Number(f.filling.done).toLocaleString()} of ${Number(f.filling.total).toLocaleString()} units`
-      : f.waiting ? ` — ${esc(String(f.waiting))}`
-        : f.failed ? ` — <b class="warn">not worked out: ${esc(String(f.failed))}</b>`
-          : win.known ? ` — ${win.known} of ${win.units} units say so` : ' — being worked out';
+  // a run still going, or paused, has them for the units priced so far
+  const state = win.known >= win.units && win.units > 0 ? '' : win.known ? ` — ${win.known} of ${win.units} units so far` : '';
   return `<p class="note"><b>Date ranges:</b> ${parts.length ? parts.map((x) => esc(x)).join(' · ') : (win.units ? 'not recorded on this run yet' : 'no units')}${state}</p>`;
 }
-function runIdentityPanelHtml(sizeLine, dm, win = null, fill = null) {
+function runIdentityPanelHtml(sizeLine, dm, win = null) {
   return `<div class="panel"><h3 style="margin-top:0">What this run actually is</h3>
           ${sizeLine || ''}
-          ${windowsLineHtml(win, fill)}
+          ${windowsLineHtml(win)}
           <!-- dm.overallDigest / dm.symbols / dm.at are what lib/manifest.js
                actually writes. This read dm.digest, dm.coins, dm.files and
                dm.utc — four names nothing has ever written — so the fingerprint
@@ -3414,7 +3410,7 @@ async function drawBoards() {
     ].filter(Boolean).join(' · ')})`).join(' → ')}${chain.length > 1 ? ' · price files fingerprint-checked at every launch' : ''}</p>` : '';
     mount.innerHTML = `${chainLine}${descriptionPanelHtml(doc.desc, true)}
       ${stage === 1 ? namePanel1(doc) : stage === 2 ? namePanel2(doc) : namePanel3(doc)}${stage === 1 ? notesPanel1(doc) : stage === 2 ? notesPanel2(doc) : notesPanel3(doc)}${bKeptFillPanel(doc)}
-      ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${doc.plan.pricings ? ` · ${Number(doc.plan.pricings).toLocaleString()} records, each unit holding only the settings that place different orders on it` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null, got.windows || null, got.windowsFill || null)}
+      ${runIdentityPanelHtml(doc.plan && doc.plan.units ? `<p class="note"><b>Size:</b> <b>${Number(doc.plan.units).toLocaleString()}</b> units${doc.plan.settings ? ` × ${Number(doc.plan.settings).toLocaleString()} settings` : ''}${doc.plan.pricings ? ` · ${Number(doc.plan.pricings).toLocaleString()} records, each unit holding only the settings that place different orders on it` : ''}${(doc.params || {}).nullN ? ` · null set size ${doc.params.nullN}` : ''}.</p>` : '', doc.dataManifest || null, got.windows || null)}
       <div id="bT${stage}"></div>`;
     wireNotesSave(`api/stageset/${encodeURIComponent(doc.id)}/notes`, null, String(stage));
     wireRename(`api/stageset/${encodeURIComponent(doc.id)}/name`, String(stage));

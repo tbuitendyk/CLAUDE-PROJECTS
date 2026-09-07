@@ -307,7 +307,6 @@ function stageRunning() { return activeSet ? activeSet.id : null; }
 function stageBusy() {
   if (activeSet) return `stage run ${activeSet.id}`;
   if (tallyRun && !tallyRun.error) return `the totalling of ${tallyRun.id}`;
-  if (windowsRun && !windowsRun.error && !windowsRun.ready) return `the date ranges of ${windowsRun.id} being worked out`;
   // 3.81.0, owner order: "other loads are not allowed" while step 6's press is
   // working. Named HERE rather than in a second gate of its own, so every
   // refusal already built on stageBusy()/claimOrRefuse() -- the stage launches,
@@ -324,9 +323,6 @@ function claimOrRefuse() {
   if (activeSet) throw new Error(`stage run ${activeSet.id} is going right now — one heavy job at a time`);
   if (tallyRun && !tallyRun.error) {
     throw new Error(`the tables of ${tallyRun.id} are totalling right now — one heavy job at a time. They appear on Boards when it lands.`);
-  }
-  if (windowsRun && !windowsRun.error && !windowsRun.ready) {
-    throw new Error(`the date ranges of ${windowsRun.id} are being worked out right now — one heavy job at a time. Its header on Boards says when they are in.`);
   }
 }
 function cancelStage(id) {
@@ -2073,114 +2069,6 @@ function windowsOfSet(doc) {
       dataToTs: newestDataOf(coinsFingerprinted(doc)), units: unreads.length,
     } : null,
   };
-}
-
-// ---- DATE RANGES FOR SETS WRITTEN BEFORE 3.85.0 -------------------------------
-// RULE NINE: the records move when the process moves. RULE TEN: this block is
-// deleted the day every set on the box has been through it -- windowsMissing()
-// counts what is left, and it is measured, never assumed. A set's own units are
-// chunked again from its pinned files, in the workers, one set at a time and
-// never while a run is going; stage 1 and 2 records are rewritten BESIDE the
-// old ones and swapped only once the count matches; a stage 3 set's are
-// written beside it, like its comparisons. It starts when a screen reads a set
-// that has none, and the screen says so while it runs.
-const RECORDS_SPARE = 'records-filling';
-let windowsRun = null;   // { id, done, total, error, ready, promise }
-function windowsFillStatus(id) {
-  if (!windowsRun || windowsRun.id !== id) return { none: true };
-  if (windowsRun.error) return { failed: windowsRun.error };
-  if (windowsRun.ready) return { ready: true };
-  return { filling: { done: windowsRun.done, total: windowsRun.total } };
-}
-function windowsMissing() {
-  let sets = 0;
-  let units = 0;
-  for (const row of listSets()) {
-    if (![1, 2, 3].includes(row.stage) || !['done', 'incomplete'].includes(row.status)) continue;
-    const w = windowsOfSet(getSet(row.id));
-    if (w && w.units > w.known) { sets++; units += w.units - w.known; }
-  }
-  return { sets, units };
-}
-function ensureWindows(id) {
-  if (windowsRun) {
-    if (windowsRun.id === id) return windowsFillStatus(id);
-    if (!windowsRun.error && !windowsRun.ready) return { waiting: 'another record set is having its date ranges worked out — one at a time' };
-    windowsRun = null;
-  }
-  const doc = getSet(id);
-  if (!doc || ![1, 2, 3].includes(doc.stage) || !['done', 'incomplete'].includes(doc.status)) return { none: true };
-  const have = windowsOfSet(doc);
-  if (have && have.units > 0 && have.known >= have.units) return { ready: true };
-  if (batch.batchRunning() || activeSet || (tallyRun && !tallyRun.error) || richBusy()) {
-    return { waiting: 'a run is going — the date ranges are worked out when the box is free' };
-  }
-  const pin = pinOf(doc);
-  if (!pin) return { failed: 'this set carries no record of the price files it read, so its date ranges cannot be worked out' };
-  let units;
-  let params;
-  try {
-    if (doc.stage === 3) {
-      const parent = getSet((doc.parent || {}).id || (doc.params || {}).from || '');
-      if (!parent) return { failed: 'the stage 2 record set this was priced from is gone' };
-      const choice = unitsChoiceOf(doc.params || {});
-      units = stage3UnitsFor(parent, choice.carry, choice.selected).records;
-      params = doc.params;
-    } else {
-      units = rowstore.readAll(doc.id, 'records');
-      params = doc.params;
-    }
-  } catch (err) {
-    return { failed: `its units would not resolve: ${err.message}` };
-  }
-  const todo = doc.stage === 3
-    ? units.filter((u) => !(((doc.windows || {}).units) || {})[unitKeyOf(u)])
-    : units.filter((u) => !u.windows);
-  if (!todo.length) return { ready: true };
-  const run = { id, done: 0, total: todo.length, error: null, ready: false, promise: null };
-  windowsRun = run;
-  const pool = createPool();
-  run.promise = (async () => {
-    const got = new Map();   // unitKey -> windows
-    const failed = [];
-    const payloads = todo.map((u) => ({ combo: { trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2, size: u.size }, geometry: u.geometry, params, pin }));
-    await pool.forEach('windows', payloads, (settled, i) => {
-      run.done++;
-      if (settled.ok && settled.value && settled.value.windows) got.set(unitKeyOf(todo[i]), settled.value.windows);
-      else failed.push(`${todo[i].trade}|${todo[i].geometry}: ${settled.error || 'no answer'}`);
-    });
-    if (failed.length) throw new Error(`${failed.length} of ${todo.length} units could not be chunked again (${failed.slice(0, 3).join('; ')}) — nothing was written`);
-    const fresh = getSet(id);
-    if (!fresh) throw new Error('the set went away while its date ranges were being worked out');
-    if (doc.stage === 3) {
-      fresh.windows = { at: new Date().toISOString(), units: { ...(((fresh.windows || {}).units) || {}), ...Object.fromEntries(got) }, filledIn: true };
-      saveSet(fresh);
-    } else {
-      // BESIDE, VERIFIED, SWAPPED: every record rewritten with its date ranges
-      // into a spare store, the count held equal, then one rename
-      wipeOneStore(id, RECORDS_SPARE);
-      const wr = rowstore.writer(id, RECORDS_SPARE);
-      let n = 0;
-      rowstore.each(id, 'records', (r) => { wr.push(r.windows ? r : { ...r, windows: got.get(unitKeyOf(r)) || null }); n++; });
-      await wr.close();
-      const wrote = rowstore.count(id, RECORDS_SPARE);
-      if (wrote !== n || n !== units.length) {
-        wipeOneStore(id, RECORDS_SPARE);
-        throw new Error(`the rewritten records hold ${wrote} row(s) and the set holds ${units.length} — the records were left exactly as they were`);
-      }
-      const from = rowstore.storeFile(id, RECORDS_SPARE);
-      if (!from.endsWith('.gz')) { wipeOneStore(id, RECORDS_SPARE); throw new Error('the rewritten records are not in the form the swap expects — nothing was replaced'); }
-      const to = rowstore.gzFile(id, 'records');
-      fs.renameSync(`${from}.meta.json`, `${to}.meta.json`);
-      fs.renameSync(from, to);
-      try { fs.rmSync(rowstore.plainFile(id, 'records'), { force: true }); } catch (_) { /* nothing there */ }
-      if (recordsInHand.id === id) { recordsInHand.id = null; recordsInHand.rows = null; }
-      fresh.windowsFilledAt = new Date().toISOString();
-      saveSet(fresh);
-    }
-    run.ready = true;
-  })().catch((err) => { run.error = String((err && err.message) || err); }).finally(() => { pool.abort(); });
-  return windowsFillStatus(id);
 }
 
 // WHAT THE STEP 6 LIMITS ARE LIMITS ON (3.57.0, owner order 2026-09-04: "more
@@ -6692,7 +6580,7 @@ module.exports = {
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
   funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
-  windowsOfSet, ensureWindows, windowsFillStatus, windowsMissing, newestDataOf,
+  windowsOfSet, newestDataOf,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,
