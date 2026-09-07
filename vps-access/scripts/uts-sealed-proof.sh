@@ -37,30 +37,40 @@ for (const d of chain) {
   console.log('      windowLayout ' + p.windowLayout + '   allLoaded ' + p.allLoaded + '   months ' + p.startMonth + ' .. ' + p.endMonth + '   universe ' + JSON.stringify(p.universe));
 }
 const s3 = chain[0], s1 = chain[chain.length - 1];
-// the data manifest stamped at launch, against the files on disk NOW
-console.log('== the price files: as stamped at the stage 1 launch, and as they are on disk now ==');
+// the data manifest stamped at launch, against the files on disk NOW. The
+// doc stores a per-symbol digest: sha256 over "file|bytes|sha256" of every 1h
+// file, in name order. Rolled again here the same way, from the files as they
+// are now, for the unit's coins -- so a match means not one byte of the price
+// history this chain was priced from has moved since the stage 1 launch.
+console.log('== the price files: digest stamped at the stage 1 launch, against the files on disk now ==');
+const crypto = require('crypto');
 const man = (s1 && s1.dataManifest) || {};
 const syms = man.symbols || {};
 const unitCoins = String(s4.unit || '').split('|').filter((x, i) => i < 3 && x);
-for (const sym of Object.keys(syms)) {
-  const entry = syms[sym];
-  const files = Array.isArray(entry) ? entry : (entry.files || entry);
-  const list = Array.isArray(files) ? files : Object.entries(files || {}).map(([f, v]) => ({ file: f, ...(v || {}) }));
-  let same = 0, moved = 0, gone = 0, unknown = 0;
-  for (const e of list) {
-    const f = e.file || e.path || e.name; if (!f) { unknown++; continue; }
-    const full = path.isAbsolute(f) ? f : path.join(D, 'cache', f);
-    let st = null; try { st = fs.statSync(full); } catch (_) { gone++; continue; }
-    if (e.size != null && e.mtimeMs != null) { if (Number(e.size) === st.size && Math.abs(Number(e.mtimeMs) - st.mtimeMs) < 1) same++; else moved++; }
-    else unknown++;
+const cache = path.join(D, 'cache');
+const rollNow = (sym) => {
+  const files = fs.readdirSync(cache).filter((f) => f.startsWith(sym + '-1h-') && f.endsWith('.json')).sort();
+  const roll = crypto.createHash('sha256');
+  let bytes = 0;
+  for (const f of files) {
+    const buf = fs.readFileSync(path.join(cache, f));
+    const h = crypto.createHash('sha256').update(buf).digest('hex');
+    bytes += buf.length;
+    roll.update(f + '|' + buf.length + '|' + h + '\n');
   }
-  const mark = unitCoins.includes(sym) ? '  <-- a coin of the Stage 4 unit' : '';
-  console.log('   ' + sym.padEnd(9) + ' files ' + String(list.length).padStart(4) + '   unchanged ' + same + '   changed ' + moved + '   gone ' + gone + (unknown ? '   (no size/mtime to compare: ' + unknown + ')' : '') + mark);
+  return { files: files.length, bytes, digest: files.length ? roll.digest('hex') : null };
+};
+console.log('   coins in the manifest: ' + Object.keys(syms).length + '   stamped at ' + (man.at || man.stampedAt || s1.createdAt));
+for (const sym of unitCoins) {
+  const was = syms[sym];
+  if (!was) { console.log('   ' + sym.padEnd(9) + ' NOT in the stage 1 manifest'); continue; }
+  const now = rollNow(sym);
+  const same = was.digest && now.digest && was.digest === now.digest;
+  console.log('   ' + sym.padEnd(9) + (same ? 'UNCHANGED since the launch' : 'CHANGED since the launch') + '   files then ' + was.files + ' now ' + now.files + '   bytes then ' + was.bytes + ' now ' + now.bytes);
 }
-if (!Object.keys(syms).length) console.log('   (the stage 1 set carries no manifest, or its shape is not per-symbol: ' + JSON.stringify(Object.keys(man)) + ')');
+if (!Object.keys(syms).length) console.log('   (the stage 1 set carries no per-symbol manifest: keys ' + JSON.stringify(Object.keys(man)) + ')');
 // the candle span on disk for the unit's coins
 console.log('== the candles on disk for the unit\'s coins (1h files) ==');
-const cache = path.join(D, 'cache');
 for (const sym of unitCoins) {
   const months = fs.readdirSync(cache).filter((f) => f.startsWith(sym + '-1h-') && /-\d{4}-\d{2}\.json$/.test(f)).sort();
   if (!months.length) { console.log('   ' + sym + ': no 1h files'); continue; }
