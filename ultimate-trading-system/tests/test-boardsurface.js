@@ -181,8 +181,9 @@ module.exports = {
       'and the control is dead on screen rather than silently doing nothing');
   },
 
-  // "+ ASSOCIATED COINS" UNDER coin + chunk shape (3.79.0, named on the column
-  // itself in 3.79.1 -- owner order 2026-09-07:
+  // THE COINS A ROW IS READ ALONGSIDE, UNDER coin + chunk shape (3.79.0; named
+  // on the column in 3.79.1; that name settled as alongside in 3.79.2 --
+  // owner order 2026-09-07:
   // "on table 3 b you need to at '+ ASSOCIATED COINS' under the 'COIN + CHUNK
   // SHAPE' column in cases of selections with doubles or triples").
   //
@@ -217,12 +218,21 @@ module.exports = {
     // THE COLUMN SAYS SO, IN THE OWNER'S OWN WORDS (3.79.1). 3.79.0 put the
     // coins in the cell and left the heading naming only two of the three
     // things under it, which is not what was asked for.
-    assert.ok(UI.includes(">coin + chunk shape + associated coins${bCoinSortBtn(view, 'coin', '\u2191')}</th>"),
-      'the column no longer names the associated coins');
+    assert.ok(UI.includes(">coin + chunk shape + alongside${bCoinSortBtn(view, 'coin', '\u2191')}</th>"),
+      'the column no longer names the coins the row is read alongside');
+    // ONE NAME FOR ONE THING (3.79.2, owner: "FINE, call it ALONGSIDE then").
+    // The two tables above head this same content alongside; a third word for
+    // it on the third table is the drift that makes the owner check which
+    // screen they are on before they can read a row.
+    // the comments still quote the owner's order word for word -- that is the
+    // record of why this column reads the way it does. What must not carry a
+    // second name is anything that RENDERS, so the scan drops comment lines.
+    const rendered = UI.split('\n').filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+    assert.ok(!/associated coins/i.test(rendered), 'a second name for alongside is back on the screen');
 
     // AND THE CELL ACTUALLY PRINTS THEM. The line below is the one the owner reads.
     assert.ok(UI.includes('<td ${btd}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span>${bAlso(r)}</td>'),
-      'the coin + chunk shape + associated coins cell of Table 3.B no longer prints the coins the row is read against');
+      'the coin + chunk shape + alongside cell of Table 3.B no longer prints the coins the row is read against');
 
     // AND THE TWO TABLES ABOVE IT DO NOT. They carry their own alongside
     // column beside the coin, and printing the same coins twice on one row is

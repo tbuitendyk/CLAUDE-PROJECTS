@@ -3056,8 +3056,10 @@ const bLead = (v) => (v == null ? bDash() : `×${Number(v).toFixed(1)}`);
 // table for no information at all. Its own heading already promised only the
 // traded coin: "Anything listed under alongside is context only".
 const bCoin = (r) => `<b>${esc(r.trade)}</b>`;
-// THE ASSOCIATED COINS, NAMED ON THE COLUMN AND PRINTED IN THE CELL (3.79.1,
-// owner order 2026-09-07: add
+// THE COINS A ROW IS READ ALONGSIDE, NAMED ON THE COLUMN AND PRINTED IN THE
+// CELL (3.79.2). The owner settled the word: "FINE, call it ALONGSIDE then"
+// -- so this column says exactly what the two tables above it say, and the
+// screen carries ONE name for one thing. The order was (2026-09-07): add
 // "+ ASSOCIATED COINS" under coin + chunk shape "in cases of selections with
 // doubles or triples"). Its rows are ALREADY keyed on those coins -- keyOf
 // splits the table on ctx1 and ctx2 -- so one coin judged on its own and the
@@ -4259,7 +4261,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
-        <th ${bth} title="the traded coin and the chunk shape it was priced at, and under them the associated coins — the one or two this coin is read against, on rows that have any. All of it is in this one cell, and the row is one setting on one coin at one chunk shape. The associated coins are context only — read against, never bought or sold.">coin + chunk shape + associated coins${bCoinSortBtn(view, 'coin', '↑')}</th>
+        <th ${bth} title="the traded coin and the chunk shape it was priced at, and under them the one or two coins it is read alongside, on rows that have any. All of it is in this one cell, and the row is one setting on one coin at one chunk shape. What is listed after alongside is context only — read against, never bought or sold. Same word, same meaning, as the alongside column on the two tables above.">coin + chunk shape + alongside${bCoinSortBtn(view, 'coin', '↑')}</th>
         <th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>
         <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what the shuffle managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bCoinSortBtn(view, 'beatnoise', '↓')}</th>
         <th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>
