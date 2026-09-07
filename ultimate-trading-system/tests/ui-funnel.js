@@ -71,7 +71,13 @@ function reply(body) {
   const gateFixed = Array.isArray((rule.allowed || {}).gate);
   const base = {
     step: body.step, set: { id: SET, name: 'S3 #ui', noiseTwin: { available: true, kept: 20 }, keptScrambles: 20, sealed: { sealed: true, units: [{}] } },
-    unit: UNIT, unitName: 'XRPUSDT weekly-8d', units: [{ key: UNIT, name: 'XRPUSDT weekly-8d' }],
+    unit: UNIT, unitName: 'XRPUSDT weekly-8d', units: [{ key: UNIT, name: 'XRPUSDT weekly-8d', trade: 'XRPUSDT', ctx1: null, ctx2: null, geometry: 'weekly-8d' },
+      // 3.80.1: the four boxes at the top narrow each other, so the canned
+      // reply has to carry more than one board or they have nothing to narrow.
+      // Same coin at a second shape, and the same coin read alongside another:
+      // enough for alongside 1 and chunk shape to have two entries each.
+      { key: 'XRPUSDT|||daily-1d', name: 'XRPUSDT daily-1d', trade: 'XRPUSDT', ctx1: null, ctx2: null, geometry: 'daily-1d' },
+      { key: 'XRPUSDT|BTCUSDT||weekly-8d', name: 'XRPUSDT alongside BTCUSDT weekly-8d', trade: 'XRPUSDT', ctx1: 'BTCUSDT', ctx2: null, geometry: 'weekly-8d' }],
     survivors: gateFixed ? 141120 : 275520, of: 275520, target: body.target || null,
     check: { kind: 'scrambles', k: 20, barPct: 75, bar: 15, chance: 0.28 },
     conditions: {}, ruleSentence: gateFixed ? 'gate is directional' : 'nothing yet',

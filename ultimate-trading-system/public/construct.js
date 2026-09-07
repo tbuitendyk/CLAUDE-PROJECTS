@@ -4734,12 +4734,16 @@ async function drawFunnel() {
 // EVERY LIST IS WHAT THE SET ACTUALLY HOLDS, narrowed by the boxes to its left
 // (RULE FIVE). Nothing is offered that would land on no board, and nothing the
 // set holds is left out.
-const fUnitOf = (d, key) => (d.units || []).find((u) => u.key === key) || null;
+// A MISSING REPLY IS NO BOARD, NEVER AN EXCEPTION (3.80.1). Written as
+// `d.units` this threw the moment one of the two callers of fWireUnit was
+// missed, and a throw here takes down every control wired after it -- the
+// whole walk, from one box.
+const fUnitOf = (d, key) => ((d || {}).units || []).find((u) => u.key === key) || null;
 // The choice narrowed left to right: each box is honoured if the set has
 // anything matching it, and simply dropped if it does not, so no combination
 // of presses can land on a board that is not there.
 function fUnitResolve(d, want) {
-  let rows = (d.units || []).filter((u) => u.trade === want.trade);
+  let rows = ((d || {}).units || []).filter((u) => u.trade === want.trade);
   for (const [field, val] of [['ctx1', want.ctx1], ['ctx2', want.ctx2], ['geometry', want.geometry]]) {
     const next = rows.filter((u) => (u[field] || '') === (val || ''));
     if (next.length) rows = next;
@@ -6008,7 +6012,7 @@ function fWire(st, d) {
     const v = bb.value === '' ? null : Math.max(1, Math.min(100, Math.floor(Number(bb.value) || 0)));
     st.barPct = v; fRememberForSet(st.set, { barPct: v }); fSave(); drawFunnel();
   };
-  fWireUnit(st);
+  fWireUnit(st, d);
   const dl = $('#fDial');
   if (dl) dl.onchange = () => { st.dial = dl.value || null; fSave(); drawFunnel(); };
   // MARKS (§16.5): what this step would leave a mark for is recorded when the

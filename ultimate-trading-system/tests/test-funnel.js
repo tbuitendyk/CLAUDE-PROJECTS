@@ -1496,10 +1496,10 @@ module.exports = {
     // true is that every option comes from the reply's own list and that what
     // is SENT is still a key the reply named -- fUnitResolve returns one of
     // d.units' keys or nothing, and theCoinAndShapeBoxIsOneBoxPerPart runs it.
-    assert.ok(src.includes('const fUnitOf = (d, key) => (d.units || []).find((u) => u.key === key) || null;'),
-      'the picker no longer reads the board it is on out of the reply');
-    assert.ok(src.includes('function fUnitResolve(d, want) {') && src.includes("let rows = (d.units || []).filter((u) => u.trade === want.trade);"),
-      'and what it sends is no longer resolved against the reply\'s own unit list');
+    assert.ok(/const fUnitOf = \(d, key\) =>[\s\S]{0,60}\.units \|\| \[\]\)\.find\(\(u\) => u\.key === key\)/.test(src),
+      'the picker no longer looks the board it is on up in the reply\'s own list, by key');
+    assert.ok(/function fUnitResolve\(d, want\) \{[\s\S]{0,120}\.units \|\| \[\]\)\.filter\(\(u\) => u\.trade === want\.trade\)/.test(src),
+      'and what it sends is no longer resolved against that same list');
     // a walk is saved per unit, and never under no unit
     assert.ok(src.includes('if (!fState || !fState.unit) return;'), 'no walk is saved under no unit');
     assert.ok(src.includes("const fWalkKeyFor = (set, unit) => `cx-funnel-${set}-${unit || 'all'}`;"), 'one walk per set and unit');
@@ -3324,4 +3324,40 @@ module.exports.theCoinAndShapeBoxIsOneBoxPerPart = function () {
   }
   assert.strictEqual(fUnitResolve({ units: [], unit: null }, { trade: 'LTCUSDT' }), null,
     'a set with no units resolves to nothing rather than inventing a board');
+};
+
+// EVERY CALLER OF THE COIN-AND-SHAPE WIRING HANDS IT THE REPLY (3.80.1).
+//
+// 3.80.0 gave fWireUnit a second argument -- the reply, which is where the
+// boxes' own lists live -- and updated ONE of its two callers. fWire's call
+// was missed, so `fUnitOf(d, d.unit)` threw on every draw of the walk, and a
+// throw there takes down every control wired after it: the dial box, the
+// marks, the step buttons, all of it. The page was unusable.
+//
+// A grep for the picker's ids could not see that call, which is why this
+// check reads the CALLS and not the ids.
+module.exports.everyCallerOfTheCoinAndShapeWiringHandsItTheReply = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const calls = [...src.matchAll(/(?<!function )\bfWireUnit\(([^)]*)\)/g)].map((m) => m[1].trim());
+  assert.ok(calls.length >= 2, `only ${calls.length} call(s) to fWireUnit found — the wiring has moved`);
+  for (const args of calls) {
+    assert.strictEqual(args.split(',').length, 2,
+      `fWireUnit(${args}) is short an argument — without the reply the picker has no unit list and throws`);
+  }
+  assert.ok(/function fWireUnit\(st, d\) \{/.test(src), 'and the function still takes both');
+
+  // AND IT CANNOT TAKE THE PAGE DOWN AGAIN. No reply is no board, never a throw.
+  const lift = (head, end) => {
+    const at = src.indexOf(head);
+    assert.ok(at > 0, `${head} is gone`);
+    return src.slice(at, src.indexOf(end, at) + end.length);
+  };
+  // eslint-disable-next-line no-eval
+  const { fUnitOf, fUnitResolve } = eval(`(() => { ${
+    lift('const fUnitOf = (d, key)', '\n')}\n${lift('function fUnitResolve(d, want) {', '\n}\n')
+  }\nreturn { fUnitOf, fUnitResolve }; })()`);
+  for (const nothing of [undefined, null, {}]) {
+    assert.strictEqual(fUnitOf(nothing, 'LTCUSDT|||daily-1d'), null, 'no reply is no board');
+    assert.strictEqual(fUnitResolve(nothing, { trade: 'LTCUSDT' }), null, 'and resolves to nothing');
+  }
 };
