@@ -789,3 +789,16 @@ carried out 2026-08-28 under its own GO — decision 50.
     date within a chain, but across chains the boundary still slides as the
     cache grows, and the "13% never seen" holds only for what a chain was
     launched on. That is the owner's call. Second digit.
+    **3.84.1, found on the box the hour 3.84.0 shipped.** S3 #1c's own stamp
+    named one coin, LTCUSDT, while every one of its units read sixteen more
+    alongside it: its launch had fallen back to the parent's trade coin (the
+    3.77.1 fault, on the stamp rather than the check), so a pin over its own
+    record left sixteen coins reading whatever was on disk. Two changes: a
+    child is stamped over every coin its parent was stamped over, its unit
+    list only when the parent has no pin; and a start-again widens a narrow
+    pin to the parent's files -- its own files win for the coins it names,
+    the launch's own detail file stays where it was, and the record says
+    what was added. For S3 #1c that means the remaining 210 units read S2
+    #1's files for those sixteen coins; units 1 to 90 read what was on disk
+    at their time, which may have run a few days past the parent's files.
+    That is the best record there is, and it is written down. Third digit.

@@ -427,6 +427,15 @@ module.exports = {
     fs.cpSync(rowstore.storeDir(state.ref), rowstore.storeDir(id), { recursive: true });
     const doc = { ...src, id, name: `ZZZ pause copied ${stamp()}`, status: 'paused', finishedAt: null, continued: [], counts: null, controls: null, progress: 'paused at 0 of 0 parts', cancelRequested: true };
     delete doc.tallyError;
+    // AND ITS STAMP NARROWED TO ONE COIN (3.84.1): the shape S3 #1c was found
+    // in on the box -- its own record named LTCUSDT while its units read
+    // sixteen more. The start-again widens the pin to the parent's files, on
+    // the record, and the fair coin is read from those.
+    const { stampManifest, pinnedFilesOf } = require('../lib/manifest');
+    const wide = pinnedFilesOf(src.dataManifest);
+    assert.ok(wide && wide[A] && wide[B], 'the reference is pinned over both coins');
+    doc.dataManifest = stampManifest(`${id}-narrow`, [A], { onlyFiles: { [A]: wide[A] } });
+    assert.deepStrictEqual(Object.keys(pinnedFilesOf(doc.dataManifest)), [A], 'narrowed to the planted coin alone');
     writeSet(doc);
     const before = rowsByKey(id);
     assert.strictEqual(before.size, src.plan.settings * 2, 'the copy holds every row of the reference');
@@ -436,7 +445,13 @@ module.exports = {
     });
     assert.strictEqual(stages.readAgreed(id), null, 'nothing agreed is kept beside the copy yet');
     stages.continueStage3(id);
+    const widened = pinnedFilesOf(stages.getSet(id).dataManifest);
+    assert.deepStrictEqual(Object.keys(widened).sort(), [A, B], 'the pin now names both coins');
+    assert.deepStrictEqual(widened[A], wide[A], 'its own files for the coin it named');
+    assert.deepStrictEqual(widened[B], wide[B], 'and the parent\'s for the one it did not');
+    assert.ok(stages.getSet(id).dataManifest.detailFile.endsWith(`${id}-widened.json`), 'written beside the launch\'s own record, which stays');
     const c = (await untilStartedAgain(id)).continued[0];
+    assert.deepStrictEqual(c.pinWidened, { from: 1, to: 2, added: [B] }, 'the start-again\'s record says the pin was widened, and by what');
     assert.strictEqual(c.unitsKept, 0, 'no unit is whole without its agreements and comparisons');
     assert.strictEqual(c.unitsToPrice, 2);
     assert.ok(c.settingsRepriced >= 4, `at least one setting per decision per unit is priced again — got ${c.settingsRepriced}`);

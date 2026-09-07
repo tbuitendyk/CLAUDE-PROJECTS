@@ -467,6 +467,18 @@ function pinComplaint(check, name) {
 // list of files the launch read. A set that was never stamped carries none
 // and reads what is on disk, as it always did.
 const pinOf = (doc) => { const dm = (doc || {}).dataManifest; return dm && !dm.error && typeof dm.detailFile === 'string' ? dm.detailFile : null; };
+// A CHILD IS STAMPED OVER EVERY COIN ITS PARENT WAS STAMPED OVER (3.84.1,
+// found on the box the hour 3.84.0 shipped): S3 #1c's own stamp named one
+// coin, LTCUSDT, while every one of its units read sixteen more alongside it,
+// because the launch fell back to the parent's trade coin. A pin over one
+// coin leaves sixteen reading whatever is on disk. The parent's pin names the
+// coins its units read; a parent without one is read over its unit list, as
+// before.
+function childStampFor(id, parent) {
+  const parentPin = pinnedFilesOf(parent.dataManifest);
+  const coins = parentPin && Object.keys(parentPin).length ? Object.keys(parentPin).sort() : coinsOfParent(parent);
+  return stampManifest(id, coins, { onlyFiles: parentPin });
+}
 function manifestComplaint(diff, name) {
   if (diff.changed.length) {
     return `the price files changed since ${name} was written (${diff.changed.join(', ')})`;
@@ -1390,7 +1402,7 @@ function startStage2(params) {
   };
   // the stamp lists the parent's pinned files -- what this run reads -- with
   // their bytes as they are now, which parentOrRefuse has just proved equal
-  doc.dataManifest = stampManifest(id, coinsOfParent(parent), { onlyFiles: pinnedFilesOf(parent.dataManifest) });
+  doc.dataManifest = childStampFor(id, parent);
   activeSet = doc;
   saveSet(doc);
 
@@ -2325,7 +2337,7 @@ function startStage3(params) {
   };
   // the stamp lists the parent's pinned files -- what this run reads -- with
   // their bytes as they are now, which parentOrRefuse has just proved equal
-  doc.dataManifest = stampManifest(id, coinsOfParent(parent), { onlyFiles: pinnedFilesOf(parent.dataManifest) });
+  doc.dataManifest = childStampFor(id, parent);
   activeSet = doc;
   saveSet(doc);
 
@@ -2616,10 +2628,29 @@ function continueStage3(id) {
   // those files are still there with the same bytes. A bundle that has
   // appeared beside them since, a day that was filled in, a new day of data:
   // none of it is this run's, and none of it refuses.
+  let pinWidened = null;
   if (doc.dataManifest && !doc.dataManifest.error && doc.dataManifest.symbols) {
     const pinned = pinnedIntact(doc.dataManifest);
     if (!pinned.intact) {
       throw new Error(`${pinComplaint(pinned, doc.name)} — the rest of this run would be priced on different prices from the part already done`);
+    }
+    // A NARROW PIN IS WIDENED TO THE PARENT'S (3.84.1). A set stamped before
+    // 3.77.1 can name one coin where its units read seventeen; the coins its
+    // own record does not name are read from its parent's files from here on,
+    // its own files win for the coins it does name, the launch's own detail
+    // file stays where it was, and the start-again's record says so.
+    const ownPin = pinnedFilesOf(doc.dataManifest) || {};
+    const parentPin = pinnedFilesOf(parent.dataManifest);
+    const missing = parentPin ? Object.keys(parentPin).filter((c) => !ownPin[c]) : [];
+    if (missing.length) {
+      const pc = pinnedIntact(parent.dataManifest);
+      if (!pc.intact) {
+        throw new Error(`${pinComplaint(pc, parent.name)} — this run's own record names ${Object.keys(ownPin).length} coin(s) and its units read `
+          + `${missing.length} more from its parent's files, and those have moved`);
+      }
+      const merged = { ...parentPin, ...ownPin };
+      doc.dataManifest = stampManifest(`${id}-widened`, Object.keys(merged).sort(), { onlyFiles: merged });
+      pinWidened = { from: Object.keys(ownPin).length, to: Object.keys(merged).length, added: missing.sort() };
     }
   }
   // THE SAME UNITS, IN THE ORDER THE RUN HAD THEM: by record number on the
@@ -2755,6 +2786,7 @@ function continueStage3(id) {
     doc.continued = [...(doc.continued || []), {
       at: new Date().toISOString(), from: before, release: ENGINE_VERSION,
       unitsKept: doneUnits, settingsKept: pricedBase, unitsToPrice: work.length, settingsRepriced, rowsTrimmed: trimmed,
+      ...(pinWidened ? { pinWidened } : {}),
     }];
     doc.perf = {
       ...(doc.perf || {}), unitsDone: doneUnits, unitsTotal: parentRecords.length,

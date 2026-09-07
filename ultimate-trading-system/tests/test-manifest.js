@@ -164,6 +164,34 @@ module.exports = {
     }
   },
 
+  // A CHILD IS STAMPED OVER EVERY COIN ITS PARENT WAS STAMPED OVER (3.84.1)
+  async aChildIsStampedOverEveryCoinItsParentWasStampedOver() {
+    fs.mkdirSync(CACHE, { recursive: true });
+    const OTHER = 'ZZQAOTHERUSDT';
+    const o1 = path.join(CACHE, `${OTHER}-1h-2020-01.json`);
+    try {
+      fs.writeFileSync(f1, JSON.stringify(hours('2020-01-01', 24, 100)));
+      fs.writeFileSync(o1, JSON.stringify(hours('2020-01-01', 24, 500)));
+      const parentStamp = stampManifest('zzqa-manifest-test-parent', [SYM, OTHER]);
+      const stages = require('../lib/stages');
+      const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+      assert.strictEqual((src.match(/doc\.dataManifest = childStampFor\(id, parent\);/g) || []).length, 2, 'both child launches stamp through the one helper');
+      const helper = src.slice(src.indexOf('function childStampFor('), src.indexOf('function manifestComplaint('));
+      assert.ok(helper.includes('Object.keys(parentPin).sort() : coinsOfParent(parent)'), 'the coins are the parent\'s pinned coins, its unit list only when it has no pin');
+      // exercised: a parent whose unit list names ONE coin but whose pin names two
+      const parent = { name: 'P', dataManifest: parentStamp, plan: { units: 1, unitList: [{ trade: SYM, ctx1: null, ctx2: null }] }, params: { universe: [SYM] } };
+      const fn = new Function('pinnedFilesOf', 'coinsOfParent', 'stampManifest', `${helper}; return childStampFor;`)(pinnedFilesOf, stages.coinsOfUnits ? () => [SYM] : () => [SYM], stampManifest);
+      const child = fn('zzqa-manifest-test-child', parent);
+      assert.deepStrictEqual(Object.keys(child.symbols).sort(), [OTHER, SYM].sort(), 'the child is stamped over both coins, not the one its unit list names');
+      assert.deepStrictEqual(pinnedFilesOf(child), pinnedFilesOf(parentStamp), 'and pinned to exactly the parent\'s files');
+      const bare = fn('zzqa-manifest-test-child2', { name: 'P0', dataManifest: null, plan: { units: 1 }, params: { universe: [SYM] } });
+      assert.deepStrictEqual(Object.keys(bare.symbols), [SYM], 'a parent without a pin is read over its unit list, as before');
+    } finally {
+      fs.rmSync(o1, { force: true });
+      cleanup();
+    }
+  },
+
   async oldRunsWithoutManifestsCompareSilently() {
     assert.strictEqual(manifestDiff(null, { overallDigest: 'x', symbols: {} }), null);
     assert.strictEqual(manifestDiff(undefined, undefined), null);

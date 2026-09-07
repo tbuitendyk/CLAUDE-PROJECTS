@@ -1091,6 +1091,11 @@ const GUARDS = [
     'aFreshLaunchAfterTheBundleAppearedIsPinnedToItsParentAndEqualsTheReference', 'a child is stamped over whatever is on disk instead of its parent\'s files, so a chain can read two histories'],
   [path.join(ROOT, 'lib', 'stagework.js'), '    pinnedFiles: p.pinnedFiles || null,', '    pinnedFiles: null,',
     'aRunPausedFromInsideAndStartedAgainEqualsTheReference', 'the pin never reaches the loader, and a start-again reads whatever is on disk'],
+  // ---- a child is stamped over every coin its parent was stamped over; a narrow pin is widened (3.84.1) ----
+  [path.join(ROOT, 'lib', 'stages.js'), '  const coins = parentPin && Object.keys(parentPin).length ? Object.keys(parentPin).sort() : coinsOfParent(parent);', '  const coins = coinsOfParent(parent);',
+    'aChildIsStampedOverEveryCoinItsParentWasStampedOver', 'a child is stamped over its parent\'s trade coin alone, and the coins its units read alongside are never pinned'],
+  [path.join(ROOT, 'lib', 'stages.js'), '    if (missing.length) {\n      const pc = pinnedIntact(parent.dataManifest);', '    if (false) {\n      const pc = pinnedIntact(parent.dataManifest);',
+    'aUnitWhoseAgreementsWereLostGetsThemBackWithoutRepricingTheWholeUnit', 'a start-again of a set whose own record names one coin leaves the other coins reading whatever is on disk'],
   [path.join(ROOT, 'tools', 'capture-stage3.js'), '(activeSet.cancelRequested = true, (activePool && activePool.abort()), { stopped: true })', '({ stopped: true })',
     'theCaptureToolPausesALiveRunThroughTheInspectorAndItIsStartedAgainEqualToTheReference', 'the tool writes the checkpoint and the run goes on, and the owner deploys over a run that was never paused'],
 ];
