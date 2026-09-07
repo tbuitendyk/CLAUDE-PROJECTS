@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "828ae84aef23060862d6ee11b13a0785174d0c5f",
-  "subject": "3.79.0 - Table 3.B names the coins each row is read against",
-  "capturedAt": "2026-09-07T02:14:35Z",
+  "commit": "d63bc40e91816f873a1a5c55c83735340c949f0f",
+  "subject": "3.80.0 - the Funnel's coin and shape is four boxes, one per part",
+  "capturedAt": "2026-09-07T03:19:01Z",
   "files": {
     "public/construct.js": {
-      "sha256": "251130434e1faa6c99aedefb355917350a9948046bee4d91984a3bd8ac1a1b1e",
-      "bytes": 441945
+      "sha256": "e536c0a85ea725d5af6f4e286c96901e7ee28a6664ab1e8fcbe1bb98cd1c3ecb",
+      "bytes": 447969
     },
     "public/help-content.js": {
-      "sha256": "3a1860c7db0006a902e75c57300a3f256994dd9c64f313a2123c647fb5a30659",
-      "bytes": 77080
+      "sha256": "a5e8ed8c09b7e1900961247d14a3c1956c86a5d2dff89ab02abf526d4acc291d",
+      "bytes": 78156
     },
     "public/setup.html": {
       "sha256": "35a91fa5d8880c5026670fe6644875f8c0d7af867c20c53e69a046cdfac3a08e",
