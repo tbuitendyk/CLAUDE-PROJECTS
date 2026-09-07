@@ -1020,6 +1020,12 @@ const GUARDS = [
     "  fs.renameSync(from, to);\n  // an unsquashed ordering",
     'rebuildingTheOrderingLeavesEveryOtherStoreExactlyWhereItWas',
     'the ordering takes the real name while its row count stays behind, so the set reads back with the old number of rows'],
+  // ---- Table 3.B names the coins a row is read against (2026-09-07) -------
+  [path.join(ROOT, 'public', 'construct.js'),
+    '<span class="muted">${esc(bGeo(r.geometry))}</span>${bAlso(r)}</td>',
+    '<span class="muted">${esc(bGeo(r.geometry))}</span></td>',
+    'theEveryCoinTableNamesTheCoinsARowIsReadAgainst',
+    'a coin judged on its own and the same coin read against two others go back to being two rows with identical text and different money'],
 ];
 
 const only = process.argv[2] || '';

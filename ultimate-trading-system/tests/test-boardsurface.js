@@ -181,6 +181,53 @@ module.exports = {
       'and the control is dead on screen rather than silently doing nothing');
   },
 
+  // "+ ASSOCIATED COINS" UNDER coin + chunk shape (3.79.0, owner order 2026-09-07:
+  // "on table 3 b you need to at '+ ASSOCIATED COINS' under the 'COIN + CHUNK
+  // SHAPE' column in cases of selections with doubles or triples").
+  //
+  // This is not decoration. That table's rows are ALREADY split on the coins a
+  // row is read against -- keyOf joins cellLabel, trade, ctx1, ctx2 and
+  // geometry -- but the cell printed only the traded coin and the chunk shape.
+  // So one coin judged on its own and the same coin read against two others
+  // were two DIFFERENT rows carrying IDENTICAL text, with different money on
+  // them and nothing on screen to say which was which.
+  theEveryCoinTableNamesTheCoinsARowIsReadAgainst() {
+    const lift = (head) => {
+      const at = UI.indexOf(head);
+      assert.ok(at > 0, `${head} is gone`);
+      return UI.slice(at, UI.indexOf('\n};\n', at) + 3);
+    };
+    // the page's own escaper, lifted with it -- a coin name arrives from the
+    // record and is printed, so it goes through the same guard every other
+    // printed name does
+    // eslint-disable-next-line no-eval
+    const bAlso = eval(`(() => { ${lift('const esc = (t) => {')}\n${lift('const bAlso = (r) => {')}\nreturn bAlso; })()`);
+
+    assert.strictEqual(bAlso({ trade: 'LTCUSDT' }), '',
+      'a coin judged on its own is read against nothing, so it gets no second line');
+    assert.strictEqual(bAlso({ trade: 'LTCUSDT', ctx1: 'BTCUSDT' }), '<div class="muted">+ BTCUSDT</div>',
+      'a coin read alongside one other names that one');
+    assert.strictEqual(bAlso({ trade: 'LTCUSDT', ctx1: 'BTCUSDT', ctx2: 'ETHUSDT' }),
+      '<div class="muted">+ BTCUSDT + ETHUSDT</div>',
+      'a coin read alongside two others names both');
+    assert.ok(bAlso({ trade: 'LTCUSDT', ctx1: '<b>' }).includes('&lt;b>'),
+      'and what it prints goes through the page escaper');
+
+    // THE CELL ACTUALLY PRINTS IT. The line below is the one the owner reads.
+    assert.ok(UI.includes('<td ${btd}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span>${bAlso(r)}</td>'),
+      'the coin + chunk shape cell of Table 3.B no longer prints the coins the row is read against');
+
+    // AND THE TWO TABLES ABOVE IT DO NOT. They carry their own alongside
+    // column beside the coin, and printing the same coins twice on one row is
+    // exactly what the owner had removed from them on 2026-09-06.
+    const above = UI.slice(UI.indexOf('async function bDrawStage1('), UI.indexOf('async function bDrawStage3('));
+    assert.ok(above.length > 1000, 'the stage 1 and stage 2 draws were not found');
+    assert.ok(!above.includes('bAlso('),
+      'the stage 1 and stage 2 tables have an alongside column of their own — a second copy in the coin cell is the waste that was cut');
+    assert.strictEqual((above.match(/>alongside\$\{bSortBtn/g) || []).length, 2,
+      'both of those tables still head that column alongside');
+  },
+
 };
 
 // EVERY CONTROL CARRIES ITS HELP AS HOVER TEXT (owner order, 2026-08-26:

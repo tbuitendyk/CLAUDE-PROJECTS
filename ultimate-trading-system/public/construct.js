@@ -3056,6 +3056,19 @@ const bLead = (v) => (v == null ? bDash() : `×${Number(v).toFixed(1)}`);
 // table for no information at all. Its own heading already promised only the
 // traded coin: "Anything listed under alongside is context only".
 const bCoin = (r) => `<b>${esc(r.trade)}</b>`;
+// TABLE 3.B HAS NO alongside COLUMN OF ITS OWN (3.79.0, owner order 2026-09-07: add
+// "+ ASSOCIATED COINS" under coin + chunk shape "in cases of selections with
+// doubles or triples"). Its rows are ALREADY keyed on those coins -- keyOf
+// splits the table on ctx1 and ctx2 -- so one coin judged on its own and the
+// same coin read against two others were two DIFFERENT rows printing exactly
+// the same text, with nothing on screen to tell them apart. Only this table
+// prints them in the coin cell: the two tables above it have their own
+// alongside column beside it, which is why bCoin stays the traded coin alone.
+const bAlso = (r) => {
+  if (!r.ctx1) return '';
+  const also = '+ ' + [r.ctx1, r.ctx2].filter(Boolean).join(' + ');
+  return `<div class="muted">${esc(also)}</div>`;
+};
 const bGeo = (g) => { const v = (HELPVOCAB && HELPVOCAB.geometry) || []; const hit = v.find((o) => o.value === g); return hit ? hit.label : g; };
 
 async function drawBoards() {
@@ -4245,7 +4258,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
-        <th ${bth} title="the traded coin and the chunk shape it was priced at — both are in this one cell, and the row is one setting on one coin at one chunk shape. Anything listed under alongside is context only — read against, never bought or sold.">coin + chunk shape${bCoinSortBtn(view, 'coin', '↑')}</th>
+        <th ${bth} title="the traded coin and the chunk shape it was priced at — both are in this one cell, and the row is one setting on one coin at one chunk shape. Any coins on the line below, after the +, are the ones it is read against — context only, never bought or sold.">coin + chunk shape${bCoinSortBtn(view, 'coin', '↑')}</th>
         <th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>
         <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what the shuffle managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bCoinSortBtn(view, 'beatnoise', '↓')}</th>
         <th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>
@@ -4260,7 +4273,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     const k = keyOf(r);
     return `<tr data-bkey="${esc(k)}">
         <td ${btd0}>${esc(r.cellLabel)}</td>
-        <td ${btd}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span></td>
+        <td ${btd}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span>${bAlso(r)}</td>
         <td ${btd}>${bShare(r.share, r.beat, r.pairs)}</td>
         <td ${btd}>${r.noisePairs ? bShare(r.beatNoise / r.noisePairs, r.beatNoise, r.noisePairs) : '<span class="muted">—</span>'}</td>
         <td ${btd}>${Number(r.pairs).toLocaleString()}</td>
