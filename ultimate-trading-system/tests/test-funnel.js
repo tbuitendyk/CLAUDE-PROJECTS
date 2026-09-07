@@ -1491,7 +1491,15 @@ module.exports = {
     const cutAt = wire.indexOf('/cut`');
     assert.ok(cutAt > 0 && /unit: st\.unit,\n\s*barPct: st\.barPct,\n\s*\}, WHERE_FUNNEL\);/.test(wire.slice(cutAt, cutAt + 700)), 'the cut carries the unit');
     assert.ok(src.includes('<select id="fUnit"><option value="all"'), 'the picker offers the blend as all');
-    assert.ok(src.includes('${(d.units || []).map((u) => `<option value="${esc(u.key)}"'), 'and every unit the reply listed');
+    // 3.80.0: the boxes are one per part, so their options are coins, alongside
+    // coins and chunk shapes rather than joined-up unit keys. What has to stay
+    // true is that every option comes from the reply's own list and that what
+    // is SENT is still a key the reply named -- fUnitResolve returns one of
+    // d.units' keys or nothing, and theCoinAndShapeBoxIsOneBoxPerPart runs it.
+    assert.ok(src.includes('const fUnitOf = (d, key) => (d.units || []).find((u) => u.key === key) || null;'),
+      'the picker no longer reads the board it is on out of the reply');
+    assert.ok(src.includes('function fUnitResolve(d, want) {') && src.includes("let rows = (d.units || []).filter((u) => u.trade === want.trade);"),
+      'and what it sends is no longer resolved against the reply\'s own unit list');
     // a walk is saved per unit, and never under no unit
     assert.ok(src.includes('if (!fState || !fState.unit) return;'), 'no walk is saved under no unit');
     assert.ok(src.includes("const fWalkKeyFor = (set, unit) => `cx-funnel-${set}-${unit || 'all'}`;"), 'one walk per set and unit');
@@ -3210,4 +3218,110 @@ module.exports = {
     assert.ok(wire.includes('markStep(5);'), 'walking past step 5 this way drops the marks the step earned');
   },
 
+};
+
+// ONE BOX PER PART OF THE COIN AND SHAPE (3.80.0, owner order 2026-09-07:
+// "fix the top of the Funnel to allow the coin and shape selector to have 3
+// fields above coin, alongside1, alongside2 ... we need to be able to type
+// those in or drop them down (even better) to select the actual coin and
+// shape").
+//
+// It was ONE list of every joined-up unit name, so picking a coin the owner
+// already had in mind meant reading hundreds of lines to find the one that
+// said it. The check that matters is not that four boxes exist: it is that no
+// sequence of presses can land on a board the set does not hold, and that the
+// boxes to the right are not thrown away when a box on the left is changed to
+// something they still fit.
+module.exports.theCoinAndShapeBoxIsOneBoxPerPart = function () {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const lift = (head, end) => {
+    const at = src.indexOf(head);
+    assert.ok(at > 0, `${head} is gone`);
+    return src.slice(at, src.indexOf(end, at) + end.length);
+  };
+  const bits = [
+    lift('const esc = (t) => {', '\n};\n'),
+    lift('const fUnitOf = (d, key)', '\n'),
+    lift('function fUnitResolve(d, want) {', '\n}\n'),
+    lift("const F_UNIT_NONE = ", '\n'),
+    lift('function fUnitPicker(d) {', '\n}\n'),
+  ].join('\n');
+  // eslint-disable-next-line no-eval
+  const { fUnitPicker, fUnitResolve } = eval(`(() => { ${bits}\nreturn { fUnitPicker, fUnitResolve }; })()`);
+
+  const U = (trade, ctx1, ctx2, geometry) => ({
+    key: `${trade}|${ctx1 || ''}|${ctx2 || ''}|${geometry}`,
+    name: `${trade}${ctx1 ? ` alongside ${ctx1}` : ''}${ctx2 ? ` and ${ctx2}` : ''} ${geometry}`,
+    trade, ctx1: ctx1 || null, ctx2: ctx2 || null, geometry,
+  });
+  const units = [
+    U('LTCUSDT', null, null, 'daily-1d'),
+    U('LTCUSDT', null, null, 'weekly-8d'),
+    U('LTCUSDT', 'BTCUSDT', null, 'daily-1d'),
+    U('LTCUSDT', 'BTCUSDT', 'ETHUSDT', 'daily-1d'),
+    U('SOLUSDT', null, null, 'weekly-8d'),
+  ];
+  const triple = U('LTCUSDT', 'BTCUSDT', 'ETHUSDT', 'daily-1d').key;
+  const optionsOf = (html, id) => {
+    const at = html.indexOf(`<select id="${id}"`);
+    assert.ok(at > 0, `there is no ${id} box`);
+    const block = html.slice(at, html.indexOf('</select>', at));
+    return [...block.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]);
+  };
+  const selectedOf = (html, id) => {
+    const at = html.indexOf(`<select id="${id}"`);
+    const block = html.slice(at, html.indexOf('</select>', at));
+    const hit = /<option value="([^"]*)" selected>/.exec(block);
+    return hit ? hit[1] : null;
+  };
+
+  // FOUR BOXES, each offering only what the set holds beside the ones left of it
+  const on = fUnitPicker({ units, unit: triple });
+  assert.deepStrictEqual(optionsOf(on, 'fUnit'), ['all', 'LTCUSDT', 'SOLUSDT'],
+    'the coin box offers the blend and every traded coin, once each');
+  assert.deepStrictEqual(optionsOf(on, 'fUnitA1'), ['', 'BTCUSDT'],
+    'alongside 1 offers only what this coin is read against — and on its own');
+  assert.deepStrictEqual(optionsOf(on, 'fUnitA2'), ['', 'ETHUSDT'],
+    'alongside 2 is narrowed by alongside 1');
+  assert.deepStrictEqual(optionsOf(on, 'fUnitGeom'), ['daily-1d'],
+    'and the chunk shape by all three above it — the triple was priced at one shape only');
+  assert.strictEqual(selectedOf(on, 'fUnit'), 'LTCUSDT', 'the boxes show the board actually being walked');
+  assert.strictEqual(selectedOf(on, 'fUnitA1'), 'BTCUSDT');
+  assert.strictEqual(selectedOf(on, 'fUnitA2'), 'ETHUSDT');
+  assert.strictEqual(selectedOf(on, 'fUnitGeom'), 'daily-1d');
+
+  // the coin on its own: alongside 2 has nothing to offer but "on its own"
+  const alone = fUnitPicker({ units, unit: U('LTCUSDT', null, null, 'daily-1d').key });
+  assert.deepStrictEqual(optionsOf(alone, 'fUnitA2'), [''], 'a coin read against nothing has no second alongside');
+  assert.deepStrictEqual(optionsOf(alone, 'fUnitGeom'), ['daily-1d', 'weekly-8d'],
+    'and both shapes it was priced at are offered');
+
+  // all units together: nothing to the right of the coin box to choose
+  const blend = fUnitPicker({ units, unit: null });
+  assert.strictEqual(selectedOf(blend, 'fUnit'), 'all', 'the blend is chosen by name');
+  for (const id of ['fUnitA1', 'fUnitA2', 'fUnitGeom']) {
+    assert.ok(new RegExp(`<select id="${id}" disabled>`).test(blend), `${id} is dead on the blend, not silently ignored`);
+  }
+
+  // NO PRESS CAN LAND ON A BOARD THAT IS NOT THERE. Every resolution is a key
+  // the set listed, and what cannot be honoured is dropped left to right.
+  const d = { units, unit: triple };
+  assert.strictEqual(fUnitResolve(d, { trade: 'SOLUSDT', ctx1: null, ctx2: null, geometry: null }),
+    U('SOLUSDT', null, null, 'weekly-8d').key, 'changing the coin lands on that coin\'s first board');
+  assert.strictEqual(fUnitResolve(d, { trade: 'LTCUSDT', ctx1: '', ctx2: 'ETHUSDT', geometry: 'daily-1d' }),
+    U('LTCUSDT', null, null, 'daily-1d').key,
+    'an alongside 2 that cannot survive dropping alongside 1 is dropped, and the shape below it is still honoured');
+  assert.strictEqual(fUnitResolve(d, { trade: 'LTCUSDT', ctx1: 'BTCUSDT', ctx2: '', geometry: 'weekly-8d' }),
+    U('LTCUSDT', 'BTCUSDT', null, 'daily-1d').key,
+    'a shape this pair was never priced at is dropped rather than refused');
+  for (const want of [
+    { trade: 'LTCUSDT', ctx1: 'BTCUSDT', ctx2: 'ETHUSDT', geometry: 'daily-1d' },
+    { trade: 'SOLUSDT', ctx1: 'BTCUSDT', ctx2: 'ETHUSDT', geometry: 'daily-1d' },
+    { trade: 'LTCUSDT', ctx1: '', ctx2: '', geometry: 'weekly-8d' },
+  ]) {
+    const got = fUnitResolve(d, want);
+    assert.ok(units.some((u) => u.key === got), `resolved to ${got}, which the set does not hold`);
+  }
+  assert.strictEqual(fUnitResolve({ units: [], unit: null }, { trade: 'LTCUSDT' }), null,
+    'a set with no units resolves to nothing rather than inventing a board');
 };

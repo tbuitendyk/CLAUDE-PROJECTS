@@ -4721,8 +4721,65 @@ async function drawFunnel() {
 // THE COIN AND SHAPE BOX, drawn by ONE function (3.58.0). The walk's heading and
 // the Stage 4 record set view both carry it, and two copies of a control is how
 // the two screens come to offer different boards.
+//
+// ONE BOX PER PART (3.80.0, owner order 2026-09-07: "allow the coin and shape
+// selector to have 3 fields above coin, alongside1, alongside2 ... we need to
+// be able to type those in or drop them down (even better) to select the
+// actual coin and shape"). It was a single list of every joined-up name --
+// "LTCUSDT alongside BTCUSDT and ETHUSDT weekly-8d" and hundreds like it -- so
+// picking a known coin at a known shape meant reading the whole list to find
+// the one line that said it. Four boxes ask for the four things the owner
+// already has in mind.
+//
+// EVERY LIST IS WHAT THE SET ACTUALLY HOLDS, narrowed by the boxes to its left
+// (RULE FIVE). Nothing is offered that would land on no board, and nothing the
+// set holds is left out.
+const fUnitOf = (d, key) => (d.units || []).find((u) => u.key === key) || null;
+// The choice narrowed left to right: each box is honoured if the set has
+// anything matching it, and simply dropped if it does not, so no combination
+// of presses can land on a board that is not there.
+function fUnitResolve(d, want) {
+  let rows = (d.units || []).filter((u) => u.trade === want.trade);
+  for (const [field, val] of [['ctx1', want.ctx1], ['ctx2', want.ctx2], ['geometry', want.geometry]]) {
+    const next = rows.filter((u) => (u[field] || '') === (val || ''));
+    if (next.length) rows = next;
+  }
+  return rows[0] ? rows[0].key : null;
+}
+const F_UNIT_NONE = '— none —';
 function fUnitPicker(d) {
-  return `<label class="f">coin and shape<select id="fUnit"><option value="all" ${d.unit ? '' : 'selected'}>all units together</option>${(d.units || []).map((u) => `<option value="${esc(u.key)}" ${u.key === d.unit ? 'selected' : ''}>${esc(u.name)}</option>`).join('')}</select></label>`;
+  const units = d.units || [];
+  const cur = fUnitOf(d, d.unit);
+  // in the order the set lists its units, which is the stage 2 table's order
+  const only = (rows, field) => {
+    const out = [];
+    for (const u of rows) { const v = u[field] || ''; if (!out.includes(v)) out.push(v); }
+    return out;
+  };
+  const opts = (values, chosen) => (values.length ? values : ['']).map((v) => `<option value="${esc(v)}"${v === chosen ? ' selected' : ''}>${esc(v || F_UNIT_NONE)}</option>`).join('');
+  // a box with nothing to offer is DEAD ON SCREEN rather than silently doing
+  // nothing when it is pressed (RULE FOUR's sibling: a control that looks live
+  // and is not is worse than one that looks dead)
+  const dead = (values) => (values.length ? '' : ' disabled');
+
+  const onCoin = cur ? units.filter((u) => u.trade === cur.trade) : [];
+  const on1 = cur ? onCoin.filter((u) => (u.ctx1 || '') === (cur.ctx1 || '')) : [];
+  const on2 = cur ? on1.filter((u) => (u.ctx2 || '') === (cur.ctx2 || '')) : [];
+  const a1 = cur ? only(onCoin, 'ctx1') : [];
+  const a2 = cur ? only(on1, 'ctx2') : [];
+  const geoms = cur ? only(on2, 'geometry') : [];
+
+  // EVERY id IS WRITTEN OUT, never assembled (found 2026-09-07). Built through
+  // a shared box() helper they were invisible to every check that reads this
+  // file as text -- the Help tab's "nothing is described that does not exist",
+  // and the closed word list, which is the only vocabulary allowed about a
+  // screen. A control no source scan can see is a control outside RULE ONE-A.
+  return `<label class="f" title="which board the steps below are walked on. all units together blends every coin and shape in the set into one board; anything else is one coin at one chunk shape, read alongside the coins named beside it.">coin<select id="fUnit"><option value="all"${cur ? '' : ' selected'}>all units together</option>${
+    only(units, 'trade').map((c) => `<option value="${esc(c)}"${cur && c === cur.trade ? ' selected' : ''}>${esc(c)}</option>`).join('')
+  }</select></label>
+    <label class="f" title="the first coin this one is read against — context only, never bought or sold. — none — is the coin judged on its own. Only what the set holds beside the coin chosen is offered.">alongside 1<select id="fUnitA1"${dead(a1)}>${opts(a1, cur ? (cur.ctx1 || '') : '')}</select></label>
+    <label class="f" title="the second coin this one is read against — context only, never bought or sold. — none — is the coin read against one other, or on its own.">alongside 2<select id="fUnitA2"${dead(a2)}>${opts(a2, cur ? (cur.ctx2 || '') : '')}</select></label>
+    <label class="f" title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained, so only the shapes the set holds for the coins chosen beside it are offered.">chunk shape<select id="fUnitGeom"${dead(geoms)}>${opts(geoms, cur ? cur.geometry : '')}</select></label>`;
 }
 
 // The standing line. Which set, how many survive against the target, and -
@@ -5741,18 +5798,50 @@ function fFreshWalk(st) {
 }
 // and one for the coin-and-shape box, for the same reason: this walk keeps its
 // place, the chosen board is remembered, and the next load is that board's own
-function fWireUnit(st) {
-  const un = $('#fUnit');
-  if (un) un.onchange = () => {
+function fWireUnit(st, d) {
+  const go = (key) => {
     fSave();
-    fUnitChoose(st.set, un.value);
+    fUnitChoose(st.set, key || 'all');
     fState = null;
     drawFunnel();
   };
+  // WHAT IS IN THE BOXES RIGHT NOW, not what was in them when the page drew:
+  // the boxes to the left of the one just changed have to be read live, or
+  // changing the coin and then the shape would resolve against the old coin.
+  const val = (id) => { const el = $(`#${id}`); return el ? el.value : ''; };
+  const cur = fUnitOf(d, d.unit);
+  const wire = (id, field) => {
+    const el = $(`#${id}`);
+    if (!el) return;
+    el.onchange = () => {
+      if (id === 'fUnit' && el.value === 'all') { go('all'); return; }
+      // everything to the RIGHT of the changed box is left to fUnitResolve,
+      // which drops what the set cannot honour rather than offering a dead board
+      const want = {
+        trade: val('fUnit'),
+        ctx1: field === 'trade' ? null : val('fUnitA1'),
+        ctx2: field === 'trade' || field === 'ctx1' ? null : val('fUnitA2'),
+        geometry: field === 'geometry' ? val('fUnitGeom') : null,
+      };
+      if (!want.trade || want.trade === 'all') { go('all'); return; }
+      // a box the owner has not touched this time keeps what the board already
+      // has, so changing the shape alone does not throw away the alongside pair
+      if (field !== 'trade' && cur && cur.trade === want.trade) {
+        if (want.ctx1 == null) want.ctx1 = cur.ctx1 || '';
+        if (want.ctx2 == null) want.ctx2 = cur.ctx2 || '';
+        if (want.geometry == null) want.geometry = cur.geometry;
+      }
+      go(fUnitResolve(d, want));
+    };
+  };
+  wire('fUnit', 'trade');
+  wire('fUnitA1', 'ctx1');
+  wire('fUnitA2', 'ctx2');
+  wire('fUnitGeom', 'geometry');
 }
 
 function fWireCut(d, st, cd) {
-  fWireUnit(st);
+  fWireUnit(st, d);
   fWireCutPick(st, d);
   // WIRED BEFORE THE EARLY RETURN, with the two pickers. A set that will not
   // OPEN is exactly the one most likely to want deleting, and a control drawn

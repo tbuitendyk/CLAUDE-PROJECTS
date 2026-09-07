@@ -310,6 +310,11 @@ module.exports = {
       // engine to accepting exactly that literal, and to refusing a key the
       // set does not hold
       'fUnit',
+      // and its other three boxes (3.80.0): the coin, the two alongside boxes
+      // and the chunk shape are each a list of what the SET holds, narrowed by
+      // the boxes to their left, so every option resolves to a board that was
+      // actually priced -- test-funnel.js (theCoinAndShapeBoxIsOneBoxPerPart)
+      'fUnitA1', 'fUnitA2', 'fUnitGeom',
       // the Funnel's Stage 4 record set picker (3.58.0): same shape again --
       // every set option is an id the SERVICE listed for the open coin and
       // shape, and the one literal value, 'new', is the walk and is never sent

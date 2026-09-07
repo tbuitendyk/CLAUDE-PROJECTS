@@ -4497,7 +4497,14 @@ async function funnelRead(id, state = {}) {
   for (const r of (t.coins || [])) { coins.add(r.trade); shapes.add(r.geometry); }
   const fixed = new Set([...Object.keys(rule.ranges), ...Object.keys(rule.allowed)]);
   const freeDials = F.ALL_DIALS.filter((d) => !fixed.has(d)).length;
-  const units = unitsOfSet(t, id).map((u) => ({ key: u.key, name: u.name }));
+  // THE FOUR PARTS GO WITH THE KEY (3.80.0, owner order 2026-09-07: the coin
+  // and shape box becomes a field per part). The page cannot offer a coin
+  // list, an alongside list or a shape list out of a joined-up name without
+  // taking the name apart again -- and a screen that re-derives what the
+  // service already knows is a second place for the two to disagree.
+  const units = unitsOfSet(t, id).map((u) => ({
+    key: u.key, name: u.name, trade: u.trade, ctx1: u.ctx1 || null, ctx2: u.ctx2 || null, geometry: u.geometry,
+  }));
   // ON A UNIT'S BOARD, "elsewhere" IS THE OTHER UNITS (§17.3), read by a
   // pressed action; the axis logic below is for the blended board only.
   const holdsAxis = board.unit

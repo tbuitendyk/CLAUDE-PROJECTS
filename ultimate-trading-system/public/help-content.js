@@ -524,8 +524,20 @@ window.HELP = {
       + 'What it writes is the RULE you arrived at, because a rule can be checked against scrambled data and a single row cannot.',
     controls: {
       fUnit: {
-        what: 'Which coin-and-shape unit this walk is on. One rule per unit - ten units, ten rules.',
+        what: 'The traded coin this walk is on, or "all units together" for the blend. One rule per coin and shape - ten of them, ten rules.',
         more: 'A unit\'s board is its own records: one row per setting it holds (a unit holds only the settings that place different orders on it), every dial on it, its own test money and its own scrambled copies. The units are listed in the order of the parent\'s stage 2 table on Boards - its saved sort - and the walk opens on the first of them. Each unit keeps its own walk, so you can leave one half-done and come back. "all units together" is the blended table, one row per setting averaged over the units that hold it; it hides what any one coin does and is kept only so the choice is yours.',
+      },
+      fUnitA1: {
+        what: 'The first coin the traded coin is read against. "- none -" is the coin judged on its own.',
+        more: 'Context only: it is read against, never bought or sold. Only the coins this set actually holds beside the chosen coin are offered, so no combination of these four boxes can land on a board that was never priced.',
+      },
+      fUnitA2: {
+        what: 'The second coin the traded coin is read against. "- none -" is the coin read against one other, or on its own.',
+        more: 'Context only, the same as the first. It is offered only where the set holds a third coin beside the two already chosen.',
+      },
+      fUnitGeom: {
+        what: 'How long a stretch of prices each decision looks at, and how often a decision is made.',
+        more: 'Fixed when the unit was trained, so this box offers only the shapes the set holds for the coins chosen to its left. Change a box on the left and anything on the right that no longer exists is dropped for the nearest board that does.',
       },
       fCutPick: {
         what: 'Which Stage 4 record set to look at, of the ones already cut from this coin and shape. Choose "new rule" to start the steps again and cut another.',
