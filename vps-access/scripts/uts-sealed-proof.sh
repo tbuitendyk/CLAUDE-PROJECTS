@@ -72,7 +72,10 @@ if (!Object.keys(syms).length) console.log('   (the stage 1 set carries no per-s
 // the candle span on disk for the unit's coins
 console.log('== the candles on disk for the unit\'s coins (1h files) ==');
 for (const sym of unitCoins) {
-  const months = fs.readdirSync(cache).filter((f) => f.startsWith(sym + '-1h-') && /-\d{4}-\d{2}\.json$/.test(f)).sort();
+  // EVERY 1h file, month-named and day-named alike (found 2026-09-07: the
+  // month-only scan missed the day files for the newest weeks and reported
+  // the data ending five weeks before it does).
+  const months = fs.readdirSync(cache).filter((f) => f.startsWith(sym + '-1h-') && f.endsWith('.json')).sort();
   if (!months.length) { console.log('   ' + sym + ': no 1h files'); continue; }
   const lastRows = JSON.parse(fs.readFileSync(path.join(cache, months[months.length - 1]), 'utf8'));
   const firstRows = JSON.parse(fs.readFileSync(path.join(cache, months[0]), 'utf8'));
