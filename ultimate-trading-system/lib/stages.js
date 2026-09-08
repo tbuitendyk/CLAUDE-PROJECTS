@@ -5812,9 +5812,12 @@ function richStatus(run) {
 // unit, so it is named here and every refusal built on richBusy() covers it
 let rideRun = null;   // { id, token, done, of, result, error, promise }
 const rideBusy = () => (rideRun && !rideRun.result && !rideRun.error ? `the held-back ride of ${rideRun.id} is being worked out` : null);
+// and the reserve grade on a Stage 4 set's unread window (3.89.0), the same pricing pass
+let unreadRun = null;   // { id, token, done, of, result, error, promise }
+const unreadBusy = () => (unreadRun && !unreadRun.result && !unreadRun.error ? `the reserve grade of ${unreadRun.id} is being priced` : null);
 // What is stopping another load, in words fit for a refusal, or null.
 const richBusy = () => (richRun && !richRun.result && !richRun.error
-  ? `the missing numbers of ${richRun.id} are being worked out` : rideBusy());
+  ? `the missing numbers of ${richRun.id} are being worked out` : (rideBusy() || unreadBusy()));
 function funnelRichStart(id, state = {}) {
   if (richRun && !richRun.result && !richRun.error) {
     if (richRun.id === String(id)) return richStatus(richRun);
@@ -6306,6 +6309,147 @@ function funnelRideStart(id) {
 function funnelRideStatus(id) {
   if (!rideRun || rideRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
   return rideStatus(rideRun);
+}
+
+// ---- THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0, VERIFY-DESIGN.md section 6) ----
+//
+// The unread window -- the sealed 13% that was cut away before anything
+// trained, running from the seal's start to whatever the box holds on the day
+// -- priced for the set's survivors on the set's own unit, through the stage 3
+// pricing path with the unread window in the held-back window's place
+// (lib/stagework.js, s3UnitTask with task.unread), the members forecasting it
+// from their saved models. Read by the verdict's four rules on that window;
+// every grade is a counted look, appended and never overwritten; it refuses in
+// words without a verdict that PASSED under this release line, without an
+// intact seal, and while anything heavy is going.
+const UNREAD_NO_PASS = 'no verdict on this set is PASS under this release line — read the rule against nothing on Verify first, and grade only a set whose verdict stood';
+const firstDigitOfRelease = (v) => String(v || '').split('.')[0] || null;
+// the newest verdict block that PASSED under the reader's first digit, or null
+function unreadGateOf(doc) {
+  const b = ((doc && doc.verify) || []).find((x) => x.verdict && x.verdict.pass && firstDigitOfRelease(x.release) === firstDigitOfRelease(ENGINE_VERSION)) || null;
+  return b ? { id: b.id, at: b.at, release: b.release, look: b.look } : null;
+}
+function unreadRefusalOf(doc) {
+  if (!doc.unit) return BLEND_REFUSAL;
+  if (!unreadGateOf(doc)) return UNREAD_NO_PASS;
+  const sealed = sealedOnUnitOf(doc);
+  if (!sealed.sealed) return `the sealed window is not intact on this unit — ${sealed.why}`;
+  const parent = getSet((doc.parent || {}).id);
+  if (!parent) return 'the stage 3 set this was cut from is gone, so its unread window cannot be priced';
+  if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast the unread window';
+  if (batch.batchRunning()) return 'a sweep is running on this box — the grade waits for it';
+  const busy = stageBusy();                // a stage run, the exam, a totalling, a rebuild, a ride, another grade
+  if (busy) return `${busy} — the grade waits for the box to be free`;
+  if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
+  if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+  if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
+  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  return null;
+}
+// the four comparisons the task priced on the unread window, in the shape the reader wants
+function unreadControlsOf(taskControls, unitKey, rows) {
+  return controlsOf({ controls: { units: { [unitKey]: taskControls || {} } } }, unitKey, (rows || []).map(controlKeyOf));
+}
+async function unreadGradeRun(doc, asked, note = null) {
+  const V = require('./funnelverify');
+  // THE RULES FIRST, before any number exists: the verdict's own declaration on this window
+  const rules = V.declareRules(doc.check, asked || {});
+  const gate = unreadGateOf(doc);
+  if (!gate) throw new Error(UNREAD_NO_PASS);
+  const sealed = sealedOnUnitOf(doc);
+  if (!sealed.sealed) throw new Error(`the sealed window is not intact on this unit — ${sealed.why}`);
+  const join = await funnelVerifyJoin(doc);
+  const footing = verifyFooting(doc, join);
+  if (!footing.ok) throw new Error(footing.why);
+  const parent = join.parent;                                   // the stage 3 set
+  const shape = relaunchShapeOf(parent);                        // refuses when the stage 2 set is gone
+  const idx = shape.records.findIndex((r) => unitKeyOf(r) === doc.unit);
+  if (idx < 0) throw new Error(`the stage 3 set holds no unit called '${doc.unit}'`);
+  const rec = shape.records[idx];
+  const want = new Set(join.rows.map((r) => r.label));
+  const held = new Set(shape.heldOn[idx]);
+  const settings = shape.settings.filter((st) => want.has(st.label) && held.has(st.si));
+  const missing = [...want].filter((L) => !settings.some((st) => st.label === L));
+  const K = rules.copies;
+  const fee = Number((parent.params || {}).fee) || 0;
+  const payload = s3Payload({ doc: parent, parent: shape.parent, rec, settings, fee, nullN: K });
+  payload.keepN = K;                                            // every copy kept: the verdict reads them all
+  const models = unitRows(shape.parent.id, 'models', rec.blocks.models, rec.u);
+  payload.unit.members = payload.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
+  payload.unread = { fromTs: sealed.fromTs };
+  if (note) note(0, 1);
+  const pool = createPool();
+  activePool = pool;
+  let res = null;
+  let error = null;
+  try {
+    await pool.forEach('s3Unit', [payload], (settled) => { if (settled.ok) res = settled.value; else error = settled.error; if (note) note(1, 1); });
+  } finally { activePool = null; pool.abort(); }
+  if (!res) throw new Error(`the unit could not be priced on the unread window: ${String(error || 'no answer')}`);
+  // the unread window in the held-back window's place, in the reader's shape
+  const rows = (res.rows || []).map((r) => ({
+    si: r.si, label: r.label, tHours: r.tHours, weekdaysOnly: r.weekdaysOnly,
+    avgHold: r.holdout ? r.holdout.pnl : null, avgTrades: r.holdout ? r.holdout.trades : null, avgVsLong: r.holdout ? r.holdout.vsAlwaysLong : null,
+    noiseHold: r.noiseHold, beat: r.beat, pairs: r.pairs, avgLead: r.lead,
+    pnlThirds: r.rich && r.rich.hold ? r.rich.hold.pnlThirds : null,
+    stops: r.holdout ? r.holdout.stops : null,
+    ride: r.rich && r.rich.hold ? { ...r.rich.hold } : null,
+  }));
+  const controls = unreadControlsOf(res.controls, doc.unit, rows);
+  const read = V.heldBackRead(rows, controls);
+  const copies = V.copiesRead(rows, rules);
+  const survivors = V.perSurvivor(rows, rules);
+  const sanity = V.sanity(rows, rows, rules);
+  const fresh = getSet(doc.id);
+  if (!fresh) throw new Error('the set went away while its unread window was being priced');
+  const had = fresh.unread || [];
+  const { gate: _g, stageGate: _sg, ...rest } = footing;
+  const block = V.buildUnreadBlock({
+    id: `${doc.id}-u${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1,
+    rules, gate, footing: rest,
+    window: res.unread, read, copies, survivors, sanity,
+    controls: { keys: controls.keys || null, alwaysLong: controls.alwaysLong || null, alwaysShort: controls.alwaysShort || null, buyHold: controls.buyHold || null, shortHold: controls.shortHold || null },
+    fee: { feePerLeg: fee, feeUnits: 'fraction' },
+    missing, failures: [],
+    rows: rows.map((r) => ({ label: r.label, money: r.avgHold, trades: r.avgTrades, stops: r.stops, vsLong: r.avgVsLong, ride: r.ride })),
+  });
+  fresh.unread = [block, ...had];
+  saveSet(fresh);
+  return { id: block.id, look: block.look, pass: block.verdict.pass, sentence: block.verdict.sentence };
+}
+async function unreadGradeDry(id) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  const sealed = sealedOnUnitOf(doc);
+  const grades = doc.unread || [];
+  return {
+    id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
+    ruleSentence: doc.ruleSentence || null, survivors: ((doc.counts || {}).survivors) ?? (doc.survivors || []).length,
+    gate: unreadGateOf(doc), verdicts: (doc.verify || []).length,
+    sealed: { intact: sealed.sealed, fromTs: sealed.fromTs, chunks: sealed.chunks, why: sealed.why },
+    rules: require('./funnelverify').declareRules(doc.check, {}),
+    looks: grades.length, grades,
+    refused: unreadRefusalOf(doc),
+    running: unreadRun && unreadRun.id === doc.id && !unreadRun.result && !unreadRun.error ? { token: unreadRun.token } : null,
+  };
+}
+const unreadStatus = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, cpu: cpuLoad(), error: run.error, result: run.result });
+function unreadGradeStart(id, asked = {}) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  if (unreadRun && unreadRun.id === id && !unreadRun.result && !unreadRun.error) return unreadStatus(unreadRun);
+  const why = unreadRefusalOf(doc);
+  if (why) throw new Error(why);
+  const run = { id, token: `${id}:${Date.now()}`, done: 0, of: 1, result: null, error: null, promise: null };
+  unreadRun = run;
+  run.promise = unreadGradeRun(doc, asked || {}, (done, of) => { run.done = done; run.of = of; })
+    .then((result) => { run.result = result; run.done = run.of; })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return unreadStatus(run);
+}
+function unreadGradeStatus(id) {
+  if (!unreadRun || unreadRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
+  return unreadStatus(unreadRun);
 }
 
 // ---- V0: THE STAGE ENGINE'S OWN PLANTED CHECK (3.87.0, VERIFY-DESIGN.md) --------
@@ -7139,6 +7283,7 @@ module.exports = {
   funnelVerifyDry, funnelVerifyStart, funnelVerifyStatus, verifySummaryOf, sealedOnUnitOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
+  unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,

@@ -354,6 +354,44 @@ function verdict(block) {
   return { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: ${parts.join('; ')}. What a pass buys: this window only.` };
 }
 
+// ---- the reserve grade on the unread window (3.89.0): the verdict's four, on that window ----
+const day = (ts) => (ts == null ? '?' : new Date(Number(ts)).toISOString().slice(0, 10));
+function unreadVerdict(block) {
+  const b = block;
+  const parts = [];
+  const g = b.gate || {};
+  parts.push(g.id ? `the verdict ${g.id} stood (PASS under release ${g.release || '?'})` : 'no verdict stood');
+  const w = b.window || {};
+  parts.push(`the unread window from ${day(w.fromTs)} holds ${w.chunks ?? 0} whole chunks, the box's data reaching ${day(w.seenToTs)}`);
+  const look = Number(b.look) || 1;
+  parts.push(look > 1
+    ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`
+    : 'look 1: the first look at data nothing in the system has seen');
+  const f = b.footing || {};
+  parts.push(f.ok ? `the rule gives back its own ${f.had} survivors today` : `the footing did not stand (${f.why || 'unstated'})`);
+  const h = b.read || {};
+  const c = h.comparisons || {};
+  parts.push(`on the unread window the ${h.of ?? 0} survivors made ${money(h.real)} a setting`
+    + (c.known
+      ? `, ${c.beatsBuyHold ? 'beating' : 'not beating'} buying the coin and going away and ${c.beatsShortHold ? 'beating' : 'not beating'} shorting it and going away`
+      : `, and the four comparisons are not known (${c.why || 'unstated'})`));
+  const cp = b.copies || {};
+  if (cp.incomplete) parts.push('no scrambled copies were priced, so nothing was read against nothing');
+  else parts.push(`against ${cp.copies} scrambled copies of that window it beats ${cp.beats}, the bar being ${cp.bar} (${cp.barPct}%); a forecast-free rule clears that about ${pct(cp.chance)} of the time, and the finest claim ${cp.copies} copies allow is 1 in ${cp.copies + 1}, a floor, never a measure of strength`);
+  const sv = b.survivors || {};
+  parts.push(`${sv.passing ?? 0} of ${sv.survivors ?? 0} survivors clear the same bar on their own copies, about ${sv.byChance == null ? '?' : sv.byChance.toFixed(1)} would by chance`);
+  const sn = b.sanity || {};
+  parts.push(sn.known ? `sanity, over the survivors' copies only: ${pct(sn.board.losing)} of the scrambled unread figures lose money, the threshold being ${sn.threshold}%, ${sn.ok ? 'PASS' : 'FAIL'}` : 'sanity: not known');
+  const pass = !!(f.ok && h.pass && cp.pass && sn.ok);
+  return { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: ${parts.join('; ')}. What a pass buys: this window, and only the first look at it was unseen.` };
+}
+// input: { id, at, release, look, rules, gate, footing, window, read, copies, survivors, sanity, controls, fee, missing, failures }
+function buildUnreadBlock(input) {
+  const b = { ...input };
+  b.verdict = unreadVerdict(b);
+  return b;
+}
+
 // ---- the block, assembled -------------------------------------------------------------
 // input: { id, at, release, look, rules, gate, stageGate, footing, looks, heldBack,
 //          copies, survivors, sanity, lineA, lineB, others, fee, windows, marks }
@@ -367,5 +405,6 @@ module.exports = {
   HELD, LIMITS, GATED, NOT_GATED, DEFAULT_SANITY_PCT,
   declareRules, ruleKeys, heldBackRead, copiesRead, perSurvivor, sanity, lineA, lineB, verdict, buildBlock,
   othersUnitRead, othersSummary, RIDE_FIELDS, rideOf,
+  unreadVerdict, buildUnreadBlock,
   mean, median,
 };

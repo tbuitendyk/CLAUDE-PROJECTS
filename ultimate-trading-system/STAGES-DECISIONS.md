@@ -956,3 +956,26 @@ carried out 2026-08-28 under its own GO — decision 50.
     nothing. *The halves and the noise twin are left empty:* the read carries
     no survivor count on them, and a page that invented one would be the fault
     this release ends. Third digit: a field the record already had, filled.
+
+79. **The reserve grade on a Stage 4 record set, on History** (3.89.0, loop,
+    VERIFY-DESIGN.md section 6 and section 9 step 5). The unread window — the
+    sealed 13% cut away before anything trained, from where the seal began to
+    whatever the box holds today — priced for the set's survivors on the set's
+    own unit and read by the verdict's four rules on that window. *How it is
+    priced:* through the stage 3 pricing task itself, with the unread window
+    standing in the held-back window's place (three things change inside the
+    task: which chunks the slice holds, whose prices they are read from, and
+    where the votes on them come from), so the unread window cannot be priced
+    differently from the held-back one. *Where the votes come from:* nothing is
+    retrained; each member's saved model is applied to the unread chunks on the
+    member's own view, and a test holds that the saved model applied to the
+    test chunks gives the stored votes back, digit for digit. *The committee's
+    shape and every tau* come from the test slice, as stage 3 takes them.
+    *The gate:* a verdict that PASSED under the reader's first digit, or the
+    press refuses in words; a FAIL, or a PASS under another first digit, opens
+    nothing. *Looks:* every grade is appended and numbered; the first is the
+    only look at unseen data and every later sentence says so. *Sanity* is read
+    over the survivors' copies only, and says so, because the whole board is
+    not priced on this window. *The test opens the gate by hand* after proving
+    the refusal for real: the engine's own verdict on the plant fails today
+    (#76), and the pricing path is what the test is for. Second digit.

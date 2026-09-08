@@ -821,4 +821,55 @@ module.exports = {
     for (const r of ['/api/funnel/set/:id/others', '/api/funnel/set/:id/others/status', '/api/funnel/set/:id/ride', '/api/funnel/set/:id/ride/status']) assert.ok(srv.includes(`'${r}'`), `${r} is served`);
     assert.ok(/funnelOthersStart\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'the read takes the typed bar');
   },
+  // ---- the reserve grade on a Stage 4 record set (3.89.0): the refusals, in words ----
+  // A later door refuses without a verdict block that PASSED under this release
+  // line, on a set cut on all units together, and with the seal not intact; the
+  // dry read says the same words the press throws. The pricing itself is
+  // tests/test-unreadgrade.js's, on the fabricated coins.
+  async theReserveGradeRefusesInWordsBeforeAnythingPrices() {
+    const f = await fixture();
+    try {
+      const doc = await cutOn(f);
+      assert.deepStrictEqual(doc.unread, [], 'a new set starts with no grade');
+      // no verdict yet: refused, and the dry read agrees
+      let threw = null;
+      try { stages.unreadGradeStart(doc.id, {}); } catch (e) { threw = e.message; }
+      assert.strictEqual(threw, stages.UNREAD_NO_PASS);
+      assert.ok(/read the rule against nothing on Verify first/.test(threw), 'and it says what to do');
+      let dry = await stages.unreadGradeDry(doc.id);
+      assert.deepStrictEqual({ refused: dry.refused, gate: dry.gate, looks: dry.looks, intact: dry.sealed.intact }, { refused: stages.UNREAD_NO_PASS, gate: null, looks: 0, intact: true });
+      // a verdict that FAILED is no gate either
+      await pressed(doc.id, { barPct: 100 });
+      const file = path.join(SETS_DIR, `${doc.id}.json`);
+      let on = JSON.parse(fs.readFileSync(file, 'utf8'));
+      on.verify[0].verdict.pass = false;
+      fs.writeFileSync(file, JSON.stringify(on));
+      assert.strictEqual(stages.unreadGateOf(stages.getSet(doc.id)), null, 'a FAIL is not a gate');
+      // a PASS under another first digit is no gate; under this one it is
+      on = JSON.parse(fs.readFileSync(file, 'utf8'));
+      on.verify[0].verdict.pass = true;
+      on.verify[0].release = '2.99.0';
+      fs.writeFileSync(file, JSON.stringify(on));
+      assert.strictEqual(stages.unreadGateOf(stages.getSet(doc.id)), null, 'a PASS under another first digit is not a gate');
+      on.verify[0].release = require('../package.json').version;
+      fs.writeFileSync(file, JSON.stringify(on));
+      const gate = stages.unreadGateOf(stages.getSet(doc.id));
+      assert.deepStrictEqual({ id: gate.id, look: gate.look }, { id: on.verify[0].id, look: 1 });
+      dry = await stages.unreadGradeDry(doc.id);
+      assert.strictEqual(dry.refused, null, dry.refused);
+      // the seal not intact: refused in words that name it
+      on.sealed = { units: [], why: 'a unit has no reserved window' };
+      fs.writeFileSync(file, JSON.stringify(on));
+      dry = await stages.unreadGradeDry(doc.id);
+      assert.ok(/sealed window is not intact/.test(dry.refused), dry.refused);
+      threw = null;
+      try { stages.unreadGradeStart(doc.id, {}); } catch (e) { threw = e.message; }
+      assert.strictEqual(threw, dry.refused);
+      // a blend set: refused in the same words as the verdict
+      const blend = await stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: 'all' });
+      threw = null;
+      try { stages.unreadGradeStart(blend.id, {}); } catch (e) { threw = e.message; }
+      assert.ok(/cut on all units together/.test(threw), threw);
+    } finally { f.cleanup(); }
+  },
 };

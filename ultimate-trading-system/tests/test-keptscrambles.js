@@ -97,7 +97,11 @@ module.exports = {
     // has to stay in step with the two tables, which is why it is counted
     // here rather than merely found. noisePairs is not stored on a row -- the
     // tally counts it from the array it just read -- so it stays at two.
-    for (const [field, want] of [['noiseTest:', 5], ['noiseHold:', 5], ['noisePairs:', 2]]) {
+    // And, since 3.89.0, the reserve grade laying the unread window's copies
+    // onto the reader's rows in the held-back column's place (unreadGradeRun):
+    // a sixth noiseHold, a reader's mapping and not a table, counted here for
+    // the same reason -- a copy column moved on the tables has to move there.
+    for (const [field, want] of [['noiseTest:', 5], ['noiseHold:', 6], ['noisePairs:', 2]]) {
       const n = src.split(field).length - 1;
       assert.strictEqual(n, want, `${field} is written in ${n} place(s), expected ${want} — `
         + 'either a table was forgotten or a second writer appeared that nothing keeps in step');

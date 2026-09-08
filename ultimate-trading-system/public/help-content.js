@@ -747,6 +747,8 @@ window.HELP = {
   history: {
     title: 'History',
     how: [
+      ['The one look at the unread window',
+        'A Stage 4 record set was written from a search that never touched the sealed part of the history. The reserve grade prices the set\'s survivors on exactly that part, from where the seal began to whatever the box holds today, with the members forecasting it from the models they were trained as, and reads the result by the verdict\'s own rules. The first grade is the only look at data nothing has seen; every later one is counted and says so.'],
       ['Is it still true, or was it true in 2018',
         'A setting that worked for two years and then stopped will still look good averaged across the whole history, because the good years carry the bad ones. That is the single easiest way to be fooled by a long backtest.\\n\\nThis re-scores the same setting while counting recent evidence more heavily than old evidence, at the rate half-life sets, and shows it beside the same run with everything weighted equally. If the two disagree, the effect is not where you think it is.\\n\\nThe two exam buttons check this test itself against made-up histories, for the same reason the Verify tab exists.'],
     ],
@@ -754,6 +756,14 @@ window.HELP = {
       + 'worked in 2018 and stopped working in 2022 will still look good averaged over the whole '
       + 'history — this is what separates the two.',
     controls: {
+      hSet: {
+        what: 'Which Stage 4 record set to grade on its unread window, from every set on this box, newest first, each with its coin and shape, its survivors and whether its verdict passed.',
+        more: 'Choosing a set reads nothing on the unread window: it shows which verdict stood, whether the sealed window is intact on the unit, and how many times the window has already been read.',
+      },
+      hGrade: {
+        what: 'Prices the set\'s survivors on the unread window, the sealed part of the history no part of the search touched, and stamps the grade on the set.',
+        more: 'The members forecast that window from the models they were trained as; nothing is retrained. The result is read by the same four rules as the verdict on Verify. It refuses without a verdict that passed under this release line, without an intact seal, and while anything heavy is running. Every press is counted as a look, and only the first is at data nothing has seen.',
+      },
       htRun: { what: 'Runs the still-current check on the row picked on the Boards tab.' },
       ht2hl: {
         what: 'How quickly older evidence stops counting. 12mo makes evidence from a year ago count half as much as today’s; 36mo stretches that to three years.',

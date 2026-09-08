@@ -504,6 +504,8 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     // each newest first, each appended and never overwritten (3.88.0)
     others: [],
     ride: [],
+    // the reserve grades on the unread window, newest first, each a counted look (3.89.0)
+    unread: [],
   };
 }
 

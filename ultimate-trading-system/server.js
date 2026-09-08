@@ -944,6 +944,16 @@ app.post('/api/funnel/set/:id/ride', (req, res) => {
   try { return res.json(stages.funnelRideStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/ride/status', (req, res) => res.json(stages.funnelRideStatus(req.params.id)));
+// THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0), on History: the GET is
+// the dry read (the gate, the seal, the looks so far, the grades stamped), the
+// POST prices the unread window, started and polled; every grade is a counted look
+app.get('/api/funnel/set/:id/unread', async (req, res) => {
+  try { return res.json(await stages.unreadGradeDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/funnel/set/:id/unread', (req, res) => {
+  try { return res.json(stages.unreadGradeStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.get('/api/funnel/set/:id/unread/status', (req, res) => res.json(stages.unreadGradeStatus(req.params.id)));
 
 app.get('/api/stageset/:id/coins', (req, res) => {
   const out = stages.stage3Coins(req.params.id, req.query || {});

@@ -618,6 +618,43 @@ const agreedKey = (decision, agr) => `${decision}|${agr.rule}|${agr.bar}|${agr.p
 // entirely. One of them is now the other.
 const agreedKeyOfRecord = (r) => agreedKey(r.decision, agrOf(r));
 
+// ---- THE UNREAD WINDOW, FORECAST BY THE SAVED MODELS (3.89.0, the reserve grade) ----
+//
+// The sealed 13% was cut away before anything trained, so no vote exists on it.
+// Nothing is retrained: each member's saved model -- the stage 2 set keeps
+// them, a straight-line model with its scaler or a boosted one with its trees
+// -- is applied to the unread chunks' readings on the member's own view, and
+// the probabilities are rounded exactly as the stored votes are, so a saved
+// model applied to the test chunks gives the stored votes back (the test holds
+// that equal).
+function predictMember(saved, spec, chunks, combo, geo) {
+  const views = viewsFor(combo, geo);
+  const viewIdx = views[(spec || {}).view || 'full'];
+  if (!viewIdx) throw new Error(`no view called '${(spec || {}).view}' on this unit`);
+  const X = chunks.map((c) => viewIdx.map((i) => c.x[i]));
+  if (!saved || !saved.kind) throw new Error('a member without a saved model cannot forecast the unread window');
+  if (saved.kind === 'logreg') {
+    const Z = standardizeApply(X, { mean: saved.mean, std: saved.std });
+    return Z.map((z) => probsArr(predictLogreg({ W: saved.W, f: saved.f }, z).probs));
+  }
+  if (saved.kind === 'boost') return X.map((x) => probsArr(predictBoost({ priors: saved.priors, trees: saved.trees }, x).probs));
+  throw new Error(`a saved model of kind '${saved.kind}' cannot forecast`);
+}
+// THE UNREAD WINDOW HAS A START AND NO END (decision 12): from where the seal
+// began to whatever the box holds on the day. The pin covers what the chain
+// was launched on; the unread window is everything after it, so it is built
+// from the box's files as they are now, and only chunks whose whole trade
+// fits inside what the box holds are kept (the chunk builder drops the rest).
+async function unreadChunksFor(combo, geometry, fromTs) {
+  const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
+  const { geo, maps, chunks } = await buildCombo(combo, branch, { allLoaded: true, pinnedFiles: null });
+  const reachOf = (c) => c.startTs + geo.exitOffsetH * 3600000;
+  const mine = chunks.filter((c) => c.startTs >= fromTs);
+  let seenToTs = -Infinity;
+  for (const ts of maps.trade.keys()) if (ts > seenToTs) seenToTs = ts;
+  return { geo, maps, chunks: mine, toTs: mine.length ? reachOf(mine[mine.length - 1]) : null, seenToTs: Number.isFinite(seenToTs) ? seenToTs : null };
+}
+
 async function s3UnitTask(task) {
   const { combo, geometry, unit, settings, fee, nullN, seed, unitKey, agreedOnly = false } = task;
   const p = { ...task.params, pinnedFiles: pinnedFilesFor(task.pin) };
@@ -653,21 +690,50 @@ async function s3UnitTask(task) {
   // two-hour fill into a twelve-hour re-run.
   const noiseOnly = !!task.noiseOnly;
   const { geo, maps, split, windows } = await unitChunks(combo, geometry, p);
-  const { trainChunks, testChunks, holdChunks } = split;
+  const { trainChunks, testChunks } = split;
+  let { holdChunks } = split;
   const tsT = testChunks.map((c) => c.startTs);
   if (tsT.length !== unit.ts.test.length || tsT.some((t, i) => t !== unit.ts.test[i])) {
     throw new Error('stage 2 votes do not line up with the rebuilt chunks — the price files changed underneath the set');
   }
+  // THE UNREAD WINDOW IN THE HELD-BACK WINDOW'S PLACE (3.89.0, the reserve
+  // grade on a Stage 4 record set). Everything below prices the "hold" slice
+  // exactly as stage 3 prices the held-back window -- the same calls, the same
+  // deals drawn from the set's seed, the same four comparisons, the same rich
+  // figures -- so the unread window is priced on the one path and cannot
+  // disagree with it. Only three things change: which chunks the slice holds,
+  // whose prices they are read from, and where the members' votes on them
+  // come from (the saved models, since no vote was ever cast there). The test
+  // slice, the committee's shape and every tau are untouched.
+  let memberProbs = unit.probs;                         // per member: test+hold arrays
+  let holdTrade = maps.trade;
+  let holdMaps = maps;
+  let dealSlice = 's3-hold';
+  let unread = null;
+  if (task.unread) {
+    const got = await unreadChunksFor(combo, geometry, task.unread.fromTs);
+    if (got.chunks.length < 2) {
+      throw new Error(`the unread window holds ${got.chunks.length} whole chunk(s) from ${new Date(task.unread.fromTs).toISOString().slice(0, 10)} to what the box holds — nothing to grade`);
+    }
+    holdChunks = got.chunks;
+    holdTrade = got.maps.trade;
+    holdMaps = got.maps;
+    dealSlice = 's4-unread';
+    memberProbs = (unit.members || []).map((m, mi) => {
+      if (!m.saved) throw new Error(`member ${mi} carries no saved model, so it cannot forecast the unread window`);
+      return [...unit.probs[mi].slice(0, testChunks.length), ...predictMember(m.saved, m.spec, holdChunks, combo, geo)];
+    });
+    unread = { fromTs: task.unread.fromTs, toTs: got.toTs, chunks: holdChunks.length, seenToTs: got.seenToTs };
+  }
   // 24/5 mask: which test/hold positions start on a weekday the chunk
   // builder itself would keep. Read from the builder, not re-derived.
   const wkKeep = new Set(
-    bracketLib.buildComboChunks(maps, geometry, true).chunks.map((c) => c.startTs),
+    bracketLib.buildComboChunks(holdMaps, geometry, true).chunks.map((c) => c.startTs),
   );
   const maskIdx = (chunksArr) => chunksArr.map((c, i) => (wkKeep.has(c.startTs) ? i : -1)).filter((i) => i >= 0);
   const wkTest = maskIdx(testChunks);
   const wkHold = maskIdx(holdChunks);
 
-  const memberProbs = unit.probs;                       // per member: test+hold arrays
   const nTest = testChunks.length;
   const takeSlice = (mp, idxs, offset) => idxs.map((i) => mp[offset + i]);
 
@@ -689,7 +755,7 @@ async function s3UnitTask(task) {
   for (let d = 0; d < (agreedOnly ? 0 : nullN); d++) {
     deals.push({
       test: dealOrder(seed, unitKey, `s3-test#${d}`, testChunks.length),
-      hold: dealOrder(seed, unitKey, `s3-hold#${d}`, holdChunks.length),
+      hold: dealOrder(seed, unitKey, `${dealSlice}#${d}`, holdChunks.length),
     });
   }
 
@@ -866,7 +932,7 @@ async function s3UnitTask(task) {
   const holdControlsFor = (chunksArr, idxs, tHours, cacheKey) => {
     const key = `${cacheKey}|${tHours}`;
     if (holdCtlCache.has(key)) return holdCtlCache.get(key);
-    const h = bracketLib.holdControls(pick(chunksArr, idxs), maps.trade, geo, tHours, fee);
+    const h = bracketLib.holdControls(pick(chunksArr, idxs), holdTrade, geo, tHours, fee);
     holdCtlCache.set(key, h);
     return h;
   };
@@ -936,7 +1002,7 @@ async function s3UnitTask(task) {
     if (noiseOnly) {
       for (let d = from; d < keep && holdChunks.length; d++) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
-        noiseHold.push(cents(bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), maps.trade, geo, bandPct, fee).pnl));
+        noiseHold.push(cents(bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), holdTrade, geo, bandPct, fee).pnl));
       }
       // The label rides along so the merge joins on a name, never on a position.
       // Setting indexes are per block and two blocks both start at zero.
@@ -951,7 +1017,7 @@ async function s3UnitTask(task) {
     let controls = null;
     if (holdChunks.length) {
       const holdCallsAll = streamFor(stream.decision, agr, -1, 'hold');
-      const hRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(holdCallsAll, hIdx), maps.trade, geo, bandPct, fee);
+      const hRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(holdCallsAll, hIdx), holdTrade, geo, bandPct, fee);
       const hc = holdControlsFor(holdChunks, hIdx, tHours, stream.weekdaysOnly ? 'wk' : 'all');
       holdout = {
         pnl: hRes.pnl, trades: hRes.trades, stops: hRes.stops,
@@ -974,7 +1040,7 @@ async function s3UnitTask(task) {
       const dealPnls = [];
       for (let d = 0; d < nullN; d++) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
-        const dRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), maps.trade, geo, bandPct, fee);
+        const dRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), holdTrade, geo, bandPct, fee);
         dealPnls.push(dRes.pnl);
         // FREE, unlike the test ones above: this pricing happens either way to
         // work out beat, and today its money is dropped the moment the count is
@@ -1048,6 +1114,8 @@ async function s3UnitTask(task) {
   return {
     rows, agreed: agreedMapFor(settings), controls, windows,
     counts: { test: testChunks.length, hold: holdChunks.length },
+    // set only when the unread window was priced in the held-back window's place (3.89.0)
+    unread,
   };
 }
 
@@ -1237,7 +1305,7 @@ module.exports = {
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,
   // the arithmetic, exported so the tests can pencil it
-  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks,
+  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks, predictMember, unreadChunksFor,
   directionCalls, tuningSliceOf, directionMoney, moneyAgainstNull, TUNING_TAG,
   probsArr, probsObj,
 };

@@ -1142,6 +1142,19 @@ const GUARDS = [
     'everyRecordedStepCarriesTheCountThePageHadInHand', 'every recorded step carries an empty count again, and the reserve grade cannot say how far the board was narrowed at each look'],
   [path.join(ROOT, 'lib', 'funnelset.js'), "  doc.backSteps.push({ at: new Date().toISOString(), from: from ?? null, to: to ?? null, why: why || null, survivors: survivors == null ? null : survivors });", "  doc.backSteps.push({ at: new Date().toISOString(), from: from ?? null, to: to ?? null, why: why || null, survivors: survivors == null ? 0 : survivors });",
     'everyRecordedStepCarriesTheCountThePageHadInHand', 'a step back with no read in hand is written as a count of zero, which reads as a rule that kept nothing'],
+  // ---- the reserve grade on a Stage 4 record set (3.89.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "  if (!unreadGateOf(doc)) return UNREAD_NO_PASS;", "  if (false) return UNREAD_NO_PASS;",
+    'theReserveGradeRefusesInWordsBeforeAnythingPrices', 'the unread window is opened for a set whose verdict never stood, and the one look at unseen data is spent on a rule that failed'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const b = ((doc && doc.verify) || []).find((x) => x.verdict && x.verdict.pass && firstDigitOfRelease(x.release) === firstDigitOfRelease(ENGINE_VERSION)) || null;", "  const b = ((doc && doc.verify) || []).find((x) => x.verdict && x.verdict.pass) || null;",
+    'theReserveGradeRefusesInWordsBeforeAnythingPrices', 'a verdict that passed under another first digit opens the door, and the grade is keyed to a release line it was never read under'],
+  [path.join(ROOT, 'lib', 'stagework.js'), "      return [...unit.probs[mi].slice(0, testChunks.length), ...predictMember(m.saved, m.spec, holdChunks, combo, geo)];", "      return unit.probs[mi];",
+    'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'the members\' stored votes stand in for forecasts on a window they never voted on, and the unread window is priced on votes that run out before it ends'],
+  [path.join(ROOT, 'lib', 'stagework.js'), "    holdChunks = got.chunks;\n    holdTrade = got.maps.trade;", "    holdTrade = got.maps.trade;",
+    'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'the held-back window is priced in the unread window\'s place, and the grade reads a window the search already touched'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  fresh.unread = [block, ...had];", "  fresh.unread = [block];",
+    'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'a second look overwrites the first, and the only look at unseen data is gone from the record'],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "  parts.push(look > 1\n    ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`\n    : 'look 1: the first look at data nothing in the system has seen');", "  parts.push('look 1: the first look at data nothing in the system has seen');",
+    'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'every look reads as the first, and a grade of a window read five times claims data nothing has seen'],
 ];
 
 const only = process.argv[2] || '';
