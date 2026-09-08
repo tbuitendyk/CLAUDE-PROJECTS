@@ -4347,8 +4347,11 @@ module.exports = {
       'the bar read off a setting must stay empty for a rule that reads none');
     assert.ok(agr.includes("pct: agreement.READS_NO_BAR.has(st.agreeRule || 'count') ? null : (Number(st.agreePct) || 50),"),
       'the share read off a setting must stay empty for a rule that reads none');
-    assert.ok(sw.includes('const levelFor = (agr, decision) => (agreement.READS_NO_BAR.has(agr.rule) ? null'),
+    // the one definition of what is enough lives in lib/committee.js since 3.91.0, shared with the live path
+    const cm = fs.readFileSync(path.join(ROOT, 'lib', 'committee.js'), 'utf8');
+    assert.ok(cm.includes('const levelFor = (agr, decision) => (agreement.READS_NO_BAR.has(agr.rule) ? null'),
       'the rung a setting had to clear must be empty for a rule with nothing to clear');
+    assert.ok(sw.includes('const levelFor = (agr, decision) => C.levelFor(agr, decision);'), 'and the pricing reads it from there, never a copy of its own');
     // and the tally skips an empty rung rather than counting it as zero: one
     // trained setting in a block must not drag the average of the settings
     // that did read a bar
@@ -4367,8 +4370,14 @@ module.exports = {
   // read by trying each rule with none and seeing which ones cannot cope.
   async everyRuleThatReadsTheMembersLeansIsHandedThem() {
     const agreement = require('../lib/agreement');
+    // the two places that build a quorum: the pricing's per-slice one, and the
+    // shared definition's (lib/committee.js since 3.91.0), which the bar reads
     const swSrc = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
-    const asked = [...swSrc.matchAll(/probs: ([^\n]+?) \? probsFor\(/g)].map((m) => m[1]);
+    const cmSrc = fs.readFileSync(path.join(ROOT, 'lib', 'committee.js'), 'utf8');
+    const asked = [
+      ...[...swSrc.matchAll(/probs: ([^\n]+?) \? probsFor\(/g)].map((m) => m[1]),
+      ...[...cmSrc.matchAll(/probs: ([^\n]+?) \? probsPerMember : null/g)].map((m) => m[1]),
+    ];
     assert.strictEqual(asked.length, 2, 'both places that build a quorum must decide whether to build the leans');
     for (const test of asked) {
       assert.strictEqual(test, 'agreement.READS_LEANS.has(agr.rule)',

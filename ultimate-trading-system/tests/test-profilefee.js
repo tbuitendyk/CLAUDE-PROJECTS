@@ -152,8 +152,15 @@ module.exports = {
     assert.ok(/feePerLeg: fee/.test(src), 'and does not pass it to the build');
     assert.ok(/trainMembers\([^)]*geo, feePerLeg\)/.test(src),
       'trainMembers is still called without a fee, so a directional committee cannot be trained at all');
-    const calls = src.match(/committeeCallFor\(cfg, target, trainChunks, maps, geo, views, bandPct, freeze\.throughMs, fee\)/g) || [];
+    // RE-AIMED 3.91.0: the three callers now go through decideFor, which picks
+    // the engine the configuration speaks for; the fee rides on every call and
+    // decideFor hands it to BOTH engines, so neither can price a trade as free.
+    const calls = src.match(/decideFor\(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze\.throughMs, fee\)/g) || [];
     assert.strictEqual(calls.length, 3, `all three live callers must pass the fee; ${calls.length} do`);
+    assert.ok(/stageCommitteeCallFor\(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg\)/.test(src),
+      'decideFor does not hand the fee to the stage engine');
+    assert.ok(/return committeeCallFor\(cfg, target, trainChunks, maps, geo, views, bandPct, freezeMs, feePerLeg\)/.test(src),
+      'decideFor does not hand the fee to the older engine');
   },
 
   // 5. THE SWEEP CAN SET IT TOO — "for that matter, where we're training and

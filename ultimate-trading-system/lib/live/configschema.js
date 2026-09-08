@@ -154,14 +154,12 @@ function validateConfig(cfg) {
 // passes unchanged). Returns { ok, errors }; never throws.
 function liveExecutable(cfg) {
   const errors = [];
-  // THE LIVE PATH DOES NOT SPEAK THE STAGE ENGINE'S AGREEMENT YET (3.90.0). It
-  // counts votes against an integer quorum; a configuration that agrees by the
-  // setting's own rule would be traded as something the lab never measured.
-  // Refused here, at the door every activation passes through, until the live
-  // path speaks it -- and real money stays the owner's switch either way.
-  if (cfg && cfg.engine === 'stages') {
-    fail(errors, "engine 'stages': the live path does not speak the stage engine's agreement yet — it counts votes against an integer quorum, which this configuration does not carry");
-  }
+  // A STAGE-ENGINE CONFIGURATION PASSES THIS DOOR SINCE 3.91.0: the live path
+  // speaks its agreement (lib/live/stagesignal.js), through the one definition
+  // of a committee's call it shares with stage 3, and the suite holds the two
+  // to the cent on the fabricated chain. What puts it to work is still the
+  // owner's Activate press on the Trade tab, Paper Books first; nothing inside
+  // a loop presses it (RULE SIX).
   const cell = (cfg && cfg.cell) || {};
   if (cell.entry !== 'market') {
     fail(errors, `cell.entry '${cell.entry}': the live executor only does MARKET entry (breakout is lab-only)`);

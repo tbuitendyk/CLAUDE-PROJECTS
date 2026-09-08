@@ -255,7 +255,7 @@ module.exports.aStage4GreenlightFreezesTheSurvivorsAgreementNotAQuorum = functio
 // REFUSED IN WORDS: no verdict, a single coin, a trade shape the executor
 // cannot carry, no members, no band; and a stage-engine configuration cannot
 // be shuttled or pass the live door, so nothing built from it can trade.
-module.exports.aStage4GreenlightRefusesInWordsAndCanNeverBeShuttledYet = function () {
+module.exports.aStage4GreenlightRefusesInWordsAndShuttlesOnlyIntoADraft = function () {
   const cases = [
     [() => gl.greenlightFromStage4(stage4Src({ gate: null }), { name: 'x', why: 'x' }), /no verdict on this set is PASS/],
     [() => gl.greenlightFromStage4(stage4Src({ unit: { trade: 'LTCUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d' } }), { name: 'x', why: 'x' }), /a coin read on its own/],
@@ -276,15 +276,17 @@ module.exports.aStage4GreenlightRefusesInWordsAndCanNeverBeShuttledYet = functio
   // the dry read's refusal is the same words the press throws
   assert.strictEqual(gl.stage4Refusal(stage4Src()), null);
   assert.ok(/a coin read on its own/.test(gl.stage4Refusal(stage4Src({ unit: { trade: 'LTCUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d' } }))));
-  // minted, it can neither be shuttled nor pass the live door
+  // MINTED, IT SHUTTLES INTO A DRAFT AND PASSES THE LIVE DOOR (3.91.0: the live
+  // path speaks its agreement) -- and a draft trades nothing: only the owner's
+  // Activate press on the Trade tab puts it to work, never anything in a loop.
   const rec = gl.greenlightFromStage4(stage4Src(), { name: 'LTC depth pick', why: 'x' });
-  let threw = null;
-  try { gl.shuttle(rec.id, { name: 'try', clipUsd: 100 }); } catch (e) { threw = e; }
-  assert.ok(threw && threw.code === 'NOT_LIVE_EXECUTABLE' && /live path does not yet/.test(threw.message), threw && threw.message);
-  assert.deepStrictEqual(gl.getGreenlight(rec.id).shuttledSetupIds, [], 'nothing was built from it');
+  const { setup } = gl.shuttle(rec.id, { name: 'LTC draft', clipUsd: 100, trainPolicy: { mode: 'rolling' } });
+  assert.strictEqual(setup.state, 'draft', 'a shuttle makes a draft, and a draft trades nothing');
+  assert.strictEqual(setup.configSnapshot.engine, 'stages');
+  assert.deepStrictEqual(gl.getGreenlight(rec.id).shuttledSetupIds, [setup.id]);
   const { liveExecutable } = require('../lib/live/configschema');
-  const le = liveExecutable(rec.configSnapshot);
-  assert.ok(!le.ok && le.errors.some((e) => /does not speak the stage engine's agreement yet/.test(e)), le.errors.join('; '));
+  assert.strictEqual(liveExecutable(rec.configSnapshot).ok, true, liveExecutable(rec.configSnapshot).errors.join('; '));
+  let threw = null;
   // a way of weighing that reads no bar carries none, and a bar-reading one must carry its bar
   const trained = gl.greenlightFromStage4(stage4Src({ survivor: { ...stage4Src().survivor, agreeRule: 'trained', agreeBar: null, agreePct: null } }), { name: 'trained', why: 'x' });
   assert.deepStrictEqual({ rule: trained.configSnapshot.agreement.rule, bar: trained.configSnapshot.agreement.bar, pct: trained.configSnapshot.agreement.pct }, { rule: 'trained', bar: null, pct: null });

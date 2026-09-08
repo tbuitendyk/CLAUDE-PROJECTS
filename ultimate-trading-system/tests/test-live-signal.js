@@ -222,3 +222,71 @@ module.exports.zzz_cleanupFabricatedSymbols = function () {
     assert.strictEqual(left.length, 0, `no ${sym} files left behind`);
   }
 };
+
+// ---- THE STAGE ENGINE'S AGREEMENT ON THE LIVE PATH (3.91.0) ----
+// The same fabricated combo, decided by a stage-engine configuration: the
+// members trained the stages' way, the call by the configuration's own
+// agreement, an intent that carries every vote and the agreement and no
+// integer quorum, the recompute equal to the live decision field for field.
+const STAGE_CONFIG = {
+  engine: 'stages',
+  combo: { trade: SYMS[0], ctx1: SYMS[1], ctx2: SYMS[2], size: 3 },
+  branch: { geometry: 'daily-4d', decision: 'argmax', band: 0.4, weekdaysOnly: false },
+  stage: 'stages',
+  members: [{ model: 'logreg', view: 'full' }, { model: 'logreg', view: 'prices' }, { model: 'logreg', view: 'volume' }, { model: 'logreg', view: 'pricevol' }, { model: 'logreg', view: 'cross' },
+    { model: 'boost', view: 'full' }, { model: 'boost', view: 'prices' }, { model: 'boost', view: 'volume' }, { model: 'boost', view: 'pricevol' }, { model: 'boost', view: 'cross' }],
+  cell: { quorum: null, entry: 'market', gate: 'directional', dMult: null, tHours: 137, trailMult: null, armMult: null },
+  agreement: { rule: 'count', bar: 'all', pct: 50, copy: 98, both: false, persist: 0, rung: 5, members: 10, voices: null },
+  training: { trainOn: 'direction', weightCap: null, windowLayout: 'reserve61', startMonth: '2026-01', endMonth: '2026-08', allLoaded: false, nullN: 9 },
+  configVersion: 'zzzq-stages-v1-test',
+};
+const STAGE_SETUP = { id: 'sig-test-stages', state: 'paper', clipUsd: 10, stopPct: null, configSnapshot: STAGE_CONFIG, trainPolicy: { mode: 'frozen', throughMs: FREEZE } };
+
+module.exports.aStageEngineConfigurationDecidesByItsOwnAgreementAndTheRecomputeMatches = async function () {
+  const { validateConfig, liveExecutable } = require('../lib/live/configschema');
+  assert.strictEqual(validateConfig(STAGE_CONFIG).ok, true, validateConfig(STAGE_CONFIG).errors.join('; '));
+  assert.strictEqual(liveExecutable(STAGE_CONFIG).ok, true, liveExecutable(STAGE_CONFIG).errors.join('; '));
+  const { geo, cached } = await pickTargets();
+  const t = cached[Math.floor(cached.length / 2)];
+  const now = t.startTs + (geo.entryOffsetH * HOUR) + 5 * 60000;
+  const out = await signal.computeSignal(STAGE_SETUP, now);
+  assert.ok(out.ok && out.actionable, `expected actionable, got ${JSON.stringify(out).slice(0, 300)}`);
+  const it = out.intent;
+  assert.strictEqual(it.schema, 2);
+  assert.strictEqual(it.per_member.length, 10, 'every member of the stage configuration voted');
+  assert.ok(it.per_member.every((v) => v === 1 || v === -1 || v === 0));
+  assert.strictEqual(it.quorum, null, 'no integer quorum is invented for it');
+  assert.deepStrictEqual({ rule: it.agreement.rule, pct: it.agreement.pct, bar: it.agreement.bar, both: it.agreement.both, persist: it.agreement.persist }, { rule: 'count', pct: 50, bar: 'all', both: false, persist: 0 }, 'the intent carries the agreement it decided by');
+  assert.ok(['LONG', 'SHORT', 'FLAT'].includes(it.side));
+  // the call IS the rule's own reading of the votes: count at 50% of ten is five
+  const up = it.per_member.filter((v) => v === 1).length;
+  const dn = it.per_member.filter((v) => v === -1).length;
+  const expect = up === dn ? 'FLAT' : (Math.max(up, dn) >= 5 ? (up > dn ? 'LONG' : 'SHORT') : 'FLAT');
+  assert.strictEqual(it.side, expect, `count at 50% of 10: ${up} up, ${dn} down`);
+  assert.strictEqual(it.paper, true);
+  // the recompute of the same chunk is the same decision, field for field
+  const re = await signal.computeSignalForChunk(STAGE_SETUP, t.startTs);
+  assert.ok(re.found);
+  assert.strictEqual(re.side, it.side);
+  assert.deepStrictEqual(re.per_member, it.per_member);
+  assert.strictEqual(re.input_hash, it.input_hash);
+  assert.deepStrictEqual(re.agreement, it.agreement);
+  // the preview speaks the same agreement
+  const pv = await signal.computePreview(STAGE_SETUP, t.startTs + geo.featureHours * HOUR + 60000);
+  assert.ok(pv.available, JSON.stringify(pv).slice(0, 200));
+  assert.strictEqual(pv.agreement.rule, 'count');
+  // +hold reads the moment before the target and never after it: the held
+  // decision is the target's own call only when the same call stood the
+  // moment before, else stand aside -- pencilled from the two plain decisions
+  const held = { ...STAGE_SETUP, configSnapshot: { ...STAGE_CONFIG, agreement: { ...STAGE_CONFIG.agreement, persist: 1 }, configVersion: 'zzzq-stages-hold' } };
+  const out2 = await signal.computeSignal(held, now);
+  assert.ok(out2.ok && out2.actionable);
+  assert.strictEqual(out2.intent.agreement.persist, 1);
+  const { chunks } = await withData();
+  const ordered = chunks.slice().sort((a, b) => a.startTs - b.startTs);
+  const at = ordered.findIndex((c) => c.startTs === t.startTs);
+  const prev = await signal.computeSignalForChunk(STAGE_SETUP, ordered[at - 1].startTs);
+  assert.ok(prev.found, 'the moment before is a chunk of its own');
+  const expectHeld = (it.side !== 'FLAT' && prev.side === it.side) ? it.side : 'FLAT';
+  assert.strictEqual(out2.intent.side, expectHeld, `+hold 1: target ${it.side}, the moment before ${prev.side}`);
+};

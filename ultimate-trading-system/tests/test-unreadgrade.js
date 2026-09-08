@@ -184,4 +184,83 @@ module.exports = {
       assert.strictEqual(dry2.looks, 2);
     } finally { c.cleanup(); }
   },
+
+  // PARITY, THE GATE ON THE LIVE PATH (3.91.0, loop record step 7). From the
+  // stage 2 set's stored votes and probe votes for the planted coin, the
+  // shared definition's calls on the held-back slice, fed to the same
+  // simulator on the same chunks, reproduce the stage 3 record's held-back
+  // money for the survivor to the cent -- and so would the live path, which
+  // reads the same definition. Then the live path itself is run on the planted
+  // coin, deciding one held-back chunk from members it trains the stages' way.
+  async theSharedCommitteeRepricesTheStageThreeRecordToTheCentAndTheLivePathDecidesFromIt() {
+    const c = await chain('committee parity test');
+    try {
+      const committee = require('../lib/committee');
+      const bracketLib = require('../lib/bracket');
+      const { tuneTau } = require('../lib/pipeline');
+      const rec2 = rowstore.readAll(c.s2, 'records').find((r) => r.trade === G.PLANT);
+      const votes = rowstore.readBlocks(c.s2, 'votes', Array.from({ length: rec2.blocks.votes[1] - rec2.blocks.votes[0] }, (_, i) => rec2.blocks.votes[0] + i)).map((x) => x.row).filter((r) => r.u === rec2.u);
+      const tauRows = rowstore.readBlocks(c.s2, 'tau', Array.from({ length: rec2.blocks.tau[1] - rec2.blocks.tau[0] }, (_, i) => rec2.blocks.tau[0] + i)).map((x) => x.row).filter((r) => r.u === rec2.u);
+      const test = votes.filter((v) => v.w === 0);
+      const hold = votes.filter((v) => v.w === 1);
+      const p1 = { windowLayout: G.STAGE1.windowLayout, allLoaded: false, startMonth: G.STAGE1.startMonth, endMonth: G.STAGE1.endMonth, trainOn: G.STAGE1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
+      const combo = { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 };
+      const { geo, maps, split } = await sw.unitChunks(combo, G.STAGE1.geometry, p1);
+      assert.strictEqual(split.holdChunks.length, hold.length, 'the stored held-back votes line up with the rebuilt held-back chunks');
+      const fee = G.STAGE3.fee;
+      const taus = rec2.specs.map((_, mi) => {
+        const probe = (tauRows.find((t) => t.mi === mi) || {}).probs || [];
+        const nSub = split.trainChunks.length - probe.length;
+        return tuneTau(split.trainChunks.slice(nSub), probe.map(committee.probsObj), maps.trade, geo, fee).tau;
+      });
+      const C = committee.committeeOn({ specs: rec2.specs.map((sp) => ({ model: sp.model, view: sp.view })), memberProbsTest: rec2.specs.map((_, mi) => test.map((v) => v.m[mi])), taus });
+      const holdProbs = rec2.specs.map((_, mi) => hold.map((v) => v.m[mi]));
+      // every survivor of the set, as stage 3 recorded it
+      const s3rows = rowstore.readAll(c.s3, 'records').filter((r) => r.trade === G.PLANT);
+      const set = stages.getSet(c.cut.id);
+      assert.ok(set.survivors.length >= 1);
+      for (const sv of set.survivors) {
+        const row = s3rows.find((r) => r.label === sv.label);
+        assert.ok(row, `the stage 3 record holds ${sv.label}`);
+        const agr = sw.agrOf(row);
+        const calls = C.streamOf(row.decision, agr, holdProbs);
+        const cell = { entry: row.entry, gate: row.gate, dMult: row.dMult, tHours: row.tHours, trailMult: row.trailMult ?? null, armMult: row.armMult ?? null };
+        const res = bracketLib.simCell(cell, split.holdChunks, calls, maps.trade, geo, row.bandPct, fee);
+        assert.strictEqual(Math.round(res.pnl * 100), Math.round(row.holdout.pnl * 100), `${sv.label}: the shared definition's calls reprice the record's held-back money (${res.pnl} vs ${row.holdout.pnl})`);
+        assert.strictEqual(res.trades, row.holdout.trades, `${sv.label}: and the same number of trades`);
+      }
+      // THE LIVE PATH ITSELF on the planted coin: a configuration as the Stage 4
+      // door would freeze it (the coin read on its own here, which the live
+      // vocabulary refuses at the door, so the path is called directly), its
+      // members trained the stages' way through the training instant at the
+      // held-back window's start, deciding the first held-back chunk.
+      const stagesignal = require('../lib/live/stagesignal');
+      const sv = set.survivors[0];
+      const row = s3rows.find((r) => r.label === sv.label);
+      const agr = sw.agrOf(row);
+      const cfg = {
+        engine: 'stages', combo, branch: { geometry: G.STAGE1.geometry, decision: row.decision, band: row.bandPct, weekdaysOnly: false }, stage: 'stages',
+        members: rec2.specs.map((sp) => ({ model: sp.model, view: sp.view })),
+        cell: { quorum: null, entry: row.entry, gate: row.gate, dMult: row.dMult ?? null, tHours: row.tHours, trailMult: null, armMult: null },
+        agreement: { ...agr, rung: row.rung ?? null, members: rec2.specs.length, voices: null },
+        training: { trainOn: G.STAGE1.trainOn, weightCap: null, windowLayout: G.STAGE1.windowLayout, startMonth: G.STAGE1.startMonth, endMonth: G.STAGE1.endMonth, allLoaded: false, nullN: G.STAGE1.nullN },
+        configVersion: 'parity-test',
+      };
+      const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
+      const target = split.holdChunks[0];
+      const closed = [...split.trainChunks, ...split.testChunks];
+      const all = [...closed, ...split.holdChunks];
+      const freezeMs = target.startTs - 1;
+      const out = await stagesignal.stageCommitteeCallFor(cfg, target, closed, all, maps, geo, views, freezeMs, fee);
+      assert.strictEqual(out.perMember.length, rec2.specs.length, 'every member of the stage 2 set voted');
+      assert.ok(out.perMember.every((v) => v === 1 || v === -1 || v === 0), 'each a vote');
+      assert.ok(['LONG', 'SHORT', 'FLAT'].includes(out.side));
+      assert.deepStrictEqual({ rule: out.agreement.rule, pct: out.agreement.pct, bar: out.agreement.bar }, { rule: agr.rule, pct: agr.pct, bar: agr.bar }, 'decided by the configuration\'s own agreement');
+      assert.strictEqual(typeof out.inputHash, 'string');
+      assert.ok(out.testSlice > 0, 'the committee was shaped on a test slice of its own');
+      // the same again is the same: deterministic
+      const again = await stagesignal.stageCommitteeCallFor(cfg, target, closed, all, maps, geo, views, freezeMs, fee);
+      assert.deepStrictEqual({ side: again.side, votes: again.perMember, hash: again.inputHash }, { side: out.side, votes: out.perMember, hash: out.inputHash });
+    } finally { c.cleanup(); }
+  },
 };

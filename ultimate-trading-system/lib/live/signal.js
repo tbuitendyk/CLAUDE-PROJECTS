@@ -51,8 +51,19 @@ function cfgOf(setup) {
   const cfg = setup.configSnapshot;
   const v = validateConfig(cfg);
   if (!v.ok) throw new Error(`setup ${setup.id}: configSnapshot invalid: ${v.errors.join('; ')}`);
-  assertMembersMatchEngine(cfg);
+  // a stage-engine configuration's members are the stage 2 set's own, not specsFor's roster
+  if (cfg.engine !== 'stages') assertMembersMatchEngine(cfg);
   return cfg;
+}
+// THE DECISION, BY THE ENGINE THE CONFIGURATION SPEAKS FOR (3.91.0): the older
+// engine counts votes against an integer quorum; a stage-engine configuration
+// is trained as the stages train and called through the one definition of a
+// committee's call it shares with stage 3 (lib/live/stagesignal.js).
+async function decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freezeMs, feePerLeg) {
+  if (cfg.engine === 'stages') {
+    return require('./stagesignal').stageCommitteeCallFor(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg);
+  }
+  return committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freezeMs, feePerLeg);
 }
 
 // Identical recipe to pilotsignal.committeeCall, with the config's own
@@ -179,8 +190,8 @@ async function computeSignal(setup, now, opts = {}) {
         + `(${new Date(miss.lastFeatureTs).toISOString()}) — refresh has not reached it; waiting` };
   }
 
-  const { call, perMember, side, priceAt, inputHash } =
-    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs, fee);
+  const { call, perMember, side, priceAt, inputHash, agreement } =
+    await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
 
   let entryOpen = chooseEntryOpen(priceAt, null);
   if (call !== 0 && entryOpen == null && typeof opts.liveOpenFetcher === 'function') {
@@ -210,6 +221,8 @@ async function computeSignal(setup, now, opts = {}) {
       input_hash: inputHash,
       per_member: perMember,
       quorum: cfg.cell.quorum,
+      // the agreement a stage-engine configuration decided by (3.91.0); null on the older engine
+      agreement: agreement || null,
       config_version: cfg.configVersion,
       train_through: freeze.throughMs,
       band_pct: bandPct,
@@ -239,8 +252,8 @@ async function computeSignalForChunk(setup, chunkStartMs) {
     return { found: false, chunk_start: new Date(chunkStartMs).toISOString(),
       note: `current data missing ${miss.name} feature candle ${new Date(miss.lastFeatureTs).toISOString()} — cannot recompute yet` };
   }
-  const { side, perMember, priceAt, inputHash } =
-    await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs, fee);
+  const { side, perMember, priceAt, inputHash, agreement } =
+    await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
   return {
     found: true,
     price_pending: priceAt == null,
@@ -250,6 +263,7 @@ async function computeSignalForChunk(setup, chunkStartMs) {
     decision_price: priceAt,
     input_hash: inputHash,
     quorum: cfg.cell.quorum,
+    agreement: agreement || null,
     band_pct: bandPct,
     config_version: cfg.configVersion,
   };
@@ -270,13 +284,14 @@ async function computePreview(setup, now) {
       note: `feature window closed but ${miss.name}'s last candle is not cached yet — preview available shortly`,
       entry_utc: new Date(entryAt).toISOString() };
   }
-  const { side, perMember } = await committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freeze.throughMs, fee);
+  const { side, perMember, agreement } = await decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze.throughMs, fee);
   return {
     available: true,
     setup_id: setup.id,
     side,
     per_member: perMember,
     quorum: cfg.cell.quorum,
+    agreement: agreement || null,
     band_pct: bandPct,
     chunk_start: new Date(target.startTs).toISOString(),
     entry_utc: new Date(entryAt).toISOString(),
@@ -288,5 +303,5 @@ async function computePreview(setup, now) {
 module.exports = {
   computeSignal, computeSignalForChunk, computePreview,
   actionableChunk, previewableChunk, chooseEntryOpen,
-  assertMembersMatchEngine, committeeCallFor, ENTRY_FRESH_H,
+  assertMembersMatchEngine, committeeCallFor, decideFor, ENTRY_FRESH_H,
 };

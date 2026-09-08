@@ -363,14 +363,9 @@ function shuttle(greenlightId, { name, clipUsd, stopPct = null, feePerLeg, by = 
   const gl = getGreenlight(greenlightId);
   if (!gl) { const e = new Error(`no such greenlight ${greenlightId}`); e.code = 'NOT_FOUND'; throw e; }
   if (gl.revoked) { const e = new Error('this config was nuked back to not-greenlighted'); e.code = 'REVOKED'; throw e; }
-  // NEVER PUT TO WORK FROM INSIDE A LOOP, AND NOT UNTIL THE LIVE PATH SPEAKS IT
-  // (3.90.0, RULE SIX): a stage-engine configuration agrees by the setting's
-  // own rule, and the live path counts votes against an integer quorum.
-  if ((gl.configSnapshot || {}).engine === 'stages') {
-    const e = new Error("this configuration speaks the stage engine's agreement, and the live path does not yet — nothing can be built from it to put to work");
-    e.code = 'NOT_LIVE_EXECUTABLE';
-    throw e;
-  }
+  // A stage-engine configuration shuttles like any other since 3.91.0: the
+  // live path speaks its agreement. The draft it makes trades nothing until
+  // the owner's Activate press on the Trade tab (RULE SIX: never inside a loop).
   const setup = reg.createSetup({
     name: name || `${gl.configSnapshot.combo.trade} ${gl.target} (${gl.sourceRun.id})`,
     ownerId: by,

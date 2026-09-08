@@ -26,6 +26,10 @@
 const bracketLib = require('./bracket');
 const { buildCombo, splitAndLabel, quorumCall, declaredQuorumFor } = require('./bracketwork');
 const agreement = require('./agreement');
+// THE ONE DEFINITION OF A COMMITTEE'S CALL (3.91.0): calls from votes, the
+// committee's shape on its test slice, what is enough, the stream. Shared with
+// the live path, so a greenlighted rule trades as stage 3 priced it.
+const committee = require('./committee');
 const crypto = require('crypto');
 const { standardizeFit, standardizeApply, tuneAndTrain, trainSoftmax, predict: predictLogreg } = require('./logreg');
 const { trainBoost, predictBoost } = require('./boost');
@@ -771,27 +775,14 @@ async function s3UnitTask(task) {
     });
   }
 
-  // Calls per (decision, arm, slice), derived once and cached; quorum streams
-  // per (calls, agree) likewise. Settings sharing a stream share the work.
-  const callCache = new Map();
-  const callsFor = (decision, dealIdx, slice) => {
-    const key = `${decision}|${dealIdx}|${slice}`;
-    if (callCache.has(key)) return callCache.get(key);
-    const offset = slice === 'hold' ? nTest : 0;
-    const len = slice === 'hold' ? holdChunks.length : nTest;
-    const out = memberProbs.map((mp, mi) => {
-      const tau = decision === 'directional' ? taus[mi] : null;
-      const arr = new Array(len);
-      for (let i = 0; i < len; i++) arr[i] = callFromProbs(mp[offset + i], decision, tau);
-      if (dealIdx >= 0) {
-        const order = deals[dealIdx][slice];
-        return order.map((k) => arr[k]);
-      }
-      return arr;
-    });
-    callCache.set(key, out);
-    return out;
-  };
+  // THE COMMITTEE, SHAPED ON ITS TEST SLICE, through the one definition both
+  // this task and the live path call (lib/committee.js): calls from votes,
+  // independent voices, each way of weighing's own bar, what is enough, the
+  // stream. A null-set deal shuffles every member by the SAME order, so the
+  // committee's own structure is untouched by it -- the shape is worked out
+  // once from the real test slice and is correct for the deals too.
+  const C = committee.committeeOn({ specs: (unit.members || []).map((m) => m.spec || {}), memberProbsTest: memberProbs.map((mp) => mp.slice(0, nTest)), taus });
+  const { models, families } = C;
   // The members' strengths, sliced and dealt exactly as their calls are, so
   // a rule that reads how strongly they lean sees the same moments in the
   // same order as a rule that only counts them.
@@ -810,63 +801,19 @@ async function s3UnitTask(task) {
     probCache.set(key, out);
     return out;
   };
-
-  // WHAT THE COMMITTEE ACTUALLY IS, measured on the test slice and never on
-  // the held-back window: which members are independent voices and which are
-  // near-copies of each other. A null-set deal shuffles every member by the
-  // SAME order, so the committee's own structure is untouched by it — the
-  // weights and cutoffs below are worked out once, from the real test slice,
-  // and are correct for the deals too.
-  const models = (unit.members || []).map((m) => (m.spec || {}).model || 'logreg');
-  const families = (unit.members || []).map((m) => (m.spec || {}).view || 'full');
-  const voiceCache = new Map();
-  const voicesFor = (decision, copy) => {
-    const key = `${decision}|${copy}`;
-    if (voiceCache.has(key)) return voiceCache.get(key);
-    const v = agreement.voiceGroups(callsFor(decision, -1, 'test'), nTest, copy / 100);
-    voiceCache.set(key, v);
-    return v;
+  // Calls per (decision, arm, slice), derived once and cached; quorum streams
+  // per (calls, agree) likewise. Settings sharing a stream share the work.
+  const callCache = new Map();
+  const callsFor = (decision, dealIdx, slice) => {
+    const key = `${decision}|${dealIdx}|${slice}`;
+    if (callCache.has(key)) return callCache.get(key);
+    const out = committee.callsOf(probsFor(dealIdx, slice), decision, taus);
+    callCache.set(key, out);
+    return out;
   };
-  // THE BAR TAKEN FROM WHAT THIS COMMITTEE REACHES, for whichever way of
-  // weighing is asked. Worked out once per (decision, way of weighing, share)
-  // and always from the test slice — the held-back window is never read for it.
-  const cutoffCache = new Map();
-  const cutoffFor = (decision, agr) => {
-    const key = `${decision}|${agr.rule}|${agr.copy}|${agr.pct}`;
-    if (cutoffCache.has(key)) return cutoffCache.get(key);
-    const c = agreement.ownHistoryBar(barCtx(agr, decision), nTest, agr.rule, agr.pct);
-    cutoffCache.set(key, c);
-    return c;
-  };
-  // WHAT A SHARE IS A SHARE OF, under this rule, for THIS unit. One
-  // definition: the rung divides by it, and the agreement actually reached
-  // divides by the same thing, so the two are on one scale and comparable.
-  const denomFor = (agr, decision) => (agr.rule === 'voices' ? voicesFor(decision, agr.copy).voices
-    : agr.rule === 'families' ? new Set(families).size : memberProbs.length);
-  // The rung a share lands on for THIS unit, under this quorum.
-  const rungFor = (agr, decision) => {
-    const n = denomFor(agr, decision);
-    return Math.max(1, Math.min(n, Math.ceil((agr.pct / 100) * n)));
-  };
-  // the votes and the extras a way of weighing needs, on the test slice, for
-  // working out the bar. Declared before ctxFor because the bar is worked out
-  // before any stream is; both build the same shape.
-  const barCtx = (agr, decision) => ({
-    calls: callsFor(decision, -1, 'test'), models, families,
-    probs: agreement.READS_LEANS.has(agr.rule) ? probsFor(-1, 'test') : null,
-    weights: agr.rule === 'voices' ? voicesFor(decision, agr.copy).weights : null,
-  });
-  // WHAT IS ENOUGH, for this unit, this way of weighing and this bar.
-  //
-  // null, not a number, for a way of weighing that reads no bar: there is
-  // nothing to clear, and the row's rung it landed on must stay EMPTY rather
-  // than print the rung some other rule would have landed on. The per-coin
-  // average skips a null rung and counts the rest, so one trained setting in a
-  // block cannot drag the average of the settings that did read a bar.
-  const levelFor = (agr, decision) => (agreement.READS_NO_BAR.has(agr.rule) ? null
-    : (agr.bar === 'own') ? cutoffFor(decision, agr)
-      : rungFor(agr, decision));
-
+  const voicesFor = (decision, copy) => C.voicesFor(decision, copy);
+  const denomFor = (agr, decision) => C.denomFor(agr, decision);
+  const levelFor = (agr, decision) => C.levelFor(agr, decision);
   // The votes and the extras a rule reads, built once per way of asking.
   // Pulled out of streamFor so the agreement REACHED can be read off exactly
   // the same votes the rule read, rather than off a second copy that could
@@ -902,40 +849,14 @@ async function s3UnitTask(task) {
   };
 
   // HOW MUCH ACTUALLY AGREED, averaged over the moments this way of asking
-  // spoke on the test slice, as a share of whatever the rule counts. The bar
-  // is the floor of this number, never the whole of it: a setting asking for
-  // 75% of eight fires on six, seven or eight, and this is what it got.
-  //
-  // Measured on the TEST slice only — every other thing this committee is
-  // described by (its independent voices, the unusual rule's own cutoff) is
-  // worked out there, and the held-back window stays unread.
-  //
-  // Cached on the same key the stream is, minus the window: which moments
-  // speak depends on the rule, the share, +both and +hold, and on nothing
-  // about the trade shape. So this is worked out once per way of asking and
-  // re-used by every trade shape that asks that way.
+  // spoke on the test slice, as a share of whatever the rule counts. Measured
+  // on the TEST slice only, through the shared definition; cached per way of
+  // asking, because which moments speak does not depend on the trade shape.
   const agreedCache = new Map();
   const agreedFor = (decision, agr) => {
     const key = agreedKey(decision, agr);
     if (agreedCache.has(key)) return agreedCache.get(key);
-    const spoke = streamFor(decision, agr, -1, 'test');
-    const ctx = ctxFor(decision, agr, -1, 'test');
-    const denom = denomFor(agr, decision);
-    let sum = 0;
-    let n = 0;
-    let lo = Infinity;
-    let hi = -Infinity;
-    for (let i = 0; i < spoke.length; i++) {
-      const c = spoke[i];
-      if (!c) continue;
-      const got = agreement.achievedAt(ctx, i, agr.rule, c);
-      sum += got; n++;
-      if (got < lo) lo = got;
-      if (got > hi) hi = got;
-    }
-    const pct = (v) => (v / denom) * 100;
-    const out = (n && denom) ? { agreed: pct(sum / n), agreedLow: pct(lo), agreedHigh: pct(hi), agreedN: n }
-      : { agreed: null, agreedLow: null, agreedHigh: null, agreedN: 0 };
+    const out = C.agreedOn(decision, agr);
     agreedCache.set(key, out);
     return out;
   };

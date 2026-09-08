@@ -1008,3 +1008,29 @@ carried out 2026-08-28 under its own GO — decision 50.
     carry, a set with no members named, no band on the record. *Both sides of
     Trade* print the agreement through the one drawing path, and an old
     configuration keeps printing its quorum. Second digit.
+
+81. **The live path speaks the stage engine's agreement; one definition of a
+    committee's call, shared** (3.91.0, loop, VERIFY-DESIGN.md section 6,
+    section 9 step 7). *One definition:* the pieces that turn votes into a call
+    — calls from probabilities, the committee's shape on its test slice
+    (independent voices, each way of weighing's own bar), what is enough, the
+    stream with +both and +hold — moved out of the stage 3 task into
+    `lib/committee.js`, and the task calls them; the four-year engine run
+    reprices to the cent before and after. *The live path:* a stage-engine
+    configuration trains its members the way stage 1 and 2 train them, on the
+    chunks closed by the deployment's training instant laid out as stage 1
+    lays them out (the seal not cut away: a deployment reads everything
+    closed), shapes the committee and every tau on that test slice, forecasts
+    the target and the +hold moments before it, and calls through the shared
+    definition. *Parity, the gate:* on the fabricated chain the shared
+    definition's calls on the held-back slice, fed to the same simulator on the
+    same chunks, reproduce the stage 3 record's held-back money to the cent;
+    only with that test green was the door opened. *The switch stays the
+    owner's:* the two refusals from #80 are lifted, so a stage-engine
+    configuration shuttles into a draft and passes the live door like the older
+    engine's — and a draft trades nothing; the Activate press on the Trade tab
+    is the switch, Paper Books first, and nothing inside a loop presses it
+    (RULE SIX). *The record:* an intent carries every member's vote and the
+    agreement, no integer quorum (the box's executor requires none); the
+    anatomy panel says the agreement in the agreement library's own words.
+    Second digit.

@@ -940,7 +940,7 @@ const GUARDS = [
     "  _bar: (r) => (r.agreeBar === 'own' ? 'its own history' : 'all of them'),",
     'aRowWithNoBarSaysTheBarDoesNotApply',
     'a row written under a rule that reads no bar prints all of them, which is the screen telling the owner a bar was used'],
-  [path.join(ROOT, 'lib', 'stagework.js'), "  const levelFor = (agr, decision) => (agreement.READS_NO_BAR.has(agr.rule) ? null",
+  [path.join(ROOT, 'lib', 'committee.js'), "  const levelFor = (agr, decision) => (agreement.READS_NO_BAR.has(agr.rule) ? null",
     "  const levelFor = (agr, decision) => (false ? null",
     'theNoBarRuleIsNotGivenABarBackInsideThePricing',
     'the rung column prints what some other rule would have landed on, and the per-coin average is dragged by a number nothing read'],
@@ -1156,14 +1156,19 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'funnelverify.js'), "  parts.push(look > 1\n    ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`\n    : 'look 1: the first look at data nothing in the system has seen');", "  parts.push('look 1: the first look at data nothing in the system has seen');",
     'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'every look reads as the first, and a grade of a window read five times claims data nothing has seen'],
   // ---- the Stage 4 door on Greenlight (3.90.0) ----
-  [path.join(ROOT, 'lib', 'live', 'configschema.js'), "  if (cfg && cfg.engine === 'stages') {\n    fail(errors, \"engine 'stages': the live path does not speak the stage engine's agreement yet — it counts votes against an integer quorum, which this configuration does not carry\");\n  }", "  if (false) {\n    fail(errors, 'never');\n  }",
-    'aStage4GreenlightRefusesInWordsAndCanNeverBeShuttledYet', "a stage-engine configuration passes the live door, and the executor trades it by counting votes against a quorum it does not carry"],
-  [path.join(ROOT, 'lib', 'live', 'greenlight.js'), "  if ((gl.configSnapshot || {}).engine === 'stages') {", "  if (false) {",
-    'aStage4GreenlightRefusesInWordsAndCanNeverBeShuttledYet', 'a stage-engine configuration is shuttled into a deployment before the live path speaks its agreement'],
   [path.join(ROOT, 'lib', 'funnelset.js'), "    if (!best || cand.worst < best.worst || (cand.worst === best.worst && cand.mean < best.mean)) best = cand;", "    if (!best || (r.avgHold || 0) > ((rows[best.index] || {}).avgHold || 0)) best = cand;",
     'theDepthPickIsTheSurvivorNearestTheMiddleOfEveryRangeAndNeverReadsMoney', 'the pick is the survivor with the most held-back money, which is shopping the one window that must not be shopped'],
   [path.join(ROOT, 'lib', 'stages.js'), "  const gate = unreadGateOf(doc);\n  if (!gate) throw new Error(UNREAD_NO_PASS);\n  const join = await funnelVerifyJoin(doc);\n  const parent = join.parent;\n  const stage2 = getSet((parent.parent || {}).id);", "  const gate = unreadGateOf(doc) || { id: null, at: null, release: null, look: null };\n  const join = await funnelVerifyJoin(doc);\n  const parent = join.parent;\n  const stage2 = getSet((parent.parent || {}).id);",
     'theStage4GreenlightSourceIsReadOffTheSetAndRefusesWithoutAVerdictThatStood', 'a set whose verdict never stood is offered for a greenlight'],
+  // ---- the live path speaks the stage engine's agreement (3.91.0) ----
+  [path.join(ROOT, 'lib', 'live', 'signal.js'), "  if (cfg.engine === 'stages') {\n    return require('./stagesignal').stageCommitteeCallFor(", "  if (false) {\n    return require('./stagesignal').stageCommitteeCallFor(",
+    'aStageEngineConfigurationDecidesByItsOwnAgreementAndTheRecomputeMatches', "a stage-engine configuration is decided by the older engine's vote count against a quorum it does not carry"],
+  [path.join(ROOT, 'lib', 'live', 'stagesignal.js'), "  const call = stream[stream.length - 1] || 0;", "  const call = stream[0] || 0;",
+    'bothPathsReadTheOneDefinitionAndNeitherKeepsACopy', 'the live call is read at the first moment of the run instead of the target, so +hold reads a moment that is not the one being traded'],
+  [path.join(ROOT, 'lib', 'committee.js'), "    return Math.max(1, Math.min(n, Math.ceil((agr.pct / 100) * n)));", "    return Math.max(1, Math.min(n, Math.floor((agr.pct / 100) * n)));",
+    'theRungIsTheShareOfWhatTheRuleCountsAndTheOwnBarIsReadFromTheTestSlice', 'a share lands one member short of the rung it asked for, on every unit, for both paths at once'],
+  [path.join(ROOT, 'lib', 'committee.js'), "  const streamOf = (decision, agr, probsPerMember) => agreement.agreementStream(\n    ctxOf(decision, agr, probsPerMember), agr.rule, levelFor(agr, decision), { bothModels: agr.both, persist: agr.persist },", "  const streamOf = (decision, agr, probsPerMember) => agreement.agreementStream(\n    ctxOf(decision, agr, probsPerMember), agr.rule, levelFor(agr, decision), { bothModels: false, persist: 0 },",
+    'theStreamIsTheRulesOwnCallAtEachMomentWithItsTwoModifiers', 'the two modifiers a setting was priced under are dropped on the way to its call, for stage 3 and the live path alike'],
 ];
 
 const only = process.argv[2] || '';

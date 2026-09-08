@@ -30,6 +30,9 @@ function describeConfig(cfg, opts = {}) {
     committeeSize: (cfg.members || []).length,
     committeeStage: cfg.stage,
     quorum: cfg.cell.quorum,
+    // a stage-engine configuration agrees by its own rule, not a quorum (3.91.0)
+    engine: cfg.engine || 'sweep',
+    agreement: cfg.agreement || null,
     entry: cfg.cell.entry,
     gate: cfg.cell.gate,
     clipUsd: opts.clipUsd ?? null,
@@ -58,13 +61,29 @@ function describeAnatomy(cfg, opts = {}) {
   const crossNames = names.filter((n) => n.startsWith('rel_') || n === 'ret_correlation');
   const perAssetNames = names.filter((n) => n.startsWith('trade_')).map((n) => n.slice('trade_'.length));
   const ctx = [cfg.combo.ctx1, cfg.combo.ctx2].filter(Boolean);
+  // THE STAGE ENGINE'S AGREEMENT, in words (3.91.0): how the members are
+  // weighed, what is enough, and the two extras, read from lib/agreement.js
+  // rather than typed here so the words cannot drift from the arithmetic.
+  const stages = cfg.engine === 'stages';
+  const a = cfg.agreement || null;
+  const agreeWords = () => {
+    if (!a) return null;
+    const { RULE_WORDS, READS_NO_BAR } = require('../agreement');
+    const what = RULE_WORDS[a.rule] || a.rule;
+    const bar = READS_NO_BAR.has(a.rule) ? 'no bar: the winning side is taken whatever its margin'
+      : (a.bar === 'own' ? `enough when it reaches what this committee itself reached on its test slice at strictness ${a.pct}%` : `enough at ${a.pct}% of ${a.rule === 'voices' ? 'the independent voices' : a.rule === 'families' ? 'the kinds of evidence' : 'the members'}`);
+    const extras = [a.rule === 'voices' ? `two members count as one voice when they agree ${a.copy}% of the time` : null, a.both ? 'the winning side must hold at least one member of each kind' : null, a.persist ? `the same call must have stood for ${a.persist} moment(s) before it is acted on` : null].filter(Boolean);
+    return `${what}; ${bar}${extras.length ? `; ${extras.join('; ')}` : ''}`;
+  };
 
   return {
     pipeline: [
       `1. INPUTS — each decision window opens with the last ${geo.featureHours}h of hourly candles for ${cfg.combo.trade} (the traded pair)${ctx.length ? ` and the comparison asset${ctx.length > 1 ? 's' : ''} ${ctx.join(' and ')}` : ''}.`,
       `2. FEATURES — each asset's ${geo.featureHours}h window is compressed to ${nDays + 12} numbers (daily returns, total return, hourly volatility, volume shift, trend slope/acceleration, max drawdown/run-up, range, last-24h and last-6h returns, day-volume dispersion).${ctx.length ? ` The comparison assets then enter a SECOND way: ${crossNames.length} cross features per pair — relative total return, relative last-24h return, relative volume (log ratio), and the hour-by-hour return correlation with ${cfg.combo.trade}.` : ''} Total vector: ${cv.featureCount} numbers. The comparison assets are never traded — they exist only inside this vector.`,
       `3. MEMBERS VOTE — ${members.length} independent models (committee below), each seeing a different SLICE of those ${cv.featureCount} numbers, each trained through ${trained} and frozen. Each classifies the window as UP / DOWN / ASIDE, where ASIDE means "the coming move looks smaller than the ${bandPct}% dormant band". Decision rule '${cfg.branch.decision}': the member votes whichever class has the highest probability.`,
-      `4. COMMITTEE — votes are tallied. Ties between UP and DOWN mean stand aside. Otherwise the majority side wins if it has at least ${cfg.cell.quorum} vote(s) (quorum ${cfg.cell.quorum}-of-${members.length}); with quorum 1, any un-tied majority fires.`,
+      stages
+        ? `4. COMMITTEE — the votes are weighed the way the stage engine weighs them: ${agreeWords()}. The committee's own shape and each member's threshold are read from its test slice, never from a later window. Short of enough, stand aside.`
+        : `4. COMMITTEE — votes are tallied. Ties between UP and DOWN mean stand aside. Otherwise the majority side wins if it has at least ${cfg.cell.quorum} vote(s) (quorum ${cfg.cell.quorum}-of-${members.length}); with quorum 1, any un-tied majority fires.`,
       `5. ENTRY — '${cfg.cell.entry}' algorithm with a '${cfg.cell.gate}' gate: a market order in the called direction at the hourly OPEN of window start +${entryH}h (${String(entryH % 24).padStart(2, '0')}:00 UTC). Long = buy; short = borrow-and-sell on isolated margin.`,
       `6. EXIT — a market order exactly ${cfg.cell.tHours}h after entry (${(cfg.cell.tHours / 24).toFixed(1)} days later)${opts.stopPct ? `, or sooner if the ${(opts.stopPct * 100).toFixed(2)}% protective stop is hit` : '. No stop, no trail, no target: the tested cell is a pure time exit, so the hold length is the only exit knob'}.`,
     ],
@@ -92,7 +111,9 @@ function describeAnatomy(cfg, opts = {}) {
     voting: {
       quorum: cfg.cell.quorum,
       members: members.length,
-      rule: `count UP votes vs DOWN votes; a tie stands aside; otherwise the majority wins when it has >= ${cfg.cell.quorum} vote(s)`,
+      engine: cfg.engine || 'sweep',
+      agreement: a,
+      rule: stages ? agreeWords() : `count UP votes vs DOWN votes; a tie stands aside; otherwise the majority wins when it has >= ${cfg.cell.quorum} vote(s)`,
       dormantBandPct: bandPct,
       labelRule: `a training window is labelled UP/DOWN only when the following move exceeds +/-${bandPct}%; smaller moves are ASIDE — that is what teaches members to sit out`,
     },
