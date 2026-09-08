@@ -6457,8 +6457,15 @@ async function fRichWatch(st) {
 }
 
 function fWire(st, d) {
+  // EVERY RECORDED STEP CARRIES THE COUNT THE PAGE HAD IN HAND (3.88.1): the
+  // number of settings the rule so far keeps on the walked board, from the read
+  // this screen was drawn from -- never re-read, never worked out here. No read
+  // in hand is null, never 0: an unknown is not a zero.
+  const fCount = () => (d && d.survivors != null && Number.isFinite(Number(d.survivors)) ? Number(d.survivors) : null);
+  const fRecord = (step) => st.steps.push({ ...step, survivors: fCount() });
+  const fRecordBack = (back) => st.backSteps.push({ ...back, survivors: fCount() });
   const go = (n, why) => {
-    if (n < st.step) st.backSteps.push({ from: st.step, to: n, why: why || null });
+    if (n < st.step) fRecordBack({ from: st.step, to: n, why: why || null });
     else if (n > st.step) markStep(st.step);
     st.step = n; fSave(); drawFunnel();
   };
@@ -6500,7 +6507,7 @@ function fWire(st, d) {
   };
   // a row on step 1 opens step 2 with that dial chosen
   document.querySelectorAll('[data-fnarrow]').forEach((b) => {
-    b.onclick = () => { markStep(1); st.dial = b.dataset.fnarrow; st.step = 2; st.steps.push({ n: 1, what: 'which dial to narrow next', chose: fDialLabel(st.dial) }); fSave(); drawFunnel(); };
+    b.onclick = () => { markStep(1); st.dial = b.dataset.fnarrow; st.step = 2; fRecord({ n: 1, what: 'which dial to narrow next', chose: fDialLabel(st.dial) }); fSave(); drawFunnel(); };
   });
   // a word-valued dial keeps a list of values, not a range
   const kv = $('#fKeepValues');
@@ -6510,7 +6517,7 @@ function fWire(st, d) {
     if (!st.rule.allowed) st.rule.allowed = {};
     if (!vals.length) delete st.rule.allowed[st.dial]; else st.rule.allowed[st.dial] = vals;
     markStep(2);
-    st.steps.push({ n: 2, what: `the values of ${fDialLabel(st.dial)}`, chose: vals.join(', ') || 'none' });
+    fRecord({ n: 2, what: `the values of ${fDialLabel(st.dial)}`, chose: vals.join(', ') || 'none' });
     fSave(); drawFunnel();
   };
   const ar = $('#fAddRange');
@@ -6528,19 +6535,19 @@ function fWire(st, d) {
       delete st.rule.ranges[st.dial];
       st.rule.allowed[st.dial] = ['none'];
       markStep(2);
-      st.steps.push({ n: 2, what: `the values of ${fDialLabel(st.dial)}`, chose: 'none' });
+      fRecord({ n: 2, what: `the values of ${fDialLabel(st.dial)}`, chose: 'none' });
     } else if (lo === '' && hi === '') {
       delete st.rule.ranges[st.dial];
       delete st.rule.allowed[st.dial];
       markStep(2);
-      st.steps.push({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}` });
+      fRecord({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}` });
     } else {
       st.rule.ranges[st.dial] = { min: lo === '' ? null : Number(lo), max: hi === '' ? null : Number(hi), ...(alsoNone ? { also: ['none'] } : {}) };
       // A RANGE REPLACES A none-ONLY CLAUSE on the same dial. Left in place the
       // two would both apply, and a range plus "is none" keeps nothing at all.
       delete st.rule.allowed[st.dial];
       markStep(2);
-      st.steps.push({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}${alsoNone ? ' or none' : ''}` });
+      fRecord({ n: 2, what: `the shape of ${fDialLabel(st.dial)}`, chose: `${lo} to ${hi}${alsoNone ? ' or none' : ''}` });
     }
     fSave(); drawFunnel();
   };
@@ -6620,7 +6627,7 @@ function fWire(st, d) {
     const va = put(st.dialA, aVals, span.a[0], span.a[1]);
     const vb = put(st.dialB, bVals, span.b[0], span.b[1]);
     markStep(3);
-    st.steps.push({ n: 3, what: `a block on ${fDialLabel(st.dialA)} x ${fDialLabel(st.dialB)}`, chose: `${va[0]}..${va[va.length - 1]} x ${vb[0]}..${vb[vb.length - 1]}${pk ? '' : ' (recommended)'}` });
+    fRecord({ n: 3, what: `a block on ${fDialLabel(st.dialA)} x ${fDialLabel(st.dialB)}`, chose: `${va[0]}..${va[va.length - 1]} x ${vb[0]}..${vb[vb.length - 1]}${pk ? '' : ' (recommended)'}` });
     fSave(); drawFunnel();
   };
   // WHICH CROSSES ARE WORTH READING (§18). The switch keeps the list up to date
@@ -6653,7 +6660,7 @@ function fWire(st, d) {
       st.dialA = ca; st.dialB = cb;
       // §15.6: a choice the machine put in front of the owner is recorded as
       // such, in the same shape a hand-picked one is
-      st.steps.push({ n: 3, what: 'the cross to read', chose: `${fDialLabel(ca)} x ${fDialLabel(cb)}`, fromList: true });
+      fRecord({ n: 3, what: 'the cross to read', chose: `${fDialLabel(ca)} x ${fDialLabel(cb)}`, fromList: true });
       fSave(); drawFunnel();
     };
   });
@@ -6682,7 +6689,7 @@ function fWire(st, d) {
     // not something to be marked for
     if (a4.positive != null && a4.of != null && a4.positive < a4.of) mark('slices', 4, said);
     if ((st.conditions || {}).checkIsHalves) mark('checkIsHalves', 4);
-    st.steps.push({ n: 4, what: 'does it hold elsewhere', chose: said });
+    fRecord({ n: 4, what: 'does it hold elsewhere', chose: said });
     st.step = 5; fSave(); drawFunnel();
   };
   const ra = $('#fRegionAtLeast');
@@ -6705,7 +6712,7 @@ function fWire(st, d) {
   const km = $('#fKeepMine');
   if (km) km.onclick = () => {
     markStep(5);
-    st.steps.push({ n: 5, what: 'the widest region', chose: 'not kept - my own rule carried on whole' });
+    fRecord({ n: 5, what: 'the widest region', chose: 'not kept - my own rule carried on whole' });
     st.step = 6; fSave(); drawFunnel();
   };
   const kr = $('#fKeepRegion');
@@ -6727,7 +6734,7 @@ function fWire(st, d) {
       Number(st.regionReach) > 1 ? `joined up to ${Math.floor(Number(st.regionReach))} apart` : '',
       (st.regionAcross || []).length ? `joined across ${st.regionAcross.map(fDialLabel).join(', ')}` : '',
     ].filter(Boolean);
-    st.steps.push({ n: 5, what: 'the widest region', chose: `kept as the rule (${Object.keys(ranges).length + Object.keys(allowed).length} dial(s))${loosened.length ? `, ${loosened.join(', ')}` : ''}` });
+    fRecord({ n: 5, what: 'the widest region', chose: `kept as the rule (${Object.keys(ranges).length + Object.keys(allowed).length} dial(s))${loosened.length ? `, ${loosened.join(', ')}` : ''}` });
     fSave(); drawFunnel();
   };
   // CONTINUOUSLY, AS THEY ARE TYPED (3.81.0). Debounced so a held-down key is
@@ -6762,7 +6769,7 @@ function fWire(st, d) {
     if (dd === '') delete st.rule.floors.maxDrawdown; else st.rule.floors.maxDrawdown = { max: Number(dd) };
     if (tr === '') delete st.rule.floors.avgTrades; else st.rule.floors.avgTrades = { min: Number(tr) };
     markStep(6);
-    st.steps.push({ n: 6, what: 'exposure', chose: `worst streak ${dd}, fewest trades ${tr}` });
+    fRecord({ n: 6, what: 'exposure', chose: `worst streak ${dd}, fewest trades ${tr}` });
     fSave(); drawFunnel();
   };
   // ONE PRESS, START TO FINISH (3.81.0). It starts the run, watches it, and
@@ -6798,7 +6805,7 @@ function fWire(st, d) {
     st.closing = key === 'top'
       ? { key, column: (st.closing || {}).column || 'avgTest', n: (st.closing || {}).n ?? st.target ?? null }
       : { key };
-    st.steps.push({ n: 7, what: 'how to reach the target', chose: key });
+    fRecord({ n: 7, what: 'how to reach the target', chose: key });
     fSave(); drawFunnel();
   };
   const cc = $('#fCutCol');
@@ -6852,13 +6859,13 @@ function fWire(st, d) {
       const gone = fRuleClauses(st).filter((c) => c.kind === kind && c.key === key).map((c) => c.text).join('; ');
       delete st.rule[kind][key];
       if (!st.steps) st.steps = [];
-      st.steps.push({ n: st.step, what: `removed from the rule: ${gone}`, chose: 'removed' });
+      fRecord({ n: st.step, what: `removed from the rule: ${gone}`, chose: 'removed' });
       fSave(); drawFunnel();
     };
   });
   const cl = $('#fClear');
   if (cl) cl.onclick = () => {
-    st.backSteps.push({ from: st.step, to: 1, why: 'started the rule again' });
+    fRecordBack({ from: st.step, to: 1, why: 'started the rule again' });
     st.rule = { ranges: {}, allowed: {}, floors: {} };
     st.closing = { key: 'rule' }; st.userRule = null;
     st.step = 1; st.rebuilt = false; st.rebuiltSaid = null; fSave(); drawFunnel();

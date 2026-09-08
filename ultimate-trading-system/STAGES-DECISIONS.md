@@ -944,3 +944,15 @@ carried out 2026-08-28 under its own GO — decision 50.
     units, Verify's, the verdict press and the ride each refuse while another is
     going, in words that name it. The pricing pass is not exercised end to end by
     the suite, as the Funnel's own press is not; the taking of its answer is.
+
+78. **Every recorded step of the walk carries the survivor count the page had
+    in hand** (3.88.1, loop, VERIFY-DESIGN.md separate task 5, section 9 step
+    4). The record always kept a place for it and the page never filled it.
+    Each step and step back is recorded through one counted helper inside the
+    walk's wiring, reading the survivors off the read the screen was drawn
+    from — the number printed as "N settings survive" — never re-read and
+    never worked out on the page. *Unknown is null, never 0:* a step recorded
+    with no read in hand says so, because a zero reads as a rule that kept
+    nothing. *The halves and the noise twin are left empty:* the read carries
+    no survivor count on them, and a page that invented one would be the fault
+    this release ends. Third digit: a field the record already had, filled.

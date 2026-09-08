@@ -523,8 +523,9 @@ function recordStep(doc, step) {
 // GOING BACK IS LOOKING. A funnel walked forward once and a funnel walked back
 // four times have seen different amounts of the board, and only one of them
 // admits it.
-function recordBackStep(doc, { from, to, why }) {
-  doc.backSteps.push({ at: new Date().toISOString(), from: from ?? null, to: to ?? null, why: why || null });
+function recordBackStep(doc, { from, to, why, survivors }) {
+  // the count the page had in hand when it stepped back (3.88.1); unknown is null, never 0
+  doc.backSteps.push({ at: new Date().toISOString(), from: from ?? null, to: to ?? null, why: why || null, survivors: survivors == null ? null : survivors });
   return doc;
 }
 

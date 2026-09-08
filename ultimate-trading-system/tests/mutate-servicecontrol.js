@@ -1137,6 +1137,11 @@ const GUARDS = [
     'theRideKeepsTheHeldBackHalfBesideTheTestHalfForThisUnitOnly', "the ride prints the test window's numbers as the held-back window's"],
   [path.join(ROOT, 'lib', 'stages.js'), "  const rides = (doc.ride || []).length;", "  const rides = 0;",
     'theRideIsALookAndTheNextVerdictCountsItAndTheRefusalsAreInWords', 'the ride opens the held-back window and no look is counted'],
+  // ---- every recorded step carries the count the page had in hand (3.88.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), '  const fRecord = (step) => st.steps.push({ ...step, survivors: fCount() });', '  const fRecord = (step) => st.steps.push({ ...step });',
+    'everyRecordedStepCarriesTheCountThePageHadInHand', 'every recorded step carries an empty count again, and the reserve grade cannot say how far the board was narrowed at each look'],
+  [path.join(ROOT, 'lib', 'funnelset.js'), "  doc.backSteps.push({ at: new Date().toISOString(), from: from ?? null, to: to ?? null, why: why || null, survivors: survivors == null ? null : survivors });", "  doc.backSteps.push({ at: new Date().toISOString(), from: from ?? null, to: to ?? null, why: why || null, survivors: survivors == null ? 0 : survivors });",
+    'everyRecordedStepCarriesTheCountThePageHadInHand', 'a step back with no read in hand is written as a count of zero, which reads as a rule that kept nothing'],
 ];
 
 const only = process.argv[2] || '';

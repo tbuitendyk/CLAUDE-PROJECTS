@@ -325,6 +325,34 @@ module.exports = {
     for (const st of doc.steps) assert.ok(st.at, 'every step is timed');
   },
 
+  // EVERY RECORDED STEP CARRIES THE COUNT THE PAGE HAD IN HAND (3.88.1). The
+  // record always had a place for it and the page never filled it, so every
+  // step on the owner's set carried an empty count. Each step and step back is
+  // now recorded through one counted helper that reads the survivors off the
+  // read the screen was drawn from; no read in hand is null, never 0.
+  everyRecordedStepCarriesTheCountThePageHadInHand() {
+    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const wire = ui.slice(ui.indexOf('function fWire(st, d) {'), ui.indexOf('\n}\n', ui.indexOf('function fWire(st, d) {')));
+    assert.ok(/const fCount = \(\) => \(d && d\.survivors != null && Number\.isFinite\(Number\(d\.survivors\)\) \? Number\(d\.survivors\) : null\);/.test(wire),
+      'the count is the read\'s own survivors, and null when there is none');
+    assert.ok(/const fRecord = \(step\) => st\.steps\.push\(\{ \.\.\.step, survivors: fCount\(\) \}\);/.test(wire), 'every step goes through the counted helper');
+    assert.ok(/const fRecordBack = \(back\) => st\.backSteps\.push\(\{ \.\.\.back, survivors: fCount\(\) \}\);/.test(wire), 'and every step back');
+    assert.strictEqual((wire.match(/st\.steps\.push\(/g) || []).length, 1, 'no step is recorded past the helper');
+    assert.strictEqual((wire.match(/st\.backSteps\.push\(/g) || []).length, 1, 'no step back is recorded past the helper');
+    assert.ok((wire.match(/\bfRecord\(\{ n: /g) || []).length >= 13, 'the thirteen recorded choices of the walk');
+    assert.ok((wire.match(/\bfRecordBack\(\{ from: /g) || []).length >= 2, 'and both ways back');
+    assert.strictEqual((ui.match(/st\.steps\.push\(/g) || []).length, 1, 'nothing outside the walk records a step either');
+    // the record keeps the count on both, and an unknown stays unknown
+    const doc = FS4.newFunnelSet({ id: 's4-x-4', target: 10 });
+    FS4.recordStep(doc, { n: 1, what: 'which dial to narrow next', chose: 'tHours', survivors: 800 });
+    FS4.recordStep(doc, { n: 2, what: 'the shape of tHours', chose: '65 to 113', survivors: null });
+    FS4.recordBackStep(doc, { from: 2, to: 1, why: 'a look back', survivors: 400 });
+    FS4.recordBackStep(doc, { from: 2, to: 1, why: 'no read in hand' });
+    assert.deepStrictEqual(doc.steps.map((x) => x.survivors), [800, null]);
+    assert.deepStrictEqual(doc.backSteps.map((x) => x.survivors), [400, null]);
+    assert.ok(!doc.steps.some((x) => x.survivors === 0) && !doc.backSteps.some((x) => x.survivors === 0), 'unknown is never written as zero');
+  },
+
   // All three ways of closing the gap are offered and the shopping one says so
   // in those words. Withholding it would remove the owner's choice invisibly,
   // which is the fault RULE ZERO and RULE FIVE exist to prevent.
@@ -1881,7 +1909,7 @@ module.exports = {
     assert.ok(box.includes('<button data-frm="${esc(`${c.kind}|${c.key}`)}">remove</button>'), 'a clause has no remove of its own');
     const wire = page.slice(page.indexOf("document.querySelectorAll('[data-frm]').forEach((b) => {"), page.indexOf("const cl = $('#fClear');"));
     assert.ok(wire.includes('delete st.rule[kind][key];'), 'remove does not drop the clause');
-    assert.ok(wire.includes("st.steps.push({ n: st.step, what: `removed from the rule: ${gone}`, chose: 'removed' });"), 'a removal is not recorded in the walk\'s notes');
+    assert.ok(wire.includes("fRecord({ n: st.step, what: `removed from the rule: ${gone}`, chose: 'removed' });"), 'a removal is not recorded in the walk\'s notes');
     assert.ok(wire.includes('fSave(); drawFunnel();'), 'a removal is not saved and redrawn');
   },
 
@@ -2708,7 +2736,7 @@ module.exports = {
     const press = page.slice(page.indexOf("const ar = $('#fAddRange');"), page.indexOf('const countRange ='));
     assert.ok(press.includes("if (lo === '' && hi === '' && alsoNone) {"), 'clearing both boxes with the tick on still deletes the whole clause');
     assert.ok(press.includes("st.rule.allowed[st.dial] = ['none'];"), 'none alone is not kept as a value, which is what it is');
-    assert.ok(press.includes("st.steps.push({ n: 2, what: `the values of ${fDialLabel(st.dial)}`, chose: 'none' });"),
+    assert.ok(press.includes("fRecord({ n: 2, what: `the values of ${fDialLabel(st.dial)}`, chose: 'none' });"),
       'the walk records it as a shape rather than as the value it kept, so the replay of the steps would rebuild a range');
     // A RANGE MUST CLEAR IT. Both clauses applying at once keeps nothing at all,
     // and that fault could not exist until this release made the second clause.
