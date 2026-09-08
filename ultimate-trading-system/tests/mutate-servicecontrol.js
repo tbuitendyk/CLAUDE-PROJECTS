@@ -1198,6 +1198,9 @@ const GUARDS = [
     'theBuildKeepsOnlyRowsAHalfLifeWonAndEachRecordCarriesIts', 'a half-life set has no standing at all: Tune and Greenlight refuse every record it holds'],
   [path.join(ROOT, 'lib', 'live', 'stagesignal.js'), "  if (Number.isFinite(h) && h > 0) return require('../halflife').halfLifeWeights(training, trainChunks, fee, h).weights;", "  if (false) return require('../halflife').halfLifeWeights(training, trainChunks, fee, h).weights;",
     'theHalfLifeTravelsIntoTheCaptureTheGreenlightAndTheLivePath', 'a deployment minted from a half-life record trains its members with every day weighed the same, and trades a setup that was never priced'],
+  // ---- the two checks live on Setup, under Version (3.96.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "localStorage.setItem('setup-tab', 'version')", "localStorage.setItem('setup-tab', 'compute')",
+    'theTwoChecksLiveOnSetupsVersionTabAndTheBadgeGoesThere', 'the marker beside "planted check:" opens Setup on the wrong tab, and the owner hunts for a check that is not there'],
 ];
 
 const only = process.argv[2] || '';

@@ -695,8 +695,8 @@ window.HELP = {
   verify: {
     title: 'Verify',
     how: [
-      ['Checking the instrument first, then one result',
-        'Everything on the other tabs assumes the machinery works. The planted check establishes that, against made-up price histories where the right answer is known in advance: one has a pattern deliberately hidden in it and the system must find it, one has nothing in it and the system must stay quiet. A miss on the first means it is blind; a hit on the second means it invents things. It certifies the older sweep path. The stage-engine check beside it asks the same question of the three-stage engine that prices the record sets on Boards, all the way through to a verdict on this tab, and a pass belongs to the release that earned it.\n\nBelow it, one result is judged: a Stage 4 record set, read as a whole. A rule can be checked against scrambled data and a single row cannot, which is why the Funnel writes a rule and why nothing here judges one row.'],
+      ['One result judged here; the machinery checks on Setup',
+        'Everything on this tab assumes the machinery works. The two checks that establish that live on the Setup page, under Version: the planted check, against made-up price histories where the right answer is known in advance — one has a pattern deliberately hidden in it and the system must find it, one has nothing in it and the system must stay quiet — and the stage-engine check, which asks the same question of the three-stage engine that prices the record sets on Boards, all the way through to a verdict read the way this tab reads one. A miss on the first means it is blind; a hit on the second means it invents things. The marker beside "planted check:" at the top of every Construct screen says whether the planted check stands for this release, and opens that tab.\n\nHere, one result is judged: a Stage 4 record set, read as a whole. A rule can be checked against scrambled data and a single row cannot, which is why the Funnel writes a rule and why nothing here judges one row.'],
       ['What the verdict reads, and what it does not',
         'The press reads what the set\'s survivors made on the held-back window, the days no part of the search touched, and holds that against four simpler things: buying the coin and going away, shorting it and going away, being long every period and being short every period. The first two have to be beaten; the last two are the direction the window paid and are only printed. Then it reads the same settings\' money on every scrambled copy of their table and counts how many of those copies the real figure beats, against the bar the set was cut under. Each survivor gets the same reading on its own copies, printed beside how many would pass by chance, and that never picks a survivor and never gates the set. A sanity line says whether noise loses money, as fees demand; when it does not, the readings above it cannot be trusted.\n\nIt does not price the choosing of the survivors. The walk chose its ranges on the test window over its recorded steps; pricing that search itself would need the whole walk replayed on each scrambled board, which nothing here does. Two more lines are printed for information and never pass or fail: the rule on the test window against its own copies, which always looks good because it was chosen against them, and what shopping alone would have found.'],
       ['Every look is counted',
@@ -704,19 +704,11 @@ window.HELP = {
       ['Elsewhere, and from inside',
         'Two more readings sit under the verdict, both information and never a pass or fail. The first asks whether the same rule holds on the other coin-and-shape units of the same stage 3 set, each on its own held-back window against its own scrambled copies, and prints two counts: how many of them are positive and how many clear the bar, with a mark when fewer than half are positive. The second works out what the held-back window looked like from inside for each survivor: the largest drawdown, the worst and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers on the test window. Both are appended to the set on every press, and the ride is counted as a stamped look.'],
     ],
-    intro: 'The machinery check first, then the verdict on one Stage 4 record set: what its survivors made on '
-      + 'the days no part of the search touched, against the simpler things a rule has to beat and against the '
-      + 'same settings on scrambled copies of their table, with every rule declared before its number and every '
-      + 'look counted.',
+    intro: 'The verdict on one Stage 4 record set: what its survivors made on the days no part of the search '
+      + 'touched, against the simpler things a rule has to beat and against the same settings on scrambled copies '
+      + 'of their table, with every rule declared before its number and every look counted. The two machinery '
+      + 'checks it rests on, the planted check and the stage-engine check, live on the Setup page, under Version.',
     controls: {
-      pgRun: {
-        what: 'Runs the calibration check: a made-up asset with a known pattern hidden in it, which the system must find, and a made-up asset with nothing in it, which it must not.',
-        more: 'A miss on the first means it is blind. A hit on the second means it invents things. Either way, stop and fix that before trusting anything else. It certifies the older sweep path, not the three-stage engine.',
-      },
-      sgRun: {
-        what: 'Runs the same calibration check through the three-stage engine: two made-up coins, one with a known rule planted in it and one with nothing, through stage 1, stage 2 and a small stage 3, then a rule declared in advance is cut into a Stage 4 set on each coin and read on this tab.',
-        more: 'It passes only when the planted coin\'s rule made money on the held-back window, beat buying the coin and going away, beat every one of its scrambled copies, the fair coin\'s rule did not, and nothing failed. A fair coin clears that bar by chance about one time in twenty-one, and that chance is printed with the verdict. It takes minutes, refuses while anything else is running, and deletes everything it made when it lands, so nothing of it appears on Boards. A pass belongs to the release that earned it.',
-      },
       vSet: {
         what: 'Which Stage 4 record set to read, from every set on this box, newest first, each with its coin and shape, its survivors of its target, and whether a verdict is stamped on it.',
         more: 'Choosing a set reads its footing only: whether its rule still gives back its own survivors, what it was checked against, its marks, and how many looks the held-back window has already had. No held-back number is read until the button is pressed.',

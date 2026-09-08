@@ -1129,3 +1129,23 @@ carried out 2026-08-28 under its own GO — decision 50.
     the Trade rows say it on both Paper Books and Live Trading through the one
     path. Second digit.
 
+87. **The planted check and the stage-engine check live on Setup, under
+    Version** (3.96.0, loop H4, owner order 2026-09-08: "move the Planted
+    check box and it's two sections/controls to a new tab under Setup called
+    Version that comes after Compute -- the 'not checked' marker will take us
+    to the new tab of course for running the checks"). The panel moves whole
+    — the same words but for two sentences that pointed at Verify's own
+    screen, the same two presses, the same sleeping button with its reason,
+    the same last-verdict lines and full records — to a tab of its own on the
+    Setup page after Compute, drawn by that page's own self-contained code so
+    it is there when the trading service is not, and says so when the service
+    did not answer instead of reading NOT CHECKED. The tab re-reads both
+    checks every five seconds while it is open and redraws only when a
+    reading changed, so a running check's step line moves and an idle tab
+    stays still. Verify loses the panel and keeps everything under it; the
+    marker beside "planted check:" at the top of every Construct screen opens
+    Setup on Version instead of Verify. Setup has no Help tab, so the two help
+    entries go with the panel and their words are carried on the presses'
+    hover text and in the panel's own paragraphs; Verify's opening section
+    says where the checks went. Second digit.
+

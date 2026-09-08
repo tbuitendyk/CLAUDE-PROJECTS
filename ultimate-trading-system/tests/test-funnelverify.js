@@ -499,10 +499,12 @@ module.exports = {
     }
     const help = src('public/help-content.js');
     for (const id of ['t1null', 't1run', 't1rounds', 't1fire']) assert.ok(!new RegExp(`\\b${id}:`).test(help), `the help still describes ${id}`);
-    for (const id of ['vSet', 'vBarPct', 'vSanityPct', 'vRead', 'pgRun']) assert.ok(new RegExp(`\\b${id}: \\{`).test(help), `the help does not describe ${id}`);
-    for (const kept of ['sanity:', 'PASS — noise mostly loses, as fees demand.', 'FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.', 'What a pass buys:', 'this window only', 'a floor, never a measure of strength', 'Run the planted check']) {
+    for (const id of ['vSet', 'vBarPct', 'vSanityPct', 'vRead']) assert.ok(new RegExp(`\\b${id}: \\{`).test(help), `the help does not describe ${id}`);
+    for (const kept of ['sanity:', 'PASS — noise mostly loses, as fees demand.', 'FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.', 'What a pass buys:', 'this window only', 'a floor, never a measure of strength']) {
       assert.ok(ui.includes(kept), `gone from the page: ${kept}`);
     }
+    // the planted check's press lives on Setup, under Version (3.96.0)
+    assert.ok(src('public/setup.html').includes('Run the planted check'), 'the planted check\'s press is gone from Setup');
     assert.ok(/certifies the old sweep pipeline/.test(src('lib/stages.js')), 'the footing says what the planted check certifies');
     // the route the old runs' verdict was read through stays served, for them
     const server = src('server.js');

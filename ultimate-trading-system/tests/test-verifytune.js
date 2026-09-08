@@ -11,6 +11,9 @@ const { assert } = require('./helpers');
 const ROOT = path.join(__dirname, '..');
 const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const HTML = fs.readFileSync(path.join(ROOT, 'public', 'construct.html'), 'utf8');
+// the planted check's panel lives on Setup, under Version (3.96.0); the marker
+// beside "planted check:" and its poll stay on Construct
+const SETUP = fs.readFileSync(path.join(ROOT, 'public', 'setup.html'), 'utf8');
 
 module.exports = {
   // THE THREE PANELS THAT WAITED FOR A CHOSEN ROW OF AN OLD SWEEP RUN ARE GONE
@@ -62,12 +65,12 @@ module.exports = {
     }
     // strip line comments first: the comment recording this defect names the old
     // expression, and a check that matches its own documentation is no check
-    const code = UI.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    const code = [UI, SETUP].map((f) => f.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')).join('\n');
     assert.ok(!/\bs\.verdict\b/.test(code) && !/\bgate\.verdict\b/.test(code),
       'nothing may read .verdict off the gate status — gateStatus returns no such field, so it always fell through to NOT CHECKED');
     assert.ok(!/\bs\.status\b/.test(code), 'nor .status');
     assert.ok(/s\.state \|\| 'NOT CHECKED'/.test(code), 'it must read state');
-    assert.ok(/gate\.state/.test(code), 'and the Verify panel must read state too');
+    assert.ok(/gate\.state/.test(SETUP), 'and the panel on Setup must read state too');
   },
 
   thePlantedCheckSaysWhenItIsRunningAndKeepsSaying() {
@@ -77,14 +80,14 @@ module.exports = {
     assert.ok(/if \(s\.running && !gatePoll\) \{[\s\S]{0,200}setInterval/.test(UI),
       'the poll must be started when a gate is in flight, not merely defined');
     assert.ok(/clearInterval\(gatePoll\)/.test(UI), 'stopping the moment it lands');
-    assert.ok(/you do not need to reload/.test(UI), 'and telling the operator that');
-    assert.ok(/gate\.running \? 'disabled title="a planted check is already running"'/.test(UI),
+    assert.ok(/you do not need to reload/.test(SETUP), 'and telling the operator that');
+    assert.ok(/gate\.running \? 'disabled title="a planted check is already running"'/.test(SETUP),
       'the button must be disabled while a check is already running');
   },
 
   thePlantedCheckShowsTheReasonNotJustTheWord() {
-    assert.ok(/gate\.detail/.test(UI), 'the status sentence explains what the word means and must be shown');
-    assert.ok(/lastGate\.sentences/.test(UI), 'and the last gate\'s own verdict sentences');
+    assert.ok(/gate\.detail/.test(SETUP), 'the status sentence explains what the word means and must be shown');
+    assert.ok(/lastGate\.sentences/.test(SETUP), 'and the last gate\'s own verdict sentences');
   },
 
   // Inverted 2026-08-26 (owner order: "Remove the obsolete CPU button"). The

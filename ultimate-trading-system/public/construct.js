@@ -455,7 +455,7 @@ function gateBadge(s) {
   return {
     text: st,
     cls: /^pass$/i.test(st) ? 'b-pass' : /^fail$/i.test(st) ? 'b-fail' : 'b-warn',
-    tip: s.detail || 'the instrument\'s calibration certificate — click for the runner and the full verdict',
+    tip: (s.detail ? `${s.detail} — ` : 'the instrument\'s calibration certificate — ') + 'click to open Setup on Version, where it is run and read',
   };
 }
 
@@ -472,16 +472,15 @@ async function renderStrip() {
   el.innerHTML = `release ${esc(s.engineVersion || '')} · planted check:
     <span class="badge ${b.cls}" id="stripBadge" style="vertical-align:text-bottom" title="${esc(b.tip)}">${esc(b.text.toUpperCase())}</span>`;
   const btn = $('#stripBadge');
-  if (btn) btn.onclick = () => { tab = 'verify'; localStorage.setItem('cx-tab', tab); draw(); };
+  // The marker opens the Setup page on its Version tab, where the two checks
+  // are run and read (owner order, 2026-09-08: the checks left Verify).
+  if (btn) btn.onclick = () => { try { localStorage.setItem('setup-tab', 'version'); } catch (_) { /* private window */ } window.location.href = 'setup.html'; };
   // While a gate is in flight, keep the badge honest without the owner having to
   // reload. One timer only, cleared the moment it lands.
   if (s.running && !gatePoll) {
     gatePoll = setInterval(async () => {
       const now = await renderStrip();
-      if (!now || !now.running) {
-        clearInterval(gatePoll); gatePoll = null;
-        if (tab === 'verify') drawVerify();
-      }
+      if (!now || !now.running) { clearInterval(gatePoll); gatePoll = null; }
     }, 5000);
   }
   return s;
@@ -1903,54 +1902,6 @@ const vDay = (ts) => (ts != null && Number.isFinite(Number(ts)) ? new Date(Numbe
 const vPct = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
 const vFix = (v, n = 2) => (v == null || !Number.isFinite(Number(v)) ? 'none' : Number(v).toFixed(n));
 
-function vStageGateHtml(sg) {
-  const s = sg || {};
-  const run = s.run || null;
-  const last = s.last || null;
-  const cls = s.state === 'RUNNING' ? 'warn' : s.state === 'PASS' ? 'pos' : s.state === 'FAIL' ? 'neg' : 'muted';
-  return `<h4 style="margin:.8rem 0 .3rem">The stage-engine check</h4>
-    <p class="note">The same question asked of the engine that prices the record sets on Boards: two fabricated
-      coins, one with a known rule planted in it and one with nothing, through stage 1, stage 2, a small stage 3
-      with every scrambled copy kept, a rule declared before anything is launched and cut into a Stage 4 set on
-      each, and the verdict read on both. PASS = the planted coin's rule made held-back money, beat buying the coin
-      and going away, beat every one of its ${Number(s.last && s.last.copies ? s.last.copies : 20)} scrambled copies, the fair coin's rule did not, and nothing
-      failed. A fair coin clears that bar by chance about 1 in ${Number(s.last && s.last.copies ? s.last.copies : 20) + 1} times, and that chance is printed with every
-      verdict. A pass belongs to the release that earned it; a new release starts NOT CHECKED. Everything it
-      makes is deleted when it lands, so nothing of it is ever on Boards.</p>
-    <div class="row"><span>current: <b class="${cls}">${esc(s.state || 'NOT CHECKED')}</b>
-      ${last && last.release ? `<span class="muted">(release ${esc(last.release)})</span>` : ''}</span>
-      <button id="sgRun" class="pri" ${s.state === 'RUNNING' ? 'disabled title="the stage-engine check is already running"' : ''}>Run the stage-engine check</button>
-      <span id="sgMsg" class="note">${s.state === 'RUNNING' && run ? `running now — ${esc(run.step || '')}` : ''}</span></div>
-    ${s.detail ? `<p class="note">${esc(s.detail)}</p>` : ''}
-    ${run && run.error ? `<p class="note"><b class="neg">The last press failed:</b> ${esc(run.error)}</p>` : ''}
-    ${last && last.sentences && last.sentences.length ? `<div class="note"><b>Last stage gate (${esc(last.id || '')}, release ${esc(last.release || '')}, ${last.pass ? 'PASS' : 'FAIL'}${last.elapsedMs ? `, ${Math.round(last.elapsedMs / 1000)} s` : ''}${last.span ? `, built on fabricated prices from ${esc(last.span.fromMonth)} to ${esc(last.span.toDate)}` : ''}):</b>
-      ${last.sentences.map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
-    ${sg ? `<details style="margin-top:.4rem"><summary>full stage-gate record</summary><pre>${esc(JSON.stringify(sg, null, 1))}</pre></details>` : ''}`;
-}
-function vPlantedPanelHtml(gate, sg) {
-  return `<div class="panel">
-    <h3 style="margin-top:0">Planted check — the instrument's calibration certificate</h3>
-    <p class="note">Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
-      null pipeline. PASS = the board found the plant, profited, beat always-long, and every null board destroyed it.
-      A pass belongs to the engine version that earned it; a new release starts NOT CHECKED. It certifies the sweep
-      pipeline the Sweep tab's older path fires, not the three-stage engine that prices the record sets below.</p>
-    <div class="row"><span>current: <b class="${gate && gate.running ? 'warn' : (gate && gate.state === 'PASS' ? 'pos' : gate && gate.state === 'FAIL' ? 'neg' : 'muted')}">${esc(gate && gate.running ? 'RUNNING' : ((gate && gate.state) || 'NOT CHECKED'))}</b>
-      ${gate && gate.engineVersion ? `<span class="muted">(engine ${esc(gate.engineVersion)})</span>` : ''}</span>
-      <button id="pgRun" class="pri" ${gate && gate.running ? 'disabled title="a planted check is already running"'
-    : (gate && gate.blockedBy ? `disabled title="${esc(gate.blockedBy)} is going — the planted check regenerates the fabricated pair and fires a whole sweep, so it waits for the box to be free"` : '')}>Run the planted check</button>
-      <span id="pgMsg" class="note">${gate && gate.running ? `running now — ${esc(gate.running)}`
-    : (gate && gate.blockedBy ? `waits for ${esc(gate.blockedBy)} to finish` : '')}</span></div>
-    ${gate && gate.detail ? `<p class="note">${esc(gate.detail)}</p>` : ''}
-    ${gate && gate.running ? '<p class="note">This regenerates the fabricated pair and fires a full sweep, so it takes minutes. The badge above and the release strip refresh themselves — you do not need to reload.</p>' : ''}
-    ${gate && gate.lastGate && gate.lastGate.sentences ? `<div class="note"><b>Last gate (${esc(gate.lastGate.id || '')}, engine ${esc(gate.lastGate.engineVersion || '')}, ${gate.lastGate.pass ? 'PASS' : 'FAIL'}):</b>
-      ${gate.lastGate.sentences.map((x) => `<div>${esc(x)}</div>`).join('')}
-      ${gate.lastGate.runDeleted ? `<div style="margin-top:.3rem"><b>That run has been deleted</b> — its rows are gone, so
-        it is not on the Boards section any more. The verdict above is the record kept when it finished, and it stands
-        until a fresh planted check replaces it.</div>` : ''}</div>` : ''}
-    ${gate ? `<details style="margin-top:.4rem"><summary>full gate record</summary><pre>${esc(JSON.stringify(gate, null, 1))}</pre></details>` : ''}
-    ${vStageGateHtml(sg)}
-  </div>`;
-}
 // the set is picked from the server's own list, newest first, never typed
 function vSetBoxHtml(list, chosen) {
   return `<div class="row"><label class="f" title="every Stage 4 record set on this box, newest first, with its coin and shape, its survivors of its target, and whether a verdict is stamped on it">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
@@ -2123,37 +2074,11 @@ function vRideHtml(d) {
   </div>`;
 }
 async function drawVerify() {
-  const gate = await apiOr('api/planted-gate/status', null);
-  const sg = await apiOr('api/stage-gate/status', null);
   // a half-life set stands on its source's verdict and is read there, so it is not offered here (3.95.0)
   const sets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => !x.derived);
   const chosen = vRememberedSet(sets);
   const d = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/verify`, null) : null;
-  $('#view').innerHTML = `${vPlantedPanelHtml(gate, sg)}${vSetPanelHtml(sets, chosen, d)}`;
-  const sgBtn = $('#sgRun');
-  if (sgBtn) sgBtn.onclick = async () => {
-    if (!confirm('Run the stage-engine check?\n\nFabricates two coins and runs stage 1, stage 2 and a small stage 3 on them, then cuts and reads a Stage 4 set on each. Minutes. It refuses while any other job, sweep or stage run is going, and nothing else can start while it runs. Everything it makes is deleted when it lands.')) return;
-    sgBtn.disabled = true;
-    $('#sgMsg').textContent = 'starting…';
-    const out = await tryPost('api/stage-gate', {}, 'The stage-engine check\'s line on Verify says what it is doing.');
-    if (!out) { sgBtn.disabled = false; $('#sgMsg').textContent = ''; return; }
-    vStageGateFollow();
-  };
-  if (sg && sg.state === 'RUNNING') vStageGateFollow();
-  const pg = $('#pgRun');
-  if (pg) pg.onclick = async () => {
-    if (!confirm('Run the planted check?\n\nRegenerates the fabricated pair and fires a full sweep through the null pipeline. Minutes, not seconds. It refuses while any other job, sweep or stage run is going.')) return;
-    pg.disabled = true;
-    $('#pgMsg').textContent = 'starting…';
-    const out = await tryPost('api/planted-gate', {});
-    if (!out) { pg.disabled = false; $('#pgMsg').textContent = ''; return; }
-    // Say what is happening and KEEP saying it. Before this, the button fired,
-    // claimed the page would update when it landed, and nothing ever polled —
-    // so a running check was indistinguishable from one that never started.
-    $('#pgMsg').textContent = `running — ${out.batchId || ''}`;
-    renderStrip();
-    drawVerify();
-  };
+  $('#view').innerHTML = vSetPanelHtml(sets, chosen, d);
   const sel = $('#vSet');
   if (sel) sel.onchange = () => {
     try { localStorage.setItem(V_SET_KEY, sel.value); } catch (_) { /* private window */ }
@@ -2189,26 +2114,6 @@ async function drawVerify() {
   // a read or a ride already going for this set is followed, so a reload mid-way keeps saying so
   if (d && d.othersRunning && ob) { ob.disabled = true; vOthersFollow(chosen, d.othersRunning.token); }
   if (d && d.rideRunning && rb) { rb.disabled = true; vRideFollow(chosen, d.rideRunning.token); }
-}
-// THE STAGE-ENGINE CHECK IS WATCHED WHILE IT RUNS, one watcher per page, and
-// the panel redraws from its record when it lands.
-let vStageGateWatching = false;
-async function vStageGateFollow() {
-  if (vStageGateWatching) return;
-  vStageGateWatching = true;
-  try {
-    for (;;) {
-      await new Promise((resolve) => { setTimeout(resolve, 5000); });
-      if (tab !== 'verify') return;
-      let s = null;
-      try { s = await api('api/stage-gate/status'); } catch (_) { s = null; }
-      if (!s) continue;
-      const m = $('#sgMsg');
-      if (s.state === 'RUNNING') { if (m) m.textContent = `running now — ${(s.run && s.run.step) || ''}`; continue; }
-      drawVerify();
-      return;
-    }
-  } finally { vStageGateWatching = false; }
 }
 // THE READ IS STARTED AND POLLED, the shape every press on the Funnel has, so no
 // one request is held open; the page redraws from the record when it lands.

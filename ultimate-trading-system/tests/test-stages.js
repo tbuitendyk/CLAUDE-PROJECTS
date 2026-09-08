@@ -2045,7 +2045,8 @@ module.exports = {
     const status = srv.slice(srv.indexOf("app.get('/api/planted-gate/status'"), srv.indexOf("app.get('/api/planted-gate/status'") + 900);
     assert.ok(/stages\.stageBusy\(\)/.test(status) && /blockedBy/.test(status),
       'the status does not say what would stop the check, so the button cannot sleep');
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    // the button lives on Setup, under Version (3.96.0)
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'setup.html'), 'utf8');
     assert.ok(/gate\.blockedBy \? `disabled title=/.test(ui), 'the planted check button does not sleep while the box is busy');
     assert.ok(/waits for \$\{esc\(gate\.blockedBy\)\} to finish/.test(ui),
       'and it does not say what it is waiting for, which is the only thing that makes a sleeping button bearable');

@@ -125,10 +125,11 @@
     <div class="spacer"></div>
     <button class="themebtn" id="themebtn">&#9686; theme</button>
   </div>
-  <div class="sub">Account and system settings.</div>
+  <div class="sub">Account and system settings, and the release&#39;s own checks.</div>
   <div class="tabs">
     <div class="tab" data-tab="account">Account</div>
     <div class="tab" data-tab="compute">Compute</div>
+    <div class="tab" data-tab="version">Version</div>
   </div>
   </div>
 
@@ -172,6 +173,10 @@ let cLoads = null;           // last reading from the small always-up program
 let cCfg = null;             // last reading from the trading service
 let cErrLoads = null;
 let cErrCfg = null;
+let vTimer = null;           // the five-second re-read, armed only while Version shows
+let vGate = null;            // last reading of the planted check
+let vSg = null;              // last reading of the stage-engine check
+let vErr = null;             // why the planted check could not be read, when it could not
 
 const mb = (b) => b == null ? '—' : b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : Math.round(b / 1048576) + ' MB';
 const age = (s) => s == null ? '—' : s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : s < 172800 ? (s / 3600).toFixed(1) + 'h' : (s / 86400).toFixed(1) + 'd';
@@ -338,14 +343,153 @@ async function refreshCompute(force) {
   if (tab === 'compute') drawCompute();
 }
 
+// ---- Version (owner order, 2026-09-08) ----------------------------------------
+// The release this box runs, and the two checks that certify it: the planted
+// check, which certifies the older sweep path, and the stage-engine check,
+// which asks the same question of the three-stage engine that prices the
+// record sets on Boards. Both moved here whole from the Construct page's
+// Verify tab, which now judges one result and nothing else; the marker beside
+// "planted check:" at the top of every Construct screen opens this tab.
+// Self-contained like the rest of this page: both panels are drawn from the
+// two status readings and nothing else, and a service that did not answer is
+// said to have not answered rather than read as NOT CHECKED.
+async function loadVersion() {
+  const a = getJson('api/planted-gate/status').then((d) => { vGate = d; vErr = null; }, (e) => { vGate = null; vErr = e.message; });
+  const b = getJson('api/stage-gate/status').then((d) => { vSg = d; }, () => { vSg = null; });
+  await Promise.all([a, b]);
+}
+
+const PG_TIP = "runs the calibration check: a made-up asset with a known pattern hidden in it, which the system must find, and a made-up asset with nothing in it, which it must not. A miss on the first means it is blind; a hit on the second means it invents things. Either way, stop and fix that before trusting anything else. It certifies the older sweep path, not the three-stage engine.";
+const SG_TIP = "runs the same calibration check through the three-stage engine: two made-up coins, one with a known rule planted in it and one with nothing, through stage 1, stage 2 and a small stage 3, then a rule declared in advance is cut into a Stage 4 set on each coin and read the way Verify reads one. It takes minutes, refuses while anything else is running, and deletes everything it made when it lands, so nothing of it appears on Boards. A pass belongs to the release that earned it.";
+
+function stageGateHtml(sg) {
+  const s = sg || {};
+  const run = s.run || null;
+  const last = s.last || null;
+  const cls = s.state === 'RUNNING' ? 'warn' : s.state === 'PASS' ? 'pos' : s.state === 'FAIL' ? 'neg' : 'muted';
+  return `<h4 style="margin:.8rem 0 .3rem">The stage-engine check</h4>
+    <p class="note">The same question asked of the engine that prices the record sets on Boards: two fabricated
+      coins, one with a known rule planted in it and one with nothing, through stage 1, stage 2, a small stage 3
+      with every scrambled copy kept, a rule declared before anything is launched and cut into a Stage 4 set on
+      each, and the verdict read on both. PASS = the planted coin's rule made held-back money, beat buying the coin
+      and going away, beat every one of its ${Number(s.last && s.last.copies ? s.last.copies : 20)} scrambled copies, the fair coin's rule did not, and nothing
+      failed. A fair coin clears that bar by chance about 1 in ${Number(s.last && s.last.copies ? s.last.copies : 20) + 1} times, and that chance is printed with every
+      verdict. A pass belongs to the release that earned it; a new release starts NOT CHECKED. Everything it
+      makes is deleted when it lands, so nothing of it is ever on Boards.</p>
+    <div class="row"><span>current: <b class="${cls}">${esc(s.state || 'NOT CHECKED')}</b>
+      ${last && last.release ? `<span class="muted">(release ${esc(last.release)})</span>` : ''}</span>
+      <button id="sgRun" class="pri" ${s.state === 'RUNNING' ? 'disabled title="the stage-engine check is already running"' : `title="${SG_TIP}"`}>Run the stage-engine check</button>
+      <span id="sgMsg" class="note">${s.state === 'RUNNING' && run ? `running now — ${esc(run.step || '')}` : ''}</span></div>
+    ${s.detail ? `<p class="note">${esc(s.detail)}</p>` : ''}
+    ${run && run.error ? `<p class="note"><b class="neg">The last press failed:</b> ${esc(run.error)}</p>` : ''}
+    ${last && last.sentences && last.sentences.length ? `<div class="note"><b>Last stage gate (${esc(last.id || '')}, release ${esc(last.release || '')}, ${last.pass ? 'PASS' : 'FAIL'}${last.elapsedMs ? `, ${Math.round(last.elapsedMs / 1000)} s` : ''}${last.span ? `, built on fabricated prices from ${esc(last.span.fromMonth)} to ${esc(last.span.toDate)}` : ''}):</b>
+      ${last.sentences.map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
+    ${sg ? `<details style="margin-top:.4rem"><summary>full stage-gate record</summary><pre>${esc(JSON.stringify(sg, null, 1))}</pre></details>` : ''}`;
+}
+function plantedPanelHtml(gate, sg) {
+  return `<div class="panel">
+    <h3 style="margin-top:0">Planted check — the instrument's calibration certificate</h3>
+    <p class="note">Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
+      null pipeline. PASS = the board found the plant, profited, beat always-long, and every null board destroyed it.
+      A pass belongs to the engine version that earned it; a new release starts NOT CHECKED. It certifies the sweep
+      pipeline the Sweep tab's older path fires, not the three-stage engine that prices the record sets on Boards —
+      the stage-engine check under it asks that engine the same question.</p>
+    <div class="row"><span>current: <b class="${gate && gate.running ? 'warn' : (gate && gate.state === 'PASS' ? 'pos' : gate && gate.state === 'FAIL' ? 'neg' : 'muted')}">${esc(gate && gate.running ? 'RUNNING' : ((gate && gate.state) || 'NOT CHECKED'))}</b>
+      ${gate && gate.engineVersion ? `<span class="muted">(engine ${esc(gate.engineVersion)})</span>` : ''}</span>
+      <button id="pgRun" class="pri" ${gate && gate.running ? 'disabled title="a planted check is already running"'
+    : (gate && gate.blockedBy ? `disabled title="${esc(gate.blockedBy)} is going — the planted check regenerates the fabricated pair and fires a whole sweep, so it waits for the box to be free"` : `title="${PG_TIP}"`)}>Run the planted check</button>
+      <span id="pgMsg" class="note">${gate && gate.running ? `running now — ${esc(gate.running)}`
+    : (gate && gate.blockedBy ? `waits for ${esc(gate.blockedBy)} to finish` : '')}</span></div>
+    ${gate && gate.detail ? `<p class="note">${esc(gate.detail)}</p>` : ''}
+    ${gate && gate.running ? '<p class="note">This regenerates the fabricated pair and fires a full sweep, so it takes minutes. This tab re-reads itself every five seconds while it runs — you do not need to reload.</p>' : ''}
+    ${gate && gate.lastGate && gate.lastGate.sentences ? `<div class="note"><b>Last gate (${esc(gate.lastGate.id || '')}, engine ${esc(gate.lastGate.engineVersion || '')}, ${gate.lastGate.pass ? 'PASS' : 'FAIL'}):</b>
+      ${gate.lastGate.sentences.map((x) => `<div>${esc(x)}</div>`).join('')}
+      ${gate.lastGate.runDeleted ? `<div style="margin-top:.3rem"><b>That run has been deleted</b> — its rows are gone, so
+        it is not on the Boards section any more. The verdict above is the record kept when it finished, and it stands
+        until a fresh planted check replaces it.</div>` : ''}</div>` : ''}
+    ${gate ? `<details style="margin-top:.4rem"><summary>full gate record</summary><pre>${esc(JSON.stringify(gate, null, 1))}</pre></details>` : ''}
+    ${stageGateHtml(sg)}
+  </div>`;
+}
+// A press that got no answer in time is not a press that failed: the service
+// may still be working on it, and the next re-read says so.
+const pressFailed = (e) => (/HTTP 50[24]\b/.test(String(e.message))
+  ? 'no answer in time — the service may still be working on it; the next re-read says so'
+  : 'not started — ' + esc(e.message));
+function drawVersion() {
+  const gate = vGate;
+  const sg = vSg;
+  const state = gate && gate.running ? 'RUNNING' : ((gate && gate.state) || 'NOT CHECKED');
+  const cls = gate && gate.running ? 'warn' : state === 'PASS' ? 'pos' : state === 'FAIL' ? 'neg' : 'muted';
+  $('#view').innerHTML = '<div class="row" style="margin-bottom:.6rem">'
+    + '<span class="note">release <b>' + esc(gate && gate.engineVersion ? gate.engineVersion : '—') + '</b> · planted check: '
+    + '<b class="' + cls + '">' + esc(gate ? state : '—') + '</b> · re-read every five seconds while this tab is open.</span>'
+    + '<span class="spacer"></span>'
+    + '<button id="vNow" title="asks again right now instead of waiting for the five seconds">Read it again</button>'
+    + '</div>'
+    + (gate ? plantedPanelHtml(gate, sg)
+      : '<div class="panel"><p class="note neg">the trading service did not answer, so the checks cannot be shown' + (vErr ? ' — ' + esc(vErr) : '') + '</p></div>');
+
+  // wiring
+  const now = $('#vNow');
+  if (now) now.onclick = () => refreshVersion(true);
+  const sgBtn = $('#sgRun');
+  if (sgBtn) sgBtn.onclick = async () => {
+    if (!confirm('Run the stage-engine check?\n\nFabricates two coins and runs stage 1, stage 2 and a small stage 3 on them, then cuts and reads a Stage 4 set on each. Minutes. It refuses while any other job, sweep or stage run is going, and nothing else can start while it runs. Everything it makes is deleted when it lands.')) return;
+    sgBtn.disabled = true;
+    $('#sgMsg').textContent = 'starting…';
+    try {
+      await postJson('api/stage-gate', {});
+    } catch (e) {
+      $('#sgMsg').innerHTML = '<span class="neg">' + pressFailed(e) + '</span>';
+      sgBtn.disabled = false;
+      return;
+    }
+    refreshVersion(true);
+  };
+  const pg = $('#pgRun');
+  if (pg) pg.onclick = async () => {
+    if (!confirm('Run the planted check?\n\nRegenerates the fabricated pair and fires a full sweep through the null pipeline. Minutes, not seconds. It refuses while any other job, sweep or stage run is going.')) return;
+    pg.disabled = true;
+    $('#pgMsg').textContent = 'starting…';
+    let out = null;
+    try {
+      out = await postJson('api/planted-gate', {});
+    } catch (e) {
+      $('#pgMsg').innerHTML = '<span class="neg">' + pressFailed(e) + '</span>';
+      pg.disabled = false;
+      return;
+    }
+    $('#pgMsg').textContent = 'running — ' + (out.batchId || '');
+    refreshVersion(true);
+  };
+}
+
+// Re-read every five seconds while the tab shows, and redraw only when a
+// reading changed: a running check's step line moves, an idle tab stays still
+// and keeps whatever the owner has opened.
+async function refreshVersion(force) {
+  if (tab !== 'version' && !force) return;
+  const before = JSON.stringify([vGate, vSg, vErr]);
+  await loadVersion();
+  if (tab !== 'version') return;
+  if (force || before !== JSON.stringify([vGate, vSg, vErr])) drawVersion();
+}
+
 function draw() {
   document.querySelectorAll('.tab').forEach((t) => t.classList.toggle('on', t.dataset.tab === tab));
   clearInterval(cTimer); cTimer = null;
+  clearInterval(vTimer); vTimer = null;
   if (tab === 'compute') {
     $('#view').innerHTML = '<div class="panel"><span class="muted">reading…</span></div>';
     refreshCompute(true);
     // every thirty seconds while this tab is open, per the owner's design
     cTimer = setInterval(() => refreshCompute(false), 30000);
+  } else if (tab === 'version') {
+    $('#view').innerHTML = '<div class="panel"><span class="muted">reading…</span></div>';
+    refreshVersion(true);
+    // every five seconds while this tab is open, so a running check is followed without a reload
+    vTimer = setInterval(() => refreshVersion(false), 5000);
   } else {
     drawAccount();
   }
