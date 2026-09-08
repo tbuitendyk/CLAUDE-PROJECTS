@@ -235,6 +235,55 @@ for h in buitendyk.ca www.buitendyk.ca bible.buitendyk.ca kjv.buitendyk.ca \
 done
 ```
 
+### Automatic renewal (and the two things that make it real)
+
+`certbot.timer` runs daily and, now that the authenticator is `webroot`,
+actually completes. Two pieces make that trustworthy:
+
+**A deploy hook, or renewal silently doesn't take effect.**
+`certonly --webroot` writes new files and does not touch the running server.
+Without a hook, nginx keeps serving the old certificate from memory, and
+around day 90 starts serving an **expired** one while `certbot certificates`
+still reports everything healthy. `/etc/letsencrypt/renewal-hooks/deploy/`:
+
+```sh
+#!/bin/sh
+set -e
+if nginx -t >/dev/null 2>&1; then
+    systemctl reload nginx
+    logger -t certbot-deploy "reloaded nginx for ${RENEWED_DOMAINS:-unknown}"
+else
+    logger -t certbot-deploy "NGINX CONFIG TEST FAILED - not reloading"
+    exit 1
+fi
+```
+
+Hooks in that directory run only when a certificate actually renews.
+
+**A watchdog, because the original failure was silent for months.**
+`/usr/local/sbin/cert-expiry-watch`, on a daily timer, emails via the
+existing `support@` path only when something is wrong. It checks:
+
+- `certbot.service` in a failed state — exactly what sat unnoticed
+- `certbot.timer` not active
+- any certificate under 21 days
+- **the cert on disk vs. the cert nginx is actually serving** — served older
+  than disk is the precise signature of a renewal that succeeded but never
+  got reloaded, and it is the one thing `certbot certificates` cannot show
+
+Install or re-run (idempotent) with `cert-autorenew-harden.sh`; check by hand
+with `cert-expiry-watch --report`, which prints status and always mails:
+
+```
+cert status:
+  deploy.buitendyk.ca              disk=89d served=89d
+  docs.homeandofficemicro.com      disk=89d served=89d
+  kjv.buitendyk.ca                 disk=89d served=89d
+  www.buitendyk.ca                 disk=89d served=89d
+```
+
+`disk` and `served` matching is the healthy state.
+
 ### Two traps worth remembering
 
 **Backups in `sites-enabled` are live config.** nginx loads *every* file in
