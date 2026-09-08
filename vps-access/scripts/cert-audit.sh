@@ -1,79 +1,67 @@
 #!/usr/bin/env bash
 # cert-audit.sh -- READ-ONLY. Changes nothing.
 #
-# Four Let's Encrypt certs on this box lapsed in 2026 (kjv Aug 13, docs Aug 17,
-# www Sep 5, deploy Sep 8), so renewal has been failing for months rather than
-# a one-off slipping. This dumps the state needed to fix it properly: what
-# certbot manages, which authenticator each cert uses, whether the renewal
-# timer runs, the real failure from the logs, and how the :80 vhosts handle the
-# ACME challenge path.
+# Four Let's Encrypt certs on this box have lapsed (kjv Aug 13, docs Aug 17,
+# www Sep 5, deploy Sep 8). Run 1 established that certbot.timer is enabled and
+# firing daily but certbot.service is in a `failed` state -- so renewal is being
+# attempted and failing, not skipped. This run gets the reason.
 #
-# Output is capped ~8 KB by the endpoint, so each section is trimmed and the
-# most decisive ones (renewal confs, log errors, ACME handling) come last.
+# Every pipeline is guarded with `|| true`: under `set -euo pipefail` a grep
+# that matches nothing returns 1 and aborts the whole audit, which is what
+# truncated run 1 at section 3.
 set -euo pipefail
 
-echo "===== 1. certbot inventory ====="
-certbot certificates 2>&1 | grep -vE "^\s*$" | head -50 || echo "certbot not installed?"
+hr(){ echo; echo "===== $* ====="; }
 
-echo
-echo "===== 2. renewal timer ====="
-systemctl list-timers --all 2>/dev/null | grep -iE "certbot|NEXT" | head -5 || true
-for u in certbot.timer certbot.service snap.certbot.renew.timer; do
-  s=$(systemctl is-enabled "$u" 2>/dev/null || echo "-")
-  a=$(systemctl is-active "$u" 2>/dev/null || echo "-")
-  echo "  $u enabled=$s active=$a"
-done
-echo "-- cron --"
-ls -1 /etc/cron.d/ 2>/dev/null | grep -i certbot || echo "  (no certbot cron.d entry)"
+hr "1. why certbot.service failed"
+systemctl status certbot.service --no-pager -l 2>&1 | tail -20 || true
+echo "-- last journal --"
+journalctl -u certbot.service --no-pager -n 25 2>&1 | tail -25 || true
 
-echo
-echo "===== 3. nginx :80 handling of ACME (the decisive bit) ====="
-# server-level `return 301` runs before location selection and swallows the
-# challenge; a location-level one does not. Show which each :80 block uses.
-nginx -T 2>/dev/null | awk '
-  /^[[:space:]]*server[[:space:]]*\{/ { depth=1; buf=""; inblock=1 }
-  inblock {
-    buf = buf $0 "\n"
-    n=gsub(/\{/,"{"); m=gsub(/\}/,"}")
-    depth += n - m
-    if (depth <= 0) {
-      if (buf ~ /listen[^;]*80[^0-9]/ || buf ~ /listen[[:space:]]+80;/) print buf "----8<----"
-      inblock=0
-    }
-  }
-' | grep -nE "server_name|listen|return 30|rewrite|acme-challenge|auth_basic|root |include |----8<----" | head -60
-
-echo
-echo "===== 4. webroots / acme snippet present? ====="
-ls -ld /var/www/letsencrypt /var/www/html /var/www/certbot 2>/dev/null || true
-grep -rl "acme-challenge" /etc/nginx/ 2>/dev/null | head -10 || echo "  NO acme-challenge block anywhere in /etc/nginx"
-
-echo
-echo "===== 5. SNI stream map (443) ====="
-nginx -T 2>/dev/null | grep -A25 "ssl_preread_server_name" | grep -E "buitendyk|homeandofficemicro|deploy|127\.0\.0\.1|map|\}" | head -25
-
-echo
-echo "===== 6. renewal confs: authenticator per cert ====="
+hr "2. renewal confs: authenticator per cert"
 for f in /etc/letsencrypt/renewal/*.conf; do
   [ -e "$f" ] || { echo "  (none)"; break; }
   echo "--- $(basename "$f")"
-  grep -E "^(authenticator|webroot_path|installer|server)\s*=" "$f" 2>/dev/null | sed 's/^/    /'
-  awk '/\[\[webroot_map\]\]/{f=1;next} f&&NF{print "    map: "$0}' "$f" 2>/dev/null | head -4
+  grep -E "^(authenticator|installer|webroot_path|server)[[:space:]]*=" "$f" 2>/dev/null | sed 's/^/    /' || true
+  awk '/webroot_map/{f=1;next} f&&NF{print "    map: "$0}' "$f" 2>/dev/null | head -3 || true
 done
 
-echo
-echo "===== 7. last renewal failures ====="
-grep -iE "error|failed|problem|urn:ietf" /var/log/letsencrypt/letsencrypt.log 2>/dev/null | tail -20 \
-  || echo "  (no letsencrypt.log or no errors in it)"
+hr "3. last letsencrypt.log errors"
+grep -iE "error|failed|problem|timeout|401|403|404|urn:ietf" /var/log/letsencrypt/letsencrypt.log 2>/dev/null \
+  | tail -22 | cut -c1-200 || echo "  (nothing matched)"
 
-echo
-echo "===== 8. live expiry summary ====="
+hr "4. acme-challenge anywhere in nginx?"
+grep -rl "acme-challenge" /etc/nginx/ 2>/dev/null | head -10 || echo "  NONE in /etc/nginx"
+echo "-- webroot dirs --"
+ls -ld /var/www/letsencrypt /var/www/html /var/www/certbot 2>/dev/null || true
+
+hr "5. :80 server blocks -- server_name + how they redirect"
+# Flatten: print each `listen 80` vhost's server_name and any return/rewrite,
+# noting whether the redirect sits at server level (fatal for ACME) or inside
+# a location (fine).
+nginx -T 2>/dev/null | awk '
+  /server[[:space:]]*\{/            { inb=1; d=0; buf=""; loc=0 }
+  inb                                { buf=buf $0 "\n" }
+  inb && /location/                  { loc=1 }
+  inb && /return[[:space:]]+30/      { if(!loc) srv_ret=1; else loc_ret=1 }
+  inb && /\}/                        { d--; if(d<=0 && buf!=""){
+                                          if (buf ~ /listen[[:space:]]+(\[::\]:)?80[;[:space:]]/) {
+                                            sn="?"; if (match(buf,/server_name[^;]*/)) sn=substr(buf,RSTART+12,RLENGTH-12)
+                                            printf "  %-46s srv_return=%s loc_return=%s acme=%s\n", sn, (srv_ret?"YES(FATAL)":"no"), (loc_ret?"yes":"no"), (buf ~ /acme-challenge/ ? "yes":"NO")
+                                          }
+                                          inb=0; srv_ret=0; loc_ret=0
+                                       } }
+  inb && /\{/                        { d++ }
+' 2>/dev/null || echo "  (parse failed)"
+
+hr "6. nginx conf files in play"
+ls -1 /etc/nginx/sites-enabled/ 2>/dev/null || true
+
+hr "7. live cert expiry"
 for d in /etc/letsencrypt/live/*/; do
   [ -e "$d/cert.pem" ] || continue
-  n=$(basename "$d")
-  e=$(openssl x509 -enddate -noout -in "$d/cert.pem" 2>/dev/null | cut -d= -f2)
-  days=$(( ( $(date -d "$e" +%s) - $(date +%s) ) / 86400 ))
-  printf "  %-34s %s  (%s days)\n" "$n" "$e" "$days"
+  e=$(openssl x509 -enddate -noout -in "$d/cert.pem" 2>/dev/null | cut -d= -f2) || continue
+  printf "  %-34s %s\n" "$(basename "$d")" "$e"
 done
 
 echo
