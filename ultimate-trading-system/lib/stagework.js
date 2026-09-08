@@ -26,6 +26,7 @@
 const bracketLib = require('./bracket');
 const { buildCombo, splitAndLabel, quorumCall, declaredQuorumFor } = require('./bracketwork');
 const agreement = require('./agreement');
+const crypto = require('crypto');
 const { standardizeFit, standardizeApply, tuneAndTrain, trainSoftmax, predict: predictLogreg } = require('./logreg');
 const { trainBoost, predictBoost } = require('./boost');
 const { NOTIONAL, feeRate } = require('./paper');
@@ -645,6 +646,14 @@ function predictMember(saved, spec, chunks, combo, geo) {
 // was launched on; the unread window is everything after it, so it is built
 // from the box's files as they are now, and only chunks whose whole trade
 // fits inside what the box holds are kept (the chunk builder drops the rest).
+// WHAT THE UNREAD WINDOW WAS PRICED ON, provably: the members' forecasts on
+// that slice, hashed, so a grade carries which votes it read and a re-run
+// with the saved models can be held to it (and so a test can tell forecasts
+// from the saved models apart from stale votes on another window -- a guard
+// found that nothing else could).
+function forecastHashOf(probsPerMember) {
+  return crypto.createHash('sha256').update(JSON.stringify(probsPerMember)).digest('hex').slice(0, 24);
+}
 async function unreadChunksFor(combo, geometry, fromTs) {
   const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
   const { geo, maps, chunks } = await buildCombo(combo, branch, { allLoaded: true, pinnedFiles: null });
@@ -719,11 +728,14 @@ async function s3UnitTask(task) {
     holdTrade = got.maps.trade;
     holdMaps = got.maps;
     dealSlice = 's4-unread';
-    memberProbs = (unit.members || []).map((m, mi) => {
+    const forecasts = (unit.members || []).map((m, mi) => {
       if (!m.saved) throw new Error(`member ${mi} carries no saved model, so it cannot forecast the unread window`);
-      return [...unit.probs[mi].slice(0, testChunks.length), ...predictMember(m.saved, m.spec, holdChunks, combo, geo)];
+      return predictMember(m.saved, m.spec, holdChunks, combo, geo);
     });
-    unread = { fromTs: task.unread.fromTs, toTs: got.toTs, chunks: holdChunks.length, seenToTs: got.seenToTs };
+    memberProbs = forecasts.map((f, mi) => [...unit.probs[mi].slice(0, testChunks.length), ...f]);
+    // hashed from the votes the slice is PRICED on, never from the forecasts
+    // alone: the two are one and the same only while nothing swaps them
+    unread = { fromTs: task.unread.fromTs, toTs: got.toTs, chunks: holdChunks.length, seenToTs: got.seenToTs, forecastHash: forecastHashOf(memberProbs.map((mp) => mp.slice(testChunks.length))) };
   }
   // 24/5 mask: which test/hold positions start on a weekday the chunk
   // builder itself would keep. Read from the builder, not re-derived.
@@ -1305,7 +1317,7 @@ module.exports = {
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,
   // the arithmetic, exported so the tests can pencil it
-  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks, predictMember, unreadChunksFor,
+  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks, predictMember, unreadChunksFor, forecastHashOf,
   directionCalls, tuningSliceOf, directionMoney, moneyAgainstNull, TUNING_TAG,
   probsArr, probsObj,
 };

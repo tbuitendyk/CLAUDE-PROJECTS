@@ -142,6 +142,15 @@ module.exports = {
       const K = G.STAGE3.keepN;
       assert.deepStrictEqual({ from: g1.window.fromTs, chunks: g1.window.chunks, look: g1.look, gateId: g1.gate.id, release: g1.release },
         { from: reserve.fromTs, chunks: un.chunks.length, look: 1, gateId: withVerdict.verify[0].id, release: require('../package.json').version });
+      // THE FORECASTS IT WAS PRICED ON ARE THE SAVED MODELS' OWN, provably: the
+      // grade carries a hash of the members' forecasts on the unread slice, and
+      // the same models applied to the same chunks here give the same hash.
+      // (A guard found that without this, the held-back window's stale votes
+      // could stand in for forecasts and every other check still passed.)
+      const byMi = modelRows.slice().sort((a, b) => a.mi - b.mi);
+      assert.strictEqual(byMi.length, rec.specs.length, 'a saved model per member');
+      const again = byMi.map((m) => sw.predictMember(m.saved, { model: m.model, view: m.view }, un.chunks, combo, geo));
+      assert.strictEqual(g1.window.forecastHash, sw.forecastHashOf(again), 'the unread window was priced on the saved models\' forecasts, not on votes from another window');
       assert.strictEqual(g1.rows.length, withVerdict.survivors.length, 'every survivor, never a page');
       assert.deepStrictEqual(g1.missing, [], 'every survivor was priced');
       for (const r of g1.rows) {

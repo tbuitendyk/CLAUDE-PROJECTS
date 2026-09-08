@@ -1147,7 +1147,7 @@ const GUARDS = [
     'theReserveGradeRefusesInWordsBeforeAnythingPrices', 'the unread window is opened for a set whose verdict never stood, and the one look at unseen data is spent on a rule that failed'],
   [path.join(ROOT, 'lib', 'stages.js'), "  const b = ((doc && doc.verify) || []).find((x) => x.verdict && x.verdict.pass && firstDigitOfRelease(x.release) === firstDigitOfRelease(ENGINE_VERSION)) || null;", "  const b = ((doc && doc.verify) || []).find((x) => x.verdict && x.verdict.pass) || null;",
     'theReserveGradeRefusesInWordsBeforeAnythingPrices', 'a verdict that passed under another first digit opens the door, and the grade is keyed to a release line it was never read under'],
-  [path.join(ROOT, 'lib', 'stagework.js'), "      return [...unit.probs[mi].slice(0, testChunks.length), ...predictMember(m.saved, m.spec, holdChunks, combo, geo)];", "      return unit.probs[mi];",
+  [path.join(ROOT, 'lib', 'stagework.js'), "    memberProbs = forecasts.map((f, mi) => [...unit.probs[mi].slice(0, testChunks.length), ...f]);", "    memberProbs = unit.probs;",
     'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'the members\' stored votes stand in for forecasts on a window they never voted on, and the unread window is priced on votes that run out before it ends'],
   [path.join(ROOT, 'lib', 'stagework.js'), "    holdChunks = got.chunks;\n    holdTrade = got.maps.trade;", "    holdTrade = got.maps.trade;",
     'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'the held-back window is priced in the unread window\'s place, and the grade reads a window the search already touched'],
