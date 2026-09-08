@@ -707,6 +707,7 @@ async function drawDetail(){
         ${cfgRow('Traded / context', `${esc(combo.trade)} + ${esc(combo.ctx1)} + ${esc(combo.ctx2)}`)}
         ${cfgRow('Geometry', `${esc(br.geometry)} · ${esc(br.decision)} · band ${br.band}%`)}
         ${cfgRow('Committee', `${(c.members||[]).length} members (${c.engine==='stages'?'the stage engine, as the stage 2 set trained them':esc(c.stage)})`)}
+        ${c.training && c.training.halfLife ? cfgRow('Recent history weighted', `half-life ${esc(String(c.training.halfLifeMonths || Math.round(c.training.halfLife / 30.4375)))} months - a training day that old counts half as much as today's`) : ''}
         ${c.engine==='stages'
           ? cfgRow('Agreement / entry / gate', `${agreeWords(c.agreement)} · ${esc(cell.entry)} · ${esc(cell.gate)}`)
           : cfgRow('Quorum / entry / gate', `${cell.quorum}-of-${(c.members||[]).length} · ${esc(cell.entry)} · ${esc(cell.gate)}`)}

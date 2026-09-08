@@ -899,6 +899,8 @@ app.get('/api/funnel/sets', (req, res) => {
       marks: d.marks || [],
       // and whether a verdict is stamped on it (3.86.0)
       verify: stages.verifySummaryOf(d),
+      // a half-life set says what it was built from (3.95.0); its standing is that set's
+      derived: d.derived || null,
     })),
   });
 });
@@ -974,6 +976,10 @@ app.post('/api/funnel/set/:id/halflife', (req, res) => {
   try { return res.json(stages.halfLifeStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/halflife/status', (req, res) => res.json(stages.halfLifeStatus(req.params.id)));
+// the 4.h set built from a half-life table (3.95.0): the rows a half-life won, each carrying its half-life
+app.post('/api/funnel/set/:id/halflife/build', (req, res) => {
+  try { return res.json({ ok: true, set: stages.buildHalfLifeSet(req.params.id, req.body || {}) }); } catch (err) { return res.status(400).json({ error: err.message }); }
+});
 
 app.get('/api/stageset/:id/coins', (req, res) => {
   const out = stages.stage3Coins(req.params.id, req.query || {});

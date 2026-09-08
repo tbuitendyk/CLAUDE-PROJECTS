@@ -1107,3 +1107,25 @@ carried out 2026-08-28 under its own GO — decision 50.
     press is a counted look, appended, never overwritten; "Run the reserve
     grade on this set" is untouched. Second digit.
 
+86. **The 4.h set, and the half-life carried forward** (3.95.0, loop H3,
+    AGEDIAL-DESIGN.md). Under the newest half-life table on History, a name
+    box and a button build a record set from every row a half-life won, each
+    record carrying the half-life that won on it; rows the unweighted column
+    won are left out; a table nothing improved on refuses. The set is a Stage
+    4 record set document like any cut, marked as built from its source and
+    its run, on the same unit and parent with the source's rule and check. It
+    stands on its source's PASS (the gate of a built set is its source's) and
+    is refused in words, pointing at the source, wherever its own numbers
+    would mislead: Verify's press and dry read, the other units, the ride, the
+    reserve grade, another half-life run; the Funnel's own list and the set
+    boxes on Verify and History leave it out; Tune and Greenlight offer it
+    named by its source. Tune's capture reads each record's retrained members
+    from the run file beside the source, on the retrain layout, and the
+    captured test entries reprice the table's own test money at that half-life
+    to the cent. A greenlight from one of its records carries
+    `training.halfLife` (days) and the months; the shared vocabulary accepts it
+    only on a stage-engine configuration; the live path multiplies the same
+    age weight into its training through the one definition; the anatomy and
+    the Trade rows say it on both Paper Books and Live Trading through the one
+    path. Second digit.
+

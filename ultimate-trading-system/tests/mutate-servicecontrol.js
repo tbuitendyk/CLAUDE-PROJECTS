@@ -1191,6 +1191,13 @@ const GUARDS = [
     'theAgeWeightMultipliesIntoTheSetsOwnWeightsAndAStarvedHalfLifeIsRefusedInWords', 'a tie or a fraction of a cent turns a row green for a half-life, and the 4.h set built from the table carries records nothing improved'],
   [path.join(ROOT, 'lib', 'stages.js'), "          unit: { bandPct: rec.bandPct, probs: t.members.map((m) => m.probs), ts: t.ts, members: t.members.map((m) => ({ spec: m.spec, tauProbs: m.tauProbs, saved: m.saved })) },", "          unit: { bandPct: rec.bandPct, probs: base.unit.probs, ts: base.unit.ts, members: base.unit.members },",
     'theRunPricesEveryColumnOnOneStretchAndTheUnweightedColumnIsTheRecordsOwn', 'every half-life column is priced from the set\'s original votes, so the table shows the unweighted money under six names'],
+  // ---- the 4.h set and the half-life carried forward (3.95.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "  const kept = (run.rows || []).filter((r) => r.best && r.best !== HL.NONE);", "  const kept = (run.rows || []).slice();",
+    'theBuildKeepsOnlyRowsAHalfLifeWonAndEachRecordCarriesIts', 'the half-life set carries every record of the table, including the ones nothing improved'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  if (doc.derived) { const src = getSet(doc.derived.from); return src ? unreadGateOf(src) : null; }", "  if (doc.derived) { return null; }",
+    'theBuildKeepsOnlyRowsAHalfLifeWonAndEachRecordCarriesIts', 'a half-life set has no standing at all: Tune and Greenlight refuse every record it holds'],
+  [path.join(ROOT, 'lib', 'live', 'stagesignal.js'), "  if (Number.isFinite(h) && h > 0) return require('../halflife').halfLifeWeights(training, trainChunks, fee, h).weights;", "  if (false) return require('../halflife').halfLifeWeights(training, trainChunks, fee, h).weights;",
+    'theHalfLifeTravelsIntoTheCaptureTheGreenlightAndTheLivePath', 'a deployment minted from a half-life record trains its members with every day weighed the same, and trades a setup that was never priced'],
 ];
 
 const only = process.argv[2] || '';

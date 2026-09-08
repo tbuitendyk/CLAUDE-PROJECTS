@@ -6101,6 +6101,7 @@ async function funnelVerifyDry(id) {
     rideRunning: rideRun && rideRun.id === doc.id && !rideRun.result && !rideRun.error ? { token: rideRun.token, done: rideRun.done, of: rideRun.of } : null,
   };
   if (!doc.unit) { out.refused = BLEND_REFUSAL; out.othersRefused = BLEND_REFUSAL; out.rideRefused = BLEND_REFUSAL; return out; }
+  if (doc.derived) { const why = derivedRefusalOf(doc); out.refused = why; out.othersRefused = why; out.rideRefused = why; out.derived = doc.derived; return out; }
   let join;
   try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; out.othersRefused = err.message; out.rideRefused = err.message; return out; }
   out.footing = verifyFooting(doc, join);
@@ -6164,6 +6165,7 @@ function funnelVerifyStart(id, asked = {}) {
     throw new Error(verifyRun.id === id ? 'this set is being read right now' : 'another Stage 4 record set is being read right now — one at a time');
   }
   if (!doc.unit) throw new Error(BLEND_REFUSAL);
+  if (doc.derived) throw new Error(derivedRefusalOf(doc));
   const busy = verifyBusy();
   if (busy) throw new Error(`${busy} — the read waits for the box to be free`);
   if (othersBusy()) throw new Error(`${othersBusy()} — one reading at a time`);
@@ -6218,6 +6220,7 @@ async function funnelOthers(doc, rules, note = null) {
 // why the press would refuse, in words, or null
 function othersRefusalOf(doc, footing) {
   if (!doc.unit) return BLEND_REFUSAL;
+  if (doc.derived) return derivedRefusalOf(doc);
   const busy = verifyBusy();
   if (busy) return `${busy} — the read waits for the box to be free`;
   if (acrossBusy()) return `${acrossBusy()} — the same boards, one reading at a time`;
@@ -6280,6 +6283,7 @@ function othersSummaryOf(doc) {
 // next verdict counts it. Never a gate.
 function rideRefusalOf(doc) {
   if (!doc.unit) return BLEND_REFUSAL;
+  if (doc.derived) return derivedRefusalOf(doc);
   if (!(doc.survivors || []).length) return 'this set wrote down no settings, so there is no ride to work out';
   const busy = verifyBusy();               // a sweep, a stage run, a totalling, a rebuild, the exam, another ride
   if (busy) return `${busy} — the ride waits for the box to be free`;
@@ -6345,8 +6349,21 @@ function unreadGateOf(doc) {
   const b = ((doc && doc.verify) || []).find((x) => x.verdict && x.verdict.pass && firstDigitOfRelease(x.release) === firstDigitOfRelease(ENGINE_VERSION)) || null;
   return b ? { id: b.id, at: b.at, release: b.release, look: b.look } : null;
 }
+// A HALF-LIFE SET (3.95.0) stands on the set it was built from: its gate is that
+// set's PASS, and the readings that would show its own numbers under the
+// source's name -- the verdict, the other units, the ride, the reserve grade,
+// another half-life run -- refuse it in words and point at the source.
+const derivedRefusalOf = (doc) => (doc && doc.derived
+  ? `this is a half-life set built from ${doc.derived.fromName || doc.derived.from}; it stands on that set's verdict, and its own figures are the retrained ones on its table there — read the set it came from here`
+  : null);
+function gateOfSet(doc) {
+  if (!doc) return null;
+  if (doc.derived) { const src = getSet(doc.derived.from); return src ? unreadGateOf(src) : null; }
+  return unreadGateOf(doc);
+}
 function unreadRefusalOf(doc) {
   if (!doc.unit) return BLEND_REFUSAL;
+  if (doc.derived) return derivedRefusalOf(doc);
   if (!unreadGateOf(doc)) return UNREAD_NO_PASS;
   const sealed = sealedOnUnitOf(doc);
   if (!sealed.sealed) return `the sealed window is not intact on this unit — ${sealed.why}`;
@@ -6483,8 +6500,13 @@ async function stage4GreenlightSource(setId, asked = {}) {
   const doc = getSet(setId);
   if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${setId}'`);
   if (!doc.unit) throw new Error(BLEND_REFUSAL);
-  const gate = unreadGateOf(doc);
+  // A HALF-LIFE SET STANDS ON ITS SOURCE'S PASS (3.95.0), and each of its records carries its half-life forward
+  const source = doc.derived ? getSet(doc.derived.from) : null;
+  if (doc.derived && !source) throw new Error('the set this half-life set was built from is gone, so its standing cannot be read');
+  const gate = gateOfSet(doc);
   if (!gate) throw new Error(UNREAD_NO_PASS);
+  const HL = require('./halflife');
+  const hlOf = (label) => (doc.derived ? ((doc.survivors || []).find((x) => x.label === label) || null) : null);
   const join = await funnelVerifyJoin(doc);
   const parent = join.parent;
   const stage2 = getSet((parent.parent || {}).id);
@@ -6510,6 +6532,7 @@ async function stage4GreenlightSource(setId, asked = {}) {
   const unreadOf = (label) => (unreadRec ? (unreadRec.rows || []).find((r) => r.label === label) || null : null);
   const held = heldOf(survivor.label);
   const un = unreadOf(survivor.label);
+  const hl = hlOf(survivor.label);
   const p1 = stage2.params || {};
   const size = rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1);
   return {
@@ -6518,18 +6541,22 @@ async function stage4GreenlightSource(setId, asked = {}) {
       ruleSentence: doc.ruleSentence || S4.ruleSentence(rule), counts: doc.counts || null,
       parent: { id: parent.id, name: parent.name }, stage2: { id: stage2.id, name: stage2.name },
       campaign: (parent.params || {}).campaign || null,
+      derived: doc.derived || null,
     },
     gate,
     unit: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size, geometry: rec.geometry },
-    survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)) },
+    survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)), halfLife: hl ? hl.halfLife : null },
     pick,
-    survivors: rows.map((r, i) => { const d = S4.depthOf(r, rule); const h = heldOf(r.label); const x = unreadOf(r.label); return { index: i, label: r.label, worst: d.worst, mean: d.mean, held: h ? h.held : null, trades: h ? h.trades : null, unread: x ? x.money : null }; }),
+    survivors: rows.map((r, i) => { const d = S4.depthOf(r, rule); const h = heldOf(r.label); const x = unreadOf(r.label); const y = hlOf(r.label); return { index: i, label: r.label, worst: d.worst, mean: d.mean, held: h ? h.held : null, trades: h ? h.trades : null, unread: x ? x.money : null, halfLife: y ? y.halfLife : null, retrained: y && y.money ? y.money.judge : null }; }),
     members: (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view })),
-    training: { trainOn: p1.trainOn ?? null, weightCap: p1.weightCap ?? null, windowLayout: p1.windowLayout ?? null, startMonth: p1.startMonth ?? null, endMonth: p1.endMonth ?? null, allLoaded: !!p1.allLoaded, nullN: p1.nullN ?? null },
+    // how the members were trained, so the live path can train the same way -- with the record's half-life when it carries one
+    training: { trainOn: p1.trainOn ?? null, weightCap: p1.weightCap ?? null, windowLayout: p1.windowLayout ?? null, startMonth: p1.startMonth ?? null, endMonth: p1.endMonth ?? null, allLoaded: !!p1.allLoaded, nullN: p1.nullN ?? null,
+      halfLife: hl ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl ? hl.halfLife : null },
     fee: Number.isFinite(Number((parent.params || {}).fee)) ? Number((parent.params || {}).fee) : null,
     readings: {
       heldBack: held ? { money: held.held, trades: held.trades } : null,
       unread: un ? { money: un.money, trades: un.trades, look: unreadRec.look } : null,
+      halfLife: hl ? { months: hl.halfLife, judge: doc.derived.judgeWord || null, money: hl.money ? hl.money.judge : null, unweighted: hl.money ? hl.money.unweighted : null } : null,
     },
   };
 }
@@ -6544,7 +6571,7 @@ async function stage4GreenlightDry(setId) {
   if (src && !refused) refused = gl.stage4Refusal(src);
   return {
     id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null,
-    ruleSentence: doc.ruleSentence || null, gate: unreadGateOf(doc), verdicts: (doc.verify || []).length,
+    ruleSentence: doc.ruleSentence || null, gate: gateOfSet(doc), verdicts: (doc.verify || []).length, derived: doc.derived || null,
     unitSize: src ? src.unit.size : null, members: src ? src.members.length : null,
     depthPick: src ? { label: src.pick.label, worst: src.pick.worst, mean: src.pick.mean } : null,
     survivors: src ? src.survivors : [],
@@ -6591,7 +6618,9 @@ const CAPTURE_NONE = 'no survivor of this set enters at market without a trailin
 const CAPTURE_NOT_YET = 'this set carries no per-trade capture yet — press "Capture the trades of this set" on Tune first';
 function captureRefusalOf(doc) {
   if (!doc.unit) return BLEND_REFUSAL;
-  if (!unreadGateOf(doc)) return UNREAD_NO_PASS;
+  if (doc.derived && !getSet(doc.derived.from)) return 'the set this half-life set was built from is gone, so its standing cannot be read';
+  if (doc.derived && !readHalfLifeRun(doc.derived.from, doc.derived.run)) return 'the retrained members this half-life set was built from are missing beside its source — press the half-life run on History again and build it again';
+  if (!gateOfSet(doc)) return UNREAD_NO_PASS;
   const parent = getSet((doc.parent || {}).id);
   if (!parent) return 'the stage 3 set this was cut from is gone, so its trades cannot be captured';
   if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast their training window';
@@ -6607,11 +6636,20 @@ function captureRefusalOf(doc) {
 }
 async function tuneCaptureRun(doc, note = null) {
   const S4 = require('./funnelset');
-  const gate = unreadGateOf(doc);
+  const gate = gateOfSet(doc);
   if (!gate) throw new Error(UNREAD_NO_PASS);
   const join = await funnelVerifyJoin(doc);
-  const footing = verifyFooting(doc, join);
-  if (!footing.ok) throw new Error(footing.why);
+  // a half-life set is not a rule's output, so the rule is not asked to give it back
+  if (!doc.derived) {
+    const footing = verifyFooting(doc, join);
+    if (!footing.ok) throw new Error(footing.why);
+  }
+  // THE RETRAINED MEMBERS A HALF-LIFE SET'S RECORDS ARE CAPTURED FROM (3.95.0):
+  // the run file beside the source, one member set per half-life, and each
+  // record's own half-life from the set
+  const hlFile = doc.derived ? readHalfLifeRun(doc.derived.from, doc.derived.run) : null;
+  if (doc.derived && !hlFile) throw new Error('the retrained members this half-life set was built from are missing beside its source — press the half-life run on History again and build it again');
+  const hlOf = new Map((doc.derived ? (doc.survivors || []) : []).map((sv) => [sv.label, sv.halfLife]));
   const parent = join.parent;                                   // the stage 3 set
   const shape = relaunchShapeOf(parent);                        // refuses when the stage 2 set is gone
   const idx = shape.records.findIndex((r) => unitKeyOf(r) === doc.unit);
@@ -6630,27 +6668,48 @@ async function tuneCaptureRun(doc, note = null) {
   if (!settings.length) throw new Error(CAPTURE_NONE);
   const fee = Number((parent.params || {}).fee) || 0;
   // no scrambled copies: the capture is the real calendar's trades and nothing else
-  const payload = s3Payload({ doc: parent, parent: shape.parent, rec, settings, fee, nullN: 0 });
-  payload.keepN = 0;
+  const base = s3Payload({ doc: parent, parent: shape.parent, rec, settings, fee, nullN: 0 });
+  base.keepN = 0;
   const models = unitRows(shape.parent.id, 'models', rec.blocks.models, rec.u);
-  payload.unit.members = payload.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
-  payload.capture = true;
-  if (note) note(0, 1);
+  base.unit.members = base.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
+  base.capture = true;
+  let payloads = [base];
+  if (doc.derived) {
+    // one payload per half-life the records carry, each on the retrain layout with that half-life's members
+    const groups = new Map();
+    for (const st of settings) {
+      const h = hlOf.get(st.label);
+      if (!Number.isFinite(h)) throw new Error(`'${st.label}' carries no half-life on this set`);
+      if (!groups.has(h)) groups.set(h, []);
+      groups.get(h).push(st);
+    }
+    payloads = [...groups.entries()].map(([h, list]) => {
+      const members = hlFile.halfLives.find((x) => x.halfLifeMonths === h);
+      if (!members) throw new Error(`the run file holds no members retrained at ${h} months`);
+      return {
+        ...base, settings: list,
+        params: { ...(parent.params || {}), windowLayout: hlFile.layout },
+        unit: { bandPct: hlFile.originalBandPct, probs: members.members.map((m) => m.probs), ts: members.ts, members: members.members.map((m) => ({ spec: m.spec, tauProbs: m.tauProbs, saved: m.saved })) },
+      };
+    });
+  }
+  if (note) note(0, payloads.length);
   const pool = createPool();
   activePool = pool;
-  let res = null;
-  let error = null;
+  const settledAll = [];
   try {
-    await pool.forEach('s3Unit', [payload], (settled) => { if (settled.ok) res = settled.value; else error = settled.error; if (note) note(1, 1); });
+    await pool.forEach('s3Unit', payloads, (settled, i) => { settledAll[i] = settled; if (note) note(settledAll.filter(Boolean).length, payloads.length); });
   } finally { activePool = null; pool.abort(); }
-  if (!res) throw new Error(`the unit's trades could not be captured: ${String(error || 'no answer')}`);
+  const failed = settledAll.find((x) => !x || !x.ok);
+  if (failed || settledAll.length !== payloads.length) throw new Error(`the unit's trades could not be captured: ${String((failed && failed.error) || 'no answer')}`);
+  const res = { rows: settledAll.flatMap((x) => x.value.rows || []), windows: settledAll[0].value.windows };
   // one survivor without shopping: by depth inside the rule, among the CAPTURED survivors
   const capturedLabels = new Set(settings.map((st) => st.label));
   const pickRows = join.rows.filter((r) => capturedLabels.has(r.label));
   const pick = S4.pickByDepth(pickRows, join.rule);
   const survivors = (res.rows || []).map((r) => ({
     label: r.label, si: r.si, tHours: r.tHours, weekdaysOnly: !!r.weekdaysOnly, entry: r.entry, gate: r.gate, decision: r.decision, bandPct: r.bandPct,
-    members: r.members, rung: r.rung ?? null,
+    members: r.members, rung: r.rung ?? null, halfLife: doc.derived ? (hlOf.get(r.label) ?? null) : null,
     money: { test: r.pnl, hold: r.holdout ? r.holdout.pnl : null }, trades: { test: r.trades, hold: r.holdout ? r.holdout.trades : null },
     entries: (r.rich && r.rich.capture) || { train: [], test: [], hold: [] },
   }));
@@ -6672,7 +6731,8 @@ async function tuneCaptureRun(doc, note = null) {
   fresh.capture = {
     id: `${doc.id}-c${times}`, at, release: ENGINE_VERSION, times, gate, unit: doc.unit, members: file.members, fee: file.fee, windows: file.windows,
     survivors: join.rows.length, captured: survivors.length, notCaptured, missing, entries: totals, pick: file.pick,
-    rows: survivors.map((sv) => ({ label: sv.label, tHours: sv.tHours, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length }, test: sv.money.test, held: sv.money.hold })),
+    rows: survivors.map((sv) => ({ label: sv.label, tHours: sv.tHours, halfLife: sv.halfLife ?? null, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length }, test: sv.money.test, held: sv.money.hold })),
+    derived: doc.derived || null,
     // every scan on Tune that read this capture, newest first; a read of the held-back entries carries its look number
     reads: had && Array.isArray(had.reads) ? had.reads : [],
   };
@@ -6839,6 +6899,7 @@ function halfLifeMonthsOf(asked) {
 function halfLifeRefusalOf(doc) {
   const HL = require('./halflife');
   if (!doc.unit) return BLEND_REFUSAL;
+  if (doc.derived) return derivedRefusalOf(doc);
   if (!unreadGateOf(doc)) return UNREAD_NO_PASS;
   const parent = getSet((doc.parent || {}).id);
   if (!parent) return 'the stage 3 set this was cut from is gone, so its records cannot be retrained';
@@ -6986,6 +7047,53 @@ async function halfLifeRunOn(doc, months, note = null) {
   saveSet(fresh);
   return { id: block.id, look: block.look, rows: block.rows.length, wins: block.wins, columns: columns.map((c) => c.key), refused: columns.filter((c) => c.refused).map((c) => c.key) };
 }
+// THE 4.h SET, BUILT FROM A TABLE (3.95.0, owner design): every row whose
+// green cell sits under a half-life column, each record carrying the
+// half-life that won on it; rows the unweighted column won are left out. A
+// Stage 4 record set document like any cut, marked as built from its source
+// and its run, on the same unit and parent, with the source's rule and check;
+// named by the owner. It stands on the source's PASS.
+function buildHalfLifeSet(setId, asked = {}) {
+  const HL = require('./halflife');
+  const S4 = require('./funnelset');
+  const src = getSet(setId);
+  if (!src || src.stage !== 4) throw new Error(`unknown Stage 4 record set '${setId}'`);
+  if (src.derived) throw new Error('a half-life set is built from the set it came from, not from another half-life set');
+  const run = (src.halflife || []).find((r) => r.id === String(asked.runId || ''));
+  if (!run) throw new Error('name which half-life table to build from');
+  if (!readHalfLifeRun(src.id, run.id)) throw new Error('the retrained members for that table are missing beside the set — press the half-life run again');
+  const kept = (run.rows || []).filter((r) => r.best && r.best !== HL.NONE);
+  if (!kept.length) throw new Error('no record improved with any half-life on this table, so there is nothing to build');
+  const name = String(asked.name ?? '').trim().slice(0, 80);
+  if (!name) throw new Error('name the half-life set — something you will recognise on Tune and Greenlight');
+  const taken = nameTaken(name);
+  if (taken) throw new Error(`a record set called "${name}" already exists (${taken.id}) — pick another name`);
+  const parent = getSet((src.parent || {}).id);
+  if (!parent) throw new Error('the stage 3 set the source was cut from is gone');
+  const seq = seqFor(4);
+  const id = `s4-${Date.now().toString(36)}-${seq}`;
+  const doc = S4.newFunnelSet({
+    id, seq, name, parent, release: ENGINE_VERSION, target: src.target, seed: src.seed || id,
+    boardNull: src.boardNull || null, sealed: src.sealed || null, unit: src.unit, unitName: src.unitName || null, check: src.check || null,
+  });
+  doc.derived = { kind: 'halflife', from: src.id, fromName: src.name, run: run.id, at: new Date().toISOString(), judge: run.judge, judgeWord: run.judgeWord, layout: run.layout, months: run.months || [] };
+  doc.rule = src.rule;
+  doc.userRule = src.userRule || null;
+  doc.exam = !!src.exam;
+  doc.survivors = kept.map((r) => ({
+    si: r.si, label: r.label, halfLife: Number(String(r.best).slice(1)),
+    money: { judge: (r.money || {})[r.best] ?? null, unweighted: (r.money || {})[HL.NONE] ?? null },
+    trades: { judge: (r.trades || {})[r.best] ?? null, unweighted: (r.trades || {})[HL.NONE] ?? null },
+  }));
+  doc.counts = { survivors: kept.length, of: (run.rows || []).length, target: src.target };
+  doc.closing = src.closing || null;
+  doc.warnings = [];
+  doc.marks = Array.isArray(src.marks) ? src.marks.slice() : [];
+  doc.ruleSentence = `${src.ruleSentence || S4.ruleSentence(src.rule)} · retrained, a half-life per record`;
+  doc.rich = src.rich || {};
+  saveSet(doc);
+  return { id: doc.id, name: doc.name, survivors: kept.length, of: (run.rows || []).length, from: src.id, run: run.id };
+}
 async function halfLifeDry(id) {
   const HL = require('./halflife');
   const doc = getSet(id);
@@ -7000,6 +7108,8 @@ async function halfLifeDry(id) {
     windowLayout: layoutOfSet(doc), layout, layoutWhy,
     halfLives: HL.HALF_LIVES_MONTHS.slice(),
     runs: doc.halflife || [], looks: (doc.halflife || []).length,
+    // the half-life sets already built from this set, newest first
+    built: listFunnelSets().filter((d) => d.derived && d.derived.from === doc.id).map((d) => ({ id: d.id, name: d.name, run: d.derived.run, at: d.derived.at, survivors: (d.counts || {}).survivors ?? (d.survivors || []).length, of: (d.counts || {}).of ?? null })),
     refused: halfLifeRefusalOf(doc),
     running: halfLifeRun && halfLifeRun.id === doc.id && !halfLifeRun.result && !halfLifeRun.error ? { token: halfLifeRun.token, done: halfLifeRun.done, of: halfLifeRun.of } : null,
   };
@@ -7176,7 +7286,7 @@ function listFunnelSets(parentId = null) {
 function funnelCutsFor(parentId, unitKey) {
   const want = unitKey == null || String(unitKey) === 'all' ? null : String(unitKey);
   return listFunnelSets(parentId)
-    .filter((d) => !d.exam)
+    .filter((d) => !d.exam && !d.derived)
     .filter((d) => (d.unit || null) === want)
     .map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
@@ -7858,7 +7968,7 @@ module.exports = {
   unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
   stage4GreenlightSource, stage4GreenlightDry,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
-  halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet,
+  halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet, derivedRefusalOf,
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,

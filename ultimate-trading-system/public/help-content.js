@@ -774,6 +774,11 @@ window.HELP = {
         what: 'Retrains the forecasts behind every setting of the chosen set, once per ticked half-life, and prices the same settings again beside the unweighted figures on the window the retraining never touched.',
         more: 'A set built 61/13/13/13 retrains on the first 72% of history, tests on the next 15% and is judged on the Reserve; a set built 70/15/15 retrains on its 70%, tests on its 15% and is judged on the Held window. Both kinds of forecast are retrained; every other training choice stays as the set was made. The best of each row is green, and a half-life wins only by at least a cent. Every press is a counted look.',
       },
+      hHlName: { what: 'The name of the half-life set built from the newest table, as it will read on Tune and Greenlight.' },
+      hHlBuild: {
+        what: 'Builds a record set from every row a half-life won on the newest table, each record carrying the half-life that won on it. Rows the unweighted column won are left out.',
+        more: 'The set stands on this set\'s verdict and appears in the Stage 4 record set boxes on Tune and Greenlight, named with the set it was built from. A greenlight from one of its records carries the half-life, and the live path trains that setup the same way.',
+      },
       htRun: { what: 'Runs the still-current check on the row picked on the Boards tab.' },
       ht2hl: {
         what: 'How quickly older evidence stops counting. 12mo makes evidence from a year ago count half as much as today’s; 36mo stretches that to three years.',

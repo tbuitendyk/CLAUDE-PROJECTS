@@ -162,7 +162,8 @@ module.exports = {
     assert.strictEqual(s.split('    exam: !!params.exam,').length - 1, 3, 'every stage birth stamps whether the set is the exam\'s');
     assert.ok(/doc\.exam = !!state\.exam;/.test(s), 'and the cut stamps it on a Stage 4 set');
     assert.ok(/exam: !!d\.exam,/.test(s), 'the list row carries it');
-    assert.ok(/\.filter\(\(d\) => !d\.exam\)\n    \.filter\(\(d\) => \(d\.unit \|\| null\) === want\)/.test(s), 'the Funnel\'s own picker leaves them out');
+    // the same filter leaves out a half-life set (3.95.0), which stands on its source and is not offered to cut again
+    assert.ok(/\.filter\(\(d\) => !d\.exam && !d\.derived\)\n    \.filter\(\(d\) => \(d\.unit \|\| null\) === want\)/.test(s), 'the Funnel\'s own picker leaves them out');
     const server = src('server.js');
     assert.ok(server.includes("sets: stages.listSets().filter((s) => !s.exam)"), 'Boards\' list leaves them out');
     assert.ok(server.includes("sets: stages.listFunnelSets(parent).filter((d) => !d.exam).map((d) => ({"), 'and the Stage 4 list leaves them out');

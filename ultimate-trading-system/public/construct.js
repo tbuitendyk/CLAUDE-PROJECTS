@@ -2125,7 +2125,8 @@ function vRideHtml(d) {
 async function drawVerify() {
   const gate = await apiOr('api/planted-gate/status', null);
   const sg = await apiOr('api/stage-gate/status', null);
-  const sets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
+  // a half-life set stands on its source's verdict and is read there, so it is not offered here (3.95.0)
+  const sets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => !x.derived);
   const chosen = vRememberedSet(sets);
   const d = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/verify`, null) : null;
   $('#view').innerHTML = `${vPlantedPanelHtml(gate, sg)}${vSetPanelHtml(sets, chosen, d)}`;
@@ -2396,6 +2397,17 @@ function hHalfLifeBlockHtml(b, isFirst) {
     <p class="note muted">${rows.length} records, in the set's own order. Green is the best of the row: a half-life wins only by at least a cent over the unweighted column; a tie goes to the unweighted side.</p>
   </div>`;
 }
+// THE 4.h SET FROM THIS TABLE (3.95.0): the rows a half-life won, each carrying its half-life; named by the owner
+function hHlBuildRowHtml(run, built) {
+  const wins = run.wins || {};
+  const improved = Object.entries(wins).filter(([k, v]) => k !== 'none' && v > 0).reduce((a, [, v]) => a + v, 0);
+  const mine = (built || []).filter((b) => b.run === run.id);
+  return `<div class="row" style="margin-top:.4rem;align-items:flex-end">
+    <label class="f" style="flex:1" title="what you want to see on Tune and Greenlight for the set built from this table">name<input id="hHlName" style="width:100%" placeholder="e.g. XRP daily, half-life set"></label>
+    <button id="hHlBuild" class="pri" ${improved ? '' : 'disabled title="no record improved with any half-life on this table"'} title="builds a record set from every row a half-life won on this table, each record carrying the half-life that won on it; rows the unweighted column won are left out. It stands on this set's verdict and appears on Tune and Greenlight.">Build the half-life set from this table</button>
+    <span class="note">${improved} of ${(run.rows || []).length} records improved with a half-life${mine.length ? ` · built from this table: ${mine.map((b) => `<b>${esc(b.name)}</b> (${b.survivors} records)`).join(', ')}` : ''}</span>
+  </div>`;
+}
 function hHalfLifePanelHtml(chosen, d) {
   const runs = d ? (d.runs || []).slice().reverse() : [];
   const ticked = hRememberedHalfLives();
@@ -2424,7 +2436,7 @@ function hHalfLifePanelHtml(chosen, d) {
       <div class="row" style="margin-top:.4rem;align-items:flex-end">
         <button id="hHalfLife" class="pri" ${d.refused ? 'disabled' : ''} title="retrains the set's forecasts once per ticked half-life and prices the same records again beside the unweighted figures, on the window the retraining never touched. Minutes. Every press is a counted look and appends a table; none is overwritten.">Retrain at the ticked half-lives${d.looks ? ` - look ${d.looks + 1}` : ''}</button>
         <span id="hHalfLifeMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
-      ${runs.length ? runs.map((b, i) => hHalfLifeBlockHtml(b, i === 0)).join('') : '<p class="note">No half-life run on this set yet.</p>'}` : ''}
+      ${runs.length ? runs.map((b, i) => `${hHalfLifeBlockHtml(b, i === 0)}${i === runs.length - 1 ? hHlBuildRowHtml(b, d.built) : ''}`).join('') : '<p class="note">No half-life run on this set yet.</p>'}` : ''}
   </div>`;
 }
 async function hHalfLifeFollow(id, token) {
@@ -2446,7 +2458,8 @@ async function hHalfLifeFollow(id, token) {
 async function drawHistory() {
   const doc = await loadPicked();
   const sel = getSelRow(doc);
-  const hSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
+  // a half-life set is graded and retrained through its source, so it is not offered here (3.95.0)
+  const hSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => !x.derived);
   const hChosen = hRememberedSet(hSets);
   const hd = hChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(hChosen)}/unread`, null) : null;
   const hl = hChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife`, null) : null;
@@ -2521,6 +2534,15 @@ async function drawHistory() {
     hHalfLifeFollow(hChosen, started.token);
   };
   if (hl && hl.running && hlb) { hlb.disabled = true; hHalfLifeFollow(hChosen, hl.running.token); }
+  const hlBuild = $('#hHlBuild');
+  if (hlBuild && hChosen && hl && (hl.runs || []).length) hlBuild.onclick = async () => {
+    const name = $('#hHlName').value.trim();
+    if (!name) { alert('name the half-life set - something you will recognise on Tune and Greenlight.'); return; }
+    const run = hl.runs[0];
+    if (!confirm(`Build the half-life set "${name}" from the newest table of ${hl.name}?\n\nEvery row a half-life won, each record carrying its half-life; rows the unweighted column won are left out. It stands on this set's verdict and appears on Tune and Greenlight.`)) return;
+    const out = await tryPost(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife/build`, { runId: run.id, name }, 'The Stage 4 record set box on History lists the source set - pick it there.');
+    if (out) { alert(`Built: ${out.set.name} - ${out.set.survivors} of ${out.set.of} records, each with its half-life.\n\nIt is on Tune and Greenlight now.`); drawHistory(); }
+  };
   const list = await apiOr('api/batches', ({}));
   const runs = (list.batches || list || []).filter((b) => b.kind === 'historytuning' || b.kind === 'httwo').slice(0, 12);
   $('#htList').innerHTML = runs.length ? `<table><thead><tr>${cth('run','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}<th></th></tr></thead><tbody>
@@ -2872,7 +2894,7 @@ function tnRememberedWindows() {
 function tnSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to capture the trades of, from every set on this box, newest first">Stage 4 record set<select id="tnSet">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict'}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : (x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict')}</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
 }
 function tnCaptureBlockHtml(c) {
@@ -2919,7 +2941,7 @@ function tnTargetRowHtml(cand, pick, wins) {
   return `<div class="row" style="margin-bottom:.4rem;align-items:flex-end">
     <label class="f" style="flex:1 1 auto;min-width:0" title="which captured survivor the scans read. By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money; naming one records it as your pick.">one survivor<select id="tnPick">
       <option value="depth" ${pick === 'depth' ? 'selected' : ''}>by depth - ${esc(depth.label || '?')} (worst distance ${glFix(depth.worst)})</option>
-      ${rows.map((r) => `<option value="${esc(r.label)}" ${pick === r.label ? 'selected' : ''}>${esc(r.label)} - ${r.tHours}h - ${(r.entries || {}).train ?? 0} + ${(r.entries || {}).test ?? 0} + ${(r.entries || {}).hold ?? 0} entries${r.held == null ? '' : ` - held-back ${money(r.held)}`}</option>`).join('')}</select></label>
+      ${rows.map((r) => `<option value="${esc(r.label)}" ${pick === r.label ? 'selected' : ''}>${esc(r.label)} - ${r.tHours}h${r.halfLife == null ? '' : ` - half-life ${r.halfLife} months`} - ${(r.entries || {}).train ?? 0} + ${(r.entries || {}).test ?? 0} + ${(r.entries || {}).hold ?? 0} entries${r.held == null ? '' : ` - held-back ${money(r.held)}`}</option>`).join('')}</select></label>
   </div>
   <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
     <span class="note" title="which of the three windows' entries the scans read. The training and test windows were read to choose the rule, so reading them again is not a look; the held-back window was sealed until Verify, so every scan that reads it is a counted look.">windows the scans read</span>
@@ -3383,15 +3405,15 @@ function glStage4PanelHtml(list, chosen, d) {
       way its members agree exactly as the survivor does. Nothing here trades, and nothing built from it can be put to
       work until the live path speaks that agreement.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="which Stage 4 record set to take a survivor from, from every set on this box, newest first">Stage 4 record set<select id="gl4Set">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict'}</option>`).join('')
+      <label class="f" title="which Stage 4 record set to take a survivor from, from every set on this box, newest first; a half-life set stands on the verdict of the set it was built from">Stage 4 record set<select id="gl4Set">${list.length
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : (x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict')}</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors
       · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
       ${d.refused ? '' : `<div class="row" style="align-items:flex-end">
         <label class="f" style="flex:1 1 auto;min-width:0" title="which survivor is taken forward. By depth is the setting nearest the middle of every range of the rule, chosen without looking at money; naming one records it as your pick.">one survivor<select id="gl4Pick">
           <option value="depth">by depth - ${esc(depth ? depth.label : '?')} (worst distance ${glFix(depth ? depth.worst : null)})</option>
-          ${(d.survivors || []).map((x) => `<option value="${esc(x.label)}">${esc(x.label)} - distance ${glFix(x.worst)}${x.held == null ? '' : ` - held-back ${money(x.held)}`}${x.unread == null ? '' : ` - unread ${money(x.unread)}`}</option>`).join('')}</select></label>
+          ${(d.survivors || []).map((x) => `<option value="${esc(x.label)}">${esc(x.label)} - distance ${glFix(x.worst)}${x.halfLife == null ? '' : ` - half-life ${x.halfLife} months${x.retrained == null ? '' : ` - retrained ${money(x.retrained)}`}`}${x.held == null ? '' : ` - held-back ${money(x.held)}`}${x.unread == null ? '' : ` - unread ${money(x.unread)}`}</option>`).join('')}</select></label>
       </div>
       <div class="row" style="margin-top:.4rem;align-items:flex-end">
         <label class="f" style="flex:1" title="what you want to see on screen for this configuration">name<input id="gl4Name" style="width:100%" placeholder="e.g. XRP weekly, depth pick"></label>

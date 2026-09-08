@@ -86,6 +86,12 @@ function validateConfig(cfg) {
       if (!Number.isInteger(a.persist) || a.persist < 0) fail(errors, 'agreement.persist: must be an integer 0 or more');
     }
   } else if (!STAGES.has(cfg.stage)) fail(errors, `stage: must be one of ${[...STAGES]}`);
+  // A RECORD'S HALF-LIFE, when it carries one (3.95.0): days, positive, or absent
+  const tr = cfg.training;
+  if (tr != null && typeof tr === 'object' && tr.halfLife != null) {
+    if (!Number.isFinite(tr.halfLife) || tr.halfLife <= 0) fail(errors, 'training.halfLife: must be a positive number of days, or absent');
+    if (!stagesEngine) fail(errors, 'training.halfLife: only a stage-engine configuration trains with recent history weighted');
+  }
 
   // The configuration's own shape-version, read back rather than only written.
   // A snapshot from another version means the same field names may no longer

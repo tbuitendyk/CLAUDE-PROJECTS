@@ -19,6 +19,7 @@ const S1 = { ...G.STAGE1, startMonth: SPAN.fromMonth, endMonth: SPAN.toDate.slic
 const ROOT = path.join(__dirname, '..');
 const SETS_DIR = path.join(ROOT, 'data', 'stagesets');
 const src = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
+const src2 = src;
 const cents = (v) => Math.round(Number(v) * 100);
 
 async function waitSet(id, label, ms = 10 * 60 * 1000) {
@@ -262,6 +263,138 @@ module.exports = {
       }
       assert.ok(file.halfLives[0].ts.hold.length > 0, 'the held-back votes ride on the retrain');
     } finally { c.cleanup(); }
+  },
+
+  // THE 4.h SET FROM THE TABLE (3.95.0): only rows a half-life won, each with
+  // its half-life; it stands on its source and is refused where its own numbers
+  // would mislead; the capture reads its retrained members and reprices the
+  // table's own test money to the cent; the greenlight source carries the
+  // half-life forward.
+  async theBuildKeepsOnlyRowsAHalfLifeWonAndEachRecordCarriesIts() {
+    const c = await chain('half-life build test');
+    try {
+      await gated(c);
+      const { block } = await ran(c, [12, 48]);
+      const improved = block.rows.filter((r) => r.best && r.best !== 'none');
+      // refused without a name, without a run, and on a table nothing improved on
+      let threw = null;
+      try { stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: '' }); } catch (e) { threw = e.message; }
+      assert.ok(/name the half-life set/.test(threw), threw);
+      threw = null;
+      try { stages.buildHalfLifeSet(c.cut.id, { runId: 'no-such-run', name: 'x' }); } catch (e) { threw = e.message; }
+      assert.ok(/name which half-life table/.test(threw), threw);
+      if (!improved.length) {
+        threw = null;
+        try { stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: 'half-life build test set' }); } catch (e) { threw = e.message; }
+        assert.ok(/no record improved/.test(threw), threw);
+        return;   // the fabricated year gave the half-lives nothing to win; the rest is covered when they do
+      }
+      const built = stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: 'half-life build test set' });
+      c.made.push(built.id);
+      assert.deepStrictEqual({ survivors: built.survivors, of: built.of, from: built.from, run: built.run }, { survivors: improved.length, of: block.rows.length, from: c.cut.id, run: block.id });
+      const d = stages.getSet(built.id);
+      assert.deepStrictEqual(d.survivors.map((s) => s.label), improved.map((r) => r.label), 'only the rows a half-life won, in the table\'s order');
+      for (const s of d.survivors) {
+        const r = improved.find((x) => x.label === s.label);
+        assert.strictEqual(s.halfLife, Number(String(r.best).slice(1)), `${s.label}: carries the half-life that won`);
+        assert.strictEqual(s.money.judge, r.money[r.best]);
+        assert.strictEqual(s.money.unweighted, r.money.none);
+      }
+      assert.deepStrictEqual({ kind: d.derived.kind, from: d.derived.from, run: d.derived.run, judge: d.derived.judge, unit: d.unit, parent: d.parent.id }, { kind: 'halflife', from: c.cut.id, run: block.id, judge: 'reserve', unit: c.plant, parent: c.s3 });
+      assert.deepStrictEqual(d.rule, stages.getSet(c.cut.id).rule, 'the source\'s rule rides on it');
+      // its standing is its source's; the readings that would mislead refuse it
+      assert.deepStrictEqual(stages.gateOfSet(d), stages.unreadGateOf(stages.getSet(c.cut.id)), 'the gate is the source\'s PASS');
+      const vd = await stages.funnelVerifyDry(built.id);
+      assert.ok(/half-life set built from/.test(vd.refused) && /half-life set built from/.test(vd.rideRefused), vd.refused);
+      threw = null;
+      try { stages.funnelVerifyStart(built.id, {}); } catch (e) { threw = e.message; }
+      assert.ok(/half-life set built from/.test(threw), threw);
+      assert.ok(/half-life set built from/.test((await stages.unreadGradeDry(built.id)).refused));
+      assert.ok(/half-life set built from/.test((await stages.halfLifeDry(built.id)).refused));
+      assert.ok(!stages.funnelCutsFor(c.s3, c.plant).some((x) => x.id === built.id), 'the Funnel\'s own list leaves it out');
+      assert.ok(stages.listFunnelSets().some((x) => x.id === built.id && x.derived), 'the server\'s list carries it, marked');
+      assert.ok((await stages.halfLifeDry(c.cut.id)).built.some((b) => b.id === built.id && b.run === block.id), 'the source says what was built from it');
+      // the capture reads the retrained members: each record's test entries reprice the table's own test money to the cent
+      const cd = await stages.tuneCaptureDry(built.id);
+      assert.strictEqual(cd.refused, null, cd.refused);
+      stages.tuneCaptureStart(built.id);
+      await settle(() => stages.tuneCaptureStatus(built.id), 'the capture of the half-life set');
+      const cap = stages.readCapture(built.id);
+      assert.strictEqual(cap.survivors.length, d.survivors.length, 'every record captured');
+      for (const sv of cap.survivors) {
+        const s = d.survivors.find((x) => x.label === sv.label);
+        assert.strictEqual(sv.halfLife, s.halfLife, `${sv.label}: the capture carries the half-life`);
+        assert.strictEqual(sv.entries.hold.length, 0, 'no held-back entries on the retrain layout');
+        const r = block.rows.find((x) => x.label === sv.label);
+        assert.strictEqual(cents(sv.entries.test.reduce((a, e) => a + e.usd, 0)), cents(r.test[r.best]), `${sv.label}: the captured test entries reprice the table's own test money at that half-life`);
+        assert.ok(sv.entries.train.length > 0, 'the members forecast the retrain training window');
+      }
+      assert.strictEqual(stages.getSet(built.id).capture.rows[0].halfLife, d.survivors[0].halfLife, 'the summary carries it too');
+      // the greenlight source carries the half-life forward
+      const src = await stages.stage4GreenlightSource(built.id, { pick: 'depth' });
+      assert.deepStrictEqual({ gate: src.gate.id, derived: src.set.derived.from }, { gate: stages.unreadGateOf(stages.getSet(c.cut.id)).id, derived: c.cut.id });
+      const HLm = src.survivor.halfLife;
+      assert.ok([12, 48].includes(HLm), `the survivor carries its half-life (${HLm})`);
+      assert.strictEqual(src.training.halfLife, HL.daysOfMonths(HLm), 'in days, for the live path');
+      assert.strictEqual(src.training.halfLifeMonths, HLm);
+      assert.strictEqual(src.readings.halfLife.months, HLm);
+      assert.ok(src.survivors.every((x) => [12, 48].includes(x.halfLife)), 'every listed survivor carries one');
+    } finally { c.cleanup(); }
+  },
+
+  // THE HALF-LIFE TRAVELS: the shared vocabulary accepts it on a stage-engine
+  // configuration and refuses it elsewhere; the live path's training weights
+  // carry the same age factor the History run multiplied in; the anatomy and
+  // both Trade branches say it through the one drawing path.
+  theHalfLifeTravelsIntoTheCaptureTheGreenlightAndTheLivePath() {
+    const { validateConfig } = require('../lib/live/configschema');
+    const gl = require('../lib/live/greenlight');
+    const ss = require('../lib/live/stagesignal');
+    const base = {
+      engine: 'stages', combo: { trade: 'LTCUSDT', ctx1: 'XRPUSDT', ctx2: 'BCHUSDT', size: 3 },
+      branch: { geometry: 'daily-4d', decision: 'argmax', band: 1.69, weekdaysOnly: false }, stage: 'stages',
+      members: [{ model: 'logreg', view: 'full' }, { model: 'boost', view: 'full' }],
+      cell: { quorum: null, entry: 'market', gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null },
+      agreement: { rule: 'count', bar: 'all', pct: 50, copy: 98, both: false, persist: 0, rung: 1, members: 2, voices: null },
+      training: { trainOn: 'direction', weightCap: null, windowLayout: 'reserve61', startMonth: '2023-01', endMonth: '2026-06', allLoaded: false, nullN: 9, halfLife: 365, halfLifeMonths: 12 },
+      configVersion: 'half-life-test',
+    };
+    assert.strictEqual(validateConfig(base).ok, true, validateConfig(base).errors.join('; '));
+    assert.ok(!validateConfig({ ...base, training: { ...base.training, halfLife: -3 } }).ok, 'a half-life must be positive days');
+    assert.ok(!validateConfig({ ...base, engine: undefined, stage: 'promoted', agreement: undefined, cell: { ...base.cell, quorum: 1 }, training: { halfLife: 365 } }).ok, 'the older engine carries no half-life');
+    // the greenlight from a source that carries one
+    const src = {
+      set: { id: 's4-hl', stage: 4, name: 'S4 hl', release: '3.95.0', unit: 'LTCUSDT|XRPUSDT|BCHUSDT|daily-4d', unitName: 'LTC + XRP + BCH daily-4d', ruleSentence: 't 41 to 89', counts: { survivors: 1 }, parent: { id: 's3-1', name: 'S3' }, stage2: { id: 's2-1', name: 'S2' }, derived: { kind: 'halflife', from: 's4-src', fromName: 'S4 src', run: 's4-src-h1', judgeWord: 'Reserve' } },
+      gate: { id: 's4-src-v1', at: '2026-09-08T00:00:00.000Z', release: '3.95.0', look: 1 },
+      unit: { trade: 'LTCUSDT', ctx1: 'XRPUSDT', ctx2: 'BCHUSDT', size: 3, geometry: 'daily-4d' },
+      survivor: { si: 4, label: 'count 50% market t65h · argmax auto 24/7', decision: 'argmax', bandMode: 'auto', bandPct: 1.69, weekdaysOnly: false, entry: 'market', gate: 'directional', dMult: null, tHours: 65, trailMult: null, armMult: null, agreeRule: 'count', agreeBar: 'all', agreePct: 50, agreeCopy: 98, agreeBoth: false, agreePersist: 0, members: 2, halfLife: 12 },
+      pick: { by: 'depth', index: 0, si: 4, label: 'count 50% market t65h · argmax auto 24/7', worst: 0, mean: 0, per: {}, of: 1 },
+      survivors: [], members: [{ model: 'logreg', view: 'full' }, { model: 'boost', view: 'full' }],
+      training: { ...base.training }, fee: 0.00125,
+      readings: { heldBack: null, unread: null, halfLife: { months: 12, judge: 'Reserve', money: 3.2, unweighted: 1.1 } },
+    };
+    const cfg = gl.configFromStage4(src);
+    assert.deepStrictEqual({ h: cfg.training.halfLife, m: cfg.training.halfLifeMonths }, { h: 365, m: 12 }, 'the frozen configuration carries the half-life');
+    // the live path's training weights carry the same age factor as the History run
+    const DAY = 86400000;
+    const t0 = Date.UTC(2024, 0, 1);
+    const chunks = Array.from({ length: 120 }, (_, i) => ({ startTs: t0 + i * DAY, diffPct: (i % 3) - 1 }));
+    const w = ss.trainingWeightsFor({ trainOn: 'direction', halfLife: 365 }, chunks, 0.00125);
+    const expect = HL.halfLifeWeights({ trainOn: 'direction' }, chunks, 0.00125, 365).weights;
+    assert.deepStrictEqual(w, expect, 'the one definition, through the live path');
+    assert.strictEqual(ss.trainingWeightsFor({ trainOn: 'direction' }, chunks, 0.00125), null, 'no half-life, the set\'s own weighing');
+    // and the words: the anatomy and both Trade branches through the one path
+    const an = require('../lib/live/anatomy');
+    const words = an.describeAnatomy(cfg, {});
+    assert.ok(/a training day 12 months old counts half as much as today's/.test(words.pipeline[2]), words.pipeline[2]);
+    assert.strictEqual(an.describeConfig(cfg).halfLifeMonths, 12);
+    const trade = src2('public/trade.html');
+    assert.ok(/cfgRow\('Recent history weighted', `half-life \$\{esc\(String\(c\.training\.halfLifeMonths/.test(trade), 'the Trade rows print it, on both branches through the one path');
+    const ui = src2('public/construct.js');
+    assert.ok(/id="hHlBuild"/.test(ui) && /id="hHlName"/.test(ui), 'the build row is on History');
+    assert.ok(/half-life set from \$\{esc\(x\.derived\.fromName \|\| x\.derived\.from\)\}/.test(ui), 'Tune and Greenlight name a half-life set by its source');
+    assert.ok(/\.filter\(\(x\) => !x\.derived\);\n  const chosen = vRememberedSet\(sets\);/.test(ui) && /\.filter\(\(x\) => !x\.derived\);\n  const hChosen = hRememberedSet\(hSets\);/.test(ui), 'Verify and History leave half-life sets out');
+    assert.ok(src2('server.js').includes("'/api/funnel/set/:id/halflife/build'"), 'the build is served');
   },
 
   // THE SCREEN AND THE ROUTES: the panel is drawn by top-level helpers, the

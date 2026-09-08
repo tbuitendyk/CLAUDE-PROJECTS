@@ -46,11 +46,20 @@ function agreementOf(cfg) {
 // committee on the test slice; forecast the moments asked for.
 //   closed   chunks whose outcome has closed by the training instant, in order
 //   moments  the chunks to forecast (the +hold run and the target), in order
+// THE WEIGHTS A DEPLOYMENT TRAINS WITH: the set's own weighing, and, when the
+// record carries a half-life (3.95.0), the same age weight the History run
+// multiplied in -- each training chunk halving every H days of age from the
+// last training chunk -- through the one definition in lib/halflife.js.
+function trainingWeightsFor(training, trainChunks, fee) {
+  const h = Number((training || {}).halfLife);
+  if (Number.isFinite(h) && h > 0) return require('../halflife').halfLifeWeights(training, trainChunks, fee, h).weights;
+  return sw.weightsFor(training, trainChunks, fee);
+}
 async function trainStageCommittee(cfg, closed, moments, views, fee) {
   const split = splitAndLabel(closed, { ...cfg.branch, band: cfg.branch.band }, true);
   const { trainChunks, testChunks } = split;
   const training = cfg.training || {};
-  const weights = sw.weightsFor(training, trainChunks, fee);
+  const weights = trainingWeightsFor(training, trainChunks, fee);
   const predictChunks = [...testChunks, ...moments];
   const members = [];
   for (const spec of cfg.members) {
@@ -98,4 +107,4 @@ async function stageCommitteeCallFor(cfg, target, closed, allChunks, maps, geo, 
   return { call, perMember, side, priceAt, inputHash, entryTs, agreement: agr, level, members: members.length, testSlice: nTest };
 }
 
-module.exports = { stageCommitteeCallFor, trainStageCommittee, agreementOf };
+module.exports = { stageCommitteeCallFor, trainStageCommittee, agreementOf, trainingWeightsFor };
