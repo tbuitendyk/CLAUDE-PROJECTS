@@ -327,7 +327,7 @@ module.exports = {
     const copies = V.copiesRead(list, rules);
     assert.strictEqual(copies.pass, true, 'the copies pass on this table');
     const sane = V.sanity(rows(3, 10).map((r) => ({ ...r, noiseHold: r.noiseHold.map((v) => -v) })), list, rules);
-    const block = V.buildBlock({ rules, gate: { state: 'PASS' }, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, heldBack: unknown, copies, survivors: V.perSurvivor(list, rules), sanity: sane, lineA: V.lineA(list, rules), lineB: V.lineB(list, 3, rules) });
+    const block = V.buildBlock({ rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, heldBack: unknown, copies, survivors: V.perSurvivor(list, rules), sanity: sane, lineA: V.lineA(list, rules), lineB: V.lineB(list, 3, rules) });
     assert.strictEqual(block.verdict.pass, false, 'unknown never passes');
     assert.ok(/the four comparisons are not known/.test(block.verdict.sentence));
     const withKnown = V.buildBlock({ ...block, heldBack: known });
@@ -445,7 +445,7 @@ module.exports = {
     const heldBack = V.heldBackRead(list, CONTROLS);
     const copies = V.copiesRead(list, rules);
     const sane = { threshold: 50, board: { figures: 10, losing: 0.6 }, survivors: { figures: 30, losing: 0 }, known: true, ok: true };
-    const base = { rules, gate: { state: 'PASS' }, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, heldBack, copies, survivors: per, sanity: sane, lineA: V.lineA(list, rules), lineB: V.lineB(list, 3, rules) };
+    const base = { rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, heldBack, copies, survivors: per, sanity: sane, lineA: V.lineA(list, rules), lineB: V.lineB(list, 3, rules) };
     const a = V.buildBlock(base);
     const b = V.buildBlock({ ...base, survivors: { ...per, passing: 0, rows: per.rows.map((r) => ({ ...r, pass: false })) } });
     assert.strictEqual(a.verdict.pass, b.verdict.pass, 'the set verdict does not read the survivors\' own verdicts');
@@ -467,7 +467,7 @@ module.exports = {
     assert.strictEqual(b.n, 2);
     assert.strictEqual(b.real, (10 + 9) / 2, 'the best two by test money');
     const sane = { threshold: 50, board: { figures: 10, losing: 0.6 }, survivors: { figures: 30, losing: 0 }, known: true, ok: true };
-    const base = { rules, gate: { state: 'PASS' }, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, heldBack: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: sane, lineA: a, lineB: b };
+    const base = { rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, heldBack: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: sane, lineA: a, lineB: b };
     const x = V.buildBlock(base);
     const y = V.buildBlock({ ...base, lineA: { ...a, beats: 0, clears: false }, lineB: { ...b, beats: 0, clears: false } });
     assert.strictEqual(x.verdict.pass, y.verdict.pass, 'the verdict never reads them');
@@ -608,7 +608,7 @@ module.exports = {
   theSentencePrintsNegativeMoneyTheWayThePageDoes() {
     const rules = V.declareRules({ kind: 'scrambles', k: 10, barPct: 80 });
     const list = rows(2, 10).map((r) => ({ ...r, avgHold: -2 }));
-    const b = V.buildBlock({ rules, gate: {}, footing: { ok: true, had: 2 }, looks: { unstamped: 1 }, heldBack: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: V.sanity(list, list, rules), lineA: V.lineA(list, rules), lineB: V.lineB(list, 2, rules) });
+    const b = V.buildBlock({ rules, footing: { ok: true, had: 2 }, looks: { unstamped: 1 }, heldBack: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: V.sanity(list, list, rules), lineA: V.lineA(list, rules), lineB: V.lineB(list, 2, rules) });
     assert.ok(/made -\$2\.00 a setting/.test(b.verdict.sentence), b.verdict.sentence);
     assert.ok(!/\$-/.test(b.verdict.sentence), 'never a sign after the dollar sign');
     assert.strictEqual(b.verdict.pass, false);

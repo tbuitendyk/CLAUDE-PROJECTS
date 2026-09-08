@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// THE STAGE ENGINE'S OWN PLANTED CHECK, RUN BY HAND (3.87.0). The same press
-// the button on Verify makes, from a terminal: it fabricates the two coins,
+// THE STAGE-ENGINE CHECK, RUN BY HAND (3.87.0). The same press the button on
+// Setup under Version makes, from a terminal: it fabricates the two coins,
 // runs the three stages, cuts and reads a Stage 4 set on each, grades the five
 // gates, writes one record in data/stage-gate/ and deletes everything else it
 // made. Minutes. Exit 0 on PASS, 1 on FAIL or a failure to run.

@@ -1,4 +1,4 @@
-// V0: the three-stage engine's own planted check (3.87.0, VERIFY-DESIGN.md V0
+// V0: the stage-engine check (3.87.0, VERIFY-DESIGN.md V0
 // and decision 9; loop record step 2). The declaration and the grading are
 // pure and tested here on fabricated verdict blocks; the exam itself trains
 // for real and is run by hand (tests/adversarial/stage-gate.js) or from the
@@ -189,18 +189,19 @@ module.exports = {
     assert.ok(/funnelVerifyRun\(getSet\(cuts\[which\]\.id\), \{ barPct: 100 \}\)/.test(s), 'the exam presses the verdict directly, holding the box');
   },
 
-  // A STAGE 4 VERDICT RECORDS WHICH STAGE GATE STOOD, beside the planted check.
+  // A STAGE 4 VERDICT RECORDS WHICH STAGE GATE STOOD.
   theVerdictRecordsWhichStageGateStood() {
     const s = src('lib/stages.js');
     assert.ok(/const sg = require\('\.\/stagegate'\)\.status\(ENGINE_VERSION, \{ running: examBusy\(\) \}\);/.test(s), 'the footing asks the stage gate');
-    assert.ok(/const \{ gate, stageGate, \.\.\.rest \} = footing;/.test(s) && /rules, gate, stageGate, footing: rest,/.test(s), 'and it rides on the block');
+    assert.ok(/const \{ stageGate, \.\.\.rest \} = footing;/.test(s) && /rules, stageGate, footing: rest,/.test(s), 'and it rides on the block');
     const V = require('../lib/funnelverify');
     const rules = V.declareRules({ kind: 'scrambles', k: 10, barPct: 80 });
-    const base = { rules, gate: { state: 'PASS', engineVersion: '3.87.0' }, footing: { ok: true, had: 1 }, looks: { unstamped: 1 }, heldBack: { real: 1, of: 1, positive: true, pass: true, comparisons: { known: true, beatsBuyHold: true, beatsShortHold: true } }, copies: { copies: 10, beats: 10, bar: 8, barPct: 80, chance: 0.27, pass: true }, survivors: { survivors: 1, passing: 1, byChance: 0.27 }, sanity: { known: true, ok: true, board: { losing: 0.6 }, threshold: 50 } };
+    const base = { rules, footing: { ok: true, had: 1 }, looks: { unstamped: 1 }, heldBack: { real: 1, of: 1, positive: true, pass: true, comparisons: { known: true, beatsBuyHold: true, beatsShortHold: true } }, copies: { copies: 10, beats: 10, bar: 8, barPct: 80, chance: 0.27, pass: true }, survivors: { survivors: 1, passing: 1, byChance: 0.27 }, sanity: { known: true, ok: true, board: { losing: 0.6 }, threshold: 50 } };
     const stood = V.buildBlock({ ...base, stageGate: { state: 'PASS', release: '3.87.0' } });
     assert.ok(/the stage-engine check stood \(release 3\.87\.0\)/.test(stood.verdict.sentence), stood.verdict.sentence);
     const none = V.buildBlock({ ...base, stageGate: { state: 'NOT CHECKED', release: null } });
     assert.ok(/no stage-engine check stood \(NOT CHECKED\)/.test(none.verdict.sentence));
+    assert.ok(!/planted/.test(stood.verdict.sentence) && !/planted/.test(none.verdict.sentence), 'the sentence still opens on the retired check');
     assert.strictEqual(stood.verdict.pass, none.verdict.pass, 'printed, never a gate on the set: the check certifies the instrument, not the result');
   },
 

@@ -1,5 +1,5 @@
-// The History Tuning arithmetic — age discount, effective days, floor,
-// calendar milestones (design ledger rulings A/C + system-wide floor).
+// The age arithmetic behind the History half-life run — age discount, effective
+// days, floor, calendar milestones (owner rulings A/C + the system-wide floor).
 const { assert } = require('./helpers');
 const H = require('../lib/history');
 

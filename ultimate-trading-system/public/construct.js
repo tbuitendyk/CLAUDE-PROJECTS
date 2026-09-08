@@ -1,6 +1,5 @@
-// Constructing — the UTS-shape successor to the Bracket lab (NEXT-RELEASE
-// point 25). Same back-end APIs, flow-ordered sections, token theme. The old
-// Bracket lab page is frozen; this page is where construction happens now.
+// Construct — where construction happens (NEXT-RELEASE point 25): flow-ordered
+// sections, token theme, drawn from the three-stage engine's own doors.
 /* eslint-disable no-alert */
 (() => {
 const $ = (s, r = document) => r.querySelector(s);
@@ -2107,7 +2106,7 @@ async function vRideFollow(id, token) {
   }
 }
 
-// ---- History (History Tuning + HT v2 age dial) ---------------------------------
+// ---- History (the reserve grade and the half-life run) -------------------------
 // THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0): the unread window -- the
 // sealed 13% nothing trained or searched on, from where the seal began to
 // whatever the box holds today -- priced for the set's survivors on the set's
@@ -2656,7 +2655,7 @@ async function drawTune() {
     // NULL, not 0. The endpoint's guard is `if (raw != null && raw !== '')` and
     // then refuses `v <= 0`, so a 0 took the positive-value path and came back
     // 400 every time: the stop could not be cleared from this tab at all. The
-    // frozen Bracket lab sends null and always has (audit 2026-08-17).
+    // clearing sends null and always has (audit 2026-08-17).
     applyStop(null);
   };
   // scanBody is null when the picker has nothing selectable (every setup and

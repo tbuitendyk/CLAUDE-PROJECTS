@@ -1,7 +1,7 @@
 // WHAT GETS SENT TO A BROWSER (owner order, 2026-08-23: "fix that so the system
 // always chunk data PROPERLY to browsers").
 //
-// The Construct page asked one run for its replication table and the server
+// The Construct page once asked the older engine for a run's replication table and the server
 // began assembling a 99 MB reply — 2,772 configurations each carrying up to 60
 // example rows. The screen never showed anything; the request never finished.
 // Measured, not guessed: 166,320 rows at 595 bytes.

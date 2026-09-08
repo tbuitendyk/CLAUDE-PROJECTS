@@ -79,7 +79,7 @@ module.exports = {
   // that reached no cell records a reason where one that did records money.
   everyRowKeepsEveryFieldItWasGiven() {
     withScratch(({ rowstore }) => {
-      const id = 'bracketlab-test-2';
+      const id = 'store-test-2';
       const w = rowstore.writer(id, 'slim');
       w.push({ key: 'a', pnl: 1, trades: 2 });
       w.push({ key: 'b', pnl: null, trades: null, noCell: 'no cell reached 10 trades' });
@@ -97,7 +97,7 @@ module.exports = {
   // restarted at zero, would be a second and shorter truth about one run.
   aReopenedStoreContinuesTheSameRecord() {
     withScratch(({ rowstore }) => {
-      const id = 'bracketlab-test-3';
+      const id = 'store-test-3';
       const a = rowstore.writer(id, 'census');
       for (let i = 0; i < 700; i++) a.push({ key: `k${i}`, pnl: i });
       a.close();
@@ -120,18 +120,18 @@ module.exports = {
   // readable at all.
   rowsCanBeWalkedAndPagedWithoutHoldingThemAll() {
     withScratch(({ rowstore }) => {
-      const id = 'bracketlab-test-4';
-      const w = rowstore.writer(id, 'replication');
+      const id = 'store-test-4';
+      const w = rowstore.writer(id, 'records');
       for (let i = 0; i < 5000; i++) w.push({ n: i });
       w.close();
 
       let sum = 0;
       let stoppedAt = null;
-      rowstore.each(id, 'replication', (r, i) => { sum += r.n; if (i === 99) { stoppedAt = i; return false; } return true; });
+      rowstore.each(id, 'records', (r, i) => { sum += r.n; if (i === 99) { stoppedAt = i; return false; } return true; });
       assert.strictEqual(stoppedAt, 99, 'a walker must be able to stop early');
       assert.strictEqual(sum, (99 * 100) / 2, 'and it stops where it said it did');
 
-      const p = rowstore.page(id, 'replication', 4990, 20);
+      const p = rowstore.page(id, 'records', 4990, 20);
       assert.strictEqual(p.rows.length, 10, 'a page past the end is short, not wrong');
       assert.strictEqual(p.rows[0].n, 4990);
       assert.strictEqual(p.total, 5000, 'and the total comes from the sidecar, not from a walk');
@@ -141,7 +141,7 @@ module.exports = {
   // The count must not require reading the rows — that is the whole point.
   theCountIsCheapAndSurvivesTheSidecarBeingLost() {
     withScratch(({ rowstore }) => {
-      const id = 'bracketlab-test-5';
+      const id = 'store-test-5';
       const w = rowstore.writer(id, 'slim');
       for (let i = 0; i < 300; i++) w.push({ n: i });
       w.close();
@@ -168,7 +168,7 @@ module.exports = {
   // would start a second, empty file beside the one holding its results.
   anExistingPlainCollectionStaysPlainAndReadable() {
     withScratch(({ rowstore }) => {
-      const id = 'bracketlab-old-1';
+      const id = 'store-old-1';
       fs.mkdirSync(rowstore.storeDir(id), { recursive: true });
       let text = `${JSON.stringify({ v: 1, cols: ['key', 'pnl'] })}\n`;
       for (let i = 0; i < 500; i++) text += `${JSON.stringify([`k${i}`, i * 2])}\n`;
@@ -200,7 +200,7 @@ module.exports = {
   // test.
   aNewCollectionIsSquashedAndReadsIdentically() {
     withScratch(({ rowstore }) => {
-      const id = 'bracketlab-gz-1';
+      const id = 'store-gz-1';
       const N = 60000;
       const row = (i) => ({
         label: `q4/6 always d${[0.25, 0.5, 1][i % 3]}x t${[17, 41, 65][i % 3]}h`,
@@ -208,36 +208,36 @@ module.exports = {
         pnl: i * 1.37, trades: 10 + (i % 200), nullDealSeed: i % 21 ? i % 21 : null,
         ...(i % 997 === 0 ? { noCell: 'no cell reached 10 trades' } : {}),
       });
-      const w = rowstore.writer(id, 'replication');
+      const w = rowstore.writer(id, 'records');
       for (let i = 0; i < N; i++) w.push(row(i));
       w.close();
 
-      assert.strictEqual(rowstore.formatOf(id, 'replication'), 'squashed');
-      assert.strictEqual(rowstore.count(id, 'replication'), N, 'the count is the count');
+      assert.strictEqual(rowstore.formatOf(id, 'records'), 'squashed');
+      assert.strictEqual(rowstore.count(id, 'records'), N, 'the count is the count');
 
       let seen = 0;
       let sum = 0;
       let extra = 0;
-      rowstore.each(id, 'replication', (o) => { seen++; sum += o.pnl; if (o.noCell) extra++; });
+      rowstore.each(id, 'records', (o) => { seen++; sum += o.pnl; if (o.noCell) extra++; });
       assert.strictEqual(seen, N, 'every row comes back');
       assert.ok(Math.abs(sum - ((N - 1) * N) / 2 * 1.37) < 1, 'with its numbers intact');
       assert.strictEqual(extra, Math.ceil(N / 997), 'and the rows carrying an extra column keep it');
 
       // MORE THAN ONE BLOCK, or the rest of this proves nothing
-      const meta = JSON.parse(fs.readFileSync(`${rowstore.storeFile(id, 'replication')}.meta.json`, 'utf8'));
+      const meta = JSON.parse(fs.readFileSync(`${rowstore.storeFile(id, 'records')}.meta.json`, 'utf8'));
       assert.ok(Array.isArray(meta.blocks) && meta.blocks.length > 1,
         `this collection is ${meta.blocks ? meta.blocks.length : 0} block(s) — too small to test reading from the middle`);
 
       // a page from the far end starts inside a later block, so that block has
       // to carry its own column header or the rows come back unreadable
-      const last = rowstore.page(id, 'replication', N - 3, 10);
+      const last = rowstore.page(id, 'records', N - 3, 10);
       assert.strictEqual(last.rows.length, 3, 'a page past the end is short, not wrong');
       assert.ok(last.rows[0].trade, 'a row read from a later block must have its columns');
       assert.ok(Math.abs(last.rows[0].pnl - (N - 3) * 1.37) < 1e-6, 'and starts at the row asked for');
       assert.strictEqual(last.total, N);
 
       // and one from the middle, which is where a lost header shows up worst
-      const mid = rowstore.page(id, 'replication', Math.floor(N / 2), 5);
+      const mid = rowstore.page(id, 'records', Math.floor(N / 2), 5);
       assert.strictEqual(mid.rows.length, 5);
       assert.ok(mid.rows[0].trade && mid.rows[0].label, 'a row from the middle must have its columns too');
       assert.ok(Math.abs(mid.rows[0].pnl - Math.floor(N / 2) * 1.37) < 1e-6, 'and be the row asked for');
@@ -247,7 +247,7 @@ module.exports = {
   // A lost index costs speed, never the rows.
   aSquashedCollectionSurvivesLosingItsIndex() {
     withScratch(({ rowstore }) => {
-      const id = 'bracketlab-gz-2';
+      const id = 'store-gz-2';
       const w = rowstore.writer(id, 'census');
       for (let i = 0; i < 8000; i++) w.push({ key: `k${i}`, pnl: i, trade: ['A', 'B'][i % 2] });
       w.close();
@@ -263,7 +263,7 @@ module.exports = {
   // disk buys a limit that is only a little further away.
   theWrittenFormIsCompactComparedToTheObjects() {
     withScratch(({ rowstore }) => {
-      const id = 'bracketlab-test-8';
+      const id = 'store-test-8';
       const row = () => ({
         declaredLabel: 'q4/6 always d1x t41h trail1x/arm0.5x', nullDealSeed: null,
         trade: 'ETHUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d', bandPct: 1.14,
@@ -272,7 +272,7 @@ module.exports = {
         controlPnl: 900.1, vsControl: 334.46, trailMult: 1, armMult: 0.5,
         vsAlwaysLong: 434.36, vsBuyHold: 483.66,
       });
-      const w = rowstore.writer(id, 'replication');
+      const w = rowstore.writer(id, 'records');
       for (let i = 0; i < 2000; i++) w.push(row());
       w.close();
       const perRow = rowstore.bytes(id) / 2000;
@@ -306,15 +306,15 @@ module.exports = {
       for (let i = 0; i < 40000; i++) {
         rows.push({ i, trade: `SYM${i % 7}USDT`, pnl: (i % 13) - 6.5, note: `row ${i} `.repeat(20) });
       }
-      const sync = rowstore.writer('cmp-sync', 'replication');
+      const sync = rowstore.writer('cmp-sync', 'records');
       for (const r of rows) sync.push(r);
       await sync.close();
 
-      const off = rowstore.writer('cmp-off', 'replication', { offThread: true });
+      const off = rowstore.writer('cmp-off', 'records', { offThread: true });
       for (const r of rows) off.push(r);
       await off.close();
 
-      const fileOf = (id) => path.join(realData, 'batches', `${id}.rows`, 'replication.jsonl.gz');
+      const fileOf = (id) => path.join(realData, 'batches', `${id}.rows`, 'records.jsonl.gz');
       const a = fs.readFileSync(fileOf('cmp-sync'));
       const b = fs.readFileSync(fileOf('cmp-off'));
       assert.strictEqual(b.length, a.length, 'the off-thread store is a different size from the one written here');
@@ -322,14 +322,14 @@ module.exports = {
 
       // and it reads back: every row, in order, with its fields
       const back = [];
-      rowstore.each('cmp-off', 'replication', (r) => { back.push(r); });
+      rowstore.each('cmp-off', 'records', (r) => { back.push(r); });
       assert.strictEqual(back.length, rows.length, `walked ${back.length} rows back out of ${rows.length}`);
       for (let i = 0; i < rows.length; i++) {
         assert.strictEqual(back[i].i, rows[i].i, `row ${i} came back as row ${back[i].i} — the blocks landed out of order`);
         assert.strictEqual(back[i].trade, rows[i].trade);
       }
       // the sidecar agrees with the file it indexes
-      const meta = JSON.parse(fs.readFileSync(path.join(realData, 'batches', 'cmp-off.rows', 'replication.jsonl.gz.meta.json'), 'utf8'));
+      const meta = JSON.parse(fs.readFileSync(path.join(realData, 'batches', 'cmp-off.rows', 'records.jsonl.gz.meta.json'), 'utf8'));
       assert.strictEqual(meta.rows, rows.length, 'the index under-counts or over-counts what is in the file');
       let at = 0;
       for (const blk of meta.blocks) {

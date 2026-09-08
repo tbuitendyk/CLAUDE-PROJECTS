@@ -1,6 +1,6 @@
-// Bracket lab core: multi-asset combo datasets + the OCO bracket execution
+// The execution core: multi-asset combo datasets + the OCO bracket execution
 // simulator + the mechanical execution sweep. Pure functions over data the
-// orchestrator (batch.js) supplies — no I/O here, so every piece is testable
+// stage engine (lib/stagework.js) supplies — no I/O here, so every piece is testable
 // and the frozen books' modules are never touched.
 //
 // COMBOS reuse the existing, tested 2-asset chunk/feature builder verbatim:
@@ -582,7 +582,7 @@ const { tuneTau } = require('./pipeline');
 const { directionalCall } = require('./paper');
 
 // ageWeights: optional per-example weights aligned with trainChunks (the
-// History Tuning age discount). They multiply into the directional class
+// History half-life age discount). They multiply into the directional class
 // weights everywhere training happens — the lambda ladder, the boost probe,
 // and the final refits. Tau tuning stays unweighted on purpose: it optimizes
 // money on the most recent validation window, which is already the most

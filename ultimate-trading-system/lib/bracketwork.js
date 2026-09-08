@@ -1,5 +1,6 @@
-// Pure, self-contained task functions for the Bracket lab — the unit of work
-// that either the main thread OR a worker thread can execute identically.
+// Pure, self-contained helpers for the stage engine's unit of work — the
+// labelling, the committee's readings and the agreement call — which either
+// the main thread OR a worker thread can run identically.
 //
 // WHY THIS MODULE EXISTS: parallelism is only safe here because each task is
 // a pure function of its inputs. Nothing below touches a batch doc, a

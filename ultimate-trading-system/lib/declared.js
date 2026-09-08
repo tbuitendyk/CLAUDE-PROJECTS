@@ -103,8 +103,8 @@ function validateDeclared(raw, menus) {
 // PERMUTING THE DECLARED CONFIG (owner, 2026-08-17). The single declared config
 // is unchanged and stays the default: declare one cell, score it on every asset,
 // no shopping. This adds the option to declare a SET instead — permute any of the
-// replication boxes and every combination is scored on every asset, so the
-// replication table can be read for a wide region rather than a single point.
+// declared boxes and every combination is scored on every asset, so a stage 1
+// record set covers a wide region rather than a single point.
 //
 // The set is built from the RUN's own grid (the same menus validateDeclared
 // checks against), and every member goes through validateDeclared itself. That is

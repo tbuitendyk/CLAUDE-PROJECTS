@@ -201,7 +201,7 @@ const DEFAULT_LAMBDAS = [0.01, 0.03, 0.1, 0.3, 1, 3, 10, 30];
 // times) so an edge pick always means "the interior optimum", never "the
 // fence was too close".
 // exampleWeights: optional per-example weights aligned with Xtr/ytr (the
-// History Tuning age discount). They multiply into classWeights everywhere,
+// History half-life age discount). They multiply into classWeights everywhere,
 // INCLUDING the validation ladder and the majority reference — lambda must
 // be chosen for the weighted objective (same rule as classWeights, stated
 // per the design ledger). All-ones reproduces the unweighted math exactly.

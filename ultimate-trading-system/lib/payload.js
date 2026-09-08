@@ -1,7 +1,7 @@
 // WHAT GETS SENT TO A BROWSER, AND HOW MUCH OF IT (owner order, 2026-08-23:
 // "fix that so the system always chunk data PROPERLY to browsers").
 //
-// The Construct page asked for one run's replication table and the server
+// The Construct page once asked the older engine for one run's replication table and the server
 // assembled a 99 MB reply: 2,772 configurations, each carrying up to 60 example
 // rows. Nothing was wrong with any single line of that code — the reply simply
 // grew with the run, and no one part of it was the part that was too big.
@@ -9,7 +9,8 @@
 // Two faults, and they are different:
 //
 //   THE ONE THAT WAS FOUND. Three endpoints shipped collections whose size
-//   follows the run. The replication table above; the runs picker, which
+//   follows the run (all three went with that engine, 3.97.0; the guard stays
+//   for what still grows). The replication table above; the runs picker, which
 //   carries every run's full parameters including the expanded declared set
 //   (500 KB on the current run, x18 runs = 9 MB) and is fetched on every draw
 //   of three separate sections; and a single run's document, which carries the

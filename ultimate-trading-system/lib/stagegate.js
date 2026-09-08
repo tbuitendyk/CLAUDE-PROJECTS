@@ -1,12 +1,12 @@
-// stagegate.js -- V0: the three-stage engine's own planted check (3.87.0,
+// stagegate.js -- V0: the stage-engine check (3.87.0,
 // VERIFY-DESIGN.md V0 and decision 9; loop record, step 2).
 //
 // THE QUESTION. Can the engine the owner actually uses -- stage 1, stage 2,
 // stage 3, a declared rule cut into a Stage 4 set, and the verdict on Verify
 // -- find a rule that is provably there, profit on it on the held-back window,
 // beat holding the coin, have its scrambled copies fail to match it, and stay
-// quiet on a fair coin? The planted check on Verify asks that of the older
-// sweep path; nothing asked it of this one.
+// quiet on a fair coin? The older sweep path had a check that asked it of that
+// path (retired with it, 3.97.0); nothing asked it of this one.
 //
 // WHAT IS HERE IS THE DECLARATION AND THE GRADING, both pure: the two
 // reserved coins, the span, the seeds, the copy count, the rule, the five

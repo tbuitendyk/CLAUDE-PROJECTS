@@ -10,7 +10,7 @@
 // called first, its answer rides on the block as `rules`, and every reading
 // below takes that object rather than deciding a threshold of its own. Each
 // rule is tagged DERIVED (it follows from the set's own record) or GUESSED (a
-// chosen threshold), the way the planted check stamps its own.
+// chosen threshold), the way the stage-engine check stamps its own.
 //
 // THE UNIT OF VERIFICATION IS THE SET, never one row: a rule can be read on a
 // noise board and a single row cannot (owner decision 1, 2026-09-07). Each
@@ -322,11 +322,9 @@ const money = (v) => (v == null ? 'no figure' : `${Number(v) < 0 ? '-' : ''}$${M
 const pct = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
 function verdict(block) {
   const b = block;
-  const gate = b.gate || {};
   const parts = [];
-  parts.push(gate.state === 'PASS'
-    ? `the planted check stood (release ${gate.engineVersion || 'unrecorded'}; it certifies the old sweep pipeline)`
-    : `no planted check stood (${gate.state || 'NOT CHECKED'})`);
+  // the instrument first: the stage-engine check, the release's one check (the
+  // planted check that opened this sentence went with the older engine, 3.97.0)
   const sg = b.stageGate || null;
   if (sg) parts.push(sg.state === 'PASS' ? `the stage-engine check stood (release ${sg.release || 'unrecorded'})` : `no stage-engine check stood (${sg.state || 'NOT CHECKED'})`);
   const f = b.footing || {};
@@ -393,7 +391,7 @@ function buildUnreadBlock(input) {
 }
 
 // ---- the block, assembled -------------------------------------------------------------
-// input: { id, at, release, look, rules, gate, stageGate, footing, looks, heldBack,
+// input: { id, at, release, look, rules, stageGate, footing, looks, heldBack,
 //          copies, survivors, sanity, lineA, lineB, others, fee, windows, marks }
 function buildBlock(input) {
   const b = { ...input };

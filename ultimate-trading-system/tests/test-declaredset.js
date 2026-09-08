@@ -1,8 +1,8 @@
 // PERMUTING THE REPLICATION ROW (owner, 2026-08-17). The single declared config
 // is the strongest reading available — one cell, named before the run, scored
 // once per asset, no shopping. It must keep working EXACTLY as it did. What is
-// added is the option to declare a SET instead, so the replication table can be
-// read for a wide region rather than a single point.
+// added is the option to declare a SET instead, so a stage 1 record set covers
+// a wide region rather than a single point.
 //
 // The rule these tests defend: a permuted set can never contain a config the
 // single path would have refused. One validator decides what is legal, and the

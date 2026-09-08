@@ -1209,3 +1209,31 @@ carried out 2026-08-28 under its own GO — decision 50.
     reading the record sets' running state off the box (nothing running, the
     service restarted minutes before by the 3.97.0 deploy) and is recorded as
     such. Second digit.
+
+90. **Everything related to the retired engine goes** (owner order 2026-09-08:
+    "get rid of everything related to the obsolete engine already", GO NOW!).
+    On the box, deleted by a script that refuses while the box is busy and
+    names exactly what it takes: the 87 run documents and row stores of the
+    retired engine under data/batches (4.5 GB), the planted check's records,
+    its saved models, its two fabricated coins' price files, its run-rate
+    file, the stale outputs its scripts left in /tmp and the log of its one-off
+    row conversion — 306 entries, the data folder from 6.4 GB to 1.9 GB; the
+    stage engine's fifteen set files and five stores survived, checked after.
+    On the vps-access branch, twenty-one diagnostic scripts that read only the
+    retired engine go, and six that also do current work are re-aimed at the
+    surviving doors. In the repository, WORKFLOW.md and DESIGN-HISTORY-TUNING.md
+    go (both described the retired path throughout; the git history keeps
+    them), the prompt document's note stops pointing at WORKFLOW.md, the
+    row-store test's fixtures drop the retired names, and the comments that
+    still called the current check "the planted check" or described the older
+    engine as present are reworded. Found on the way and fixed here: the
+    Verify verdict sentence still opened with "no planted check stood (NOT
+    CHECKED)", because lib/funnelverify.js kept the retired part after 3.97.0
+    took the gate out of the footing — every verdict pressed since 3.97.0 on
+    the box carries that opening in its stored sentence (none was pressed);
+    the sentence now opens on the stage-engine check. Left for the owner: the
+    previous product at /opt/general-classifier (701 MB) and its classifier-*,
+    ht-*, wf-* and bracket-fixture-* scripts on vps-access, which target that
+    product on port 8093, not this system; and the Compute tab's setting that
+    said where a sweep runs, whose only reader was the retired launcher (delete
+    it, or have the stage launches honour it). Third digit (3.98.1).

@@ -571,8 +571,8 @@ function startStage1(params) {
   const compare = Array.isArray(params.compare) && params.compare.length
     ? params.compare.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
     : [];
-  // THE FABRICATED COINS NEVER MEET A REAL RUN (3.87.0): the planted check's
-  // pair and the stage-engine check's pair carry a known rule, so any board
+  // THE FABRICATED COINS NEVER MEET A REAL RUN (3.87.0): the stage-engine
+  // check's pair carry a known rule, so any board
   // they sat on would be judging fiction. The old launcher has refused them
   // since 2026-08-03; this one refuses them too, unless the exam is launching.
   {
@@ -6123,10 +6123,10 @@ async function funnelVerifyRun(doc, asked) {
   const fresh = getSet(doc.id);
   if (!fresh) throw new Error('the set went away while it was being read');
   const blocks = fresh.verify || [];
-  const { gate, stageGate, ...rest } = footing;
+  const { stageGate, ...rest } = footing;
   const block = V.buildBlock({
     id: `${doc.id}-v${blocks.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: blocks.length + 1,
-    rules, gate, stageGate, footing: rest,
+    rules, stageGate, footing: rest,
     looks: verifyLooksOf(fresh, footing.keys, blocks.length),
     heldBack, copies, survivors, sanity, lineA, lineB,
     // the newest reading of the rule on the other units, when one exists (3.88.0)
@@ -6421,7 +6421,7 @@ async function unreadGradeRun(doc, asked, note = null) {
   const fresh = getSet(doc.id);
   if (!fresh) throw new Error('the set went away while its unread window was being priced');
   const had = fresh.unread || [];
-  const { gate: _g, stageGate: _sg, ...rest } = footing;
+  const { stageGate: _sg, ...rest } = footing;
   const block = V.buildUnreadBlock({
     id: `${doc.id}-u${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1,
     rules, gate, footing: rest,
@@ -7117,11 +7117,11 @@ function halfLifeStatus(id) {
   return halfLifeStatusOf(halfLifeRun);
 }
 
-// ---- V0: THE STAGE ENGINE'S OWN PLANTED CHECK (3.87.0, VERIFY-DESIGN.md) --------
+// ---- V0: THE STAGE-ENGINE CHECK (3.87.0, VERIFY-DESIGN.md) ----------------------
 //
 // The declaration and the grading are lib/stagegate.js's, pure. Running it is
 // this file's, because it owns every door the exam walks through: two coins
-// fabricated with the planted check's own generator, stage 1, stage 2, a small
+// fabricated with the check's own generator, stage 1, stage 2, a small
 // stage 3 with every copy kept, the declared rule cut into a Stage 4 set on
 // each coin, the verdict pressed on both, five gates graded, one record written
 // in the exam's own directory -- and everything it made deleted, so nothing of
