@@ -114,15 +114,26 @@ fi
 echo "== 6. end-to-end probe over the real public URL =="
 # -k because the certs are expired; LE ignores certs on redirect too, so this
 # mirrors what the validator actually does. -L to follow guest:80 -> host:443.
+# `systemctl reload nginx` is graceful: old workers keep serving in-flight
+# connections with the PREVIOUS config for a moment, so a single probe can hit
+# a pre-include worker and 404 while the next request on a new worker returns
+# 200. Settle, then retry before calling it a failure.
+sleep 5
 fail=0
 for h in "${HOSTS[@]}"; do
-  code=$(curl -skL -o /dev/null -w '%{http_code}' --max-time 25 \
-          "http://$h/.well-known/acme-challenge/probe" 2>/dev/null || echo 000)
-  body=$(curl -skL --max-time 25 "http://$h/.well-known/acme-challenge/probe" 2>/dev/null | head -1)
-  if [ "$code" = "200" ] && [ "$body" = "acme-ok" ]; then
-    printf "   %-32s %s OK\n" "$h" "$code"
+  ok=0
+  for attempt in 1 2 3 4; do
+    body=$(curl -skL --max-time 25 -w '\n%{http_code}' \
+            "http://$h/.well-known/acme-challenge/probe" 2>/dev/null || echo)
+    code=$(printf '%s' "$body" | tail -1)
+    text=$(printf '%s' "$body" | head -1)
+    if [ "$code" = "200" ] && [ "$text" = "acme-ok" ]; then ok=1; break; fi
+    sleep 3
+  done
+  if [ "$ok" = "1" ]; then
+    printf "   %-32s 200 OK%s\n" "$h" "$([ "$attempt" -gt 1 ] && echo " (attempt $attempt)")"
   else
-    printf "   %-32s %s FAIL (body=%.20s)\n" "$h" "$code" "$body"
+    printf "   %-32s %s FAIL (body=%.20s)\n" "$h" "${code:-000}" "${text:-none}"
     fail=1
   fi
 done
