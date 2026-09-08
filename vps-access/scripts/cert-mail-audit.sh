@@ -6,6 +6,9 @@
 # guest owns public :80 (VBoxNetNAT forward) and public :443 (the SNI stream
 # map's `default` route) for mail.homeandofficemicro.com.
 #
+# Uses the dedicated passphrase-less key /root/.ssh/id_mailcert; the default
+# id_ed25519 is passphrase-protected and unusable unattended.
+#
 # Before issuing anything this establishes: certbot availability, the real
 # nginx layout and where ssl_certificate is set, how :80 handles the ACME path
 # (the guest 301s everything to https today, so the challenge may need serving
@@ -13,7 +16,8 @@
 # paths, and what Postfix/Dovecot point at.
 set -uo pipefail
 G=192.168.56.129
-S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 root@$G"
+K=/root/.ssh/id_mailcert
+S="ssh -i $K -o IdentitiesOnly=yes -o BatchMode=yes -o StrictHostKeyChecking=no -o ConnectTimeout=8 root@$G"
 
 echo "===== 0. access ====="
 $S 'echo "  in as $(id -un)@$(hostname -f)  |  $(cat /etc/debian_version 2>/dev/null || uname -sr)"' 2>&1 | tail -2
