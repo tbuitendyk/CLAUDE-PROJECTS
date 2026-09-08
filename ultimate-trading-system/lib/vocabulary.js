@@ -99,7 +99,8 @@ function vocabulary() {
     windowLayout: [
       { value: 'split70', label: '70/15/15' },
       { value: 'reserve61', label: '61/13/13/13 (sealed exam)' },
-      { value: 'legacy80', label: 'legacy 80/20 (never evidence)' },
+      // the 80/20 layout left this list 2026-09-08 (owner order: "get rid of the
+      // option and clean up any code specific to it"); no set on the box was built with it
     ],
     // THE FUNNEL'S DIALS, READ FROM THE ENGINE, never typed here. A list typed
     // into the page is a list that can quietly disagree with the record — and

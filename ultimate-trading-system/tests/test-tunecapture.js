@@ -53,32 +53,15 @@ async function settle(statusOf, label) {
 // the same launches the stage-engine check makes, on the same two coins
 async function chain(tag) {
   const made = [];
-  Pl.generateFabricated(SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);
-  Pl.generateFabricated(SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);
-  const s1 = stages.startStage1({ ...S1, exam: true, name: `${tag} S1` });
-  made.push(s1.id);
-  const d1 = await waitSet(s1.id, 'stage 1');
-  if (d1.status !== 'done') throw new Error(`stage 1 ended ${d1.status}: ${JSON.stringify(d1.failures || [])}`);
-  const s2 = stages.startStage2({ ...G.STAGE2, from: s1.id, exam: true, name: `${tag} S2` });
-  made.push(s2.id);
-  const d2 = await waitSet(s2.id, 'stage 2');
-  if (d2.status !== 'done') throw new Error(`stage 2 ended ${d2.status}: ${JSON.stringify(d2.failures || [])}`);
-  const s3 = stages.startStage3({ ...G.STAGE3, from: s2.id, exam: true, name: `${tag} S3` });
-  made.push(s3.id);
-  const d3 = await waitSet(s3.id, 'stage 3');
-  if (d3.status !== 'done') throw new Error(`stage 3 ended ${d3.status}: ${JSON.stringify(d3.failures || [])}`);
-  const t = stages.readTally(s3.id) || await stages.buildTally(stages.getSet(s3.id));
-  const units = stages.unitsOfSet(t, s3.id);
-  const plant = (units.find((u) => u.trade === G.PLANT) || {}).key;
-  if (!plant) throw new Error('the stage 3 set does not hold the planted coin');
-  const cut = await stages.cutFunnelSet(s3.id, { rule: G.RULE, closing: { key: 'rule' }, unit: plant, barPct: 100, exam: true, name: `${tag} planted` });
-  made.push(cut.id);
+  // WHAT A FAILED LAUNCH MADE IS REMOVED BEFORE THE THROW: a set left behind
+  // collides on its name with the next run of this very test.
   const cleanup = () => {
     for (const id of made.slice().reverse()) {
       try { stages.deleteSet(id, id); } catch (_) { /* never written */ }
       try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* none */ }
       try { fs.rmSync(path.join(SETS_DIR, `${id}-agreed.json.gz`), { force: true }); } catch (_) { /* none */ }
       try { fs.rmSync(stages.captureFile(id), { force: true }); } catch (_) { /* none */ }
+      for (const f of fs.readdirSync(SETS_DIR)) if (f.startsWith(`${id}-halflife-`)) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true }); } catch (_) { /* none */ } }
     }
     const { CACHE_DIR } = require('../lib/binance');
     let files = [];
@@ -87,6 +70,33 @@ async function chain(tag) {
       if (G.SYMBOLS.some((sym) => f.startsWith(`${sym}-1h-`))) { try { fs.rmSync(path.join(CACHE_DIR, f), { force: true }); } catch (_) { /* best effort */ } }
     }
   };
+  let s1;
+  let s2;
+  let s3;
+  let cut;
+  let plant;
+  try {
+  Pl.generateFabricated(SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);
+  Pl.generateFabricated(SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);
+  s1 = stages.startStage1({ ...S1, exam: true, name: `${tag} S1` });
+  made.push(s1.id);
+  const d1 = await waitSet(s1.id, 'stage 1');
+  if (d1.status !== 'done') throw new Error(`stage 1 ended ${d1.status}: ${JSON.stringify(d1.failures || [])}`);
+  s2 = stages.startStage2({ ...G.STAGE2, from: s1.id, exam: true, name: `${tag} S2` });
+  made.push(s2.id);
+  const d2 = await waitSet(s2.id, 'stage 2');
+  if (d2.status !== 'done') throw new Error(`stage 2 ended ${d2.status}: ${JSON.stringify(d2.failures || [])}`);
+  s3 = stages.startStage3({ ...G.STAGE3, from: s2.id, exam: true, name: `${tag} S3` });
+  made.push(s3.id);
+  const d3 = await waitSet(s3.id, 'stage 3');
+  if (d3.status !== 'done') throw new Error(`stage 3 ended ${d3.status}: ${JSON.stringify(d3.failures || [])}`);
+  const t = stages.readTally(s3.id) || await stages.buildTally(stages.getSet(s3.id));
+  const units = stages.unitsOfSet(t, s3.id);
+  plant = (units.find((u) => u.trade === G.PLANT) || {}).key;
+  if (!plant) throw new Error('the stage 3 set does not hold the planted coin');
+  cut = await stages.cutFunnelSet(s3.id, { rule: G.RULE, closing: { key: 'rule' }, unit: plant, barPct: 100, exam: true, name: `${tag} planted` });
+  made.push(cut.id);
+  } catch (err) { cleanup(); throw err; }
   return { s1: s1.id, s2: s2.id, s3: s3.id, cut, plant, made, cleanup };
 }
 // the verdict pressed, and the gate opened by hand when the engine's own verdict

@@ -159,4 +159,4 @@ branches; the deploy chain waits for the owner's word.
 
 ## 4. Loop record
 
-(filled as each step lands)
+- **H1 (3.93.0), 2026-09-08 ~04:20 UTC.** The 80/20 layout is gone from stage 1: the box on Sweep, the launch (refused by name), the chunk split. The older engine keeps its own name for its own records. Test `theEightyTwentyLayoutIsGoneFromStageOne`; one guard. Decision 84. **Caught by the whole suite, not by the narrow files:** the split's return still named the variable the removal deleted, so every stage 1 launch failed with "holdout is not defined"; the three chain files saw it, the four narrow files could not. Fixed and the chain files re-run before the commit.

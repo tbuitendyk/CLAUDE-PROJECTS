@@ -4715,4 +4715,19 @@ module.exports = {
     try { stages.startStage1({ ...base, sizes: { doubles: true } }); } catch (err) { msg2 = String(err.message); }
     assert.match(msg2, /doubles reads each traded coin against 1 other coin/, 'one coin, not "1 coins"');
   },
+
+  // THE 80/20 LAYOUT IS GONE FROM STAGE 1 (owner order, 2026-09-08). It kept no
+  // held-back slice; the Sweep's box no longer offers it, a launch that asks
+  // for it is refused by name, and the chunk split always keeps one.
+  theEightyTwentyLayoutIsGoneFromStageOne() {
+    const values = (require('../lib/vocabulary').vocabulary().windowLayout || []).map((c) => c.value);
+    assert.deepStrictEqual(values, ['split70', 'reserve61'], `the window layout box offers ${JSON.stringify(values)}`);
+    const base = { universe: ['BTCUSDT'], sizes: { singles: true }, geometry: 'daily-1d', nullN: 9, fee: 0.00125 };
+    let msg = '';
+    try { stages.startStage1({ ...base, windowLayout: 'legacy80' }); } catch (err) { msg = String(err.message); }
+    assert.match(msg, /the 80\/20 window layout was removed/, 'a launch asking for it is refused by name');
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    assert.ok(!/legacy80/.test(sw.replace(/\/\/[^\n]*/g, '')), 'the chunk split no longer knows the name');
+    assert.ok(/const split = splitAndLabel\(workChunks, branch, true\);/.test(sw), 'every layout keeps a held-back slice');
+  },
 };

@@ -1077,3 +1077,12 @@ carried out 2026-08-28 under its own GO — decision 50.
     twenty minutes for nothing. Third digit. The new release makes the check
     read NOT CHECKED; the owner presses it.
 
+84. **The 80/20 window layout removed from stage 1** (3.93.0, loop H1, owner
+    order 2026-09-08: "get rid of the option and clean up any code specific to
+    it"; "there are no sets with 80/20"). The Sweep's window layout box offers
+    70/15/15 and 61/13/13/13; a launch asking for the old name is refused by
+    name with the reason (it kept no held-back slice, so nothing cut from it
+    could be verified); the chunk split always keeps a held-back slice. The
+    older engine (lib/batch.js) keeps reading its own records, which carry the
+    name. Second digit: a control is gone.
+

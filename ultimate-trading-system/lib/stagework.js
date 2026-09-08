@@ -382,8 +382,8 @@ async function unitChunks(combo, geometry, p) {
     reserve = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
     workChunks = workChunks.slice(0, workChunks.length - nReserve);
   }
-  const holdout = p.windowLayout !== 'legacy80';
-  const split = splitAndLabel(workChunks, branch, holdout);
+  // every layout keeps a held-back slice (the 80/20 layout, which kept none, went 2026-09-08)
+  const split = splitAndLabel(workChunks, branch, true);
   // THE ACTUAL DATE RANGES EVERY RUN USED (3.85.0, owner order 2026-09-07: "on
   // all s1/2/3 sweep runs the three actual date ranges for 70/15/15 and
   // 61/13/13 should be stored"). Written on every stage 1 and 2 record and,
@@ -397,7 +397,7 @@ async function unitChunks(combo, geometry, p) {
     train: span(split.trainChunks), test: span(split.testChunks), hold: span(split.holdChunks),
     unread: reserve ? { fromTs: reserve.fromTs, chunks: reserve.chunks, seenToTs: reserve.toTs } : null,
   };
-  return { geo, maps, split, reserve, holdout, windows };
+  return { geo, maps, split, reserve, windows };
 }
 
 const viewsFor = (combo, geo) => bracketLib.comboViews(combo.size, geo.featureHours / 24).views;

@@ -1181,6 +1181,9 @@ const GUARDS = [
   // ---- the stage-engine check builds four years (3.92.1) ----
   [path.join(ROOT, 'lib', 'stagegate.js'), "  windowLayout: 'reserve61', allLoaded: false, startMonth: SPAN.fromMonth, endMonth: SPAN.toDate.slice(0, 7),", "  windowLayout: 'reserve61', allLoaded: false, startMonth: '2024-01', endMonth: SPAN.toDate.slice(0, 7),",
     'theCheckBuildsFourYearsAndItsMonthsFollowItsSpan', 'the check fabricates four years and trains on one, and fails on its own starvation again while claiming the longer span'],
+  // ---- the 80/20 layout removed from stage 1 (3.93.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "  if (params.windowLayout === 'legacy80') throw new Error('the 80/20 window layout was removed:", "  if (false) throw new Error('the 80/20 window layout was removed:",
+    'theEightyTwentyLayoutIsGoneFromStageOne', 'a launch asking for the removed layout is quietly relaid as 61/13/13/13 while its record claims what was asked'],
 ];
 
 const only = process.argv[2] || '';

@@ -598,7 +598,11 @@ function startStage1(params) {
   const geometries = params.permuteGeometry
     ? Object.keys(GEOMETRIES)
     : [GEOMETRIES[params.geometry] ? params.geometry : 'daily-4d'];
-  const windowLayout = ['split70', 'reserve61', 'legacy80'].includes(params.windowLayout) ? params.windowLayout : 'reserve61';
+  // THE 80/20 LAYOUT IS GONE (owner order, 2026-09-08). It kept no held-back
+  // slice, so nothing cut from it could be verified; refused by name rather
+  // than quietly relaid, so a launch that still asks for it hears why.
+  if (params.windowLayout === 'legacy80') throw new Error('the 80/20 window layout was removed: it keeps no held-back slice, so nothing cut from it could ever be verified — choose 70/15/15 or 61/13/13/13');
+  const windowLayout = ['split70', 'reserve61'].includes(params.windowLayout) ? params.windowLayout : 'reserve61';
   const nullN = Math.max(0, Math.floor(num(params.nullN, 19)));
   const fee = feeOrRefuse(params.fee, 'it prices the tuning-slice $ every unit is read by');
   // WHAT EACH TRAINING WEEK IS WORTH (3.69.0, owner order). `direction` is what
