@@ -498,6 +498,8 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     // observations the walk was carried past (§16.5); never cleared
     marks: [],
     heldBackReadAt: null,
+    // the blocks the read on Verify stamps, newest first (3.86.0)
+    verify: [],
   };
 }
 

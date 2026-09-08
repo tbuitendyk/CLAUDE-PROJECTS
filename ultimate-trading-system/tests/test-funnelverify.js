@@ -204,7 +204,7 @@ module.exports = {
       let threw = null;
       try { await pressed(doc.id); } catch (e) { threw = e.message; }
       assert.ok(/does not give back its own survivors/.test(threw || ''), 'and the press refuses in the same words');
-      assert.ok(!stages.getSet(doc.id).verify, 'nothing was stamped');
+      assert.strictEqual((stages.getSet(doc.id).verify || []).length, 0, 'nothing was stamped');
     } finally { f.cleanup(); }
   },
 
@@ -533,5 +533,64 @@ module.exports = {
       assert.strictEqual(b.looks.unstamped, 3, 'one step, one step back, and the cut view');
       assert.ok(b.looks.what.some((w) => /Boards offers a sort and a filter/.test(w)));
     } finally { f.cleanup(); }
+  },
+
+  // WHAT THE INDEPENDENT REVIEW OF 3.86.0 FOUND (3.86.1). A blank box, read as
+  // a number, reached the server as 0 and became a bar of ONE copy -- which a
+  // forecast-free rule clears 99% of the time. A share below 1 is not an ask.
+  aBlankBoxMeansTheSetsOwnBarNeverAOnePercentOne() {
+    const check = { kind: 'scrambles', k: 80, barPct: 85 };
+    const r0 = V.declareRules(check, { barPct: 0, sanityPct: '' });
+    assert.deepStrictEqual({ barPct: r0.barPct, bar: r0.bar, changed: r0.barChanged, sanity: r0.sanityPct }, { barPct: 85, bar: 68, changed: false, sanity: 50 });
+    const rNaN = V.declareRules(check, { barPct: 'x', sanityPct: 'y' });
+    assert.deepStrictEqual({ barPct: rNaN.barPct, sanity: rNaN.sanityPct }, { barPct: 85, sanity: 50 });
+    const r1 = V.declareRules(check, { barPct: 1, sanityPct: 0 });
+    assert.deepStrictEqual({ barPct: r1.barPct, bar: r1.bar, changed: r1.barChanged, sanity: r1.sanityPct }, { barPct: 1, bar: 1, changed: true, sanity: 0 }, 'a typed 1 and a typed 0 are asks, and are stamped');
+    const ui = src('public/construct.js');
+    assert.ok(/const typed = \(id\) => \{ const v = \$\(id\)\.value; return v === '' \? '' : Number\(v\); \};/.test(ui), 'the screen sends a blank box blank');
+    assert.ok(/barPct: typed\('#vBarPct'\), sanityPct: typed\('#vSanityPct'\)/.test(ui));
+  },
+
+  // The footing replays the rule on the set's OWN copy of the rebuilt numbers.
+  // The parent's shared file can lose a column the rule reads to a later pass;
+  // a set that keeps its own copy still replays, and says the parent differs.
+  async theFootingReplaysOnTheSetsOwnCopyOfTheNumbers() {
+    const f = await fixture();
+    try {
+      const labels = [...new Set(require('../lib/rowstore').readAll(f.id, 'records').map((r) => r.label))];
+      const settings = {};
+      for (const l of labels) settings[l] = { maxDrawdown: 50, units: { [f.keys[0]]: { maxDrawdown: 50 }, [f.keys[1]]: { maxDrawdown: 50 } } };
+      fs.writeFileSync(stages.funnelRichFile(f.id), JSON.stringify({ v: 2, savedAt: new Date().toISOString(), release: 'test', settings }));
+      const doc = await cutOn(f, { rule: { allowed: { gate: ['active'] }, floors: { maxDrawdown: { max: 100 } } } });
+      assert.strictEqual(doc.counts.survivors, 2);
+      assert.deepStrictEqual(stages.getSet(doc.id).verify, [], 'a new set starts with an empty verify list');
+      assert.strictEqual(doc.rich[doc.survivors[0].label].maxDrawdown, 50, 'the set keeps its own copy of the number the rule reads');
+      fs.rmSync(stages.funnelRichFile(f.id), { force: true });      // the parent's file goes: a re-total, a deletion
+      const dry = await stages.funnelVerifyDry(doc.id);
+      assert.strictEqual(dry.refused, null, `the set's own copy still replays: ${dry.refused}`);
+      assert.deepStrictEqual({ same: dry.footing.same, onParent: dry.footing.sameOnParent, nowOnParent: dry.footing.nowOnParent }, { same: true, onParent: false, nowOnParent: 0 });
+      assert.ok(/the parent's shared file gives 0 today/.test(dry.footing.parentFileDiffers), dry.footing.parentFileDiffers);
+      const r = await pressed(doc.id);
+      assert.strictEqual(r.look, 1, 'and the press stamps on the set\'s own copy');
+    } finally { f.cleanup(); }
+  },
+
+  aSetWithoutCopiesSaysSanityIsNotKnownOnScreen() {
+    const ui = src('public/construct.js');
+    const block = ui.slice(ui.indexOf('function vBlockHtml('), ui.indexOf('function vSetPanelHtml('));
+    const known = block.indexOf('sanity: ${sn.known ? `');
+    const fail = block.indexOf('FAIL — NOISE IS PROFITING');
+    const notKnown = block.indexOf('not known</b> - no scrambled figure to read');
+    assert.ok(known >= 0 && fail > known && notKnown > fail, 'the loud failure sits inside the known branch, and a set without copies is told not known');
+    assert.strictEqual(block.split('NOISE IS PROFITING').length - 1, 1, 'and it is said once, there');
+  },
+
+  theSentencePrintsNegativeMoneyTheWayThePageDoes() {
+    const rules = V.declareRules({ kind: 'scrambles', k: 10, barPct: 80 });
+    const list = rows(2, 10).map((r) => ({ ...r, avgHold: -2 }));
+    const b = V.buildBlock({ rules, gate: {}, footing: { ok: true, had: 2 }, looks: { unstamped: 1 }, heldBack: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: V.sanity(list, list, rules), lineA: V.lineA(list, rules), lineB: V.lineB(list, 2, rules) });
+    assert.ok(/made -\$2\.00 a setting/.test(b.verdict.sentence), b.verdict.sentence);
+    assert.ok(!/\$-/.test(b.verdict.sentence), 'never a sign after the dollar sign');
+    assert.strictEqual(b.verdict.pass, false);
   },
 };

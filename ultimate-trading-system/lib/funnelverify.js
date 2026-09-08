@@ -41,12 +41,18 @@ const median = (xs) => {
 function declareRules(check, asked = {}) {
   const K = Math.max(0, Math.floor(Number((check || {}).k) || 0));
   const own = F.barPctOf(check);
+  // A BLANK BOX IS NOT AN ASK. A box read as a number hands in 0, and 0 is not
+  // a share anyone typed: it means the set's own, never a bar of one copy
+  // (review, 2026-09-08). Only a share of 1 to 100 replaces the set's own.
   const askedBar = asked.barPct == null || asked.barPct === '' ? null : Math.floor(Number(asked.barPct));
-  const barPct = askedBar != null && Number.isFinite(askedBar) ? Math.max(1, Math.min(100, askedBar)) : own;
+  const barPct = askedBar != null && Number.isFinite(askedBar) && askedBar >= 1 ? Math.min(100, askedBar) : own;
   const barChanged = barPct !== own;
   const bar = K ? F.barOf({ k: K, barPct }) : 0;
+  // the sanity share: a typed 0 to 100 is kept as typed (0 is a threshold
+  // somebody chose, and it is printed GUESSED like any other); blank or
+  // unreadable means the default
   const askedS = asked.sanityPct == null || asked.sanityPct === '' ? null : Number(asked.sanityPct);
-  const sanityPct = askedS != null && Number.isFinite(askedS) ? Math.max(0, Math.min(100, askedS)) : DEFAULT_SANITY_PCT;
+  const sanityPct = askedS != null && Number.isFinite(askedS) && askedS >= 0 ? Math.min(100, askedS) : DEFAULT_SANITY_PCT;
   return {
     copies: K,
     barPct, ownBarPct: own, barChanged, bar, chance: K ? F.chanceOf(bar, K) : null,
@@ -251,7 +257,8 @@ function lineB(boardRows, n, rules) {
 }
 
 // ---- the verdict sentence, from stored numbers only ---------------------------------
-const money = (v) => (v == null ? 'no figure' : `$${Number(v).toFixed(2)}`);
+// the way the page prints money: the sign before the dollar sign
+const money = (v) => (v == null ? 'no figure' : `${Number(v) < 0 ? '-' : ''}$${Math.abs(Number(v)).toFixed(2)}`);
 const pct = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
 function verdict(block) {
   const b = block;

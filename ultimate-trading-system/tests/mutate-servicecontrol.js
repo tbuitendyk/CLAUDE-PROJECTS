@@ -1114,6 +1114,11 @@ const GUARDS = [
     'everyPressAppendsABlockAndOverwritesNone', 'a later press overwrites the verdict, and a set read three times keeps only the last reading'],
   [path.join(ROOT, 'lib', 'stages.js'), '  if (!doc.unit) throw new Error(BLEND_REFUSAL);', '  if (false) throw new Error(BLEND_REFUSAL);',
     'aBlendSetIsRefusedInWords', 'a set cut on all units together is read as if it had a unit, against comparisons kept per unit'],
+  // ---- what the review of 3.86.0 found (3.86.1) ----
+  [path.join(ROOT, 'lib', 'funnelverify.js'), '  const barPct = askedBar != null && Number.isFinite(askedBar) && askedBar >= 1 ? Math.min(100, askedBar) : own;', '  const barPct = askedBar != null && Number.isFinite(askedBar) ? Math.max(1, Math.min(100, askedBar)) : own;',
+    'aBlankBoxMeansTheSetsOwnBarNeverAOnePercentOne', 'a blank bar box becomes a bar of one copy, which a forecast-free rule clears 99% of the time'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  const now = S4.applyRule(mine, rule);\n  const same = now.length === wanted.length', '  const now = S4.applyRule(all, rule);\n  const same = now.length === wanted.length',
+    'theFootingReplaysOnTheSetsOwnCopyOfTheNumbers', 'a parent that lost a column the rule reads refuses a set whose own copy still replays'],
 ];
 
 const only = process.argv[2] || '';

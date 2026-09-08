@@ -2002,9 +2002,9 @@ function vBlockHtml(b, isVerdict) {
     ? '<b class="warn">this set kept no scrambled copies, so nothing was read against nothing</b>'
     : `real ${money(cp.real)} beats ${cp.beats} of ${cp.copies} copies, the bar being ${cp.bar} - <b class="${cp.pass ? 'pos' : 'neg'}">${cp.pass ? 'PASS' : 'FAIL'}</b> · a forecast-free rule clears this about ${vPct(cp.chance)} of the time; the finest claim ${cp.copies} copies allow is 1 in ${Number(cp.copies) + 1}, a floor, never a measure of strength · lead ${vFix(cp.lead)} (${esc(cp.leadDefinition || '')})${cp.survivorsWithNoFigure ? ` · ${cp.survivorsWithNoFigure} survivor(s) with no figure on any copy, counted` : ''}${cp.copiesShortOfSurvivors ? ` · ${cp.copiesShortOfSurvivors} copy or copies short of survivors` : ''}`}</p>
     <p class="note"><b>Every survivor against its own copies:</b> ${s.passing} of ${s.survivors} clear the same bar, about ${s.byChance == null ? '?' : Number(s.byChance).toFixed(1)} would by chance · ${s.positive} made money · ${s.beatsAlwaysLong} beat always long · head-to-heads won ${vPct(s.headToHeadsWon)} over ${s.dealsOver == null ? '?' : s.dealsOver} deal(s) a setting, ${s.kept} copies kept · median lead ${vFix(s.medianLead)} read here, ${vFix(s.medianStoredLead)} as stored${s.moneyByThird ? ` · money by third: ${s.moneyByThird.positive.join(' / ')} of ${s.moneyByThird.of} in the money` : ''} · ${esc(s.notIndependent || '')}, so this is never a gate</p>
-    <p class="note">sanity: ${sn.known ? `${vPct((sn.board || {}).losing)} of ${Number((sn.board || {}).figures || 0).toLocaleString()} scrambled held-back figures on the whole board lose money (among the survivors ${vPct((sn.survivors || {}).losing)}), threshold ${sn.threshold}% - ` : 'not known - '}${sn.ok
+    <p class="note">sanity: ${sn.known ? `${vPct((sn.board || {}).losing)} of ${Number((sn.board || {}).figures || 0).toLocaleString()} scrambled held-back figures on the whole board lose money (among the survivors ${vPct((sn.survivors || {}).losing)}), threshold ${sn.threshold}% - ${sn.ok
     ? '<b class="pos">PASS — noise mostly loses, as fees demand.</b>'
-    : '<b class="neg">FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.</b>'} On a window that pays one direction the copies are paid too, and this can fail honestly.</p>
+    : '<b class="neg">FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.</b>'} On a window that pays one direction the copies are paid too, and this can fail honestly.` : '<b class="warn">not known</b> - no scrambled figure to read, so nothing above it can be read against noise.'}</p>
     ${vLinesHtml(b)}
     <p class="note"><b>What a pass buys:</b> this window only. It stops obvious chance results being frozen; the
       forward paper test after freezing is the real judge.</p>
@@ -2057,7 +2057,9 @@ async function drawVerify() {
   if (btn && chosen && d && !d.refused) btn.onclick = async () => {
     btn.disabled = true;
     $('#vReadMsg').textContent = 'reading…';
-    const body = { barPct: Number($('#vBarPct').value), sanityPct: Number($('#vSanityPct').value) };
+    // a blank box is sent blank: read as a number it would be 0, and 0 is not a share anyone typed
+    const typed = (id) => { const v = $(id).value; return v === '' ? '' : Number(v); };
+    const body = { barPct: typed('#vBarPct'), sanityPct: typed('#vSanityPct') };
     const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/verify`, body, WHERE_VERIFY);
     if (!started) { btn.disabled = false; $('#vReadMsg').textContent = ''; return; }
     vFollow(chosen, started.token);

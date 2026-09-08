@@ -874,3 +874,15 @@ carried out 2026-08-28 under its own GO — decision 50.
     screen with their renderers and help entries (0 runs on the box carried
     rotation rounds); the null-verdict route stays for the old runs. The
     planted check panel says it certifies the older sweep path. Second digit.
+
+74. **What the independent review of 3.86.0 found, fixed** (3.86.1, loop,
+    2026-09-08). A blank "bar share %" box reached the server as 0 and became a
+    bar of one copy, which a forecast-free rule clears 99% of the time: the box
+    is now sent blank when blank, and a share below 1 is not an ask, it is the
+    set's own. The footing replayed the rule on the parent's shared file alone,
+    so a parent that had lost a column the rule reads refused a set whose own
+    copy still replayed: it replays on the set's own copy now, asks the parent
+    too, and reports both. A set without scrambled copies was told noise was
+    profiting: the sanity line says not known. A new set starts with an empty
+    verify list. Negative money in the sentence prints the way the page prints
+    it. Third digit.

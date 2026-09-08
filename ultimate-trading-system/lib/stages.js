@@ -5917,9 +5917,17 @@ async function funnelVerifyJoin(doc) {
   const rows = wanted.map((x) => byLabel.get(x.label) || null);
   const gone = rows.filter((r) => !r).length;
   const rule = S4.normaliseRule(doc.rule);
-  const now = S4.applyRule(all, rule);
+  // DOES THE RULE STILL GIVE THIS LIST? Asked of the set's OWN copy of the
+  // numbers (3.68.0): a limit on the worst losing streak reads a rebuilt
+  // number, and the parent's shared file can lose that column to a later pass
+  // while the set's own copy keeps it. The parent's board is asked too, and
+  // the two answers are both reported; only the set's own decides (review,
+  // 2026-09-08 -- the first cut refused on the parent's file alone).
+  const now = S4.applyRule(mine, rule);
   const same = now.length === wanted.length && now.every((r) => want.has(r.label));
-  return { parent, t, all, mine, rows: rows.filter(Boolean), gone, same, now: now.length, had: wanted.length, rule, unit: board.unit || null };
+  const nowAll = S4.applyRule(all, rule);
+  const sameOnParent = nowAll.length === wanted.length && nowAll.every((r) => want.has(r.label));
+  return { parent, t, all, mine, rows: rows.filter(Boolean), gone, same, now: now.length, sameOnParent, nowOnParent: nowAll.length, had: wanted.length, rule, unit: board.unit || null };
 }
 // the sealed window on this set's own unit, read off what the cut recorded
 function sealedOnUnitOf(doc) {
@@ -5983,6 +5991,10 @@ function verifyFooting(doc, join) {
   return {
     ok: !why, why,
     same: join.same, now: join.now, had: join.had, gone: join.gone,
+    // the parent's shared file can lose a column the rule reads; the set's own copy is what decides
+    sameOnParent: join.sameOnParent, nowOnParent: join.nowOnParent,
+    parentFileDiffers: join.same && !join.sameOnParent
+      ? `the parent's shared file gives ${join.nowOnParent} today (a number the rule reads has gone from it); the set's own copy still gives ${join.had}` : null,
     keys,
     check: { kind: check.kind || null, copies: check.k ?? null, barPct: check.barPct ?? null, bar: check.bar ?? null },
     sealed: sealedOnUnitOf(doc),
