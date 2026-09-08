@@ -1,24 +1,24 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "e6a4a9ed98abdb90ea27a797d01a09ee9dd20c98",
-  "subject": "Loop H: the build test sees the filter it guards; the loop's closing record",
-  "capturedAt": "2026-09-08T13:47:30Z",
+  "commit": "de94add82b89126d9dbc457abfedc247fc6459ae",
+  "subject": "3.98.0: the box's busy answer lives on the stage-engine check's status",
+  "capturedAt": "2026-09-08T17:55:56Z",
   "files": {
     "public/construct.js": {
-      "sha256": "3781848fdd696775da828b568057b7b1f95152b333b9c1448c28af0ffc2b4748",
-      "bytes": 520644
+      "sha256": "b9d28d89550afaaf965cadcef3d4a16b161cc7f63e3b71a7948dbd4605a3cdbe",
+      "bytes": 484979
     },
     "public/help-content.js": {
-      "sha256": "7c483819784e72990ff75ddac1e8955e09bc2d83fc5f64dd0ccfb08cd2c22f02",
-      "bytes": 92431
+      "sha256": "93eb84093e86ae9582fd6c8ca9067169485018981a99879bf4b45ba45b18b725",
+      "bytes": 89791
     },
     "public/setup.html": {
-      "sha256": "deaeb982ed9f52bd9b6e3a20750d63b31ae5a34e5e21744f0c638fe602400843",
-      "bytes": 34421
+      "sha256": "fd6446750d5c8e73fb5431f9b1705e14262a830969fa366eb7bd2391f23cf0ca",
+      "bytes": 30724
     },
     "public/trade.html": {
-      "sha256": "8ff012d13f0011cc311f8d9c3407089142ef30a9e66a74143fd850aeac72829d",
-      "bytes": 83698
+      "sha256": "3d0e1330262596ee7a80eff7f4f9ac996cb8deee128886847b662ef2a2ffd29d",
+      "bytes": 83318
     }
   },
   "htmlNotVerified": "public/construct.html is served with its cache markers rewritten to the content hash of each script, so its served bytes never equal its stored bytes. Nothing is generated from it."
