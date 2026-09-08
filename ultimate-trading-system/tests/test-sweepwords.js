@@ -340,7 +340,7 @@ module.exports = {
     const onlyOn = { sweep: ['start stage 1', 'carry forward (0 = all)', 'null set size'],
       verify: ['work out the held-back ride'],
       boards: ['every coin of every setting', 'copy settings into the form'],
-      greenlight: ['greenlight this config'] };
+      greenlight: ['greenlight this survivor'] };
     for (const [home, words] of Object.entries(onlyOn)) {
       for (const w of words) {
         assert.ok((byTabWords[home] || '').includes(w), `"${w}" is missing from its own screen (${home})`);

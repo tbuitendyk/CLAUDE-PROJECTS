@@ -188,7 +188,7 @@ const COL = {
   manage: 'per-pair actions. Downloading is by month; purging removes the cached candles, not any run that used them.',
   // saved-run lists
   run: 'the run id. The timestamp in it is when the job was FIRED, in UTC.',
-  kind: 'which engine produced it — a sweep, a History Tuning pass, an age-dial pass. Different kinds read differently.',
+  kind: 'which stage produced it — stage 1, 2, 3 or 4. Different stages read differently.',
   status: 'done, running, or error. An error row keeps whatever it managed to record.',
   started: 'when the job was fired, UTC.',
   derives: 'the run this one was launched from, when it was — so a null run or a re-run can be traced back to its parent.',
@@ -250,7 +250,6 @@ const COL = {
   coinTrades: 'the average number of held-back trades per row on this coin — how much trading is behind each row\'s held-back result. An average near zero means the money rests on a handful of trades.',
   coinVsLong: 'this configuration\'s held-back money against just holding the coin over the same window, averaged over the rows that recorded the comparison. Positive means it beat holding, on average.',
   coinRows: 'how many real looks this configuration recorded on this coin.',
-  coinRecords: 'opens this row\'s records below it — the rows counted in the rows column, each one a promoted unit\'s own scoring of this configuration on this coin, read straight from the stored rows.',
 };
 // cth(label, key[, style]) — a heading always carries its own description.
 const cth = (label, key, style) => `<th${style ? ` style="${style}"` : ''}${COL[key] ? ` title="${esc(COL[key]).replace(/"/g, '&quot;')}"` : ''}>${label}</th>`;
@@ -1408,7 +1407,7 @@ function campaignPanelHtml(camp, names) {
       </select></label>
       <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" maxlength="60" style="width:26rem"></label>
       <button id="campSet">Set</button>
-      <button id="campTree" title="shows the runs, record sets and greenlights belonging to the campaign named in the box. Press it again to put them away.">View tree</button>
+      <button id="campTree" title="shows the record sets and greenlights belonging to the campaign named in the box. Press it again to put them away.">View tree</button>
       <!-- Same row, same shape as its neighbours: the row is bottom-aligned
            because the controls to the left are a label above a box. -->
       <button id="campDelete" class="danger">Delete campaign…</button>
@@ -1508,7 +1507,7 @@ function wireCampaignPanel(redraw) {
     box.innerHTML = `<div class="panel" style="border-color:var(--warn)"><b style="color:var(--warn)">Deleting “${esc(found.name)}” will permanently remove:</b>
       ${lines.length ? `<ul style="margin:.3rem 0 0 1.1rem">${lines.map(([what, n]) =>
     `<li><b>${n}</b> ${esc(what)}</li>`).join('')}</ul>`
-    : '<div style="margin-top:.3rem">nothing but the name — this campaign holds no runs, greenlights or setups.</div>'}
+    : '<div style="margin-top:.3rem">nothing but the name — this campaign holds no record sets, greenlights or setups.</div>'}
       ${inherited.length ? `<div style="margin-top:.4rem">The ${inherited.length} that came out of them carry no campaign name of their own, and
         they are named here because they go too — a set another set was cut from cannot be removed while it is still there:
         <b>${inherited.map((x) => esc(x.name || x.id)).join(' · ')}</b></div>` : ''}

@@ -35,7 +35,7 @@ const CAMPAIGN_PANEL_CONTROLS = {
     more: 'It shows and hides the same panel Delete campaign… writes its summary into. A delete summary is never wiped by pressing this — the second press only puts away a list this button put up.',
   },
   campDelete: {
-    what: 'Removes a campaign and everything underneath it — its runs, the saved files those runs produced, its record sets, its greenlights, and any setups made from those greenlights.',
+    what: 'Removes a campaign and everything underneath it — its record sets, its greenlights, and any setups made from those greenlights.',
     more: 'It tells you exactly how many of each will go before it asks, and you have to type the name back. It refuses outright if any setup made from that campaign is still running on the Trade tab, and names which ones — and it refuses while a stage run is being written, because record sets are never deleted mid-run.',
   },
 };
