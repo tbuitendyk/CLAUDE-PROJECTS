@@ -256,6 +256,66 @@ function lineB(boardRows, n, rules) {
   };
 }
 
+// ---- V6: the rule on the OTHER units, held-back window -- two counts, never a gate ----
+// One unit's reading: the rows the set's rule keeps on that unit's board, read
+// exactly as the set's own copies are (copiesRead), with the bar resolved
+// against THAT unit's copy count at the declared share. A unit where the rule
+// keeps nothing, or where what it keeps carries no held-back figure, is
+// "keeps nothing": printed, and never in the denominator.
+function othersUnitRead(kept, rules, copyRowsAt = null) {
+  const list = kept || [];
+  const K = list.length && Array.isArray(list[0].noiseHold) ? list[0].noiseHold.length : 0;
+  const bar = K ? F.barOf({ k: K, barPct: rules.barPct }) : 0;
+  const read = copiesRead(list, { copies: K, bar, barPct: rules.barPct, chance: K ? F.chanceOf(bar, K) : null }, copyRowsAt);
+  const keepsNothing = !list.length || read.real == null;
+  return {
+    survivors: list.length, real: read.real,
+    positive: !keepsNothing && read.real > 0,
+    copies: K, bar, beats: read.beats,
+    clears: !keepsNothing && read.pass === true,
+    lead: read.lead,
+    keepsNothing, survivorsWithNoFigure: read.survivorsWithNoFigure,
+  };
+}
+// the two counts, beside the walk's own test-window mark; a mark when fewer
+// than half of the units that keep something are positive
+function othersSummary(units) {
+  const usable = (units || []).filter((u) => !u.keepsNothing);
+  const of = usable.length;
+  const positive = usable.filter((u) => u.positive).length;
+  const clearBar = usable.filter((u) => u.clears).length;
+  const keepsNothing = (units || []).length - of;
+  const mark = of > 0 && positive < of / 2 ? `fewer than half of the ${of} other units are positive on the held-back window` : null;
+  return { positive, of, clearBar, keepsNothing, mark };
+}
+
+// ---- V7: the ride, the held-back half kept beside the test half ----------------------
+// `perSetting` is what the rebuild hands back (label -> { units: [{ trade, ctx1,
+// ctx2, geometry, pnl, trades, holdout, rich: { test, hold } }] }); `keyOf`
+// names a unit the way the board does, and only the set's own unit is kept.
+const RIDE_FIELDS = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 'grossPerTrade'];
+function rideOf(perSetting, { unitKey, keyOf, labels }) {
+  const rows = [];
+  const missing = [];
+  const half = (r, moneyV, tradesV) => {
+    const o = { money: num(moneyV), trades: num(tradesV) };
+    for (const f of RIDE_FIELDS) o[f] = r ? num(r[f]) : null;
+    o.pnlThirds = r && Array.isArray(r.pnlThirds) ? r.pnlThirds.map(num) : null;
+    return o;
+  };
+  for (const label of labels || []) {
+    const e = perSetting && typeof perSetting.get === 'function' ? perSetting.get(label) : (perSetting || {})[label];
+    const u = e && (e.units || []).find((x) => keyOf(x) === unitKey);
+    if (!u) { missing.push(label); continue; }
+    rows.push({
+      label,
+      hold: half(u.rich && u.rich.hold, (u.holdout || {}).pnl, (u.holdout || {}).trades),
+      test: half(u.rich && u.rich.test, u.pnl, u.trades),
+    });
+  }
+  return { rows, missing };
+}
+
 // ---- the verdict sentence, from stored numbers only ---------------------------------
 // the way the page prints money: the sign before the dollar sign
 const money = (v) => (v == null ? 'no figure' : `${Number(v) < 0 ? '-' : ''}$${Math.abs(Number(v)).toFixed(2)}`);
@@ -285,13 +345,18 @@ function verdict(block) {
   parts.push(`${s.passing ?? 0} of ${s.survivors ?? 0} survivors clear the same bar on their own copies, about ${s.byChance == null ? '?' : s.byChance.toFixed(1)} would by chance`);
   const sn = b.sanity || {};
   parts.push(sn.known ? `sanity: ${pct(sn.board.losing)} of the board's scrambled held-back figures lose money, the threshold being ${sn.threshold}%, ${sn.ok ? 'PASS' : 'FAIL'}` : 'sanity: not known');
+  // the other units (V6), when read: two counts, information, never a gate
+  const o = b.others || null;
+  parts.push(o
+    ? `on the other units, read ${String(o.at || '').slice(0, 16)}: ${o.positive} of ${o.of} other units positive on the held-back window, ${o.clearBar} clear the bar${o.keepsNothing ? `, ${o.keepsNothing} keep nothing` : ''}${o.mark ? ` (${o.mark})` : ''}, information only`
+    : 'the other units not read when this was stamped');
   const pass = !!(f.ok && h.pass && cp.pass && sn.ok);
   return { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: ${parts.join('; ')}. What a pass buys: this window only.` };
 }
 
 // ---- the block, assembled -------------------------------------------------------------
-// input: { id, at, release, look, rules, gate, footing, looks, heldBack, copies,
-//          survivors, sanity, lineA, lineB, fee, windows, marks }
+// input: { id, at, release, look, rules, gate, stageGate, footing, looks, heldBack,
+//          copies, survivors, sanity, lineA, lineB, others, fee, windows, marks }
 function buildBlock(input) {
   const b = { ...input };
   b.verdict = verdict(b);
@@ -301,5 +366,6 @@ function buildBlock(input) {
 module.exports = {
   HELD, LIMITS, GATED, NOT_GATED, DEFAULT_SANITY_PCT,
   declareRules, ruleKeys, heldBackRead, copiesRead, perSurvivor, sanity, lineA, lineB, verdict, buildBlock,
+  othersUnitRead, othersSummary, RIDE_FIELDS, rideOf,
   mean, median,
 };

@@ -1976,7 +1976,7 @@ function vFootingHtml(d) {
 function vLooksHtml(d) {
   const l = d.looks;
   if (!l) return '';
-  return `<p class="note"><b>Looks at the held-back window before any stamp:</b> at least ${Number(l.unstamped).toLocaleString()} unstamped (${l.what.map(esc).join('; ')})${l.stamped ? ` · ${l.stamped} stamped read(s) below` : ' · none stamped yet'}${d.heldBackReadAt ? ` · first stamped look ${esc(String(d.heldBackReadAt).slice(0, 16))}` : ''}</p>`;
+  return `<p class="note"><b>Looks at the held-back window before any stamp:</b> at least ${Number(l.unstamped).toLocaleString()} unstamped (${l.what.map(esc).join('; ')})${l.stamped ? ` · ${l.stamped} stamped read(s) below` : ' · none stamped yet'}${l.rides ? ` · ${l.rides} ride(s) worked out below, each a stamped look` : ''}${d.heldBackReadAt ? ` · first stamped look ${esc(String(d.heldBackReadAt).slice(0, 16))}` : ''}</p>`;
 }
 function vPressHtml(d) {
   const r = d.rules || {};
@@ -2030,6 +2030,9 @@ function vBlockHtml(b, isVerdict) {
     <p class="note">sanity: ${sn.known ? `${vPct((sn.board || {}).losing)} of ${Number((sn.board || {}).figures || 0).toLocaleString()} scrambled held-back figures on the whole board lose money (among the survivors ${vPct((sn.survivors || {}).losing)}), threshold ${sn.threshold}% - ${sn.ok
     ? '<b class="pos">PASS — noise mostly loses, as fees demand.</b>'
     : '<b class="neg">FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.</b>'} On a window that pays one direction the copies are paid too, and this can fail honestly.` : '<b class="warn">not known</b> - no scrambled figure to read, so nothing above it can be read against noise.'}</p>
+    <p class="note"><b>The other units:</b> ${b.others
+    ? `${b.others.positive} of ${b.others.of} other units positive on the held-back window; ${b.others.clearBar} clear the bar${b.others.keepsNothing ? ` · ${b.others.keepsNothing} keep nothing` : ''}${b.others.mark ? ` · <b class="warn">${esc(b.others.mark)}</b>` : ''} <span class="muted">(read ${esc(String(b.others.at || '').slice(0, 16))}, information only)</span>`
+    : 'not read when this was stamped'}</p>
     ${vLinesHtml(b)}
     <p class="note"><b>What a pass buys:</b> this window only. It stops obvious chance results being frozen; the
       forward paper test after freezing is the real judge.</p>
@@ -2050,7 +2053,73 @@ function vSetPanelHtml(list, chosen, d) {
     ${vSetBoxHtml(list, chosen)}
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · <b>Final Rule:</b> ${esc(d.ruleSentence || '')}${d.userSentence ? ` · <b>User Rule:</b> ${esc(d.userSentence)}` : ''} · ${Number((d.counts || {}).survivors ?? 0).toLocaleString()} survivors${(d.warnings || []).length ? ` · <b class="warn">${d.warnings.map(esc).join('; ')}</b>` : ''}</p>
       ${vFootingHtml(d)}${vLooksHtml(d)}${vPressHtml(d)}
-      ${blocks.length ? blocks.map((b, i) => vBlockHtml(b, i === 0)).join('') : '<p class="note">No stamped read on this set yet. The first press writes the verdict; later presses are printed as later looks and never replace it.</p>'}` : ''}
+      ${blocks.length ? blocks.map((b, i) => vBlockHtml(b, i === 0)).join('') : '<p class="note">No stamped read on this set yet. The first press writes the verdict; later presses are printed as later looks and never replace it.</p>'}
+      ${vOthersHtml(d)}${vRideHtml(d)}` : ''}
+  </div>`;
+}
+// a blank box is sent blank: read as a number it would be 0, and 0 is not a share anyone typed
+function vTyped(id) { const v = $(id).value; return v === '' ? '' : Number(v); }
+// THE RULE ON THE OTHER UNITS, HELD-BACK WINDOW (V6, 3.88.0): the newest reading
+// in full, earlier ones one line each; every press appends and none is overwritten.
+function vOthersHtml(d) {
+  const list = d.others || [];
+  const o = list[0] || null;
+  const earlier = list.slice(1);
+  return `<div class="panel" style="margin-top:.5rem">
+    <h4 style="margin:0 0 .3rem">The rule on the other units, held-back window</h4>
+    <p class="note">The same rule on every other coin-and-shape unit of the stage 3 set this was cut from, each read on its
+      own held-back window against its own scrambled copies at the bar declared above. Two counts, information only,
+      never a gate; a mark when fewer than half are positive. About five seconds a unit, read one at a time.</p>
+    <div class="row" style="align-items:flex-end">
+      <button id="vOthers" class="pri" ${d.othersRefused ? 'disabled' : ''} title="reads the rule on each other unit's held-back window, one unit at a time, and appends the reading to the set. Never a pass or fail on the set.">Read the rule on the other units' held-back windows</button>
+      <span id="vOthersMsg" class="note">${d.othersRefused ? `<b class="warn">refused:</b> ${esc(d.othersRefused)}` : ''}</span></div>
+    ${o ? `<p class="note"><b>${o.positive} of ${o.of} other units positive; ${o.clearBar} clear the bar</b>${o.keepsNothing ? ` · ${o.keepsNothing} keep nothing` : ''}${o.mark ? ` · <b class="warn">${esc(o.mark)}</b>` : ''} <span class="muted">read ${esc(String(o.at || '').slice(0, 16))} under release ${esc(o.release || '?')} · bar ${(o.rules || {}).barPct}% (${esc(((o.rules || {}).tags || {}).bar || '')})</span></p>
+      <div class="scrollx" style="max-height:20rem;overflow-y:auto"><table><thead><tr>
+        <th title="one of the other coin-and-shape units of the stage 3 set. The set's rule was applied to that unit's own board.">unit</th>
+        <th title="how many of that unit's settings the rule keeps, out of all it has">survivors</th>
+        <th title="the mean held-back money of the settings the rule keeps there">avg held-back $</th>
+        <th title="of that unit's scrambled copies, how many the real figure beats by at least a cent, against the bar declared above resolved for that unit's copy count">beats N of K</th>
+        <th title="positive and beating at least the bar of its copies; never a gate on the set">clears the bar</th>
+        <th title="the real figure minus the copies' mean, over the copies' sample spread">lead</th>
+      </tr></thead><tbody>${(o.units || []).map((u) => `<tr><td>${esc(u.name || u.unit)}</td><td>${u.survivors} of ${Number(u.of || 0).toLocaleString()}</td><td class="${u.keepsNothing ? '' : ((u.real || 0) >= 0 ? 'pos' : 'neg')}">${u.keepsNothing ? 'keeps nothing' : money(u.real)}</td><td>${u.keepsNothing ? '—' : (u.copies ? `${u.beats} of ${u.copies} (bar ${u.bar})` : 'no copies')}</td><td class="${u.keepsNothing || !u.copies ? '' : (u.clears ? 'pos' : 'neg')}">${u.keepsNothing ? '—' : (u.copies ? (u.clears ? 'yes' : 'no') : 'no copies to read against')}</td><td>${u.keepsNothing ? '—' : vFix(u.lead)}</td></tr>`).join('')}</tbody></table></div>
+      ${earlier.length ? `<p class="note muted">earlier readings: ${earlier.map((e) => `${esc(String(e.at || '').slice(0, 16))} at bar ${(e.rules || {}).barPct}%: ${e.positive} of ${e.of} positive, ${e.clearBar} clear the bar`).join('; ')}</p>` : ''}`
+    : '<p class="note">Not read on this set yet.</p>'}
+  </div>`;
+}
+// THE RIDE ON THE HELD-BACK WINDOW (V7, 3.88.0): per survivor, the held-back half
+// beside the test half, stamped with the release that computed it.
+function vRideHtml(d) {
+  const list = d.ride || [];
+  const r = list[0] || null;
+  const earlier = list.slice(1);
+  const thirds = (h) => (h && Array.isArray(h.pnlThirds) && h.pnlThirds.length ? h.pnlThirds.map((v) => money(v)).join(' / ') : '—');
+  return `<div class="panel" style="margin-top:.5rem">
+    <h4 style="margin:0 0 .3rem">The ride on the held-back window</h4>
+    <p class="note">What the held-back window looked like from inside, per survivor: the largest drawdown, the worst
+      and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers
+      on the test window. Worked out by the same pass as the missing numbers on the Funnel, on this unit only;
+      minutes. Information only, never a gate, and every press is a stamped look at the held-back window.</p>
+    <div class="row" style="align-items:flex-end">
+      <button id="vRide" class="pri" ${d.rideRefused ? 'disabled' : ''} title="prices this set's survivors on this unit again and keeps the held-back half of what the pricing works out, beside the test half, with the release that computed it. A stamped look; never a pass or fail.">Work out the held-back ride</button>
+      <span id="vRideMsg" class="note">${d.rideRefused ? `<b class="warn">refused:</b> ${esc(d.rideRefused)}` : ''}</span></div>
+    ${r ? `<p class="note"><span class="muted">worked out ${esc(String(r.at || '').slice(0, 16))} under release ${esc(r.release || '?')}</span> · ${(r.rows || []).length} of ${r.settings} survivors${(r.missing || []).length ? ` · <b class="warn">${r.missing.length} not priced</b>` : ''}${(r.failures || []).length ? ` · <b class="warn">${r.failures.length} unit failure(s)</b>` : ''}</p>
+      <div class="scrollx" style="max-height:24rem;overflow-y:auto"><table><thead><tr>
+        <th title="the setting, by the name the board gives it">setting</th>
+        <th title="dollars on the held-back window, as priced by this pass">held-back $</th>
+        <th title="positions taken on the held-back window">trades</th>
+        <th title="the deepest fall from a high point of the running money on the held-back window, in dollars">largest drawdown $</th>
+        <th title="the single worst trade on the held-back window">worst trade $</th>
+        <th title="the single best trade on the held-back window">best trade $</th>
+        <th title="trades that closed with a gain on the held-back window">trades won</th>
+        <th title="trades closed by the stop on the held-back window">stopped out</th>
+        <th title="money per trade before fees on the held-back window">gross per trade $</th>
+        <th title="the held-back window's money in three equal parts, first to last">money by third</th>
+        <th title="the same setting's dollars on the test window, from the same pass">test $</th>
+        <th title="the deepest fall on the test window, for scale">test largest drawdown $</th>
+      </tr></thead><tbody>${(r.rows || []).map((x) => { const h = x.hold || {}; const t = x.test || {}; return `<tr><td>${esc(x.label)}</td><td class="${(h.money || 0) >= 0 ? 'pos' : 'neg'}">${money(h.money)}</td><td>${h.trades == null ? '—' : h.trades}</td><td>${money(h.maxDrawdown)}</td><td>${money(h.worstTrade)}</td><td>${money(h.bestTrade)}</td><td>${h.wins == null ? '—' : h.wins}</td><td>${h.stops == null ? '—' : h.stops}</td><td>${money(h.grossPerTrade)}</td><td>${thirds(h)}</td><td class="${(t.money || 0) >= 0 ? 'pos' : 'neg'}">${money(t.money)}</td><td>${money(t.maxDrawdown)}</td></tr>`; }).join('')}</tbody></table></div>
+      <p class="note muted">${(r.rows || []).length} survivors, in the set's own order. There is no sort on this table: a sort is a look.</p>
+      ${earlier.length ? `<p class="note muted">earlier rides: ${earlier.map((e) => `${esc(String(e.at || '').slice(0, 16))} under release ${esc(e.release || '?')}`).join('; ')}</p>` : ''}`
+    : '<p class="note">Not worked out on this set yet.</p>'}
   </div>`;
 }
 async function drawVerify() {
@@ -2093,13 +2162,32 @@ async function drawVerify() {
   if (btn && chosen && d && !d.refused) btn.onclick = async () => {
     btn.disabled = true;
     $('#vReadMsg').textContent = 'reading…';
-    // a blank box is sent blank: read as a number it would be 0, and 0 is not a share anyone typed
-    const typed = (id) => { const v = $(id).value; return v === '' ? '' : Number(v); };
-    const body = { barPct: typed('#vBarPct'), sanityPct: typed('#vSanityPct') };
+    const body = { barPct: vTyped('#vBarPct'), sanityPct: vTyped('#vSanityPct') };
     const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/verify`, body, WHERE_VERIFY);
     if (!started) { btn.disabled = false; $('#vReadMsg').textContent = ''; return; }
     vFollow(chosen, started.token);
   };
+  const ob = $('#vOthers');
+  if (ob && chosen && d && !d.othersRefused) ob.onclick = async () => {
+    ob.disabled = true;
+    $('#vOthersMsg').textContent = 'reading…';
+    // the same bar the verdict is read under: the set's own share, or the typed one
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/others`, { barPct: vTyped('#vBarPct') }, WHERE_VERIFY);
+    if (!started) { ob.disabled = false; $('#vOthersMsg').textContent = ''; return; }
+    vOthersFollow(chosen, started.token);
+  };
+  const rb = $('#vRide');
+  if (rb && chosen && d && !d.rideRefused) rb.onclick = async () => {
+    if (!confirm('Work out the held-back ride?\n\nPrices this set\'s survivors on this unit again and keeps the held-back half beside the test half. Minutes. It is a stamped look at the held-back window, counted on every later verdict.')) return;
+    rb.disabled = true;
+    $('#vRideMsg').textContent = 'starting…';
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/ride`, {}, WHERE_VERIFY);
+    if (!started) { rb.disabled = false; $('#vRideMsg').textContent = ''; return; }
+    vRideFollow(chosen, started.token);
+  };
+  // a read or a ride already going for this set is followed, so a reload mid-way keeps saying so
+  if (d && d.othersRunning && ob) { ob.disabled = true; vOthersFollow(chosen, d.othersRunning.token); }
+  if (d && d.rideRunning && rb) { rb.disabled = true; vRideFollow(chosen, d.rideRunning.token); }
 }
 // THE STAGE-ENGINE CHECK IS WATCHED WHILE IT RUNS, one watcher per page, and
 // the panel redraws from its record when it lands.
@@ -2135,6 +2223,41 @@ async function vFollow(id, token) {
     }
     if (s.result) { drawVerify(); return; }
     await new Promise((resolve) => { setTimeout(resolve, 1000); });
+    if (tab !== 'verify') return;
+  }
+}
+
+// the other units are read one at a time and the count is said while they are
+async function vOthersFollow(id, token) {
+  for (;;) {
+    let s = null;
+    try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/others/status`); } catch (_) { s = null; }
+    if (!s || s.none || s.token !== token) { drawVerify(); return; }
+    if (s.error) {
+      const m = $('#vOthersMsg'); if (m) m.textContent = s.error;
+      const b = $('#vOthers'); if (b) b.disabled = false;
+      return;
+    }
+    if (s.result) { drawVerify(); return; }
+    const m = $('#vOthersMsg'); if (m) m.textContent = `read ${s.done} of ${s.of}`;
+    await new Promise((resolve) => { setTimeout(resolve, 2000); });
+    if (tab !== 'verify') return;
+  }
+}
+// the ride prices, so the count is said with the box's load beside it
+async function vRideFollow(id, token) {
+  for (;;) {
+    let s = null;
+    try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/ride/status`); } catch (_) { s = null; }
+    if (!s || s.none || s.token !== token) { drawVerify(); return; }
+    if (s.error) {
+      const m = $('#vRideMsg'); if (m) m.textContent = s.error;
+      const b = $('#vRide'); if (b) b.disabled = false;
+      return;
+    }
+    if (s.result) { drawVerify(); return; }
+    const m = $('#vRideMsg'); if (m) m.textContent = `worked out ${s.done} of ${s.of}${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}`;
+    await new Promise((resolve) => { setTimeout(resolve, 2000); });
     if (tab !== 'verify') return;
   }
 }

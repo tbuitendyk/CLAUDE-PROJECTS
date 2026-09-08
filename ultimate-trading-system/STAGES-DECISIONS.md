@@ -919,3 +919,28 @@ carried out 2026-08-28 under its own GO — decision 50.
     is not changed inside the loop (RULE SIX). What the owner may want to
     know first: which view sees the plant and which do not, and whether the
     committee's agreement is what turns a weak edge into a loss.
+
+77. **The rule on the other units and the held-back ride, on Verify** (3.88.0,
+    loop, VERIFY-DESIGN.md V6 and V7, section 9 step 3). Two presses under the
+    verdict, both information and never a gate. The first walks the same boards
+    the Funnel's "read the other units" walks, with the held-back fields: each
+    other unit's figure is the mean held-back money of the settings the set's
+    rule keeps there, read against that unit's own scrambled copies at the
+    verdict's declared bar resolved for that unit's copy count; a unit where the
+    rule keeps nothing is printed as such and left out of the denominator; two
+    counts, and a mark when fewer than half are positive. Every press appends a
+    reading; a verdict stamped after one carries the newest reading's counts and
+    its sentence says them. The second is the missing-numbers pass aimed at this
+    set's survivors on this set's unit only, keeping the held-back half the
+    worker already computes beside the test half, stamped with the release.
+    *Why its own record and not the set's copy of the test numbers:* that copy's
+    shape is what every Stage 4 set on the box is read by, and reshaping it is a
+    migration of every set (RULE NINE) that a loop may not decide. *Why the
+    parent's shared file is not written:* the shared file's writer replaces a
+    setting's per-unit table with the units just priced, so a one-unit rebuild
+    written there would take the other units' numbers away. *The ride is a
+    look:* it prints held-back numbers per survivor, so every verdict stamped
+    after it counts it. *One reading at a time:* the Funnel's read of the other
+    units, Verify's, the verdict press and the ride each refuse while another is
+    going, in words that name it. The pricing pass is not exercised end to end by
+    the suite, as the Funnel's own press is not; the taking of its answer is.

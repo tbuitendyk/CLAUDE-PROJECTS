@@ -500,6 +500,10 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     heldBackReadAt: null,
     // the blocks the read on Verify stamps, newest first (3.86.0)
     verify: [],
+    // the readings of the rule on the other units and the held-back ride,
+    // each newest first, each appended and never overwritten (3.88.0)
+    others: [],
+    ride: [],
   };
 }
 

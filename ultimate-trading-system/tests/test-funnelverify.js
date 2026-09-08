@@ -116,6 +116,22 @@ async function pressed(id, asked = {}) {
   }
   throw new Error('the read did not land');
 }
+// the read of the other units, started and polled until it lands
+async function othersPressed(id, asked = {}) {
+  stages.funnelOthersStart(id, asked);
+  for (let i = 0; i < 400; i++) {
+    const st = stages.funnelOthersStatus(id);
+    if (st.error) throw new Error(st.error);
+    if (st.result) return st.result;
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => { setTimeout(resolve, 25); });
+  }
+  throw new Error('the read of the other units did not land');
+}
+const settle = (statusOf) => new Promise((resolve) => {
+  const tick = () => { const st = statusOf(); if (st.result || st.error || st.none) resolve(st); else setTimeout(tick, 25); };
+  tick();
+});
 // the rows a copies read is made of, in the shape lib/stages.js hands them in
 const rows = (n = 3, K = 10) => Array.from({ length: n }, (_, i) => ({
   si: i, label: `s${i}`, avgTest: 10 - i, avgHold: 5 - i * 0.5, avgTrades: 4, avgVsLong: 1, beat: 8, pairs: 12, avgLead: 1.2,
@@ -554,8 +570,9 @@ module.exports = {
     const r1 = V.declareRules(check, { barPct: 1, sanityPct: 0 });
     assert.deepStrictEqual({ barPct: r1.barPct, bar: r1.bar, changed: r1.barChanged, sanity: r1.sanityPct }, { barPct: 1, bar: 1, changed: true, sanity: 0 }, 'a typed 1 and a typed 0 are asks, and are stamped');
     const ui = src('public/construct.js');
-    assert.ok(/const typed = \(id\) => \{ const v = \$\(id\)\.value; return v === '' \? '' : Number\(v\); \};/.test(ui), 'the screen sends a blank box blank');
-    assert.ok(/barPct: typed\('#vBarPct'\), sanityPct: typed\('#vSanityPct'\)/.test(ui));
+    // one helper for every press on the tab (3.88.0), so the read of the other units sends the same box the same way
+    assert.ok(/function vTyped\(id\) \{ const v = \$\(id\)\.value; return v === '' \? '' : Number\(v\); \}/.test(ui), 'the screen sends a blank box blank');
+    assert.ok(/barPct: vTyped\('#vBarPct'\), sanityPct: vTyped\('#vSanityPct'\)/.test(ui));
   },
 
   // The footing replays the rule on the set's OWN copy of the rebuilt numbers.
@@ -599,5 +616,209 @@ module.exports = {
     assert.ok(/made -\$2\.00 a setting/.test(b.verdict.sentence), b.verdict.sentence);
     assert.ok(!/\$-/.test(b.verdict.sentence), 'never a sign after the dollar sign');
     assert.strictEqual(b.verdict.pass, false);
+  },
+  // ---- V6 and V7 (3.88.0): the rule on the other units, and the ride ----
+
+  // THE OTHER UNITS ARE READ ON THE HELD-BACK WINDOW AND APPENDED, NEVER GATED.
+  // The fixture's other unit is the same shape with the money halved, so the
+  // rule keeps its two `active` settings there, they are positive and beat every
+  // copy. Two presses append two readings; a verdict stamped after a reading
+  // carries the newest reading's counts and names them, and its PASS is the
+  // same as the verdict stamped before any reading existed.
+  async theOtherUnitsAreReadOnTheHeldBackWindowAndAppendedNeverGated() {
+    const f = await fixture();
+    try {
+      const doc = await cutOn(f);
+      assert.deepStrictEqual(doc.others, [], 'a new set starts with no reading of the other units');
+      assert.deepStrictEqual(doc.ride, [], 'and no ride');
+      await pressed(doc.id);
+      const before = stages.getSet(doc.id).verify[0];
+      assert.strictEqual(before.others, null, 'nothing read yet, so the block says so');
+      assert.ok(/the other units not read when this was stamped/.test(before.verdict.sentence), before.verdict.sentence);
+      const got = await othersPressed(doc.id, {});
+      assert.deepStrictEqual({ positive: got.positive, of: got.of, clearBar: got.clearBar, keepsNothing: got.keepsNothing, mark: got.mark, look: got.look },
+        { positive: 1, of: 1, clearBar: 1, keepsNothing: 0, mark: null, look: 1 });
+      const r1 = stages.getSet(doc.id).others[0];
+      assert.strictEqual(r1.units.length, 1, 'the one other unit');
+      const u = r1.units[0];
+      assert.strictEqual(u.unit, f.keys[1]);
+      assert.deepStrictEqual({ survivors: u.survivors, of: u.of, copies: u.copies, beats: u.beats, clears: u.clears, keepsNothing: u.keepsNothing }, { survivors: 2, of: 5, copies: 10, beats: 10, clears: true, keepsNothing: false });
+      assert.ok(Math.abs(u.real - 2.5) < 1e-9, `the halved held-back money, ${u.real}`);
+      assert.strictEqual(u.bar, F.barOf({ k: 10, barPct: 80 }), "the set's own share resolved on that unit's copy count");
+      assert.strictEqual(r1.rules.tags.bar, 'DERIVED');
+      assert.strictEqual(r1.release, require('../package.json').version);
+      // a second press, under a typed bar, is a second reading and the first stays
+      await othersPressed(doc.id, { barPct: 50 });
+      const list = stages.getSet(doc.id).others;
+      assert.strictEqual(list.length, 2, 'every press appends');
+      assert.strictEqual(list[1].id, r1.id, 'and the first reading is still first');
+      assert.deepStrictEqual({ pct: list[0].rules.barPct, tag: list[0].rules.tags.bar, look: list[0].look }, { pct: 50, tag: 'GUESSED', look: 2 });
+      // the verdict stamped after it carries the newest reading and is not gated by it
+      await pressed(doc.id);
+      const after = stages.getSet(doc.id).verify[0];
+      assert.deepStrictEqual({ positive: after.others.positive, of: after.others.of, clearBar: after.others.clearBar, look: after.others.look }, { positive: 1, of: 1, clearBar: 1, look: 2 });
+      assert.ok(/1 of 1 other units positive on the held-back window, 1 clear the bar/.test(after.verdict.sentence), after.verdict.sentence);
+      assert.ok(/information only/.test(after.verdict.sentence), 'and says it is information');
+      assert.strictEqual(after.verdict.pass, before.verdict.pass, 'the reading never moves the verdict');
+      // the dry read hands the list back, newest first
+      const dry = await stages.funnelVerifyDry(doc.id);
+      assert.strictEqual(dry.others.length, 2);
+      assert.strictEqual(dry.others[0].look, 2);
+      assert.strictEqual(dry.othersRefused, null);
+    } finally { f.cleanup(); }
+  },
+
+  // A UNIT WHERE THE RULE KEEPS NOTHING IS NOT IN THE DENOMINATOR, and fewer than
+  // half positive is a mark; both pure, worked by hand.
+  aUnitWhereTheRuleKeepsNothingIsNotInTheDenominatorAndFewerThanHalfPositiveIsAMark() {
+    const rules = V.declareRules({ kind: 'scrambles', k: 10, barPct: 80 });
+    const none = V.othersUnitRead([], rules);
+    assert.deepStrictEqual({ keepsNothing: none.keepsNothing, positive: none.positive, clears: none.clears, survivors: none.survivors }, { keepsNothing: true, positive: false, clears: false, survivors: 0 });
+    // kept rows with no held-back figure keep nothing too
+    const blank = V.othersUnitRead([{ label: 'x', avgHold: null, noiseHold: [1, 2, 3] }], rules);
+    assert.strictEqual(blank.keepsNothing, true);
+    // a unit with fewer copies than the set resolves the bar on its own count
+    const few = V.othersUnitRead(rows(2, 5), rules);
+    assert.deepStrictEqual({ copies: few.copies, bar: few.bar, positive: few.positive, clears: few.clears }, { copies: 5, bar: F.barOf({ k: 5, barPct: 80 }), positive: true, clears: true });
+    const unit = (positive, clears, keepsNothing = false) => ({ positive, clears, keepsNothing });
+    const s1 = V.othersSummary([unit(true, true), unit(false, false), unit(false, false), unit(false, false, true)]);
+    assert.deepStrictEqual(s1, { positive: 1, of: 3, clearBar: 1, keepsNothing: 1, mark: 'fewer than half of the 3 other units are positive on the held-back window' });
+    const s2 = V.othersSummary([unit(true, true), unit(true, false), unit(false, false)]);
+    assert.deepStrictEqual({ positive: s2.positive, of: s2.of, clearBar: s2.clearBar, mark: s2.mark }, { positive: 2, of: 3, clearBar: 1, mark: null });
+    // exactly half is not fewer than half
+    const s3 = V.othersSummary([unit(true, true), unit(false, false)]);
+    assert.strictEqual(s3.mark, null);
+    // nothing usable: no mark, and the counts say why
+    const s4 = V.othersSummary([unit(false, false, true)]);
+    assert.deepStrictEqual(s4, { positive: 0, of: 0, clearBar: 0, keepsNothing: 1, mark: null });
+  },
+
+  // THE SAME BOARDS, ONE READING AT A TIME. The Funnel's read of the other units
+  // and Verify's read of them walk the same boards; each refuses while the other
+  // is going, in words that name it, and the verdict press waits for the reading.
+  async theOtherUnitsPressRefusesWhileTheFunnelReadsThemAndTheFunnelRefusesWhileTheyAreReadOnVerify() {
+    const f = await fixture();
+    try {
+      const doc = await cutOn(f);
+      // the Funnel's read first: it yields on its first board, so it is still going here
+      stages.funnelAcrossStart(f.id, { rule: RULE, unit: f.keys[0], barPct: 80 });
+      let threw = null;
+      try { stages.funnelOthersStart(doc.id, {}); } catch (e) { threw = e.message; }
+      assert.ok(threw && /the Funnel is reading the other units/.test(threw), threw);
+      const dry = await stages.funnelVerifyDry(doc.id);
+      assert.ok(/the Funnel is reading the other units/.test(dry.othersRefused), dry.othersRefused);
+      await settle(() => stages.funnelAcrossStatus(f.id));
+      // then Verify's read: the Funnel's refuses, and so does the verdict press
+      stages.funnelOthersStart(doc.id, {});
+      threw = null;
+      try { stages.funnelAcrossStart(f.id, { rule: { allowed: { gate: ['directional'] } }, unit: f.keys[0], barPct: 80 }); } catch (e) { threw = e.message; }
+      assert.ok(threw && /are being read on Verify/.test(threw), threw);
+      threw = null;
+      try { stages.funnelVerifyStart(doc.id, {}); } catch (e) { threw = e.message; }
+      assert.ok(threw && /are being read on Verify/.test(threw), threw);
+      threw = null;
+      try { stages.funnelRideStart(doc.id); } catch (e) { threw = e.message; }
+      assert.ok(threw && /are being read on Verify/.test(threw), threw);
+      // pressing again for the same set while it reads is the same reading, not a second
+      const again = stages.funnelOthersStart(doc.id, {});
+      assert.strictEqual(again.running, true);
+      await settle(() => stages.funnelOthersStatus(doc.id));
+      assert.strictEqual(stages.getSet(doc.id).others.length, 1, 'one reading, not two');
+    } finally { f.cleanup(); }
+  },
+
+  // THE RIDE KEEPS THE HELD-BACK HALF BESIDE THE TEST HALF, for the set's own
+  // unit only, with the release. The pricing pass itself is not run here (it
+  // needs a stage 2 record store and the worker pool, as the Funnel's own press
+  // does); what is tested is the taking of the answer, worked by hand, and the
+  // press's shape read from the source: the ride prices ONE unit, and never
+  // writes the parent's shared file.
+  theRideKeepsTheHeldBackHalfBesideTheTestHalfForThisUnitOnly() {
+    assert.deepStrictEqual(V.RIDE_FIELDS, stages.RICH_FIELDS, 'the ride keeps exactly the fields the rebuild produces');
+    const keyOf = stages.unitKeyOf;
+    const mk = (u, testR, holdR) => ({ ...u, pnl: 10, trades: 6, holdout: { pnl: -3, trades: 4, stops: 1 }, rich: { test: testR, hold: holdR } });
+    const A = { trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d' };
+    const B = { trade: 'BBB', ctx1: null, ctx2: null, geometry: 'daily-1d' };
+    const testR = { maxDrawdown: -5, worstTrade: -2, bestTrade: 4, wins: 3, stops: 1, grossPerTrade: 1.5, pnlThirds: [3, 3, 4] };
+    const holdR = { maxDrawdown: -7, worstTrade: -4, bestTrade: 2, wins: 1, stops: 2, grossPerTrade: -0.5, pnlThirds: [-1, -1, -1] };
+    const perSetting = new Map([
+      ['s0', { label: 's0', units: [mk(B, { ...testR, maxDrawdown: -99 }, { ...holdR, maxDrawdown: -99 }), mk(A, testR, holdR)] }],
+      ['s1', { label: 's1', units: [mk(B, testR, holdR)] }],
+    ]);
+    const ride = V.rideOf(perSetting, { unitKey: keyOf(A), keyOf, labels: ['s0', 's1'] });
+    assert.deepStrictEqual(ride.missing, ['s1'], 'a survivor the pass did not price on this unit is named, never invented');
+    assert.strictEqual(ride.rows.length, 1);
+    const r = ride.rows[0];
+    assert.strictEqual(r.label, 's0');
+    assert.deepStrictEqual(r.hold, { money: -3, trades: 4, ...holdR }, "the held-back half is the worker's held-back half and the held-back money");
+    assert.deepStrictEqual(r.test, { money: 10, trades: 6, ...testR }, 'beside the test half');
+    // a unit with no held-back half keeps the shape with nothing in it
+    const bare = V.rideOf(new Map([['s0', { label: 's0', units: [{ ...A, pnl: 1, trades: 1, holdout: null, rich: { test: testR, hold: null } }] }]]), { unitKey: keyOf(A), keyOf, labels: ['s0'] });
+    assert.deepStrictEqual(bare.rows[0].hold, { money: null, trades: null, maxDrawdown: null, worstTrade: null, bestTrade: null, wins: null, stops: null, grossPerTrade: null, pnlThirds: null });
+    // the press, read from the source
+    const lib = src('lib/stages.js');
+    const start = lib.slice(lib.indexOf('function funnelRideStart(id) {'), lib.indexOf('function funnelRideStatus(id) {'));
+    assert.ok(/rebuildRichFor\(parent, labels, \{ unit: doc\.unit,/.test(start), 'the ride prices this unit only');
+    assert.ok(!/saveFunnelRich\(/.test(start), "the ride never writes the parent's shared file");
+    assert.ok(!/fresh\.rich\s*=/.test(start), "and never the set's copy of the test numbers");
+    assert.ok(/fresh\.ride = \[rec, \.\.\.had\];/.test(start), 'every press appends');
+    assert.ok(/release: ENGINE_VERSION/.test(start), 'stamped with the release that computed it');
+    const rebuild = lib.slice(lib.indexOf('async function rebuildRichFor('), lib.indexOf('function s3Payload('));
+    assert.ok(/if \(opts\.unit\) \{[\s\S]{0,400}unitKeyOf\(records\[i\]\) === String\(opts\.unit\)/.test(rebuild), 'the rebuild keeps only the unit asked for');
+  },
+
+  // THE RIDE IS A LOOK, AND THE NEXT VERDICT COUNTS IT. A ride written on the
+  // set is counted on the looks line of the dry read and of every block stamped
+  // after it; and a set with no survivors, or cut on all units together, is
+  // refused in words before anything prices.
+  async theRideIsALookAndTheNextVerdictCountsItAndTheRefusalsAreInWords() {
+    const f = await fixture();
+    try {
+      const doc = await cutOn(f);
+      const dry0 = await stages.funnelVerifyDry(doc.id);
+      assert.strictEqual(dry0.rideRefused, null, dry0.rideRefused);
+      assert.strictEqual(dry0.looks.rides, 0);
+      // a ride, as the press would write it, placed on the set
+      const file = path.join(SETS_DIR, `${doc.id}.json`);
+      const on = JSON.parse(fs.readFileSync(file, 'utf8'));
+      on.ride = [{ id: `${doc.id}-r1`, at: new Date().toISOString(), release: '3.88.0', look: 1, unit: doc.unit, settings: 2, missing: [], failures: [], fields: V.RIDE_FIELDS, rows: [] }];
+      fs.writeFileSync(file, JSON.stringify(on));
+      const dry = await stages.funnelVerifyDry(doc.id);
+      assert.strictEqual(dry.ride.length, 1);
+      assert.strictEqual(dry.looks.rides, 1, 'the ride is a look');
+      assert.ok(dry.looks.what.some((w) => /held-back ride was worked out 1 time\(s\)/.test(w)), dry.looks.what.join(' | '));
+      await pressed(doc.id);
+      const b = stages.getSet(doc.id).verify[0];
+      assert.strictEqual(b.looks.rides, 1, 'and the block stamped after it counts it');
+      // refusals in words
+      const blend = await stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: 'all' });
+      let threw = null;
+      try { stages.funnelRideStart(blend.id); } catch (e) { threw = e.message; }
+      assert.ok(/cut on all units together/.test(threw), threw);
+      const dryB = await stages.funnelVerifyDry(blend.id);
+      assert.strictEqual(dryB.rideRefused, threw, 'the dry read says the same');
+      assert.strictEqual(dryB.othersRefused, threw);
+      const empty = await stages.cutFunnelSet(f.id, { rule: { allowed: { gate: ['nothing-of-the-kind'] } }, closing: { key: 'rule' }, unit: f.keys[0] });
+      threw = null;
+      try { stages.funnelRideStart(empty.id); } catch (e) { threw = e.message; }
+      assert.ok(/wrote down no settings/.test(threw), threw);
+    } finally { f.cleanup(); }
+  },
+
+  // THE SCREEN: the two presses are drawn by top-level helpers the word list
+  // can walk, the ride's table has no sort, and both routes are served.
+  theTwoNewPressesAreOnVerifyWithTheirRoutes() {
+    const ui = src('public/construct.js');
+    for (const fn of ['vOthersHtml', 'vRideHtml', 'vOthersFollow', 'vRideFollow']) assert.ok(new RegExp(`^(async )?function ${fn}\\(`, 'm').test(ui), `${fn} must be a top-level helper`);
+    assert.ok(/\$\{vOthersHtml\(d\)\}\$\{vRideHtml\(d\)\}/.test(ui), 'both panels are drawn under the blocks');
+    assert.ok(/id="vOthers"/.test(ui) && /id="vRide"/.test(ui), 'the two presses');
+    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\)\}\/others`, \{ barPct: vTyped\('#vBarPct'\) \}/.test(ui), 'the read of the other units is sent under the same bar box as the verdict');
+    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/others\/status/.test(ui) && /api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/ride\/status/.test(ui), 'both are polled');
+    const ride = ui.slice(ui.indexOf('function vRideHtml('), ui.indexOf('async function drawVerify('));
+    assert.ok(!/data-sort|bRankSortBtn|sortBtn/.test(ride), "the ride's table has no sort: a sort is a look");
+    assert.ok(/The other units:/.test(ui), 'the block prints the other units when read');
+    const srv = src('server.js');
+    for (const r of ['/api/funnel/set/:id/others', '/api/funnel/set/:id/others/status', '/api/funnel/set/:id/ride', '/api/funnel/set/:id/ride/status']) assert.ok(srv.includes(`'${r}'`), `${r} is served`);
+    assert.ok(/funnelOthersStart\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'the read takes the typed bar');
   },
 };

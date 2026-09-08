@@ -4010,7 +4010,18 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   }
   const wanted = new Set((wantedLabels || []).map(String));
   if (!wanted.size) throw new Error('nothing was asked for');
-  const { parent, records, settings, heldOn } = relaunchShapeOf(doc);
+  const shape = relaunchShapeOf(doc);
+  const { parent, settings } = shape;
+  // ONE UNIT ONLY, when asked (3.88.0, the ride on Verify): a Stage 4 set's
+  // survivors on the set's own unit are priced without the other units, which
+  // is what makes minutes of it rather than the whole board again
+  let { records, heldOn } = shape;
+  if (opts.unit) {
+    const keep = records.map((_, i) => i).filter((i) => unitKeyOf(records[i]) === String(opts.unit));
+    if (!keep.length) throw new Error(`this stage 3 set holds no unit called '${opts.unit}'`);
+    records = keep.map((i) => records[i]);
+    heldOn = keep.map((i) => heldOn[i]);
+  }
   const use = settings.filter((st) => wanted.has(st.label));
   const missing = [...wanted].filter((L) => !settings.some((st) => st.label === L));
   if (missing.length) {
@@ -4896,6 +4907,11 @@ async function funnelAcross(id, state = {}, note = null) {
 // the result is kept for the rule it was read for, and the same rule asked
 // again is answered from it without reading a block.
 let acrossRun = null;   // { key, token, id, startedAt, done, of, result, error, promise }
+const acrossBusy = () => (acrossRun && !acrossRun.result && !acrossRun.error ? 'the Funnel is reading the other units' : null);
+// and Verify's own read of the other units (3.88.0): the same boards, so
+// neither reads while the other does
+let othersRun = null;   // { id, token, done, of, result, error, promise }
+const othersBusy = () => (othersRun && !othersRun.result && !othersRun.error ? `the other units of ${othersRun.id} are being read on Verify` : null);
 function acrossKeyOf(id, state) {
   const S4 = require('./funnelset');
   // the bar is part of what was read: the same rule under another share of
@@ -4912,6 +4928,7 @@ function funnelAcrossStart(id, state = {}) {
   // 3.81.0, owner order: no other load while step 6's press is working.
   const richNow = richBusy();
   if (richNow) throw new Error(`${richNow} — reading across the other units would fight it for the same workers`);
+  if (othersBusy()) throw new Error(`${othersBusy()} — the same boards, one reading at a time`);
   const key = acrossKeyOf(id, state);
   if (acrossRun) {
     // the same rule is the same reading -- unless that reading failed, in
@@ -5791,9 +5808,13 @@ function richStatus(run) {
     error: run.error, result: run.result,
   };
 }
+// the held-back ride on Verify (3.88.0) is the same pricing pass, aimed at one
+// unit, so it is named here and every refusal built on richBusy() covers it
+let rideRun = null;   // { id, token, done, of, result, error, promise }
+const rideBusy = () => (rideRun && !rideRun.result && !rideRun.error ? `the held-back ride of ${rideRun.id} is being worked out` : null);
 // What is stopping another load, in words fit for a refusal, or null.
 const richBusy = () => (richRun && !richRun.result && !richRun.error
-  ? `the missing numbers of ${richRun.id} are being worked out` : null);
+  ? `the missing numbers of ${richRun.id} are being worked out` : rideBusy());
 function funnelRichStart(id, state = {}) {
   if (richRun && !richRun.result && !richRun.error) {
     if (richRun.id === String(id)) return richStatus(richRun);
@@ -5988,7 +6009,10 @@ function verifyLooksOf(doc, keys, stamped) {
     'Boards offers a sort and a filter on avg held-back $ over the whole board',
   ];
   if (keys && keys.readsHeldBackTrades) what.push('one floor of the rule read the held-back trade count');
-  return { unstamped: steps + back + 1, stamped: stamped || 0, what };
+  // the held-back ride (3.88.0) prints held-back numbers per survivor: a look, stamped
+  const rides = (doc.ride || []).length;
+  if (rides) what.push(`the held-back ride was worked out ${rides} time(s) on Verify, each a stamped look`);
+  return { unstamped: steps + back + 1, stamped: stamped || 0, rides, what };
 }
 function verifyFooting(doc, join) {
   const V = require('./funnelverify');
@@ -6051,16 +6075,24 @@ async function funnelVerifyDry(id) {
     blocks: doc.verify || [],
     rules: V.declareRules(doc.check, {}),
     refused: null, footing: null, looks: null,
+    // the rule on the other units and the held-back ride (3.88.0), newest first
+    others: doc.others || [], ride: doc.ride || [],
+    othersRefused: null, rideRefused: null,
+    othersRunning: othersRun && othersRun.id === doc.id && !othersRun.result && !othersRun.error ? { token: othersRun.token, done: othersRun.done, of: othersRun.of } : null,
+    rideRunning: rideRun && rideRun.id === doc.id && !rideRun.result && !rideRun.error ? { token: rideRun.token, done: rideRun.done, of: rideRun.of } : null,
   };
-  if (!doc.unit) { out.refused = BLEND_REFUSAL; return out; }
+  if (!doc.unit) { out.refused = BLEND_REFUSAL; out.othersRefused = BLEND_REFUSAL; out.rideRefused = BLEND_REFUSAL; return out; }
   let join;
-  try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; return out; }
+  try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; out.othersRefused = err.message; out.rideRefused = err.message; return out; }
   out.footing = verifyFooting(doc, join);
   out.looks = verifyLooksOf(doc, out.footing.keys, (doc.verify || []).length);
   const busy = verifyBusy();
   if (busy) out.refused = `${busy} — the read waits for the box to be free`;
   else if (verifyRun && !verifyRun.result && !verifyRun.error) out.refused = 'a Stage 4 record set is being read right now — one at a time';
+  else if (othersBusy()) out.refused = `${othersBusy()} — one reading at a time`;
   else if (!out.footing.ok) out.refused = out.footing.why;
+  out.othersRefused = othersRefusalOf(doc, out.footing);
+  out.rideRefused = rideRefusalOf(doc);
   return out;
 }
 async function funnelVerifyRun(doc, asked) {
@@ -6089,8 +6121,10 @@ async function funnelVerifyRun(doc, asked) {
   const block = V.buildBlock({
     id: `${doc.id}-v${blocks.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: blocks.length + 1,
     rules, gate, stageGate, footing: rest,
-    looks: verifyLooksOf(doc, footing.keys, blocks.length),
+    looks: verifyLooksOf(fresh, footing.keys, blocks.length),
     heldBack, copies, survivors, sanity, lineA, lineB,
+    // the newest reading of the rule on the other units, when one exists (3.88.0)
+    others: othersSummaryOf(fresh),
     fee: { feePerLeg: (join.parent.params || {}).fee ?? null, feeUnits: 'fraction' },
     windows: windowsForVerify(doc, join.parent),
     marks: (doc.marks || []).map((m) => ({ key: m.key, what: m.what, step: m.step ?? null, detail: m.detail ?? null })),
@@ -6113,6 +6147,7 @@ function funnelVerifyStart(id, asked = {}) {
   if (!doc.unit) throw new Error(BLEND_REFUSAL);
   const busy = verifyBusy();
   if (busy) throw new Error(`${busy} — the read waits for the box to be free`);
+  if (othersBusy()) throw new Error(`${othersBusy()} — one reading at a time`);
   const run = { id, token: `${id}:${Date.now()}`, result: null, error: null, promise: null };
   verifyRun = run;
   run.promise = funnelVerifyRun(doc, asked || {})
@@ -6126,6 +6161,151 @@ function verifySummaryOf(doc) {
   if (!blocks.length) return null;
   const first = blocks[blocks.length - 1];
   return { blocks: blocks.length, at: first.at, pass: !!(first.verdict && first.verdict.pass), release: first.release || null };
+}
+
+// ---- V6: THE RULE ON THE OTHER UNITS, HELD-BACK WINDOW (3.88.0, VERIFY-DESIGN.md) ----
+//
+// The same rule on each OTHER coin-and-shape unit of the stage 3 set this was
+// cut from, each on its own held-back window against its own scrambled copies
+// at the verdict's declared bar. The Funnel's "read the other units" asks this
+// of the test window; this is the same walk over the same boards with the
+// held-back fields, one board at a time and let go, started and polled.
+// Two counts, information only, never a gate; every press appends a reading.
+async function funnelOthers(doc, rules, note = null) {
+  const V = require('./funnelverify');
+  const S4 = require('./funnelset');
+  const join = await funnelVerifyJoin(doc);
+  const footing = verifyFooting(doc, join);
+  if (!footing.ok) throw new Error(footing.why);
+  const parent = join.parent;
+  const t = join.t;
+  const others = unitsOfSet(t, parent.id).filter((u) => u.key !== doc.unit);
+  const rich = readFunnelRich(parent.id);
+  const units = [];
+  if (note) note(0, others.length);
+  for (const u of others) {
+    // eslint-disable-next-line no-await-in-loop
+    const board = withFunnelRich(await loadUnitBoard(parent.id, t, u.key), rich);
+    const kept = S4.applyRule(board, join.rule);
+    // a rule with a top-N cut lets each copy take its own top N on that unit, as the verdict does
+    const copyRowsAt = join.rule.cut ? (d) => S4.nullCopy(board, join.rule, d) : null;
+    units.push({ unit: u.key, name: u.name, of: board.length, ...V.othersUnitRead(kept, rules, copyRowsAt) });
+    if (note) note(units.length, others.length);
+  }
+  // the set's own board comes back into hand for the next read
+  await loadUnitBoard(parent.id, t, doc.unit);
+  return { units, ...V.othersSummary(units), rule: join.rule };
+}
+// why the press would refuse, in words, or null
+function othersRefusalOf(doc, footing) {
+  if (!doc.unit) return BLEND_REFUSAL;
+  const busy = verifyBusy();
+  if (busy) return `${busy} — the read waits for the box to be free`;
+  if (acrossBusy()) return `${acrossBusy()} — the same boards, one reading at a time`;
+  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  if (othersRun && !othersRun.result && !othersRun.error) return othersRun.id === doc.id ? 'the other units are being read for this set right now' : `${othersBusy()} — one at a time`;
+  if (footing && !footing.ok) return footing.why;
+  return null;
+}
+const othersStatus = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, error: run.error, result: run.result });
+function funnelOthersStart(id, asked = {}) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  if (othersRun && othersRun.id === id && !othersRun.result && !othersRun.error) return othersStatus(othersRun);
+  const why = othersRefusalOf(doc, null);
+  if (why) throw new Error(why);
+  const V = require('./funnelverify');
+  // THE RULES FIRST: the verdict's own declared bar, the set's share or the typed one
+  const rules = V.declareRules(doc.check, asked || {});
+  const run = { id, token: `${id}:${Date.now()}`, done: 0, of: 0, result: null, error: null, promise: null };
+  othersRun = run;
+  run.promise = funnelOthers(doc, rules, (done, of) => { run.done = done; run.of = of; })
+    .then((got) => {
+      const fresh = getSet(id);
+      if (!fresh) throw new Error('the set went away while the other units were being read');
+      const had = fresh.others || [];
+      const reading = {
+        id: `${id}-o${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1,
+        rules: { copies: rules.copies, bar: rules.bar, barPct: rules.barPct, ownBarPct: rules.ownBarPct, barChanged: rules.barChanged, chance: rules.chance, tags: { bar: rules.tags.bar } },
+        unit: doc.unit, unitName: doc.unitName || null, ruleSentence: doc.ruleSentence || null,
+        units: got.units, positive: got.positive, of: got.of, clearBar: got.clearBar, keepsNothing: got.keepsNothing, mark: got.mark,
+      };
+      // appended, never overwritten: a later reading under another bar is another reading
+      fresh.others = [reading, ...had];
+      saveSet(fresh);
+      run.result = { id: reading.id, look: reading.look, positive: reading.positive, of: reading.of, clearBar: reading.clearBar, keepsNothing: reading.keepsNothing, mark: reading.mark };
+      run.done = run.of;
+    })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return othersStatus(run);
+}
+function funnelOthersStatus(id) {
+  if (!othersRun || othersRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, error: null, result: null };
+  return othersStatus(othersRun);
+}
+// the newest reading's counts, for the verdict block stamped after it
+function othersSummaryOf(doc) {
+  const o = ((doc && doc.others) || [])[0] || null;
+  return o ? { id: o.id, at: o.at, look: o.look, positive: o.positive, of: o.of, clearBar: o.clearBar, keepsNothing: o.keepsNothing, mark: o.mark } : null;
+}
+
+// ---- V7: THE RIDE ON THE HELD-BACK WINDOW (3.88.0, VERIFY-DESIGN.md) ----------------
+//
+// The same pass that works out the missing numbers on the Funnel, aimed at this
+// set's survivors on this set's unit only, keeping the held-back half the worker
+// already computes beside the test half. Written onto the set as its own record
+// with the release that computed it -- never into the set's copy of the test
+// numbers, whose shape every set on the box is read by, and never into the
+// parent's shared file, where a one-unit rebuild would replace the other units'
+// numbers. Every press appends; it is a look at the held-back window and the
+// next verdict counts it. Never a gate.
+function rideRefusalOf(doc) {
+  if (!doc.unit) return BLEND_REFUSAL;
+  if (!(doc.survivors || []).length) return 'this set wrote down no settings, so there is no ride to work out';
+  const busy = verifyBusy();               // a sweep, a stage run, a totalling, a rebuild, the exam, another ride
+  if (busy) return `${busy} — the ride waits for the box to be free`;
+  if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
+  if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+  if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
+  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  if (!getSet((doc.parent || {}).id)) return 'the stage 3 set this was cut from is gone, so its ride cannot be worked out';
+  return null;
+}
+const rideStatus = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, cpu: cpuLoad(), error: run.error, result: run.result });
+function funnelRideStart(id) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  if (rideRun && rideRun.id === id && !rideRun.result && !rideRun.error) return rideStatus(rideRun);
+  const why = rideRefusalOf(doc);
+  if (why) throw new Error(why);
+  const parent = getSet((doc.parent || {}).id);
+  const labels = (doc.survivors || []).map((x) => x.label);
+  const run = { id, token: `${id}:${Date.now()}`, done: 0, of: labels.length, result: null, error: null, promise: null };
+  rideRun = run;
+  run.promise = rebuildRichFor(parent, labels, { unit: doc.unit, note: (done, of) => { run.done = done; run.of = of; } })
+    .then((got) => {
+      const V = require('./funnelverify');
+      const ride = V.rideOf(got.perSetting, { unitKey: doc.unit, keyOf: unitKeyOf, labels });
+      const fresh = getSet(id);
+      if (!fresh) throw new Error('the set went away while its ride was being worked out');
+      const had = fresh.ride || [];
+      const rec = {
+        id: `${id}-r${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1,
+        unit: doc.unit, unitName: doc.unitName || null, settings: labels.length,
+        missing: ride.missing, failures: got.failures || [], fields: V.RIDE_FIELDS.slice(),
+        rows: ride.rows,
+      };
+      fresh.ride = [rec, ...had];
+      saveSet(fresh);
+      run.result = { id: rec.id, look: rec.look, rows: rec.rows.length, missing: rec.missing.length, failures: rec.failures.length };
+      run.done = run.of;
+    })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return rideStatus(run);
+}
+function funnelRideStatus(id) {
+  if (!rideRun || rideRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
+  return rideStatus(rideRun);
 }
 
 // ---- V0: THE STAGE ENGINE'S OWN PLANTED CHECK (3.87.0, VERIFY-DESIGN.md) --------
@@ -6958,6 +7138,7 @@ module.exports = {
   windowsOfSet, newestDataOf,
   funnelVerifyDry, funnelVerifyStart, funnelVerifyStatus, verifySummaryOf, sealedOnUnitOf,
   stageGateStart, stageGateStatus, examBusy,
+  funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,

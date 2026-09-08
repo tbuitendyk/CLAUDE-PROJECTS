@@ -934,6 +934,16 @@ app.post('/api/funnel/set/:id/verify', (req, res) => {
   try { return res.json(stages.funnelVerifyStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/verify/status', (req, res) => res.json(stages.funnelVerifyStatus(req.params.id)));
+// the rule on the other units' held-back windows (V6) and the held-back ride
+// (V7), 3.88.0: each started and polled, each appended to the set, neither a gate
+app.post('/api/funnel/set/:id/others', (req, res) => {
+  try { return res.json(stages.funnelOthersStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.get('/api/funnel/set/:id/others/status', (req, res) => res.json(stages.funnelOthersStatus(req.params.id)));
+app.post('/api/funnel/set/:id/ride', (req, res) => {
+  try { return res.json(stages.funnelRideStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.get('/api/funnel/set/:id/ride/status', (req, res) => res.json(stages.funnelRideStatus(req.params.id)));
 
 app.get('/api/stageset/:id/coins', (req, res) => {
   const out = stages.stage3Coins(req.params.id, req.query || {});

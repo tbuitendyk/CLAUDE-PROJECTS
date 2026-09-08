@@ -1126,6 +1126,17 @@ const GUARDS = [
     'theLauncherRefusesTheReservedCoinsUnlessTheExamLaunchesThem', 'a fabricated coin with a known rule can enter a real run, and a board would be judging fiction'],
   [path.join(ROOT, 'lib', 'stages.js'), '  if (examBusy() && !(params && params.exam)) throw new Error(`${examBusy()} is going right now — one heavy job at a time`);', '  if (false) throw new Error(`${examBusy()} is going right now — one heavy job at a time`);',
     'theExamRefusesWhileTheBoxIsBusyAndTheBoxRefusesWhileTheExamRuns', 'a stage run can launch under the exam and fight it for the workers'],
+  // ---- the rule on the other units, and the held-back ride (3.88.0) ----
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "  const usable = (units || []).filter((u) => !u.keepsNothing);", "  const usable = (units || []).slice();",
+    'aUnitWhereTheRuleKeepsNothingIsNotInTheDenominatorAndFewerThanHalfPositiveIsAMark', 'a unit the rule keeps nothing on counts as a unit that lost, and half the units on a board can read as negative for nothing'],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "  const mark = of > 0 && positive < of / 2 ? `fewer than half of the ${of} other units are positive on the held-back window` : null;", "  const mark = null;",
+    'aUnitWhereTheRuleKeepsNothingIsNotInTheDenominatorAndFewerThanHalfPositiveIsAMark', 'a rule that loses on most of the other units carries no mark'],
+  [path.join(ROOT, 'lib', 'stages.js'), '      fresh.others = [reading, ...had];', '      fresh.others = [reading];',
+    'theOtherUnitsAreReadOnTheHeldBackWindowAndAppendedNeverGated', 'a second reading overwrites the first, and a set read under a softer bar forgets the honest one'],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "      hold: half(u.rich && u.rich.hold, (u.holdout || {}).pnl, (u.holdout || {}).trades),", "      hold: half(u.rich && u.rich.test, (u.holdout || {}).pnl, (u.holdout || {}).trades),",
+    'theRideKeepsTheHeldBackHalfBesideTheTestHalfForThisUnitOnly', "the ride prints the test window's numbers as the held-back window's"],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const rides = (doc.ride || []).length;", "  const rides = 0;",
+    'theRideIsALookAndTheNextVerdictCountsItAndTheRefusalsAreInWords', 'the ride opens the held-back window and no look is counted'],
 ];
 
 const only = process.argv[2] || '';
