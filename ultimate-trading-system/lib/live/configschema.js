@@ -1,7 +1,7 @@
 // The ONE parameter vocabulary (NEXT-RELEASE point 5, plan step 2.1).
 //
-// A live trading job's configSnapshot is EXACTLY the book/lab shape the engine
-// primitives already consume — the same object lib/bracketwork.js (buildCombo/trainMembers/quorumCall) + lib/bracket.js
+// A live trading job's configSnapshot is EXACTLY the shape the engine
+// primitives already consume — the same object lib/bracketwork.js (buildCombo) + lib/bracket.js
 // (simCell) execute. Nothing is translated between lab and live: a greenlighted
 // config means the same thing live BECAUSE it is the same object driving the
 // same functions. This module only VALIDATES that shape — it never reinterprets
@@ -11,8 +11,8 @@
 // Vocabulary (from bracketwork/bracket usage):
 //   combo    { trade, ctx1, ctx2, size }        pairs + committee width class
 //   branch   { geometry, decision, band, weekdaysOnly }
-//   stage    'slim' | 'promoted'                which member roster specsFor builds
-//   members  [{ model, view }, ...]             frozen roster (cross-checked vs stage)
+//   stage    'stages'                           the three-stage engine's roster
+//   members  [{ model, view }, ...]             frozen roster, the stage 2 set's own
 //   cell     { quorum, entry, gate, dMult, tHours, trailMult, armMult }
 //   (trainThrough was here and is NOT a rule property — see trainpolicy.js)
 //   configVersion string — bumped on ANY change to the mechanics; rides in the
@@ -27,13 +27,11 @@ const VIEWS = new Set(['full', 'prices', 'volume', 'pricevol', 'cross']);
 const DECISIONS = new Set(['argmax', 'directional']);
 const ENTRIES = new Set(['market', 'breakout']);
 const GATES = new Set(['directional', 'active']);
-const STAGES = new Set(['slim', 'promoted']);
-// THE ENGINE A CONFIGURATION SPEAKS FOR (3.90.0). Absent means the older sweep
-// engine, whose committee is specsFor's roster and whose agreement is an
-// integer quorum. 'stages' is the three-stage engine: its members are the ones
-// the stage 2 set trained (model and view each), and its agreement is the
-// setting's own way of weighing, a bar, a share and a copy share, read by
-// lib/agreement.js -- which no integer expresses.
+// THE ENGINE A CONFIGURATION SPEAKS FOR (3.90.0). 'stages' is the three-stage
+// engine, and since the older sweep engine was retired (3.97.0) it is the only
+// one: its members are the ones the stage 2 set trained (model and view each),
+// and its agreement is the setting's own way of weighing, a bar, a share and a
+// copy share, read by lib/agreement.js -- which no integer expresses.
 const ENGINES = new Set(['stages']);
 const { AGREE_RULES, AGREE_BARS, COPY_PCTS, READS_NO_BAR } = require('../agreement');
 
@@ -65,7 +63,7 @@ function validateConfig(cfg) {
   if (typeof br.weekdaysOnly !== 'boolean') fail(errors, 'branch.weekdaysOnly: must be boolean');
 
   const stagesEngine = cfg.engine === 'stages';
-  if (cfg.engine != null && !ENGINES.has(cfg.engine)) fail(errors, `engine: must be absent (the sweep engine) or one of ${[...ENGINES]}`);
+  if (!ENGINES.has(cfg.engine)) fail(errors, `engine: must be one of ${[...ENGINES]} — the three-stage engine is the only engine`);
   if (stagesEngine) {
     if (cfg.stage !== 'stages') fail(errors, "stage: a stage-engine configuration's stage is 'stages'");
     const a = cfg.agreement;
@@ -85,12 +83,11 @@ function validateConfig(cfg) {
       if (typeof a.both !== 'boolean') fail(errors, 'agreement.both: must be boolean');
       if (!Number.isInteger(a.persist) || a.persist < 0) fail(errors, 'agreement.persist: must be an integer 0 or more');
     }
-  } else if (!STAGES.has(cfg.stage)) fail(errors, `stage: must be one of ${[...STAGES]}`);
+  }
   // A RECORD'S HALF-LIFE, when it carries one (3.95.0): days, positive, or absent
   const tr = cfg.training;
   if (tr != null && typeof tr === 'object' && tr.halfLife != null) {
     if (!Number.isFinite(tr.halfLife) || tr.halfLife <= 0) fail(errors, 'training.halfLife: must be a positive number of days, or absent');
-    if (!stagesEngine) fail(errors, 'training.halfLife: only a stage-engine configuration trains with recent history weighted');
   }
 
   // The configuration's own shape-version, read back rather than only written.
@@ -111,16 +108,9 @@ function validateConfig(cfg) {
   }
 
   const cell = cfg.cell || {};
-  // the integer quorum is the sweep engine's; a stage-engine configuration
-  // carries none, because its agreement is the setting's own rule above
-  if (stagesEngine) {
-    if (cell.quorum != null) fail(errors, "cell.quorum: a stage-engine configuration agrees by its own rule, never by an integer quorum — must be null");
-  } else {
-    if (!Number.isInteger(cell.quorum) || cell.quorum < 1) fail(errors, 'cell.quorum: must be integer >= 1');
-    if (Array.isArray(cfg.members) && Number.isInteger(cell.quorum) && cell.quorum > cfg.members.length) {
-      fail(errors, `cell.quorum: ${cell.quorum} exceeds committee size ${cfg.members.length}`);
-    }
-  }
+  // a stage-engine configuration carries no integer quorum: its agreement is
+  // the setting's own rule above
+  if (cell.quorum != null) fail(errors, "cell.quorum: a stage-engine configuration agrees by its own rule, never by an integer quorum — must be null");
   if (!ENTRIES.has(cell.entry)) fail(errors, `cell.entry: must be one of ${[...ENTRIES]}`);
   if (!GATES.has(cell.gate)) fail(errors, `cell.gate: must be one of ${[...GATES]}`);
   if (!Number.isFinite(cell.tHours) || cell.tHours <= 0 || cell.tHours > 24 * 30) {

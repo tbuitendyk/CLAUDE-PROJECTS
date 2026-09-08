@@ -38,14 +38,8 @@ const geometry = Object.keys(GEOMETRIES)[0];
 // carry out, and the pair is one the default target box serves. My first
 // version used neither, so the control case was refused by the EXECUTOR gate
 // and read as my own change breaking the real control. It was the fixture.
-const goodConfig = () => ({
-  combo: { trade: 'LTCUSDT', ctx1: 'ETHUSDT', ctx2: 'BNBUSDT', size: 3 },
-  branch: { geometry, decision: 'argmax', band: 0.5, weekdaysOnly: false },
-  stage: 'slim',
-  members: [{ model: 'logreg', view: 'full' }],
-  cell: { quorum: 1, entry: 'market', gate: 'directional', dMult: null, tHours: 8, trailMult: null, armMult: null },
-  configVersion: 'v1',
-});
+// a stage-engine configuration, made through the product's own door (3.97.0)
+const goodConfig = () => ({ ...require('./fixtures-setup').aSetupConfig(), configVersion: 'v1' });
 const rec = (over = {}) => ({
   schema: 1, id: 'good-one', ownerId: 'owner', name: 'a book', state: 'draft',
   configSnapshot: goodConfig(), tradedPair: 'LTCUSDT', clipUsd: 100, stopPct: 0.02,

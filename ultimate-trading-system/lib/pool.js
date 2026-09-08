@@ -25,7 +25,6 @@ const os = require('os');
 const path = require('path');
 const fs = require('fs');
 const { Worker } = require('worker_threads');
-const work = require('./bracketwork');
 const { threadNice } = require('./threadnice');
 
 // Task kinds runnable on THIS thread when the pool has no workers. Must stay
@@ -33,17 +32,11 @@ const { threadNice } = require('./threadnice');
 // NOTE: worker.js is deliberately NOT required here; it renices its own thread
 // to 19 at load, which on the main thread would cripple the web server.
 const INLINE = {
-  unit: work.unitTask,
   s1Unit: require('./stagework').s1UnitTask,
   s2Unit: require('./stagework').s2UnitTask,
   s3Unit: require('./stagework').s3UnitTask,
   s3Tally: require('./stagework').s3TallyShardTask,
   hlTrain: require('./halflife').hlTrainTask,
-  nullRotation: work.nullRotationTask,
-  menuGrid: work.menuGridTask,
-  wfUnit: require('./walkforward').wfUnitTask,
-  htPass: require('./historytuning').htPassTask,
-  htTwoFold: require('./httwo').htTwoFoldTask,
   ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
 };
 

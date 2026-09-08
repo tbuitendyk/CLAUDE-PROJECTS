@@ -40,9 +40,9 @@ function getJob(id) {
 }
 
 // True while any download/refresh/analysis job is in flight. Exists because
-// batchRunning() sees only batches — the planted-check gate fired during a
-// running Global Refresh whose tail then rewrote the fabricated pair under
-// the gate sweep's workers (adversarial review, 2026-08-03, MAJOR).
+// the stage engine's busy answer sees only its own runs — a check once fired
+// during a running Global Refresh whose tail then rewrote a fabricated pair
+// under the check's workers (adversarial review, 2026-08-03, MAJOR).
 function anyJobRunning() {
   for (const j of jobs.values()) if (j.status === 'running') return j.id;
   return null;

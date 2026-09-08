@@ -1,6 +1,7 @@
 // THE DASHBOARD'S SUMMED MONEY, EXECUTED (added 2026-08-18 — QC-162).
 //
-// WHY THIS EXISTS RATHER THAN THE BROWSER CHECK ALONE. tests/browser.js verifies
+// WHY THIS EXISTS RATHER THAN A BROWSER CHECK ALONE. The browser harness (retired
+// with the older sweep path, 3.97.0) verified
 // the Dashboard totals against the server's per-setup records, which is a real
 // check of the arithmetic — but it CANNOT discriminate the fault that matters
 // most. On a box holding a single paper book, a total that wrongly folds in both

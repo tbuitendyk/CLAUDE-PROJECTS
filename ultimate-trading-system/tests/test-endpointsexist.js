@@ -1,6 +1,6 @@
 // EVERY ENDPOINT THE TWO TABS CALL MUST EXIST ON THE SERVER (added 2026-08-18).
 //
-// The runtime harness (tests/browser.js) cannot catch this class. It deliberately
+// A browser harness cannot catch this class (the one this had, retired 3.97.0, deliberately
 // does NOT press launchers or destructive buttons — firing a real sweep or nuking
 // a config on every run is not something a test may do — so a control wired to an
 // endpoint that does not exist is invisible to it. It is invisible to a reviewer

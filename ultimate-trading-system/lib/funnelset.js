@@ -4,10 +4,9 @@
 // THE THING THAT IS PRESERVED IS THE RULE, NOT THE ROW. A row picked off a board
 // cannot be null-tested; a rule can, because the same rule can be applied to a
 // noise board. That single distinction is why this is a record set with a rule
-// on it rather than a "selected row" flag, and it is also why the broken
-// selection path is not being repaired: POST /api/bracketlab/:id/select is
-// written by no screen, and every reader that gates on it comes to read one of
-// these instead.
+// on it rather than a "selected row" flag: the older path's selection route
+// went with that path (3.97.0), and every reader that once gated on a
+// selection reads one of these instead.
 //
 // IT ALSO RECORDS THE LOOKING. Every step, in order, with what was chosen -- and
 // every step BACK, because going back and re-choosing is more looking and the

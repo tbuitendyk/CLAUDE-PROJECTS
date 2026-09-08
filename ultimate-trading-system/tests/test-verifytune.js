@@ -11,9 +11,6 @@ const { assert } = require('./helpers');
 const ROOT = path.join(__dirname, '..');
 const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const HTML = fs.readFileSync(path.join(ROOT, 'public', 'construct.html'), 'utf8');
-// the planted check's panel lives on Setup, under Version (3.96.0); the marker
-// beside "planted check:" and its poll stay on Construct
-const SETUP = fs.readFileSync(path.join(ROOT, 'public', 'setup.html'), 'utf8');
 
 module.exports = {
   // THE THREE PANELS THAT WAITED FOR A CHOSEN ROW OF AN OLD SWEEP RUN ARE GONE
@@ -32,11 +29,14 @@ module.exports = {
     assert.ok(/this window only/.test(UI), 'and what a pass actually buys must be stated');
   },
 
-  theScansCanTargetAnySavedBookNotJustF1() {
-    assert.ok(/api\/pilot\/stop-candidates/.test(UI), 'the saved books must be offered');
+  // THE SCANS AIM AT A STAGE 4 RECORD SET, from the server's own list (3.97.0):
+  // the older engine's targets — a saved run's row and the live setups, which the
+  // scans replayed with the older committee — went with that engine.
+  theScansTargetAStage4RecordSetFromTheServersList() {
+    assert.ok(/api\/pilot\/stop-candidates/.test(UI), 'the targets must come from the server');
     assert.ok(/id="tuneTarget"/.test(UI), 'with a picker');
-    assert.ok(/opposite rail IS its stop/.test(UI),
-      'and it must say why a book with a stop is not listed');
+    assert.ok(/a Stage 4 record set whose trades are captured on this tab/.test(UI), 'and it must say what can be aimed at');
+    for (const gone of ["'sel'", 'savedBooks', 'runId: doc.id', 'setupId: chosen.id']) assert.ok(!UI.includes(gone), `the older target is still offered: ${gone}`);
   },
 
   theCustomStopBoxIsPercentAndTheEngineWantsAFraction() {
@@ -47,48 +47,8 @@ module.exports = {
     assert.ok(/NO fixed stop/.test(UI), 'with the consequence stated before it happens');
   },
 
-  // THE PLANTED CHECK read `verdict || status` off a status object that has
-  // neither field, so it fell through to NOT CHECKED on every call — including
-  // after a PASS, permanently. And nothing polled, so firing it looked exactly
-  // like not firing it (owner, 2026-08-17). Same class as the dead vsNulls
-  // column: a field nothing writes.
-  //
-  // Watched failing: restoring `s.verdict || s.status` fails the field check;
-  // removing the interval fails the polling check.
-  thePlantedCheckReadsTheFieldTheEndpointActuallyReturns() {
-    const planted = fs.readFileSync(path.join(ROOT, 'lib', 'planted.js'), 'utf8');
-    // the endpoint's own contract, read from source
-    const ret = planted.slice(planted.indexOf('function gateStatus'));
-    for (const key of ['state', 'detail', 'running', 'lastGate']) {
-      assert.ok(new RegExp(`\\b${key}[:.]`).test(ret.slice(0, 3000)),
-        `gateStatus must still return ${key}`);
-    }
-    // strip line comments first: the comment recording this defect names the old
-    // expression, and a check that matches its own documentation is no check
-    const code = [UI, SETUP].map((f) => f.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n')).join('\n');
-    assert.ok(!/\bs\.verdict\b/.test(code) && !/\bgate\.verdict\b/.test(code),
-      'nothing may read .verdict off the gate status — gateStatus returns no such field, so it always fell through to NOT CHECKED');
-    assert.ok(!/\bs\.status\b/.test(code), 'nor .status');
-    assert.ok(/s\.state \|\| 'NOT CHECKED'/.test(code), 'it must read state');
-    assert.ok(/gate\.state/.test(SETUP), 'and the panel on Setup must read state too');
-  },
 
-  thePlantedCheckSaysWhenItIsRunningAndKeepsSaying() {
-    assert.ok(/if \(s\.running\)/.test(UI), 'a gate in flight must show as RUNNING, not as its old verdict');
-    // the poll must be REACHABLE, not merely present: checking that setInterval
-    // appears somewhere passes even with the branch that reaches it disabled
-    assert.ok(/if \(s\.running && !gatePoll\) \{[\s\S]{0,200}setInterval/.test(UI),
-      'the poll must be started when a gate is in flight, not merely defined');
-    assert.ok(/clearInterval\(gatePoll\)/.test(UI), 'stopping the moment it lands');
-    assert.ok(/you do not need to reload/.test(SETUP), 'and telling the operator that');
-    assert.ok(/gate\.running \? 'disabled title="a planted check is already running"'/.test(SETUP),
-      'the button must be disabled while a check is already running');
-  },
 
-  thePlantedCheckShowsTheReasonNotJustTheWord() {
-    assert.ok(/gate\.detail/.test(SETUP), 'the status sentence explains what the word means and must be shown');
-    assert.ok(/lastGate\.sentences/.test(SETUP), 'and the last gate\'s own verdict sentences');
-  },
 
   // Inverted 2026-08-26 (owner order: "Remove the obsolete CPU button"). The
   // button cycled the same per-worker duty cycle the Compute tab's share box

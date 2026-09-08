@@ -73,10 +73,6 @@ module.exports = {
       assert.strictEqual(roles.sweep.inForce, 'this-machine', 'what is in force fell back to this machine');
       assert.strictEqual(compute.sweepRunsHereOr(), null,
         'a fallback to this machine is not a refusal — the run can still start');
-      // and the launcher actually calls it: the refusal path is wired in
-      const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
-      assert.ok(/sweepRunsHereOr\(\)/.test(src),
-        'launchRefusal no longer reads the sweep role — the Compute tab setting is a decoration again');
     });
   },
 

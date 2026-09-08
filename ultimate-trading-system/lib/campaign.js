@@ -1,6 +1,6 @@
 // CAMPAIGN NAME (owner order, 2026-08-04): a high-level analysis name the
-// owner sets once; every run launched while it is set carries it, so the
-// saved-runs list shows at a glance which runs belong to the same cycle of
+// owner sets once; every record set launched while it is set carries it, so
+// the campaign tree shows at a glance which sets belong to the same cycle of
 // tests. Stored on disk so it survives reloads and restarts; cleared by
 // setting it empty.
 const fs = require('fs');
@@ -38,10 +38,10 @@ function getCampaign() {
 }
 
 // NAMES THE OWNER HAS DECLARED, kept because they cannot be worked out from
-// anything else (owner, 2026-08-21). The catalogue below is COMPUTED from runs
-// and greenlights, which is right for those and wrong for a name that has just
-// been set: a brand new campaign owns nothing yet, so it appeared nowhere and
-// the owner had to retype it until the first run existed.
+// anything else (owner, 2026-08-21). The catalogue below is COMPUTED from
+// record sets and greenlights, which is right for those and wrong for a name
+// that has just been set: a brand new campaign owns nothing yet, so it appeared
+// nowhere and the owner had to retype it until the first set existed.
 //
 // This is not the "second ledger that could drift" the tree avoids. There is no
 // other record of a declared name to disagree with — that is exactly why it has
@@ -76,28 +76,15 @@ function setCampaign(raw) {
 
 // CAMPAIGN AS A REAL PARENT (owner 2026-08-14; NEXT-RELEASE points 13/14/25).
 // The tree is COMPUTED on read from records that already carry the campaign
-// stamp — batch runs (doc.campaign, stamped at every launch since 2026-08-04)
+// stamp — the stage record sets (params.campaign, stamped at every launch)
 // and greenlights — never from a second ledger that could drift (the
 // lesson of the removed research books: a recomputation cannot disagree
-// with itself).
-// Lineage: a run that derives from another carries its parent's id in params
-// (sourceRunId for History Tuning, sourceRun for HT v2 etc.); those links are
-// surfaced verbatim so branches that share an original sweep are connected by
-// data, not naming discipline.
+// with itself). Lineage: a set carries the id of the set its launch read
+// from, so a 1 → 2 → 3 chain is connected by data, not naming discipline.
+// (The older sweep engine's runs rode in this list until it was retired,
+// 3.97.0; the list keeps its `runs` key.)
 function campaignTree(name) {
   const runs = [];
-  try {
-    const { listBatches } = require('./batch');
-    for (const row of listBatches()) {
-      const p = row.params || {};
-      if ((p.campaign || null) !== name) continue;
-      runs.push({
-        id: row.id, kind: row.kind || 'bracketlab', status: row.status,
-        startedAt: row.startedAt || null, label: p.label || '',
-        parentRunId: p.sourceRunId || p.srcId || null,
-      });
-    }
-  } catch (_) { /* no batches dir yet */ }
   const greenlights = [];
   try {
     for (const g of require('./live/greenlight').listGreenlights()) {
@@ -106,8 +93,7 @@ function campaignTree(name) {
         sourceRunId: (g.sourceRun && g.sourceRun.id) || null, revoked: !!g.revoked });
     }
   } catch (_) { /* live modules absent in some test contexts */ }
-  // Stage record sets carry the stamp too (2026-08-27). They ride in the same
-  // list as the runs — same table, same ordering — and the parent link is the
+  // Stage record sets carry the stamp (2026-08-27); the parent link is the
   // record set the launch read from, so a 1 → 2 → 3 chain reads as one.
   try {
     for (const s of require('./stages').listSets()) {
@@ -132,9 +118,6 @@ function listCampaignNames() {
     const cur = seen.get(name);
     if (!cur || String(utc) > cur) seen.set(name, String(utc || ''));
   };
-  try {
-    for (const row of require('./batch').listBatches()) note((row.params || {}).campaign, row.startedAt);
-  } catch (_) { /* none */ }
   try {
     for (const g of require('./live/greenlight').listGreenlights()) note(g.campaign, g.createdUtc);
   } catch (_) { /* none */ }
@@ -178,14 +161,6 @@ function activeStates() {
 function campaignContents(name) {
   const clean = sanitizeCampaign(name);
   if (!clean) throw new Error('name a campaign to look at');
-
-  const runs = [];
-  try {
-    for (const row of require('./batch').listBatches()) {
-      if (((row.params || {}).campaign || null) !== clean) continue;
-      runs.push({ id: row.id, kind: row.kind || 'bracketlab', status: row.status });
-    }
-  } catch (_) { /* no batches yet */ }
 
   const greenlights = [];
   try {
@@ -268,26 +243,15 @@ function campaignContents(name) {
   const active = activeStates();
   const blocking = setups.filter((st) => active.includes(st.state));
 
-  // Per-run stores that hang off a run id rather than off the campaign.
-  const dirCount = (sub, id) => {
-    try { return fs.readdirSync(path.join(__dirname, '..', 'data', sub, id)).length; } catch (_) { return 0; }
-  };
-  let modelFiles = 0;
-  let tuningFiles = 0;
-  for (const r of runs) { modelFiles += dirCount('models', r.id); tuningFiles += dirCount('ht', r.id); }
-
   return {
     name: clean,
     isCurrent: getCampaign() === clean,
-    declaredOnly: !runs.length && !greenlights.length && !stageSets.length,
-    runs, greenlights, setups, blocking, stageSets,
+    declaredOnly: !greenlights.length && !stageSets.length,
+    greenlights, setups, blocking, stageSets,
     counts: {
-      runs: runs.length,
       greenlights: greenlights.length,
       setups: setups.length,
       stageSets: stageSets.length,
-      modelFiles,
-      tuningFiles,
     },
     locked: blocking.length > 0,
   };
@@ -326,8 +290,7 @@ function deleteCampaign(name) {
     }
   }
 
-  const removed = { runs: 0, greenlights: 0, setups: 0, modelDirs: 0, tuningDirs: 0, stageSets: 0 };
-  const dataDir = path.join(__dirname, '..', 'data');
+  const removed = { greenlights: 0, setups: 0, stageSets: 0 };
 
   // Setups first: they point at the greenlights, so removing them last would
   // leave a window in which a setup names a greenlight that is already gone.
@@ -343,14 +306,6 @@ function deleteCampaign(name) {
       rmFile(path.join(require('./live/greenlight').glDir(), `${g.id}.json`));
       removed.greenlights += 1;
     } catch (_) { /* counted only when it went */ }
-  }
-  for (const r of found.runs) {
-    rmDir(path.join(dataDir, 'models', r.id));
-    removed.modelDirs += 1;
-    rmDir(path.join(dataDir, 'ht', r.id));
-    removed.tuningDirs += 1;
-    rmFile(path.join(dataDir, 'batches', `${r.id}.json`));
-    removed.runs += 1;
   }
 
   // Stage record sets go DEEPEST FIRST, because a set another set names as its

@@ -52,22 +52,6 @@ function cleanup() {
   }
 }
 
-const CONFIG = {
-  combo: { trade: SYMS[0], ctx1: SYMS[1], ctx2: SYMS[2], size: 3 },
-  branch: { geometry: 'daily-4d', decision: 'argmax', band: 0.4, weekdaysOnly: false },
-  stage: 'slim',
-  // read from the engine, never typed out: a reading added to the committee
-  // must not leave a fixture behind (owner loop, 2026-08-28)
-  members: require('../lib/bracketwork').specsFor(3, 'slim').map((x) => ({ model: x.model, view: x.view })),
-  cell: { quorum: 1, entry: 'market', gate: 'directional', dMult: null, tHours: 137, trailMult: null, armMult: null },
-  trainThrough: FREEZE,
-  configVersion: 'zzzq-v1-test',
-};
-const SETUP = {
-  id: 'sig-test-1', state: 'live', clipUsd: 10, stopPct: null,
-  configSnapshot: CONFIG,
-};
-
 let planted = false;
 let chunksCache = null;
 async function withData() {
@@ -111,7 +95,7 @@ module.exports.actionableIntentCarriesSchema2AndTheCachedEntryOpen = async funct
   const { maps } = await withData();
   const bar = maps.trade.get(t.startTs + geo.entryOffsetH * HOUR);
   assert.strictEqual(it.decision_price, bar.open, 'decision price = entry candle OPEN from cache');
-  assert.strictEqual(it.per_member.length, require('../lib/bracketwork').specsFor(3, 'slim').length);
+  assert.strictEqual(it.per_member.length, STAGE_CONFIG.members.length);
 };
 
 module.exports.decisionsAreDeterministicAndHashPinsTheMachinery = async function () {
@@ -208,12 +192,6 @@ module.exports.paperSetupsProduceIntentsFlaggedPaper = async function () {
   assert.strictEqual(out.intent.paper, true, 'paper state rides in the intent');
 };
 
-module.exports.driftedRosterIsRefusedLoudly = async function () {
-  const bad = { ...SETUP, configSnapshot: { ...CONFIG, members: CONFIG.members.slice(0, 3) } };
-  let err = null;
-  try { await signal.computeSignal(bad, 1786500000000); } catch (e) { err = e; }
-  assert.ok(err && /specsFor/.test(err.message), `drifted committee must throw: ${err && err.message}`);
-};
 
 module.exports.zzz_cleanupFabricatedSymbols = function () {
   cleanup();
@@ -241,6 +219,11 @@ const STAGE_CONFIG = {
   configVersion: 'zzzq-stages-v1-test',
 };
 const STAGE_SETUP = { id: 'sig-test-stages', state: 'paper', clipUsd: 10, stopPct: null, configSnapshot: STAGE_CONFIG, trainPolicy: { mode: 'frozen', throughMs: FREEZE } };
+// THE ONE ENGINE (3.97.0): the older engine's tests ran the same live path on a
+// configuration of its shape; that shape cannot exist any more, so they run on
+// the stage-engine configuration, under the older names.
+const CONFIG = { ...STAGE_CONFIG, configVersion: 'zzzq-v1-test' };
+const SETUP = { ...STAGE_SETUP, id: 'sig-test-1', state: 'live', configSnapshot: CONFIG };
 
 module.exports.aStageEngineConfigurationDecidesByItsOwnAgreementAndTheRecomputeMatches = async function () {
   const { validateConfig, liveExecutable } = require('../lib/live/configschema');

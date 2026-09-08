@@ -6,7 +6,7 @@
 // sweep's directional decision depends on had no coverage at all.
 const { assert } = require('./helpers');
 const { FEE_PER_LEG } = require('../lib/paper');
-const { tuneTau, monthList, deriveShift, MIN_CHUNKS } = require('../lib/pipeline');
+const { tuneTau, monthList, MIN_CHUNKS } = require('../lib/pipeline');
 
 // The fee is passed explicitly in every call below. It used to default to the
 // paper fee whatever the caller charged, which is the defect these calls now
@@ -90,12 +90,6 @@ module.exports = {
     assert.throws(() => monthList('2000-01', '2026-01'), /too large/);
   },
 
-  async deriveShiftStaysInsideTheBufferedCycleAndRefusesTooLittleData() {
-    assert.ok(deriveShift(310, 0.0001) >= 8);
-    assert.ok(deriveShift(310, 0.9999) <= 302);
-    assert.ok(deriveShift(310, 0.7) > deriveShift(310, 0.3));
-    assert.throws(() => deriveShift(18, 0.5), /too few chunks/);
-  },
 
   async theTrainingFloorIsStillAFloor() {
     assert.strictEqual(typeof MIN_CHUNKS, 'number');

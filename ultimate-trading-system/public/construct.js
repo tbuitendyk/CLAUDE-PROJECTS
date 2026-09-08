@@ -101,10 +101,6 @@ const WHERE_FUNNEL = 'The Stage 4 record set box at the top of this screen lists
 // blank answer, never a dialog. The cost line asks on every keystroke and a
 // popup there would be unusable.
 const askPost = async (p, body, fallback = null) => { try { return await post(p, body); } catch (_) { return fallback; } };
-// A setup is the TRADED pair plus its context pairs. Printing only the traded
-// pair makes a three-asset committee read as a single asset, which is a
-// different setup with a different result — so every "selected:" line uses this.
-const comboOf = (r) => (!r ? '—' : r.trade + (r.ctx1 ? ` + ${r.ctx1}` : '') + (r.ctx2 ? ` + ${r.ctx2}` : ''));
 
 // COLUMN KEYS (owner's standing rule: every table gets a name and a KEY, and the
 // key defines every heading in plain words INCLUDING ITS UNITS — money and
@@ -185,7 +181,7 @@ const COL = {
   fGridCell: 'average test dollars for the settings holding both this column value and this row value. Greyed with a count beside it when fewer settings sit behind it than the thin-square floor.',
   fSlice: 'one coin, chunk shape, third of the window or dial value the surviving settings are being compared across - whichever of those this set can offer.',
   // Data
-  pair: 'the Binance symbol, hourly candles. The fabricated planted-check pair is listed too and is marked as such.',
+  pair: 'the Binance symbol, hourly candles.',
   months: 'how many whole months of hourly candles are cached on this box for the pair.',
   from: 'first cached month, YYYY-MM.',
   to: 'last cached month, YYYY-MM. The current month is partial until it closes.',
@@ -220,14 +216,6 @@ const COL = {
   nullCopies: 'how many dealt-vote null copies this setup has. It sets the finest claim available: 1 in N+1.',
   beaten: 'how many of those copies the held-back money beats.',
   claim: 'the strongest honest statement these copies support — never finer than 1 in N+1.',
-  // history tuning
-  hash: 'row number in this board only.',
-  age: 'the half-life setting: how fast older weeks stop counting.',
-  retune: 'how often the model is retrained and how far back it looks when it is.',
-  testUsd: 'net paper dollars per $100 book on the window the settings were CHOSEN on — flattering by construction, never a money claim.',
-  effDays: 'the smallest effective training days any split saw. A starved split returns plausible numbers from almost no data.',
-  holdUsd: 'the three held-back windows (early / middle / late) in US dollars, shown only where a hold is graded once and never shopped.',
-  wt: 'winning trades over total trades in that cell.',
   // stop tuner
   giveUp: 'how many of the biggest winners you are willing to have clipped. Zero is the no-winner-lost stop.',
   stopPct: 'the fixed protective stop as a PERCENT move against the position.',
@@ -308,19 +296,6 @@ const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['funn
   ['verify', 'Verify'],
   ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight'], ['help', 'Help']];
 let tab = localStorage.getItem('cx-tab') || 'sweep';
-// the working selection: a saved run + its selected row ride across sections
-let pickedRun = localStorage.getItem('cx-run') || null;
-// ...and the one run document loadPicked() holds, so four screens asking for it
-// in a row do not fetch it four times.
-//
-// PUT BACK 2026-08-29. This declaration sat among the deleted screens' helpers
-// and went out with them, and nothing noticed because nothing here runs under a
-// module that would have flagged it. loadPicked() READS it before it assigns,
-// so every call threw `pickedDoc is not defined` — which is every draw of
-// Verify, History, Tune and Greenlight. The tab highlighted, the renderer died
-// on its first line, and #view kept whatever screen was there before. The owner
-// found it by pressing Verify and getting Boards under a Verify highlight.
-let pickedDoc = null;
 
 // WHERE YOU WERE ON EACH TAB (owner, 2026-08-21).
 //
@@ -433,23 +408,19 @@ function renderTabs() {
   });
 }
 
-// ---- release strip (persistent; clickable badge -> Verify) ------------------
-// THE FIELD IS `state`. This read `s.verdict || s.status` — neither of which the
-// endpoint has ever returned — so it fell through to NOT CHECKED on every call,
-// including after a PASS, permanently. Same class as the dead vsNulls column:
-// reading a field nothing writes (owner, 2026-08-17).
-//
-// gateStatus returns { engineVersion, state, detail, running, lastGate }.
-// `running` is the in-flight gate's run id, and it is what tells the page that
-// something IS happening — the previous code ignored it and nothing polled, so
-// firing the check looked identical to not firing it.
+// ---- release strip (persistent; the marker opens Setup on Version) ----------
+// The release the box runs and the stage-engine check's standing for it, read
+// from the check's own status: NOT CHECKED, RUNNING, PASS, FAIL or UNREADABLE.
+// `running` is the in-flight check's run id, and it is what tells the page
+// that something IS happening; the strip re-reads itself every five seconds
+// while one runs, and stops the moment it lands.
 let gatePoll = null;
 
 function gateBadge(s) {
-  if (!s) return { text: '—', cls: 'b-warn', tip: 'gate status unavailable' };
-  if (s.running) {
+  if (!s) return { text: '—', cls: 'b-warn', tip: 'the stage-engine check\'s status is unavailable' };
+  if (s.running || s.state === 'RUNNING') {
     return { text: 'RUNNING', cls: 'b-warn',
-      tip: `the planted check is running now (${s.running}) — a full sweep on the fabricated pair, minutes not seconds` };
+      tip: `the stage-engine check is running now${s.running ? ` (${s.running})` : ''} — two fabricated coins through all three stages, minutes not seconds` };
   }
   const st = String(s.state || 'NOT CHECKED');
   return {
@@ -461,7 +432,7 @@ function gateBadge(s) {
 
 async function renderStrip() {
   let s = null;
-  try { s = await api('api/planted-gate/status'); } catch (_) { s = null; }
+  try { s = await api('api/stage-gate/status'); } catch (_) { s = null; }
   const el = $('#strip');
   if (!el) return s;
   if (!s) { el.innerHTML = 'release <span class="muted">—</span>'; return null; }
@@ -469,18 +440,19 @@ async function renderStrip() {
   // The flag's box sits ON the text bottom (owner order, 2026-08-26): the
   // class's middle-alignment centred this bordered box on the small text's
   // line and hung it below the release and time text beside it.
-  el.innerHTML = `release ${esc(s.engineVersion || '')} · planted check:
+  el.innerHTML = `release ${esc(s.release || '')} · stage-engine check:
     <span class="badge ${b.cls}" id="stripBadge" style="vertical-align:text-bottom" title="${esc(b.tip)}">${esc(b.text.toUpperCase())}</span>`;
   const btn = $('#stripBadge');
-  // The marker opens the Setup page on its Version tab, where the two checks
-  // are run and read (owner order, 2026-09-08: the checks left Verify).
+  // The marker opens the Setup page on its Version tab, where the check is run
+  // and read.
   if (btn) btn.onclick = () => { try { localStorage.setItem('setup-tab', 'version'); } catch (_) { /* private window */ } window.location.href = 'setup.html'; };
-  // While a gate is in flight, keep the badge honest without the owner having to
-  // reload. One timer only, cleared the moment it lands.
-  if (s.running && !gatePoll) {
+  // While a check is in flight, keep the marker honest without the owner having
+  // to reload. One timer only, cleared the moment it lands.
+  const going = !!(s.running || s.state === 'RUNNING');
+  if (going && !gatePoll) {
     gatePoll = setInterval(async () => {
       const now = await renderStrip();
-      if (!now || !now.running) { clearInterval(gatePoll); gatePoll = null; }
+      if (!now || !(now.running || now.state === 'RUNNING')) { clearInterval(gatePoll); gatePoll = null; }
     }, 5000);
   }
   return s;
@@ -507,18 +479,7 @@ async function drawData() {
       while a job runs; purge and trim DELETE data — the only way back is downloading again.</p>
     <div class="scrollx" id="dataTbl">${rows.length ? `<table><thead><tr>
       ${cth('pair','pair')}${cth('months','months')}${cth('from','from')}${cth('to','to')}${cth('manage','manage','text-align:left')}</tr></thead><tbody>
-      <!-- THE FLAG, NOT ONE HARDCODED NAME. This tested r.symbol ===
-           'PLANTEDUSDT', so the second fabricated pair — the late-rule exam —
-           was offered refresh and TRIM like an ordinary Binance pair. Trimming
-           it silently corrupts the exam it exists to be, and nothing on screen
-           would say so. The planted flag now comes from lib/planted.js's list via
-           /api/data-state, so a third fabricated pair cannot be missed
-           (audit 2026-08-17). -->
-      ${rows.map((r) => (r.planted ? `
-        <tr><td>${esc(r.symbol)} <span class="note">fabricated pair — mirrors the real data's span, never downloaded; trimming it would corrupt the exam it exists to be</span></td>
-          <td>${r.months ?? '—'}</td><td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td>
-          <td style="text-align:left"><button type="button" class="ds-refresh" data-sym="${esc(r.symbol)}">regenerate to span</button>
-            <button type="button" class="ds-purge" data-sym="${esc(r.symbol)}">purge…</button></td></tr>` : `
+      ${rows.map((r) => (`
         <tr><td>${esc(r.symbol)}</td><td>${r.months ?? '—'}</td><td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td>
           <td style="text-align:left"><button type="button" class="ds-refresh" data-sym="${esc(r.symbol)}">refresh to latest</button>
             <!-- toMonth, not to. cacheState reports the "to" field at DAY
@@ -1498,8 +1459,8 @@ function wireCampaignPanel(redraw) {
     if (box.dataset.tree === name) { box.innerHTML = ''; delete box.dataset.tree; return; }
     const t = await apiOr(`api/campaign-tree?name=${encodeURIComponent(name)}`, null);
     box.dataset.tree = name;
-    box.innerHTML = t ? `<h3>Campaign “${esc(t.name)}” — runs, record sets &amp; greenlights</h3>
-      <table><thead><tr>${cth('run / record set','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}${cth('derives from','derives','text-align:left')}</tr></thead><tbody>
+    box.innerHTML = t ? `<h3>Campaign “${esc(t.name)}” — record sets &amp; greenlights</h3>
+      <table><thead><tr>${cth('record set','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}${cth('derives from','derives','text-align:left')}</tr></thead><tbody>
       ${(t.runs || []).map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td>
         <td>${esc((r.startedAt || '').slice(0, 16))}</td><td style="text-align:left" class="muted">${esc(r.parentRunId || '—')}</td></tr>`).join('') || '<tr><td colspan="5" class="empty">no runs yet</td></tr>'}
       </tbody></table>
@@ -1538,13 +1499,10 @@ function wireCampaignPanel(redraw) {
     // was never shown.
     const inherited = (found.stageSets || []).filter((x) => x.inherited);
     const lines = [
-      ['saved runs', c.runs],
       ['greenlights', c.greenlights],
       ['setups (none deployed)', c.setups],
       ['record sets', c.stageSets - inherited.length],
       ['record sets that came out of them', inherited.length],
-      ['saved model files', c.modelFiles],
-      ['tuning files', c.tuningFiles],
     ].filter(([, n]) => n > 0);
 
     box.innerHTML = `<div class="panel" style="border-color:var(--warn)"><b style="color:var(--warn)">Deleting “${esc(found.name)}” will permanently remove:</b>
@@ -1587,20 +1545,6 @@ function wireCampaignPanel(redraw) {
       ${out.wasCurrent ? 'It was the campaign in use, so nothing is set now.' : ''}</div>`;
     redraw();
   };
-}
-
-// ---- shared by the screens that open a saved thing -------------------------------------------------------------------
-async function loadPicked() {
-  if (!pickedRun) return null;
-  if (pickedDoc && pickedDoc.id === pickedRun) return pickedDoc;
-  pickedDoc = await apiOr(`api/batch/${encodeURIComponent(pickedRun)}`, null);
-  return pickedDoc;
-}
-const selKey = 'cx-selrow';
-function getSelRow(doc) {
-  // the run's OWN stored selection (set via Select on a row) is authoritative;
-  // the local pick is display state until the server confirms
-  return doc && doc.selection ? doc.selection : null;
 }
 
 // THE TOP OF AN OPENED RUN IS ONE STRUCTURE, DRAWN ON TWO SCREENS (owner
@@ -1886,10 +1830,8 @@ function wireNotesSave(saveUrl, onSaved, suffix) {
 //
 // (3.86.0, VERIFY-DESIGN.md.) THE UNIT OF VERIFICATION IS THE SET, never one
 // row: a rule can be checked against scrambled data and a single row cannot,
-// which is why the Funnel writes a rule. The three panels that waited for a
-// chosen row of an old sweep run drew dead on everything the engine writes now
-// and are gone; the planted check stays, and says what it certifies. Every
-// label below sits in a top-level helper with markup, so the word list sees it.
+// which is why the Funnel writes a rule. Every label below sits in a top-level
+// helper with markup, so the word list sees it.
 const V_SET_KEY = 'cx-verify-set';
 const WHERE_VERIFY = 'The Stage 4 record set box on Verify lists what was stamped - pick the set there.';
 function vRememberedSet(list) {
@@ -1911,7 +1853,6 @@ function vSetBoxHtml(list, chosen) {
 function vFootingHtml(d) {
   const f = d.footing;
   if (!f) return '';
-  const g = f.gate || {};
   const r = f.releases || {};
   return `<p class="note"><b>Footing:</b> ${f.same && !f.gone
     ? `the rule gives back its own ${Number(f.had).toLocaleString()} survivors today`
@@ -1921,8 +1862,7 @@ function vFootingHtml(d) {
     · sealed window ${f.sealed.sealed ? `intact on this unit from ${vDay(f.sealed.fromTs)} onward` : `<b class="neg">not intact</b> - ${esc(String(f.sealed.why || ''))}`}
     · ${f.marks} mark(s) carried · ${f.steps} step(s) and ${f.backSteps} step(s) back
     · ${f.userRuleDiffers === null ? 'no User Rule recorded' : (f.userRuleDiffers ? 'the User Rule differs from the Final Rule' : 'the User Rule is the Final Rule')}
-    · releases: set ${esc(r.set || '?')}, parent ${esc(r.parent || '?')}, reader ${esc(r.reader || '?')}${r.sameFirstDigit ? ' (one first digit)' : ' <b class="warn">(the first digits differ)</b>'}
-    · planted check ${esc(g.state || 'NOT CHECKED')}${g.engineVersion ? ` (release ${esc(g.engineVersion)})` : ''}, which ${esc(g.certifies || 'certifies the old sweep pipeline')}</p>`;
+    · releases: set ${esc(r.set || '?')}, parent ${esc(r.parent || '?')}, reader ${esc(r.reader || '?')}${r.sameFirstDigit ? ' (one first digit)' : ' <b class="warn">(the first digits differ)</b>'}</p>`;
 }
 function vLooksHtml(d) {
   const l = d.looks;
@@ -2361,44 +2301,13 @@ async function hHalfLifeFollow(id, token) {
   }
 }
 async function drawHistory() {
-  const doc = await loadPicked();
-  const sel = getSelRow(doc);
   // a half-life set is graded and retrained through its source, so it is not offered here (3.95.0)
   const hSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => !x.derived);
   const hChosen = hRememberedSet(hSets);
   const hd = hChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(hChosen)}/unread`, null) : null;
   const hl = hChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife`, null) : null;
-  $('#view').innerHTML = `<div class="panel">
-    <h3 style="margin-top:0">History Tuning — change ONE variable (training-history length) and price the effect</h3>
-    <p class="note">One variable per run, declared before it fires (the confirm discipline): the same frozen trading
-      cell, trained on windows of different depth, priced on the same folds. The reading rule is stamped at launch.</p>
-    ${sel ? `<div class="row">
-        <span class="note">selected row: <b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</span>
-        <button id="htRun" class="pri">Launch History Tuning on this row</button><span id="htMsg" class="note"></span></div>`
-    : '<span class="note">select a row on Boards first — History Tuning drills the selected candidate.</span>'}
-    <div id="htOut"></div>
-  </div>
-  <div class="panel">
-    <h3 style="margin-top:0">Age dial (HT v2) — one declared half-life vs the reference, paired folds</h3>
-    <p class="note">PLAIN WORDS: instead of cutting history off, the age dial DOWN-WEIGHTS old days smoothly. One
-      half-life (how many days back a sample's influence falls to half) is declared, then priced against the
-      no-dial reference on ~20 paired folds — same folds, same frozen trading cell, so the ONLY difference is the
-      dial. The table's verdict is the paired money difference, fold by fold.</p>
-    <div class="row" style="align-items:flex-end">
-      <label class="f" title="how fast older evidence stops counting. A shorter half-life makes the model lean on recent weeks; a longer one keeps older weeks in play. These three are the choices the engine runs.">half-life<select id="ht2hl">${vocabOptions('halfLife', '12mo')}</select></label>
-      ${sel ? '<button id="ht2Run" class="pri">Launch paired age-dial run</button>' : '<span class="note">select a row on Boards first.</span>'}
-      <span id="ht2Msg" class="note"></span>
-    </div>
-    <div class="row" style="margin-top:.4rem;align-items:flex-end">
-      <button id="ht2ExamA" title="the late-rule fabricated pair: the instrument MUST find it. A miss means the age dial cannot see an effect that is provably there.">Run exam A (late-rule pair — must find)</button>
-      <button id="ht2ExamB" title="the flat fabricated pair: the instrument MUST NOT find anything. A hit means it invents effects.">Run exam B (flat pair — must NOT find)</button>
-      <span id="ht2Exams" class="note">exam status loading…</span>
-    </div>
-    <div id="ht2Out"></div>
-  </div>
-  ${hGradePanelHtml(hSets, hChosen, hd)}
-  ${hHalfLifePanelHtml(hChosen, hl)}
-  <div class="panel"><h3 style="margin-top:0">Finished tuning runs</h3><div id="htList"><span class="muted">loading…</span></div></div>`;
+  $('#view').innerHTML = `  ${hGradePanelHtml(hSets, hChosen, hd)}
+  ${hHalfLifePanelHtml(hChosen, hl)}`;
   const hSel = $('#hSet');
   if (hSel) hSel.onchange = () => {
     try { localStorage.setItem(H_SET_KEY, hSel.value); } catch (_) { /* private window */ }
@@ -2448,318 +2357,6 @@ async function drawHistory() {
     const out = await tryPost(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife/build`, { runId: run.id, name }, 'The Stage 4 record set box on History lists the source set - pick it there.');
     if (out) { alert(`Built: ${out.set.name} - ${out.set.survivors} of ${out.set.of} records, each with its half-life.\n\nIt is on Tune and Greenlight now.`); drawHistory(); }
   };
-  const list = await apiOr('api/batches', ({}));
-  const runs = (list.batches || list || []).filter((b) => b.kind === 'historytuning' || b.kind === 'httwo').slice(0, 12);
-  $('#htList').innerHTML = runs.length ? `<table><thead><tr>${cth('run','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}<th></th></tr></thead><tbody>
-    ${runs.map((r) => `<tr><td>${esc(r.id)}</td><td>${esc(r.kind)}</td><td>${esc(r.status)}</td><td>${esc((r.startedAt || '').slice(0, 16))}</td>
-      <td><button data-open="${esc(r.id)}">read</button></td></tr>`).join('')}</tbody></table><div id="htRead"></div>`
-    : '<span class="muted">none yet</span>';
-  $('#htList').querySelectorAll('button[data-open]').forEach((b) => {
-    b.onclick = async () => {
-      const d = await apiOr(`api/batch/${encodeURIComponent(b.dataset.open)}`, null);
-      if (!d) { $('#htRead').innerHTML = 'unreadable'; return; }
-      $('#htRead').innerHTML = d.kind === 'httwo' ? renderHtTwoRun(d) : renderHtRun(d, runs);
-      wireHtRun(d, runs);
-    };
-  });
-  const htRun = $('#htRun');
-  if (htRun) htRun.onclick = async () => {
-    $('#htMsg').textContent = 'launching…';
-    const out = await tryPost('api/historytuning', {
-      sourceBatchId: doc.id,
-      windowStamps: sel.windowStamps || null,
-      combo: { trade: sel.trade, ctx1: sel.ctx1 || null, ctx2: sel.ctx2 || null, size: sel.size || 1 },
-      branch: { geometry: sel.geometry, decision: sel.decision,
-        band: sel.bandMode === 'auto' || !sel.bandMode ? 'auto' : sel.bandPct, weekdaysOnly: !!sel.weekdaysOnly },
-      declaredCell: { quorum: sel.quorum, gate: sel.gate, entry: sel.entry || 'breakout', dMult: sel.dMult,
-        tHours: sel.tHours, trailMult: sel.trailMult ?? null, armMult: sel.armMult ?? null, bandPct: sel.bandPct },
-    });
-    $('#htMsg').textContent = out ? `launched ${out.batchId || ''} — appears under finished runs when done` : '';
-  };
-  // THE EXAM GATE. The age dial is an instrument, and an instrument that has not
-  // been shown to find a planted effect AND to stay quiet on a flat one is not
-  // yet evidence of anything. examStatus.ready is exactly "A passed and B did
-  // not"; until then the real launcher says so rather than pretending.
-  const exams = await apiOr('api/httwo/exams', null);
-  const exEl = $('#ht2Exams');
-  if (exEl) {
-    exEl.innerHTML = !exams ? '<span class="muted">exam status unavailable</span>'
-      : `<b class="${exams.ready ? 'pos' : 'warn'}">${exams.ready ? 'exams PASSED' : 'exams NOT passed'}</b>
-         <span class="muted">engine ${esc(String(exams.engineVersion || '?'))}</span> — ${esc(String(exams.detail || ''))}`;
-  }
-  const ht2Run = $('#ht2Run');
-  if (ht2Run) {
-    if (exams && !exams.ready) {
-      ht2Run.title = 'the exam pair has not passed on this engine version — a real age-dial run is not evidence until it has';
-    }
-    ht2Run.onclick = async () => {
-      if (exams && !exams.ready
-        && !confirm('The age-dial exams have NOT passed on this engine version.\n\nA real run launched now is not evidence of anything. Launch anyway?')) return;
-      $('#ht2Msg').textContent = 'launching…';
-      const out = await tryPost('api/httwo', { sourceBatchId: doc.id, halfLifeKey: $('#ht2hl').value });
-      // /api/httwo answers { started, id, folds, windowDays } — NOT batchId
-      $('#ht2Msg').textContent = out ? `launched ${out.id || ''}` : '';
-    };
-  }
-  // examPair takes the FABRICATED PAIR SYMBOL, not 'A'/'B' — exam A is the
-  // late-rule pair (the instrument must FIND it) and exam B the flat pair (it
-  // must NOT). Sending 'A' would be refused as "examPair must be one of the
-  // reserved fabricated pairs". Nothing else is sent: the half-life is not a
-  // parameter of an exam, and the engine defaults it.
-  for (const [btn, label, pair] of [['#ht2ExamA', 'A', 'PLANTEDLATEUSDT'], ['#ht2ExamB', 'B', 'PLANTEDUSDT']]) {
-    const el = $(btn);
-    if (!el) continue;
-    el.onclick = async () => {
-      el.disabled = true;
-      const out = await tryPost('api/httwo', { examPair: pair });
-      el.disabled = false;
-      if (out) { $('#ht2Msg').textContent = `exam ${label} launched ${out.id || ''}`; drawHistory(); }
-    };
-  }
-}
-
-
-
-
-// THE NULL VERDICT, read rather than dumped. Constructing printed the raw JSON,
-// truncated — every reading rule that makes the numbers mean anything lives in
-// the Bracket lab's renderVerdict and was unreachable here (owner sweep,
-// 2026-08-17). Ported from app.js:2108.
-// The rotation null's own output. lib/batch.js has written doc.nullTest since
-// the instrument existed and this tab rendered it NOWHERE — so the button spent
-// a full sweep per round and the operator had no way to see the result at all
-// (audit 2026-08-17). The frozen Bracket lab has always shown it.
-//
-// Labelled for what it is on every reading: the register marks this construction
-// RETIRED as evidence, so the numbers are historical reading, never a claim.
-// PLATEAU VIEW — one setting moved at a time, everything else pinned to the
-// chosen cell. The menu grid button promised this in its own tooltip and the
-// tab rendered none of it (owner sweep, 2026-08-17). It is the per-cell twin of
-// the widest-region column: neighbours earning similar money means the pick is
-// sturdy; the row alone earning while its neighbours collapse means one step
-// away falls apart.
-
-// ---- History: reading a finished tuning run ---------------------------------
-// Ported from the Bracket lab's renderHtRun (app.js:3195). The Constructing tab
-// used to answer "read" with the progress counters and a JSON dump — the dial
-// board, the reading rules stamped before launch, the verdict and the sealed
-// exam were all unreachable from this tab (owner sweep, 2026-08-17).
-const HT_AGE_LABELS = { none: 'none (flat)', '6mo': '6mo half-life', '12mo': '12mo half-life',
-  '24mo': '24mo half-life', '36mo': '36mo half-life' };
-
-function renderHtRun(r, siblings = []) {
-  const p = r.params || {};
-  const head = `<h3 style="margin-top:0">${esc(r.id)} — ${esc(r.status)}`
-    + `${r.status === 'running' && r.progress ? ' — ' + esc(r.progress) : ''}`
-    + `${p.arm === 'null' ? ' <span class="badge">null draw</span>' : ''}`
-    + `${p.mode === 'reserve-grade' ? ` <span class="badge">reserve grade${
-  (p.reserveLook || 1) > 1 ? ` · look ${p.reserveLook}` : ''}</span>` : ''}</h3>`;
-
-  // THE SEALED EXAM's own doc. Its verdict has TWO shapes and the second one
-  // carries only { passed, sentence } — printing the rich fields on it renders
-  // "undefined/undefined" (the Bracket lab does exactly that; this does not).
-  if (p.mode === 'reserve-grade') {
-    const v = r.verdict;
-    if (!v) return `<div class="panel">${head}<p class="note">verdict appears when the grade completes</p></div>`;
-    if (v.resolutionFloor == null) {
-      return `<div class="panel">${head}<p class="note"><b>${esc(v.sentence || 'grade unusable')}</b></p></div>`;
-    }
-    return `<div class="panel">${head}
-      <p class="note"><b>${esc(v.sentence)}</b></p>
-      <p class="note">winner reserve <b>${money(v.winnerHoldPnl)}</b> · reference <b>${money(v.referenceHoldPnl)}</b> ·
-        null draws at or above the winner: <b>${v.nullsAtOrAbove}/${v.nullDraws}</b> ·
-        resolution floor ${esc(String(v.resolutionFloor))}
-        <span title="the best claim this many draws can support — a floor, never a measure of strength">(?)</span></p>
-      <p class="note">Every dollar here is HOLD money: the grade's test window is empty by construction, so a test
-        figure would be structurally zero and meaningless.</p>
-      ${(p.priorReserveLooks || []).length ? `<p class="note"><b>This was look ${p.reserveLook}.</b>
-        The slice had already been read ${p.priorReserveLooks.length} time(s) when this grade ran:
-        ${p.priorReserveLooks.map((g) => `<div>${esc(g.id)} — ${g.passed === null ? esc(g.status || '—') : (g.passed ? 'PASSED' : 'FAILED')}</div>`).join('')}
-        <div style="margin-top:.3rem">Only the first look was at data nothing had seen, so the floor above is the best
-        case rather than the strength of this reading.</div></p>` : ''}</div>`;
-  }
-
-  const rows = r.htRows || [];
-  const excluded = new Set(r.excludedArms || []);
-  const byArm = new Map();
-  for (const row of rows) {
-    if (row.refused || row.skipped) continue;
-    const k = `${row.ageKey}|${row.retuneKey}`;
-    const cur = byArm.get(k) || { test: 0, holds: {}, effMin: Infinity, splits: 0 };
-    cur.test += row.testPnl || 0;
-    cur.holds[row.split] = row.holdPnl;
-    cur.effMin = Math.min(cur.effMin, row.effectiveDays ?? Infinity);
-    cur.splits++;
-    byArm.set(k, cur);
-  }
-  const ranked = [...byArm.entries()].filter(([k]) => !excluded.has(k)).sort((a, b) => b[1].test - a[1].test);
-  const refKey = 'none|never';
-  const winner = r.status === 'done' && ranked.length ? ranked[0][0] : null;
-  const armRows = ranked.slice(0, 12).map(([k, v], i) => {
-    const [age, ret] = k.split('|');
-    // HOLDS ARE GRADED ONCE, NEVER SHOPPED: they stay sealed on screen until the
-    // winner is declared, or the reader would be picking on them.
-    const showHold = r.status === 'done' && (k === winner || k === refKey);
-    const holdCells = showHold
-      ? ['early', 'middle', 'late'].map((sp) => money(v.holds[sp] ?? 0)).join(' / ')
-      : '<span class="muted">sealed until the winner is declared</span>';
-    return `<tr><td>${i + 1}</td><td>${esc(HT_AGE_LABELS[age] || age)}</td><td>${esc(ret)}</td>
-      <td>${money(v.test)}${v.splits < 3 ? ` <span class="muted">(${v.splits}/3 splits — partial, not comparable yet)</span>` : ''}</td>
-      <td>${v.effMin === Infinity ? '—' : v.effMin.toFixed(0)}</td>
-      <td>${k === refKey ? '<b>REFERENCE</b>' : ''}${k === winner ? ' <b class="pos">WINNER</b>' : ''}</td>
-      <td>${holdCells}</td></tr>`;
-  }).join('');
-
-  const shaping = `<p class="note">Shaping numbers: training floor ${esc(String(p.trainingFloorDays ?? 180))} effective days (GUESSED) ·
-    retune trade floor ${esc(String(p.minTradesPerLookbackWeek ?? '?'))} trades/lookback-week (GUESSED) ·
-    window ${esc(String(p.windowDays ?? '?'))} days per test/hold · minimum training run-up 425 days (GUESSED) ·
-    reserve61 splits are 60.9/13.05/13.05/13 exactly. Trailing is held fixed at the declared cell's setting through
-    every retune.</p>`;
-  const rules = p.readingRules ? `<details><summary class="note" style="cursor:pointer">The reading rules stamped into this run BEFORE it was launched (click)</summary>
-    ${Object.entries(p.readingRules).map(([k, v]) => `<p class="note"><b>${esc(k)}</b> [${esc(v && v.label)}]: ${esc(v && v.text)}</p>`).join('')}</details>` : '';
-  const excludedNote = excluded.size
-    ? `<p class="note">Dial pairs excluded (failed a training floor on some split, so dropped from ALL splits): ${[...excluded].map(esc).join(', ')}</p>` : '';
-
-  const myDraws = (siblings || []).filter((d) => (d.params || {}).replayOf === r.id && (d.params || {}).arm === 'null');
-  const usedSeeds = myDraws.map((d) => Number(d.params.nullShiftSeed) || 0);
-  const nextSeed = usedSeeds.reduce((a, b) => Math.max(a, b), 100) + 1;
-  const readable = r.status === 'done' && p.arm !== 'null' && !p.mode;
-  const verdictDiv = readable ? `<div id="htVerdict" class="note"><em>computing the stamped verdict…</em></div>` : '';
-  const nullBtn = readable
-    ? `<p class="note"><button data-ht-null="${esc(r.id)}" data-seed="${nextSeed}">Fire trail-replay null draw ${myDraws.length + 1} of 19 (seed ${nextSeed})</button>
-       — each draw replays the full grid on dealt votes, inheriting only the calendar. 19 is the declared count
-       (floor 1 in 20); the server refuses a repeated seed.</p>` : '';
-  // EVERY LOOK THIS SETUP'S SEALED SLICE HAS HAD (owner order, 2026-08-23).
-  // The button used to say "one touch, final" and the server used to refuse a
-  // second press. It does not refuse any more — how many times the slice is
-  // read is the owner's call — so the screen's job is to say which look this
-  // would be and what the earlier ones said, before it is pressed.
-  const myLooks = (siblings || [])
-    .filter((d) => (d.params || {}).mode === 'reserve-grade' && (d.params || {}).replayOf === r.id)
-    .sort((a, b) => String(a.startedAt || '').localeCompare(String(b.startedAt || '')));
-  const nextLook = myLooks.length + 1;
-  const looksSoFar = myLooks.length
-    ? `<p class="note"><b>This slice has been read ${myLooks.length} time(s) already.</b>
-       ${myLooks.map((d, i) => `<div>look ${(d.params || {}).reserveLook || i + 1} — ${esc(d.id)} — ${
-  d.verdict ? (d.verdict.passed ? '<b class="pos">PASSED</b>' : '<b class="neg">FAILED</b>') : esc(d.status)}</div>`).join('')}
-       <div style="margin-top:.3rem">The first look was at data nothing had seen. Every look after it is not, so its
-       resolution floor is the best case rather than the strength. Reading it again is your call; the run records
-       which look it was and says so on its own verdict.</div></p>`
-    : '';
-  const gradeBtn = readable && p.reserveFromTs
-    ? `${looksSoFar}<p class="note"><button data-ht-grade="${esc(r.id)}" data-look="${nextLook}" class="pri">Run the reserve grade${
-  nextLook > 1 ? ` — look ${nextLook}` : ''}</button>
-       — the winner's walk, the reference pass's walk and 19 null draws over the SEALED reserve, fired together.${
-  nextLook === 1 ? ' This is the first look at that slice.' : ''}</p>`
-    : (readable ? '<p class="note">No reserve exists for this setup (its board run predates the reserve layout) — the binding grade is the forward paper book.</p>' : '');
-
-  return `<div class="panel">${head}${shaping}${rules}${excludedNote}
-    <p class="note"><b>TABLE: the dial-pair board</b>${r.status === 'running' ? ' — FILLING LIVE as passes finish' : ''}.
-      NAME: combined TEST money per dial pair (the picking read). KEY: age = the half-life setting; retune = cadence and
-      lookback; test $ = net paper dollars per $100 book summed across the three test windows (picked on, flattering by
-      construction) — a row marked partial has not finished all three splits, so its sum cannot be compared with complete
-      rows; eff. days = the smallest effective training days any split saw; hold $ = the three hold windows
-      early/middle/late, shown ONLY for the winner and the reference pass, because holds are graded once and never shopped.</p>
-    <div class="scrollx"><table><thead><tr>${cth('#','hash')}${cth('age','age')}${cth('retune','retune')}${cth('test $','testUsd')}${cth('eff. days','effDays')}<th></th>${cth('hold $ (e/m/l)','holdUsd')}</tr></thead>
-      <tbody>${armRows || '<tr><td colspan="7" class="empty">rows appear as passes finish</td></tr>'}</tbody></table></div>
-    ${verdictDiv}${nullBtn}${gradeBtn}</div>`;
-}
-
-// HT v2 (the age dial). Its verdict comes in three progressively richer shapes;
-// the two short ones carry only `sentences`, so the rich fields are guarded.
-function renderHtTwoRun(r) {
-  const p = r.params || {};
-  return `<div class="panel"><h3 style="margin-top:0">${esc(r.id)} — ${esc(r.status)}${r.status === 'running' && r.progress ? ' — ' + esc(r.progress) : ''}</h3>
-    <p class="note">Age dial: half-life <b>${esc(String(p.halfLifeKey || '—'))}</b> against a flat reference, paired on the
-      same folds. The reading is the paired difference across folds, never any single fold.</p>
-    <div id="ht2Verdict" class="note"><em>computing the verdict…</em></div></div>`;
-}
-
-function renderHtTwoVerdict(v) {
-  if (!v) return '<span class="muted">no verdict</span>';
-  const lines = (v.sentences || []).map((x) => `<p class="note">${esc(x)}</p>`).join('');
-  // v.folds is an OBJECT — { planned, completed, dropped, silentBothArms, used }
-  // — so interpolating it printed "[object Object]" where the denominator
-  // belongs. The count the line wants is folds.used, and the other three are
-  // computed precisely so they are disclosed rather than hidden, so they are
-  // now shown too (audit 2026-08-17).
-  const rich = v.p != null || v.sum != null;
-  return `<p><b class="${v.pass ? 'pos' : 'warn'}">${v.pass ? 'PASS' : 'NO EFFECT SHOWN'}</b>
-      <span class="note">engine ${esc(String(v.engineVersion || '?'))}</span></p>${lines}
-    ${rich ? `<p class="note">paired sum ${money(v.sum)} · sign-flip p ${v.p == null ? '—' : v.p.toFixed(4)} ·
-      folds positive ${v.positiveFolds ?? '—'}/${v.folds && v.folds.used != null ? v.folds.used : '—'}${v.carriedByOneFold ? ' · <b class="warn">carried by one fold</b>' : ''}
-      ${v.folds ? `<span title="planned: how many folds the run asked for. dropped: folds that could not be scored. both arms silent: folds where neither arm took a position, so the pair carries no information. used: what the numbers above are computed from — the only one of the four that is a denominator.">· folds: ${v.folds.planned ?? '—'} planned, ${v.folds.completed ?? '—'} completed, ${v.folds.dropped ?? 0} dropped, ${v.folds.silentBothArms ?? 0} silent on both arms</span>` : ''}</p>` : ''}`;
-}
-
-async function wireHtRun(d, runs) {
-  const p = d.params || {};
-  if (d.kind === 'httwo') {
-    const el = $('#ht2Verdict');
-    if (el) {
-      const v = await apiOr(`api/httwo/${encodeURIComponent(d.id)}/verdict`, null);
-      el.innerHTML = renderHtTwoVerdict(v);
-    }
-    return;
-  }
-  // the stamped verdict prints on the REAL run only — the server refuses it for
-  // a null draw or a grade, and the grade's verdict is already on its own doc
-  if (d.status === 'done' && p.arm !== 'null' && !p.mode) {
-    const el = $('#htVerdict');
-    if (el) {
-      const v = await apiOr(`api/historytuning/${encodeURIComponent(d.id)}/verdict`, null);
-      // THE ENDPOINT'S OWN VOCABULARY. This read v.passed, v.nullDraws and
-      // v.resolutionFloor — three names the endpoint has never returned. The
-      // badge therefore said NO after a genuine PASS, permanently, and the two
-      // gated clauses never printed at all. Same class as the dead vsNulls
-      // column and the planted check's s.verdict (audit 2026-08-17).
-      //
-      // There are TWO rules and the verdict needs both: the hold rule (did
-      // tuning strengthen this survivor) and the null rule (did the winner
-      // exceed its draws). The sentence already says so; the badge now agrees
-      // with it. PENDING is its own state — with no draws yet there is no claim
-      // to make, and calling that "NO" would retire a candidate on a
-      // measurement that has not happened.
-      const pending = !v || v.drawCount === 0;
-      const passed = v && v.holdPassed && v.nullPassed;
-      el.innerHTML = !v || v.error ? `<span class="muted">${esc((v && v.error) || 'no verdict')}</span>`
-        : `<p><b class="${passed ? 'pos' : pending ? 'muted' : 'warn'}">${passed ? 'PASS' : pending ? 'PENDING' : 'NO'}</b> ${esc(v.sentence || '')}</p>
-           <p class="note">winner <b>${esc(String(v.winner || '—'))}</b> · winner hold ${money(v.winnerHold)} ·
-             reference hold ${money(v.referenceHold)} · hold windows won ${v.holdWindowsWon ?? '—'} of 3
-             ${v.drawCount ? ` · null draws at or above: ${v.nullsAtOrAbove}/${v.drawCount} · resolution floor 1 in ${v.drawCount + 1}` : ' · no null draws yet'}</p>`;
-    }
-  }
-  const nb = document.querySelector('button[data-ht-null]');
-  if (nb) {
-    nb.onclick = async () => {
-      nb.disabled = true;
-      // this endpoint takes replayOf + nullShiftSeed — NOT sourceBatchId, and
-      // NOT sourceHtRunId. Three endpoints in this panel, three different keys.
-      const out = await tryPost('api/historytuning/null', {
-        replayOf: nb.dataset.htNull, nullShiftSeed: Number(nb.dataset.seed),
-      });
-      nb.disabled = false;
-      if (out) { alert(`null draw launched: ${out.batchId || ''} (${out.units || '?'} passes)`); drawHistory(); }
-    };
-  }
-  const gb = document.querySelector('button[data-ht-grade]');
-  if (gb) {
-    gb.onclick = async () => {
-      const look = Number(gb.dataset.look) || 1;
-      const msg = look === 1
-        ? 'Run the reserve grade?\n\nThis is the FIRST look at the sealed slice — data nothing in this system has seen.'
-          + ' After it, that is no longer true.'
-        : `Run the reserve grade — look ${look}?\n\nThis slice has already been read ${look - 1} time(s).`
-          + ' The result will be recorded as look ' + look + ' and its verdict will say so.'
-          + '\n\nWhat changes: the first look was at unseen data. This one is not, so the 1-in-20 floor it prints is'
-          + ' the best case and the real strength is weaker by an amount nothing here can measure.';
-      if (!confirm(msg)) return;
-      gb.disabled = true;
-      // takes sourceHtRunId — a HISTORY TUNING run id, not a board id
-      const out = await tryPost('api/historytuning/reserve-grade', { sourceHtRunId: gb.dataset.htGrade });
-      gb.disabled = false;
-      if (out) { alert(`reserve grade launched: ${out.batchId || ''}`); drawHistory(); }
-    };
-  }
 }
 
 // ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET, on Tune (3.92.0) ----------
@@ -2881,8 +2478,6 @@ async function tnCaptureFollow(id, token) {
 // ---- Tune (stop tuner · conviction sizing · compare) ----------------------------
 async function drawTune() {
   clearTimeout(tunePoll); tunePoll = null;
-  const doc = await loadPicked();
-  const sel = getSelRow(doc);
   const [scan, stop, conv, applied] = await Promise.all([
     apiOr('api/pilot/heavyscan', ({ running: false })),
     apiOr('api/pilot/stopsweep', ({ status: 'idle' })),
@@ -2902,84 +2497,50 @@ async function drawTune() {
   const feePc = pcOf(applied.feePerLeg == null ? 0.00125 : applied.feePerLeg);
   const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
   const usd = (v) => money(v);
-  // (target prose is resolved below, from the SAME value the launcher uses)
-  // WHAT THE SCANS ARE AIMED AT. The tab could only ever target F1 or the
-  // selected board row; the Bracket lab reads the saved forward books and lets
-  // any of them be picked ("I thought I would be able to select from the saved
-  // sweeps" — owner). Books already carrying a protective stop are not listed:
-  // a breakout cell's opposite rail IS its stop, so tuning one is meaningless.
+  // WHAT THE SCANS ARE AIMED AT: the Stage 4 record sets whose trades are
+  // captured on this tab, one survivor of one of them, over the windows ticked.
+  // The server lists them; nothing here is typed. The older engine's targets —
+  // a saved run's row and the live setups, which the scans replayed with the
+  // older committee — went with that engine (3.97.0).
   const cand = await apiOr('api/pilot/stop-candidates', ({ candidates: [] }));
   const books = (cand && cand.candidates) || [];
   // the Stage 4 record sets on this box, for the capture panel (3.92.0)
   const tnSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
   const tnChosen = tnRememberedSet(tnSets);
   const tnd = tnChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, null) : null;
-  // Same fix as Tool 1: run A and run B were boxes you typed a run id into, so
-  // an empty box or a typo came back as a 400 the operator had to decode. The
-  // list is the runs that actually carry comparable rows.
-  const cmpSrc = ((await apiOr('api/bracketlab/verdict-sources', ({ sources: [] }))).sources || [])
-    .filter((s) => s.realRows > 0);
-  const cmpOpt = (s) => `<option value="${esc(s.id)}">${esc(s.id)}${s.windowLayout && s.windowLayout !== 'legacy' ? ` [${esc(s.windowLayout)}]` : ''}</option>`;
-  // YOUR OWN SETUPS ARE THE TARGETS (owner, 2026-08-19: "just fix it all").
-  //
-  // This picker used to open with a fixed entry pointing at ONE hardcoded
-  // config, and the endpoint behind it only ever knew about the built-in
-  // research books. So the setups the owner created — including the one holding
-  // real money — could not be aimed at from this screen at all, and the option
-  // sitting at the top of the list claimed to be the live one while pointing at
-  // something that no longer runs. A control that names a thing it cannot reach
-  // is worse than an absent control.
-  //
-  // Now the list is built from what the server reports: the owner's setups
-  // first, each addressed by its own id and scanned against its OWN training
-  // cutoff, then the pre-registered books, then the selected board row.
-  const profiles = books.filter((b) => b.kind === 'profile');
   // the Stage 4 record sets that carry a per-trade capture (3.92.0): a scan on
   // one reads the captured entries of one survivor over the windows ticked
   const stage4 = books.filter((b) => b.kind === 'stage4');
-  const savedBooks = books.filter((b) => b.kind !== 'profile' && b.kind !== 'stage4');
-  const optId = (b) => `${b.kind === 'profile' ? 'p' : b.kind === 'stage4' ? 's' : 'b'}:${b.id}`;
+  const optId = (b) => `s:${b.id}`;
   const known = new Set(books.map(optId));
   const savedTarget = localStorage.getItem('cx-scan-target') || '';
   // A stored preference pointing at something that no longer exists resolves to
   // the first real target rather than leaving a dangling option selected.
-  const firstReal = (profiles[0] && optId(profiles[0])) || (stage4[0] && optId(stage4[0])) || (savedBooks[0] && optId(savedBooks[0])) || '';
-  const tgt = (savedTarget === 'sel' && !sel) ? firstReal
-    : (savedTarget === 'sel' ? 'sel' : (known.has(savedTarget) ? savedTarget : firstReal));
+  const firstReal = (stage4[0] && optId(stage4[0])) || '';
+  const tgt = known.has(savedTarget) ? savedTarget : firstReal;
   const chosen = books.find((b) => optId(b) === tgt) || null;
   // a Stage 4 target carries the survivor and the windows with it; both are
   // remembered on this browser and redrawn, so the body sent is what is shown
   const isSet = !!(chosen && chosen.kind === 'stage4');
   const tnPickVal = isSet ? tnRememberedPick(chosen) : 'depth';
   const tnWins = isSet ? tnRememberedWindows() : [];
-  const scanBody = tgt === 'sel' ? { runId: doc.id, target: 'best' }
-    : isSet ? { setId: chosen.id, pick: tnPickVal, windows: tnWins }
-      : chosen ? { setupId: chosen.id }
-        : null;
+  const scanBody = isSet ? { setId: chosen.id, pick: tnPickVal, windows: tnWins } : null;
   // The prose and the dropdown are computed from the SAME resolved value, so
   // the sentence above the control can no longer describe a different target
   // from the one the launcher will actually use.
-  const target = tgt === 'sel'
-    ? `the row selected on Boards (<b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h of ${esc(doc.id)})`
-    : isSet ? `the survivor <b>${esc(tnPickVal === 'depth' ? `${(chosen.pick || {}).label || '?'} (by depth)` : tnPickVal)}</b> of the Stage 4 record set <b>${esc(chosen.name)}</b>, on its ${tnWins.length ? esc(tnWindowWords(tnWins)) : '<b class="warn">no</b>'} entries`
-      : chosen ? (chosen.kind === 'profile'
-        ? `your setup <b>${esc(chosen.name || chosen.id)}</b>`
-        : `the saved book <b>${esc(chosen.id)}</b>`)
-        : '<b>nothing selectable</b> — no setup or book is without a protective stop';
+  const target = isSet ? `the survivor <b>${esc(tnPickVal === 'depth' ? `${(chosen.pick || {}).label || '?'} (by depth)` : tnPickVal)}</b> of the Stage 4 record set <b>${esc(chosen.name)}</b>, on its ${tnWins.length ? esc(tnWindowWords(tnWins)) : '<b class="warn">no</b>'} entries`
+    : '<b>nothing selectable</b> — no Stage 4 record set on this box has its trades captured';
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   <div class="panel">
-    <h3 style="margin-top:0">Protective stop tuner — full-history, loses no winner</h3>
-    <p class="note">Replays the frozen committee over ALL history and finds the tightest fixed stop that would not have
-      clipped a single winner, plus the sacrifice curve (give up top winners → tighter stop → NET $). Scanning applies
-      nothing. Target: ${target}.</p>
-    <div class="row" style="margin-bottom:.4rem"><label class="f" title="what the scans below are aimed at. Anything already carrying a protective stop is not listed — a breakout cell's opposite rail IS its stop, so tuning one is meaningless. Each target is scanned against its OWN training cutoff.">scan target<select id="tuneTarget">
-      ${profiles.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}${b.blocked ? ' disabled' : ''}>${esc(b.name || b.id)} — ${esc((b.combo && b.combo.trade) || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}${b.state ? ` (${esc(b.state)})` : ''}${b.blocked ? ' — cannot scan' : ''}</option>`).join('')}
+    <h3 style="margin-top:0">Protective stop tuner — on the captured trades, loses no winner</h3>
+    <p class="note">Reads the captured trades of one survivor of a Stage 4 record set over the windows ticked and finds the
+      tightest fixed stop that would not have clipped a single winner, plus the sacrifice curve (give up top winners →
+      tighter stop → NET $). Scanning applies nothing. Target: ${target}.</p>
+    <div class="row" style="margin-bottom:.4rem"><label class="f" title="what the scans below are aimed at: a Stage 4 record set whose trades are captured on this tab, one survivor of it, over the windows ticked">scan target<select id="tuneTarget">
       ${stage4.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}>${esc(b.name)} — ${esc(b.unitName || 'all units together')} — ${b.captured} of ${b.survivors} survivors captured</option>`).join('')}
-      ${sel ? `<option value="sel" ${tgt === 'sel' ? 'selected' : ''}>the row selected on Boards — ${esc(sel.trade)} ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</option>` : ''}
-      ${savedBooks.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}>${esc(b.name || b.id)} — ${esc((b.combo && b.combo.trade) || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}</option>`).join('')}
     </select></label>
-    <span class="note">${profiles.length} of your setup(s) and ${savedBooks.length} saved book(s) without a protective stop, and ${stage4.length} Stage 4 record set(s) with their trades captured</span></div>
+    <span class="note">${stage4.length} Stage 4 record set(s) with their trades captured</span></div>
     ${isSet ? tnTargetRowHtml(chosen, tnPickVal, tnWins) : ''}
     <div class="row" style="margin-bottom:.4rem">
       <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is ${floorPc}, which is twice the ${tripPc} it costs to trade in and out at ${feePc} each way — tighter than the round trip and a triggered stop is a guaranteed loss, tighter than the floor and it fires on ordinary hourly noise. This button writes the live engine's own risk parameter, so the floor is the lab rate rather than any one profile's fee.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="${floorPct}" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
@@ -2997,33 +2558,19 @@ async function drawTune() {
       <button id="stopWhySave" title="save the reason on its own, leaving the stop exactly as it is">save the reason</button>
     </div>
     ${applied.chosen ? `<div class="note" style="margin-bottom:.4rem">on record: ${applied.stopPct != null ? pct(applied.stopPct) : 'no stop'}${applied.why ? ` — ${esc(applied.why)}` : ' — no reason recorded'}${applied.utc ? ` (${esc(String(applied.utc).slice(0, 10))}${applied.by ? ', ' + esc(applied.by) : ''})` : ''}</div>` : '<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded yet</div>'}
-    <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop (full history)</button>
+    <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop</button>
       <span class="note">currently applied on the trading machine: ${applied.stopPct != null ? `<span class="pos">${pct(applied.stopPct)}</span>` : 'none'}</span></div>
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : ''}</div>
   </div>
   <div class="panel">
     <h3 style="margin-top:0">Conviction sizing — bet more when more members agree?</h3>
     <p class="note">Prices the DECLARED clip ladder (multiplier = winning-side vote count) as a pure $ overlay on the
-      same full-history replay, against a shuffled-assignment chance check and exposure-honest metrics.
+      same captured trades, against a shuffled-assignment chance check and exposure-honest metrics.
       Target: ${target}.</p>
-    <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep (full history)</button></div>
+    <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep</button></div>
     <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : ''}</div>
   </div>
-  ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}
-  <div class="panel">
-    <h3 style="margin-top:0">Compare two runs — NOT a null test</h3>
-    <div class="row" style="align-items:flex-end">
-      <label class="f">run A<select id="cmpA" style="min-width:20rem">
-        ${cmpSrc.map((s) => cmpOpt(s).replace('>', s.id === pickedRun ? ' selected>' : '>')).join('')}
-      </select></label>
-      <label class="f" title="leave B empty only for a run whose window layout is 'both' — that run compares its own two arms. Any other pairing needs a second run.">run B<select id="cmpB" style="min-width:20rem">
-        <option value="">— empty: compare a 'both' run's own two sides —</option>
-        ${cmpSrc.map(cmpOpt).join('')}
-      </select></label>
-      <button id="cmpGo" ${cmpSrc.length ? '' : 'disabled'}>Compare</button>
-      <span class="note">${cmpSrc.length ? `${cmpSrc.length} comparable run(s)` : 'no run on this box carries comparable rows yet'}</span></div>
-    <div id="cmpOut"></div>
-  </div>`;
+  ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}`;
   function renderStopResult(s) {
     const cc = s.counts || {};
     return `${s.target ? tnTargetLineHtml(s.target) : ''}<p><b>${esc(s.bookId)}</b>: tightest no-winner-lost stop <span class="pos">${pct(s.stopPct)}</span> —
@@ -3092,8 +2639,8 @@ async function drawTune() {
       return;
     }
     // BOTH of these write the LIVE engine's risk parameter, whatever the scan
-    // target above says — that picker chooses what is SCANNED, and there is no
-    // endpoint that applies a stop to a saved book. Applying went through with no
+    // target above says — that picker chooses which record set's captured trades
+    // are SCANNED, and applying never touches a record set. Applying went through with no
     // confirmation at all, so a stray click changed a live-money setting silently
     // (audit 2026-08-17). The scan target is named in the prompt so the gap
     // between "what I was looking at" and "what I just changed" cannot pass
@@ -3174,28 +2721,6 @@ async function drawTune() {
   // ONE cancellable chain, at 30s — these scans take minutes, and checking a
   // job faster than it could plausibly finish is waste, not diligence.
   if (busy && tab === 'tune') { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 30000); }
-  $('#cmpGo').onclick = async () => {
-    const a = $('#cmpA').value;
-    if (!a) { $('#cmpOut').innerHTML = '<span class="warn">pick run A first</span>'; return; }
-    // Leaving B empty is only meaningful for a run that holds BOTH arms — that
-    // run compares its own two sides. For any other run the server refuses, and
-    // the page already knows which layout each run carries, so say it here in
-    // plain words instead of relaying a 400.
-    const aSrc = cmpSrc.find((s) => s.id === a);
-    if ($('#cmpB').value === a) {
-      $('#cmpOut').innerHTML = '<span class="warn">run A and run B are the same run — a comparison needs two.</span>';
-      return;
-    }
-    if (!$('#cmpB').value && aSrc && aSrc.windowLayout !== 'both') {
-      $('#cmpOut').innerHTML = `<span class="warn">${esc(a)} holds one window layout (${esc(aSrc.windowLayout)}),
-        so there is no second side of it to compare against — pick a run B.</span>`;
-      return;
-    }
-    try {
-      const d = await post('api/bracketlab/compare', { a, b: $('#cmpB').value || null });
-      $('#cmpOut').innerHTML = `<pre>${esc(JSON.stringify(d, null, 1).slice(0, 20000))}</pre>`;
-    } catch (e) { $('#cmpOut').innerHTML = `<span class="warn">${esc(e.message)}</span>`; }
-  };
   if (stop.status === 'running' || conv.status === 'running') setTimeout(() => { if (tab === 'tune') drawTune(); }, 4000);
 }
 
@@ -3327,8 +2852,6 @@ function glStage4PanelHtml(list, chosen, d) {
   </div>`;
 }
 async function drawGreenlight() {
-  const doc = await loadPicked();
-  const sel = getSelRow(doc);
   const gls = await apiOr('api/live/greenlights', ({ greenlights: [] }));
   const glSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
   const glChosen = glRememberedSet(glSets);
@@ -3338,16 +2861,6 @@ async function drawGreenlight() {
     <p class="note">Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
       evidentiary chain. The config then appears on the Trade tab (both sides) for activation. Only greenlighted
       configs ever trade — no hand-built live configs, ever.</p>
-    ${sel ? `<div class="row" style="align-items:flex-end">
-      <span class="note" style="flex:1 1 auto;min-width:0">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} ${esc(sel.decision)} q${sel.quorum} ${sel.tHours}h
-        — test ${money(sel.pnl)}${sel.holdout ? ` · held-back ${money(sel.holdout.pnl)}` : ''}</span>
-      <label class="f" style="flex:none">anchor<select id="glTarget" title="WHICH cell gets greenlighted. 'declared cell' is the one fixed before the run — no shopping. 'best cell' is the highest scorer, which is the best of ~1,260 tries and flatters itself. 'widest region' is the MIDDLE of the widest run of neighbouring settings that all made money — chosen by depth inside the region, never by its score, so the shopped peak cannot sneak back in.">${vocabOptions('greenlightAnchor', 'declared')}</select></label>
-    </div>
-    <div class="row" style="margin-top:.4rem;align-items:flex-end">
-      <label class="f" style="flex:1">why — the decision record (required)<input id="glWhy" style="width:100%"
-        placeholder="e.g. money screen + Tool 2 null + held-back all cleared; stop scanned; conviction priced"></label>
-      <button id="glGo" class="pri">GREENLIGHT this config</button></div>`
-    : '<span class="note">select a row on Boards first — a greenlight is minted from the selected row.</span>'}
   </div>
   ${glStage4PanelHtml(glSets, glChosen, gl4)}
   <div class="panel"><h3 style="margin-top:0">Existing greenlights</h3>
@@ -3362,14 +2875,6 @@ async function drawGreenlight() {
       setting here — it is what the evidence was found under, and a config sent to the Trade tab starts out priced
       at it and can be changed there. A dash means the run predates the fee being recorded.
       Activation, deactivation and nuking live on the <a href="trade.html">Trade tab</a>.</p></div>`;
-  const go = $('#glGo');
-  if (go) go.onclick = async () => {
-    const why = $('#glWhy').value.trim();
-    if (!why) { alert('why is required — the decision record is the point.'); return; }
-    if (!confirm(`Greenlight ${sel.trade} ${sel.geometry} (${$('#glTarget').value} cell)?`)) return;
-    const out = await tryPost('api/live/greenlight', { runId: doc.id, target: $('#glTarget').value, why });
-    if (out) { alert(`Greenlighted: ${out.greenlight.id}\n\nIt is now on the Trade tab, both sides.`); drawGreenlight(); }
-  };
   const gl4Sel = $('#gl4Set');
   if (gl4Sel) gl4Sel.onchange = () => {
     try { localStorage.setItem(GL_SET_KEY, gl4Sel.value); } catch (_) { /* private window */ }

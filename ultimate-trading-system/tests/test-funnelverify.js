@@ -257,7 +257,7 @@ module.exports = {
     const start = s.slice(s.indexOf('function funnelVerifyStart('), s.indexOf('function verifySummaryOf('));
     assert.ok(/const busy = verifyBusy\(\);\s*\n\s*if \(busy\) throw new Error/.test(start), 'the press must ask what is busy and refuse on it');
     const busy = s.slice(s.indexOf('const verifyBusy ='), s.indexOf('const verifyBusy =') + 200);
-    assert.ok(/batch\.batchRunning\(\)/.test(busy) && /stageBusy\(\)/.test(busy), 'busy means a sweep, a stage run, a totalling or a rebuild');
+    assert.ok(/stageBusy\(\)/.test(busy), 'busy means a stage run, a totalling or a rebuild');
     const dry = s.slice(s.indexOf('async function funnelVerifyDry('), s.indexOf('async function funnelVerifyRun('));
     assert.ok(/const busy = verifyBusy\(\);/.test(dry) && /out\.refused = `\$\{busy\}/.test(dry), 'and the dry read says so before the button is pressed');
   },
@@ -503,12 +503,7 @@ module.exports = {
     for (const kept of ['sanity:', 'PASS — noise mostly loses, as fees demand.', 'FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.', 'What a pass buys:', 'this window only', 'a floor, never a measure of strength']) {
       assert.ok(ui.includes(kept), `gone from the page: ${kept}`);
     }
-    // the planted check's press lives on Setup, under Version (3.96.0)
-    assert.ok(src('public/setup.html').includes('Run the planted check'), 'the planted check\'s press is gone from Setup');
-    assert.ok(/certifies the old sweep pipeline/.test(src('lib/stages.js')), 'the footing says what the planted check certifies');
-    // the route the old runs' verdict was read through stays served, for them
     const server = src('server.js');
-    assert.ok(server.includes("app.post('/api/bracketlab/null-verdict'"), 'the old runs\' route stays');
     assert.ok(server.includes("app.get('/api/funnel/set/:id/verify'") && server.includes("app.post('/api/funnel/set/:id/verify'") && server.includes("app.get('/api/funnel/set/:id/verify/status'"), 'the three new doors exist');
     assert.ok(server.includes('verify: stages.verifySummaryOf(d),'), 'and the set list says whether a verdict is stamped');
   },
@@ -542,7 +537,6 @@ module.exports = {
       const dry = await stages.funnelVerifyDry(doc.id);
       assert.strictEqual(dry.refused, null, `nothing refuses: ${dry.refused}`);
       assert.deepStrictEqual({ same: dry.footing.same, had: dry.footing.had, gone: dry.footing.gone, keys: dry.footing.keys.ok, sealed: dry.footing.sealed.sealed, marks: dry.footing.marks }, { same: true, had: 2, gone: 0, keys: true, sealed: true, marks: 1 });
-      assert.strictEqual(dry.footing.gate.certifies, 'certifies the old sweep pipeline');
       assert.ok(!('heldBack' in dry) && !('copies' in dry), 'the dry read hands back no held-back figure');
       const r = await pressed(doc.id);
       const b = stages.getSet(doc.id).verify[0];

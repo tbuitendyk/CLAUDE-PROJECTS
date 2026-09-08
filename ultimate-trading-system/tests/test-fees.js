@@ -20,7 +20,6 @@ const { assert } = require('./helpers');
 const { FEE_PER_LEG, FEE_ROUND_TRIP, MAX_FEE_PER_LEG, NOTIONAL,
   feeRate, feeFracOf, pnlAt } = require('../lib/paper');
 const bracketLib = require('../lib/bracket');
-const batch = require('../lib/batch');
 
 const ROOT = path.join(__dirname, '..');
 const DOLLAR_FEE = 0.125;          // what it used to be, per leg, in dollars
@@ -129,24 +128,6 @@ module.exports = {
       feeFracOf({ feePerLeg: 0.00125, feeUnits: 'fraction' }));
   },
 
-  // THE ONE THAT WOULD HAVE BEEN WORST. Picking up an interrupted sweep, firing
-  // a null draw and grading a reserve all hand a stored run's own parameters
-  // back to a launcher. Handed over unconverted, the launcher's safety rail
-  // would have CLAMPED $0.125 down to the 5%-a-leg ceiling — so the picked-up
-  // half of a sweep would finish priced at forty times what its first half paid,
-  // with nothing on any screen saying so.
-  async replayingAnOldRunPricesItAtTheCostItWasFoundUnder() {
-    const old = batch.replayParams({ feePerLeg: DOLLAR_FEE, universe: ['BTCUSDT'] });
-    assert.strictEqual(old.feePerLeg, FEE_PER_LEG, 'a picked-up run must pay what it was paying');
-    assert.strictEqual(old.feeUnits, 'fraction', 'and it must say which units that is in');
-    assert.deepStrictEqual(old.universe, ['BTCUSDT'], 'everything else is carried through untouched');
-    const current = batch.replayParams({ feePerLeg: 0.002, feeUnits: 'fraction' });
-    assert.strictEqual(current.feePerLeg, 0.002, 'a run already in fractions is left alone');
-    // Nothing may go through the launcher's rail without being converted first.
-    const src = fs.readFileSync(path.join(ROOT, 'lib', 'batch.js'), 'utf8');
-    assert.ok(/startBracketLab\(replayParams\(doc\.params\)/.test(src),
-      'the resume hands stored parameters straight to the launcher again');
-  },
 
   // The old NAME is gone as well as the old value: nothing can still be reading
   // a dollar fee from anywhere, because there is nothing to read.

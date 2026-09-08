@@ -19,13 +19,12 @@
 //
 // WHY IT MATTERS BEYOND TIDINESS. The number is not a badge. It is the engine
 // identity that evidence is keyed to:
-//   * a planted-check PASS belongs to the release that earned it, so a new
-//     release starts NOT CHECKED (lib/planted.js gateStatus);
-//   * the age-dial exams are cleared per release (lib/httwo.js examStatus);
+//   * the stage-engine check's PASS belongs to the release that earned it, so
+//     a new release starts NOT CHECKED (lib/stagegate.js status);
 //   * a stage refuses a parent written by a different release (lib/stages.js);
 //   * a greenlight and a live setup each record the release their evidence is
 //     about (lib/live/greenlight.js, lib/live/setups.js).
-// Shipping changed arithmetic under an unchanged number tells all five that
+// Shipping changed arithmetic under an unchanged number tells all four that
 // nothing changed. That is the real cost of forgetting.
 const fs = require('fs');
 const path = require('path');
@@ -71,8 +70,6 @@ module.exports = {
       `the release number is "${v}" -- it has to be three numbers, because five different records stamp it and compare it`);
     for (const [rel, why] of [
       ['lib/stages.js', 'a record set stamps the release that wrote it'],
-      ['lib/batch.js', 'a run stamps the release that wrote it'],
-      ['server.js', 'the planted check and the exams are keyed to it'],
       ['lib/live/version.js', 'a live setup and a greenlight each record the release their evidence is about'],
     ]) {
       const src = fs.readFileSync(path.join(ROOT, rel), 'utf8');

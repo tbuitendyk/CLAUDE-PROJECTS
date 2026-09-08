@@ -139,42 +139,15 @@ module.exports = {
   },
 
 
-  // The screen must offer the anchor and carry the width column, or the work is
-  // deployed but not reachable (QC 139: deployed is not shipped).
-  theBoardOffersTheRegionAsASecondReading() {
+  // The stage engine must actually record it, or every reading says "nothing"
+  // forever. (The older sweep's promoted rows carried a region of their own;
+  // they went with that engine, 3.97.0.)
+  theStageEngineCutsARegionFromItsOwnRows() {
     const fs = require('fs');
     const path = require('path');
-    const ui = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    // The page no longer carries its own option lists — every dropdown is drawn
-    // from lib/vocabulary.js (2026-08-21, RULE FIVE). So the question "does the
-    // anchor offer the widest region" is now put to the list itself, and the
-    // page is checked for asking for that list. Both halves matter: a list with
-    // the entry that no control asks for is as useless as a control asking for
-    // a list without it.
-    const { vocabulary } = require('../lib/vocabulary');
-    const anchors = vocabulary().greenlightAnchor;
-    assert.ok(anchors.some((o) => o.value === 'region' && /widest region/.test(o.label)),
-      'the Greenlight anchor must offer "widest region" with the value "region"');
-    assert.ok(/id="glTarget"[\s\S]{0,900}?vocabOptions\('greenlightAnchor'/.test(ui),
-      'the Greenlight anchor control no longer asks for the anchor list');
-    // THE BOARD HALF WENT WITH ITS SCREEN, 2026-08-28. #bSort ranked the deleted
-    // Boards' survivor board by widest region, and l.region.size was that
-    // board's width column. The Greenlight anchor above — which is the part
-    // that decides what actually gets traded — is untouched and is what this
-    // now holds. The engine's own widest-region arithmetic is checked by every
-    // other test in this file, and the sweep still records it (below).
-  },
-
-  // The sweep must actually record it, or every row reads "—" forever.
-  theSweepRecordsARegionOnEveryPromotedRow() {
-    const fs = require('fs');
-    const path = require('path');
-    const work = fs.readFileSync(path.join(__dirname, '..', 'lib', 'bracketwork.js'), 'utf8');
-    const batch = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
-    assert.ok(/widestRegion\(allCells/.test(work), 'the unit scorer must cut a region from its pooled cells');
-    assert.ok(/allCells\.push\(\{ \.\.\.r, quorum: s\.quorum \}\)/.test(work),
-      'cells must be pooled ACROSS quorum streams — quorum is one of the ordered axes');
-    assert.ok(/region: res\.region \|\| null/.test(batch), 'the leader row must carry the region');
+    const stages = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    assert.ok(/require\('\.\/plateau'\)\.widestRegion\(/.test(stages), 'the stage engine must cut a region from its own rows');
+    assert.ok(/out\.reading = region\(rows\);/.test(stages), 'and record the reading on its answer');
   },
 
   // The same board must always give the same region, or a result that moved

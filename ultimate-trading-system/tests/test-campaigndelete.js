@@ -21,7 +21,7 @@ const { assert } = require('./helpers');
 
 const ROOT = path.join(__dirname, '..');
 
-// A throwaway data folder. campaign.json and the batches live at fixed paths
+// A throwaway data folder. campaign.json and the record sets live at fixed paths
 // under data/, so the whole module is re-required against a scratch copy.
 function withScratch(fn) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'uts-camp-'));
@@ -29,14 +29,13 @@ function withScratch(fn) {
   const stash = `${realData}.stash-${process.pid}`;
   const hadData = fs.existsSync(realData);
   if (hadData) fs.renameSync(realData, stash);
-  fs.mkdirSync(path.join(realData, 'batches'), { recursive: true });
-  fs.mkdirSync(path.join(realData, 'models'), { recursive: true });
+  fs.mkdirSync(path.join(realData, 'stagesets'), { recursive: true });
   const gdir = path.join(dir, 'gl'); const sdir = path.join(dir, 'su');
   fs.mkdirSync(gdir); fs.mkdirSync(sdir);
   const prevG = process.env.GC_GREENLIGHTS_DIR; const prevS = process.env.GC_SETUPS_DIR;
   process.env.GC_GREENLIGHTS_DIR = gdir; process.env.GC_SETUPS_DIR = sdir;
   const fresh = (m) => { delete require.cache[require.resolve(path.join(ROOT, m))]; return require(path.join(ROOT, m)); };
-  ['lib/campaign', 'lib/batch', 'lib/live/greenlight', 'lib/live/setups'].forEach((m) => {
+  ['lib/campaign', 'lib/live/greenlight', 'lib/live/setups'].forEach((m) => {
     delete require.cache[require.resolve(path.join(ROOT, m))];
   });
   try {
@@ -47,14 +46,15 @@ function withScratch(fn) {
     fs.rmSync(realData, { recursive: true, force: true });
     if (hadData) fs.renameSync(stash, realData);
     fs.rmSync(dir, { recursive: true, force: true });
-    ['lib/campaign', 'lib/batch', 'lib/live/greenlight', 'lib/live/setups'].forEach((m) => {
+    ['lib/campaign', 'lib/live/greenlight', 'lib/live/setups'].forEach((m) => {
       delete require.cache[require.resolve(path.join(ROOT, m))];
     });
   }
 }
 
-const writeRun = (realData, id, camp) => fs.writeFileSync(path.join(realData, 'batches', `${id}.json`),
-  JSON.stringify({ id, kind: 'bracketlab', status: 'done', startedAt: '2026-01-01T00:00:00Z', params: { campaign: camp }, runs: [] }));
+// a finished stage 1 record set, the shape lib/stages.js lists and deletes
+const writeSet = (realData, id, camp) => fs.writeFileSync(path.join(realData, 'stagesets', `${id}.json`),
+  JSON.stringify({ id, stage: 1, seq: 1, name: id, status: 'done', createdAt: '2026-01-01T00:00:00Z', params: { campaign: camp } }));
 const writeGl = (gdir, id, camp) => fs.writeFileSync(path.join(gdir, `${id}.json`),
   JSON.stringify({ id, campaign: camp, createdUtc: '2026-01-02T00:00:00Z', name: 'g', why: 'w', configSnapshot: {} }));
 const writeSetup = (sdir, id, glId, state) => fs.writeFileSync(path.join(sdir, `${id}.json`),
@@ -87,7 +87,7 @@ module.exports = {
   // A name with real activity must still sort above one that has none.
   async aNameWithRunsSortsAboveAFreshOne() {
     withScratch(({ campaign, realData }) => {
-      writeRun(realData, 'bracketlab-1', 'Older With Work');
+      writeSet(realData, 's1-1', 'Older With Work');
       campaign.setCampaign('Brand New');
       const names = campaign.listCampaignNames();
       assert.deepStrictEqual(names, ['Older With Work', 'Brand New'],
@@ -98,13 +98,13 @@ module.exports = {
   // FAULT TWO — the count, before anything is removed.
   async theSummarySaysExactlyWhatWouldGo() {
     withScratch(({ campaign, realData, gdir, sdir }) => {
-      writeRun(realData, 'bracketlab-a', 'Doomed');
-      writeRun(realData, 'bracketlab-b', 'Doomed');
-      writeRun(realData, 'bracketlab-c', 'Survivor');
+      writeSet(realData, 's1-a', 'Doomed');
+      writeSet(realData, 's1-b', 'Doomed');
+      writeSet(realData, 's1-c', 'Survivor');
       writeGl(gdir, 'gl-1', 'Doomed');
       writeSetup(sdir, 'setup-one', 'gl-1', 'draft');
       const found = campaign.campaignContents('Doomed');
-      assert.strictEqual(found.counts.runs, 2, 'wrong run count');
+      assert.strictEqual(found.counts.stageSets, 2, 'wrong record set count');
       assert.strictEqual(found.counts.greenlights, 1, 'wrong greenlight count');
       assert.strictEqual(found.counts.setups, 1, 'wrong setup count');
       assert.strictEqual(found.locked, false, 'a draft setup must not lock the campaign');
@@ -115,7 +115,7 @@ module.exports = {
   async aDeployedSetupLocksTheCampaign() {
     for (const state of ['paper', 'live', 'stopped']) {
       withScratch(({ campaign, realData, gdir, sdir }) => {
-        writeRun(realData, 'bracketlab-a', 'Locked');
+        writeSet(realData, 's1-a', 'Locked');
         writeGl(gdir, 'gl-1', 'Locked');
         writeSetup(sdir, 'setup-one', 'gl-1', state);
         const found = campaign.campaignContents('Locked');
@@ -126,8 +126,8 @@ module.exports = {
         assert.strictEqual(err.code, 'CAMPAIGN_LOCKED', `refused for the wrong reason: ${err.message}`);
         assert.ok(/Trade tab/.test(err.message), 'the message does not say where to go to fix it');
         // And nothing may have gone.
-        assert.ok(fs.existsSync(path.join(realData, 'batches', 'bracketlab-a.json')),
-          `the run was deleted even though the campaign was locked (state "${state}")`);
+        assert.ok(fs.existsSync(path.join(realData, 'stagesets', 's1-a.json')),
+          `the record set was deleted even though the campaign was locked (state "${state}")`);
       });
     }
   },
@@ -145,26 +145,23 @@ module.exports = {
   // The whole chain goes, and nothing belonging to anyone else does.
   async deletingTakesTheChainAndLeavesOtherCampaignsAlone() {
     withScratch(({ campaign, realData, gdir, sdir }) => {
-      writeRun(realData, 'bracketlab-a', 'Doomed');
-      writeRun(realData, 'bracketlab-c', 'Survivor');
+      writeSet(realData, 's1-a', 'Doomed');
+      writeSet(realData, 's1-c', 'Survivor');
       writeGl(gdir, 'gl-1', 'Doomed');
       writeGl(gdir, 'gl-2', 'Survivor');
       writeSetup(sdir, 'setup-one', 'gl-1', 'draft');
-      fs.mkdirSync(path.join(realData, 'models', 'bracketlab-a'), { recursive: true });
-      fs.writeFileSync(path.join(realData, 'models', 'bracketlab-a', 'm.json'), '{}');
       campaign.setCampaign('Doomed');
 
       const out = campaign.deleteCampaign('Doomed');
-      assert.strictEqual(out.removed.runs, 1, 'the run was not removed');
+      assert.strictEqual(out.removed.stageSets, 1, 'the record set was not removed');
       assert.strictEqual(out.removed.greenlights, 1, 'the greenlight was not removed');
       assert.strictEqual(out.removed.setups, 1, 'the setup was not removed');
-      assert.ok(!fs.existsSync(path.join(realData, 'batches', 'bracketlab-a.json')), 'the run file is still there');
-      assert.ok(!fs.existsSync(path.join(realData, 'models', 'bracketlab-a')), 'the saved models are still there');
+      assert.ok(!fs.existsSync(path.join(realData, 'stagesets', 's1-a.json')), 'the record set file is still there');
       assert.ok(!fs.existsSync(path.join(gdir, 'gl-1.json')), 'the greenlight file is still there');
       assert.ok(!fs.existsSync(path.join(sdir, 'setup-one.json')), 'the setup file is still there');
 
       // The other campaign is untouched.
-      assert.ok(fs.existsSync(path.join(realData, 'batches', 'bracketlab-c.json')), 'another campaign lost a run');
+      assert.ok(fs.existsSync(path.join(realData, 'stagesets', 's1-c.json')), 'another campaign lost a record set');
       assert.ok(fs.existsSync(path.join(gdir, 'gl-2.json')), 'another campaign lost a greenlight');
 
       assert.strictEqual(campaign.getCampaign(), '', 'the deleted campaign is still the one in use');

@@ -1,6 +1,6 @@
 // THE PILOT STATES THE FIXTURE BOX NEVER PRODUCES (added 2026-08-18).
 //
-// tests/browser.js carried an honest limit: it runs against a build box, so it
+// The older browser harness (retired 3.97.0) carried an honest limit: it ran against a build box, so it
 // proved the software behaves, not that it behaves on the shapes the LIVE box
 // serves. Rather than ship the owner's live money into a scratch container to
 // look at, the deployed service was asked (read-only, via

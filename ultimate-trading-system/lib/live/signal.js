@@ -4,7 +4,7 @@
 //
 // PARITY BY CONSTRUCTION, then verified: this module deliberately mirrors
 // lib/pilotsignal.js line for line where the logic is shared — same engine
-// primitives (buildCombo/trainMembers/quorumCall), same splitFrozen freeze,
+// primitives (buildCombo), same splitFrozen freeze,
 // same actionable/previewable window math, same entry-open rule (QC 109),
 // same hash recipe, same guards (full-feature-window refusal, ENTRY_FRESH_H,
 // no-intent-without-price). The golden parity gate (plan 2.3) then PROVES the
@@ -20,7 +20,7 @@
 // exchange candles, exactly like the module it generalizes.
 
 const crypto = require('crypto');
-const { buildCombo, trainMembers, quorumCall, specsFor } = require('../bracketwork');
+const { buildCombo } = require('../bracketwork');
 const { setupFee } = require('./setups');
 const bracketLib = require('../bracket');
 const { scoreDiff } = require('../dataset');
@@ -33,66 +33,18 @@ const SIDE_MAP = { 1: 'LONG', '-1': 'SHORT', 0: 'FLAT' };
 // Same freshness rule as pilotsignal: never chase an entry more than 3h old.
 const ENTRY_FRESH_H = 3;
 
-// Per-config frozen-roster check — the generalized, per-config form of a
-// guard that used to protect three set-ups written into the product: a config whose member list has drifted from
-// what specsFor(size, stage) builds is QC 71's failure mode (plausible numbers,
-// wrong experiment). Fail loudly before any decision.
-function assertMembersMatchEngine(cfg) {
-  const built = specsFor(cfg.combo.size, cfg.stage);
-  const a = JSON.stringify(built.map((s) => ({ model: s.model, view: s.view })));
-  const f = JSON.stringify(cfg.members.map((m) => ({ model: m.model, view: m.view })));
-  if (a !== f) {
-    throw new Error(`live signal: config committee no longer matches specsFor(${cfg.combo.size}, '${cfg.stage}')`
-      + ` — frozen ${f} vs engine ${a}`);
-  }
-}
-
 function cfgOf(setup) {
   const cfg = setup.configSnapshot;
   const v = validateConfig(cfg);
   if (!v.ok) throw new Error(`setup ${setup.id}: configSnapshot invalid: ${v.errors.join('; ')}`);
-  // a stage-engine configuration's members are the stage 2 set's own, not specsFor's roster
-  if (cfg.engine !== 'stages') assertMembersMatchEngine(cfg);
   return cfg;
 }
-// THE DECISION, BY THE ENGINE THE CONFIGURATION SPEAKS FOR (3.91.0): the older
-// engine counts votes against an integer quorum; a stage-engine configuration
-// is trained as the stages train and called through the one definition of a
-// committee's call it shares with stage 3 (lib/live/stagesignal.js).
+// THE DECISION (3.91.0): a configuration is trained as the stages train and
+// called through the one definition of a committee's call it shares with
+// stage 3 (lib/live/stagesignal.js). The older engine's vote count against an
+// integer quorum went with that engine (3.97.0).
 async function decideFor(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freezeMs, feePerLeg) {
-  if (cfg.engine === 'stages') {
-    return require('./stagesignal').stageCommitteeCallFor(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg);
-  }
-  return committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freezeMs, feePerLeg);
-}
-
-// Identical recipe to pilotsignal.committeeCall, with the config's own
-// quorum/band/symbol/freeze/version in place of F1's. The hash covers the
-// decision machinery (not the price — the mirror's price check has its own
-// tolerance), so machinery drift is provable per setup.
-async function committeeCallFor(cfg, target, trainChunks, maps, geo, views, bandPct, freezeMs, feePerLeg) {
-  // THE PROFILE'S OWN TRADING FEE REACHES THE DECISION (owner order,
-  // 2026-08-23). This called trainMembers with no fee argument at all, so a
-  // directional committee — whose threshold is CHOSEN by pricing candidate
-  // thresholds against the cost of trading — was being trained with the fee
-  // undefined. lib/bracket.js refuses that outright, so a directional profile
-  // could not produce a live call; an argmax one trained on a cost of nothing.
-  // Either way the live path was not using the number the lab used.
-  const members = await trainMembers(cfg.members, views, trainChunks, [target], cfg.branch, maps, geo, feePerLeg);
-  const perMember = members.map((m) => m.calls[0]);
-  const call = quorumCall(members.map((m) => m.calls), 0, cfg.cell.quorum);
-  const entryTs = target.startTs + (geo.entryOffsetH || 0) * HOUR_MS;
-  const bar = maps.trade.get(entryTs);
-  const priceAt = bar ? bar.open : null;
-  const side = SIDE_MAP[String(call)] || 'FLAT';
-  const inputHash = crypto.createHash('sha256')
-    .update(JSON.stringify({
-      chunk: target.startTs, perMember, quorum: cfg.cell.quorum, band: bandPct,
-      side, symbol: cfg.combo.trade,
-      train_through: freezeMs, config_version: cfg.configVersion,
-    }))
-    .digest('hex').slice(0, 16);
-  return { call, perMember, side, priceAt, inputHash, entryTs };
+  return require('./stagesignal').stageCommitteeCallFor(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg);
 }
 
 // Shared preamble: build the combo, freeze-split, return the working pieces.
@@ -303,5 +255,5 @@ async function computePreview(setup, now) {
 module.exports = {
   computeSignal, computeSignalForChunk, computePreview,
   actionableChunk, previewableChunk, chooseEntryOpen,
-  assertMembersMatchEngine, committeeCallFor, decideFor, ENTRY_FRESH_H,
+  decideFor, ENTRY_FRESH_H,
 };

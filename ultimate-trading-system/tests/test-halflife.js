@@ -10,7 +10,7 @@ const stages = require('../lib/stages');
 const sw = require('../lib/stagework');
 const HL = require('../lib/halflife');
 const G = require('../lib/stagegate');
-const Pl = require('../lib/planted');
+const Pl = require('../lib/fabricated');
 const rowstore = require('../lib/rowstore');
 
 // ONE YEAR IS ENOUGH FOR THE PLUMBING (see tests/test-unreadgrade.js)

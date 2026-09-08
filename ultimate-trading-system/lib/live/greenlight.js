@@ -1,19 +1,18 @@
 // GREENLIGHT + SHUTTLE (plan phase 4; NEXT-RELEASE points 4, 13, 18).
 //
-// A greenlight is the owner's decision that a lab-selected configuration is
-// fit to trade, recorded with WHO/WHEN/WHY, the exact frozen config, the
-// engine version, and the provenance chain (campaign -> runs -> selected
-// row). The shuttle then mints a Live Trading setup (draft) from the
-// greenlight's IMMUTABLE snapshot — "no hand-built live configs": the only
-// door into the setups registry is this one.
+// A greenlight is the owner's decision that a configuration is fit to trade,
+// recorded with WHO/WHEN/WHY, the exact frozen config, the engine version,
+// and the provenance chain (campaign -> record sets -> the survivor). The
+// shuttle then mints a Live Trading setup (draft) from the greenlight's
+// IMMUTABLE snapshot — "no hand-built live configs": the only door into the
+// setups registry is this one.
 //
-// The config is constructed from the SAME row anchor the lab's own confirm
-// step uses (doc.selection, target 'declared'|'best'), so what gets
-// greenlighted is exactly what the lab measured — never a re-typed cell.
+// The one door in is the Stage 4 record set (3.90.0): the set, the verdict
+// that stood, one survivor, and the agreement exactly as that survivor
+// carries it — never a re-typed cell.
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
-const { specsFor } = require('../bracketwork');
 const { validateConfig } = require('./configschema');
 const { feeFracOf } = require('../paper');
 const { ENGINE_VERSION } = require('./version');
@@ -36,131 +35,6 @@ function atomicWrite(file, obj) {
 // dominates (real greenlights are minted seconds apart), and the counter only
 // disambiguates same-ms same-process mints, where it is exactly right.
 let __mintSeq = 0;
-
-// stage from what the row actually ran: committee width is a function of
-// (size, stage), so it inverts cleanly — and ambiguity refuses rather than
-// guesses (a guessed stage would train a different committee than the lab's).
-function stageFromMembers(size, memberCount) {
-  const slim = specsFor(size, 'slim').length;
-  const promoted = specsFor(size, 'promoted').length;
-  if (memberCount === slim) return 'slim';
-  if (memberCount === promoted) return 'promoted';
-  throw new Error(`cannot derive stage: ${memberCount} members fits neither slim(${slim}) nor promoted(${promoted}) for size ${size}`);
-}
-
-// Build the frozen configSnapshot from a saved lab doc + its selected row.
-// Every refusal here is a provenance gap the greenlight must not paper over.
-function configFromSelection(doc, target) {
-  const row = doc.selection;
-  if (!row) throw new Error('this run has no selected row — select a leader in the lab first');
-  let sel = row;
-  if (target === 'declared') {
-    if (!row.declaredCell) throw new Error('this row carries no declared cell — was the run started with a declared config?');
-    sel = { ...row, ...row.declaredCell };
-  } else if (target === 'region') {
-    // WIDEST REGION. The Greenlight anchor has offered this since 2026-08-17 and
-    // this function refused it, so the one option whose whole purpose is to
-    // resist shopping was the one option that could not mint a greenlight — the
-    // two that DID work are the two its own tooltip warns flatter themselves.
-    // batch.js bracketConfirm has implemented the same anchor all along; this is
-    // the same rule, on the same field (audit 2026-08-17).
-    //
-    // The centre is chosen by DEPTH inside the region, never by score: taking
-    // the region's own peak would put the shopped cell straight back in charge.
-    if (!row.region || !row.region.centre) {
-      throw new Error('this row carries no widest region — either no setting on it made money, '
-        + 'or the run predates the region being recorded (2026-08-17)');
-    }
-    sel = { ...row, ...row.region.centre };
-  } else if (target !== 'best') {
-    throw new Error("greenlight target must be 'best', 'declared' or 'region'");
-  }
-
-  // The band must be the RESOLVED number the run traded at, never 'auto' — an
-  // adaptive band re-derived later would relabel the world the members were
-  // trained against.
-  const bandPct = Number.isFinite(sel.bandPct) ? sel.bandPct
-    : (Number.isFinite(row.bandPct) ? row.bandPct : null);
-  if (!Number.isFinite(bandPct) || bandPct <= 0) {
-    throw new Error('cannot freeze the band: the selected row carries no resolved bandPct number');
-  }
-
-  const size = sel.size;
-  const members = sel.members ?? row.members;
-  if (!Number.isInteger(members)) throw new Error('selected row carries no committee size (members)');
-  const stage = stageFromMembers(size, members);
-
-  // NO TRAINING FREEZE IS INVENTED HERE (owner, 2026-08-19). This used to set
-  // trainThrough from the run's FIRE TIME, on the premise that the fire time is
-  // the data horizon. It is not: this very run fired 2026-08-05 while loading
-  // months 2019-01..2026-06, so the guess was five weeks past anything the run
-  // could see. And the deeper point is that a rule should carry no training
-  // window at all — greenlighting decides that a config is fit to trade, not
-  // when its members train. That choice belongs to the deployment.
-
-  const cfg = {
-    combo: { trade: sel.trade, ctx1: sel.ctx1 ?? null, ctx2: sel.ctx2 ?? null, size },
-    branch: {
-      geometry: sel.geometry, decision: sel.decision,
-      band: bandPct, weekdaysOnly: !!sel.weekdaysOnly,
-    },
-    stage,
-    members: specsFor(size, stage).map((s) => ({ model: s.model, view: s.view })),
-    cell: {
-      quorum: sel.quorum, entry: sel.entry || 'breakout', gate: sel.gate,
-      dMult: sel.dMult ?? null, tHours: sel.tHours,
-      trailMult: sel.trailMult ?? null, armMult: sel.armMult ?? null,
-    },
-    configVersion: `${doc.id}/${target}@${new Date().toISOString().slice(0, 10)}`,
-  };
-  const v = validateConfig(cfg);
-  if (!v.ok) throw new Error(`constructed config failed the shared vocabulary: ${v.errors.join('; ')}`);
-  return { cfg, sel };
-}
-
-// Record a greenlight. `doc` is the saved lab doc (injected by the route via
-// batch.getBatch; injectable directly in tests). why is REQUIRED — a
-// greenlight without a reason is not a decision, it is a click.
-function greenlightFromRun(doc, target, { by = 'owner', why, name } = {}) {
-  if (!doc || doc.kind !== 'bracketlab') throw new Error('greenlights come from saved bracket-lab runs');
-  if (typeof why !== 'string' || !why.trim()) throw new Error('a greenlight needs a WHY — record the reasoning that cleared it');
-  // A NAME IS REQUIRED. The generated id is a key, not a label, and a config
-  // carrying only 'gl-mszdonx9-e5a595' on screen tells the owner nothing about
-  // what it is — they said as much. Nothing is created unnamed.
-  const { cfg, sel } = configFromSelection(doc, target);
-  fs.mkdirSync(glDir(), { recursive: true });
-  const id = `gl-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
-  const record = {
-    id,
-    createdUtc: new Date().toISOString(),
-    seq: __mintSeq++,                       // creation-order tiebreak for same-ms mints
-    by,
-    name: validName(name),
-    why: why.trim(),
-    engineVersion: ENGINE_VERSION,          // point 18: the arithmetic this evidence is about
-    target,
-    campaign: doc.campaign || (doc.params && doc.params.campaign) || null,   // point 13: the parent job
-    sourceRun: {
-      id: doc.id, kind: doc.kind,
-      startedAt: doc.startedAt || null, finishedAt: doc.finishedAt || null,
-      dataManifest: doc.dataManifest || null,   // QC 77: exactly which candles the evidence read
-      // WHAT THE EVIDENCE WAS PRICED AT (owner order, 2026-08-23). A board's
-      // money means nothing without the cost it was found under — 86% of the
-      // gross edge goes to fees — so the rate travels with the evidence, and a
-      // profile shuttled from here starts at it. A fraction of the position per
-      // leg; feeFracOf converts a run recorded before fees became a rate.
-      feePerLeg: feeFracOf(doc.params),
-    },
-    rowSummary: {
-      pnl: sel.pnl ?? null, trades: sel.trades ?? null,
-      holdout: sel.holdout ? { pnl: sel.holdout.pnl ?? null, trades: sel.holdout.trades ?? null } : null,
-    },
-    configSnapshot: cfg,
-    shuttledSetupIds: [],
-  };
-  atomicWrite(fileFor(id), record);
-  return record;
-}
 
 // ---- THE STAGE 4 DOOR (3.90.0, VERIFY-DESIGN.md section 6) --------------------------
 //
@@ -424,7 +298,6 @@ function revoke(greenlightId, { by = 'owner' } = {}) {
 
 module.exports = {
   relabel, validName,
-  greenlightFromRun, getGreenlight, listGreenlights, shuttle, revoke,
-  configFromSelection, stageFromMembers, glDir,
+  getGreenlight, listGreenlights, shuttle, revoke, glDir,
   greenlightFromStage4, configFromStage4, stage4Refusal,
 };

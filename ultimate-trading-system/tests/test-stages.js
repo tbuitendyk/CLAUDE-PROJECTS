@@ -2007,8 +2007,6 @@ module.exports = {
   // answer from one guard — it was a question one of them never asked.
   async neitherHeavyJobCanFireDuringTheOther() {
     const lib = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    const bat = fs.readFileSync(path.join(ROOT, 'lib', 'batch.js'), 'utf8');
-    const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
 
     // ONE ANSWER for everything heavy the stages own — the run AND its
     // totalling, which is just as heavy and just as easy to forget.
@@ -2018,38 +2016,12 @@ module.exports = {
     assert.ok(/activeSet/.test(fn), 'stageBusy does not notice a stage run');
     assert.ok(/tallyRun/.test(fn), 'stageBusy does not notice a totalling, which holds the same workers');
 
-    // A STAGE REFUSES WHILE A SWEEP RUNS (the direction that already held).
-    // (the claim takes the launch's params since 3.87.0, so the stage-engine check's own launches can pass while it runs)
+    // THE OLDER SWEEP ENGINE IS GONE (3.97.0): a stage launch asks nothing of
+    // it any more, and the stage-engine check's own launches still pass while
+    // it runs (the claim takes the launch's params since 3.87.0).
     const claim = lib.slice(lib.indexOf('function claimOrRefuse(params = {})'), lib.indexOf('\n}', lib.indexOf('function claimOrRefuse(params = {})')));
-    assert.ok(/batch\.batchRunning\(\)/.test(claim), 'a stage launch no longer asks whether a sweep is going');
-
-    // A SWEEP REFUSES WHILE A STAGE RUNS (the direction that did not).
-    const refuse = bat.slice(bat.indexOf('function launchRefusal()'), bat.indexOf('\n}', bat.indexOf('function launchRefusal()')));
-    assert.ok(/require\('\.\/stages'\)\.stageBusy\(\)/.test(refuse),
-      'a sweep launch does not ask whether a stage run is going — a stage run is not a batch, so batchRunning() reads '
-      + 'null all the way through one');
-    assert.ok(/require\('\.\/stages'\)/.test(refuse) && !/^const .*require\('\.\/stages'\)/m.test(bat),
-      'lib/stages must be required lazily here — it already requires lib/batch, and asking at load time hands back a half-built module');
-
-    // AND THE PLANTED CHECK REFUSES BEFORE IT WRITES ANYTHING. It regenerates
-    // cache data and THEN fires its sweep, so leaning on the sweep refusing a
-    // moment later would leave the candles already rewritten.
-    const route = srv.slice(srv.indexOf("app.post('/api/planted-gate'"), srv.indexOf("app.post('/api/planted-gate'") + 1400);
-    assert.ok(/stages\.stageBusy\(\)/.test(route), 'the planted check does not ask whether a stage run is going');
-    assert.ok(route.indexOf('stages.stageBusy()') < route.indexOf('generatePlanted'),
-      'the planted check regenerates the fabricated pair BEFORE it checks whether the box is free');
-
-    // ...AND THE BUTTON SLEEPS WITH THE REASON rather than taking a press and
-    // refusing after it. Same arithmetic on the status as on the refusal, so
-    // the screen and the route cannot disagree about whether it can run.
-    const status = srv.slice(srv.indexOf("app.get('/api/planted-gate/status'"), srv.indexOf("app.get('/api/planted-gate/status'") + 900);
-    assert.ok(/stages\.stageBusy\(\)/.test(status) && /blockedBy/.test(status),
-      'the status does not say what would stop the check, so the button cannot sleep');
-    // the button lives on Setup, under Version (3.96.0)
-    const ui = fs.readFileSync(path.join(ROOT, 'public', 'setup.html'), 'utf8');
-    assert.ok(/gate\.blockedBy \? `disabled title=/.test(ui), 'the planted check button does not sleep while the box is busy');
-    assert.ok(/waits for \$\{esc\(gate\.blockedBy\)\} to finish/.test(ui),
-      'and it does not say what it is waiting for, which is the only thing that makes a sleeping button bearable');
+    assert.ok(!/batch\./.test(claim), 'a stage launch still asks after the retired sweep engine');
+    assert.ok(/examBusy\(\)/.test(claim), 'a stage launch no longer refuses while the stage-engine check runs');
   },
 
   // FOUR NUMBERS BESIDE EVERY FILTER THAT TAKES ONE (owner order, 2026-08-29:
@@ -3976,7 +3948,7 @@ module.exports = {
     const at = UI.indexOf('function swProvenance() {');
     assert.ok(at > 0, 'swProvenance is gone');
     const body = UI.slice(at, UI.indexOf('\n}\n', at) + 3);
-    const DEFAULTS = require('../lib/batch').DEFAULT_PAIRS;
+    const DEFAULTS = require('../lib/dataset').DEFAULT_PAIRS;
 
     // the owner's own set, read off the box 2026-09-06
     // THROUGH publicParams, WHICH IS WHAT THE PAGE ACTUALLY RECEIVES. Handing
@@ -4125,7 +4097,7 @@ module.exports = {
 
     // THE COMPARE COINS. The launch records the resolved list, and records it
     // EMPTY when neither doubles nor triples reads it; the screen must do both.
-    assert.ok(LIB.includes("const compareUsed = (compare.length ? compare : batch.DEFAULT_PAIRS)\n    .filter(() => sizes.doubles || sizes.triples);"),
+    assert.ok(LIB.includes("const compareUsed = (compare.length ? compare : DEFAULT_PAIRS)\n    .filter(() => sizes.doubles || sizes.triples);"),
       'the launch no longer resolves the compare coins this way — the screen below copies this rule and has to move with it');
     assert.ok(/const wantCmp = \(\(c\('#swDoubles'\) \|\| c\('#swTriples'\)\) \? \(boxCmp\.length \? boxCmp : defaults\) : \[\]\)/.test(fn),
       'the compare coins are compared as typed, so a blank box reads as disagreeing with the seventeen default pairs the run actually read — Stage 2 is red for ever');
@@ -4675,7 +4647,7 @@ module.exports = {
     // with nothing beside it is somebody asking for that coin against
     // everything, which is the whole reason the box exists — and the trade box
     // already reads blank the same way, on its own label.
-    const DEF = require('../lib/batch').DEFAULT_PAIRS;
+    const DEF = require('../lib/dataset').DEFAULT_PAIRS;
     const blank = stages.unitsFor(['LTCUSDT'], { triples: true }, g, []);
     const spelled = stages.unitsFor(['LTCUSDT'], { triples: true }, g, DEF);
     assert.deepStrictEqual(blank, spelled, 'blank must be the default pairs spelled out, exactly');
@@ -4731,5 +4703,29 @@ module.exports = {
     assert.ok(!/legacy80/.test(sw.replace(/\/\/[^\n]*/g, '')), 'the chunk split no longer knows the name');
     // re-aimed 3.94.0: the retrain layout (the History half-life run) is the one split with no held-back slice, and its judge is the Reserve
     assert.ok(/const split = retrainTrain != null \? splitAndLabelAt\(workChunks, branch, retrainTrain\) : splitAndLabel\(workChunks, branch, true\);/.test(sw), 'every layout keeps a held-back slice, except the retrain layout whose judge is the Reserve');
+  },
+
+  // A PRICED RECORD NAMES THE CHOICES THAT MADE IT (owner order, 2026-08-26;
+  // moved here from the older engine's totals tests when that engine was
+  // retired, 3.97.0). A record that does not name its decision, band and 24/5
+  // is an anonymous number in a table read to learn which choices work — so
+  // the stage 3 write site is pinned, and the screen must show them.
+  theRecordedRowNamesItsChoices() {
+    const work = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+    assert.ok(/decision: stream\.decision,/.test(work)
+      && /bandMode: stream\.band === 'auto' \? 'auto' : Number\(stream\.band\),/.test(work)
+      && /weekdaysOnly: !!stream\.weekdaysOnly,/.test(work),
+      'a priced stage 3 record no longer names the choices that made it');
+    const page = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8').replace(/\/\/[^\n]*/g, '');
+    const head = page.slice(page.indexOf("api/stageset/${doc.id}/coin-rows"), page.indexOf('</thead>', page.indexOf("api/stageset/${doc.id}/coin-rows")));
+    assert.ok(head.length > 200, 'the opened records rows are gone from the every-coin table');
+    for (const col of ['>decision</th>', '>band</th>', '>24/5</th>']) {
+      assert.ok(head.includes(col), `the records table no longer shows its ${col.replace(/[<>/th]/g, '')} column`);
+    }
+    const tt = head.indexOf('>test trades</th>');
+    const bc = head.indexOf('>beat its own null set</th>');
+    const hb = head.indexOf('>held-back $</th>');
+    assert.ok(tt >= 0 && bc >= 0 && hb >= 0 && tt < bc && bc < hb,
+      'the records\' beat its own null set column is missing or out of its ordered place');
   },
 };

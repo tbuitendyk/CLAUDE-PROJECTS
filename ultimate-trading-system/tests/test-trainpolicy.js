@@ -25,8 +25,8 @@ const { A_CUTOFF_MS, aSetupConfig } = require('./fixtures-setup');
 
 function ruleOf(cfg) {
   return {
-    combo: cfg.combo, branch: cfg.branch, stage: cfg.stage,
-    members: cfg.members, cell: cfg.cell, configVersion: 'test/v1',
+    engine: cfg.engine, combo: cfg.combo, branch: cfg.branch, stage: cfg.stage,
+    members: cfg.members, cell: cfg.cell, agreement: cfg.agreement, training: cfg.training, configVersion: 'test/v1',
   };
 }
 // A few shapes of rule, made here rather than borrowed from the product:
@@ -35,7 +35,7 @@ const RULES = [
   aSetupConfig(),
   aSetupConfig({ combo: { trade: 'XLMUSDT', ctx1: 'DOTUSDT', ctx2: 'TRXUSDT', size: 3 } }),
   aSetupConfig({ branch: { geometry: 'daily-4d', decision: 'directional', band: 1.61, weekdaysOnly: false },
-    cell: { quorum: 1, entry: 'breakout', gate: 'active', dMult: 1.5, tHours: 161, trailMult: null, armMult: null } }),
+    cell: { quorum: null, entry: 'breakout', gate: 'active', dMult: 1.5, tHours: 161, trailMult: null, armMult: null } }),
 ];
 
 // A RULE IS COMPLETE WITHOUT A TRAINING WINDOW. This is the claim the owner

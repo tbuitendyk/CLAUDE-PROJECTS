@@ -27,21 +27,12 @@ const ROOT = path.join(__dirname, '..');
 const CONSTRUCT = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const TRADE = fs.readFileSync(path.join(ROOT, 'public', 'trade.html'), 'utf8');
 
-// A whole config snapshot the shared vocabulary accepts, built from the SAME
-// source the engine freezes so it cannot drift from the real shape. Taken from
-// tests/test-live-setups.js, where it is already the canonical fixture.
+// A whole config snapshot the shared vocabulary accepts, made through the
+// product's own greenlight door from a Stage 4 source (tests/fixtures-setup.js)
+// so it cannot drift from the real shape.
 function snapshot() {
-  const { A_CUTOFF_MS, aSetupConfig } = require('./fixtures-setup');
-  const F1 = aSetupConfig();
-  return {
-    combo: { ...F1.combo },
-    branch: { ...F1.branch },
-    stage: F1.stage,
-    members: F1.members.map((m) => ({ ...m })),
-    cell: { ...F1.cell },
-    trainThrough: A_CUTOFF_MS,
-    configVersion: 'profile-fee-test',
-  };
+  const { aSetupConfig } = require('./fixtures-setup');
+  return { ...aSetupConfig(), configVersion: 'profile-fee-test' };
 }
 
 function withRegistry(fn) {
@@ -129,8 +120,8 @@ module.exports = {
   async theRateFollowsTheEvidenceFromTheRunToTheProfile() {
     const gl = require('../lib/live/greenlight');
     const src = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'greenlight.js'), 'utf8');
-    assert.ok(/feePerLeg: feeFracOf\(doc\.params\)/.test(src),
-      'the greenlight does not record the fee its board was found under, so a profile made from it '
+    assert.ok(/sourceRun: \{[^\n]*feePerLeg: Number\.isFinite\(src\.fee\)/.test(src),
+      'the greenlight does not record the fee its record set was priced under, so a profile made from it '
       + 'has nothing to inherit and the live arithmetic silently parts company with the evidence');
     assert.ok(/feePerLeg: Number\.isFinite\(feePerLeg\) \? feePerLeg : \(\(gl\.sourceRun \|\| \{\}\)\.feePerLeg \?\? null\)/.test(src),
       'the shuttle does not carry the evidence rate onto the new profile');
@@ -150,17 +141,13 @@ module.exports = {
     assert.ok(/const fee = setupFee\(setup\)/.test(src),
       'the live path does not take its fee from the profile');
     assert.ok(/feePerLeg: fee/.test(src), 'and does not pass it to the build');
-    assert.ok(/trainMembers\([^)]*geo, feePerLeg\)/.test(src),
-      'trainMembers is still called without a fee, so a directional committee cannot be trained at all');
     // RE-AIMED 3.91.0: the three callers now go through decideFor, which picks
     // the engine the configuration speaks for; the fee rides on every call and
-    // decideFor hands it to BOTH engines, so neither can price a trade as free.
+    // decideFor hands it to the stage engine, so it can never price a trade as free.
     const calls = src.match(/decideFor\(cfg, target, trainChunks, chunks, maps, geo, views, bandPct, freeze\.throughMs, fee\)/g) || [];
     assert.strictEqual(calls.length, 3, `all three live callers must pass the fee; ${calls.length} do`);
     assert.ok(/stageCommitteeCallFor\(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg\)/.test(src),
       'decideFor does not hand the fee to the stage engine');
-    assert.ok(/return committeeCallFor\(cfg, target, trainChunks, maps, geo, views, bandPct, freezeMs, feePerLeg\)/.test(src),
-      'decideFor does not hand the fee to the older engine');
   },
 
   // 5. THE SWEEP CAN SET IT TOO — "for that matter, where we're training and

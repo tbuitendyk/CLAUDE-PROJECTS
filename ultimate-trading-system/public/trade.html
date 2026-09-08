@@ -6,7 +6,7 @@
 <title>Trade</title>
 <style>
   /* THEME TOKENS (NEXT-RELEASE points 24/25): dark = the F1 pilot's compact
-     technical style (the baseline); light = the Bracket Lab register. One
+     technical style (the baseline); light = the lab register. One
      [data-theme] switch flips every surface. Carries into UTS unchanged. */
   :root, :root[data-theme="dark"] {
     --bg:#0e1116; --fg:#d6dce5; --muted:#6b7686; --dim:#8b96a5;
@@ -236,7 +236,7 @@ const paperBadge='<span class="badge b-paper" title="paper — not real money">p
 const TH={
   config:'the greenlighted configuration — the entity both sides trade. Minted on the Construct tab and never edited here.',
   pair:'the TRADED pair. On a three-asset committee the other two are context only — nothing is bought or sold in them.',
-  campaign:'the named line of work the sweep behind this config belonged to. Blank means it was not filed under one.',
+  campaign:'the named line of work the record sets behind this config belonged to. Blank means it was not filed under one.',
   why:'the reason recorded at greenlight time, in the words of whoever cleared it. It is the decision record and cannot be edited afterwards.',
   status:'plain-words state of this config across BOTH sides — which channels are active, and whether any position is open.',
   setup:'the channel this side runs the config through: one book per side, so a paper book and a live setup are separate rows.',
@@ -404,7 +404,7 @@ const TILE={
   realized:'money actually BANKED on closed positions, in US dollars, after both legs\' fees and any borrow interest.',
   realizedAll:'the same banked figure summed across every book on this side. Paper dollars and real dollars are never added together.',
   unrealAll:'the same open-position figure summed across every book on this side.',
-  feeModel:'what THIS profile is priced at: a percent of the money in the position, charged EACH WAY — once going in and once coming out — so 0.125% here costs 0.25% over the whole trade. It is set on the profile and not on the rule, because two profiles running the same rule at two venues do not pay the same. It starts at whatever the sweep that found the rule was priced at, and it is edited in the config editor below. Shown dimmed when nothing has been set on this profile and it is running on the lab rate it inherited. Read it against the fee actually paid, beside it.',
+  feeModel:'what THIS profile is priced at: a percent of the money in the position, charged EACH WAY — once going in and once coming out — so 0.125% here costs 0.25% over the whole trade. It is set on the profile and not on the rule, because two profiles running the same rule at two venues do not pay the same. It starts at whatever the stage run that found the rule was priced at, and it is edited in the config editor below. Shown dimmed when nothing has been set on this profile and it is running on the lab rate it inherited. Read it against the fee actually paid, beside it.',
   feeReal:'the fee the venue actually charged, averaged over real legs and shown as a percent of this profile\'s clip so it can be read against the modelled percent beside it. The box quotes it in dollars on each fill; putting a dollar figure beside a rate is how live execution once looked ten times cheaper than modelled, so both are percents here. If this exceeds the modelled percent, every lab money figure for this profile was optimistic. A paper book pays no venue fee and says so rather than showing a zero.',
   fillAvg:'average gap between the price the decision assumed and the price the order actually filled at, as a PERCENT of price. It measures execution, not edge.',
   fillMax:'the worst single such gap, as a percent of price. One bad fill can matter more than a good average.',
@@ -503,7 +503,7 @@ const chanOf=(cfg)=>cfg&&cfg.channels?cfg.channels[branch==='paper'?'paper':'rea
 async function drawConfigs(){
   const { configs }=await fetchConfigs();
   if(!configs.length){ $('#view').innerHTML=`<div class="panel empty">No greenlighted configs yet. Configs are minted on the
-    Construct tab: sweep → verify → tune → <b>Greenlight</b>. They then appear here on both sides.</div>`; return; }
+    Construct tab, on <b>Greenlight</b>, from a Stage 4 record set. They then appear here on both sides.</div>`; return; }
   $('#view').innerHTML=`<div class="panel"><table><thead><tr>
     ${th('config','config')}${th('pair','pair')}${th('campaign','campaign')}${th('why','why','text-align:left')}${th('status','status')}<th></th><th></th></tr></thead><tbody>
     ${configs.map(g=>{
@@ -526,7 +526,7 @@ async function drawConfigs(){
       <td>${(active
         ? `<button data-deact="${g.id}">Deactivate</button>`
         : `<button data-act="${g.id}" class="pri" ${realBlocked?'disabled title="this config has no sub-account of its own yet. Real orders are placed only from a config\'s OWN sub-account, never a shared one — set its sub-account key on Setup detail first."':''}>${actLabel}</button>`)}</td>
-      <td>${`<button data-nuke="${g.id}" class="danger" title="back to not-greenlighted: removed from these lists; the saved sweeps it came from are untouched. Refused while any channel is active or winding down.">Nuke</button>`}</td>
+      <td>${`<button data-nuke="${g.id}" class="danger" title="back to not-greenlighted: removed from these lists; the record sets it came from are untouched. Refused while any channel is active or winding down.">Nuke</button>`}</td>
       </tr>`;}).join('')}
   </tbody></table>
   <div class="muted" style="font-size:.72rem;margin-top:.4rem">status vocabulary: idle · active paper · active real · active real, active paper · … deactivating (entries stopped, positions still closing out). Click a row to open its Setup detail on this side.</div></div>`;
@@ -546,7 +546,7 @@ async function drawConfigs(){
     if(why===null) return;
     const out=await post(`api/live/greenlight/${id}/relabel`,{name,why}); if(out) draw(); });
   $('#view').querySelectorAll('button[data-nuke]').forEach(b=>b.onclick=async(ev)=>{ ev.stopPropagation();
-    if(!confirm(`Nuke ${b.dataset.nuke} back to not-greenlighted?\n\nIt leaves these lists; its saved sweeps are untouched.`))return;
+    if(!confirm(`Nuke ${b.dataset.nuke} back to not-greenlighted?\n\nIt leaves these lists; its record sets are untouched.`))return;
     const out=await post(`api/live/configs/${b.dataset.nuke}/nuke`,{}); if(out) draw(); });
 }
 async function confirmActivate(id){
@@ -706,11 +706,9 @@ async function drawDetail(){
       <div style="margin-top:.5rem">
         ${cfgRow('Traded / context', `${esc(combo.trade)} + ${esc(combo.ctx1)} + ${esc(combo.ctx2)}`)}
         ${cfgRow('Geometry', `${esc(br.geometry)} · ${esc(br.decision)} · band ${br.band}%`)}
-        ${cfgRow('Committee', `${(c.members||[]).length} members (${c.engine==='stages'?'the stage engine, as the stage 2 set trained them':esc(c.stage)})`)}
+        ${cfgRow('Committee', `${(c.members||[]).length} members (the stage engine, as the stage 2 set trained them)`)}
         ${c.training && c.training.halfLife ? cfgRow('Recent history weighted', `half-life ${esc(String(c.training.halfLifeMonths || Math.round(c.training.halfLife / 30.4375)))} months - a training day that old counts half as much as today's`) : ''}
-        ${c.engine==='stages'
-          ? cfgRow('Agreement / entry / gate', `${agreeWords(c.agreement)} · ${esc(cell.entry)} · ${esc(cell.gate)}`)
-          : cfgRow('Quorum / entry / gate', `${cell.quorum}-of-${(c.members||[]).length} · ${esc(cell.entry)} · ${esc(cell.gate)}`)}
+        ${cfgRow('Agreement / entry / gate', `${agreeWords(c.agreement)} · ${esc(cell.entry)} · ${esc(cell.gate)}`)}
         ${cfgRow('Hold', `${cell.tHours}h`)}
         ${(() => {
           // The freeze belongs to the DEPLOYMENT now, not the rule. A setup
@@ -723,7 +721,6 @@ async function drawDetail(){
           const p = s.trainPolicy;
           if (p && p.mode === 'rolling') return cfgRow('Members train', 'rolling — retrained through the latest closed outcome');
           if (p && p.mode === 'frozen') return cfgRow('Members train', `frozen at ${new Date(p.throughMs).toISOString().slice(0,10)}`);
-          if (c.trainThrough) return cfgRow('Members train', `frozen at ${new Date(c.trainThrough).toISOString().slice(0,10)} (legacy — inherited from the old rule shape)`);
           return cfgRow('Members train', 'not set — this deployment has no training policy');
         })()}
         ${cfgRow('Config version', `<code>${esc(c.configVersion||'')}</code>`)}

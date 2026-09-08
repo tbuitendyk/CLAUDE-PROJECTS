@@ -254,7 +254,18 @@ function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed'
   return { chunks, dropped, considered: starts.length };
 }
 
+// The default coin universe a stage 1 launch reads when its trade box is
+// blank: high-market-cap USDT pairs with long Binance spot history (all listed
+// 2017–2020, still major in mid-2026). Served through the vocabulary so a
+// screen compares a blank box against the same list the launch resolves it to.
+const DEFAULT_PAIRS = [
+  'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT', 'DOGEUSDT',
+  'LTCUSDT', 'LINKUSDT', 'DOTUSDT', 'AVAXUSDT', 'TRXUSDT', 'XLMUSDT',
+  'ETCUSDT', 'ATOMUSDT', 'BCHUSDT', 'UNIUSDT', 'ZECUSDT',
+];
+
 module.exports = {
+  DEFAULT_PAIRS,
   weekdaysApply, WEEKDAY_STARTS,
   toHourlyMap,
   forwardFill,

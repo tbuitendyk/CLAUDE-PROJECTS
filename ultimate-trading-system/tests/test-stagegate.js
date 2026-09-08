@@ -143,7 +143,7 @@ module.exports = {
   // pairs unless the exam itself is launching them.
   theLauncherRefusesTheReservedCoinsUnlessTheExamLaunchesThem() {
     const base = { sizes: { singles: true }, geometry: 'daily-1d', windowLayout: 'reserve61', startMonth: '2024-01', endMonth: '2024-12', nullN: 9, fee: 0.00125 };
-    for (const sym of [G.PLANT, G.FAIR, require('../lib/planted').PLANTED_SYMBOL]) {
+    for (const sym of [G.PLANT, G.FAIR]) {
       let threw = null;
       try { stages.startStage1({ ...base, universe: [sym, 'BTCUSDT'] }); } catch (e) { threw = e.message; }
       assert.ok(/is a reserved fabricated coin — it never enters a real run/.test(threw || ''), `${sym}: ${threw}`);
@@ -178,7 +178,7 @@ module.exports = {
   theExamRefusesWhileTheBoxIsBusyAndTheBoxRefusesWhileTheExamRuns() {
     const s = src('lib/stages.js');
     const start = s.slice(s.indexOf('function stageGateStart('), s.indexOf('function listFunnelSets('));
-    assert.ok(/batch\.batchRunning\(\)/.test(start) && /anyJobRunning\(\)/.test(start) && /stageBusy\(\)/.test(start), 'a sweep, a data job, a stage run, a totalling and a rebuild all refuse it');
+    assert.ok(/anyJobRunning\(\)/.test(start) && /stageBusy\(\)/.test(start), 'a data job, a stage run, a totalling and a rebuild all refuse it');
     assert.ok(/if \(busy\) throw new Error/.test(start));
     const busy = s.slice(s.indexOf('function stageBusy()'), s.indexOf('function claimOrRefuse('));
     assert.ok(/if \(examBusy\(\)\) return examBusy\(\);/.test(busy), 'while it runs, the box reads as busy to everything that asks');
@@ -203,50 +203,47 @@ module.exports = {
     assert.strictEqual(stood.verdict.pass, none.verdict.pass, 'printed, never a gate on the set: the check certifies the instrument, not the result');
   },
 
-  // THE TWO CHECKS LIVE ON SETUP, UNDER VERSION (owner order, 2026-09-08:
-  // "move the Planted check box and it's two sections/controls to a new tab
-  // under Setup called Version that comes after Compute"). The panel moved
-  // whole, with the same words and the same two presses, and Verify keeps
-  // everything that was under it.
-  theScreenOffersTheCheckBesideThePlantedOne() {
-    const ui = src('public/setup.html');
-    const panel = ui.slice(ui.indexOf('function stageGateHtml('), ui.indexOf('function drawVersion('));
-    assert.ok(panel.length > 100, 'the two panels are not drawn on Setup');
-    assert.ok(/<button id="sgRun" class="pri"/.test(panel) && /Run the stage-engine check<\/button>/.test(panel), 'the press');
-    assert.ok(/\$\{stageGateHtml\(sg\)\}/.test(panel), 'drawn inside the planted check\'s panel');
-    assert.ok(/current: <b class="\$\{cls\}">\$\{esc\(s\.state \|\| 'NOT CHECKED'\)\}<\/b>/.test(panel), 'the state, in the planted check\'s own words');
-    assert.ok(/A pass belongs to the release that earned it; a new release starts NOT CHECKED\./.test(panel));
-    assert.ok(/1 in \$\{Number\(s\.last && s\.last\.copies \? s\.last\.copies : 20\) \+ 1\} times/.test(panel), 'the chance is printed beside the verdict');
-    const draw = ui.slice(ui.indexOf('async function loadVersion()'), ui.indexOf('function draw()'));
-    assert.ok(/getJson\('api\/stage-gate\/status'\)/.test(draw) && /postJson\('api\/stage-gate', \{\}\)/.test(draw), 'the two doors');
-    assert.ok(/getJson\('api\/planted-gate\/status'\)/.test(draw) && /postJson\('api\/planted-gate', \{\}\)/.test(draw), 'the planted check\'s two doors');
-    // a check already going is followed on arrival: the tab re-reads every five
-    // seconds while it shows, and redraws only when a reading changed
-    assert.ok(/setInterval\(\(\) => refreshVersion\(false\), 5000\)/.test(ui), 'a running check is not followed while the tab is open');
-    assert.ok(/if \(force \|\| before !== JSON\.stringify\(\[vGate, vSg, vErr\]\)\) drawVersion\(\);/.test(draw), 'the tab redraws on every re-read, or never');
-    assert.ok(/the trading service did not answer, so the checks cannot be shown/.test(draw), 'a service that did not answer reads as NOT CHECKED');
-    const server = src('server.js');
-    assert.ok(server.includes("app.get('/api/stage-gate/status'") && server.includes("app.post('/api/stage-gate'"), 'the doors exist');
-  },
-
-  theTwoChecksLiveOnSetupsVersionTabAndTheBadgeGoesThere() {
+  // THE CHECK LIVES ON SETUP, UNDER VERSION (owner order, 2026-09-08), and
+  // since the older sweep path was retired (3.97.0) it is the release's one
+  // check: the planted check that certified that path went with it. The panel
+  // is drawn from the check's own status and nothing else, and the marker
+  // beside "stage-engine check:" on every Construct screen opens the tab.
+  theCheckLivesOnSetupsVersionTabAndTheMarkerGoesThere() {
     const page = src('public/setup.html');
     const at = ['data-tab="account">Account', 'data-tab="compute">Compute', 'data-tab="version">Version'].map((t) => page.indexOf(t));
     assert.ok(at.every((i) => i >= 0) && at[0] < at[1] && at[1] < at[2], 'Version is not the tab after Compute on Setup');
-    assert.ok(/<button id="pgRun" class="pri"/.test(page) && /Run the planted check<\/button>/.test(page), 'the planted check\'s press is not on Setup');
+    const panel = page.slice(page.indexOf('function stageGateHtml('), page.indexOf('function drawVersion('));
+    assert.ok(panel.length > 100, 'the panel is not drawn on Setup');
+    assert.ok(/<button id="sgRun" class="pri"/.test(panel) && /Run the stage-engine check<\/button>/.test(panel), 'the press');
+    assert.ok(/current: <b class="\$\{cls\}">\$\{esc\(s\.state \|\| 'NOT CHECKED'\)\}<\/b>/.test(panel), 'the state, in the check\'s own words');
+    assert.ok(/A pass belongs to the release that earned it; a new release starts NOT CHECKED\./.test(panel));
+    assert.ok(/1 in \$\{Number\(s\.last && s\.last\.copies \? s\.last\.copies : 20\) \+ 1\} times/.test(panel), 'the chance is printed beside the verdict');
+    const draw = page.slice(page.indexOf('async function loadVersion()'), page.indexOf('function draw()'));
+    assert.ok(/getJson\('api\/stage-gate\/status'\)/.test(draw) && /postJson\('api\/stage-gate', \{\}\)/.test(draw), 'the two doors');
     assert.ok(/tab === 'version'/.test(page) && /refreshVersion\(true\)/.test(page), 'nothing draws the Version tab');
-    // and nothing of either check is left on Construct but the marker, which
-    // now opens Setup on Version instead of Verify
+    // a check already going is followed on arrival: the tab re-reads every five
+    // seconds while it shows, and redraws only when the reading changed
+    assert.ok(/setInterval\(\(\) => refreshVersion\(false\), 5000\)/.test(page), 'a running check is not followed while the tab is open');
+    assert.ok(/if \(force \|\| before !== JSON\.stringify\(\[vSg, vErr\]\)\) drawVersion\(\);/.test(draw), 'the tab redraws on every re-read, or never');
+    assert.ok(/the trading service did not answer, so the check cannot be shown/.test(draw), 'a service that did not answer reads as NOT CHECKED');
+    for (const gone of ['planted check', 'pgRun', 'api/planted-gate']) assert.ok(!page.includes(gone), `the retired check is still on Setup: ${gone}`);
+    // and nothing of it is left on Construct but the marker, which reads the
+    // check's own status and opens Setup on Version
     const ui = src('public/construct.js');
-    for (const gone of ['id="pgRun"', 'id="sgRun"', 'vPlantedPanelHtml', 'vStageGateHtml', 'vStageGateFollow', 'Run the planted check', 'Run the stage-engine check', "apiOr('api/planted-gate/status'", "apiOr('api/stage-gate/status'"]) {
+    for (const gone of ['id="pgRun"', 'id="sgRun"', 'vPlantedPanelHtml', 'vStageGateHtml', 'Run the planted check', 'Run the stage-engine check', 'api/planted-gate', 'planted check:']) {
       assert.ok(!ui.includes(gone), `still on Construct: ${gone}`);
     }
     const strip = ui.slice(ui.indexOf('async function renderStrip()'), ui.indexOf('// ---- Data'));
-    assert.ok(/localStorage\.setItem\('setup-tab', 'version'\)/.test(strip) && /window\.location\.href = 'setup\.html'/.test(strip), 'the marker beside "planted check:" does not open Setup on Version');
+    assert.ok(/api\('api\/stage-gate\/status'\)/.test(strip), 'the marker does not read the stage-engine check\'s own status');
+    assert.ok(/stage-engine check:/.test(strip), 'the marker lost its label');
+    assert.ok(/localStorage\.setItem\('setup-tab', 'version'\)/.test(strip) && /window\.location\.href = 'setup\.html'/.test(strip), 'the marker beside "stage-engine check:" does not open Setup on Version');
     assert.ok(!/tab = 'verify'/.test(strip), 'the marker still opens Verify');
-    assert.ok(/planted check:/.test(strip), 'the marker lost its label');
     const help = src('public/help-content.js');
     for (const id of ['pgRun', 'sgRun']) assert.ok(!new RegExp(`\\b${id}: \\{`).test(help), `the help still describes ${id} on Verify`);
-    assert.ok(/live on the Setup page, under Version/.test(help), 'the Verify help does not say where the checks went');
+    assert.ok(/lives on the Setup page, under Version/.test(help), 'the Verify help does not say where the check went');
+    assert.ok(!/planted check/.test(help), 'the help still names the retired check');
+    const server = src('server.js');
+    assert.ok(server.includes("app.get('/api/stage-gate/status'") && server.includes("app.post('/api/stage-gate'"), 'the doors exist');
+    assert.ok(!server.includes("'/api/planted-gate"), 'the retired check\'s doors are still served');
   },
 };

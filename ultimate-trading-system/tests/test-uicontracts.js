@@ -1,4 +1,4 @@
-// Three defects the runtime harness (tests/browser.js) found on 2026-08-17 by
+// Three defects a browser harness (since retired, 3.97.0) found on 2026-08-17 by
 // actually loading the Constructing tab in a browser and pressing its buttons.
 // Every one of them was invisible to every static check the repo had, and two
 // of them were invisible to a person too — the button changed the tab, so it
@@ -66,43 +66,12 @@ function copySettingsWaitsForTheSweepFormToExist() {
     'copy settings no longer waits for the Sweep section to render before filling it');
 }
 
-// A run id is never typed. The server can list the runs each tool accepts, so
-// offering a free-text box turns every slip into a 400 the operator must
-// decode — the same complaint the owner raised about the stop tuner's target.
-function runIdsArePickedFromTheServersListNeverTyped() {
-  // (t1null went with the Tool 1 panel in 3.86.0; the Stage 4 record set box on
-  // Verify is checked in tests/test-funnelverify.js)
-  for (const id of ['cmpA', 'cmpB']) {
-    assert(!new RegExp(`<input id="${id}"`).test(CX),
-      `#${id} is a free-text box — run ids come from the server's list, not the keyboard`);
-    assert(new RegExp(`<select id="${id}"`).test(CX),
-      `#${id} is not a <select> — it must offer the runs the server says are eligible`);
-  }
-}
 
-function theTabActuallyCallsTheEndpointThatFeedsThePickers() {
-  assert(/api\/bracketlab\/verdict-sources/.test(CX),
-    'construct.js never calls verdict-sources — the pickers would be listing nothing');
-  // real rows for Compare: the filter is the whole point of the endpoint, and a
-  // picker built without it offers runs the tool cannot read. (Tool 1's picker
-  // on scramble draws went with that panel in 3.86.0.)
-  assert(/realRows\s*>\s*0/.test(CX),
-    'the Compare picker does not filter on realRows — it would offer runs with nothing to compare');
-}
 
-// Nothing is asked of the server that the page can already see is unanswerable.
-function anEmptyPickerRefusesInPlainWordsInsteadOfAsking() {
-  const cmp = CX.slice(CX.indexOf("$('#cmpGo').onclick"), CX.indexOf("$('#cmpGo').onclick") + 700);
-  assert(/if \(!a\)/.test(cmp),
-    'Compare posts even with no run A picked — same 400, same decoding');
-}
 
 module.exports = {
   everySectionIsReachableFromDrawAsAPromise,
   copySettingsWaitsForTheSweepFormToExist,
-  runIdsArePickedFromTheServersListNeverTyped,
-  theTabActuallyCallsTheEndpointThatFeedsThePickers,
-  anEmptyPickerRefusesInPlainWordsInsteadOfAsking,
 };
 
 // ---- Trading tab ------------------------------------------------------------
@@ -436,53 +405,17 @@ function theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes() {
     'View tree is not disabled while the campaign switch is in flight');
 }
 
-// F1 must be reachable on the scan target whatever Boards has selected.
-//
-// The list used to open with a single context-dependent entry that meant F1
-// only when no row was selected, and nothing in the tab clears a run's stored
-// selection — so with a row selected there was NO path to the live pilot, and
-// tuning its protective stop could not be done from the screen at all.
-// THE OWNER'S OWN SETUPS ARE ON THE SCAN TARGET LIST.
-//
-// This test used to require a literal <option value="F1">, because a
-// context-dependent entry had once made the live config unreachable from the
-// screen. The lesson survives; the subject changed. There is no built-in
-// config any more, and requiring one would now pin the exact defect the owner
-// named: "hardcoded logic and one-off processing that locks me out of my own
-// software". What must hold is the general form — whatever is actually running
-// is reachable, by its own identity, and named the way the owner named it.
-function theOwnersSetupsAreAlwaysOnTheScanTargetList() {
-  assert(!/<option value="F1"/.test(CX),
-    'a hardcoded F1 option is back on the scan target list — the list must come from the registry');
-  assert(/const profiles = books\.filter\(\(b\) => b\.kind === 'profile'\)/.test(CX),
-    "the picker no longer separates the owner's setups from the pre-registered books");
-  assert(/profiles\.map\(\(b\) => `<option/.test(CX),
-    "the owner's setups are not rendered as options, so their own setups cannot be aimed at");
-  assert(/esc\(b\.name \|\| b\.id\)/.test(CX),
-    'an option shows a generated id rather than the name the owner gave it');
-  // the selected-row option may only exist when a row IS selected
-  assert(/\$\{sel \? `<option value="sel"/.test(CX),
-    'the selected-row option is not gated on a row actually being selected');
-}
-
-// The launcher and the sentence describing it must resolve the SAME target,
-// and a setup must be addressed as a setup so the server uses ITS training
-// cutoff rather than a pre-registered record's frozen dates.
+// THE SCANS AIM AT A STAGE 4 RECORD SET (3.97.0): the older engine's targets —
+// a saved run's row and the live setups, which the scans replayed with the
+// older committee — went with that engine. The launcher must address exactly
+// what the picker shows, and refuse in words when the picker holds nothing.
 function theScanTargetProseMatchesWhatTheLauncherWillUse() {
   assert(/const tgt = /.test(CX), 'the resolved scan target is gone');
-  assert(/const chosen = books\.find\(/.test(CX),
-    'the launcher no longer resolves the picked target against the list it rendered');
-  // Every target is one of the owner's own profiles now: the third kind — a
-  // trade set-up written into the product, carrying its own frozen cutoff dates
-  // — was removed on 2026-08-28 by owner order, so there is nothing left to
-  // address by any other name.
-  assert(/chosen \? \{ setupId: chosen\.id \}/.test(CX),
-    'a setup is not addressed as setupId, so the scan would run against something the owner did not make');
-  assert(!/bookId: chosen\.id/.test(CX),
-    'the screen can address a built-in set-up again — nothing is ever baked into the code');
-  assert(/const target = tgt === 'sel'/.test(CX),
-    'the prose no longer derives from the resolved target, so it can describe a different '
-    + 'target from the one the scan will actually use');
+  assert(/const scanBody = isSet \? \{ setId: chosen\.id, pick: tnPickVal, windows: tnWins \} : null/.test(CX),
+    'a scan is not addressed by its record set, survivor and windows, so it would run against something the owner did not pick');
+  for (const gone of ['setupId: chosen.id', 'bookId: chosen.id', "tgt === 'sel'", '<option value="F1"']) {
+    assert(!CX.includes(gone), `an older scan target is back on the screen: ${gone}`);
+  }
   assert(/known\.has\(savedTarget\) \? savedTarget : firstReal/.test(CX),
     'a stored preference pointing at something that no longer exists does not fall back to a real target');
   assert(/if \(!scanBody\) return noTarget\(\)/.test(CX),
@@ -491,7 +424,5 @@ function theScanTargetProseMatchesWhatTheLauncherWillUse() {
 
 module.exports.theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes
   = theCampaignPickReachesViewTreeBeforeTheRoundTripFinishes;
-module.exports.theOwnersSetupsAreAlwaysOnTheScanTargetList
-  = theOwnersSetupsAreAlwaysOnTheScanTargetList;
 module.exports.theScanTargetProseMatchesWhatTheLauncherWillUse
   = theScanTargetProseMatchesWhatTheLauncherWillUse;

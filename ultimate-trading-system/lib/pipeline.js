@@ -12,7 +12,6 @@ const { pnlAt, directionalCall } = require('./paper');
 //
 //   monthList / loadSymbol / loadSymbolAll   getting candle history onto disk
 //   MIN_CHUNKS                               the floor below which no run is honest
-//   deriveShift                              placing a null rotation in the cycle
 //   tuneTau                                  picking the directional threshold
 //                                            from a fixed, pre-registered menu
 //
@@ -332,14 +331,4 @@ function loadSymbolPinned(symbol, files, onProgress = () => {}) {
   return { rows, missing: [], pinned: true, cachedMonthCount: byMonth.size, quality: describeSeries(rows, monthCounts) };
 }
 
-// Map a fractional null-shift request (0..1) onto a pair's own cycle of n
-// weeks, keeping an 8-week buffer away from both ends. Distinct fractions
-// can collapse to the same integer once n < requested shifts — callers
-// group null samples by the DERIVED shift so duplicates never double-count.
-function deriveShift(n, frac) {
-  const usable = n - 16;
-  if (usable < 4) throw new Error(`too few chunks (${n}) for null-shift calibration`);
-  return Math.min(n - 1, Math.max(1, 8 + Math.round(frac * usable)));
-}
-
-module.exports = { monthList, deriveShift, loadSymbol, loadSymbolAll, loadSymbolPinned, MIN_CHUNKS, tuneTau, describeSeries, seriesIsClean };
+module.exports = { monthList, loadSymbol, loadSymbolAll, loadSymbolPinned, MIN_CHUNKS, tuneTau, describeSeries, seriesIsClean };

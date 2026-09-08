@@ -96,9 +96,10 @@ module.exports = {
     assert.ok(live.includes('const stream = C.streamOf(decision, agr, momentProbs);'), 'and reads the stream');
     assert.ok(live.includes('const call = stream[stream.length - 1] || 0;'), 'at its last moment, the target, so +hold reads the moments before it and never after');
     assert.ok(!/ownHistoryBar|voiceGroups/.test(live), 'and keeps no copy of the arithmetic');
-    // the live signal path decides by the engine the configuration speaks for
+    // the live signal path decides through the stage path and nothing else (3.97.0: the older engine's branch is gone)
     const sig = fs.readFileSync(path.join(ROOT, 'lib', 'live', 'signal.js'), 'utf8');
-    assert.ok(sig.includes("if (cfg.engine === 'stages') {\n    return require('./stagesignal').stageCommitteeCallFor("), 'a stage-engine configuration is decided by the stage path');
+    assert.ok(sig.includes("return require('./stagesignal').stageCommitteeCallFor(cfg, target, trainChunks, chunks, maps, geo, views, freezeMs, feePerLeg);"), 'a configuration is decided by the stage path');
+    assert.ok(!/committeeCallFor\(cfg, target, trainChunks, maps, geo, views, bandPct/.test(sig), 'the older engine\'s call is back in the live path');
     assert.strictEqual((sig.match(/await decideFor\(/g) || []).length, 3, 'the live decision, the recompute and the preview all go through the one door');
   },
 };

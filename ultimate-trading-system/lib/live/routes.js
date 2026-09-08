@@ -218,8 +218,8 @@ function installLiveRoutes(app, { csrfGuard }) {
     catch (e) { res.status(500).json({ error: e.message }); }
   });
 
-  // Greenlight the SELECTED row of a saved bracket-lab run. why is required —
-  // the decision record is the point.
+  // Greenlight one survivor of a Stage 4 record set. why is required — the
+  // decision record is the point.
   app.post('/api/live/greenlight', csrfGuard, async (req, res) => {
     try {
       const b = req.body || {};
@@ -230,13 +230,7 @@ function installLiveRoutes(app, { csrfGuard }) {
         const rec = gl.greenlightFromStage4(src, { by: 'owner', why: b.why, name: b.name });
         return res.json({ ok: true, greenlight: rec });
       }
-      const doc = require('../batch').getBatch(String(b.runId || ''));
-      if (!doc) return res.status(404).json({ error: `no saved run ${b.runId}` });
-      // name is required: a config the owner cannot recognise on screen is not
-      // usable, and the generated id is a key rather than a label.
-      const rec = gl.greenlightFromRun(doc, String(b.target || 'declared'),
-        { by: 'owner', why: b.why, name: b.name });
-      res.json({ ok: true, greenlight: rec });
+      return res.status(400).json({ error: "a greenlight is minted from a Stage 4 record set — send source: 'stage4' with the set and the pick" });
     } catch (e) { res.status(400).json({ error: e.message }); }
   });
 

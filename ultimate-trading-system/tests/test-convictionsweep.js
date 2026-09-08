@@ -1,30 +1,10 @@
 // Conviction sizing (quorum-agreement clip ladder): the pure math the bracket-lab
 // tool rests on. Synthetic entries, no candles, no network.
 const { assert } = require('./helpers');
-const { agreementEntries, evalConviction, MIN_BUCKET_N } = require('../lib/convictionsweep');
+const { evalConviction, MIN_BUCKET_N } = require('../lib/convictionsweep');
 
 const HOUR_MS = 3600 * 1000;
 
-module.exports.agreementCountsTheWinningSideOnly = function () {
-  // 3 chunks, 4 members. Chunk 0: call +1 with members [1,1,-1,0] -> agreement 2
-  // (the DOWN vote and the aside are not agreement). Chunk 1: call -1 with
-  // [-1,-1,-1,-1] -> 4. Chunk 2: call 0 -> no entry at all.
-  const chunks = [{ startTs: 0 }, { startTs: 1000 * 3600 }, { startTs: 2000 * 3600 }];
-  const calls = [1, -1, 0];
-  const memberCalls = [
-    [1, -1, 0],
-    [1, -1, 1],
-    [-1, -1, 0],
-    [0, -1, 0],
-  ];
-  const out = agreementEntries(chunks, calls, memberCalls, { entryOffsetH: 1 });
-  assert.strictEqual(out.length, 2, 'a FLAT call produces no entry');
-  assert.strictEqual(out[0].agree, 2, 'opposition and asides are not agreement');
-  assert.strictEqual(out[0].side, 'LONG');
-  assert.strictEqual(out[0].entryTs, HOUR_MS, 'entry offset applied');
-  assert.strictEqual(out[1].agree, 4, 'unanimous agreement counts all members');
-  assert.strictEqual(out[1].side, 'SHORT');
-};
 
 function mk(entries) { // [{agree, netPct, entryTs?}]
   return entries.map((e, i) => ({ entryTs: e.entryTs ?? i * 24 * HOUR_MS, side: 'LONG', agree: e.agree, netPct: e.netPct }));

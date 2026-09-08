@@ -1,5 +1,14 @@
 # Construct, start to finish — the recommended workflow
 
+> **OUT OF DATE — 3.97.0.** Every section below describes the sweep path that
+> was retired whole in release 3.97.0: the bracket-lab sweep and its saved
+> runs, the Boards drills, the planted check, History Tuning and the age-dial
+> exams, the "Compare two runs" panel and the setup targets on Tune, the
+> row-minting door on Greenlight. None of those controls is on any screen now.
+> The three-stage path that replaced them is recorded in STAGES-DECISIONS.md
+> and explained on each screen's own help; this document awaits a rewrite
+> against the sections that render now.
+
 Rewritten 2026-08-21 against the sections that actually render (THIS-RELEASE
 point 16). The previous version walked through the Bracket lab, a screen that no
 longer exists.

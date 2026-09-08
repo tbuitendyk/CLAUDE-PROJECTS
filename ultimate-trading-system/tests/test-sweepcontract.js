@@ -1,5 +1,5 @@
 // The Constructing tab's Sweep form posts option values STRAIGHT into
-// /api/bracketlab. When a value the form can send is not a value the backend
+// /api/stage1. When a value the form can send is not a value the backend
 // accepts, nothing catches it: the server throws, the page alerts, and the tab
 // simply never launches. That is exactly how #swLayout shipped with the display
 // strings ("70/15/15") in its value attributes instead of the backend tokens
@@ -34,7 +34,6 @@ const { GEOMETRIES } = require('../lib/dataset');
 
 const ROOT = path.join(__dirname, '..');
 const SWEEP = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-const BATCH = fs.readFileSync(path.join(ROOT, 'lib', 'batch.js'), 'utf8');
 
 // The values a named dropdown will offer. The page names which list it wants
 // (`vocabOptions('tHours', ...)`), and the list itself comes from the system —
@@ -58,12 +57,10 @@ function optionValues(src, selectId) {
   return [...block.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1]);
 }
 
-// The backend's window-layout allow-list, read from lib/batch.js itself so this
-// test tracks the real validator instead of a copy of it.
+// The window layouts a stage 1 launch accepts, read from the vocabulary the
+// launch itself validates against (lib/vocabulary.js), never a copy.
 function backendLayouts() {
-  const m = BATCH.match(/if \(!\[([^\]]*)\]\.includes\(v\)\) \{\s*\n\s*throw new Error\(`unknown window layout/);
-  assert.ok(m, 'the window-layout validator must still be findable in lib/batch.js');
-  return m[1].split(',').map((s) => s.trim().replace(/^'|'$/g, ''));
+  return VOCAB.windowLayout.map((o) => o.value);
 }
 
 module.exports = {
@@ -110,13 +107,10 @@ module.exports = {
     }
   },
 
-  // The response contract is the same class as the request contract, and it is
-  // NOT uniform across the launchers: historytuning answers { batchId }, httwo
-  // answers { started, id, … }, and the three stages answer { id, name, units }
-  // (stage 3 adds settings). Reading the wrong key renders a blank forever, and
-  // "fix them all to the same word" would break the ones that were right. Each
-  // key is read from the backend source, so the check tracks the contract
-  // instead of a memory of it.
+  // The response contract is the same class as the request contract: the three
+  // stages answer { id, name, units } (stage 3 adds settings), and reading the
+  // wrong key renders a blank forever. Each key is read from the backend
+  // source, so the check tracks the contract instead of a memory of it.
   //
   // RE-AIMED 2026-08-28. The bracketlab row named #swMsg, which was on the
   // deleted Sweep. The three stage launchers replace it, and they are held to
@@ -124,20 +118,6 @@ module.exports = {
   // be a key their own backend function returns.
   everyLauncherReadsTheRunIdKeyItsBackendReturns() {
     const STAGES = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
-    const LAUNCHERS = [
-      { msg: 'htMsg',  src: BATCH,  anchor: 'function htLaunch',  re: /return \{\s*(\w+):\s*doc\.id\b/ },
-      { msg: 'ht2Msg', src: BATCH,  anchor: 'function ht2Launch', re: /return \{[^}]*?\b(\w+):\s*doc\.id\b/ },
-    ];
-    for (const l of LAUNCHERS) {
-      const at = l.src.indexOf(l.anchor);
-      assert.ok(at >= 0, `${l.anchor} must still exist to read the run-id contract from`);
-      const backend = l.src.slice(at).match(l.re);
-      assert.ok(backend, `${l.anchor} must still return the run id in an object literal`);
-      const ui = SWEEP.match(new RegExp(`#${l.msg}'\\)\\.textContent = out \\? \`launched \\$\\{out\\.(\\w+)`));
-      assert.ok(ui, `#${l.msg} must still report the run id on launch`);
-      assert.strictEqual(ui[1], backend[1],
-        `#${l.msg} reads out.${ui[1]} but ${l.anchor} returns { ${backend[1]} } — the run id renders blank`);
-    }
     // THE THREE STAGES. Every out.<key> the message reads must be returned by
     // the function behind that stage's route, read from lib/stages.js rather
     // than restated here.
@@ -259,12 +239,10 @@ module.exports = {
   // are checked against a backend allow-list, and fails on an unlisted select so
   // a NEW dropdown cannot quietly escape the check.
   everySelectCheckedByTheBackendOffersOnlyValuesItAccepts() {
-    const { HALF_LIVES } = require('../lib/httwo');
     const { GEOMETRIES } = require('../lib/dataset');
     const CHECKED = [
-      { id: 'swLayout', allowed: backendLayouts(), why: 'lib/batch.js window-layout allow-list' },
+      { id: 'swLayout', allowed: backendLayouts(), why: 'lib/vocabulary.js windowLayout' },
       { id: 'swGeom', allowed: Object.keys(GEOMETRIES), why: 'lib/dataset.js GEOMETRIES' },
-      { id: 'ht2hl', allowed: Object.keys(HALF_LIVES), why: 'lib/httwo.js HALF_LIVES' },
       // The every-coin table's order is applied on the other side, so a value
       // this select offers that the other side does not accept would silently
       // fall back to the default order — the page would CLAIM one ordering and
@@ -377,32 +355,6 @@ module.exports = {
       assert.ok(/min="0"/.test(tagOf(b.id)), `#${b.id} accepts a negative count`);
     }
 
-    // DRIVEN, NOT GREPPED. The first version of this checked the source for
-    // `promoteK: Math.min` and `detailK: <number>`, which are the shapes the
-    // OLD code used. Restoring either clamp in the shape the new code uses
-    // passed it — a test pinned to yesterday's spelling of the fault. So it
-    // runs the real mapping and reads the answer.
-    const batch = require('../lib/batch');
-    const base = { universe: ['LTCUSDT'], sizes: { singles: true }, allLoaded: true, windowLayout: 'split70' };
-    const plan = (o) => batch.planFor({ ...base, ...o }).p;
-
-    assert.strictEqual(plan({ promoteK: 200, detailK: 200 }).promoteK, 200,
-      'promote top K came back as something other than what was asked for — a number quietly replaced by a '
-      + 'different number is worse than a refusal, because the owner goes on believing they set it');
-    assert.strictEqual(plan({ detailK: 500 }).detailK, 500,
-      'the board size is not the owner\'s — it decides how many rows they ever see');
-    assert.strictEqual(plan({}).detailK, 50, 'the default board is still 50, so nothing moves for a run that says nothing');
-
-    // The pair that cannot both be true is refused, naming both boxes.
-    let err = null;
-    try { plan({ promoteK: 200, detailK: 50 }); } catch (e) { err = e; }
-    assert.ok(err, 'promoting more rows than the board keeps was accepted — those rows do not exist to promote');
-    assert.ok(/promote top K is 200/.test(err.message) && /keeps 50 rows/.test(err.message),
-      `the refusal must name BOTH numbers so it is obvious which to move; got: ${err.message}`);
-    assert.ok(/board rows/.test(err.message) && /promote top K/.test(err.message),
-      'the refusal must name the two boxes on the screen, not the fields in the code');
-    assert.ok(/Nothing has been changed for you/.test(err.message),
-      'the refusal does not say that nothing was altered on the owner\'s behalf');
     // THE SCREEN HALF WENT WITH ITS SCREEN, 2026-08-28: the old Sweep said the
     // conflict while it was being typed rather than only after Start sweep.
     // Both boxes were on that screen, so there is no pair left to conflict.

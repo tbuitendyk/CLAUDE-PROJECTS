@@ -46,9 +46,9 @@ module.exports = {
     assert.strictEqual(out[2].value, 3);
   },
   async workerNeverReachesStatefulModules() {
-    // The worker's transitive requires must exclude batch.js, whose top-level
-    // code rewrites any document still marked 'running' to 'interrupted' — a
-    // worker importing it would corrupt the very sweep it is executing.
+    // The worker's transitive requires must exclude the orchestrator
+    // (lib/stages.js, whose top-level code marks and repairs the record sets on
+    // disk) — a worker importing it would corrupt the very run it is executing.
     //
     // The list used to name three more: the frozen paper-book modules. All
     // three were deleted with the screens they served, so three of the four
@@ -70,7 +70,7 @@ module.exports = {
       for (const m of src.matchAll(/require\('\.\/([\w-]+)'\)/g)) walk(`${m[1]}.js`);
     };
     walk('worker.js');
-    const FORBIDDEN = ['batch.js', 'campaign.js', 'manifest.js', 'jobs.js', 'planted.js', 'guard.js'];
+    const FORBIDDEN = ['stages.js', 'campaign.js', 'manifest.js', 'jobs.js', 'stagegate.js'];
     for (const forbidden of FORBIDDEN) {
       // A name that is not in the tree cannot fail, and a guard that cannot
       // fail is not a guard.
@@ -132,30 +132,6 @@ module.exports = {
   // WHAT EVERY TASK SHARES IS SENT ONCE, NOT ONCE PER UNIT (owner order,
   // 2026-08-22).
   //
-  // Every unit's payload carried the whole parameter object. On the owner's
-  // wide sweep that object holds 1.4 MB of declared configs, and postMessage
-  // copies its payload — so one payload measured 1,305,292 bytes and the run
-  // would have copied it 50,184 times: about 65 GB across the thread boundary,
-  // on the main thread, doing no work. The same payload naming the shared part
-  // instead measures 212 bytes.
-  //
-  // Watched failing 2026-08-22: putting `params: p` back on the sweep payloads
-  // fails theSweepPayloadCarriesOnlyWhatVaries; dropping the refusal in
-  // worker.js or the inline path fails aTaskRefusesRatherThanScoreWithoutIt.
-  async theSweepPayloadCarriesOnlyWhatVaries() {
-    const batch = fs.readFileSync(path.join(__dirname, '..', 'lib', 'batch.js'), 'utf8');
-    const at = batch.indexOf('const slimPayloads = slimPending.map');
-    assert.ok(at > 0, 'the first pass must still build its payloads');
-    const slim = batch.slice(at, batch.indexOf(';', at));
-    assert.ok(/sharedKey: 'sweepParams'/.test(slim), 'the first pass must name the shared parameters');
-    assert.ok(!/params: p/.test(slim), 'and must not carry them per unit — that is the copying this removed');
-    const pat = batch.indexOf('const promPayloads = promPending.map');
-    const prom = batch.slice(pat, batch.indexOf('}));', pat));
-    assert.ok(/sharedKey: 'sweepParams'/.test(prom), 'the second pass must do the same');
-    assert.ok(!/params: p/.test(prom), 'and must not carry them per unit either');
-    assert.ok(/pool\.setShared\('sweepParams'/.test(batch), 'and the run must set them once');
-  },
-
   // The one outcome worse than a failed unit is a unit scored with the wrong
   // settings, silently. Both paths refuse instead.
   async aTaskRefusesRatherThanScoreWithoutIt() {

@@ -66,14 +66,17 @@ lib/dataset.js       chunking, gap fill, scoring, feature building
 lib/features.js      the engineered feature set (pure JS)
 lib/logreg.js        softmax regression, z-scoring, lambda ladder (zero imports)
 lib/bracket.js       the execution simulator
-lib/bracketwork.js   the sweep's unit of work, identical on main or worker
-lib/planted.js       the planted-pattern calibration check
+lib/bracketwork.js   labelling, the committee's readings and the agreement
+                     call, shared by the stage engine and the live path
+lib/stages.js        the three-stage engine: its record sets and launches, the
+                     Funnel, Verify, History and the Greenlight source
+lib/stagework.js     the stage engine's unit of work, identical on main or worker
+lib/stagegate.js     the stage-engine check; lib/fabricated.js builds the two
+                     fabricated coins it runs on
+lib/declared.js      a declared set of settings, expanded for a stage 1 launch
 lib/paper.js         paper-trade arithmetic and the declared friction rates
-lib/campaign.js      the campaign name every run carries, grouping one cycle
-lib/stats.js         shared arithmetic; lib/rng.js is seeded randomness
-lib/batch.js         saved run records and the run launchers
-lib/historytuning.js history tuning; lib/httwo.js is the age-dial version
-lib/walkforward.js   walk-forward evaluation
+lib/campaign.js      the campaign name every record set carries, grouping one cycle
+lib/rng.js           seeded randomness
 
 lib/live/            the trading side: setups, greenlights, signal, channels,
                      catalog, execution targets, mirror, views, routes
@@ -81,7 +84,6 @@ lib/live/            the trading side: setups, greenlights, signal, channels,
 public/              setup.html, construct.html/.js, trade.html
                      (each page carries its own styling; light and dark aware)
 tests/               node tests/run.js
-tools/               calibration checks and one-off registration scripts
 deploy/              install.sh, systemd unit, env.example (PORT=8094)
 ```
 

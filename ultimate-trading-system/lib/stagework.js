@@ -36,7 +36,17 @@ const { trainBoost, predictBoost } = require('./boost');
 const { NOTIONAL, feeRate } = require('./paper');
 const { tuneTau } = require('./pipeline');
 const { directionalCall } = require('./paper');
-const { nullRng } = require('./walkforward');
+const { mulberry32 } = require('./rng');
+// Deterministic in (seed, unit, fold, member, slice): reruns are byte-identical,
+// and different seeds give independent draws. The engine's own rng, kept here
+// since the walk-forward module it came from was retired with the older sweep
+// path (3.97.0).
+function nullRng(seed, unitKey, foldIdx, memberIdx, slice) {
+  let h = (Number(seed) >>> 0) || 1;
+  const s = `${unitKey}|${foldIdx}|${memberIdx}|${slice}`;
+  for (let i = 0; i < s.length; i++) h = Math.imul(h ^ s.charCodeAt(i), 2654435761) >>> 0;
+  return mulberry32(h);
+}
 
 // Sureness spreads are stored as [down, nowhere, up] arrays, 4 decimal
 // places — enough that argmax and every threshold on the tau menu read the
@@ -420,7 +430,7 @@ const viewsFor = (combo, geo) => bracketLib.comboViews(combo.size, geo.featureHo
 // Every number simCell hands back, minus the two the record already stores.
 // A window's money is unreadable without the count of periods behind it and
 // without how much of it rests on a within-bar ordering nobody can know
-// (lib/batch.js, on cellAmbiguous: "Meaningless to report money without it").
+// (the older runner's note on cellAmbiguous: "Meaningless to report money without it").
 function richOf(r) {
   if (!r) return null;
   return {

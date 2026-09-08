@@ -70,15 +70,6 @@ function between(src, from, to, label) {
 
 const PAIRS = [
   {
-    label: 'History Tuning verdict',
-    reader: () => between(CX, 'api/historytuning/', '</p>`;', 'HT verdict reader'),
-    varName: 'v',
-    writer: () => between(read('server.js'), 'holdPassed, drawCount', '});', 'HT verdict route')
-      + between(read('server.js'), 'res.json({\n      winner: winKey', '});', 'HT verdict route head'),
-    // `error` is the catch branch's own shape, not part of the success reply
-    allowExtra: ['error'],
-  },
-  {
     label: 'data fingerprint',
     reader: () => between(CX, '<b>Data fingerprint:</b>', '</p>`', 'fingerprint reader'),
     varName: 'dm',
@@ -87,9 +78,7 @@ const PAIRS = [
     allowExtra: ['error'],
   },
   // REMOVED 2026-08-28 with the screen it read: the inspect panel was on the
-  // deleted Boards, and nothing on the surviving pair reads lib/inspect.js. The
-  // pairing cannot be re-aimed at a reader that does not exist — if an inspect
-  // panel comes back, this pair comes back with it.
+  // deleted Boards, and its module went with the older sweep path (3.97.0).
   // RE-AIMED 2026-08-28. The run-size line moved to the surviving Boards' record
   // set head, where it reads a STAGE SET's plan rather than a batch run's — so
   // the writer it is paired against moved with it, to lib/stages.js.
@@ -136,18 +125,8 @@ function theFingerprintReadsTheThreeNamesTheManifestActuallyWrites() {
   }
 }
 
-// The verdict needs BOTH declared rules, and "no draws yet" is not a failure.
-function theHistoryTuningBadgeNeedsBothRulesAndHasAPendingState() {
-  const src = between(CX, 'api/historytuning/', '</p>`;', 'HT verdict reader');
-  assert(/v\.holdPassed\s*&&\s*v\.nullPassed/.test(src),
-    'the badge must require BOTH the hold rule and the null rule — the sentence already says so');
-  assert(/PENDING/.test(src),
-    'with no null draws yet there is no claim to make; calling that NO retires a candidate on a measurement that has not happened');
-  assert(!/v\.passed\b/.test(src), 'v.passed is back — the endpoint has never returned it');
-}
 
 module.exports = {
   everyFieldAScreenReadsIsAFieldItsProducerWrites,
   theFingerprintReadsTheThreeNamesTheManifestActuallyWrites,
-  theHistoryTuningBadgeNeedsBothRulesAndHasAPendingState,
 };

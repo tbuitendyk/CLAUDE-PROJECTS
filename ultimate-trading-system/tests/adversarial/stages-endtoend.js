@@ -25,7 +25,7 @@ const assert = require('assert');
 const ROOT = path.join(__dirname, '..', '..');
 const CACHE = path.join(ROOT, 'data', 'cache');
 const SETS_DIR = path.join(ROOT, 'data', 'stagesets');
-const { generateFabricated } = require('../../lib/planted');
+const { generateFabricated } = require('../../lib/fabricated');
 const stages = require('../../lib/stages');
 const rowstore = require('../../lib/rowstore');
 
@@ -73,8 +73,7 @@ async function waitDone(id, label) {
   generateFabricated(SPAN, A, 424241, 0);   // plant on from day 0
   generateFabricated(SPAN, B, 424242, 1);   // rule never on — a fair coin
 
-  // daily-1d, the plant's own shape (lib/planted.js gateParams uses the
-  // same): the plant is next-day-follows-today, and a four-day outcome
+  // daily-1d, the plant's own shape: the plant is next-day-follows-today, and a four-day outcome
   // window straddles two half-independent plant days — members flatten to
   // the prior, every deal ties the real arm, and strict-beat honestly reads
   // "nothing here" for both coins. The exam must give the instrument a

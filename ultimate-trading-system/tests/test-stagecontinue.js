@@ -28,7 +28,7 @@ const { spawn } = require('child_process');
 const { assert } = require('./helpers');
 const stages = require('../lib/stages');
 const rowstore = require('../lib/rowstore');
-const { generateFabricated } = require('../lib/planted');
+const { generateFabricated } = require('../lib/fabricated');
 const { MANIFEST_DIR } = require('../lib/manifest');
 
 const ROOT = path.join(__dirname, '..');

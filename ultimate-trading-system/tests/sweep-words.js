@@ -340,7 +340,10 @@ function dataValueWords(body) {
   const out = new Set();
   for (const v of bw.slimViewsFor(1)) out.add(v);
   for (const v of bw.slimViewsFor(2)) out.add(v);
-  for (const spec of bw.specsFor(1, 'promoted')) out.add(spec.model);
+  // the two ways of working out a forecast, read off the stage engine's own
+  // training lines (3.97.0: the older engine's roster went with that engine)
+  const work = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+  for (const m of work.matchAll(/\.map\(\(view\) => \(\{ model: '(\w+)', view \}\)\)/g)) out.add(m[1]);
   return [...out];
 }
 

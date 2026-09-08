@@ -1149,3 +1149,46 @@ carried out 2026-08-28 under its own GO — decision 50.
     hover text and in the panel's own paragraphs; Verify's opening section
     says where the checks went. Second digit.
 
+88. **The older sweep path is retired whole** (3.97.0, owner order 2026-09-08:
+    "retire the older path whole GO NOW!", after "are these old things
+    compatible with the new design ... if not, why did you leave them lying
+    around on the screen"). Everything that ran the bracket-lab sweep or read
+    its runs goes in one cut: sixteen modules (the batch runner, replication
+    and its worker, the recovered choices and its worker, History Tuning, the
+    age dial, compare, inspect, verdict, stats, metrics, walk-forward, the
+    planted check, the stop sweep, the load guard), thirty routes, the two
+    History panels and "Finished tuning runs", Tune's "Compare two runs" panel
+    and its saved-run and setup targets, Greenlight's older row-minting door,
+    Data's fabricated-pair rows, Verify's planted footing line, the live
+    path's older-engine branches (the integer quorum, the committee call, the
+    roster check, the slim-or-promoted stage), their help entries, twenty-four
+    test files and thirty-one guards. What the older path owned that the stage
+    engine still needs moves out first, unchanged: the declared-set expansion
+    to lib/declared.js, the fabricated coins to lib/fabricated.js, the default
+    pairs to lib/dataset.js, the box reading to lib/estimate.js (all that is
+    left of it), the null seed to lib/stagework.js. The planted check goes
+    with the path it certified: the release's one check is the stage-engine
+    check, on Setup under Version, and the marker at the top of every
+    Construct screen reads "stage-engine check:". The protective-stop and
+    conviction scans keep only their Stage 4 capture target, because the
+    other targets replayed trades through the older committee. A
+    configuration is always a stage-engine one, so the shared vocabulary
+    refuses any other shape. Nothing on disk is deleted: the box's older-path
+    runs (the planted-check sweeps and their rows, the gate records, the
+    models folder, the two fabricated coins' cache files, the run-rate file)
+    are reported for the owner's decision, never a session's.
+
+    Recorded with it. The worker's forbidden-require list names the surviving
+    orchestrator (lib/stages.js and lib/stagegate.js) in place of the retired
+    one. The label rotation the older null arm used (rotateLabels and
+    windowShift in lib/bracketwork.js, deriveShift in lib/pipeline.js) had no
+    reader left and went with it. The guard on the two-engine dispatch in the
+    live path went with the dispatch; the stage engine's own guard beside it
+    stays, and the four-readings guard now names the stage test that counts
+    them. The word lists cannot be regenerated until the box serves this
+    release: the generator evaluates the served vocabulary, and the served one
+    requires a module this tree no longer has, so the five word-list checks
+    refuse until the deploy and the served record after it clears them — that
+    refusal is the list's own rule working. WORKFLOW.md described the retired
+    path throughout and now says so at its top; its rewrite is parked for the
+    owner. Second digit.

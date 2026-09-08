@@ -1,6 +1,5 @@
 const { assert, makeRng } = require('./helpers');
 const { trainBoost, predictBoost, accuracyBoost, importanceTable } = require('../lib/boost');
-const { summarize } = require('../lib/batch');
 
 // Interaction rule that a LINEAR model cannot represent: the label depends
 // on the sign agreement of x0 and x1 (XOR-flavored). Depth-2 trees can.
@@ -95,20 +94,5 @@ module.exports = {
     // weighted priors shift toward the up-weighted classes vs the plain fit
     const plain = await trainBoost(X, y, { rounds: 1, minLeaf: 2 });
     assert.ok(weighted.priors[1] < plain.priors[1], 'dormant prior must shrink under balancing');
-  },
-  async batchSummarizeRanksByEdge() {
-    const mk = (trade, model, edge, status = 'done') => ({
-      trade,
-      compare: 'BTCUSDT',
-      model,
-      status,
-      error: status === 'error' ? 'boom' : null,
-      metrics: status === 'done' ? { edge, balancedEdge: edge / 2 } : null,
-    });
-    const s = summarize([mk('AAAUSDT', 'logreg', -0.05), mk('BBBUSDT', 'boost', 0.08), mk('CCCUSDT', 'logreg', 0.02), mk('DDDUSDT', 'boost', 0, 'error')]);
-    assert.deepStrictEqual(s.ranked.map((r) => r.trade), ['BBBUSDT', 'CCCUSDT', 'AAAUSDT']);
-    assert.strictEqual(s.positiveEdge, 2);
-    assert.strictEqual(s.failed.length, 1);
-    assert.strictEqual(s.total, 4);
   },
 };

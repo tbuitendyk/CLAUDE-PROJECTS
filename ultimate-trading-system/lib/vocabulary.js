@@ -31,16 +31,13 @@ const asChoices = (values, label = (v) => String(v)) => values.map((v) => ({ val
 
 function vocabulary() {
   const mult = (v) => `${v}×`;
-  const httwoHalfLives = (() => {
-    try { return Object.keys(require('./httwo').HALF_LIVES); } catch (_) { return []; }
-  })();
 
   return {
     // The default pairs, served so a screen can compare a blank universe box
     // against what a launch would actually resolve it to — the same list the
-    // launches read (lib/batch.js DEFAULT_PAIRS), never a copy. No dropdown
+    // launches read (lib/dataset.js DEFAULT_PAIRS), never a copy. No dropdown
     // is drawn from it; the Sweep provenance check reads the values.
-    defaultPairs: require('./batch').DEFAULT_PAIRS.map((p) => ({ value: p, label: p })),
+    defaultPairs: require('./dataset').DEFAULT_PAIRS.map((p) => ({ value: p, label: p })),
     // What the engine can carry out. Read from the code, complete.
     // The label is DERIVED from the key rather than kept in a second list, so a
     // geometry added to lib/dataset.js reads properly on screen without anybody
@@ -68,7 +65,6 @@ function vocabulary() {
     // so is not in the engine's ladder. It is a real choice and belongs here.
     trailMult: [{ value: '', label: 'static' }, ...asChoices(bracket.TRAIL_MULTS, mult)],
     armMult: asChoices(bracket.ARM_MULTS, mult),
-    halfLife: asChoices(httwoHalfLives),
     // Committee quorums are a count out of the committee's size, so they are
     // derived rather than listed — a committee of another size gets the right
     // list without anybody adding one.
@@ -124,15 +120,6 @@ function vocabulary() {
     stage3Pick: require('./stages').PICK_CHOICES.map((value) => ({ value, label: require('./stages').PICK_LABELS[value] })),
     funnelTopColumn: Object.entries(require('./funnelset').TOP_COLUMNS)
       .map(([value, label]) => ({ value, label })),
-    // Stage 2's carry orderings — read from the stage engine, complete.
-    greenlightAnchor: [
-      { value: 'declared', label: 'declared cell' },
-      { value: 'best', label: 'best cell' },
-      // 'region', not 'widest'. I wrote the value from the label the first time
-      // instead of reading it out of the page, and an existing test caught it —
-      // which is the whole reason a name is read rather than inferred.
-      { value: 'region', label: 'widest region' },
-    ],
   };
 }
 

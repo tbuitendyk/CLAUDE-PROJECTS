@@ -18,9 +18,8 @@ const path = require('path');
 const rowstore = require('./rowstore');
 const { createPool } = require('./pool');
 const { stampManifest, manifestDiff, pinnedFilesOf, pinnedIntact } = require('./manifest');
-const { GEOMETRIES } = require('./dataset');
+const { GEOMETRIES, DEFAULT_PAIRS } = require('./dataset');
 const bracketLib = require('./bracket');
-const batch = require('./batch');
 const agreement = require('./agreement');
 // One training per reading — read from the reading list itself, so adding a
 // reading can never leave a count behind that was typed in by hand.
@@ -297,13 +296,12 @@ function stageRunning() { return activeSet ? activeSet.id : null; }
 // can ask (owner order, 2026-08-29: "fix both guards so neither can fire during
 // the other").
 //
-// The guards were asymmetric and only one direction held. A stage launch asked
-// batch.batchRunning() and refused while a sweep was going; nothing asked the
-// other way, because a stage run is `activeSet` and not `activeBatch`. So the
-// planted check — which regenerates the fabricated pair's candles and then
-// fires a whole sweep — read the box as idle in the middle of a nine-hour stage
-// 3, and Start sweep would have done the same. Two worker pools against a
-// four-worker allowance, and cache writes underneath a job that is reading.
+// The guards were once asymmetric and only one direction held: a stage launch
+// refused while the older sweep engine was going, and nothing asked the other
+// way, so that engine's check read the box as idle in the middle of a nine-hour
+// stage 3 — two worker pools against a four-worker allowance, and cache writes
+// underneath a job that is reading. That engine is gone (3.97.0); this one
+// answer is what every heavy launch left on the box asks.
 //
 // Returns what is busy, in words fit to put in a refusal, or null.
 function stageBusy() {
@@ -321,10 +319,6 @@ function stageBusy() {
 function claimOrRefuse(params = {}) {
   // the stage-engine check's own launches carry exam: true; nothing else launches while it runs (3.87.0)
   if (examBusy() && !(params && params.exam)) throw new Error(`${examBusy()} is going right now — one heavy job at a time`);
-  if (batch.batchRunning()) {
-    throw new Error('a sweep is running on this box right now — a stage run would fight it for the same workers. '
-      + 'Wait for it or stop it first.');
-  }
   if (activeSet) throw new Error(`stage run ${activeSet.id} is going right now — one heavy job at a time`);
   if (tallyRun && !tallyRun.error) {
     throw new Error(`the tables of ${tallyRun.id} are totalling right now — one heavy job at a time. They appear on Boards when it lands.`);
@@ -396,7 +390,7 @@ function unitsFor(trade, sizes, geometries, compare = null) {
   // says so on its own label; the compare box reads it the same way, because a
   // coin typed into trade coins with nothing beside it is somebody asking for
   // that coin against everything, which is the whole reason this box exists.
-  const c = (compare && compare.length) ? compare : batch.DEFAULT_PAIRS;
+  const c = (compare && compare.length) ? compare : DEFAULT_PAIRS;
   // a coin is never read against itself, whichever list it came from
   const others = (a) => c.filter((x) => x !== a);
   if (sizes.singles) for (const a of u) combos.push({ trade: a, ctx1: null, ctx2: null, size: 1 });
@@ -569,7 +563,7 @@ function startStage1(params) {
   claimOrRefuse(params);
   const universe = Array.isArray(params.universe) && params.universe.length
     ? params.universe.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
-    : batch.DEFAULT_PAIRS;
+    : DEFAULT_PAIRS;
   // THE COINS EACH TRADED COIN IS READ AGAINST (3.75.0, owner order). Left
   // empty it is the traded coins themselves, which is what every run before
   // this did — so an old set relaunched from its own params comes out
@@ -583,10 +577,9 @@ function startStage1(params) {
   // since 2026-08-03; this one refuses them too, unless the exam is launching.
   {
     const G = require('./stagegate');
-    const Pl = require('./planted');
-    const reserved = [...universe, ...compare].find((s) => Pl.isPlanted(s) || G.isExamSymbol(s));
+    const reserved = [...universe, ...compare].find((s) => G.isExamSymbol(s));
     if (reserved && !params.exam) {
-      throw new Error(`${reserved} is a reserved fabricated coin — it never enters a real run (the planted check and the stage-engine check are how they are used)`);
+      throw new Error(`${reserved} is a reserved fabricated coin — it never enters a real run (the stage-engine check is how they are used)`);
     }
   }
   const sizes = {
@@ -634,7 +627,7 @@ function startStage1(params) {
   // WHAT THE RUN ACTUALLY READ, WRITTEN DOWN. A set that recorded an empty box
   // would depend for ever on what empty happened to mean the day it is read
   // back (RULE NINE: a record says what it is, in today's words).
-  const compareUsed = (compare.length ? compare : batch.DEFAULT_PAIRS)
+  const compareUsed = (compare.length ? compare : DEFAULT_PAIRS)
     .filter(() => sizes.doubles || sizes.triples);
   // A REFUSAL SAYS WHICH BOX IS WRONG AND BY HOW MUCH (owner, 2026-09-06:
   // "what's this nonsense?"). "the universe and sizes produced no units" is
@@ -642,7 +635,7 @@ function startStage1(params) {
   // about it. Every way of getting here is a coin count that cannot fill the
   // shape asked for, so the sentence says exactly that.
   if (!units.length) {
-    const reads = (compare.length ? compare : batch.DEFAULT_PAIRS);
+    const reads = (compare.length ? compare : DEFAULT_PAIRS);
     const need = sizes.triples ? 3 : sizes.doubles ? 2 : 1;
     const what = sizes.triples ? 'triples' : sizes.doubles ? 'doubles' : 'singles';
     // the coins that are actually AVAILABLE to read a traded coin against: a
@@ -1866,7 +1859,7 @@ function shapeCellsFor(params) {
   shapeCell.quorum = 1;
   const shapePermute = { ...(params.cellPermute || {}) };
   delete shapePermute.agree;
-  return batch.expandDeclared(shapeCell, shapePermute, grid);
+  return require('./declared').expandDeclared(shapeCell, shapePermute, grid);
 }
 // The three plain axes of a block: decision, band and 24/5.
 function blockAxesFor(params) {
@@ -4307,7 +4300,7 @@ function ensureTally(id) {
   }
   const doc = getSet(id);
   if (!doc || doc.stage !== 3 || (doc.status !== 'done' && doc.status !== 'incomplete')) return { none: true };
-  if (batch.batchRunning() || activeSet) {
+  if (activeSet) {
     return { waiting: 'a run is going — the tables total when the box is free' };
   }
   // over-budget tables refuse HERE too — an out-of-memory death cannot be
@@ -6042,13 +6035,7 @@ function verifyFooting(doc, join) {
   const parentRel = (doc.parent || {}).release || ((join.parent.params || {}).engineVersion) || null;
   const releases = { set: setRel, parent: parentRel, reader: ENGINE_VERSION };
   releases.sameFirstDigit = !!(setRel && parentRel) && firstDigit(setRel) === firstDigit(parentRel) && firstDigit(parentRel) === firstDigit(ENGINE_VERSION);
-  let gate = { state: 'NOT CHECKED', engineVersion: null };
-  try {
-    const g = require('./planted').gateStatus(ENGINE_VERSION);
-    gate = { state: g.running ? 'RUNNING' : (g.state || 'NOT CHECKED'), engineVersion: g.engineVersion || null };
-  } catch (_) { /* the gate's own reader says NOT CHECKED */ }
-  gate.certifies = 'certifies the old sweep pipeline';
-  // and the stage engine's own check (3.87.0): PASS belongs to the exact release
+  // the stage engine's own check (3.87.0): PASS belongs to the exact release
   const sg = require('./stagegate').status(ENGINE_VERSION, { running: examBusy() });
   const stageGate = { state: sg.state, release: sg.last ? sg.last.release : null, at: sg.last ? sg.last.at : null };
   const check = doc.check || {};
@@ -6070,13 +6057,12 @@ function verifyFooting(doc, join) {
     steps: (doc.steps || []).length, backSteps: (doc.backSteps || []).length,
     userRuleDiffers: doc.userRule ? S4.ruleSentence(S4.normaliseRule(doc.userRule)) !== S4.ruleSentence(join.rule) : null,
     releases,
-    gate,
     stageGate,
   };
 }
 const BLEND_REFUSAL = 'this set was cut on all units together; a verdict is read on one coin and shape — cut the rule on one unit on the Funnel and verify that set';
 let verifyRun = null;   // { id, token, result, error, promise }
-const verifyBusy = () => (batch.batchRunning() ? 'a sweep is running on this box' : stageBusy());
+const verifyBusy = () => stageBusy();
 async function funnelVerifyDry(id) {
   const doc = getSet(id);
   if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
@@ -6370,7 +6356,6 @@ function unreadRefusalOf(doc) {
   const parent = getSet((doc.parent || {}).id);
   if (!parent) return 'the stage 3 set this was cut from is gone, so its unread window cannot be priced';
   if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast the unread window';
-  if (batch.batchRunning()) return 'a sweep is running on this box — the grade waits for it';
   const busy = stageBusy();                // a stage run, the exam, a totalling, a rebuild, a ride, another grade
   if (busy) return `${busy} — the grade waits for the box to be free`;
   if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
@@ -6625,7 +6610,6 @@ function captureRefusalOf(doc) {
   if (!parent) return 'the stage 3 set this was cut from is gone, so its trades cannot be captured';
   if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast their training window';
   if (!(doc.survivors || []).length) return 'this set wrote down no settings, so there is nothing to capture';
-  if (batch.batchRunning()) return 'a sweep is running on this box — the capture waits for it';
   const busy = stageBusy();                // a stage run, the exam, a totalling, a rebuild, a ride, a grade, another capture
   if (busy) return `${busy} — the capture waits for the box to be free`;
   if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
@@ -6910,7 +6894,6 @@ function halfLifeRefusalOf(doc) {
     if (!sealed.sealed) return `the sealed window is not intact on this unit — ${sealed.why}`;
   }
   if (!(doc.survivors || []).length) return 'this set wrote down no settings, so there is nothing to retrain';
-  if (batch.batchRunning()) return 'a sweep is running on this box — the half-life run waits for it';
   const busy = stageBusy();
   if (busy) return `${busy} — the half-life run waits for the box to be free`;
   if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
@@ -7172,11 +7155,11 @@ function examCleanup(run) {
 }
 async function runStageGate(run) {
   const G = require('./stagegate');
-  const Pl = require('./planted');
+  const { generateFabricated } = require('./fabricated');
   const tag = `stage-engine check ${run.id}`;
   run.step = 'fabricating the two coins';
-  Pl.generateFabricated(G.SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);   // the plant, alive the whole span
-  Pl.generateFabricated(G.SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);     // a fair coin, the rule never on
+  generateFabricated(G.SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);   // the plant, alive the whole span
+  generateFabricated(G.SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);     // a fair coin, the rule never on
   run.step = 'stage 1';
   const s1 = startStage1({ ...G.STAGE1, exam: true, name: `${tag} S1` });
   run.sets.push(s1.id);
@@ -7255,7 +7238,7 @@ function stageGateStatus() {
 }
 function stageGateStart() {
   if (examRun && !examRun.result && !examRun.error) throw new Error('the stage-engine check is already running');
-  const busy = batch.batchRunning() ? 'a sweep is running on this box' : (require('./jobs').anyJobRunning() ? 'a data job is running' : stageBusy());
+  const busy = require('./jobs').anyJobRunning() ? 'a data job is running' : stageBusy();
   if (busy) throw new Error(`${busy} — the stage-engine check fabricates two coins and runs all three stages, so it waits for the box to be free`);
   const run = { id: `sg-${Date.now().toString(36)}`, startedAt: Date.now(), step: 'starting', sets: [], error: null, result: null, promise: null };
   examRun = run;

@@ -41,15 +41,10 @@ function withScratch(fn) {
   const had = fs.existsSync(realData);
   if (had) fs.renameSync(realData, stash);
   fs.mkdirSync(path.join(realData, 'batches'), { recursive: true });
-  const mods = ['lib/rowstore', 'lib/batch', 'lib/replication'];
+  const mods = ['lib/rowstore'];
   mods.forEach((m) => { delete require.cache[require.resolve(path.join(ROOT, m))]; });
   try {
-    return fn({
-      realData,
-      rowstore: require(path.join(ROOT, 'lib/rowstore')),
-      batch: require(path.join(ROOT, 'lib/batch')),
-      replication: require(path.join(ROOT, 'lib/replication')),
-    });
+    return fn({ realData, rowstore: require(path.join(ROOT, 'lib/rowstore')) });
   } finally {
     fs.rmSync(realData, { recursive: true, force: true });
     if (had) fs.renameSync(stash, realData);
@@ -67,7 +62,7 @@ async function withScratchAsync(fn) {
   const had = fs.existsSync(realData);
   if (had) fs.renameSync(realData, stash);
   fs.mkdirSync(path.join(realData, 'batches'), { recursive: true });
-  const mods = ['lib/rowstore', 'lib/batch', 'lib/replication'];
+  const mods = ['lib/rowstore'];
   mods.forEach((m) => { delete require.cache[require.resolve(path.join(ROOT, m))]; });
   try {
     return await fn({ realData, rowstore: require(path.join(ROOT, 'lib/rowstore')) });
@@ -79,29 +74,6 @@ async function withScratchAsync(fn) {
 }
 
 module.exports = {
-  // THE defect, stated as a property: the run document must stay the same size
-  // whether the run produced fifty rows or fifty million.
-  theDocumentDoesNotCarryTheRows() {
-    withScratch(({ realData, rowstore, batch }) => {
-      const id = 'bracketlab-test-1';
-      const w = rowstore.writer(id, 'replication');
-      for (let i = 0; i < 20000; i++) {
-        w.push({ declaredLabel: 'q4/6 always d1x t41h', trade: 'ETHUSDT', geometry: 'daily-3d', pnl: i, holdout: { pnl: i / 2 } });
-      }
-      w.close();
-      fs.writeFileSync(path.join(realData, 'batches', `${id}.json`),
-        JSON.stringify({ id, kind: 'bracketlab', status: 'done', startedAt: 'x', params: {}, leaders: [], runs: [] }));
-
-      const doc = batch.getBatch(id);
-      assert.strictEqual(doc.replication.length, 20000, 'a reader that asks for the rows still gets them');
-
-      const text = JSON.stringify(doc);
-      assert.ok(!text.includes('declaredLabel'),
-        `the document carries the rows again — ${text.length} characters of it. That is what could not be saved.`);
-      assert.ok(text.length < 4000,
-        `the document is ${text.length} characters with 20,000 rows recorded; it must not grow with them`);
-    });
-  },
 
   // Columns grow, because these collections do not all have one shape: a unit
   // that reached no cell records a reason where one that did records money.
@@ -181,73 +153,7 @@ module.exports = {
     });
   },
 
-  // The totals the screen shows are built by streaming, and they are the same
-  // numbers the browser used to compute over every row.
-  theReplicationTotalsAreBuiltByStreaming() {
-    withScratch(({ realData, rowstore, batch, replication }) => {
-      const id = 'bracketlab-test-6';
-      const w = rowstore.writer(id, 'replication');
-      const row = (over) => ({
-        declaredLabel: 'A', trade: 'LTCUSDT', ctx1: null, ctx2: null, geometry: 'daily-3d',
-        nullDealSeed: null, pnl: 10, trades: 30, holdout: { pnl: 9, vsAlwaysLong: 1 }, ...over,
-      });
-      w.push(row({}));
-      w.push(row({ nullDealSeed: 1, holdout: { pnl: 2 } }));
-      w.push(row({ nullDealSeed: 2, holdout: { pnl: 4 } }));
-      w.push(row({ nullDealSeed: 3, holdout: { pnl: 12 } }));
-      w.close();
-      fs.writeFileSync(path.join(realData, 'batches', `${id}.json`),
-        JSON.stringify({ id, kind: 'bracketlab', status: 'done', startedAt: 'x', params: {}, leaders: [], runs: [] }));
 
-      // THE CONTRACT CHANGED ON 2026-08-25 (owner order: "do the running
-      // tallies now"): rank never reads a store's rows on the answering
-      // thread any more. With no saved tally it reports a build in progress
-      // and freezes nothing; once the tally exists — built here directly, the
-      // way the worker builds it — the same numbers come back instantly.
-      const first = replication.rank(batch.getBatch(id));
-      assert.strictEqual(first.building, true, 'a store with no saved tally must report the build, not stream in-request');
-      assert.strictEqual(first.total, 4, 'the true row count travels even before the tally exists');
-      replication.buildAndSaveTotals(id);
-      const out = replication.rank(batch.getBatch(id));
-      assert.strictEqual(out.totals.upToDate, true, 'a fresh tally is served as fresh');
-      assert.strictEqual(out.total, 4, 'every recorded row is read');
-      assert.strictEqual(out.tagged, true, 'a run that marks its copies is detected');
-      assert.strictEqual(out.configs, 1);
-      const [g] = out.scored;
-      assert.strictEqual(g.nullPairs, 3, 'all three dealt-vote copies are paired against the real look');
-      assert.strictEqual(g.nullBeat, 2, 'the real 9 beats 2 and 4, not 12');
-      assert.strictEqual(g.holdCount, 1, 'the cross-asset count reads real rows only');
-      assert.strictEqual(g.sum, 9, 'and money sums the real looks only');
-      // WHERE THIS GUARANTEE NOW LIVES (2026-08-23). The ranked list used to
-      // carry the per-asset rows, so it was checked here. It ships summaries
-      // only since a run declaring 2,772 configurations made that a 99 MB
-      // reply — but the rule is unchanged and still has to hold, so it is
-      // checked on the call that now returns those rows.
-      assert.strictEqual(g.reals.length, 0, 'the ranked list is carrying per-asset rows again');
-      assert.strictEqual(g.realsTotal, 1, 'and the count of them was lost with the rows');
-      const d = replication.coinRows(batch.getBatch(id), { label: g.label, trade: 'LTCUSDT', geometry: 'daily-3d' });
-      assert.strictEqual(d.rows.length, 1, 'the records show the real look only, never a copy');
-      const c = replication.coins(batch.getBatch(id), { label: g.label });
-      assert.strictEqual(c.page.total, 1, 'and the line\'s own coin table says how many coins there are');
-    });
-  },
-
-  // Deleting a run takes its rows with it, or the disk fills with the rows of
-  // runs that no longer exist.
-  deletingARunTakesItsRows() {
-    withScratch(({ realData, rowstore, batch }) => {
-      const id = 'bracketlab-test-7';
-      const w = rowstore.writer(id, 'replication');
-      for (let i = 0; i < 100; i++) w.push({ n: i });
-      w.close();
-      fs.writeFileSync(path.join(realData, 'batches', `${id}.json`),
-        JSON.stringify({ id, kind: 'bracketlab', status: 'done', startedAt: 'x', params: {}, leaders: [], runs: [] }));
-      assert.ok(rowstore.bytes(id) > 0, 'the rows are on disk to begin with');
-      batch.deleteBatch(id);
-      assert.strictEqual(rowstore.bytes(id), 0, 'and they go with the run');
-      assert.ok(!fs.existsSync(rowstore.storeDir(id)), 'the folder goes too');
-    });
-  },
 
   // SQUASHED, AND EVERY EXISTING RECORD LEFT ALONE (owner order, 2026-08-22).
   //

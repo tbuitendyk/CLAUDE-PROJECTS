@@ -14,17 +14,10 @@ const { A_CUTOFF_MS, aSetupConfig } = require('./fixtures-setup');
 // The canonical valid config: F1's frozen book spec expressed in the shared
 // vocabulary. Built from the engine's own committee, so this fixture
 // can never drift from the engine's real shape.
+// a stage-engine configuration, made through the product's own door (3.97.0);
+// the cutoff rides on it for the training-policy tests that inherit it
 function f1Config() {
-  const F1 = aSetupConfig();
-  return {
-    combo: { ...F1.combo },
-    branch: { ...F1.branch },
-    stage: F1.stage,
-    members: F1.members.map((m) => ({ ...m })),
-    cell: { ...F1.cell },
-    trainThrough: A_CUTOFF_MS,
-    configVersion: 'f1-v1-2026-08-11',
-  };
+  return { ...aSetupConfig(), trainThrough: A_CUTOFF_MS, configVersion: 'f1-v1-2026-08-11' };
 }
 let seq = 0;
 function mkSetup(over = {}) {

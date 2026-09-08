@@ -21,8 +21,8 @@ const NOTIONAL = 100;
 // the lab had modelled.
 //
 // Worse, the same name meant two different things in two halves of the engine.
-// lib/stoptuner.js has always taken feePerLeg as a FRACTION, and lib/stopsweep.js
-// and lib/convictionsweep.js each carried a hand conversion with a scar comment
+// lib/stoptuner.js has always taken feePerLeg as a FRACTION, and the stop sweep
+// (retired 3.97.0) and lib/convictionsweep.js each carried a hand conversion with a scar comment
 // of its own: "Passing the dollar 0.125 straight in made a 25% round-trip hurdle
 // instead of 0.25% and misclassified almost every trade." One name, two meanings,
 // and a conversion anybody could forget. Now there is one meaning.

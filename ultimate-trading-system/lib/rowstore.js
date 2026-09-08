@@ -398,7 +398,7 @@ function eachSquashed(runId, name, file, fn, startBlock = 0) {
 //
 // Each entry is { at, row }: the row AND its position in the whole
 // collection, because a caller holding a positional index over the rows
-// (the recovered choices, lib/choices.js) has to know which row it fetched.
+// (a stage reading its records by block) has to know which row it fetched.
 function readBlocks(runId, name, indexes) {
   const file = storeFile(runId, name);
   if (!isGz(file)) return null;

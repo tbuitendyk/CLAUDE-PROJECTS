@@ -695,8 +695,8 @@ window.HELP = {
   verify: {
     title: 'Verify',
     how: [
-      ['One result judged here; the machinery checks on Setup',
-        'Everything on this tab assumes the machinery works. The two checks that establish that live on the Setup page, under Version: the planted check, against made-up price histories where the right answer is known in advance — one has a pattern deliberately hidden in it and the system must find it, one has nothing in it and the system must stay quiet — and the stage-engine check, which asks the same question of the three-stage engine that prices the record sets on Boards, all the way through to a verdict read the way this tab reads one. A miss on the first means it is blind; a hit on the second means it invents things. The marker beside "planted check:" at the top of every Construct screen says whether the planted check stands for this release, and opens that tab.\n\nHere, one result is judged: a Stage 4 record set, read as a whole. A rule can be checked against scrambled data and a single row cannot, which is why the Funnel writes a rule and why nothing here judges one row.'],
+      ['One result judged here; the check on Setup',
+        'Everything on this tab assumes the machinery works. The check that establishes that lives on the Setup page, under Version: the stage-engine check builds two made-up coins where the right answer is known in advance — one with a rule deliberately hidden in it that the system must find, one with nothing in it on which it must stay quiet — and runs the real three stages on them, all the way through to a verdict read the way this tab reads one. A miss on the first means the engine is blind; a hit on the second means it invents things. The marker beside "stage-engine check:" at the top of every Construct screen says whether the check stands for this release, and opens that tab.\n\nHere, one result is judged: a Stage 4 record set, read as a whole. A rule can be checked against scrambled data and a single row cannot, which is why the Funnel writes a rule and why nothing here judges one row.'],
       ['What the verdict reads, and what it does not',
         'The press reads what the set\'s survivors made on the held-back window, the days no part of the search touched, and holds that against four simpler things: buying the coin and going away, shorting it and going away, being long every period and being short every period. The first two have to be beaten; the last two are the direction the window paid and are only printed. Then it reads the same settings\' money on every scrambled copy of their table and counts how many of those copies the real figure beats, against the bar the set was cut under. Each survivor gets the same reading on its own copies, printed beside how many would pass by chance, and that never picks a survivor and never gates the set. A sanity line says whether noise loses money, as fees demand; when it does not, the readings above it cannot be trusted.\n\nIt does not price the choosing of the survivors. The walk chose its ranges on the test window over its recorded steps; pricing that search itself would need the whole walk replayed on each scrambled board, which nothing here does. Two more lines are printed for information and never pass or fail: the rule on the test window against its own copies, which always looks good because it was chosen against them, and what shopping alone would have found.'],
       ['Every look is counted',
@@ -706,8 +706,8 @@ window.HELP = {
     ],
     intro: 'The verdict on one Stage 4 record set: what its survivors made on the days no part of the search '
       + 'touched, against the simpler things a rule has to beat and against the same settings on scrambled copies '
-      + 'of their table, with every rule declared before its number and every look counted. The two machinery '
-      + 'checks it rests on, the planted check and the stage-engine check, live on the Setup page, under Version.',
+      + 'of their table, with every rule declared before its number and every look counted. The machinery '
+      + 'check it rests on, the stage-engine check, lives on the Setup page, under Version.',
     controls: {
       vSet: {
         what: 'Which Stage 4 record set to read, from every set on this box, newest first, each with its coin and shape, its survivors of its target, and whether a verdict is stamped on it.',
@@ -742,7 +742,7 @@ window.HELP = {
       ['The one look at the unread window',
         'A Stage 4 record set was written from a search that never touched the sealed part of the history. The reserve grade prices the set\'s survivors on exactly that part, from where the seal began to whatever the box holds today, with the members forecasting it from the models they were trained as, and reads the result by the verdict\'s own rules. The first grade is the only look at data nothing has seen; every later one is counted and says so.'],
       ['Is it still true, or was it true in 2018',
-        'A setting that worked for two years and then stopped will still look good averaged across the whole history, because the good years carry the bad ones. That is the single easiest way to be fooled by a long backtest.\\n\\nThis re-scores the same setting while counting recent evidence more heavily than old evidence, at the rate half-life sets, and shows it beside the same run with everything weighted equally. If the two disagree, the effect is not where you think it is.\\n\\nThe two exam buttons check this test itself against made-up histories, for the same reason the Verify tab exists.'],
+        'A setting that worked for two years and then stopped will still look good averaged across the whole history, because the good years carry the bad ones. That is the single easiest way to be fooled by a long backtest.\n\nThis re-scores the same setting while counting recent evidence more heavily than old evidence, at the rate half-life sets, and shows it beside the same run with everything weighted equally. If the two disagree, the effect is not where you think it is.'],
     ],
     intro: 'Whether an effect is still there now, or was only there years ago. A setting that '
       + 'worked in 2018 and stopped working in 2022 will still look good averaged over the whole '
@@ -771,34 +771,21 @@ window.HELP = {
         what: 'Builds a record set from every row a half-life won on the newest table, each record carrying the half-life that won on it. Rows the unweighted column won are left out.',
         more: 'The set stands on this set\'s verdict and appears in the Stage 4 record set boxes on Tune and Greenlight, named with the set it was built from. A greenlight from one of its records carries the half-life, and the live path trains that setup the same way.',
       },
-      htRun: { what: 'Runs the still-current check on the row picked on the Boards tab.' },
-      ht2hl: {
-        what: 'How quickly older evidence stops counting. 12mo makes evidence from a year ago count half as much as today’s; 36mo stretches that to three years.',
-      },
-      ht2Run: { what: 'Runs the check at the chosen setting, alongside one that weights all history equally, so the two can be compared.' },
-      ht2ExamA: {
-        what: 'A check on the check. Uses a made-up asset whose pattern appears only recently — the system MUST find it.',
-        more: 'A miss means this test cannot see a recent effect that is provably there, so its verdicts are worthless.',
-      },
-      ht2ExamB: {
-        what: 'The other half. A made-up asset with no pattern at all — the system must NOT find anything.',
-        more: 'A hit means it invents effects.',
-      },
     },
   },
 
   tune: {
     title: 'Tune',
     how: [
-      ['One variable at a time, on the whole history',
-        'The Sweep tab is wide and shallow: many settings, each scored once. This is the opposite — one setting, taken apart carefully.\\n\\nThe two scans work across every value of one thing, over all the history, and report the whole shape rather than a winner: which protective stops would have cost nothing, and how much requiring more agreement is worth. Both take minutes and cannot be stopped part-way.\\n\\nThe comparison at the bottom is not a check on whether anything is real. It only tells you what differs between two runs and what each produced.'],
+      ['One variable at a time, on one survivor\'s trades',
+        'The Sweep tab is wide and shallow: many settings, each scored once. This is the opposite — one setting, taken apart carefully.\n\nThe two scans work across every value of one thing, over the captured trades of one survivor on the windows ticked, and report the whole shape rather than a winner: which protective stops would have cost nothing, and how much requiring more agreement is worth. Both take minutes and cannot be stopped part-way.'],
       ['A Stage 4 record set as the target',
         'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The panel under them writes those down — every hour the rule of a survivor spoke, on the training, test and held-back windows, with the side and how many members called it — for every survivor that enters at market with no trailing stop. Once captured, the set can be chosen as the target, with one survivor and the windows to read beside it.\\n\\nReading the held-back entries is a counted look at the held-back window, the same count Verify keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
     ],
     intro: 'Adjusting one chosen setting rather than searching for new ones. Everything here works '
-      + 'on the row picked on the Boards tab, on one of your setups, or on one survivor of a Stage 4 record set whose trades were captured, over the whole history.',
+      + 'on one survivor of a Stage 4 record set whose trades were captured, over the windows ticked.',
     controls: {
-      tuneTarget: { what: 'Which setting the scans below work on — one of your setups, a Stage 4 record set whose trades were captured, or the row picked on Boards.' },
+      tuneTarget: { what: 'Which Stage 4 record set the scans below work on, from those whose trades were captured, one survivor of it.' },
       tnPick: {
         what: 'Which captured survivor of the Stage 4 record set the scans read.',
         more: 'By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money. Naming one records it as your pick.',
@@ -829,12 +816,6 @@ window.HELP = {
         what: 'Tries every level of agreement across the whole history, to see how much conviction is worth requiring.',
         more: 'Takes minutes and cannot be stopped part-way.',
       },
-      cmpA: { what: 'The first of two runs to compare.' },
-      cmpB: { what: 'The second.' },
-      cmpGo: {
-        what: 'Shows what differs between the two runs and what each one produced.',
-        more: 'This is NOT a check on whether either result is real. It only says how they differ.',
-      },
     },
   },
 
@@ -844,20 +825,12 @@ window.HELP = {
       ['A survivor of a Stage 4 record set, without shopping',
         'The second panel takes one survivor of a Stage 4 record set forward, but only from a set whose verdict stood on Verify. Which survivor is a choice made without money: by depth, the setting nearest the middle of every range of the rule, the same idea as the widest region\'s centre; or a survivor you name, recorded as your pick. The frozen settings carry the way the members agree exactly as that survivor does, which no single number of votes expresses, and the record names the set, the verdict, the survivor and how it was chosen.'],
       ['Writing down a decision, not starting one',
-        'Nothing here trades. It records that you decided to take one setting forward: who, when, why, and the exact settings frozen at that moment, together with the whole chain of runs that led to it.\\n\\nThe reason it exists: months later, when something is running on the Trade tab, the question is always "what was this based on, and did we check it?" — and the honest answer has to have been written at the time, not reconstructed afterwards. That is why the reason is required rather than optional.\\n\\nWhich row gets recorded matters as much as the decision. declared cell was fixed before the run and nothing was chosen after seeing results. best cell was chosen after, and is the weakest of the three for exactly that reason.'],
+        'Nothing here trades. It records that you decided to take one setting forward: who, when, why, and the exact settings frozen at that moment, together with the whole chain of runs that led to it.\n\nThe reason it exists: months later, when something is running on the Trade tab, the question is always "what was this based on, and did we check it?" — and the honest answer has to have been written at the time, not reconstructed afterwards. That is why the reason is required rather than optional.'],
     ],
     intro: 'Recording a decision to take one setting forward, with who decided, when, why, and the '
       + 'exact settings frozen at that moment. Nothing here starts trading. It writes down the decision '
       + 'so that later, when a setup is running on the Trade tab, there is a record of what it was based on.',
     controls: {
-      glTarget: {
-        what: 'Which row of the run gets recorded. declared cell is the one fixed before the run started — nothing was picked after seeing results. best cell is the highest scoring one, which is the best of very many tries and flatters itself. widest region is the middle of the largest patch of neighbouring settings that all made money, chosen by how surrounded it is rather than by its score.',
-        more: 'declared cell is the strongest of the three. best cell is the weakest, for the reason given.',
-      },
-      glWhy: {
-        what: 'Why this is being taken forward. Required, and kept forever with the record.',
-      },
-      glGo: { what: 'Writes the record. Does not start any trading.' },
       gl4Set: {
         what: 'Which Stage 4 record set to take a survivor from, from every set on this box, newest first, with whether its verdict passed.',
         more: 'Choosing a set reads its footing only: which verdict stood, how many members its coin and shape were priced with, and every survivor with its distance from the middle of the rule. A set whose verdict has not stood on Verify is refused in words.',

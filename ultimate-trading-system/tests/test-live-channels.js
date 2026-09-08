@@ -17,27 +17,11 @@ const ch = require('../lib/live/channels');
 const reg = require('../lib/live/setups');
 const view = require('../lib/live/view');
 
-function labDoc(id) {
-  return {
-    id, kind: 'bracketlab', startedAt: '2026-08-01T10:10:10.000Z',
-    finishedAt: '2026-08-01T12:00:00.000Z', campaign: 'ch-test',
-    dataManifest: { overall: 'abc', symbols: { LTCUSDT: 'd1', XRPUSDT: 'd2', BCHUSDT: 'd3' } },
-    selection: {
-      trade: 'LTCUSDT', ctx1: 'XRPUSDT', ctx2: 'BCHUSDT', size: 3,
-      geometry: 'daily-4d', decision: 'argmax', bandMode: 1.69, bandPct: 1.69,
-      weekdaysOnly: false, members: require('../lib/bracketwork').specsFor(3, 'slim').length,
-      quorum: 1, entry: 'market', gate: 'directional', dMult: null,
-      tHours: 137, trailMult: null, armMult: null,
-      pnl: 10, trades: 10, holdout: { pnl: 1, trades: 2 },
-      declaredCell: { quorum: 1, entry: 'market', gate: 'directional', dMult: null,
-        tHours: 137, trailMult: null, armMult: null },
-    },
-  };
-}
+const { aStage4Source } = require('./fixtures-setup');
 let seq = 0;
 function mkGreenlight() {
-  return gl.greenlightFromRun(labDoc(`bracketlab-2026080${(seq % 9) + 1}-10101${seq++}-t`), 'declared',
-    { name: 'test config', why: 'channel-model test config' ,});
+  seq++;
+  return gl.greenlightFromStage4(aStage4Source(), { name: 'test config', why: 'channel-model test config' });
 }
 
 module.exports.statusLineSpeaksTheOwnersVocabulary = function () {

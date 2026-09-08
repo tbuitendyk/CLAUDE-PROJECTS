@@ -15,15 +15,11 @@ const ORIGIN = { Origin: 'https://www.buitendyk.ca' };  // same-site (CSRF-allow
 const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), 'gc-liveroutes-'));
 process.env.GC_SETUPS_DIR = SCRATCH;
 const reg = require('../lib/live/setups');
-const { A_CUTOFF_MS, aSetupConfig } = require('./fixtures-setup');
+const { aSetupConfig } = require('./fixtures-setup');
 
+// a stage-engine configuration, made through the product's own door (3.97.0)
 function f1Config() {
-  const F1 = aSetupConfig();
-  return {
-    combo: { ...F1.combo }, branch: { ...F1.branch }, stage: F1.stage,
-    members: F1.members.map((m) => ({ ...m })), cell: { ...F1.cell },
-    trainThrough: A_CUTOFF_MS, configVersion: 'f1-v1-2026-08-11',
-  };
+  return { ...aSetupConfig(), configVersion: 'f1-v1-2026-08-11' };
 }
 
 function req(method, p, body, headers) {
@@ -117,20 +113,21 @@ module.exports.greenlightAndShuttleOverTheWire = async function () {
   const gl = require('../lib/live/greenlight');
   const rec = {
     id: 'gl-wire-1', createdUtc: new Date().toISOString(), by: 'owner', why: 'wire test',
-    engineVersion: 'gc-0.0.0/setup-1/config-1', target: 'best', campaign: null,
-    sourceRun: { id: 'r1', kind: 'bracketlab', startedAt: null, finishedAt: null, dataManifest: null },
+    engineVersion: 'gc-0.0.0/setup-1/config-1', target: 'stage4', campaign: null,
+    sourceRun: { id: 'r1', kind: 'stage3', startedAt: null, finishedAt: null, dataManifest: null },
     rowSummary: {}, configSnapshot: f1Config(), shuttledSetupIds: [],
   };
   fs.writeFileSync(path.join(GLDIR, 'gl-wire-1.json'), JSON.stringify(rec));
   await withServer(async () => {
     const list = (await req('GET', '/api/live/greenlights')).json();
     assert.ok(list.greenlights.some((g) => g.id === 'gl-wire-1'));
-    // unknown run -> 404
-    const nf = await req('POST', '/api/live/greenlight', { runId: 'nope', target: 'best', why: 'x' }, ORIGIN);
-    assert.strictEqual(nf.status, 404, nf.body);
+    // an unknown Stage 4 record set is refused in words (3.97.0: the one door)
+    const nf = await req('POST', '/api/live/greenlight', { source: 'stage4', setId: 'nope', pick: { by: 'depth' }, why: 'x', name: 'x' }, ORIGIN);
+    assert.strictEqual(nf.status, 400, nf.body);
+    assert.ok(/unknown Stage 4 record set/.test(nf.body), nf.body);
     // CSRF on both mutating endpoints
     for (const [p, body] of [
-      ['/api/live/greenlight', { runId: 'r', target: 'best', why: 'x' }],
+      ['/api/live/greenlight', { source: 'stage4', setId: 'r', why: 'x' }],
       ['/api/live/shuttle', { greenlightId: 'gl-wire-1', name: 'x', clipUsd: 10 }],
     ]) {
       const r = await req('POST', p, body, { Origin: 'https://evil.example.com' });

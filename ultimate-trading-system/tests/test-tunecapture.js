@@ -15,7 +15,7 @@ const { assert } = require('./helpers');
 const stages = require('../lib/stages');
 const sw = require('../lib/stagework');
 const G = require('../lib/stagegate');
-const Pl = require('../lib/planted');
+const Pl = require('../lib/fabricated');
 const rowstore = require('../lib/rowstore');
 
 // ONE YEAR IS ENOUGH FOR THE PLUMBING, and it is a fifth of the cost. The
@@ -310,7 +310,7 @@ module.exports = {
     assert.ok(/\$\{tnCapturePanelHtml\(tnSets, tnChosen, tnd\)\}/.test(ui), 'the panel is drawn on Tune');
     assert.ok(/\$\{isSet \? tnTargetRowHtml\(chosen, tnPickVal, tnWins\) : ''\}/.test(ui), 'the survivor and the windows are drawn under the scan target');
     for (const id of ['tnSet', 'tnCapture', 'tnPick', 'tnWinTrain', 'tnWinTest', 'tnWinHold']) assert.ok(ui.includes(`id="${id}"`), `${id} is on the screen`);
-    assert.ok(/: isSet \? \{ setId: chosen\.id, pick: tnPickVal, windows: tnWins \}/.test(ui), 'a scan on a set sends the set, the survivor and the windows');
+    assert.ok(/const scanBody = isSet \? \{ setId: chosen\.id, pick: tnPickVal, windows: tnWins \} : null/.test(ui), 'a scan on a set sends the set, the survivor and the windows');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/capture\/status/.test(ui), 'the capture is polled');
     assert.ok(/tick at least one window for the scan to read: training, test or held-back/.test(ui), 'no window ticked is refused on the page in the server\'s words');
     const srv = src('server.js');

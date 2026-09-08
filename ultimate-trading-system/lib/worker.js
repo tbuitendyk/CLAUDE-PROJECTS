@@ -10,7 +10,6 @@
 // threads.
 const os = require('os');
 const { parentPort } = require('worker_threads');
-const work = require('./bracketwork');
 const { threadNice } = require('./threadnice');
 
 // NICE THE WORKER TO THE FLOOR. This box also hosts the owner's mail VM, and
@@ -33,17 +32,11 @@ try {
 }
 
 const TASKS = {
-  unit: work.unitTask,
   s1Unit: require('./stagework').s1UnitTask,
   s2Unit: require('./stagework').s2UnitTask,
   s3Unit: require('./stagework').s3UnitTask,
   s3Tally: require('./stagework').s3TallyShardTask,
   hlTrain: require('./halflife').hlTrainTask,
-  nullRotation: work.nullRotationTask,
-  menuGrid: work.menuGridTask,
-  wfUnit: require('./walkforward').wfUnitTask,
-  htPass: require('./historytuning').htPassTask,
-  htTwoFold: require('./httwo').htTwoFoldTask,
   // Introspection, so the nice level above is a testable property rather than
   // a comment nobody can check.
   //
