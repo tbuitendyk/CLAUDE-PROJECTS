@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # uts-reserve-dollars.sh -- READ-ONLY. The newest reserve grade on the Stage 4
-# record set: its verdict sentence, its totals, and what every one of the
-# set's setups made on the sealed window, in dollars. Presses nothing, spends
-# no look.
+# record set: what every one of its setups made on the sealed window, in
+# dollars. Setups that price the identical trade are grouped, because the fold
+# means many share one figure; the count says how many. The summary and the
+# verdict are printed LAST, since the caller keeps only the tail. Presses
+# nothing, spends no look.
 set -uo pipefail
 B=http://127.0.0.1:8094
 curl -sf --max-time 25 "$B/api/stagesets" -o /tmp/uts-rd-sets.json || { echo "the record-set list did not answer"; exit 1; }
@@ -13,36 +15,40 @@ for ID in $IDS; do
 import json, datetime
 d = json.load(open('/tmp/uts-rd-dry.json'))
 gs = d.get('grades') or []
-print('== %s | %s' % (d.get('name'), d.get('unitName') or d.get('unit')))
 if not gs:
-    print('   no reserve grade stamped on this set'); raise SystemExit(0)
+    print('no reserve grade stamped on this set'); raise SystemExit(0)
 g = gs[0]
+rows = g.get('rows') or []
+def m(v):
+    if not isinstance(v, (int, float)): return '-'
+    return ('-$%.2f' % -v) if v < 0 else ('$%.2f' % v)
+groups = {}
+for r in rows:
+    k = (r.get('money'), r.get('trades'), r.get('stops'))
+    groups.setdefault(k, []).append(str(r.get('label')))
+print('%10s %7s %6s  %5s  %s' % ('reserve $', 'trades', 'stops', 'setups', 'one of them'))
+for (money, trades, stops), labels in sorted(groups.items(), key=lambda kv: (kv[0][0] is None, -(kv[0][0] or 0))):
+    print('%10s %7s %6s  %5d  %s' % (m(money), trades, stops, len(labels), labels[0][:52]))
+vals = [r['money'] for r in rows if isinstance(r.get('money'), (int, float))]
+pos = [v for v in vals if v > 0]; neg = [v for v in vals if v < 0]
+tot = sum(vals)
 w = g.get('window') or {}
 def day(ts):
     try: return datetime.datetime.utcfromtimestamp(int(ts)/1000).strftime('%Y-%m-%d')
     except Exception: return '?'
-print('   grade %s, look %s, stamped %s, release %s' % (g.get('id'), g.get('look'), (g.get('at') or '')[:19], g.get('release')))
-print('   window %s to %s, %s chunks; the box held prices to %s' % (day(w.get('fromTs')), day(w.get('toTs')), w.get('chunks'), day(w.get('seenToTs'))))
-rows = g.get('rows') or []
-vals = [r for r in rows if isinstance(r.get('money'), (int, float))]
-pos = [r for r in vals if r['money'] > 0]
-neg = [r for r in vals if r['money'] < 0]
-tot = sum(r['money'] for r in vals)
-print('   %d setups priced (%d of them with a figure): %d positive, %d negative, %d flat'
-      % (len(rows), len(vals), len(pos), len(neg), len(vals) - len(pos) - len(neg)))
-print('   total %s, average %s per setup'
-      % (('-$%.2f' % -tot) if tot < 0 else ('$%.2f' % tot),
-         ('-$%.2f' % -(tot/len(vals))) if vals and tot/len(vals) < 0 else ('$%.2f' % (tot/len(vals)) if vals else 0)))
-r = g.get('read') or {}
-c = g.get('copies') or {}
-print('   the reading: %s a setting; beats %s of %s scrambled copies, bar %s; verdict %s'
-      % (r.get('real'), c.get('beats'), c.get('copies'), c.get('bar'), 'PASS' if (g.get('verdict') or {}).get('pass') else 'FAIL'))
-print('   %s' % (g.get('verdict') or {}).get('sentence', '')[:600])
-if g.get('missing'): print('   NOT PRICED (%d): %s' % (len(g['missing']), ', '.join(g['missing'][:6])))
+r = g.get('read') or {}; c = g.get('copies') or {}; sv = g.get('survivors') or {}
 print()
-print('   %-58s %12s %8s %8s' % ('setup', 'reserve $', 'trades', 'stops'))
-def money(v): return '-$%.2f' % -v if isinstance(v,(int,float)) and v < 0 else ('$%.2f' % v if isinstance(v,(int,float)) else '-')
-for x in sorted(rows, key=lambda r: (r.get('money') is None, -(r.get('money') or 0))):
-    print('   %-58s %12s %8s %8s' % (str(x.get('label'))[:58], money(x.get('money')), x.get('trades'), x.get('stops')))
+print('SET      %s | %s' % (d.get('name'), d.get('unitName') or d.get('unit')))
+print('GRADE    %s, look %s, stamped %s, release %s' % (g.get('id'), g.get('look'), (g.get('at') or '')[:19], g.get('release')))
+print('WINDOW   %s to %s, %s chunks; the box held prices to %s' % (day(w.get('fromTs')), day(w.get('toTs')), w.get('chunks'), day(w.get('seenToTs'))))
+print('SETUPS   %d priced, %d with a figure: %d made money, %d lost, %d flat; %d distinct figures'
+      % (len(rows), len(vals), len(pos), len(neg), len(vals) - len(pos) - len(neg), len(set(round(v, 2) for v in vals))))
+print('DOLLARS  total %s | average %s a setup | best %s | worst %s'
+      % (m(tot), m(tot / len(vals)) if vals else '-', m(max(vals)) if vals else '-', m(min(vals)) if vals else '-'))
+print('READING  %s a setting; beats %s of %s scrambled copies, bar %s; %s of %s setups clear their own bar, about %s would by chance'
+      % (m(r.get('real')), c.get('beats'), c.get('copies'), c.get('bar'), sv.get('passing'), sv.get('survivors'),
+         (('%.1f' % sv['byChance']) if isinstance(sv.get('byChance'), (int, float)) else '?')))
+if g.get('missing'): print('NOT PRICED %d: %s' % (len(g['missing']), ', '.join(g['missing'][:5])))
+print('VERDICT  %s' % ('PASS' if (g.get('verdict') or {}).get('pass') else 'FAIL'))
 PY
 done
