@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **e6395c79c2a7 — what the box is serving**, not from the working tree.
+Generated from **8e26910d6579 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -960,112 +960,147 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Verify
 
-## What the controls are called (46)
+## What the controls are called (89)
 
+- `- INCOMPLETE, never a pass`
 - `— its rows are gone, so`
 - `, engine`
-- `, worst`
-- `· null boards:`
+- `, parent`
+- `, reader`
+- `, so this is never a gate`
+- `, which`
+- `· being long every period`
+- `· being short every period`
+- `· check:`
+- `· planted check`
 - `· planted check:`
-- `(beats`
+- `· releases: set`
+- `· rule keys`
+- `· sealed window`
+- `· shorting it and going away`
 - `(engine`
-- `% losing money —`
-- `best-of-menu, search replayed`
+- `(the first digits differ)`
+- `), threshold`
+- `); noise must lose at least`
+- `a setting`
+- `and beats`
+- `as stored`
+- `at least`
+- `avg held-back $`
+- `bar`
+- `bar share %`
+- `beat its own null set`
+- `beats`
+- `beats N of K`
+- `buying the coin and going away`
+- `by test money made`
+- `clear the same bar, about`
+- `copies (`
+- `copies allow is 1 in`
+- `copies kept · median lead`
+- `copies, the bar being`
 - `current:`
-- `draws allow (p floor`
-- `draws,`
-- `exceed`
-- `Fire rotation rounds on this run`
+- `deal(s) a setting,`
+- `does not stand`
+- `fee`
+- `Final Rule:`
+- `Footing:`
 - `full gate record`
-- `h`
-- `is the strongest claim`
-- `KEY —`
+- `gone`
+- `Held-back read:`
+- `include`
 - `Last gate (`
-- `null boards`
-- `null draws`
-- `null draws)`
-- `null median $`
-- `null-draw setups,`
+- `lead`
+- `made money ·`
+- `mark(s) carried ·`
+- `Marks the walk was carried past:`
+- `noise must lose at least %`
+- `not beaten`
+- `not intact`
+- `not known`
+- `now,`
+- `null copies`
 - `of`
+- `of the time; the finest claim`
+- `on the record,`
 - `over`
-- `q`
-- `Read Tool 1 verdict`
-- `reading`
+- `own verdict`
+- `read here,`
 - `real`
-- `Real result:`
-- `real:`
+- `refused:`
 - `release`
-- `Rotation rounds on this run:`
-- `rotation rounds to fire`
+- `Rules declared before the numbers:`
 - `Run the planted check`
-- `same configuration only`
 - `sanity:`
-- `scramble run`
-- `selected:`
-- `SETTINGS MISMATCH:`
+- `scrambled boards' own best`
+- `setting`
+- `Stage 4 record set`
+- `stamped`
+- `stands`
+- `step(s) and`
+- `step(s) back`
+- `survivors`
+- `survivors made`
 - `That run has been deleted`
-- `The row itself was chosen from`
-- `the two jobs differ on`
-- `vs null draws: best`
+- `the four comparisons are not known`
+- `the survivors on this look`
+- `trades`
+- `under release`
+- `unstamped (`
+- `User Rule:`
+- `vs always long $`
 - `What a pass buys:`
+- `would by chance ·`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (46)
+## Sentences the page prints (38)
 
 - Planted check — the instrument's calibration certificate
 - Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
 - null pipeline. PASS = the board found the plant, profited, beat always-long, and every null board destroyed it.
-- A pass belongs to the engine version that earned it; a new release starts NOT CHECKED.
+- A pass belongs to the engine version that earned it; a new release starts NOT CHECKED. It certifies the sweep
+- pipeline the Sweep tab's older path fires, not the three-stage engine that prices the record sets below.
 - This regenerates the fabricated pair and fires a full sweep, so it takes minutes. The badge above and the release strip refresh themselves — you do not need to reload.
 - it is not on the Boards section any more. The verdict above is the record kept when it finished, and it stands
 - until a fresh planted check replaces it.
-- Tool 1 — this row against its null runs
-- Compares the picked REAL run against a SCRAMBLE run (a sweep launched with scrambled labels): each
-- scrambled world re-shops the whole menu in the same test window, and its best find must beat the selected row.
-- The draws come from a sweep launched with
-- above zero on the Sweep section — that is the box
-- that makes a run appear in the list below. Read the verdict here. ALWAYS VISIBLE — a gate failing judges the INSTRUMENT,
-- never retires the candidate on one number.
-- — select a row on the Boards section first; this tool is per-row.
-- Rotation rounds — a SEPARATE instrument, retired as evidence
-- This button used to sit inside Tool 1 saying its rounds were what that tool reads. They are not.
-- It fires the ROTATION null: each round rotates outcomes against features and replays the whole downstream search
-- on the selected row. Its output lands on this run's own record and is shown below — nowhere else — and it creates
-- none of the dealt-vote rows Tool 1 pairs against. Those come from launching a sweep with
-- above zero on the Sweep section.
-- The register marks this construction RETIRED as evidence
-- (historical reading only), so a number from it is
-- never a claim. It stays operable because a run that already carries one must remain readable.
-- — minutes to hours. They land on this run's own record.
-- select a row on the Boards section first — rotation rounds are per-row.
-- Tool 2 — the board against its dealt-vote null boards
-- For each promoted row: how many of its null copies (same setup, votes dealt onto random days) its
-- HELD-BACK money beats. With N null boards the finest honest claim is 1 in N+1. Computed from the run's own stored
-- null rows — needs a sweep launched with null boards &gt; 0.
-- open a run on Boards first.
-- TABLE: the rotation null. NAME: how often a rotated world matched or beat the real result.
-- KEY — exceed: the share of rounds whose result reached the real one, so LOWER is better and it is a share, not
-- money; null median $: the middle result across rounds, in US dollars on the same window as the real figure.
-- trades.
-- searched units. That multiplicity is
-- NOT replayed here, so this cannot be read as the shopping-corrected number — and the register retires this
-- construction as evidence in any case.
-- : held-back dollars on genuine data.
-- : the same quantity in worlds with nothing
-- to predict. Beating all
-- — a floor, never a measure of strength.
+- The verdict on a Stage 4 record set
+- A rule can be checked against scrambled data and a single row cannot, so this reads the set as a
+- whole: what its survivors made on the held-back window, against the four simpler things the Funnel prints,
+- against the same settings' money on every scrambled copy of their table, with a sanity line that noise must
+- lose, and the marks the walk was carried past. Opening this panel reads no held-back number; the press below
+- is the stamped look, and every look is counted.
+- No stamped read on this set yet. The first press writes the verdict; later presses are printed as later looks and never replace it.
+- - no Stage 4 record set on this box yet - cut one on the Funnel -
+- the rule does not give back its own survivors today
+- Looks at the held-back window before any stamp:
+- Read the rule against nothing on the held-back window
+- ); comparisons gated: buying the coin and going away, shorting it and going away (
+- ); being long every period and being short every period are the window's direction and never a gate.
+- The rule on a noise board, held-back window:
+- this set kept no scrambled copies, so nothing was read against nothing
+- · a forecast-free rule clears this about
+- , a floor, never a measure of strength · lead
+- Every survivor against its own copies:
+- beat always long · head-to-heads won
+- scrambled held-back figures on the whole board lose money (among the survivors
 - PASS — noise mostly loses, as fees demand.
 - FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.
+- On a window that pays one direction the copies are paid too, and this can fail honestly.
+- - no scrambled figure to read, so nothing above it can be read against noise.
 - this window only. It stops obvious chance results being frozen; the
 - forward paper test after freezing is the real judge.
+- Information only, never a pass or fail.
+- Line A, the rule on the test window against its own copies: real
+- ). Line B, the bound on shopping: the best
+- survivors, every one of them, in the set's own order. There is no sort on this table: a sort is a look.
 
-## Every word, flat (325)
+## Every word, flat (306)
 
 ```
-above above. across after against against. all allow already ALWAYS always-long and any appear are as badge be beat Beating beats beats. because been being belongs below below. best best-of-menu better board Boards boards box broken button buys calibration candidate cannot carries carrying case. certificate chance check CHECKED. chosen claim claim. come Compares Computed configuration construction copies creates current data. days dealt dealt-vote deleted demand. destroyed differ do dollars downstream draws each earned else engine every evidence exceed fabricated FAIL failing features fees figure. find finest finished fire Fire fires first first. floor For forward found freezing fresh from frozen full gate genuine gone gt has HELD-BACK held-back here here. historical honest hours. how in inside instrument INSTRUMENT is IS it It it. its Its itself jobs judge. judges kept KEY KNOWN labels land lands Last launched launching list loses losing LOWER makes many marks matched measure median menu middle minutes minutes. MISMATCH money more. mostly multiplicity must NAME need needs never new noise NOISE none NOT not not. nothing nowhere null null-draw null. number number. obvious of often on one only only. onto open operable or outcomes output over own pair pairs paper PASS pass per-row. picked pipeline. plant Planted planted predict. profited PROFITING promoted quantity random re-shops reached Read read readable. reading reads. REAL real Real record record. refresh Regenerates regenerates register release reload. remain replaces replayed replays result result. results retired RETIRED retires rotated rotates Rotation ROTATION rotation round rounds row row. rows rule Run run runs same sanity saying SCRAMBLE scramble scrambled search searched section section. select selected SEPARATE SETTINGS setup setups share shopping-corrected shown simulation sit so stands starts stays stops stored strength. strip strongest sweep Sweep TABLE takes test tests that That the The themselves They This this Those through to Tool tool trades. two units. until US used verdict version VISIBLE votes vs was were what What when whole whose window with With world worlds worst you zero
+about above above. after against allow always always-long among and any are as at avg away back badge bar be beat beaten beats been before being belongs below below. best board Boards boards bound box broken buying buys by calibration can cannot carried carrying certificate certifies chance check checked CHECKED. claim clear clears coin comparisons copies copy counted. current cut data deal declared deleted demand. destroyed differ digits direction do does earned engine every Every fabricated FAIL fail fail. fee fees figure figures Final finest finished fires first floor Footing forecast-free forward found four freezing fresh frozen full Funnel gate gate. gated give going gone has head-to-heads held-back Held-back here honestly. in include INCOMPLETE Information instrument intact is IS it It it. its judge. kept keys KNOWN known Last later lead least line Line long look look. looks Looks lose loses made mark marks Marks measure median minutes. money more. mostly must need never new no No noise NOISE noise. NOT not nothing now null number numbers obvious of older on On one only only. Opening or order. over own paid pair panel paper parent PASS pass past past. path pays period pipeline pipeline. plant Planted planted press presses prices printed prints profited PROFITING read Read reader reads real record refresh refused Regenerates regenerates release releases reload. replace replaces results row rows rule Rule Rules Run run same sanity scrambled sealed section set sets setting settings share shopping short shorting simpler simulation single so sort Stage stamp stamped stand stands starts step stops stored strength strip survivor survivors sweep Sweep tab table takes test tests that That the The their them themselves There things This this three-stage threshold through time to today too trades under unstamped until User verdict version vs walk was what What when which whole window with won would writes yet yet. you
 ```
 
 ---
