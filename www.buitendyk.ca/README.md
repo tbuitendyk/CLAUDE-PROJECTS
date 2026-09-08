@@ -126,67 +126,71 @@ so `/dubber/api/` has something to proxy to.
 
 ## TLS certificates
 
-Every hostname on this VPS — `buitendyk.ca`, the `bible`/`kjv`/`vp`
-subdomains, `docs.homeandofficemicro.com` and the iRedMail hosts — resolves
-to a single IP and is fronted by one nginx. Port 443 is an SNI-based TCP
-**stream** proxy (`map $ssl_preread_server_name $backend` in `nginx.conf`)
-forwarding to per-site backends on `127.0.0.1`; port 80 is a normal `http{}`
-server that redirects to HTTPS.
+All four public certs on this box lapsed in 2026 (kjv Aug 13, docs Aug 17,
+www Sep 5, deploy Sep 8). This section records what was actually wrong and
+how it was fixed, because the obvious diagnosis was not the right one.
 
-That topology dictates how certs must be issued.
+### The topology (this is what makes it unusual)
 
-### Use `--webroot`, never `--standalone`
+Every hostname resolves to one IP. Port 443 is an SNI-based TCP **stream**
+proxy (`map $ssl_preread_server_name $backend` in `nginx.conf`) forwarding to
+per-site vhosts on `127.0.0.1:4430-4433`.
 
-`certbot --standalone` binds port 80 itself, so it requires stopping nginx —
-which takes **every** site on the box down, not just the one being renewed.
-Port 80 is also the only place plaintext HTTP is under our control, so it is
-the correct ACME entry point even though 443 is a stream proxy. Issue and
-renew with `--webroot` against a single shared directory:
+**Port 80 does not belong to nginx.** It is held by `VBoxNetNAT` and forwarded
+into the iRedMail VirtualBox guest on `192.168.56.129`:
+
+```
+$ ss -ltnp | grep :80
+LISTEN 0 5 74.208.226.14:80 users:(("VBoxNetNAT",pid=3180,...))
+```
+
+`sites-available/default` has `listen 80` but is not enabled, and could not
+bind it anyway. So **the host cannot answer an HTTP-01 challenge on port 80**,
+and `--webroot -w` pointed at a port-80 vhost cannot work here. Neither can
+`--standalone`, which wants to bind port 80 itself.
+
+### The actual root cause: `authenticator = manual`
+
+All four renewal confs carried `authenticator = manual` — issued by hand,
+never able to renew unattended:
+
+```
+PluginError('An authentication script must be provided with
+--manual-auth-hook when using the manual plugin non-interactively.')
+```
+
+`certbot.timer` was enabled and firing daily the whole time; `certbot.service`
+just failed on every run. Four certs expiring on four different dates is the
+signature of this, not of four separate mistakes. Check it with:
 
 ```bash
-sudo install -d -m 755 /var/www/letsencrypt/.well-known/acme-challenge
-sudo chown -R www-data:www-data /var/www/letsencrypt
-
-sudo certbot certonly --webroot -w /var/www/letsencrypt \
-  --cert-name buitendyk.ca -d www.buitendyk.ca -d buitendyk.ca
+systemctl status certbot.service          # failed, while the timer is healthy
+grep -H ^authenticator /etc/letsencrypt/renewal/*.conf
 ```
 
-### Two traps that silently break renewal
+### The fix: answer the challenge on 443, not 80
 
-Both of these let a cert issue once and then quietly fail to renew ~60 days
-later, which is exactly how three certs on this box lapsed in 2026.
+The guest that owns port 80 redirects the challenge back out, preserving
+hostname and path:
 
-**1. A server-level `return 301` swallows the ACME challenge.** nginx runs
-server-context rewrite directives *before* it selects a location, so a
-redirect written at server level hijacks `/.well-known/acme-challenge/` no
-matter what location block you add. The redirect must live inside
-`location /`:
-
-```nginx
-server {
-    listen 80;
-    listen [::]:80;
-    server_name buitendyk.ca www.buitendyk.ca;
-
-    include /etc/nginx/snippets/acme-challenge.conf;
-
-    location / { return 301 https://$host$request_uri; }   # NOT server-level
-}
+```
+http://www.buitendyk.ca/.well-known/acme-challenge/T
+  -> 301 https://www.buitendyk.ca/.well-known/acme-challenge/T
 ```
 
-**2. HTTP Basic Auth returns 401 on the challenge path.** Any site gated by
-`auth_basic` (this one's `/dubber/api/`, and all of
-`docs.homeandofficemicro.com`) must exempt the ACME path, or Let's Encrypt
-gets a 401 and validation fails.
+which returns to the public 443, through the SNI stream proxy, into the
+host's own vhost. Let's Encrypt follows up to 10 redirects and
+[does not validate certificates](https://letsencrypt.org/docs/challenge-types/)
+along the way — so expired certs do not block this, and serving the challenge
+from the **`:443` vhosts** is sufficient. No port-80 change, no guest access.
 
-Both are handled by one shared snippet — create
-`/etc/nginx/snippets/acme-challenge.conf` and `include` it in **every**
-`:80` and `:443` server block, including the `default_server`:
+`/etc/nginx/snippets/acme-challenge.conf`, included after every `server_name`
+in the four host vhosts:
 
 ```nginx
 location ^~ /.well-known/acme-challenge/ {
-    auth_basic off;          # cancel any inherited Basic Auth
-    allow all;               # cancel any inherited IP restriction
+    auth_basic off;
+    allow all;
     default_type "text/plain";
     root /var/www/letsencrypt;
     try_files $uri =404;
@@ -194,86 +198,79 @@ location ^~ /.well-known/acme-challenge/ {
 }
 ```
 
-The `^~` prefix is required: it outranks regex locations, so a common
-`location ~ /\.` dotfile-deny rule can't swallow `/.well-known/`.
+`^~` so it outranks any regex location (e.g. a `location ~ /\.` dotfile
+deny). `auth_basic off` is what lets `docs.homeandofficemicro.com` renew at
+all — it has server-level Basic Auth that otherwise 401s the challenge.
 
-For the record, an expired certificate does *not* itself block renewal —
-Let's Encrypt's HTTP-01 validator follows HTTP→HTTPS redirects and
-[does not validate certificates](https://letsencrypt.org/docs/challenge-types/)
-along the way. Chasing an "expired cert deadlock" is a dead end; check the
-two traps above instead.
-
-### Verify before issuing
-
-This must print `200` for every hostname. If it doesn't, certbot will fail:
+Then re-issue with the same cert name, which rewrites the renewal conf to the
+webroot authenticator — that, not the new certificate, is the actual repair:
 
 ```bash
-echo ok | sudo tee /var/www/letsencrypt/.well-known/acme-challenge/probe
-sudo nginx -t && sudo systemctl reload nginx
+certbot certonly --webroot -w /var/www/letsencrypt \
+  --cert-name www.buitendyk.ca -d www.buitendyk.ca -d buitendyk.ca \
+  --non-interactive --agree-tos
+```
 
+### Doing it again
+
+Automated on the `vps-access` branch; run via the deploy endpoint:
+
+- `cert-audit.sh` — read-only. Certbot inventory, timer state, authenticator
+  per cert, last failures, vhost layout.
+- `cert-acme-setup.sh` — creates the webroot, installs the snippet, includes
+  it in the four vhosts, then **verifies every hostname returns 200 over the
+  real public URL** and exits non-zero if not.
+- `cert-renew.sh` — re-verifies the challenge path, dry-runs all four against
+  staging, and only then requests anything, so a broken host cannot burn
+  Let's Encrypt's 5-per-week duplicate limit.
+
+Verify from outside — `Verify return code: 0 (ok)` is the only acceptable
+answer:
+
+```bash
 for h in buitendyk.ca www.buitendyk.ca bible.buitendyk.ca kjv.buitendyk.ca \
-         vp.buitendyk.ca docs.homeandofficemicro.com \
-         homeandofficemicro.com mail.homeandofficemicro.com; do
-  printf '%-34s %s\n' "$h" \
-    "$(curl -sL -o /dev/null -w '%{http_code}' \
-       http://$h/.well-known/acme-challenge/probe)"
+         vp.buitendyk.ca docs.homeandofficemicro.com deploy.buitendyk.ca; do
+  echo | openssl s_client -servername "$h" -connect "$h:443" 2>&1 \
+    | grep -E "Verify return code|notAfter"
 done
 ```
 
-Then dry-run each cert before issuing for real:
+### Two traps worth remembering
+
+**Backups in `sites-enabled` are live config.** nginx loads *every* file in
+that directory regardless of extension. A
+`www.buitendyk.ca.conf.before-svc.20260824-232951` symlink pointing at the
+same file as `www.buitendyk.ca.conf` made nginx parse it twice — the source
+of the `conflicting server name on 127.0.0.1:4432` warnings. Backups belong
+outside the tree (`/root/cert-fix-backup/`).
+
+**`systemctl reload nginx` is graceful.** Old workers keep serving the
+previous config briefly, so a probe immediately after a reload can hit a
+stale worker and 404 while the next request succeeds. Retry before believing
+a post-reload failure.
+
+### iRedMail (`mail.homeandofficemicro.com`) — still outstanding
+
+Mail runs in the VirtualBox guest, not on the host: the stream map's
+`default` sends everything unmatched, including `mail.homeandofficemicro.com`
+and the apex `homeandofficemicro.com`, to `192.168.56.129:443`. It still
+serves iRedMail's stock self-signed certificate (`C=CN/GuangDong`, valid to
+2033), so webmail and iRedAdmin show a browser warning.
+
+Because the guest owns both `:80` and `:443` for its own hostname, certbot
+HTTP-01 runs natively **inside the VM** — that is where to fix it, not on the
+host. Point iRedMail's expected paths at the result with symlinks rather than
+editing `ssl.tmpl`, Postfix and Dovecot separately, which an iRedMail upgrade
+can overwrite ([upstream guidance](https://docs.iredmail.org/letsencrypt.html)):
 
 ```bash
-sudo certbot certonly --webroot -w /var/www/letsencrypt --dry-run \
-  --cert-name kjv.buitendyk.ca \
-  -d kjv.buitendyk.ca -d bible.buitendyk.ca -d vp.buitendyk.ca
+chmod 0755 /etc/letsencrypt/{live,archive}   # or Postfix/Dovecot can't read the key
+ln -sf /etc/letsencrypt/live/<name>/fullchain.pem /etc/ssl/certs/iRedMail.crt
+ln -sf /etc/letsencrypt/live/<name>/privkey.pem   /etc/ssl/private/iRedMail.key
 ```
 
-### iRedMail (`mail.homeandofficemicro.com`)
-
-iRedMail ships a self-signed certificate, so webmail and iRedAdmin throw a
-browser warning until it's replaced. Rather than editing
-`/etc/nginx/templates/ssl.tmpl`, Postfix and Dovecot separately — which an
-iRedMail upgrade can overwrite — point iRedMail's expected paths at the
-Let's Encrypt files with symlinks, which is
-[iRedMail's own recommended approach](https://docs.iredmail.org/letsencrypt.html):
-
-```bash
-sudo certbot certonly --webroot -w /var/www/letsencrypt \
-  --cert-name mail.homeandofficemicro.com \
-  -d mail.homeandofficemicro.com -d homeandofficemicro.com
-
-# Required, or Postfix/Dovecot cannot read the key (0700 by default)
-sudo chmod 0755 /etc/letsencrypt/{live,archive}
-
-sudo ln -sf /etc/letsencrypt/live/mail.homeandofficemicro.com/fullchain.pem \
-            /etc/ssl/certs/iRedMail.crt
-sudo ln -sf /etc/letsencrypt/live/mail.homeandofficemicro.com/privkey.pem \
-            /etc/ssl/private/iRedMail.key
-
-sudo systemctl reload nginx && sudo systemctl restart postfix dovecot
-```
-
-The apex `homeandofficemicro.com` is included above because it currently has
-no SNI map entry and falls through to the iRedMail backend.
-
-### Keep renewals from lapsing again
-
-```bash
-sudo tee /etc/letsencrypt/renewal-hooks/deploy/reload-services.sh >/dev/null <<'EOF'
-#!/bin/sh
-systemctl reload nginx
-systemctl restart postfix dovecot
-EOF
-sudo chmod +x /etc/letsencrypt/renewal-hooks/deploy/reload-services.sh
-
-sudo systemctl list-timers | grep -i certbot   # the timer must actually be active
-sudo certbot renew --dry-run                   # exercises every renewal conf
-```
-
-If a renewal ever fails, `sudo certbot certificates` and
-`/var/log/letsencrypt/letsencrypt.log` name the failing domain and reason;
-`grep -r authenticator /etc/letsencrypt/renewal/*.conf` shows which method
-each cert is configured to use.
+Note also that `www.homeandofficemicro.com` has **no DNS A record** — leave it
+out of any cert request, or the whole issuance fails.
 
 ## Updating
 
