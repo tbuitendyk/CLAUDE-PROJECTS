@@ -16,7 +16,7 @@ const fs = require('fs');
 const path = require('path');
 
 const rowstore = require('./rowstore');
-const { createPool } = require('./pool');
+const { createPool: buildPool } = require('./pool');
 const { stampManifest, manifestDiff, pinnedFilesOf, pinnedIntact } = require('./manifest');
 const { GEOMETRIES, DEFAULT_PAIRS } = require('./dataset');
 const bracketLib = require('./bracket');
@@ -323,6 +323,31 @@ function claimOrRefuse(params = {}) {
   if (tallyRun && !tallyRun.error) {
     throw new Error(`the tables of ${tallyRun.id} are totalling right now — one heavy job at a time. They appear on Boards when it lands.`);
   }
+  // and where "sweep processor" "runs on" (3.99.0), before anything is written
+  sweepHereOrRefuse();
+}
+// THE COMPUTE TAB'S "sweep processor" CHOICE IS READ HERE (3.99.0, owner order
+// 2026-09-08: the Compute tab is tied to the three-stage engine, the only
+// engine there is). A run may only start here while that choice points at this
+// machine; otherwise the launch refuses, naming the platform as the dropdown
+// shows it, instead of quietly running here anyway. Three readers, one
+// definition: the launches' shared gate above (the three stages, a continue, a
+// fill-in, the step-6 press) refuses before anything is written; the
+// stage-engine check's status carries it, so its press sleeps on it and the
+// deploy gate sees it; and createPool() below refuses to build the workers at
+// all, so a launch that reaches for them by another road -- the totalling, a
+// Stage 4 rebuild, the ride, the unread grade, the capture, the half-life run,
+// the kept-scramble fill -- stops there. The retired engine's launcher read
+// this before 3.97.0; nothing read it between.
+function sweepHereOrRefuse() {
+  const elsewhere = require('./compute').sweepRunsHereOr();
+  if (elsewhere) throw new Error(elsewhere);
+}
+// every worker pool this file builds comes through here, so the backstop holds
+// for every launch, whichever gate it came in by
+function createPool() {
+  sweepHereOrRefuse();
+  return buildPool();
 }
 function cancelStage(id) {
   if (!activeSet || activeSet.id !== id) return { stopped: false, why: 'that set is not running' };
@@ -7236,7 +7261,7 @@ async function runStageGate(run) {
 // It was the planted check's status that carried this until that check went
 // with the older sweep path (3.97.0). Null when the box is free.
 function stageGateBlockedBy() {
-  return require('./jobs').anyJobRunning() ? 'a data job is running' : stageBusy();
+  return require('./jobs').anyJobRunning() ? 'a data job is running' : (stageBusy() || require('./compute').sweepRunsHereOr());
 }
 function stageGateStatus() {
   const G = require('./stagegate');
@@ -7938,7 +7963,7 @@ module.exports = {
   // the shape of its source, which rotted the moment a second share column
   // arrived
   sortValue,
-  coinsFingerprinted, manifestComplaint, sameEngineLine, stageBusy, foldSameTradeSettings, heldOnFor, pricingsOf, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
+  coinsFingerprinted, manifestComplaint, sameEngineLine, stageBusy, claimOrRefuse, foldSameTradeSettings, heldOnFor, pricingsOf, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,

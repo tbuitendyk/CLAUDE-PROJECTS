@@ -1134,6 +1134,12 @@ const GUARDS = [
     'theCheckLivesOnSetupsVersionTabAndTheMarkerGoesThere', 'the marker beside "stage-engine check:" opens Setup on the wrong tab, and the owner hunts for a check that is not there'],
   [path.join(ROOT, 'lib', 'stages.js'), "  out.blockedBy = stageGateBlockedBy();", "  out.blockedBy = 'a stage run';",
     'theBoxsBusyAnswerLivesOnTheChecksStatus', 'the status calls an idle box busy, so the deploy gate never deploys and the press sleeps forever'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  // and where \"sweep processor\" \"runs on\" (3.99.0), before anything is written\n  sweepHereOrRefuse();", "  // and where \"sweep processor\" \"runs on\" (3.99.0), before anything is written\n  void 0;",
+    'theStageLaunchesReadTheRoleAndRefuseAnUnreachablePlatform', 'the Compute tab\'s sweep processor row stores a choice the stage launches do not read, and a stage run starts here whatever it says'],
+  [path.join(ROOT, 'lib', 'stages.js'), "function sweepHereOrRefuse() {\n  const elsewhere = require('./compute').sweepRunsHereOr();", "function sweepHereOrRefuse() {\n  const elsewhere = null;",
+    'theStageLaunchesReadTheRoleAndRefuseAnUnreachablePlatform', 'the one definition answers nothing, so every reader of it is a decoration'],
+  [path.join(ROOT, 'lib', 'stages.js'), "function createPool() {\n  sweepHereOrRefuse();\n  return buildPool();", "function createPool() {\n  return buildPool();",
+    'theStageLaunchesReadTheRoleAndRefuseAnUnreachablePlatform', 'the backstop is gone, so a launch by another road builds its workers here whatever the Compute tab says'],
 ];
 
 const only = process.argv[2] || '';

@@ -13,10 +13,11 @@
 //     platform exists — this machine. When a separate sweep runner is built and
 //     registered, it appears in this list and every dropdown grows on its own.
 //
-//   * A STORED CHOICE IS READ, OR IT IS A LIE. The sweep launcher checks the
-//     sweep role's platform before starting and refuses, naming the platform,
-//     if it points somewhere this box cannot reach yet. A setting nothing
-//     reads would sit on the screen looking like control.
+//   * A STORED CHOICE IS READ, OR IT IS A LIE. Every launch of the three-stage
+//     engine checks where "sweep processor" "runs on" before starting and
+//     refuses, naming the platform as the dropdown shows it, if it points
+//     somewhere this box cannot reach yet. A setting nothing reads would sit
+//     on the screen looking like control.
 //
 //   * THE TRADING PLATFORM IS NOT DUPLICATED HERE. Each trading setup already
 //     names its own execution target, per profile, on the Trade page — the
@@ -90,16 +91,22 @@ function setRole(key, platformId) {
   return roles()[key];
 }
 
-// THE CHECK THAT MAKES THE SETTING REAL. Called by the sweep launcher: a sweep
-// may only start here while the sweep role points here. When a remote runner
-// exists this is where dispatching branches; until then pointing elsewhere is
-// impossible (the list has one entry), and this guard is what keeps that true
-// even if a settings file is edited by hand.
+// THE CHECK THAT MAKES THE SETTING REAL. Read by every launch of the three-
+// stage engine (lib/stages.js: the launches' shared gate, the stage-engine
+// check's status, and the worker pool itself as the backstop): a run may only
+// start here while "sweep processor" "runs on" this machine. When a remote
+// runner exists this is where dispatching branches; until then the dropdown
+// offers only this machine, and a hand-edited settings file naming a platform
+// that is not registered falls back to this machine visibly (stored and
+// in-force are reported apart) rather than refusing. The answer is written in
+// the Compute tab's own words, and the platform is named as its dropdown shows
+// it, never by its id.
 function sweepRunsHereOr() {
   const r = roles().sweep;
   if (r.inForce === LOCAL) return null;
-  return `the sweep processor role points at "${r.inForce}", and this service can only run sweeps on this machine. `
-    + 'Point it back at this machine on the Compute tab of the Setup page.';
+  const label = (platforms().find((p) => p.id === r.inForce) || {}).label || r.inForce;
+  return `"sweep processor" runs on "${label}", and this service can only run sweeps on this machine. `
+    + 'Set it back to "this machine" on the Compute tab of the Setup page.';
 }
 
 module.exports = { config, roles, setRole, sweepRunsHereOr, platforms, ROLES, LOCAL };

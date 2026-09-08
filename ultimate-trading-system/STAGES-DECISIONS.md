@@ -1237,3 +1237,25 @@ carried out 2026-08-28 under its own GO — decision 50.
     product on port 8093, not this system; and the Compute tab's setting that
     said where a sweep runs, whose only reader was the retired launcher (delete
     it, or have the stage launches honour it). Third digit (3.98.1).
+
+91. **The Compute tab's "sweep processor" choice is read by the three-stage
+    engine** (3.99.0, owner order 2026-09-08: "the compute tab should only be
+    tied to the only engine that uts uses and that's our three stage engine").
+    The row "sweep processor" "runs on" was wired to the retired engine's
+    launcher; #88 took that launcher and left the row unwired, a setting
+    nothing read. One definition now, three readers: the launches' shared gate
+    (stage 1, 2 and 3, a continue, a fill-in, the step-6 press) refuses before
+    anything is written; the stage-engine check's status carries the answer, so
+    its press on Setup under Version sleeps on it and the deploy gate sees it;
+    and the worker pool itself refuses to be built, so a launch that reaches
+    for the workers by another road — the totalling, a Stage 4 rebuild, the
+    ride, the unread grade, the capture, the half-life run, the kept-scramble
+    fill — stops there. The refusal speaks in the Compute tab's own words and
+    names the platform as its dropdown shows it. The dropdown still offers only
+    "this machine", and a hand-edited settings file naming an unregistered
+    platform falls back to this machine visibly rather than refusing, so
+    nothing changes on screen today; the row is honest again and ready for a
+    registered second machine. Three reviewers tried to refute the first cut
+    and found the gaps this paragraph closes (six launches by another road,
+    the check's press, the word "role" and an id in the refusal). Driven tests
+    and three guards. Second digit.

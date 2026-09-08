@@ -796,6 +796,10 @@ thirty seconds, under its own independently selectable theme.
    machine — and the list grows server-side when a runner is registered. The
    sweep launcher READS the sweep role and refuses an unreachable platform by
    name, so the stored choice is enforced, not decorative.
+   `[feasibility, 2026-09-08]` That launcher was retired with the older engine
+   (3.97.0). Since 3.99.0 the reader is the three-stage engine: its launches'
+   shared gate, the stage-engine check's status and the worker pool itself
+   (STAGES-DECISIONS.md #91).
 2. CPU control per resource: the worker count and each worker's share were
    already live settings (data/settings.json, honoured at launch and within
    seconds respectively); the tab exposes both, plus a hard per-service

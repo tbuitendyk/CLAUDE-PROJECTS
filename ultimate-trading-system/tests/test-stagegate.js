@@ -254,7 +254,7 @@ module.exports = {
   // The planted check's status carried it until that check was retired (3.97.0).
   theBoxsBusyAnswerLivesOnTheChecksStatus() {
     const s = src('lib/stages.js');
-    assert.ok(/function stageGateBlockedBy\(\) \{\n  return require\('\.\/jobs'\)\.anyJobRunning\(\) \? 'a data job is running' : stageBusy\(\);\n\}/.test(s), 'one definition of what the box is busy with');
+    assert.ok(/function stageGateBlockedBy\(\) \{\n  return require\('\.\/jobs'\)\.anyJobRunning\(\) \? 'a data job is running' : \(stageBusy\(\) \|\| require\('\.\/compute'\)\.sweepRunsHereOr\(\)\);\n\}/.test(s), 'one definition of what the box is busy with (a data job, the stage engine\'s own busy answer, and where "sweep processor" runs on)');
     assert.ok(/out\.blockedBy = stageGateBlockedBy\(\);/.test(s), 'the status does not carry it');
     assert.ok(/const busy = stageGateBlockedBy\(\);/.test(s), 'the press does not refuse on the same answer');
     const st = stages.stageGateStatus();
