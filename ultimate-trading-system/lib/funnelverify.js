@@ -267,6 +267,8 @@ function verdict(block) {
   parts.push(gate.state === 'PASS'
     ? `the planted check stood (release ${gate.engineVersion || 'unrecorded'}; it certifies the old sweep pipeline)`
     : `no planted check stood (${gate.state || 'NOT CHECKED'})`);
+  const sg = b.stageGate || null;
+  if (sg) parts.push(sg.state === 'PASS' ? `the stage-engine check stood (release ${sg.release || 'unrecorded'})` : `no stage-engine check stood (${sg.state || 'NOT CHECKED'})`);
   const f = b.footing || {};
   parts.push(f.ok ? `the rule gives back its own ${f.had} survivors today` : `the footing did not stand (${f.why || 'unstated'})`);
   const h = b.heldBack || {};

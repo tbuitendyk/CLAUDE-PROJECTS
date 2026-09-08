@@ -496,7 +496,7 @@ module.exports = {
   async theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    assert.ok(srv.includes("app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets(), nextNames: stages.nextNames() }));"),
+    assert.ok(srv.includes("app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam), nextNames: stages.nextNames() }));"),
       'the record-set list does not carry the next free names');
     assert.ok(ui.includes("  const nextNames = st.nextNames || {};"), 'Sweep does not read the next free names off the list');
     for (const n of [1, 2, 3]) {
@@ -2019,7 +2019,8 @@ module.exports = {
     assert.ok(/tallyRun/.test(fn), 'stageBusy does not notice a totalling, which holds the same workers');
 
     // A STAGE REFUSES WHILE A SWEEP RUNS (the direction that already held).
-    const claim = lib.slice(lib.indexOf('function claimOrRefuse()'), lib.indexOf('\n}', lib.indexOf('function claimOrRefuse()')));
+    // (the claim takes the launch's params since 3.87.0, so the stage-engine check's own launches can pass while it runs)
+    const claim = lib.slice(lib.indexOf('function claimOrRefuse(params = {})'), lib.indexOf('\n}', lib.indexOf('function claimOrRefuse(params = {})')));
     assert.ok(/batch\.batchRunning\(\)/.test(claim), 'a stage launch no longer asks whether a sweep is going');
 
     // A SWEEP REFUSES WHILE A STAGE RUNS (the direction that did not).

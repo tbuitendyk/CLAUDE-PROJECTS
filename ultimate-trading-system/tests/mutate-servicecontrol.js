@@ -1119,6 +1119,13 @@ const GUARDS = [
     'aBlankBoxMeansTheSetsOwnBarNeverAOnePercentOne', 'a blank bar box becomes a bar of one copy, which a forecast-free rule clears 99% of the time'],
   [path.join(ROOT, 'lib', 'stages.js'), '  const now = S4.applyRule(mine, rule);\n  const same = now.length === wanted.length', '  const now = S4.applyRule(all, rule);\n  const same = now.length === wanted.length',
     'theFootingReplaysOnTheSetsOwnCopyOfTheNumbers', 'a parent that lost a column the rule reads refuses a set whose own copy still replays'],
+  // ---- the stage engine's own planted check (3.87.0) ----
+  [path.join(ROOT, 'lib', 'stagegate.js'), '  const g4 = fc.pass === false && fc.copies === copies;', '  const g4 = fc.copies === copies;',
+    'aFairCoinClearingTheBarFailsTheExam', 'a fair coin whose rule clears the bar passes the exam, and an engine that invents things is certified'],
+  [path.join(ROOT, 'lib', 'stages.js'), '    if (reserved && !params.exam) {', '    if (false) {',
+    'theLauncherRefusesTheReservedCoinsUnlessTheExamLaunchesThem', 'a fabricated coin with a known rule can enter a real run, and a board would be judging fiction'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  if (examBusy() && !(params && params.exam)) throw new Error(`${examBusy()} is going right now — one heavy job at a time`);', '  if (false) throw new Error(`${examBusy()} is going right now — one heavy job at a time`);',
+    'theExamRefusesWhileTheBoxIsBusyAndTheBoxRefusesWhileTheExamRuns', 'a stage run can launch under the exam and fight it for the workers'],
 ];
 
 const only = process.argv[2] || '';

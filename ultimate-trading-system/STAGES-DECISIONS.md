@@ -886,3 +886,36 @@ carried out 2026-08-28 under its own GO — decision 50.
     profiting: the sanity line says not known. A new set starts with an empty
     verify list. Negative money in the sentence prints the way the page prints
     it. Third digit.
+
+75. **The stage engine's own planted check** (3.87.0, loop, VERIFY-DESIGN.md
+    V0 and decision 9; loop record step 2). A button on Verify beside the
+    planted check runs the same question through the engine the owner uses:
+    two fabricated coins from the planted check's own generator (the plant
+    alive the whole span; a fair coin), stage 1, stage 2, a small stage 3 with
+    a null set of 20 and every copy kept, a rule declared before anything is
+    launched (a range on the hold length the block permutes, no cut) cut into
+    a Stage 4 set on each coin, the verdict read on both at the exam's own bar
+    of all 20 copies, five gates: G1 held-back money, G2 beats buying and going
+    away, G3 beats every copy, G4 the fair coin does not, G5 nothing failed and
+    every survivor carries every copy. The bar is all the copies because an 85%
+    bar is cleared by a fair coin more than 5% of the time at any copy count;
+    all of 20 is 1 in 21, printed with every verdict. Records in their own
+    directory; PASS belongs to the exact release. The exam's sets are marked
+    and kept off every screen's list, and deleted when it lands; its coins are
+    reserved and stage 1 refuses them unless the exam launches them. Everything
+    refuses while it runs and it refuses while anything runs. A Stage 4 verdict
+    records which stage gate stood, printed beside the planted check, never a
+    gate on the set. Second digit.
+
+76. **The stage engine fails its own planted check, and the loop leaves that
+    for the owner** (2026-09-08, loop; the full bisection is in
+    VERIFY-DESIGN.md section 9, step 2). A trader who follows yesterday's
+    close-versus-open on the fabricated plant makes +$48 on the exam's test
+    window and +$43 on its held-back window; the engine's own chunks, labels
+    and simulator reproduce that to the cent; stage 1's members forecast the
+    same window weakly (only the `prices` view beats chance) and make +$25;
+    stage 3's committee loses under every agreement rule tried. G1 to G3
+    fail, G4 and G5 stand. The check ships and says so on Verify; the engine
+    is not changed inside the loop (RULE SIX). What the owner may want to
+    know first: which view sees the plant and which do not, and whether the
+    committee's agreement is what turns a weak edge into a loss.

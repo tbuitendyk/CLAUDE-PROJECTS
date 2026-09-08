@@ -216,6 +216,8 @@ function listSets() {
         // there; the Sweep's stage 3 box offers exactly those (3.82.0)
         checkpoint: d.stage === 3 && d.status !== 'running' && hasCheckpoint(d.id),
         continued: Array.isArray(d.continued) ? d.continued.length : 0,
+        // the stage-engine check's own sets, kept off every screen's list (3.87.0)
+        exam: !!d.exam,
       });
     } catch (_) { /* an unreadable doc is skipped, never invented */ }
   }
@@ -306,6 +308,7 @@ function stageRunning() { return activeSet ? activeSet.id : null; }
 // Returns what is busy, in words fit to put in a refusal, or null.
 function stageBusy() {
   if (activeSet) return `stage run ${activeSet.id}`;
+  if (examBusy()) return examBusy();
   if (tallyRun && !tallyRun.error) return `the totalling of ${tallyRun.id}`;
   // 3.81.0, owner order: "other loads are not allowed" while step 6's press is
   // working. Named HERE rather than in a second gate of its own, so every
@@ -315,7 +318,9 @@ function stageBusy() {
   if (rich) return rich;
   return null;
 }
-function claimOrRefuse() {
+function claimOrRefuse(params = {}) {
+  // the stage-engine check's own launches carry exam: true; nothing else launches while it runs (3.87.0)
+  if (examBusy() && !(params && params.exam)) throw new Error(`${examBusy()} is going right now — one heavy job at a time`);
   if (batch.batchRunning()) {
     throw new Error('a sweep is running on this box right now — a stage run would fight it for the same workers. '
       + 'Wait for it or stop it first.');
@@ -561,7 +566,7 @@ function feeOrRefuse(raw, where) {
 
 // ---- STAGE 1 --------------------------------------------------------------------
 function startStage1(params) {
-  claimOrRefuse();
+  claimOrRefuse(params);
   const universe = Array.isArray(params.universe) && params.universe.length
     ? params.universe.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
     : batch.DEFAULT_PAIRS;
@@ -572,6 +577,18 @@ function startStage1(params) {
   const compare = Array.isArray(params.compare) && params.compare.length
     ? params.compare.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
     : [];
+  // THE FABRICATED COINS NEVER MEET A REAL RUN (3.87.0): the planted check's
+  // pair and the stage-engine check's pair carry a known rule, so any board
+  // they sat on would be judging fiction. The old launcher has refused them
+  // since 2026-08-03; this one refuses them too, unless the exam is launching.
+  {
+    const G = require('./stagegate');
+    const Pl = require('./planted');
+    const reserved = [...universe, ...compare].find((s) => Pl.isPlanted(s) || G.isExamSymbol(s));
+    if (reserved && !params.exam) {
+      throw new Error(`${reserved} is a reserved fabricated coin — it never enters a real run (the planted check and the stage-engine check are how they are used)`);
+    }
+  }
   const sizes = {
     singles: !!(params.sizes || {}).singles,
     doubles: !!(params.sizes || {}).doubles,
@@ -643,6 +660,7 @@ function startStage1(params) {
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
+    exam: !!params.exam,
     measurements: MEASUREMENTS_VERSION,
     boardNull: { ...BOARD_NULL_NONE },
     // The owner's current campaign name rides on every launch, exactly as it
@@ -1342,7 +1360,7 @@ const pickedOf = (doc) => (Array.isArray((doc || {}).picked) ? doc.picked.map(Nu
 
 // ---- STAGE 2 --------------------------------------------------------------------
 function startStage2(params) {
-  claimOrRefuse();
+  claimOrRefuse(params);
   if (params.orderBy !== undefined) {
     throw new Error('order by is gone — the carry follows the sort saved on the parent record set\'s table '
       + '(the fixed rule when none is saved). Pick the sort on Boards.');
@@ -1382,6 +1400,7 @@ function startStage2(params) {
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
+    exam: !!params.exam,
     measurements: MEASUREMENTS_VERSION,
     boardNull: { ...BOARD_NULL_NONE },
     parent: {
@@ -2283,7 +2302,7 @@ function stage3Declared(b) {
   return out;
 }
 function startStage3(params) {
-  claimOrRefuse();
+  claimOrRefuse(params);
   const parent = parentOrRefuse(params.from, 2);
   const fee = Number(params.fee);
   if (!Number.isFinite(fee) || fee < 0 || fee > 0.05) {
@@ -2344,6 +2363,7 @@ function startStage3(params) {
     status: 'running', progress: 'writing the plan',
     desc: String(params.desc || ''),
     engineVersion: ENGINE_VERSION,
+    exam: !!params.exam,
     measurements: MEASUREMENTS_VERSION,
     // WHAT THIS RUN KEPT, stamped at launch in the shape every reader already
     // asks. A run that keeps ten and stamps 'none' would fill the columns and
@@ -5552,6 +5572,8 @@ async function cutFunnelSet(parentId, state = {}, note = null) {
   // 5 replaced it; a walk that never pressed that button has none, and its final
   // rule IS the owner's.
   doc.userRule = state.userRule ? S4.normaliseRule(state.userRule) : null;
+  // the stage-engine check's own sets are marked, and kept off every screen's list (3.87.0)
+  doc.exam = !!state.exam;
   const closed = S4.ruleWithClosing(ranked, state.rule, state.closing, doc.target);
   doc.rule = closed.rule;
   // IN CHUNKS, LETTING GO OF THE THREAD BETWEEN THEM (3.67.0, owner order). A
@@ -5983,6 +6005,9 @@ function verifyFooting(doc, join) {
     gate = { state: g.running ? 'RUNNING' : (g.state || 'NOT CHECKED'), engineVersion: g.engineVersion || null };
   } catch (_) { /* the gate's own reader says NOT CHECKED */ }
   gate.certifies = 'certifies the old sweep pipeline';
+  // and the stage engine's own check (3.87.0): PASS belongs to the exact release
+  const sg = require('./stagegate').status(ENGINE_VERSION, { running: examBusy() });
+  const stageGate = { state: sg.state, release: sg.last ? sg.last.release : null, at: sg.last ? sg.last.at : null };
   const check = doc.check || {};
   let why = null;
   if (!doc.rich) why = 'this set keeps no copy of its rebuilt numbers yet — open it on the Funnel first';
@@ -6003,6 +6028,7 @@ function verifyFooting(doc, join) {
     userRuleDiffers: doc.userRule ? S4.ruleSentence(S4.normaliseRule(doc.userRule)) !== S4.ruleSentence(join.rule) : null,
     releases,
     gate,
+    stageGate,
   };
 }
 const BLEND_REFUSAL = 'this set was cut on all units together; a verdict is read on one coin and shape — cut the rule on one unit on the Funnel and verify that set';
@@ -6059,10 +6085,10 @@ async function funnelVerifyRun(doc, asked) {
   const fresh = getSet(doc.id);
   if (!fresh) throw new Error('the set went away while it was being read');
   const blocks = fresh.verify || [];
-  const { gate, ...rest } = footing;
+  const { gate, stageGate, ...rest } = footing;
   const block = V.buildBlock({
     id: `${doc.id}-v${blocks.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: blocks.length + 1,
-    rules, gate, footing: rest,
+    rules, gate, stageGate, footing: rest,
     looks: verifyLooksOf(doc, footing.keys, blocks.length),
     heldBack, copies, survivors, sanity, lineA, lineB,
     fee: { feePerLeg: (join.parent.params || {}).fee ?? null, feeUnits: 'fraction' },
@@ -6102,6 +6128,138 @@ function verifySummaryOf(doc) {
   return { blocks: blocks.length, at: first.at, pass: !!(first.verdict && first.verdict.pass), release: first.release || null };
 }
 
+// ---- V0: THE STAGE ENGINE'S OWN PLANTED CHECK (3.87.0, VERIFY-DESIGN.md) --------
+//
+// The declaration and the grading are lib/stagegate.js's, pure. Running it is
+// this file's, because it owns every door the exam walks through: two coins
+// fabricated with the planted check's own generator, stage 1, stage 2, a small
+// stage 3 with every copy kept, the declared rule cut into a Stage 4 set on
+// each coin, the verdict pressed on both, five gates graded, one record written
+// in the exam's own directory -- and everything it made deleted, so nothing of
+// it is ever on Boards. Started and polled; a heavy job like any other.
+let examRun = null;   // { id, startedAt, step, sets, error, result, promise }
+const examBusy = () => (examRun && !examRun.result && !examRun.error ? `the stage-engine check (${examRun.step})` : null);
+async function examWait(id, label, ms = 20 * 60 * 1000) {
+  const t0 = Date.now();
+  for (;;) {
+    const doc = getSet(id);
+    if (doc && doc.status !== 'running') return doc;
+    if (Date.now() - t0 > ms) throw new Error(`${label} did not finish in ${Math.round(ms / 60000)} minutes`);
+    // eslint-disable-next-line no-await-in-loop
+    await new Promise((resolve) => { setTimeout(resolve, 500); });
+  }
+}
+function examCleanup(run) {
+  // children first: a set another set names as its parent is never deleted
+  for (const id of run.sets.slice().reverse()) {
+    try { deleteSet(id, id); } catch (_) { /* a set that was never written */ }
+    try { fs.rmSync(funnelRichFile(id), { force: true }); } catch (_) { /* none */ }
+    try { fs.rmSync(agreedFile(id), { force: true }); } catch (_) { /* none */ }
+  }
+  const G = require('./stagegate');
+  const { CACHE_DIR } = require('./binance');
+  let files = [];
+  try { files = fs.readdirSync(CACHE_DIR); } catch (_) { files = []; }
+  for (const f of files) {
+    if (G.SYMBOLS.some((s) => f.startsWith(`${s}-1h-`))) { try { fs.rmSync(path.join(CACHE_DIR, f), { force: true }); } catch (_) { /* best effort */ } }
+  }
+}
+async function runStageGate(run) {
+  const G = require('./stagegate');
+  const Pl = require('./planted');
+  const tag = `stage-engine check ${run.id}`;
+  run.step = 'fabricating the two coins';
+  Pl.generateFabricated(G.SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);   // the plant, alive the whole span
+  Pl.generateFabricated(G.SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);     // a fair coin, the rule never on
+  run.step = 'stage 1';
+  const s1 = startStage1({ ...G.STAGE1, exam: true, name: `${tag} S1` });
+  run.sets.push(s1.id);
+  const d1 = await examWait(s1.id, 'stage 1');
+  if (d1.status !== 'done') throw new Error(`stage 1 ended ${d1.status}: ${JSON.stringify(d1.failures || [])}`);
+  // what stage 1 itself saw on each coin, for the record
+  const stage1 = {};
+  for (const r of rowstore.readAll(s1.id, 'records')) {
+    stage1[r.trade === G.PLANT ? 'planted' : 'fair'] = { score: r.score ?? null, beat: r.beat ?? null, pairs: r.pairs ?? null, money: r.money ?? null, moneyTrades: r.moneyTrades ?? null, beatMoney: r.beatMoney ?? null };
+  }
+  run.step = 'stage 2';
+  const s2 = startStage2({ ...G.STAGE2, from: s1.id, exam: true, name: `${tag} S2` });
+  run.sets.push(s2.id);
+  const d2 = await examWait(s2.id, 'stage 2');
+  if (d2.status !== 'done') throw new Error(`stage 2 ended ${d2.status}: ${JSON.stringify(d2.failures || [])}`);
+  run.step = 'stage 3';
+  const s3 = startStage3({ ...G.STAGE3, from: s2.id, exam: true, name: `${tag} S3` });
+  run.sets.push(s3.id);
+  const d3 = await examWait(s3.id, 'stage 3');
+  if (d3.status !== 'done') throw new Error(`stage 3 ended ${d3.status}: ${JSON.stringify(d3.failures || [])}`);
+  run.step = 'totalling';
+  const t = readTally(s3.id) || await buildTally(getSet(s3.id));
+  run.step = 'cutting the declared rule on each coin';
+  const units = unitsOfSet(t, s3.id);
+  const keyOf = (sym) => (units.find((u) => u.trade === sym) || {}).key || null;
+  if (!keyOf(G.PLANT) || !keyOf(G.FAIR)) throw new Error('the stage 3 set does not hold both fabricated coins');
+  const cuts = {};
+  for (const [which, sym] of [['planted', G.PLANT], ['fair', G.FAIR]]) {
+    // eslint-disable-next-line no-await-in-loop
+    const cut = await cutFunnelSet(s3.id, { rule: G.RULE, closing: { key: 'rule' }, unit: keyOf(sym), barPct: 100, exam: true, name: `${tag} ${which}` });
+    run.sets.push(cut.id);
+    cuts[which] = cut;
+  }
+  run.step = 'the verdict on each coin';
+  const blocks = {};
+  for (const which of ['planted', 'fair']) {
+    // the exam holds the box, so it presses the read directly rather than through the one-at-a-time door
+    // eslint-disable-next-line no-await-in-loop
+    await funnelVerifyRun(getSet(cuts[which].id), { barPct: 100 });
+    blocks[which] = getSet(cuts[which].id).verify[0];
+  }
+  // for scale: a trader who follows the plant's label, through the same
+  // simulator at the chunk's own hold and the exam's fee, on the same windows
+  run.step = 'the label-following trader, for scale';
+  let reference = null;
+  try {
+    const sw = require('./stagework');
+    const p1 = { windowLayout: G.STAGE1.windowLayout, allLoaded: false, startMonth: G.STAGE1.startMonth, endMonth: G.STAGE1.endMonth, trainOn: G.STAGE1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
+    const { geo, maps, split } = await sw.unitChunks({ trade: G.PLANT, ctx1: null, ctx2: null, size: 1 }, G.STAGE1.geometry, p1);
+    const labelCalls = (chunks) => chunks.map((c) => (c.label > 0 ? 1 : c.label < 0 ? -1 : 0));
+    const on = (chunks) => { const m = sw.directionMoney(chunks, labelCalls(chunks), maps.trade, geo, G.STAGE3.fee); return { pnl: m.pnl, trades: m.trades }; };
+    reference = { planted: { test: on(split.testChunks), hold: on(split.holdChunks) } };
+  } catch (err) { reference = { error: String((err && err.message) || err) }; }
+  const g = G.grade({ planted: blocks.planted, fair: blocks.fair, s3: d3, stage1, reference });
+  const summary = (b) => ({
+    survivors: (b.heldBack || {}).of ?? 0, real: (b.heldBack || {}).real ?? null,
+    buyHold: (((b.heldBack || {}).comparisons || {}).buyHold || {}).hi ?? null,
+    beats: (b.copies || {}).beats ?? 0, copies: (b.copies || {}).copies ?? 0, pass: !!(b.copies || {}).pass,
+    // each survivor's own reading, so a FAIL names the setting and the money
+    rows: (((b.survivors || {}).rows) || []).map((r) => ({ label: r.label, held: r.held, trades: r.trades, beats: r.beats, copiesKept: r.copiesKept })),
+  });
+  return G.writeRecord({
+    id: run.id, at: new Date().toISOString(), release: ENGINE_VERSION, pass: g.pass,
+    checks: g.checks, sentences: g.sentences, chance: g.chance, copies: g.copies, bar: g.bar,
+    rule: G.RULE, planted: summary(blocks.planted), fair: summary(blocks.fair),
+    stage1, reference,
+    stage3: { settings: (d3.plan || {}).settings ?? null, units: (d3.plan || {}).units ?? null, failures: (d3.failures || []).length },
+    elapsedMs: Date.now() - run.startedAt,
+  });
+}
+function stageGateStatus() {
+  const G = require('./stagegate');
+  const out = G.status(ENGINE_VERSION, { running: examBusy() });
+  if (examRun) out.run = { id: examRun.id, step: examRun.step, error: examRun.error, done: !!examRun.result, startedAt: new Date(examRun.startedAt).toISOString() };
+  return out;
+}
+function stageGateStart() {
+  if (examRun && !examRun.result && !examRun.error) throw new Error('the stage-engine check is already running');
+  const busy = batch.batchRunning() ? 'a sweep is running on this box' : (require('./jobs').anyJobRunning() ? 'a data job is running' : stageBusy());
+  if (busy) throw new Error(`${busy} — the stage-engine check fabricates two coins and runs all three stages, so it waits for the box to be free`);
+  const run = { id: `sg-${Date.now().toString(36)}`, startedAt: Date.now(), step: 'starting', sets: [], error: null, result: null, promise: null };
+  examRun = run;
+  run.promise = runStageGate(run)
+    .then((rec) => { run.result = rec; })
+    .catch((err) => { run.error = String((err && err.message) || err); })
+    .finally(() => { try { examCleanup(run); } catch (_) { /* best effort */ } });
+  return stageGateStatus();
+}
+
 function listFunnelSets(parentId = null) {
   return listSets()
     .filter((x) => String(x.id).startsWith('s4-'))
@@ -6122,6 +6280,7 @@ function listFunnelSets(parentId = null) {
 function funnelCutsFor(parentId, unitKey) {
   const want = unitKey == null || String(unitKey) === 'all' ? null : String(unitKey);
   return listFunnelSets(parentId)
+    .filter((d) => !d.exam)
     .filter((d) => (d.unit || null) === want)
     .map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
@@ -6798,6 +6957,7 @@ module.exports = {
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   windowsOfSet, newestDataOf,
   funnelVerifyDry, funnelVerifyStart, funnelVerifyStatus, verifySummaryOf, sealedOnUnitOf,
+  stageGateStart, stageGateStatus, examBusy,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,

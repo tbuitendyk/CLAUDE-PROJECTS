@@ -84,7 +84,14 @@ async function fixture(opts = {}) {
   await w.close();
   const t = await stages.buildTally(doc);
   const cleanup = () => {
+    // the Stage 4 sets cut from this fixture carry the cut's own id, not the
+    // stamp: they are found by their parent (148 were left behind before this)
     for (const f of fs.readdirSync(SETS_DIR)) {
+      if (/^s4-.*\.json$/.test(f)) {
+        let d = null;
+        try { d = JSON.parse(fs.readFileSync(path.join(SETS_DIR, f), 'utf8')); } catch (_) { d = null; }
+        if (d && d.parent && d.parent.id === id) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true }); } catch (_) { /* fixture */ } }
+      }
       if (f.includes(stamp)) { try { fs.rmSync(path.join(SETS_DIR, f), { force: true, recursive: true }); } catch (_) { /* fixture */ } }
     }
     try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* fixture */ }

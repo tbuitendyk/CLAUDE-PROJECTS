@@ -730,7 +730,16 @@ app.get('/api/batches', (req, res) => res.json({ running: batch.batchRunning(), 
 // only validate shapes and put refusals on the wire as plain sentences.
 const stages = require('./lib/stages');
 
-app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets(), nextNames: stages.nextNames() }));
+// THE STAGE ENGINE'S OWN PLANTED CHECK (3.87.0): its state, and the press that
+// runs it. It fabricates two coins and runs all three stages, so it refuses
+// while anything else is going, and everything else refuses while it runs.
+app.get('/api/stage-gate/status', (req, res) => res.json(stages.stageGateStatus()));
+app.post('/api/stage-gate', (req, res) => {
+  try { return res.json(stages.stageGateStart()); } catch (err) { return res.status(409).json({ error: err.message }); }
+});
+
+// the stage-engine check's own sets are never listed for a screen
+app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam), nextNames: stages.nextNames() }));
 
 app.get('/api/stageset/:id', (req, res) => {
   const doc = stages.getSet(req.params.id);
@@ -880,7 +889,7 @@ app.get('/api/funnel/set/:id/rebuild', (req, res) => res.json(stages.rebuildSetR
 app.get('/api/funnel/sets', (req, res) => {
   const parent = req.query.parent ? String(req.query.parent) : null;
   return res.json({
-    sets: stages.listFunnelSets(parent).map((d) => ({
+    sets: stages.listFunnelSets(parent).filter((d) => !d.exam).map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
       parent: d.parent, unit: d.unit || null, unitName: d.unitName || null, target: d.target, counts: d.counts,
       ruleSentence: d.ruleSentence || null, warnings: d.warnings || [],

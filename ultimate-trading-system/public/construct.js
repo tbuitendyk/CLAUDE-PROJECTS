@@ -1903,7 +1903,31 @@ const vDay = (ts) => (ts != null && Number.isFinite(Number(ts)) ? new Date(Numbe
 const vPct = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
 const vFix = (v, n = 2) => (v == null || !Number.isFinite(Number(v)) ? 'none' : Number(v).toFixed(n));
 
-function vPlantedPanelHtml(gate) {
+function vStageGateHtml(sg) {
+  const s = sg || {};
+  const run = s.run || null;
+  const last = s.last || null;
+  const cls = s.state === 'RUNNING' ? 'warn' : s.state === 'PASS' ? 'pos' : s.state === 'FAIL' ? 'neg' : 'muted';
+  return `<h4 style="margin:.8rem 0 .3rem">The stage-engine check</h4>
+    <p class="note">The same question asked of the engine that prices the record sets on Boards: two fabricated
+      coins, one with a known rule planted in it and one with nothing, through stage 1, stage 2, a small stage 3
+      with every scrambled copy kept, a rule declared before anything is launched and cut into a Stage 4 set on
+      each, and the verdict read on both. PASS = the planted coin's rule made held-back money, beat buying the coin
+      and going away, beat every one of its ${Number(s.last && s.last.copies ? s.last.copies : 20)} scrambled copies, the fair coin's rule did not, and nothing
+      failed. A fair coin clears that bar by chance about 1 in ${Number(s.last && s.last.copies ? s.last.copies : 20) + 1} times, and that chance is printed with every
+      verdict. A pass belongs to the release that earned it; a new release starts NOT CHECKED. Everything it
+      makes is deleted when it lands, so nothing of it is ever on Boards.</p>
+    <div class="row"><span>current: <b class="${cls}">${esc(s.state || 'NOT CHECKED')}</b>
+      ${last && last.release ? `<span class="muted">(release ${esc(last.release)})</span>` : ''}</span>
+      <button id="sgRun" class="pri" ${s.state === 'RUNNING' ? 'disabled title="the stage-engine check is already running"' : ''}>Run the stage-engine check</button>
+      <span id="sgMsg" class="note">${s.state === 'RUNNING' && run ? `running now — ${esc(run.step || '')}` : ''}</span></div>
+    ${s.detail ? `<p class="note">${esc(s.detail)}</p>` : ''}
+    ${run && run.error ? `<p class="note"><b class="neg">The last press failed:</b> ${esc(run.error)}</p>` : ''}
+    ${last && last.sentences && last.sentences.length ? `<div class="note"><b>Last stage gate (${esc(last.id || '')}, release ${esc(last.release || '')}, ${last.pass ? 'PASS' : 'FAIL'}${last.elapsedMs ? `, ${Math.round(last.elapsedMs / 1000)} s` : ''}):</b>
+      ${last.sentences.map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
+    ${sg ? `<details style="margin-top:.4rem"><summary>full stage-gate record</summary><pre>${esc(JSON.stringify(sg, null, 1))}</pre></details>` : ''}`;
+}
+function vPlantedPanelHtml(gate, sg) {
   return `<div class="panel">
     <h3 style="margin-top:0">Planted check — the instrument's calibration certificate</h3>
     <p class="note">Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
@@ -1924,6 +1948,7 @@ function vPlantedPanelHtml(gate) {
         it is not on the Boards section any more. The verdict above is the record kept when it finished, and it stands
         until a fresh planted check replaces it.</div>` : ''}</div>` : ''}
     ${gate ? `<details style="margin-top:.4rem"><summary>full gate record</summary><pre>${esc(JSON.stringify(gate, null, 1))}</pre></details>` : ''}
+    ${vStageGateHtml(sg)}
   </div>`;
 }
 // the set is picked from the server's own list, newest first, never typed
@@ -1955,7 +1980,7 @@ function vLooksHtml(d) {
 }
 function vPressHtml(d) {
   const r = d.rules || {};
-  return `<div class="row" style="margin-top:.4rem">
+  return `<div class="row" style="margin-top:.4rem;align-items:flex-end">
     <label class="f" title="the share of the scrambled copies the survivors' held-back money has to beat. Opens on the share this set was cut under; a change is written onto the verdict as a guessed threshold.">bar share %<input id="vBarPct" type="number" min="1" max="100" value="${Number(r.barPct) || 80}" style="width:5rem"></label>
     <label class="f" title="the share of every scrambled held-back figure on the whole board that must be losing money for the copies to count as noise. A guessed threshold, written onto the verdict.">noise must lose at least %<input id="vSanityPct" type="number" min="0" max="100" value="${Number(r.sanityPct) || 50}" style="width:5rem"></label>
     <button id="vRead" class="pri" ${d.refused ? 'disabled' : ''} title="the one press that opens the held-back window on this screen. Every press appends a block and none is overwritten; the first is the verdict, the rest are later looks.">Read the rule against nothing on the held-back window</button>
@@ -2030,10 +2055,21 @@ function vSetPanelHtml(list, chosen, d) {
 }
 async function drawVerify() {
   const gate = await apiOr('api/planted-gate/status', null);
+  const sg = await apiOr('api/stage-gate/status', null);
   const sets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
   const chosen = vRememberedSet(sets);
   const d = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/verify`, null) : null;
-  $('#view').innerHTML = `${vPlantedPanelHtml(gate)}${vSetPanelHtml(sets, chosen, d)}`;
+  $('#view').innerHTML = `${vPlantedPanelHtml(gate, sg)}${vSetPanelHtml(sets, chosen, d)}`;
+  const sgBtn = $('#sgRun');
+  if (sgBtn) sgBtn.onclick = async () => {
+    if (!confirm('Run the stage-engine check?\n\nFabricates two coins and runs stage 1, stage 2 and a small stage 3 on them, then cuts and reads a Stage 4 set on each. Minutes. It refuses while any other job, sweep or stage run is going, and nothing else can start while it runs. Everything it makes is deleted when it lands.')) return;
+    sgBtn.disabled = true;
+    $('#sgMsg').textContent = 'starting…';
+    const out = await tryPost('api/stage-gate', {}, 'The stage-engine check\'s line on Verify says what it is doing.');
+    if (!out) { sgBtn.disabled = false; $('#sgMsg').textContent = ''; return; }
+    vStageGateFollow();
+  };
+  if (sg && sg.state === 'RUNNING') vStageGateFollow();
   const pg = $('#pgRun');
   if (pg) pg.onclick = async () => {
     if (!confirm('Run the planted check?\n\nRegenerates the fabricated pair and fires a full sweep through the null pipeline. Minutes, not seconds. It refuses while any other job, sweep or stage run is going.')) return;
@@ -2064,6 +2100,26 @@ async function drawVerify() {
     if (!started) { btn.disabled = false; $('#vReadMsg').textContent = ''; return; }
     vFollow(chosen, started.token);
   };
+}
+// THE STAGE-ENGINE CHECK IS WATCHED WHILE IT RUNS, one watcher per page, and
+// the panel redraws from its record when it lands.
+let vStageGateWatching = false;
+async function vStageGateFollow() {
+  if (vStageGateWatching) return;
+  vStageGateWatching = true;
+  try {
+    for (;;) {
+      await new Promise((resolve) => { setTimeout(resolve, 5000); });
+      if (tab !== 'verify') return;
+      let s = null;
+      try { s = await api('api/stage-gate/status'); } catch (_) { s = null; }
+      if (!s) continue;
+      const m = $('#sgMsg');
+      if (s.state === 'RUNNING') { if (m) m.textContent = `running now — ${(s.run && s.run.step) || ''}`; continue; }
+      drawVerify();
+      return;
+    }
+  } finally { vStageGateWatching = false; }
 }
 // THE READ IS STARTED AND POLLED, the shape every press on the Funnel has, so no
 // one request is held open; the page redraws from the record when it lands.
