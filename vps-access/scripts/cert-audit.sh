@@ -1,68 +1,63 @@
 #!/usr/bin/env bash
 # cert-audit.sh -- READ-ONLY. Changes nothing.
 #
-# Four Let's Encrypt certs on this box have lapsed (kjv Aug 13, docs Aug 17,
-# www Sep 5, deploy Sep 8). Run 1 established that certbot.timer is enabled and
-# firing daily but certbot.service is in a `failed` state -- so renewal is being
-# attempted and failing, not skipped. This run gets the reason.
+# Run 2 found the actual root cause: all four renewal confs carry
+#   authenticator = manual
+# so every unattended renewal dies with "An authentication script must be
+# provided with --manual-auth-hook when using the manual plugin
+# non-interactively" -- certbot fails before it ever makes an HTTP request.
+# The certs were issued by hand with `certbot --manual` and were never going
+# to renew on their own.
 #
-# Every pipeline is guarded with `|| true`: under `set -euo pipefail` a grep
-# that matches nothing returns 1 and aborts the whole audit, which is what
-# truncated run 1 at section 3.
+# The fix is to move them to the webroot authenticator, which needs the ACME
+# challenge path served over :80 -- and `acme-challenge` currently appears
+# nowhere in /etc/nginx. This run dumps the real :80 vhost structure so the
+# challenge location can be placed correctly the first time.
 set -euo pipefail
 
 hr(){ echo; echo "===== $* ====="; }
 
-hr "1. why certbot.service failed"
-systemctl status certbot.service --no-pager -l 2>&1 | tail -20 || true
-echo "-- last journal --"
-journalctl -u certbot.service --no-pager -n 25 2>&1 | tail -25 || true
+hr "1. sites-enabled inventory"
+ls -l /etc/nginx/sites-enabled/ 2>/dev/null || true
+echo "NOTE: nginx loads EVERY file in sites-enabled regardless of extension,"
+echo "      so a .before-svc.* backup there is live config, not an inert copy."
 
-hr "2. renewal confs: authenticator per cert"
-for f in /etc/letsencrypt/renewal/*.conf; do
-  [ -e "$f" ] || { echo "  (none)"; break; }
+hr "2. every 'listen' line, by file"
+for f in /etc/nginx/sites-enabled/*; do
+  [ -f "$f" ] || continue
   echo "--- $(basename "$f")"
-  grep -E "^(authenticator|installer|webroot_path|server)[[:space:]]*=" "$f" 2>/dev/null | sed 's/^/    /' || true
-  awk '/webroot_map/{f=1;next} f&&NF{print "    map: "$0}' "$f" 2>/dev/null | head -3 || true
+  grep -nE "listen|server_name" "$f" 2>/dev/null | cut -c1-120 | head -18 || true
 done
 
-hr "3. last letsencrypt.log errors"
-grep -iE "error|failed|problem|timeout|401|403|404|urn:ietf" /var/log/letsencrypt/letsencrypt.log 2>/dev/null \
-  | tail -22 | cut -c1-200 || echo "  (nothing matched)"
-
-hr "4. acme-challenge anywhere in nginx?"
-grep -rl "acme-challenge" /etc/nginx/ 2>/dev/null | head -10 || echo "  NONE in /etc/nginx"
-echo "-- webroot dirs --"
-ls -ld /var/www/letsencrypt /var/www/html /var/www/certbot 2>/dev/null || true
-
-hr "5. :80 server blocks -- server_name + how they redirect"
-# Flatten: print each `listen 80` vhost's server_name and any return/rewrite,
-# noting whether the redirect sits at server level (fatal for ACME) or inside
-# a location (fine).
-nginx -T 2>/dev/null | awk '
-  /server[[:space:]]*\{/            { inb=1; d=0; buf=""; loc=0 }
-  inb                                { buf=buf $0 "\n" }
-  inb && /location/                  { loc=1 }
-  inb && /return[[:space:]]+30/      { if(!loc) srv_ret=1; else loc_ret=1 }
-  inb && /\}/                        { d--; if(d<=0 && buf!=""){
-                                          if (buf ~ /listen[[:space:]]+(\[::\]:)?80[;[:space:]]/) {
-                                            sn="?"; if (match(buf,/server_name[^;]*/)) sn=substr(buf,RSTART+12,RLENGTH-12)
-                                            printf "  %-46s srv_return=%s loc_return=%s acme=%s\n", sn, (srv_ret?"YES(FATAL)":"no"), (loc_ret?"yes":"no"), (buf ~ /acme-challenge/ ? "yes":"NO")
-                                          }
-                                          inb=0; srv_ret=0; loc_ret=0
-                                       } }
-  inb && /\{/                        { d++ }
-' 2>/dev/null || echo "  (parse failed)"
-
-hr "6. nginx conf files in play"
-ls -1 /etc/nginx/sites-enabled/ 2>/dev/null || true
-
-hr "7. live cert expiry"
-for d in /etc/letsencrypt/live/*/; do
-  [ -e "$d/cert.pem" ] || continue
-  e=$(openssl x509 -enddate -noout -in "$d/cert.pem" 2>/dev/null | cut -d= -f2) || continue
-  printf "  %-34s %s\n" "$(basename "$d")" "$e"
+hr "3. redirects and auth, by file"
+for f in /etc/nginx/sites-enabled/*; do
+  [ -f "$f" ] || continue
+  echo "--- $(basename "$f")"
+  grep -nE "return[[:space:]]+30|rewrite|auth_basic|root[[:space:]]|location" "$f" 2>/dev/null \
+    | cut -c1-120 | head -18 || true
 done
+
+hr "4. the :80 vhost(s) verbatim (first 60 lines of each file containing listen 80)"
+for f in /etc/nginx/sites-enabled/*; do
+  [ -f "$f" ] || continue
+  if grep -qE "listen[[:space:]]+(\[::\]:)?80[;[:space:]]" "$f" 2>/dev/null; then
+    echo "--- $(basename "$f") ---"
+    sed -n '1,60p' "$f" | grep -vE "^\s*#" | grep -vE "^\s*$" | cut -c1-130 || true
+  fi
+done
+
+hr "5. SNI stream map on 443"
+awk '/stream[[:space:]]*\{/,0' /etc/nginx/nginx.conf 2>/dev/null \
+  | grep -E "map|ssl_preread|buitendyk|homeandofficemicro|127\.0\.0\.1:|listen|default" \
+  | cut -c1-120 | head -30 || echo "  (no stream block in nginx.conf)"
+
+hr "6. does anything already serve /var/www/html on :80?"
+grep -rn "/var/www/html" /etc/nginx/ 2>/dev/null | cut -c1-140 | head -10 || echo "  none"
+
+hr "7. mail: is iRedMail's nginx separate?"
+ls -l /etc/nginx/sites-enabled/ 2>/dev/null | grep -iE "mail|iredmail" || echo "  no mail vhost in sites-enabled"
+ls -l /etc/ssl/certs/iRedMail.crt /etc/ssl/private/iRedMail.key 2>/dev/null || echo "  (no iRedMail cert files at default paths)"
+grep -rn "ssl_certificate" /etc/nginx/templates/ssl.tmpl 2>/dev/null | cut -c1-120 || echo "  (no /etc/nginx/templates/ssl.tmpl)"
 
 echo
 echo "AUDIT COMPLETE -- nothing was modified."
