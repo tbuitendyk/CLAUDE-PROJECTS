@@ -1132,6 +1132,8 @@ const GUARDS = [
   // ---- the two checks live on Setup, under Version (3.96.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "localStorage.setItem('setup-tab', 'version')", "localStorage.setItem('setup-tab', 'compute')",
     'theCheckLivesOnSetupsVersionTabAndTheMarkerGoesThere', 'the marker beside "stage-engine check:" opens Setup on the wrong tab, and the owner hunts for a check that is not there'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  out.blockedBy = stageGateBlockedBy();", "  out.blockedBy = 'a stage run';",
+    'theBoxsBusyAnswerLivesOnTheChecksStatus', 'the status calls an idle box busy, so the deploy gate never deploys and the press sleeps forever'],
 ];
 
 const only = process.argv[2] || '';

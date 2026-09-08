@@ -7230,15 +7230,24 @@ async function runStageGate(run) {
     elapsedMs: Date.now() - run.startedAt,
   });
 }
+// WHAT THE BOX IS BUSY WITH, in one answer (3.98.0): a data job, a stage run, a
+// totalling, the step-6 press or the check itself. The check's own press sleeps
+// on it and the deploy gate reads it off the status, so the two cannot disagree.
+// It was the planted check's status that carried this until that check went
+// with the older sweep path (3.97.0). Null when the box is free.
+function stageGateBlockedBy() {
+  return require('./jobs').anyJobRunning() ? 'a data job is running' : stageBusy();
+}
 function stageGateStatus() {
   const G = require('./stagegate');
   const out = G.status(ENGINE_VERSION, { running: examBusy() });
+  out.blockedBy = stageGateBlockedBy();
   if (examRun) out.run = { id: examRun.id, step: examRun.step, error: examRun.error, done: !!examRun.result, startedAt: new Date(examRun.startedAt).toISOString() };
   return out;
 }
 function stageGateStart() {
   if (examRun && !examRun.result && !examRun.error) throw new Error('the stage-engine check is already running');
-  const busy = require('./jobs').anyJobRunning() ? 'a data job is running' : stageBusy();
+  const busy = stageGateBlockedBy();
   if (busy) throw new Error(`${busy} — the stage-engine check fabricates two coins and runs all three stages, so it waits for the box to be free`);
   const run = { id: `sg-${Date.now().toString(36)}`, startedAt: Date.now(), step: 'starting', sets: [], error: null, result: null, promise: null };
   examRun = run;

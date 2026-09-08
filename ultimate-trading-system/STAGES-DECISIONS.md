@@ -1192,3 +1192,20 @@ carried out 2026-08-28 under its own GO — decision 50.
     refusal is the list's own rule working. WORKFLOW.md described the retired
     path throughout and now says so at its top; its rewrite is parked for the
     owner. Second digit.
+
+89. **The box's busy answer lives on the stage-engine check's status** (3.98.0,
+    found while deploying 3.97.1: the gated deploy's busy script read the
+    planted check's status, which #88 retired, so the gate answered "no
+    answer" and could never deploy again). What the box is busy with — a data
+    job, a stage run, a totalling, the step-6 press, the check itself — is one
+    definition in lib/stages.js, `stageGateBlockedBy`; the check's status
+    carries it as `blockedBy` (null when free, present always, so a reader can
+    tell a free box from a release without the field), the check's press
+    refuses on the same answer, and on Setup under Version the press now sleeps
+    with the reason beside it instead of refusing only when pressed. The gate's
+    script on vps-access reads that door and treats a missing field as no
+    answer. The one deploy that carries this release up cannot pass the gate,
+    because the box serves the release without the field; it was made after
+    reading the record sets' running state off the box (nothing running, the
+    service restarted minutes before by the 3.97.0 deploy) and is recorded as
+    such. Second digit.

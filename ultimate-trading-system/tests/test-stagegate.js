@@ -177,9 +177,10 @@ module.exports = {
   // and every other launch refuses while the exam runs -- except its own.
   theExamRefusesWhileTheBoxIsBusyAndTheBoxRefusesWhileTheExamRuns() {
     const s = src('lib/stages.js');
-    const start = s.slice(s.indexOf('function stageGateStart('), s.indexOf('function listFunnelSets('));
+    // the two conditions live in the one definition the status carries too (3.98.0)
+    const start = s.slice(s.indexOf('function stageGateBlockedBy('), s.indexOf('function listFunnelSets('));
     assert.ok(/anyJobRunning\(\)/.test(start) && /stageBusy\(\)/.test(start), 'a data job, a stage run, a totalling and a rebuild all refuse it');
-    assert.ok(/if \(busy\) throw new Error/.test(start));
+    assert.ok(/const busy = stageGateBlockedBy\(\);\n  if \(busy\) throw new Error/.test(start), 'the press refuses on that one answer');
     const busy = s.slice(s.indexOf('function stageBusy()'), s.indexOf('function claimOrRefuse('));
     assert.ok(/if \(examBusy\(\)\) return examBusy\(\);/.test(busy), 'while it runs, the box reads as busy to everything that asks');
     const claim = s.slice(s.indexOf('function claimOrRefuse('), s.indexOf('function cancelStage('));
@@ -245,5 +246,21 @@ module.exports = {
     const server = src('server.js');
     assert.ok(server.includes("app.get('/api/stage-gate/status'") && server.includes("app.post('/api/stage-gate'"), 'the doors exist');
     assert.ok(!server.includes("'/api/planted-gate"), 'the retired check\'s doors are still served');
+  },
+
+  // THE BOX'S BUSY ANSWER LIVES ON THE CHECK'S STATUS (3.98.0): the one door
+  // the deploy gate reads and the press sleeps on, so the two cannot disagree.
+  // The planted check's status carried it until that check was retired (3.97.0).
+  theBoxsBusyAnswerLivesOnTheChecksStatus() {
+    const s = src('lib/stages.js');
+    assert.ok(/function stageGateBlockedBy\(\) \{\n  return require\('\.\/jobs'\)\.anyJobRunning\(\) \? 'a data job is running' : stageBusy\(\);\n\}/.test(s), 'one definition of what the box is busy with');
+    assert.ok(/out\.blockedBy = stageGateBlockedBy\(\);/.test(s), 'the status does not carry it');
+    assert.ok(/const busy = stageGateBlockedBy\(\);/.test(s), 'the press does not refuse on the same answer');
+    const st = stages.stageGateStatus();
+    assert.ok('blockedBy' in st, 'the field is missing, so a reader cannot tell a free box from a release without the answer');
+    assert.strictEqual(st.blockedBy, null, 'an idle box reads as busy');
+    const page = src('public/setup.html');
+    assert.ok(/s\.blockedBy \? `disabled title="sleeping: \$\{esc\(s\.blockedBy\)\}/.test(page), 'the press does not sleep on the answer');
+    assert.ok(/sleeping — \$\{esc\(s\.blockedBy\)\}/.test(page), 'the reason is not printed beside the press');
   },
 };

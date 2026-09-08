@@ -374,8 +374,8 @@ function stageGateHtml(sg) {
       makes is deleted when it lands, so nothing of it is ever on Boards.</p>
     <div class="row"><span>current: <b class="${cls}">${esc(s.state || 'NOT CHECKED')}</b>
       ${last && last.release ? `<span class="muted">(release ${esc(last.release)})</span>` : ''}</span>
-      <button id="sgRun" class="pri" ${s.state === 'RUNNING' ? 'disabled title="the stage-engine check is already running"' : `title="${SG_TIP}"`}>Run the stage-engine check</button>
-      <span id="sgMsg" class="note">${s.state === 'RUNNING' && run ? `running now — ${esc(run.step || '')}` : ''}</span></div>
+      <button id="sgRun" class="pri" ${s.state === 'RUNNING' ? 'disabled title="the stage-engine check is already running"' : s.blockedBy ? `disabled title="sleeping: ${esc(s.blockedBy)} — the check waits for the box to be free"` : `title="${SG_TIP}"`}>Run the stage-engine check</button>
+      <span id="sgMsg" class="note">${s.state === 'RUNNING' && run ? `running now — ${esc(run.step || '')}` : s.blockedBy ? `sleeping — ${esc(s.blockedBy)}; the check fabricates two coins and runs all three stages, so it waits for the box to be free` : ''}</span></div>
     ${s.detail ? `<p class="note">${esc(s.detail)}</p>` : ''}
     ${s.state === 'RUNNING' ? '<p class="note">This fabricates two coins and runs all three stages on them, so it takes minutes. This tab re-reads itself every five seconds while it runs — you do not need to reload.</p>' : ''}
     ${run && run.error ? `<p class="note"><b class="neg">The last press failed:</b> ${esc(run.error)}</p>` : ''}
