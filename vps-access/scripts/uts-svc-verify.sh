@@ -19,10 +19,10 @@ chk() { # chk <what> <expected-code> <url>
 }
 
 say "== nothing may be going =="
-if curl -sf --max-time 20 http://127.0.0.1:8094/api/batches 2>/dev/null | grep -q '"running":[^n]'; then
-  say "REFUSING: a run is going. Nothing has been touched."; exit 1
+if curl -sf --max-time 20 http://127.0.0.1:8094/api/stage-gate/status 2>/dev/null | grep -q '"blockedBy":"'; then
+  say "REFUSING: the box is busy. Nothing has been touched."; exit 1
 fi
-say "  ok    no run is going"
+say "  ok    nothing is going"
 
 say "== with the trading service UP =="
 chk "the trading service answers"        200 http://127.0.0.1:8094/construct.html

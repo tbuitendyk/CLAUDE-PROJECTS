@@ -11,7 +11,7 @@ set -uo pipefail
 B=http://127.0.0.1:8094
 curl -sf --max-time 25 "$B/api/stagesets" -o /tmp/uts-sets.json \
   || { echo "the record-set list did not answer"; exit 1; }
-curl -sf --max-time 25 "$B/api/planted-gate/status" -o /tmp/uts-pg2.json 2>/dev/null || true
+curl -sf --max-time 25 "$B/api/stage-gate/status" -o /tmp/uts-sg2.json 2>/dev/null || true
 # The LIST row does not carry the stamps (it ships plan, counts and params
 # only), so each set is fetched for the two fields that decide whether it can
 # still be a parent. Read-only.
@@ -27,8 +27,8 @@ d = json.load(open('/tmp/uts-sets.json'))
 sets = d.get('sets') or []
 running = d.get('running')
 cur = None
-if os.path.exists('/tmp/uts-pg2.json'):
-    try: cur = json.load(open('/tmp/uts-pg2.json')).get('engineVersion')
+if os.path.exists('/tmp/uts-sg2.json'):
+    try: cur = json.load(open('/tmp/uts-sg2.json')).get('release')
     except Exception: cur = None
 print(f"this box runs engine {cur or '(could not read)'}")
 print(f"{len(sets)} record set(s) on disk" + (f"; {running} is running right now" if running else "; nothing running"))

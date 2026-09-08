@@ -90,7 +90,7 @@ for u in index.html app.js help.html api/tracker api/books api/dogebook api/rota
 done
 
 echo "== the surviving endpoints answer =="
-for u in api/cpu api/data-state api/batches api/campaigns api/live/setups api/live/greenlights api/live/configs api/live/catalog api/planted-gate/status; do
+for u in api/cpu api/data-state api/stagesets api/campaigns api/live/setups api/live/greenlights api/live/configs api/live/catalog api/stage-gate/status; do
   c="$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:8094/$u")"
   [ "$c" = "200" ] && ok "$u -> 200" || no "$u -> $c (expected 200)"
 done

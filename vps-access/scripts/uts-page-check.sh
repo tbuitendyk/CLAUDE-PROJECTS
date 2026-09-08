@@ -8,7 +8,7 @@ set -uo pipefail
 echo "== straight at each service =="
 check() { printf '  %-44s ' "$2"; curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' --max-time 25 "$1" || echo 'no answer in 25s'; }
 check http://127.0.0.1:8094/construct.html      "the trading service, its own page"
-check http://127.0.0.1:8094/api/batches         "the trading service, its runs"
+check http://127.0.0.1:8094/api/stagesets       "the trading service, its record sets"
 check http://127.0.0.1:8095/api/services        "the service control"
 check http://127.0.0.1:8095/construct.html      "the service control, serving the page"
 check http://127.0.0.1:8095/svc/api/services    "the service control, second address"

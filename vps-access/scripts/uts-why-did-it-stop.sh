@@ -8,7 +8,7 @@ set -uo pipefail
 echo "== is it up, and answering =="
 systemctl is-active ultimate-trading-system
 printf '  a page: '; curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' --max-time 30 http://127.0.0.1:8094/construct.html || echo 'no answer in 30s'
-printf '  the runs: '; curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' --max-time 30 http://127.0.0.1:8094/api/batches || echo 'no answer in 30s'
+printf '  the record sets: '; curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' --max-time 30 http://127.0.0.1:8094/api/stagesets || echo 'no answer in 30s'
 
 echo
 echo "== what it is allowed, and what it is using =="

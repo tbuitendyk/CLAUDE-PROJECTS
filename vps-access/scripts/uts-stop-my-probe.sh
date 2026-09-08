@@ -39,7 +39,7 @@ systemctl is-active ultimate-trading-system 2>/dev/null
 echo "  up since: $(systemctl show -p ActiveEnterTimestamp --value ultimate-trading-system 2>/dev/null)"
 echo
 echo "== does it answer, and how fast (it listens on 127.0.0.1:8094) =="
-for PATHQ in /uts/construct.html /api/health /api/batches; do
+for PATHQ in /uts/construct.html /api/health /api/stagesets; do
   printf '  %-22s -> ' "$PATHQ"
   curl -s -o /dev/null -w 'HTTP %{http_code} in %{time_total}s\n' --max-time 25 "http://127.0.0.1:8094$PATHQ" 2>&1 || echo "no answer in 25s"
 done
