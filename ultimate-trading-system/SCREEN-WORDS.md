@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **8e26910d6579 — what the box is serving**, not from the working tree.
+Generated from **f604c4a28dd9 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -960,15 +960,18 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 
 # Verify
 
-## What the controls are called (89)
+## What the controls are called (122)
 
 - `- INCOMPLETE, never a pass`
 - `— its rows are gone, so`
 - `, engine`
+- `, information only)`
 - `, parent`
 - `, reader`
+- `, release`
 - `, so this is never a gate`
 - `, which`
+- `· bar`
 - `· being long every period`
 - `· being short every period`
 - `· check:`
@@ -979,6 +982,8 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `· sealed window`
 - `· shorting it and going away`
 - `(engine`
+- `(read`
+- `(release`
 - `(the first digits differ)`
 - `), threshold`
 - `); noise must lose at least`
@@ -992,9 +997,12 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `beat its own null set`
 - `beats`
 - `beats N of K`
+- `best trade $`
 - `buying the coin and going away`
 - `by test money made`
+- `clear the bar`
 - `clear the same bar, about`
+- `clears the bar`
 - `copies (`
 - `copies allow is 1 in`
 - `copies kept · median lead`
@@ -1002,35 +1010,47 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `current:`
 - `deal(s) a setting,`
 - `does not stand`
+- `earlier readings:`
+- `earlier rides:`
 - `fee`
 - `Final Rule:`
 - `Footing:`
 - `full gate record`
+- `full stage-gate record`
 - `gone`
+- `gross per trade $`
+- `held-back $`
 - `Held-back read:`
 - `include`
+- `largest drawdown $`
 - `Last gate (`
+- `Last stage gate (`
 - `lead`
 - `made money ·`
 - `mark(s) carried ·`
 - `Marks the walk was carried past:`
+- `money by third`
 - `noise must lose at least %`
 - `not beaten`
 - `not intact`
 - `not known`
+- `not priced`
 - `now,`
 - `null copies`
 - `of`
 - `of the time; the finest claim`
 - `on the record,`
+- `other units positive;`
 - `over`
 - `own verdict`
+- `read`
 - `read here,`
 - `real`
 - `refused:`
 - `release`
 - `Rules declared before the numbers:`
 - `Run the planted check`
+- `Run the stage-engine check`
 - `sanity:`
 - `scrambled boards' own best`
 - `setting`
@@ -1039,24 +1059,37 @@ again. and asset. back be been below board cache cached comma-sep corrupt curren
 - `stands`
 - `step(s) and`
 - `step(s) back`
+- `stopped out`
 - `survivors`
 - `survivors made`
+- `test $`
+- `test largest drawdown $`
 - `That run has been deleted`
 - `the four comparisons are not known`
+- `The last press failed:`
+- `The other units:`
+- `The ride on the held-back window`
+- `The stage-engine check`
 - `the survivors on this look`
 - `trades`
+- `trades won`
 - `under release`
+- `unit`
+- `unit failure(s)`
 - `unstamped (`
 - `User Rule:`
 - `vs always long $`
 - `What a pass buys:`
+- `Work out the held-back ride`
+- `worked out`
+- `worst trade $`
 - `would by chance ·`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (38)
+## Sentences the page prints (61)
 
 - Planted check — the instrument's calibration certificate
 - Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
@@ -1073,6 +1106,16 @@ _none_
 - lose, and the marks the walk was carried past. Opening this panel reads no held-back number; the press below
 - is the stamped look, and every look is counted.
 - No stamped read on this set yet. The first press writes the verdict; later presses are printed as later looks and never replace it.
+- The same question asked of the engine that prices the record sets on Boards: two fabricated
+- coins, one with a known rule planted in it and one with nothing, through stage 1, stage 2, a small stage 3
+- with every scrambled copy kept, a rule declared before anything is launched and cut into a Stage 4 set on
+- each, and the verdict read on both. PASS = the planted coin's rule made held-back money, beat buying the coin
+- and going away, beat every one of its
+- scrambled copies, the fair coin's rule did not, and nothing
+- failed. A fair coin clears that bar by chance about 1 in
+- times, and that chance is printed with every
+- verdict. A pass belongs to the release that earned it; a new release starts NOT CHECKED. Everything it
+- makes is deleted when it lands, so nothing of it is ever on Boards.
 - - no Stage 4 record set on this box yet - cut one on the Funnel -
 - the rule does not give back its own survivors today
 - Looks at the held-back window before any stamp:
@@ -1090,35 +1133,59 @@ _none_
 - FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.
 - On a window that pays one direction the copies are paid too, and this can fail honestly.
 - - no scrambled figure to read, so nothing above it can be read against noise.
+- other units positive on the held-back window;
 - this window only. It stops obvious chance results being frozen; the
 - forward paper test after freezing is the real judge.
+- The rule on the other units, held-back window
+- The same rule on every other coin-and-shape unit of the stage 3 set this was cut from, each read on its
+- own held-back window against its own scrambled copies at the bar declared above. Two counts, information only,
+- never a gate; a mark when fewer than half are positive. About five seconds a unit, read one at a time.
+- Read the rule on the other units' held-back windows
+- Not read on this set yet.
+- What the held-back window looked like from inside, per survivor: the largest drawdown, the worst
+- and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers
+- on the test window. Worked out by the same pass as the missing numbers on the Funnel, on this unit only;
+- minutes. Information only, never a gate, and every press is a stamped look at the held-back window.
+- survivors, in the set's own order. There is no sort on this table: a sort is a look.
+- Not worked out on this set yet.
 - Information only, never a pass or fail.
 - Line A, the rule on the test window against its own copies: real
 - ). Line B, the bound on shopping: the best
 - survivors, every one of them, in the set's own order. There is no sort on this table: a sort is a look.
 
-## Every word, flat (306)
+## Every word, flat (374)
 
 ```
-about above above. after against allow always always-long among and any are as at avg away back badge bar be beat beaten beats been before being belongs below below. best board Boards boards bound box broken buying buys by calibration can cannot carried carrying certificate certifies chance check checked CHECKED. claim clear clears coin comparisons copies copy counted. current cut data deal declared deleted demand. destroyed differ digits direction do does earned engine every Every fabricated FAIL fail fail. fee fees figure figures Final finest finished fires first floor Footing forecast-free forward found four freezing fresh frozen full Funnel gate gate. gated give going gone has head-to-heads held-back Held-back here honestly. in include INCOMPLETE Information instrument intact is IS it It it. its judge. kept keys KNOWN known Last later lead least line Line long look look. looks Looks lose loses made mark marks Marks measure median minutes. money more. mostly must need never new no No noise NOISE noise. NOT not nothing now null number numbers obvious of older on On one only only. Opening or order. over own paid pair panel paper parent PASS pass past past. path pays period pipeline pipeline. plant Planted planted press presses prices printed prints profited PROFITING read Read reader reads real record refresh refused Regenerates regenerates release releases reload. replace replaces results row rows rule Rule Rules Run run same sanity scrambled sealed section set sets setting settings share shopping short shorting simpler simulation single so sort Stage stamp stamped stand stands starts step stops stored strength strip survivor survivors sweep Sweep tab table takes test tests that That the The their them themselves There things This this three-stage threshold through time to today too trades under unstamped until User verdict version vs walk was what What when which whole window with won would writes yet yet. you
+about About above above. after against allow always always-long among and any anything are as asked at avg away back badge bar be beat beaten beats been before being belongs below below. beside best board Boards boards Boards. both. bound box broken buying buys by calibration can cannot carried carrying certificate certifies chance check checked CHECKED. claim clear clears coin coin-and-shape coins comparisons copies copy counted. counts current cut data deal declared deleted demand. destroyed did differ digits direction do does drawdown each earlier earned engine ever every Every Everything fabricated FAIL fail fail. failed failed. failure fair fee fees fewer figure figures Final finest finished fires first five floor Footing forecast-free forward found four freezing fresh from frozen full Funnel gate gate. gated give going gone gross half has head-to-heads held-back Held-back here honestly. in include INCOMPLETE information Information inside instrument intact into is IS it It it. its judge. kept keys KNOWN known lands largest Last last later launched lead least like line Line long look look. looked looks Looks lose loses made makes mark marks Marks measure median minutes. missing money more. mostly must need never new no No noise NOISE noise. NOT not Not nothing now null number numbers obvious of older on On one only only. Opening or order. other out over own paid pair panel paper parent PASS pass past past. path pays per period pipeline pipeline. plant Planted planted positive positive. press presses priced prices printed prints profited PROFITING question read Read reader readings reads real record refresh refused Regenerates regenerates release releases reload. replace replaces results ride rides row rows rule Rule Rules Run run same sanity scrambled sealed seconds section set sets setting settings share shopping short shorting simpler simulation single small so sort Stage stage stage-engine stage-gate stamp stamped stand stands starts step stopped stops stored strength strip survivor survivors sweep Sweep tab table takes test tests than that That the The their them themselves There things third This this three-stage threshold through time time. times to today too trade trades two Two under unit units unstamped until User verdict verdict. version vs walk was what What when which whole window window. windows with won Work Worked worked worst would writes yet yet. you
 ```
 
 ---
 
 # History
 
-## What the controls are called (53)
+## What the controls are called (102)
 
+- `, the bar being`
+- `· being long every period`
+- `· being short every period`
 - `· folds:`
 - `· hold windows won`
 - `· reference`
+- `· sealed window`
+- `· shorting it and going away`
 - `· sign-flip p`
+- `· verdict`
 - `· winner hold`
+- `a setting`
 - `Age dial: half-life`
+- `beats`
+- `buying the coin and going away`
 - `carried by one fold`
+- `clear the same bar, about`
 - `completed,`
 - `computing the stamped verdict…`
 - `computing the verdict…`
+- `does not stand`
 - `dropped,`
 - `effective days (GUESSED) ·`
 - `engine`
@@ -1127,41 +1194,79 @@ about above above. after against allow always always-long among and any are as a
 - `Finished tuning runs`
 - `Fire trail-replay null draw`
 - `folds positive`
+- `from`
+- `graded`
 - `h`
 - `half-life`
+- `largest drawdown $`
 - `Launch History Tuning on this row`
 - `Launch paired age-dial run`
 - `loading…`
 - `look`
+- `made money · never a gate`
+- `none stood`
+- `none were priced`
+- `not beaten`
+- `not intact`
+- `not known`
 - `null draw`
 - `null draws at or above the winner:`
+- `of`
 - `of 19 (seed`
 - `of 3`
+- `of the time · lead`
 - `paired sum`
+- `PASS`
 - `PASSED`
 - `planned,`
 - `q`
 - `read`
+- `real`
 - `REFERENCE`
 - `reference hold`
+- `refused:`
 - `reserve grade`
 - `resolution floor`
 - `retune trade floor`
 - `rows appear as passes finish`
 - `Run the reserve grade`
+- `Run the reserve grade on this set`
 - `selected row:`
+- `setting`
 - `Shaping numbers: training floor`
 - `silent on both arms`
+- `Stage 4 record set`
+- `stamped)`
+- `stands`
+- `stood`
+- `stood (PASS, release`
+- `stopped out`
+- `survivor(s) were not priced`
+- `survivors`
+- `survivors made`
 - `TABLE: the dial-pair board`
+- `the four comparisons are not known`
+- `The read:`
 - `The slice had already been read`
+- `the survivors on this look`
+- `The unread window:`
 - `This slice has been read`
 - `This was look`
+- `this window has been read`
+- `time(s) already`
 - `time(s) when this grade ran:`
+- `to`
+- `trades`
 - `trades/lookback-week (GUESSED) ·`
+- `under release`
+- `unread $`
+- `vs always long $`
 - `window`
 - `winner`
 - `WINNER`
 - `winner reserve`
+- `worst trade $`
+- `would by chance ·`
 
 ## What the dropdowns offer (3)
 
@@ -1169,7 +1274,7 @@ about above above. after against allow always always-long among and any are as a
 - `24mo`
 - `36mo`
 
-## Sentences the page prints (37)
+## Sentences the page prints (55)
 
 - History Tuning — change ONE variable (training-history length) and price the effect
 - One variable per run, declared before it fires (the confirm discipline): the same frozen trading
@@ -1183,6 +1288,14 @@ about above above. after against allow always always-long among and any are as a
 - select a row on Boards first.
 - Run exam A (late-rule pair — must find)
 - Run exam B (flat pair — must NOT find)
+- The reserve grade on a Stage 4 record set
+- The unread window is the sealed 13% no part of the search touched: it was cut away before anything
+- trained, and it runs from where the seal began to whatever the box holds today. This prices the set's survivors
+- on it, on the set's own coin and shape, with the members forecasting it from the models they were trained as,
+- and reads the result by the same four rules as the verdict on Verify: money, the two comparisons a rule has to
+- beat, the scrambled copies at the set's own bar, and noise losing. It refuses without a verdict that passed
+- under this release line. Every grade is a counted look, and only the first is at data nothing has seen.
+- No grade on this set yet. The first press is the first look at the unread window.
 - against a flat reference, paired on the
 - same folds. The reading is the paired difference across folds, never any single fold.
 - verdict appears when the grade completes
@@ -1208,60 +1321,115 @@ about above above. after against allow always always-long among and any are as a
 - construction) — a row marked partial has not finished all three splits, so its sum cannot be compared with complete
 - rows; eff. days = the smallest effective training days any split saw; hold $ = the three hold windows
 - early/middle/late, shown ONLY for the winner and the reference pass, because holds are graded once and never shopped.
+- no Stage 4 record set on this box yet
+- whole chunks · the box's data reached
+- Against scrambled copies of that window:
+- · a forecast-free rule clears this about
+- Every survivor against its own copies:
+- sanity, over the survivors' copies only:
+- scrambled unread figures lose money, threshold
+- FAIL - NOISE IS PROFITING: do not read the lines above
+- - they are not in the stage 3 set's block on this unit
+- survivors, in the set's own order. There is no sort on this table: a sort is a look.
 
-## Every word, flat (296)
+## Every word, flat (403)
 
 ```
-12mo 24mo 36mo above across after again against Age age age-dial ALL all already already. and any appear appears are arms as at back be because been before BEFORE best board Boards book both by cadence calendar. call candidate. cannot carried case cell change click combined comparable compared complete completed completes computing confirm construction count cutting data days dealt declared depth dial Dial dial-pair dial. difference different discipline dollar dollars DOWN-WEIGHTS draw draws drills dropped each early/middle/late eff. effect effective empty engine Every every exactly. exam excluded failed FAILED falls figure find finish Finished finished Fire fired fires first first. fixed flat flattering floor fold fold. folds folds. for from frozen full grade graded grid GUESSED had half half-life has held here History history HOLD hold holds how HT in influence inheriting instead into is it its KEY late-rule Launch launch. launched length loading look lookback many marked meaningless. minimum money must NAME net never no-dial NOT not nothing null numbers of off old on once ONE One one ONLY Only only or over own pair paired pairs paper partial pass PASSED passes per picked picking PLAIN planned positive price priced ran rather read reading Reading reading. records reference REFERENCE refuses repeated replays reserve reserve61 resolution retune retune. row rows rule rules run Run run-up runs same sample saw says SEALED seed seed. seen seen. select selected server setting Shaping shopped. shown sign-flip silent single slice smallest smoothly. so some split splits stamped status strength strength. structurally sum summed table TABLE test TEST test/hold than the The then this This three through time to together. trade trades/lookback-week trading trail-replay Trailing trained training training-history Tuning tuning v2 variable verdict verdict. votes vs walk was when which window windows winner WINNER with won WORDS would yet your zero
+12mo 24mo 36mo about above across after again against Against Age age age-dial ALL all already already. always and any anything appear appears are arms as at away back bar be beat beaten beats because been before BEFORE began being best block board Boards book both box buying by cadence calendar. call candidate. cannot carried case cell chance change chunks clear clears click coin combined comparable compared comparisons complete completed completes computing confirm construction copies count counted cut cutting data days dealt declared depth dial Dial dial-pair dial. difference different discipline do does dollar dollars DOWN-WEIGHTS draw drawdown draws drills dropped each early/middle/late eff. effect effective empty engine Every every exactly. exam excluded FAIL failed FAILED falls figure figures find finish Finished finished Fire fired fires first first. fixed flat flattering floor fold fold. folds folds. for forecast-free forecasting four from frozen full gate going grade graded grid GUESSED had half half-life has held here History history HOLD hold holds how HT in influence inheriting instead intact into is IS it It its KEY known largest late-rule Launch launch. launched lead length line. lines loading long look look. lookback lose losing. made many marked meaningless. members minimum models money must NAME net never no No no-dial noise NOISE none NOT not nothing null numbers of off old on once ONE One one ONLY only Only or order. out over own pair paired pairs paper part partial PASS pass passed PASSED passes per period picked picking PLAIN planned positive press price priced prices PROFITING ran rather reached read reading Reading reading. reads real record records reference REFERENCE refused refuses release repeated replays reserve reserve61 resolution result retune retune. row rows rule rules run Run run-up runs same sample sanity saw says scrambled seal sealed SEALED search seed seed. seen seen. select selected server set setting shape Shaping shopped. short shorting shown sign-flip silent single slice smallest smoothly. so some sort split splits Stage stage stamped stand stands status stood stopped strength strength. structurally sum summed survivor survivors table TABLE test TEST test/hold than that the The then There they this This three threshold through time to today. together. touched trade trades trades/lookback-week trading trail-replay Trailing trained training training-history Tuning tuning two under unit unread v2 variable verdict verdict. Verify votes vs walk was were whatever when where which whole window window. windows winner WINNER with without won WORDS worst would yet yet. your zero
 ```
 
 ---
 
 # Tune
 
-## What the controls are called (45)
+## What the controls are called (90)
 
 - `— uplift`
+- `, each a counted look`
+- `, on its`
 - `, p=`
 - `; peak concurrent`
 - `; worst trade`
 - `: tightest no-winner-lost stop`
+- `· by depth among the captured:`
+- `· held-back`
+- `· test`
+- `· verdict`
 - `(flat`
+- `(worst distance`
 - `A heavy scan is running (`
 - `apply custom`
 - `apply to the live rule`
+- `by depth -`
+- `Capture the trades of this set`
 - `Chance check:`
 - `Compare`
 - `Compare two runs — NOT a null test`
 - `drawdown`
+- `entries`
+- `entries on the`
 - `Exposure:`
 - `h`
+- `h -`
 - `h of`
+- `held-back`
+- `held-back entries`
 - `holds one window layout (`
 - `last scan failed:`
 - `last sweep failed:`
+- `look`
 - `losers over`
+- `no`
 - `No stop (clear)`
+- `none stood`
 - `of`
+- `of the Stage 4 record set`
 - `of your setup(s) and`
 - `on record:`
+- `one survivor`
 - `or apply a custom stop`
 - `over`
 - `per-$`
 - `priced entries: flat`
 - `q`
+- `Read from the capture:`
+- `refused:`
 - `run A`
 - `run B`
 - `running…`
 - `save the reason`
+- `scan`
 - `scan target`
+- `scans run on this capture:`
 - `shuffled deals, mean uplift`
+- `Stage 4 record set`
+- `stamped)`
+- `stood ·`
+- `stood (PASS, release`
+- `survivor`
+- `survivor(s) not captured:`
+- `survivors`
+- `survivors captured`
+- `taken`
 - `Target:`
+- `test`
+- `test entries,`
+- `the capture on record`
 - `the row selected on Boards —`
 - `the row selected on Boards (`
 - `the saved book`
+- `the scans, newest first`
+- `the survivor`
+- `time(s)`
+- `training`
+- `training entries,`
+- `under release`
 - `Verdict:`
 - `vs ladder`
+- `when`
+- `window(s), captured`
+- `windows`
+- `windows the scans read`
 - `winners /`
 - `x`
 - `your reason for this choice`
@@ -1271,14 +1439,15 @@ about above above. after against allow always always-long among and any are as a
 
 _none_
 
-## Sentences the page prints (18)
+## Sentences the page prints (33)
 
 - ) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).
 - Protective stop tuner — full-history, loses no winner
 - Replays the frozen committee over ALL history and finds the tightest fixed stop that would not have
 - clipped a single winner, plus the sacrifice curve (give up top winners → tighter stop → NET $). Scanning applies
 - nothing. Target:
-- saved book(s) without a protective stop
+- saved book(s) without a protective stop, and
+- Stage 4 record set(s) with their trades captured
 - no choice about the stop has been recorded yet
 - Tune protective stop (full history)
 - currently applied on the trading machine:
@@ -1291,30 +1460,58 @@ _none_
 - NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. Apply buttons exist
 - only for the running engine; for a lab row the number informs the greenlight instead.
 - so there is no second side of it to compare against — pick a run B.
+- reading the held-back entries is look
+- Per-trade capture of a Stage 4 record set
+- The two scans above take a list of trades and price them themselves; a Stage 4 record set holds money per
+- window and never the trades. This writes them down: for every survivor that enters at market with no trailing stop,
+- every hour the rule spoke on the training, test and held-back windows, with the side, how many members called that
+- side, and the money the simulator made on that one trade. It refuses without a verdict that passed under this release
+- line. Once captured, the set appears in the scan target box above, and a scan that reads the held-back entries is a
+- counted look at the held-back window.
+- the held-back entries have been read
+- No capture on this set yet. The scans above cannot be aimed at it until there is one.
+- this read of the held-back entries was look
+- · nothing is applied from a Stage 4 record set
+- no Stage 4 record set on this box yet
+- survivor(s) are not in the stage 3 set's block on this unit
 
-## Every word, flat (180)
+## Every word, flat (261)
 
 ```
-aborted about against agree ALL and applied applies apply Apply are as at B. be been bet Boards book both buttons cannot chance Chance check choice clear clip clipped committee Compare compare concurrent Conviction conviction count currently curve custom deals DECLARED disabled drawdown empty engine entries entries. exist Exposure exposure-honest failed finds fixed flat for frozen full full-history give given greenlight has have heavy helps. history holds informs instead. is it lab ladder lands last launchers layout live losers loses loss-side machine mean means members metrics. mid-flight minutes more multiplier NET no No no-winner-lost not NOT nothing. null number of on one only or over overlay own peak per- pick plus positive priced Prices Protective protective pure reason record recorded replay Replays row rule run Run running runs sacrifice same save saved scan Scanning scans second selected setup shuffled shuffled-assignment side sides single sizing so stop sweep Target target test that the there this tighter tightest time to top trade trading Tune tuner two until up uplift Verdict vote vs when window winner winners winning-side without worst would yet your
+aborted about above against agree aimed ALL among and appears applied applies apply Apply are as at B. be been bet block Boards book both box buttons by called cannot capture Capture captured chance Chance check choice clear clip clipped committee Compare compare concurrent Conviction conviction count counted currently curve custom deals DECLARED depth disabled distance down drawdown each empty engine enters entries entries. every exist Exposure exposure-honest failed finds first fixed flat for from frozen full full-history give given greenlight has have heavy held-back helps. history holds hour how in informs instead. is it It its lab ladder lands last launchers layout line. list live look losers loses loss-side machine made many market mean means members metrics. mid-flight minutes money more multiplier NET never newest no No no-winner-lost none not NOT nothing nothing. null number of on Once one one. only or over overlay own PASS passed peak per per- Per-trade pick plus positive price priced Prices Protective protective pure read Read reading reads reason record recorded refused refuses release replay Replays row rule run Run running runs sacrifice same save saved scan Scanning scans second selected set setup shuffled shuffled-assignment side sides simulator single sizing so spoke Stage stage stamped stood stop survivor survivors sweep take taken Target target test that the The their them themselves there this This tighter tightest time to top trade trade. trades trades. trading trailing training Tune tuner two under unit until up uplift Verdict verdict vote vs was when window window. windows winner winners winning-side with without worst would writes yet yet. your
 ```
 
 ---
 
 # Greenlight
 
-## What the controls are called (12)
+## What the controls are called (26)
 
+- `- distance`
 - `— test`
+- `· verdict`
+- `(worst distance`
 - `anchor`
+- `by depth -`
 - `Existing greenlights`
 - `fee`
+- `Greenlight a Stage 4 record set`
 - `GREENLIGHT this config`
+- `GREENLIGHT this survivor`
 - `greenlighted`
 - `h`
+- `name`
+- `none stood`
 - `none yet`
 - `nuked`
+- `one survivor`
 - `q`
+- `refused:`
 - `selected:`
+- `Stage 4 record set`
+- `stamped)`
+- `stood (PASS, release`
+- `survivors`
 - `Trade tab`
 
 ## What the dropdowns offer (3)
@@ -1323,7 +1520,7 @@ aborted about against agree ALL and applied applies apply Apply are as at B. be 
 - `declared cell`
 - `widest region`
 
-## Sentences the page prints (10)
+## Sentences the page prints (16)
 
 - Greenlight — the decision that a config is fit to trade
 - Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
@@ -1335,11 +1532,17 @@ aborted about against agree ALL and applied applies apply Apply are as at B. be 
 - setting here — it is what the evidence was found under, and a config sent to the Trade tab starts out priced
 - at it and can be changed there. A dash means the run predates the fee being recorded.
 - Activation, deactivation and nuking live on the
+- The other way to write the decision down: from a Stage 4 record set whose verdict stood on Verify. One of its
+- survivors is taken forward, chosen by how surrounded it is inside the rule (the setting nearest the middle of every
+- range, never the one with the most money) or named by you, and both are recorded. The frozen settings carry the
+- way its members agree exactly as the survivor does. Nothing here trades, and nothing built from it can be put to
+- work until the live path speaks that agreement.
+- no Stage 4 record set on this box yet
 
-## Every word, flat (99)
+## Every word, flat (159)
 
 ```
-Activation activation. anchor and appears at be behind being best Boards both campaign can cell chain. changed config configs dash deactivation decision declared each engine ever ever. evidence evidentiary exact Existing fee first fit for found from frozen Greenlight GREENLIGHT greenlight greenlighted greenlights hand-built here is It it live means minted no none not nuked nuking on one Only out per predates priced record recorded. Records region required row row. run select selected sent setting sides starts tab test that the The then there. this to trade Trade under version was way. what WHO/WHEN/WHY whole why widest with yet
+Activation activation. agree agreement. anchor and appears are as at be behind being best Boards both box built by campaign can carry cell chain. changed chosen config configs dash deactivation decision declared depth distance does. down each engine ever ever. every evidence evidentiary exact exactly Existing fee first fit for forward found from frozen Greenlight GREENLIGHT greenlight greenlighted greenlights hand-built here how inside is It it its live means members middle minted money most name named nearest never no none not Nothing nothing nuked nuking of on one One Only or other out PASS path per predates priced put range record recorded. Records refused region release required row row. rule run select selected sent set setting settings sides speaks Stage stamped starts stood surrounded survivor survivors tab taken test that the The then there. this to trade Trade trades under until verdict Verify. version was way way. what WHO/WHEN/WHY whole whose why widest with work worst write yet you
 ```
 
 ---
