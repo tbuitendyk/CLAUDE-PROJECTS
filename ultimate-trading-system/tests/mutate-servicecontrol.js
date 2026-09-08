@@ -1169,6 +1169,15 @@ const GUARDS = [
     'theRungIsTheShareOfWhatTheRuleCountsAndTheOwnBarIsReadFromTheTestSlice', 'a share lands one member short of the rung it asked for, on every unit, for both paths at once'],
   [path.join(ROOT, 'lib', 'committee.js'), "  const streamOf = (decision, agr, probsPerMember) => agreement.agreementStream(\n    ctxOf(decision, agr, probsPerMember), agr.rule, levelFor(agr, decision), { bothModels: agr.both, persist: agr.persist },", "  const streamOf = (decision, agr, probsPerMember) => agreement.agreementStream(\n    ctxOf(decision, agr, probsPerMember), agr.rule, levelFor(agr, decision), { bothModels: false, persist: 0 },",
     'theStreamIsTheRulesOwnCallAtEachMomentWithItsTwoModifiers', 'the two modifiers a setting was priced under are dropped on the way to its call, for stage 3 and the live path alike'],
+  // ---- the per-trade capture of a Stage 4 record set, for Tune (3.92.0) ----
+  [path.join(ROOT, 'lib', 'stagework.js'), "          list.push({ ts: chunksArr[i].startTs + (geo.entryOffsetH || 0) * 3600000, side: call === 1 ? 'LONG' : 'SHORT', agree, usd: one.pnl });", "          list.push({ ts: chunksArr[i].startTs + (geo.entryOffsetH || 0) * 3600000, side: call === 1 ? 'LONG' : 'SHORT', agree, usd: 0 });",
+    'theCaptureIsTheStageThreeRecordsOwnTradesToTheCent', "a captured entry carries no money, so the capture can no longer be held to the record and a scan's population could drift from the simulator's unseen"],
+  [path.join(ROOT, 'lib', 'stagework.js'), "          for (const m of per) if (m[i] === call) agree++;", "          for (const m of per) agree++;",
+    'theCaptureIsTheStageThreeRecordsOwnTradesToTheCent', 'every entry reads as unanimous, so the conviction ladder sizes every trade at its top rung and reports an uplift nothing earned'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const entries = t.windows.flatMap((w) => (sv.entries[w] || []).map((e) => ({ ...e, window: w }))).sort((a, b) => a.ts - b.ts);", "  const entries = CAPTURE_WINDOWS.flatMap((w) => (sv.entries[w] || []).map((e) => ({ ...e, window: w }))).sort((a, b) => a.ts - b.ts);",
+    'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a scan reads every window whatever was ticked, so the held-back entries are read without a look being counted'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const look = isLook ? reads.filter((r) => r && r.look != null).length + 1 : null;", "  const look = null;",
+    'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a read of the held-back entries is never counted as a look, on the capture or on Verify'],
 ];
 
 const only = process.argv[2] || '';

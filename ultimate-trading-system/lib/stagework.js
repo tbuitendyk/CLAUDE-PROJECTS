@@ -658,6 +658,13 @@ function predictMember(saved, spec, chunks, combo, geo) {
 function forecastHashOf(probsPerMember) {
   return crypto.createHash('sha256').update(JSON.stringify(probsPerMember)).digest('hex').slice(0, 24);
 }
+// THE PRICES A CAPTURE IS PRICED ON AGAIN (3.92.0): the same files the chain
+// was launched on, through the pin, so a tool run on Tune walks the candles the
+// entries were captured from and nothing newer.
+async function tradeMapFor(combo, geometry, params, pin) {
+  const { geo, maps } = await unitChunks(combo, geometry, { ...(params || {}), pinnedFiles: pinnedFilesFor(pin) });
+  return { geo, maps };
+}
 async function unreadChunksFor(combo, geometry, fromTs) {
   const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
   const { geo, maps, chunks } = await buildCombo(combo, branch, { allLoaded: true, pinnedFiles: null });
@@ -723,6 +730,7 @@ async function s3UnitTask(task) {
   let holdMaps = maps;
   let dealSlice = 's3-hold';
   let unread = null;
+  if (task.unread && task.capture) throw new Error('the per-trade capture never reads the unread window: that window is the reserve grade\'s alone');
   if (task.unread) {
     const got = await unreadChunksFor(combo, geometry, task.unread.fromTs);
     if (got.chunks.length < 2) {
@@ -861,6 +869,72 @@ async function s3UnitTask(task) {
     return out;
   };
   const pick = (arr, idxs) => idxs.map((i) => arr[i]);
+  // THE PER-TRADE CAPTURE (3.92.0, Tune on a Stage 4 record set; VERIFY-DESIGN.md
+  // section 9 step 8). The two tools on Tune take a LIST of entries -- the hour,
+  // the side, how many members called that side -- and price them themselves;
+  // the record holds money per window and never the trades. When asked, every
+  // moment the rule spoke is written down here, on three slices: the test and
+  // held-back slices from the stored votes on the real calendar (deal -1, the
+  // same streams the pricing above reads), and the training slice from the
+  // members forecasting their OWN training chunks with their saved models --
+  // in-sample on purpose, as the older tools read it: a protective stop wants
+  // the deepest a winner ever dipped over all data. The committee's shape and
+  // every tau stay the test slice's. Each entry carries the one simulator's own
+  // money for that trade, priced on that chunk alone, so the population is
+  // exactly the simulator's (an invented entry candle or a missing exit drops
+  // out here as it does there) and the list can be held to the record to the
+  // cent. Only a market entry with no trailing stop is captured: those are the
+  // only trades the two tools price.
+  const wkTrain = maskIdx(trainChunks);
+  let trainProbsMemo = null;
+  const trainProbs = () => {
+    if (trainProbsMemo) return trainProbsMemo;
+    trainProbsMemo = (unit.members || []).map((m, mi) => {
+      if (!m.saved) throw new Error(`member ${mi} carries no saved model, so it cannot forecast its own training window`);
+      return predictMember(m.saved, m.spec, trainChunks, combo, geo);
+    });
+    return trainProbsMemo;
+  };
+  const trainStreamCache = new Map();
+  const trainCallsCache = new Map();
+  const trainStreamFor = (decision, agr) => {
+    const key = agreedKey(decision, agr);
+    if (!trainStreamCache.has(key)) trainStreamCache.set(key, C.streamOf(decision, agr, trainProbs()));
+    return trainStreamCache.get(key);
+  };
+  const trainCallsFor = (decision) => {
+    if (!trainCallsCache.has(decision)) trainCallsCache.set(decision, committee.callsOf(trainProbs(), decision, taus));
+    return trainCallsCache.get(decision);
+  };
+  const captureOf = (st, agr, cell, bandPct, weekdaysOnly) => {
+    const idxOf = (chunksArr, wk) => (weekdaysOnly ? wk : chunksArr.map((_, i) => i));
+    const slices = [
+      ['train', trainChunks, idxOf(trainChunks, wkTrain), maps.trade, () => trainStreamFor(st.decision, agr), () => trainCallsFor(st.decision)],
+      ['test', testChunks, idxOf(testChunks, wkTest), maps.trade, () => streamFor(st.decision, agr, -1, 'test'), () => callsFor(st.decision, -1, 'test')],
+      ['hold', holdChunks, idxOf(holdChunks, wkHold), holdTrade, () => streamFor(st.decision, agr, -1, 'hold'), () => callsFor(st.decision, -1, 'hold')],
+    ];
+    const out = {};
+    for (const [name, chunksArr, idxs, tradeMap, streamOfSlice, memberCallsOfSlice] of slices) {
+      const list = [];
+      if (chunksArr.length) {
+        const stream = streamOfSlice();
+        const per = memberCallsOfSlice();
+        for (const i of idxs) {
+          const call = stream[i];
+          if (call !== 1 && call !== -1) continue;
+          // the one simulator, on this chunk alone: its money, and whether it took the trade at all
+          const one = bracketLib.simCell(cell, [chunksArr[i]], [call], tradeMap, geo, bandPct, fee);
+          if (one.trades !== 1) continue;
+          let agree = 0;
+          for (const m of per) if (m[i] === call) agree++;
+          list.push({ ts: chunksArr[i].startTs + (geo.entryOffsetH || 0) * 3600000, side: call === 1 ? 'LONG' : 'SHORT', agree, usd: one.pnl });
+        }
+      }
+      out[name] = list;
+    }
+    return out;
+  };
+  const captureShapeOk = (st) => st.entry === 'market' && (st.trailMult ?? null) == null;
   const holdCtlCache = new Map();
   const holdControlsFor = (chunksArr, idxs, tHours, cacheKey) => {
     const key = `${cacheKey}|${tHours}`;
@@ -986,6 +1060,7 @@ async function s3UnitTask(task) {
       lead = leadOver(hRes.pnl, dealPnls);
       dealShape = shapeOf(dealPnls);
     }
+    const captured = task.capture && captureShapeOk(st) ? captureOf(st, agr, cell, bandPct, !!stream.weekdaysOnly) : null;
     rows.push({
       si: st.si,
       label: st.label,
@@ -1029,6 +1104,8 @@ async function s3UnitTask(task) {
           testPriced: tIdx.length,
           holdPriced: hIdx.length,
         },
+        // the per-trade capture (3.92.0), only when asked and only for a shape the tools price
+        capture: captured,
       },
     });
   }
@@ -1238,7 +1315,7 @@ module.exports = {
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,
   // the arithmetic, exported so the tests can pencil it
-  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks, predictMember, unreadChunksFor, forecastHashOf,
+  forecastScore, pooledAt, leadOver, dealOrder, callFromProbs, trainProbMember, unitChunks, predictMember, unreadChunksFor, forecastHashOf, tradeMapFor,
   directionCalls, tuningSliceOf, directionMoney, moneyAgainstNull, TUNING_TAG,
   probsArr, probsObj,
 };

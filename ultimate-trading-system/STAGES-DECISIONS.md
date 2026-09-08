@@ -1034,3 +1034,30 @@ carried out 2026-08-28 under its own GO — decision 50.
     agreement, no integer quorum (the box's executor requires none); the
     anatomy panel says the agreement in the agreement library's own words.
     Second digit.
+
+82. **Tune's per-trade capture for a Stage 4 record set** (3.92.0, loop,
+    VERIFY-DESIGN.md section 6, section 9 step 8). *The gap:* the two scans on
+    Tune take a list of entries and price them themselves; a Stage 4 set holds
+    money per window and never the trades. *The capture:* the same pricing pass
+    as the reserve grade with a flag (`task.capture`), for every survivor that
+    enters at market with no trailing stop — the only shape the two scans
+    price — every moment the rule spoke on the test and held-back slices (the
+    stored votes, the real calendar) and on the training slice (the members
+    forecasting their own training chunks from their saved models, in-sample
+    on purpose, as the older tools read it); each entry carries the hour, the
+    side, how many members called that side, and the one simulator's own money
+    for that trade priced on that chunk alone, so the population is exactly
+    the simulator's. Entries live in a file beside the set; the set holds the
+    summary; a second press replaces the first. *Parity, the gate:* on the
+    fabricated chain every survivor's held-back entries sum to the record's
+    held-back money to the cent and count its trades, the test entries
+    likewise, and every agreement count is a recount from the members' own
+    calls through the shared definition. *The scans:* the scan target offers
+    each set with a capture, one survivor beside it (by depth among the
+    captured, or named) and three ticks for the windows read (training and
+    test by default; held-back not); the tuner and the ladder run on those
+    entries at the survivor's own hold length and the set's fee, on the prices
+    the chain was launched on; nothing is applied from a set. *Looks:* a scan
+    that reads the held-back entries is a counted look, stamped on the capture
+    and counted on Verify's looks line; training and test reads are not. *The
+    unread window is never captured.* Second digit.

@@ -785,11 +785,28 @@ window.HELP = {
     how: [
       ['One variable at a time, on the whole history',
         'The Sweep tab is wide and shallow: many settings, each scored once. This is the opposite — one setting, taken apart carefully.\\n\\nThe two scans work across every value of one thing, over all the history, and report the whole shape rather than a winner: which protective stops would have cost nothing, and how much requiring more agreement is worth. Both take minutes and cannot be stopped part-way.\\n\\nThe comparison at the bottom is not a check on whether anything is real. It only tells you what differs between two runs and what each produced.'],
+      ['A Stage 4 record set as the target',
+        'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The panel under them writes those down — every hour the rule of a survivor spoke, on the training, test and held-back windows, with the side and how many members called it — for every survivor that enters at market with no trailing stop. Once captured, the set can be chosen as the target, with one survivor and the windows to read beside it.\\n\\nReading the held-back entries is a counted look at the held-back window, the same count Verify keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
     ],
     intro: 'Adjusting one chosen setting rather than searching for new ones. Everything here works '
-      + 'on the row picked on the Boards tab, over the whole history.',
+      + 'on the row picked on the Boards tab, on one of your setups, or on one survivor of a Stage 4 record set whose trades were captured, over the whole history.',
     controls: {
-      tuneTarget: { what: 'Which setting the scans below work on — the row picked on Boards, or one already saved.' },
+      tuneTarget: { what: 'Which setting the scans below work on — one of your setups, a Stage 4 record set whose trades were captured, or the row picked on Boards.' },
+      tnPick: {
+        what: 'Which captured survivor of the Stage 4 record set the scans read.',
+        more: 'By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money. Naming one records it as your pick.',
+      },
+      tnWinTrain: { what: 'Whether the scans read the entries of the training window. Not a look: this window was read to choose the rule.' },
+      tnWinTest: { what: 'Whether the scans read the entries of the test window. Not a look: this window was read to choose the rule.' },
+      tnWinHold: {
+        what: 'Whether the scans read the entries of the held-back window.',
+        more: 'Every scan that reads them is a counted look at the held-back window, stamped on the capture and counted on Verify.',
+      },
+      tnSet: { what: 'Which Stage 4 record set to capture the trades of, from every set on this box, newest first.' },
+      tnCapture: {
+        what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows.',
+        more: 'Refuses without a verdict that passed under this release line. A second press replaces the capture on record; the looks already counted stay.',
+      },
       stopCustomPct: { what: 'A protective stop of your own choosing, as a percentage of the opening price.' },
       stopCustomApply: { what: 'Applies the percentage typed beside it.' },
       stopClear: {

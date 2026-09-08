@@ -2729,6 +2729,122 @@ async function wireHtRun(d, runs) {
   }
 }
 
+// ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET, on Tune (3.92.0) ----------
+//
+// The two scans on this screen take a list of entries and price them
+// themselves; a Stage 4 record set holds money per window and never the
+// trades. The panel below writes them down for every survivor that enters at
+// market with no trailing stop, and the scan target box then offers the set,
+// with one survivor and the windows the scan reads beside it. A scan that
+// reads the held-back entries is a counted look. Helpers written with braces
+// on purpose (see the History formatters above for why).
+const TN_SET_KEY = 'cx-tune-set';
+const TN_PICK_KEY = 'cx-tune-pick';
+const TN_WINDOWS_KEY = 'cx-tune-windows';
+const TN_WINDOWS = [['train', 'tnWinTrain', 'training'], ['test', 'tnWinTest', 'test'], ['hold', 'tnWinHold', 'held-back']];
+function tnDay(ts) { return ts == null ? '?' : new Date(Number(ts)).toISOString().slice(0, 10); }
+function tnWindowWords(list) { return (list || []).map((w) => (TN_WINDOWS.find(([k]) => k === w) || [])[2] || w).join(' + '); }
+function tnRememberedSet(list) {
+  let want = null;
+  try { want = localStorage.getItem(TN_SET_KEY); } catch (_) { want = null; }
+  if (want && list.some((x) => x.id === want)) return want;
+  return list.length ? list[0].id : null;
+}
+function tnRememberedPick(cand) {
+  let want = null;
+  try { want = localStorage.getItem(TN_PICK_KEY); } catch (_) { want = null; }
+  if (want && want !== 'depth' && (cand.rows || []).some((r) => r.label === want)) return want;
+  return 'depth';
+}
+function tnRememberedWindows() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(TN_WINDOWS_KEY) || 'null');
+    if (Array.isArray(raw)) return TN_WINDOWS.map(([k]) => k).filter((k) => raw.includes(k));
+  } catch (_) { /* private window, or nothing saved */ }
+  return ['train', 'test'];
+}
+function tnSetBoxHtml(list, chosen) {
+  return `<div class="row" style="align-items:flex-end">
+    <label class="f" title="which Stage 4 record set to capture the trades of, from every set on this box, newest first">Stage 4 record set<select id="tnSet">${list.length
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict'}</option>`).join('')
+    : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
+}
+function tnCaptureBlockHtml(c) {
+  const e = c.entries || {};
+  const reads = c.reads || [];
+  const w = c.windows || {};
+  const span = (x) => (x ? `${tnDay(x.fromTs)} to ${tnDay(x.toTs)}, ${x.chunks ?? '?'} chunks` : 'not recorded');
+  return `<div class="panel" style="margin-top:.5rem">
+    <h4 style="margin:0 0 .3rem">the capture on record <span class="muted">taken ${esc(String(c.at || '').slice(0, 16))} under release ${esc(c.release || '?')}${Number(c.times) > 1 ? ` · taken ${c.times} times, this is the latest` : ''}</span></h4>
+    <p class="note"><b>${c.captured} of ${c.survivors} survivors captured</b> · verdict ${esc((c.gate || {}).id || '?')} stood · ${Number(e.train || 0).toLocaleString()} training entries, ${Number(e.test || 0).toLocaleString()} test entries, ${Number(e.hold || 0).toLocaleString()} held-back entries
+      · by depth among the captured: <b>${esc((c.pick || {}).label || 'none')}</b></p>
+    <p class="note">training ${span(w.train)} · test ${span(w.test)} · held-back ${span(w.hold)}</p>
+    ${(c.notCaptured || []).length ? `<p class="note"><b class="warn">${c.notCaptured.length} survivor(s) not captured:</b> ${c.notCaptured.slice(0, 3).map((x) => `${esc(x.label)} - ${esc(x.why)}`).join(' · ')}${c.notCaptured.length > 3 ? ` · and ${c.notCaptured.length - 3} more` : ''}</p>` : ''}
+    ${(c.missing || []).length ? `<p class="note"><b class="warn">${c.missing.length} survivor(s) are not in the stage 3 set's block on this unit</b></p>` : ''}
+    <p class="note">${reads.length ? `scans run on this capture: ${reads.length} · <b>the held-back entries have been read ${reads.filter((r) => r && r.look != null).length} time(s)</b>, each a counted look` : 'no scan has read this capture yet'}</p>
+    ${reads.length ? `<details><summary>the scans, newest first</summary><div class="scrollx" style="max-height:12rem;overflow-y:auto"><table><thead><tr>
+      <th title="when the scan ran">when</th><th title="which scan">scan</th><th title="the survivor it read">survivor</th><th title="the windows it read">windows</th><th title="the look number when the held-back entries were read">look</th>
+    </tr></thead><tbody>${reads.map((r) => `<tr><td>${esc(String(r.at || '').slice(0, 16))}</td><td>${r.tool === 'stop' ? 'protective stop' : 'conviction'}</td><td>${esc(r.survivor)}</td><td>${esc(tnWindowWords(r.windows))}</td><td>${r.look == null ? '—' : r.look}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
+  </div>`;
+}
+function tnCapturePanelHtml(list, chosen, d) {
+  return `<div class="panel">
+    <h3 style="margin-top:0">Per-trade capture of a Stage 4 record set</h3>
+    <p class="note">The two scans above take a list of trades and price them themselves; a Stage 4 record set holds money per
+      window and never the trades. This writes them down: for every survivor that enters at market with no trailing stop,
+      every hour the rule spoke on the training, test and held-back windows, with the side, how many members called that
+      side, and the money the simulator made on that one trade. It refuses without a verdict that passed under this release
+      line. Once captured, the set appears in the scan target box above, and a scan that reads the held-back entries is a
+      counted look at the held-back window.</p>
+    ${tnSetBoxHtml(list, chosen)}
+    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${Number(d.survivors || 0).toLocaleString()} survivors
+      · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}
+      · ${d.capture ? `captured ${esc(String(d.capture.at || '').slice(0, 10))}` : 'no capture yet'}${d.looks ? ` · <b>the held-back entries have been read ${d.looks} time(s)</b>` : ''}</p>
+      <div class="row" style="align-items:flex-end">
+        <button id="tnCapture" class="pri" ${d.refused ? 'disabled' : ''} title="writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows. A second press replaces the first; the looks already counted stay.">Capture the trades of this set${d.capture ? ' again' : ''}</button>
+        <span id="tnCaptureMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
+      ${d.capture ? tnCaptureBlockHtml(d.capture) : '<p class="note">No capture on this set yet. The scans above cannot be aimed at it until there is one.</p>'}` : ''}
+  </div>`;
+}
+// the survivor and the windows, drawn under the scan target when a Stage 4 record set is the target
+function tnTargetRowHtml(cand, pick, wins) {
+  const depth = cand.pick || {};
+  const rows = cand.rows || [];
+  return `<div class="row" style="margin-bottom:.4rem;align-items:flex-end">
+    <label class="f" style="flex:1 1 auto;min-width:0" title="which captured survivor the scans read. By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money; naming one records it as your pick.">one survivor<select id="tnPick">
+      <option value="depth" ${pick === 'depth' ? 'selected' : ''}>by depth - ${esc(depth.label || '?')} (worst distance ${glFix(depth.worst)})</option>
+      ${rows.map((r) => `<option value="${esc(r.label)}" ${pick === r.label ? 'selected' : ''}>${esc(r.label)} - ${r.tHours}h - ${(r.entries || {}).train ?? 0} + ${(r.entries || {}).test ?? 0} + ${(r.entries || {}).hold ?? 0} entries${r.held == null ? '' : ` - held-back ${money(r.held)}`}</option>`).join('')}</select></label>
+  </div>
+  <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
+    <span class="note" title="which of the three windows' entries the scans read. The training and test windows were read to choose the rule, so reading them again is not a look; the held-back window was sealed until Verify, so every scan that reads it is a counted look.">windows the scans read</span>
+    <label class="f" style="flex:none"><input type="checkbox" id="tnWinTrain" ${wins.includes('train') ? 'checked' : ''}> training</label>
+    <label class="f" style="flex:none"><input type="checkbox" id="tnWinTest" ${wins.includes('test') ? 'checked' : ''}> test</label>
+    <label class="f" style="flex:none"><input type="checkbox" id="tnWinHold" ${wins.includes('hold') ? 'checked' : ''}> held-back</label>
+    <span class="note">${wins.includes('hold') ? `<b class="warn">reading the held-back entries is look ${(cand.looks || 0) + 1}</b>` : 'the held-back entries are not read'}</span>
+  </div>`;
+}
+// the line at the top of a result that came from a capture
+function tnTargetLineHtml(t) {
+  return `<p class="note"><b>Read from the capture:</b> the survivor <b>${esc(t.survivor)}</b> ${t.pick === 'depth' ? '(by depth)' : '(named)'} of ${esc(t.set)}${t.unitName ? ` - ${esc(t.unitName)}` : ''},
+    ${Number(t.entries || 0).toLocaleString()} entries on the ${esc(tnWindowWords(t.windows))} window(s), captured ${esc(String(t.captureAt || '').slice(0, 10))} under release ${esc(t.captureRelease || '?')}
+    · ${t.look == null ? 'the held-back entries were not read: not a look' : `<b>this read of the held-back entries was look ${t.look}</b>`} · nothing is applied from a Stage 4 record set</p>`;
+}
+async function tnCaptureFollow(id, token) {
+  for (;;) {
+    let s = null;
+    try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/capture/status`); } catch (_) { s = null; }
+    if (!s || s.none || s.token !== token) { drawTune(); return; }
+    if (s.error) {
+      const m = $('#tnCaptureMsg'); if (m) m.textContent = s.error;
+      const b = $('#tnCapture'); if (b) b.disabled = false;
+      return;
+    }
+    if (s.result) { drawTune(); return; }
+    const m = $('#tnCaptureMsg'); if (m) m.textContent = `capturing the trades${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}`;
+    await new Promise((resolve) => { setTimeout(resolve, 2000); });
+    if (tab !== 'tune') return;
+  }
+}
 // ---- Tune (stop tuner · conviction sizing · compare) ----------------------------
 async function drawTune() {
   clearTimeout(tunePoll); tunePoll = null;
@@ -2761,6 +2877,10 @@ async function drawTune() {
   // a breakout cell's opposite rail IS its stop, so tuning one is meaningless.
   const cand = await apiOr('api/pilot/stop-candidates', ({ candidates: [] }));
   const books = (cand && cand.candidates) || [];
+  // the Stage 4 record sets on this box, for the capture panel (3.92.0)
+  const tnSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
+  const tnChosen = tnRememberedSet(tnSets);
+  const tnd = tnChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, null) : null;
   // Same fix as Tool 1: run A and run B were boxes you typed a run id into, so
   // an empty box or a typo came back as a 400 the operator had to decode. The
   // list is the runs that actually carry comparable rows.
@@ -2781,28 +2901,38 @@ async function drawTune() {
   // first, each addressed by its own id and scanned against its OWN training
   // cutoff, then the pre-registered books, then the selected board row.
   const profiles = books.filter((b) => b.kind === 'profile');
-  const savedBooks = books.filter((b) => b.kind !== 'profile');
-  const optId = (b) => `${b.kind === 'profile' ? 'p' : 'b'}:${b.id}`;
+  // the Stage 4 record sets that carry a per-trade capture (3.92.0): a scan on
+  // one reads the captured entries of one survivor over the windows ticked
+  const stage4 = books.filter((b) => b.kind === 'stage4');
+  const savedBooks = books.filter((b) => b.kind !== 'profile' && b.kind !== 'stage4');
+  const optId = (b) => `${b.kind === 'profile' ? 'p' : b.kind === 'stage4' ? 's' : 'b'}:${b.id}`;
   const known = new Set(books.map(optId));
   const savedTarget = localStorage.getItem('cx-scan-target') || '';
   // A stored preference pointing at something that no longer exists resolves to
   // the first real target rather than leaving a dangling option selected.
-  const firstReal = (profiles[0] && optId(profiles[0])) || (savedBooks[0] && optId(savedBooks[0])) || '';
+  const firstReal = (profiles[0] && optId(profiles[0])) || (stage4[0] && optId(stage4[0])) || (savedBooks[0] && optId(savedBooks[0])) || '';
   const tgt = (savedTarget === 'sel' && !sel) ? firstReal
     : (savedTarget === 'sel' ? 'sel' : (known.has(savedTarget) ? savedTarget : firstReal));
   const chosen = books.find((b) => optId(b) === tgt) || null;
+  // a Stage 4 target carries the survivor and the windows with it; both are
+  // remembered on this browser and redrawn, so the body sent is what is shown
+  const isSet = !!(chosen && chosen.kind === 'stage4');
+  const tnPickVal = isSet ? tnRememberedPick(chosen) : 'depth';
+  const tnWins = isSet ? tnRememberedWindows() : [];
   const scanBody = tgt === 'sel' ? { runId: doc.id, target: 'best' }
-    : chosen ? { setupId: chosen.id }
-      : null;
+    : isSet ? { setId: chosen.id, pick: tnPickVal, windows: tnWins }
+      : chosen ? { setupId: chosen.id }
+        : null;
   // The prose and the dropdown are computed from the SAME resolved value, so
   // the sentence above the control can no longer describe a different target
   // from the one the launcher will actually use.
   const target = tgt === 'sel'
     ? `the row selected on Boards (<b>${esc(sel.trade)}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h of ${esc(doc.id)})`
-    : chosen ? (chosen.kind === 'profile'
-      ? `your setup <b>${esc(chosen.name || chosen.id)}</b>`
-      : `the saved book <b>${esc(chosen.id)}</b>`)
-      : '<b>nothing selectable</b> — no setup or book is without a protective stop';
+    : isSet ? `the survivor <b>${esc(tnPickVal === 'depth' ? `${(chosen.pick || {}).label || '?'} (by depth)` : tnPickVal)}</b> of the Stage 4 record set <b>${esc(chosen.name)}</b>, on its ${tnWins.length ? esc(tnWindowWords(tnWins)) : '<b class="warn">no</b>'} entries`
+      : chosen ? (chosen.kind === 'profile'
+        ? `your setup <b>${esc(chosen.name || chosen.id)}</b>`
+        : `the saved book <b>${esc(chosen.id)}</b>`)
+        : '<b>nothing selectable</b> — no setup or book is without a protective stop';
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   <div class="panel">
@@ -2812,10 +2942,12 @@ async function drawTune() {
       nothing. Target: ${target}.</p>
     <div class="row" style="margin-bottom:.4rem"><label class="f" title="what the scans below are aimed at. Anything already carrying a protective stop is not listed — a breakout cell's opposite rail IS its stop, so tuning one is meaningless. Each target is scanned against its OWN training cutoff.">scan target<select id="tuneTarget">
       ${profiles.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}${b.blocked ? ' disabled' : ''}>${esc(b.name || b.id)} — ${esc((b.combo && b.combo.trade) || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}${b.state ? ` (${esc(b.state)})` : ''}${b.blocked ? ' — cannot scan' : ''}</option>`).join('')}
+      ${stage4.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}>${esc(b.name)} — ${esc(b.unitName || 'all units together')} — ${b.captured} of ${b.survivors} survivors captured</option>`).join('')}
       ${sel ? `<option value="sel" ${tgt === 'sel' ? 'selected' : ''}>the row selected on Boards — ${esc(sel.trade)} ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</option>` : ''}
       ${savedBooks.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}>${esc(b.name || b.id)} — ${esc((b.combo && b.combo.trade) || '')} ${b.cell && b.cell.tHours ? b.cell.tHours + 'h' : ''}</option>`).join('')}
     </select></label>
-    <span class="note">${profiles.length} of your setup(s) and ${savedBooks.length} saved book(s) without a protective stop</span></div>
+    <span class="note">${profiles.length} of your setup(s) and ${savedBooks.length} saved book(s) without a protective stop, and ${stage4.length} Stage 4 record set(s) with their trades captured</span></div>
+    ${isSet ? tnTargetRowHtml(chosen, tnPickVal, tnWins) : ''}
     <div class="row" style="margin-bottom:.4rem">
       <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is ${floorPc}, which is twice the ${tripPc} it costs to trade in and out at ${feePc} each way — tighter than the round trip and a triggered stop is a guaranteed loss, tighter than the floor and it fires on ordinary hourly noise. This button writes the live engine's own risk parameter, so the floor is the lab rate rather than any one profile's fee.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="${floorPct}" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
       <button id="stopCustomApply">apply custom</button>
@@ -2844,6 +2976,7 @@ async function drawTune() {
     <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep (full history)</button></div>
     <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : ''}</div>
   </div>
+  ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}
   <div class="panel">
     <h3 style="margin-top:0">Compare two runs — NOT a null test</h3>
     <div class="row" style="align-items:flex-end">
@@ -2860,7 +2993,7 @@ async function drawTune() {
   </div>`;
   function renderStopResult(s) {
     const cc = s.counts || {};
-    return `<p><b>${esc(s.bookId)}</b>: tightest no-winner-lost stop <span class="pos">${pct(s.stopPct)}</span> —
+    return `${s.target ? tnTargetLineHtml(s.target) : ''}<p><b>${esc(s.bookId)}</b>: tightest no-winner-lost stop <span class="pos">${pct(s.stopPct)}</span> —
       ${cc.winners || 0} winners / ${cc.losers || 0} losers over ${cc.priced || 0} entries.</p>
       <div class="scrollx"><table><thead><tr>${cth('give up top winners','giveUp')}${cth('stop','stopPct')}${cth('winners cut','winnersCut')}${cth('winner $ given up','winnerGiven')}${cth('losers cut','losersCut')}${cth('loss-side $','lossSide')}${cth('NET $','netUsd')}<th></th></tr></thead><tbody>
       ${(s.curve || []).map((c) => `<tr><td>${c.sacrificeTopWinners}</td><td>${pct(c.stopPct)}</td><td>${c.winnersForfeited}</td>
@@ -2874,7 +3007,7 @@ async function drawTune() {
   }
   function renderConvResult(c) {
     const n = c.null || {};
-    return `<p><b>${esc(c.bookId)}</b> over ${c.entries} priced entries: flat ${usd(c.flatUsd)} vs ladder <b>${usd(c.ladderUsd)}</b>
+    return `${c.target ? tnTargetLineHtml(c.target) : ''}<p><b>${esc(c.bookId)}</b> over ${c.entries} priced entries: flat ${usd(c.flatUsd)} vs ladder <b>${usd(c.ladderUsd)}</b>
       — uplift <b class="${(c.upliftUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.upliftUsd)}</b>.</p>
       <div class="scrollx"><table><thead><tr>${cth('agreement','agreement')}${cth('mult','mult')}${cth('trades','trades')}${cth('wins','wins')}${cth('win %','winPct')}${cth('flat $','flatUsd')}${cth('ladder $','ladderUsd')}</tr></thead><tbody>
       ${(c.buckets || []).map((b) => `<tr><td>${b.agree} of ${(c.setup && c.setup.members) || '?'}${b.thin ? ' ⚠' : ''}</td>
@@ -2953,16 +3086,50 @@ async function drawTune() {
   // operator did not type anything wrong, there is simply nothing to aim at.
   const noTarget = () => { alert('No scan target: nothing in the list is without a protective stop, '
     + 'so there is nothing to tune. A breakout cell already stops at its opposite rail.'); };
+  const tnConfirm = (what) => {
+    if (!isSet) return confirm(`Run the full-history ${what}? (minutes; one heavy scan at a time)`);
+    if (!tnWins.length) { alert('tick at least one window for the scan to read: training, test or held-back'); return false; }
+    const look = tnWins.includes('hold') ? `\n\nThis reads the captured held-back entries: a counted look at the held-back window (look ${(chosen.looks || 0) + 1}).` : '\n\nThe held-back entries are not read: not a look.';
+    return confirm(`Run the ${what} on the captured entries of ${chosen.name}? (${tnWindowWords(tnWins)} window(s); one heavy scan at a time)${look}`);
+  };
   $('#stopRun').onclick = async () => {
     if (!scanBody) return noTarget();
-    if (!confirm('Run the full-history stop scan? (minutes; one heavy scan at a time)')) return;
+    if (!tnConfirm('stop scan')) return;
     const out = await tryPost('api/pilot/stopsweep', scanBody); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
   };
   $('#convRun').onclick = async () => {
     if (!scanBody) return noTarget();
-    if (!confirm('Run the full-history conviction sweep? (minutes; one heavy scan at a time)')) return;
+    if (!tnConfirm('conviction sweep')) return;
     const out = await tryPost('api/pilot/convictionsweep', scanBody); if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, 1500); }
   };
+  // the survivor and the windows are remembered and redrawn, so what the
+  // sentence above says is what the press sends
+  const tnPickSel = $('#tnPick');
+  if (tnPickSel) tnPickSel.onchange = () => { try { localStorage.setItem(TN_PICK_KEY, tnPickSel.value); } catch (_) { /* private window */ } drawTune(); };
+  for (const [, id] of TN_WINDOWS) {
+    const box = $(`#${id}`);
+    if (box) box.onchange = () => {
+      const on = TN_WINDOWS.filter(([, bid]) => { const el = $(`#${bid}`); return el && el.checked; }).map(([k]) => k);
+      try { localStorage.setItem(TN_WINDOWS_KEY, JSON.stringify(on)); } catch (_) { /* private window */ }
+      drawTune();
+    };
+  }
+  // the capture panel: the set box, the press, started and polled
+  const tnSel = $('#tnSet');
+  if (tnSel) tnSel.onchange = () => {
+    try { localStorage.setItem(TN_SET_KEY, tnSel.value); } catch (_) { /* private window */ }
+    drawTune();
+  };
+  const tnb = $('#tnCapture');
+  if (tnb && tnChosen && tnd && !tnd.refused) tnb.onclick = async () => {
+    if (!confirm(`Capture the trades of ${tnd.name}?\n\nEvery survivor that enters at market with no trailing stop, on the training, test and held-back windows. The set then appears in the scan target box.${tnd.capture ? '\n\nThis replaces the capture on record; the looks already counted stay.' : ''}`)) return;
+    tnb.disabled = true;
+    $('#tnCaptureMsg').textContent = 'starting…';
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(tnChosen)}/capture`, {}, 'The Stage 4 record set box on Tune lists what was captured - pick the set there.');
+    if (!started) { tnb.disabled = false; $('#tnCaptureMsg').textContent = ''; return; }
+    tnCaptureFollow(tnChosen, started.token);
+  };
+  if (tnd && tnd.running && tnb) { tnb.disabled = true; tnCaptureFollow(tnChosen, tnd.running.token); }
   $('#view').querySelectorAll('button[data-stop]').forEach((b) => {
     b.onclick = async () => {
       if (!confirm(`Apply a ${(Number(b.dataset.stop) * 100).toFixed(2)}% protective stop to the LIVE engine?`)) return;

@@ -5816,8 +5816,11 @@ const rideBusy = () => (rideRun && !rideRun.result && !rideRun.error ? `the held
 let unreadRun = null;   // { id, token, done, of, result, error, promise }
 const unreadBusy = () => (unreadRun && !unreadRun.result && !unreadRun.error ? `the reserve grade of ${unreadRun.id} is being priced` : null);
 // What is stopping another load, in words fit for a refusal, or null.
+// and the per-trade capture of a Stage 4 set for Tune (3.92.0), the same pricing pass again
+let captureRun = null;   // { id, token, done, of, result, error, promise }
+const captureBusy = () => (captureRun && !captureRun.result && !captureRun.error ? `the per-trade capture of ${captureRun.id} is being worked out` : null);
 const richBusy = () => (richRun && !richRun.result && !richRun.error
-  ? `the missing numbers of ${richRun.id} are being worked out` : (rideBusy() || unreadBusy()));
+  ? `the missing numbers of ${richRun.id} are being worked out` : (rideBusy() || unreadBusy() || captureBusy()));
 function funnelRichStart(id, state = {}) {
   if (richRun && !richRun.result && !richRun.error) {
     if (richRun.id === String(id)) return richStatus(richRun);
@@ -6015,7 +6018,10 @@ function verifyLooksOf(doc, keys, stamped) {
   // the held-back ride (3.88.0) prints held-back numbers per survivor: a look, stamped
   const rides = (doc.ride || []).length;
   if (rides) what.push(`the held-back ride was worked out ${rides} time(s) on Verify, each a stamped look`);
-  return { unstamped: steps + back + 1, stamped: stamped || 0, rides, what };
+  // a tool run on Tune that read the captured held-back entries (3.92.0): a look, stamped on the capture
+  const tuneReads = (((doc.capture || {}).reads) || []).filter((r) => r && r.look != null).length;
+  if (tuneReads) what.push(`a scan on Tune read the captured held-back trades ${tuneReads} time(s), each a stamped look`);
+  return { unstamped: steps + back + 1, stamped: stamped || 0, rides, tuneReads, what };
 }
 function verifyFooting(doc, join) {
   const V = require('./funnelverify');
@@ -6533,6 +6539,251 @@ async function stage4GreenlightDry(setId) {
     depthPick: src ? { label: src.pick.label, worst: src.pick.worst, mean: src.pick.mean } : null,
     survivors: src ? src.survivors : [],
     refused,
+  };
+}
+
+// ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET (3.92.0, VERIFY-DESIGN.md section 6, section 9 step 8) ----
+//
+// The two tools on Tune -- the stop tuner and the conviction ladder -- take a
+// list of entries and price them themselves. A Stage 4 set holds money per
+// window and never the trades, so this writes them down: the same pricing pass
+// as the reserve grade with a flag (lib/stagework.js, s3UnitTask with
+// task.capture), every survivor that enters at market with no trailing stop,
+// on the training, test and held-back slices. The entries live in a file
+// beside the set; the set holds the summary. A tool run that reads the
+// held-back entries is a look, stamped on the capture. Refuses in words
+// without a verdict that PASSED under this release line, on a blend set,
+// without the parents, without a survivor of the right shape, and while
+// anything heavy is going.
+const CAPTURE_V = 1;
+const CAPTURE_WINDOWS = ['train', 'test', 'hold'];
+const CAPTURE_WINDOW_WORDS = { train: 'training', test: 'test', hold: 'held-back' };
+const captureFile = (id) => path.join(SETS_DIR, `${id}-capture.json.gz`);
+function readCapture(id) {
+  try {
+    const raw = JSON.parse(zlib.gunzipSync(fs.readFileSync(captureFile(id))).toString('utf8'));
+    return raw && raw.v === CAPTURE_V && Array.isArray(raw.survivors) ? raw : null;
+  } catch (_) { return null; }
+}
+function writeCapture(id, rec) {
+  const tmp = `${captureFile(id)}.tmp${process.pid}-${++tmpSeq}`;
+  fs.writeFileSync(tmp, zlib.gzipSync(Buffer.from(JSON.stringify(rec))));
+  fs.renameSync(tmp, captureFile(id));
+  return rec;
+}
+// why a setting cannot be captured, in words, or null when it can
+const captureShapeWhy = (st) => {
+  if ((st.entry || 'breakout') !== 'market') return 'it enters on a price level rather than at the hour, and the two scans on Tune price an entry at the hour, open to open';
+  if ((st.trailMult ?? null) != null) return 'it carries a trailing stop, so it already has a stop of its own';
+  return null;
+};
+const CAPTURE_NONE = 'no survivor of this set enters at market without a trailing stop, and those are the only trades the two scans on Tune price';
+const CAPTURE_NOT_YET = 'this set carries no per-trade capture yet — press "Capture the trades of this set" on Tune first';
+function captureRefusalOf(doc) {
+  if (!doc.unit) return BLEND_REFUSAL;
+  if (!unreadGateOf(doc)) return UNREAD_NO_PASS;
+  const parent = getSet((doc.parent || {}).id);
+  if (!parent) return 'the stage 3 set this was cut from is gone, so its trades cannot be captured';
+  if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast their training window';
+  if (!(doc.survivors || []).length) return 'this set wrote down no settings, so there is nothing to capture';
+  if (batch.batchRunning()) return 'a sweep is running on this box — the capture waits for it';
+  const busy = stageBusy();                // a stage run, the exam, a totalling, a rebuild, a ride, a grade, another capture
+  if (busy) return `${busy} — the capture waits for the box to be free`;
+  if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
+  if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+  if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
+  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  return null;
+}
+async function tuneCaptureRun(doc, note = null) {
+  const S4 = require('./funnelset');
+  const gate = unreadGateOf(doc);
+  if (!gate) throw new Error(UNREAD_NO_PASS);
+  const join = await funnelVerifyJoin(doc);
+  const footing = verifyFooting(doc, join);
+  if (!footing.ok) throw new Error(footing.why);
+  const parent = join.parent;                                   // the stage 3 set
+  const shape = relaunchShapeOf(parent);                        // refuses when the stage 2 set is gone
+  const idx = shape.records.findIndex((r) => unitKeyOf(r) === doc.unit);
+  if (idx < 0) throw new Error(`the stage 3 set holds no unit called '${doc.unit}'`);
+  const rec = shape.records[idx];
+  const want = new Set(join.rows.map((r) => r.label));
+  const held = new Set(shape.heldOn[idx]);
+  const onUnit = shape.settings.filter((st) => want.has(st.label) && held.has(st.si));
+  const missing = [...want].filter((L) => !onUnit.some((st) => st.label === L));
+  const notCaptured = [];
+  const settings = [];
+  for (const st of onUnit) {
+    const why = captureShapeWhy(st);
+    if (why) notCaptured.push({ label: st.label, why }); else settings.push(st);
+  }
+  if (!settings.length) throw new Error(CAPTURE_NONE);
+  const fee = Number((parent.params || {}).fee) || 0;
+  // no scrambled copies: the capture is the real calendar's trades and nothing else
+  const payload = s3Payload({ doc: parent, parent: shape.parent, rec, settings, fee, nullN: 0 });
+  payload.keepN = 0;
+  const models = unitRows(shape.parent.id, 'models', rec.blocks.models, rec.u);
+  payload.unit.members = payload.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
+  payload.capture = true;
+  if (note) note(0, 1);
+  const pool = createPool();
+  activePool = pool;
+  let res = null;
+  let error = null;
+  try {
+    await pool.forEach('s3Unit', [payload], (settled) => { if (settled.ok) res = settled.value; else error = settled.error; if (note) note(1, 1); });
+  } finally { activePool = null; pool.abort(); }
+  if (!res) throw new Error(`the unit's trades could not be captured: ${String(error || 'no answer')}`);
+  // one survivor without shopping: by depth inside the rule, among the CAPTURED survivors
+  const capturedLabels = new Set(settings.map((st) => st.label));
+  const pickRows = join.rows.filter((r) => capturedLabels.has(r.label));
+  const pick = S4.pickByDepth(pickRows, join.rule);
+  const survivors = (res.rows || []).map((r) => ({
+    label: r.label, si: r.si, tHours: r.tHours, weekdaysOnly: !!r.weekdaysOnly, entry: r.entry, gate: r.gate, decision: r.decision, bandPct: r.bandPct,
+    members: r.members, rung: r.rung ?? null,
+    money: { test: r.pnl, hold: r.holdout ? r.holdout.pnl : null }, trades: { test: r.trades, hold: r.holdout ? r.holdout.trades : null },
+    entries: (r.rich && r.rich.capture) || { train: [], test: [], hold: [] },
+  }));
+  const totals = { train: 0, test: 0, hold: 0 };
+  for (const sv of survivors) for (const w of CAPTURE_WINDOWS) totals[w] += (sv.entries[w] || []).length;
+  const at = new Date().toISOString();
+  const fresh = getSet(doc.id);
+  if (!fresh) throw new Error('the set went away while its trades were being captured');
+  const had = fresh.capture || null;
+  const times = (had ? Number(had.times) || 0 : 0) + 1;
+  const file = {
+    v: CAPTURE_V, id: doc.id, at, release: ENGINE_VERSION, times, gate, unit: doc.unit, unitName: doc.unitName || null,
+    combo: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size: rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1) }, geometry: rec.geometry,
+    members: (rec.specs || []).length, fee: { feePerLeg: fee, feeUnits: 'fraction' }, windows: res.windows || null,
+    pick: pick ? { by: 'depth', among: 'the captured survivors', label: pick.label, worst: pick.worst, mean: pick.mean } : null,
+    survivors, notCaptured, missing,
+  };
+  writeCapture(doc.id, file);
+  fresh.capture = {
+    id: `${doc.id}-c${times}`, at, release: ENGINE_VERSION, times, gate, unit: doc.unit, members: file.members, fee: file.fee, windows: file.windows,
+    survivors: join.rows.length, captured: survivors.length, notCaptured, missing, entries: totals, pick: file.pick,
+    rows: survivors.map((sv) => ({ label: sv.label, tHours: sv.tHours, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length }, test: sv.money.test, held: sv.money.hold })),
+    // every scan on Tune that read this capture, newest first; a read of the held-back entries carries its look number
+    reads: had && Array.isArray(had.reads) ? had.reads : [],
+  };
+  saveSet(fresh);
+  return { id: fresh.capture.id, times, captured: survivors.length, notCaptured: notCaptured.length, missing: missing.length, entries: totals };
+}
+async function tuneCaptureDry(id) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  const cap = doc.capture || null;
+  return {
+    id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
+    ruleSentence: doc.ruleSentence || null, survivors: ((doc.counts || {}).survivors) ?? (doc.survivors || []).length,
+    gate: unreadGateOf(doc), verdicts: (doc.verify || []).length,
+    capture: cap,
+    looks: cap ? (cap.reads || []).filter((r) => r && r.look != null).length : 0,
+    refused: captureRefusalOf(doc),
+    running: captureRun && captureRun.id === doc.id && !captureRun.result && !captureRun.error ? { token: captureRun.token } : null,
+  };
+}
+const captureStatus = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, cpu: cpuLoad(), error: run.error, result: run.result });
+function tuneCaptureStart(id) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  if (captureRun && captureRun.id === id && !captureRun.result && !captureRun.error) return captureStatus(captureRun);
+  const why = captureRefusalOf(doc);
+  if (why) throw new Error(why);
+  const run = { id, token: `${id}:${Date.now()}`, done: 0, of: 1, result: null, error: null, promise: null };
+  captureRun = run;
+  run.promise = tuneCaptureRun(doc, (done, of) => { run.done = done; run.of = of; })
+    .then((result) => { run.result = result; run.done = run.of; })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return captureStatus(run);
+}
+function tuneCaptureStatus(id) {
+  if (!captureRun || captureRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
+  return captureStatus(captureRun);
+}
+// the Stage 4 sets a scan on Tune can be aimed at: those carrying a capture, with what the picker needs and nothing heavy
+function captureCandidates() {
+  return listFunnelSets().filter((d) => !d.exam && d.capture && d.capture.captured > 0).map((d) => ({
+    kind: 'stage4', id: d.id, name: d.name, unitName: d.unitName || null, at: d.capture.at, release: d.capture.release,
+    survivors: d.capture.survivors, captured: d.capture.captured, members: d.capture.members, pick: d.capture.pick,
+    rows: d.capture.rows || [], entries: d.capture.entries, looks: (d.capture.reads || []).filter((r) => r && r.look != null).length,
+  }));
+}
+// WHAT A SCAN ON A CAPTURE IS AIMED AT, resolved before anything loads: the set, the
+// survivor (by depth among the captured, or named) and the windows ticked.
+function captureTargetOf(body) {
+  const b = body || {};
+  const doc = getSet(String(b.setId || ''));
+  if (!doc || doc.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${b.setId}'`); e.status = 404; throw e; }
+  if (!doc.capture) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
+  const windows = Array.isArray(b.windows) ? b.windows.map(String) : [];
+  const bad = windows.filter((w) => !CAPTURE_WINDOWS.includes(w));
+  if (bad.length) { const e = new Error(`no window called '${bad[0]}' — the windows are ${CAPTURE_WINDOWS.map((w) => CAPTURE_WINDOW_WORDS[w]).join(', ')}`); e.status = 400; throw e; }
+  if (!windows.length) { const e = new Error('tick at least one window for the scan to read: training, test or held-back'); e.status = 400; throw e; }
+  const asked = b.pick == null || b.pick === '' || b.pick === 'depth' ? 'depth' : String(b.pick);
+  const label = asked === 'depth' ? ((doc.capture.pick || {}).label || null) : asked;
+  const row = (doc.capture.rows || []).find((r) => r.label === label) || null;
+  if (!row) {
+    const e = new Error(asked === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${asked}' is not one of the ${doc.capture.captured} captured survivors of ${doc.name}`);
+    e.status = 400; throw e;
+  }
+  return { doc, label, pick: asked === 'depth' ? 'depth' : 'named', windows: CAPTURE_WINDOWS.filter((w) => windows.includes(w)), bookId: `${doc.name} · ${label}` };
+}
+// A SCAN ON TUNE, RUN ON THE CAPTURED ENTRIES (3.92.0): the same tuner and the
+// same ladder the older path runs, on the entries of one survivor over the
+// windows ticked, at the survivor's own hold length and the set's fee, on the
+// prices the chain was launched on. A read of the held-back entries is a look.
+async function tuneOnCapture(body, tool) {
+  if (tool !== 'stop' && tool !== 'conviction') throw new Error(`no scan called '${tool}'`);
+  const t = captureTargetOf(body);
+  const cap = readCapture(t.doc.id);
+  if (!cap) throw new Error(`${t.doc.name}: the capture file beside the set is missing or unreadable — capture the trades of this set on Tune again`);
+  const sv = cap.survivors.find((x) => x.label === t.label);
+  if (!sv) throw new Error(`'${t.label}' is not in the capture file beside ${t.doc.name} — capture the trades of this set on Tune again`);
+  const parent = getSet((t.doc.parent || {}).id);
+  if (!parent) throw new Error('the stage 3 set this was cut from is gone, so the prices its trades were captured on cannot be read');
+  const sw = require('./stagework');
+  const { maps } = await sw.tradeMapFor(cap.combo, cap.geometry, parent.params || {}, pinOf(parent));
+  const entries = t.windows.flatMap((w) => (sv.entries[w] || []).map((e) => ({ ...e, window: w }))).sort((a, b) => a.ts - b.ts);
+  const fee = Number((cap.fee || {}).feePerLeg) || 0;
+  const holdHours = sv.tHours;
+  const isLook = t.windows.includes('hold');
+  const fresh = getSet(t.doc.id);
+  if (!fresh || !fresh.capture) throw new Error('the set or its capture went away while the scan was being set up');
+  const reads = Array.isArray(fresh.capture.reads) ? fresh.capture.reads : [];
+  const look = isLook ? reads.filter((r) => r && r.look != null).length + 1 : null;
+  let out;
+  if (tool === 'stop') {
+    const { tuneFixedStop } = require('./stoptuner');
+    const tune = tuneFixedStop(entries.map((e) => ({ entryTs: e.ts, side: e.side })), maps.trade, { holdHours, feePerLeg: fee });
+    out = { setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: sv.gate, tHours: holdHours, trailMult: null, armMult: null }, holdHours }, ...tune };
+  } else {
+    const { entryOutcome } = require('./stoptuner');
+    const { evalConviction } = require('./convictionsweep');
+    const priced = [];
+    let unpriced = 0;
+    for (const e of entries) {
+      const o = entryOutcome(e.ts, e.side, maps.trade, holdHours, fee);
+      if (o.priced) priced.push({ entryTs: e.ts, side: e.side, agree: e.agree, netPct: o.netPct }); else unpriced++;
+    }
+    const members = Math.max(1, Number(cap.members) || 1);
+    const ev = evalConviction(priced, { clipUsd: 10, ladder: Array.from({ length: members }, (_, i) => i + 1), holdHours });
+    out = { setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: sv.gate, tHours: holdHours, trailMult: null, armMult: null }, members }, unpricedEntries: unpriced, ...ev };
+  }
+  const target = {
+    kind: 'stage4', setId: t.doc.id, set: t.doc.name, unitName: t.doc.unitName || null, survivor: sv.label, pick: t.pick,
+    windows: t.windows, windowWords: t.windows.map((w) => CAPTURE_WINDOW_WORDS[w]), entries: entries.length, captureAt: cap.at, captureRelease: cap.release, look,
+  };
+  fresh.capture.reads = [{ at: new Date().toISOString(), tool, survivor: sv.label, windows: t.windows, look }, ...reads];
+  saveSet(fresh);
+  return {
+    ...out, target, trainThrough: null,
+    fullHistory: {
+      chunks: entries.length,
+      firstChunkUtc: entries.length ? new Date(entries[0].ts).toISOString() : null,
+      lastChunkUtc: entries.length ? new Date(entries[entries.length - 1].ts).toISOString() : null,
+    },
+    appliesToLiveRule: false,
   };
 }
 
@@ -7369,6 +7620,8 @@ module.exports = {
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
   unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
   stage4GreenlightSource, stage4GreenlightDry,
+  tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
+  CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,

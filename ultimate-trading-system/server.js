@@ -954,6 +954,16 @@ app.post('/api/funnel/set/:id/unread', (req, res) => {
   try { return res.json(stages.unreadGradeStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/unread/status', (req, res) => res.json(stages.unreadGradeStatus(req.params.id)));
+// THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET (3.92.0), on Tune: the GET is
+// the dry read (the gate, the capture on record and its looks), the POST
+// captures the survivors' trades, started and polled
+app.get('/api/funnel/set/:id/capture', async (req, res) => {
+  try { return res.json(await stages.tuneCaptureDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/funnel/set/:id/capture', (req, res) => {
+  try { return res.json(stages.tuneCaptureStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.get('/api/funnel/set/:id/capture/status', (req, res) => res.json(stages.tuneCaptureStatus(req.params.id)));
 
 app.get('/api/stageset/:id/coins', (req, res) => {
   const out = stages.stage3Coins(req.params.id, req.query || {});
@@ -1804,9 +1814,38 @@ app.get('/api/pilot/stop-candidates', (req, res) => {
     // They are gone, and so is this list's ability to suggest anything the
     // owner did not make.
 
+    // THE STAGE 4 RECORD SETS THAT CARRY A PER-TRADE CAPTURE (3.92.0): a scan
+    // on one of these runs on the captured entries of one survivor, over the
+    // windows ticked, and applies nothing.
+    try {
+      for (const c of stages.captureCandidates()) candidates.push(c);
+    } catch (e) {
+      candidates.push({ kind: 'error', id: '(Stage 4 record sets unreadable)', name: '(Stage 4 record sets unreadable)', blocked: e.message });
+    }
+
     res.json({ candidates });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
+// A SCAN AIMED AT A STAGE 4 RECORD SET (3.92.0) reads the captured entries of
+// one survivor instead of replaying a committee; the same mutex, the same
+// result file, the same polling. The target is resolved BEFORE the mutex is
+// taken so a refusal never leaves the scan marked running.
+function captureScan(req, res, tool, write) {
+  const target = stages.captureTargetOf(req.body || {});
+  heavyScanRunning = tool;
+  write({ status: 'running', bookId: target.bookId, startedUtc: new Date().toISOString() });
+  (async () => {
+    try {
+      const r = await stages.tuneOnCapture(req.body || {}, tool);
+      write({ status: 'done', bookId: target.bookId, finishedUtc: new Date().toISOString(), ...r });
+    } catch (e) {
+      write({ status: 'error', bookId: target.bookId, finishedUtc: new Date().toISOString(), error: String((e && e.message) || e).slice(0, 300) });
+    } finally {
+      heavyScanRunning = false;
+    }
+  })();
+  res.json({ ok: true, status: 'running', bookId: target.bookId });
+}
 // Conviction sizing (owner 2026-08-13): price a quorum-agreement clip ladder
 // over full history — same frozen replay as the stop sweep, pure $ overlay.
 // A scan SHOWS the answer; it changes no sizing anywhere. Background + polled.
@@ -1888,6 +1927,7 @@ app.get('/api/pilot/heavyscan', (req, res) => res.json({ running: heavyScanRunni
 app.post('/api/pilot/convictionsweep', (req, res) => {
   try {
     if (heavyScanRunning) return res.status(409).json({ error: `a heavy scan is already running (${heavyScanRunning}) — one at a time` });
+    if (req.body && req.body.setId) return captureScan(req, res, 'conviction', writeConvictionSweep);
     const { computeConvictionSweep } = require('./lib/convictionsweep');
     const { hasExistingStop } = require('./lib/stopsweep');
     const { book, opts } = bookFromScanBody(req.body || {});
@@ -1917,6 +1957,7 @@ app.get('/api/pilot/stopsweep', (req, res) => res.json(readStopSweep()));
 app.post('/api/pilot/stopsweep', (req, res) => {
   try {
     if (heavyScanRunning) return res.status(409).json({ error: `a heavy scan is already running (${heavyScanRunning}) — one at a time` });
+    if (req.body && req.body.setId) return captureScan(req, res, 'stop', writeStopSweep);
     const { computeSetupStop, hasExistingStop } = require('./lib/stopsweep');
     const { book, opts } = bookFromScanBody(req.body || {});
     if (hasExistingStop(book.cell)) {
