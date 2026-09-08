@@ -298,28 +298,78 @@ previous config briefly, so a probe immediately after a reload can hit a
 stale worker and 404 while the next request succeeds. Retry before believing
 a post-reload failure.
 
-### iRedMail (`mail.homeandofficemicro.com`) — still outstanding
+### iRedMail (`mail.homeandofficemicro.com`) — done
 
-Mail runs in the VirtualBox guest, not on the host: the stream map's
-`default` sends everything unmatched, including `mail.homeandofficemicro.com`
-and the apex `homeandofficemicro.com`, to `192.168.56.129:443`. It still
-serves iRedMail's stock self-signed certificate (`C=CN/GuangDong`, valid to
-2033), so webmail and iRedAdmin show a browser warning.
+Mail does **not** run on the host. The stream map's `default` route sends
+everything unmatched — `mail.homeandofficemicro.com` and the apex
+`homeandofficemicro.com` — to `192.168.56.129:443`, a VirtualBox guest
+(`HOMSMAIL03`, Debian 12, FQDN `mail.homeandofficemicro.com`). That guest also
+owns public `:80` through `VBoxNetNAT`, which is why the host can never answer
+HTTP-01 for anything.
 
-Because the guest owns both `:80` and `:443` for its own hostname, certbot
-HTTP-01 runs natively **inside the VM** — that is where to fix it, not on the
-host. Point iRedMail's expected paths at the result with symlinks rather than
-editing `ssl.tmpl`, Postfix and Dovecot separately, which an iRedMail upgrade
-can overwrite ([upstream guidance](https://docs.iredmail.org/letsencrypt.html)):
+It used to serve iRedMail's stock self-signed certificate (`C=CN/GuangDong`,
+valid to 2033), so webmail and iRedAdmin warned in every browser. It now
+carries a real Let's Encrypt cert covering both names.
+
+**Getting in.** The host reaches the guest over SSH on `vboxnet0` with a
+dedicated passphrase-less key, `/root/.ssh/id_mailcert`, restricted in the
+guest's `authorized_keys` to `from="192.168.56.1"`. The host's normal
+`id_ed25519` is passphrase-protected and therefore useless to an unattended
+script — the symptom is misleading, because sshd logs `Server accepts key`
+(the key *was* authorized) and the client still fails:
+
+```
+Load key "/root/.ssh/id_ed25519": incorrect passphrase supplied
+debug1: Server accepts key: ... ED25519 SHA256:/fHoQO7fiem...
+Permission denied (publickey,password).
+```
+
+Don't strip the passphrase off a shared key to fix that; mint a separate one.
+
+**The `:80` trap again.** iRedMail's `:80` block is `server_name _; return 301
+https://$host$request_uri;` at **server** level, so — exactly as on the host —
+a location added there is unreachable. Rather than restructure iRedMail's
+shipped config, the challenge is served from the guest's `:443` vhost and the
+`:80` redirect carries it there.
+
+**Installed with symlinks, not config edits.** nginx (`templates/ssl.tmpl`),
+Postfix (`smtpd_tls_cert_file`) and Dovecot (`ssl_cert`) all already read the
+same two paths, so one pair of symlinks moves all three — and an iRedMail
+upgrade can't overwrite it:
 
 ```bash
 chmod 0755 /etc/letsencrypt/{live,archive}   # or Postfix/Dovecot can't read the key
-ln -sf /etc/letsencrypt/live/<name>/fullchain.pem /etc/ssl/certs/iRedMail.crt
-ln -sf /etc/letsencrypt/live/<name>/privkey.pem   /etc/ssl/private/iRedMail.key
+ln -sfn /etc/letsencrypt/live/mail.homeandofficemicro.com/fullchain.pem \
+        /etc/ssl/certs/iRedMail.crt
+ln -sfn /etc/letsencrypt/live/mail.homeandofficemicro.com/privkey.pem \
+        /etc/ssl/private/iRedMail.key
 ```
 
-Note also that `www.homeandofficemicro.com` has **no DNS A record** — leave it
-out of any cert request, or the whole issuance fails.
+A deploy hook in the guest restarts nginx, Postfix and Dovecot on renewal.
+**Verify the mail ports, not just HTTPS** — a service that didn't reload keeps
+serving the old cert from memory, and mail clients would still warn while a
+browser looked fine:
+
+```
+25  smtp      CN=mail.homeandofficemicro.com  issuer=YE1  Dec 7 02:35:16 2026
+587 smtp      CN=mail.homeandofficemicro.com  issuer=YE1  Dec 7 02:35:16 2026
+465 implicit  CN=mail.homeandofficemicro.com  issuer=YE1  Dec 7 02:35:16 2026
+143 imap      CN=mail.homeandofficemicro.com  issuer=YE1  Dec 7 02:35:16 2026
+993 implicit  CN=mail.homeandofficemicro.com  issuer=YE1  Dec 7 02:35:16 2026
+995 implicit  CN=mail.homeandofficemicro.com  issuer=YE1  Dec 7 02:35:16 2026
+```
+
+Scripts on `vps-access`: `cert-mail-audit.sh` (read-only),
+`cert-mail-genkey.sh`, `cert-mail-setup.sh` (prepares, requests nothing),
+`cert-mail-issue.sh`, `cert-mail-verify.sh`.
+
+Because this cert lives in the guest, the host watchdog can't see it on disk —
+it checks those two hostnames over the network instead, so a lapse there
+surfaces the same way as the rest.
+
+`www.homeandofficemicro.com` remains **excluded**: it has no DNS A record, and
+one unresolvable name fails the whole issuance. Add the record first if you
+ever want it covered.
 
 ## Updating
 
