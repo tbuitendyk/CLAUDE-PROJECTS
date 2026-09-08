@@ -339,6 +339,26 @@ module.exports = {
       assert.strictEqual(src.training.halfLifeMonths, HLm);
       assert.strictEqual(src.readings.halfLife.months, HLm);
       assert.ok(src.survivors.every((x) => [12, 48].includes(x.halfLife)), 'every listed survivor carries one');
+      // A TABLE WHERE ONE ROW NOTHING IMPROVED ON. The fabricated year lets a
+      // half-life win every row, so a build that kept every row would read the
+      // same as one that keeps only the winners — the guard on that filter was
+      // missed for exactly this reason. Mark one row as the unweighted column's
+      // in the stored table, and the build must leave it out; mark them all,
+      // and it must refuse in words.
+      const sourceDoc = stages.getSet(c.cut.id);
+      const storedRows = sourceDoc.halflife.find((r) => r.id === block.id).rows;
+      const victim = storedRows.find((r) => r.best && r.best !== 'none');
+      victim.best = 'none';
+      fs.writeFileSync(path.join(ROOT, 'data', 'stagesets', `${c.cut.id}.json`), JSON.stringify(sourceDoc));
+      const again = stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: 'half-life build test set, one row out' });
+      c.made.push(again.id);
+      assert.strictEqual(again.survivors, improved.length - 1, 'the row nothing improved on is counted out');
+      assert.deepStrictEqual(stages.getSet(again.id).survivors.map((s) => s.label), improved.map((r) => r.label).filter((l) => l !== victim.label), 'and left out of the set, the rest in the table\'s order');
+      for (const r of storedRows) r.best = 'none';
+      fs.writeFileSync(path.join(ROOT, 'data', 'stagesets', `${c.cut.id}.json`), JSON.stringify(sourceDoc));
+      threw = null;
+      try { stages.buildHalfLifeSet(c.cut.id, { runId: block.id, name: 'half-life build test set, none' }); } catch (e) { threw = e.message; }
+      assert.ok(/no record improved/.test(threw), threw);
     } finally { c.cleanup(); }
   },
 
