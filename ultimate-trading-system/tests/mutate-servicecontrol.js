@@ -1103,6 +1103,17 @@ const GUARDS = [
     'aRunThatWasNeverStoppedIsTheReference', 'a stage 2 record carries no date ranges, and every stage 3 set cut from it has none to keep'],
   [path.join(ROOT, 'lib', 'stages.js'), '      if (!windowsMap[unitKeyOf(rec)] && !todo.length && !extra.length) {', '      if (false && !windowsMap[unitKeyOf(rec)] && !todo.length && !extra.length) {',
     'aPausedRunWhoseCheckpointKeepsNoDateRangesPricesOneSettingPerUnitForThem', 'a run paused before 3.85.0 and started again lands with no date ranges for the units it had already priced'],
+  // ---- the verdict on a Stage 4 record set (3.86.0) ----
+  [path.join(ROOT, 'lib', 'funnelverify.js'), '    pass: comparisons.known && positive && comparisons.beatsBuyHold === true && comparisons.beatsShortHold === true,', '    pass: positive && comparisons.beatsBuyHold !== false && comparisons.beatsShortHold !== false,',
+    'theVerdictCannotPassOnUnknownComparisons', 'a set whose parent kept no comparisons passes the held-back read on an unknown'],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), '  const pass = K > 0 && real != null && real > 0 && beats >= rules.bar;', '  const pass = K > 0 && real != null && real > 0 && beats >= 1;',
+    'theOwnCopiesReadMatchesTheAcrossReadOnAFixtureBoard', 'beating one scrambled copy of eighty passes the verdict, and the bar the set was cut under is never read'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  if (!fresh.heldBackReadAt) fresh.heldBackReadAt = block.at;', '  fresh.heldBackReadAt = block.at;',
+    'heldBackReadAtIsWrittenOnceAndNeverChanged', 'every press moves the first-look stamp, so a set can never say when its held-back window was first opened'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  fresh.verify = [block, ...blocks];', '  fresh.verify = [block];',
+    'everyPressAppendsABlockAndOverwritesNone', 'a later press overwrites the verdict, and a set read three times keeps only the last reading'],
+  [path.join(ROOT, 'lib', 'stages.js'), '  if (!doc.unit) throw new Error(BLEND_REFUSAL);', '  if (false) throw new Error(BLEND_REFUSAL);',
+    'aBlendSetIsRefusedInWords', 'a set cut on all units together is read as if it had a unit, against comparisons kept per unit'],
 ];
 
 const only = process.argv[2] || '';

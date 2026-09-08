@@ -1,0 +1,296 @@
+// funnelverify.js -- the verdict on a Stage 4 record set, as pure arithmetic
+// over its survivors' rows (VERIFY-DESIGN.md, sections 4 and 8; 3.86.0).
+//
+// NOTHING HERE READS A FILE OR A SET. lib/stages.js hands in the rows and the
+// comparisons and writes back what this hands out, so every number on a verdict
+// can be re-derived from the block alone, and every function here can be
+// tested on a table typed into a test.
+//
+// EVERY READING RULE IS DECLARED BEFORE ITS NUMBER EXISTS. declareRules() is
+// called first, its answer rides on the block as `rules`, and every reading
+// below takes that object rather than deciding a threshold of its own. Each
+// rule is tagged DERIVED (it follows from the set's own record) or GUESSED (a
+// chosen threshold), the way the planted check stamps its own.
+//
+// THE UNIT OF VERIFICATION IS THE SET, never one row: a rule can be read on a
+// noise board and a single row cannot (owner decision 1, 2026-09-07). Each
+// survivor also gets its own reading against its own copies, printed beside
+// how many would pass by chance, and that reading never gates the set.
+
+const F = require('./funnel');
+
+const HELD = 'avgHold';                          // held-back money on a board row
+const LIMITS = ['maxDrawdown', 'avgTrades'];      // the two rebuilt-number limits step 6 can write
+const DEFAULT_SANITY_PCT = 50;
+const GATED = ['buyHold', 'shortHold'];           // the two comparisons a rule has to beat (its own marks)
+const NOT_GATED = ['alwaysLong', 'alwaysShort'];  // printed as the window's direction, never a gate
+
+const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
+const mean = (xs) => {
+  const c = (xs || []).filter((v) => v != null);
+  return c.length ? c.reduce((a, v) => a + v, 0) / c.length : null;
+};
+const median = (xs) => {
+  const c = (xs || []).filter((v) => v != null).sort((a, b) => a - b);
+  if (!c.length) return null;
+  const m = c.length >> 1;
+  return c.length % 2 ? c[m] : (c[m - 1] + c[m]) / 2;
+};
+
+// ---- the rules, declared first ---------------------------------------------------
+function declareRules(check, asked = {}) {
+  const K = Math.max(0, Math.floor(Number((check || {}).k) || 0));
+  const own = F.barPctOf(check);
+  const askedBar = asked.barPct == null || asked.barPct === '' ? null : Math.floor(Number(asked.barPct));
+  const barPct = askedBar != null && Number.isFinite(askedBar) ? Math.max(1, Math.min(100, askedBar)) : own;
+  const barChanged = barPct !== own;
+  const bar = K ? F.barOf({ k: K, barPct }) : 0;
+  const askedS = asked.sanityPct == null || asked.sanityPct === '' ? null : Number(asked.sanityPct);
+  const sanityPct = askedS != null && Number.isFinite(askedS) ? Math.max(0, Math.min(100, askedS)) : DEFAULT_SANITY_PCT;
+  return {
+    copies: K,
+    barPct, ownBarPct: own, barChanged, bar, chance: K ? F.chanceOf(bar, K) : null,
+    sanityPct,
+    gated: GATED.slice(), notGated: NOT_GATED.slice(),
+    limits: LIMITS.slice(),
+    tags: {
+      footing: 'DERIVED', comparisons: 'DERIVED',
+      bar: barChanged ? 'GUESSED' : 'DERIVED',
+      sanity: 'GUESSED',
+    },
+  };
+}
+
+// ---- V1: what a rule may carry ------------------------------------------------------
+// Ranges and allowed values on dials, and floors on the two rebuilt-number
+// limits, and nothing else. That is what guarantees a scrambled copy keeps the
+// same survivors: none of those keys reads the money. A top-N cut is allowed
+// because the copy takes its own top N by its own scrambled money (nullCopy).
+function ruleKeys(rule) {
+  const R = rule || {};
+  const bad = [];
+  for (const k of Object.keys(R.ranges || {})) if (!F.ALL_DIALS.includes(k)) bad.push(`ranges.${k}`);
+  for (const k of Object.keys(R.allowed || {})) if (!F.ALL_DIALS.includes(k)) bad.push(`allowed.${k}`);
+  for (const k of Object.keys(R.floors || {})) if (!LIMITS.includes(k)) bad.push(`floors.${k}`);
+  return {
+    ok: !bad.length,
+    bad,
+    readsHeldBackTrades: Object.keys(R.floors || {}).includes('avgTrades'),
+    cut: R.cut ? { column: R.cut.column, n: R.cut.n } : null,
+  };
+}
+
+// ---- V2: the held-back read, against the four comparisons ---------------------------
+// `controls` is what lib/stages.js's controlsOf hands back for this unit at the
+// survivors' own hold lengths: { known, why, keys, of, missing, alwaysLong:
+// {lo,hi}, alwaysShort, buyHold, shortHold }. Beaten means beaten at the worst
+// of the hold lengths in use, by at least a cent, like the Funnel's own line.
+function heldBackRead(rows, controls) {
+  const held = (rows || []).map((r) => num(r[HELD]));
+  const of = held.filter((v) => v != null).length;
+  const real = mean(held);
+  const c = controls || { known: false, why: 'no comparisons were handed in' };
+  const comparisons = {
+    known: !!c.known, why: c.known ? null : (c.why || null),
+    keys: c.keys || null, of: c.of ?? null, missing: c.missing ?? null,
+  };
+  for (const k of [...GATED, ...NOT_GATED]) comparisons[k] = c.known && c[k] ? { lo: c[k].lo, hi: c[k].hi } : null;
+  comparisons.beatsBuyHold = c.known && real != null && comparisons.buyHold ? F.beats(real, comparisons.buyHold.hi) : null;
+  comparisons.beatsShortHold = c.known && real != null && comparisons.shortHold ? F.beats(real, comparisons.shortHold.hi) : null;
+  const positive = real != null && real > 0;
+  return {
+    real, of, missing: (rows || []).length - of,
+    trades: mean((rows || []).map((r) => num(r.avgTrades))),
+    vsLong: mean((rows || []).map((r) => num(r.avgVsLong))),
+    positive,
+    comparisons,
+    // unknown never passes: a gate on a number nobody has is not a gate
+    pass: comparisons.known && positive && comparisons.beatsBuyHold === true && comparisons.beatsShortHold === true,
+    incomplete: !comparisons.known,
+  };
+}
+
+// ---- V3: the survivors against their own scrambled copies, on the held-back window ----
+// For each copy d, the mean over survivors of the money the same setting made
+// on the held-back days with its forecasts dealt onto random days (noiseHold[d]).
+// A survivor with no figure on a copy is COUNTED and printed, never silently
+// dropped; a copy with fewer survivors than the rest is printed as such.
+// `copyRowsAt(d)`, when given, names the rows copy d keeps -- a rule with a
+// top-N cut lets each copy take its own top N by its own scrambled test money.
+function copiesRead(rows, rules, copyRowsAt = null) {
+  const K = rules.copies;
+  const list = rows || [];
+  const real = mean(list.map((r) => num(r[HELD])));
+  const copyMeans = [];
+  const counted = [];
+  for (let d = 0; d < K; d++) {
+    const mine = copyRowsAt ? copyRowsAt(d) : list;
+    const vals = (mine || []).map((r) => (Array.isArray(r.noiseHold) ? num(r.noiseHold[d]) : null)).filter((v) => v != null);
+    copyMeans.push(vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null);
+    counted.push(vals.length);
+  }
+  const beats = copyMeans.filter((v) => F.beats(real, v)).length;
+  const noFigure = list.filter((r) => !Array.isArray(r.noiseHold) || !r.noiseHold.some((v) => num(v) != null)).length;
+  const short = counted.filter((n) => n < list.length).length;
+  const pass = K > 0 && real != null && real > 0 && beats >= rules.bar;
+  return {
+    copies: K, real, copyMeans, copySurvivors: counted,
+    beats, bar: rules.bar, barPct: rules.barPct, chance: rules.chance, floor: K ? 1 / (K + 1) : null,
+    lead: F.leadOf(real, copyMeans),
+    leadDefinition: "the real figure minus the copies' mean, over the copies' sample spread",
+    survivorsWithNoFigure: noFigure, copiesShortOfSurvivors: short,
+    pass, incomplete: K === 0,
+  };
+}
+
+// ---- V4: every survivor against its own copies -- a reading each, never a gate ----
+function perSurvivor(rows, rules) {
+  const K = rules.copies;
+  const bar = rules.bar;
+  const list = (rows || []).map((r) => {
+    const held = num(r[HELD]);
+    const copies = Array.isArray(r.noiseHold) ? r.noiseHold.map(num) : [];
+    const kept = copies.filter((v) => v != null).length;
+    const beats = copies.filter((v) => F.beats(held, v)).length;
+    return {
+      si: r.si, label: r.label, held, trades: num(r.avgTrades), vsLong: num(r.avgVsLong),
+      storedBeat: num(r.beat), storedPairs: num(r.pairs), storedLead: num(r.avgLead),
+      copiesKept: kept, beats, lead: F.leadOf(held, copies),
+      pass: K > 0 && kept > 0 && held != null && held > 0 && beats >= bar,
+      thirds: Array.isArray(r.pnlThirds) ? r.pnlThirds.map(num) : null,
+    };
+  });
+  const n = list.length;
+  const deals = list.map((x) => x.storedPairs).filter((v) => v != null);
+  const sumBeat = list.reduce((a, x) => a + (x.storedBeat || 0), 0);
+  const sumPairs = list.reduce((a, x) => a + (x.storedPairs || 0), 0);
+  const thirds = [0, 1, 2].map((i) => list.filter((x) => x.thirds && x.thirds[i] != null && x.thirds[i] > 0).length);
+  const withThirds = list.filter((x) => x.thirds && x.thirds.some((v) => v != null)).length;
+  return {
+    survivors: n,
+    passing: list.filter((x) => x.pass).length,
+    byChance: rules.chance == null ? null : n * rules.chance,
+    chanceEach: rules.chance,
+    positive: list.filter((x) => x.held != null && x.held > 0).length,
+    beatsAlwaysLong: list.filter((x) => x.vsLong != null && x.vsLong > 0).length,
+    headToHeadsWon: sumPairs ? sumBeat / sumPairs : null,
+    dealsOver: deals.length ? Math.max(...deals) : null,
+    kept: K,
+    medianStoredLead: median(list.map((x) => x.storedLead)),
+    medianLead: median(list.map((x) => x.lead)),
+    moneyByThird: withThirds ? { of: withThirds, positive: thirds } : null,
+    definitions: {
+      storedBeat: 'beat its own null set, as stored on the record: raw dollars over every deal, which may be more than the copies kept',
+      beats: 'beats, read here: cents over the copies kept, the same reading the set verdict makes',
+      storedLead: 'lead, as stored on the record: over the population spread, and 0 with no spread',
+      lead: 'lead, read here: over the sample spread, and none with fewer than two copies',
+    },
+    notIndependent: 'the survivors share one coin, one window and the same deals, so they are not independent draws',
+    rows: list,
+  };
+}
+
+// ---- V5: sanity -- noise must lose ---------------------------------------------------
+function sanity(boardRows, survivorRows, rules) {
+  const share = (rows) => {
+    let n = 0;
+    let neg = 0;
+    for (const r of rows || []) {
+      for (const v of (Array.isArray(r.noiseHold) ? r.noiseHold : [])) {
+        const x = num(v);
+        if (x == null) continue;
+        n++;
+        if (x < 0) neg++;
+      }
+    }
+    return { figures: n, losing: n ? neg / n : null };
+  };
+  const board = share(boardRows);
+  const survivors = share(survivorRows);
+  return {
+    threshold: rules.sanityPct,
+    board, survivors,
+    known: board.losing != null,
+    ok: board.losing != null && board.losing * 100 > rules.sanityPct,
+  };
+}
+
+// ---- line A (information only): the rule on the test window against its own copies ----
+function lineA(rows, rules, copyRowsAt = null) {
+  const list = rows || [];
+  const real = mean(list.map(F.money));
+  const K = rules.copies;
+  const copyMeans = Array.from({ length: K }, (_, d) => mean((copyRowsAt ? copyRowsAt(d) : list).map(F.moneyAt(d))));
+  const beats = copyMeans.filter((v) => F.beats(real, v)).length;
+  return {
+    information: true, real, copies: K, copyMeans, beats, bar: rules.bar, clears: K > 0 && beats >= rules.bar,
+    lead: F.leadOf(real, copyMeans),
+    why: 'the rule was chosen against these very copies, so this always looks good; printed, never a pass or fail',
+  };
+}
+
+// ---- line B (information only): the bound on top-N shopping --------------------------
+// The best N by test money on the real board against the best N by scrambled
+// test money on each copy, like against like: what shopping alone would find.
+function lineB(boardRows, n, rules) {
+  const N = Math.max(0, Math.floor(Number(n) || 0));
+  const K = rules.copies;
+  const board = boardRows || [];
+  const topMean = (moneyOf) => {
+    const vals = board.map(moneyOf).filter((v) => v != null).sort((a, b) => b - a).slice(0, N);
+    return vals.length ? vals.reduce((a, v) => a + v, 0) / vals.length : null;
+  };
+  const real = topMean(F.money);
+  const copyMeans = Array.from({ length: K }, (_, d) => topMean(F.moneyAt(d)));
+  const beats = copyMeans.filter((v) => F.beats(real, v)).length;
+  return {
+    information: true, n: N, of: board.length, real, copies: K, copyMeans, beats, bar: rules.bar,
+    clears: K > 0 && beats >= rules.bar, lead: F.leadOf(real, copyMeans),
+    why: `the best ${N} by test money on the real board against the best ${N} by scrambled test money on each copy: what shopping alone would have found`,
+  };
+}
+
+// ---- the verdict sentence, from stored numbers only ---------------------------------
+const money = (v) => (v == null ? 'no figure' : `$${Number(v).toFixed(2)}`);
+const pct = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
+function verdict(block) {
+  const b = block;
+  const gate = b.gate || {};
+  const parts = [];
+  parts.push(gate.state === 'PASS'
+    ? `the planted check stood (release ${gate.engineVersion || 'unrecorded'}; it certifies the old sweep pipeline)`
+    : `no planted check stood (${gate.state || 'NOT CHECKED'})`);
+  const f = b.footing || {};
+  parts.push(f.ok ? `the rule gives back its own ${f.had} survivors today` : `the footing did not stand (${f.why || 'unstated'})`);
+  const h = b.heldBack || {};
+  const c = h.comparisons || {};
+  parts.push(`on the held-back window the ${h.of ?? 0} survivors made ${money(h.real)} a setting`
+    + (c.known
+      ? `, ${c.beatsBuyHold ? 'beating' : 'not beating'} buying the coin and going away and ${c.beatsShortHold ? 'beating' : 'not beating'} shorting it and going away`
+      : `, and the four comparisons are not known (${c.why || 'unstated'})`)
+    + `, after at least ${(b.looks || {}).unstamped ?? 0} unstamped looks`);
+  const cp = b.copies || {};
+  if (cp.incomplete) parts.push('the set kept no scrambled copies, so nothing was read against nothing');
+  else parts.push(`against its own ${cp.copies} scrambled copies it beats ${cp.beats}, the bar being ${cp.bar} (${cp.barPct}%); a forecast-free rule clears that about ${pct(cp.chance)} of the time, and the finest claim ${cp.copies} copies allow is 1 in ${cp.copies + 1}, a floor, never a measure of strength`);
+  const s = b.survivors || {};
+  parts.push(`${s.passing ?? 0} of ${s.survivors ?? 0} survivors clear the same bar on their own copies, about ${s.byChance == null ? '?' : s.byChance.toFixed(1)} would by chance`);
+  const sn = b.sanity || {};
+  parts.push(sn.known ? `sanity: ${pct(sn.board.losing)} of the board's scrambled held-back figures lose money, the threshold being ${sn.threshold}%, ${sn.ok ? 'PASS' : 'FAIL'}` : 'sanity: not known');
+  const pass = !!(f.ok && h.pass && cp.pass && sn.ok);
+  return { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: ${parts.join('; ')}. What a pass buys: this window only.` };
+}
+
+// ---- the block, assembled -------------------------------------------------------------
+// input: { id, at, release, look, rules, gate, footing, looks, heldBack, copies,
+//          survivors, sanity, lineA, lineB, fee, windows, marks }
+function buildBlock(input) {
+  const b = { ...input };
+  b.verdict = verdict(b);
+  return b;
+}
+
+module.exports = {
+  HELD, LIMITS, GATED, NOT_GATED, DEFAULT_SANITY_PCT,
+  declareRules, ruleKeys, heldBackRead, copiesRead, perSurvivor, sanity, lineA, lineB, verdict, buildBlock,
+  mean, median,
+};

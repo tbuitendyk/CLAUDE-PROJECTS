@@ -695,21 +695,38 @@ window.HELP = {
   verify: {
     title: 'Verify',
     how: [
-      ['Checking the instrument, not the result',
-        'Everything on the other tabs assumes the machinery works. These checks are what establish that, and they run against made-up price histories rather than real ones — because with a made-up one you know the right answer in advance.\\n\\nOne has a pattern deliberately hidden in it and the system must find it. One has nothing in it and the system must stay quiet. A miss on the first means it is blind; a hit on the second means it invents things. Either way every other number the system has produced is worthless until it passes, so this is the first thing to look at when something seems too good.'],
+      ['Checking the instrument first, then one result',
+        'Everything on the other tabs assumes the machinery works. The planted check establishes that, against made-up price histories where the right answer is known in advance: one has a pattern deliberately hidden in it and the system must find it, one has nothing in it and the system must stay quiet. A miss on the first means it is blind; a hit on the second means it invents things. It certifies the older sweep path, not the three-stage engine that prices the record sets on Boards.\n\nBelow it, one result is judged: a Stage 4 record set, read as a whole. A rule can be checked against scrambled data and a single row cannot, which is why the Funnel writes a rule and why nothing here judges one row.'],
+      ['What the verdict reads, and what it does not',
+        'The press reads what the set\'s survivors made on the held-back window, the days no part of the search touched, and holds that against four simpler things: buying the coin and going away, shorting it and going away, being long every period and being short every period. The first two have to be beaten; the last two are the direction the window paid and are only printed. Then it reads the same settings\' money on every scrambled copy of their table and counts how many of those copies the real figure beats, against the bar the set was cut under. Each survivor gets the same reading on its own copies, printed beside how many would pass by chance, and that never picks a survivor and never gates the set. A sanity line says whether noise loses money, as fees demand; when it does not, the readings above it cannot be trusted.\n\nIt does not price the choosing of the survivors. The walk chose its ranges on the test window over its recorded steps; pricing that search itself would need the whole walk replayed on each scrambled board, which nothing here does. Two more lines are printed for information and never pass or fail: the rule on the test window against its own copies, which always looks good because it was chosen against them, and what shopping alone would have found.'],
+      ['Every look is counted',
+        'Opening this tab reads no held-back number. The press is the stamped look. Before any stamp, the held-back number was already on a screen at every step and step back of the walk, at the cut, and wherever Boards sorts or filters on it; the record says at least how many times. Every press appends a block and none is overwritten: the first block is the verdict, later ones are printed as later looks. What a pass buys is this window only; the forward paper test after freezing is the real judge.'],
     ],
-    intro: 'Checks on the machinery itself, not on any particular result. These answer the question '
-      + '"can this system find something that is definitely there, and does it stay quiet when there is nothing?" '
-      + 'If those checks fail, no result from the system means anything until they pass.',
+    intro: 'The machinery check first, then the verdict on one Stage 4 record set: what its survivors made on '
+      + 'the days no part of the search touched, against the simpler things a rule has to beat and against the '
+      + 'same settings on scrambled copies of their table, with every rule declared before its number and every '
+      + 'look counted.',
     controls: {
       pgRun: {
         what: 'Runs the calibration check: a made-up asset with a known pattern hidden in it, which the system must find, and a made-up asset with nothing in it, which it must not.',
-        more: 'A miss on the first means it is blind. A hit on the second means it invents things. Either way, stop and fix that before trusting anything else.',
+        more: 'A miss on the first means it is blind. A hit on the second means it invents things. Either way, stop and fix that before trusting anything else. It certifies the older sweep path, not the three-stage engine.',
       },
-      t1null: { what: 'Which scrambled companion run to read.' },
-      t1run: { what: 'Reads the verdict for the chosen scrambled run.' },
-      t1rounds: { what: 'How many extra scrambled rounds to fire at this run.' },
-      t1fire: { what: 'Runs that many more scrambled rounds, to sharpen the comparison.' },
+      vSet: {
+        what: 'Which Stage 4 record set to read, from every set on this box, newest first, each with its coin and shape, its survivors of its target, and whether a verdict is stamped on it.',
+        more: 'Choosing a set reads its footing only: whether its rule still gives back its own survivors, what it was checked against, its marks, and how many looks the held-back window has already had. No held-back number is read until the button is pressed.',
+      },
+      vBarPct: {
+        what: 'The share of the scrambled copies the survivors\' held-back money has to beat for the verdict to pass.',
+        more: 'It opens on the share the set was cut under, which is the honest bar. A change is written onto the verdict as a guessed threshold, so a verdict read under a softer bar says so.',
+      },
+      vSanityPct: {
+        what: 'The share of scrambled held-back figures on the whole board that must be losing money for the copies to count as noise.',
+        more: 'A guessed threshold, written onto the verdict. On a window that paid one direction the copies are paid too, so this can fail honestly; when it fails, the readings above it are not to be read.',
+      },
+      vRead: {
+        what: 'Reads the set against nothing on the held-back window and stamps the reading on the set. This is the one press that opens the held-back window on this screen.',
+        more: 'It refuses while a run, a totalling or a rebuild is going, when the rule no longer gives back its own survivors, when the rule carries anything but dials and the two limits, and on a set cut on all units together. The first press writes the verdict; every later press appends a later look and never replaces it.',
+      },
     },
   },
 

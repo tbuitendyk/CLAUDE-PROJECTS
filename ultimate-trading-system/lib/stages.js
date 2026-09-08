@@ -5886,6 +5886,210 @@ function rebuildSetRichStatus(setId) {
   return setRichStatus(setRichRun);
 }
 
+// ---- VERIFY: THE VERDICT ON A STAGE 4 RECORD SET (3.86.0, VERIFY-DESIGN.md) ----
+//
+// The set is read as a whole, never one row (owner decision 1, 2026-09-07). A
+// dry read (funnelVerifyDry) draws the record's footing and hands back no
+// held-back figure. The press (funnelVerifyStart) is the stamped look: it
+// declares its rules BEFORE any number exists, reads every survivor joined to
+// its parent's board -- never a page of them -- computes the readings in
+// lib/funnelverify.js, appends one block to the set (newest first, nothing
+// overwritten) and writes heldBackReadAt on the first press only. Started and
+// polled, like every other press on the Funnel.
+
+// every survivor of the set, joined to the board it was cut from
+async function funnelVerifyJoin(doc) {
+  const parentId = (doc.parent || {}).id || null;
+  const parent = parentId ? getSet(parentId) : null;
+  if (!parent) throw new Error(`the stage 3 set this was cut from (${parentId || 'unnamed'}) is gone, so its rows cannot be read back`);
+  const t = readTally(parentId);
+  if (!t) throw new Error(`${parent.name} has no totalled tables yet — open this set on the Funnel first, which starts the totalling`);
+  const S4 = require('./funnelset');
+  const board = await funnelBoard(parentId, t, doc.unit || 'all');
+  const all = withFunnelRich(board.all, readFunnelRich(parentId));
+  const mine = withOwnRich(all, doc.rich || {});
+  const wanted = doc.survivors || [];
+  const want = new Set(wanted.map((x) => x.label));
+  const byLabel = new Map();
+  for (const r of mine) if (want.has(r.label)) byLabel.set(r.label, r);
+  // EVERY SURVIVOR, in the record's own order, and never a page of them; one no
+  // longer on the board is counted as gone, never invented
+  const rows = wanted.map((x) => byLabel.get(x.label) || null);
+  const gone = rows.filter((r) => !r).length;
+  const rule = S4.normaliseRule(doc.rule);
+  const now = S4.applyRule(all, rule);
+  const same = now.length === wanted.length && now.every((r) => want.has(r.label));
+  return { parent, t, all, mine, rows: rows.filter(Boolean), gone, same, now: now.length, had: wanted.length, rule, unit: board.unit || null };
+}
+// the sealed window on this set's own unit, read off what the cut recorded
+function sealedOnUnitOf(doc) {
+  const s = doc.sealed || null;
+  if (!s) return { sealed: false, of: 0, missing: 0, why: 'this set recorded no sealed window', fromTs: null, chunks: null };
+  const us = Array.isArray(s.units) ? s.units : [];
+  const mine = doc.unit ? us.filter((u) => unitKeyOf(u) === doc.unit) : us;
+  if (doc.unit && !mine.length) return { sealed: false, of: 0, missing: 0, why: `its parent's records name no unit '${doc.unit}'`, fromTs: null, chunks: null };
+  const missing = mine.filter((u) => !u || !u.reserve).length;
+  const starts = mine.map((u) => u && u.reserve && Number(u.reserve.fromTs)).filter(Number.isFinite);
+  const chunks = mine.map((u) => u && u.reserve && Number(u.reserve.chunks)).filter(Number.isFinite);
+  return {
+    sealed: mine.length > 0 && missing === 0, of: mine.length, missing,
+    why: missing ? (s.why || 'a unit has no reserved window') : null,
+    fromTs: starts.length ? Math.min(...starts) : null, chunks: chunks.length ? Math.max(...chunks) : null,
+  };
+}
+// the date ranges the parent priced this unit on (3.85.0), beside the seal
+function windowsForVerify(doc, parent) {
+  const sealed = sealedOnUnitOf(doc);
+  const per = doc.unit ? (((parent || {}).windows || {}).units || {})[doc.unit] || null : null;
+  return {
+    sealed: { intact: sealed.sealed, fromTs: sealed.fromTs, chunks: sealed.chunks, why: sealed.why },
+    train: per ? per.train || null : null, test: per ? per.test || null : null, hold: per ? per.hold || null : null,
+    unread: per && per.unread ? { fromTs: per.unread.fromTs, chunks: per.unread.chunks, seenToTs: per.unread.seenToTs ?? null } : null,
+  };
+}
+// how many times the held-back number was on a screen before any stamp: every
+// step and step back of the walk printed it, and the cut view did once more
+function verifyLooksOf(doc, keys, stamped) {
+  const steps = (doc.steps || []).length;
+  const back = (doc.backSteps || []).length;
+  const what = [
+    `every step and step back of the walk printed the held-back line (${steps} step(s), ${back} step(s) back)`,
+    'the cut view printed it once more',
+    'Boards offers a sort and a filter on avg held-back $ over the whole board',
+  ];
+  if (keys && keys.readsHeldBackTrades) what.push('one floor of the rule read the held-back trade count');
+  return { unstamped: steps + back + 1, stamped: stamped || 0, what };
+}
+function verifyFooting(doc, join) {
+  const V = require('./funnelverify');
+  const S4 = require('./funnelset');
+  const keys = V.ruleKeys(join.rule);
+  const firstDigit = (v) => String(v || '').split('.')[0] || null;
+  const setRel = doc.release || null;
+  const parentRel = (doc.parent || {}).release || ((join.parent.params || {}).engineVersion) || null;
+  const releases = { set: setRel, parent: parentRel, reader: ENGINE_VERSION };
+  releases.sameFirstDigit = !!(setRel && parentRel) && firstDigit(setRel) === firstDigit(parentRel) && firstDigit(parentRel) === firstDigit(ENGINE_VERSION);
+  let gate = { state: 'NOT CHECKED', engineVersion: null };
+  try {
+    const g = require('./planted').gateStatus(ENGINE_VERSION);
+    gate = { state: g.running ? 'RUNNING' : (g.state || 'NOT CHECKED'), engineVersion: g.engineVersion || null };
+  } catch (_) { /* the gate's own reader says NOT CHECKED */ }
+  gate.certifies = 'certifies the old sweep pipeline';
+  const check = doc.check || {};
+  let why = null;
+  if (!doc.rich) why = 'this set keeps no copy of its rebuilt numbers yet — open it on the Funnel first';
+  else if (!join.same || join.gone) why = `the rule does not give back its own survivors today (${join.now} now, ${join.had} on the record, ${join.gone} gone)`;
+  else if (!keys.ok) why = `the rule carries keys that are not dials or the two limits (${keys.bad.join(', ')}), so a scrambled copy might not keep the same survivors`;
+  return {
+    ok: !why, why,
+    same: join.same, now: join.now, had: join.had, gone: join.gone,
+    keys,
+    check: { kind: check.kind || null, copies: check.k ?? null, barPct: check.barPct ?? null, bar: check.bar ?? null },
+    sealed: sealedOnUnitOf(doc),
+    marks: (doc.marks || []).length, markKeys: (doc.marks || []).map((m) => m.key),
+    steps: (doc.steps || []).length, backSteps: (doc.backSteps || []).length,
+    userRuleDiffers: doc.userRule ? S4.ruleSentence(S4.normaliseRule(doc.userRule)) !== S4.ruleSentence(join.rule) : null,
+    releases,
+    gate,
+  };
+}
+const BLEND_REFUSAL = 'this set was cut on all units together; a verdict is read on one coin and shape — cut the rule on one unit on the Funnel and verify that set';
+let verifyRun = null;   // { id, token, result, error, promise }
+const verifyBusy = () => (batch.batchRunning() ? 'a sweep is running on this box' : stageBusy());
+async function funnelVerifyDry(id) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  const S4 = require('./funnelset');
+  const V = require('./funnelverify');
+  const out = {
+    id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
+    parent: doc.parent || null,
+    ruleSentence: doc.ruleSentence || S4.ruleSentence(doc.rule),
+    userSentence: doc.userRule ? S4.ruleSentence(S4.normaliseRule(doc.userRule)) : null,
+    counts: doc.counts || null, closing: doc.closing || null, warnings: doc.warnings || [],
+    marks: doc.marks || [], check: doc.check || null,
+    heldBackReadAt: doc.heldBackReadAt || null,
+    // every block already stamped, newest first; the OLDEST is the verdict
+    blocks: doc.verify || [],
+    rules: V.declareRules(doc.check, {}),
+    refused: null, footing: null, looks: null,
+  };
+  if (!doc.unit) { out.refused = BLEND_REFUSAL; return out; }
+  let join;
+  try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; return out; }
+  out.footing = verifyFooting(doc, join);
+  out.looks = verifyLooksOf(doc, out.footing.keys, (doc.verify || []).length);
+  const busy = verifyBusy();
+  if (busy) out.refused = `${busy} — the read waits for the box to be free`;
+  else if (verifyRun && !verifyRun.result && !verifyRun.error) out.refused = 'a Stage 4 record set is being read right now — one at a time';
+  else if (!out.footing.ok) out.refused = out.footing.why;
+  return out;
+}
+async function funnelVerifyRun(doc, asked) {
+  const V = require('./funnelverify');
+  const S4 = require('./funnelset');
+  // THE RULES FIRST, before any number exists
+  const rules = V.declareRules(doc.check, asked);
+  const join = await funnelVerifyJoin(doc);
+  const footing = verifyFooting(doc, join);
+  if (!footing.ok) throw new Error(footing.why);
+  const rows = join.rows;
+  const got = controlsOf(join.parent, doc.unit, rows.map(controlKeyOf));
+  const heldBack = V.heldBackRead(rows, got);
+  // a rule with a top-N cut lets each copy take its own top N by its own scrambled money
+  const copyRowsAt = join.rule.cut ? (d) => S4.nullCopy(join.mine, join.rule, d) : null;
+  const copies = V.copiesRead(rows, rules, copyRowsAt);
+  const survivors = V.perSurvivor(rows, rules);
+  const sanity = V.sanity(join.mine, rows, rules);
+  const lineA = V.lineA(rows, rules, copyRowsAt);
+  const lineB = V.lineB(join.mine, rows.length, rules);
+  // the stamp goes onto what is on disk NOW, so two presses in a row append two blocks
+  const fresh = getSet(doc.id);
+  if (!fresh) throw new Error('the set went away while it was being read');
+  const blocks = fresh.verify || [];
+  const { gate, ...rest } = footing;
+  const block = V.buildBlock({
+    id: `${doc.id}-v${blocks.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: blocks.length + 1,
+    rules, gate, footing: rest,
+    looks: verifyLooksOf(doc, footing.keys, blocks.length),
+    heldBack, copies, survivors, sanity, lineA, lineB,
+    fee: { feePerLeg: (join.parent.params || {}).fee ?? null, feeUnits: 'fraction' },
+    windows: windowsForVerify(doc, join.parent),
+    marks: (doc.marks || []).map((m) => ({ key: m.key, what: m.what, step: m.step ?? null, detail: m.detail ?? null })),
+  });
+  fresh.verify = [block, ...blocks];
+  if (!fresh.heldBackReadAt) fresh.heldBackReadAt = block.at;
+  saveSet(fresh);
+  return { id: block.id, look: block.look, pass: block.verdict.pass, sentence: block.verdict.sentence };
+}
+function funnelVerifyStatus(id) {
+  if (!verifyRun || verifyRun.id !== id) return { running: false, none: true, token: null, error: null, result: null };
+  return { running: !verifyRun.result && !verifyRun.error, token: verifyRun.token, error: verifyRun.error, result: verifyRun.result };
+}
+function funnelVerifyStart(id, asked = {}) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  if (verifyRun && !verifyRun.result && !verifyRun.error) {
+    throw new Error(verifyRun.id === id ? 'this set is being read right now' : 'another Stage 4 record set is being read right now — one at a time');
+  }
+  if (!doc.unit) throw new Error(BLEND_REFUSAL);
+  const busy = verifyBusy();
+  if (busy) throw new Error(`${busy} — the read waits for the box to be free`);
+  const run = { id, token: `${id}:${Date.now()}`, result: null, error: null, promise: null };
+  verifyRun = run;
+  run.promise = funnelVerifyRun(doc, asked || {})
+    .then((result) => { run.result = result; })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return funnelVerifyStatus(id);
+}
+// one line per set for the set list: how many blocks, and what the verdict said
+function verifySummaryOf(doc) {
+  const blocks = (doc && doc.verify) || [];
+  if (!blocks.length) return null;
+  const first = blocks[blocks.length - 1];
+  return { blocks: blocks.length, at: first.at, pass: !!(first.verdict && first.verdict.pass), release: first.release || null };
+}
+
 function listFunnelSets(parentId = null) {
   return listSets()
     .filter((x) => String(x.id).startsWith('s4-'))
@@ -6581,6 +6785,7 @@ module.exports = {
   funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   windowsOfSet, newestDataOf,
+  funnelVerifyDry, funnelVerifyStart, funnelVerifyStatus, verifySummaryOf, sealedOnUnitOf,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,

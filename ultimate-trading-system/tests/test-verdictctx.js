@@ -71,21 +71,11 @@ function theRouteForwardsTheContextPairs() {
   assert(/ctx2:\s*b\.ctx2/.test(block), 'the null-verdict route drops ctx2 — every request arrives as the singles key');
 }
 
-// And the caller must send them. A route that forwards a field nobody sends is
-// the same dead pipe from the other end.
-function theConstructingTabSendsTheContextPairs() {
-  const CX = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
-    .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-  const i = CX.indexOf("post('api/bracketlab/null-verdict'");
-  assert(i >= 0, 'the Constructing tab no longer reads the null verdict');
-  const block = CX.slice(i, i + 500);
-  assert(/ctx1:/.test(block) && /ctx2:/.test(block),
-    'Tool 1 sends no contexts — it would ask for the singles key of a three-asset setup');
-}
+// The page's own call to the null verdict went with the Tool 1 panel (3.86.0);
+// the route stays for the old runs, and the three tests above read the library.
 
 module.exports = {
   aThreeAssetSetupIsFoundByItsOwnKey,
   askingWithoutTheContextsDoesNotMatchAThreeAssetRow,
   theRouteForwardsTheContextPairs,
-  theConstructingTabSendsTheContextPairs,
 };

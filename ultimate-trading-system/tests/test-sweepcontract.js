@@ -297,8 +297,10 @@ module.exports = {
       // run-id pickers: every real option is a run id the SERVER listed, so the
       // allow-list is the server's own reply and cannot be restated here. The
       // only literal value in them is the empty placeholder. What these must
-      // never be is <input> boxes — test-uicontracts.js pins that.
-      't1null', 'cmpA', 'cmpB', 'bPick1', 'bPick2', 'bPick3', 'swFrom2', 'swFrom3',
+      // never be is <input> boxes — test-uicontracts.js pins that. (t1null went
+      // with the Tool 1 panel in 3.86.0; vSet is Verify's Stage 4 record set
+      // box, filled from the server's list, test-funnelverify.js pins it.)
+      'vSet', 'cmpA', 'cmpB', 'bPick1', 'bPick2', 'bPick3', 'swFrom2', 'swFrom3',
       // same shape: the campaign picker's options are the names the service
       // itself reports, and a NEW name is typed in the box beside it
       'cxCampPick',

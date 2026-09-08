@@ -70,7 +70,9 @@ function copySettingsWaitsForTheSweepFormToExist() {
 // offering a free-text box turns every slip into a 400 the operator must
 // decode — the same complaint the owner raised about the stop tuner's target.
 function runIdsArePickedFromTheServersListNeverTyped() {
-  for (const id of ['t1null', 'cmpA', 'cmpB']) {
+  // (t1null went with the Tool 1 panel in 3.86.0; the Stage 4 record set box on
+  // Verify is checked in tests/test-funnelverify.js)
+  for (const id of ['cmpA', 'cmpB']) {
     assert(!new RegExp(`<input id="${id}"`).test(CX),
       `#${id} is a free-text box — run ids come from the server's list, not the keyboard`);
     assert(new RegExp(`<select id="${id}"`).test(CX),
@@ -81,20 +83,15 @@ function runIdsArePickedFromTheServersListNeverTyped() {
 function theTabActuallyCallsTheEndpointThatFeedsThePickers() {
   assert(/api\/bracketlab\/verdict-sources/.test(CX),
     'construct.js never calls verdict-sources — the pickers would be listing nothing');
-  // scramble draws for Tool 1, real rows for Compare: the two filters are the
-  // whole point of the endpoint, and a picker built without one offers runs the
-  // tool cannot read.
-  assert(/scrambleDraws\s*>\s*0/.test(CX),
-    'the Tool 1 picker does not filter on scrambleDraws — it would offer runs with no null draws');
+  // real rows for Compare: the filter is the whole point of the endpoint, and a
+  // picker built without it offers runs the tool cannot read. (Tool 1's picker
+  // on scramble draws went with that panel in 3.86.0.)
   assert(/realRows\s*>\s*0/.test(CX),
     'the Compare picker does not filter on realRows — it would offer runs with nothing to compare');
 }
 
 // Nothing is asked of the server that the page can already see is unanswerable.
 function anEmptyPickerRefusesInPlainWordsInsteadOfAsking() {
-  const t1 = CX.slice(CX.indexOf("if (t1) t1.onclick"), CX.indexOf("if (t1) t1.onclick") + 900);
-  assert(/if \(!nullId\)/.test(t1),
-    'Tool 1 posts even with no scramble run picked — the server answers 400 and the operator decodes it');
   const cmp = CX.slice(CX.indexOf("$('#cmpGo').onclick"), CX.indexOf("$('#cmpGo').onclick") + 700);
   assert(/if \(!a\)/.test(cmp),
     'Compare posts even with no run A picked — same 400, same decoding');

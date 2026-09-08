@@ -888,6 +888,8 @@ app.get('/api/funnel/sets', (req, res) => {
       steps: (d.steps || []).length, backSteps: (d.backSteps || []).length,
       // the marks ride with the set wherever it is listed (§16.5)
       marks: d.marks || [],
+      // and whether a verdict is stamped on it (3.86.0)
+      verify: stages.verifySummaryOf(d),
     })),
   });
 });
@@ -911,6 +913,18 @@ app.get('/api/funnel/set/:id/rows', async (req, res) => {
   }
   return res.json(out);
 });
+
+// VERIFY: THE VERDICT ON A STAGE 4 RECORD SET (3.86.0). The GET is the dry read:
+// the record's footing, its marks and the blocks already stamped, and no
+// held-back figure. The POST is the stamped look, started and polled; the read
+// itself is the only thing that opens the held-back window on Verify.
+app.get('/api/funnel/set/:id/verify', async (req, res) => {
+  try { return res.json(await stages.funnelVerifyDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/funnel/set/:id/verify', (req, res) => {
+  try { return res.json(stages.funnelVerifyStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.get('/api/funnel/set/:id/verify/status', (req, res) => res.json(stages.funnelVerifyStatus(req.params.id)));
 
 app.get('/api/stageset/:id/coins', (req, res) => {
   const out = stages.stage3Coins(req.params.id, req.query || {});

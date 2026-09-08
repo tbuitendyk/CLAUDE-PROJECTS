@@ -847,3 +847,30 @@ carried out 2026-08-28 under its own GO — decision 50.
     still needs that. Once S3 #1c has been started again, that branch and the
     `pausedBy` line are spent as well; parked for the owner. Third digit:
     nothing new on any screen, nothing on disk changes shape.
+
+
+73. **The verdict on a Stage 4 record set, and the three dead panels retired**
+    (3.86.0, owner `LOOP NOW!` 2026-09-07, VERIFY-DESIGN.md sections 4, 7 and
+    8). Verify reads a Stage 4 record set as a whole, never one row. The dry
+    read draws the record's footing and hands back no held-back figure; the
+    press is the stamped look. It declares its rules before any number exists
+    (the set's own bar share resolved to a count, DERIVED, or a typed share,
+    GUESSED; noise must lose at least a typed share of the board's scrambled
+    held-back figures, default 50, GUESSED; buying the coin and going away and
+    shorting it and going away must be beaten, DERIVED; unknown never passes),
+    reads every survivor joined to its parent's board and never a page, and
+    stamps one block: footing, looks counted (steps, steps back, the cut view;
+    Boards' sort and filter; a floor on trades), the held-back read against the
+    four comparisons, the survivors against their own copies' means on the
+    held-back window with the chance rate and the 1-in-(K+1) floor, each
+    survivor's own reading beside how many would pass by chance (never a gate),
+    sanity, the two information lines (the rule on the test window against its
+    own copies; the bound on top-N shopping), the fee as `feePerLeg` with
+    `feeUnits: 'fraction'`, the windows, the marks, and one sentence from the
+    stored numbers. Every press appends a block, newest first, nothing
+    overwritten; `heldBackReadAt` is written on the first press only. A blend
+    set is refused in words; a set without scrambled copies stamps an
+    INCOMPLETE block. Tool 1, the rotation rounds and Tool 2 are gone from the
+    screen with their renderers and help entries (0 runs on the box carried
+    rotation rounds); the null-verdict route stays for the old runs. The
+    planted check panel says it certifies the older sweep path. Second digit.

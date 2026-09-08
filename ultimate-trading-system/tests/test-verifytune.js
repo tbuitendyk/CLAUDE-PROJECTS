@@ -1,8 +1,6 @@
 // The Verify and Tune sections' ported surfaces.
 //
-// Watched failing 2026-08-17: dumping the verdict as JSON again fails the
-// renderer check; removing the fire button leaves Tool 1 able only to READ a
-// null run somebody else launched; targeting F1 unconditionally fails the
+// Watched failing 2026-08-17: targeting F1 unconditionally fails the
 // picker check; and treating the custom stop box as a fraction fails the
 // percent/fraction check — that unit confusion already cost this project once
 // (the fee-per-leg $0.125 read as 12.5%, QC/stopsweep.js).
@@ -15,39 +13,20 @@ const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
 const HTML = fs.readFileSync(path.join(ROOT, 'public', 'construct.html'), 'utf8');
 
 module.exports = {
-  theNullVerdictIsReadNotDumped() {
-    assert.ok(/function renderNullVerdict/.test(UI), 'the verdict must be rendered');
-    assert.ok(/renderNullVerdict\(d\)/.test(UI), 'and the tool must call it');
-    assert.ok(!/t1out'\)\.innerHTML = `<pre>/.test(UI), 'the raw JSON dump must be gone');
-    // the readings that make the numbers mean anything
+  // THE THREE PANELS THAT WAITED FOR A CHOSEN ROW OF AN OLD SWEEP RUN ARE GONE
+  // (3.86.0): Tool 1, the rotation rounds and Tool 2 drew dead on everything the
+  // engine writes now. The sentences worth keeping moved onto the verdict panel,
+  // where tests/test-funnelverify.js reads them.
+  theRetiredVerifyPanelsStayRetired() {
+    assert.ok(!/Tool 1 — this row against its null runs/.test(UI), 'the Tool 1 panel grew back');
+    assert.ok(!/Rotation rounds — a SEPARATE instrument/.test(UI), 'the rotation rounds panel grew back');
+    assert.ok(!/Tool 2 — the board against its dealt-vote null boards/.test(UI), 'the Tool 2 panel grew back');
+    assert.ok(!/function renderNullVerdict|function renderRotationRounds/.test(UI), 'their renderers are still there');
+    for (const id of ['t1null', 't1run', 't1rounds', 't1fire']) assert.ok(!new RegExp(`id="${id}"`).test(UI), `#${id} is still on the page`);
+    // what they said that was worth keeping is said on the verdict panel now
     assert.ok(/a floor, never a measure of strength/.test(UI), 'the p floor must be labelled a floor');
     assert.ok(/NOISE IS PROFITING/.test(UI), 'the sanity failure must be loud — it invalidates everything above it');
-    assert.ok(/SETTINGS MISMATCH/.test(UI), 'two jobs with different settings must say so');
     assert.ok(/this window only/.test(UI), 'and what a pass actually buys must be stated');
-  },
-
-  // RENAMED 2026-08-17. This was toolOneCanFireItsOwnNullRounds, and the name
-  // carried the same mistake the screen did: the button fires the ROTATION null
-  // (doc.nullTest), which creates none of the dealt-vote rows Tool 1 pairs
-  // against. Tool 1's draws come from a sweep launched with null boards above
-  // zero. The button now sits in its own panel, says which instrument it is, and
-  // its output is RENDERED — before this the rounds cost a full sweep each and
-  // nothing on the tab ever displayed the result (audit 2026-08-17).
-  rotationRoundsAreTheirOwnInstrumentAndTheirOutputIsShown() {
-    assert.ok(/id="t1fire"/.test(UI), 'the rotation rounds must still be fireable');
-    assert.ok(/\/null`, \{ shifts: rounds \}/.test(UI), 'the endpoint reads exactly one field, shifts');
-    // the engine clamps a missing/zero count to ONE — a finished-looking test of nothing
-    assert.ok(/rounds < 1/.test(UI), 'a zero or missing count must be refused here, not silently clamped to one');
-    assert.ok(/1-in-\$\{rounds \+ 1\}/.test(UI), 'and the confirm must say what claim the count can support');
-    // the two halves that were missing
-    assert.ok(/function renderRotationRounds\(/.test(UI),
-      'doc.nullTest is rendered nowhere — the rounds would cost a full sweep each and show nothing');
-    assert.ok(/nt\.exceedSearch/.test(UI) && /nt\.medianBestPnl/.test(UI),
-      'the rotation table must read the fields lib/batch.js actually writes onto doc.nullTest');
-    assert.ok(/RETIRED as evidence|retires this construction/.test(UI),
-      'the panel must say the register retires this construction as evidence');
-    assert.ok(/does NOT feed Tool 1|not the draws Tool 1|none of the dealt-vote rows Tool 1/i.test(UI),
-      'the panel must say these rounds are not what Tool 1 reads — that confusion is the defect');
   },
 
   theScansCanTargetAnySavedBookNotJustF1() {

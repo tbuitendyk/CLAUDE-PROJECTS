@@ -1883,24 +1883,33 @@ function wireNotesSave(saveUrl, onSaved, suffix) {
 }
 
 // ---- Verify -------------------------------------------------------------------
-async function drawVerify() {
-  const doc = await loadPicked();
-  const sel = getSelRow(doc);
-  const gate = await apiOr('api/planted-gate/status', null);
-  // The scramble run was a box you TYPED a run id into. The service has always
-  // had an endpoint that lists exactly the runs this tool can read, with how
-  // many null draws each carries — the Bracket lab used it for a dropdown and
-  // this tab never called it. Typing meant every mistake came back as "unknown
-  // scramble run", and an empty box asked the server a question it could not
-  // answer (owner, on the same class: "I thought I would be able to select from
-  // the saved sweeps").
-  const vs = await apiOr('api/bracketlab/verdict-sources', ({ sources: [] }));
-  const nullSrc = (vs.sources || []).filter((s) => s.scrambleDraws > 0);
-  $('#view').innerHTML = `<div class="panel">
+// ---- Verify: the machinery check, then the verdict on a Stage 4 record set --------
+//
+// (3.86.0, VERIFY-DESIGN.md.) THE UNIT OF VERIFICATION IS THE SET, never one
+// row: a rule can be checked against scrambled data and a single row cannot,
+// which is why the Funnel writes a rule. The three panels that waited for a
+// chosen row of an old sweep run drew dead on everything the engine writes now
+// and are gone; the planted check stays, and says what it certifies. Every
+// label below sits in a top-level helper with markup, so the word list sees it.
+const V_SET_KEY = 'cx-verify-set';
+const WHERE_VERIFY = 'The Stage 4 record set box on Verify lists what was stamped - pick the set there.';
+function vRememberedSet(list) {
+  let want = null;
+  try { want = localStorage.getItem(V_SET_KEY); } catch (_) { want = null; }
+  if (want && list.some((x) => x.id === want)) return want;
+  return list.length ? list[0].id : null;          // newest first, as the server lists them
+}
+const vDay = (ts) => (ts != null && Number.isFinite(Number(ts)) ? new Date(Number(ts)).toISOString().slice(0, 10) : '?');
+const vPct = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
+const vFix = (v, n = 2) => (v == null || !Number.isFinite(Number(v)) ? 'none' : Number(v).toFixed(n));
+
+function vPlantedPanelHtml(gate) {
+  return `<div class="panel">
     <h3 style="margin-top:0">Planted check — the instrument's calibration certificate</h3>
     <p class="note">Regenerates a fabricated pair carrying a KNOWN planted rule and fires it through the full sweep +
       null pipeline. PASS = the board found the plant, profited, beat always-long, and every null board destroyed it.
-      A pass belongs to the engine version that earned it; a new release starts NOT CHECKED.</p>
+      A pass belongs to the engine version that earned it; a new release starts NOT CHECKED. It certifies the sweep
+      pipeline the Sweep tab's older path fires, not the three-stage engine that prices the record sets below.</p>
     <div class="row"><span>current: <b class="${gate && gate.running ? 'warn' : (gate && gate.state === 'PASS' ? 'pos' : gate && gate.state === 'FAIL' ? 'neg' : 'muted')}">${esc(gate && gate.running ? 'RUNNING' : ((gate && gate.state) || 'NOT CHECKED'))}</b>
       ${gate && gate.engineVersion ? `<span class="muted">(engine ${esc(gate.engineVersion)})</span>` : ''}</span>
       <button id="pgRun" class="pri" ${gate && gate.running ? 'disabled title="a planted check is already running"'
@@ -1915,65 +1924,116 @@ async function drawVerify() {
         it is not on the Boards section any more. The verdict above is the record kept when it finished, and it stands
         until a fresh planted check replaces it.</div>` : ''}</div>` : ''}
     ${gate ? `<details style="margin-top:.4rem"><summary>full gate record</summary><pre>${esc(JSON.stringify(gate, null, 1))}</pre></details>` : ''}
-  </div>
-  <div class="panel">
-    <h3 style="margin-top:0">Tool 1 — this row against its null runs</h3>
-    <p class="note">Compares the picked REAL run against a SCRAMBLE run (a sweep launched with scrambled labels): each
-      scrambled world re-shops the whole menu in the same test window, and its best find must beat the selected row.
-      The draws come from a sweep launched with <b>null boards</b> above zero on the Sweep section — that is the box
-      that makes a run appear in the list below. Read the verdict here. ALWAYS VISIBLE — a gate failing judges the INSTRUMENT,
-      never retires the candidate on one number.</p>
-    ${sel ? `<div class="row" style="align-items:flex-end">
-      <span class="note">selected: <b>${esc(comboOf(sel))}</b> ${esc(sel.geometry)} q${sel.quorum} ${sel.tHours}h</span>
-      <label class="f" title="only runs that actually carry null draws are listed — the count in brackets is how many, and it sets the finest claim available (N draws is at best 1 in N+1). Launch them with 'null boards' on Sweep.">scramble run<select id="t1null" style="min-width:22rem">
-        <option value="">${nullSrc.length ? '— pick a run with null draws —' : '— no run on this box carries null draws yet —'}</option>
-        ${nullSrc.map((s) => `<option value="${esc(s.id)}" ${s.id === doc.id ? 'selected' : ''}>${esc(s.id)} (${s.scrambleDraws} null draws)</option>`).join('')}
-      </select></label>
-      <button id="t1run" class="pri" ${nullSrc.length ? '' : 'disabled'}>Read Tool 1 verdict</button><span id="t1msg" class="note">${nullSrc.length ? '' : 'launch a sweep with null boards &gt; 0 first — this tool reads those draws.'}</span></div>
-      <div id="t1out"></div>`
-    : '<button disabled title="select a row on Boards first">Read Tool 1 verdict</button> <span class="note">— select a row on the Boards section first; this tool is per-row.</span>'}
-  </div>
-  <div class="panel">
-    <h3 style="margin-top:0">Rotation rounds — a SEPARATE instrument, retired as evidence</h3>
-    <p class="note">This button used to sit inside Tool 1 saying its rounds were what that tool reads. They are not.
-      It fires the ROTATION null: each round rotates outcomes against features and replays the whole downstream search
-      on the selected row. Its output lands on this run's own record and is shown below — nowhere else — and it creates
-      none of the dealt-vote rows Tool 1 pairs against. Those come from launching a sweep with
-      <b>null boards</b> above zero on the Sweep section.
-      <b>The register marks this construction RETIRED as evidence</b> (historical reading only), so a number from it is
-      never a claim. It stays operable because a run that already carries one must remain readable.</p>
-    ${sel ? `<div class="row" style="align-items:flex-end">
-      <label class="f" title="each round rotates outcomes against features and replays the whole downstream search. N rounds is at best a 1-in-(N+1) claim, and each costs a full sweep.">rotation rounds to fire<input id="t1rounds" type="number" value="19" min="1" max="1000" style="width:5rem"></label>
-      <button id="t1fire">Fire rotation rounds on this run</button>
-      <span id="t1fireMsg" class="note">— minutes to hours. They land on this run's own record.</span>
-    </div>` : '<span class="note">select a row on the Boards section first — rotation rounds are per-row.</span>'}
-    ${renderRotationRounds(doc)}
-  </div>
-  <div class="panel">
-    <h3 style="margin-top:0">Tool 2 — the board against its dealt-vote null boards</h3>
-    <p class="note">For each promoted row: how many of its null copies (same setup, votes dealt onto random days) its
-      HELD-BACK money beats. With N null boards the finest honest claim is 1 in N+1. Computed from the run's own stored
-      null rows — needs a sweep launched with null boards &gt; 0.</p>
-    ${doc ? `<div id="t2out">${renderTool2(doc)}</div>` : '<span class="note">open a run on Boards first.</span>'}
   </div>`;
-  function renderTool2(dd) {
-    const all = dd.leaders || [];
-    const nulls = all.filter((l) => l.nullDealSeed != null);
-    if (!nulls.length) return '<span class="muted">this run carries no dealt-vote null boards (launch the sweep with null boards &gt; 0).</span>';
-    const key = (l) => `${l.trade}|${l.ctx1 || ''}|${l.ctx2 || ''}|${l.geometry}|${l.decision}`;
-    const byKey = new Map();
-    for (const n of nulls) { const k = key(n); if (!byKey.has(k)) byKey.set(k, []); byKey.get(k).push(n); }
-    const reals = all.filter((l) => l.nullDealSeed == null && byKey.has(key(l)));
-    return `<table><thead><tr>${cth('setup','setup')}${cth('held-back $','heldBack')}${cth('null copies','nullCopies')}${cth('beaten','beaten')}${cth('claim','claim')}</tr></thead><tbody>
-      ${reals.map((l) => {
-    const ns = byKey.get(key(l)); const mine = l.holdout ? l.holdout.pnl : null;
-    const beaten = mine == null ? null : ns.filter((n) => (n.holdout ? n.holdout.pnl : -Infinity) < mine).length;
-    return `<tr><td>${esc(l.trade)} ${esc(l.geometry)} ${esc(l.decision)}</td>
-      <td class="${(mine || 0) >= 0 ? 'pos' : 'neg'}">${money(mine)}</td><td>${ns.length}</td>
-      <td>${beaten == null ? '—' : `${beaten}/${ns.length}`}</td>
-      <td class="muted">${beaten == null ? '—' : `at best 1 in ${ns.length + 1}`}</td></tr>`;
-  }).join('')}</tbody></table>`;
-  }
+}
+// the set is picked from the server's own list, newest first, never typed
+function vSetBoxHtml(list, chosen) {
+  return `<div class="row"><label class="f" title="every Stage 4 record set on this box, newest first, with its coin and shape, its survivors of its target, and whether a verdict is stamped on it">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} of ${x.target == null ? 'no target' : Number(x.target).toLocaleString()} · ${x.verify ? `${x.verify.pass ? 'PASS' : 'FAIL'} stamped ${esc(String(x.verify.at).slice(0, 10))}` : 'no verdict yet'}</option>`).join('')
+    : '<option value="">- no Stage 4 record set on this box yet - cut one on the Funnel -</option>'}</select></label></div>`;
+}
+function vFootingHtml(d) {
+  const f = d.footing;
+  if (!f) return '';
+  const g = f.gate || {};
+  const r = f.releases || {};
+  return `<p class="note"><b>Footing:</b> ${f.same && !f.gone
+    ? `the rule gives back its own ${Number(f.had).toLocaleString()} survivors today`
+    : `<b class="neg">the rule does not give back its own survivors today</b> - ${Number(f.now).toLocaleString()} now, ${Number(f.had).toLocaleString()} on the record, ${Number(f.gone).toLocaleString()} gone`}
+    · rule keys ${f.keys.ok ? 'are dials and the two limits' : `<b class="neg">include ${esc(f.keys.bad.join(', '))}</b>`}${f.keys.cut ? ` · a top ${f.keys.cut.n} cut, which each copy takes for itself` : ''}
+    · check: ${f.check.kind === 'scrambles' ? `${f.check.copies} scrambled copies, bar ${f.check.bar} of them (${f.check.barPct}%)` : 'the two halves, no scrambled copies'}
+    · sealed window ${f.sealed.sealed ? `intact on this unit from ${vDay(f.sealed.fromTs)} onward` : `<b class="neg">not intact</b> - ${esc(String(f.sealed.why || ''))}`}
+    · ${f.marks} mark(s) carried · ${f.steps} step(s) and ${f.backSteps} step(s) back
+    · ${f.userRuleDiffers === null ? 'no User Rule recorded' : (f.userRuleDiffers ? 'the User Rule differs from the Final Rule' : 'the User Rule is the Final Rule')}
+    · releases: set ${esc(r.set || '?')}, parent ${esc(r.parent || '?')}, reader ${esc(r.reader || '?')}${r.sameFirstDigit ? ' (one first digit)' : ' <b class="warn">(the first digits differ)</b>'}
+    · planted check ${esc(g.state || 'NOT CHECKED')}${g.engineVersion ? ` (release ${esc(g.engineVersion)})` : ''}, which ${esc(g.certifies || 'certifies the old sweep pipeline')}</p>`;
+}
+function vLooksHtml(d) {
+  const l = d.looks;
+  if (!l) return '';
+  return `<p class="note"><b>Looks at the held-back window before any stamp:</b> at least ${Number(l.unstamped).toLocaleString()} unstamped (${l.what.map(esc).join('; ')})${l.stamped ? ` · ${l.stamped} stamped read(s) below` : ' · none stamped yet'}${d.heldBackReadAt ? ` · first stamped look ${esc(String(d.heldBackReadAt).slice(0, 16))}` : ''}</p>`;
+}
+function vPressHtml(d) {
+  const r = d.rules || {};
+  return `<div class="row" style="margin-top:.4rem">
+    <label class="f" title="the share of the scrambled copies the survivors' held-back money has to beat. Opens on the share this set was cut under; a change is written onto the verdict as a guessed threshold.">bar share %<input id="vBarPct" type="number" min="1" max="100" value="${Number(r.barPct) || 80}" style="width:5rem"></label>
+    <label class="f" title="the share of every scrambled held-back figure on the whole board that must be losing money for the copies to count as noise. A guessed threshold, written onto the verdict.">noise must lose at least %<input id="vSanityPct" type="number" min="0" max="100" value="${Number(r.sanityPct) || 50}" style="width:5rem"></label>
+    <button id="vRead" class="pri" ${d.refused ? 'disabled' : ''} title="the one press that opens the held-back window on this screen. Every press appends a block and none is overwritten; the first is the verdict, the rest are later looks.">Read the rule against nothing on the held-back window</button>
+    <span id="vReadMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>`;
+}
+function vLinesHtml(b) {
+  const a = b.lineA || {};
+  const l = b.lineB || {};
+  return `<p class="note"><b>Information only, never a pass or fail.</b> Line A, the rule on the test window against its own copies: real ${money(a.real)} beats ${a.beats} of ${a.copies} (${esc(a.why || '')}). Line B, the bound on shopping: the best ${l.n} of ${Number(l.of || 0).toLocaleString()} by test money made ${money(l.real)} and beats ${l.beats} of ${l.copies} scrambled boards' own best ${l.n} (${esc(l.why || '')}).</p>`;
+}
+function vSurvivorsTableHtml(b) {
+  const rows = ((b.survivors || {}).rows) || [];
+  if (!rows.length) return '';
+  return `<div class="scrollx" style="max-height:24rem;overflow-y:auto"><table><thead><tr>
+    <th title="the setting, by the name the board gives it">setting</th>
+    <th title="dollars on the held-back window, the once-only look">avg held-back $</th>
+    <th title="positions taken on the held-back window">trades</th>
+    <th title="its held-back dollars against simply holding the coin over the same days">vs always long $</th>
+    <th title="as stored on the record: of its own null copies, raw dollars over every deal, how many its held-back money beat">beat its own null set</th>
+    <th title="how many deals the stored figure is over, which may be more than the copies kept">null copies</th>
+    <th title="as stored on the record: how far its held-back money sits above the typical copy, over the population spread">lead</th>
+    <th title="read here: of the copies kept, how many its held-back money beats by at least a cent, against the same bar as the set">beats N of K</th>
+    <th title="this survivor's own reading against its own copies at the same bar. It never picks a survivor and never gates the set.">own verdict</th>
+  </tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.label)}</td><td class="${(r.held || 0) >= 0 ? 'pos' : 'neg'}">${money(r.held)}</td><td>${r.trades == null ? '—' : r.trades}</td><td>${money(r.vsLong)}</td><td>${r.storedBeat == null ? '—' : r.storedBeat}</td><td>${r.storedPairs == null ? '—' : r.storedPairs}</td><td>${vFix(r.storedLead)}</td><td>${r.beats} of ${r.copiesKept}</td><td class="${r.pass ? 'pos' : 'neg'}">${r.pass ? 'PASS' : 'FAIL'}</td></tr>`).join('')}</tbody></table></div>
+  <p class="note muted">${rows.length} survivors, every one of them, in the set's own order. There is no sort on this table: a sort is a look.</p>`;
+}
+function vBlockHtml(b, isVerdict) {
+  const v = b.verdict || {};
+  const h = b.heldBack || {};
+  const c = h.comparisons || {};
+  const cp = b.copies || {};
+  const s = b.survivors || {};
+  const sn = b.sanity || {};
+  const r = b.rules || {};
+  const tags = r.tags || {};
+  return `<div class="panel" style="margin-top:.5rem">
+    <h4 style="margin:0 0 .3rem">${isVerdict ? 'The verdict' : `look ${b.look}`} - <b class="${v.pass ? 'pos' : 'neg'}">${v.pass ? 'PASS' : 'FAIL'}</b> <span class="muted">stamped ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')}</span></h4>
+    <p class="note">${esc(v.sentence || '')}</p>
+    <p class="note"><b>Rules declared before the numbers:</b> bar ${r.bar} of ${r.copies} copies (${r.barPct}%, ${esc(tags.bar || '')}${r.barChanged ? `, changed from the set's own ${r.ownBarPct}%` : ''}); noise must lose at least ${r.sanityPct}% (${esc(tags.sanity || '')}); comparisons gated: buying the coin and going away, shorting it and going away (${esc(tags.comparisons || '')}); being long every period and being short every period are the window's direction and never a gate.</p>
+    <p class="note"><b>Held-back read:</b> ${Number(h.of || 0).toLocaleString()} survivors made ${money(h.real)} a setting${h.missing ? ` (${h.missing} with no figure)` : ''}${h.trades == null ? '' : ` · ${vFix(h.trades, 1)} trades a setting`}${h.vsLong == null ? '' : ` · ${money(h.vsLong)} against always long`} · ${c.known
+    ? `buying the coin and going away ${money((c.buyHold || {}).hi)} ${c.beatsBuyHold ? 'beaten' : '<b class="neg">not beaten</b>'} · shorting it and going away ${money((c.shortHold || {}).hi)} ${c.beatsShortHold ? 'beaten' : '<b class="neg">not beaten</b>'} · being long every period ${money((c.alwaysLong || {}).hi)} · being short every period ${money((c.alwaysShort || {}).hi)}`
+    : `<b class="warn">the four comparisons are not known</b> - ${esc(String(c.why || ''))} - INCOMPLETE, never a pass`} · ${h.pass ? '<b class="pos">stands</b>' : '<b class="neg">does not stand</b>'}</p>
+    <p class="note"><b>The rule on a noise board, held-back window:</b> ${cp.incomplete
+    ? '<b class="warn">this set kept no scrambled copies, so nothing was read against nothing</b>'
+    : `real ${money(cp.real)} beats ${cp.beats} of ${cp.copies} copies, the bar being ${cp.bar} - <b class="${cp.pass ? 'pos' : 'neg'}">${cp.pass ? 'PASS' : 'FAIL'}</b> · a forecast-free rule clears this about ${vPct(cp.chance)} of the time; the finest claim ${cp.copies} copies allow is 1 in ${Number(cp.copies) + 1}, a floor, never a measure of strength · lead ${vFix(cp.lead)} (${esc(cp.leadDefinition || '')})${cp.survivorsWithNoFigure ? ` · ${cp.survivorsWithNoFigure} survivor(s) with no figure on any copy, counted` : ''}${cp.copiesShortOfSurvivors ? ` · ${cp.copiesShortOfSurvivors} copy or copies short of survivors` : ''}`}</p>
+    <p class="note"><b>Every survivor against its own copies:</b> ${s.passing} of ${s.survivors} clear the same bar, about ${s.byChance == null ? '?' : Number(s.byChance).toFixed(1)} would by chance · ${s.positive} made money · ${s.beatsAlwaysLong} beat always long · head-to-heads won ${vPct(s.headToHeadsWon)} over ${s.dealsOver == null ? '?' : s.dealsOver} deal(s) a setting, ${s.kept} copies kept · median lead ${vFix(s.medianLead)} read here, ${vFix(s.medianStoredLead)} as stored${s.moneyByThird ? ` · money by third: ${s.moneyByThird.positive.join(' / ')} of ${s.moneyByThird.of} in the money` : ''} · ${esc(s.notIndependent || '')}, so this is never a gate</p>
+    <p class="note">sanity: ${sn.known ? `${vPct((sn.board || {}).losing)} of ${Number((sn.board || {}).figures || 0).toLocaleString()} scrambled held-back figures on the whole board lose money (among the survivors ${vPct((sn.survivors || {}).losing)}), threshold ${sn.threshold}% - ` : 'not known - '}${sn.ok
+    ? '<b class="pos">PASS — noise mostly loses, as fees demand.</b>'
+    : '<b class="neg">FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.</b>'} On a window that pays one direction the copies are paid too, and this can fail honestly.</p>
+    ${vLinesHtml(b)}
+    <p class="note"><b>What a pass buys:</b> this window only. It stops obvious chance results being frozen; the
+      forward paper test after freezing is the real judge.</p>
+    ${(b.marks || []).length ? `<p class="note"><b>Marks the walk was carried past:</b> ${b.marks.map((m) => esc(m.what || m.key)).join('; ')}</p>` : ''}
+    <p class="note muted">fee ${b.fee && b.fee.feePerLeg != null ? `${(100 * Number(b.fee.feePerLeg)).toFixed(3)}% a leg` : 'not recorded'} · sealed window ${b.windows && b.windows.sealed && b.windows.sealed.intact ? `from ${vDay(b.windows.sealed.fromTs)} onward` : 'not intact'}${b.windows && b.windows.hold ? ` · held-back ${vDay(b.windows.hold.fromTs)} → ${vDay(b.windows.hold.toTs)}` : ''}</p>
+    ${isVerdict ? vSurvivorsTableHtml(b) : `<details><summary>the survivors on this look</summary>${vSurvivorsTableHtml(b)}</details>`}
+  </div>`;
+}
+function vSetPanelHtml(list, chosen, d) {
+  const blocks = d ? (d.blocks || []).slice().reverse() : [];       // oldest first: the verdict, then later looks
+  return `<div class="panel">
+    <h3 style="margin-top:0">The verdict on a Stage 4 record set</h3>
+    <p class="note">A rule can be checked against scrambled data and a single row cannot, so this reads the set as a
+      whole: what its survivors made on the held-back window, against the four simpler things the Funnel prints,
+      against the same settings' money on every scrambled copy of their table, with a sanity line that noise must
+      lose, and the marks the walk was carried past. Opening this panel reads no held-back number; the press below
+      is the stamped look, and every look is counted.</p>
+    ${vSetBoxHtml(list, chosen)}
+    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · <b>Final Rule:</b> ${esc(d.ruleSentence || '')}${d.userSentence ? ` · <b>User Rule:</b> ${esc(d.userSentence)}` : ''} · ${Number((d.counts || {}).survivors ?? 0).toLocaleString()} survivors${(d.warnings || []).length ? ` · <b class="warn">${d.warnings.map(esc).join('; ')}</b>` : ''}</p>
+      ${vFootingHtml(d)}${vLooksHtml(d)}${vPressHtml(d)}
+      ${blocks.length ? blocks.map((b, i) => vBlockHtml(b, i === 0)).join('') : '<p class="note">No stamped read on this set yet. The first press writes the verdict; later presses are printed as later looks and never replace it.</p>'}` : ''}
+  </div>`;
+}
+async function drawVerify() {
+  const gate = await apiOr('api/planted-gate/status', null);
+  const sets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
+  const chosen = vRememberedSet(sets);
+  const d = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/verify`, null) : null;
+  $('#view').innerHTML = `${vPlantedPanelHtml(gate)}${vSetPanelHtml(sets, chosen, d)}`;
   const pg = $('#pgRun');
   if (pg) pg.onclick = async () => {
     if (!confirm('Run the planted check?\n\nRegenerates the fabricated pair and fires a full sweep through the null pipeline. Minutes, not seconds. It refuses while any other job, sweep or stage run is going.')) return;
@@ -1988,52 +2048,37 @@ async function drawVerify() {
     renderStrip();
     drawVerify();
   };
-  const t1 = $('#t1run');
-  const t1f = $('#t1fire');
-  if (t1f) t1f.onclick = async () => {
-    const rounds = Number($('#t1rounds').value) || 0;
-    // the engine clamps a missing/zero/negative count to ONE — a finished-looking
-    // null test with n=1, which is no test at all. Refuse it here instead.
-    if (rounds < 1) { $('#t1fireMsg').textContent = 'a null test needs at least one round'; return; }
-    if (!confirm(`Fire ${rounds} ROTATION round(s) on ${doc.id}?\n\nEach round rotates outcomes against features and replays the whole downstream search — a full sweep each. `
-      + `${rounds} rounds is at best a 1-in-${rounds + 1} claim — and the register retires this construction AS EVIDENCE, `
-      + `so the result is a historical reading rather than a claim at all. `
-      + `It does NOT feed Tool 1: those draws come from launching a sweep with null boards above zero.`)) return;
-    t1f.disabled = true;
-    $('#t1fireMsg').textContent = 'launching…';
-    const out = await tryPost(`api/bracketlab/${encodeURIComponent(doc.id)}/null`, { shifts: rounds });
-    t1f.disabled = false;
-    $('#t1fireMsg').textContent = out ? `${out.shifts} rotation round(s) running — the table below fills in as they land` : '';
+  const sel = $('#vSet');
+  if (sel) sel.onchange = () => {
+    try { localStorage.setItem(V_SET_KEY, sel.value); } catch (_) { /* private window */ }
+    drawVerify();
   };
-  if (t1) t1.onclick = async () => {
-    const nullId = $('#t1null').value;
-    // Refuse here rather than let the server answer "unknown scramble run" to a
-    // question that was never asked — the box being empty is not an error the
-    // operator should have to decode from a 400.
-    if (!nullId) { $('#t1msg').textContent = 'pick a scramble run first'; return; }
-    $('#t1msg').textContent = 'reading…';
-    try {
-      // THE CONTEXT PAIRS ARE PART OF THE SETUP'S IDENTITY. This sent trade,
-      // geometry and decision only, so the key it asked for was the SINGLES
-      // key — and every doubles/triples run answered "setup … not in this
-      // run's real rows". Since the live vocabulary only accepts three-asset
-      // combos, that meant Tool 1 could not be read for any setup this project
-      // can actually trade (runtime harness, 2026-08-17).
-      //
-      // The layout goes with the ROW, not the run: verdict.js fills a
-      // single-arm doc in from its own rows, and only a mixed-arm ('both') run
-      // needs the arm named. Sending params.windowLayout regardless put a
-      // stamp on the key that the rows may not carry.
-      const d = await post('api/bracketlab/null-verdict', {
-        realId: doc.id, nullId,
-        trade: sel.trade, ctx1: sel.ctx1 || null, ctx2: sel.ctx2 || null,
-        geometry: sel.geometry, decision: sel.decision,
-        ...(sel.layoutArm ? { windowLayout: sel.layoutArm } : {}),
-      });
-      $('#t1out').innerHTML = renderNullVerdict(d);
-      $('#t1msg').textContent = '';
-    } catch (e) { $('#t1msg').textContent = e.message; }
+  const btn = $('#vRead');
+  if (btn && chosen && d && !d.refused) btn.onclick = async () => {
+    btn.disabled = true;
+    $('#vReadMsg').textContent = 'reading…';
+    const body = { barPct: Number($('#vBarPct').value), sanityPct: Number($('#vSanityPct').value) };
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/verify`, body, WHERE_VERIFY);
+    if (!started) { btn.disabled = false; $('#vReadMsg').textContent = ''; return; }
+    vFollow(chosen, started.token);
   };
+}
+// THE READ IS STARTED AND POLLED, the shape every press on the Funnel has, so no
+// one request is held open; the page redraws from the record when it lands.
+async function vFollow(id, token) {
+  for (;;) {
+    let s = null;
+    try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/verify/status`); } catch (_) { s = null; }
+    if (!s || s.none || s.token !== token) { drawVerify(); return; }
+    if (s.error) {
+      const m = $('#vReadMsg'); if (m) m.textContent = s.error;
+      const b = $('#vRead'); if (b) b.disabled = false;
+      return;
+    }
+    if (s.result) { drawVerify(); return; }
+    await new Promise((resolve) => { setTimeout(resolve, 1000); });
+    if (tab !== 'verify') return;
+  }
 }
 
 // ---- History (History Tuning + HT v2 age dial) ---------------------------------
@@ -2153,61 +2198,6 @@ async function drawHistory() {
 //
 // Labelled for what it is on every reading: the register marks this construction
 // RETIRED as evidence, so the numbers are historical reading, never a claim.
-function renderRotationRounds(doc) {
-  const nt = doc && doc.nullTest;
-  if (!nt) return '<p class="note">no rotation rounds on this run.</p>';
-  const pct = (v) => (v == null ? '—' : `${(100 * v).toFixed(1)}%`);
-  const head = nt.status === 'running'
-    ? `RUNNING — ${nt.shifts ?? 0} of ${nt.requestedShifts ?? '?'} rounds banked`
-    : `${String(nt.status || '?')} — ${nt.shifts ?? 0} round(s)`;
-  return `<h4 style="margin:.7rem 0 .3rem">Rotation rounds on this run: ${esc(head)}</h4>
-    <p class="note">TABLE: the rotation null. NAME: how often a rotated world matched or beat the real result.
-      KEY — exceed: the share of rounds whose result reached the real one, so LOWER is better and it is a share, not
-      money; null median $: the middle result across rounds, in US dollars on the same window as the real figure.
-      Real result: ${money(nt.real ? nt.real.pnl : null)} over ${nt.real && nt.real.trades != null ? nt.real.trades : '—'} trades.</p>
-    <div class="scrollx"><table><thead><tr>
-      <th title="which reading: the whole downstream search replayed per rotation, or only the selected cell's own configuration">reading</th>
-      <th title="share of rotation rounds that matched or beat the real result. A SHARE, not money — and lower is better.">exceed</th>
-      <th title="the middle result across the rotation rounds, in US dollars on the same window as the real figure">null median $</th></tr></thead><tbody>
-      <tr><td>best-of-menu, search replayed</td><td><b>${pct(nt.exceedSearch)}</b> of ${nt.shifts ?? 0}</td>
-        <td>${nt.medianBestPnl != null ? money(nt.medianBestPnl) : '—'}</td></tr>
-      <tr><td>same configuration only</td><td>${pct(nt.exceedSame)}</td>
-        <td>${nt.medianSamePnl != null ? money(nt.medianSamePnl) : '—'}</td></tr>
-    </tbody></table></div>
-    <p class="note">The row itself was chosen from ${doc.plan ? doc.plan.units : '?'} searched units. That multiplicity is
-      NOT replayed here, so this cannot be read as the shopping-corrected number — and the register retires this
-      construction as evidence in any case.</p>`;
-}
-
-function renderNullVerdict(d) {
-  if (!d) return '<span class="warn">no verdict</span>';
-  const drawsTable = (t) => `<div class="scrollx" style="max-height:14rem;overflow-y:auto"><table>
-    <thead><tr>${cth('null draw','nullDraw')}${cth('value','value')}</tr></thead><tbody>
-    ${t.draws.map((x) => `<tr><td>${typeof x.shift === 'number' ? x.shift.toFixed(3) : esc(String(x.shift))}${x.setup ? ' · ' + esc(String(x.setup).replace(/\|/g, ' ')) : ''}</td>
-      <td class="${t.real > x.value ? 'pos' : 'neg'}">${money(x.value)}</td></tr>`).join('')}
-    </tbody></table></div>`;
-  const block = (title, t, what) => (t ? `
-    <h3 style="margin-top:.6rem">${esc(title)} — <b class="${t.passes ? 'pos' : 'neg'}">${t.passes ? 'PASS' : 'FAIL'}</b> (beats ${t.beats}/${t.n})</h3>
-    <p class="note">${esc(what)}
-      KEY — <i>real</i>: held-back dollars on genuine data. <i>null draws</i>: the same quantity in worlds with nothing
-      to predict. Beating all ${t.n} is the strongest claim ${t.n} draws allow (p floor ${t.pFloor ? t.pFloor.toFixed(3) : '—'})
-      — a floor, never a measure of strength.</p>
-    <p><b>real ${money(t.real)}</b>${(t.realBestSetup || t.setup) ? ` (${esc(String(t.setup || t.realBestSetup).replace(/\|/g, ' '))})` : ''}
-      vs null draws: best ${money(Math.max(...t.draws.map((x) => x.value)))}, worst ${money(Math.min(...t.draws.map((x) => x.value)))}</p>
-    ${drawsTable(t)}` : '');
-  return `<p class="note">real: ${esc(String(d.realJob || ''))} · null boards: ${esc(String(d.nullJob || ''))}
-      (${d.drawCount} draws, ${esc(String(d.construction || ''))})</p>
-    ${d.paramMismatch ? `<p class="note"><b class="warn">SETTINGS MISMATCH:</b> the two jobs differ on
-      ${d.paramMismatch.fields.map(esc).join(', ')} — ${esc(String(d.paramMismatch.note || ''))}</p>` : ''}
-    ${block('Per-setup test', d.perSetup, 'Is this setup better than ITS OWN noise? Same setup, same machinery, dealt votes.')}
-    ${block('Selection-aware test', d.selection, 'Is topping the board better than topping a NOISE board? Each null draw contributes its own best-of-board — this prices in that the winner was picked after looking.')}
-    ${d.sanity ? `<p class="note">sanity: ${d.sanity.scrambleRows} null-draw setups, ${(100 * d.sanity.negativeShare).toFixed(1)}% losing money —
-      ${d.sanity.ok ? '<b class="pos">PASS — noise mostly loses, as fees demand.</b>'
-        : '<b class="neg">FAIL — NOISE IS PROFITING: the simulation is broken; do not read the tests above.</b>'}</p>` : ''}
-    <p class="note"><b>What a pass buys:</b> this window only. It stops obvious chance results being frozen; the
-      forward paper test after freezing is the real judge.</p>`;
-}
-
 // PLATEAU VIEW — one setting moved at a time, everything else pinned to the
 // chosen cell. The menu grid button promised this in its own tooltip and the
 // tab rendered none of it (owner sweep, 2026-08-17). It is the per-cell twin of
