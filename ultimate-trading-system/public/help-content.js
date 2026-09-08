@@ -817,6 +817,8 @@ window.HELP = {
   greenlight: {
     title: 'Greenlight',
     how: [
+      ['A survivor of a Stage 4 record set, without shopping',
+        'The second panel takes one survivor of a Stage 4 record set forward, but only from a set whose verdict stood on Verify. Which survivor is a choice made without money: by depth, the setting nearest the middle of every range of the rule, the same idea as the widest region\'s centre; or a survivor you name, recorded as your pick. The frozen settings carry the way the members agree exactly as that survivor does, which no single number of votes expresses, and the record names the set, the verdict, the survivor and how it was chosen.'],
       ['Writing down a decision, not starting one',
         'Nothing here trades. It records that you decided to take one setting forward: who, when, why, and the exact settings frozen at that moment, together with the whole chain of runs that led to it.\\n\\nThe reason it exists: months later, when something is running on the Trade tab, the question is always "what was this based on, and did we check it?" — and the honest answer has to have been written at the time, not reconstructed afterwards. That is why the reason is required rather than optional.\\n\\nWhich row gets recorded matters as much as the decision. declared cell was fixed before the run and nothing was chosen after seeing results. best cell was chosen after, and is the weakest of the three for exactly that reason.'],
     ],
@@ -832,6 +834,20 @@ window.HELP = {
         what: 'Why this is being taken forward. Required, and kept forever with the record.',
       },
       glGo: { what: 'Writes the record. Does not start any trading.' },
+      gl4Set: {
+        what: 'Which Stage 4 record set to take a survivor from, from every set on this box, newest first, with whether its verdict passed.',
+        more: 'Choosing a set reads its footing only: which verdict stood, how many members its coin and shape were priced with, and every survivor with its distance from the middle of the rule. A set whose verdict has not stood on Verify is refused in words.',
+      },
+      gl4Pick: {
+        what: 'Which survivor is taken forward. By depth is the setting nearest the middle of every range of the rule, chosen without looking at any money; naming one records it as your own pick.',
+        more: 'Both ways are written on the record: which way, the survivor, and its distance. The money beside each survivor is shown so you know what you are choosing; the choice by depth never reads it.',
+      },
+      gl4Name: { what: 'What you want to see on screen for this configuration. Required.' },
+      gl4Why: { what: 'Why this survivor is being taken forward. Required, and kept forever with the record.' },
+      gl4Go: {
+        what: 'Writes the record: the set, the verdict that stood, the survivor and how it was chosen, and the frozen settings with the way its members agree exactly as the survivor carries it. Does not start any trading.',
+        more: 'It refuses a set cut on all units together, a coin read on its own, and a survivor whose trade shape the live executor cannot carry. What it writes appears on the Trade tab on both sides but cannot be activated until the live path speaks the stage engine\'s way of agreeing.',
+      },
     },
   },
 };

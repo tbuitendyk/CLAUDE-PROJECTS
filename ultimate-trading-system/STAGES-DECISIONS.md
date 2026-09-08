@@ -919,6 +919,13 @@ carried out 2026-08-28 under its own GO — decision 50.
     is not changed inside the loop (RULE SIX). What the owner may want to
     know first: which view sees the plant and which do not, and whether the
     committee's agreement is what turns a weak edge into a loss.
+    *Later the same night, read-only, on four years of the made-up history
+    instead of one:* three of the four readings find the plant (67–73% right
+    on the days they speak), volume alone is at chance as it should be, and
+    the whole engine PASSES — the planted rule makes +$105 a setting held
+    back, beats 20 of 20 copies; the fair coin fails. The engine is not
+    broken; the check's one-year span starved it. Lengthening the check's
+    declared span is parked for the owner (VERIFY-DESIGN.md section 9, step 2).
 
 77. **The rule on the other units and the held-back ride, on Verify** (3.88.0,
     loop, VERIFY-DESIGN.md V6 and V7, section 9 step 3). Two presses under the
@@ -979,3 +986,25 @@ carried out 2026-08-28 under its own GO — decision 50.
     not priced on this window. *The test opens the gate by hand* after proving
     the refusal for real: the engine's own verdict on the plant fails today
     (#76), and the pricing path is what the test is for. Second digit.
+
+80. **Greenlight from a Stage 4 record set: the rule's agreement frozen, one
+    survivor by depth or by name** (3.90.0, loop, VERIFY-DESIGN.md section 6,
+    section 9 step 6). A second door on Greenlight: a Stage 4 set whose verdict
+    stood (the same gate the reserve grade uses), one survivor, a name and a
+    why. *One survivor without shopping:* by depth — the setting nearest the
+    middle of every range of the rule, a word dial putting everyone at the
+    middle, ties to the smallest mean and then the set's own order — or named
+    by the owner; both recorded with the distance. Money never enters the
+    choice. *What is frozen:* the unit, the shape, the decision, the resolved
+    band, the members exactly as the stage 2 set trained them, the trade shape
+    as priced, and the AGREEMENT as the survivor carries it (the way of
+    weighing, the bar, the share, the copy share, +both and +hold), where the
+    old integer quorum stood — the vocabulary grew a named engine for it.
+    *Nothing trades from it:* the shuttle refuses a stage-engine configuration
+    in words, and the live door refuses it too, until the live path speaks that
+    agreement (step 7); real money stays the owner's switch (RULE SIX). *Refused
+    in words:* a coin read on its own (the live vocabulary carries three-coin
+    units only), a survivor whose entry, gate, stop or arm the executor cannot
+    carry, a set with no members named, no band on the record. *Both sides of
+    Trade* print the agreement through the one drawing path, and an old
+    configuration keeps printing its quorum. Second digit.

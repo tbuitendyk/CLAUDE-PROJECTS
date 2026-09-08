@@ -509,6 +509,47 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
   };
 }
 
+// ---- ONE SURVIVOR WITHOUT SHOPPING: by DEPTH inside the rule (3.90.0) ----------------
+//
+// For each dial the rule holds a range on, a survivor's distance from the
+// middle of that range over the range's width: 0 at the middle, 1 at either
+// edge. A dial the rule holds a list of words on puts every survivor at the
+// middle. The pick is the survivor with the smallest worst distance across the
+// ranged dials; among equals the smallest mean; among those the first in the
+// set's own order. Never by money -- the same idea as the widest region's
+// centre, chosen by how surrounded it is. A function of the rule and the
+// survivors alone, so two presses give one answer.
+function depthOf(row, rule) {
+  const R = rule || {};
+  const per = {};
+  let worst = 0;
+  let sum = 0;
+  let n = 0;
+  for (const [dial, range] of Object.entries(R.ranges || {})) {
+    const lo = Number(range.min);
+    const hi = Number(range.max);
+    const v = Number(row[dial]);
+    let d;
+    if (!Number.isFinite(v)) d = Array.isArray(range.also) && range.also.includes(row[dial]) ? 0 : 1;   // a word kept beside the range sits at the middle; a value that is neither is at the edge
+    else if (!Number.isFinite(lo) || !Number.isFinite(hi) || hi === lo) d = 0;
+    else d = Math.min(1, Math.abs(v - (lo + hi) / 2) / ((hi - lo) / 2));
+    per[dial] = d;
+    if (d > worst) worst = d;
+    sum += d; n++;
+  }
+  for (const dial of Object.keys(R.allowed || {})) if (!(dial in per)) per[dial] = 0;
+  return { worst, mean: n ? sum / n : 0, per };
+}
+function pickByDepth(rows, rule) {
+  let best = null;
+  (rows || []).forEach((r, i) => {
+    const d = depthOf(r, rule);
+    const cand = { index: i, si: r.si, label: r.label, worst: d.worst, mean: d.mean, per: d.per };
+    if (!best || cand.worst < best.worst || (cand.worst === best.worst && cand.mean < best.mean)) best = cand;
+  });
+  return best;
+}
+
 function recordStep(doc, step) {
   doc.steps.push({
     at: new Date().toISOString(),
@@ -605,6 +646,7 @@ async function applyRuleSlowly(rows, rule, note = null) {
 }
 
 module.exports = {
+  depthOf, pickByDepth,
   tightenRule, ruleWithClosing, nullCopy, swapMoney, topColumnNames, TOP_COLUMNS,
   regionRule, MARKS, recordMark,
   EMPTY_RULE, CLOSINGS,

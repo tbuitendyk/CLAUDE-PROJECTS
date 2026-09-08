@@ -653,6 +653,15 @@ async function drawDash(){
 
 // ---- Setup detail (what the selected setup IS) --------------------------------
 function cfgRow(l,v){ return `<div class="cfgrow"><span class="lbl">${l}</span><span>${v}</span></div>`; }
+// A STAGE-ENGINE CONFIGURATION'S AGREEMENT, in plain words (3.90.0): the way of
+// weighing, the bar it is read against, the share, how alike two members must
+// be to count as one voice, and the two extras. Drawn by the one path both
+// "Paper Books" and "Live Trading" share, so the two sides cannot differ.
+function agreeWords(a){
+  if(!a) return '—';
+  const bar=a.rule==='trained'?'no bar':`${a.pct==null?'?':a.pct+'%'} of ${a.bar==='own'?"the committee's own reach":'all members'}`;
+  return `${esc(a.rule)} · ${bar}${a.copy!=null?` · alike at ${a.copy}%`:''}${a.both?' · +both':''}${a.persist?` · +hold ${a.persist}`:''}${a.rung!=null?` · rung ${a.rung}`:''}`;
+}
 async function drawDetail(){
   const {configs}=await fetchConfigs();
   // The boxes this service knows about, so the execution target is PICKED rather
@@ -697,8 +706,10 @@ async function drawDetail(){
       <div style="margin-top:.5rem">
         ${cfgRow('Traded / context', `${esc(combo.trade)} + ${esc(combo.ctx1)} + ${esc(combo.ctx2)}`)}
         ${cfgRow('Geometry', `${esc(br.geometry)} · ${esc(br.decision)} · band ${br.band}%`)}
-        ${cfgRow('Committee', `${(c.members||[]).length} members (${esc(c.stage)})`)}
-        ${cfgRow('Quorum / entry / gate', `${cell.quorum}-of-${(c.members||[]).length} · ${esc(cell.entry)} · ${esc(cell.gate)}`)}
+        ${cfgRow('Committee', `${(c.members||[]).length} members (${c.engine==='stages'?'the stage engine, as the stage 2 set trained them':esc(c.stage)})`)}
+        ${c.engine==='stages'
+          ? cfgRow('Agreement / entry / gate', `${agreeWords(c.agreement)} · ${esc(cell.entry)} · ${esc(cell.gate)}`)
+          : cfgRow('Quorum / entry / gate', `${cell.quorum}-of-${(c.members||[]).length} · ${esc(cell.entry)} · ${esc(cell.gate)}`)}
         ${cfgRow('Hold', `${cell.tHours}h`)}
         ${(() => {
           // The freeze belongs to the DEPLOYMENT now, not the rule. A setup

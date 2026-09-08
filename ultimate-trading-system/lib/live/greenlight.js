@@ -162,6 +162,107 @@ function greenlightFromRun(doc, target, { by = 'owner', why, name } = {}) {
   return record;
 }
 
+// ---- THE STAGE 4 DOOR (3.90.0, VERIFY-DESIGN.md section 6) --------------------------
+//
+// A greenlight minted from a Stage 4 record set: the set, the verdict block
+// that stood, ONE survivor -- chosen by depth inside the rule or named by the
+// owner, both recorded -- and the agreement exactly as that survivor carries
+// it, which no integer quorum expresses. `src` is what lib/stages.js hands
+// over (stage4GreenlightSource): everything is read off the set and its
+// parents, never re-typed. Nothing here trades: the shuttle refuses a
+// stage-engine configuration until the live path speaks its agreement.
+const EXECUTOR_SHAPE = (cell) => {
+  const why = [];
+  if (cell.entry !== 'market') why.push(`its entry is ${cell.entry}, and the live executor only does market entry`);
+  if (cell.gate !== 'directional') why.push(`its gate is ${cell.gate}, and the live executor only does the directional gate`);
+  if (cell.trailMult != null) why.push('it carries a trailing stop, which the live executor does not have');
+  if (cell.armMult != null) why.push('it carries an arm, which the live executor does not have');
+  return why;
+};
+// why this source could not be greenlighted, in words, or null
+function stage4Refusal(src) {
+  if (!src || !src.gate) return 'no verdict on this set is PASS under this release line — read the rule against nothing on Verify first';
+  const u = src.unit || {};
+  if (u.size !== 3) {
+    return `this set's unit is ${u.size === 1 ? 'a coin read on its own' : `a coin read alongside ${u.size - 1} other`}, and the live vocabulary carries only a coin read alongside two others — a single-coin unit cannot be greenlighted until the executor takes one`;
+  }
+  const sv = src.survivor || {};
+  const why = EXECUTOR_SHAPE({ entry: sv.entry, gate: sv.gate, trailMult: sv.trailMult ?? null, armMult: sv.armMult ?? null });
+  if (why.length) return `the survivor cannot be traded as it was priced: ${why.join('; ')}`;
+  if (!Array.isArray(src.members) || !src.members.length) return 'the stage 2 set names no members for this unit, so nothing could be trained the same way';
+  if (!Number.isFinite(sv.bandPct) || sv.bandPct <= 0) return 'the band this survivor was priced at is not on the record, so it cannot be frozen';
+  return null;
+}
+function configFromStage4(src) {
+  const why = stage4Refusal(src);
+  if (why) throw new Error(why);
+  const sv = src.survivor;
+  const u = src.unit;
+  const cfg = {
+    engine: 'stages',
+    combo: { trade: u.trade, ctx1: u.ctx1 ?? null, ctx2: u.ctx2 ?? null, size: u.size },
+    branch: { geometry: u.geometry, decision: sv.decision, band: Number(sv.bandPct), weekdaysOnly: !!sv.weekdaysOnly },
+    stage: 'stages',
+    members: src.members.map((m) => ({ model: m.model, view: m.view })),
+    cell: {
+      quorum: null, entry: sv.entry, gate: sv.gate,
+      dMult: sv.dMult ?? null, tHours: sv.tHours,
+      trailMult: sv.trailMult ?? null, armMult: sv.armMult ?? null,
+    },
+    // THE AGREEMENT AS THE SURVIVOR CARRIES IT, in the agreement library's own words
+    agreement: {
+      rule: sv.agreeRule, bar: sv.agreeBar, pct: sv.agreePct ?? null, copy: sv.agreeCopy,
+      both: !!sv.agreeBoth, persist: Number.isInteger(sv.agreePersist) ? sv.agreePersist : 0,
+      rung: sv.avgRung ?? null, members: sv.members ?? src.members.length, voices: sv.avgVoices ?? null,
+    },
+    // how the members were trained, so the live path can train the same way
+    training: { ...(src.training || {}) },
+    configVersion: `${src.set.id}/${src.gate.id}/${src.pick.by}@${new Date().toISOString().slice(0, 10)}`,
+  };
+  const v = validateConfig(cfg);
+  if (!v.ok) throw new Error(`constructed config failed the shared vocabulary: ${v.errors.join('; ')}`);
+  return cfg;
+}
+function greenlightFromStage4(src, { by = 'owner', why, name } = {}) {
+  if (!src || !src.set || src.set.stage !== 4) throw new Error('a Stage 4 greenlight comes from a Stage 4 record set');
+  if (typeof why !== 'string' || !why.trim()) throw new Error('a greenlight needs a WHY — record the reasoning that cleared it');
+  const cfg = configFromStage4(src);
+  fs.mkdirSync(glDir(), { recursive: true });
+  const id = `gl-${Date.now().toString(36)}-${crypto.randomBytes(3).toString('hex')}`;
+  const rd = src.readings || {};
+  const record = {
+    id,
+    createdUtc: new Date().toISOString(),
+    seq: __mintSeq++,
+    by,
+    name: validName(name),
+    why: why.trim(),
+    engineVersion: ENGINE_VERSION,
+    target: 'stage4',
+    campaign: src.set.campaign || null,
+    // the chain: the set, the block that stood, the stage 3 set and its stage 2 parent
+    sourceSet: {
+      id: src.set.id, name: src.set.name, release: src.set.release || null,
+      unit: src.set.unit, unitName: src.set.unitName || null, ruleSentence: src.set.ruleSentence || null,
+      survivors: src.pick.of, block: src.gate,
+      parent: src.set.parent || null, stage2: src.set.stage2 || null,
+    },
+    // kept under the name every reader of a greenlight already looks for
+    sourceRun: { id: (src.set.parent || {}).id || null, kind: 'stage3', startedAt: null, finishedAt: null, dataManifest: null, feePerLeg: Number.isFinite(src.fee) ? src.fee : null },
+    // WHICH SURVIVOR, AND HOW IT WAS CHOSEN: by depth, or named -- both recorded
+    pick: { by: src.pick.by, label: src.pick.label, si: src.pick.si ?? null, worst: src.pick.worst, mean: src.pick.mean, per: src.pick.per || null, of: src.pick.of },
+    rowSummary: {
+      pnl: src.survivor.avgTest ?? null, trades: null,
+      holdout: rd.heldBack ? { pnl: rd.heldBack.money ?? null, trades: rd.heldBack.trades ?? null } : null,
+      unread: rd.unread ? { pnl: rd.unread.money ?? null, trades: rd.unread.trades ?? null, look: rd.unread.look ?? null } : null,
+    },
+    configSnapshot: cfg,
+    shuttledSetupIds: [],
+  };
+  atomicWrite(fileFor(id), record);
+  return record;
+}
+
 // The owner's LABELS, editable for the life of the config. Deliberately narrow:
 // `name` and `why` describe the config and changing them changes nothing about
 // what it trades. `campaign` is NOT here and never will be — it is a reference to
@@ -262,6 +363,14 @@ function shuttle(greenlightId, { name, clipUsd, stopPct = null, feePerLeg, by = 
   const gl = getGreenlight(greenlightId);
   if (!gl) { const e = new Error(`no such greenlight ${greenlightId}`); e.code = 'NOT_FOUND'; throw e; }
   if (gl.revoked) { const e = new Error('this config was nuked back to not-greenlighted'); e.code = 'REVOKED'; throw e; }
+  // NEVER PUT TO WORK FROM INSIDE A LOOP, AND NOT UNTIL THE LIVE PATH SPEAKS IT
+  // (3.90.0, RULE SIX): a stage-engine configuration agrees by the setting's
+  // own rule, and the live path counts votes against an integer quorum.
+  if ((gl.configSnapshot || {}).engine === 'stages') {
+    const e = new Error("this configuration speaks the stage engine's agreement, and the live path does not yet — nothing can be built from it to put to work");
+    e.code = 'NOT_LIVE_EXECUTABLE';
+    throw e;
+  }
   const setup = reg.createSetup({
     name: name || `${gl.configSnapshot.combo.trade} ${gl.target} (${gl.sourceRun.id})`,
     ownerId: by,
@@ -322,4 +431,5 @@ module.exports = {
   relabel, validName,
   greenlightFromRun, getGreenlight, listGreenlights, shuttle, revoke,
   configFromSelection, stageFromMembers, glDir,
+  greenlightFromStage4, configFromStage4, stage4Refusal,
 };

@@ -3087,10 +3087,52 @@ async function drawHelp() {
 }
 
 // ---- Greenlight -----------------------------------------------------------------
+// THE STAGE 4 DOOR ON GREENLIGHT (3.90.0): a Stage 4 record set whose verdict
+// stood, one survivor chosen by depth inside the rule or named, a name and a
+// why. The frozen configuration carries the agreement as the survivor carries
+// it, which no integer quorum expresses. Nothing here trades, and nothing built
+// from it can be put to work until the live path speaks that agreement.
+const GL_SET_KEY = 'cx-greenlight-set';
+function glRememberedSet(list) {
+  let want = null;
+  try { want = localStorage.getItem(GL_SET_KEY); } catch (_) { want = null; }
+  if (want && list.some((x) => x.id === want)) return want;
+  return list.length ? list[0].id : null;
+}
+function glFix(v, n = 2) { return v == null || !Number.isFinite(Number(v)) ? 'none' : Number(v).toFixed(n); }
+function glStage4PanelHtml(list, chosen, d) {
+  const depth = d && d.depthPick ? d.depthPick : null;
+  return `<div class="panel">
+    <h3 style="margin-top:0">Greenlight a Stage 4 record set</h3>
+    <p class="note">The other way to write the decision down: from a Stage 4 record set whose verdict stood on Verify. One of its
+      survivors is taken forward, chosen by how surrounded it is inside the rule (the setting nearest the middle of every
+      range, never the one with the most money) or named by you, and both are recorded. The frozen settings carry the
+      way its members agree exactly as the survivor does. Nothing here trades, and nothing built from it can be put to
+      work until the live path speaks that agreement.</p>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="which Stage 4 record set to take a survivor from, from every set on this box, newest first">Stage 4 record set<select id="gl4Set">${list.length
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict'}</option>`).join('')
+    : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>
+    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors
+      · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
+      ${d.refused ? '' : `<div class="row" style="align-items:flex-end">
+        <label class="f" style="flex:1 1 auto;min-width:0" title="which survivor is taken forward. By depth is the setting nearest the middle of every range of the rule, chosen without looking at money; naming one records it as your pick.">one survivor<select id="gl4Pick">
+          <option value="depth">by depth - ${esc(depth ? depth.label : '?')} (worst distance ${glFix(depth ? depth.worst : null)})</option>
+          ${(d.survivors || []).map((x) => `<option value="${esc(x.label)}">${esc(x.label)} - distance ${glFix(x.worst)}${x.held == null ? '' : ` - held-back ${money(x.held)}`}${x.unread == null ? '' : ` - unread ${money(x.unread)}`}</option>`).join('')}</select></label>
+      </div>
+      <div class="row" style="margin-top:.4rem;align-items:flex-end">
+        <label class="f" style="flex:1" title="what you want to see on screen for this configuration">name<input id="gl4Name" style="width:100%" placeholder="e.g. XRP weekly, depth pick"></label>
+        <label class="f" style="flex:2" title="the reasoning that cleared it. Required, kept forever with the record.">why — the decision record (required)<input id="gl4Why" style="width:100%" placeholder="e.g. verdict PASS on Verify; reserve grade look 1 PASS; other units 8 of 9 positive"></label>
+        <button id="gl4Go" class="pri">GREENLIGHT this survivor</button></div>`}` : ''}
+  </div>`;
+}
 async function drawGreenlight() {
   const doc = await loadPicked();
   const sel = getSelRow(doc);
   const gls = await apiOr('api/live/greenlights', ({ greenlights: [] }));
+  const glSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
+  const glChosen = glRememberedSet(glSets);
+  const gl4 = glChosen ? await apiOr(`api/live/greenlight/stage4/${encodeURIComponent(glChosen)}`, null) : null;
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Greenlight — the decision that a config is fit to trade</h3>
     <p class="note">Records WHO/WHEN/WHY with the exact frozen config, engine version, and the campaign's whole
@@ -3107,6 +3149,7 @@ async function drawGreenlight() {
       <button id="glGo" class="pri">GREENLIGHT this config</button></div>`
     : '<span class="note">select a row on Boards first — a greenlight is minted from the selected row.</span>'}
   </div>
+  ${glStage4PanelHtml(glSets, glChosen, gl4)}
   <div class="panel"><h3 style="margin-top:0">Existing greenlights</h3>
     <table><thead><tr>${cth('id','glId')}${cth('pair','asset')}${cth('campaign','campaign')}${cth('why','why','text-align:left')}${cth('fee','fee')}${cth('minted','minted')}${cth('state','state')}</tr></thead><tbody>
     ${(gls.greenlights || []).map((g) => `<tr><td>${esc(g.id)}</td><td>${esc(g.configSnapshot?.combo?.trade || '—')}</td>
@@ -3126,6 +3169,22 @@ async function drawGreenlight() {
     if (!confirm(`Greenlight ${sel.trade} ${sel.geometry} (${$('#glTarget').value} cell)?`)) return;
     const out = await tryPost('api/live/greenlight', { runId: doc.id, target: $('#glTarget').value, why });
     if (out) { alert(`Greenlighted: ${out.greenlight.id}\n\nIt is now on the Trade tab, both sides.`); drawGreenlight(); }
+  };
+  const gl4Sel = $('#gl4Set');
+  if (gl4Sel) gl4Sel.onchange = () => {
+    try { localStorage.setItem(GL_SET_KEY, gl4Sel.value); } catch (_) { /* private window */ }
+    drawGreenlight();
+  };
+  const go4 = $('#gl4Go');
+  if (go4 && glChosen && gl4 && !gl4.refused) go4.onclick = async () => {
+    const why = $('#gl4Why').value.trim();
+    const name = $('#gl4Name').value.trim();
+    if (!name) { alert('name is required — what you want to see on screen.'); return; }
+    if (!why) { alert('why is required — the decision record is the point.'); return; }
+    const pick = $('#gl4Pick').value;
+    if (!confirm(`Greenlight ${pick === 'depth' ? `the survivor by depth (${gl4.depthPick ? gl4.depthPick.label : '?'})` : `the named survivor ${pick}`} of ${gl4.name}?\n\nNothing trades from this. It records the decision; the live path cannot yet put it to work.`)) return;
+    const out = await tryPost('api/live/greenlight', { source: 'stage4', setId: glChosen, pick, why, name });
+    if (out) { alert(`Greenlighted: ${out.greenlight.id}\n\nIt is on the Trade tab, both sides, and cannot be activated until the live path speaks the stage engine's agreement.`); drawGreenlight(); }
   };
 }
 

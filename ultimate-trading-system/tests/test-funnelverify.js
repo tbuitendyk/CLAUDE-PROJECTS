@@ -38,7 +38,7 @@ async function fixture(opts = {}) {
   }));
   const pw = rowstore.writer(parentId, 'records');
   units.forEach((u, i) => pw.push({ u: u.u, carriedRank: i + 1, s1rank: i + 1, trade: u.trade, ctx1: u.ctx1, ctx2: u.ctx2,
-    size: u.size, geometry: u.geometry, specs: [], scoreAll: 5 - i, score3: 4 - i,
+    size: u.size, geometry: u.geometry, specs: [], bandPct: 2, scoreAll: 5 - i, score3: 4 - i,
     reserve: { chunks: 5, fromTs: 1735689600000 + i, toTs: 1736121600000 } }));
   await pw.close();
   const K = opts.copies == null ? 10 : opts.copies;
@@ -869,6 +869,58 @@ module.exports = {
       const blend = await stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: 'all' });
       threw = null;
       try { stages.unreadGradeStart(blend.id, {}); } catch (e) { threw = e.message; }
+      assert.ok(/cut on all units together/.test(threw), threw);
+    } finally { f.cleanup(); }
+  },
+  // ---- the greenlight source of a Stage 4 record set (3.90.0) ----
+  // Read off the set and its parents, never re-typed: refused without a verdict
+  // that stood; with one, the unit, the survivors with their depth, the pick by
+  // depth (every survivor at the middle under a rule of word dials, so the
+  // first in the set's own order) or by name, an unknown name refused; and the
+  // dry read says in words why this fixture's coin-on-its-own could not be
+  // greenlighted.
+  async theStage4GreenlightSourceIsReadOffTheSetAndRefusesWithoutAVerdictThatStood() {
+    const f = await fixture();
+    try {
+      const doc = await cutOn(f);
+      let threw = null;
+      try { await stages.stage4GreenlightSource(doc.id, {}); } catch (e) { threw = e.message; }
+      assert.strictEqual(threw, stages.UNREAD_NO_PASS);
+      let dry = await stages.stage4GreenlightDry(doc.id);
+      assert.deepStrictEqual({ gate: dry.gate, refused: dry.refused, survivors: dry.survivors.length }, { gate: null, refused: stages.UNREAD_NO_PASS, survivors: 0 });
+      // the gate opened by hand, as the reserve grade's tests open it
+      await pressed(doc.id, { barPct: 100 });
+      const file = path.join(SETS_DIR, `${doc.id}.json`);
+      const on = JSON.parse(fs.readFileSync(file, 'utf8'));
+      on.verify[0].verdict.pass = true;
+      fs.writeFileSync(file, JSON.stringify(on));
+      const src = await stages.stage4GreenlightSource(doc.id, {});
+      assert.deepStrictEqual({ set: src.set.id, stage: src.set.stage, gate: src.gate.id, parent: src.set.parent.id, stage2: src.set.stage2.id }, { set: doc.id, stage: 4, gate: on.verify[0].id, parent: f.id, stage2: f.parentId });
+      assert.deepStrictEqual(src.unit, { trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-1d' });
+      assert.strictEqual(src.survivors.length, 2, 'every survivor, with its depth');
+      assert.ok(src.survivors.every((x) => x.worst === 0), 'a rule of word dials puts every survivor at the middle');
+      assert.deepStrictEqual({ by: src.pick.by, index: src.pick.index, label: src.pick.label, of: src.pick.of }, { by: 'depth', index: 0, label: src.survivors[0].label, of: 2 }, 'equal in depth: the first in the set\'s own order');
+      assert.strictEqual(src.survivor.label, src.pick.label);
+      assert.deepStrictEqual({ entry: src.survivor.entry, gate: src.survivor.gate, tHours: src.survivor.tHours, rule: src.survivor.agreeRule, pct: src.survivor.agreePct }, { entry: 'market', gate: 'active', tHours: 41, rule: 'share', pct: null });
+      assert.strictEqual(src.survivor.bandPct, 2, 'an auto band resolves to the band the unit was priced at');
+      assert.strictEqual(src.fee, 0.00125);
+      assert.deepStrictEqual(src.readings.heldBack, { money: on.verify[0].survivors.rows[0].held, trades: on.verify[0].survivors.rows[0].trades }, 'the survivor\'s own held-back reading rides along');
+      assert.strictEqual(src.readings.unread, null, 'no grade yet, no unread reading');
+      assert.deepStrictEqual(src.training.windowLayout, 'reserve61');
+      // a named pick, and an unknown name refused
+      const named = await stages.stage4GreenlightSource(doc.id, { pick: src.survivors[1].label });
+      assert.deepStrictEqual({ by: named.pick.by, index: named.pick.index, label: named.pick.label }, { by: 'named', index: 1, label: src.survivors[1].label });
+      threw = null;
+      try { await stages.stage4GreenlightSource(doc.id, { pick: 'no such setting' }); } catch (e) { threw = e.message; }
+      assert.ok(/is not one of this set's 2 survivors/.test(threw), threw);
+      // the dry read: this fixture's coin is read on its own, and the words say so
+      dry = await stages.stage4GreenlightDry(doc.id);
+      assert.ok(/a coin read on its own/.test(dry.refused), dry.refused);
+      assert.deepStrictEqual({ size: dry.unitSize, depth: dry.depthPick.label, survivors: dry.survivors.length }, { size: 1, depth: src.pick.label, survivors: 2 });
+      // and the blend set is refused in the same words as the verdict
+      const blend = await stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: 'all' });
+      threw = null;
+      try { await stages.stage4GreenlightSource(blend.id, {}); } catch (e) { threw = e.message; }
       assert.ok(/cut on all units together/.test(threw), threw);
     } finally { f.cleanup(); }
   },

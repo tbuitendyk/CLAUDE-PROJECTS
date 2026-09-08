@@ -28,6 +28,14 @@ const DECISIONS = new Set(['argmax', 'directional']);
 const ENTRIES = new Set(['market', 'breakout']);
 const GATES = new Set(['directional', 'active']);
 const STAGES = new Set(['slim', 'promoted']);
+// THE ENGINE A CONFIGURATION SPEAKS FOR (3.90.0). Absent means the older sweep
+// engine, whose committee is specsFor's roster and whose agreement is an
+// integer quorum. 'stages' is the three-stage engine: its members are the ones
+// the stage 2 set trained (model and view each), and its agreement is the
+// setting's own way of weighing, a bar, a share and a copy share, read by
+// lib/agreement.js -- which no integer expresses.
+const ENGINES = new Set(['stages']);
+const { AGREE_RULES, AGREE_BARS, COPY_PCTS, READS_NO_BAR } = require('../agreement');
 
 function fail(errors, msg) { errors.push(msg); }
 
@@ -56,7 +64,28 @@ function validateConfig(cfg) {
   }
   if (typeof br.weekdaysOnly !== 'boolean') fail(errors, 'branch.weekdaysOnly: must be boolean');
 
-  if (!STAGES.has(cfg.stage)) fail(errors, `stage: must be one of ${[...STAGES]}`);
+  const stagesEngine = cfg.engine === 'stages';
+  if (cfg.engine != null && !ENGINES.has(cfg.engine)) fail(errors, `engine: must be absent (the sweep engine) or one of ${[...ENGINES]}`);
+  if (stagesEngine) {
+    if (cfg.stage !== 'stages') fail(errors, "stage: a stage-engine configuration's stage is 'stages'");
+    const a = cfg.agreement;
+    if (!a || typeof a !== 'object') fail(errors, 'agreement: a stage-engine configuration carries the way its members agree');
+    else {
+      if (!AGREE_RULES.includes(a.rule)) fail(errors, `agreement.rule: must be one of ${AGREE_RULES.join(', ')}`);
+      // A WAY OF WEIGHING THAT READS NO BAR CARRIES NONE (the same rule the
+      // stage 3 record keeps): a bar and a share on such a setting would be
+      // numbers the rule never looked at
+      else if (READS_NO_BAR.has(a.rule)) {
+        if (a.bar != null || a.pct != null) fail(errors, `agreement.bar and agreement.pct: '${a.rule}' reads no bar, so both must be null`);
+      } else {
+        if (!AGREE_BARS.includes(a.bar)) fail(errors, `agreement.bar: must be one of ${AGREE_BARS.join(', ')}`);
+        if (!Number.isFinite(a.pct) || a.pct < 0 || a.pct > 100) fail(errors, 'agreement.pct: must be a share from 0 to 100');
+      }
+      if (!COPY_PCTS.includes(a.copy)) fail(errors, `agreement.copy: must be one of ${COPY_PCTS.join(', ')}`);
+      if (typeof a.both !== 'boolean') fail(errors, 'agreement.both: must be boolean');
+      if (!Number.isInteger(a.persist) || a.persist < 0) fail(errors, 'agreement.persist: must be an integer 0 or more');
+    }
+  } else if (!STAGES.has(cfg.stage)) fail(errors, `stage: must be one of ${[...STAGES]}`);
 
   // The configuration's own shape-version, read back rather than only written.
   // A snapshot from another version means the same field names may no longer
@@ -76,9 +105,15 @@ function validateConfig(cfg) {
   }
 
   const cell = cfg.cell || {};
-  if (!Number.isInteger(cell.quorum) || cell.quorum < 1) fail(errors, 'cell.quorum: must be integer >= 1');
-  if (Array.isArray(cfg.members) && Number.isInteger(cell.quorum) && cell.quorum > cfg.members.length) {
-    fail(errors, `cell.quorum: ${cell.quorum} exceeds committee size ${cfg.members.length}`);
+  // the integer quorum is the sweep engine's; a stage-engine configuration
+  // carries none, because its agreement is the setting's own rule above
+  if (stagesEngine) {
+    if (cell.quorum != null) fail(errors, "cell.quorum: a stage-engine configuration agrees by its own rule, never by an integer quorum — must be null");
+  } else {
+    if (!Number.isInteger(cell.quorum) || cell.quorum < 1) fail(errors, 'cell.quorum: must be integer >= 1');
+    if (Array.isArray(cfg.members) && Number.isInteger(cell.quorum) && cell.quorum > cfg.members.length) {
+      fail(errors, `cell.quorum: ${cell.quorum} exceeds committee size ${cfg.members.length}`);
+    }
   }
   if (!ENTRIES.has(cell.entry)) fail(errors, `cell.entry: must be one of ${[...ENTRIES]}`);
   if (!GATES.has(cell.gate)) fail(errors, `cell.gate: must be one of ${[...GATES]}`);
@@ -119,6 +154,14 @@ function validateConfig(cfg) {
 // passes unchanged). Returns { ok, errors }; never throws.
 function liveExecutable(cfg) {
   const errors = [];
+  // THE LIVE PATH DOES NOT SPEAK THE STAGE ENGINE'S AGREEMENT YET (3.90.0). It
+  // counts votes against an integer quorum; a configuration that agrees by the
+  // setting's own rule would be traded as something the lab never measured.
+  // Refused here, at the door every activation passes through, until the live
+  // path speaks it -- and real money stays the owner's switch either way.
+  if (cfg && cfg.engine === 'stages') {
+    fail(errors, "engine 'stages': the live path does not speak the stage engine's agreement yet — it counts votes against an integer quorum, which this configuration does not carry");
+  }
   const cell = (cfg && cfg.cell) || {};
   if (cell.entry !== 'market') {
     fail(errors, `cell.entry '${cell.entry}': the live executor only does MARKET entry (breakout is lab-only)`);
@@ -132,4 +175,4 @@ function liveExecutable(cfg) {
   return { ok: errors.length === 0, errors };
 }
 
-module.exports = { validateConfig, liveExecutable, SYMBOL_RE };
+module.exports = { validateConfig, liveExecutable, SYMBOL_RE, ENGINES };

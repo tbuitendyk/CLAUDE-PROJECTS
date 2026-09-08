@@ -6322,7 +6322,7 @@ function funnelRideStatus(id) {
 // every grade is a counted look, appended and never overwritten; it refuses in
 // words without a verdict that PASSED under this release line, without an
 // intact seal, and while anything heavy is going.
-const UNREAD_NO_PASS = 'no verdict on this set is PASS under this release line — read the rule against nothing on Verify first, and grade only a set whose verdict stood';
+const UNREAD_NO_PASS = 'no verdict on this set is PASS under this release line — read the rule against nothing on Verify first; a set whose verdict has not stood is neither graded nor greenlighted';
 const firstDigitOfRelease = (v) => String(v || '').split('.')[0] || null;
 // the newest verdict block that PASSED under the reader's first digit, or null
 function unreadGateOf(doc) {
@@ -6450,6 +6450,90 @@ function unreadGradeStart(id, asked = {}) {
 function unreadGradeStatus(id) {
   if (!unreadRun || unreadRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
   return unreadStatus(unreadRun);
+}
+
+// ---- THE GREENLIGHT SOURCE OF A STAGE 4 RECORD SET (3.90.0, VERIFY-DESIGN.md section 6) ----
+//
+// Everything a greenlight minted from a Stage 4 set is built from, read off
+// the set and its parents and never re-typed: the verdict block that stood
+// (the same gate the reserve grade uses), the unit, one survivor chosen by
+// depth inside the rule or named by the owner, the members exactly as the
+// stage 2 set trained them, how they were trained, the fee, and the survivor's
+// own held-back and unread readings when they exist. lib/live/greenlight.js
+// turns it into the frozen configuration and refuses in words what the live
+// vocabulary cannot carry.
+async function stage4GreenlightSource(setId, asked = {}) {
+  const S4 = require('./funnelset');
+  const doc = getSet(setId);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${setId}'`);
+  if (!doc.unit) throw new Error(BLEND_REFUSAL);
+  const gate = unreadGateOf(doc);
+  if (!gate) throw new Error(UNREAD_NO_PASS);
+  const join = await funnelVerifyJoin(doc);
+  const parent = join.parent;
+  const stage2 = getSet((parent.parent || {}).id);
+  if (!stage2) throw new Error('the stage 2 set the stage 3 set was priced from is gone, so the members cannot be named');
+  const rec = rowstore.readAll(stage2.id, 'records').find((r) => unitKeyOf(r) === doc.unit);
+  if (!rec) throw new Error(`the stage 2 set holds no unit called '${doc.unit}'`);
+  const rows = join.rows;
+  if (!rows.length) throw new Error('this set wrote down no settings, so there is no survivor to greenlight');
+  const rule = join.rule;
+  let pick;
+  if (asked.pick == null || asked.pick === '' || asked.pick === 'depth') {
+    pick = { by: 'depth', ...S4.pickByDepth(rows, rule), of: rows.length };
+  } else {
+    const i = rows.findIndex((r) => r.label === String(asked.pick));
+    if (i < 0) throw new Error(`'${asked.pick}' is not one of this set's ${rows.length} survivors`);
+    const d = S4.depthOf(rows[i], rule);
+    pick = { by: 'named', index: i, si: rows[i].si, label: rows[i].label, worst: d.worst, mean: d.mean, per: d.per, of: rows.length };
+  }
+  const survivor = rows[pick.index];
+  const gateBlock = (doc.verify || []).find((b) => b.id === gate.id) || null;
+  const heldOf = (label) => ((((gateBlock || {}).survivors || {}).rows) || []).find((r) => r.label === label) || null;
+  const unreadRec = (doc.unread || [])[0] || null;
+  const unreadOf = (label) => (unreadRec ? (unreadRec.rows || []).find((r) => r.label === label) || null : null);
+  const held = heldOf(survivor.label);
+  const un = unreadOf(survivor.label);
+  const p1 = stage2.params || {};
+  const size = rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1);
+  return {
+    set: {
+      id: doc.id, stage: 4, name: doc.name, release: doc.release || null, unit: doc.unit, unitName: doc.unitName || null,
+      ruleSentence: doc.ruleSentence || S4.ruleSentence(rule), counts: doc.counts || null,
+      parent: { id: parent.id, name: parent.name }, stage2: { id: stage2.id, name: stage2.name },
+      campaign: (parent.params || {}).campaign || null,
+    },
+    gate,
+    unit: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size, geometry: rec.geometry },
+    survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)) },
+    pick,
+    survivors: rows.map((r, i) => { const d = S4.depthOf(r, rule); const h = heldOf(r.label); const x = unreadOf(r.label); return { index: i, label: r.label, worst: d.worst, mean: d.mean, held: h ? h.held : null, trades: h ? h.trades : null, unread: x ? x.money : null }; }),
+    members: (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view })),
+    training: { trainOn: p1.trainOn ?? null, weightCap: p1.weightCap ?? null, windowLayout: p1.windowLayout ?? null, startMonth: p1.startMonth ?? null, endMonth: p1.endMonth ?? null, allLoaded: !!p1.allLoaded, nullN: p1.nullN ?? null },
+    fee: Number.isFinite(Number((parent.params || {}).fee)) ? Number((parent.params || {}).fee) : null,
+    readings: {
+      heldBack: held ? { money: held.held, trades: held.trades } : null,
+      unread: un ? { money: un.money, trades: un.trades, look: unreadRec.look } : null,
+    },
+  };
+}
+// the screen's dry read: what would be greenlighted, and why it could not be, in words
+async function stage4GreenlightDry(setId) {
+  const gl = require('./live/greenlight');
+  const doc = getSet(setId);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${setId}'`);
+  let src = null;
+  let refused = null;
+  try { src = await stage4GreenlightSource(setId, { pick: 'depth' }); } catch (err) { refused = err.message; }
+  if (src && !refused) refused = gl.stage4Refusal(src);
+  return {
+    id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null,
+    ruleSentence: doc.ruleSentence || null, gate: unreadGateOf(doc), verdicts: (doc.verify || []).length,
+    unitSize: src ? src.unit.size : null, members: src ? src.members.length : null,
+    depthPick: src ? { label: src.pick.label, worst: src.pick.worst, mean: src.pick.mean } : null,
+    survivors: src ? src.survivors : [],
+    refused,
+  };
 }
 
 // ---- V0: THE STAGE ENGINE'S OWN PLANTED CHECK (3.87.0, VERIFY-DESIGN.md) --------
@@ -7284,6 +7368,7 @@ module.exports = {
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
   unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
+  stage4GreenlightSource, stage4GreenlightDry,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,
   listFunnelSets, saveFunnelRich, readFunnelRich, withFunnelRich, funnelRichFile,

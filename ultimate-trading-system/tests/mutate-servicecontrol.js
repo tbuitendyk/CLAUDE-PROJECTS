@@ -1155,6 +1155,15 @@ const GUARDS = [
     'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'a second look overwrites the first, and the only look at unseen data is gone from the record'],
   [path.join(ROOT, 'lib', 'funnelverify.js'), "  parts.push(look > 1\n    ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`\n    : 'look 1: the first look at data nothing in the system has seen');", "  parts.push('look 1: the first look at data nothing in the system has seen');",
     'theReserveGradePricesTheUnreadWindowWithTheSavedForecastsAndCountsItsLooks', 'every look reads as the first, and a grade of a window read five times claims data nothing has seen'],
+  // ---- the Stage 4 door on Greenlight (3.90.0) ----
+  [path.join(ROOT, 'lib', 'live', 'configschema.js'), "  if (cfg && cfg.engine === 'stages') {\n    fail(errors, \"engine 'stages': the live path does not speak the stage engine's agreement yet — it counts votes against an integer quorum, which this configuration does not carry\");\n  }", "  if (false) {\n    fail(errors, 'never');\n  }",
+    'aStage4GreenlightRefusesInWordsAndCanNeverBeShuttledYet', "a stage-engine configuration passes the live door, and the executor trades it by counting votes against a quorum it does not carry"],
+  [path.join(ROOT, 'lib', 'live', 'greenlight.js'), "  if ((gl.configSnapshot || {}).engine === 'stages') {", "  if (false) {",
+    'aStage4GreenlightRefusesInWordsAndCanNeverBeShuttledYet', 'a stage-engine configuration is shuttled into a deployment before the live path speaks its agreement'],
+  [path.join(ROOT, 'lib', 'funnelset.js'), "    if (!best || cand.worst < best.worst || (cand.worst === best.worst && cand.mean < best.mean)) best = cand;", "    if (!best || (r.avgHold || 0) > ((rows[best.index] || {}).avgHold || 0)) best = cand;",
+    'theDepthPickIsTheSurvivorNearestTheMiddleOfEveryRangeAndNeverReadsMoney', 'the pick is the survivor with the most held-back money, which is shopping the one window that must not be shopped'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const gate = unreadGateOf(doc);\n  if (!gate) throw new Error(UNREAD_NO_PASS);\n  const join = await funnelVerifyJoin(doc);\n  const parent = join.parent;\n  const stage2 = getSet((parent.parent || {}).id);", "  const gate = unreadGateOf(doc) || { id: null, at: null, release: null, look: null };\n  const join = await funnelVerifyJoin(doc);\n  const parent = join.parent;\n  const stage2 = getSet((parent.parent || {}).id);",
+    'theStage4GreenlightSourceIsReadOffTheSetAndRefusesWithoutAVerdictThatStood', 'a set whose verdict never stood is offered for a greenlight'],
 ];
 
 const only = process.argv[2] || '';

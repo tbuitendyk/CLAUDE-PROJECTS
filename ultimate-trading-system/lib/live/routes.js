@@ -220,9 +220,16 @@ function installLiveRoutes(app, { csrfGuard }) {
 
   // Greenlight the SELECTED row of a saved bracket-lab run. why is required —
   // the decision record is the point.
-  app.post('/api/live/greenlight', csrfGuard, (req, res) => {
+  app.post('/api/live/greenlight', csrfGuard, async (req, res) => {
     try {
       const b = req.body || {};
+      // THE STAGE 4 DOOR (3.90.0): a set, the verdict that stood, one survivor
+      // by depth or by name, a name and a why. Nothing here trades.
+      if (b.source === 'stage4') {
+        const src = await require('../stages').stage4GreenlightSource(String(b.setId || ''), { pick: b.pick });
+        const rec = gl.greenlightFromStage4(src, { by: 'owner', why: b.why, name: b.name });
+        return res.json({ ok: true, greenlight: rec });
+      }
       const doc = require('../batch').getBatch(String(b.runId || ''));
       if (!doc) return res.status(404).json({ error: `no saved run ${b.runId}` });
       // name is required: a config the owner cannot recognise on screen is not
@@ -231,6 +238,13 @@ function installLiveRoutes(app, { csrfGuard }) {
         { by: 'owner', why: b.why, name: b.name });
       res.json({ ok: true, greenlight: rec });
     } catch (e) { res.status(400).json({ error: e.message }); }
+  });
+
+  // the screen's dry read of a Stage 4 set: the gate, the survivors with their
+  // depth, the depth pick, and why it could not be greenlighted, in words
+  app.get('/api/live/greenlight/stage4/:setId', async (req, res) => {
+    try { res.json(await require('../stages').stage4GreenlightDry(req.params.setId)); }
+    catch (e) { res.status(400).json({ error: e.message }); }
   });
 
   // Rename a config and restate its reasoning. Labels only — nothing here can

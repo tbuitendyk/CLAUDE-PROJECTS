@@ -353,6 +353,35 @@ module.exports = {
     assert.ok(!doc.steps.some((x) => x.survivors === 0) && !doc.backSteps.some((x) => x.survivors === 0), 'unknown is never written as zero');
   },
 
+  // ONE SURVIVOR BY DEPTH, NEVER BY MONEY (3.90.0). The pick is the survivor
+  // nearest the middle of every range of the rule; a word dial puts everyone at
+  // the middle; ties go to the smallest mean and then to the set's own order;
+  // and the money on the rows never enters it.
+  theDepthPickIsTheSurvivorNearestTheMiddleOfEveryRangeAndNeverReadsMoney() {
+    const rule = { ranges: { tHours: { min: 41, max: 89 }, dMult: { min: 1, max: 2 } }, allowed: { gate: ['active'] }, floors: { maxDrawdown: { max: 50 } } };
+    const rows = [
+      { si: 0, label: 'edge', tHours: 41, dMult: 1, gate: 'active', avgHold: 999, avgTest: 999 },
+      { si: 1, label: 'middle', tHours: 65, dMult: 1.5, gate: 'active', avgHold: -50, avgTest: -50 },
+      { si: 2, label: 'half', tHours: 77, dMult: 1.5, gate: 'active', avgHold: 5, avgTest: 5 },
+    ];
+    const d0 = FS4.depthOf(rows[0], rule);
+    assert.deepStrictEqual({ worst: d0.worst, per: d0.per }, { worst: 1, per: { tHours: 1, dMult: 1, gate: 0 } }, 'the edge is 1 away; the word dial is at the middle; the floor is not a choice');
+    assert.deepStrictEqual(FS4.depthOf(rows[2], rule).per, { tHours: 0.5, dMult: 0, gate: 0 });
+    const pick = FS4.pickByDepth(rows, rule);
+    assert.strictEqual(pick.label, 'middle', 'the poorest survivor is the pick, because money never enters it');
+    assert.deepStrictEqual({ index: pick.index, si: pick.si, worst: pick.worst, mean: pick.mean }, { index: 1, si: 1, worst: 0, mean: 0 });
+    // ties: the smallest mean, then the set's own order
+    const tie = [{ si: 0, label: 'a', tHours: 53, dMult: 1.5 }, { si: 1, label: 'b', tHours: 53, dMult: 1.25 }, { si: 2, label: 'c', tHours: 77, dMult: 1.5 }];
+    assert.strictEqual(FS4.pickByDepth(tie, rule).label, 'a', 'a and c tie on the worst distance and a is first; b is worse');
+    const same = [{ si: 0, label: 'p', tHours: 65, dMult: 1.5 }, { si: 1, label: 'q', tHours: 65, dMult: 1.5 }];
+    assert.strictEqual(FS4.pickByDepth(same, rule).label, 'p', 'equal in every way: the first in the set\'s own order');
+    // a range of no width, and a word kept beside a range, sit at the middle; a value that is neither is at the edge
+    const flat = { ranges: { tHours: { min: 65, max: 65 }, bandMode: { min: 1, max: 3, also: ['auto'] } } };
+    assert.strictEqual(FS4.depthOf({ tHours: 65, bandMode: 'auto' }, flat).worst, 0);
+    assert.strictEqual(FS4.depthOf({ tHours: 65, bandMode: 'weird' }, flat).worst, 1);
+    assert.strictEqual(FS4.pickByDepth([], rule), null, 'no survivors, no pick');
+  },
+
   // All three ways of closing the gap are offered and the shopping one says so
   // in those words. Withholding it would remove the owner's choice invisibly,
   // which is the fault RULE ZERO and RULE FIVE exist to prevent.

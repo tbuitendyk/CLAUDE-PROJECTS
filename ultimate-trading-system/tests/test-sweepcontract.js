@@ -300,7 +300,7 @@ module.exports = {
       // never be is <input> boxes — test-uicontracts.js pins that. (t1null went
       // with the Tool 1 panel in 3.86.0; vSet is Verify's Stage 4 record set
       // box, filled from the server's list, test-funnelverify.js pins it.)
-      'vSet', 'hSet', 'cmpA', 'cmpB', 'bPick1', 'bPick2', 'bPick3', 'swFrom2', 'swFrom3',
+      'vSet', 'hSet', 'gl4Set', 'gl4Pick', 'cmpA', 'cmpB', 'bPick1', 'bPick2', 'bPick3', 'swFrom2', 'swFrom3',
       // same shape: the campaign picker's options are the names the service
       // itself reports, and a NEW name is typed in the box beside it
       'cxCampPick',
