@@ -19,6 +19,13 @@ const G = require('../lib/stagegate');
 const Pl = require('../lib/planted');
 const rowstore = require('../lib/rowstore');
 
+// ONE YEAR IS ENOUGH FOR THE PLUMBING, and it is a fifth of the cost. The
+// check itself builds four years (lib/stagegate.js SPAN, owner order
+// 2026-09-08) because stage 1 starves on one; this file exercises the doors
+// and the arithmetic, not the calibration, so it declares its own year and
+// its own launch months rather than riding the check's.
+const SPAN = { fromMonth: '2024-01', toDate: '2024-12-31' };
+const S1 = { ...G.STAGE1, startMonth: SPAN.fromMonth, endMonth: SPAN.toDate.slice(0, 7) };
 const ROOT = path.join(__dirname, '..');
 const SETS_DIR = path.join(ROOT, 'data', 'stagesets');
 
@@ -45,9 +52,9 @@ async function settle(statusOf, label) {
 // the same launches the stage-engine check makes, on the same two coins
 async function chain(tag) {
   const made = [];
-  Pl.generateFabricated(G.SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);
-  Pl.generateFabricated(G.SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);
-  const s1 = stages.startStage1({ ...G.STAGE1, exam: true, name: `${tag} S1` });
+  Pl.generateFabricated(SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);
+  Pl.generateFabricated(SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);
+  const s1 = stages.startStage1({ ...S1, exam: true, name: `${tag} S1` });
   made.push(s1.id);
   const d1 = await waitSet(s1.id, 'stage 1');
   if (d1.status !== 'done') throw new Error(`stage 1 ended ${d1.status}: ${JSON.stringify(d1.failures || [])}`);
@@ -98,9 +105,9 @@ module.exports = {
       const votesRows = rowstore.readBlocks(c.s2, 'votes', Array.from({ length: rec.blocks.votes[1] - rec.blocks.votes[0] }, (_, i) => rec.blocks.votes[0] + i)).map((x) => x.row).filter((r) => r.u === rec.u);
       const modelRows = rowstore.readBlocks(c.s2, 'models', Array.from({ length: rec.blocks.models[1] - rec.blocks.models[0] }, (_, i) => rec.blocks.models[0] + i)).map((x) => x.row).filter((r) => r.u === rec.u);
       assert.ok(modelRows.length >= 2, `saved models per member (${modelRows.length})`);
-      const p1 = { windowLayout: G.STAGE1.windowLayout, allLoaded: false, startMonth: G.STAGE1.startMonth, endMonth: G.STAGE1.endMonth, trainOn: G.STAGE1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
+      const p1 = { windowLayout: S1.windowLayout, allLoaded: false, startMonth: S1.startMonth, endMonth: S1.endMonth, trainOn: S1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
       const combo = { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 };
-      const { geo, split, reserve } = await sw.unitChunks(combo, G.STAGE1.geometry, p1);
+      const { geo, split, reserve } = await sw.unitChunks(combo, S1.geometry, p1);
       const testVotes = votesRows.filter((v) => v.w === 0);
       assert.strictEqual(testVotes.length, split.testChunks.length, 'the stored test votes line up with the rebuilt test chunks');
       for (const m of modelRows) {
@@ -110,7 +117,7 @@ module.exports = {
         assert.deepStrictEqual(again, stored, `member ${m.mi} (${spec.model} ${spec.view}): the saved model gives the stored votes back on the test chunks`);
       }
       // 2. the unread chunks: from the seal's start, whole trades only
-      const un = await sw.unreadChunksFor(combo, G.STAGE1.geometry, reserve.fromTs);
+      const un = await sw.unreadChunksFor(combo, S1.geometry, reserve.fromTs);
       assert.ok(un.chunks.length >= 2, `the unread window holds ${un.chunks.length} chunks`);
       assert.ok(un.chunks.every((ch) => ch.startTs >= reserve.fromTs), 'nothing before the seal');
       assert.strictEqual(un.chunks[0].startTs, reserve.fromTs, 'and it starts where the seal began');
@@ -203,9 +210,9 @@ module.exports = {
       const tauRows = rowstore.readBlocks(c.s2, 'tau', Array.from({ length: rec2.blocks.tau[1] - rec2.blocks.tau[0] }, (_, i) => rec2.blocks.tau[0] + i)).map((x) => x.row).filter((r) => r.u === rec2.u);
       const test = votes.filter((v) => v.w === 0);
       const hold = votes.filter((v) => v.w === 1);
-      const p1 = { windowLayout: G.STAGE1.windowLayout, allLoaded: false, startMonth: G.STAGE1.startMonth, endMonth: G.STAGE1.endMonth, trainOn: G.STAGE1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
+      const p1 = { windowLayout: S1.windowLayout, allLoaded: false, startMonth: S1.startMonth, endMonth: S1.endMonth, trainOn: S1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
       const combo = { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 };
-      const { geo, maps, split } = await sw.unitChunks(combo, G.STAGE1.geometry, p1);
+      const { geo, maps, split } = await sw.unitChunks(combo, S1.geometry, p1);
       assert.strictEqual(split.holdChunks.length, hold.length, 'the stored held-back votes line up with the rebuilt held-back chunks');
       const fee = G.STAGE3.fee;
       const taus = rec2.specs.map((_, mi) => {
@@ -239,11 +246,11 @@ module.exports = {
       const row = s3rows.find((r) => r.label === sv.label);
       const agr = sw.agrOf(row);
       const cfg = {
-        engine: 'stages', combo, branch: { geometry: G.STAGE1.geometry, decision: row.decision, band: row.bandPct, weekdaysOnly: false }, stage: 'stages',
+        engine: 'stages', combo, branch: { geometry: S1.geometry, decision: row.decision, band: row.bandPct, weekdaysOnly: false }, stage: 'stages',
         members: rec2.specs.map((sp) => ({ model: sp.model, view: sp.view })),
         cell: { quorum: null, entry: row.entry, gate: row.gate, dMult: row.dMult ?? null, tHours: row.tHours, trailMult: null, armMult: null },
         agreement: { ...agr, rung: row.rung ?? null, members: rec2.specs.length, voices: null },
-        training: { trainOn: G.STAGE1.trainOn, weightCap: null, windowLayout: G.STAGE1.windowLayout, startMonth: G.STAGE1.startMonth, endMonth: G.STAGE1.endMonth, allLoaded: false, nullN: G.STAGE1.nullN },
+        training: { trainOn: S1.trainOn, weightCap: null, windowLayout: S1.windowLayout, startMonth: S1.startMonth, endMonth: S1.endMonth, allLoaded: false, nullN: S1.nullN },
         configVersion: 'parity-test',
       };
       const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;

@@ -1923,7 +1923,7 @@ function vStageGateHtml(sg) {
       <span id="sgMsg" class="note">${s.state === 'RUNNING' && run ? `running now — ${esc(run.step || '')}` : ''}</span></div>
     ${s.detail ? `<p class="note">${esc(s.detail)}</p>` : ''}
     ${run && run.error ? `<p class="note"><b class="neg">The last press failed:</b> ${esc(run.error)}</p>` : ''}
-    ${last && last.sentences && last.sentences.length ? `<div class="note"><b>Last stage gate (${esc(last.id || '')}, release ${esc(last.release || '')}, ${last.pass ? 'PASS' : 'FAIL'}${last.elapsedMs ? `, ${Math.round(last.elapsedMs / 1000)} s` : ''}):</b>
+    ${last && last.sentences && last.sentences.length ? `<div class="note"><b>Last stage gate (${esc(last.id || '')}, release ${esc(last.release || '')}, ${last.pass ? 'PASS' : 'FAIL'}${last.elapsedMs ? `, ${Math.round(last.elapsedMs / 1000)} s` : ''}${last.span ? `, built on fabricated prices from ${esc(last.span.fromMonth)} to ${esc(last.span.toDate)}` : ''}):</b>
       ${last.sentences.map((x) => `<div>${esc(x)}</div>`).join('')}</div>` : ''}
     ${sg ? `<details style="margin-top:.4rem"><summary>full stage-gate record</summary><pre>${esc(JSON.stringify(sg, null, 1))}</pre></details>` : ''}`;
 }

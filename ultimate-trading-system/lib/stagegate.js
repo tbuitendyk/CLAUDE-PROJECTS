@@ -30,7 +30,14 @@ const PLANT = 'PLANTEDSTAGEAUSDT';
 const FAIR = 'PLANTEDSTAGEBUSDT';
 const SYMBOLS = [PLANT, FAIR];
 const isExamSymbol = (s) => SYMBOLS.includes(String(s || '').toUpperCase());
-const SPAN = Object.freeze({ fromMonth: '2024-01', toDate: '2024-12-31' });
+// FOUR YEARS OF FABRICATED HISTORY, NOT ONE (owner order, 2026-09-08: "make
+// the stage-engine check build four years GO NOW!"). On one year the daily
+// shape kept 220 training chunks after the seal and the two slices were cut
+// away, and stage 1 could not learn the plant from them: the check FAILED on
+// its own starvation, not on the engine (VERIFY-DESIGN.md section 9, step 2).
+// On four years -- 888 training chunks -- the same engine passes every gate.
+// The months stage 1 is launched on follow this span; a test holds them to it.
+const SPAN = Object.freeze({ fromMonth: '2021-01', toDate: '2024-12-31' });
 const SEEDS = Object.freeze({ [PLANT]: 424241, [FAIR]: 424242 });
 const COPIES = 20;
 const chanceOf = (k) => 1 / (k + 1);
@@ -46,7 +53,7 @@ const RULE = Object.freeze({ ranges: { tHours: { min: 17, max: 17 } }, allowed: 
 // the launches, declared: the same shapes the hand-run exam uses
 const STAGE1 = Object.freeze({
   universe: SYMBOLS, sizes: { singles: true }, geometry: 'daily-1d',
-  windowLayout: 'reserve61', allLoaded: false, startMonth: '2024-01', endMonth: '2024-12',
+  windowLayout: 'reserve61', allLoaded: false, startMonth: SPAN.fromMonth, endMonth: SPAN.toDate.slice(0, 7),
   nullN: 9, fee: 0.00125, trainOn: 'direction', desc: 'stage-engine check',
 });
 const STAGE2 = Object.freeze({ carry: 0, desc: 'stage-engine check' });

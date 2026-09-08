@@ -124,6 +124,21 @@ module.exports = {
     } finally { fs.rmSync(dir, { recursive: true, force: true }); }
   },
 
+  // FOUR YEARS, AND THE LAUNCH MONTHS FOLLOW THE SPAN (owner order, 2026-09-08).
+  // One year starved stage 1 on the daily shape and the check failed on
+  // itself; the four-year run passes. The months stage 1 is launched on are
+  // read off the span, so the two cannot drift apart and quietly fabricate
+  // four years while training on one.
+  theCheckBuildsFourYearsAndItsMonthsFollowItsSpan() {
+    assert.deepStrictEqual(G.SPAN, { fromMonth: '2021-01', toDate: '2024-12-31' }, 'the check builds four years of fabricated prices');
+    assert.strictEqual(G.STAGE1.startMonth, G.SPAN.fromMonth, 'stage 1 is launched from the span\'s first month');
+    assert.strictEqual(G.STAGE1.endMonth, G.SPAN.toDate.slice(0, 7), 'and through its last');
+    const s = src('lib/stages.js');
+    assert.ok(/span: \{ \.\.\.G\.SPAN \}, planted: summary\(blocks\.planted\)/.test(s), 'the record carries the span it was built on');
+    const ui = src('public/construct.js');
+    assert.ok(/built on fabricated prices from \$\{esc\(last\.span\.fromMonth\)\} to \$\{esc\(last\.span\.toDate\)\}/.test(ui), 'and the last check on Verify says it');
+  },
+
   // THE FABRICATED COINS NEVER MEET A REAL RUN: stage 1 refuses both reserved
   // pairs unless the exam itself is launching them.
   theLauncherRefusesTheReservedCoinsUnlessTheExamLaunchesThem() {

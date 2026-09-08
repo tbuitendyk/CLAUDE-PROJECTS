@@ -18,6 +18,13 @@ const G = require('../lib/stagegate');
 const Pl = require('../lib/planted');
 const rowstore = require('../lib/rowstore');
 
+// ONE YEAR IS ENOUGH FOR THE PLUMBING, and it is a fifth of the cost. The
+// check itself builds four years (lib/stagegate.js SPAN, owner order
+// 2026-09-08) because stage 1 starves on one; this file exercises the doors
+// and the arithmetic, not the calibration, so it declares its own year and
+// its own launch months rather than riding the check's.
+const SPAN = { fromMonth: '2024-01', toDate: '2024-12-31' };
+const S1 = { ...G.STAGE1, startMonth: SPAN.fromMonth, endMonth: SPAN.toDate.slice(0, 7) };
 const ROOT = path.join(__dirname, '..');
 const SETS_DIR = path.join(ROOT, 'data', 'stagesets');
 const src = (rel) => fs.readFileSync(path.join(ROOT, rel), 'utf8');
@@ -46,9 +53,9 @@ async function settle(statusOf, label) {
 // the same launches the stage-engine check makes, on the same two coins
 async function chain(tag) {
   const made = [];
-  Pl.generateFabricated(G.SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);
-  Pl.generateFabricated(G.SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);
-  const s1 = stages.startStage1({ ...G.STAGE1, exam: true, name: `${tag} S1` });
+  Pl.generateFabricated(SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);
+  Pl.generateFabricated(SPAN, G.FAIR, G.SEEDS[G.FAIR], 1);
+  const s1 = stages.startStage1({ ...S1, exam: true, name: `${tag} S1` });
   made.push(s1.id);
   const d1 = await waitSet(s1.id, 'stage 1');
   if (d1.status !== 'done') throw new Error(`stage 1 ended ${d1.status}: ${JSON.stringify(d1.failures || [])}`);
@@ -167,9 +174,9 @@ module.exports = {
       const tauRows = rowstore.readBlocks(c.s2, 'tau', Array.from({ length: rec2.blocks.tau[1] - rec2.blocks.tau[0] }, (_, i) => rec2.blocks.tau[0] + i)).map((x) => x.row).filter((r) => r.u === rec2.u);
       const testVotes = votes.filter((v) => v.w === 0);
       const holdVotes = votes.filter((v) => v.w === 1);
-      const p1 = { windowLayout: G.STAGE1.windowLayout, allLoaded: false, startMonth: G.STAGE1.startMonth, endMonth: G.STAGE1.endMonth, trainOn: G.STAGE1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
+      const p1 = { windowLayout: S1.windowLayout, allLoaded: false, startMonth: S1.startMonth, endMonth: S1.endMonth, trainOn: S1.trainOn, weightCap: sw.WEIGHT_CAP_DEFAULT, pinnedFiles: null };
       const combo = { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 };
-      const { geo, maps, split } = await sw.unitChunks(combo, G.STAGE1.geometry, p1);
+      const { geo, maps, split } = await sw.unitChunks(combo, S1.geometry, p1);
       const fee = G.STAGE3.fee;
       const taus = rec2.specs.map((_, mi) => {
         const probe = (tauRows.find((t) => t.mi === mi) || {}).probs || [];

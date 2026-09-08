@@ -1178,6 +1178,9 @@ const GUARDS = [
     'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a scan reads every window whatever was ticked, so the held-back entries are read without a look being counted'],
   [path.join(ROOT, 'lib', 'stages.js'), "  const look = isLook ? reads.filter((r) => r && r.look != null).length + 1 : null;", "  const look = null;",
     'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a read of the held-back entries is never counted as a look, on the capture or on Verify'],
+  // ---- the stage-engine check builds four years (3.92.1) ----
+  [path.join(ROOT, 'lib', 'stagegate.js'), "  windowLayout: 'reserve61', allLoaded: false, startMonth: SPAN.fromMonth, endMonth: SPAN.toDate.slice(0, 7),", "  windowLayout: 'reserve61', allLoaded: false, startMonth: '2024-01', endMonth: SPAN.toDate.slice(0, 7),",
+    'theCheckBuildsFourYearsAndItsMonthsFollowItsSpan', 'the check fabricates four years and trains on one, and fails on its own starvation again while claiming the longer span'],
 ];
 
 const only = process.argv[2] || '';

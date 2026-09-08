@@ -6894,7 +6894,7 @@ async function runStageGate(run) {
   return G.writeRecord({
     id: run.id, at: new Date().toISOString(), release: ENGINE_VERSION, pass: g.pass,
     checks: g.checks, sentences: g.sentences, chance: g.chance, copies: g.copies, bar: g.bar,
-    rule: G.RULE, planted: summary(blocks.planted), fair: summary(blocks.fair),
+    rule: G.RULE, span: { ...G.SPAN }, planted: summary(blocks.planted), fair: summary(blocks.fair),
     stage1, reference,
     stage3: { settings: (d3.plan || {}).settings ?? null, units: (d3.plan || {}).units ?? null, failures: (d3.failures || []).length },
     elapsedMs: Date.now() - run.startedAt,

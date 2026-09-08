@@ -1061,3 +1061,19 @@ carried out 2026-08-28 under its own GO — decision 50.
     that reads the held-back entries is a counted look, stamped on the capture
     and counted on Verify's looks line; training and test reads are not. *The
     unread window is never captured.* Second digit.
+
+83. **The stage-engine check builds four years of fabricated prices** (3.92.1,
+    owner order 2026-09-08: "make the stage-engine check build four years GO
+    NOW!"). On one year the daily shape kept 220 training chunks after the
+    seal and the two slices were cut away and stage 1 could not learn the
+    plant: the check failed on its own starvation, not on the engine (the
+    loop's four-year diagnosis passed every gate on 888 training chunks,
+    VERIFY-DESIGN.md section 9 step 2). The span is now 2021-01 to
+    2024-12-31; the months stage 1 is launched on are read off the span so
+    the two cannot drift; the record carries the span it was built on and the
+    last check on Verify says it. The two chain tests keep a one-year span of
+    their own, declared in the test: they exercise the doors and the
+    arithmetic, not the calibration, and four years would cost the suite
+    twenty minutes for nothing. Third digit. The new release makes the check
+    read NOT CHECKED; the owner presses it.
+
