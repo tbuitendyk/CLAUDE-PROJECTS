@@ -5823,8 +5823,11 @@ const unreadBusy = () => (unreadRun && !unreadRun.result && !unreadRun.error ? `
 // and the per-trade capture of a Stage 4 set for Tune (3.92.0), the same pricing pass again
 let captureRun = null;   // { id, token, done, of, result, error, promise }
 const captureBusy = () => (captureRun && !captureRun.result && !captureRun.error ? `the per-trade capture of ${captureRun.id} is being worked out` : null);
+// and the History half-life run (3.94.0), the same pricing pass again per half-life
+let halfLifeRun = null;   // { id, token, done, of, result, error, promise }
+const halfLifeBusy = () => (halfLifeRun && !halfLifeRun.result && !halfLifeRun.error ? `the half-life run of ${halfLifeRun.id} is being worked out` : null);
 const richBusy = () => (richRun && !richRun.result && !richRun.error
-  ? `the missing numbers of ${richRun.id} are being worked out` : (rideBusy() || unreadBusy() || captureBusy()));
+  ? `the missing numbers of ${richRun.id} are being worked out` : (rideBusy() || unreadBusy() || captureBusy() || halfLifeBusy()));
 function funnelRichStart(id, state = {}) {
   if (richRun && !richRun.result && !richRun.error) {
     if (richRun.id === String(id)) return richStatus(richRun);
@@ -6025,7 +6028,10 @@ function verifyLooksOf(doc, keys, stamped) {
   // a tool run on Tune that read the captured held-back entries (3.92.0): a look, stamped on the capture
   const tuneReads = (((doc.capture || {}).reads) || []).filter((r) => r && r.look != null).length;
   if (tuneReads) what.push(`a scan on Tune read the captured held-back trades ${tuneReads} time(s), each a stamped look`);
-  return { unstamped: steps + back + 1, stamped: stamped || 0, rides, tuneReads, what };
+  // a half-life run judged on the Held window (a 70/15/15 set) read it once per press (3.94.0)
+  const halfLifeReads = (doc.halflife || []).filter((r) => r && r.judge === 'hold').length;
+  if (halfLifeReads) what.push(`the half-life run on History priced the held-back window ${halfLifeReads} time(s), each a stamped look`);
+  return { unstamped: steps + back + 1, stamped: stamped || 0, rides, tuneReads, halfLifeReads, what };
 }
 function verifyFooting(doc, join) {
   const V = require('./funnelverify');
@@ -6789,6 +6795,233 @@ async function tuneOnCapture(body, tool) {
     },
     appliesToLiveRule: false,
   };
+}
+
+// ---- THE HISTORY HALF-LIFE RUN (3.94.0, AGEDIAL-DESIGN.md, owner design 2026-09-08) ----
+//
+// "4.h IS the same 199 records retrained." A Stage 4 record set's settings are
+// kept exactly; only the forecasts behind them are retrained, once per
+// half-life the owner ticked, with each training chunk's weight halving every
+// H days of age multiplied into the set's own training weights; then the same
+// records are priced again on the stretch the retraining never touched (the
+// Reserve for a 61/13/13/13 set, the Held window for a 70/15/15 set), in ONE
+// pass beside the unweighted column, through the stage 3 task. The arithmetic
+// is lib/halflife.js's; the doors, the record on the set and the file beside it
+// are here. Every press is a counted look; the count is information.
+const HALFLIFE_V = 1;
+const halfLifeFile = (setId, runId) => path.join(SETS_DIR, `${setId}-halflife-${runId}.json.gz`);
+function readHalfLifeRun(setId, runId) {
+  try {
+    const raw = JSON.parse(zlib.gunzipSync(fs.readFileSync(halfLifeFile(setId, runId))).toString('utf8'));
+    return raw && raw.v === HALFLIFE_V && Array.isArray(raw.halfLives) ? raw : null;
+  } catch (_) { return null; }
+}
+function writeHalfLifeRun(setId, runId, rec) {
+  const tmp = `${halfLifeFile(setId, runId)}.tmp${process.pid}-${++tmpSeq}`;
+  fs.writeFileSync(tmp, zlib.gzipSync(Buffer.from(JSON.stringify(rec))));
+  fs.renameSync(tmp, halfLifeFile(setId, runId));
+  return rec;
+}
+// the set's own window layout is the chain's: read off the stage 3 parent
+function layoutOfSet(doc) {
+  const parent = getSet((doc.parent || {}).id);
+  return parent ? ((parent.params || {}).windowLayout || null) : null;
+}
+// the ticked half-lives, checked against what is offered, sorted shortest first
+function halfLifeMonthsOf(asked) {
+  const HL = require('./halflife');
+  const raw = Array.isArray(asked && asked.months) ? asked.months : [];
+  const months = [...new Set(raw.map((m) => Number(m)))].filter((m) => Number.isFinite(m)).sort((a, b) => a - b);
+  if (!months.length) throw new Error(`tick at least one half-life: ${HL.HALF_LIVES_MONTHS.join(', ')} months`);
+  for (const m of months) if (!HL.HALF_LIVES_MONTHS.includes(m)) throw new Error(`${m} is not one of the half-lives offered (${HL.HALF_LIVES_MONTHS.join(', ')} months)`);
+  return months;
+}
+function halfLifeRefusalOf(doc) {
+  const HL = require('./halflife');
+  if (!doc.unit) return BLEND_REFUSAL;
+  if (!unreadGateOf(doc)) return UNREAD_NO_PASS;
+  const parent = getSet((doc.parent || {}).id);
+  if (!parent) return 'the stage 3 set this was cut from is gone, so its records cannot be retrained';
+  if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot be named';
+  try { HL.retrainLayoutOf(layoutOfSet(doc)); } catch (err) { return err.message; }
+  if (layoutOfSet(doc) === 'reserve61') {
+    const sealed = sealedOnUnitOf(doc);
+    if (!sealed.sealed) return `the sealed window is not intact on this unit — ${sealed.why}`;
+  }
+  if (!(doc.survivors || []).length) return 'this set wrote down no settings, so there is nothing to retrain';
+  if (batch.batchRunning()) return 'a sweep is running on this box — the half-life run waits for it';
+  const busy = stageBusy();
+  if (busy) return `${busy} — the half-life run waits for the box to be free`;
+  if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
+  if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+  if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
+  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  return null;
+}
+async function halfLifeRunOn(doc, months, note = null) {
+  const HL = require('./halflife');
+  const gate = unreadGateOf(doc);
+  if (!gate) throw new Error(UNREAD_NO_PASS);
+  const join = await funnelVerifyJoin(doc);
+  const footing = verifyFooting(doc, join);
+  if (!footing.ok) throw new Error(footing.why);
+  const parent = join.parent;                                   // the stage 3 set
+  const shape = relaunchShapeOf(parent);                        // refuses when the stage 2 set is gone
+  const stage2 = shape.parent;
+  const idx = shape.records.findIndex((r) => unitKeyOf(r) === doc.unit);
+  if (idx < 0) throw new Error(`the stage 3 set holds no unit called '${doc.unit}'`);
+  const rec = shape.records[idx];
+  const layout = HL.retrainLayoutOf((parent.params || {}).windowLayout);
+  let sealed = null;
+  if (layout.judge === 'reserve') {
+    sealed = sealedOnUnitOf(doc);
+    if (!sealed.sealed) throw new Error(`the sealed window is not intact on this unit — ${sealed.why}`);
+  }
+  const want = new Set(join.rows.map((r) => r.label));
+  const held = new Set(shape.heldOn[idx]);
+  const settings = shape.settings.filter((st) => want.has(st.label) && held.has(st.si));
+  const missing = [...want].filter((L) => !settings.some((st) => st.label === L));
+  if (!settings.length) throw new Error('none of this set\'s survivors is in the stage 3 set\'s block on this unit');
+  const fee = Number((parent.params || {}).fee) || 0;
+  const specs = (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view }));
+  if (!specs.length) throw new Error('the stage 2 set names no members for this unit, so nothing can be retrained');
+  const combo = { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size: rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1) };
+  // EVERY OTHER TRAINING CHOICE THE SET WAS MADE WITH, from the stage 2 set that trained the members
+  const p2 = stage2.params || {};
+  const trainParams = { allLoaded: p2.allLoaded !== false, startMonth: p2.startMonth || null, endMonth: p2.endMonth || null, trainOn: p2.trainOn || null, weightCap: p2.weightCap ?? null, windowLayout: layout.layout };
+  const pin = pinOf(parent);
+  const of = months.length + 1 + months.length;
+  let done = 0;
+  const tick = () => { done++; if (note) note(done, of); };
+  if (note) note(0, of);
+  const pool = createPool();
+  activePool = pool;
+  const trained = new Array(months.length);
+  const priced = [];
+  try {
+    // 1. the members retrained, once per half-life, across the workers
+    await pool.forEach('hlTrain', months.map((m) => ({ combo, geometry: rec.geometry, specs, fee, halfLifeMonths: m, params: trainParams, pin })), (settled, i) => {
+      trained[i] = settled.ok ? settled.value : { halfLifeMonths: months[i], halfLifeDays: HL.daysOfMonths(months[i]), effectiveDays: null, refused: `the retraining failed: ${String(settled.error || 'no answer')}` };
+      tick();
+    });
+    // 2. the pricing, in one pass: the unweighted column from the set's own votes and models, then each half-life
+    const base = s3Payload({ doc: parent, parent: stage2, rec, settings, fee, nullN: 0 });
+    base.keepN = 0;
+    const models = unitRows(stage2.id, 'models', rec.blocks.models, rec.u);
+    base.unit.members = base.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
+    if (layout.judge === 'reserve') base.unread = { fromTs: sealed.fromTs };
+    const payloads = [{ key: HL.NONE, payload: base }];
+    for (const t of trained) {
+      if (!t || t.refused) continue;
+      payloads.push({
+        key: HL.keyOf(t.halfLifeMonths),
+        payload: {
+          ...base,
+          params: { ...(parent.params || {}), windowLayout: layout.layout },
+          // PRICED AT THE UNIT'S ORIGINAL BAND: the trade shapes are the set's own; only the forecasts changed
+          unit: { bandPct: rec.bandPct, probs: t.members.map((m) => m.probs), ts: t.ts, members: t.members.map((m) => ({ spec: m.spec, tauProbs: m.tauProbs, saved: m.saved })) },
+        },
+      });
+    }
+    await pool.forEach('s3Unit', payloads.map((x) => x.payload), (settled, i) => { priced[i] = { key: payloads[i].key, ...settled }; tick(); });
+  } finally { activePool = null; pool.abort(); }
+  const none = priced.find((x) => x.key === HL.NONE);
+  if (!none || !none.ok) throw new Error(`the unweighted column could not be priced: ${String((none && none.error) || 'no answer')}`);
+  const noneRes = none.value;
+  // 3. the table
+  const columns = [];
+  const byKey = {};
+  for (const t of trained) {
+    const key = HL.keyOf(t.halfLifeMonths);
+    const pr = priced.find((x) => x.key === key) || null;
+    let refused = t.refused || null;
+    if (!refused && (!pr || !pr.ok)) refused = `the pricing failed: ${String((pr && pr.error) || 'no answer')}`;
+    // ONE STRETCH FOR EVERY COLUMN: on the Reserve the box's data is read on the day, and two readings that reached different ends are not one table
+    if (!refused && layout.judge === 'reserve' && pr.value.unread && noneRes.unread && pr.value.unread.seenToTs !== noneRes.unread.seenToTs) {
+      refused = 'the box\'s data grew between this column and the unweighted one; press again so every column reads one stretch';
+    }
+    columns.push({ key, months: t.halfLifeMonths, days: t.halfLifeDays, effectiveDays: t.effectiveDays ?? null, weighedByMoney: t.weighedByMoney ?? null, trainedBandPct: t.trainedBandPct ?? null, refused });
+    byKey[key] = refused ? null : pr.value;
+  }
+  columns.push({ key: HL.NONE, months: null, days: null, effectiveDays: null, refused: null });
+  byKey[HL.NONE] = noneRes;
+  const rowOf = (res, label) => ((res && res.rows) || []).find((r) => r.label === label) || null;
+  const rows = settings.map((st) => {
+    const money = {};
+    const trades = {};
+    const test = {};
+    for (const c of columns) {
+      const r = rowOf(byKey[c.key], st.label);
+      money[c.key] = r && r.holdout ? r.holdout.pnl : null;
+      trades[c.key] = r && r.holdout ? r.holdout.trades : null;
+      test[c.key] = r ? r.pnl : null;
+    }
+    const r0 = rowOf(noneRes, st.label);
+    return { si: st.si, label: st.label, tHours: r0 ? r0.tHours : null, money, trades, test };
+  });
+  const read = HL.readTable(rows, columns);
+  const t0 = trained.find((t) => t && !t.refused) || null;
+  const window = layout.judge === 'reserve'
+    ? { ...noneRes.unread }
+    : (() => { const w = ((((parent.windows || {}).units) || {})[doc.unit] || {}).hold || null; return w ? { fromTs: w.fromTs, toTs: w.toTs, chunks: w.chunks } : { chunks: noneRes.counts ? noneRes.counts.hold : null }; })();
+  const at = new Date().toISOString();
+  const fresh = getSet(doc.id);
+  if (!fresh) throw new Error('the set went away while its records were being retrained');
+  const had = fresh.halflife || [];
+  const block = {
+    id: `${doc.id}-h${had.length + 1}`, at, release: ENGINE_VERSION, look: had.length + 1,
+    gate, judge: layout.judge, judgeWord: layout.judgeWord, layout: layout.layout, shares: { train: layout.train, test: layout.test, untouched: layout.untouched },
+    months, columns, window,
+    counts: { train: t0 ? t0.counts.train : null, test: t0 ? t0.counts.test : null, hold: t0 ? t0.counts.hold : null, original: noneRes.counts || null },
+    unit: doc.unit, unitName: doc.unitName || null, members: specs.length, fee: { feePerLeg: fee, feeUnits: 'fraction' },
+    survivors: join.rows.length, missing,
+    rows: read.rows, wins: read.wins, averages: read.averages, figures: read.counts,
+  };
+  writeHalfLifeRun(doc.id, block.id, {
+    v: HALFLIFE_V, id: block.id, setId: doc.id, at, release: ENGINE_VERSION, judge: layout.judge, layout: layout.layout,
+    unit: doc.unit, combo, geometry: rec.geometry, fee: block.fee, params: trainParams, pin, originalBandPct: rec.bandPct,
+    window, halfLives: trained.filter((t) => t && !t.refused),
+  });
+  fresh.halflife = [block, ...had];
+  saveSet(fresh);
+  return { id: block.id, look: block.look, rows: block.rows.length, wins: block.wins, columns: columns.map((c) => c.key), refused: columns.filter((c) => c.refused).map((c) => c.key) };
+}
+async function halfLifeDry(id) {
+  const HL = require('./halflife');
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  let layout = null;
+  let layoutWhy = null;
+  try { layout = HL.retrainLayoutOf(layoutOfSet(doc)); } catch (err) { layoutWhy = err.message; }
+  return {
+    id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
+    ruleSentence: doc.ruleSentence || null, survivors: ((doc.counts || {}).survivors) ?? (doc.survivors || []).length,
+    gate: unreadGateOf(doc), verdicts: (doc.verify || []).length,
+    windowLayout: layoutOfSet(doc), layout, layoutWhy,
+    halfLives: HL.HALF_LIVES_MONTHS.slice(),
+    runs: doc.halflife || [], looks: (doc.halflife || []).length,
+    refused: halfLifeRefusalOf(doc),
+    running: halfLifeRun && halfLifeRun.id === doc.id && !halfLifeRun.result && !halfLifeRun.error ? { token: halfLifeRun.token, done: halfLifeRun.done, of: halfLifeRun.of } : null,
+  };
+}
+const halfLifeStatusOf = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, cpu: cpuLoad(), error: run.error, result: run.result });
+function halfLifeStart(id, asked = {}) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  if (halfLifeRun && halfLifeRun.id === id && !halfLifeRun.result && !halfLifeRun.error) return halfLifeStatusOf(halfLifeRun);
+  const why = halfLifeRefusalOf(doc);
+  if (why) throw new Error(why);
+  const months = halfLifeMonthsOf(asked);
+  const run = { id, token: `${id}:${Date.now()}`, done: 0, of: months.length * 2 + 1, result: null, error: null, promise: null };
+  halfLifeRun = run;
+  run.promise = halfLifeRunOn(doc, months, (done, of) => { run.done = done; run.of = of; })
+    .then((result) => { run.result = result; run.done = run.of; })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return halfLifeStatusOf(run);
+}
+function halfLifeStatus(id) {
+  if (!halfLifeRun || halfLifeRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
+  return halfLifeStatusOf(halfLifeRun);
 }
 
 // ---- V0: THE STAGE ENGINE'S OWN PLANTED CHECK (3.87.0, VERIFY-DESIGN.md) --------
@@ -7625,6 +7858,7 @@ module.exports = {
   unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
   stage4GreenlightSource, stage4GreenlightDry,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
+  halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet,
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,

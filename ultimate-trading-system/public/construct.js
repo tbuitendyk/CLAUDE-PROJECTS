@@ -2360,12 +2360,96 @@ async function hGradeFollow(id, token) {
     if (tab !== 'history') return;
   }
 }
+// ---- THE HALF-LIFE RUN ON HISTORY (3.94.0, AGEDIAL-DESIGN.md) -------------------
+//
+// The same records retrained with recent history weighted more, once per
+// ticked half-life, priced beside the unweighted column on the stretch the
+// retraining never touched. Drawn under the reserve grade, for the set chosen
+// in its box. Helpers written with braces on purpose (see above).
+const H_HL_KEY = 'cx-history-halflives';
+const H_HALF_LIVES = [12, 18, 24, 30, 36, 48];
+function hRememberedHalfLives() {
+  try {
+    const raw = JSON.parse(localStorage.getItem(H_HL_KEY) || 'null');
+    if (Array.isArray(raw)) return H_HALF_LIVES.filter((m) => raw.includes(m));
+  } catch (_) { /* private window, or nothing saved */ }
+  return H_HALF_LIVES.slice();
+}
+function hMonthsWord(key) { return key === 'none' ? 'unweighted' : `${String(key).slice(1)} months`; }
+function hHalfLifeBlockHtml(b, isFirst) {
+  const cols = b.columns || [];
+  const w = b.window || {};
+  const rows = b.rows || [];
+  const green = 'background:rgba(40,170,80,.28)';
+  const colHead = cols.map((c) => `<th title="${c.key === 'none' ? `the set's own forecasts, unweighted and not retrained, on the ${esc(b.judgeWord)} window` : `the records priced again with forecasts retrained on the first ${b.shares.train}% of history with a ${c.months}-month half-life, on the ${esc(b.judgeWord)} window`}">${esc(hMonthsWord(c.key))} $</th>`).join('');
+  return `<div class="panel" style="margin-top:.5rem">
+    <h4 style="margin:0 0 .3rem">look ${b.look}${isFirst ? ' - the first' : ''} <span class="muted">taken ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')}</span></h4>
+    <p class="note">judged on the <b>${esc(b.judgeWord)}</b> window${w.fromTs != null ? ` from ${hDay(w.fromTs)} to ${hDay(w.toTs)}` : ''}, ${w.chunks ?? '?'} whole chunks${w.seenToTs != null ? ` · the box's data reached ${hDay(w.seenToTs)}` : ''} · retrained on the first ${b.shares.train}% of history, tested on the next ${b.shares.test}% · ${b.members} members, both kinds · verdict ${esc((b.gate || {}).id || '?')} stood</p>
+    <p class="note">${cols.filter((c) => c.key !== 'none').map((c) => `<b>${esc(hMonthsWord(c.key))}</b>: ${c.refused ? `<b class="warn">refused</b> - ${esc(c.refused)}` : `${hFix(c.effectiveDays, 0)} effective training days of ${b.counts.train ?? '?'}${c.weighedByMoney ? ', weighed by money' : ''}`}`).join(' · ')}</p>
+    ${(b.missing || []).length ? `<p class="note"><b class="warn">${b.missing.length} survivor(s) are not in the stage 3 set's block on this unit</b></p>` : ''}
+    <div class="scrollx" style="max-height:28rem;overflow-y:auto"><table><thead><tr><th title="the setting, by the name the board gives it">setting</th>${colHead}</tr></thead><tbody>
+      ${rows.map((r) => `<tr><td>${esc(r.label)}</td>${cols.map((c) => { const v = (r.money || {})[c.key]; const best = r.best === c.key; return `<td class="${(v || 0) >= 0 ? 'pos' : 'neg'}" style="${best ? green : ''}" title="${best ? 'the best of this row' : ''}">${v == null ? '—' : money(v)}</td>`; }).join('')}</tr>`).join('')}
+    </tbody><tfoot>
+      <tr><td><b>rows won</b></td>${cols.map((c) => `<td><b>${(b.wins || {})[c.key] ?? 0}</b> of ${rows.length}</td>`).join('')}</tr>
+      <tr><td><b>average $</b></td>${cols.map((c) => { const v = (b.averages || {})[c.key]; return `<td class="${(v || 0) >= 0 ? 'pos' : 'neg'}">${v == null ? '—' : money(v)}</td>`; }).join('')}</tr>
+    </tfoot></table></div>
+    <p class="note muted">${rows.length} records, in the set's own order. Green is the best of the row: a half-life wins only by at least a cent over the unweighted column; a tie goes to the unweighted side.</p>
+  </div>`;
+}
+function hHalfLifePanelHtml(chosen, d) {
+  const runs = d ? (d.runs || []).slice().reverse() : [];
+  const ticked = hRememberedHalfLives();
+  const lay = d && d.layout ? d.layout : null;
+  return `<div class="panel">
+    <h3 style="margin-top:0">Retrain with recent history weighted</h3>
+    <p class="note">The same records, retrained: every setting of the set chosen above is kept exactly as it is, and only the
+      forecasts behind it are trained again with recent history weighted more, once per half-life ticked, keeping every other
+      training choice the set was made with. Then the same records are priced again on the stretch the retraining never
+      touched, in one pass beside the set's own unweighted figures. A set built 61/13/13/13 retrains on the first 72% of
+      history and tests on the next 15%, and is judged on the Reserve; a set built 70/15/15 retrains on its 70% and tests on
+      its 15%, and is judged on the Held window. Every press is a counted look.</p>
+    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${Number(d.survivors || 0).toLocaleString()} survivors
+      · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}
+      · ${lay ? `built ${lay.judge === 'reserve' ? '61/13/13/13' : '70/15/15'}: retrains on the first ${lay.train}%, tests on the next ${lay.test}%, judged on the <b>${esc(lay.judgeWord)}</b> (${lay.untouched}%)` : `<b class="warn">${esc(d.layoutWhy || 'no layout')}</b>`}
+      · ${d.looks ? `run ${d.looks} time(s) so far` : 'not run yet'}</p>
+      <div class="row" style="align-items:flex-end">
+        <span class="note" title="which half-lives to retrain at. A half-life is how long ago a training day must be to count half as much as today's; each ticked value is a full retraining of both kinds of forecast and one column of the table.">half-lives</span>
+        <label class="f" style="flex:none"><input type="checkbox" id="hHl12" ${ticked.includes(12) ? 'checked' : ''}> 12 months</label>
+        <label class="f" style="flex:none"><input type="checkbox" id="hHl18" ${ticked.includes(18) ? 'checked' : ''}> 18 months</label>
+        <label class="f" style="flex:none"><input type="checkbox" id="hHl24" ${ticked.includes(24) ? 'checked' : ''}> 24 months</label>
+        <label class="f" style="flex:none"><input type="checkbox" id="hHl30" ${ticked.includes(30) ? 'checked' : ''}> 30 months</label>
+        <label class="f" style="flex:none"><input type="checkbox" id="hHl36" ${ticked.includes(36) ? 'checked' : ''}> 36 months</label>
+        <label class="f" style="flex:none"><input type="checkbox" id="hHl48" ${ticked.includes(48) ? 'checked' : ''}> 48 months</label>
+      </div>
+      <div class="row" style="margin-top:.4rem;align-items:flex-end">
+        <button id="hHalfLife" class="pri" ${d.refused ? 'disabled' : ''} title="retrains the set's forecasts once per ticked half-life and prices the same records again beside the unweighted figures, on the window the retraining never touched. Minutes. Every press is a counted look and appends a table; none is overwritten.">Retrain at the ticked half-lives${d.looks ? ` - look ${d.looks + 1}` : ''}</button>
+        <span id="hHalfLifeMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
+      ${runs.length ? runs.map((b, i) => hHalfLifeBlockHtml(b, i === 0)).join('') : '<p class="note">No half-life run on this set yet.</p>'}` : ''}
+  </div>`;
+}
+async function hHalfLifeFollow(id, token) {
+  for (;;) {
+    let s = null;
+    try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/halflife/status`); } catch (_) { s = null; }
+    if (!s || s.none || s.token !== token) { drawHistory(); return; }
+    if (s.error) {
+      const m = $('#hHalfLifeMsg'); if (m) m.textContent = s.error;
+      const b = $('#hHalfLife'); if (b) b.disabled = false;
+      return;
+    }
+    if (s.result) { drawHistory(); return; }
+    const m = $('#hHalfLifeMsg'); if (m) m.textContent = `retraining and pricing · ${s.done} of ${s.of} step(s)${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}`;
+    await new Promise((resolve) => { setTimeout(resolve, 3000); });
+    if (tab !== 'history') return;
+  }
+}
 async function drawHistory() {
   const doc = await loadPicked();
   const sel = getSelRow(doc);
   const hSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []);
   const hChosen = hRememberedSet(hSets);
   const hd = hChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(hChosen)}/unread`, null) : null;
+  const hl = hChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife`, null) : null;
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">History Tuning — change ONE variable (training-history length) and price the effect</h3>
     <p class="note">One variable per run, declared before it fires (the confirm discipline): the same frozen trading
@@ -2395,6 +2479,7 @@ async function drawHistory() {
     <div id="ht2Out"></div>
   </div>
   ${hGradePanelHtml(hSets, hChosen, hd)}
+  ${hHalfLifePanelHtml(hChosen, hl)}
   <div class="panel"><h3 style="margin-top:0">Finished tuning runs</h3><div id="htList"><span class="muted">loading…</span></div></div>`;
   const hSel = $('#hSet');
   if (hSel) hSel.onchange = () => {
@@ -2415,6 +2500,27 @@ async function drawHistory() {
     hGradeFollow(hChosen, started.token);
   };
   if (hd && hd.running && hb) { hb.disabled = true; hGradeFollow(hChosen, hd.running.token); }
+  // the half-life run: the ticks are remembered, the press sends them, started and polled
+  for (const m of H_HALF_LIVES) {
+    const box = $(`#hHl${m}`);
+    if (box) box.onchange = () => {
+      const on = H_HALF_LIVES.filter((k) => { const el = $(`#hHl${k}`); return el && el.checked; });
+      try { localStorage.setItem(H_HL_KEY, JSON.stringify(on)); } catch (_) { /* private window */ }
+    };
+  }
+  const hlb = $('#hHalfLife');
+  if (hlb && hChosen && hl && !hl.refused) hlb.onclick = async () => {
+    const months = H_HALF_LIVES.filter((k) => { const el = $(`#hHl${k}`); return el && el.checked; });
+    if (!months.length) { alert('tick at least one half-life: 12, 18, 24, 30, 36 or 48 months'); return; }
+    const look = (hl.looks || 0) + 1;
+    if (!confirm(`Retrain ${hl.name} at ${months.join(', ')} month(s)?\n\nEvery ticked half-life is a full retraining of both kinds of forecast, then the same records priced again on the ${hl.layout ? hl.layout.judgeWord : 'untouched'} window beside the unweighted figures. Minutes. This is look ${look}.`)) return;
+    hlb.disabled = true;
+    $('#hHalfLifeMsg').textContent = 'starting…';
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife`, { months }, 'The Stage 4 record set box on History lists what was retrained - pick the set there.');
+    if (!started) { hlb.disabled = false; $('#hHalfLifeMsg').textContent = ''; return; }
+    hHalfLifeFollow(hChosen, started.token);
+  };
+  if (hl && hl.running && hlb) { hlb.disabled = true; hHalfLifeFollow(hChosen, hl.running.token); }
   const list = await apiOr('api/batches', ({}));
   const runs = (list.batches || list || []).filter((b) => b.kind === 'historytuning' || b.kind === 'httwo').slice(0, 12);
   $('#htList').innerHTML = runs.length ? `<table><thead><tr>${cth('run','run')}${cth('kind','kind')}${cth('status','status')}${cth('started','started')}<th></th></tr></thead><tbody>

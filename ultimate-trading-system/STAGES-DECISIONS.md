@@ -1086,3 +1086,24 @@ carried out 2026-08-28 under its own GO — decision 50.
     older engine (lib/batch.js) keeps reading its own records, which carry the
     name. Second digit: a control is gone.
 
+85. **The History half-life run** (3.94.0, loop H2, AGEDIAL-DESIGN.md, owner
+    design 2026-09-08: "4.h IS the same 199 records retrained"). On History,
+    under the reserve grade, for the set chosen there: tick any of 12, 18, 24,
+    30, 36, 48 months and press once; the set's forecasts (both kinds, the
+    stage 2 record's members) are retrained once per ticked half-life with
+    each training chunk's weight `0.5^(age/H)` multiplied into the set's own
+    training weights, on the retrain layout (a 61/13/13/13 set: the first 72%
+    of history trains, the next 15% tests, no held-back slice, the Reserve
+    judges; a 70/15/15 set: its own 70/15, the Held window judges); the same
+    settings are priced again through the stage 3 task at the unit's original
+    band, beside the unweighted column priced in the same pass from the set's
+    own votes and models. One table: a money column per half-life shortest to
+    longest, the unweighted last, best per row in green (a half-life wins only
+    by at least a cent; a tie goes to the unweighted side; equal half-lives to
+    the shorter), rows won and averages under it. A starved half-life is
+    refused for its column in the floor's words; a Reserve column whose read
+    reached a different end than the unweighted one is refused too. The
+    retrained members are kept beside the set per run, per half-life. Every
+    press is a counted look, appended, never overwritten; "Run the reserve
+    grade on this set" is untouched. Second digit.
+

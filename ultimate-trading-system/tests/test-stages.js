@@ -4728,6 +4728,7 @@ module.exports = {
     assert.match(msg, /the 80\/20 window layout was removed/, 'a launch asking for it is refused by name');
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     assert.ok(!/legacy80/.test(sw.replace(/\/\/[^\n]*/g, '')), 'the chunk split no longer knows the name');
-    assert.ok(/const split = splitAndLabel\(workChunks, branch, true\);/.test(sw), 'every layout keeps a held-back slice');
+    // re-aimed 3.94.0: the retrain layout (the History half-life run) is the one split with no held-back slice, and its judge is the Reserve
+    assert.ok(/const split = retrainTrain != null \? splitAndLabelAt\(workChunks, branch, retrainTrain\) : splitAndLabel\(workChunks, branch, true\);/.test(sw), 'every layout keeps a held-back slice, except the retrain layout whose judge is the Reserve');
   },
 };

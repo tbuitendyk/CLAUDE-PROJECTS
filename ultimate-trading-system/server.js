@@ -964,6 +964,16 @@ app.post('/api/funnel/set/:id/capture', (req, res) => {
   try { return res.json(stages.tuneCaptureStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/capture/status', (req, res) => res.json(stages.tuneCaptureStatus(req.params.id)));
+// THE HISTORY HALF-LIFE RUN (3.94.0): the GET is the dry read (the gate, the
+// set's layout and its judge, the runs so far), the POST retrains the set's
+// records at the ticked half-lives and prices them, started and polled
+app.get('/api/funnel/set/:id/halflife', async (req, res) => {
+  try { return res.json(await stages.halfLifeDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/funnel/set/:id/halflife', (req, res) => {
+  try { return res.json(stages.halfLifeStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.get('/api/funnel/set/:id/halflife/status', (req, res) => res.json(stages.halfLifeStatus(req.params.id)));
 
 app.get('/api/stageset/:id/coins', (req, res) => {
   const out = stages.stage3Coins(req.params.id, req.query || {});

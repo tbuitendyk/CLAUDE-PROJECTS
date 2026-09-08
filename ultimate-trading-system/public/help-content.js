@@ -764,6 +764,16 @@ window.HELP = {
         what: 'Prices the set\'s survivors on the unread window, the sealed part of the history no part of the search touched, and stamps the grade on the set.',
         more: 'The members forecast that window from the models they were trained as; nothing is retrained. The result is read by the same four rules as the verdict on Verify. It refuses without a verdict that passed under this release line, without an intact seal, and while anything heavy is running. Every press is counted as a look, and only the first is at data nothing has seen.',
       },
+      hHl12: { what: 'Whether to retrain at a 12-month half-life: a training day a year old counts half as much as today.' },
+      hHl18: { what: 'Whether to retrain at an 18-month half-life.' },
+      hHl24: { what: 'Whether to retrain at a 24-month half-life: a training day two years old counts half as much as today.' },
+      hHl30: { what: 'Whether to retrain at a 30-month half-life.' },
+      hHl36: { what: 'Whether to retrain at a 36-month half-life: a training day three years old counts half as much as today.' },
+      hHl48: { what: 'Whether to retrain at a 48-month half-life: a training day four years old counts half as much as today.' },
+      hHalfLife: {
+        what: 'Retrains the forecasts behind every setting of the chosen set, once per ticked half-life, and prices the same settings again beside the unweighted figures on the window the retraining never touched.',
+        more: 'A set built 61/13/13/13 retrains on the first 72% of history, tests on the next 15% and is judged on the Reserve; a set built 70/15/15 retrains on its 70%, tests on its 15% and is judged on the Held window. Both kinds of forecast are retrained; every other training choice stays as the set was made. The best of each row is green, and a half-life wins only by at least a cent. Every press is a counted look.',
+      },
       htRun: { what: 'Runs the still-current check on the row picked on the Boards tab.' },
       ht2hl: {
         what: 'How quickly older evidence stops counting. 12mo makes evidence from a year ago count half as much as today’s; 36mo stretches that to three years.',

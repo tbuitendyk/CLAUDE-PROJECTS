@@ -239,6 +239,21 @@ function splitAndLabel(chunks, branch, holdout) {
   return { trainChunks, testChunks, holdChunks, bandPct };
 }
 
+// THE SAME LABELLING AT A TRAINING LENGTH THE CALLER STATES (3.94.0, the
+// History half-life run): the first nTrain chunks train, the rest test, no
+// held-back slice. The band is the training slice's own balanced band, as it
+// always is; the caller decides what the settings are PRICED at.
+function splitAndLabelAt(chunks, branch, nTrain) {
+  const n = chunks.length;
+  const keep = Math.max(0, Math.min(n - 2, Math.floor(Number(nTrain) || 0)));
+  const trainChunks = chunks.slice(0, keep);
+  const testChunks = chunks.slice(keep);
+  if (trainChunks.length < MIN_CHUNKS) throw new Error(`only ${trainChunks.length} training chunks after the split`);
+  const bandPct = branch.band === 'auto' ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(branch.band);
+  for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
+  return { trainChunks, testChunks, holdChunks: [], bandPct };
+}
+
 // QUOTA-FIRST WINDOW LAYOUTS (owner's design, 2026-07-30) — see
 // lib/interlace.js for the geometry. This is the layout-aware sibling of
 // (splitByLayout and the quota layouts were purged 2026-08-03 on the
@@ -811,4 +826,4 @@ async function menuGridTask({ combo, branch, params, dump }) {
   };
 }
 
-module.exports = { unitTask, nullRotationTask, menuGridTask, quorumCall, trainMembers, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitBounds, rotateLabels, windowShift, specsFor };
+module.exports = { unitTask, nullRotationTask, menuGridTask, quorumCall, trainMembers, declaredQuorumFor, matchesDeclared, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelAt, splitBounds, rotateLabels, windowShift, specsFor };

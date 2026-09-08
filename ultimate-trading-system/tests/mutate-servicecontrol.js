@@ -1184,6 +1184,13 @@ const GUARDS = [
   // ---- the 80/20 layout removed from stage 1 (3.93.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "  if (params.windowLayout === 'legacy80') throw new Error('the 80/20 window layout was removed:", "  if (false) throw new Error('the 80/20 window layout was removed:",
     'theEightyTwentyLayoutIsGoneFromStageOne', 'a launch asking for the removed layout is quietly relaid as 61/13/13/13 while its record claims what was asked'],
+  // ---- the History half-life run (3.94.0) ----
+  [path.join(ROOT, 'lib', 'halflife.js'), "  const weights = age.map((a, i) => a * (base ? base[i] : 1));", "  const weights = age.map((a, i) => (base ? base[i] : 1));",
+    'theAgeWeightMultipliesIntoTheSetsOwnWeightsAndAStarvedHalfLifeIsRefusedInWords', 'the half-life changes nothing: every column is the unweighted training wearing a half-life name'],
+  [path.join(ROOT, 'lib', 'halflife.js'), "  return best.v >= none + 1 ? best.key : NONE;", "  return best.v >= none ? best.key : NONE;",
+    'theAgeWeightMultipliesIntoTheSetsOwnWeightsAndAStarvedHalfLifeIsRefusedInWords', 'a tie or a fraction of a cent turns a row green for a half-life, and the 4.h set built from the table carries records nothing improved'],
+  [path.join(ROOT, 'lib', 'stages.js'), "          unit: { bandPct: rec.bandPct, probs: t.members.map((m) => m.probs), ts: t.ts, members: t.members.map((m) => ({ spec: m.spec, tauProbs: m.tauProbs, saved: m.saved })) },", "          unit: { bandPct: rec.bandPct, probs: base.unit.probs, ts: base.unit.ts, members: base.unit.members },",
+    'theRunPricesEveryColumnOnOneStretchAndTheUnweightedColumnIsTheRecordsOwn', 'every half-life column is priced from the set\'s original votes, so the table shows the unweighted money under six names'],
 ];
 
 const only = process.argv[2] || '';

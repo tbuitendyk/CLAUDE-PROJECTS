@@ -24,7 +24,7 @@
 // simCell, holdControls) — reimplementing any of them would let the two
 // worlds' numbers quietly disagree.
 const bracketLib = require('./bracket');
-const { buildCombo, splitAndLabel, quorumCall, declaredQuorumFor } = require('./bracketwork');
+const { buildCombo, splitAndLabel, splitAndLabelAt, quorumCall, declaredQuorumFor } = require('./bracketwork');
 const agreement = require('./agreement');
 // THE ONE DEFINITION OF A COMMITTEE'S CALL (3.91.0): calls from votes, the
 // committee's shape on its test slice, what is enough, the stream. Shared with
@@ -382,8 +382,23 @@ async function unitChunks(combo, geometry, p) {
     reserve = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
     workChunks = workChunks.slice(0, workChunks.length - nReserve);
   }
-  // every layout keeps a held-back slice (the 80/20 layout, which kept none, went 2026-09-08)
-  const split = splitAndLabel(workChunks, branch, true);
+  // THE RETRAIN LAYOUT (3.94.0, the History half-life run, AGEDIAL-DESIGN.md):
+  // the final 13% sealed exactly as the sealed layout seals it, then the first
+  // 72% of ALL history as training and the rest before the seal as the test
+  // slice, with no held-back slice -- the retraining reaches through it on
+  // purpose, and the Reserve is the judge. Never offered on Sweep.
+  let retrainTrain = null;
+  if (p.windowLayout === 'retrain72') {
+    const nAll = workChunks.length;
+    const nReserve = Math.max(2, Math.round(nAll * 0.13));
+    const sealed = workChunks.slice(nAll - nReserve);
+    reserve = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
+    workChunks = workChunks.slice(0, nAll - nReserve);
+    retrainTrain = Math.round(nAll * 0.72);
+  }
+  // every layout keeps a held-back slice (the 80/20 layout, which kept none, went 2026-09-08),
+  // except the retrain layout, whose judge is the Reserve
+  const split = retrainTrain != null ? splitAndLabelAt(workChunks, branch, retrainTrain) : splitAndLabel(workChunks, branch, true);
   // THE ACTUAL DATE RANGES EVERY RUN USED (3.85.0, owner order 2026-09-07: "on
   // all s1/2/3 sweep runs the three actual date ranges for 70/15/15 and
   // 61/13/13 should be stored"). Written on every stage 1 and 2 record and,
