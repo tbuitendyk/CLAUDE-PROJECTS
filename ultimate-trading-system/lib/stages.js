@@ -6107,14 +6107,16 @@ async function funnelVerifyDry(id) {
     refused: null, footing: null, looks: null,
     // the rule on the other units and the held-back ride (3.88.0), newest first
     others: doc.others || [], ride: doc.ride || [],
-    othersRefused: null, rideRefused: null,
+    // what the rule DROPPED, on the same window (V8, 3.100.0), newest first
+    dropped: doc.dropped || [],
+    othersRefused: null, rideRefused: null, droppedRefused: null,
     othersRunning: othersRun && othersRun.id === doc.id && !othersRun.result && !othersRun.error ? { token: othersRun.token, done: othersRun.done, of: othersRun.of } : null,
     rideRunning: rideRun && rideRun.id === doc.id && !rideRun.result && !rideRun.error ? { token: rideRun.token, done: rideRun.done, of: rideRun.of } : null,
   };
-  if (!doc.unit) { out.refused = BLEND_REFUSAL; out.othersRefused = BLEND_REFUSAL; out.rideRefused = BLEND_REFUSAL; return out; }
-  if (doc.derived) { const why = derivedRefusalOf(doc); out.refused = why; out.othersRefused = why; out.rideRefused = why; out.derived = doc.derived; return out; }
+  if (!doc.unit) { out.refused = BLEND_REFUSAL; out.othersRefused = BLEND_REFUSAL; out.rideRefused = BLEND_REFUSAL; out.droppedRefused = BLEND_REFUSAL; return out; }
+  if (doc.derived) { const why = derivedRefusalOf(doc); out.refused = why; out.othersRefused = why; out.rideRefused = why; out.droppedRefused = why; out.derived = doc.derived; return out; }
   let join;
-  try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; out.othersRefused = err.message; out.rideRefused = err.message; return out; }
+  try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; out.othersRefused = err.message; out.rideRefused = err.message; out.droppedRefused = err.message; return out; }
   out.footing = verifyFooting(doc, join);
   out.looks = verifyLooksOf(doc, out.footing.keys, (doc.verify || []).length);
   const busy = verifyBusy();
@@ -6124,6 +6126,13 @@ async function funnelVerifyDry(id) {
   else if (!out.footing.ok) out.refused = out.footing.why;
   out.othersRefused = othersRefusalOf(doc, out.footing);
   out.rideRefused = rideRefusalOf(doc);
+  out.droppedRefused = droppedRefusalOf(doc);
+  // HOW MANY THE RULE DROPPED, so the box on screen can say what "all of them"
+  // means before anything is pressed. Counted off the board already in hand.
+  try {
+    const S4d = require('./funnelset');
+    out.droppedOf = Math.max(0, join.mine.length - S4d.applyRule(join.mine, join.rule).length);
+  } catch { out.droppedOf = null; }
   return out;
 }
 async function funnelVerifyRun(doc, asked) {
@@ -6188,6 +6197,78 @@ function funnelVerifyStart(id, asked = {}) {
   return funnelVerifyStatus(id);
 }
 // one line per set for the set list: how many blocks, and what the verdict said
+// ---- V8: what the settings the rule DROPPED did on the same window (3.100.0) ----
+//
+// SELECTION-DESIGN.md Part 7. A count of survivors that cleared a bar is
+// unreadable without the same count for what did not survive: if nearly every
+// setting on the board was positive on the held-back window, "all the survivors
+// positive" says the window rose and says nothing about the picking.
+//
+// It prices NOTHING. Every figure it reads is already on the board. But it IS a
+// read of the held-back window, so it is a counted look like any other, and it
+// is information only -- it never gates a set.
+async function funnelDropped(doc, asked = {}) {
+  const V = require('./funnelverify');
+  const S4 = require('./funnelset');
+  const join = await funnelVerifyJoin(doc);
+  const footing = verifyFooting(doc, join);
+  if (!footing.ok) throw new Error(footing.why);
+  const kept = S4.applyRule(join.mine, join.rule);
+  const keptLabels = new Set(kept.map((r) => r.label));
+  const droppedAll = join.mine.filter((r) => !keptLabels.has(r.label));
+  // HOW MANY OF THE DROPPED TO READ, the owner's box. Blank, zero, or anything
+  // at or above the count means all of them. The sample is taken with an even
+  // stride through the board's own order -- never the first N, which reads one
+  // region of the board, and never the top N by any figure, which would be the
+  // shopping this reading exists to detect.
+  const askedN = Math.floor(Number(asked.sample));
+  const want = Number.isFinite(askedN) && askedN > 0 && askedN < droppedAll.length ? askedN : droppedAll.length;
+  const dropped = want < droppedAll.length
+    ? Array.from({ length: want }, (_, i) => droppedAll[Math.floor((i * droppedAll.length) / want)])
+    : droppedAll;
+  // EACH SIDE AGAINST THE FOUR AT ITS OWN HOLD LENGTHS. A dropped setting may
+  // hold for a length no survivor uses, and beating a bar priced for somebody
+  // else's hold length is not beating anything.
+  const keysOf = (rows) => [...new Set(rows.map((r) => controlKeyOf(r)))];
+  const keptControls = controlsOf(join.parent, doc.unit, keysOf(kept));
+  const droppedControls = controlsOf(join.parent, doc.unit, keysOf(dropped));
+  return V.keptVsDropped(kept, dropped, keptControls, droppedControls, { read: dropped.length, of: droppedAll.length });
+}
+function droppedRefusalOf(doc) {
+  if (!doc.unit) return BLEND_REFUSAL;
+  if (doc.derived) return derivedRefusalOf(doc);
+  const busy = verifyBusy();
+  if (busy) return `${busy} — the read waits for the box to be free`;
+  if (acrossBusy()) return `${acrossBusy()} — the same boards, one reading at a time`;
+  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  if (othersRun && !othersRun.result && !othersRun.error) return `${othersBusy()} — one at a time`;
+  return null;
+}
+async function funnelDroppedStart(id, asked = {}) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  const why = droppedRefusalOf(doc);
+  if (why) throw new Error(why);
+  const got = await funnelDropped(doc, asked || {});
+  const fresh = getSet(id);
+  if (!fresh) throw new Error('the set went away while the settings it dropped were being read');
+  const had = fresh.dropped || [];
+  const reading = {
+    id: `${id}-d${had.length + 1}`,
+    at: new Date().toISOString(),
+    release: ENGINE_VERSION,
+    look: had.length + 1,
+    unit: doc.unit,
+    unitName: doc.unitName || null,
+    ...got,
+  };
+  // appended, never overwritten: a later reading over a different sample is
+  // another reading, and both stay on the record
+  fresh.dropped = [reading, ...had];
+  saveSet(fresh);
+  return reading;
+}
+
 function verifySummaryOf(doc) {
   const blocks = (doc && doc.verify) || [];
   if (!blocks.length) return null;
@@ -7980,6 +8061,7 @@ module.exports = {
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   windowsOfSet, newestDataOf,
   funnelVerifyDry, funnelVerifyStart, funnelVerifyStatus, verifySummaryOf, sealedOnUnitOf,
+  funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
   unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,

@@ -22,8 +22,28 @@ const F = require('./funnel');
 const HELD = 'avgHold';                          // held-back money on a board row
 const LIMITS = ['maxDrawdown', 'avgTrades'];      // the two rebuilt-number limits step 6 can write
 const DEFAULT_SANITY_PCT = 50;
-const GATED = ['buyHold', 'shortHold'];           // the two comparisons a rule has to beat (its own marks)
-const NOT_GATED = ['alwaysLong', 'alwaysShort'];  // printed as the window's direction, never a gate
+// ALL FOUR GATE (3.100.0, owner order 2026-09-09). Until then the two
+// one-trade comparisons gated and the two every-period ones were printed as
+// "the window's direction and never a gate". Neither pair is the harder bar in
+// general: the one-trade pair carries almost no fee load, so it is harder over
+// a trending window and easier over a chopping one, while the every-period pair
+// pays a round trip on every period and is usually the easier bar in a trend
+// (lib/bracket.js says so in as many words). Gating on whichever pair happens
+// to be there means the difficulty of the bar moves with the market and nobody
+// chose that. Gating on the BEST of the four does not: a rule with a fixed
+// direction lean matches the window about half the time by luck, and beating
+// the best of the four is beating that luck.
+const GATED = ['alwaysLong', 'alwaysShort', 'buyHold', 'shortHold'];
+// the name of each comparison's own "was it beaten" key, said once
+const BEATS_KEY = { alwaysLong: 'beatsAlwaysLong', alwaysShort: 'beatsAlwaysShort', buyHold: 'beatsBuyHold', shortHold: 'beatsShortHold' };
+// what each one is called ON THE SCREEN, so a sentence written here and a line
+// drawn on Verify cannot drift apart. Read out of SCREEN-WORDS.md, 2026-09-09.
+const COMPARISON_WORDS = {
+  alwaysLong: 'being long every period',
+  alwaysShort: 'being short every period',
+  buyHold: 'buying the coin and going away',
+  shortHold: 'shorting it and going away',
+};
 
 const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));
 const mean = (xs) => {
@@ -57,7 +77,7 @@ function declareRules(check, asked = {}) {
     copies: K,
     barPct, ownBarPct: own, barChanged, bar, chance: K ? F.chanceOf(bar, K) : null,
     sanityPct,
-    gated: GATED.slice(), notGated: NOT_GATED.slice(),
+    gated: GATED.slice(),
     limits: LIMITS.slice(),
     tags: {
       footing: 'DERIVED', comparisons: 'DERIVED',
@@ -100,9 +120,20 @@ function heldBackRead(rows, controls) {
     known: !!c.known, why: c.known ? null : (c.why || null),
     keys: c.keys || null, of: c.of ?? null, missing: c.missing ?? null,
   };
-  for (const k of [...GATED, ...NOT_GATED]) comparisons[k] = c.known && c[k] ? { lo: c[k].lo, hi: c[k].hi } : null;
-  comparisons.beatsBuyHold = c.known && real != null && comparisons.buyHold ? F.beats(real, comparisons.buyHold.hi) : null;
-  comparisons.beatsShortHold = c.known && real != null && comparisons.shortHold ? F.beats(real, comparisons.shortHold.hi) : null;
+  for (const k of GATED) comparisons[k] = c.known && c[k] ? { lo: c[k].lo, hi: c[k].hi } : null;
+  for (const k of GATED) {
+    comparisons[BEATS_KEY[k]] = c.known && real != null && comparisons[k] ? F.beats(real, comparisons[k].hi) : null;
+  }
+  // THE BEST OF THE FOUR, named so the screen does not have to work it out by
+  // eye across four figures. Read at each comparison's own worst hold length
+  // (`hi`), the same figure each of the four is beaten against on its own.
+  const knownFour = GATED.filter((k) => comparisons[k] != null);
+  comparisons.best = knownFour.length === GATED.length
+    ? knownFour.map((k) => ({ key: k, hi: comparisons[k].hi })).reduce((a, b) => (b.hi > a.hi ? b : a))
+    : null;
+  // unknown never passes, and a missing one of the four is unknown: beating
+  // three of four says nothing about the one nobody priced
+  comparisons.beatsBest = comparisons.best != null && real != null ? F.beats(real, comparisons.best.hi) : null;
   const positive = real != null && real > 0;
   return {
     real, of, missing: (rows || []).length - of,
@@ -111,7 +142,7 @@ function heldBackRead(rows, controls) {
     positive,
     comparisons,
     // unknown never passes: a gate on a number nobody has is not a gate
-    pass: comparisons.known && positive && comparisons.beatsBuyHold === true && comparisons.beatsShortHold === true,
+    pass: comparisons.known && positive && comparisons.beatsBest === true,
     incomplete: !comparisons.known,
   };
 }
@@ -316,10 +347,95 @@ function rideOf(perSetting, { unitKey, keyOf, labels }) {
   return { rows, missing };
 }
 
+// ---- V8: what the settings the rule did NOT keep did on the same window (3.100.0) ----
+//
+// A count of survivors that cleared a bar is unreadable without the same count
+// for what did not survive. If nearly every setting on the board was positive
+// on the held-back window, then "all of the survivors positive" says the window
+// rose. It says nothing whatever about the picking, and the survivors are the
+// top of a pile that was all doing well rather than a selection.
+//
+// EACH SIDE IS READ AGAINST THE FOUR AT ITS OWN HOLD LENGTHS, never the other
+// side's. A setting the rule dropped may hold for a length no survivor uses,
+// and beating a bar priced for somebody else's hold length is not beating
+// anything. The caller builds one set of comparisons per side for that reason.
+//
+// INFORMATION ONLY. This never gates a set. It is a reading about the choosing,
+// not about the rule, and Part 5 of SELECTION-DESIGN.md is where gating on it
+// would be argued.
+function sideRead(rows, controls) {
+  const list = rows || [];
+  const held = list.map((r) => num(r[HELD]));
+  const priced = held.filter((v) => v != null);
+  const c = controls || { known: false };
+  let best = null;
+  if (c.known) {
+    const four = GATED.map((k) => (c[k] ? { key: k, hi: c[k].hi } : null));
+    best = four.every(Boolean) ? four.reduce((a, b) => (b.hi > a.hi ? b : a)) : null;
+  }
+  return {
+    of: list.length,
+    priced: priced.length,
+    noFigure: list.length - priced.length,
+    positive: priced.filter((v) => v > 0).length,
+    mean: mean(held),
+    median: median(held),
+    best,
+    beatingBest: best ? priced.filter((v) => F.beats(v, best.hi)).length : null,
+    why: c.known ? null : (c.why || 'the four comparisons are not known for these settings'),
+  };
+}
+const shareOf = (side) => (side && side.priced ? side.positive / side.priced : null);
+const bestShareOf = (side) => (side && side.priced && side.beatingBest != null ? side.beatingBest / side.priced : null);
+function keptVsDropped(kept, dropped, keptControls, droppedControls, sample = null) {
+  const a = sideRead(kept, keptControls);
+  const b = sideRead(dropped, droppedControls);
+  const gap = (x, y) => (x != null && y != null ? x - y : null);
+  const out = {
+    kept: a, dropped: b, sample,
+    keptShare: shareOf(a), droppedShare: shareOf(b),
+    keptBestShare: bestShareOf(a), droppedBestShare: bestShareOf(b),
+    gapPositive: gap(shareOf(a), shareOf(b)),
+    gapBest: gap(bestShareOf(a), bestShareOf(b)),
+  };
+  out.sentence = keptVsDroppedSentence(out);
+  return out;
+}
+const asPct = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
+function keptVsDroppedSentence(o) {
+  const a = o.kept;
+  const b = o.dropped;
+  if (!b.of) return 'the rule kept every setting on this board, so there is nothing it dropped to read against';
+  const parts = [];
+  parts.push(`the rule kept ${a.of} settings and dropped ${b.of}`
+    + (o.sample && o.sample.read < b.of ? `, of which ${o.sample.read} were read` : ''));
+  parts.push(`positive on the held-back window: ${asPct(o.keptShare)} of the kept, ${asPct(o.droppedShare)} of the dropped`);
+  if (o.keptBestShare != null && o.droppedBestShare != null) {
+    parts.push(`beating the best of the four at their own hold lengths: ${asPct(o.keptBestShare)} of the kept, ${asPct(o.droppedBestShare)} of the dropped`);
+  } else {
+    parts.push(`the four comparisons are not known for one side or the other (${a.why || b.why || 'unstated'}), so only the positive counts can be read`);
+  }
+  // the reading itself, said plainly, and it is never a gate
+  const g = o.gapPositive;
+  if (g == null) parts.push('nothing can be said about the picking from this');
+  else if (g <= 0) parts.push('THE DROPPED DID AS WELL OR BETTER: on this window the picking added nothing, and the kept settings are the top of a pile that was all doing the same');
+  else if (g < 0.1) parts.push('the kept are barely ahead of the dropped, so most of what the survivors show is the window rather than the picking');
+  else parts.push('the kept are clearly ahead of the dropped, which is the first sign that the picking is doing something');
+  return `${parts.join('; ')}. Information only, never a gate.`;
+}
+
 // ---- the verdict sentence, from stored numbers only ---------------------------------
 // the way the page prints money: the sign before the dollar sign
 const money = (v) => (v == null ? 'no figure' : `${Number(v) < 0 ? '-' : ''}$${Math.abs(Number(v)).toFixed(2)}`);
 const pct = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
+// ALL FOUR GATE, so the sentence says which of them was the one to beat and
+// whether it was beaten -- not four clauses the reader has to compare by eye.
+// A missing one of the four means the best is unknown, and unknown never passes.
+function bestPhrase(c) {
+  if (!c || !c.best) return 'and one of the four comparisons has no figure, so the best of them is unknown and nothing here passes';
+  const word = COMPARISON_WORDS[c.best.key] || c.best.key;
+  return `${c.beatsBest ? 'beating' : 'not beating'} the best of the four, which was ${word} at ${money(c.best.hi)}`;
+}
 function verdict(block) {
   const b = block;
   const parts = [];
@@ -332,9 +448,7 @@ function verdict(block) {
   const h = b.heldBack || {};
   const c = h.comparisons || {};
   parts.push(`on the held-back window the ${h.of ?? 0} survivors made ${money(h.real)} a setting`
-    + (c.known
-      ? `, ${c.beatsBuyHold ? 'beating' : 'not beating'} buying the coin and going away and ${c.beatsShortHold ? 'beating' : 'not beating'} shorting it and going away`
-      : `, and the four comparisons are not known (${c.why || 'unstated'})`)
+    + (c.known ? `, ${bestPhrase(c)}` : `, and the four comparisons are not known (${c.why || 'unstated'})`)
     + `, after at least ${(b.looks || {}).unstamped ?? 0} unstamped looks`);
   const cp = b.copies || {};
   if (cp.incomplete) parts.push('the set kept no scrambled copies, so nothing was read against nothing');
@@ -370,9 +484,7 @@ function unreadVerdict(block) {
   const h = b.read || {};
   const c = h.comparisons || {};
   parts.push(`on the unread window the ${h.of ?? 0} survivors made ${money(h.real)} a setting`
-    + (c.known
-      ? `, ${c.beatsBuyHold ? 'beating' : 'not beating'} buying the coin and going away and ${c.beatsShortHold ? 'beating' : 'not beating'} shorting it and going away`
-      : `, and the four comparisons are not known (${c.why || 'unstated'})`));
+    + (c.known ? `, ${bestPhrase(c)}` : `, and the four comparisons are not known (${c.why || 'unstated'})`));
   const cp = b.copies || {};
   if (cp.incomplete) parts.push('no scrambled copies were priced, so nothing was read against nothing');
   else parts.push(`against ${cp.copies} scrambled copies of that window it beats ${cp.beats}, the bar being ${cp.bar} (${cp.barPct}%); a forecast-free rule clears that about ${pct(cp.chance)} of the time, and the finest claim ${cp.copies} copies allow is 1 in ${cp.copies + 1}, a floor, never a measure of strength`);
@@ -400,9 +512,10 @@ function buildBlock(input) {
 }
 
 module.exports = {
-  HELD, LIMITS, GATED, NOT_GATED, DEFAULT_SANITY_PCT,
+  HELD, LIMITS, GATED, BEATS_KEY, DEFAULT_SANITY_PCT,
   declareRules, ruleKeys, heldBackRead, copiesRead, perSurvivor, sanity, lineA, lineB, verdict, buildBlock,
   othersUnitRead, othersSummary, RIDE_FIELDS, rideOf,
+  sideRead, keptVsDropped, keptVsDroppedSentence,
   unreadVerdict, buildUnreadBlock,
   mean, median,
 };

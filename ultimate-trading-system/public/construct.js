@@ -40,6 +40,30 @@ const esc = (t) => {
 // of the page by name and runs it, and a helper defined outside it is not there
 // when it does. That would not have failed loudly — it would have reported
 // eleven imaginary faults and quietly stopped checking the real one.
+// ALL FOUR COMPARISONS GATE (3.100.0, owner order 2026-09-09). Each is marked
+// beaten or not, and the BEST of the four is named beside them, because the
+// best is what decides pass or fail and nobody should have to work that out by
+// eye across four figures. Drawn here once and used everywhere the four are
+// shown, so the verdict, the reserve grade and the Funnel cannot drift apart.
+const CMP_WORDS = {
+  alwaysLong: 'being long every period',
+  alwaysShort: 'being short every period',
+  buyHold: 'buying the coin and going away',
+  shortHold: 'shorting it and going away',
+};
+const CMP_BEATS = {
+  alwaysLong: 'beatsAlwaysLong', alwaysShort: 'beatsAlwaysShort',
+  buyHold: 'beatsBuyHold', shortHold: 'beatsShortHold',
+};
+const CMP_ORDER = ['alwaysLong', 'alwaysShort', 'buyHold', 'shortHold'];
+function fourComparisons(c) {
+  const bits = CMP_ORDER.map((k) => `${CMP_WORDS[k]} ${money((c[k] || {}).hi)} ${c[CMP_BEATS[k]] === true ? 'beaten' : '<b class="neg">not beaten</b>'}`);
+  const best = c.best
+    ? `<b>the best of the four was ${CMP_WORDS[c.best.key] || esc(String(c.best.key))} at ${money(c.best.hi)}</b>, ${c.beatsBest ? '<b class="pos">beaten</b>' : '<b class="neg">not beaten</b>'}`
+    : '<b class="warn">one of the four has no figure, so the best of them is unknown and nothing here passes</b>';
+  return `${bits.join(' \u00b7 ')} \u00b7 ${best}`;
+}
+
 const money = (v) => {
   const ok = (typeof v === 'number' && Number.isFinite(v))
     || (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v)));
@@ -1908,9 +1932,9 @@ function vBlockHtml(b, isVerdict) {
   return `<div class="panel" style="margin-top:.5rem">
     <h4 style="margin:0 0 .3rem">${isVerdict ? 'The verdict' : `look ${b.look}`} - <b class="${v.pass ? 'pos' : 'neg'}">${v.pass ? 'PASS' : 'FAIL'}</b> <span class="muted">stamped ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')}</span></h4>
     <p class="note">${esc(v.sentence || '')}</p>
-    <p class="note"><b>Rules declared before the numbers:</b> bar ${r.bar} of ${r.copies} copies (${r.barPct}%, ${esc(tags.bar || '')}${r.barChanged ? `, changed from the set's own ${r.ownBarPct}%` : ''}); noise must lose at least ${r.sanityPct}% (${esc(tags.sanity || '')}); comparisons gated: buying the coin and going away, shorting it and going away (${esc(tags.comparisons || '')}); being long every period and being short every period are the window's direction and never a gate.</p>
+    <p class="note"><b>Rules declared before the numbers:</b> bar ${r.bar} of ${r.copies} copies (${r.barPct}%, ${esc(tags.bar || '')}${r.barChanged ? `, changed from the set's own ${r.ownBarPct}%` : ''}); noise must lose at least ${r.sanityPct}% (${esc(tags.sanity || '')}); comparisons gated: all four, and the rule must beat the best of them (${esc(tags.comparisons || '')}).</p>
     <p class="note"><b>Held-back read:</b> ${Number(h.of || 0).toLocaleString()} survivors made ${money(h.real)} a setting${h.missing ? ` (${h.missing} with no figure)` : ''}${h.trades == null ? '' : ` · ${vFix(h.trades, 1)} trades a setting`}${h.vsLong == null ? '' : ` · ${money(h.vsLong)} against always long`} · ${c.known
-    ? `buying the coin and going away ${money((c.buyHold || {}).hi)} ${c.beatsBuyHold ? 'beaten' : '<b class="neg">not beaten</b>'} · shorting it and going away ${money((c.shortHold || {}).hi)} ${c.beatsShortHold ? 'beaten' : '<b class="neg">not beaten</b>'} · being long every period ${money((c.alwaysLong || {}).hi)} · being short every period ${money((c.alwaysShort || {}).hi)}`
+    ? fourComparisons(c)
     : `<b class="warn">the four comparisons are not known</b> - ${esc(String(c.why || ''))} - INCOMPLETE, never a pass`} · ${h.pass ? '<b class="pos">stands</b>' : '<b class="neg">does not stand</b>'}</p>
     <p class="note"><b>The rule on a noise board, held-back window:</b> ${cp.incomplete
     ? '<b class="warn">this set kept no scrambled copies, so nothing was read against nothing</b>'
@@ -1943,13 +1967,58 @@ function vSetPanelHtml(list, chosen, d) {
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · <b>Final Rule:</b> ${esc(d.ruleSentence || '')}${d.userSentence ? ` · <b>User Rule:</b> ${esc(d.userSentence)}` : ''} · ${Number((d.counts || {}).survivors ?? 0).toLocaleString()} survivors${(d.warnings || []).length ? ` · <b class="warn">${d.warnings.map(esc).join('; ')}</b>` : ''}</p>
       ${vFootingHtml(d)}${vLooksHtml(d)}${vPressHtml(d)}
       ${blocks.length ? blocks.map((b, i) => vBlockHtml(b, i === 0)).join('') : '<p class="note">No stamped read on this set yet. The first press writes the verdict; later presses are printed as later looks and never replace it.</p>'}
-      ${vOthersHtml(d)}${vRideHtml(d)}` : ''}
+      ${vOthersHtml(d)}${vDroppedHtml(d)}${vRideHtml(d)}` : ''}
   </div>`;
 }
 // a blank box is sent blank: read as a number it would be 0, and 0 is not a share anyone typed
 function vTyped(id) { const v = $(id).value; return v === '' ? '' : Number(v); }
 // THE RULE ON THE OTHER UNITS, HELD-BACK WINDOW (V6, 3.88.0): the newest reading
 // in full, earlier ones one line each; every press appends and none is overwritten.
+// WHAT THE RULE DROPPED, ON THE SAME WINDOW (V8, 3.100.0, SELECTION-DESIGN.md
+// Part 7). A count of survivors that cleared a bar is unreadable without the
+// same count for what did not survive. Information only, never a gate.
+function vDroppedHtml(d) {
+  const list = d.dropped || [];
+  const o = list[0] || null;
+  const earlier = list.slice(1);
+  const share = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
+  const sideRow = (name, side, sh, bsh) => `<tr><td>${name}</td>`
+    + `<td>${Number(side.of || 0).toLocaleString()}</td>`
+    + `<td>${Number(side.positive || 0).toLocaleString()} (${share(sh)})</td>`
+    + `<td>${side.beatingBest == null ? 'not known' : `${Number(side.beatingBest).toLocaleString()} (${share(bsh)})`}</td>`
+    + `<td class="${(side.mean || 0) >= 0 ? 'pos' : 'neg'}">${money(side.mean)}</td>`
+    + `<td>${money(side.median)}</td>`
+    + `<td>${side.noFigure ? Number(side.noFigure).toLocaleString() : '—'}</td></tr>`;
+  return `<div class="panel" style="margin-top:.5rem">
+    <h4 style="margin:0 0 .3rem">What the rule dropped, held-back window</h4>
+    <p class="note">The settings the rule did NOT keep, read on the same held-back window as the survivors. A count of
+      survivors that clear a bar cannot be read without it: if nearly every setting on the board was positive here, then
+      all the survivors being positive says the window rose and says nothing about the picking. Each side is read
+      against the four at its own hold lengths. Nothing is priced, every figure is already on the board, and this is a
+      counted look at the held-back window. Information only, never a gate.</p>
+    <div class="row" style="align-items:center">
+      <label class="muted" title="how many of the settings the rule dropped to read. Blank or 0 reads all of them. Fewer are taken with an even stride through the board's own order, never the first N and never the top N by any figure.">how many of the dropped to read (blank = all${d.droppedOf == null ? '' : ` ${Number(d.droppedOf).toLocaleString()}`})
+        <input id="vDroppedN" type="number" min="1" step="1" placeholder="all" style="width:7rem"></label>
+      <button id="vDropped" class="pri" ${d.droppedRefused ? 'disabled' : ''} title="reads the held-back money already stored for the settings the rule dropped, beside the same figures for the survivors, and appends the reading to the set. Never a pass or fail on the set.">Read what the rule dropped</button>
+      <span id="vDroppedMsg" class="note">${d.droppedRefused ? `<b class="warn">refused:</b> ${esc(d.droppedRefused)}` : ''}</span></div>
+    ${o ? `<p class="note">${esc(o.sentence || '')} <span class="muted">read ${esc(String(o.at || '').slice(0, 16))} under release ${esc(o.release || '?')}</span></p>
+      <div class="scrollx"><table><thead><tr>
+        <th title="the settings the rule kept, and the settings it did not">settings</th>
+        <th title="how many settings are on this side">how many</th>
+        <th title="how many of them made money on the held-back window, and what share of those with a figure">positive</th>
+        <th title="how many of them beat the best of the four comparisons, read at this side's own hold lengths">beat the best of the four</th>
+        <th title="the mean held-back money over this side">avg held-back $</th>
+        <th title="the middle held-back figure of this side, which a few very large ones cannot move">median held-back $</th>
+        <th title="settings on this side with no held-back figure at all, counted and never dropped">no figure</th>
+      </tr></thead><tbody>
+        ${sideRow('kept', o.kept || {}, o.keptShare, o.keptBestShare)}
+        ${sideRow('dropped', o.dropped || {}, o.droppedShare, o.droppedBestShare)}
+      </tbody></table></div>
+      ${(o.sample && o.sample.read < o.sample.of) ? `<p class="note muted">${Number(o.sample.read).toLocaleString()} of ${Number(o.sample.of).toLocaleString()} dropped settings were read, taken with an even stride through the board's own order.</p>` : ''}
+      ${earlier.length ? `<p class="note muted">earlier readings: ${earlier.map((e) => `${esc(String(e.at || '').slice(0, 16))}: ${share(e.keptShare)} of kept and ${share(e.droppedShare)} of dropped positive`).join('; ')}</p>` : ''}`
+    : '<p class="note">Not read on this set yet.</p>'}
+  </div>`;
+}
 function vOthersHtml(d) {
   const list = d.others || [];
   const o = list[0] || null;
@@ -2039,6 +2108,15 @@ async function drawVerify() {
     const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/others`, { barPct: vTyped('#vBarPct') }, WHERE_VERIFY);
     if (!started) { ob.disabled = false; $('#vOthersMsg').textContent = ''; return; }
     vOthersFollow(chosen, started.token);
+  };
+  const db = $('#vDropped');
+  if (db && chosen && d && !d.droppedRefused) db.onclick = async () => {
+    db.disabled = true;
+    $('#vDroppedMsg').textContent = 'reading…';
+    const got = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/dropped`, { sample: vTyped('#vDroppedN') }, WHERE_VERIFY);
+    db.disabled = false;
+    $('#vDroppedMsg').textContent = '';
+    if (got) drawVerify();
   };
   const rb = $('#vRide');
   if (rb && chosen && d && !d.rideRefused) rb.onclick = async () => {
@@ -2147,7 +2225,7 @@ function hGradeBlockHtml(g, isFirst) {
     <p class="note">${esc(v.sentence || '')}</p>
     <p class="note"><b>The unread window:</b> from ${hDay(w.fromTs)} to ${hDay(w.toTs)}, ${w.chunks ?? 0} whole chunks · the box's data reached ${hDay(w.seenToTs)} · verdict ${esc((g.gate || {}).id || '?')} stood</p>
     <p class="note"><b>The read:</b> ${Number(r.of || 0).toLocaleString()} survivors made ${money(r.real)} a setting${r.trades == null ? '' : ` · ${hFix(r.trades, 1)} trades a setting`} · ${c.known
-    ? `buying the coin and going away ${money((c.buyHold || {}).hi)} ${c.beatsBuyHold ? 'beaten' : '<b class="neg">not beaten</b>'} · shorting it and going away ${money((c.shortHold || {}).hi)} ${c.beatsShortHold ? 'beaten' : '<b class="neg">not beaten</b>'} · being long every period ${money((c.alwaysLong || {}).hi)} · being short every period ${money((c.alwaysShort || {}).hi)}`
+    ? fourComparisons(c)
     : `<b class="warn">the four comparisons are not known</b> - ${esc(String(c.why || ''))}`} · ${r.pass ? '<b class="pos">stands</b>' : '<b class="neg">does not stand</b>'}</p>
     <p class="note"><b>Against scrambled copies of that window:</b> ${cp.incomplete ? '<b class="warn">none were priced</b>' : `real ${money(cp.real)} beats ${cp.beats} of ${cp.copies}, the bar being ${cp.bar} - <b class="${cp.pass ? 'pos' : 'neg'}">${cp.pass ? 'PASS' : 'FAIL'}</b> · a forecast-free rule clears this about ${hPct(cp.chance)} of the time · lead ${hFix(cp.lead)}`}</p>
     <p class="note"><b>Every survivor against its own copies:</b> ${sv.passing} of ${sv.survivors} clear the same bar, about ${sv.byChance == null ? '?' : Number(sv.byChance).toFixed(1)} would by chance · ${sv.positive} made money · never a gate</p>
@@ -5009,8 +5087,7 @@ function fAgainst(a, what) {
   }
   const many = (a.keys || []).length > 1;
   const lost = [];
-  if (a.beatsBuyHold === false) lost.push('buying the coin and going away');
-  if (a.beatsShortHold === false) lost.push('shorting the coin and going away');
+  for (const k of CMP_ORDER) if (a[CMP_BEATS[k]] === false) lost.push(CMP_WORDS[k]);
   return `<p class="note${lost.length ? ' neg' : ''}">On the held-back window, ${esc(what)} made
       <b>${fFix(a.real, 2)}</b> a setting. Buying the coin and going away made ${fMoneySpan(a.buyHold)};
       shorting it and going away made ${fMoneySpan(a.shortHold)}; being long every period made

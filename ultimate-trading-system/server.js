@@ -611,6 +611,14 @@ app.post('/api/funnel/set/:id/others', (req, res) => {
   try { return res.json(stages.funnelOthersStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/others/status', (req, res) => res.json(stages.funnelOthersStatus(req.params.id)));
+// WHAT THE SETTINGS THE RULE DROPPED DID ON THE SAME WINDOW (V8, 3.100.0,
+// SELECTION-DESIGN.md Part 7). It prices nothing -- every figure is already on
+// the board -- so it answers in one request rather than being polled. It is
+// still a read of the held-back window, so it is a counted look, and it is
+// information only: it never gates a set.
+app.post('/api/funnel/set/:id/dropped', async (req, res) => {
+  try { return res.json(await stages.funnelDroppedStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
+});
 app.post('/api/funnel/set/:id/ride', (req, res) => {
   try { return res.json(stages.funnelRideStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
 });

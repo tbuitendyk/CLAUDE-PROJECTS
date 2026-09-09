@@ -806,7 +806,12 @@ module.exports = {
   theTwoNewPressesAreOnVerifyWithTheirRoutes() {
     const ui = src('public/construct.js');
     for (const fn of ['vOthersHtml', 'vRideHtml', 'vOthersFollow', 'vRideFollow']) assert.ok(new RegExp(`^(async )?function ${fn}\\(`, 'm').test(ui), `${fn} must be a top-level helper`);
-    assert.ok(/\$\{vOthersHtml\(d\)\}\$\{vRideHtml\(d\)\}/.test(ui), 'both panels are drawn under the blocks');
+    // RE-AIMED 3.100.0: the dropped-settings panel (V8) was added between them.
+    // The property is unchanged -- every panel is drawn under the blocks -- so
+    // the check is now per panel rather than on the two being adjacent.
+    for (const fn of ['vOthersHtml', 'vDroppedHtml', 'vRideHtml']) {
+      assert.ok(new RegExp(`\\$\\{${fn}\\(d\\)\\}`).test(ui), `${fn} is drawn under the blocks`);
+    }
     assert.ok(/id="vOthers"/.test(ui) && /id="vRide"/.test(ui), 'the two presses');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\)\}\/others`, \{ barPct: vTyped\('#vBarPct'\) \}/.test(ui), 'the read of the other units is sent under the same bar box as the verdict');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/others\/status/.test(ui) && /api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/ride\/status/.test(ui), 'both are polled');
@@ -919,5 +924,121 @@ module.exports = {
       try { await stages.stage4GreenlightSource(blend.id, {}); } catch (e) { threw = e.message; }
       assert.ok(/cut on all units together/.test(threw), threw);
     } finally { f.cleanup(); }
+  },
+
+  // ALL FOUR GATE (3.100.0, owner order 2026-09-09). Until then the two
+  // one-trade comparisons decided pass or fail and the two every-period ones
+  // were printed and ignored. Neither pair is harder in general -- the one-trade
+  // pair carries almost no fee load, so it is the harder bar over a trending
+  // window and the easier one over a chopping window -- so gating on one pair
+  // let the difficulty of the bar move with the market. The rule must now beat
+  // the BEST of the four.
+  //
+  // Watched failing: put GATED back to the two one-trade keys and
+  // theRuleMustBeatTheBestOfTheFourNotOnePairOfThem fails on its second case,
+  // where the rule beats both one-trade comparisons and loses to being short
+  // every period.
+  theRuleMustBeatTheBestOfTheFourNotOnePairOfThem() {
+    const rows = [{ avgHold: 10, avgTrades: 5, avgVsLong: 1 }];
+    const four = (al, as, bh, sh) => ({
+      known: true, keys: ['all|65'], of: 1, missing: 0,
+      alwaysLong: { lo: al, hi: al }, alwaysShort: { lo: as, hi: as },
+      buyHold: { lo: bh, hi: bh }, shortHold: { lo: sh, hi: sh },
+    });
+    // beats all four: the best of them is buying and going away at 4
+    const win = V.heldBackRead(rows, four(1, 2, 4, 3));
+    assert.deepStrictEqual({ key: win.comparisons.best.key, hi: win.comparisons.best.hi }, { key: 'buyHold', hi: 4 });
+    assert.strictEqual(win.comparisons.beatsBest, true);
+    assert.strictEqual(win.pass, true, 'beating every one of the four stands');
+    // THE CASE THE OLD GATE MISSED: both one-trade comparisons beaten, and
+    // being short every period made more than the rule did.
+    const miss = V.heldBackRead(rows, four(1, 20, 4, 3));
+    assert.strictEqual(miss.comparisons.beatsBuyHold, true, 'the old gate would have passed this');
+    assert.strictEqual(miss.comparisons.beatsShortHold, true, 'and this');
+    assert.strictEqual(miss.comparisons.beatsAlwaysShort, false, 'but being short every period made more');
+    assert.strictEqual(miss.comparisons.best.key, 'alwaysShort');
+    assert.strictEqual(miss.pass, false, 'the best of the four is what decides');
+  },
+
+  // A MISSING ONE OF THE FOUR IS UNKNOWN, AND UNKNOWN NEVER PASSES. Beating
+  // three of four says nothing at all about the one nobody priced, so the best
+  // of them cannot be named and there is no bar to clear.
+  aMissingOneOfTheFourLeavesNoBestAndNothingPasses() {
+    const rows = [{ avgHold: 10, avgTrades: 5, avgVsLong: 1 }];
+    const r = V.heldBackRead(rows, {
+      known: true, keys: ['all|65'], of: 1, missing: 0,
+      alwaysLong: { lo: 1, hi: 1 }, buyHold: { lo: 1, hi: 1 }, shortHold: { lo: 1, hi: 1 },
+    });
+    assert.strictEqual(r.comparisons.best, null, 'three of four names no best');
+    assert.strictEqual(r.comparisons.beatsBest, null);
+    assert.strictEqual(r.pass, false, 'unknown never passes');
+    assert.ok(/best of them is unknown/.test(V.verdict({ heldBack: r, footing: {}, copies: {}, survivors: {}, sanity: {} }).sentence),
+      'and the sentence says so rather than printing three of four as though they were all of them');
+  },
+
+  // THE FOUR ARE DRAWN ONCE. Three screens showed them and each wrote its own
+  // line, which is three places for the marking to drift. They now come from
+  // one helper, so a change to what gates cannot reach one screen and miss
+  // another.
+  theFourComparisonsAreDrawnFromOneHelperEverywhereTheyAppear() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(/function fourComparisons\(c\)/.test(ui), 'one helper draws the four');
+    const uses = (ui.match(/fourComparisons\(c\)/g) || []).length;
+    assert.ok(uses >= 3, `every screen that shows them calls it (found ${uses})`);
+    assert.ok(!/beatsBuyHold \? 'beaten'/.test(ui), 'and no screen writes its own marking any more');
+    // the declared-rules line must no longer say two of them never gate
+    assert.ok(!/are the window's direction and never a gate/.test(ui),
+      'the declared rules must not still say two of the four never gate');
+    assert.ok(/comparisons gated: all four/.test(ui), 'it says all four gate');
+  },
+
+  // WHAT THE RULE DROPPED (V8, 3.100.0, SELECTION-DESIGN.md Part 7). A count of
+  // survivors that clear a bar is unreadable without the same count for what
+  // did not survive. The reading this defends is the one the failed set of
+  // 2026-09-09 never got: 199 of 199 survivors positive on the held-back
+  // window, and nobody ever asked what the other 2,553 did.
+  //
+  // Watched failing: make sideRead count every row rather than only the priced
+  // ones and the shares stop being comparable; drop the two controls arguments
+  // and read both sides against one set of comparisons, and the second case
+  // below stops distinguishing the sides.
+  theDroppedSettingsAreReadBesideTheKeptOnesAndSayWhetherThePickingDidAnything() {
+    const rows = (n, at) => Array.from({ length: n }, (_, i) => ({ avgHold: at(i) }));
+    const four = (v) => ({ known: true, alwaysLong: { lo: v, hi: v }, alwaysShort: { lo: v, hi: v }, buyHold: { lo: v, hi: v }, shortHold: { lo: v, hi: v } });
+    // THE FAILURE WE LIVED: every setting positive, kept and dropped alike
+    const flat = V.keptVsDropped(rows(199, () => 5), rows(2553, () => 4), four(1), four(1));
+    assert.deepStrictEqual({ k: flat.keptShare, d: flat.droppedShare }, { k: 1, d: 1 });
+    assert.strictEqual(flat.gapPositive, 0);
+    assert.ok(/THE DROPPED DID AS WELL OR BETTER/.test(flat.sentence), flat.sentence);
+    assert.ok(/never a gate/.test(flat.sentence), 'and it says it is never a gate');
+    // what a picking that works looks like
+    const real = V.keptVsDropped(rows(199, () => 50), rows(2553, () => -4), four(1), four(1));
+    assert.strictEqual(real.droppedShare, 0);
+    assert.ok(/clearly ahead/.test(real.sentence), real.sentence);
+    // EACH SIDE AGAINST ITS OWN HOLD LENGTHS: the same money is beaten on one
+    // side and not on the other when their comparisons differ
+    const split = V.keptVsDropped(rows(2, () => 10), rows(2, () => 10), four(1), four(99));
+    assert.strictEqual(split.keptBestShare, 1, 'the kept beat their own bar of 1');
+    assert.strictEqual(split.droppedBestShare, 0, 'the dropped do not beat theirs of 99');
+    // a row with no figure is counted and never quietly dropped
+    const gap = V.keptVsDropped([{ avgHold: 5 }, { avgHold: null }], rows(2, () => 1), four(1), four(1));
+    assert.deepStrictEqual({ of: gap.kept.of, priced: gap.kept.priced, noFigure: gap.kept.noFigure }, { of: 2, priced: 1, noFigure: 1 });
+    // and a rule that kept everything says so rather than dividing by nothing
+    assert.ok(/nothing it dropped to read against/.test(V.keptVsDropped(rows(3, () => 1), [], four(1), four(1)).sentence));
+  },
+
+  // THE PRESS IS ON VERIFY WITH ITS ROUTE, its box, and its refusal in words.
+  theDroppedPressIsOnVerifyWithItsRouteAndItsBox() {
+    const ui = src('public/construct.js');
+    assert.ok(/^function vDroppedHtml\(/m.test(ui), 'a top-level helper draws it');
+    assert.ok(/id="vDropped"/.test(ui) && /id="vDroppedN"/.test(ui), 'the press and the how-many box');
+    // RULE FOUR: the box, its label and the button are one control and line up
+    const block = ui.slice(ui.indexOf('function vDroppedHtml('), ui.indexOf('function vOthersHtml('));
+    assert.ok(/class="row" style="align-items:center"/.test(block), 'the box and the button share a baseline');
+    assert.ok(!/data-sort|sortBtn/.test(block), 'no sort on it');
+    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\)\}\/dropped`, \{ sample: vTyped\('#vDroppedN'\) \}/.test(ui), 'the typed count is sent');
+    const srv = src('server.js');
+    assert.ok(srv.includes("'/api/funnel/set/:id/dropped'"), 'the route is served');
+    assert.ok(/funnelDroppedStart\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'and it takes the typed count');
   },
 };

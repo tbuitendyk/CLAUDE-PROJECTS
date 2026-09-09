@@ -729,6 +729,14 @@ window.HELP = {
         what: 'Reads the same rule on every other coin-and-shape unit of the stage 3 set this was cut from, each on its own held-back window against its own scrambled copies at the bar declared above, and prints two counts: how many are positive and how many clear the bar.',
         more: 'Information only, never a pass or fail on the set; a mark when fewer than half are positive, and a unit where the rule keeps nothing is printed as such and left out of the count. About five seconds a unit, read one at a time and appended to the set on every press. It refuses while a run, a totalling, a rebuild, the Funnel\'s own read of the other units or another read on this tab is going. A verdict stamped after a reading carries its counts.',
       },
+      vDropped: {
+        what: 'Reads the settings the rule did NOT keep on the same held-back window as the survivors, and prints both sides side by side: how many there are, how many made money, how many beat the best of the four comparisons, and the average and middle figure of each.',
+        more: 'A count of survivors that clear a bar cannot be read without it. If nearly every setting on the board was positive on this window, then all the survivors being positive says the window rose and says nothing about the picking. Each side is read against the four at its OWN hold lengths, because a setting the rule dropped may hold for a length no survivor uses. Nothing is priced: every figure is already on the board, so it answers at once. It is still a read of the held-back window, so it is a counted look, and it is information only, never a pass or fail on the set. Appended on every press, never replaced.',
+      },
+      vDroppedN: {
+        what: 'How many of the settings the rule dropped to read. Blank or 0 reads all of them, and the count beside the box says how many that is.',
+        more: 'Fewer than all are taken with an even stride through the board\'s own order. Never the first N, which would read one region of the board, and never the top N by any figure, which would be the very shopping this reading exists to detect.',
+      },
       vRide: {
         what: 'Works out what the held-back window looked like from inside for each survivor: the largest drawdown, the worst and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers on the test window.',
         more: 'The same pass as the missing numbers on the Funnel, on this unit only; minutes. Written onto the set with the release that computed it, appended on every press, and counted as a stamped look at the held-back window on every later verdict. Never a gate. It refuses while any other heavy job is going and on a set cut on all units together.',
