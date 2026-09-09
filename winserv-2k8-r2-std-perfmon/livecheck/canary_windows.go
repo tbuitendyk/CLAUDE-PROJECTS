@@ -34,7 +34,9 @@ package main
 // problem.
 
 import (
+	"fmt"
 	"runtime"
+	"sort"
 	"syscall"
 	"time"
 	"unsafe"
@@ -139,6 +141,7 @@ const (
 	calTarget    = 30 * time.Millisecond
 	maxOpsPerSec = 2e10 // no real core does 20 G-iterations/sec; above this the clock lied
 	minOpsPerSec = 1e5
+	maxSpread    = 5.0 // p90/p10 on identical work; beyond this there is no stable baseline
 )
 
 // calibrate sizes the workload to ~30ms of real work and records the least
@@ -201,11 +204,33 @@ func calibrate() calibration {
 		iters = next
 	}
 
+	// Baseline from a low PERCENTILE, not the raw minimum. On a noisy host the
+	// minimum is an extreme-value estimator: one lucky run anchors every later
+	// ratio to an outlier. That is how the 2026-09-09 control run reported a
+	// steady "3.9x slowdown" on a box that was behaving normally — its
+	// min-of-9 baseline (37.95ms) was below every single time the run then
+	// measured (min 45.2ms, median 149.2ms).
+	runs := make([]time.Duration, 0, 25)
+	for i := 0; i < 25; i++ {
+		t0 := qpcNow()
+		sink = spin(iters)
+		if d := qpcSince(t0); d > 0 {
+			runs = append(runs, d)
+		}
+	}
+	sort.Slice(runs, func(i, j int) bool { return runs[i] < runs[j] })
 	cal.iters = iters
-	cal.baseline = best
-	if best > 0 {
-		cal.opsPerSec = float64(iters) / best.Seconds()
-		cal.spread = float64(worst) / float64(best)
+	if len(runs) >= 10 {
+		cal.baseline = runs[len(runs)/10]                                  // p10
+		cal.spread = float64(runs[len(runs)*9/10]) / float64(cal.baseline) // p90/p10
+	} else {
+		cal.baseline = best
+		if best > 0 {
+			cal.spread = float64(worst) / float64(best)
+		}
+	}
+	if cal.baseline > 0 {
+		cal.opsPerSec = float64(iters) / cal.baseline.Seconds()
 	}
 
 	// Cycle rate, measured on the fastest of a fresh batch (that run is the one
@@ -235,6 +260,13 @@ func calibrate() calibration {
 		cal.why = "measured rate implausibly low — calibration was obstructed throughout"
 	case cal.baseline < calTarget/4:
 		cal.why = "workload too short to time reliably on this host"
+	case cal.spread > maxSpread:
+		// Identical work varying this much second to second means no single
+		// number describes "full speed" here, so every ratio against it would
+		// be noise dressed as a measurement.
+		cal.why = fmt.Sprintf("identical work varied %.1fx across calibration runs — this host has no stable "+
+			"full-speed baseline, so steal ratios would be meaningless (something is contending for the core, "+
+			"or the host is throttling)", cal.spread)
 	default:
 		cal.reliable = true
 	}
