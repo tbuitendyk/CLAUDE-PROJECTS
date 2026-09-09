@@ -78,6 +78,31 @@ psapi's `EnumProcesses`/`GetProcessMemoryInfo`, `GetProcessTimes`,
 `GetProcessIoCounters`, `QueryFullProcessImageNameW`, and PDH
 (`PdhAddEnglishCounterW`, so it works on any OS display language).
 
+## `livecheck.exe` — the live probe (run this DURING a slowdown)
+
+`perfmon.exe` watches four coarse counters every 5 minutes. The Aug–Sep 2026
+correlation study showed those four are **blind to this server's actual
+problem**: during every user-reported slowdown they read essentially idle.
+`livecheck.exe` samples every second and measures what perfmon could not:
+
+| Measure | Why |
+|---|---|
+| **CPU steal canary** | Times a fixed unit of arithmetic. If it takes 2× its baseline, the VM got half the CPU it asked for. Pairing wall time with the thread's own cycle counter separates *descheduled by the hypervisor* (VMware CPU ready / co-stop) from *the core ran slow*. The old `STALL` check slept, so it could only see multi-second freezes. |
+| **per-core CPU** | One pegged core reads as 12.5% on 8 cores — invisible to an all-core average. |
+| **disk latency (ms)** | Queue length sat at ~0.00 through every incident; latency is what actually hurts. |
+| **SMB server state** | Files open, sessions, work-item shortages — shared `.DBF`/`.CDX` contention. |
+| **VMware Tools host counters** | Balloon, swap, effective vs host MHz — hypervisor pressure seen from inside the guest (if Tools' perfmon component is installed). |
+| **file-access probe** | Times a real open/list against the path users wait on. Point it at the FoxPro data directory. |
+
+```
+livecheck.exe -for 3m -probe D:\path\to\foxpro\data -csv C:\homs\perfmon\live.csv
+```
+
+It prints a line per second, marks bad seconds with `<<<` and a named
+condition, and ends with a summary plus a plain-English reading of what each
+flag means. Read-only, safe to run alongside the scheduled `perfmon.exe`.
+Send the CSV back for analysis.
+
 ## Troubleshooting
 
 **The log goes silent ~3 days after every boot** (last heartbeat 66–72 h
