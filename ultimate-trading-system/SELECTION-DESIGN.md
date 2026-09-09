@@ -68,70 +68,153 @@ The parts are **not** independent. Where one leans on another, the part says so.
 
 ---
 
-# Part 1 — judge on several stretches, not one
+# Part 1 — judge on several stretches, not one, on Verify
 
-> **Blocker.** This part cannot be planned until two numbers are known: how
-> long one full pass of stage 1 takes on the box, and the shortest stretch that
-> still holds enough trades to mean anything. Everything below is shaped by
-> those two numbers and I do not have either.
+> **Reshaped 2026-09-09 by the owner, and the reshaping is the good part.** My
+> version re-ran the whole sweep five times and I said the cost was the thing
+> most likely to sink it. The owner's version runs on the ONE `unit` the
+> **Funnel** already narrowed to — one coin, its companions and one shape. That
+> is a fraction of a full stage 1 sweep, which trains every combination in the
+> universe. The blocker I put here has largely gone with it.
 
 ## The problem
 
 A single held-back stretch is one roll of the dice. Whatever that stretch
 happened to do dominates the answer, and nothing separates a setting that works
-from a setting that suited that stretch. No amount of care in measuring one roll
-turns it into two. And once it is opened it is spent — a second look at the same
-stretch is not a second roll.
+from a setting that suited that stretch. Once opened it is spent — a second look
+at the same stretch is not a second roll.
 
-## The change
+## What is on Verify today
 
-Cut the history into several judging stretches, one after another. Then move
-the training boundary forward, one stretch at a time:
+Read out of the word list generated from what the box serves. Three blocks.
 
-1. Train on everything before the first judging stretch. Score on that stretch.
-2. Move the boundary forward so the first judging stretch is now part of the
-   training. Train again. Score on the second.
-3. Keep going. The reserve stays `sealed` at the end, untouched.
+**The verdict.** "The verdict on a `Stage 4 record set`". Pressed with
+`Read the rule against nothing on the held-back window`. Two boxes set it:
+`bar share %` and `noise must lose at least %`. It reads what the `survivors`
+made on the held-back window against four comparisons, of which two gate —
+`buying the coin and going away` and `shorting it and going away` — while
+`being long every period` and `being short every period` are shown and, in the
+page's own words, "the window's direction and never a gate". Around it sit
+`Rules declared before the numbers:`, `Looks at the held-back window before any
+stamp:`, `Every survivor against its own copies:` with its by-chance count, the
+`sanity:` line on the scrambled copies, and `Line A` and `Line B, the bound on
+shopping`.
 
-Nothing is ever scored on periods it trained on, and nothing looks backwards.
+**The other units.** `Read the rule on the other units' held-back windows` runs
+the same rule on every other coin-and-shape `unit` of the stage 3 set this was
+cut from, each on its own held-back window against its own copies. Two counts,
+information only, never a gate. About five seconds a `unit`.
 
-What comes out is a record: cleared the bar on five stretches of six, with the
-margin on each. That is something you can argue with.
+**The ride.** `Work out the held-back ride` gives, per survivor,
+`largest drawdown $`, `worst trade $`, `best trade $`, `trades won`,
+`stopped out`, `gross per trade $` and `money by third`, beside the same on the
+test window. Information only, and every press is a counted look.
+
+Two things worth noticing before adding anything. Verify already refuses to sort
+its tables, and says why: "There is no sort on this table: a sort is a look."
+That is Part 3's principle, already applied here. And
+`Rules declared before the numbers:` is already Part 6 in embryo.
+
+## The change, as an added block on Verify
+
+Take the one `unit` the **Funnel** worked on. Retrain it five times with the
+boundary sliding forward, and score three things on each pass against the same
+copy counts the original run used at each stage. Nothing touches the reserve.
+
+For the owner's set the passes divide the coin's history like this. The reserve
+stays sealed at 346 chunks and appears in no pass.
+
+| pass | train | test | judge |
+|---|---|---|---|
+| 1 | 954 | 205 | 232 |
+| 2 | 1,145 | 246 | 232 |
+| 3 | 1,336 | 287 | 232 |
+| 4 | 1,527 | 328 | 232 |
+| 5 | 1,719 | 368 | 232 |
+
+Train and test do exactly what they do now. The judge column is that pass's
+held-back stretch, opened only after the choosing is finished.
+
+**Scored on each pass, at three levels:**
+
+1. the bare `unit` at stage 1, against that stage's own copy count
+2. the bare `unit` at stage 2, against that stage's own copy count
+3. the `survivors` at stage 3, against that stage's own copy count
+
+Splitting one and two from three splits a question that is currently answered as
+one number: do the forecasts still work on data they never saw, and separately,
+do the trade settings still work. Today you cannot tell which half failed.
+
+**And the control, which is nearly free.** The **Funnel** kept 199 settings of
+2,752 for this set. Put a sample of the other 2,553 through the same five
+passes. The expensive part is retraining the `unit`, and the kept and the
+rejected share those same trained forecasts, so adding the rejected ones is only
+more pricing against models already paid for. If the rejected do as well as the
+`survivors` across five passes, the picking added nothing and the 199 are a
+slice, not a selection.
+
+## What gets ADDED to Verify
+
+**Controls.**
+
+- One press to run the passes. It needs a name and I am not going to invent one
+  here; the existing presses on the page are phrased as instructions, which is
+  the pattern to follow.
+- A box for how many passes.
+- A box for how many rejected settings to sample, with none as a legal value.
+- Nothing else. The copy counts are read from the stages the set was built by,
+  never typed, so they cannot drift from what the original run used.
+
+**Results.** One table, one row per pass, showing the train, test and judge
+chunk counts and dates for that pass, then for each of the three levels: what
+was made, what the copies made, and `beats N of K`. Under it, a single line:
+cleared on how many of the passes. Beside each survivor figure, the same figure
+for the rejected sample.
+
+## What gets REMOVED
+
+Nothing. I looked for something and there isn't anything.
+
+The single verdict stays, because it is what History's reserve grade is keyed to
+and because it is the one reading on the real held-back stretch.
+`The rule on the other units` stays, because it answers a different question:
+the same rule elsewhere, one window each, rather than this `unit` across five.
+The ride stays.
+
+**One thing should move rather than go.** The five-pass record is stronger
+evidence than the single verdict, so it should sit above it on the page. A
+weaker number read first becomes the number people remember.
 
 ## What it needs from the other parts
 
 Part 2, because a record of clearing a soft bar is a record of nothing. And it
-raises a question Part 6 has to answer: **is each judging stretch a counted
-look?** If it is, one pass of this spends six looks instead of one, and the
-whole idea of a look needs rethinking. I do not have an answer to that and it
-should be settled before anything is built.
+needs one question answered that I cannot answer: **is each pass's judging
+stretch a counted look?** Each one is a stretch never opened before, so the
+natural reading is no. That has to be decided rather than assumed, and it
+belongs with Part 6.
 
 ## What I am assuming
 
-- **That the same six dials being claimed is the same claim on every stretch.**
-  It is not obviously so. Each pass retrains, so the forecasts behind a setting
-  on the fifth stretch are not the forecasts behind it on the first. "Cleared
-  it five times" is a claim about the dials, not about a trained thing. That may
-  be exactly what you want, since the dials are what you would carry forward,
-  but it should be said out loud rather than assumed.
-- **That the held-back read today is really one roll.** It is an average across
-  many coins on one calendar stretch. If the coins move together, it is one
-  roll. If they do not, there are cheap extra rolls already sitting in the data
-  and this part is less necessary than I have made it sound. Nobody has checked
-  which.
-- **That equal-length stretches are the right cut.** Six stretches out of the
-  same history means each is a sixth the size, and six noisy answers are not
-  better than one solid one.
+- **That five retrains of one `unit` is affordable.** Far more likely than my
+  version, but still unmeasured. One retrain of this `unit` is the number to get.
+- **That claiming the same six dials is the same claim on every pass.** Each
+  pass retrains, so the forecasts behind a setting on pass five are not those
+  behind it on pass one. "Cleared it five times" is a claim about the dials.
+  That is probably what you want, since the dials are what carries forward, but
+  it should be said rather than assumed.
+- **That the copy counts hold up at five passes.** Twenty copies gives a
+  resolution of one part in twenty, so a pass can only be stated in steps of
+  five percent. Keeping them as the original run had them is right for
+  comparability. It is still coarse and worth knowing.
 
 ## What it costs
 
-The expensive part of this document, and more expensive than the first draft
-said. Per judging stretch you pay: the training, the re-scoring of every
-setting, **and** the scrambled copies, which are a full pricing run each. All
-three multiplied by the number of stretches. The first draft said "the training
-work multiplied", which left out two thirds of it.
+Five retrains of one `unit`, plus five sets of scrambled copies, plus pricing
+the kept and the sampled rejected settings on each pass. The copies have to be
+rebuilt per pass from that pass's own stretches and cannot be carried over.
 
----
+This is far cheaper than the version I first wrote, and it is the only part of
+this document whose cost I still cannot put a number on.
 
 # Part 2 — make the bar the best of all four comparisons
 
@@ -256,7 +339,9 @@ reading and refuse the wrong one.
 
 ## What it needs from the other parts
 
-Nothing, but Part 5's refusal depends on this being done first, because a
+Nothing, but note that **Verify already does this and says so**: "There is no
+sort on this table: a sort is a look." The gap is on the choosing screens, not
+here. Part 5's refusal depends on this being done first, because a
 threshold typed while the answer is on screen is the same fault in a new place.
 
 ## What I am assuming
@@ -452,7 +537,10 @@ judging stretch is a look, which this part has to answer.
 ## What it costs
 
 Not small, because of the blocker. Making a look an event that happens, rather
-than a number worked out afterwards, is the real work. Attaching a claim to it
+than a number worked out afterwards, is the real work. Less than the first draft
+implied, though: **Verify already prints `Rules declared before the numbers:`**,
+so the place to hang a claim exists and what is missing is the binding of it to
+the moment of looking. Attaching a claim to it
 after that is easy.
 
 ---
@@ -461,7 +549,7 @@ after that is easy.
 
 | Part | Machine cost | Build cost | Blocked on |
 |---|---|---|---|
-| 1 — several stretches | high | medium | timing one pass; shortest usable stretch |
+| 1 — several stretches, on Verify | medium | medium | timing one retrain of one unit |
 | 2 — best of all four | none | small | nothing |
 | 3 — out of reach while choosing | none | high | owner's call on losing the `floor` and sorter |
 | 4 — rule out a bad way of choosing | low | small | nothing |
