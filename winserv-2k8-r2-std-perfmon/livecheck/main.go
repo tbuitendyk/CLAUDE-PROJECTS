@@ -127,7 +127,7 @@ func main() {
 
 	if *probePath != "" {
 		if d, _, err := probeFS(*probePath, *probeTimeout); err != nil {
-			fmt.Printf("WARNING: file probe %q failed: %v (continuing without it)\n", *probePath, err)
+			fmt.Printf("WARNING: file probe \"%s\" failed: %v (continuing without it)\n", *probePath, err)
 			*probePath = ""
 		} else {
 			fmt.Printf("file probe: %s responded in %.1fms\n", *probePath, float64(d.Nanoseconds())/1e6)

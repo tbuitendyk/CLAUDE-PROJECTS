@@ -114,7 +114,7 @@ func run() error {
 	}
 	defer lg.Close()
 
-	lg.Printf("START perfmon pid %d | interval %s | cpu>=%.0f%%x%d core>=%.0f%%x%d mem<%dMB|load>=%d%%x%d diskq>=%.1fx%d disk>=%.0fmsx%d pages>=%.0fx%d stall>%dms probe=%q>=%.0fms | log %s",
+	lg.Printf("START perfmon pid %d | interval %s | cpu>=%.0f%%x%d core>=%.0f%%x%d mem<%dMB|load>=%d%%x%d diskq>=%.1fx%d disk>=%.0fmsx%d pages>=%.0fx%d stall>%dms probe=\"%s\">=%.0fms | log %s",
 		os.Getpid(), *interval, *cpuPct, *cpuSamples, *coreThresh, *coreSamples,
 		*memAvailMB, *memLoadPct, *memSamples,
 		*diskQThresh, *diskSamples, *diskLatMs, *latSamples,
@@ -137,10 +137,10 @@ func run() error {
 
 	if *probePath != "" {
 		if d, err := probeFS(*probePath); err != nil {
-			lg.Printf("WARN file probe %q failed (%v) — continuing without it", *probePath, err)
+			lg.Printf("WARN file probe \"%s\" failed (%v) — continuing without it", *probePath, err)
 			*probePath = ""
 		} else {
-			lg.Printf("file probe %q responded in %.1fms", *probePath, float64(d.Nanoseconds())/1e6)
+			lg.Printf("file probe \"%s\" responded in %.1fms", *probePath, float64(d.Nanoseconds())/1e6)
 		}
 	}
 
@@ -201,7 +201,7 @@ func run() error {
 			if d, err := probeFS(*probePath); err == nil {
 				probeMsVal, probeOK = float64(d.Nanoseconds())/1e6, true
 			} else {
-				lg.Printf("WARN file probe %q failed: %v", *probePath, err)
+				lg.Printf("WARN file probe \"%s\" failed: %v", *probePath, err)
 			}
 		}
 
