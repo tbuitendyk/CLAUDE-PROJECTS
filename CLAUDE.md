@@ -146,17 +146,31 @@ is the same fault pointing the other way.
 | `member` | **Sweep**, **Boards** | One forecast in the group that votes on a coin. |
 | `committee` | **Boards**, **Tune** | The whole group of forecasts that vote on one coin. Not on Sweep — there it is `members`, `agree`, and the shares. |
 | `promoted` | **Verify** | The second, fuller scoring of the best rows. Legal on Verify; anywhere else, say what it does instead. |
-| `cell` | **History**, **Greenlight** | One particular setting of `entry`, `gate`, `d`, `t`, `trail` and `arm` together. |
+| `cell` | **nowhere** (2026-09-09) | One particular setting of `entry`, `gate`, `d`, `t`, `trail` and `arm` together. The generator finds it on no tab at all. Whether it was on History and Greenlight once and went, or whether this row was simply typed wrong, nobody can now say — typed rows here have been wrong before. Say `setting`, which is on **Sweep**, **Boards**, **Funnel**, **Verify**, **History** and **Greenlight**. |
 | `branch` | **nowhere** (2026-08-28) | Was on the deleted Sweep, in front of the four boxes it named. Those boxes are on the surviving Sweep and that word is not, so it is forbidden again: say `decision`, `band % (or auto)`, `24/5` and `chunk shape` by name. |
 | `slim` | **nowhere** (2026-08-28) | Everything scored once, cheaply, before the best of it is scored again in full. It was on the deleted Sweep's two boxes and in the deleted Boards' plan line; both went, so the word went with them. On the three stages, say "stage 1" and "stage 2". |
 | `combo` | **nowhere** | One coin on its own, or one coin alongside the others it is read against — `singles`, `doubles`, `triples` choose which. |
 | `contexts` | **nowhere** | The other coins a coin is read alongside. Say "alongside one other coin" or "alongside two others", which is what the screen says. |
 
 Every placement in that table is READ OUT OF THE GENERATOR, never typed. It has
-been wrong four times by being typed — three of them telling the owner a word
-was one they could not see when it was on the screen in front of them, and the
+been wrong five times by being typed — three of them telling the owner a word
+was one they could not see when it was on the screen in front of them, the
 fourth (2026-08-28) leaving `slim` and `branch` marked legal on screens that had
-been deleted that morning.
+been deleted that morning, and the fifth (2026-09-09) `cell`, corrected above.
+
+**And on 2026-09-09 the whole table was checked against the generator for the
+first time, row by row, and TWO MORE ROWS ARE WRONG AND STILL STAND.** They are
+left standing because the owner authorised the `cell` fix and nothing else
+(RULE ZERO), and they are named here so nobody reads past them:
+
+- **`committee` is on Boards and SWEEP, not Boards and Tune.** Its row says "Not
+  on Sweep" and that is false; it is not on Tune at all.
+- **`promoted` is on BOARDS, not Verify.** Its row sends the reader to the wrong
+  screen entirely.
+
+Until those two rows are corrected, this table is authoritative for every row
+except those two. A table with known-false rows is the failure RULE ONE-A was
+written to end, so correcting them is the next thing to do to this file.
 
 **To check a word**: find the tab in `ultimate-trading-system/SCREEN-WORDS.md`
 and look. That is the whole procedure.
@@ -212,6 +226,45 @@ hover text is not an explanation — it just moves the problem one word along, a
 it does it while sounding helpful. Every word used to explain must itself be
 either on the screen or ordinary English.
 
+
+
+### RULE ONE-D — plain language NEVER renames anything (owner, 2026-09-09)
+
+**When the owner asks for plain, or eli5, or a summary, every established word
+stays exactly as it is.** Simplifying is not licence to reach for a different
+noun. It is the opposite: the words we already use ARE the plain version.
+
+The owner's words: "plain eli5 doesnt mean use jargon and abandon our
+terminology" — said after I restated an answer and called held "the checking
+slice", and called the reserve "the last slice of history".
+
+Look at what that trade actually was. Held is one syllable, it is the word the
+owner uses, and it is already as plain as language gets. "Checking slice" is two
+words, newer, and means nothing to anybody. I made the answer harder to read
+while carrying out an instruction to make it easier — the plain-language tool
+producing the exact fault the naming rules exist to stop. Same shape as
+2026-08-22, when the word-list generator itself authorised a label that was not
+on the owner's screen.
+
+- **The four stretches are train, test, held and reserve, always.** Not "the
+  training slice", not "the checking part", not "the last chunk". Those four
+  words are the owner's and they do not get simplified, shortened, expanded or
+  prettified in any reply, at any reading level. Where a screen says something
+  longer for one of them — Verify says `held-back` — quote the screen when
+  naming the control and use the owner's word everywhere else.
+- **The same holds for every other agreed word**, whether it came off a screen
+  or out of the owner's mouth in conversation. Once a thing has a name here, it
+  has one name.
+- **What plain DOES mean**: shorter sentences, one idea each; no code names, no
+  file names, no statistics words; a term explained the first time it appears.
+  It never means a different word for the same thing.
+- **The check, before sending any simplified version**: read the nouns in the
+  simplified text against the nouns in the original. Every noun that changed is
+  a rename and it goes back. A simplification has FEWER words than the original,
+  never different ones.
+- **A new name invented while simplifying is worse than jargon**, because jargon
+  at least points at something real. An invented plain-sounding label points at
+  nothing and reads as though it were the real name.
 
 
 
