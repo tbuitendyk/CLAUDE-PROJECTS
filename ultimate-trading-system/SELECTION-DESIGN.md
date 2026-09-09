@@ -37,10 +37,10 @@ because the same word can mean different things on different screens.
 | `shorting it and going away` | The same in the other direction. On **Funnel**, **History** and **Verify**. |
 | `avg held-back $` | The money column taken from the held-back stretch. On **Boards**, **Funnel** and **Verify**. |
 
-Two words are deliberately **not** used in this document, because each already
-means something else on a screen: `walk`, which on the **Funnel** is the run
-through its steps, and `noise`, which on **Verify** and **History** means the
-scrambled copies specifically.
+Two words are used ONLY in their screen sense in this document, never in any
+other: `walk`, which on the **Funnel** is the run through its steps, and
+`noise`, which on **Verify** and **History** means the scrambled copies
+specifically. Neither is borrowed for anything else here.
 
 ## What this covers
 
@@ -150,8 +150,12 @@ do the trade settings still work. Today you cannot tell which half failed.
 passes. The expensive part is retraining the `unit`, and the kept and the
 rejected share those same trained forecasts, so adding the rejected ones is only
 more pricing against models already paid for. If the rejected do as well as the
-`survivors` across five passes, the picking added nothing and the 199 are a
-slice, not a selection.
+`survivors` across five passes, the picking added nothing and the 199 are just
+the top of a pile that was all doing well, not a selection.
+
+The same control has a much cheaper form that needs none of this built, on the
+held-back stretch that already exists. That is Part 7, and it should be built
+first.
 
 ## What gets ADDED to Verify
 
@@ -286,10 +290,25 @@ several stretches turns that into something you can see.
   thing in a calm stretch and a wild one. That is more work and I think it is
   better. It is worth deciding which.
 
+## What gets ADDED to Verify
+
+Almost nothing, because the four figures are already on the page. Verify prints
+`buying the coin and going away` and `shorting it and going away` as the two
+that gate, and says of the other two, in its own words, that
+`being long every period` and `being short every period` "are the window's
+direction and never a gate".
+
+So the addition is one line: **did the rule beat the best of the four**, stated
+plainly rather than left for the eye to work out across four figures. And that
+line becomes what decides pass or fail, replacing the two that decide today.
+
+Nothing is removed. All four figures stay printed exactly as they are.
+
 ## What it costs
 
-Small. All four figures are already computed and stored. This is a change to
-which number decides pass or fail, and which is only shown.
+Small. All four are already computed and stored, for every `setting`, not only
+for the `survivors`. This is a change to which number decides pass or fail, and
+which is only shown.
 
 ---
 
@@ -545,6 +564,84 @@ after that is easy.
 
 ---
 
+# Part 7 — what the settings you threw away did on held
+
+> **The cheapest thing in this document, and it needs nothing else built
+> first.** No retraining, no extra passes, no new arithmetic. Every figure it
+> reads is already sitting in the record set.
+
+## The problem
+
+For the set this document was written after, the **Funnel** kept 199 settings
+out of 2,752. All 199 were positive on the held-back stretch, against about 32
+expected to clear their own bar by chance. That reads as overwhelming evidence.
+
+It is only evidence if the 2,553 that were thrown away did worse. Nobody has
+ever asked. If nearly all 2,752 were positive on that stretch, then 199 of 199
+says the stretch rose. It says nothing whatever about the picking, and the 199
+are just the top of a pile that was all doing well.
+
+This is general. Any count of `survivors` that clear a bar is unreadable without
+the same count for what did not survive.
+
+## The change
+
+One block on Verify, behind its own press, information only.
+
+The sharpest form is a single comparison:
+
+- of all 2,752 settings, how many were positive on held
+- of the 199 `survivors`, how many were positive on held
+
+Beside it, the same two counts against the best of the four comparisons rather
+than against zero, since Part 2 makes that the bar that matters.
+
+If the two shares are close, the picking added nothing. If the `survivors` pull
+clearly ahead, that is the first direct evidence that the choosing does
+something.
+
+## What gets ADDED to Verify
+
+**Controls.** One press. A box for how many of the non-kept settings to read,
+with all of them as a legal value, since reading them is cheap.
+
+**Results.** Two rows, kept and not kept, each with the count of settings, how
+many were positive on held, how many beat the best of the four, and the average.
+Under them one line saying how far apart the two rows are.
+
+## What gets REMOVED
+
+Nothing.
+
+## What it needs from the other parts
+
+Part 2, for the "beat the best of the four" column to mean anything. And it runs
+into Part 5's unresolved question — whether a result this damning should refuse
+the set rather than merely print. Build it printing. Decide gating when Part 5's
+blocker is answered.
+
+## What I am assuming
+
+- **That every setting has its held figures stored, not just the `survivors`.**
+  The stage 3 pricing computes held money and all four comparisons per setting,
+  so this should hold. Whether all 2,752 of this set's settings actually carry
+  them is a read of the record set away and should be checked before building.
+- **That reading them is affordable.** It is a read of stored rows, no pricing,
+  so it should be fast. Unmeasured on a set this size.
+- **That comparing two averages is the right reading.** Where the `survivors`
+  sit inside the whole spread may say more than the gap between two averages. I
+  would show both.
+
+## The risk, and it is real
+
+This is a read of the held-back stretch, so it must sit behind a counted press
+like everything else that touches it. It cannot change a choosing that has
+already happened. It can change the NEXT one, if the answer sends you back to
+walk the **Funnel** again knowing it. No screen can prevent that, and it is the
+owner's to weigh.
+
+---
+
 # Where the effort goes
 
 | Part | Machine cost | Build cost | Blocked on |
@@ -555,8 +652,12 @@ after that is easy.
 | 4 — rule out a bad way of choosing | low | small | nothing |
 | 5 — bar for the whole search | none | small | is the luck figure fit for this at all |
 | 6 — claim written first | none | medium | making a look an event |
+| 7 — what the thrown-away settings did | none | small | nothing |
 
-**Two are unblocked today: 2 and 4.** Part 2 is a change to which number decides
+**Three are unblocked today: 7, 2 and 4, and 7 is the one to build first.** It
+needs nothing else, reads figures that already exist, and answers the single
+question nobody has asked: did the settings the **Funnel** threw away do just as
+well. Part 2 is a change to which number decides
 pass or fail and costs nothing to run. Part 4 is a scoring pass and one new
 reading on **Verify**. Neither needs a decision from anyone but the owner about
 whether to do it.
