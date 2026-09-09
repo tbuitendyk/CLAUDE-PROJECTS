@@ -388,6 +388,13 @@ into the new shape or re-running them.
 
 > Renamed from the first draft. It cannot show that a way of choosing works. It
 > can only show cheaply that one does not, which is still worth having.
+>
+> **Moved 2026-09-09, owner's catch.** The first version of this part put the
+> reading on **Verify**. That is wrong. By the time you are on **Verify** a
+> `Stage 4 record set` already exists, so a warning about the choosing would
+> arrive after the choosing it was meant to inform. This part's whole claim is
+> that it warns before anything is spent, and **Verify** is after the spending.
+> It lives on the **Funnel**.
 
 ## The problem
 
@@ -410,11 +417,27 @@ anywhere near the top on the second?
   actively wrong across the boundary.
 
 Do it at several cut points rather than one, and show the highest and lowest
-answer on **Verify** beside the count of survivors.
+answer on the **Funnel**.
+
+**Two forms of it, and the earlier one is the better warning.**
+
+- **The general form** asks whether ranking this stage 3 record set by its test
+  money still picks winners across a boundary inside the test stretch. It is a
+  property of the set, not of any rule, so it is available BEFORE the walk
+  starts. That is where it should be shown: at the head of the walk, before the
+  first cut, where it can still change what you do.
+- **The specific form** asks the same of this rule's own selection, and it comes
+  as the rule is built. Useful, but it arrives after you have begun.
+
+Build the general one first. It is the cheaper reading and it is the one that
+can still stop something.
 
 ## What it needs from the other parts
 
-Nothing. It is the only part that stands completely alone.
+Nothing of its own. It is the only part that stands completely alone.
+
+It does have to obey Part 3, and it does: it reads test figures only and never
+touches held, which is what makes it legal on a screen used for choosing.
 
 ## What I am assuming
 
@@ -649,7 +672,7 @@ owner's to weigh.
 | 1 — several stretches, on Verify | medium | medium | timing one retrain of one unit |
 | 2 — best of all four | none | small | nothing |
 | 3 — out of reach while choosing | none | high | owner's call on losing the `floor` and sorter |
-| 4 — rule out a bad way of choosing | low | small | nothing |
+| 4 — rule out a bad way of choosing (on the **Funnel**, not Verify) | low | small | nothing |
 | 5 — bar for the whole search | none | small | is the luck figure fit for this at all |
 | 6 — claim written first | none | medium | making a look an event |
 | 7 — what the thrown-away settings did | none | small | nothing |
@@ -659,7 +682,7 @@ needs nothing else, reads figures that already exist, and answers the single
 question nobody has asked: did the settings the **Funnel** threw away do just as
 well. Part 2 is a change to which number decides
 pass or fail and costs nothing to run. Part 4 is a scoring pass and one new
-reading on **Verify**. Neither needs a decision from anyone but the owner about
+reading at the head of the **Funnel** walk. Neither needs a decision from anyone but the owner about
 whether to do it.
 
 **Everything else needs an answer first**, and the answers are cheap: time one
