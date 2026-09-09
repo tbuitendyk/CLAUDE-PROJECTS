@@ -4,13 +4,16 @@ The owner's design, spoken across 2026-09-09 and written down here so it is not
 lost with the conversation. **Nothing in it is built and nothing will be until
 the owner says so, part by part.**
 
-Two kinds of thing are in this file and they are kept apart on purpose:
+Three kinds of thing are in this file and they are kept apart on purpose:
 
-- **What the owner designed.** Recorded as given. Where a choice was theirs, it
-  says so.
+- **What the owner designed.** Sections A to F. Recorded as given. Where a
+  choice was theirs, it says so.
 - **What I found in the code that the design collides with.** Every one of
   these was read out of the named file in the session that wrote this. They are
   findings, not decisions.
+- **What I proposed.** Section G, and the two risks near the end. The owner has
+  asked for these to be recorded here; recording is not agreeing, and none of it
+  is their decision yet.
 
 It is a companion to `SELECTION-DESIGN.md` and does not overlap it. That one is
 about how a setting earns the right to be believed. This one is about how the
@@ -215,6 +218,87 @@ offers, and that list multiplies against every other dial in the block.
 
 **Cost.** Twice the `members` is twice the stage 1 training. Stage 3 grows worse
 than twice, for the reason above. Neither has been measured.
+
+---
+
+# G — weight the training by difficulty
+
+> **Mine, not the owner's, proposed 2026-09-09 and recorded here at their
+> request.** Sections A to F are their design. This is an addition to it and
+> they have not decided on it.
+
+## What it is for
+
+Sections E and F make a model direction-neutral. They do not make it skilled.
+A direction-neutral model with no edge does not make money in both kinds of
+market; it pays the fees in both. Balance removes a bias. It does not create
+signal, and nothing else in this design does either.
+
+## The change
+
+Weight each training period by how hard that period was for a fixed direction.
+Periods where simply leaning one way lost are worth more. Periods where leaning
+won are worth less.
+
+A model that has learned nothing except "go long" then scores badly on its own
+training objective, because the periods carrying the most weight are exactly the
+ones where going long lost. It has to find something else or fail visibly during
+training, rather than a year later on the reserve.
+
+## Where it goes
+
+The same place the balance weighting of section E goes: one weight per period,
+multiplied in beside the existing weighting. Training already accepts per-period
+weights, so nothing new has to be built to carry them.
+
+## Why it is not a leak
+
+It reads the period's own outcome, which the training already sees as that
+period's label. It reads nothing from after the period beyond what the label
+already carries, and every weight is fixed before training starts. It is the
+same shape as the class weighting already in use.
+
+## What has to be decided
+
+- **Which direction bet defines "hard".** Weighting by how badly `always long`
+  did would punish a long lean and reward a short one, which just moves the bias.
+  Weighting by how badly the BETTER of the two directions did is symmetric: a
+  period is easy only if some fixed direction would have taken it, and hardest
+  when neither would. That is the one I would use.
+- **The shape of the weight, and its cap.** One enormous period could otherwise
+  dominate the whole training. There has to be a ceiling and it has to be
+  visible, not a constant in a file.
+- **Whether it is on by default.** It is a setting the owner sets (RULE FIVE),
+  not something the code decides.
+
+## What it interacts with, and the guard it needs
+
+This multiplies against the balance weighting of section E, and against the
+recency weighting that already exists. Three weightings multiplied together can
+leave almost all of the effective training resting on a handful of periods.
+
+The recency weighting already refuses when it leaves too little effective history
+behind. **The same guard is needed here, applied to all three together rather
+than to any one of them.** A refusal on each in isolation would pass three times
+and still leave nothing.
+
+## The honest risk
+
+Weighting toward the hard periods means the model sees the easy ones faintly.
+If what it actually meets is mostly easy periods, it has been trained for the
+wrong thing.
+
+The counter is that easy periods do not need skill — a fixed direction handles
+them, and the four comparisons already price that. So the model is being asked
+to earn its keep only where earning it matters. But that is a bet about which
+kind of period will dominate, and it is recorded here as a bet rather than a
+fact.
+
+## One thing not to do
+
+Do not switch this on at the same time as the type masking of section F. Two
+changes to the training at once and the result cannot be read. One at a time,
+and the first one is theirs, not mine.
 
 ---
 
