@@ -6,13 +6,32 @@ package main
 // (which only catches multi-second freezes), we do a FIXED amount of
 // arithmetic and time it. Two numbers come out:
 //
-//   steal    = wall now / wall when unobstructed. 2.0 means the same work took
+//   steal    = time now / time when unobstructed. 2.0 means the same work took
 //              twice as long, i.e. we got half the CPU we asked for.
-//   on-cpu   = how much of that wall time we were actually executing, from the
+//   on-cpu   = how much of that time we were actually executing, from the
 //              thread's own cycle counter. Near 1.0 while steal is high means
 //              the core ran us the whole time but ran slow; well below 1.0
-//              means something took the core away — on a VM that is the
-//              hypervisor (CPU ready / co-stop), which no in-guest CPU% shows.
+//              means something took the core away — on a VM that is usually
+//              the hypervisor (CPU ready / co-stop), which no in-guest CPU%
+//              can show.
+//
+// Two hard-won requirements, both learned from the 2026-09-09 capture where
+// this canary produced garbage (45.7M iterations "in 2.0ms" — 23 billion
+// iterations/sec, and steal ratios of 2x-239x that meant nothing):
+//
+//  1. TIME WITH QueryPerformanceCounter, NOT time.Now(). Go's monotonic clock
+//     on Windows reads the interrupt-time field, which only advances on the
+//     scheduler tick (~15.6ms, ~1ms if something raised the timer resolution).
+//     Timing a 25ms workload with a 15.6ms ruler produces nonsense, and the
+//     calibration loop then chases its own quantization noise.
+//  2. PIN THE THREAD TO ONE CORE. On a VM the per-core timestamp counters need
+//     not be in sync, so a thread that migrates mid-measurement can read a
+//     wildly wrong (even negative) delta.
+//
+// Calibration also refuses to accept an implausible result: if the measured
+// rate is outside what silicon can do, the canary marks itself unreliable and
+// main() suppresses its flags rather than reporting a phantom hypervisor
+// problem.
 
 import (
 	"runtime"
@@ -26,7 +45,43 @@ var (
 	procQueryThreadCycles   = kernel32dll.NewProc("QueryThreadCycleTime")
 	procGetCurrentThreadHnd = kernel32dll.NewProc("GetCurrentThread")
 	procGetThreadTimes      = kernel32dll.NewProc("GetThreadTimes")
+	procQPC                 = kernel32dll.NewProc("QueryPerformanceCounter")
+	procQPF                 = kernel32dll.NewProc("QueryPerformanceFrequency")
+	procSetThreadAffinity   = kernel32dll.NewProc("SetThreadAffinityMask")
 )
+
+var qpcFreq float64 // ticks per second; 0 means QPC unusable
+
+func initQPC() bool {
+	var f int64
+	r, _, _ := procQPF.Call(uintptr(unsafe.Pointer(&f)))
+	if r == 0 || f <= 0 {
+		return false
+	}
+	qpcFreq = float64(f)
+	return true
+}
+
+func qpcNow() int64 {
+	var c int64
+	procQPC.Call(uintptr(unsafe.Pointer(&c)))
+	return c
+}
+
+func qpcSince(start int64) time.Duration {
+	d := qpcNow() - start
+	if d < 0 || qpcFreq == 0 {
+		return 0
+	}
+	return time.Duration(float64(d) / qpcFreq * float64(time.Second))
+}
+
+// pinThread nails the calling thread to one logical CPU so a migration cannot
+// corrupt a timing. Returns false if the OS refused.
+func pinThread(core int) bool {
+	r, _, _ := procSetThreadAffinity.Call(currentThread(), uintptr(1)<<uint(core))
+	return r != 0
+}
 
 // sink keeps the compiler from optimising the spin away.
 var sink uint64
@@ -46,6 +101,11 @@ type calibration struct {
 	iters        int
 	baseline     time.Duration
 	cyclesPerSec float64 // measured while unobstructed, to convert cycles -> on-cpu seconds
+	opsPerSec    float64 // sanity figure, printed so a bad calibration is obvious
+	spread       float64 // slowest/fastest calibration run; high means a noisy host
+	reliable     bool
+	why          string // populated when reliable is false
+	pinnedCore   int
 }
 
 func currentThread() uintptr {
@@ -53,9 +113,7 @@ func currentThread() uintptr {
 	return h
 }
 
-// threadCycles returns this thread's executed cycle count. Falls back to
-// GetThreadTimes (100ns kernel+user, ~15ms granularity) when the cycle
-// counter is unavailable.
+// threadCycles returns this thread's executed cycle count.
 func threadCycles() (uint64, bool) {
 	var c uint64
 	r, _, _ := procQueryThreadCycles.Call(currentThread(), uintptr(unsafe.Pointer(&c)))
@@ -77,75 +135,131 @@ func threadCPU100ns() uint64 {
 		(uint64(u.HighDateTime)<<32 | uint64(u.LowDateTime))
 }
 
-// calibrate sizes the workload to ~25ms and records the best (least obstructed)
-// wall time seen, plus the cycle rate observed while running flat out.
+const (
+	calTarget    = 30 * time.Millisecond
+	maxOpsPerSec = 2e10 // no real core does 20 G-iterations/sec; above this the clock lied
+	minOpsPerSec = 1e5
+)
+
+// calibrate sizes the workload to ~30ms of real work and records the least
+// obstructed time seen. Sizing uses the MINIMUM of many runs, which is the
+// least-disturbed estimate, so it converges even when the box is already
+// under heavy load — the failure mode that ruined the first field capture was
+// exiting on a single disturbed measurement.
 func calibrate() calibration {
 	runtime.LockOSThread()
+	cal := calibration{pinnedCore: runtime.NumCPU() - 1}
+	if cal.pinnedCore < 0 {
+		cal.pinnedCore = 0
+	}
+	pinThread(cal.pinnedCore)
 
-	iters := 200000
-	for attempts := 0; attempts < 30; attempts++ {
-		start := time.Now()
-		sink = spin(iters)
-		d := time.Since(start)
-		if d >= 20*time.Millisecond {
-			break
+	if !initQPC() {
+		cal.why = "QueryPerformanceCounter unavailable — no usable high-resolution clock"
+		return cal
+	}
+
+	iters := 1000000
+	var best, worst time.Duration
+	for round := 0; round < 15; round++ {
+		best, worst = time.Duration(1)<<62, 0
+		for i := 0; i < 9; i++ {
+			t0 := qpcNow()
+			sink = spin(iters)
+			d := qpcSince(t0)
+			if d < best {
+				best = d
+			}
+			if d > worst {
+				worst = d
+			}
 		}
-		if d <= 0 {
+		if best <= 0 {
+			if iters > 1<<30 {
+				break
+			}
 			iters *= 8
 			continue
 		}
-		factor := float64(25*time.Millisecond) / float64(d)
-		if factor < 1.5 {
-			factor = 1.5
+		if best >= calTarget/2 && best <= calTarget*2 {
+			break
 		}
-		if factor > 40 {
-			factor = 40
+		scale := float64(calTarget) / float64(best)
+		if scale < 0.1 {
+			scale = 0.1
 		}
-		iters = int(float64(iters) * factor)
+		if scale > 20 {
+			scale = 20
+		}
+		next := int(float64(iters) * scale)
+		if next < 10000 {
+			next = 10000
+		}
+		if next == iters {
+			break
+		}
+		iters = next
 	}
 
-	best := time.Duration(1) << 62
-	var bestCycles uint64
-	for i := 0; i < 15; i++ {
-		c0, haveCycles := threadCycles()
-		start := time.Now()
+	cal.iters = iters
+	cal.baseline = best
+	if best > 0 {
+		cal.opsPerSec = float64(iters) / best.Seconds()
+		cal.spread = float64(worst) / float64(best)
+	}
+
+	// Cycle rate, measured on the fastest of a fresh batch (that run is the one
+	// least likely to have been interrupted, so cycles/wall is the true rate).
+	fastest := time.Duration(1) << 62
+	var fastestCycles uint64
+	for i := 0; i < 9; i++ {
+		c0, ok0 := threadCycles()
+		t0 := qpcNow()
 		sink = spin(iters)
-		d := time.Since(start)
-		c1, _ := threadCycles()
-		if d < best {
-			best = d
-			if haveCycles && c1 > c0 {
-				bestCycles = c1 - c0
-			}
+		d := qpcSince(t0)
+		c1, ok1 := threadCycles()
+		if d > 0 && d < fastest && ok0 && ok1 && c1 > c0 {
+			fastest, fastestCycles = d, c1-c0
 		}
 	}
+	if fastestCycles > 0 && fastest > 0 {
+		cal.cyclesPerSec = float64(fastestCycles) / fastest.Seconds()
+	}
 
-	cal := calibration{iters: iters, baseline: best}
-	if bestCycles > 0 && best > 0 {
-		cal.cyclesPerSec = float64(bestCycles) / best.Seconds()
+	switch {
+	case cal.baseline <= 0:
+		cal.why = "calibration measured zero elapsed time — clock resolution too coarse"
+	case cal.opsPerSec > maxOpsPerSec:
+		cal.why = "measured rate is physically impossible — the timer is lying (tick-quantized or unstable TSC)"
+	case cal.opsPerSec < minOpsPerSec:
+		cal.why = "measured rate implausibly low — calibration was obstructed throughout"
+	case cal.baseline < calTarget/4:
+		cal.why = "workload too short to time reliably on this host"
+	default:
+		cal.reliable = true
 	}
 	return cal
 }
 
-// run executes one canary pass, returning wall time and the time actually
+// run executes one canary pass, returning elapsed time and the time actually
 // spent executing on a core.
-func (c calibration) run() (wall time.Duration, onCPU time.Duration) {
+func (c calibration) run() (elapsed time.Duration, onCPU time.Duration) {
 	if c.cyclesPerSec > 0 {
 		c0, ok0 := threadCycles()
-		start := time.Now()
+		t0 := qpcNow()
 		sink = spin(c.iters)
-		wall = time.Since(start)
+		elapsed = qpcSince(t0)
 		c1, ok1 := threadCycles()
 		if ok0 && ok1 && c1 > c0 {
 			onCPU = time.Duration(float64(c1-c0) / c.cyclesPerSec * float64(time.Second))
 		}
-		return wall, onCPU
+		return elapsed, onCPU
 	}
 
-	t0 := threadCPU100ns()
-	start := time.Now()
+	t := threadCPU100ns()
+	t0 := qpcNow()
 	sink = spin(c.iters)
-	wall = time.Since(start)
-	onCPU = time.Duration(threadCPU100ns()-t0) * 100
-	return wall, onCPU
+	elapsed = qpcSince(t0)
+	onCPU = time.Duration(threadCPU100ns()-t) * 100
+	return elapsed, onCPU
 }
