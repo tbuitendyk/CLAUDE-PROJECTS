@@ -38,7 +38,10 @@ CRLF-terminated (2008 R2 notepad-friendly), written next to the exe as
 2. Either just run `perfmon.exe` in a console (Ctrl+C stops it), or run
    `install-task.bat` **elevated** to register it as a boot-time scheduled
    task running as SYSTEM (recommended — elevated means every process is
-   visible for culprit naming, and it survives reboots).
+   visible for culprit naming, and it survives reboots). Arguments passed to
+   the installer are handed to `perfmon.exe` on every boot, so point the file
+   probe at the app's data directory and it survives reinstalls:
+   `install-task.bat -probe C:\Wipsystem`
 3. `uninstall-task.bat` (elevated) stops and removes the task.
 
 Run it elevated if you can: without admin rights it still measures the

@@ -5,6 +5,10 @@ rem command prompt, with perfmon.exe in the same directory. Self-contained -
 rem no other files needed. Safe to re-run over an existing install: it
 rem recreates the task in place.
 rem
+rem Any arguments you pass are handed to perfmon.exe on every boot, so options
+rem survive reinstalls. Point the file probe at the app's data directory:
+rem     install-task.bat -probe C:\Wipsystem
+rem
 rem Task Scheduler silently kills any task after 72 hours by default
 rem (ExecutionTimeLimit=PT72H), and schtasks /Create cannot turn that off.
 rem So: create the task, export its XML, patch the limit to PT0S (unlimited)
@@ -12,7 +16,7 @@ rem with inline PowerShell, VERIFY the patch is really in the XML, and only
 rem then re-register from it. PowerShell can exit with negative codes, which
 rem "if errorlevel 1" does not catch - hence the "%errorlevel%"=="0" checks.
 
-schtasks /Create /F /TN "perfmon" /TR "\"%~dp0perfmon.exe\"" /SC ONSTART /RU SYSTEM /RL HIGHEST
+schtasks /Create /F /TN "perfmon" /TR "\"%~dp0perfmon.exe\" %*" /SC ONSTART /RU SYSTEM /RL HIGHEST
 if not "%errorlevel%"=="0" goto :fail
 
 schtasks /Query /TN "perfmon" /XML > "%TEMP%\perfmon-task.xml"
@@ -30,6 +34,7 @@ taskkill /IM perfmon.exe /F 2>nul
 schtasks /Run /TN "perfmon"
 echo.
 echo perfmon installed with NO 72h execution limit (verified in task XML).
+echo Arguments on every boot: %*
 echo Log: %~dp0perfmon.log
 goto :eof
 
