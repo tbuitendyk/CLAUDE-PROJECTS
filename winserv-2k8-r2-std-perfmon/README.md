@@ -137,4 +137,7 @@ should print `<ExecutionTimeLimit>PT0S</ExecutionTimeLimit>`.
 - `install-task.bat` / `uninstall-task.bat` — boot-time scheduled task as
   SYSTEM; the installer inline-patches the task XML to remove Task
   Scheduler's default 72 h execution limit and verifies it took
+- `update.bat` — upgrade an existing deployment: stops the task, swaps the
+  binaries (Windows will not overwrite a running `.exe`), reinstalls and
+  verifies
 - `dist/perfmon.exe` — prebuilt binary (windows/amd64, go1.20.14)
