@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **969b2a8a80e2 — what the box is serving**, not from the working tree.
+Generated from **77b14d8d277e — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -957,7 +957,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 
 # Verify
 
-## What the controls are called (103)
+## What the controls are called (109)
 
 - `- INCOMPLETE, never a pass`
 - `, information only)`
@@ -965,13 +965,10 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `, reader`
 - `, so this is never a gate`
 - `· bar`
-- `· being long every period`
-- `· being short every period`
 - `· check:`
 - `· releases: set`
 - `· rule keys`
 - `· sealed window`
-- `· shorting it and going away`
 - `(read`
 - `(the first digits differ)`
 - `), threshold`
@@ -979,15 +976,17 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `a setting`
 - `and beats`
 - `as stored`
+- `at`
 - `at least`
 - `avg held-back $`
 - `bar`
 - `bar share %`
 - `beat its own null set`
+- `beat the best of the four`
+- `beaten`
 - `beats`
 - `beats N of K`
 - `best trade $`
-- `buying the coin and going away`
 - `by test money made`
 - `clear the bar`
 - `clear the same bar, about`
@@ -1007,13 +1006,16 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `gross per trade $`
 - `held-back $`
 - `Held-back read:`
+- `how many`
 - `include`
 - `largest drawdown $`
 - `lead`
 - `made money ·`
 - `mark(s) carried ·`
 - `Marks the walk was carried past:`
+- `median held-back $`
 - `money by third`
+- `no figure`
 - `noise must lose at least %`
 - `not beaten`
 - `not intact`
@@ -1027,14 +1029,17 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `other units positive;`
 - `over`
 - `own verdict`
+- `positive`
 - `read`
 - `read here,`
+- `Read what the rule dropped`
 - `real`
 - `refused:`
 - `Rules declared before the numbers:`
 - `sanity:`
 - `scrambled boards' own best`
 - `setting`
+- `settings`
 - `Stage 4 record set`
 - `stamped`
 - `stands`
@@ -1045,6 +1050,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `survivors made`
 - `test $`
 - `test largest drawdown $`
+- `the best of the four was`
 - `the four comparisons are not known`
 - `The other units:`
 - `The ride on the held-back window`
@@ -1067,7 +1073,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 
 _none_
 
-## Sentences the page prints (43)
+## Sentences the page prints (50)
 
 - The verdict on a Stage 4 record set
 - A rule can be checked against scrambled data and a single row cannot, so this reads the set as a
@@ -1080,8 +1086,7 @@ _none_
 - the rule does not give back its own survivors today
 - Looks at the held-back window before any stamp:
 - Read the rule against nothing on the held-back window
-- ); comparisons gated: buying the coin and going away, shorting it and going away (
-- ); being long every period and being short every period are the window's direction and never a gate.
+- ); comparisons gated: all four, and the rule must beat the best of them (
 - The rule on a noise board, held-back window:
 - this set kept no scrambled copies, so nothing was read against nothing
 - · a forecast-free rule clears this about
@@ -1102,6 +1107,14 @@ _none_
 - never a gate; a mark when fewer than half are positive. About five seconds a unit, read one at a time.
 - Read the rule on the other units' held-back windows
 - Not read on this set yet.
+- What the rule dropped, held-back window
+- The settings the rule did NOT keep, read on the same held-back window as the survivors. A count of
+- survivors that clear a bar cannot be read without it: if nearly every setting on the board was positive here, then
+- all the survivors being positive says the window rose and says nothing about the picking. Each side is read
+- against the four at its own hold lengths. Nothing is priced, every figure is already on the board, and this is a
+- counted look at the held-back window. Information only, never a gate.
+- how many of the dropped to read (blank = all
+- dropped settings were read, taken with an even stride through the board's own order.
 - What the held-back window looked like from inside, per survivor: the largest drawdown, the worst
 - and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers
 - on the test window. Worked out by the same pass as the missing numbers on the Funnel, on this unit only;
@@ -1113,26 +1126,23 @@ _none_
 - ). Line B, the bound on shopping: the best
 - survivors, every one of them, in the set's own order. There is no sort on this table: a sort is a look.
 
-## Every word, flat (286)
+## Every word, flat (309)
 
 ```
-about About above above. after against allow always among and any are as at avg away back bar be beat beaten beats before being below beside best board boards bound box broken buying buys by can cannot carried chance check checked claim clear clears coin coin-and-shape comparisons copies copy counted. counts cut data deal declared demand. differ digits direction do does drawdown each earlier every Every FAIL fail fail. failure fee fees fewer figure figures Final finest first five floor Footing forecast-free forward four freezing from frozen Funnel gate gate. gated give going gone gross half head-to-heads held-back Held-back here honestly. in include INCOMPLETE information Information inside intact is IS it It it. its judge. kept keys known largest later lead least like line Line long look look. looked looks Looks lose loses made mark marks Marks measure median minutes. missing money mostly must never no No noise NOISE noise. not Not nothing now null number numbers obvious of on On one only only. Opening or order. other out over own paid panel paper parent pass PASS past past. pays per period positive positive. press presses priced printed prints PROFITING read Read reader readings reads real record refused release releases replace results ride rides row rule Rule Rules same sanity scrambled sealed seconds set setting settings share shopping short shorting simpler simulation single so sort Stage stage stamp stamped stand stands step stopped stops stored strength survivor survivors table test tests than that The the their them There things third this threshold time time. to today too trade trades Two under unit units unstamped User verdict vs walk was what What when whole window window. windows with won Work Worked worked worst would writes yet yet.
+about About above above. after against all allow already always among an and any are as at avg back bar be beat beaten beats before being below beside best blank board boards bound box broken buys by can cannot carried chance check checked claim clear clears coin-and-shape comparisons copies copy count counted counted. counts cut data deal declared demand. did differ digits direction do does drawdown dropped each Each earlier even every Every FAIL fail fail. failure fee fees fewer figure figures Final finest first five floor Footing forecast-free forward four freezing from frozen Funnel gate gate. gated give gone gross half head-to-heads held-back Held-back here hold honestly. how if in include INCOMPLETE information Information inside intact is IS it It it. its judge. keep kept keys known largest later lead least lengths. like line Line long look look. looked looks Looks lose loses made many mark marks Marks measure median minutes. missing money mostly must nearly never no No noise NOISE noise. not Not NOT nothing Nothing now null number numbers obvious of on On one only only. Opening or order. other out over own paid panel paper parent pass PASS past past. pays per picking. positive positive. press presses priced printed prints PROFITING read Read reader readings reads real record refused release releases replace results ride rides rose row rule Rule Rules same sanity says scrambled sealed seconds set setting settings share shopping side simpler simulation single so sort Stage stage stamp stamped stand stands step stopped stops stored strength stride survivor survivors survivors. table taken test tests than that The the their them then There things third this threshold through time time. to today too trade trades Two under unit units unstamped User verdict vs walk was were what What when whole window window. windows with without won Work Worked worked worst would writes yet yet.
 ```
 
 ---
 
 # History
 
-## What the controls are called (76)
+## What the controls are called (75)
 
 - `, the bar being`
 - `: retrains on the first`
-- `· being long every period`
-- `· being short every period`
 - `· built from this table:`
 - `· retrained on the first`
 - `· sealed window`
-- `· shorting it and going away`
 - `· verdict`
 - `% of history, tested on the next`
 - `%, judged on the`
@@ -1144,10 +1154,11 @@ about About above above. after against allow always among and any are as at avg 
 - `36 months`
 - `48 months`
 - `a setting`
+- `at`
 - `average $`
+- `beaten`
 - `beats`
 - `built`
-- `buying the coin and going away`
 - `clear the same bar, about`
 - `does not stand`
 - `from`
@@ -1186,6 +1197,7 @@ about About above above. after against allow always among and any are as at avg 
 - `survivors`
 - `survivors made`
 - `taken`
+- `the best of the four was`
 - `the four comparisons are not known`
 - `The read:`
 - `the survivors on this look`
@@ -1238,10 +1250,10 @@ _none_
 - records, in the set's own order. Green is the best of the row: a half-life wins only by at least a cent over the unweighted column; a tie goes to the unweighted side.
 - Build the half-life set from this table
 
-## Every word, flat (228)
+## Every word, flat (223)
 
 ```
-about above again Against against already always and anything are as at average away bar beat beaten beats been before began behind being beside best block both box Build built buying by cent chance choice chosen chunks clear clears coin column comparisons copies counted cut data do does drawdown Every every exactly FAIL figures figures. first forecast-free forecasting forecasts four from gate goes going grade graded Green half-life half-lives has Held history holds improved in intact is IS it It its judged keeping kept kinds known largest lead least line. lines long look look. lose losing. made members models money months more name never next no No noise NOISE none not nothing of on once one only order. other out over own part PASS pass passed per period press priced prices PROFITING reached read reads real recent record records refused refuses release reserve Reserve result Retrain retrained retraining retrains row rows rule rules Run run runs same sanity scrambled seal sealed search seen. set setting shape short shorting side. sort Stage stage stamped stand stands stood stopped stretch survivor survivors table taken tested tests that The the Then There they This this threshold ticked tie time to today. touched trade trades trained training two under unit unread unweighted verdict Verify vs was weighted were whatever where whole window window. wins with with. without won worst would yet yet.
+about above again Against against already always and anything are as at average away bar beat beaten beats been before began behind being beside best block both box Build built by cent chance choice chosen chunks clear clears coin column comparisons copies counted cut data do does drawdown Every every exactly FAIL figures figures. first forecast-free forecasting forecasts four from gate goes grade graded Green half-life half-lives has Held history holds improved in intact is IS it It its judged keeping kept kinds known largest lead least line. lines long look look. lose losing. made members models money months more name never next no No noise NOISE none not nothing of on once one only order. other out over own part PASS pass passed per press priced prices PROFITING reached read reads real recent record records refused refuses release reserve Reserve result Retrain retrained retraining retrains row rows rule rules Run run runs same sanity scrambled seal sealed search seen. set setting shape side. sort Stage stage stamped stand stands stood stopped stretch survivor survivors table taken tested tests that The the Then There they This this threshold ticked tie time to today. touched trade trades trained training two under unit unread unweighted verdict Verify vs was weighted were whatever where whole window window. wins with with. without won worst would yet yet.
 ```
 
 ---
