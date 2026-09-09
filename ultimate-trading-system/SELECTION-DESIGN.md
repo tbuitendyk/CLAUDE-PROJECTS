@@ -432,6 +432,38 @@ answer on the **Funnel**.
 Build the general one first. It is the cheaper reading and it is the one that
 can still stop something.
 
+## Per unit, and a table of all of them (owner, 2026-09-09)
+
+**It should not be limited to the one unit being walked.** A stage 3 record set
+covers many units — the **Funnel** offers `read the other units`, and **Verify**
+speaks of every `other coin-and-shape unit` of the stage 3 set the current one
+was cut from. So run it per unit: rank that unit's settings on the first half of
+test, score them on the second, and get one number per unit.
+
+**Then show all of them in one ordered table.** This is the owner's idea and it
+is the better half of this part. It answers a question that cannot be asked
+today: before walking anything, which units have a ranking worth trusting and
+which are ranking noise. A unit whose own ranking inverts inside its own test
+stretch is one that should not be walked at all.
+
+**Where it goes.** Beside the control that picks which unit to work on. On
+screen that is `Choose`, with `coin` and `shape:`, under the heading
+`One rule per coin and shape:`. **There is no control on any screen called a
+unit selector** — that is the owner's phrase in conversation and it is recorded
+here as their phrase, not as a label. Whatever the table is called, its name is
+theirs to give.
+
+**Ordering it is allowed here, and it is worth saying why.** **Verify** refuses
+to sort its own tables and gives the reason: a sort is a look. That reason is
+about held figures. This table holds test figures only, so ordering it costs
+nothing and spends nothing. The **Funnel** already has `Order the whole set by`
+as the pattern to follow.
+
+**The cost, said plainly.** This is one more thing you would be choosing units
+on. It reads no held or reserve figure so it spends no look, but it is still
+shopping, and Part 5's count of what was tried has to include it or the luck
+arithmetic understates the search.
+
 ## What it needs from the other parts
 
 Nothing of its own. It is the only part that stands completely alone.
