@@ -3995,29 +3995,6 @@ function proveRebuild(perSetting, expect, tol = 1e-6, onUnit = null) {
 // empty list and the service refused it, so `work out the missing numbers` had
 // never once run. The press names the rule now, and the survivors are worked
 // out HERE, through S4.applyRule -- the one function that applies a rule
-// (lib/funnelset.js) -- so the settings rebuilt are the very settings the
-// count at the top of the walk is counting, and the two cannot drift.
-//
-// AND WITH WHAT THE SWEEP STORED FOR EACH OF THEM (3.57.2, owner question
-// 2026-09-04 about "NOT checked against the sweep (the caller supplied nothing
-// to check against)"). A rebuild re-prices a setting and re-works its average
-// test money, and comparing that against the money the sweep stored is what
-// says the two runs are the same world. That comparison only ever happened
-// when the CALLER supplied the stored figures, and the page holds none -- so
-// it never happened. The rows read here carry them, so they travel back with
-// the names and the check always has something to check.
-async function survivorLabelsOf(id, state = {}) {
-  const S4 = require('./funnelset');
-  const t = readTally(id);
-  if (!t) return null;                        // no tables yet: the caller starts a totalling
-  const board = await funnelBoard(id, t, state.unit);
-  const rich = readFunnelRich(id);
-  const all = withFunnelRich(board.all, rich);
-  const rows = S4.applyRule(all, S4.normaliseRule(state.rule));
-  const stored = {};
-  for (const r of rows) if (Number.isFinite(Number(r.avgTest))) stored[r.label] = Number(r.avgTest);
-  return { labels: rows.map((r) => r.label), of: all.length, stored };
-}
 async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   const busy = stageRunning();
   if (busy) {
@@ -4951,6 +4928,7 @@ function funnelAcrossStart(id, state = {}) {
   const richNow = richBusy();
   if (richNow) throw new Error(`${richNow} — reading across the other units would fight it for the same workers`);
   if (othersBusy()) throw new Error(`${othersBusy()} — the same boards, one reading at a time`);
+  if (holdBusy()) throw new Error(`${holdBusy()} — the same boards, one reading at a time`);
   const key = acrossKeyOf(id, state);
   if (acrossRun) {
     // the same rule is the same reading -- unless that reading failed, in
@@ -5057,20 +5035,26 @@ async function funnelRead(id, state = {}) {
     : { rule: S4.normaliseRule(state.rule), key: 'rule', detail: null };
   const rule = closed.rule;
   const rows = S4.applyRule(all, rule);
-  // HOW MUCH OF STEP 6's WORK IS ALREADY DONE (3.81.0, owner order 2026-09-07:
+  // HOW MUCH OF THE PRESS'S WORK IS ALREADY DONE (3.81.0, owner order 2026-09-07:
   // "when the services are resting using the button fires the entire process
-  // again ... code it right"). Counted on the SURVIVORS under today's rule, on
-  // the board on screen, with the same lookup withFunnelRich uses -- so the
-  // press can be DEAD when there is nothing left to work out, instead of
-  // telling the owner to press it again and then quietly pricing the lot a
-  // second time. `run` is the press already going, so a page that was reloaded
-  // in the middle of one picks it back up rather than offering to start it.
+  // again ... code it right"). Same lookup withFunnelRich uses, so the press
+  // can be DEAD when there is nothing left to work out, instead of telling the
+  // owner to press it again and then quietly pricing the lot a second time.
+  // `run` is the press already going, so a page that was reloaded in the middle
+  // of one picks it back up rather than offering to start it.
+  //
+  // COUNTED ON THE WHOLE BOARD, NOT THE SURVIVORS (3.102.0, owner order
+  // 2026-09-10: prep the entire record set before the funnel is walked). While
+  // it counted survivors, the press read as done the moment today's rule
+  // happened to keep only settings a previous walk had priced -- and the
+  // ranking read (Part 4) needs every setting on the board, not the ones some
+  // rule kept.
   const richHas = (r) => {
     const x = (rich && rich.settings) ? rich.settings[r.label] : null;
     if (!x) return false;
     return !(r.unit && x.units && !x.units[r.unit]);
   };
-  const richOn = { have: rows.filter(richHas).length, need: rows.length, run: funnelRichStatus(id) };
+  const richOn = { have: all.filter(richHas).length, need: all.length, run: funnelRichStatus(id) };
   const seed = state.seed || id;
   const floor = state.floor == null ? 0 : Math.max(0, Math.floor(state.floor));
 
@@ -5423,6 +5407,92 @@ function sliceRowsFor(rows, t, axis, rule, opts = {}) {
     }));
   }
   return [];
+}
+
+// ---- DOES THE RANKING HOLD? (3.102.0, SELECTION-DESIGN.md Part 4) -----------
+//
+// Rank every setting of one coin and shape on one part of the test window and
+// score them on another part. If the order survives the boundary, the way of
+// choosing has not been ruled out; if it does not, everything chosen by that
+// order is chosen by nothing.
+//
+// READS NOTHING FROM THE HELD-BACK WINDOW OR THE RESERVE, which is what makes
+// it legal on a screen used for choosing. Every number comes out of the test
+// window, worked out in three parts by the pricing that already ran.
+//
+// TWO STEPS, ON PURPOSE. The reading is one board at a time off disk and costs
+// seconds a board; the three numbers the owner sets are arithmetic on what came
+// back. So the reading is kept and the numbers re-apply to it -- moving a bar
+// never re-reads a board.
+let holdRun = null;   // { id, token, startedAt, done, of, result, error, promise }
+const holdBusy = () => (holdRun && !holdRun.result && !holdRun.error
+  ? `the ranking of ${holdRun.id} is being read` : null);
+
+async function funnelRankHoldRead(id, note = null) {
+  const RH = require('./rankhold');
+  const t = readTally(String(id));
+  if (!t) throw new Error('this set has no totalled tables yet, so there is no board to rank');
+  const rich = readFunnelRich(String(id));
+  if (!rich || !rich.settings) {
+    throw new Error('nothing in this set carries what each setting made in each part of the test window — press work out the missing numbers first');
+  }
+  const units = unitsOfSet(t, String(id));
+  const out = [];
+  if (note) note(0, units.length);
+  for (const u of units) {
+    // eslint-disable-next-line no-await-in-loop
+    const rows = withFunnelRich(await loadUnitBoard(String(id), t, u.key), rich);
+    out.push({ unit: u.key, name: u.name, ...RH.holdOfUnit(rows) });
+    if (note) note(out.length, units.length);
+  }
+  return out;
+}
+// The reading, with the owner's three numbers laid on it. Kept in ONE place
+// (lib/rankhold.js) so a screen can never work out a pass for itself.
+const holdAnswer = (run, bar) => {
+  const RH = require('./rankhold');
+  return {
+    running: !run.result && !run.error,
+    token: run.token,
+    done: run.done,
+    of: run.of,
+    startedAt: new Date(run.startedAt).toISOString(),
+    error: run.error,
+    result: run.result ? { ...RH.withBar(run.result, bar), setId: run.id } : null,
+  };
+};
+const holdNone = (id) => ({ running: false, none: true, token: null, done: 0, of: 0, startedAt: null, error: null, result: null, setId: String(id) });
+
+// START, OR ANSWER THE ONE ALREADY READ. The reading does not depend on the
+// rule, the board on screen or the bar, so the same set asked again is answered
+// from what is in hand however the numbers have moved since.
+function funnelRankHoldStart(id, bar = {}) {
+  if (holdRun && !holdRun.result && !holdRun.error) {
+    if (holdRun.id === String(id)) return holdAnswer(holdRun, bar);
+    throw new Error(`the ranking of ${holdRun.id} is being read — one reading at a time`);
+  }
+  if (holdRun && holdRun.result && holdRun.id === String(id)) return holdAnswer(holdRun, bar);
+  const richNow = richBusy();
+  if (richNow) throw new Error(`${richNow} — reading the ranking would fight it for the same boards`);
+  if (othersBusy()) throw new Error(`${othersBusy()} — the same boards, one reading at a time`);
+  if (acrossBusy()) throw new Error(`${acrossBusy()} — the same boards, one reading at a time`);
+  if (holdBusy()) throw new Error(`${holdBusy()} — the same boards, one reading at a time`);
+  const doc = getSet(id);
+  if (!doc) throw new Error(`unknown record set '${id}'`);
+  const startedAt = Date.now();
+  const run = { id: String(id), token: `${id}:${startedAt}`, startedAt, done: 0, of: 0, result: null, error: null, promise: null };
+  holdRun = run;
+  run.promise = funnelRankHoldRead(String(id), (done, of) => { run.done = done; run.of = of; })
+    .then((result) => { run.result = result; run.done = run.of; })
+    .catch((err) => { run.error = String((err && err.message) || err); });
+  return holdAnswer(run, bar);
+}
+// A READING ALREADY TAKEN IS THROWN AWAY when the numbers beside the set are
+// worked out again, because those numbers are what it was read from.
+function funnelRankHoldForget(id) { if (holdRun && holdRun.id === String(id)) holdRun = null; }
+function funnelRankHoldStatus(id, bar = {}) {
+  if (!holdRun || holdRun.id !== String(id)) return holdNone(id);
+  return holdAnswer(holdRun, bar);
 }
 
 // ---- the rebuilt numbers, kept beside the set --------------------------------
@@ -5851,47 +5921,50 @@ function funnelRichStart(id, state = {}) {
     if (richRun.id === String(id)) return richStatus(richRun);
     throw new Error('another record set is having its missing numbers worked out right now — one at a time');
   }
+  // and not on top of a ranking being read (3.102.0): the same boards, and this
+  // one would move the very numbers that reading is being taken from
+  if (holdBusy()) throw new Error(`${holdBusy()} — the same boards, one at a time`);
   const doc = getSet(id);
   if (!doc) throw new Error(`unknown record set '${id}'`);
   claimOrRefuse();
   const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, result: null, error: null, promise: null };
   richRun = run;
   run.promise = (async () => {
-    // THE PRESS NAMES THE RULE, NOT A LIST (3.57.1, owner report: pressing it
-    // said "nothing was asked for"). A list of names typed by the page can be
-    // empty, or stale, or a different set of survivors from the ones the count
-    // at the top of the walk is counting. The rule is what the walk holds, so
-    // the rule is what is sent, and the survivors are worked out here.
-    let labels = Array.isArray(state.labels) ? state.labels.map(String) : [];
-    // WHAT TO CHECK THE REBUILD AGAINST (3.57.2): the caller may send it, but
-    // the page never has it to send, so the service reads it beside the
-    // survivors and the check always runs.
-    let expect = state.expect || null;
-    if (!labels.length && state.rule) {
-      const got = await survivorLabelsOf(String(id), state);
-      if (!got) {
-        const t = ensureTally(String(id));
-        return { totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null };
-      }
-      labels = got.labels;
-      if (!expect || !Object.keys(expect).length) expect = got.stored;
-      if (!labels.length) {
-        throw new Error(`the rule keeps none of this set's ${got.of.toLocaleString()} settings, so there is nothing to work out`);
-      }
+    // THE WHOLE RECORD SET, NOT THE RULE'S SURVIVORS (3.102.0, owner order
+    // 2026-09-10: "do an entire stage three record set prep before we start
+    // running the funnel ... then get rid of that call further down").
+    //
+    // It used to rebuild only what the rule kept at that moment, which is why
+    // the numbers beside a set covered a different slice of the board after
+    // every walk. Part 4 of SELECTION-DESIGN.md cannot be read off a partial
+    // board at all: it asks whether ranking the settings on one part of the
+    // test window still picks winners on another part, and a ranking over the
+    // survivors of a rule already made by ranking is no test of anything.
+    //
+    // saveFunnelRich MERGES, so on a set earlier walks have touched this tops
+    // up what is missing rather than re-pricing what is there. That is why no
+    // migration and no repair is needed for the sets already on the box.
+    const t = ensureTally(String(id));
+    if (t.totalling || t.waiting || t.failed) {
+      return { totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null };
+    }
+    const board = await funnelBoard(String(id), t, 'all');
+    const labels = (board.all || []).map((r) => String(r.label));
+    if (!labels.length) throw new Error('this record set has no settings on its board, so there is nothing to work out');
+    // THE PROOF STILL TRAVELS WITH THE ANSWER, and over the whole board rather
+    // than the survivors, so it is a stronger check than the one it replaces.
+    // What it checks against is the board's own stored money for each setting.
+    const expect = {};
+    for (const r of (board.all || [])) {
+      if (r.avgTest != null && Number.isFinite(Number(r.avgTest))) expect[String(r.label)] = Number(r.avgTest);
     }
     run.of = labels.length;
     const got = await rebuildRichFor(doc, labels, { note: (done, of) => { run.done = done; run.of = of; } });
-    // THE PROOF TRAVELS WITH THE ANSWER. An unproved rebuild is allowed and
-    // must never look proved, so the verdict is part of the reply rather than
-    // something the screen can forget to ask for.
-    // the board these figures were read on: the walk's unit, or the blend
-    const onUnit = state.unit && String(state.unit) !== 'all' ? String(state.unit) : null;
-    const proof = proveRebuild(got.perSetting, expect, undefined, onUnit);
-    // KEPT, NOT THROWN AWAY. The rebuilt numbers used to leave with this reply
-    // and nothing held them, so a limit on the worst losing streak at step 6
-    // refused every row -- no row carried one. They are written beside the set
-    // and funnelRead lays them onto the survivors (Funnel design §16, step 6).
+    const proof = proveRebuild(got.perSetting, expect);
     const kept = saveFunnelRich(doc.id, got.perSetting);
+    // A RANKING ALREADY READ WAS READ FROM THESE NUMBERS, so it is dropped
+    // rather than served beside numbers it never saw (3.102.0).
+    funnelRankHoldForget(doc.id);
     return { settings: got.settings, units: got.units, failures: got.failures, proof, kept };
   })()
     .then((out) => { run.result = out; if (run.of) run.done = run.of; })
@@ -6240,6 +6313,7 @@ function droppedRefusalOf(doc) {
   const busy = verifyBusy();
   if (busy) return `${busy} — the read waits for the box to be free`;
   if (acrossBusy()) return `${acrossBusy()} — the same boards, one reading at a time`;
+  if (holdBusy()) return `${holdBusy()} — the same boards, one reading at a time`;
   if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   if (othersRun && !othersRun.result && !othersRun.error) return `${othersBusy()} — one at a time`;
   return null;
@@ -6316,6 +6390,7 @@ function othersRefusalOf(doc, footing) {
   const busy = verifyBusy();
   if (busy) return `${busy} — the read waits for the box to be free`;
   if (acrossBusy()) return `${acrossBusy()} — the same boards, one reading at a time`;
+  if (holdBusy()) return `${holdBusy()} — the same boards, one reading at a time`;
   if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   if (othersRun && !othersRun.result && !othersRun.error) return othersRun.id === doc.id ? 'the other units are being read for this set right now' : `${othersBusy()} — one at a time`;
   if (footing && !footing.ok) return footing.why;
@@ -6381,6 +6456,7 @@ function rideRefusalOf(doc) {
   if (busy) return `${busy} — the ride waits for the box to be free`;
   if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
   if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+  if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
   if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
   if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   if (!getSet((doc.parent || {}).id)) return 'the stage 3 set this was cut from is gone, so its ride cannot be worked out';
@@ -6466,6 +6542,7 @@ function unreadRefusalOf(doc) {
   if (busy) return `${busy} — the grade waits for the box to be free`;
   if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
   if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+  if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
   if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
   if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   return null;
@@ -6720,6 +6797,7 @@ function captureRefusalOf(doc) {
   if (busy) return `${busy} — the capture waits for the box to be free`;
   if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
   if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+  if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
   if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
   if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   return null;
@@ -7004,6 +7082,7 @@ function halfLifeRefusalOf(doc) {
   if (busy) return `${busy} — the half-life run waits for the box to be free`;
   if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
   if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+  if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
   if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
   if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   return null;
@@ -8057,6 +8136,7 @@ module.exports = {
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
   missingSettingsIn, nextSettingNumber,
   rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
+  funnelRankHoldRead, funnelRankHoldStart, funnelRankHoldStatus,
   funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   windowsOfSet, newestDataOf,
@@ -8076,7 +8156,7 @@ module.exports = {
   testWindowOfUnit, exposureOf,
   funnelAcrossStart, funnelAcrossStatus, funnelCrossesStart, funnelCrossesStatus, funnelCrosses,
   sealedWindowOf, sealedFromUnits, noiseTwinOf,
-  survivorLabelsOf, funnelCutsFor, funnelSetRows, rebuildSetRichStart, rebuildSetRichStatus,
+  funnelCutsFor, funnelSetRows, rebuildSetRichStart, rebuildSetRichStatus,
   BOARD_NULL_NONE,
   dropUndeclaredSettings, dropSettingsNamed, undeclaredIn,
   tallyRunPromise: () => (tallyRun ? tallyRun.promise : null),

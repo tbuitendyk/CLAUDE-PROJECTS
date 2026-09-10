@@ -5046,6 +5046,7 @@ async function drawFunnel() {
   };
   $('#view').innerHTML = `<div class="panel">${fTitle(d, st, F_NEW_NAME)}</div>
   <div class="panel">${fHead(d)}${fRail(d, st)}</div>
+  <div class="panel">${fHoldPanel(d, st)}</div>
   <div class="panel">
     <h3 style="margin-top:0">Step ${d.step} - ${esc(F_STEPS[d.step - 1][0])}</h3>
     <p class="note">${esc(F_STEPS[d.step - 1][1])}</p>
@@ -5665,7 +5666,7 @@ function fRuleWithFloors(st) {
 // -- and a second press re-priced every survivor from scratch, because nothing
 // asked whether the numbers were already there.
 //
-// Now: the service says how many of TODAY's survivors already carry the
+// Now: the service says how many settings on this board already carry the
 // numbers (richOn.have of richOn.need), so the press is DEAD when there is
 // nothing left to work out, and one press finishes on its own -- it starts the
 // run, watches it, and draws the values in when it lands. Nothing is ever
@@ -5674,13 +5675,17 @@ function fRuleWithFloors(st) {
 // real). Written to fall back to need:0, a reply that carried no richOn at
 // all ghosted the button with no explanation -- which is the exact fault
 // this release is fixing, arriving by a different door. With nothing said
-// about what is already worked out, every survivor still needs it.
-const fRichOf = (d) => (d && d.richOn) || { have: 0, need: Number((d && d.survivors) || 0), run: null };
+// about what is already worked out, every setting still needs it.
+//
+// THE WHOLE BOARD, NOT THE SURVIVORS (3.102.0, owner order 2026-09-10). The
+// press sits above step 1 now and preps the entire record set, so the fallback
+// is the board's own size rather than what today's rule keeps.
+const fRichOf = (d) => (d && d.richOn) || { have: 0, need: Number((d && d.of) || 0), run: null };
 const fRichGoing = (d) => !!(fRichOf(d).run && fRichOf(d).run.running);
 function fRichOff(d) {
   const x = fRichOf(d);
   if (fRichGoing(d)) return true;               // it is working; pressing again is the fault above
-  if (!x.need) return true;                     // no survivors, nothing to work out
+  if (!x.need) return true;                     // no settings, nothing to work out
   return x.have >= x.need;                      // all of them already carry the numbers
 }
 // The CPU reading, in the same words on the progress line and nowhere else.
@@ -5697,14 +5702,172 @@ function fRichLine(d) {
       : 'working them out') + fCpuWords(run.cpu);
   }
   if (run.error) return `FAILED — ${String(run.error)}`;
-  if (!x.need) return 'no setting survives the rule, so there is nothing to work out';
-  if (x.have >= x.need) return `done — all ${Number(x.need).toLocaleString()} surviving setting(s) carry them`;
+  if (!x.need) return 'this record set has no settings on its board, so there is nothing to work out';
+  if (x.have >= x.need) return `done — all ${Number(x.need).toLocaleString()} setting(s) in this record set carry them`;
   if (x.have) {
-    return `${Number(x.have).toLocaleString()} of ${Number(x.need).toLocaleString()} surviving setting(s) carry them — `
+    return `${Number(x.have).toLocaleString()} of ${Number(x.need).toLocaleString()} setting(s) carry them — `
       + `the press works out the other ${Number(x.need - x.have).toLocaleString()}`;
   }
   return `not done yet — one press works out all ${Number(x.need).toLocaleString()} of them and finishes on its own`;
 }
+// ---- DOES THE RANKING HOLD? (3.102.0, SELECTION-DESIGN.md Part 4) ----------
+//
+// Above step 1 on purpose, and read before anything is narrowed. The whole
+// funnel is one way of choosing -- rank the settings by their test money, keep
+// the top of the list, apply floors -- and nothing on this screen ever asked
+// whether that way of choosing holds up. This does: it ranks every setting of
+// one coin and shape on one part of the test window and reads the money on
+// another part, so a coin and shape whose order does not survive its own test
+// window is known BEFORE a rule is built on it rather than after the reserve is
+// spent.
+//
+// IT NEVER TOUCHES THE HELD-BACK WINDOW OR THE RESERVE. Every figure comes out
+// of the test window, in the three parts the pricing already works out, so it
+// costs nothing that has to be spent once.
+//
+// AND IT PICKS NOTHING. The three numbers are the owner's, the ordering is
+// theirs, and the table shows every coin and shape whatever it says about them
+// -- `show` hides rows the owner asked to hide and no others (RULE ZERO: what
+// is on the screen is a user function, never curated here).
+const F_HOLD_SHOW = [
+  ['all', 'every coin and shape'],
+  ['pass', 'only the ones that clear the bar'],
+  ['fail', 'only the ones that do not'],
+];
+const F_HOLD_SORT = [
+  ['set', 'the order the set lists them'],
+  ['lowest', 'weakest of the four first'],
+  ['highest', 'strongest of the four first'],
+  ['cleared', 'most boundaries cleared first'],
+  ['settings', 'most settings read first'],
+];
+// THE HEADING OF EACH BOUNDARY'S COLUMN, short enough to be a heading, with the
+// line under the table saying what each one does. Keyed to lib/rankhold.js
+// BOUNDARIES, and a key the page has never heard of prints its own key rather
+// than a blank column.
+const F_HOLD_COLS = { '1>2': 'first → second', '2>3': 'second → third', '1>3': 'first → third', '12>3': 'first two → third' };
+// and what each one holds, on the heading itself: every column on this page
+// says what it is without the reader having to decode it.
+const F_HOLD_COL_WHAT = {
+  '1>2': 'the settings are put in order by what they made in the first part of the test window, and that order is scored on the second part. 1.00 is the same order on both, 0.00 no relation at all, below zero the order comes out backwards.',
+  '2>3': 'ordered by the second part of the test window, scored on the third.',
+  '1>3': 'ordered by the first part of the test window, scored on the third — the widest gap of the four, because a whole part sits between them.',
+  '12>3': 'ordered by the first two parts of the test window added together, scored on the third.',
+};
+// The three numbers start where the engine starts, so the boxes are never blank
+// on a first visit: no bar set, all four boundaries, thirty settings.
+const F_HOLD_START = { atLeast: null, onHowMany: 4, fewest: 30, show: 'all', sort: 'set' };
+const fHoldBar = (set) => ({ ...F_HOLD_START, ...(fSetMemory(set).hold || {}) });
+// The reading in hand, for THIS set. Held in the page and not in storage: it is
+// a few hundred numbers off the boards, cheap to ask for again and wrong to
+// keep past a reload where the numbers beside the set may have moved.
+let fHoldSeen = null;   // { set, table }
+let fHoldWatching = false;
+// asked once per set per page load, so a redraw on every choice does not fire a
+// probe of its own -- the answer cannot change without this page doing it
+let fHoldAsked = null;
+
+function fHoldRows(t, bar) {
+  const rows = (t.units || []).map((u, i) => ({ ...u, at: i }));
+  const shown = bar.show === 'pass' ? rows.filter((u) => u.bar.pass === true)
+    : bar.show === 'fail' ? rows.filter((u) => u.bar.pass === false) : rows;
+  const by = {
+    set: (a, b) => a.at - b.at,
+    lowest: (a, b) => (a.lowest == null ? 2 : a.lowest) - (b.lowest == null ? 2 : b.lowest),
+    highest: (a, b) => (b.highest == null ? -2 : b.highest) - (a.highest == null ? -2 : a.highest),
+    cleared: (a, b) => (b.bar.cleared - a.bar.cleared) || (a.at - b.at),
+    settings: (a, b) => (b.usable - a.usable) || (a.at - b.at),
+  };
+  return shown.slice().sort(by[bar.sort] || by.set);
+}
+// One reading as it is drawn: the number, bold when it clears the bar the owner
+// set, marked when it is below zero. Below zero is not a weak answer, it is the
+// order coming out backwards, and it reads as a small number otherwise.
+function fHoldCell(hold, need) {
+  if (hold == null) return '<td class="muted">-</td>';
+  const cls = hold < 0 ? ' class="neg"' : '';
+  const txt = need != null && hold >= need ? `<b>${fFix(hold, 2)}</b>` : fFix(hold, 2);
+  return `<td${cls}>${txt}</td>`;
+}
+function fHoldTable(t, bar, walking) {
+  const rows = fHoldRows(t, bar);
+  const keys = (t.units[0] ? t.units[0].readings : []).map((x) => x.key);
+  const head = keys.map((k) => `<th title="${esc(F_HOLD_COL_WHAT[k] || 'this column has no description')}">${esc(F_HOLD_COLS[k] || k)}</th>`).join('');
+  const body = rows.map((u) => {
+    const here = u.unit === walking;
+    const verdict = u.bar.pass === true ? '<b>clears it</b>'
+      : u.bar.pass === false ? `<b class="neg">does not</b> - ${u.bar.cleared} of ${u.bar.known} cleared`
+        : `<span class="muted">${esc(String(u.bar.why || 'nothing could be read'))}</span>`;
+    return `<tr><td>${here ? '<b>' : ''}${esc(u.name)}${here ? '</b>' : ''}</td>
+      ${u.readings.map((x) => fHoldCell(x.hold, u.bar.need)).join('')}
+      <td>${Number(u.usable).toLocaleString()}</td>
+      <td>${u.noThirds ? Number(u.noThirds).toLocaleString() : '-'}</td>
+      <td>${verdict}</td>
+      <td>${here ? '<span class="muted">this walk</span>' : `<button data-fhold="${esc(u.unit)}">walk this one</button>`}</td></tr>`;
+  }).join('');
+  return `<div class="scrollx"><table><thead><tr>
+      <th title="one coin at one chunk shape, read alongside the coins named beside it — the same coin and shape the picker above chooses between.">coin and shape</th>${head}
+      <th title="how many settings here carry all three parts of the test window. These are the ones the four columns are worked out from.">settings read</th>
+      <th title="how many settings here do NOT carry all three parts, and so were left out of the four columns. Never guessed at.">no parts</th>
+      <th title="whether this coin and shape reaches the number you set, on as many of the four as you asked for. Unread never passes.">clears the bar</th>
+      <th></th></tr></thead><tbody>${body}</tbody></table></div>
+    <p class="note">${Number(rows.length).toLocaleString()} of ${Number(t.of).toLocaleString()} row(s) shown -
+      <b>${Number(t.passing).toLocaleString()}</b> clear the bar, <b>${Number(t.failing).toLocaleString()}</b> do not,
+      <b>${Number(t.unreadable).toLocaleString()}</b> could not be read. Every row is drawn; there is no page to turn.</p>
+    <p class="note">Each column ranks the settings on one part of the test window and reads the money on another:
+      <b>first → second</b> puts them in order by what they made in the first part and scores that order on the
+      second. <b>1.00</b> is the same order on both parts, <b>0.00</b> no relation at all, and a number below zero is
+      the order coming out backwards. <b>settings read</b> is how many settings here carry all three parts;
+      <b>no parts</b> is how many do not and were left out.</p>
+    <p class="note"><b>Three things this cannot tell you, so do not read it as though it could.</b>
+      <b>The four are not four separate tests</b> - three of them score on the third part, so a third part that
+      happens to look like the rest of the window lifts all three together. <b>first → second</b> is the only one
+      that never touches it. <b>A coin that went one way for the whole window scores well here for no skill at
+      all</b> - if everything long made money in both parts, the order survives because the direction did, and this
+      column cannot tell that apart from a rule that works. <b>And a part with no trades in it counts as zero</b>,
+      the same as a part that traded and broke even, so a board of rarely-trading settings has a large block of
+      settings tied on nothing; that pulls a reading towards <b>0.00</b> rather than flattering it.</p>`;
+}
+function fHoldPanel(d, st) {
+  const bar = fHoldBar(st.set);
+  const t = fHoldSeen && fHoldSeen.set === st.set ? fHoldSeen.table : null;
+  // READABLE AS SOON AS ANYTHING CARRIES THE PARTS, not only when everything
+  // does. A setting the pricing could not do would otherwise hold this dead for
+  // ever; the table's own `settings read` and `no parts` columns say how much of
+  // each row was read, and `fewest settings` is the guard against a thin one.
+  const x = fRichOf(d);
+  const ready = x.have > 0;
+  const partly = ready && x.need > x.have
+    ? ` — ${Number(x.need - x.have).toLocaleString()} of this record set's ${Number(x.need).toLocaleString()} settings still carry no parts and are left out`
+    : '';
+  return `<h3 style="margin-top:0">Does the ranking hold?</h3>
+    <p class="note">The whole walk below is one way of choosing: put the settings in order by what they made and keep
+      the best of them. This asks whether that order survives being moved to a part of the test window it was not
+      chosen on. It reads nothing from the held-back window and nothing from the unread stretch, so it costs nothing
+      that can only be spent once - and it decides nothing. A coin and shape that clears the bar has not been shown
+      to work; it has only failed to be ruled out.</p>
+    <div class="row" style="align-items:flex-end">
+      <button id="fRebuild" class="pri"${fRichOff(d) ? ' disabled' : ''}>work out the missing numbers</button>
+      <span id="fRebuildMsg" class="note">${esc(fRichLine(d))}</span></div>
+    ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
+    <div class="row" style="align-items:flex-end">
+      <button id="fHoldRead"${ready ? '' : ' disabled'}>read the ranking</button>
+      <label class="f" title="how much of the order has to survive the move, from -1 to 1. Leave it blank and no row can clear the bar, because nothing has been asked of it.">how much must hold<input
+        id="fHoldAtLeast" type="number" step="0.05" min="-1" max="1" style="width:6rem"
+        value="${bar.atLeast == null ? '' : esc(String(bar.atLeast))}"></label>
+      <label class="f" title="how many of the four boundaries have to reach that number. A boundary that could not be read is not a boundary that passed.">on how many of the four<input
+        id="fHoldOn" type="number" min="1" max="4" step="1" style="width:5rem" value="${esc(String(bar.onHowMany))}"></label>
+      <label class="f" title="fewest settings a coin and shape must have carrying all three parts before a number is put on it at all. Below this the row reads as unread rather than showing a figure worked out from a handful.">fewest settings<input
+        id="fHoldFewest" type="number" min="3" step="1" style="width:6rem" value="${esc(String(bar.fewest))}"></label>
+      <label class="f" title="which rows the table draws. Nothing is thrown away - a row hidden here is still counted in the line under the table.">show<select
+        id="fHoldShow">${F_HOLD_SHOW.map(([k, w]) => `<option value="${k}"${k === bar.show ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select></label>
+      <label class="f" title="the order the rows are drawn in. It changes nothing about what they say.">order by<select
+        id="fHoldSort">${F_HOLD_SORT.map(([k, w]) => `<option value="${k}"${k === bar.sort ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select></label>
+      <span id="fHoldMsg" class="note">${esc(ready ? `${t ? '' : 'not read yet - one press reads every coin and shape in this record set'}${partly}`
+    : 'no setting in this record set carries what it made in each part of the test window - the press above works that out first')}</span></div>
+    ${t ? fHoldTable(t, bar, d.unit) : ''}`;
+}
+
 function fStep6(d, st, r) {
   const dd = (st.rule.floors || {}).maxDrawdown || {};
   const tr = (st.rule.floors || {}).avgTrades || {};
@@ -5738,10 +5901,10 @@ function fStep6(d, st, r) {
         about <b>${w.perYearFactor ? Math.round((Number(tr.min) || 20) * w.perYearFactor).toLocaleString() : '-'}</b> a year.</p>`
     : `<p class="note muted">The window the trades were counted over cannot be worked out${ex.why ? ` - ${esc(ex.why)}` : ''}, so a trade count here cannot be put on a yearly footing.</p>`;
   const howTo = `<ol class="note fhow">
-      <li>Press <b>work out the missing numbers</b> FIRST. Nothing below can be read or set until it has run: the two
-        limits are read off the survivors themselves, and no survivor carries these numbers until this is pressed. It
-        changes no rule and no record; it prices the survivors again for the numbers a sweep does not keep.</li>
-      <li>Read the two lines under it: what each limit would keep, of the settings that survive.</li>
+      <li>These numbers come from <b>work out the missing numbers</b>, above the steps. Nothing below can be read or
+        set until that has run for this record set: the two limits are read off the settings themselves, and no
+        setting carries these numbers until it is pressed. It changes no rule and no record.</li>
+      <li>Read the two lines below: what each limit would keep, of the settings that survive.</li>
       <li>Set <b>worst losing streak allowed</b> - in dollars, per coin: the deepest the running total ever sat below
         its own best point. A setting whose worst streak is deeper than this is dropped.</li>
       <li>Set <b>fewest trades</b> - counted over the window named above. A setting that traded fewer times is dropped.</li>
@@ -5749,15 +5912,13 @@ function fStep6(d, st, r) {
         the top moves.</li>
     </ol>`;
   return `<p class="note">The numbers a sweep does not keep - the worst losing streak, the biggest single loss, how
-      many trades won, and how much of the result rests on guessing what happened inside a single bar - are worked out
-      here, for the <b>${Number(d.survivors).toLocaleString()}</b> settings that survive and no others. Totals
-      flatter; an average losing streak hides the one that would have ended you.</p>
+      many trades won, and how much of the result rests on guessing what happened inside a single bar - are worked
+      out for every setting in this record set, above the steps, and the two limits here are read off the
+      <b>${Number(d.survivors).toLocaleString()}</b> that survive. Totals flatter; an average losing streak hides
+      the one that would have ended you.</p>
     ${howTo}
     ${money}
     ${when}
-    <div class="row"><button id="fRebuild" class="pri"${fRichOff(d) ? ' disabled' : ''}>work out the missing numbers</button>
-      <span id="fRebuildMsg" class="note">${esc(fRichLine(d))}</span></div>
-    ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
     ${fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)}
     ${fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex)}
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
@@ -6442,6 +6603,11 @@ async function fRichWatch(st) {
           return;
         }
         st.rebuilt = true;
+        // A RANKING ALREADY READ WAS READ FROM THESE NUMBERS. The service drops
+        // its own copy; the page drops the one it is drawing from, or the table
+        // stays on screen beside figures it never saw.
+        fHoldSeen = null;
+        fHoldAsked = null;
         // THE PROOF IS SHOWN, NOT ASSUMED. An unchecked rebuild must never look
         // checked, so the absence of a check is printed as plainly as a failed one.
         const pr = out.proof || {};
@@ -6473,6 +6639,102 @@ async function fRichWatch(st) {
       await new Promise((r) => setTimeout(r, 1500));
     }
   } finally { fRichWatching = false; }
+}
+
+// THE RANKING'S CONTROLS (3.102.0). The three numbers and the two lists move
+// what is DRAWN and never cause a re-read: the service holds the reading and
+// lays the numbers on it, so a bar moved five times costs five bits of
+// arithmetic and no disk. Which is why they redraw the panel rather than
+// pressing anything.
+// The bar as a poll asks it. A blank `how much must hold` is sent blank, which
+// the service reads as no bar set -- never as zero, which is a real bar.
+const fHoldQuery = (bar) => `atLeast=${bar.atLeast == null ? '' : encodeURIComponent(bar.atLeast)}`
+  + `&onHowMany=${encodeURIComponent(bar.onHowMany)}&fewest=${encodeURIComponent(bar.fewest)}`;
+async function fHoldPoll(st) {
+  if (fHoldWatching) return;
+  fHoldWatching = true;
+  try {
+    for (;;) {
+      // eslint-disable-next-line no-await-in-loop
+      const p = await api(`api/funnel/${encodeURIComponent(st.set)}/rankhold?${fHoldQuery(fHoldBar(st.set))}`).catch(() => null);
+      const msg = $('#fHoldMsg');
+      if (!p) { if (msg) msg.textContent = 'the service stopped answering — nothing was read'; return; }
+      if (p.error) { if (msg) msg.textContent = `FAILED — ${p.error}`; return; }
+      if (p.result) {
+        fHoldSeen = { set: st.set, table: p.result };
+        fHoldWatching = false;               // the redraw re-enters fWireHold, and by then there is nothing to poll
+        drawFunnel();
+        return;
+      }
+      if (msg) {
+        msg.textContent = p.of ? `reading — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} coin and shape(s)`
+          : 'reading';
+      }
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 1200));
+    }
+  } finally { fHoldWatching = false; }
+}
+function fWireHold(st) {
+  const rd = $('#fHoldRead');
+  if (rd && !rd.disabled) {
+    rd.onclick = async () => {
+      rd.disabled = true;
+      $('#fHoldMsg').textContent = 'reading';
+      const bar = fHoldBar(st.set);
+      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rankhold`, bar, WHERE_FUNNEL);
+      if (!started) { rd.disabled = false; $('#fHoldMsg').textContent = ''; return; }
+      // a set already read comes back with its answer on the first ask
+      if (started.result) { fHoldSeen = { set: st.set, table: started.result }; drawFunnel(); return; }
+      await fHoldPoll(st);
+    };
+  }
+  // A READING ALREADY IN HAND OR ALREADY GOING is picked back up without
+  // anything being pressed -- another tab started it, or this page was reloaded
+  // in the middle. Asked ONCE for a set, because nothing else on the box can
+  // start one and a redraw happens on every choice.
+  if ((!fHoldSeen || fHoldSeen.set !== st.set) && fHoldAsked !== st.set) {
+    fHoldAsked = st.set;
+    const bar = fHoldBar(st.set);
+    api(`api/funnel/${encodeURIComponent(st.set)}/rankhold?${fHoldQuery(bar)}`).then((p) => {
+      if (!p || tab !== 'funnel') return;
+      if (p.result) { fHoldSeen = { set: st.set, table: p.result }; drawFunnel(); return; }
+      if (p.running) { fHoldPoll(st); return; }
+      // a reading that FAILED must say so rather than read as one never taken
+      if (p.error) { const m = $('#fHoldMsg'); if (m) m.textContent = `FAILED — ${p.error}`; }
+    }).catch(() => {});
+  }
+  // THE THREE NUMBERS AND THE TWO LISTS. Kept for the SET, not for one walk:
+  // they say nothing about a rule, and re-typing them on every coin and shape
+  // is the fault the bar and the target were moved out of the walk to fix.
+  const num = (el, floor) => {
+    if (el.value === '') return null;
+    const v = Number(el.value);
+    return Number.isFinite(v) ? (floor == null ? v : Math.max(floor, Math.floor(v))) : null;
+  };
+  const keep = (fields) => { fRememberForSet(st.set, { hold: { ...fHoldBar(st.set), ...fields } }); drawFunnel(); };
+  const at = $('#fHoldAtLeast');
+  if (at) at.onchange = () => keep({ atLeast: num(at) });
+  const on = $('#fHoldOn');
+  if (on) on.onchange = () => keep({ onHowMany: Math.min(4, num(on, 1) == null ? 4 : num(on, 1)) });
+  const few = $('#fHoldFewest');
+  if (few) few.onchange = () => keep({ fewest: num(few, 3) == null ? 30 : num(few, 3) });
+  const sh = $('#fHoldShow');
+  if (sh) sh.onchange = () => keep({ show: sh.value });
+  const so = $('#fHoldSort');
+  if (so) so.onchange = () => keep({ sort: so.value });
+  // WALK THIS ONE: the same door every other choice of coin and shape goes
+  // through, so a walk started here is a walk like any other. Wired by walking
+  // the rows just drawn -- a listener on the whole page would fire once per
+  // redraw since load.
+  document.querySelectorAll('[data-fhold]').forEach((b) => {
+    b.onclick = () => {
+      fSave();
+      fUnitChoose(st.set, b.dataset.fhold);
+      fState = null;
+      drawFunnel();
+    };
+  });
 }
 
 function fWire(st, d) {
@@ -6799,12 +7061,11 @@ function fWire(st, d) {
   if (rb && !rb.disabled) {
     rb.onclick = async () => {
       rb.disabled = true;
-      $('#fRebuildMsg').textContent = 'working them out — this prices the survivors again from their parent set';
-      // THE RULE, NOT A LIST OF NAMES (3.57.1): the walk holds the rule, the
-      // service holds the settings, and the survivors are worked out there --
-      // the same rule, the same unit and the same bar every other read sends
-      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`,
-        { rule: st.rule, unit: st.unit, barPct: st.barPct }, WHERE_FUNNEL);
+      $('#fRebuildMsg').textContent = 'working them out — this prices every setting in this record set again from its parent set';
+      // NOTHING TO NAME (3.102.0, owner order 2026-09-10). It used to send the
+      // rule so the service could work out which survivors to price; the whole
+      // board is priced now, so there is nothing to pick and nothing to send.
+      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);
       if (!started) { rb.disabled = false; $('#fRebuildMsg').textContent = fRichLine(d); return; }
       await fRichWatch(st);
     };
@@ -6812,6 +7073,7 @@ function fWire(st, d) {
   // and if one is already going -- another tab pressed it, or this page was
   // reloaded -- it is watched without anything being pressed
   if (fRichGoing(d)) fRichWatch(st);
+  fWireHold(st);
 
   // THE CLOSING IS A CHOICE THAT CHANGES THE COUNT, so it redraws like every
   // other choice does. Picking 'take the top N by a column' seeds the count

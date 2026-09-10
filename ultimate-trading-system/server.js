@@ -503,6 +503,19 @@ app.post('/api/funnel/:id/rebuild', (req, res) => {
   try { return res.json(stages.funnelRichStart(req.params.id, req.body || {})); }
   catch (err) { return res.status(409).json({ error: err.message }); }
 });
+
+// DOES THE RANKING HOLD (3.102.0, SELECTION-DESIGN.md Part 4). Reads stored
+// numbers only: no pricing, and nothing from the held-back window or the
+// reserve, which is what makes it legal on a screen used for choosing. The
+// same set asked twice is answered from the reading already in hand.
+app.post('/api/funnel/:id/rankhold', (req, res) => {
+  try { return res.json(stages.funnelRankHoldStart(req.params.id, req.body || {})); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
+// AND THE BAR TRAVELS WITH THE POLL, because the answer is the reading WITH the
+// bar on it and the owner may have moved the bar since it started. Polling
+// through the same POST would restart a reading that failed, on every poll.
+app.get('/api/funnel/:id/rankhold', (req, res) => res.json(stages.funnelRankHoldStatus(req.params.id, req.query || {})));
 app.get('/api/funnel/:id/rebuild', (req, res) => res.json(stages.funnelRichStatus(req.params.id)));
 
 // HOW MANY THE RULE ON SCREEN WOULD KEEP (3.81.0, owner order). Asked while the

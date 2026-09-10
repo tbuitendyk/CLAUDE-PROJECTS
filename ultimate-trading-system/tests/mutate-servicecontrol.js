@@ -704,14 +704,28 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      view: (st.cut && st.cut !== F_NEW) ? 'cut' : null,", "      view: null,",
     'aStageFourSetThatWillNotOpenStillDrawsThePicker',
     'every Stage 4 view pays for a whole step reading -- the grid, the region, the copies -- that nothing draws'],
-  // ---- THE REBUILD CHECKS ITSELF AGAINST THE SWEEP (3.57.2) ----
-  [path.join(ROOT, 'server.js'), "      if (!expect || !Object.keys(expect).length) expect = got.stored;", "",
-    'pressingWorkOutTheMissingNumbersAsksForTheSurvivorsOfTheRule',
+  // ---- THE REBUILD CHECKS ITSELF AGAINST THE SWEEP (3.57.2, re-aimed 3.102.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "      if (r.avgTest != null && Number.isFinite(Number(r.avgTest))) expect[String(r.label)] = Number(r.avgTest);", "",
+    'pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet',
     'every rebuild goes back to reading NOT checked against the sweep, so a run against moved price data looks the same as a sound one'],
-  // ---- THE PRESS NAMES THE RULE (3.57.1) ----
-  [path.join(ROOT, 'public', 'construct.js'), "/rebuild`, { rule: st.rule, unit: st.unit, barPct: st.barPct })", "/rebuild`, { labels: [] })",
-    'pressingWorkOutTheMissingNumbersAsksForTheSurvivorsOfTheRule',
-    'the button goes back to asking for nothing, and every press answers "nothing was asked for"'],
+  // ---- THE PRESS PREPS THE WHOLE RECORD SET (3.102.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "    const board = await funnelBoard(String(id), t, 'all');", "    const board = await funnelBoard(String(id), t, state.unit);",
+    'pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet',
+    'the press prices one board again instead of the whole set, so the ranking above step 1 reads a slice and calls it the set'],
+  // ---- THE RANKING IS READ ONCE AND THE BAR MOVES ON IT (3.102.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "  if (holdRun && holdRun.result && holdRun.id === String(id)) return holdAnswer(holdRun, bar);", "",
+    'theBarNeverCausesABoardToBeReadAgain',
+    'every nudge of the bar reads every board of the set off disk again'],
+  [path.join(ROOT, 'lib', 'rankhold.js'), "const num = (v) => (v == null || v === '' || !Number.isFinite(Number(v)) ? null : Number(v));",
+    "const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));",
+    'theBarIsTheOwnersAndReAppliesWithoutReReading',
+    'a bar nobody set reads as a bar of zero, so every coin and shape whose order is not inverted passes a bar that was never asked for'],
+  [path.join(ROOT, 'lib', 'rankhold.js'), "  if (n < 3) return null;                       // two points always correlate perfectly", "  if (n < 1) return null;",
+    'fewerThanThreeSettingsIsNoReading',
+    'two settings read as a perfect agreement, because two points always do'],
+  [path.join(ROOT, 'lib', 'rankhold.js'), "  if (sa <= 0 || sb <= 0) return null;", "  if (sa < 0 || sb < 0) return null;",
+    'theRankingIsOneWhenTheOrderSurvivesAndMinusOneWhenItInverts',
+    'every setting on the same money reads as an answer rather than as no answer at all'],
   // ---- STEP 6 SAYS WHAT ITS LIMITS ARE LIMITS ON (3.57.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "  const toTs = workEnd - nHold * stepMs;", "  const toTs = workEnd;",
     'theSixthStepSaysWhatItsLimitsAreLimitsOn',

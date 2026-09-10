@@ -392,6 +392,44 @@ into the new shape or re-running them.
 
 # Part 4 — a cheap way to rule out a bad way of choosing
 
+> **BUILT AND DEPLOYED, 3.102.0.** It is its own block on the **Funnel**, above
+> `Step 1`, headed `Does the ranking hold?`. What shipped differs from the draft
+> below in four ways, each recorded here rather than quietly:
+>
+> - **Thirds, not halves.** The pricing already works the test window out in
+>   three parts for every setting, so three parts cost nothing where two would
+>   have cost a pass — and three parts give FOUR boundaries where the draft's
+>   halves give one. The draft asked for "several cut points rather than one";
+>   this is how that was met. The columns are `first → second`, `second → third`,
+>   `first → third` and `first two → third`.
+> - **No scoring pass of its own.** The draft's cost line assumed the money
+>   within the test window was not on disk. It is: the numbers kept beside a
+>   stage 3 set carry it per setting per unit. What was missing was that those
+>   numbers only ever covered the settings some rule happened to keep, and that
+>   is what changed — see the note below.
+> - **The press above the steps preps the WHOLE record set** (owner order,
+>   2026-09-10). `work out the missing numbers` moved off `Step 6` to the top of
+>   the screen and now runs for every setting on the board rather than the
+>   rule's survivors. That is what makes this reading possible at all: a ranking
+>   over the survivors of a rule already made by ranking is no test of anything.
+>   `Step 6` reads its two limits off numbers that are already there.
+> - **Three numbers, not one bar.** `how much must hold` (from -1 to 1, blank
+>   until the owner sets it — a blank is never read as zero), `on how many of the
+>   four`, and `fewest settings`, which is how few settings carrying all three
+>   parts is too few to put a number on at all. None of the three re-reads
+>   anything: the reading is taken once and they are arithmetic on it.
+>
+> The table has one row per coin and shape, with `show` and `order by` choosing
+> which rows are drawn and in what order — filtering, never curating: the line
+> under the table always says how many of the whole set is being shown. Each row
+> that is not the one being walked carries `walk this one`, which hands the walk
+> over through the same door the coin picker uses.
+>
+> **It reads nothing from the held-back window and nothing from the reserve**,
+> which is what makes it legal here (Part 3). `lib/rankhold.js` requires nothing
+> and can be exercised on a table typed into a test; `tests/test-rankhold.js`
+> does exactly that.
+
 > Renamed from the first draft. It cannot show that a way of choosing works. It
 > can only show cheaply that one does not, which is still worth having.
 >
@@ -715,22 +753,25 @@ owner's to weigh.
 | 1 — several stretches, on Verify | medium | medium | timing one retrain of one unit |
 | 2 — best of all four | none | small | **BUILT 3.100.0 / 3.101.0** |
 | 3 — out of reach while choosing | none | high | owner's call on losing the `floor` and sorter |
-| 4 — rule out a bad way of choosing (on the **Funnel**, not Verify) | low | small | nothing |
+| 4 — rule out a bad way of choosing (on the **Funnel**, not Verify) | low | small | **BUILT 3.102.0** |
 | 5 — bar for the whole search | none | small | is the luck figure fit for this at all |
 | 6 — claim written first | none | medium | making a look an event |
 | 7 — what the thrown-away settings did | none | small | **BUILT 3.100.0** |
 
-**Parts 2 and 7 are BUILT and on the box.** Part 2 shipped as 3.100.0, with the
-table that replaced its prose line in 3.101.0. Part 7 shipped as 3.100.0.
+**Parts 2, 4 and 7 are BUILT and on the box.** Part 2 shipped as 3.100.0, with
+the table that replaced its prose line in 3.101.0. Part 7 shipped as 3.100.0.
+Part 4 shipped as 3.102.0.
 
-**Part 4 is the one unblocked part still to build.** It is a scoring pass and
-one new reading at the head of the **Funnel** walk, and it needs no decision
-from anyone but the owner about whether to do it. One thing found while building
-the other two, which its cost line already allowed for: the per-setting money
-WITHIN the test stretch is not on disk. `lib/stagework.js` computes it by thirds
-and says in its own comment that the block is projected away before it is
-written, so this needs a rebuild pass over every setting of every unit rather
-than a read.
+**Part 4 needed no scoring pass in the end.** The money each setting made within
+the test window IS kept, in three parts, in the numbers stored beside a stage 3
+set — the earlier note here, that `lib/stagework.js` projects the block away
+before it is written, was about the stage 3 RECORD and not about those numbers.
+What was true is that those numbers only ever covered the settings a rule
+happened to keep. `work out the missing numbers` now runs for the whole record
+set, once, before the walk begins.
+
+**Part 1 is the one unblocked part still to build**, once one retrain of one
+unit has been timed.
 
 **Everything else needs an answer first**, and the answers are cheap: time one
 pass of stage 1, decide whether the held-back column can leave the choosing

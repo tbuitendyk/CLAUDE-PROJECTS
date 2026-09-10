@@ -651,8 +651,32 @@ window.HELP = {
         more: 'Nothing here changes the rule - this step is for looking. Only keep this block writes anything.',
       },
       fRebuild: {
-        what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, and how much of the result rests on guessing what happened inside a single bar. Press it FIRST on this step: the two limits are read off the survivors, and no survivor carries these numbers until it has run.',
-        more: 'These are calculated during the sweep and thrown away, because keeping them for every one of half a million settings is not worth the disk. Here they are re-calculated for the handful you have narrowed to, which takes seconds. It also re-checks the money and the trade count against what the sweep stored: if they disagree, something underneath has changed and it says so rather than mixing numbers from two different runs.',
+        what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, how much of the result rests on guessing what happened inside a single bar, and what each setting made in each of the three parts of the test window. Press it FIRST, before anything below: it runs for every setting in the record set, and nothing else on this screen can be read until it has.',
+        more: 'These are calculated during the sweep and thrown away, because keeping them for every one of half a million settings is not worth the disk. Here they are calculated again and kept beside the set, so a second press only works out what is still missing. It also re-checks the money and the trade count against what the sweep stored, for every setting on the board: if they disagree, something underneath has changed and it says so rather than mixing numbers from two different runs.',
+      },
+      fHoldRead: {
+        what: 'Reads every coin and shape in this record set and asks whether putting its settings in order by what they made on one part of the test window still picks the good ones on another part.',
+        more: 'The whole walk below is one way of choosing: order the settings by their money and keep the best. Nothing else on this screen asks whether that order means anything. This does, and it does it before you narrow anything - a coin and shape whose own order does not survive its own test window is worth knowing about now rather than after the held-back window has been opened on it. It reads nothing from the held-back window and nothing from the unread stretch, so it costs nothing that can only be spent once. It changes no rule and writes nothing.',
+      },
+      fHoldAtLeast: {
+        what: 'How much of the order has to survive the move, from -1 to 1. Leave it blank and no row can clear the bar, because nothing has been asked of it.',
+        more: '1.00 is the same order on both parts, 0.00 no relation at all, and below zero the order comes out backwards - which is worse than useless, because what is being selected for is actively wrong across the boundary. There is no right number here and none is suggested: what counts as enough is your call, and it is recorded as the bar you set.',
+      },
+      fHoldOn: {
+        what: 'How many of the four boundaries have to reach that number before a coin and shape counts as clearing the bar.',
+        more: 'Four is the strictest and one the loosest. A boundary that could not be read is not a boundary that passed: if fewer than this many have an answer at all, the row reads as not clearing rather than as clearing on the ones that could be read.',
+      },
+      fHoldFewest: {
+        what: 'The fewest settings a coin and shape must have carrying all three parts of the test window before a number is put on it at all.',
+        more: 'Below this the row says it could not be read instead of showing a figure. A reading off a handful of settings swings wildly and looks exactly like a reading off thousands, and a number on the screen is a number that gets read. Nothing is re-read when you move this - the readings are already in hand and this only decides which of them are worth showing.',
+      },
+      fHoldShow: {
+        what: 'Which rows the table draws: every coin and shape, only the ones that clear the bar, or only the ones that do not.',
+        more: 'Nothing is thrown away. A row hidden here is still counted in the line under the table, which always says how many of the whole set you are looking at.',
+      },
+      fHoldSort: {
+        what: 'The order the rows are drawn in.',
+        more: 'It changes nothing about what any row says. The order the set lists them in is the order the sweep worked through them.',
       },
       fDD: {
         what: 'The worst losing streak you are willing to accept, in dollars, per coin - the deepest the running total ever sat below its own best point, on the stake named at the top of this step.',
