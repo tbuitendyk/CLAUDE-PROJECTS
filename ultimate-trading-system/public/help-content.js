@@ -640,10 +640,10 @@ window.HELP = {
       },
       fKeepMine: {
         what: 'Leaves every range and value you chose exactly as it is and moves on to step 6. What it keeps is printed beside it, next to what the region would keep, and both rules are printed under the buttons.',
-        more: 'Keeping the widest region REPLACES the whole rule with the region\'s edges. This is the way past that: your own rule goes to step 6 whole. The set you cut then says the widest region was never kept on this walk, and the rule it holds is the one you built. Use it when the region is telling you less than your own narrowing already did.',
+        more: 'Keeping the auto-plateau region REPLACES the whole rule with the region\'s edges. This is the way past that: your own rule goes to step 6 whole. The set you cut then says the auto-plateau region was never kept on this walk, and the rule it holds is the one you built. Use it when the region is telling you less than your own narrowing already did.',
       },
       fKeepRegion: {
-        what: 'Replaces every range and value in the rule with the edges of the widest region.',
+        what: 'Replaces every range and value in the rule with the edges of the region this step worked out for you.',
         more: 'The region is the widest run of neighbouring settings that all made money. Its edges on each dial ARE a rule - the most defensible narrowing this screen can make, because it was chosen by how many neighbours a setting has and never by its score. But a rule can only ever be ranges and values, never a list of settings, so this keeps the smallest BOX that contains the region, and a region with notches in it has a box bigger than itself. The count beside the button is what the box keeps, and when it is larger than the region the difference is spelled out under it: those extra settings are the ones the region walked around, which at your bar are the ones that did not clear it. The rule it would write is printed under the button, beside the rule you already have, so you can see whether the two are actually different.',
       },
       fFloor: {

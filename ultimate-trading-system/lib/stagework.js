@@ -968,6 +968,24 @@ async function s3UnitTask(task) {
     holdCtlCache.set(key, h);
     return h;
   };
+  // THE SAME FOUR ON THE TEST WINDOW (3.107.0, owner order 2026-09-10: build
+  // them on the Funnel "in place of the held-back window info we are
+  // removing"). Until now the four existed only against held-back money, so
+  // the one question that settles whether money came from the forecast or from
+  // the coin's direction could not be asked until the held-back window had
+  // been opened -- which is after the choosing is done.
+  //
+  // ONLY WHEN ASKED. Four more simulations per unit and per hold length is real
+  // work on a nine-hour launch and nothing on a launch reads them, so the
+  // caller has to ask: the rebuild does, the launch does not.
+  const testCtlCache = new Map();
+  const testControlsFor = (chunksArr, idxs, tHours, cacheKey) => {
+    const key = `${cacheKey}|${tHours}`;
+    if (testCtlCache.has(key)) return testCtlCache.get(key);
+    const h = bracketLib.holdControls(pick(chunksArr, idxs), holdTrade, geo, tHours, fee);
+    testCtlCache.set(key, h);
+    return h;
+  };
 
   // Every distinct way of asking in this block, each answered once.
   const agreedMapFor = (list) => {
@@ -1086,6 +1104,9 @@ async function s3UnitTask(task) {
       dealShape = shapeOf(dealPnls);
     }
     const captured = task.capture && captureShapeOk(st) ? captureOf(st, agr, cell, bandPct, !!stream.weekdaysOnly) : null;
+    // and the four on the TEST window, once per unit and hold length, only when
+    // the caller asked for them (3.107.0)
+    if (task.wantTestControls && testChunks.length) testControlsFor(testChunks, tIdx, tHours, stream.weekdaysOnly ? 'wk' : 'all');
     rows.push({
       si: st.si,
       label: st.label,
@@ -1146,8 +1167,11 @@ async function s3UnitTask(task) {
   // length -- so handing it back costs nothing.
   const controls = {};
   for (const [k, v] of holdCtlCache) controls[k] = v;
+  // and the same four read on the TEST window, empty unless the caller asked
+  const testControls = {};
+  for (const [k, v] of testCtlCache) testControls[k] = v;
   return {
-    rows, agreed: agreedMapFor(settings), controls, windows,
+    rows, agreed: agreedMapFor(settings), controls, testControls, windows,
     counts: { test: testChunks.length, hold: holdChunks.length },
     // set only when the unread window was priced in the held-back window's place (3.89.0)
     unread,

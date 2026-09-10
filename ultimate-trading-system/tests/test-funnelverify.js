@@ -580,7 +580,7 @@ module.exports = {
       const labels = [...new Set(require('../lib/rowstore').readAll(f.id, 'records').map((r) => r.label))];
       const settings = {};
       for (const l of labels) settings[l] = { maxDrawdown: 50, units: { [f.keys[0]]: { maxDrawdown: 50 }, [f.keys[1]]: { maxDrawdown: 50 } } };
-      fs.writeFileSync(stages.funnelRichFile(f.id), JSON.stringify({ v: 2, savedAt: new Date().toISOString(), release: 'test', settings }));
+      fs.writeFileSync(stages.funnelRichFile(f.id), JSON.stringify({ v: stages.FUNNEL_RICH_V, savedAt: new Date().toISOString(), release: 'test', settings }));
       const doc = await cutOn(f, { rule: { allowed: { gate: ['active'] }, floors: { maxDrawdown: { max: 100 } } } });
       assert.strictEqual(doc.counts.survivors, 2);
       assert.deepStrictEqual(stages.getSet(doc.id).verify, [], 'a new set starts with an empty verify list');

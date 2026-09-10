@@ -254,7 +254,17 @@ const COL = {
   fCrossSays: 'what the pair is telling you: which dial\'s good part depends on the other. That dependence is the whole reason to grid two dials together instead of setting a range on each.',
   fGridCorner: 'the first dial down the side, the second across the top. Each square is the average test money of the settings that carry both values, with the count in brackets when the square is thin, and under it how many of the scrambled copies of that same square it beats - the same count step 2 shows for a value.',
   fGridValue: 'one value of the second dial. Read down this column to see how the first dial behaves at this value of the second.',
-  fRegionDial: 'a dial the widest region spans. Keeping the region writes these edges into the rule.',
+  fSpreadWhat: 'which of the two figures this row summarises across the scrambled copies: how many settings their region held, or dollars a setting inside it.',
+  fSpreadOurs: 'the same figure for YOUR region, on the same row, so the comparison needs no arithmetic.',
+  fSpreadMin: 'the lowest any copy reached.',
+  fSpreadAvg: 'the average across every copy that could be read.',
+  fSpreadMedian: 'the middle copy - half reached less, half reached more. Harder to move with one extreme copy than the average is.',
+  fSpreadMax: 'the highest any copy reached.',
+  fAgainstWhat: 'what the row is: the settings being read, then each of the four simple things they have to beat, then whichever of the four did best.',
+  fAgainstMade: 'dollars a setting over the TEST window. A span when the settings use more than one hold length, and then beaten means beaten at the worst of them.',
+  fAgainstGap: 'dollars a setting the rule is ahead by, over the test window. Negative means the simple thing did better.',
+  fAgainstBeaten: 'whether the settings beat that row by at least a cent, over the test window.',
+  fRegionDial: 'a dial the auto-plateau region spans. Keeping the region writes these edges into the rule.',
   fNoiseSize: 'which region this row is: yours, or one of the copies made by dealing the same forecasts onto the wrong days.',
   fNoiseCount: 'how many settings that region holds. A count of settings, never an amount of money - a wider region is not a better one.',
   fNoiseAvg: 'dollars a setting, averaged over that region\'s own members, over the test window. This is what a size on its own cannot tell you: a copy with a wider region than yours may have got it out of settings making pennies.',
@@ -3480,7 +3490,7 @@ async function drawBoards() {
       : `<option value="">— pick a stage ${stage} record set${above ? ` out of ${esc(above.name)}` : ''} —</option>`;
     return head + list.map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
   };
-  const foldBtn = (stage) => `<button data-bfold="${stage}" title="puts this stage's table away, or brings it back. The last state is remembered.">${fold[stage] ? 'put away' : 'open'}</button>`;
+  const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table");
 
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Boards — the record sets, and what each stage wrote</h3>
@@ -3590,7 +3600,7 @@ async function drawBoards() {
       tab = 'sweep'; localStorage.setItem('cx-tab', tab);
       draw().then(() => { fillStageForm(doc); });
     };
-    if (!fold[stage]) { mount.innerHTML = '<p class="note">put away — press open to bring it back</p>'; continue; }
+    if (!fold[stage]) { mount.innerHTML = putAwayNote; continue; }
     const chain = got.chain || [];
     const chainLine = stage === deepest && chain.length ? `<p class="note" style="margin-top:.5rem">${chain.map((c) => `<b>${esc(c.name)}</b> (${[
       c.plan && c.plan.units ? `${Number(c.plan.units).toLocaleString()} units` : null,
@@ -3703,6 +3713,19 @@ const btdN0 = 'style="padding:.25rem .5rem .25rem 0;white-space:nowrap"';
 // Sitting on the bottom keeps a wrapped heading level with the one-line
 // headings beside it and with its own sort button (RULE FOUR).
 const bth = 'style="padding:.3rem .5rem;max-width:7.5rem;white-space:normal;vertical-align:bottom"';
+
+// PUT AWAY AND OPEN, ONE CONTROL WHEREVER A SECTION HAS ONE (3.107.0, owner
+// order 2026-09-10: a put away on the Funnel "just like by the Stage 1/2/3
+// areas on Boards"). Boards' three stage sections and the Funnel's open walk
+// are the same act -- collapse what is drawn below, remember it, bring it back
+// -- so they draw ONE button, with the same two words and the same sentence
+// left where the panels were. Two spellings of one control is how one screen
+// comes to say `hide` and the other `put away`.
+// `extra` is where the CALLER lines the press up against the group it belongs
+// to, because only the caller knows what is beside it (RULE FOUR).
+const putAwayBtn = (attr, value, open, what, extra) => `<button data-${attr}="${esc(String(value))}" ${extra || ''}
+  title="puts ${esc(what)} away, or brings it back. The last state is remembered.">${open ? 'put away' : 'open'}</button>`;
+const putAwayNote = '<p class="note">put away — press open to bring it back</p>';
 
 // THE PAGE NUMBER IS TYPED, NOT WALKED TO (owner order, 2026-08-29). prev and
 // next move one page; on a table 4,116 pages long that is not a way of getting
@@ -4913,6 +4936,34 @@ function fSetMemory(set) {
 function fRememberForSet(set, fields) {
   try { localStorage.setItem(fSetKeyFor(set), JSON.stringify({ ...fSetMemory(set), ...fields })); } catch (_) { /* private window */ }
 }
+// PUT AWAY BELONGS TO THE SET, NOT TO ONE WALK (3.107.0, owner order
+// 2026-09-10). It says what the owner wants to LOOK at, not where any one walk
+// has got to, so it holds while the coin and shape box is moved from unit to
+// unit -- exactly as the bar and the target above it do.
+const fAway = (set) => fSetMemory(set).away === true;
+
+// WHETHER `Worth walking?` IS DRAWN -- ONE PREDICATE, EVERY VIEW OF THIS
+// SCREEN (3.107.0, owner order 2026-09-10: "the display of the 'Worth
+// walking?' section at the top of the funnel page is inconsistent depending on
+// whether or not the steps are being walked etc. or if a new rule is picked or
+// an existing one is opened ... that should be made consistent"). It used to
+// depend on which view happened to be open: drawn above the seven steps, and
+// absent altogether above an opened Stage 4 record set. One rule decides it
+// everywhere now, and it reads two things and nothing else.
+//
+// It is drawn UNLESS a control on the walk has actually been USED. Pressing
+// `walk this one` and reading step 1 does not count and must not (owner:
+// "the 'worth walking?' section should not hide until actual use of walk
+// controls as it may be worthwhile to view the initial step 1 table of a
+// series by just using the 'walk this one' buttons and scrolling up and down
+// without commencing the walk") -- so the flag behind this is set by a control
+// being used, never by a step being drawn.
+//
+// And `put away` brings it back whatever the walk has done, because that is
+// what the owner asked put away to leave on screen: "collapses any open funnel
+// and just leaves the 'Worth walking?' and unit selector areas open".
+const fHoldShown = (st, away) => !!away || !st.walking;
+
 // WHAT A READING OF THE OTHER UNITS WAS READ FOR: the rule AND the bar. The
 // same rule under another share of the copies is another reading.
 const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct]);
@@ -4935,7 +4986,8 @@ function fLoad() {
   fState = (saved && saved.set === set) ? { ...saved, unit }
     : { set, unit, step: 1, rule: { ranges: {}, allowed: {}, floors: {} }, target: null,
       dial: null, dialA: null, dialB: null, floor: 20, steps: [], backSteps: [], rebuilt: false, rebuiltSaid: null,
-      closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {}, across: null, barPct: null };
+      closing: { key: 'rule' }, marks: [], pick: null, leaders: [], conditions: {}, across: null, barPct: null,
+      walking: false };
   // the set's own bar and target win over whatever this unit's walk last saw
   const shared = fSetMemory(set);
   if (shared.barPct !== undefined) fState.barPct = shared.barPct;
@@ -5047,8 +5099,13 @@ async function drawFunnel() {
       : (d.step === 4 && !r.why ? { positive: r.positive, of: r.of, check: r.check || null } : null),
     keep: d.step === 5 && r.keep ? { ranges: r.keep.ranges || {}, allowed: r.keep.allowed || {} } : null,
   };
-  $('#view').innerHTML = `<div class="panel">${fHoldPanel(d, st)}</div>
-  <div class="panel">${fTitle(d, st, F_NEW_NAME)}</div>
+  // PUT AWAY COLLAPSES EVERYTHING BELOW THE TWO PICKERS (3.107.0, owner order
+  // 2026-09-10). What is left is what the owner asked to be left: `Worth
+  // walking?` and the row of boxes that chooses what is walked.
+  const away = fAway(st.set);
+  $('#view').innerHTML = `${fHoldShown(st, away) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : ''}
+  <div class="panel">${fTitle(d, st, F_NEW_NAME, away)}</div>
+  ${away ? `<div class="panel">${putAwayNote}</div>` : `<div id="fWalkBody">
   <div class="panel">${fHead(d)}${fRail(d, st)}</div>
   <div class="panel">
     <h3 style="margin-top:0">Step ${d.step} - ${esc(F_STEPS[d.step - 1][0])}</h3>
@@ -5059,8 +5116,9 @@ async function drawFunnel() {
       : d.step === 4 ? fStep4(r, st) : d.step === 5 ? fStep5(r, d, st) : d.step === 6 ? fStep6(d, st, r) : fStep7(d, st))}
     ${fNoiseLine(r, d)}
   </div>
-  <div class="panel">${fRuleBox(d, st)}</div>`;
+  <div class="panel">${fRuleBox(d, st)}</div></div>`}`;
   fWire(st, d);
+  fWatchWalkStart(st);
 }
 
 // THE COIN AND SHAPE BOX, drawn by ONE function (3.58.0). The walk's heading and
@@ -5144,20 +5202,55 @@ const fPct = (x) => (x == null ? '-' : `${Math.round(Number(x) * 100)}%`);
 // nothing to find can be left alone instead of walked.
 const fMoneySpan = (c) => (!c ? '-' : (Math.abs(c.hi - c.lo) < 0.005
   ? `<b>${fFix(c.lo, 2)}</b>` : `<b>${fFix(c.lo, 2)}</b> to <b>${fFix(c.hi, 2)}</b>`));
+// THE FOUR, ON TEST MONEY, AS A TABLE (3.107.0, owner order 2026-09-10: build
+// them here "in place of the held-back window info we are removing", and
+// "format those in properly formated tables rows and columns just like on
+// Verify ... where we turned incomprehensibly nasty sentences into valuable
+// information").
+//
+// The sentence this replaces flipped whose number it was talking about halfway
+// through -- the rule's money, then each comparison's, then a verdict about the
+// rule again -- which is the fault the Verify table was built to end in
+// 3.101.0. Same three columns here, same reason.
+//
+// AND IT IS TEST MONEY. The held-back reading is gone from this screen: this is
+// where the choosing happens, and a held-back figure read while choosing is a
+// look spent before the rule exists (SELECTION-DESIGN.md Part 3).
 function fAgainst(a, what) {
   if (!a || !a.known) {
     return `<p class="note muted">What ${esc(what)} would have to beat besides the scrambled copies is not known here -
-      ${esc(String((a && a.why) || 'nothing was kept'))}.</p>`;
+      ${esc(String((a && a.why) || 'nothing was worked out'))}.</p>`;
   }
+  const cents = (v) => Math.round(Number(v) * 100);
+  const rows = CMP_ORDER.map((k) => {
+    const c = a[k];
+    const made = c && c.hi != null && Number.isFinite(Number(c.hi)) ? Number(c.hi) : null;
+    const known = made != null && a.real != null && Number.isFinite(Number(a.real));
+    return { word: CMP_WORDS[k], span: c, made, gap: known ? Number(a.real) - made : null, beaten: known ? cents(a.real) > cents(made) : null };
+  });
+  const missing = rows.filter((r) => r.made == null).length;
+  const best = missing ? null : rows.reduce((x, y) => (y.made > x.made ? y : x));
   const many = (a.keys || []).length > 1;
-  const lost = [];
-  for (const k of CMP_ORDER) if (a[CMP_BEATS[k]] === false) lost.push(CMP_WORDS[k]);
-  return `<p class="note${lost.length ? ' neg' : ''}">On the held-back window, ${esc(what)} made
-      <b>${fFix(a.real, 2)}</b> a setting. Buying the coin and going away made ${fMoneySpan(a.buyHold)};
-      shorting it and going away made ${fMoneySpan(a.shortHold)}; being long every period made
-      ${fMoneySpan(a.alwaysLong)}; being short every period made ${fMoneySpan(a.alwaysShort)}.${many
-    ? ` These settings use ${a.keys.length} different hold lengths, so each is a span across them and beaten means beaten at the worst of them.` : ''}
-      ${lost.length ? `<b>It made less than ${esc(lost.join(' and '))}</b>, so there is a simpler thing that did better.` : ''}</p>`;
+  return `<div class="scrollx" style="max-width:34rem"><table><thead><tr>
+      ${cth('on the test window', 'fAgainstWhat')}${cth('it made', 'fAgainstMade')}${cth('this rule ahead by', 'fAgainstGap')}${cth('beaten', 'fAgainstBeaten')}
+    </tr></thead><tbody>
+      <tr><td><b>${esc(what)}</b></td><td><b>${fFix(a.real, 2)}</b></td><td>-</td><td>-</td></tr>
+      ${rows.map((r) => `<tr${r.beaten === false ? ' class="neg"' : ''}><td>${esc(r.word)}</td>
+        <td>${r.made == null ? '<span class="muted">no figure</span>' : fMoneySpan(r.span)}</td>
+        <td>${r.gap == null ? '-' : fFix(r.gap, 2)}</td>
+        <td>${r.beaten == null ? '<span class="muted">-</span>' : (r.beaten ? 'yes' : '<b>no</b>')}</td></tr>`).join('')}
+      ${best ? `<tr><td><b>best of the four</b> - ${esc(best.word)}</td><td><b>${fFix(best.made, 2)}</b></td>
+        <td>${fFix(Number(a.real) - best.made, 2)}</td>
+        <td>${cents(a.real) > cents(best.made) ? '<b>yes</b>' : '<b class="neg">no</b>'}</td></tr>` : ''}
+    </tbody></table></div>
+    <p class="note">Dollars a setting, over the test window - the same window every other figure on this screen is
+      read on. Nothing here is from the held-back part or the unread part.${many
+    ? ` These settings use ${a.keys.length} different hold lengths, so each figure is a span across them and
+       <b>beaten</b> means beaten at the worst of them.` : ''}
+      ${missing ? `<b class="neg">${missing} of the four has no figure, so the best of them is not known.</b>` : ''}
+      ${rows.some((r) => r.beaten === false)
+    ? `<b class="neg">${esc(rows.filter((r) => r.beaten === false).map((r) => r.word).join(' and '))} did better</b>, so
+       there is a simpler thing that did better and it needs no forecast at all.` : ''}</p>`;
 }
 function fHead(d) {
   const c = d.check || {};
@@ -5180,6 +5273,9 @@ function fHead(d) {
       <span class="note">% of the <b>${c.k}</b> copies - that is <b>${c.bar}</b> of them - by chance about <b>${fPct(c.chance)}</b> of values would</span>` : ''}</div>
     ${fAgainst((d.against || {}).board, 'every setting on this board')}
     ${fAgainst((d.against || {}).keeping, 'the settings this rule keeps')}
+    <p class="note">Two readings, and both matter: the whole board, so you know before narrowing anything whether
+      there is a rule worth hunting here, and the settings the rule keeps, so it cannot drift out of sight while
+      you narrow.</p>
     <p class="note">${n.available ? `This set carries ${Number(d.set.keptScrambles || n.kept || 0)} scrambled copies of the whole table, each one the same days in a jumbled order. Every step below is read once against the real table and again against each of those, and the second reading is drawn beside the first.`
     : `<b>No scrambled copies on this set</b> - ${esc(String(n.why || 'not captured'))}. Every step below is read
        against the two halves of the settings instead, which tests whether a reading is STABLE and never whether the effect is real.`}</p>
@@ -5227,11 +5323,48 @@ function fNoiseLine(reading, d) {
        ${n.barPct == null ? '' : `Your bar on this step is <b>${Number(n.barPct)}%</b>.`}`}</p>
     <p class="note">A size counts settings, never dollars: a copy that got a WIDER region than yours may have got it
       out of settings making pennies. That is what the second column is for.</p>
-    <div style="max-height:15rem;overflow-y:auto;max-width:26rem">
-      <table><thead><tr>${cth('region', 'fNoiseSize')}${cth('settings', 'fNoiseCount')}${cth('$ a setting', 'fNoiseAvg')}</tr></thead><tbody>
-      ${line('<b>this one</b>', mine, reading.avgPnl, 'pri')}
-      ${rows.map((c, i) => line(`copy ${i + 1}`, c.size, c.avg, mine != null && c.size != null && c.size >= mine ? 'neg' : '')).join('')}
-      </tbody></table></div>`;
+    <div class="row" style="align-items:flex-start;gap:1.2rem">
+      <div style="max-height:15rem;overflow-y:auto;max-width:26rem">
+        <table><thead><tr>${cth('region', 'fNoiseSize')}${cth('settings', 'fNoiseCount')}${cth('$ a setting', 'fNoiseAvg')}</tr></thead><tbody>
+        ${line('<b>this one</b>', mine, reading.avgPnl, 'pri')}
+        ${rows.map((c, i) => line(`copy ${i + 1}`, c.size, c.avg, mine != null && c.size != null && c.size >= mine ? 'neg' : '')).join('')}
+        </tbody></table></div>
+      ${fNoiseSpread(n, reading)}
+    </div>`;
+}
+// THE COPIES AS FOUR NUMBERS EACH, BESIDE THE LIST (3.107.0, owner order
+// 2026-09-10: "leverage all that free space beside to give a set of stats about
+// the null set data compared to the same details in our own region -- i would
+// think a min/avg/max median of the null set $ and settings would be handy").
+//
+// Eighty rows read one at a time answer no question. Where ours sits against
+// the middle of them is the question, and that is what these four say.
+// Ours is on the same rows so the comparison needs no arithmetic in the head.
+function fNoiseSpread(n, reading) {
+  const four = (vals) => {
+    const xs = (vals || []).filter((v) => v != null && Number.isFinite(Number(v))).map(Number).sort((a, b) => a - b);
+    if (!xs.length) return null;
+    const mid = xs.length % 2 ? xs[(xs.length - 1) / 2] : (xs[xs.length / 2 - 1] + xs[xs.length / 2]) / 2;
+    return { min: xs[0], avg: xs.reduce((a, c) => a + c, 0) / xs.length, median: mid, max: xs[xs.length - 1], n: xs.length };
+  };
+  const sizes = four(n.copies.map((c) => c.size));
+  const paid = four(n.copies.map((c) => c.avg));
+  if (!sizes && !paid) return '';
+  const cell = (v, d) => (v == null ? '<td class="muted">-</td>' : `<td style="text-align:right">${d === 0 ? Number(v).toLocaleString() : fFix(v, d)}</td>`);
+  const row = (label, f, ours, d) => `<tr><td>${label}</td>${cell(ours, d)}${cell(f && f.min, d)}${cell(f && f.avg, d)}${cell(f && f.median, d)}${cell(f && f.max, d)}</tr>`;
+  return `<div>
+    <table><thead><tr>${cth('across the copies', 'fSpreadWhat')}${cth('ours', 'fSpreadOurs')}${cth('min', 'fSpreadMin')}${cth('average', 'fSpreadAvg')}${cth('median', 'fSpreadMedian')}${cth('max', 'fSpreadMax')}</tr></thead><tbody>
+      ${row('settings in the region', sizes, reading.size, 0)}
+      ${row('$ a setting', paid, reading.avgPnl, 2)}
+    </tbody></table>
+    <p class="note" style="max-width:22rem">${sizes && reading.size != null
+    ? `The middle copy reached <b>${Number(sizes.median).toLocaleString()}</b> settings against your
+       <b>${Number(reading.size).toLocaleString()}</b>.` : ''}
+      ${paid && reading.avgPnl != null
+    ? `The middle copy made <b>${fFix(paid.median, 2)}</b> a setting against your <b>${fFix(reading.avgPnl, 2)}</b>.`
+    : '<b>The copies carry no money figure, so only the sizes can be compared.</b>'}
+      A copy is the same days with the forecasts dealt onto the wrong ones, so anything it made came from the price
+      moving and not from the forecast.</p></div>`;
 }
 function fRail(d, st) {
   return `<div class="row" style="flex-wrap:wrap;gap:.35rem">${F_STEPS.map((x, i) => `<button data-fstep="${i + 1}"
@@ -5631,7 +5764,7 @@ function fStep5(r, d, st) {
       <button id="fKeepMine">keep my own rule and go on</button>
       <span class="note">leaves every range and value you chose exactly as it is and moves to step 6 - keeps
         <b>${Number(keep.mineKeeps || 0).toLocaleString()}</b> of ${Number(d.of || 0).toLocaleString()}. Nothing on this
-        step is written into the rule, and the set will say the widest region was never kept.</span></div>
+        step is written into the rule, and the set will say the auto-plateau region was never kept.</span></div>
     ${keep.mineSentence ? `<p class="note muted" style="margin:.2rem 0 0">your rule: ${esc(keep.mineSentence)}</p>` : ''}
     ${keep.same === true
     ? `<p class="note">The two presses above write the SAME rule, so the choice between them changes nothing except the
@@ -5652,7 +5785,7 @@ function fStep5(r, d, st) {
       ${allowed.map(([k, v]) => `<tr><td>${esc(fDialLabel(k))}</td><td colspan="2">${esc(v.join(', '))}</td></tr>`).join('')}
     </tbody></table>
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
-      <button id="fKeepRegion" class="pri">keep the widest region</button>
+      <button id="fKeepRegion" class="pri">keep the auto-plateau region</button>
       <span class="note">replaces every range and value in the rule with the region's edges above - keeps
         <b>${Number(keep.keeps || 0).toLocaleString()}</b> of ${Number(d.of || 0).toLocaleString()}${d.target ? ` - target ${Number(d.target).toLocaleString()}` : ''}</span></div>
     ${keep.sentence ? `<p class="note muted" style="margin:.2rem 0 0">the region's rule: ${esc(keep.sentence)}</p>` : ''}
@@ -5955,15 +6088,31 @@ function fStep6(d, st, r) {
   // the set and the engine, never typed.
   // HOW MANY CAN BE OPEN AT ONCE: not one per coin. A unit starts a new
   // position every step and holds it for the hold, so they overlap whenever
-  // the hold outruns the step (owner, 2026-09-04). Said per unit, because a
-  // weekly shape and a daily one differ by six times.
+  // the hold outruns the step (owner, 2026-09-04).
+  //
+  // ONE LINE AND ONE WORST CASE, NEVER ONE CLAUSE PER UNIT (3.107.0, owner
+  // order 2026-09-10: "having 300 of these is useless ... PLEASE PLEASE GET RID
+  // OF THAT HORRIBLE IDEA"). It printed a clause for every coin and shape the
+  // reading covered, joined with semicolons, and a set with three hundred of
+  // them buried the only number that mattered in the middle of a paragraph
+  // nobody could read.
+  //
+  // Two facts carry what it was for, and neither grows with the number of
+  // units: the most that can be on the table at once across all of them, and
+  // the single heaviest one named. The per-unit detail is NOT moved to a table
+  // either -- three hundred rows is the same problem wearing a grid.
   const perUnit = Array.isArray(ex.perUnit) ? ex.perUnit.filter((u) => u.atOnce != null) : [];
+  const worst = perUnit.length
+    ? perUnit.reduce((a, b) => ((Number(b.mostAtOnce) || 0) > (Number(a.mostAtOnce) || 0) ? b : a))
+    : null;
   const overlap = perUnit.length && ex.holdHours
-    ? `<p class="note">With the longest hold your rule still allows, <b>${Number(ex.holdHours).toLocaleString()} hours</b>:
-        ${perUnit.map((u) => `${esc(u.name)} starts one every ${Number(u.stepHours).toLocaleString()} hours, so up to
-          <b>${u.atOnce}</b> can be open at once - <b>$${Number(u.mostAtOnce).toLocaleString()}</b>`).join('; ')}.
-        ${ex.mostAtOnce != null ? `Across this reading that is <b>$${Number(ex.mostAtOnce).toLocaleString()}</b> on the table
-          at once if every one of them is in a trade.` : ''}</p>`
+    ? `<p class="note">With the longest hold your rule still allows, <b>${Number(ex.holdHours).toLocaleString()} hours</b>,
+        across the <b>${Number(perUnit.length).toLocaleString()}</b> coin and shape(s) this reading covers:
+        ${ex.mostAtOnce != null ? `up to <b>$${Number(ex.mostAtOnce).toLocaleString()}</b> can be on the table at once,
+          if every one of them is in a trade.` : 'how much can be on the table at once is not known.'}
+        ${worst ? `The heaviest single one is <b>${esc(worst.name)}</b>: it starts one every
+          ${Number(worst.stepHours).toLocaleString()} hours, so up to <b>${worst.atOnce}</b> can be open on that one
+          alone - <b>$${Number(worst.mostAtOnce).toLocaleString()}</b>.` : ''}</p>`
     : '';
   const money = ex.stake ? `<p class="note"><b>What these limits are limits on.</b> Every trade stakes
       <b>$${Number(ex.stake).toLocaleString()}</b>, so every dollar figure on this walk is dollars at that stake.
@@ -6138,10 +6287,17 @@ async function fDrawCut(d, st, cutId) {
     setTimeout(() => { if (tab === 'funnel') drawFunnel(); }, 4000);
     return;
   }
-  $('#view').innerHTML = `<div class="panel">${fTitle(d, st, cd.set.name)}</div>
-    <div class="panel">${fCutHead(cd, st)}</div>
-    <div class="panel">${fCutTable(cd, st)}</div>`;
+  // THE SAME TWO CONTROLS AND THE SAME PREDICATE AS THE WALK VIEW (3.107.0).
+  // `Worth walking?` was drawn above the steps and nowhere else, which is the
+  // inconsistency the owner named; put away collapses an open Stage 4 record
+  // set exactly as it collapses an open walk.
+  const away = fAway(st.set);
+  $('#view').innerHTML = `${fHoldShown(st, away) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : ''}
+    <div class="panel">${fTitle(d, st, cd.set.name, away)}</div>
+    ${away ? `<div class="panel">${putAwayNote}</div>` : `<div class="panel">${fCutHead(cd, st)}</div>
+    <div class="panel">${fCutTable(cd, st)}</div>`}`;
   fWireCut(d, st, cd);
+  fWireHold(st, d);
   fWatchCutBox();
 }
 
@@ -6166,7 +6322,13 @@ function fCutPickBox(d, st) {
 // the top in a title/selector section, regardless of stage 4 data present or
 // not". Only the section BELOW this one changes with what is chosen, so the
 // screen never rearranges itself under the owner.
-function fTitle(d, st, name) {
+// `away` IS THREE-VALUED ON PURPOSE (3.107.0): true or false draws the put
+// away press in the state it names, and undefined draws no press at all. The
+// two paths that pass nothing are the ones where a Stage 4 record set would
+// not read or is still being totalled -- there is a MESSAGE below this row on
+// those, not a section, and a press that puts away the message saying why
+// nothing opened is a press that walls the owner in.
+function fTitle(d, st, name, away) {
   // A STAGE 4 RECORD SET CAN BE DELETED FROM THE SCREEN IT LIVES ON (owner
   // order, 2026-09-06: "there's no way to delete s4 data" and "s1/2/3 wont
   // delete cause 4 exists").
@@ -6181,13 +6343,17 @@ function fTitle(d, st, name) {
   // chain. That is not a stage 4 problem, it is the whole chain (RULE FIVE:
   // what the system can do, the interface exposes).
   const chosen = st.cut && st.cut !== F_NEW ? st.cut : null;
+  const gap = 'style="margin-left:auto"';
   return `<div class="row" style="align-items:flex-end">
       ${fUnitPicker(d)}
       ${fCutPickBox(d, st)}
       <button id="fCutDelete" class="danger" ${chosen ? '' : 'disabled'}
         title="permanently deletes the Stage 4 record set chosen beside this, and nothing else. Its parent stage 3 set, and the stage 2 and stage 1 sets above that, cannot be deleted while a set cut from them is still here — so this is what clears the way.">Delete Stage 4 record set…</button>
-      ${chosen ? `<button id="fCutHome" style="margin-left:auto"
-        title="leaves the Stage 4 record set on screen and goes back to the steps, exactly as choosing new rule in the box beside this does. Nothing is deleted and nothing is written: the set stays where it is and opens again from that box whenever you want it.">Go to Funnel home</button>` : ''}
+      ${away == null ? '' : putAwayBtn('ffold', 1, !away, chosen
+    ? 'the Stage 4 record set open below this row'
+    : 'the steps below this row, and the rule so far', gap)}
+      <button id="fCutHome" ${away == null ? gap : ''}
+        title="closes whatever is open below - a Stage 4 record set, or a walk part way through the steps - and goes back to the top of the Funnel, exactly as choosing new rule in the box beside this does. Nothing is deleted and nothing is written: a set stays where it is and opens again from that box, and a walk that has already written a set starts again at step 1.">Go to Funnel home</button>
     </div>
     <p class="note" style="margin:.35rem 0 0">${(d.cuts || []).filter((c) => c.mine).length} Stage 4 record set(s) have been cut from this coin and shape,
       and the box offers all ${(d.cuts || []).length} cut from this stage 3 record set - one from another coin and shape says which.
@@ -6262,10 +6428,10 @@ function fCutHead(cd, st) {
     <h4 style="margin:1rem 0 .3rem">User Rule:</h4>
     ${s.userSentence ? `<p class="note">${esc(fRuleWords(s.userSentence))}</p>
     <p class="note">${who} - <b>${s.userSurvivors == null ? '-' : Number(s.userSurvivors).toLocaleString()}</b> of ${of}
-      settings survive. These are the ranges and values you chose yourself, and they are what step 5 read to find its
-      widest region; keeping that region replaced every one of them with the rule below.
+      settings survive. These are the ranges and values you chose yourself, and they are what step 5 read to work out
+      its auto-plateau region; keeping that region replaced every one of them with the rule below.
       ${s.userStamped ? '<b>Recovered from this walk\'s own recorded steps and written onto the record</b>, because it was cut before the rule feeding step 5 was kept.' : ''}</p>`
-    : `<p class="note">The widest region was never kept on this walk, so nothing of yours was replaced - the rule
+    : `<p class="note">The auto-plateau region was never kept on this walk, so nothing of yours was replaced - the rule
       below is the one you built.</p>`}
 
     <h4 style="margin:1rem 0 .3rem">Final Rule:</h4>
@@ -6462,6 +6628,12 @@ function fWatchCutBox() {
 // resets a walk that produced nothing.
 function fGoNewRule(st, d) {
   if (fWalkWasAlreadyCut(d)) fFreshWalk(st);
+  // AND THE HOME VIEW IS WHAT COMES BACK (3.107.0). `Worth walking?` hides
+  // while a walk is being used, so a press called `Go to Funnel home` that
+  // left it hidden would leave the screen looking exactly as it did before it
+  // was pressed. This clears only that -- the walk keeps its place and its
+  // rule, and using any of its controls hides the section again.
+  st.walking = false;
   st.cut = F_NEW; st.setRebuiltSaid = null; fSave(); drawFunnel();
 }
 function fWireCutPick(st, d) {
@@ -6477,6 +6649,12 @@ function fWireCutPick(st, d) {
   // you most want to leave, and its panel never renders.
   const home = $('#fCutHome');
   if (home) home.onclick = () => fGoNewRule(st, d);
+  // PUT AWAY IS WIRED HERE TOO, for the same reason: it is on this row, this
+  // row is drawn on both views of the screen, and one handler for one control
+  // is what keeps the two views agreeing about what it does.
+  document.querySelectorAll('[data-ffold]').forEach((btn) => {
+    btn.onclick = () => { fRememberForSet(st.set, { away: !fAway(st.set) }); drawFunnel(); };
+  });
 }
 // ...and only against THIS board's sets (3.104.1): the same rule written on
 // another coin has the same sentence, and mistaking it for this walk would
@@ -6491,6 +6669,7 @@ function fFreshWalk(st) {
   st.steps = []; st.backSteps = []; st.marks = [];
   st.pick = null; st.leaders = []; st.conditions = {}; st.across = null; st.userRule = null;
   st.crosses = null; st.crossesAsked = null; st.crossesFailed = null;
+  st.walking = false;                                     // no control on it has been used yet (3.107.0)
   st.acrossAsked = null; st.read = null; st.rebuilt = false; st.rebuiltSaid = null;
 }
 // and one for the coin-and-shape box, for the same reason: this walk keeps its
@@ -6785,7 +6964,33 @@ async function fHoldPoll(st) {
     }
   } finally { fHoldWatching = false; }
 }
-function fWireHold(st) {
+// EVERY CONTROL `Worth walking?` DRAWS IS WIRED HERE (3.107.0). `work out the
+// test history numbers` used to be wired beside the seven steps' own controls
+// instead, and the section is drawn above an open Stage 4 record set now --
+// where those are not drawn at all, so the press would have been on screen and
+// dead. A panel's controls belong to the panel's wiring, or a second view of
+// the same panel is a screen of buttons that do nothing.
+function fWireHold(st, d) {
+  // ONE PRESS, START TO FINISH (3.81.0). It starts the run, watches it, and
+  // draws the values in when it lands -- no second press, and nothing held
+  // open for the gateway to give up on. A page reloaded in the middle picks
+  // the run back up from the read, because the read carries it.
+  const rb = $('#fRebuild');
+  if (rb && !rb.disabled) {
+    rb.onclick = async () => {
+      rb.disabled = true;
+      $('#fRebuildMsg').textContent = 'working them out — this prices every setting in this record set again from its parent set';
+      // NOTHING TO NAME (3.102.0, owner order 2026-09-10). It used to send the
+      // rule so the service could work out which survivors to price; the whole
+      // board is priced now, so there is nothing to pick and nothing to send.
+      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);
+      if (!started) { rb.disabled = false; $('#fRebuildMsg').textContent = fRichLine(d); return; }
+      await fRichWatch(st);
+    };
+  }
+  // and if one is already going -- another tab pressed it, or this page was
+  // reloaded -- it is watched without anything being pressed
+  if (fRichGoing(d)) fRichWatch(st);
   const rd = $('#fHoldRead');
   if (rd && !rd.disabled) {
     rd.onclick = async () => {
@@ -6875,6 +7080,45 @@ function fWireHold(st) {
       drawFunnel();
     };
   });
+}
+
+// WHAT COUNTS AS BEGINNING THE WALK (3.107.0, owner order 2026-09-10). Using
+// a control on the step rail, on the step itself, or on the rule so far -- and
+// nothing else. Read from ONE listener over the panels that hold them, so a
+// control added to a step tomorrow is covered without anybody remembering to
+// come back here, and so the answer cannot drift between the new-rule case,
+// the re-opened case and the mid-walk case.
+//
+// DELIBERATELY OUTSIDE IT: everything on `Worth walking?`, `walk this one`
+// included, which is the whole point (the owner reads step 1 for a series of
+// coins and shapes from those presses without commencing anything); the two
+// pickers and the two presses beside them; and the heading's `target size` and
+// `bold when a value beats at least`, which are the set's own standing line
+// above every unit's walk rather than a step's control.
+// A CONTROL, NOT A CLICK. Everything the seven steps draw is a button, a box
+// or a drop-down, with ONE exception: step 3's grid picks its block by pressing
+// two squares of a table, so a `td` carrying that mark is a control too. A
+// click anywhere else in these panels -- on a heading, on a row of numbers, on
+// the white space -- is reading, and reading is not walking.
+const F_WALK_CONTROLS = 'button, input, select, textarea, label, [data-fcell]';
+function fWatchWalkStart(st) {
+  const body = $('#fWalkBody');
+  if (!body || st.walking) return;
+  const begun = (e) => {
+    if (st.walking) return;
+    const on = e.target && e.target.closest ? e.target.closest(F_WALK_CONTROLS) : null;
+    if (!on) return;
+    st.walking = true;
+    fSave();
+    // PUT AWAY ON THE SPOT, NOT BY A REDRAW. Some of these controls answer
+    // without one -- ticking a value box only moves the count line beside it
+    // -- so a section that waited for the next redraw would sit there through
+    // the very press that was supposed to hide it. A redraw of our own is
+    // worse: it would fire on top of the handler that is still running.
+    const hold = $('#fHoldWrap');
+    if (hold) hold.remove();
+  };
+  for (const ev of ['click', 'change']) body.addEventListener(ev, begun, true);
 }
 
 function fWire(st, d) {
@@ -7193,27 +7437,7 @@ function fWire(st, d) {
     fRecord({ n: 6, what: 'exposure', chose: `worst streak ${dd}, fewest trades ${tr}` });
     fSave(); drawFunnel();
   };
-  // ONE PRESS, START TO FINISH (3.81.0). It starts the run, watches it, and
-  // draws the values in when it lands -- no second press, and nothing held
-  // open for the gateway to give up on. A page reloaded in the middle picks
-  // the run back up from the read, because the read carries it.
-  const rb = $('#fRebuild');
-  if (rb && !rb.disabled) {
-    rb.onclick = async () => {
-      rb.disabled = true;
-      $('#fRebuildMsg').textContent = 'working them out — this prices every setting in this record set again from its parent set';
-      // NOTHING TO NAME (3.102.0, owner order 2026-09-10). It used to send the
-      // rule so the service could work out which survivors to price; the whole
-      // board is priced now, so there is nothing to pick and nothing to send.
-      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);
-      if (!started) { rb.disabled = false; $('#fRebuildMsg').textContent = fRichLine(d); return; }
-      await fRichWatch(st);
-    };
-  }
-  // and if one is already going -- another tab pressed it, or this page was
-  // reloaded -- it is watched without anything being pressed
-  if (fRichGoing(d)) fRichWatch(st);
-  fWireHold(st);
+  fWireHold(st, d);
 
   // THE CLOSING IS A CHOICE THAT CHANGES THE COUNT, so it redraws like every
   // other choice does. Picking 'take the top N by a column' seeds the count

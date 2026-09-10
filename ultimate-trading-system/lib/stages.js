@@ -4037,12 +4037,18 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
   const payloads = records.map((rec, i) => {
     const mine = new Set(heldOn[i]);
-    return s3Payload({ doc, parent, rec, settings: use.filter((st) => mine.has(st.si)), fee, nullN });
+    return s3Payload({ doc, parent, rec, settings: use.filter((st) => mine.has(st.si)), fee, nullN, wantTestControls: true });
   });
 
   // si is per-BLOCK on the way back — the worker numbers what it was handed
   // from zero — so the label is what identifies a setting across units.
   const perSetting = new Map();
+  // THE FOUR ON THE TEST WINDOW, PER UNIT (3.107.0). They do not depend on the
+  // setting at all -- being long every period, being short every period, buying
+  // the coin and going away and shorting it and going away are properties of
+  // the unit's TEST window and the hold length -- so they ride back beside the
+  // settings rather than on every one of them.
+  const testControls = {};
   const failures = [];
   let done = 0;
   const pool = createPool();
@@ -4058,6 +4064,9 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
           pnl: row.pnl, trades: row.trades, holdout: row.holdout, rich: row.rich,
         });
       }
+      if (settled.value.testControls && Object.keys(settled.value.testControls).length) {
+        testControls[unitKeyOf(rec)] = settled.value.testControls;
+      }
     } else if (!settled.ok) {
       failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
     }
@@ -4069,7 +4078,7 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
     const vals = e.units.map((x) => x.pnl).filter((v) => v != null && Number.isFinite(v));
     e.avgTest = vals.length ? vals.reduce((a, c) => a + c, 0) / vals.length : null;
   }
-  return { perSetting, failures, units: records.length, settings: use.length };
+  return { perSetting, failures, testControls, units: records.length, settings: use.length };
 }
 
 // ONE UNIT'S PAYLOAD, BUILT ONE WAY. The launch, the rebuild of what actually
@@ -4077,7 +4086,7 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
 // hand the workers the same thing — so anything priced later is priced exactly
 // as the first rows were. Only what is being ASKED for differs: which
 // settings, how many null-set deals, and whether anything is priced at all.
-function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false }) {
+function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false, wantTestControls = false }) {
   const votes = unitRows(parent.id, 'votes', rec.blocks.votes, rec.u);
   const tau = unitRows(parent.id, 'tau', rec.blocks.tau, rec.u);
   return {
@@ -4090,6 +4099,10 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false 
       members: rec.specs.map((spec, mi) => ({ spec, tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [] })),
     },
     settings, fee, nullN, keepN: agreedOnly ? 0 : (Number((doc.params || {}).keepN) || 0), seed: doc.seed,
+    // THE FOUR ON THE TEST WINDOW, only when asked (3.107.0): the rebuild wants
+    // them, a launch must not pay four more simulations a unit for something
+    // nothing on a launch reads.
+    ...(wantTestControls ? { wantTestControls: true } : {}),
     unitKey: `${rec.trade}|${rec.ctx1 || ''}|${rec.ctx2 || ''}|${rec.geometry}`,
     pin: pinOf(doc),
     ...(agreedOnly ? { agreedOnly: true } : {}),
@@ -5097,8 +5110,14 @@ async function funnelRead(id, state = {}) {
   // readings, on every step: the whole board, so the owner knows before
   // choosing anything whether there is a rule worth hunting here at all, and
   // the survivors, so it cannot drift out of sight while they narrow.
+  // ON TEST MONEY, NOT HELD-BACK (3.107.0, owner order). The Funnel is a
+  // screen for CHOOSING, and a held-back figure read while choosing is a look
+  // spent before the rule exists (SELECTION-DESIGN.md Part 3). Both readings
+  // are here for the same reason they were before: the whole board, so it is
+  // known before anything is narrowed whether there is a rule worth hunting,
+  // and the survivors, so it cannot drift out of sight while they narrow.
   const against = board.unit
-    ? { board: againstControls(doc, board.unit, all), keeping: againstControls(doc, board.unit, rows) }
+    ? { board: againstTestControls(id, board.unit, all), keeping: againstTestControls(id, board.unit, rows) }
     : { board: { known: false, why: 'the four things a rule has to beat are kept per coin and shape, and this is the blend of all of them' }, keeping: { known: false } };
   // AND IT IS A MARK, not a note that scrolls away. Losing to buying the coin
   // and going away is not a detail about a rule; it is a reason the rule has
@@ -5566,7 +5585,10 @@ const funnelRichFile = (id) => path.join(SETS_DIR, `${String(id).replace(/[^A-Za
 const RICH_FIELDS = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 'grossPerTrade'];
 // 2 (3.41.0): each setting's numbers are kept PER UNIT beside the average
 // across units, because a unit's board reads its own (§17).
-const FUNNEL_RICH_V = 2;
+// 3 (3.107.0): the file also carries the four things a rule has to beat, read
+// on the TEST window, per unit. A file of the older shape reads as absent and
+// the screen offers the rebuild again (RULE NINE) -- nothing translates.
+const FUNNEL_RICH_V = 3;
 // IT ADDS TO WHAT IS ALREADY THERE. IT NEVER REPLACES IT (3.68.0, owner order
 // 2026-09-05: "if we support multiple passes through the same stage 3 data,
 // saving stage 4 data sets to look for alternate rules, and then your design
@@ -5584,11 +5606,16 @@ const FUNNEL_RICH_V = 2;
 // Adding is safe because these numbers are a property of the setting and the
 // records it was priced from, not of the press: the same setting priced again
 // gives the same answer, which is what the proof beside the press checks.
-function saveFunnelRich(id, perSetting) {
+function saveFunnelRich(id, perSetting, testControls = null) {
   const had = readFunnelRich(id);
   const out = {
     v: FUNNEL_RICH_V, savedAt: new Date().toISOString(), release: require('../package.json').version,
     settings: had && had.settings ? { ...had.settings } : {},
+    // THE FOUR ON THE TEST WINDOW, PER UNIT (3.107.0). Keyed by unit and by
+    // hold length, exactly as the held-back ones are on the set, and merged the
+    // same way the settings are: a pass over one unit tops its own entry up and
+    // leaves the others alone.
+    testControls: { ...((had && had.testControls) || {}), ...(testControls || {}) },
   };
   for (const [label, e] of perSetting) {
     const acc = {};
@@ -5634,6 +5661,7 @@ function saveFunnelRich(id, perSetting) {
     added: [...perSetting.keys()].length,
     kept: had && had.settings ? Object.keys(had.settings).length : 0,
     fields: RICH_FIELDS,
+    testControlUnits: Object.keys(out.testControls).length,
   };
 }
 function readFunnelRich(id) {
@@ -5819,6 +5847,58 @@ function controlsOf(doc, unitKey, keys) {
   }
   return out;
 }
+// THE SAME FOUR, ON TEST MONEY (3.107.0, owner order 2026-09-10). The Funnel
+// draws this and the held-back reading is gone from that screen: the four are
+// the one question that settles whether money came from the forecast or from
+// the coin's direction, and asking it needed the held-back window opened --
+// which is after the choosing is done, so it could not be asked at all while
+// it still mattered (SELECTION-DESIGN.md Part 3).
+//
+// Read out of the rebuilt-numbers file beside the set, not off the records: the
+// four do not depend on the setting, only on the unit's test window and the
+// hold length, so they ride there per unit. A set whose file predates them
+// says so and offers the press, exactly as a missing column does.
+function againstTestControls(id, unitKey, rows) {
+  const F = require('./funnel');
+  const rich = readFunnelRich(String(id));
+  const table = (rich && rich.testControls) || null;
+  const none = (why) => ({ known: false, why, real: null, of: 0 });
+  if (!table) {
+    return none('the numbers beside this set do not carry what the four things a rule has to beat made on the test window — press work out the test history numbers');
+  }
+  const mine = unitKey ? table[String(unitKey)] : null;
+  if (!mine) {
+    return none(unitKey
+      ? `nothing was worked out for ${unitKey} — press work out the test history numbers`
+      : 'the four are kept per coin and shape, and this is the blend of all of them');
+  }
+  const want = [...new Set((rows || []).map(controlKeyOf))].sort();
+  const got = want.map((k) => mine[k]).filter(Boolean);
+  if (!got.length) return none('nothing was worked out at the hold lengths these settings use');
+  let sum = 0;
+  let n = 0;
+  for (const r of rows) { const v = r.avgTest; if (v != null && Number.isFinite(Number(v))) { sum += Number(v); n++; } }
+  const real = n ? sum / n : null;
+  const out = { known: true, keys: want, of: n, missing: want.length - got.length, real };
+  for (const k of CONTROL_KEYS) {
+    const vals = got.map((r) => r[k]).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);
+    out[k] = vals.length ? { lo: Math.min(...vals), hi: Math.max(...vals) } : null;
+  }
+  if (real == null) return { ...out, known: false, why: 'these settings carry no test money to compare' };
+  // BEATEN MEANS BEATEN AT THE WORST OF THE HOLD LENGTHS IN USE, the same rule
+  // the held-back reading uses -- a rule that only clears the kindest horizon
+  // it touches has not cleared the bar it is read at.
+  for (const k of CONTROL_KEYS) out[`beats${k[0].toUpperCase()}${k.slice(1)}`] = out[k] ? F.beats(real, out[k].hi) : null;
+  // and the best of the four, so the gate is against the hardest of them and
+  // never against a pair the rule happens to clear (Part 2)
+  const known = CONTROL_KEYS.filter((k) => out[k] != null);
+  out.best = known.length === CONTROL_KEYS.length
+    ? known.map((k) => ({ key: k, hi: out[k].hi })).reduce((a, b) => (b.hi > a.hi ? b : a))
+    : null;
+  out.beatsBest = out.best ? F.beats(real, out.best.hi) : null;
+  return out;
+}
+
 // The rows' own money against them. `real` and the controls are the same
 // arithmetic on the same window at the same stake, so they subtract.
 function againstControls(doc, unitKey, rows) {
@@ -6023,7 +6103,7 @@ function funnelRichStart(id, state = {}) {
     run.of = labels.length;
     const got = await rebuildRichFor(doc, labels, { note: (done, of) => { run.done = done; run.of = of; } });
     const proof = proveRebuild(got.perSetting, expect);
-    const kept = saveFunnelRich(doc.id, got.perSetting);
+    const kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);
     // A RANKING ALREADY READ WAS READ FROM THESE NUMBERS, so it is dropped
     // rather than served beside numbers it never saw (3.102.0).
     funnelRankHoldForget(doc.id);
@@ -8212,7 +8292,7 @@ module.exports = {
   spreadOf, S3_COIN_FILTERS,
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
   missingSettingsIn, nextSettingNumber,
-  rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor,
+  rebuildRichFor, proveRebuild, firstDigitOf, funnelRead, sliceRowsFor, againstTestControls,
   funnelRankHoldRead, funnelRankHoldStart, funnelRankHoldStatus,
   funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,

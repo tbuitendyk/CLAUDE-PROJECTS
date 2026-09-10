@@ -1406,7 +1406,10 @@ module.exports = {
         'picking a stage 1 parent must put the child selections away');
       assert.ok(body.includes('data-bfold') && body.includes('fold1: true, fold2: true, fold3: true'),
         'the sections fold, and a fresh stage 3 pick opens its whole chain');
-      assert.ok(/fold\[stage\]\) \{ mount.innerHTML = '<p class="note">put away/.test(body),
+      // 3.107.0: the sentence moved into one constant, shared with the
+      // Funnel's own put away press, so the two screens cannot come to leave
+      // different words where their panels were.
+      assert.ok(/fold\[stage\]\) \{ mount.innerHTML = putAwayNote;/.test(body),
         'a folded section says it is put away rather than vanishing');
     }
     // EACH BOARDS BOX OFFERS ONLY WHAT CAME OUT OF THE PICK ABOVE IT (owner

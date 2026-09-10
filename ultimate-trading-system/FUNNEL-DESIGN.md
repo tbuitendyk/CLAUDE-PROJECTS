@@ -445,6 +445,12 @@ an order is a property of the run, not of the library.
   than luck" is a single draw; with ten it is ten out of ten, which is the point
   of the count being a field and not a constant.
 
+**What shipped differs from this in two ways** (3.107.0, §20.1 and §20.3): the
+press that keeps the region is called `keep the auto-plateau region`, and the
+copies' region sizes are drawn as a box with the smallest, average, middle and
+largest of both what they kept and what they made a setting, ours on the same
+rows — not as a run of numbers.
+
 ### 6.6 Step 6 — exposure
 
 **This is where the rebuild happens** (§4). The button says how many settings it
@@ -456,6 +462,11 @@ means — a mean drawdown hides the row that would have ended you.
 
 The owner sets floors. Dollar totals flatter; this is where an unacceptable path
 is cut regardless of its total.
+
+**How much can be open at once is said ONCE** (3.107.0, §20.4): the most across
+every coin and shape the reading covers, and the single heaviest one named. It
+was a clause per unit, and a set with three hundred of them buried the number
+that mattered in a paragraph nobody could read.
 
 ### 6.7 Step 7 — declare and cut
 
@@ -1453,3 +1464,185 @@ of the values it sets are themselves per-unit.
 trainings did, scored on the same window, against the same null set, beside
 every other setting — and on the Funnel, one value of every dial that says "the
 setting the units were built under" rather than a setting nobody chose.
+
+
+## 20. Seven changes to the screen, in one release (owner orders, 2026-09-10)
+
+Seven things the owner asked for across seven prompts, built as 3.107.0. Six
+are about the screen; one is about which numbers the screen is allowed to read.
+The pre-registered plan, the success rule and the decisions taken are in
+`LOOP-2026-09-10.md`.
+
+### 20.1 `keep the auto-plateau region`, not `keep the widest region`
+
+> "using a button name `keep the auto-plateau region` would be much more
+> meaningful to me than `keep the widest region` ... how am i supposed to know
+> for any given data set if mine or the generated one is 'widest'?"
+
+The old label made a claim the owner could not check from the screen. `widest`
+is true of the region the search found among the regions it looked at; it says
+nothing about the rule the owner built by hand, which is not a region at all
+and is not in that comparison. The new label says where the thing came from —
+the screen worked it out — and leaves the owner to judge it.
+
+**The rename stops at the press and the sentences that quote the ACT.** Three
+places still say `the widest region` and are deliberately left: the step's own
+subtitle, which describes the reading rather than making a claim; the mark
+stored on record sets in `lib/funnelset.js`; and the walk record's own
+`what: 'the widest region'`, which `lib/funnelset.js` matches by that exact
+string. Renaming those means migrating records already on the box (RULE NINE),
+which is the owner's call and not a session's.
+
+### 20.2 The four comparisons on TEST money, in a table
+
+> "build the four comparisons on test money in the funnel in place of the
+> held-back window info we are removing. format those in properly formated
+> tables rows and columns just like on Verify"
+
+The Funnel drew two readings of the four comparisons — the whole board and the
+settings the rule keeps — and **both were held-back money**, which is the one
+thing that must stay out of reach while choosing (SELECTION-DESIGN.md Part 3).
+Two sentences of it, on the screen where every choice is made.
+
+They are now a table, on the test window, with the same columns Verify uses:
+what each comparison made, how far this rule is ahead of it, and whether it is
+beaten — plus a `best of the four` row, because beating one of them is not
+beating the obvious thing. The note under the table says plainly that nothing
+on it comes from the held-back or unread stretch.
+
+**Where the numbers come from, and why not from the records.** Nothing on disk
+holds the four on the test window: `lib/stagework.js` works them out on the
+held-back chunks alone. Storing them on every stage 3 record would be a record
+schema change — a migration under RULE NINE and a FIRST-digit release under
+RULE ONE-C, so the owner's call. Instead the same `holdControls` the sweep
+engine uses is run on the unit's TEST chunks by the press that already walks
+the parent's records, and the answer is kept in the rebuilt-numbers file beside
+the set (`FUNNEL_RICH_V` 3). That file merges rather than replaces, so no
+record refuses and no set has to be re-run.
+
+### 20.3 What the scrambled copies made, beside what ours made
+
+> "beside that new list on funnel step 5 plateau with the REGION SETTINGS and
+> $ A SETTING columns you should leverage all that free space beside to give a
+> set of stats about the null set data compared to the same details in our own
+> region -- i would think a min/avg/max median of the null set $ and settings
+> would be handy to see"
+
+Step 5's scrambled-copy reading used to be a run of numbers — eighty region
+sizes in a row. Beside the box of copies there is now the smallest, the
+average, the middle and the largest of both what they kept and what they made
+a setting, with ours on the same rows. Both come from the same list the box
+draws, so the two cannot disagree.
+
+The sentence **"Anything short of all of them is a size a shuffle reaches too"**
+is gone. The owner called it, and they were right twice over: it overstated one
+copy in eighty as "a shuffle reaches it", and it held the rule to a standard
+stricter than the bar the owner had set on the same screen.
+
+### 20.4 Step 6 says the exposure once, not once per unit
+
+> "under the 6. exposure step of the funnel having 300 of these is useless ...
+> PLEASE PLEASE GET RID OF THAT HORRIBLE IDEA."
+
+It printed one clause per coin and shape the reading covered, joined with
+semicolons. On a set with three hundred of them the only number that mattered
+was buried in the middle of a paragraph nobody could read.
+
+Two facts carry what it was for, and neither grows with the number of units:
+the most that can be on the table at once across all of them, in dollars, and
+the single heaviest unit named with its own count. The per-unit detail is not
+moved to a table either — three hundred rows is the same problem wearing a grid.
+
+### 20.5 `put away`, the control Boards already has
+
+> "Back at the main Funnel view there should be a `put away` just like by the
+> Stage 1/2/3 areas on Boards which collapses any open funnel and just leaves
+> the `Worth walking?` and unit selector areas open on the page"
+
+Boards' three stage sections and the Funnel's open walk are the same act —
+collapse what is drawn below, remember it, bring it back — so they draw **one**
+button now, from one helper, with the same two words and the same sentence left
+where the panels were. Two spellings of one control is how one screen comes to
+say `hide` and the other `put away`.
+
+- It collapses everything below the row of boxes, on both views of the screen:
+  the seven steps and the rule so far, or an open Stage 4 record set.
+- What is left is what the owner asked to be left: the ranking section and the
+  row that chooses what is walked.
+- It is remembered **for the set**, not for one walk, because it says what the
+  owner wants to look at rather than where any one walk has got to — the same
+  way the bar and the target above it are remembered.
+- On the two paths where a Stage 4 record set will not read or is still being
+  totalled the press is not drawn at all. There is a message below that row on
+  those, not a section, and a press that puts away the message saying why
+  nothing opened is a press that walls the owner in.
+
+### 20.6 When `Worth walking?` hides — one predicate, every view
+
+> "the display of the `Worth walking?` section at the top of the funnel page is
+> inconsistent depending on whether or not the steps are being walked etc. or
+> if a new rule is picked or an existing one is opened ... that should be made
+> consistent: once we've started a new funnel rule or re-opened an existing
+> *AND WE'VE BEGUN WALKING ANY OF THE CONTROLS ON ANY OF THE SEVEN STEPS* then
+> the `Worth walking?` section at the top including any open table in it should
+> just be hidden"
+
+...refined by the seventh order:
+
+> "the `worth walking?` section should not hide until actual use of walk
+> controls as it may be worthwhile to view the initial step 1 table of a series
+> by just using the `walk this one` buttons and scrolling up and down without
+> commencing the walk"
+
+The section was drawn above the seven steps and absent altogether above an
+opened Stage 4 record set — the inconsistency the owner named. **One predicate
+decides it everywhere now**, and it reads two things and nothing else:
+
+1. **Has a control on this walk actually been used?** If yes, the section is
+   hidden. If no, it is drawn — so pressing `walk this one`, reading a step 1
+   table and scrolling does not hide it, which is the whole point of the
+   seventh order.
+2. **Is the funnel put away?** If yes, the section comes back whatever the walk
+   has done, because that is what the owner asked put away to leave on screen.
+
+**What counts as using a control**, decided in ONE place so it cannot drift
+between the new-rule case, the re-opened case and the mid-walk case: a click or
+a change on a button, box, drop-down or grid square inside the step rail, the
+step itself, or the rule so far. Read from one listener over those panels, so a
+control added to a step tomorrow is covered without anybody remembering to come
+back. A click on a heading, on a row of numbers or on the white space is
+reading, and reading is not walking.
+
+**Deliberately outside it**: everything the ranking section draws, `walk this
+one` included; the two boxes and the two presses on the selector row; and the
+heading's `target size` and `bold when a value beats at least`, which are the
+set's own standing line above every unit's walk rather than a step's control.
+
+**And the flag lives on the walk**, so ten coin-and-shape walks in flight each
+answer for themselves; it starts not-begun and clears when a walk starts again
+at step 1.
+
+### 20.7 `Go to Funnel home` is always there, and it brings the home view back
+
+> "that button to go back to the Funnel home `Go to Funnel home` needs to always
+> be available on the unit selector header which is the top section when a walk
+> is active. that way the current job can be closed / abandoned with that
+> button."
+
+Drawn unconditionally on the selector row since 3.104.0 — a walk part way
+through the steps is the case that most needs a way out, and that was the case
+the old condition left without one.
+
+3.107.0 adds the other half: the press now clears the has-been-used flag as
+well. Without that, a press called `Go to Funnel home` would have left the
+ranking section hidden and the screen looking exactly as it did before it was
+pressed. It clears **only** that — the walk keeps its place and its rule, and
+using any of its controls hides the section again.
+
+**What it still does not do is abandon the walk**, and the owner's words for
+this order say "the current job can be closed / abandoned with that button".
+Today the press keeps an unfinished walk exactly where it is and only starts it
+again at step 1 when that walk has already written a Stage 4 record set. Making
+it always discard the walk would throw away a half-built rule on one press,
+which is not a change to make unasked. It is named in
+`LOOP-2026-09-10.md` for the owner to decide.

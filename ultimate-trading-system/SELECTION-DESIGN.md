@@ -320,6 +320,21 @@ which is only shown.
 
 # Part 3 — put the held-back numbers out of reach while choosing
 
+> **ONE PIECE OF THIS SHIPPED, 3.107.0** (owner order 2026-09-10: "build the
+> four comparisons on test money in the funnel in place of the held-back window
+> info we are removing"). The **Funnel** drew the four comparisons twice — the
+> whole board and the settings the rule keeps — and both were **held-back**
+> money, on the screen where every choice is made. Both are now the same four
+> on the **test** window, as a table, and the note under it says nothing on it
+> comes from the held-back or unread stretch. See FUNNEL-DESIGN.md §20.2.
+>
+> **What did NOT ship is the rest of the part**, and it is the larger half:
+> `avg held-back $` is still a stored column with a `floor` and a sorter on
+> **Boards** and on the **Funnel**'s own tables, and there is still no check
+> that reads the choosing screens for a held-back figure and refuses to let one
+> ship. Removing the column is a change to the shape of a stored row and so a
+> migration (RULE NINE) — the owner's call, named in "What it costs" below.
+
 > **Blocker.** This part cannot be scoped until the owner says whether anything
 > on the choosing screens legitimately needs held-back money. `avg held-back $`
 > is a column on **Boards**, **Funnel** and **Verify** with a `floor` and a
