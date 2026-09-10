@@ -618,6 +618,10 @@ window.HELP = {
         what: 'Records that you accepted the rule across these slices, and opens the next step.',
         more: 'What you accepted is written on the set in words - "accepted 4 of 6; the check managed 3 of 6" - as a mark, so anyone reading the set later can see how much of the board the rule held on and how much of that the check managed anyway. It is disabled when there is nothing to compare.',
       },
+      fCutHome: {
+        what: 'Leaves the Stage 4 record set on screen and goes back to the steps.',
+        more: 'It does exactly what choosing "new rule" in the box beside it does, and it is here because after the steps write a set you are looking at that set with no obvious way out. Nothing is deleted and nothing is written: the set stays where it is and opens again from that box whenever you want it. If the walk you are returning to already produced this set, it starts again at step 1 with an empty rule - a finished walk reopened at its last step is not a new rule, it is the old one wearing the words.',
+      },
       fSetRebuild: {
         what: "Prices this record set's own settings again and keeps the answer on the set itself.",
         more: 'Six numbers are not stored by a sweep - the worst losing streak, the biggest single loss, the best single trade, how many trades won, how many were stopped out, and the gross per trade. On a walk they are worked out by "work out the test history numbers" at the top of the screen, for every setting in the stage 3 record set, and kept in one file beside THAT set. A set cut before that press had covered the whole of its parent can find them gone from the parent\'s board: its columns go empty and, if its rule puts a limit on the worst losing streak or on trades, its rule stops keeping anything at all. This press is the one thing that puts it right, and it differs from the one on a walk in where the answer lands - it keeps it on THIS set, for good, so nothing done to the parent can take it away again. It takes minutes and it waits for any sweep that is running.',

@@ -2547,6 +2547,43 @@ module.exports = {
     assert.equal((page.match(/id="fCutPick"/g) || []).length, 1, 'the Stage 4 record set box is drawn in more than one place');
   },
 
+  // THE WAY OUT OF A SET THE STEPS JUST WROTE (3.104.0, owner order
+  // 2026-09-10). After step 7 writes a Stage 4 record set you are looking at
+  // that set, and the only way back to the steps was a value inside a
+  // drop-down. The press sits in the corner of the same heading box, on the
+  // delete press's baseline, and it goes through the SAME path the drop-down
+  // does -- two controls meaning one thing by two routes is how one of them
+  // quietly stops resetting the walk.
+  theSetJustWrittenHasAPressBackToTheSteps() {
+    const page = src('public/construct.js');
+    const title = page.slice(page.indexOf('function fTitle('), page.indexOf('const F_NEW_NAME'));
+    assert.ok(title.includes('>Go to Funnel home</button>'), 'there is no press back to the steps');
+    assert.ok(/id="fCutHome" style="margin-left:auto"/.test(title),
+      'the press does not sit hard right in the heading box');
+    // it shares the delete press's row, so it shares its baseline (RULE FOUR)
+    const row = title.slice(title.indexOf('<div class="row" style="align-items:flex-end">'), title.indexOf('</div>'));
+    assert.ok(row.includes('id="fCutDelete"') && row.includes('id="fCutHome"'),
+      'the two presses are in different rows, so they cannot line up');
+    assert.ok(row.indexOf('id="fCutHome"') > row.indexOf('id="fCutDelete"'),
+      'the press is not last in the row, so margin-left:auto pushes what follows it past the right edge');
+    // and it is drawn only when there IS a set to leave
+    assert.ok(/\$\{chosen \? `<button id="fCutHome"/.test(title),
+      'the press is drawn while the steps are being walked, where there is nothing to go back from');
+
+    // ONE PATH. Both the box and the press call it, and it is the one that
+    // starts a walk again at step 1 when that walk already wrote this set.
+    assert.ok(page.includes('function fGoNewRule(st, d) {\n  if (fWalkWasAlreadyCut(d)) fFreshWalk(st);\n  st.cut = F_NEW; st.setRebuiltSaid = null; fSave(); drawFunnel();\n}'),
+      'there is no one path back to the steps');
+    const wire = page.slice(page.indexOf('function fWireCutPick(st, d) {'), page.indexOf('const fWalkWasAlreadyCut'));
+    assert.ok(wire.includes('if (cs.value === F_NEW) { fGoNewRule(st, d); return; }'), 'the box takes its own route back');
+    assert.ok(wire.includes("const home = $('#fCutHome');") && wire.includes('home.onclick = () => fGoNewRule(st, d);'),
+      'the press takes its own route back, or is not wired at all');
+    // wired with the pickers, before the early return: a set that will not OPEN
+    // is exactly the one you most want to leave, and its panel never renders
+    assert.ok(page.indexOf('fWireCutPick(st, d);') < page.indexOf("const dl = $('#fCutDelete');"),
+      'the press is wired after a return that a set which will not open takes');
+  },
+
   // "when the rename button is used the new name must be reflected immediately
   // in the title/selector section bold name."
   renamingAStageFourSetChangesTheBoldNameOnTheSpot() {
@@ -2585,8 +2622,14 @@ module.exports = {
     } finally { f.cleanup(); }
     // and the page acts on it
     const page = src('public/construct.js');
+    // 3.104.0: the reset moved into fGoNewRule, the ONE path back to the steps,
+    // so the press in the corner of the heading box cannot skip it. Both halves
+    // are checked -- the box routes there, and there is where the reset lives.
     const pick = page.slice(page.indexOf('function fWireCutPick('), page.indexOf('function fWireUnit('));
-    assert.ok(pick.includes('if (cs.value === F_NEW && fWalkWasAlreadyCut(d)) fFreshWalk(st);'),
+    assert.ok(pick.includes('if (cs.value === F_NEW) { fGoNewRule(st, d); return; }'),
+      'choosing new rule takes its own route rather than the one path back to the steps');
+    const home = page.slice(page.indexOf('function fGoNewRule(st, d) {'), page.indexOf('function fWireCutPick('));
+    assert.ok(home.includes('if (fWalkWasAlreadyCut(d)) fFreshWalk(st);'),
       'choosing new rule drops back into the finished walk at whatever step it ended on');
     assert.ok(pick.includes('c.ruleSentence && c.ruleSentence === d.ruleSentence'),
       'the finished walk is recognised by something other than the rule it wrote');

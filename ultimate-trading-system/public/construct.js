@@ -6125,6 +6125,8 @@ function fTitle(d, st, name) {
         title="permanently deletes the Stage 4 record set chosen beside this, and nothing else. Its parent stage 3 set, and the stage 2 and stage 1 sets above that, cannot be deleted while a set cut from them is still here — so this is what clears the way.">Delete Stage 4 record set…</button>
       <span class="note">${(d.cuts || []).length} Stage 4 record set(s) have been cut from this coin and shape.
         Choose <b>new rule</b> to walk the steps again and cut another.</span>
+      ${chosen ? `<button id="fCutHome" style="margin-left:auto"
+        title="leaves the Stage 4 record set on screen and goes back to the steps, exactly as choosing new rule in the box beside this does. Nothing is deleted and nothing is written: the set stays where it is and opens again from that box whenever you want it.">Go to Funnel home</button>` : ''}
     </div>
     <h3 id="fTitleName" style="margin:.55rem 0 0">${esc(name)}</h3>`;
 }
@@ -6381,19 +6383,36 @@ function fWatchCutBox() {
 
 // the drop-down is wired the same on both screens, by one function, because two
 // copies of a control's handler is how the two screens come to behave differently
+// BACK TO THE STEPS, THROUGH ONE DOOR (3.104.0, owner order 2026-09-10: a
+// press in the corner of the heading box, beside the box that already does
+// this). Two controls that mean the same thing and take two different paths is
+// how one of them quietly stops resetting the walk; there is one path and both
+// use it.
+//
+// A NEW RULE STARTS AT STEP 1 (owner order, 2026-09-04: "don't go back to
+// step 7 the previous finished rule if a record set already exists"). A walk
+// that has been cut is finished; dropping back into it at step 7 with its own
+// rule still on it is not a new rule, it is the old one wearing the words. The
+// walk is recognised by its own rule SENTENCE, which is the sentence the set it
+// wrote carries -- so this works on sets cut before it was written, and never
+// resets a walk that produced nothing.
+function fGoNewRule(st, d) {
+  if (fWalkWasAlreadyCut(d)) fFreshWalk(st);
+  st.cut = F_NEW; st.setRebuiltSaid = null; fSave(); drawFunnel();
+}
 function fWireCutPick(st, d) {
   const cs = $('#fCutPick');
-  if (cs) cs.onchange = () => {
-    // A NEW RULE STARTS AT STEP 1 (owner order, 2026-09-04: "don't go back to
-    // step 7 the previous finished rule if a record set already exists"). A
-    // walk that has been cut is finished; dropping back into it at step 7 with
-    // its own rule still on it is not a new rule, it is the old one wearing the
-    // words. The walk is recognised by its own rule SENTENCE, which is the
-    // sentence the set it wrote carries -- so this works on sets cut before it
-    // was written, and never resets a walk that produced nothing.
-    if (cs.value === F_NEW && fWalkWasAlreadyCut(d)) fFreshWalk(st);
-    st.cut = cs.value; st.setRebuiltSaid = null; fSave(); drawFunnel();
-  };
+  if (cs) {
+    cs.onchange = () => {
+      if (cs.value === F_NEW) { fGoNewRule(st, d); return; }
+      st.cut = cs.value; st.setRebuiltSaid = null; fSave(); drawFunnel();
+    };
+  }
+  // WIRED HERE, with the box it shares a path with -- and like the delete
+  // press, before any early return: a set that will NOT open is exactly the one
+  // you most want to leave, and its panel never renders.
+  const home = $('#fCutHome');
+  if (home) home.onclick = () => fGoNewRule(st, d);
 }
 const fWalkWasAlreadyCut = (d) => !!(d && d.ruleSentence
   && (d.cuts || []).some((c) => c.ruleSentence && c.ruleSentence === d.ruleSentence));

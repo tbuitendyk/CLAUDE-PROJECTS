@@ -720,6 +720,15 @@ const GUARDS = [
     "const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));",
     'theBarIsTheOwnersAndReAppliesWithoutReReading',
     'a bar nobody set reads as a bar of zero, so every coin and shape whose order is not inverted passes a bar that was never asked for'],
+  // ---- ONE PATH BACK TO THE STEPS (3.104.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), '  if (home) home.onclick = () => fGoNewRule(st, d);',
+    "  if (home) home.onclick = () => { st.cut = F_NEW; fSave(); drawFunnel(); };",
+    'theSetJustWrittenHasAPressBackToTheSteps',
+    'the press takes its own route back, so a walk that already wrote this set reopens at step 7 with its old rule still on it'],
+  [path.join(ROOT, 'public', 'construct.js'), '${chosen ? `<button id="fCutHome" style="margin-left:auto"',
+    '${true ? `<button id="fCutHome" style="margin-left:auto"',
+    'theSetJustWrittenHasAPressBackToTheSteps',
+    'the press is drawn while the steps are being walked, where there is nothing to go back from'],
   // ---- ONE JOB, ONE NAME, ON BOTH SCREENS (3.103.2) ----
   [path.join(ROOT, 'public', 'construct.js'), '<button id="fSetRebuild">work out the test history numbers</button>',
     '<button id="fSetRebuild">work out the missing numbers</button>',
