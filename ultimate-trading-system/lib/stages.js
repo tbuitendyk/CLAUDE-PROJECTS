@@ -7487,13 +7487,28 @@ function listFunnelSets(parentId = null) {
 // door which sets belong to what is on screen. A set cut on the blended board
 // carries no unit; the page's word for that board is 'all', and they are the
 // same board.
+// EVERY STAGE 4 SET OF THIS STAGE 3 SET, WHATEVER COIN AND SHAPE IT WAS CUT ON
+// (3.104.1, owner order 2026-09-10: "the Stage 4 record set selector must
+// display ALL OF THE RECORD SETS ASSOCIATED WITH THE LOADED Stage 3 table
+// WITHOUT FILTERING BY the coin, alongside 1, alongside 2, and chunk shape
+// boxes. otherwise Stage 4 sets from previous funnel rules cannot be selected
+// without remembering their parameters").
+//
+// The list used to be cut down to the board on screen, which made every set
+// reachable only by first setting four boxes back to what they were when it was
+// written -- a list you can only use if you already know what is in it.
+//
+// `mine` says whether a set belongs to the board on screen, and it is what the
+// two things that must stay per-unit read: which set a first visit opens by
+// itself, and whether the walk in hand is the walk that wrote one of them.
 function funnelCutsFor(parentId, unitKey) {
   const want = unitKey == null || String(unitKey) === 'all' ? null : String(unitKey);
   return listFunnelSets(parentId)
     .filter((d) => !d.exam && !d.derived)
-    .filter((d) => (d.unit || null) === want)
     .map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
+      unit: d.unit || null,
+      mine: (d.unit || null) === want,
       survivors: (d.counts || {}).survivors ?? null, target: (d.counts || {}).target ?? null,
       // AND THE RULE IT WROTE, IN THE SAME WORDS THE WALK SAYS ITS OWN
       // (3.59.0). It is how the screen knows the walk it is holding is the

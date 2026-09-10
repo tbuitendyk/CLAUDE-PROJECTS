@@ -163,7 +163,12 @@ module.exports = {
     assert.ok(/doc\.exam = !!state\.exam;/.test(s), 'and the cut stamps it on a Stage 4 set');
     assert.ok(/exam: !!d\.exam,/.test(s), 'the list row carries it');
     // the same filter leaves out a half-life set (3.95.0), which stands on its source and is not offered to cut again
-    assert.ok(/\.filter\(\(d\) => !d\.exam && !d\.derived\)\n    \.filter\(\(d\) => \(d\.unit \|\| null\) === want\)/.test(s), 'the Funnel\'s own picker leaves them out');
+    // 3.104.1: the picker no longer narrows to the board on screen -- every
+    // Stage 4 set of the stage 3 record set is offered -- so this checks the
+    // one filter that is this test's subject, and checks it inside the function
+    // that builds the list rather than anywhere in the file.
+    const cutsFor = s.slice(s.indexOf('function funnelCutsFor('), s.indexOf('// THE ROWS OF ONE STAGE 4 SET'));
+    assert.ok(cutsFor.includes('.filter((d) => !d.exam && !d.derived)'), 'the Funnel\'s own picker leaves them out');
     const server = src('server.js');
     assert.ok(server.includes("sets: stages.listSets().filter((s) => !s.exam)"), 'Boards\' list leaves them out');
     assert.ok(server.includes("sets: stages.listFunnelSets(parent).filter((d) => !d.exam).map((d) => ({"), 'and the Stage 4 list leaves them out');

@@ -720,6 +720,18 @@ const GUARDS = [
     "const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));",
     'theBarIsTheOwnersAndReAppliesWithoutReReading',
     'a bar nobody set reads as a bar of zero, so every coin and shape whose order is not inverted passes a bar that was never asked for'],
+  // ---- EVERY STAGE 4 SET IS REACHABLE (3.104.1) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "      mine: (d.unit || null) === want,", "      mine: true,",
+    'theFunnelOffersTheStageFourSetsCutFromTheCoinAndShape',
+    "every set reads as the board's own, so a first visit opens another coin's set and the walk in hand is mistaken for the one that wrote it"],
+  [path.join(ROOT, 'public', 'construct.js'), "  const mine = cuts.filter((c) => c.mine);\n  return mine.length ? mine[0].id : null;",
+    "  return cuts.length ? cuts[0].id : null;",
+    'aStageFourSetThatWillNotOpenStillDrawsThePicker',
+    'opening the Funnel lands on a set from a coin and shape the owner did not choose'],
+  [path.join(ROOT, 'public', 'construct.js'), "  && (d.cuts || []).some((c) => c.mine && c.ruleSentence && c.ruleSentence === d.ruleSentence));",
+    "  && (d.cuts || []).some((c) => c.ruleSentence && c.ruleSentence === d.ruleSentence));",
+    'aNewRuleStartsAtStepOneWhenTheWalkHasAlreadyBeenCut',
+    'the same rule written on another coin is mistaken for this walk, so going back to the steps throws the walk away'],
   // ---- ONE PATH BACK TO THE STEPS (3.104.0) ----
   [path.join(ROOT, 'public', 'construct.js'), '  if (home) home.onclick = () => fGoNewRule(st, d);',
     "  if (home) home.onclick = () => { st.cut = F_NEW; fSave(); drawFunnel(); };",

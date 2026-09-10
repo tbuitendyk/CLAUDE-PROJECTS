@@ -2288,13 +2288,23 @@ module.exports = {
         const on = await stages.funnelRead(f.id, { step: 1, unit: f.keys[0], rule: { ranges: {}, allowed: {}, floors: {} } });
         assert.ok(Array.isArray(on.cuts), 'the read does not carry the Stage 4 sets of the board on screen');
         assert.ok(on.cuts.some((c) => c.id === cut.id), 'the set cut from this coin and shape is not offered on it');
-        // on ANOTHER coin and shape of the same stage 3 set, it is NOT
+        assert.ok(on.cuts.find((c) => c.id === cut.id).mine === true, 'the set does not know it belongs to the board it was cut from');
+        // ON ANOTHER COIN AND SHAPE OF THE SAME STAGE 3 SET IT IS STILL OFFERED
+        // (3.104.1, owner order): a list narrowed to the four boxes above it can
+        // only be used by somebody who already knows what is in it. It is
+        // offered, and it says it is not this board's, which is what lets the
+        // screen name the coin and shape it really belongs to.
         const other = await stages.funnelRead(f.id, { step: 1, unit: f.keys[1], rule: { ranges: {}, allowed: {}, floors: {} } });
-        assert.ok(!(other.cuts || []).some((c) => c.id === cut.id),
-          'a set cut on one coin and shape is offered on another, which is a rule about one coin shown under the name of a different one');
-        // and the blended board is a board of its own
+        const seen = (other.cuts || []).find((c) => c.id === cut.id);
+        assert.ok(seen, 'a set cut from this stage 3 record set is unreachable unless the four boxes are set back to what they were');
+        assert.strictEqual(seen.mine, false, 'a set from another coin and shape is not marked as such, so the screen cannot say whose it is');
+        assert.strictEqual(seen.unit, f.keys[0], 'the set does not carry the coin and shape it was cut on');
+        // the blended board is a board of its own: the set is still REACHABLE
+        // from it, and still says it is not the blend's
         const blend = await stages.funnelRead(f.id, { step: 1, unit: 'all', rule: { ranges: {}, allowed: {}, floors: {} } });
-        assert.ok(!(blend.cuts || []).some((c) => c.id === cut.id), 'a unit set is offered on the blended board');
+        const onBlend = (blend.cuts || []).find((c) => c.id === cut.id);
+        assert.ok(onBlend, 'the blended board cannot reach a set cut from its own stage 3 record set');
+        assert.strictEqual(onBlend.mine, false, 'a unit set reads as the blended board\'s own');
         // showing a set reads NO step: the grid and the region are minutes of
         // work for a screen that is not drawn
         const asCut = await stages.funnelRead(f.id, { step: 3, unit: f.keys[0], dialA: 'tHours', dialB: 'gate', view: 'cut', rule: { ranges: {}, allowed: {}, floors: {} } });
@@ -2502,8 +2512,12 @@ module.exports = {
     assert.ok(draw.includes('fWireCut(d, st, null)'), 'the way out is drawn and not wired');
     // and the branch that chooses between the two screens cannot loop
     const pick = page.slice(page.indexOf('function fCutChosen('), page.indexOf('async function fDrawCut('));
-    assert.ok(pick.includes('if (!cuts.length) return null;'), 'a board with no Stage 4 sets does not fall through to the walk');
-    assert.ok(pick.includes('return cuts[0].id;'), 'a board with sets does not open on the newest of them');
+    // 3.104.1: the list holds every set of the stage 3 record set, so falling
+    // through to the walk is decided on THIS board's sets -- none of its own,
+    // and none chosen, lands on the steps rather than on another coin's set.
+    assert.ok(pick.includes('const mine = cuts.filter((c) => c.mine);') && pick.includes('return mine.length ? mine[0].id : null;'),
+      'a board with no Stage 4 sets of its own does not fall through to the walk');
+    assert.ok(pick.includes('return mine.length ? mine[0].id : null;'), 'a board with sets of its own does not open on the newest of them');
     const br = page.slice(page.indexOf('const cutId = fCutChosen(st, d);'), page.indexOf('const r = d.reading || {};'));
     assert.ok(br.includes("if (cutId !== st.cut) { st.cut = cutId; fSave(); }"),
       'the chosen set is redrawn without being remembered, so every read asks again');
@@ -2566,6 +2580,16 @@ module.exports = {
       'the two presses are in different rows, so they cannot line up');
     assert.ok(row.indexOf('id="fCutHome"') > row.indexOf('id="fCutDelete"'),
       'the press is not last in the row, so margin-left:auto pushes what follows it past the right edge');
+    // AND NOTHING ELSE IS IN THE ROW WITH THEM (3.104.1, owner report: it did
+    // not line up). `.row` wraps, and a long note between the two presses is
+    // enough to push this one onto a second line -- where margin-left:auto
+    // still works and the baseline it was put on is somebody else's. The note
+    // sits under the row now, so the row cannot wrap between them.
+    assert.ok(!/<span class="note">/.test(row), 'the row carries a note again, and a wrapped row puts the two presses on different lines');
+    assert.ok(row.trim().endsWith('</button>` : \'\'}'), 'the press is not the last thing in the row');
+    const after = title.slice(title.indexOf('</div>'));
+    assert.ok(/<p class="note" style="margin:\.35rem 0 0">\$\{\(d\.cuts \|\| \[\]\)\.filter\(\(c\) => c\.mine\)\.length\} Stage 4 record set\(s\)/.test(after),
+      'the count of Stage 4 record sets went with the row instead of moving under it');
     // and it is drawn only when there IS a set to leave
     assert.ok(/\$\{chosen \? `<button id="fCutHome"/.test(title),
       'the press is drawn while the steps are being walked, where there is nothing to go back from');

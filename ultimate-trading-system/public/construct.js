@@ -6043,10 +6043,14 @@ async function fCutFollow(st) {
 
 function fCutChosen(st, d) {
   const cuts = (d && d.cuts) || [];
-  if (!cuts.length) return null;                     // none cut here: the walk, always
   if (st.cut === F_NEW) return null;                 // the owner asked for a new rule
   if (st.cut && cuts.some((c) => c.id === st.cut)) return st.cut;
-  return cuts[0].id;                                 // never chosen, or gone: the newest
+  // NEVER CHOSEN, OR GONE: the newest of THIS board's sets. The list carries
+  // every set of the stage 3 set now (3.104.1) so that any of them can be
+  // picked, but landing on another coin's set by itself would be the screen
+  // choosing a coin the owner did not.
+  const mine = cuts.filter((c) => c.mine);
+  return mine.length ? mine[0].id : null;
 }
 
 async function fDrawCut(d, st, cutId) {
@@ -6091,9 +6095,13 @@ async function fDrawCut(d, st, cutId) {
 // no control left on the screen to get back to a set already cut. The owner's
 // order reads the other way -- the drop-down is what is presented once sets
 // exist, and `new rule` is one of the things it offers.
+// EVERY SET OF THIS STAGE 3 SET, and a set cut on another coin and shape says
+// which one (3.104.1, owner order). A list narrowed to the four boxes above it
+// can only be used by somebody who already knows what is in it.
 function fCutPickBox(d, st) {
   const cuts = d.cuts || [];
-  return `<label class="f">Stage 4 record set<select id="fCutPick" style="min-width:20rem">${cuts.map((c) => `<option value="${esc(c.id)}" ${c.id === st.cut ? 'selected' : ''}>${esc(c.name)}</option>`).join('')}<option value="new" ${st.cut === F_NEW ? 'selected' : ''}>new rule</option></select></label>`;
+  const named = (key) => ((d.units || []).find((u) => u.key === key) || {}).name || key || 'all units together';
+  return `<label class="f">Stage 4 record set<select id="fCutPick" style="min-width:20rem">${cuts.map((c) => `<option value="${esc(c.id)}" ${c.id === st.cut ? 'selected' : ''}>${esc(c.name)}${c.mine ? '' : ` — ${esc(named(c.unit))}`}</option>`).join('')}<option value="new" ${st.cut === F_NEW ? 'selected' : ''}>new rule</option></select></label>`;
 }
 // ONE HEADING, NOT TWO. This drew "Funnel - <set> - <coin and shape>" above a
 // heading that says the same thing plus the counts, which is the owner's own
@@ -6123,11 +6131,12 @@ function fTitle(d, st, name) {
       ${fCutPickBox(d, st)}
       <button id="fCutDelete" class="danger" ${chosen ? '' : 'disabled'}
         title="permanently deletes the Stage 4 record set chosen beside this, and nothing else. Its parent stage 3 set, and the stage 2 and stage 1 sets above that, cannot be deleted while a set cut from them is still here — so this is what clears the way.">Delete Stage 4 record set…</button>
-      <span class="note">${(d.cuts || []).length} Stage 4 record set(s) have been cut from this coin and shape.
-        Choose <b>new rule</b> to walk the steps again and cut another.</span>
       ${chosen ? `<button id="fCutHome" style="margin-left:auto"
         title="leaves the Stage 4 record set on screen and goes back to the steps, exactly as choosing new rule in the box beside this does. Nothing is deleted and nothing is written: the set stays where it is and opens again from that box whenever you want it.">Go to Funnel home</button>` : ''}
     </div>
+    <p class="note" style="margin:.35rem 0 0">${(d.cuts || []).filter((c) => c.mine).length} Stage 4 record set(s) have been cut from this coin and shape,
+      and the box offers all ${(d.cuts || []).length} cut from this stage 3 record set - one from another coin and shape says which.
+      Choose <b>new rule</b> to walk the steps again and cut another.</p>
     <h3 id="fTitleName" style="margin:.55rem 0 0">${esc(name)}</h3>`;
 }
 // what the bold name says while the steps are being walked
@@ -6414,8 +6423,11 @@ function fWireCutPick(st, d) {
   const home = $('#fCutHome');
   if (home) home.onclick = () => fGoNewRule(st, d);
 }
+// ...and only against THIS board's sets (3.104.1): the same rule written on
+// another coin has the same sentence, and mistaking it for this walk would
+// throw the walk away.
 const fWalkWasAlreadyCut = (d) => !!(d && d.ruleSentence
-  && (d.cuts || []).some((c) => c.ruleSentence && c.ruleSentence === d.ruleSentence));
+  && (d.cuts || []).some((c) => c.mine && c.ruleSentence && c.ruleSentence === d.ruleSentence));
 function fFreshWalk(st) {
   st.step = 1;
   st.rule = { ranges: {}, allowed: {}, floors: {} };
