@@ -5230,6 +5230,14 @@ function fAgainst(a, what) {
   });
   const missing = rows.filter((r) => r.made == null).length;
   const best = missing ? null : rows.reduce((x, y) => (y.made > x.made ? y : x));
+  const bestBeaten = best ? cents(a.real) > cents(best.made) : null;
+  // ONE CELL SHAPE FOR ONE FACT, through a helper rather than two quoted HTML
+  // fragments inside the markup. Written inline, the code between the `>` of
+  // one closing tag and the `<` of the next reads as text on the screen to the
+  // word-list reader, which then reports `r.beaten` as a label the owner can
+  // see and fails the check that says the list holds every visible word.
+  // Verify draws the same fact through the same shape (its own `yn`).
+  const yn = (v) => (v == null ? '<span class="muted">-</span>' : (v ? 'yes' : '<b class="neg">no</b>'));
   const many = (a.keys || []).length > 1;
   return `<div class="scrollx" style="max-width:34rem"><table><thead><tr>
       ${cth('on the test window', 'fAgainstWhat')}${cth('it made', 'fAgainstMade')}${cth('this rule ahead by', 'fAgainstGap')}${cth('beaten', 'fAgainstBeaten')}
@@ -5238,10 +5246,10 @@ function fAgainst(a, what) {
       ${rows.map((r) => `<tr${r.beaten === false ? ' class="neg"' : ''}><td>${esc(r.word)}</td>
         <td>${r.made == null ? '<span class="muted">no figure</span>' : fMoneySpan(r.span)}</td>
         <td>${r.gap == null ? '-' : fFix(r.gap, 2)}</td>
-        <td>${r.beaten == null ? '<span class="muted">-</span>' : (r.beaten ? 'yes' : '<b>no</b>')}</td></tr>`).join('')}
+        <td>${yn(r.beaten)}</td></tr>`).join('')}
       ${best ? `<tr><td><b>best of the four</b> - ${esc(best.word)}</td><td><b>${fFix(best.made, 2)}</b></td>
         <td>${fFix(Number(a.real) - best.made, 2)}</td>
-        <td>${cents(a.real) > cents(best.made) ? '<b>yes</b>' : '<b class="neg">no</b>'}</td></tr>` : ''}
+        <td>${yn(bestBeaten)}</td></tr>` : ''}
     </tbody></table></div>
     <p class="note">Dollars a setting, over the test window - the same window every other figure on this screen is
       read on. Nothing here is from the held-back part or the unread part.${many

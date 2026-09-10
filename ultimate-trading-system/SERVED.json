@@ -1,16 +1,16 @@
 {
-  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "009796ab64c8f4a1d275f08d6215a913a2f83260",
-  "subject": "3.106.0: step 5 says what it measures and what it costs",
-  "capturedAt": "2026-09-10T06:43:37Z",
+  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
+  "commit": "474ba31e814d388d32e213f1edd4fc5ddfa1fd50",
+  "subject": "3.107.0: seven changes to the Funnel screen (LOOP NOW!)",
+  "capturedAt": "2026-09-10T08:28:00Z",
   "files": {
     "public/construct.js": {
-      "sha256": "cc707299c584a97c5845742b6273072c3ababd434fe81621478c4169d4ecd4ac",
-      "bytes": 521744
+      "sha256": "30e240c38bcba907317a1cca0b127d45e112eb534905ad974e9905959901c4df",
+      "bytes": 536904
     },
     "public/help-content.js": {
-      "sha256": "4f28997a2689be5e523c601b464c3c002c5d01622e8f070e35b9700fadf8c6fe",
-      "bytes": 96460
+      "sha256": "af8bfe8c5b0a837773eb4e341ece6d3396eae63599d273f23f4bc494cd694a85",
+      "bytes": 96494
     },
     "public/setup.html": {
       "sha256": "fd6446750d5c8e73fb5431f9b1705e14262a830969fa366eb7bd2391f23cf0ca",
