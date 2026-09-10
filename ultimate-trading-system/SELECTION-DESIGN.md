@@ -222,6 +222,12 @@ this document whose cost I still cannot put a number on.
 
 # Part 2 — make the bar the best of all four comparisons
 
+> **BUILT AND DEPLOYED, 3.100.0 (the gate) and 3.101.0 (the table).** The gate
+> is the best of all four. The four are shown on **Verify** as a table with a
+> heading on every column, replacing the prose line that carried them, after the
+> owner found that line flipping its subject halfway through. Nothing below is
+> outstanding.
+>
 > **This part was wrong in the first draft and I told the owner the wrong thing
 > in conversation before writing it.** I said the money gate was buying the coin
 > and going away, and that this was a soft one-sided bar. It is not one-sided.
@@ -621,6 +627,11 @@ after that is easy.
 
 # Part 7 — what the settings you threw away did on held
 
+> **BUILT AND DEPLOYED, 3.100.0.** `Read what the rule dropped` is on
+> **Verify**, with the how-many box and both sides in one table. Nothing below
+> is outstanding except the question of whether it should ever gate, which is
+> Part 5's and still blocked.
+>
 > **The cheapest thing in this document, and it needs nothing else built
 > first.** No retraining, no extra passes, no new arithmetic. Every figure it
 > reads is already sitting in the record set.
@@ -702,20 +713,24 @@ owner's to weigh.
 | Part | Machine cost | Build cost | Blocked on |
 |---|---|---|---|
 | 1 — several stretches, on Verify | medium | medium | timing one retrain of one unit |
-| 2 — best of all four | none | small | nothing |
+| 2 — best of all four | none | small | **BUILT 3.100.0 / 3.101.0** |
 | 3 — out of reach while choosing | none | high | owner's call on losing the `floor` and sorter |
 | 4 — rule out a bad way of choosing (on the **Funnel**, not Verify) | low | small | nothing |
 | 5 — bar for the whole search | none | small | is the luck figure fit for this at all |
 | 6 — claim written first | none | medium | making a look an event |
-| 7 — what the thrown-away settings did | none | small | nothing |
+| 7 — what the thrown-away settings did | none | small | **BUILT 3.100.0** |
 
-**Three are unblocked today: 7, 2 and 4, and 7 is the one to build first.** It
-needs nothing else, reads figures that already exist, and answers the single
-question nobody has asked: did the settings the **Funnel** threw away do just as
-well. Part 2 is a change to which number decides
-pass or fail and costs nothing to run. Part 4 is a scoring pass and one new
-reading at the head of the **Funnel** walk. Neither needs a decision from anyone but the owner about
-whether to do it.
+**Parts 2 and 7 are BUILT and on the box.** Part 2 shipped as 3.100.0, with the
+table that replaced its prose line in 3.101.0. Part 7 shipped as 3.100.0.
+
+**Part 4 is the one unblocked part still to build.** It is a scoring pass and
+one new reading at the head of the **Funnel** walk, and it needs no decision
+from anyone but the owner about whether to do it. One thing found while building
+the other two, which its cost line already allowed for: the per-setting money
+WITHIN the test stretch is not on disk. `lib/stagework.js` computes it by thirds
+and says in its own comment that the block is projected away before it is
+written, so this needs a rebuild pass over every setting of every unit rather
+than a read.
 
 **Everything else needs an answer first**, and the answers are cheap: time one
 pass of stage 1, decide whether the held-back column can leave the choosing

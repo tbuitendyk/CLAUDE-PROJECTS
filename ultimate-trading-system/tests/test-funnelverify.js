@@ -976,20 +976,43 @@ module.exports = {
       'and the sentence says so rather than printing three of four as though they were all of them');
   },
 
-  // THE FOUR ARE DRAWN ONCE. Three screens showed them and each wrote its own
-  // line, which is three places for the marking to drift. They now come from
-  // one helper, so a change to what gates cannot reach one screen and miss
-  // another.
-  theFourComparisonsAreDrawnFromOneHelperEverywhereTheyAppear() {
+  // THE FOUR ARE A TABLE, NOT A SENTENCE (3.101.0, owner 2026-09-10: "the
+  // perspective is flipping half way through the sentence"). One prose line
+  // carried the survivors' figures and the four comparisons together, and the
+  // subject changed silently in the middle of it: "199 survivors made $344.08"
+  // is about the survivors, "being long every period $400.88 not beaten" is
+  // about the comparison. "Not beaten" was passive with the doer left out, and
+  // the dots separated facts and joined words inside a fact at the same time,
+  // so the phrase had no reliable owner.
+  //
+  // Three things this holds. One panel builder, so the verdict and the reserve
+  // grade cannot drift. The beaten column is derived from the figures rather
+  // than read from a stored flag, so a block stamped under an older release
+  // draws the same as one stamped today (RULE NINE). And an absent figure reads
+  // "not known", never "no" -- conflating those was the bug that made a
+  // comparison the rule beat by six hundred dollars print as "not beaten".
+  //
+  // Watched failing: read `beaten` off c.beatsAlwaysShort instead of deriving
+  // it and an old block draws a beaten comparison as not beaten; drop the
+  // missing check on `best` and three of four names a best.
+  theFourComparisonsAreATableDerivedFromTheFiguresNotFromStoredFlags() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
-    assert.ok(/function fourComparisons\(c\)/.test(ui), 'one helper draws the four');
-    const uses = (ui.match(/fourComparisons\(c\)/g) || []).length;
-    assert.ok(uses >= 3, `every screen that shows them calls it (found ${uses})`);
-    assert.ok(!/beatsBuyHold \? 'beaten'/.test(ui), 'and no screen writes its own marking any more');
-    // the declared-rules line must no longer say two of them never gate
-    assert.ok(!/are the window's direction and never a gate/.test(ui),
-      'the declared rules must not still say two of the four never gate');
-    assert.ok(/comparisons gated: all four/.test(ui), 'it says all four gate');
+    assert.ok(/^function cmpRows\(real, c\)/m.test(ui), 'one place derives the four');
+    assert.ok(/^function heldBackPanel\(title, h, c\)/m.test(ui), 'one panel builder draws them');
+    const uses = (ui.match(/heldBackPanel\('/g) || []).length;
+    assert.strictEqual(uses, 2, 'the verdict and the reserve grade both use it, and nothing else writes its own');
+    // the prose line and every part of it that flipped subject are gone
+    assert.ok(!/against always long`/.test(ui), 'the against-always-long figure is off this line (owner, 2026-09-10)');
+    assert.ok(!/beatsBuyHold \? 'beaten'/.test(ui), 'no screen marks a comparison from a stored flag');
+    assert.ok(!/does not stand<\/b>'\}<\/p>/.test(ui), 'the stands / does not stand tail is gone with the sentence');
+    // every column carries its subject in the heading
+    for (const h of ['survivors', 'held-back \\$ a setting', 'trades a setting', 'no figure',
+      'comparison', 'it made', 'rule ahead by', 'beaten by rule',
+      'best of the four', 'rule ahead by it', 'this read']) {
+      assert.ok(new RegExp(`>${h}<`).test(ui), `the table needs a "${h}" heading`);
+    }
+    // and the three states are all reachable
+    assert.ok(/not known<\/span>/.test(ui) && /'no figure'/.test(ui), 'an absent figure reads not known, never no');
   },
 
   // WHAT THE RULE DROPPED (V8, 3.100.0, SELECTION-DESIGN.md Part 7). A count of

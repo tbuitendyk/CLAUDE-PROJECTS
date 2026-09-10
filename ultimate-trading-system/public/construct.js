@@ -56,12 +56,76 @@ const CMP_BEATS = {
   buyHold: 'beatsBuyHold', shortHold: 'beatsShortHold',
 };
 const CMP_ORDER = ['alwaysLong', 'alwaysShort', 'buyHold', 'shortHold'];
-function fourComparisons(c) {
-  const bits = CMP_ORDER.map((k) => `${CMP_WORDS[k]} ${money((c[k] || {}).hi)} ${c[CMP_BEATS[k]] === true ? 'beaten' : '<b class="neg">not beaten</b>'}`);
-  const best = c.best
-    ? `<b>the best of the four was ${CMP_WORDS[c.best.key] || esc(String(c.best.key))} at ${money(c.best.hi)}</b>, ${c.beatsBest ? '<b class="pos">beaten</b>' : '<b class="neg">not beaten</b>'}`
-    : '<b class="warn">one of the four has no figure, so the best of them is unknown and nothing here passes</b>';
-  return `${bits.join(' \u00b7 ')} \u00b7 ${best}`;
+// THE FOUR COMPARISONS, DERIVED HERE FROM THE FIGURES AND THE RULE'S OWN MONEY.
+// Nothing is read from a stored beaten-flag, so a block stamped under an older
+// release draws exactly like one stamped today and there is no era to ask about
+// (RULE NINE). The same cent rule the engine uses: beaten means beaten by at
+// least a cent (lib/funnel.js beats).
+function cmpRows(real, c) {
+  const cents = (v) => Math.round(Number(v) * 100);
+  const rows = CMP_ORDER.map((k) => {
+    const made = c && c[k] && c[k].hi != null && Number.isFinite(Number(c[k].hi)) ? Number(c[k].hi) : null;
+    const known = made != null && real != null && Number.isFinite(Number(real));
+    return {
+      word: CMP_WORDS[k],
+      made,
+      gap: known ? Number(real) - made : null,
+      beaten: known ? cents(real) > cents(made) : null,
+    };
+  });
+  // A MISSING ONE OF THE FOUR LEAVES NO BEST. Beating three of four says
+  // nothing about the one nobody priced, so there is no bar to clear.
+  const missing = rows.filter((r) => r.made == null).length;
+  const best = missing ? null : rows.reduce((a, b) => (b.made > a.made ? b : a));
+  return { rows, best, missing };
+}
+// WHAT THE SURVIVORS DID, THE FOUR COMPARISONS, AND THE GATE -- three blocks
+// with a heading on every column, replacing the one prose line that carried all
+// of it (owner, 2026-09-10: "the perspective is flipping half way through the
+// sentence"). The subject never moves: each comparison owns a row, and the
+// column heading says whose number each cell is.
+function heldBackPanel(title, h, c) {
+  const yn = (v) => (v == null ? '<span class="muted">not known</span>' : (v ? '<b class="pos">yes</b>' : '<b class="neg">no</b>'));
+  const sgn = (v) => (v == null ? '<span class="muted">&mdash;</span>' : `<span class="${v >= 0 ? 'pos' : 'neg'}">${money(v)}</span>`);
+  if (!c || !c.known) {
+    return `<p class="note"><b>${esc(title)}:</b> ${Number(h.of || 0).toLocaleString()} survivors made ${money(h.real)} a setting -
+      <b class="warn">the four comparisons are not known</b> - ${esc(String((c || {}).why || ''))} - INCOMPLETE, never a pass</p>`;
+  }
+  const t = cmpRows(h.real, c);
+  const many = (c.keys || []).length > 1;
+  return `<p class="note"><b>${esc(title)}</b></p>
+    <div class="scrollx"><table><thead><tr>
+      <th title="how many settings the rule keeps on this unit">survivors</th>
+      <th title="the mean money those settings made on this window, one figure a setting">held-back $ a setting</th>
+      <th title="the mean number of trades a setting over this window">trades a setting</th>
+      <th title="settings the rule keeps that have no figure on this window at all, counted and never dropped">no figure</th>
+    </tr></thead><tbody><tr>
+      <td>${Number(h.of || 0).toLocaleString()}</td>
+      <td class="${(h.real || 0) >= 0 ? 'pos' : 'neg'}">${money(h.real)}</td>
+      <td>${h.trades == null || !Number.isFinite(Number(h.trades)) ? '&mdash;' : Number(h.trades).toFixed(1)}</td>
+      <td>${h.missing ? Number(h.missing).toLocaleString() : '&mdash;'}</td>
+    </tr></tbody></table></div>
+    <div class="scrollx"><table><thead><tr>
+      <th title="one of the four simpler things the rule has to beat, priced on the same window, the same settings and the same fees">comparison</th>
+      <th title="what that comparison itself made, read at the worst of the hold lengths these settings use">it made</th>
+      <th title="the rule's money minus that comparison's. A negative figure means the rule made less than it.">rule ahead by</th>
+      <th title="whether the rule beat that comparison by at least a cent">beaten by rule</th>
+    </tr></thead><tbody>${t.rows.map((r) => `<tr>
+      <td>${r.word}</td>
+      <td class="${r.made == null ? 'muted' : (r.made >= 0 ? '' : 'neg')}">${r.made == null ? 'no figure' : money(r.made)}</td>
+      <td>${sgn(r.gap)}</td>
+      <td>${yn(r.beaten)}</td></tr>`).join('')}</tbody></table></div>
+    <div class="scrollx"><table><thead><tr>
+      <th title="the highest of the four. It is the one the rule has to beat, because a rule that leans one way matches the window about half the time by chance.">best of the four</th>
+      <th title="the rule's money minus the best of the four. A negative figure means the rule made less than the best simple thing available.">rule ahead by it</th>
+      <th title="whether this read stands: in the money, and ahead of the best of the four">this read</th>
+    </tr></thead><tbody><tr>
+      <td>${t.best ? `${t.best.word} at ${money(t.best.made)}` : '<b class="warn">not known - one of the four has no figure</b>'}</td>
+      <td>${sgn(t.best ? t.best.gap : null)}</td>
+      <td>${t.best == null ? '<b class="warn">INCOMPLETE, never a pass</b>'
+    : (t.best.beaten && h.real > 0 ? '<b class="pos">STANDS</b>' : '<b class="neg">FAILS</b>')}</td>
+    </tr></tbody></table></div>
+    ${many ? `<p class="note muted">These settings use ${(c.keys || []).length} different hold lengths, so each comparison is read at the worst of them.</p>` : ''}`;
 }
 
 const money = (v) => {
@@ -1933,9 +1997,7 @@ function vBlockHtml(b, isVerdict) {
     <h4 style="margin:0 0 .3rem">${isVerdict ? 'The verdict' : `look ${b.look}`} - <b class="${v.pass ? 'pos' : 'neg'}">${v.pass ? 'PASS' : 'FAIL'}</b> <span class="muted">stamped ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')}</span></h4>
     <p class="note">${esc(v.sentence || '')}</p>
     <p class="note"><b>Rules declared before the numbers:</b> bar ${r.bar} of ${r.copies} copies (${r.barPct}%, ${esc(tags.bar || '')}${r.barChanged ? `, changed from the set's own ${r.ownBarPct}%` : ''}); noise must lose at least ${r.sanityPct}% (${esc(tags.sanity || '')}); comparisons gated: all four, and the rule must beat the best of them (${esc(tags.comparisons || '')}).</p>
-    <p class="note"><b>Held-back read:</b> ${Number(h.of || 0).toLocaleString()} survivors made ${money(h.real)} a setting${h.missing ? ` (${h.missing} with no figure)` : ''}${h.trades == null ? '' : ` · ${vFix(h.trades, 1)} trades a setting`}${h.vsLong == null ? '' : ` · ${money(h.vsLong)} against always long`} · ${c.known
-    ? fourComparisons(c)
-    : `<b class="warn">the four comparisons are not known</b> - ${esc(String(c.why || ''))} - INCOMPLETE, never a pass`} · ${h.pass ? '<b class="pos">stands</b>' : '<b class="neg">does not stand</b>'}</p>
+    ${heldBackPanel('Held-back read', h, c)}
     <p class="note"><b>The rule on a noise board, held-back window:</b> ${cp.incomplete
     ? '<b class="warn">this set kept no scrambled copies, so nothing was read against nothing</b>'
     : `real ${money(cp.real)} beats ${cp.beats} of ${cp.copies} copies, the bar being ${cp.bar} - <b class="${cp.pass ? 'pos' : 'neg'}">${cp.pass ? 'PASS' : 'FAIL'}</b> · a forecast-free rule clears this about ${vPct(cp.chance)} of the time; the finest claim ${cp.copies} copies allow is 1 in ${Number(cp.copies) + 1}, a floor, never a measure of strength · lead ${vFix(cp.lead)} (${esc(cp.leadDefinition || '')})${cp.survivorsWithNoFigure ? ` · ${cp.survivorsWithNoFigure} survivor(s) with no figure on any copy, counted` : ''}${cp.copiesShortOfSurvivors ? ` · ${cp.copiesShortOfSurvivors} copy or copies short of survivors` : ''}`}</p>
@@ -2224,9 +2286,7 @@ function hGradeBlockHtml(g, isFirst) {
     <h4 style="margin:0 0 .3rem">look ${g.look}${isFirst ? ' - the first look' : ''} - <b class="${v.pass ? 'pos' : 'neg'}">${v.pass ? 'PASS' : 'FAIL'}</b> <span class="muted">graded ${esc(String(g.at || '').slice(0, 16))} under release ${esc(g.release || '?')}</span></h4>
     <p class="note">${esc(v.sentence || '')}</p>
     <p class="note"><b>The unread window:</b> from ${hDay(w.fromTs)} to ${hDay(w.toTs)}, ${w.chunks ?? 0} whole chunks · the box's data reached ${hDay(w.seenToTs)} · verdict ${esc((g.gate || {}).id || '?')} stood</p>
-    <p class="note"><b>The read:</b> ${Number(r.of || 0).toLocaleString()} survivors made ${money(r.real)} a setting${r.trades == null ? '' : ` · ${hFix(r.trades, 1)} trades a setting`} · ${c.known
-    ? fourComparisons(c)
-    : `<b class="warn">the four comparisons are not known</b> - ${esc(String(c.why || ''))}`} · ${r.pass ? '<b class="pos">stands</b>' : '<b class="neg">does not stand</b>'}</p>
+    ${heldBackPanel('The read', r, c)}
     <p class="note"><b>Against scrambled copies of that window:</b> ${cp.incomplete ? '<b class="warn">none were priced</b>' : `real ${money(cp.real)} beats ${cp.beats} of ${cp.copies}, the bar being ${cp.bar} - <b class="${cp.pass ? 'pos' : 'neg'}">${cp.pass ? 'PASS' : 'FAIL'}</b> · a forecast-free rule clears this about ${hPct(cp.chance)} of the time · lead ${hFix(cp.lead)}`}</p>
     <p class="note"><b>Every survivor against its own copies:</b> ${sv.passing} of ${sv.survivors} clear the same bar, about ${sv.byChance == null ? '?' : Number(sv.byChance).toFixed(1)} would by chance · ${sv.positive} made money · never a gate</p>
     <p class="note">sanity, over the survivors' copies only: ${sn.known ? `${hPct((sn.board || {}).losing)} of ${Number((sn.board || {}).figures || 0).toLocaleString()} scrambled unread figures lose money, threshold ${sn.threshold}% - ${sn.ok ? '<b class="pos">PASS</b>' : '<b class="neg">FAIL - NOISE IS PROFITING: do not read the lines above</b>'}` : '<b class="warn">not known</b>'}</p>
