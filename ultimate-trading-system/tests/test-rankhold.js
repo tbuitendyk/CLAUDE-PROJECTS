@@ -155,6 +155,18 @@ module.exports = {
     // and they are separate numbers in the reading itself
     assert.strictEqual(weekly.chunksAPart, 16, 'the reading does not carry how much history was behind it');
     assert.strictEqual(daily.usable, 900);
+    // AND THE NUMBER HANDED IN IS A PART, NOT THE WHOLE WINDOW. Everything
+    // above takes chunksAPart on trust; this is the one line that produces it,
+    // and measuring a whole test window against a floor meant for one of its
+    // three parts would let every short shape clear it. Read off the window
+    // each run recorded, so the floor cannot be fooled by a layout change.
+    const st = src('lib/stages.js');
+    const read = st.slice(st.indexOf('async function funnelRankHoldRead('), st.indexOf('const holdAnswer ='));
+    assert.ok(read.includes('return Number.isFinite(n) && n > 0 ? Math.floor(n / 3) : null;'),
+      'the whole test window is handed to a floor meant for one of its three parts');
+    assert.ok(read.includes('const n = w && w.test && Number(w.test.chunks);'),
+      'the window length is not read off what the run recorded');
+    assert.ok(read.includes('RH.holdOfUnit(rows, chunksAPartOf(u.key))'), 'the reading is taken without the window length beside it');
   },
 
   // NOTHING HERE READS THE HELD-BACK WINDOW OR THE RESERVE (Part 3). This is
