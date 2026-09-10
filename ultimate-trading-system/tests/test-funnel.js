@@ -1038,13 +1038,83 @@ module.exports = {
     for (const id of ['fKeepValues', 'fKeepBlock', 'fAccept4', 'fKeepRegion']) assert.ok(h.includes(`      ${id}: {`), `${id} has no help entry`);
   },
 
+  // A SIZE ON ITS OWN CANNOT BE READ, AND TWO PRESSES THAT LOOK IDENTICAL ARE
+  // NOT (3.106.0, owner questions 2026-09-10, three faults on one step).
+  //
+  //   - the money bar's box said "makes at least" and the code required MORE
+  //     than it, so a setting that broke even to the cent was silently left out.
+  //   - the check line ended "Anything short of all of them is a size a shuffle
+  //     reaches too" -- a second bar of 100% on a step whose own first line says
+  //     the bar is the owner's, 75% here, which the reading cleared comfortably.
+  //   - `keep the widest region` and `keep my own rule and go on` both ended on
+  //     the same count and neither said so, so there was no way to see that the
+  //     choice was between two RULES.
+  async theStepFiveReadingsSayWhatTheyMeasureAndWhatTheyCost() {
+    const page = src('public/construct.js');
+    const five = page.slice(page.indexOf('function fStep5(r, d, st) {'), page.indexOf('// WHAT EACH LIMIT WOULD KEEP'));
+
+    // THE LABEL AGREES WITH THE COMPARISON THE CODE MAKES
+    const P = require('../lib/plateau');
+    const src5 = src('lib/plateau.js');
+    assert.ok(/row\.pnl > Number\(atLeast\)/.test(src5), 'the region no longer requires a setting to beat the bar');
+    assert.ok(five.includes('count a setting in if it makes more than'), 'the box still says at least, which is not what the code does');
+    assert.ok(/a setting has to beat this number, not match it/.test(five), 'the line beside the box does not say a break-even setting is left out');
+    // and it really is left out, run rather than read
+    const o = { minTrades: 0, atLeast: 0, across: [], orderedAxes: ['tHours', 'agreePct'], categoricalAxes: ['decision'] };
+    const flat = [{ tHours: 24, agreePct: 50, decision: 'argmax', pnl: 0, avgTrades: 5 },
+      { tHours: 48, agreePct: 50, decision: 'argmax', pnl: 0, avgTrades: 5 },
+      { tHours: 72, agreePct: 50, decision: 'argmax', pnl: 0, avgTrades: 5 }];
+    assert.strictEqual(P.widestRegion(flat, o).size, 0, 'settings that broke even exactly are counted in at a bar of 0');
+
+    // THE REGION SAYS WHAT ITS OWN MEMBERS MADE
+    const paid = [{ tHours: 24, agreePct: 50, decision: 'argmax', pnl: 10, avgTrades: 5 },
+      { tHours: 48, agreePct: 50, decision: 'argmax', pnl: 20, avgTrades: 5 }];
+    assert.strictEqual(P.widestRegion(paid, o).avgPnl, 15, 'the region does not report what its members made');
+    assert.strictEqual(P.widestRegion([], o).avgPnl, null, 'no region reads as a break-even rather than as nothing');
+
+    // BOTH COUNTS AND BOTH RULES, ON THE TWO PRESSES
+    assert.ok(/keep my own rule and go on<\/button>\s*<span class="note">leaves every range and value you chose exactly as it is and moves to step 6 - keeps/.test(five),
+      'the press that keeps your own rule does not say what it keeps');
+    assert.ok(five.includes('${Number(keep.mineKeeps || 0).toLocaleString()}'), 'it does not read the count the service worked out');
+    assert.ok(/your rule: \$\{esc\(keep\.mineSentence\)\}/.test(five) && /the region's rule: \$\{esc\(keep\.sentence\)\}/.test(five),
+      'the two rules are not printed, so a choice between two rules reads as a choice between two counts');
+    assert.ok(/The two presses above write the SAME rule/.test(five) && /The two rules are NOT the same/.test(five),
+      'the screen never says whether the choice changes anything');
+    // AND THE BOX ROUND A REGION IS BIGGER THAN THE REGION, said where it bites
+    assert.ok(/keeps the smallest\s+box that CONTAINS the region/.test(five),
+      'the press keeps more settings than the region and the screen does not say why');
+
+    // the service works all four out
+    const lib = src('lib/stages.js');
+    const keep = lib.slice(lib.indexOf('    out.reading.keep = {\n      ...keep,'), lib.indexOf('out.conditions.regionPapered'));
+    assert.ok(keep.includes('mineKeeps: rows.length,') && keep.includes('mineSentence: S4.ruleSentence(rule),'), 'the reading does not carry the owner\'s own rule');
+    assert.ok(keep.includes('sentence: out.reading.size ? S4.ruleSentence(keepRule) : null,'), 'the reading does not carry the region\'s rule');
+    assert.ok(lib.includes("const sameRule = JSON.stringify(S4.normaliseRule(keepRule)) === JSON.stringify(S4.normaliseRule(rule));"),
+      'the two rules are compared as the rows they pick rather than as rules');
+    // and every copy carries what it made
+    assert.ok(lib.includes("each.push({ size: r && r.size != null ? r.size : null, avg: r ? r.avgPnl : null });"),
+      'a scrambled copy reports how wide its region was and not what it made');
+    assert.ok(lib.includes('matched: mine == null ? null : each.filter((v) => v.size != null && v.size >= mine).length,'),
+      'how many copies reached the size is left to be worked out from a subtraction');
+    assert.ok(lib.includes('barPct: check.barPct == null ? null : check.barPct,'), 'the owner\'s own bar does not travel to the line that would otherwise invent one');
+  },
+
   // THE PAGE NEVER CLAIMS A DRAWING THAT IS NOT THERE. The one sentence that
   // did is gone, and the line that replaces it names what is on the screen.
   thePageNeverClaimsAComparisonItDoesNotDraw() {
     const s = src('public/construct.js');
     assert.ok(!s.includes('is drawn beside. '), 'the false claim is gone');
     const nl = s.slice(s.indexOf('function fNoiseLine('), s.indexOf('\n}\n', s.indexOf('function fNoiseLine(')));
-    assert.ok(nl.includes("if (n.sizes) {") && nl.includes("return '';"), 'the line prints the region sizes or nothing at all');
+    // 3.106.0: the sizes moved into a box that carries what each region MADE
+    // beside how wide it was, because a size on its own cannot be read.
+    assert.ok(nl.includes("if (!n || !Array.isArray(n.copies) || !n.copies.length) return '';"),
+      'the line prints something when there is no comparison to print');
+    assert.ok(/reached a region as wide as yours/.test(nl), 'the line does not say how many copies reached the size');
+    assert.ok(!/Anything short of all of them/.test(nl),
+      'the line sets a second bar of 100% on a step whose own first line says the bar is the owner\'s');
+    assert.ok(/Your bar on this step is/.test(nl), 'the line does not say what the owner\'s own bar was');
+    assert.ok(/A size counts settings, never dollars/.test(nl), 'the box does not say that a wider region is not a better one');
+    assert.ok(nl.includes("cth('$ a setting', 'fNoiseAvg')"), 'the box does not carry what each region made');
     const cl = s.slice(s.indexOf('function fCheckLine('), s.indexOf('\n}\n', s.indexOf('function fCheckLine(')));
     assert.ok(cl.includes('drawn beside the same reading on each of this') && cl.includes('two halves of the settings'),
       'the check line names which check was used, and both name something the step draws');
@@ -3037,7 +3107,7 @@ module.exports = {
     assert.deepEqual(P.widestRegion([], o).papered, { atLeast: 0, n: 0, of: 0, worst: null },
       'a reading with no region at all says nothing about what it papered over');
     const lib = src('lib/stages.js');
-    const step5 = lib.slice(lib.indexOf('out.reading.keep = { ...keep,'), lib.indexOf('out.conditions.regionNotWider'));
+    const step5 = lib.slice(lib.indexOf('    out.reading.keep = {\n      ...keep,'), lib.indexOf('out.conditions.regionNotWider'));
     assert.ok(step5.includes('out.conditions.regionPapered = (out.reading.papered || {}).n > 0;'), 'widening over losers leaves no mark to record');
     assert.equal((step5.match(/applyRule\(all, keepRule\)/g) || []).length, 1,
       'the losers are counted a second time off the region edges, and those enclose settings the region walked around');

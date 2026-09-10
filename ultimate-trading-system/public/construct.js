@@ -255,6 +255,9 @@ const COL = {
   fGridCorner: 'the first dial down the side, the second across the top. Each square is the average test money of the settings that carry both values, with the count in brackets when the square is thin, and under it how many of the scrambled copies of that same square it beats - the same count step 2 shows for a value.',
   fGridValue: 'one value of the second dial. Read down this column to see how the first dial behaves at this value of the second.',
   fRegionDial: 'a dial the widest region spans. Keeping the region writes these edges into the rule.',
+  fNoiseSize: 'which region this row is: yours, or one of the copies made by dealing the same forecasts onto the wrong days.',
+  fNoiseCount: 'how many settings that region holds. A count of settings, never an amount of money - a wider region is not a better one.',
+  fNoiseAvg: 'dollars a setting, averaged over that region\'s own members, over the test window. This is what a size on its own cannot tell you: a copy with a wider region than yours may have got it out of settings making pennies.',
   fRegionFrom: 'the lowest value of this dial inside the region, or the one value a word-valued dial takes there.',
   fRegionTo: 'the highest value of this dial inside the region.',
   fCheck: 'how many of this dial\'s values make more money than that same value on at least the bar\'s worth of the scrambled copies (or sit above both halves\' averages, when the set kept no copies). On step 2 each value shows the copies\' range, how many of them it beats, and its lead: how far ahead of the copies\' average it sits, in units of their spread. That is the test step 2 applies to each value, so a bold row here is a row with something to keep on step 2. Zero means greyed: this dial may move the money, but not in the direction a forecast is for.',
@@ -5187,18 +5190,48 @@ function fHead(d) {
 
 // a timestamp as the day it falls on, for the sealed window's two ends
 const fDayOf = (ts) => (Number.isFinite(Number(ts)) && ts != null ? new Date(Number(ts)).toISOString().slice(0, 10) : '?');
+// THE CHECK, IN A BOX AND IN WORDS THAT SAY WHAT IT MEANS (3.106.0, owner
+// order 2026-09-10, on two faults at once).
+//
+// It used to print one size beside eighty sizes as a bare comma-separated
+// string, with money mentioned nowhere -- so a scrambled copy WIDER than the
+// real one might have been seventy-two settings each making a penny, and there
+// was no way to tell. Every size now carries what its region made.
+//
+// And it used to end "Anything short of all of them is a size a shuffle reaches
+// too" whenever the real region did not beat all eighty. That is a second bar,
+// set to 100%, on a step whose own first line says the bar is the owner's --
+// 75% here, which 68 of 72 cleared comfortably. Two standards on one screen and
+// the strict one was nobody's. It says how many copies reached the size, what
+// share that leaves, and what the owner's own bar was.
 function fNoiseLine(reading, d) {
   const n = reading && reading.noise;
-  if (!n) return '';
-  if (n.sizes) {
-    const beaten = n.beatenBy == null ? null : `${n.beatenBy} of ${n.sizes.length}`;
-    const what = n.kind === 'halves' ? 'the two halves' : `the ${n.sizes.length} scrambled cop${n.sizes.length === 1 ? 'y' : 'ies'}`;
-    return `<p class="note"><b>The check:</b> the widest region on ${what} was ${n.widest == null ? '-' : n.widest}`
-      + ` (${n.sizes.map((x) => (x == null ? '-' : x)).join(', ')})`
-      + `${beaten ? `, and this one is wider than ${esc(beaten)}` : ''}. `
-      + `${n.beatenBy === n.sizes.length ? 'Wider than every one of them.' : '<b class="neg">Anything short of all of them is a size a shuffle reaches too.</b>'}</p>`;
-  }
-  return '';
+  if (!n || !Array.isArray(n.copies) || !n.copies.length) return '';
+  const mine = reading.size == null ? null : Number(reading.size);
+  const what = n.kind === 'halves' ? 'the two halves of the settings' : `${n.copies.length} scrambled cop${n.copies.length === 1 ? 'y' : 'ies'} of the table`;
+  const total = n.copies.length;
+  const pct = mine == null || n.beatenBy == null ? null : Math.round((n.beatenBy / total) * 100);
+  // descending by size, so the ones that came closest are the ones you read
+  // first; a size that could not be read sinks to the bottom rather than
+  // sorting as a zero
+  const rows = n.copies.map((c, i) => ({ ...c, at: i }))
+    .sort((a, b) => ((b.size == null ? -1 : b.size) - (a.size == null ? -1 : a.size)) || (a.at - b.at));
+  const line = (label, size, avg, cls) => `<tr${cls ? ` class="${cls}"` : ''}><td>${label}</td>
+    <td style="text-align:right">${size == null ? '-' : Number(size).toLocaleString()}</td>
+    <td style="text-align:right">${avg == null ? '-' : fFix(avg, 2)}</td></tr>`;
+  return `<p class="note"><b>The check:</b> the same days with the forecasts dealt onto the wrong ones -
+      ${esc(what)} - and the widest region each of them reached.
+      ${mine == null ? 'There is no region here to compare.'
+    : `<b>${Number(n.matched || 0).toLocaleString()}</b> of the ${total} reached a region as wide as yours, so yours is
+       wider than <b>${Number(n.beatenBy || 0).toLocaleString()}</b> of them${pct == null ? '' : ` - <b>${pct}%</b>`}.
+       ${n.barPct == null ? '' : `Your bar on this step is <b>${Number(n.barPct)}%</b>.`}`}</p>
+    <p class="note">A size counts settings, never dollars: a copy that got a WIDER region than yours may have got it
+      out of settings making pennies. That is what the second column is for.</p>
+    <div style="max-height:15rem;overflow-y:auto;max-width:26rem">
+      <table><thead><tr>${cth('region', 'fNoiseSize')}${cth('settings', 'fNoiseCount')}${cth('$ a setting', 'fNoiseAvg')}</tr></thead><tbody>
+      ${line('<b>this one</b>', mine, reading.avgPnl, 'pri')}
+      ${rows.map((c, i) => line(`copy ${i + 1}`, c.size, c.avg, mine != null && c.size != null && c.size >= mine ? 'neg' : '')).join('')}
+      </tbody></table></div>`;
 }
 function fRail(d, st) {
   return `<div class="row" style="flex-wrap:wrap;gap:.35rem">${F_STEPS.map((x, i) => `<button data-fstep="${i + 1}"
@@ -5566,12 +5599,13 @@ function fStep5(r, d, st) {
     : `<p class="note">Every dial whose values are words is already down to one value here, so there is nothing left
        to join across.</p>`;
   const bar = `<div class="row" style="align-items:flex-end;margin-top:.5rem">
-      <label class="f">count a setting in if it makes at least<input id="fRegionAtLeast" type="number" step="0.01"
+      <label class="f">count a setting in if it makes more than<input id="fRegionAtLeast" type="number" step="0.01"
         style="width:7rem" value="${esc(String(at))}"></label>
       <label class="f">join settings up to this many apart<input id="fRegionReach" type="number" min="1" step="1"
         style="width:6rem" value="${esc(String(reach))}"></label>
       <button id="fRegionRead">read the region again</button>
-      <span class="note">dollars, per setting. <b>0</b> is "it made money", which is how this step has always read.
+      <span class="note">dollars, per setting, and a setting has to beat this number, not match it - at <b>0</b> a
+        setting that broke even to the cent is left out. <b>0</b> is "it made money", which is how this step has always read.
         A number below 0 papers over settings that lost that much or less, so one weak setting cannot split a wide
         area in two. The scrambled copies are measured under the same number, or the comparison would be rigged.
         <b>1</b> apart is neighbours only, which is how this step has always read; a bigger number lets the region
@@ -5588,10 +5622,25 @@ function fStep5(r, d, st) {
          money anyway.</p>`);
   // AND THE WAY PAST STEP 5 ALTOGETHER (owner order 2026-09-04): the rule the
   // owner built goes to step 6 whole, with nothing replaced.
+  // BOTH RULES, BOTH COUNTS, SIDE BY SIDE (3.106.0, owner order 2026-09-10).
+  // The two presses both ended on "72 of 2,752" and neither said so, so there
+  // was no way to see that the choice was between two rules rather than two
+  // counts -- and a rule that keeps the same rows TODAY still keeps different
+  // rows on a scrambled copy, which is the comparison this whole step rests on.
   const mine = `<div class="row" style="align-items:flex-end;margin-top:.5rem">
       <button id="fKeepMine">keep my own rule and go on</button>
-      <span class="note">leaves every range and value you chose exactly as it is and moves to step 6. Nothing on this
-        step is written into the rule, and the set will say the widest region was never kept.</span></div>`;
+      <span class="note">leaves every range and value you chose exactly as it is and moves to step 6 - keeps
+        <b>${Number(keep.mineKeeps || 0).toLocaleString()}</b> of ${Number(d.of || 0).toLocaleString()}. Nothing on this
+        step is written into the rule, and the set will say the widest region was never kept.</span></div>
+    ${keep.mineSentence ? `<p class="note muted" style="margin:.2rem 0 0">your rule: ${esc(keep.mineSentence)}</p>` : ''}
+    ${keep.same === true
+    ? `<p class="note">The two presses above write the SAME rule, so the choice between them changes nothing except the
+       mark on the set.</p>`
+    : (keep.same === false
+      ? `<p class="note">The two rules are NOT the same, even where they keep the same number of settings today: the
+         rule is what gets read against the copies below and written onto the Stage 4 set, so on a shuffled copy the
+         two keep different rows.</p>`
+      : '')}`;
   return `<p class="note">The widest run of neighbouring settings that all made money, and <b>its middle</b> - chosen
       by depth inside the region, never by score, so the best-scoring one cannot sneak back in.</p>
     <p class="note">region size <b>${r.size || 0}</b> of ${r.cellsClearing || 0} settings that cleared,
@@ -5605,7 +5654,13 @@ function fStep5(r, d, st) {
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <button id="fKeepRegion" class="pri">keep the widest region</button>
       <span class="note">replaces every range and value in the rule with the region's edges above - keeps
-        <b>${Number(keep.keeps || 0).toLocaleString()}</b> of ${Number(d.of || 0).toLocaleString()}${d.target ? ` - target ${Number(d.target).toLocaleString()}` : ''}</span></div>`
+        <b>${Number(keep.keeps || 0).toLocaleString()}</b> of ${Number(d.of || 0).toLocaleString()}${d.target ? ` - target ${Number(d.target).toLocaleString()}` : ''}</span></div>
+    ${keep.sentence ? `<p class="note muted" style="margin:.2rem 0 0">the region's rule: ${esc(keep.sentence)}</p>` : ''}
+    ${r.size && keep.keeps > r.size
+    ? `<p class="note neg">A rule can only be ranges and values, never a list of settings, so this keeps the smallest
+       box that CONTAINS the region - <b>${Number(keep.keeps - r.size).toLocaleString()}</b> more than the
+       ${Number(r.size).toLocaleString()} in it. Those are settings the region walked around, and at this bar they are
+       settings that did not clear it.</p>` : ''}`
     : '<p class="note neg">No region: nothing here has neighbours that also work, which is what an isolated fluke looks like.</p>'}
     ${mine}`;
 }

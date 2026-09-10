@@ -627,7 +627,7 @@ window.HELP = {
         more: 'Six numbers are not stored by a sweep - the worst losing streak, the biggest single loss, the best single trade, how many trades won, how many were stopped out, and the gross per trade. On a walk they are worked out by "work out the test history numbers" at the top of the screen, for every setting in the stage 3 record set, and kept in one file beside THAT set. A set cut before that press had covered the whole of its parent can find them gone from the parent\'s board: its columns go empty and, if its rule puts a limit on the worst losing streak or on trades, its rule stops keeping anything at all. This press is the one thing that puts it right, and it differs from the one on a walk in where the answer lands - it keeps it on THIS set, for good, so nothing done to the parent can take it away again. It takes minutes and it waits for any sweep that is running.',
       },
       fRegionAtLeast: {
-        what: 'How much a setting is allowed to lose and still count as part of the region. 0 means it has to have made money, which is how this step has always read.',
+        what: 'How much a setting is allowed to lose and still count as part of the region. A setting has to BEAT this number, not match it, so at 0 one that broke even to the cent is left out. 0 means it has to have made money, which is how this step has always read.',
         more: 'The region is the widest run of neighbouring settings that all work. With the bar at 0 a single setting a cent under splits what would be one wide area into two narrow ones, and a narrow area is the thing this step exists to warn you about - so the split can mislead you in the direction that matters. Set the bar below 0 and a shallow dip is walked through instead. The scrambled copies are measured under exactly the same bar, or a region grown under a loose bar would be compared against copies measured under a strict one, which is not a comparison at all. Whatever it papers over is counted under the box, marked on the set, and cannot be cleared.',
       },
       fRegionReach: {
@@ -639,12 +639,12 @@ window.HELP = {
         more: 'All three are also read again the moment you leave one of their boxes or tick one of the dials, so this button is for when you want to be sure. Nothing is written into the rule by reading; that is the button below. The tick boxes are offered only for the dials that still hold more than one value on this board, because crossing a dial the rule already pinned would do nothing - and every one of the three is recorded on the set if you use it.',
       },
       fKeepMine: {
-        what: 'Leaves every range and value you chose exactly as it is and moves on to step 6.',
+        what: 'Leaves every range and value you chose exactly as it is and moves on to step 6. What it keeps is printed beside it, next to what the region would keep, and both rules are printed under the buttons.',
         more: 'Keeping the widest region REPLACES the whole rule with the region\'s edges. This is the way past that: your own rule goes to step 6 whole. The set you cut then says the widest region was never kept on this walk, and the rule it holds is the one you built. Use it when the region is telling you less than your own narrowing already did.',
       },
       fKeepRegion: {
         what: 'Replaces every range and value in the rule with the edges of the widest region.',
-        more: 'The region is the widest run of neighbouring settings that all made money. Its edges on each dial ARE a rule - the most defensible narrowing this screen can make, because it was chosen by how many neighbours a setting has and never by its score. The count beside it says what keeping it would leave against your target.',
+        more: 'The region is the widest run of neighbouring settings that all made money. Its edges on each dial ARE a rule - the most defensible narrowing this screen can make, because it was chosen by how many neighbours a setting has and never by its score. But a rule can only ever be ranges and values, never a list of settings, so this keeps the smallest BOX that contains the region, and a region with notches in it has a box bigger than itself. The count beside the button is what the box keeps, and when it is larger than the region the difference is spelled out under it: those extra settings are the ones the region walked around, which at your bar are the ones that did not clear it. The rule it would write is printed under the button, beside the rule you already have, so you can see whether the two are actually different.',
       },
       fFloor: {
         what: 'How many settings must sit behind a square before you trust it.',

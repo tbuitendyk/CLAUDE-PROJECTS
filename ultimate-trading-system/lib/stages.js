@@ -5304,7 +5304,25 @@ async function funnelRead(id, state = {}) {
     // its values on every word-valued one, with what keeping it would leave
     const keep = S4.regionRule(out.reading, { ordered, categorical: F.CATEGORICAL_DIALS });
     const keepRule = { ...rule, ranges: keep.ranges, allowed: keep.allowed };
-    out.reading.keep = { ...keep, keeps: out.reading.size ? S4.applyRule(all, keepRule).length : 0 };
+    // BOTH RULES AND BOTH COUNTS (3.106.0, owner order 2026-09-10). The two
+    // presses on this step end on 72 of 2,752 apiece and neither said so, and
+    // a rule that keeps the same rows TODAY is still a different rule: it is
+    // the rule that gets re-applied to the scrambled copies and written onto
+    // the Stage 4 set, so on a shuffle the two keep different rows.
+    //
+    // `same` is the honest answer to "does this press change anything": the two
+    // rules compared as rules, not as the rows they happen to pick.
+    const sameRule = JSON.stringify(S4.normaliseRule(keepRule)) === JSON.stringify(S4.normaliseRule(rule));
+    out.reading.keep = {
+      ...keep,
+      keeps: out.reading.size ? S4.applyRule(all, keepRule).length : 0,
+      sentence: out.reading.size ? S4.ruleSentence(keepRule) : null,
+      // the rule the owner arrived with: what it keeps on this board is what
+      // the region was read over, so it is already counted
+      mineKeeps: rows.length,
+      mineSentence: S4.ruleSentence(rule),
+      same: out.reading.size ? sameRule : null,
+    };
     // WHAT THE THRESHOLD PAPERED OVER, marked on the walk (owner: "and noted of
     // course"). The count itself is the region reader's, taken on the region's
     // own members: the settings it holds that do NOT make money, and the worst
@@ -5315,14 +5333,31 @@ async function funnelRead(id, state = {}) {
     // ALL of the copies here, unlike the readings above that only compare: "wider
     // than luck" off one copy is a coin toss; "wider than all ten" is the claim
     // the count on Sweep exists to buy. With halves, the size on each half.
+    // AND WHAT EACH ONE MADE, not only how wide it was (3.106.0, owner order
+    // 2026-09-10). A size on its own cannot be read: a scrambled copy with a
+    // WIDER region than yours could be seventy-two settings each making a
+    // penny, and the line looked identical either way. No new figure is
+    // exposed by this -- every number on this screen is already test money.
     const each = [];
-    if (kind === 'scrambles') for (let d = 0; d < keptN; d++) { const r = region(rows, F.moneyAt(d)); each.push(r && r.size != null ? r.size : null); }
-    else for (const x of [ha, hb]) { const r = region(x); each.push(r && r.size != null ? r.size : null); }
+    if (kind === 'scrambles') {
+      for (let d = 0; d < keptN; d++) {
+        const r = region(rows, F.moneyAt(d));
+        each.push({ size: r && r.size != null ? r.size : null, avg: r ? r.avgPnl : null });
+      }
+    } else {
+      for (const x of [ha, hb]) { const r = region(x); each.push({ size: r && r.size != null ? r.size : null, avg: r ? r.avgPnl : null }); }
+    }
     const mine = out.reading && out.reading.size != null ? out.reading.size : null;
     out.reading.noise = {
-      of: keptN, used: kind === 'scrambles' ? keptN : 2, kind, sizes: each,
-      widest: each.reduce((a, v) => (v != null && (a == null || v > a) ? v : a), null),
-      beatenBy: mine == null ? null : each.filter((v) => v != null && mine > v).length,
+      of: keptN, used: kind === 'scrambles' ? keptN : 2, kind, copies: each,
+      widest: each.reduce((a, v) => (v.size != null && (a == null || v.size > a) ? v.size : a), null),
+      beatenBy: mine == null ? null : each.filter((v) => v.size != null && mine > v.size).length,
+      // AS MANY AS REACHED IT, said as a count rather than left to be worked
+      // out from a subtraction: this is the number the owner asked about.
+      matched: mine == null ? null : each.filter((v) => v.size != null && v.size >= mine).length,
+      // and the bar the owner set on this step, so one line cannot say 75% is
+      // the bar while the next says nothing short of every copy counts
+      barPct: check.barPct == null ? null : check.barPct,
     };
     out.conditions.regionNotWider = mine == null ? null : out.reading.noise.beatenBy < each.length;
     out.reading.regionAtLeast = atLeast;
