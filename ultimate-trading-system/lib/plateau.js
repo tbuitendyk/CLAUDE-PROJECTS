@@ -144,6 +144,7 @@ function widestRegion(rows, opts = {}) {
   const good = all.filter((r) => clears(r, minTrades, atLeast));
   const base = {
     size: 0,
+    avgPnl: null,
     centre: null,
     sliceLabel: null,
     cellsConsidered: all.length,
@@ -306,8 +307,17 @@ function widestRegion(rows, opts = {}) {
   // definition nothing was papered over at all.
   let weakN = 0;
   let worst = null;
+  // AND WHAT THE REGION MADE (3.106.0, owner order 2026-09-10: a size beside
+  // eighty other sizes, with money mentioned nowhere, cannot be read -- a
+  // scrambled copy with a WIDER region could be seventy-two settings each
+  // making a penny and the line would look the same). Averaged over the
+  // region's own members, which only this function knows: an average taken
+  // afterwards from the region's edges is a different set of settings.
+  let paid = 0;
+  let paidN = 0;
   for (const n of bestComp) {
     const v = nodes[n].row.pnl;
+    if (Number.isFinite(v)) { paid += v; paidN += 1; }
     if (!Number.isFinite(v) || v > 0) continue;
     weakN += 1;
     if (worst == null || v < worst) worst = v;
@@ -315,6 +325,7 @@ function widestRegion(rows, opts = {}) {
   return {
     ...base,
     papered: { atLeast, n: weakN, of: bestComp.length, worst },
+    avgPnl: paidN ? paid / paidN : null,
     size: bestComp.length,
     sliceLabel: nodes[centreIdx].slice,
     centre,
