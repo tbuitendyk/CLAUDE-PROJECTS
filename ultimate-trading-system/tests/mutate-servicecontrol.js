@@ -534,7 +534,7 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "  const nowOwn = S4.applyRule(mine, S4.normaliseRule(doc.rule));", "  const nowOwn = now;",
     'aSetSaysWhichNumbersItsRuleReadsAreGoneAndOffersToWorkThemOut',
     'the set cannot tell a board that moved from a number that was taken away, so it reads as broken either way'],
-  [path.join(ROOT, 'public', 'construct.js'), '      <button id="fSetRebuild">work out the missing numbers</button>', '',
+  [path.join(ROOT, 'public', 'construct.js'), '      <button id="fSetRebuild">work out the test history numbers</button>', '',
     'aSetSaysWhichNumbersItsRuleReadsAreGoneAndOffersToWorkThemOut',
     'a set whose numbers a later pass took away has no way at all to get them back'],
   // ---- THE NAME THE OWNER TYPED STAYS IN THE BOX (3.67.1) ----
