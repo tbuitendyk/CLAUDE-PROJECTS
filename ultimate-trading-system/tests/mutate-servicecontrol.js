@@ -668,7 +668,7 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      ${fCutPickBox(d, st)}\n", "",
     'theTitleAndTheTwoSelectorsAreAlwaysAtTheTop',
     'the Stage 4 record set box leaves the title section, so on the walk there is no control on screen to reach a set already cut'],
-  [path.join(ROOT, 'public', 'construct.js'), "    if (cs.value === F_NEW && fWalkWasAlreadyCut(d)) fFreshWalk(st);", "",
+  [path.join(ROOT, 'public', 'construct.js'), "  if (fWalkWasAlreadyCut(d)) fFreshWalk(st);", "",
     'aNewRuleStartsAtStepOneWhenTheWalkHasAlreadyBeenCut',
     'new rule drops back into the finished walk at step 7 with its own rule still on it, which is the old rule wearing the words'],
   [path.join(ROOT, 'lib', 'stages.js'), "      ruleSentence: d.ruleSentence || null,", "      ruleSentence: null,",

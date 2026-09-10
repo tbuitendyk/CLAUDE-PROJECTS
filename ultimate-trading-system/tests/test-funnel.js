@@ -2655,6 +2655,13 @@ module.exports = {
     const home = page.slice(page.indexOf('function fGoNewRule(st, d) {'), page.indexOf('function fWireCutPick('));
     assert.ok(home.includes('if (fWalkWasAlreadyCut(d)) fFreshWalk(st);'),
       'choosing new rule drops back into the finished walk at whatever step it ended on');
+    // AND ONLY AGAINST THIS BOARD'S SETS (3.105.0). The box offers every Stage
+    // 4 set of the stage 3 record set now, and the same rule written on another
+    // coin has the same sentence -- so without `mine` a walk in hand would be
+    // mistaken for the walk that wrote somebody else's set and thrown away.
+    const already = page.slice(page.indexOf('const fWalkWasAlreadyCut = (d) =>'), page.indexOf('function fFreshWalk(st) {'));
+    assert.ok(/\(d\.cuts \|\| \[\]\)\.some\(\(c\) => c\.mine && c\.ruleSentence/.test(already),
+      'the walk in hand is matched against sets from every coin and shape, so going back to the steps can throw it away');
     assert.ok(pick.includes('c.ruleSentence && c.ruleSentence === d.ruleSentence'),
       'the finished walk is recognised by something other than the rule it wrote');
     const fresh = page.slice(page.indexOf('function fFreshWalk('), page.indexOf('function fWireUnit('));
