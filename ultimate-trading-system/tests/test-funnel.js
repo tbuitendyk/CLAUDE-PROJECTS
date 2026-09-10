@@ -2114,13 +2114,13 @@ module.exports = {
     // 3.102.0: the press moved above the steps and preps the whole record set,
     // so step 6 points AT it rather than holding it. Both halves are checked:
     // the step names the press, and it says the numbers are not this step's.
-    assert.ok(/These numbers come from <b>work out the missing numbers<\/b>, above the steps/.test(how),
+    assert.ok(/These numbers come from <b>work out the test history numbers<\/b>, at the top of this screen/.test(how),
       'the steps do not point at the press that works the numbers out');
     assert.ok(!/<button id="fRebuild"/.test(step), 'the press is on step 6 again — it preps the whole record set and belongs above the steps');
     assert.ok(how.includes('It changes no rule and no record'), 'the steps do not say that pressing it is safe');
     assert.ok(how.includes('in dollars, per coin'), 'the steps do not say what the losing streak is measured in');
     assert.ok(how.includes('counted over the window named above'), 'the steps do not say what the trade count is counted over');
-    for (const control of ['<b>work out the missing numbers</b>', '<b>worst losing streak allowed</b>', '<b>fewest trades</b>', '<b>add these limits to the rule</b>']) {
+    for (const control of ['<b>work out the test history numbers</b>', '<b>worst losing streak allowed</b>', '<b>fewest trades</b>', '<b>add these limits to the rule</b>']) {
       assert.ok(how.includes(control), `the steps do not name ${control}`);
     }
     for (const label of ['worst losing streak allowed', 'fewest trades', 'add these limits to the rule']) {
@@ -2129,7 +2129,7 @@ module.exports = {
     // 3.102.0: the press it names is above the steps, so that is where the
     // label and the line beside it are checked.
     const panel6 = page.slice(page.indexOf('function fHoldPanel(d, st) {'), page.indexOf('function fStep6(d, st, r) {'));
-    assert.ok(panel6.includes('>work out the missing numbers</button>'), 'the steps name a press that is drawn nowhere on this screen');
+    assert.ok(panel6.includes('>work out the test history numbers</button>'), 'the steps name a press that is drawn nowhere on this screen');
     // 3.81.0: the line beside the button is no longer one fixed sentence -- it
     // says how many settings already carry the numbers, the progress while it
     // works, and the cpu load with it. One wording, drawn through fRichLine, so
@@ -2140,7 +2140,7 @@ module.exports = {
     assert.ok(step.includes("fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)"), 'the dollar ladder must not be read as a rate');
     const lad = page.slice(page.indexOf('function fLadder('), page.indexOf('const F_HOLD_SHOW = ['));
     assert.ok(lad.includes('${ex ? fPerYear(x.at, ex) : \'\'}'), 'a rung does not say what it comes to a year');
-    assert.ok(lad.includes('press work out the missing numbers first'), 'the empty ladder does not say what to press');
+    assert.ok(lad.includes('press work out the test history numbers first'), 'the empty ladder does not say what to press');
     // the answer carries it, for the units the reading covers
     const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
     assert.ok(lib.includes('exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || []),'), 'step 6\'s answer does not carry the exposure');
@@ -2531,12 +2531,17 @@ module.exports = {
     const box = page.slice(page.indexOf('function fCutPickBox('), page.indexOf('function fTitle('));
     assert.ok(!/return '';/.test(box), 'a coin and shape with nothing cut from it loses the Stage 4 record set box');
     assert.ok(/<option value="new"/.test(box), 'the box does not offer new rule');
-    // every screen the Funnel draws opens with it: the walk, the set, the two failures
-    for (const [what, frag] of [['the walk', '`<div class="panel">${fTitle(d, st, F_NEW_NAME)}</div>'],
-      ['a set showing', '`<div class="panel">${fTitle(d, st, cd.set.name)}</div>'],
+    // Every screen the Funnel draws carries it, and on a Stage 4 set it is
+    // still the first thing. 3.102.0: on the WALK one block now sits above it,
+    // by owner order -- the ranking, which is read to decide whether this coin
+    // and shape is worth walking at all, so it comes before the picker that
+    // chooses one.
+    for (const [what, frag] of [['a set showing', '`<div class="panel">${fTitle(d, st, cd.set.name)}</div>'],
       ['a set that will not open', '`<div class="panel">${fTitle(d, st, named)}</div>']]) {
       assert.ok(page.includes(frag), `${what} does not start with the title and selector section`);
     }
+    assert.ok(page.includes('`<div class="panel">${fHoldPanel(d, st)}</div>\n  <div class="panel">${fTitle(d, st, F_NEW_NAME)}</div>'),
+      'the walk does not draw the ranking and then the title and selector section, in that order and with nothing between');
     // ...and nothing else draws a second copy of either selector
     assert.equal((page.match(/id="fUnit"/g) || []).length, 1, 'the coin and shape box is drawn in more than one place');
     assert.equal((page.match(/id="fCutPick"/g) || []).length, 1, 'the Stage 4 record set box is drawn in more than one place');

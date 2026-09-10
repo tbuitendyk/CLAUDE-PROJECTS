@@ -416,7 +416,7 @@ function requirePlaywright() {
   expect(/The trades are counted over 2025-06-02 to 2025-10-20/.test(six), `step 6 names the window: ${six.slice(six.indexOf('The trades are counted'), six.indexOf('The trades are counted') + 160)}`);
   expect(/20 weeks, or 140 days/.test(six), 'step 6 says how long the window is');
   expect(/at least 20\.00 \(about 52 a year\) keeps 12/.test(six), `the trades ladder is put on a yearly footing: ${six.slice(six.indexOf('trades - what'), six.indexOf('trades - what') + 200)}`);
-  expect(/Press work out the missing numbers FIRST/.test(six), 'step 6 says which button to press first');
+  expect(/These numbers come from <b>work out the test history numbers<\/b>/.test(six), 'step 6 names the press that works the numbers out');
   // before the press, the worst losing streak is on nothing and says so (3.65.1)
   expect(/worst losing streak: no survivor carries this number yet/.test(six),
     `before the press the dollar limit says nothing carries it: ${six.slice(six.indexOf('worst losing streak'), six.indexOf('worst losing streak') + 140)}`);

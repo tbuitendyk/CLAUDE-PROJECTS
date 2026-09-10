@@ -408,22 +408,49 @@ into the new shape or re-running them.
 >   numbers only ever covered the settings some rule happened to keep, and that
 >   is what changed — see the note below.
 > - **The press above the steps preps the WHOLE record set** (owner order,
->   2026-09-10). `work out the missing numbers` moved off `Step 6` to the top of
->   the screen and now runs for every setting on the board rather than the
->   rule's survivors. That is what makes this reading possible at all: a ranking
+>   2026-09-10). It moved off `Step 6` to the top of the screen and now runs for
+>   every setting on the board rather than the rule's survivors. It is also
+>   renamed: `work out the test history numbers`, because it is pressed by hand
+>   on every stage 3 record set that is not ready to be walked, and "missing"
+>   said nothing about what it works out. That is what makes this reading possible at all: a ranking
 >   over the survivors of a rule already made by ranking is no test of anything.
->   `Step 6` reads its two limits off numbers that are already there.
-> - **Three numbers, not one bar.** `how much must hold` (from -1 to 1, blank
+>   `Step 6` reads its two limits off numbers that are already there and points
+>   at the press by its new name.
+> - **Four numbers, not one bar.** `how much must hold` (from -1 to 1, blank
 >   until the owner sets it — a blank is never read as zero), `on how many of the
->   four`, and `fewest settings`, which is how few settings carrying all three
->   parts is too few to put a number on at all. None of the three re-reads
+>   four`, and TWO floors that are not the same thing and do not borrow each
+>   other's word: `fewest settings ranked` counts settings — one combination of
+>   `entry`, `gate`, `d`, `t`, `trail` and `arm` — and `fewest chunks a part`
+>   counts how much history is behind each figure. None of the four re-reads
 >   anything: the reading is taken once and they are arithmetic on it.
 >
-> The table has one row per coin and shape, with `show` and `order by` choosing
-> which rows are drawn and in what order — filtering, never curating: the line
-> under the table always says how many of the whole set is being shown. Each row
-> that is not the one being walked carries `walk this one`, which hands the walk
-> over through the same door the coin picker uses.
+> **`fewest chunks a part` is the one that separates the shapes** (owner,
+> 2026-09-10, who set it at 40 deliberately to cut them off). On today's history
+> a shape that decides once a week has about 16 chunks in each part of its test
+> window where one that decides daily has over 100 — and `daily-3d` and
+> `daily-4d` under `24/5` are Monday-only starts, so they are in the same place.
+> Each setting's figure over 16 chunks is a handful of trades, and noise in both
+> halves of a correlation drags it toward zero: a short coin and shape reads
+> WORSE than it is, so without this floor you would drop a good one for being
+> short. Below the floor the row says how short it is and prints no number. Read
+> off the window each run actually recorded, never re-derived from the layout;
+> a run that recorded none is not assumed to be long enough.
+>
+> The table has one row per coin and shape — a set can hold three hundred, so it
+> pages, using the same bar Boards draws. `show` and `order by` choose which rows
+> are drawn and in what order — filtering, never curating: the line under the
+> table always says how many of the whole set is being shown. Each row that is
+> not the one being walked carries `walk this one`, which hands the walk over
+> through the same door the coin picker uses.
+>
+> **It is the FIRST panel on the screen, above the coin picker** (owner order,
+> 2026-09-10: "the point is largely to confirm that given units are *worth* even
+> funneling"). Walking a row IS the picking, so the table is the way in and the
+> picker and the set heading sit below it as confirmation of what was chosen.
+>
+> **And the heading asks; it never confirms.** `Worth walking?` — not "confirm"
+> anything, because a pass here is the absence of a red flag and a heading with
+> confirm in it would make a pass read as proof.
 >
 > **It reads nothing from the held-back window and nothing from the reserve**,
 > which is what makes it legal here (Part 3). `lib/rankhold.js` requires nothing

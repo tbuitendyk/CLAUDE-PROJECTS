@@ -314,6 +314,12 @@ function stageBusy() {
   // the purge, the box-busy readout -- covers it without being told twice.
   const rich = richBusy();
   if (rich) return rich;
+  // and the ranking read (3.102.0, owner order 2026-09-10: "when it's running,
+  // you have to block other long jobs"). It reads every board of a set off
+  // disk -- minutes on a set of three hundred coins and shapes -- so it is
+  // named here beside the pricing pass rather than in a gate of its own.
+  const held = holdBusy();
+  if (held) return held;
   return null;
 }
 function claimOrRefuse(params = {}) {
@@ -5437,12 +5443,25 @@ async function funnelRankHoldRead(id, note = null) {
     throw new Error('nothing in this set carries what each setting made in each part of the test window — press work out the missing numbers first');
   }
   const units = unitsOfSet(t, String(id));
+  // HOW LONG EACH UNIT'S TEST WINDOW ACTUALLY WAS, read off what the run
+  // recorded (3.85.0's per-unit windows) and never re-derived from the layout:
+  // a weekly shape gets about sixteen chunks a part where a daily one gets over
+  // a hundred, and that is the difference between a reading and noise. The
+  // parts are cut at floor(n/3) and floor(2n/3), so the SMALLEST of the three
+  // is floor(n/3) -- the honest number to put a floor against.
+  const doc = getSet(id);
+  const recorded = (((doc || {}).windows || {}).units) || {};
+  const chunksAPartOf = (key) => {
+    const w = recorded[key];
+    const n = w && w.test && Number(w.test.chunks);
+    return Number.isFinite(n) && n > 0 ? Math.floor(n / 3) : null;
+  };
   const out = [];
   if (note) note(0, units.length);
   for (const u of units) {
     // eslint-disable-next-line no-await-in-loop
     const rows = withFunnelRich(await loadUnitBoard(String(id), t, u.key), rich);
-    out.push({ unit: u.key, name: u.name, ...RH.holdOfUnit(rows) });
+    out.push({ unit: u.key, name: u.name, ...RH.holdOfUnit(rows, chunksAPartOf(u.key)) });
     if (note) note(out.length, units.length);
   }
   return out;

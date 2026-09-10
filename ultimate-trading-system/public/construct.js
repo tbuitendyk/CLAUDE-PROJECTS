@@ -5044,9 +5044,9 @@ async function drawFunnel() {
       : (d.step === 4 && !r.why ? { positive: r.positive, of: r.of, check: r.check || null } : null),
     keep: d.step === 5 && r.keep ? { ranges: r.keep.ranges || {}, allowed: r.keep.allowed || {} } : null,
   };
-  $('#view').innerHTML = `<div class="panel">${fTitle(d, st, F_NEW_NAME)}</div>
+  $('#view').innerHTML = `<div class="panel">${fHoldPanel(d, st)}</div>
+  <div class="panel">${fTitle(d, st, F_NEW_NAME)}</div>
   <div class="panel">${fHead(d)}${fRail(d, st)}</div>
-  <div class="panel">${fHoldPanel(d, st)}</div>
   <div class="panel">
     <h3 style="margin-top:0">Step ${d.step} - ${esc(F_STEPS[d.step - 1][0])}</h3>
     <p class="note">${esc(F_STEPS[d.step - 1][1])}</p>
@@ -5613,7 +5613,7 @@ function fStep5(r, d, st) {
 // WHAT EACH LIMIT WOULD KEEP, so the number is set with its cost in view.
 function fLadder(name, l, word, ex) {
   if (!l) return '';
-  if (!l.measured) return `<p class="note muted">${esc(name)}: no survivor carries this number yet - press work out the missing numbers first.</p>`;
+  if (!l.measured) return `<p class="note muted">${esc(name)}: no survivor carries this number yet - press work out the test history numbers first.</p>`;
   // a trade count is put on a yearly footing beside each rung (3.57.0); a
   // dollar figure is already in dollars at the stake named above
   return `<p class="note">${esc(name)} - what each limit would keep of ${l.of}: ${l.rungs.map((x) => `${word} ${fFix(x.at)}${ex ? fPerYear(x.at, ex) : ''} keeps ${x.keeps}`).join('; ')}.</p>`;
@@ -5739,7 +5739,7 @@ const F_HOLD_SORT = [
   ['lowest', 'weakest of the four first'],
   ['highest', 'strongest of the four first'],
   ['cleared', 'most boundaries cleared first'],
-  ['settings', 'most settings read first'],
+  ['settings', 'most settings ranked first'],
 ];
 // THE HEADING OF EACH BOUNDARY'S COLUMN, short enough to be a heading, with the
 // line under the table saying what each one does. Keyed to lib/rankhold.js
@@ -5756,7 +5756,14 @@ const F_HOLD_COL_WHAT = {
 };
 // The three numbers start where the engine starts, so the boxes are never blank
 // on a first visit: no bar set, all four boundaries, thirty settings.
-const F_HOLD_START = { atLeast: null, onHowMany: 4, fewest: 30, show: 'all', sort: 'set' };
+// TWO FLOORS, TWO WORDS, NEITHER BORROWING THE OTHER'S (owner, 2026-09-10:
+// "settings MEANS SOMETHING, AND IT'S NOT THE NUMBER OF TRADABLE PERIODS
+// WITHIN A PART"). One box counted settings and was labelled in a place where
+// the only thing anyone reads is "how much history is behind this number" -- a
+// label that was accurate and unreadable, which is a bad label. So: `settings
+// ranked` counts settings, `chunks a part` counts history, and each says so.
+const F_HOLD_START = { atLeast: null, onHowMany: 4, fewestRanked: 30, fewestChunks: 40, show: 'all', sort: 'set', from: 0 };
+const F_HOLD_PER = 50;
 const fHoldBar = (set) => ({ ...F_HOLD_START, ...(fSetMemory(set).hold || {}) });
 // The reading in hand, for THIS set. Held in the page and not in storage: it is
 // a few hundred numbers off the boards, cheap to ask for again and wrong to
@@ -5790,7 +5797,13 @@ function fHoldCell(hold, need) {
   return `<td${cls}>${txt}</td>`;
 }
 function fHoldTable(t, bar, walking) {
-  const rows = fHoldRows(t, bar);
+  const all = fHoldRows(t, bar);
+  // A PAGE, BECAUSE A SET CAN HOLD THREE HUNDRED COINS AND SHAPES (owner,
+  // 2026-09-10). The bar is the one Boards draws, in the same words, so a page
+  // here says the same things a page there does -- including the true total,
+  // which is what stops a page reading as the whole list.
+  const from = Math.max(0, Math.min(Math.floor(Number(bar.from) || 0), Math.max(0, all.length - 1)));
+  const rows = all.slice(from, from + F_HOLD_PER);
   const keys = (t.units[0] ? t.units[0].readings : []).map((x) => x.key);
   const head = keys.map((k) => `<th title="${esc(F_HOLD_COL_WHAT[k] || 'this column has no description')}">${esc(F_HOLD_COLS[k] || k)}</th>`).join('');
   const body = rows.map((u) => {
@@ -5798,27 +5811,33 @@ function fHoldTable(t, bar, walking) {
     const verdict = u.bar.pass === true ? '<b>clears it</b>'
       : u.bar.pass === false ? `<b class="neg">does not</b> - ${u.bar.cleared} of ${u.bar.known} cleared`
         : `<span class="muted">${esc(String(u.bar.why || 'nothing could be read'))}</span>`;
+    const short = u.chunksAPart != null && bar.fewestChunks > 0 && u.chunksAPart < bar.fewestChunks;
     return `<tr><td>${here ? '<b>' : ''}${esc(u.name)}${here ? '</b>' : ''}</td>
       ${u.readings.map((x) => fHoldCell(x.hold, u.bar.need)).join('')}
+      <td${short ? ' class="neg"' : ''}>${u.chunksAPart == null ? '-' : Number(u.chunksAPart).toLocaleString()}</td>
       <td>${Number(u.usable).toLocaleString()}</td>
       <td>${u.noThirds ? Number(u.noThirds).toLocaleString() : '-'}</td>
       <td>${verdict}</td>
       <td>${here ? '<span class="muted">this walk</span>' : `<button data-fhold="${esc(u.unit)}">walk this one</button>`}</td></tr>`;
   }).join('');
   return `<div class="scrollx"><table><thead><tr>
-      <th title="one coin at one chunk shape, read alongside the coins named beside it — the same coin and shape the picker above chooses between.">coin and shape</th>${head}
-      <th title="how many settings here carry all three parts of the test window. These are the ones the four columns are worked out from.">settings read</th>
+      <th title="one coin at one chunk shape, read alongside the coins named beside it — the same coin and shape the picker below chooses between.">coin and shape</th>${head}
+      <th title="how many chunks the SHORTEST of the three parts of this coin and shape's test window holds — how much history is behind each figure in the four columns. Read off what the run recorded, not worked out from the layout.">chunks a part</th>
+      <th title="how many settings here carry all three parts of the test window. One setting is one combination of entry, gate, d, t, trail and arm; these are the ones put in order against each other.">settings ranked</th>
       <th title="how many settings here do NOT carry all three parts, and so were left out of the four columns. Never guessed at.">no parts</th>
       <th title="whether this coin and shape reaches the number you set, on as many of the four as you asked for. Unread never passes.">clears the bar</th>
       <th></th></tr></thead><tbody>${body}</tbody></table></div>
-    <p class="note">${Number(rows.length).toLocaleString()} of ${Number(t.of).toLocaleString()} row(s) shown -
+    ${bPager(all.length, from, F_HOLD_PER, 'WH')}
+    <p class="note">${Number(all.length).toLocaleString()} of ${Number(t.of).toLocaleString()} row(s) match what <b>show</b> is set to -
       <b>${Number(t.passing).toLocaleString()}</b> clear the bar, <b>${Number(t.failing).toLocaleString()}</b> do not,
-      <b>${Number(t.unreadable).toLocaleString()}</b> could not be read. Every row is drawn; there is no page to turn.</p>
+      <b>${Number(t.unreadable).toLocaleString()}</b> could not be read.</p>
     <p class="note">Each column ranks the settings on one part of the test window and reads the money on another:
       <b>first → second</b> puts them in order by what they made in the first part and scores that order on the
       second. <b>1.00</b> is the same order on both parts, <b>0.00</b> no relation at all, and a number below zero is
-      the order coming out backwards. <b>settings read</b> is how many settings here carry all three parts;
-      <b>no parts</b> is how many do not and were left out.</p>
+      the order coming out backwards. <b>settings ranked</b> is how many settings here carry all three parts;
+      <b>no parts</b> is how many do not and were left out. <b>chunks a part</b> is how much history is behind each
+      of those figures, and it is the one that separates the shapes: a shape that decides once a week gets about
+      sixteen chunks a part on today's history where one that decides daily gets over a hundred.</p>
     <p class="note"><b>Three things this cannot tell you, so do not read it as though it could.</b>
       <b>The four are not four separate tests</b> - three of them score on the third part, so a third part that
       happens to look like the rest of the window lifts all three together. <b>first → second</b> is the only one
@@ -5833,21 +5852,21 @@ function fHoldPanel(d, st) {
   const t = fHoldSeen && fHoldSeen.set === st.set ? fHoldSeen.table : null;
   // READABLE AS SOON AS ANYTHING CARRIES THE PARTS, not only when everything
   // does. A setting the pricing could not do would otherwise hold this dead for
-  // ever; the table's own `settings read` and `no parts` columns say how much of
+  // ever; the table's own `settings ranked` and `no parts` columns say how much of
   // each row was read, and `fewest settings` is the guard against a thin one.
   const x = fRichOf(d);
   const ready = x.have > 0;
   const partly = ready && x.need > x.have
     ? ` — ${Number(x.need - x.have).toLocaleString()} of this record set's ${Number(x.need).toLocaleString()} settings still carry no parts and are left out`
     : '';
-  return `<h3 style="margin-top:0">Does the ranking hold?</h3>
+  return `<h3 style="margin-top:0">Worth walking?</h3>
     <p class="note">The whole walk below is one way of choosing: put the settings in order by what they made and keep
       the best of them. This asks whether that order survives being moved to a part of the test window it was not
       chosen on. It reads nothing from the held-back window and nothing from the unread stretch, so it costs nothing
       that can only be spent once - and it decides nothing. A coin and shape that clears the bar has not been shown
       to work; it has only failed to be ruled out.</p>
     <div class="row" style="align-items:flex-end">
-      <button id="fRebuild" class="pri"${fRichOff(d) ? ' disabled' : ''}>work out the missing numbers</button>
+      <button id="fRebuild" class="pri"${fRichOff(d) ? ' disabled' : ''}>work out the test history numbers</button>
       <span id="fRebuildMsg" class="note">${esc(fRichLine(d))}</span></div>
     ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
     <div class="row" style="align-items:flex-end">
@@ -5857,8 +5876,10 @@ function fHoldPanel(d, st) {
         value="${bar.atLeast == null ? '' : esc(String(bar.atLeast))}"></label>
       <label class="f" title="how many of the four boundaries have to reach that number. A boundary that could not be read is not a boundary that passed.">on how many of the four<input
         id="fHoldOn" type="number" min="1" max="4" step="1" style="width:5rem" value="${esc(String(bar.onHowMany))}"></label>
-      <label class="f" title="fewest settings a coin and shape must have carrying all three parts before a number is put on it at all. Below this the row reads as unread rather than showing a figure worked out from a handful.">fewest settings<input
-        id="fHoldFewest" type="number" min="3" step="1" style="width:6rem" value="${esc(String(bar.fewest))}"></label>
+      <label class="f" title="fewest settings — one setting is one combination of entry, gate, d, t, trail and arm — that must carry all three parts before this coin and shape is ranked at all. Three settings ranked against each other says nothing however long the window is.">fewest settings ranked<input
+        id="fHoldRanked" type="number" min="3" step="1" style="width:7rem" value="${esc(String(bar.fewestRanked))}"></label>
+      <label class="f" title="fewest chunks the shortest part of this coin and shape's test window must hold. This is how much history is behind each setting's figure, and it is the floor that cuts off the shapes that decide once a week — a weekly shape gets about sixteen a part where a daily one gets over a hundred. Zero turns the floor off.">fewest chunks a part<input
+        id="fHoldChunks" type="number" min="0" step="1" style="width:7rem" value="${esc(String(bar.fewestChunks))}"></label>
       <label class="f" title="which rows the table draws. Nothing is thrown away - a row hidden here is still counted in the line under the table.">show<select
         id="fHoldShow">${F_HOLD_SHOW.map(([k, w]) => `<option value="${k}"${k === bar.show ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select></label>
       <label class="f" title="the order the rows are drawn in. It changes nothing about what they say.">order by<select
@@ -5901,7 +5922,7 @@ function fStep6(d, st, r) {
         about <b>${w.perYearFactor ? Math.round((Number(tr.min) || 20) * w.perYearFactor).toLocaleString() : '-'}</b> a year.</p>`
     : `<p class="note muted">The window the trades were counted over cannot be worked out${ex.why ? ` - ${esc(ex.why)}` : ''}, so a trade count here cannot be put on a yearly footing.</p>`;
   const howTo = `<ol class="note fhow">
-      <li>These numbers come from <b>work out the missing numbers</b>, above the steps. Nothing below can be read or
+      <li>These numbers come from <b>work out the test history numbers</b>, at the top of this screen. Nothing below can be read or
         set until that has run for this record set: the two limits are read off the settings themselves, and no
         setting carries these numbers until it is pressed. It changes no rule and no record.</li>
       <li>Read the two lines below: what each limit would keep, of the settings that survive.</li>
@@ -6256,7 +6277,7 @@ function fCutTable(cd, st) {
       than repeated on every row.</p>
     ${gaps ? `<p class="note muted">The numbers a sweep does not keep - worst losing streak, biggest single loss, best
       single trade, trades won, stopped out, gross per trade - are not on this set. Either it was cut without pressing
-      <b>work out the missing numbers</b> on step 6, or it was cut before a set kept its own copy of them.
+      <b>work out the test history numbers</b> at the top of a Funnel walk, or it was cut before a set kept its own copy of them.
       <b>work out the missing numbers</b> on the heading above prices this set's own settings again and keeps the
       answer here, for good.</p>` : ''}
     <p class="note"><b>Order the whole set by</b> setting${fcSort('label', cd)}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))}${fcSort(k, cd)}`).join('')}${has('members') ? ` &middot; members${fcSort('members', cd)}` : ''}${has('avgRung') ? ` &middot; rung${fcSort('avgRung', cd)}` : ''}${has('avgVoices') ? ` &middot; voices${fcSort('avgVoices', cd)}` : ''}
@@ -6649,7 +6670,8 @@ async function fRichWatch(st) {
 // The bar as a poll asks it. A blank `how much must hold` is sent blank, which
 // the service reads as no bar set -- never as zero, which is a real bar.
 const fHoldQuery = (bar) => `atLeast=${bar.atLeast == null ? '' : encodeURIComponent(bar.atLeast)}`
-  + `&onHowMany=${encodeURIComponent(bar.onHowMany)}&fewest=${encodeURIComponent(bar.fewest)}`;
+  + `&onHowMany=${encodeURIComponent(bar.onHowMany)}`
+  + `&fewestRanked=${encodeURIComponent(bar.fewestRanked)}&fewestChunks=${encodeURIComponent(bar.fewestChunks)}`;
 async function fHoldPoll(st) {
   if (fHoldWatching) return;
   fHoldWatching = true;
@@ -6712,17 +6734,47 @@ function fWireHold(st) {
     const v = Number(el.value);
     return Number.isFinite(v) ? (floor == null ? v : Math.max(floor, Math.floor(v))) : null;
   };
-  const keep = (fields) => { fRememberForSet(st.set, { hold: { ...fHoldBar(st.set), ...fields } }); drawFunnel(); };
+  // ANY CHANGE TO WHAT IS SHOWN GOES BACK TO PAGE ONE. Page four of a hundred
+  // rows is page four of nothing once the bar cuts it to twelve, and a blank
+  // table there reads as "no rows clear it".
+  const keep = (fields) => {
+    const back = ['atLeast', 'onHowMany', 'fewestRanked', 'fewestChunks', 'show', 'sort'].some((k) => k in fields);
+    fRememberForSet(st.set, { hold: { ...fHoldBar(st.set), ...fields, ...(back ? { from: 0 } : {}) } });
+    drawFunnel();
+  };
   const at = $('#fHoldAtLeast');
   if (at) at.onchange = () => keep({ atLeast: num(at) });
   const on = $('#fHoldOn');
   if (on) on.onchange = () => keep({ onHowMany: Math.min(4, num(on, 1) == null ? 4 : num(on, 1)) });
-  const few = $('#fHoldFewest');
-  if (few) few.onchange = () => keep({ fewest: num(few, 3) == null ? 30 : num(few, 3) });
+  const rk = $('#fHoldRanked');
+  if (rk) rk.onchange = () => keep({ fewestRanked: num(rk, 3) == null ? 30 : num(rk, 3) });
+  const ch = $('#fHoldChunks');
+  if (ch) ch.onchange = () => keep({ fewestChunks: num(ch, 0) == null ? 40 : num(ch, 0) });
   const sh = $('#fHoldShow');
   if (sh) sh.onchange = () => keep({ show: sh.value });
   const so = $('#fHoldSort');
   if (so) so.onchange = () => keep({ sort: so.value });
+  // THE PAGING BAR IS THE ONE BOARDS DRAWS, so it says the same things; only
+  // where a page lands is this screen's. Wired by walking what was just drawn.
+  document.querySelectorAll('[data-bpage]').forEach((b) => {
+    b.onclick = () => keep({ from: Number(b.dataset.bpage.split(':')[1]) });
+  });
+  document.querySelectorAll('[data-bpageto]').forEach((el) => {
+    let jumped = false;                 // change fires, the redraw pulls the box out, blur follows: one jump
+    const jump = () => {
+      if (jumped) return;
+      const pages = Math.max(1, Number(el.dataset.bpages) || 1);
+      const per = Math.max(1, Number(el.dataset.bper) || F_HOLD_PER);
+      const want = Math.round(Number(el.value));
+      if (!Number.isFinite(want)) { el.value = String(Math.floor(Number(el.defaultValue) || 1)); return; }
+      const page = Math.min(pages, Math.max(1, want));
+      if (page === Number(el.defaultValue)) { el.value = String(page); return; }
+      jumped = true;
+      keep({ from: (page - 1) * per });
+    };
+    el.onchange = jump;
+    el.onblur = jump;
+  });
   // WALK THIS ONE: the same door every other choice of coin and shape goes
   // through, so a walk started here is a walk like any other. Wired by walking
   // the rows just drawn -- a listener on the whole page would fire once per

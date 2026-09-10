@@ -651,7 +651,7 @@ window.HELP = {
         more: 'Nothing here changes the rule - this step is for looking. Only keep this block writes anything.',
       },
       fRebuild: {
-        what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, how much of the result rests on guessing what happened inside a single bar, and what each setting made in each of the three parts of the test window. Press it FIRST, before anything below: it runs for every setting in the record set, and nothing else on this screen can be read until it has.',
+        what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, how much of the result rests on guessing what happened inside a single bar, and what each setting made in each of the three parts of the test window. Press it FIRST, before anything below: it runs for every setting in the record set, and nothing else on this screen can be read until it has. Every stage 3 record set needs it pressed once before it can be walked.',
         more: 'These are calculated during the sweep and thrown away, because keeping them for every one of half a million settings is not worth the disk. Here they are calculated again and kept beside the set, so a second press only works out what is still missing. It also re-checks the money and the trade count against what the sweep stored, for every setting on the board: if they disagree, something underneath has changed and it says so rather than mixing numbers from two different runs.',
       },
       fHoldRead: {
@@ -666,9 +666,13 @@ window.HELP = {
         what: 'How many of the four boundaries have to reach that number before a coin and shape counts as clearing the bar.',
         more: 'Four is the strictest and one the loosest. A boundary that could not be read is not a boundary that passed: if fewer than this many have an answer at all, the row reads as not clearing rather than as clearing on the ones that could be read.',
       },
-      fHoldFewest: {
-        what: 'The fewest settings a coin and shape must have carrying all three parts of the test window before a number is put on it at all.',
-        more: 'Below this the row says it could not be read instead of showing a figure. A reading off a handful of settings swings wildly and looks exactly like a reading off thousands, and a number on the screen is a number that gets read. Nothing is re-read when you move this - the readings are already in hand and this only decides which of them are worth showing.',
+      fHoldRanked: {
+        what: 'The fewest settings a coin and shape must have carrying all three parts of the test window before it is ranked at all. One setting is one combination of entry, gate, d, t, trail and arm.',
+        more: 'This counts SETTINGS, not history. Three settings put in order against each other says nothing however long the window is, and a reading off a handful looks exactly like a reading off thousands. Below this the row says it could not be read instead of showing a figure. How much history is behind each figure is the box beside this one, and the two do not guard each other.',
+      },
+      fHoldChunks: {
+        what: 'The fewest chunks the shortest of the three parts of a coin and shape\'s test window must hold before it is ranked at all. Zero turns this off.',
+        more: 'This counts HISTORY, not settings. A shape that decides once a week gets about sixteen chunks a part on today\'s history where one that decides daily gets over a hundred, so each setting\'s figure in a weekly part is a handful of trades. That noise drags every column towards 0.00, which means a short coin and shape reads as worse than it is - you would drop a good one for being short. This floor is what stops that, and it is the number that cuts off the shapes deciding once a week. It is read off the window each run actually recorded, never worked out from the layout.',
       },
       fHoldShow: {
         what: 'Which rows the table draws: every coin and shape, only the ones that clear the bar, or only the ones that do not.',

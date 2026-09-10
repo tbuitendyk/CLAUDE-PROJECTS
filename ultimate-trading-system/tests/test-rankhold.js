@@ -84,9 +84,9 @@ module.exports = {
   // (RULE FIVE). Three numbers: how much must hold, on how many of the four,
   // and how few settings is too few to put a number on at all.
   async theBarIsTheOwnersAndReAppliesWithoutReReading() {
-    const strong = { unit: 'A', name: 'A', ...RH.holdOfUnit(rows(40, (i) => [i, i, i])) };
-    const flipped = { unit: 'B', name: 'B', ...RH.holdOfUnit(rows(40, (i) => [i, i, -i])) };
-    const thin = { unit: 'C', name: 'C', ...RH.holdOfUnit(rows(5, (i) => [i, i, i])) };
+    const strong = { unit: 'A', name: 'A', ...RH.holdOfUnit(rows(40, (i) => [i, i, i]), 116) };
+    const flipped = { unit: 'B', name: 'B', ...RH.holdOfUnit(rows(40, (i) => [i, i, -i]), 116) };
+    const thin = { unit: 'C', name: 'C', ...RH.holdOfUnit(rows(5, (i) => [i, i, i]), 116) };
     const list = [strong, flipped, thin];
     const at = (bar) => RH.withBar(list, bar).units.map((u) => u.bar.pass);
     assert.deepStrictEqual(at({ atLeast: 0.5, onHowMany: 4 }), [true, false, null], 'the bar on all four boundaries does not sort the three apart');
@@ -99,14 +99,14 @@ module.exports = {
     // THE THIN ROW IS UNREADABLE, NOT FAILING, and says why in its own words
     const c = RH.withBar(list, { atLeast: 0.5, onHowMany: 4 }).units[2];
     assert.strictEqual(c.bar.pass, null, 'a coin and shape with too few settings reads as failing rather than as unread');
-    assert.ok(/fewer than 30 settings/.test(c.bar.why), c.bar.why);
+    assert.ok(/only 5 setting\(s\) here carry all three parts, fewer than the 30 you asked for/.test(c.bar.why), c.bar.why);
     assert.deepStrictEqual(holds(c), [null, null, null, null], 'a number is drawn for a board too thin to read');
     // and lowering that number lets it be read, without anything being re-read
-    const low = RH.withBar(list, { atLeast: 0.5, onHowMany: 4, fewest: 4 }).units[2];
-    assert.strictEqual(low.bar.pass, true, 'lowering the fewest-settings number did not let the row be read');
+    const low = RH.withBar(list, { atLeast: 0.5, onHowMany: 4, fewestRanked: 4 }).units[2];
+    assert.strictEqual(low.bar.pass, true, 'lowering the fewest-settings-ranked number did not let the row be read');
     assert.deepStrictEqual(holds(low), [1, 1, 1, 1], 'the readings were not there to be shown, so they must have been re-read');
     // A BOUNDARY THAT COULD NOT BE READ IS NOT ONE THAT PASSED
-    const oneBad = { unit: 'D', name: 'D', ...RH.holdOfUnit(rows(40, (i) => [i, 1, i])) };
+    const oneBad = { unit: 'D', name: 'D', ...RH.holdOfUnit(rows(40, (i) => [i, 1, i]), 116) };
     const got = RH.withBar([oneBad], { atLeast: 0.5, onHowMany: 4 }).units[0];
     assert.ok(got.known < 4, 'the fixture has all four boundaries readable, so it proves nothing');
     assert.strictEqual(got.bar.pass, false, 'a bar counting four boundaries was cleared with fewer than four readable');
@@ -121,6 +121,40 @@ module.exports = {
     // is not a bar nothing can clear
     assert.strictEqual(RH.withBar(list, { atLeast: 0.5, onHowMany: 9 }).bar.onHowMany, 4);
     assert.strictEqual(RH.withBar(list, { atLeast: 0.5, onHowMany: 0 }).bar.onHowMany, 1);
+  },
+
+  // TWO KINDS OF THIN, AND NEITHER GUARDS THE OTHER (owner, 2026-09-10:
+  // "settings MEANS SOMETHING, AND IT'S NOT THE NUMBER OF TRADABLE PERIODS
+  // WITHIN A PART"). One floor counts SETTINGS -- one combination of entry,
+  // gate, d, t, trail and arm -- and the other counts CHUNKS of history behind
+  // each figure. A coin and shape can be fat on one and starved on the other,
+  // which is exactly the weekly case: nine hundred settings, sixteen chunks a
+  // part.
+  async theHistoryFloorIsSeparateFromTheSettingsFloor() {
+    const daily = { unit: 'A', name: 'A daily', ...RH.holdOfUnit(rows(900, (i) => [i, i, i]), 116) };
+    const weekly = { unit: 'B', name: 'B weekly', ...RH.holdOfUnit(rows(900, (i) => [i, i, i]), 16) };
+    const unrecorded = { unit: 'C', name: 'C no window', ...RH.holdOfUnit(rows(900, (i) => [i, i, i]), null) };
+    const list = [daily, weekly, unrecorded];
+    const bar = { atLeast: 0.5, onHowMany: 4, fewestRanked: 30, fewestChunks: 40 };
+    const t = RH.withBar(list, bar);
+    assert.deepStrictEqual(t.units.map((u) => u.bar.pass), [true, null, null],
+      'a coin and shape with plenty of settings and almost no history reads the same as one with both');
+    assert.ok(/each part of this test window holds 16 chunk\(s\), fewer than the 40 you asked for/.test(t.units[1].bar.why), t.units[1].bar.why);
+    assert.deepStrictEqual(holds(t.units[1]), [null, null, null, null], 'a number is drawn for a window too short to read');
+    // A RUN THAT RECORDED NO WINDOW IS NOT ASSUMED TO BE LONG ENOUGH
+    assert.ok(/did not record how long its test window was/.test(t.units[2].bar.why), t.units[2].bar.why);
+    // ZERO TURNS THE HISTORY FLOOR OFF, and turns nothing else off
+    const off = RH.withBar(list, { ...bar, fewestChunks: 0 });
+    assert.deepStrictEqual(off.units.map((u) => u.bar.pass), [true, true, true], 'zero does not turn the history floor off');
+    // and the settings floor still bites with the history floor off
+    const few = { unit: 'D', name: 'D', ...RH.holdOfUnit(rows(5, (i) => [i, i, i]), 116) };
+    assert.strictEqual(RH.withBar([few], { ...bar, fewestChunks: 0 }).units[0].bar.pass, null,
+      'turning the history floor off turned the settings floor off with it');
+    // both floors travel back with the answer, so the screen never has to guess
+    assert.deepStrictEqual(t.bar, { atLeast: 0.5, onHowMany: 4, fewestRanked: 30, fewestChunks: 40 });
+    // and they are separate numbers in the reading itself
+    assert.strictEqual(weekly.chunksAPart, 16, 'the reading does not carry how much history was behind it');
+    assert.strictEqual(daily.usable, 900);
   },
 
   // NOTHING HERE READS THE HELD-BACK WINDOW OR THE RESERVE (Part 3). This is
@@ -157,13 +191,14 @@ module.exports = {
       'the bar is not laid onto the reading in hand, so the two cannot be separate steps');
     // and the run holds the reading BEFORE the bar, or there is nothing to re-bar
     const read = st.slice(st.indexOf('async function funnelRankHoldRead('), st.indexOf('const holdAnswer ='));
-    assert.ok(read.includes('RH.holdOfUnit(rows)') && !read.includes('withBar'), 'the reading is stored with a bar already on it');
+    assert.ok(read.includes('RH.holdOfUnit(rows, chunksAPartOf(u.key))') && !read.includes('withBar'), 'the reading is stored with a bar already on it');
     // THE PAGE NEVER WORKS OUT A PASS FOR ITSELF: one place decides it
     const page = src('public/construct.js');
     const panel = page.slice(page.indexOf('const F_HOLD_SHOW = ['), page.indexOf('function fStep6(d, st, r) {'));
-    assert.ok(!/>=\s*bar\.atLeast|hold >= need &&|\.cleared >=/.test(panel),
+    assert.ok(!/>=\s*bar\.atLeast|hold >= need &&|\.cleared >=|usable <|chunksAPart <\s*bar\.fewestChunks\s*\?/.test(panel),
       'the screen decides for itself whether a row clears the bar, so two places can disagree about a pass');
     assert.ok(panel.includes('u.bar.pass === true'), 'the screen does not read the pass the service worked out');
+    assert.ok(panel.includes('${esc(String(u.bar.why || \'nothing could be read\'))}'), 'the screen writes its own reason instead of printing the one it was given');
   },
 
   // A READING WAS READ FROM THE NUMBERS BESIDE THE SET, so it goes when those
@@ -187,18 +222,24 @@ module.exports = {
   // or it is a report on a choice already made.
   async theRankingIsDrawnAboveTheStepsAndPicksNothing() {
     const page = src('public/construct.js');
-    const draw = page.slice(page.indexOf("$('#view').innerHTML = `<div class=\"panel\">${fTitle(d, st, F_NEW_NAME)}</div>"), page.indexOf('  fWire(st, d);\n}'));
+    const draw = page.slice(page.indexOf("$('#view').innerHTML = `<div class=\"panel\">${fHoldPanel(d, st)}</div>"), page.indexOf('  fWire(st, d);\n}'));
     const atHold = draw.indexOf('fHoldPanel(d, st)');
     const atStep = draw.indexOf('Step ${d.step}');
     assert.ok(atHold > 0, 'the ranking is not drawn on the Funnel at all');
     assert.ok(atHold < atStep, 'the ranking is drawn below the step it is supposed to be read before');
+    // FIRST PANEL OF ALL (owner order, 2026-09-10: "put it at the very top
+    // before the header area ... the point is largely to confirm that given
+    // units are worth even funneling"). Above the coin picker, because walking
+    // a row IS the picking: read the table, then choose.
+    assert.ok(atHold < draw.indexOf('fTitle(d, st, F_NEW_NAME)'), 'the ranking is drawn below the picker it is supposed to be read before');
+    assert.ok(atHold < draw.indexOf('fHead(d)'), 'the ranking is drawn below the set heading rather than first');
     // THE TABLE SHOWS WHAT THE OWNER ASKED FOR AND HIDES NOTHING ELSE, and it
     // says how many rows it is not showing (RULE ZERO: a curated list takes the
     // decision away invisibly).
     const panel = page.slice(page.indexOf('function fHoldRows(t, bar) {'), page.indexOf('function fHoldPanel(d, st) {'));
     assert.ok(panel.includes("bar.show === 'pass' ? rows.filter((u) => u.bar.pass === true)"), 'the table cannot be narrowed to the rows that clear the bar');
     assert.ok(panel.includes("bar.show === 'fail' ? rows.filter((u) => u.bar.pass === false)"), 'the table cannot be narrowed to the rows that do not');
-    assert.ok(/\$\{Number\(rows\.length\)\.toLocaleString\(\)\} of \$\{Number\(t\.of\)\.toLocaleString\(\)\} row\(s\) shown/.test(panel),
+    assert.ok(/\$\{Number\(all\.length\)\.toLocaleString\(\)\} of \$\{Number\(t\.of\)\.toLocaleString\(\)\} row\(s\) match what <b>show<\/b> is set to/.test(panel),
       'a narrowed table does not say how many rows it holds, so a short list reads as the whole set');
     // and each row hands the walk over through the SAME door every other choice
     // of coin and shape goes through
@@ -207,6 +248,36 @@ module.exports = {
     assert.ok(wire.includes("document.querySelectorAll('[data-fhold]').forEach"),
       'the rows are not wired by walking the table just drawn — a listener on the whole page fires once per redraw since load');
     // the three numbers are kept for the SET, not for one coin and shape's walk
-    assert.ok(wire.includes('fRememberForSet(st.set, { hold:'), 'the three numbers are forgotten when another coin and shape is walked');
+    assert.ok(wire.includes('fRememberForSet(st.set, { hold:'), 'the four numbers are forgotten when another coin and shape is walked');
+    // A SET CAN HOLD THREE HUNDRED COINS AND SHAPES, so the table has a page --
+    // the SAME bar Boards draws, which is the one that states the true total.
+    assert.ok(panel.includes("${bPager(all.length, from, F_HOLD_PER, 'WH')}"), 'the table draws every row it has, however many that is');
+    assert.ok(wire.includes("document.querySelectorAll('[data-bpage]')") && wire.includes("document.querySelectorAll('[data-bpageto]')"),
+      'the paging bar is drawn and nothing listens to it');
+    // and changing what is shown goes back to page one, or a page past the end
+    // of a narrowed table reads as "nothing clears the bar"
+    assert.ok(wire.includes("const back = ['atLeast', 'onHowMany', 'fewestRanked', 'fewestChunks', 'show', 'sort'].some((k) => k in fields);"),
+      'moving a bar leaves the table on a page that may no longer exist');
+  },
+
+  // THE HEADING SAYS WHAT IT IS FOR, AND NEVER THAT IT CONFIRMS ANYTHING
+  // (owner, 2026-09-10). A pass here is the absence of a red flag, so a heading
+  // with "confirm" in it would make a pass read as proof -- the exact thing
+  // this part was written to prevent.
+  async theHeadingAsksAQuestionAndNeverClaimsAConfirmation() {
+    const page = src('public/construct.js');
+    const panel = page.slice(page.indexOf('function fHoldPanel(d, st) {'), page.indexOf('function fStep6(d, st, r) {'));
+    assert.ok(panel.includes('<h3 style="margin-top:0">Worth walking?</h3>'), 'the block is not headed with the question it answers');
+    assert.ok(!/[Cc]onfirm/.test(panel), 'the block claims to confirm something; it can only fail to rule something out');
+    assert.ok(/has not been shown\s+to work; it has only failed to be ruled out/.test(panel),
+      'the block does not say that clearing the bar is not evidence');
+    // THE PRESS SAYS WHAT IT WORKS OUT (owner order, 2026-09-10). It is pressed
+    // on every stage 3 set that is not ready, so its name has to survive being
+    // read cold.
+    assert.ok(panel.includes('>work out the test history numbers</button>'), 'the press does not say what it works out');
+    assert.ok(!/work out the missing numbers/.test(panel), 'the press still calls them missing numbers');
+    // and every place on this screen that names it names the same thing
+    const funnel = page.slice(page.indexOf('function fLadder('), page.indexOf('function fStep7('));
+    assert.ok(!/work out the missing numbers/.test(funnel), 'somewhere on the walk still names the press by the name it no longer has');
   },
 };

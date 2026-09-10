@@ -27,8 +27,21 @@
 // design asked for: one answer is one boundary, and a spread across several is
 // far harder to read as chance. The cost is that each part is a third of the
 // window rather than a half, so a short test window runs out of trades sooner
-// -- which is why `fewest` exists and why a coin and shape with too few
-// settings in it reads as unreadable rather than as a number.
+// -- which is why the two floors below exist and why a coin and shape too thin
+// for either of them reads as unreadable rather than as a number.
+//
+// TWO KINDS OF THIN, AND THEY ARE NOT THE SAME THING (owner, 2026-09-10).
+//   `fewestRanked`  how many SETTINGS go into the ranking. A setting is one
+//                   combination of entry, gate, d, t, trail and arm. Rank three
+//                   of them against each other and the answer means nothing,
+//                   whatever the window.
+//   `fewestChunks`  how many CHUNKS are in each part of the test window -- how
+//                   much history is behind each setting's figure. A weekly
+//                   shape has about sixteen a part on today's data where a
+//                   daily one has over a hundred, and the money in a sixteen-
+//                   chunk part is a handful of trades.
+// Neither guards the other, and the words do not borrow from each other: the
+// first counts settings, the second counts chunks.
 //
 // THE THREE NUMBERS THE OWNER SETS NEVER CAUSE A RE-READ. Reading one board is
 // seconds; every number below is arithmetic on readings already in hand. So the
@@ -99,11 +112,13 @@ const BOUNDARIES = [
 // One coin and shape's readings. `rows` are its settings, each with pnlThirds --
 // the money it made in each part of the TEST window. A row without all three
 // parts is counted and left out of the arithmetic, never guessed at.
+// `chunksAPart` is how many chunks the smallest part of that unit's test window
+// holds, read off what the run recorded; null when the run did not record it.
 //
 // EVERY BOUNDARY IS WORKED OUT HERE whatever the counts are. Deciding that a
 // reading is too thin to trust is the owner's number and it lives in `withBar`,
 // so moving it costs nothing and re-reads nothing.
-function holdOfUnit(rows) {
+function holdOfUnit(rows, chunksAPart = null) {
   const usable = (rows || []).filter((r) => {
     const t = r && r.pnlThirds;
     return Array.isArray(t) && t.length >= 3 && t.slice(0, 3).every((v) => num(v) != null);
@@ -117,17 +132,37 @@ function holdOfUnit(rows) {
     of: (rows || []).length,
     usable: usable.length,
     noThirds: (rows || []).length - usable.length,
+    chunksAPart: num(chunksAPart),
     readings,
   };
 }
 
-// FEWEST: how many settings must carry all three parts before a reading here is
-// worth putting a number on. Below it the readings are withheld, not shown
-// greyed, because a number on screen is a number that gets read.
 // HOW MANY OF THE FOUR, clamped to what there are: a bar of five boundaries on
 // four cannot be cleared by anything and would read as a fault in the numbers.
 const howManyOf = (bar) => Math.min(BOUNDARIES.length, Math.max(1, Math.floor(num(bar && bar.onHowMany) == null ? BOUNDARIES.length : num(bar.onHowMany))));
-const fewestOf = (bar) => Math.max(3, Math.floor(num(bar && bar.fewest) == null ? 30 : num(bar.fewest)));
+
+// THE TWO FLOORS, each named for exactly what it counts. Below either one the
+// readings are withheld, not shown greyed, because a number on screen is a
+// number that gets read.
+const fewestRankedOf = (bar) => Math.max(3, Math.floor(num(bar && bar.fewestRanked) == null ? 30 : num(bar.fewestRanked)));
+const fewestChunksOf = (bar) => Math.max(0, Math.floor(num(bar && bar.fewestChunks) == null ? 40 : num(bar.fewestChunks)));
+// WHY A COIN AND SHAPE CANNOT BE READ, or null when it can. One place, so the
+// table and the pass can never disagree about which rows are readable.
+function tooThin(hold, bar = {}) {
+  const ranked = fewestRankedOf(bar);
+  const chunks = fewestChunksOf(bar);
+  if (!hold) return { why: 'nothing was read for this coin and shape', ranked, chunks };
+  if (hold.usable < ranked) {
+    return { why: `only ${hold.usable.toLocaleString()} setting(s) here carry all three parts, fewer than the ${ranked.toLocaleString()} you asked for`, ranked, chunks };
+  }
+  if (chunks > 0 && hold.chunksAPart == null) {
+    return { why: 'this run did not record how long its test window was, so a floor on chunks a part cannot be applied', ranked, chunks };
+  }
+  if (chunks > 0 && hold.chunksAPart < chunks) {
+    return { why: `each part of this test window holds ${Number(hold.chunksAPart).toLocaleString()} chunk(s), fewer than the ${chunks.toLocaleString()} you asked for`, ranked, chunks };
+  }
+  return null;
+}
 
 // DOES THIS COIN AND SHAPE CLEAR THE OWNER'S BAR? Two numbers they set, never a
 // threshold decided here (RULE FIVE): how much of the ranking has to hold, and
@@ -136,35 +171,29 @@ const fewestOf = (bar) => Math.max(3, Math.floor(num(bar && bar.fewest) == null 
 function clearsBar(hold, bar = {}) {
   const need = num(bar.atLeast);
   const onHowMany = howManyOf(bar);
-  const fewest = fewestOf(bar);
-  const thin = !hold || hold.usable < fewest;
-  const readings = thin ? [] : (hold.readings || []).filter((r) => r.hold != null);
-  if (thin) {
-    return {
-      pass: null, cleared: 0, known: 0, need, onHowMany, fewest,
-      why: `fewer than ${fewest.toLocaleString()} settings here carry all three parts`,
-    };
-  }
-  if (!readings.length) return { pass: null, cleared: 0, known: 0, need, onHowMany, fewest, why: 'no boundary on this coin and shape could be read' };
-  if (need == null) return { pass: null, cleared: 0, known: readings.length, need: null, onHowMany, fewest, why: 'no bar has been set' };
+  const thin = tooThin(hold, bar);
+  const base = { need, onHowMany, fewestRanked: fewestRankedOf(bar), fewestChunks: fewestChunksOf(bar) };
+  if (thin) return { pass: null, cleared: 0, known: 0, ...base, why: thin.why };
+  const readings = (hold.readings || []).filter((r) => r.hold != null);
+  if (!readings.length) return { pass: null, cleared: 0, known: 0, ...base, why: 'no boundary on this coin and shape could be read' };
+  if (need == null) return { pass: null, cleared: 0, known: readings.length, ...base, need: null, why: 'no bar has been set' };
   const cleared = readings.filter((r) => r.hold >= need).length;
   // A BOUNDARY THAT COULD NOT BE READ IS NOT A BOUNDARY THAT PASSED. If fewer
   // than the asked-for number of boundaries have an answer at all, this cannot
   // clear a bar that counts them.
   if (readings.length < onHowMany) {
-    return { pass: false, cleared, known: readings.length, need, onHowMany, fewest, why: `only ${readings.length} of the four boundaries could be read` };
+    return { pass: false, cleared, known: readings.length, ...base, why: `only ${readings.length} of the four boundaries could be read` };
   }
-  return { pass: cleared >= onHowMany, cleared, known: readings.length, need, onHowMany, fewest, why: null };
+  return { pass: cleared >= onHowMany, cleared, known: readings.length, ...base, why: null };
 }
 
 // THE READINGS WITH THE OWNER'S THREE NUMBERS ON THEM. Takes rows already
 // worked out by holdOfUnit, so moving a number re-reads nothing. Never sorted
 // here -- the ordering is the screen's and the owner's.
 function withBar(rows, bar = {}) {
-  const fewest = fewestOf(bar);
   const units = (rows || []).map((r) => {
     const b = clearsBar(r, bar);
-    const shown = r.usable >= fewest ? (r.readings || []) : (r.readings || []).map((x) => ({ ...x, hold: null }));
+    const shown = tooThin(r, bar) ? (r.readings || []).map((x) => ({ ...x, hold: null })) : (r.readings || []);
     const got = shown.map((x) => x.hold).filter((v) => v != null);
     return {
       ...r,
@@ -181,7 +210,7 @@ function withBar(rows, bar = {}) {
     passing: units.filter((u) => u.bar.pass === true).length,
     failing: units.filter((u) => u.bar.pass === false).length,
     unreadable: units.filter((u) => u.bar.pass == null).length,
-    bar: { atLeast: num(bar.atLeast), onHowMany: howManyOf(bar), fewest },
+    bar: { atLeast: num(bar.atLeast), onHowMany: howManyOf(bar), fewestRanked: fewestRankedOf(bar), fewestChunks: fewestChunksOf(bar) },
     boundaries: BOUNDARIES.length,
   };
 }
@@ -189,7 +218,7 @@ function withBar(rows, bar = {}) {
 // The whole table from raw rows, in one call, for a caller that has both at
 // once. Reading and barring are the same two steps either way.
 function holdTable(units, bar = {}) {
-  return withBar((units || []).map((u) => ({ unit: u.unit, name: u.name || u.unit, ...holdOfUnit(u.rows) })), bar);
+  return withBar((units || []).map((u) => ({ unit: u.unit, name: u.name || u.unit, ...holdOfUnit(u.rows, u.chunksAPart) })), bar);
 }
 
-module.exports = { ranksOf, rankHold, holdOfUnit, clearsBar, withBar, holdTable, BOUNDARIES, fewestOf, howManyOf };
+module.exports = { ranksOf, rankHold, holdOfUnit, clearsBar, withBar, holdTable, BOUNDARIES, tooThin, fewestRankedOf, fewestChunksOf, howManyOf };
