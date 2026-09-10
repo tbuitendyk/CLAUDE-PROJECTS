@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **c2960e0d8187 — what the box is serving**, not from the working tree.
+Generated from **5ed1cb841211 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -533,7 +533,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 
 # Funnel
 
-## What the controls are called (198)
+## What the controls are called (220)
 
 - `- chosen`
 - `- what each limit would keep of`
@@ -556,6 +556,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `add these limits to the rule`
 - `add this range to the rule`
 - `again against each of those`
+- `all`
 - `All`
 - `all units together`
 - `alongside 1`
@@ -582,31 +583,42 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `Choose`
 - `chunk shape`
 - `clear both boxes, tick`
+- `clear the bar,`
+- `cleared`
+- `clears the bar`
 - `coin`
+- `coin and shape`
 - `copies - that is`
 - `Delete Stage 4 record set…`
 - `dial`
 - `dial(s) still vary across the`
+- `do not,`
+- `does not`
+- `Does the ranking hold?`
 - `Every one of these`
 - `Every trade stakes`
+- `fewest settings`
 - `fewest trades`
 - `Final Rule:`
+- `first → second`
 - `first dial`
 - `for the list, or tick`
 - `Funnel`
 - `Funnel -`
 - `Greenlight`
 - `gross per trade $`
-- `here, for the`
 - `History`
 - `hold`
 - `hours`
 - `hours, so up to`
 - `how many to keep`
+- `how much must hold`
 - `how to reach the target`
 - `in the table`
 - `is`
 - `is none`
+- `is the only one`
+- `is the same order on both parts,`
 - `It made less than`
 - `its middle`
 - `keep from`
@@ -627,6 +639,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `narrow this one`
 - `new rule`
 - `no longer on the board`
+- `no parts`
 - `No scrambled copies on this set`
 - `No sealed window`
 - `No sealed window on`
@@ -644,11 +657,13 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `of this set: the`
 - `of values`
 - `of values would`
+- `on how many of the four`
 - `On the held-back window,`
 - `on the table`
 - `one half leads with`
 - `One rule per coin and shape:`
 - `One value far clear of an`
+- `order by`
 - `Order the whole set by`
 - `other coin-and-shape unit`
 - `other units positive;`
@@ -665,6 +680,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `read every pair`
 - `read the grid`
 - `read the other units`
+- `read the ranking`
 - `read the region again`
 - `Recommended:`
 - `records "accepted`
@@ -672,6 +688,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `region size`
 - `remove`
 - `rename`
+- `row(s) shown -`
 - `Rule build settings:`
 - `scrambled copies of the table`
 - `second dial`
@@ -681,6 +698,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `settings`
 - `settings again from the`
 - `settings has the same`
+- `settings read`
 - `settings still carry`
 - `settings survive`
 - `settings that cleared,`
@@ -689,6 +707,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `settings, not`
 - `shape:`
 - `shorting it and going away made`
+- `show`
 - `Split-half:`
 - `Stage 4 record set`
 - `start the rule again`
@@ -707,11 +726,13 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `The sealed window is intact on`
 - `The trades are counted over`
 - `the widest region on`
+- `These numbers come from`
 - `they do not agree`
 - `thin below`
 - `This rule reads`
 - `This section could not read`
 - `This set kept no scrambled copies`
+- `this walk`
 - `this walk is on`
 - `to`
 - `To keep none and nothing else:`
@@ -722,6 +743,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `User Rule:`
 - `Verify`
 - `vs always long $`
+- `walk this one`
 - `was`
 - `weeks, or`
 - `What`
@@ -756,7 +778,7 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - `trailMult`
 - `weekdaysOnly`
 
-## Sentences the page prints (188)
+## Sentences the page prints (214)
 
 - There is no stage 3 record set open. Open the Boards section
 - once - it will settle on one - and come back. The Funnel walks the set Boards has open, so there is no second
@@ -781,6 +803,11 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - Going back is allowed and is recorded on the set - a funnel walked back four times has seen more
 - of the board than one walked forward once, and the final check can only count what was written down.
 - step(s) back so far.
+- The whole walk below is one way of choosing: put the settings in order by what they made and keep
+- the best of them. This asks whether that order survives being moved to a part of the test window it was not
+- chosen on. It reads nothing from the held-back window and nothing from the unread stretch, so it costs nothing
+- that can only be spent once - and it decides nothing. A coin and shape that clears the bar has not been shown
+- to work; it has only failed to be ruled out.
 - every reading on this step is drawn beside the same reading on each of this
 - A value counts when it beats at least
 - would clear that bar.
@@ -864,19 +891,20 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - a year.
 - The window the trades were counted over cannot be worked out
 - , so a trade count here cannot be put on a yearly footing.
-- FIRST. Nothing below can be read or set until it has run: the two
-- limits are read off the survivors themselves, and no survivor carries these numbers until this is pressed. It
-- changes no rule and no record; it prices the survivors again for the numbers a sweep does not keep.
-- Read the two lines under it: what each limit would keep, of the settings that survive.
+- , above the steps. Nothing below can be read or
+- set until that has run for this record set: the two limits are read off the settings themselves, and no
+- setting carries these numbers until it is pressed. It changes no rule and no record.
+- Read the two lines below: what each limit would keep, of the settings that survive.
 - - in dollars, per coin: the deepest the running total ever sat below
 - its own best point. A setting whose worst streak is deeper than this is dropped.
 - - counted over the window named above. A setting that traded fewer times is dropped.
 - . Both limits go into the rule together, and the survivor count at
 - the top moves.
 - The numbers a sweep does not keep - the worst losing streak, the biggest single loss, how
-- many trades won, and how much of the result rests on guessing what happened inside a single bar - are worked out
-- settings that survive and no others. Totals
-- flatter; an average losing streak hides the one that would have ended you.
+- many trades won, and how much of the result rests on guessing what happened inside a single bar - are worked
+- out for every setting in this record set, above the steps, and the two limits here are read off the
+- that survive. Totals flatter; an average losing streak hides
+- the one that would have ended you.
 - The choices you made ARE the rule. This is what gets written - not the rows it happens to
 - pick today - because a rule can be checked against scrambled data and a single row cannot.
 - , on the board this walk exists to stop you shopping. It is
@@ -932,6 +960,26 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - would have to beat besides the scrambled copies is not known here -
 - a setting. Buying the coin and going away made
 - , so there is a simpler thing that did better.
+- could not be read. Every row is drawn; there is no page to turn.
+- Each column ranks the settings on one part of the test window and reads the money on another:
+- puts them in order by what they made in the first part and scores that order on the
+- second.
+- no relation at all, and a number below zero is
+- the order coming out backwards.
+- is how many settings here carry all three parts;
+- is how many do not and were left out.
+- Three things this cannot tell you, so do not read it as though it could.
+- The four are not four separate tests
+- - three of them score on the third part, so a third part that
+- happens to look like the rest of the window lifts all three together.
+- that never touches it.
+- A coin that went one way for the whole window scores well here for no skill at
+- - if everything long made money in both parts, the order survives because the direction did, and this
+- column cannot tell that apart from a rule that works.
+- And a part with no trades in it counts as zero
+- the same as a part that traded and broke even, so a board of rarely-trading settings has a large block of
+- settings tied on nothing; that pulls a reading towards
+- rather than flattering it.
 - pair(s) to read. On this box that is about
 - Nothing here is ranked by money: a block is scored only on how many of those copies it beats.
 - reading them now - this page follows it and shows the list when it is done.
@@ -947,10 +995,10 @@ again. and asset. back been below board cache cached comma-sep current Data data
 - walk over the same records used to write that file fresh.
 - parent's records and keeps the answer on this set. Minutes, and it waits for any sweep that is running.
 
-## Every word, flat (710)
+## Every word, flat (758)
 
 ```
-...then about above above. accept accepted across Across across. add after again again. against agree agreeBar agreeBoth agreeCopy agreePct agreePersist agreeRule all All all. allowed allows alone alongside already also always an An and another another. answer any anything Anything anyway. apart applied are ARE area armMult as asks at At average averaged averages avg avoid away back back. bandMode bar bar. be beat beats beats. because been before being below below. beside besides best best-looking best-scoring better. between bigger biggest blended block block. board board. Boards boards bold Bold both BOTH Both box boxes boxes. brackets build built built. but button button. Buying by came can cannot cannot. carries carry chance changes changes. Changing check check. checked checked. choice choices Choose choosing chose chosen chunk claim clear cleared cleared. clears click coin coin-and-shape coins column columns come compare. compared. comparing comparison considered. copies copy corner could count counted counts covers... crosses cut cut-off. data date days days. decided. decision deeper deepest Delete deleted depth dial dials did differ disagree dMult do do. does dollar dollars done. down down. draw. drawn draws dropped. each edges effect Either else else. empty ended entry evenly ever Every every everything exactly exists failed far far. feeding few fewer fewest figure file final Final find finding finish first FIRST. first. fixed flat flat. flatter floor fluke follows footing. for forecast forward four fresh. from Funnel funnel further. gap gate gets gives go goes. Going going good. graded green Greenlight greyed grid gross Grouping groups guessing half halves happened happens has have heading held held-back Held-back here here. hides hill history History hold holding holds. hours How how however if in in. inside instead intact into is isolated it It it. its itself join judging. jumbled just keep keep. keeping keeps kept kept. kind known knows largest last later lead leads least leaves left less lets like like. limit limits line lines list load long longer longest look. looks losing loss lost LOST low made makes makes. managed many mark marked means measurable measured menu message middle Minutes missing money money. more most movement moves moves. much my name name. named narrow needed needs neighbouring neighbours never new newest next next. no No none not Not Nothing nothing now null number numbers numbers. of off offered often on On on. once once. one One one-setting one. ones only Only onto onward Open open open. opened opens opposite or Or Order order order. ordering other other. others others. otherwise out outlined over own own... page pair pairs papered papers parent part partly Passed pays peak peak. per period pick picker picking point point. position positive positive. Press press pressed. pressing prices put ramp range RANGE ranges ranked rather Re-applying reach reaches read Read read. reading Reading reads real real. really reason Recommended recommended record recorded records records. Recovered rectangle refused refused. region relationship. remove rename renamed repeated replaced replaces replacing rests result rigged. row row. rows rule Rule rule. rules run running running. runs said same sat say says scale score scored scrambled screen screen. scroll sealed second seconds section section. seen set Set set. setting setting. settings settings. settle shape shape. shopping shopping. short shorting shown shows shuffle simpler single single-dial sit size slices small sneak so some something spike split Split-half spread square squares STABLE stage Stage stake. stakes start started starts starts. Step step steps still stop stopped stopping stored streak stretch such survive survive. survives survives. survivor survivors sweep swept swing table tables take takes Taking taking target tells test tests than that That the The their them them. themselves then There there These these they They thin Thin thin. thing third This this those Those tHours tick tighten time times to To today together too. top total Totals touched toward trade trade. traded trades trailMult try Tune turns two two. under unit unit. units unless until up use used User value values varies vary Verify vs waits walk walked walks warning warnings was way weak weaker wearing weekdaysOnly weeks were what What whatever when whenever where whether which whichever while whole whose wide widest will window with With without won words work worked worst would would. write writes written Written wrote year year. yearly yet you you. your Your yours yourself
+...then about above above. accept accepted across Across across. add after again again. against agree agreeBar agreeBoth agreeCopy agreePct agreePersist agreeRule all All all. allowed allows alone alongside already also always an An and And another another. answer any anything Anything anyway. apart applied are ARE area armMult as asks at At average averaged averages avg avoid away back back. backwards. bandMode bar bar. be beat beats beats. because been before being below below. beside besides best best-looking best-scoring better. between bigger biggest blended block block. board board. Boards boards bold Bold both BOTH Both box boxes boxes. brackets broke build built built. but button button. Buying by came can cannot cannot. carries carry chance changes changes. Changing check check. checked checked. choice choices Choose choosing chose chosen chunk claim clear cleared cleared. clears click coin coin-and-shape coins column columns come coming compare. compared. comparing comparison considered. copies copy corner costs could could. count counted counts covers... crosses cut cut-off. data date days days. decided. decides decision deeper deepest Delete deleted depth dial dials did differ direction disagree dMult do do. does Does dollar dollars done. down down. draw. drawn draws dropped. each Each edges effect Either else else. empty ended entry even evenly ever Every every everything exactly exists failed far far. feeding few fewer fewest figure file final Final find finding finish first first. fixed flat flat. flatter flattering floor fluke follows footing. for forecast forward four fresh. from Funnel funnel further. gap gate gets gives go goes. Going going good. graded green Greenlight greyed grid gross Grouping groups guessing half halves happened happens has have heading held held-back Held-back here here. hides hill history History hold holding holds. hours how How however if in in. inside instead intact into is isolated it It it. its itself join judging. jumbled just keep keeping keeps kept kept. kind known knows large largest last later lead leads least leaves left less lets lifts like like. limit limits line lines list load long longer longest look look. looks losing loss lost LOST low made makes makes. managed many mark marked means measurable measured menu message middle Minutes missing money money. more most moved movement moves moves. much must my name name. named narrow needed needs neighbouring neighbours never new newest next next. no No none not Not Nothing nothing nothing. now null number numbers numbers. of off offered often on On on. once once. one One one-setting one. ones only Only onto onward Open open open. opened opens opposite or Or order Order order. ordering other other. others otherwise out out. outlined over own own... page pair pairs papered papers parent part partly parts Passed pays peak peak. per period pick picker picking point point. position positive positive. Press press pressed. pressing prices pulls put puts ramp range RANGE ranges ranked ranking ranks rarely-trading rather Re-applying reach reaches read Read read. reading Reading reads real real. really reason Recommended recommended record record. recorded records records. Recovered rectangle refused refused. region relation relationship. remove rename renamed repeated replaced replaces replacing rest rests result rigged. row row. rows rule Rule rule. ruled rules run running running. runs said same sat say says scale score scored scores scrambled screen screen. scroll sealed second second. seconds section section. seen separate set Set set. setting setting. settings settings. settle shape shape. shopping shopping. short shorting show shown shows shuffle simpler single single-dial sit size skill slices small sneak so some something spent spike split Split-half spread square squares STABLE stage Stage stake. stakes start started starts starts. Step step steps steps. still stop stopped stopping stored streak stretch such survive survive. survives survives. survivor survivors sweep swept swing table tables take takes Taking taking target tell tells test tests than that That the The their them them. themselves then There there These these they They thin Thin thin. thing things third This this those Those though tHours three Three tick tied tighten time times to To today together together. too. top total Totals touched touches toward towards trade trade. traded trades trailMult try Tune turn. turns two two. under unit unit. units unless unread until up use used User value values varies vary Verify vs waits walk walked walks warning warnings was way weak weaker wearing weekdaysOnly weeks well went were what What whatever when whenever where whether which whichever while whole whose wide widest will window with With without won words work worked works. worst would would. write writes written Written wrote year year. yearly yet you you. your Your yours yourself zero
 ```
 
 ---
