@@ -3166,7 +3166,17 @@ module.exports = {
     const page = src('public/construct.js');
     const nb = page.slice(page.indexOf('function fCutNumbers(rec) {'), page.indexOf('function fCutHead(cd, st) {'));
     assert.ok(nb.includes('id="fSetRebuild"'), 'there is no way to put back the numbers a later pass took away');
-    assert.ok(nb.includes('work out the missing numbers'), 'the control does not say what it does');
+    assert.ok(nb.includes('>work out the test history numbers</button>'), 'the control does not say what it does');
+    // AND NOTHING ON THIS SCREEN NAMES THE PRESS BY A NAME IT NO LONGER HAS, or
+    // sends the owner to a step it no longer sits on (3.103.2). Both were true
+    // of this panel after the walk's press moved and was renamed.
+    assert.ok(!/work out the missing numbers/.test(nb), 'the panel still calls them the missing numbers');
+    assert.ok(!/at step 6|on step 6/.test(nb), 'the panel still sends the owner to step 6 for a press that is not there');
+    const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+    const entry = help.slice(help.indexOf('fSetRebuild: {'), help.indexOf('fRegionAtLeast: {'));
+    assert.ok(!/step 6/.test(entry), 'the help for this press still names step 6');
+    assert.ok(!/work out the missing numbers/.test(entry), 'the help for this press still uses the old name');
+    assert.ok(/work out the test history numbers/.test(entry), 'the help does not name the press a walk uses, so the two read as unrelated');
     assert.ok(nb.includes("This set kept its own copy, so the rows below and their columns are complete."),
       'a set that kept its own copy is not told so, and reads as broken');
     assert.ok(nb.includes('This set has no copy of its own, so the columns below are empty and the rule cannot be re-applied.'),

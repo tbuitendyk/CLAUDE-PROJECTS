@@ -720,6 +720,11 @@ const GUARDS = [
     "const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));",
     'theBarIsTheOwnersAndReAppliesWithoutReReading',
     'a bar nobody set reads as a bar of zero, so every coin and shape whose order is not inverted passes a bar that was never asked for'],
+  // ---- ONE JOB, ONE NAME, ON BOTH SCREENS (3.103.2) ----
+  [path.join(ROOT, 'public', 'construct.js'), '<button id="fSetRebuild">work out the test history numbers</button>',
+    '<button id="fSetRebuild">work out the missing numbers</button>',
+    'aSetSaysWhichNumbersItsRuleReadsAreGoneAndOffersToWorkThemOut',
+    'the Stage 4 set goes back to a name no other screen uses, for the same job the walk names differently'],
   // ---- ENSURE ANSWERS WHETHER, readTally ANSWERS WITH WHAT (3.103.1) ----
   [path.join(ROOT, 'lib', 'stages.js'), "    const t = readTally(String(id));\n    if (!t) throw new Error('the tables of this record set cannot be read, so there is nothing to work out');",
     "    const t = state;",

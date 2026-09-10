@@ -6160,14 +6160,16 @@ function fCutNumbers(rec) {
   const haveAll = mine.every((n) => n >= Number(rec.had || 0));
   return `<p class="note neg">This rule reads ${names}, and ${lost.map((f) => Number((rec.onParent || {})[f] || 0).toLocaleString()).join(' and ')}
       of its ${Number(rec.had || 0).toLocaleString()} settings still carry ${lost.length > 1 ? 'them' : 'it'} on the parent's board. Those numbers are not
-      stored by a sweep - they are worked out on the press at step 6 and kept beside the parent record set, and a later
-      walk over the same records used to write that file fresh. ${haveAll
+      stored by a sweep. They are worked out by <b>work out the test history numbers</b>, at the top of a Funnel walk,
+      and kept beside the parent record set - so a set cut before that was pressed over the whole of its parent can
+      find them gone from the parent's board. ${haveAll
     ? 'This set kept its own copy, so the rows below and their columns are complete.'
     : 'This set has no copy of its own, so the columns below are empty and the rule cannot be re-applied.'}</p>
     <div class="row" style="align-items:flex-end;margin-top:.4rem">
-      <button id="fSetRebuild">work out the missing numbers</button>
+      <button id="fSetRebuild">work out the test history numbers</button>
       <span id="fSetRebuildMsg" class="note">prices this set's own ${Number(rec.had || 0).toLocaleString()} settings again from the
-        parent's records and keeps the answer on this set. Minutes, and it waits for any sweep that is running.</span></div>`;
+        parent's records and keeps the answer <b>on this set</b>, where the press at the top of a walk keeps it beside
+        the parent. Minutes, and it waits for any sweep that is running.</span></div>`;
 }
 function fCutHead(cd, st) {
   const s = cd.set;
@@ -6278,7 +6280,7 @@ function fCutTable(cd, st) {
     ${gaps ? `<p class="note muted">The numbers a sweep does not keep - worst losing streak, biggest single loss, best
       single trade, trades won, stopped out, gross per trade - are not on this set. Either it was cut without pressing
       <b>work out the test history numbers</b> at the top of a Funnel walk, or it was cut before a set kept its own copy of them.
-      <b>work out the missing numbers</b> on the heading above prices this set's own settings again and keeps the
+      The same press on the heading above prices this set's own settings again and keeps the
       answer here, for good.</p>` : ''}
     <p class="note"><b>Order the whole set by</b> setting${fcSort('label', cd)}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))}${fcSort(k, cd)}`).join('')}${has('members') ? ` &middot; members${fcSort('members', cd)}` : ''}${has('avgRung') ? ` &middot; rung${fcSort('avgRung', cd)}` : ''}${has('avgVoices') ? ` &middot; voices${fcSort('avgVoices', cd)}` : ''}
       - or press any heading in the table below.</p>
