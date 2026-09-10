@@ -13,6 +13,7 @@ const fs = require('fs');
 const path = require('path');
 const { assert } = require('./helpers');
 const RH = require('../lib/rankhold');
+const stages = require('../lib/stages');
 
 const ROOT = path.join(__dirname, '..');
 const src = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
@@ -21,6 +22,72 @@ const rows = (n, f) => Array.from({ length: n }, (_, i) => ({ pnlThirds: f(i) })
 const holds = (r) => r.readings.map((x) => x.hold);
 
 module.exports = {
+  // THE PRESS IS PRESSED, NOT SCANNED (3.103.1, owner report on the deployed
+  // 3.103.0: "FAILED -- this record set has no settings on its board, so there
+  // is nothing to work out"). It had read `ensureTally` into the variable it
+  // handed the board -- and on a healthy set ensureTally answers `{ ready:
+  // true }`, which carries no settings, so EVERY press on EVERY set refused.
+  //
+  // Nothing caught it because the test that guards this press reads the source
+  // for `funnelBoard(String(id), t, 'all')` and finds it. That is word for word
+  // the fault written into that test's own comment at 3.57.1 -- "two
+  // source-scanning tests covered this step and neither pressed it" -- so this
+  // one presses it, on a real set on disk, and reads what comes back.
+  async theWorkOutPressIsHandedTheTallyAndNotAnAnswerAboutIt() {
+    const rowstore = require('../lib/rowstore');
+    const SETS_DIR = path.join(ROOT, 'data', 'stagesets');
+    const id = `s3-test-${Date.now().toString(36)}-${Math.floor(Math.random() * 1e6).toString(36)}-wh`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const doc = {
+      id, stage: 3, seq: 999971, name: 'S3 #wh', status: 'done', createdAt: new Date().toISOString(),
+      plan: { units: 1, settings: 4 }, params: { nullN: 9 },
+      recordsVersion: stages.RECORDS_V,
+    };
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify(doc));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, tHours) => ({
+        si, label: `q2/6 x t${tHours}h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false,
+        bandPct: 2, entry: 'breakout', gate: 'directional', dMult: 1.5, tHours, trailMult: null, armMult: null,
+        quorum: 2, members: 6, pnl: 10 + si, trades: 3,
+        holdout: { pnl: si, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat: 3, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      });
+      for (let si = 0; si < 4; si++) w.push(mk(si, 17 + si * 24));
+      w.close();
+      await stages.buildTally(doc);
+
+      // ENSURE ANSWERS WHETHER, AND ITS ANSWER CARRIES NO SETTINGS. This is the
+      // object the press was handing to the board.
+      assert.deepStrictEqual(stages.ensureTally(id), { ready: true },
+        'the readiness answer has changed shape; the press reads it, and this is what must never reach a board');
+      const t = stages.readTally(id);
+      assert.strictEqual((t.ranked || []).length, 4, 'the fixture has no settings, so pressing it would prove nothing');
+
+      // AND NOW PRESS IT FOR REAL.
+      const started = stages.funnelRichStart(id);
+      assert.ok(started && !started.error, `the press refused before it began: ${started && started.error}`);
+      for (let i = 0; i < 400 && stages.funnelRichStatus(id).running; i++) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((r) => setTimeout(r, 25));
+      }
+      const done = stages.funnelRichStatus(id);
+      assert.ok(!done.running, 'the press never finished');
+      // It may still fail further in -- a fixture has no price files to price
+      // from -- but it must never fail because the board it was handed was
+      // empty, which is what happens when it is given the readiness answer.
+      assert.ok(!/no settings on its board/.test(String(done.error || '')),
+        `the press was handed something that is not the tally: ${done.error}`);
+      assert.ok(!/tables of this record set cannot be read/.test(String(done.error || '')),
+        `the press could not read the tally it asked for: ${done.error}`);
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
   // THE SAME ORDER ON BOTH PARTS IS 1, REVERSED IS -1, AND EVERY SETTING ON THE
   // SAME MONEY IS UNKNOWN. The third is the one that matters: no order to hold
   // is the ABSENCE of information, and returning agreement there would read as

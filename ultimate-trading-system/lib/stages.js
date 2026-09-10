@@ -5963,10 +5963,18 @@ function funnelRichStart(id, state = {}) {
     // saveFunnelRich MERGES, so on a set earlier walks have touched this tops
     // up what is missing rather than re-pricing what is there. That is why no
     // migration and no repair is needed for the sets already on the box.
-    const t = ensureTally(String(id));
-    if (t.totalling || t.waiting || t.failed) {
-      return { totalling: t.totalling || null, waiting: t.waiting || null, failed: t.failed || null };
+    // ENSURE ANSWERS WHETHER, readTally ANSWERS WITH WHAT (fixed 3.103.1, owner
+    // report: "FAILED -- this record set has no settings on its board"). This
+    // read `ensureTally` into `t` and handed that to the board -- and on a set
+    // whose tables are fine ensureTally answers `{ ready: true }`, which has no
+    // `ranked` on it, so every press on every set came back with an empty board
+    // and the refusal below. Two calls, because they answer two questions.
+    const state = ensureTally(String(id));
+    if (state.totalling || state.waiting || state.failed) {
+      return { totalling: state.totalling || null, waiting: state.waiting || null, failed: state.failed || null };
     }
+    const t = readTally(String(id));
+    if (!t) throw new Error('the tables of this record set cannot be read, so there is nothing to work out');
     const board = await funnelBoard(String(id), t, 'all');
     const labels = (board.all || []).map((r) => String(r.label));
     if (!labels.length) throw new Error('this record set has no settings on its board, so there is nothing to work out');

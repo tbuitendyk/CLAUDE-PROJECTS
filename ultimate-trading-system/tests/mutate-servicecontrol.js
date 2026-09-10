@@ -720,6 +720,11 @@ const GUARDS = [
     "const num = (v) => (v == null || !Number.isFinite(Number(v)) ? null : Number(v));",
     'theBarIsTheOwnersAndReAppliesWithoutReReading',
     'a bar nobody set reads as a bar of zero, so every coin and shape whose order is not inverted passes a bar that was never asked for'],
+  // ---- ENSURE ANSWERS WHETHER, readTally ANSWERS WITH WHAT (3.103.1) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "    const t = readTally(String(id));\n    if (!t) throw new Error('the tables of this record set cannot be read, so there is nothing to work out');",
+    "    const t = state;",
+    'theWorkOutPressIsHandedTheTallyAndNotAnAnswerAboutIt',
+    'the press is handed the answer to "is it ready" instead of the tally, so every press on every set refuses with an empty board'],
   // ---- THE HISTORY FLOOR IS NOT THE SETTINGS FLOOR (3.102.0) ----
   [path.join(ROOT, 'lib', 'rankhold.js'), "  if (chunks > 0 && hold.chunksAPart < chunks) {", "  if (false) {",
     'theHistoryFloorIsSeparateFromTheSettingsFloor',
