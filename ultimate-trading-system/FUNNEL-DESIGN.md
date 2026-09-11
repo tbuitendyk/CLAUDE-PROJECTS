@@ -1723,56 +1723,35 @@ control.
 
 **One thing closes it**: `Go to Funnel home`.
 
-### 21.3 What each press does now
+### 21.3 What each press does now — and why there is only one
+
+**`Go to Funnel home` is gone** (owner order, 2026-09-11):
+
+> "So there's no reason to have a button called go to funnel home anywhere.
+> because you're not putting it where you're supposed to put it ... you
+> changed it to a put away button, which essentially does what that one was
+> supposed to do, and you broke the one that we wanted. So now just get rid of
+> the button Go to funnel home."
+
+The owner is right on the substance. What they asked for was a press that
+takes the header section off the screen's conscience and gets them out of a
+walk. What they got was `Put away`, which does that, plus a second press
+beside it whose live/ghosted rule I rewrote three times in a day and never
+landed. Two presses for one job, one of them never right.
+
+So there is one press:
 
 | Press | What it does |
 |---|---|
-| `Put away` | hides what is under the unit selector and KEEPS it. `Open` brings it back exactly as it was. |
-| `Go to Funnel home` | DROPS the walk under the unit selector: its step, the rule, every recorded step and its marks, cleared and not recoverable. The screen lands at Home. |
+| `Put away` | hides what is under the unit selector and KEEPS it. The header section comes back. `Open` returns to what was hidden, exactly as it was. |
 
-`Put away` is ghosted at Home.
+It is ghosted at Home, because there is nothing under the unit selector for it
+to act on.
 
-**`Go to Funnel home` is ghosted whenever the header section is displayed**
-(owner order, 2026-09-11, said twice):
-
-> "TOP SECTION WORTH WALKING? IS DISPLAYED AND YOU HAVE THE BUTTON 'GO TO
-> FUNNEL HOME' SELECTABLE -- THAT'S WHAT THE BUTTON IS SUPPOSED TO DO."
-
-That is the whole test and it needs no other. The press exists to put the
-header section back; with it already there the press has nothing to do,
-whatever is underneath. It covers Home. It covers a Stage 4 record set showing
-— "the rule has been completely executed and it should remain associated with
-that record set ... THEY'VE BEEN CUT TO A RECORD SET". It covers a walk nothing
-has been done to yet. And 3.108.0 got all three wrong by inventing its own
-test instead of using the owner's.
-
-**The press always asks**, and it can afford to state the step as a fact
-because of the rule above: the header section is hidden only once a walk
-control has been used, so the one state the press is live in is a walk with
-work in it. The question names the coin and shape and the step it is on, says
-it cannot be brought back, and says that Stage 4 record sets already cut are
-not touched.
-
-**A Stage 4 record set is closed by the box it was opened from**, never by
-this press. It is finished work and stays associated with what it holds.
-
-**`new rule` and the press no longer share a path.** They shared one while they
-meant the same thing; they mean different things now, and one path cannot do
-both. The press drops a walk; `new rule` makes one.
-
-**And `new rule` MAKES A NEW RULE, always** (owner order, 2026-09-11: "so when
-`new rule` is selected the system must make a new rule. it's not rocket
-science"). It used to start one again only when the walk in hand had already
-been cut to a Stage 4 record set; any other saved walk came back at whatever
-step it had reached, so the box could say new and give you something built
-days ago. It is step 1 with an empty rule now, every time.
-
-It asks first when that costs something. The box already reads `new rule`
-while a walk is open, and a drop-down fires nothing when its value does not
-change, so this is only ever reached from a Stage 4 record set showing — the
-walk it would clear is one left part-built behind an open set. A walk already
-cut is finished and a walk nothing was done to costs nothing, so neither asks.
-Saying no puts the box back on the set it was showing.
+**Nothing drops a walk any more.** A walk is one rule per coin and shape and it
+is kept (§17); `new rule` in the `Stage 4 record set` box is what makes a fresh
+one, and it asks first if that clears a part-built walk (§21.2). Home stays the
+state the Funnel lands in on a set with nothing opened yet.
 
 ### 21.4 What Home says, and what it costs
 

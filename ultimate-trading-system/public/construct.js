@@ -6411,30 +6411,20 @@ function fTitle(d, st, name, away, open) {
   // what the system can do, the interface exposes).
   const chosen = st.cut && st.cut !== F_NEW ? st.cut : null;
   const gap = 'style="margin-left:auto"';
-  // BOTH PRESSES ARE DEAD AT HOME (3.108.0, owner order 2026-09-11: "that
-  // button is active on the unit selector section when the Worth walking? is
-  // already displayed, when the point of making that button was to display
-  // the Worth walking? section"). Neither has anything to act on with nothing
-  // under this row, and a control that looks live and is not is the fault
-  // `Delete Stage 4 record set…` beside them already avoids.
+  // PUT AWAY IS DEAD AT HOME. It has nothing to act on with nothing under this
+  // row, and a control that looks live and is not is the fault
+  // `Delete Stage 4 record set…` beside it already avoids.
+  //
+  // `Go to Funnel home` WAS HERE AND IS GONE (3.109.0, owner order
+  // 2026-09-11): "So there's no reason to have a button called go to funnel
+  // home anywhere ... you changed it to a put away button, which essentially
+  // does what that one was supposed to do, and you broke the one that we
+  // wanted. So now just get rid of the button Go to funnel home."
+  //
+  // Put away is the control: it brings this row's section and the one above it
+  // back, keeps the walk underneath, and `Open` returns to it. Home is still
+  // where the Funnel lands on a set with nothing opened yet.
   const dead = open ? '' : ' disabled';
-  // GO TO FUNNEL HOME IS GHOSTED WHENEVER `Worth walking?` IS ON THE SCREEN
-  // (3.108.2, owner order 2026-09-11, said twice):
-  //
-  //   "TOP SECTION WORTH WALKING? IS DISPLAYED AND YOU HAVE THE BUTTON 'GO TO
-  //   FUNNEL HOME' SELECTABLE -- THAT'S WHAT THE BUTTON IS SUPPOSED TO DO."
-  //
-  // That is the whole test and it needs no other. The press exists to put
-  // that section back; if it is already there the press has nothing to do,
-  // whatever is underneath. It covers Home, it covers a Stage 4 record set
-  // showing -- "the rule has been completely executed and it should remain
-  // associated with that record set ... THEY'VE BEEN CUT TO A RECORD SET" --
-  // and it covers a walk nothing has been done to yet.
-  //
-  // And because the section is hidden ONLY once a walk control has been used,
-  // the one state the press is live in is a walk with work in it. That is why
-  // the question it asks can state the step as a fact.
-  const noDrop = fHoldShown(st, away, open) ? ' disabled' : '';
   return `<div class="row" style="align-items:flex-end">
       ${fUnitPicker(d)}
       ${fCutPickBox(d, st)}
@@ -6443,8 +6433,6 @@ function fTitle(d, st, name, away, open) {
       ${away == null ? '' : putAwayBtn('ffold', 1, !away, chosen
     ? 'the Stage 4 record set open below this row'
     : 'the steps below this row, and the rule so far', `${gap}${dead}`)}
-      <button id="fCutHome"${noDrop} ${away == null ? gap : ''}
-        title="drops the walk under this row and goes back to Home: this section and the one above it, with nothing under them. Its step, the rule you have built and everything the walk recorded are cleared and cannot be brought back, and you are asked first. It is live only when there is an unfinished walk to drop — a Stage 4 record set is finished work and is left alone, and so is a walk whose rule has already been cut to one. Use Put away instead to keep a walk and read the section above it.">Go to Funnel home</button>
     </div>
     <p class="note" style="margin:.35rem 0 0">${(d.cuts || []).filter((c) => c.mine).length} Stage 4 record set(s) have been cut from this coin and shape,
       and the box offers all ${(d.cuts || []).length} cut from this stage 3 record set - one from another coin and shape says which.
@@ -6783,34 +6771,6 @@ function fOpenNewRule(st, d) {
   fSave(); drawFunnel();
 }
 
-// `Go to Funnel home` DROPS THE WALK (3.108.0, owner order 2026-09-11: "the
-// whole point of the button is to drop a rule before finished and revert the
-// screen to the Worth walking? section included").
-//
-// It used to reset the walk only when a Stage 4 record set already carried
-// that exact rule sentence, so an UNFINISHED walk survived it whole -- step 7
-// still drawn, the rule still on it, under a bold name reading `new rule`.
-// That is what the owner called the limbo state, and it is the one thing this
-// press exists to end. It drops the walk every time now, and asks first when
-// there is anything in it to lose.
-function fGoFunnelHome(st, d) {
-  // ASKED EVERY TIME, because the press is drawn live in exactly one state:
-  // a walk whose controls have been used, which is the only state that hides
-  // `Worth walking?`. The ghosting is the guard, so the question can state
-  // the step as a fact instead of guessing at one.
-  const who = (d && (d.unitName || d.unit)) || 'this coin and shape';
-  if (!confirm(`Drop this walk?\n\n${who} is on step ${st.step || 1}. The rule you have built, every step the walk `
-    + 'recorded and its marks are cleared, and they cannot be brought back.\n\n'
-    + 'Stage 4 record sets already cut are not touched. To keep the walk and read the section above it, '
-    + 'press Put away instead.')) return;
-  fCloseCut(st);
-  fFreshWalk(st);
-  // AND PUT AWAY IS CLEARED WITH IT. Home is a clean slate: a remembered put
-  // away that reappeared the next time something opened would be exactly the
-  // hidden state this press exists to clear.
-  fRememberForSet(st.set, { open: false, away: false });
-  fSave(); drawFunnel();
-}
 function fWireCutPick(st, d) {
   const cs = $('#fCutPick');
   if (cs) {
@@ -6822,8 +6782,6 @@ function fWireCutPick(st, d) {
   // WIRED HERE, with the box it shares a path with -- and like the delete
   // press, before any early return: a set that will NOT open is exactly the one
   // you most want to leave, and its panel never renders.
-  const home = $('#fCutHome');
-  if (home) home.onclick = () => fGoFunnelHome(st, d);
   // PUT AWAY IS WIRED HERE TOO, for the same reason: it is on this row, this
   // row is drawn on both views of the screen, and one handler for one control
   // is what keeps the two views agreeing about what it does.

@@ -2670,97 +2670,30 @@ module.exports = {
     assert.equal((page.match(/id="fCutPick"/g) || []).length, 1, 'the Stage 4 record set box is drawn in more than one place');
   },
 
-  // THE WAY OUT OF A SET THE STEPS JUST WROTE (3.104.0, owner order
-  // 2026-09-10). After step 7 writes a Stage 4 record set you are looking at
-  // that set, and the only way back to the steps was a value inside a
-  // drop-down. The press sits in the corner of the same heading box, on the
-  // delete press's baseline, and it goes through the SAME path the drop-down
-  // does -- two controls meaning one thing by two routes is how one of them
-  // quietly stops resetting the walk.
-  theSetJustWrittenHasAPressBackToTheSteps() {
+  // THE PRESS THAT PUTS THE OPEN SECTION AWAY SITS HARD RIGHT (RULE FOUR).
+  // `Go to Funnel home` used to sit beyond it; it is gone (3.109.0, owner
+  // order 2026-09-11) and Put away is the last thing in the row now.
+  thePutAwayPressSitsHardRightInTheSelectorHeader() {
     const page = src('public/construct.js');
-    const title = page.slice(page.indexOf('function fTitle('), page.indexOf('const F_NEW_NAME'));
-    assert.ok(title.includes('>Go to Funnel home</button>'), 'there is no press back to the steps');
-    // HARD RIGHT, AND STILL HARD RIGHT WITH THE PUT AWAY PRESS BESIDE IT
-    // (3.107.0). The gap that pushes the right-hand group over sits on
-    // whichever of the two comes first and is actually drawn, so there is one
-    // gap in the row however many presses are in that group -- two auto
-    // margins would put one press mid-row.
-    assert.ok(title.includes("const gap = 'style=\"margin-left:auto\"';"), 'the gap that pushes the right-hand group over is gone');
-    assert.ok(/\$\{away == null \? '' : putAwayBtn\('ffold', 1, !away,/.test(title), 'the put away press is not in the selector header');
-    assert.ok(/putAwayBtn\([^)]*`\$\{gap\}\$\{dead\}`\)/s.test(title), 'the put away press does not carry the gap, so it sits mid-row');
-    assert.ok(/<button id="fCutHome"\$\{noDrop\} \$\{away == null \? gap : ''\}/.test(title),
-      'the press does not sit hard right in the heading box when it is the only one of the two drawn');
-    // it shares the delete press's row, so it shares its baseline (RULE FOUR)
+    const title = page.slice(page.indexOf('function fTitle(d, st, name, away, open)'), page.indexOf('const F_NEW_NAME'));
+    assert.ok(title.includes("const gap = 'style=\"margin-left:auto\"';"), 'the gap that pushes the press over is gone');
+    assert.ok(/putAwayBtn\([^)]*`\$\{gap\}\$\{dead\}`\)/s.test(title), 'the press does not carry the gap, so it sits against the delete press');
     const row = title.slice(title.indexOf('<div class="row" style="align-items:flex-end">'), title.indexOf('</div>'));
-    assert.ok(row.includes('id="fCutDelete"') && row.includes('id="fCutHome"'),
+    assert.ok(row.includes('id="fCutDelete"') && row.includes('putAwayBtn'),
       'the two presses are in different rows, so they cannot line up');
-    assert.ok(row.indexOf('id="fCutHome"') > row.indexOf('id="fCutDelete"'),
-      'the press is not last in the row, so margin-left:auto pushes what follows it past the right edge');
+    assert.ok(row.indexOf('putAwayBtn') > row.indexOf('id="fCutDelete"'), 'the press is not last in the row');
     // AND NOTHING ELSE IS IN THE ROW WITH THEM (3.104.1, owner report: it did
-    // not line up). `.row` wraps, and a long note between the two presses is
-    // enough to push this one onto a second line -- where margin-left:auto
-    // still works and the baseline it was put on is somebody else's. The note
-    // sits under the row now, so the row cannot wrap between them.
-    assert.ok(!/<span class="note">/.test(row), 'the row carries a note again, and a wrapped row puts the two presses on different lines');
-    assert.ok(row.trim().endsWith('>Go to Funnel home</button>'), 'the press is not the last thing in the row');
+    // not line up). `.row` wraps, and a long note between two presses is
+    // enough to push one onto a second line. The note sits under the row.
+    assert.ok(!/<span class="note">/.test(row), 'the row carries a note again, and a wrapped row puts the presses on different lines');
     const after = title.slice(title.indexOf('</div>'));
     assert.ok(/<p class="note" style="margin:\.35rem 0 0">\$\{\(d\.cuts \|\| \[\]\)\.filter\(\(c\) => c\.mine\)\.length\} Stage 4 record set\(s\)/.test(after),
       'the count of Stage 4 record sets went with the row instead of moving under it');
-    // ALWAYS DRAWN, not only on a Stage 4 set (3.107.0, owner order 2026-09-10:
-    // "needs to always be available on the unit selector header ... that way the
-    // current job can be closed / abandoned with that button"). A walk part way
-    // through the steps is the case that most needs a way out, and that is the
-    // case the condition used to leave without one.
-    assert.ok(!/\$\{chosen \? `<button id="fCutHome"/.test(title),
-      'the press is drawn only when a Stage 4 set is open, so a walk part way through has no way out');
-    assert.ok(/^\s*<button id="fCutHome"\$\{noDrop\} /m.test(title),
-      'the press is not drawn unconditionally in the selector header');
-
-    // ONE PATH. Both the box and the press call it, and it is the one that
-    // starts a walk again at step 1 when that walk already wrote this set.
-    // TWO CONTROLS, TWO MEANINGS, TWO PATHS (3.108.0). They shared one path
-    // while they meant the same thing. `new rule` opens a walk; the press
-    // DROPS one and goes Home, and one path cannot do both.
-    const open4 = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fGoFunnelHome(st, d) {'));
-    assert.ok(open4.includes('fCloseCut(st);') && open4.includes('fMarkOpen(st.set, true);'),
-      'choosing new rule does not open a walk');
-    // ALWAYS A NEW RULE (3.108.3, owner order 2026-09-11: "so when 'new rule'
-    // is selected the system must make a new rule. it's not rocket science").
-    // It reset only a walk that had already been cut, so any other saved walk
-    // came back at whatever step it had reached.
-    assert.ok(/\n  fCloseCut\(st\);\n  fFreshWalk\(st\);\n/.test(open4),
-      'choosing new rule gives back an old walk at the step it stopped on');
-    assert.ok(!/if \(fWalkWasAlreadyCut\(d\)\) fFreshWalk\(st\);/.test(open4),
-      'the fresh start is still conditional, so new rule sometimes gives you the old one');
-    // ...and it asks before clearing a walk that has work in it, naming the step
-    assert.ok(open4.includes('if (fWalkHasWork(st) && !fWalkWasAlreadyCut(d)) {')
-      && open4.includes('if (!confirm(`Start a new rule?') && /has a walk part way through, on step/.test(open4),
-    'a part-built walk is cleared with no warning, or the warning does not say which step it was on');
-    assert.ok(/drawFunnel\(\);                                       \/\/ the box snapped to new rule; put it back/.test(open4),
-      'saying no leaves the box reading new rule over a Stage 4 record set it did not open');
-    const home = page.slice(page.indexOf('function fGoFunnelHome(st, d) {'), page.indexOf('function fWireCutPick(st, d) {'));
-    assert.ok(home.includes('fCloseCut(st);') && home.includes('fFreshWalk(st);'),
-      'the press does not drop the walk, so a part-built rule survives a press named for going home');
-    assert.ok(/fRememberForSet\(st\.set, \{ open: false, away: false \}\)/.test(home),
-      'the press does not land the screen at Home, or leaves put away remembered behind it');
-    assert.ok(home.includes('if (!confirm('),
-      'the press drops a walk without asking, and there is no way to bring one back');
-    // GHOSTED WHENEVER `Worth walking?` IS ON THE SCREEN (3.108.2, owner
-    // order said twice). One test and no other: the press exists to put that
-    // section back, so with it already there the press has nothing to do —
-    // at Home, over a Stage 4 record set that was cut and finished, or over
-    // a walk nothing has been done to yet.
-    assert.ok(page.includes("  const noDrop = fHoldShown(st, away, open) ? ' disabled' : '';"),
-      'the press is live with Worth walking? already displayed, which is the one thing it is for');
-    const wire = page.slice(page.indexOf('function fWireCutPick(st, d) {'), page.indexOf('const fWalkWasAlreadyCut'));
-    assert.ok(wire.includes('if (cs.value === F_NEW) { fOpenNewRule(st, d); return; }'), 'the box takes its own route to opening a walk');
-    assert.ok(wire.includes("const home = $('#fCutHome');") && wire.includes('home.onclick = () => fGoFunnelHome(st, d);'),
-      'the press takes its own route home, or is not wired at all');
-    // wired with the pickers, before the early return: a set that will not OPEN
-    // is exactly the one you most want to leave, and its panel never renders
-    assert.ok(page.indexOf('fWireCutPick(st, d);') < page.indexOf("const dl = $('#fCutDelete');"),
-      'the press is wired after a return that a set which will not open takes');
+    // AND THE PRESS THE OWNER HAD REMOVED IS NOT BACK (3.109.0)
+    assert.ok(!/>Go to Funnel home</.test(page), 'Go to Funnel home is on the screen again');
+    assert.ok(!/fCutHome|fGoFunnelHome/.test(page), 'the press is gone from the screen and its code is still here');
+    const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+    assert.ok(!/fCutHome|Go to Funnel home/.test(help), 'the Help tab still describes a press that is not on any screen');
   },
 
   // ---- PUT AWAY, THE CONTROL BOARDS ALREADY HAS (3.107.0, owner order
@@ -2891,30 +2824,12 @@ module.exports = {
     const hold = page.slice(page.indexOf('function fWireHold(st, d) {'), page.indexOf('function fWatchWalkStart'));
     assert.ok(hold.includes('b.onclick = () => fOpenBoard(st.set, b.dataset.fhold);'),
       'Walk this one takes its own route onto a board, so it can land on a Stage 4 record set while the boxes do not');
-    const opener = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fGoFunnelHome(st, d) {'));
+    const opener = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fFreshWalk(st) {'));
     assert.ok(opener.includes('fMarkOpen(st.set, true);'), 'choosing new rule leaves the screen at Home');
 
-    // ...AND THE ONE THAT CLOSES IT. It drops the walk EVERY time, which is
-    // the whole point of the press; before this it dropped one only when a
-    // Stage 4 set already carried that exact rule sentence.
-    const home = page.slice(page.indexOf('function fGoFunnelHome(st, d) {'), page.indexOf('function fWireCutPick(st, d) {'));
-    assert.ok(home.includes('fFreshWalk(st);') && !/fWalkWasAlreadyCut/.test(home),
-      'the press drops a walk only in some cases, so an unfinished one survives it');
-    assert.ok(/fRememberForSet\(st\.set, \{ open: false, away: false \}\)/.test(home),
-      'the press does not land at Home, or leaves put away remembered behind it');
-    // ASKED EVERY TIME (3.108.2): the press is live only when there is a walk
-    // to drop, so the guard is the ghosting and the question is always true.
-    assert.ok(home.includes('if (!confirm(') && !/if \(fWalkHasWork\(st\)\) \{/.test(home),
-      'a walk is dropped with no warning, or the warning is guessed at instead of guaranteed');
-    assert.ok(/is on step \$\{st\.step \|\| 1\}/.test(home) && /cannot be brought back/.test(home),
-      'the warning does not say which walk is going, or does not say it cannot be undone');
-    assert.ok(/Stage 4 record sets already cut are not touched/.test(home),
-      'the warning does not say what it leaves alone, so it reads as deleting the sets too');
-
-    // BOTH PRESSES ARE DEAD AT HOME
+    // PUT AWAY IS DEAD AT HOME
     const title = page.slice(page.indexOf('function fTitle(d, st, name, away, open)'), page.indexOf('const F_NEW_NAME'));
-    assert.ok(title.includes("const dead = open ? '' : ' disabled';"), 'nothing ghosts the presses at Home');
-    assert.ok(/<button id="fCutHome"\$\{noDrop\}/.test(title), 'Go to Funnel home is live with no walk to drop');
+    assert.ok(title.includes("const dead = open ? '' : ' disabled';"), 'nothing ghosts the press at Home');
     assert.ok(/putAwayBtn\([^)]*\$\{dead\}`\)/s.test(title), 'Put away is live at Home with nothing to put away');
 
     // AND HOME PAYS FOR NO STEP READING, because it draws no step
@@ -3044,9 +2959,19 @@ module.exports = {
       'choosing new rule takes its own route rather than the path that opens a walk');
     // 3.108.3: unconditional. It reset only a walk already cut, which is why
     // any OTHER saved walk came back at the step it had reached.
-    const home = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fGoFunnelHome('));
+    const home = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fFreshWalk(st) {'));
     assert.ok(/\n  fCloseCut\(st\);\n  fFreshWalk\(st\);\n/.test(home),
       'choosing new rule drops back into a walk at whatever step it stopped on');
+    assert.ok(!/if \(fWalkWasAlreadyCut\(d\)\) fFreshWalk\(st\);/.test(home),
+      'the fresh start is still conditional, so new rule sometimes gives you the old one');
+    // ...AND IT ASKS BEFORE CLEARING A PART-BUILT WALK, naming the step. This
+    // is the only thing left that can throw a walk away, since the press that
+    // used to went out in 3.109.0.
+    assert.ok(home.includes('if (fWalkHasWork(st) && !fWalkWasAlreadyCut(d)) {')
+      && home.includes('if (!confirm(`Start a new rule?') && /has a walk part way through, on step/.test(home),
+    'a part-built walk is cleared with no warning, or the warning does not say which step it was on');
+    assert.ok(/drawFunnel\(\);                                       \/\/ the box snapped to new rule; put it back/.test(home),
+      'saying no leaves the box reading new rule over a Stage 4 record set it did not open');
     // AND ONLY AGAINST THIS BOARD'S SETS (3.105.0). The box offers every Stage
     // 4 set of the stage 3 record set now, and the same rule written on another
     // coin has the same sentence -- so without `mine` a walk in hand would be
