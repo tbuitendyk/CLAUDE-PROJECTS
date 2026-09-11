@@ -5247,10 +5247,15 @@ const fMoneySpan = (c) => (!c ? '-' : (Math.abs(c.hi - c.lo) < 0.005
 // AND IT IS TEST MONEY. The held-back reading is gone from this screen: this is
 // where the choosing happens, and a held-back figure read while choosing is a
 // look spent before the rule exists (SELECTION-DESIGN.md Part 3).
-function fAgainst(a, what) {
+// A REFUSAL THAT NAMES A PRESS CARRIES IT (3.110.0, FUNNEL-DESIGN §21.5). The
+// `why` handed in here says "press work out the test history numbers" -- and on
+// a re-opened Stage 4 record set that press is not always on the screen, which
+// is the same fault step 6 had in 3.108.5. The caller that has a press to offer
+// hands it in; the walk draws its own above this section.
+function fAgainst(a, what, press) {
   if (!a || !a.known) {
     return `<p class="note muted">What ${esc(what)} would have to beat besides the scrambled copies is not known here -
-      ${esc(String((a && a.why) || 'nothing was worked out'))}.</p>`;
+      ${esc(String((a && a.why) || 'nothing was worked out'))}.</p>${press || ''}`;
   }
   const cents = (v) => Math.round(Number(v) * 100);
   const rows = CMP_ORDER.map((k) => {
@@ -6361,7 +6366,7 @@ async function fDrawCut(d, st, cutId) {
   const away = fAway(st.set);
   $('#view').innerHTML = `${fHoldShown(st, away, true) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : ''}
     <div class="panel">${fTitle(d, st, cd.set.name, away, true)}</div>
-    ${away ? `<div class="panel">${putAwayNote}</div>` : `<div class="panel">${fCutHead(cd, st)}</div>
+    ${away ? `<div class="panel">${putAwayNote}</div>` : `<div class="panel">${fCutHead(cd, st, d)}</div>
     <div class="panel">${fCutTable(cd, st)}</div>`}`;
   fWireCut(d, st, cd);
   fWireHold(st, d);
@@ -6499,7 +6504,7 @@ function fCutNumbers(rec) {
         parent's records and keeps the answer <b>on this set</b>, where the press at the top of a walk keeps it beside
         the parent. Minutes, and it waits for any sweep that is running.</span></div>`;
 }
-function fCutHead(cd, st) {
+function fCutHead(cd, st, d) {
   const s = cd.set;
   const c = s.check || {};
   const rec = cd.record || {};
@@ -6509,6 +6514,13 @@ function fCutHead(cd, st) {
   const marks = (s.marks || []).map((m) => m.what).filter(Boolean);
   const of = Number(cd.of).toLocaleString();
   const who = `${esc(parentName)} - ${esc(unitName)}`;
+  // THE TWO READINGS SURVIVE THE CUT (3.110.0, owner order 2026-09-11). They
+  // were drawn on the walk and nowhere else, so the one thing that says whether
+  // the money came from the forecast or from the coin's direction went out of
+  // reach the moment the set was written. The press is offered only where it
+  // would help: the four are kept per coin and shape, so a set cut on the blend
+  // of all of them has nothing for it to work out.
+  const beatPress = s.unit ? `<div class="row" style="align-items:flex-end">${fRebuildPress(d, false)}</div>` : '';
   return `<div class="row" style="align-items:flex-end">
       <label class="f">name<input id="fCutName" value="${esc(s.name || '')}" maxlength="80" style="width:26rem"></label>
       <button id="fCutRename">Rename</button>
@@ -6558,7 +6570,14 @@ function fCutHead(cd, st) {
     <p class="note"><b>Step 7 - ${esc(F_STEPS[6][0])}:</b> ${esc((s.closing || {}).label || 'accept what the rule gives')}${(s.closing || {}).detail ? ` - ${esc(String(s.closing.detail))}` : ''}.
       ${Number(s.steps || 0)} choice(s) recorded on the way, ${Number(s.backSteps || 0)} step(s) back.
       ${marks.length ? `<b>${marks.length} mark(s)</b> - ${esc(marks.join('; '))}.` : 'No marks were recorded.'}</p>
-    ${(s.warnings || []).length ? `<p class="note neg"><b>Written with warnings:</b> ${esc((s.warnings || []).join('; '))}</p>` : ''}`;
+    ${(s.warnings || []).length ? `<p class="note neg"><b>Written with warnings:</b> ${esc((s.warnings || []).join('; '))}</p>` : ''}
+
+    <h4 style="margin:1rem 0 .3rem">What this rule had to beat:</h4>
+    ${fAgainst((cd.against || {}).board, 'every setting on this board', beatPress)}
+    ${fAgainst((cd.against || {}).keeping, 'the settings this rule keeps', beatPress)}
+    <p class="note">Two readings, and both matter: the whole board, so you know before narrowing anything whether
+      there is a rule worth hunting here, and the settings the rule keeps, so it cannot drift out of sight while
+      you narrow.</p>`;
 }
 
 // the sort button on a column of the table below: click sorts every row of the

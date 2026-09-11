@@ -2525,8 +2525,17 @@ module.exports = {
     // `fSetRebuild` is taken out first: it is the SECOND control this screen is
     // allowed (3.68.0, owner order), and it changes no rule -- it works out the
     // numbers the rule READS and keeps them on the set.
-    const noSetRebuild = cut.split('fSetRebuild').join('');
+    // AND `fRebuildPress` IS TAKEN OUT FOR THE SAME REASON (3.110.0). The two
+    // readings the owner asked to keep after the cut refuse in words that name a
+    // press, and a refusal that names a press carries it (FUNNEL-DESIGN §21.5),
+    // so the walk's own press is drawn beside the refusal. What it works out is
+    // what the four things a rule has to beat made on the PARENT's test window
+    // -- a property of that window and the hold length, never of a setting --
+    // so no rule, no setting and no row this set wrote down is touched by it.
+    const noSetRebuild = cut.split('fSetRebuild').join('').split('fRebuildPress').join('');
     assert.ok(!/fClear|fAddRange|fKeepValues|fCutBtn|fRebuild/.test(noSetRebuild), 'the Stage 4 view carries a control that changes the rule');
+    assert.strictEqual((cut.match(/fRebuildPress\(/g) || []).length, 1,
+      'the Stage 4 view has grown its own copy of the numbers press, or draws it somewhere other than the reading that refused');
     assert.ok(/id="fCutName"/.test(cut) && /id="fCutRename"/.test(cut), 'the Stage 4 view has no rename control, and the owner asked for exactly that one');
     assert.ok(/id="fSetRebuild"/.test(cut), 'a set whose numbers were taken away has no way to get them back');
     // the drop-down offers every set cut from this board plus the way back
@@ -2729,7 +2738,7 @@ module.exports = {
     // WHAT IS LEFT UP is what the owner asked to be left up, on both views:
     // the ranking section and the row of boxes that chooses what is walked.
     for (const [what, frag] of [['the walk', ": away ? `<div class=\"panel\">${putAwayNote}</div>` : `<div id=\"fWalkBody\">"],
-      ['an open Stage 4 record set', "${away ? `<div class=\"panel\">${putAwayNote}</div>` : `<div class=\"panel\">${fCutHead(cd, st)}</div>"]]) {
+      ['an open Stage 4 record set', "${away ? `<div class=\"panel\">${putAwayNote}</div>` : `<div class=\"panel\">${fCutHead(cd, st, d)}</div>"]]) {
       assert.ok(page.includes(frag), `put away does not collapse ${what}`);
     }
     // AND HOME BEATS IT (3.108.0): with nothing under this row there is
@@ -3546,7 +3555,7 @@ module.exports = {
       'the survivors are never held up to them');
     // 3.107.0: the sentence became a table, and it reads TEST money -- the
     // held-back reading is gone from the screen the choosing happens on.
-    const tbl = page.slice(page.indexOf('function fAgainst(a, what) {'), page.indexOf('function fHead(d) {'));
+    const tbl = page.slice(page.indexOf('function fAgainst(a, what, press) {'), page.indexOf('function fHead(d) {'));
     for (const word of ['buying the coin and going away', 'shorting it and going away', 'being long every period', 'being short every period']) {
       assert.ok(page.includes(word), `the screen does not name ${word}, which is one of the four it compares with`);
     }
@@ -3576,6 +3585,101 @@ module.exports = {
       'a press writes only its own settings over the top of every setting an earlier press worked out');
     assert.ok(save.includes('kept: had && had.settings ? Object.keys(had.settings).length : 0,'),
       'the answer does not say how many were already there, so nothing can tell adding from replacing');
+  },
+
+  // OWNER, 2026-09-11: "after accepting and cutting those tables are gone ...
+  // and can't be viewed again when the record set is re-opened. that's kind of
+  // nasty wouldn't you say? it's the most insightful info and once you cut it's
+  // gone forever."
+  //
+  // THIS TEST RUNS THE RENDERER, it does not scan for it. The two readings were
+  // drawn on the walk and nowhere else, and the thing that would have caught
+  // that is a test that draws a re-opened set and looks for them.
+  theTwoReadingsSurviveTheCutAndARefusalCarriesThePress() {
+    const page = src('public/construct.js');
+    const lift = (head, end) => {
+      const at = page.indexOf(head);
+      assert.ok(at > 0, `${head} is gone from the page`);
+      const to = page.indexOf(end, at);
+      assert.ok(to > at, `${end} is gone from the page`);
+      return page.slice(at, to + end.length);
+    };
+    // the real renderer, out of the served source, with only the page's own
+    // frame stubbed -- so what this asserts is what the owner would read
+    const fAgainst = new Function(`
+      const COL = {};
+      const esc = (x) => String(x);
+      const fFix = (v, n) => (v == null ? '-' : Number(v).toFixed(n));
+      ${lift('const cth = (label, key, style) =>', '>${label}</th>`;')}
+      ${lift('const CMP_WORDS = {', '\n};')}
+      ${lift("const CMP_ORDER = ['alwaysLong'", "'shortHold'];")}
+      ${lift('const fMoneySpan = (c) =>', 'fFix(c.hi, 2)}</b>`));')}
+      ${lift('function fAgainst(a, what, press) {', '\n}\n')}
+      return fAgainst;
+    `)();
+
+    // WHAT A RE-OPENED SET SAYS WHEN THE NUMBERS ARE THERE. The board made
+    // 23.05 and buying the coin and going away made 23.29 to 61.00 across the
+    // hold lengths in use, so the board is behind at every one of them.
+    const board = {
+      known: true, real: 23.05, keys: ['all|41', 'all|65'], of: 2752,
+      alwaysLong: { lo: -55.92, hi: 336.88 },
+      alwaysShort: { lo: -478.38, hi: -43.01 },
+      buyHold: { lo: 23.29, hi: 61.00 },
+      shortHold: { lo: -61.50, hi: -23.79 },
+    };
+    const drawn = fAgainst(board, 'every setting on this board', '<button id="press">Work out the test history numbers</button>');
+    assert.ok(drawn.includes('every setting on this board'), 'the whole board reading does not say whose figure it is');
+    assert.ok(drawn.includes('23.05'), 'the whole board reading does not print its own money');
+    assert.ok(drawn.includes('23.29') && drawn.includes('61.00'),
+      'the span across the hold lengths in use is not printed, so a single number stands for several horizons');
+    // AHEAD BY IS MEASURED AGAINST THE HARDEST OF THEM, never the kindest
+    assert.ok(drawn.includes('-37.95'), 'how far behind buying the coin and going away it is at that comparison\'s best is not printed');
+    assert.ok(drawn.includes('best of the four') && drawn.includes('336.88'),
+      'the best of the four is not named, so the owner has to find it across four figures by eye');
+    assert.ok(drawn.includes('did better</b>, so'), 'a board beaten by a simpler thing is not told it was');
+    // the press is not drawn over a reading that came through
+    assert.ok(!drawn.includes('id="press"'), 'a reading that is known still draws the press for working it out');
+
+    // AND WHEN THEY ARE NOT THERE, THE PRESS IT NAMES IS ON THE SCREEN
+    // (FUNNEL-DESIGN §21.5). The refusal's own words send the owner to a press,
+    // and on a re-opened set that press is not always up: the same fault step 6
+    // had in 3.108.5.
+    const refused = fAgainst({ known: false, why: 'press work out the test history numbers' },
+      'the settings this rule keeps', '<button id="press">Work out the test history numbers</button>');
+    assert.ok(refused.includes('press work out the test history numbers'), 'the refusal does not say why it cannot answer');
+    assert.ok(refused.includes('id="press"'), 'the refusal names a press and does not carry it');
+    // a caller with no press to offer draws no press, and never the word undefined
+    const bare = fAgainst({ known: false, why: 'nothing kept' }, 'every setting on this board');
+    assert.ok(!/undefined/.test(bare), 'a caller that hands in no press puts the word undefined on the screen');
+
+    // THE SCREEN THAT DRAWS THEM: the bottom of the section that holds the two
+    // rules, which is what the owner asked for.
+    const hd = page.slice(page.indexOf('function fCutHead(cd, st, d) {'), page.indexOf('// the sort button on a column'));
+    assert.ok(hd.indexOf('Final Rule:') < hd.indexOf("fAgainst((cd.against || {}).board"),
+      'the two readings are not at the bottom of the section that holds the two rules');
+    assert.ok(hd.includes("${fAgainst((cd.against || {}).board, 'every setting on this board', beatPress)}"),
+      'a re-opened set does not draw the whole board reading');
+    assert.ok(hd.includes("${fAgainst((cd.against || {}).keeping, 'the settings this rule keeps', beatPress)}"),
+      'a re-opened set does not draw the reading of the settings it kept');
+    assert.ok(hd.includes('Two readings, and both matter'),
+      'nothing says why both are drawn, so the pair reads as one number repeated');
+    assert.ok(hd.includes("const beatPress = s.unit ? `<div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false)}</div>` : '';"),
+      'the press is not the one the walk draws, is not offered only where it would help, or does not line up (RULE FOUR)');
+
+    // AND THE READ HANDS THEM OVER: the same two calls the walk makes, on the
+    // parent's whole board and on the settings this set wrote down.
+    const lib = src('lib/stages.js');
+    const rd = lib.slice(lib.indexOf('async function funnelSetRows(id, opts = {}) {'), lib.indexOf('function stage3Ranked('));
+    assert.ok(rd.includes('board: againstTestControls(parentId, doc.unit, all),'),
+      'the whole board reading is not worked out for a re-opened set');
+    assert.ok(rd.includes('keeping: againstTestControls(parentId, doc.unit, rows.filter((r) => !r.gone)),'),
+      'the kept reading is not worked out, or counts rows the board no longer holds -- whose absent hold length widens the span it is spoken over');
+    assert.ok(/\n    against,\n/.test(rd), 'the two readings never reach the screen');
+    // a set cut on the blend of every coin and shape says so rather than
+    // reading as nothing to report
+    assert.ok(rd.includes('kept per coin and shape, and this set was cut on the blend of all of them'),
+      'a set cut on the blend is left silent, which reads as nothing to report');
   },
 
   // and a set does not depend on a file its parent owns
@@ -3619,7 +3723,7 @@ module.exports = {
     assert.ok(/sameOwn, own: nowOwn\.length, stamped: richStamped,/.test(rd), 'the answer does not travel to the screen');
     // the screen says it, and offers the one thing that puts it right
     const page = src('public/construct.js');
-    const nb = page.slice(page.indexOf('function fCutNumbers(rec) {'), page.indexOf('function fCutHead(cd, st) {'));
+    const nb = page.slice(page.indexOf('function fCutNumbers(rec) {'), page.indexOf('function fCutHead(cd, st, d) {'));
     assert.ok(nb.includes('id="fSetRebuild"'), 'there is no way to put back the numbers a later pass took away');
     assert.ok(nb.includes('>Work out the test history numbers</button>'), 'the control does not say what it does');
     // AND NOTHING ON THIS SCREEN NAMES THE PRESS BY A NAME IT NO LONGER HAS, or

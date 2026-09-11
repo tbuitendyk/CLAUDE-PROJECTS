@@ -7782,6 +7782,37 @@ async function funnelSetRows(id, opts = {}) {
       dataToTs: mine.length ? newestDataOf(coinsOfUnits(mine)) : null,
     };
   })();
+  // WHAT THIS SET HAD TO BEAT, STILL READABLE AFTER THE CUT (3.110.0, owner
+  // order 2026-09-11: "after accepting and cutting those tables are gone ...
+  // and can't be viewed again when the record set is re-opened. that's kind of
+  // nasty ... it's the most insightful info and once you cut it's gone
+  // forever").
+  //
+  // The same two readings the walk draws, from the same two calls: the parent's
+  // whole board for this coin and shape, so it can still be seen whether there
+  // was a rule worth hunting here at all, and the settings THIS SET wrote down,
+  // so what it decided is held up to the four things a rule has to beat.
+  //
+  // WORKED OUT ON THE OPEN, NOT FROZEN AT THE CUT. The four numbers belong to
+  // the unit's test window and the hold length -- never to a setting and never
+  // to a decision -- so they are read back out of the same file beside the
+  // parent that the walk read them from. Storing a copy at the cut would have
+  // served sets cut from tomorrow and left every set already on the box with
+  // nothing, which is the complaint itself.
+  //
+  // The rows the parent's board no longer holds are left out of the second
+  // reading: they carry no test money and no hold length, and a `gone` row's
+  // absent hold length would widen the span the reading is spoken over by one
+  // horizon that is not there.
+  const against = doc.unit
+    ? {
+      board: againstTestControls(parentId, doc.unit, all),
+      keeping: againstTestControls(parentId, doc.unit, rows.filter((r) => !r.gone)),
+    }
+    : {
+      board: { known: false, why: 'the four things a rule has to beat are kept per coin and shape, and this set was cut on the blend of all of them' },
+      keeping: { known: false, why: 'the four things a rule has to beat are kept per coin and shape, and this set was cut on the blend of all of them' },
+    };
   return {
     set: {
       id: doc.id, seq: doc.seq, name: doc.name, createdAt: doc.createdAt,
@@ -7802,6 +7833,7 @@ async function funnelSetRows(id, opts = {}) {
     },
     of: all.length,
     sealedOn,
+    against,
     record: {
       same, now: now.length, had: wanted.length, gone,
       // 3.68.0: the same question asked of the set's own copy of the rebuilt

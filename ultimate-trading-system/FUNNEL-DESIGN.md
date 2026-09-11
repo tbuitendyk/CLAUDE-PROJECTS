@@ -1779,3 +1779,65 @@ refusal that needs it. Both copies are wired together — they sleep together
 on a press and say the same thing while it runs, because they are one press
 drawn twice. Exactly one copy carries the ids, because the Help tab's control
 reader indexes by id and two of the same id is one control counted twice.
+
+## §22 What a rule had to beat, after the cut (owner order, 2026-09-11)
+
+> "so don't you think it would be useful to NOT HIDE that info … after
+> accepting and cutting those tables are gone … and can't be viewed again when
+> the record set is re-opened. that's kind of nasty wouldn't you say? it's the
+> most insightful info and once you cut it's gone forever."
+
+### 22.1 What was wrong
+
+The two readings — the whole board held up to the four things a rule has to
+beat, and the settings the rule keeps held up to the same four — were drawn on
+the walk and nowhere else. They are the one thing on that screen that says
+whether the money came from the forecast or from the coin's own direction, and
+the moment the set was written they went out of reach. Nothing else on any
+screen answers that question on the test window.
+
+Worse, they are the pair that ARGUES. The whole board reading can say there
+was never a rule worth hunting here while the kept reading shows a large win —
+which is the one shape that should stop a set going forward, and it was
+readable only while the decision was still being made.
+
+### 22.2 Where they are now
+
+At the bottom of the section that holds the two rules, under its own heading,
+on a re-opened Stage 4 record set — the last thing in that section, after
+everything else about the set. Same two tables, same shared renderer, so the
+walk and the re-opened set cannot show two different readings of one thing.
+
+### 22.3 Worked out on the open, not frozen at the cut
+
+The four numbers belong to the unit's test window and the hold length. They are
+never properties of a setting and never of a decision, so they are the same
+numbers today that they were at the cut, and they are read back out of the same
+file beside the parent record set that the walk read them from.
+
+Storing a copy on the set at the cut was the other option and it is the wrong
+one: it would serve sets cut from tomorrow and leave every set already on the
+box with nothing — which is the complaint itself.
+
+Two consequences, both deliberate:
+
+* Rows the parent's board no longer holds are left out of the kept reading.
+  They carry no test money and no hold length, and counting a gone row's absent
+  hold length would widen the span the reading is spoken over by a horizon that
+  is not there. The screen already says separately how many rows are gone.
+* A set cut on the blend of every coin and shape says so instead of drawing an
+  empty table. The four are kept per coin and shape; there is nothing to read
+  for a board that averages all of them.
+
+### 22.4 The press it names, it carries
+
+A reading that cannot answer says why, and the why names
+`Work out the test history numbers`. That press is drawn beside the refusal on
+this screen for the reason §21.5 gives — the header section that normally holds
+it is hidden while a walk is being used, so a refusal that only names it sends
+the owner hunting. It is offered only where it would help: not on a set cut on
+the blend, where there is nothing for it to work out.
+
+It is the third control this screen is allowed, and like the second it changes
+no rule: it works out what the four made on the parent's test window and
+touches no setting and no row the set wrote down.
