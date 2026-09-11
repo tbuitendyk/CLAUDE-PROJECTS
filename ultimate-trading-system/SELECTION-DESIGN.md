@@ -139,6 +139,104 @@ not a loop is running).
   comparability and it is still coarse. Saying "cleared four of five passes" off
   a five-percent grid is a coarser claim than it sounds.
 
+### 1.0b What the code actually says, read before building
+
+Six readers mapped the engine and six adversarial checkers tried to refute
+them: 184 facts confirmed, 51 claims thrown out. What survived, and what it
+changes:
+
+**The sliding boundary is nearly free, but not quite free.**
+`splitAndLabelAt(chunks, branch, nTrain)` already takes the training length
+from its caller and is already in production for the History retrain. What it
+does NOT give is a third stretch: it returns `holdChunks: []`, and it labels
+only the chunks handed to it. So a pass is built by slicing the chunk list into
+"everything before the judge" and "the judge", calling `splitAndLabelAt` on the
+first, and labelling the judge with the band that call RETURNS. The band comes
+from the training slice and never from the judge — that is not a nicety, it is
+the difference between a judgement and a rehearsal. `unitChunks` decides the
+layout internally from two literal names, so this is one added branch there,
+additive, changing no existing layout.
+
+**The copies need no new builder.** `keepN` and `keepFrom` beside the payload
+give each pass its copies on that pass's own stretches, the way the noise top-up
+already does. Independent draws per pass come from the TAG `dealOrder` already
+takes as an argument — a new tag per pass, not a new random source.
+
+**Levels 1 and 2 have no stored number to read, as §1.0a feared.** What exists
+to re-derive is the forecast score, and every one of its five call sites scores
+on TEST labels — there is no hold-stretch scorer. So the level is the forecast
+score on that pass's judge labels: the same arithmetic, new labels, nothing
+invented.
+
+**The cost is much larger than the first reading said, and it is worth saying
+out loud.** One boost member is ten seconds when the fitting stops early and
+about 134 when it keeps improving; a triple-coin unit's committee is 10 to 22
+minutes of fitting at full CPU, not the 43 seconds a noise-floor measurement
+suggested. Five passes is therefore roughly **one to two hours** of retraining
+alone, before any pricing, and a triple-coin unit reloads its candle maps every
+pass because the cache is four deep and never hits for three coins. This has to
+be a started-and-polled job with real progress, and the owner should know the
+figure even though they have ruled the measurement is not a blocker.
+
+**Where it goes:** `public/construct.js:2044`, between the press row and the
+verdict blocks — which satisfies "above the single verdict" without pushing the
+set picker down. The watcher to copy is the one the ride uses, paired with a
+progress-bearing status door; the verdict's own watcher carries no progress and
+is the wrong shape. Eleven tests scan Verify's source, one of them pinning three
+substrings in order, so they move with this.
+
+### 1.0c THE FAULT IN THIS PART'S OWN TABLE, found before building it
+
+The five-pass table above is wrong in two ways, and both were found by working
+its arithmetic back against the engine rather than by being told.
+
+**One: it reaches into the reserve.** The table takes the judging width as
+`round(non-reserve / 10)` = 232, and pass 5 then ends at chunk 2319 of 2315
+non-reserve chunks — four chunks inside the sealed reserve this part promises in
+its own words never to touch. Taking the width as `floor` gives 231 and letting
+the last judge absorb the remainder ends it exactly on the boundary. Fixed here.
+
+**Two, and it is the one that matters: every judging stretch is already spoken
+for.** The owner's sets are `reserve61`, which seals 13% and then splits the
+rest 70/15/15 — which is where the name 61/13/13/13 comes from. For the owner's
+set that puts the original run's fitting and tuning on chunks 1 to 1968, its
+held stretch at 1969 to 2315, and the reserve beyond. Against that:
+
+| pass | judges | of that, inside the already-spent held stretch | inside what the original run chose the dials on |
+|---|---|---|---|
+| 1 | 1156-1386 | 0 | all 231 |
+| 2 | 1387-1617 | 0 | all 231 |
+| 3 | 1618-1848 | 0 | all 231 |
+| 4 | 1849-2079 | 111 | 120 |
+| 5 | 2080-2315 | all 236 | 0 |
+
+**So the owner's ruling that a judging stretch is not a counted look holds for
+passes 1 to 3 and fails for 4 and 5 on its own stated grounds.** Pass 5's
+judging stretch IS the held stretch the single verdict already read. It is not a
+stretch never opened before.
+
+**What this does to each level.** Levels 1 and 2 are clean on all five passes:
+each pass retrains, so its judge is genuinely unseen by THAT pass's forecasts,
+and there are no dials to contaminate. That is the half this document says
+cannot be answered today, and it works. Level 3 is not out-of-sample on any
+pass: retraining the forecasts does not de-contaminate the DIALS, which were
+chosen knowing chunks 1 to 1968 — inside passes 1 to 4's judges — while pass 5
+judges them on a window already spent. §1's own assumption that "cleared it five
+times is a claim about the dials" is right and does not go far enough: the dials
+were picked inside four of the five stretches they are being judged on.
+
+**What is built because of it:** every pass's row prints how much of its judging
+stretch fell inside the selection window and how much was the already-spent held
+stretch, and the level-3 line says plainly that it is not an out-of-sample
+reading. A five-pass record that reads as five confirmations when it is none is
+the exact fault this document exists to prevent, and a screen that knows the
+number and does not say it is worse than one that never worked it out.
+
+**Left for the owner** (and not decided by a session): whether level 3 earns its
+compute at all, given it cannot be out-of-sample, or whether the kept-against-
+dropped difference should carry that question instead — where the contamination
+falls on both sides equally and the gap still means something.
+
 ## The problem
 
 A single held-back stretch is one roll of the dice. Whatever that stretch
