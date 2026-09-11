@@ -379,42 +379,45 @@ function pinnedFilesFor(pin) {
 }
 // THE SHAPE OF ONE PASS, WORKED OUT WITHOUT TOUCHING A CANDLE (3.111.0,
 // SELECTION-DESIGN.md Part 1). Its own function for three reasons: the screen
-// prints the whole five-pass plan BEFORE anything is run, a test can walk every
-// pass of a real chunk count and prove none of them reaches the seal, and the
+// prints the whole plan BEFORE anything is run, a test can walk every pass of a
+// real history and prove none of them reaches whatever is sealed, and the
 // arithmetic then lives in one place instead of once in the engine and again in
 // whatever draws it.
 //
-// The reserve is 13% of everything, sealed exactly as reserve61 seals it. What
-// is left is cut into TWICE AS MANY PARTS AS THERE ARE PASSES, so the first
-// pass learns on half the history and each later pass gains one judging width:
-// pass k learns on the first (of + k - 1) parts and is judged on the next. The
-// LAST pass's judge absorbs the remainder.
+// IT IS HANDED WHAT IS LEFT AFTER THE SET'S OWN LAYOUT HAS SEALED WHATEVER IT
+// SEALS (3.111.1), so nothing here knows a reserve exists. A 61/13/13/13 set
+// and a 70/15/15 set walk identical code from this point on, and a layout added
+// later needs no entry here at all.
 //
-// THE PART IS FLOORED, NOT ROUNDED, and that is the whole reason this exists as
-// arithmetic somebody can check: rounded, the fifth pass of a 2,315-chunk
-// history ended four chunks INSIDE the seal -- the one stretch this part
-// promises never to touch. Floored, the last judge ends exactly on the boundary.
+// The room is cut into TWICE AS MANY PARTS AS THERE ARE PASSES, so the first
+// pass trains on half of it and each later pass gains one judging width: pass k
+// learns on the first (of + k - 1) parts and is judged on the next. The LAST
+// pass's judging stretch absorbs the remainder.
+//
+// THE PART IS FLOORED, NOT ROUNDED, and that is the whole reason this is
+// arithmetic somebody can check: rounded, the fifth pass of a 2,315-chunk room
+// ended four chunks past the end of it. Floored, the last one ends exactly on
+// the boundary.
 //
 // The train-to-test ratio is the engine's own, read out of splitBounds rather
-// than typed, so a pass splits its history the way every other reading of this
-// unit splits it. A pass has no held-back slice of its own: its JUDGING stretch
-// takes that slot, which is what lets everything downstream price it without
-// knowing a pass happened.
-function passGeometry(nAll, ofRaw, kRaw) {
+// than typed, so a pass splits its history the way every other reading of the
+// unit splits it -- and that ratio is 70:15 inside the pool on BOTH layouts,
+// which is why this needs no layout of its own. A pass has no held-back slice:
+// its JUDGING stretch takes that slot, which is what lets everything downstream
+// price it without knowing a pass happened.
+function passGeometry(room, ofRaw, kRaw) {
   const of = Math.max(2, Math.floor(Number(ofRaw) || 0));
   const k = Math.max(1, Math.min(of, Math.floor(Number(kRaw) || 0)));
-  const n = Math.max(0, Math.floor(Number(nAll) || 0));
-  const reserve = Math.max(2, Math.round(n * 0.13));
-  const room = n - reserve;
-  const part = Math.floor(room / (of * 2));
+  const n = Math.max(0, Math.floor(Number(room) || 0));
+  const part = Math.floor(n / (of * 2));
   const before = part * (of + k - 1);
-  const judge = k === of ? room - before : part;
+  const judge = k === of ? n - before : part;
   const r = splitBounds(1000, true);                        // the engine's own 70:15, never typed
   const nTrain = Math.round(before * (r.nTrain / (r.nTrain + r.nTest)));
   return {
-    of, k, reserve, room, part, before, judge, nTrain,
+    of, k, room: n, part, before, judge, nTrain,
     nTest: before - nTrain,
-    endsAt: before + judge,                                 // the last chunk this pass may read
+    endsAt: before + judge,                                 // the last chunk of the room this pass may read
   };
 }
 
@@ -467,13 +470,18 @@ async function unitChunks(combo, geometry, p) {
   // of this unit splits it. A pass has no held-back slice of its own: its
   // JUDGING stretch takes that slot, which is what lets everything downstream
   // price it without knowing a pass happened.
+  // ONE PASS OF THE FIVE (3.111.0, SELECTION-DESIGN.md Part 1).
+  //
+  // A PASS IS NOT A LAYOUT, IT IS A MODIFIER ON ONE (3.111.1). Whatever the set
+  // was built on has already sealed what it seals, a few lines above -- 13% for
+  // a 61/13/13/13 set, nothing at all for a 70/15/15 one -- so the passes cut
+  // what is left, and this code never asks which happened. That is why it needs
+  // no layout name of its own, why a layout added later works without being
+  // listed here, and why the 13% stays written once in this function.
   let passCut = null;
-  if (p.windowLayout === 'pass') {
-    const g = passGeometry(workChunks.length, (p.pass || {}).of, (p.pass || {}).k);
-    const sealed = workChunks.slice(workChunks.length - g.reserve);
-    reserve = { chunks: g.reserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
-    passCut = g;
-    workChunks = workChunks.slice(0, g.before + g.judge);   // nothing beyond this pass's own judge
+  if (p.pass) {
+    passCut = passGeometry(workChunks.length, p.pass.of, p.pass.k);
+    workChunks = workChunks.slice(0, passCut.endsAt);       // nothing beyond this pass's own judge
   }
   // every layout keeps a held-back slice (the 80/20 layout, which kept none, went 2026-09-08),
   // except the retrain layout, whose judge is the Reserve
