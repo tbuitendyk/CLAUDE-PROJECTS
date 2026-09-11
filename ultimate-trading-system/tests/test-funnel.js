@@ -2609,8 +2609,8 @@ module.exports = {
     // and showing a set asks for no step reading: the grid and the region are
     // minutes of work for a screen that is not drawn
     const read = page.slice(page.indexOf('d = await tryPost(`api/funnel/'), page.indexOf('} finally { waitEnd(); }'));
-    assert.ok(read.includes("view: (st.cut && st.cut !== F_NEW) ? 'cut' : null,"),
-      'showing a Stage 4 record set still pays for a step reading nothing draws');
+    assert.ok(read.includes("view: ((st.cut && st.cut !== F_NEW) || !fIsOpen(st)) ? 'cut' : null,"),
+      'a screen that draws no step still pays for a step reading — a Stage 4 record set showing, or Home');
   },
 
   // ---- THE OWNER'S FOUR FORMATTING ORDERS (3.59.0, 2026-09-04) -------------
@@ -2637,9 +2637,9 @@ module.exports = {
     // Stage 4 record set view too, under the same predicate, so the two views
     // no longer disagree about what is at the top.
     for (const [what, frag] of [['a set showing',
-      '`${fHoldShown(st, away) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : \'\'}\n    <div class="panel">${fTitle(d, st, cd.set.name, away)}</div>'],
+      '`${fHoldShown(st, away, true) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : \'\'}\n    <div class="panel">${fTitle(d, st, cd.set.name, away, true)}</div>'],
     ['the walk',
-      '`${fHoldShown(st, away) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : \'\'}\n  <div class="panel">${fTitle(d, st, F_NEW_NAME, away)}</div>'],
+      '`${fHoldShown(st, away, open) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : \'\'}\n  <div class="panel">${fTitle(d, st, open ? F_NEW_NAME : F_HOME_NAME, away, open)}</div>'],
     ['a set that will not open', '`<div class="panel">${fTitle(d, st, named)}</div>']]) {
       assert.ok(page.includes(frag), `${what} does not draw the ranking and then the title and selector section, in that order and with nothing between`);
     }
@@ -2666,8 +2666,8 @@ module.exports = {
     // margins would put one press mid-row.
     assert.ok(title.includes("const gap = 'style=\"margin-left:auto\"';"), 'the gap that pushes the right-hand group over is gone');
     assert.ok(/\$\{away == null \? '' : putAwayBtn\('ffold', 1, !away,/.test(title), 'the put away press is not in the selector header');
-    assert.ok(/putAwayBtn\([^)]*gap\)/s.test(title), 'the put away press does not carry the gap, so it sits mid-row');
-    assert.ok(/<button id="fCutHome" \$\{away == null \? gap : ''\}/.test(title),
+    assert.ok(/putAwayBtn\([^)]*`\$\{gap\}\$\{dead\}`\)/s.test(title), 'the put away press does not carry the gap, so it sits mid-row');
+    assert.ok(/<button id="fCutHome"\$\{dead\} \$\{away == null \? gap : ''\}/.test(title),
       'the press does not sit hard right in the heading box when it is the only one of the two drawn');
     // it shares the delete press's row, so it shares its baseline (RULE FOUR)
     const row = title.slice(title.indexOf('<div class="row" style="align-items:flex-end">'), title.indexOf('</div>'));
@@ -2692,24 +2692,29 @@ module.exports = {
     // case the condition used to leave without one.
     assert.ok(!/\$\{chosen \? `<button id="fCutHome"/.test(title),
       'the press is drawn only when a Stage 4 set is open, so a walk part way through has no way out');
-    assert.ok(/^\s*<button id="fCutHome" /m.test(title),
+    assert.ok(/^\s*<button id="fCutHome"\$\{dead\} /m.test(title),
       'the press is not drawn unconditionally in the selector header');
 
     // ONE PATH. Both the box and the press call it, and it is the one that
     // starts a walk again at step 1 when that walk already wrote this set.
-    const home = page.slice(page.indexOf('function fGoNewRule(st, d) {'), page.indexOf('function fWireCutPick(st, d) {'));
-    assert.ok(home.includes('if (fWalkWasAlreadyCut(d)) fFreshWalk(st);')
-      && home.includes('st.cut = F_NEW; st.setRebuiltSaid = null; fSave(); drawFunnel();'),
-    'there is no one path back to the steps');
-    // AND HOME MEANS THE HOME VIEW (3.107.0). `Worth walking?` hides while a
-    // walk is being used, so a press called Go to Funnel home that left it
-    // hidden would leave the screen looking exactly as it did before the press.
-    assert.ok(home.includes('st.walking = false;'),
-      'the press does not bring the ranking section back, so pressing it changes nothing on screen');
+    // TWO CONTROLS, TWO MEANINGS, TWO PATHS (3.108.0). They shared one path
+    // while they meant the same thing. `new rule` opens a walk; the press
+    // DROPS one and goes Home, and one path cannot do both.
+    const open4 = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fGoFunnelHome(st, d) {'));
+    assert.ok(open4.includes('fCloseCut(st);') && open4.includes('if (fWalkWasAlreadyCut(d)) fFreshWalk(st);')
+      && open4.includes('fMarkOpen(st.set, true);'),
+    'choosing new rule does not open a walk, or does not start one again at step 1 when this walk already wrote a set');
+    const home = page.slice(page.indexOf('function fGoFunnelHome(st, d) {'), page.indexOf('function fWireCutPick(st, d) {'));
+    assert.ok(home.includes('fCloseCut(st);') && home.includes('fFreshWalk(st);'),
+      'the press does not drop the walk, so a part-built rule survives a press named for going home');
+    assert.ok(/fRememberForSet\(st\.set, \{ open: false, away: false \}\)/.test(home),
+      'the press does not land the screen at Home, or leaves put away remembered behind it');
+    assert.ok(home.includes('if (fWalkHasWork(st)) {') && home.includes('if (!confirm('),
+      'the press drops a walk without asking, and there is no way to bring one back');
     const wire = page.slice(page.indexOf('function fWireCutPick(st, d) {'), page.indexOf('const fWalkWasAlreadyCut'));
-    assert.ok(wire.includes('if (cs.value === F_NEW) { fGoNewRule(st, d); return; }'), 'the box takes its own route back');
-    assert.ok(wire.includes("const home = $('#fCutHome');") && wire.includes('home.onclick = () => fGoNewRule(st, d);'),
-      'the press takes its own route back, or is not wired at all');
+    assert.ok(wire.includes('if (cs.value === F_NEW) { fOpenNewRule(st, d); return; }'), 'the box takes its own route to opening a walk');
+    assert.ok(wire.includes("const home = $('#fCutHome');") && wire.includes('home.onclick = () => fGoFunnelHome(st, d);'),
+      'the press takes its own route home, or is not wired at all');
     // wired with the pickers, before the early return: a set that will not OPEN
     // is exactly the one you most want to leave, and its panel never renders
     assert.ok(page.indexOf('fWireCutPick(st, d);') < page.indexOf("const dl = $('#fCutDelete');"),
@@ -2740,15 +2745,22 @@ module.exports = {
       'Boards keeps its own copy of the sentence');
     // ...and the Funnel draws the same press, on the selector row, on the
     // delete press's baseline
-    const title = page.slice(page.indexOf('function fTitle(d, st, name, away)'), page.indexOf('const F_NEW_NAME'));
+    const title = page.slice(page.indexOf('function fTitle(d, st, name, away, open)'), page.indexOf('const F_NEW_NAME'));
     const row = title.slice(title.indexOf('<div class="row" style="align-items:flex-end">'), title.indexOf('</div>'));
-    assert.ok(/putAwayBtn\('ffold', 1, !away,/.test(row), 'the Funnel press is not in the row with the others, so it cannot line up with them');
+    assert.ok(/putAwayBtn\('ffold', 1, !away,/.test(title), 'the Funnel press is not in the selector header');
+    assert.ok(row.includes('putAwayBtn'), 'the Funnel press is not in the row with the others, so it cannot line up with them');
+    assert.ok(row.includes("const dead = open ? '' : ' disabled';") || title.includes("const dead = open ? '' : ' disabled';"),
+      'nothing ghosts the two presses, so both are live at Home with nothing to act on');
     // WHAT IS LEFT UP is what the owner asked to be left up, on both views:
     // the ranking section and the row of boxes that chooses what is walked.
-    for (const [what, frag] of [['the walk', "${away ? `<div class=\"panel\">${putAwayNote}</div>` : `<div id=\"fWalkBody\">"],
+    for (const [what, frag] of [['the walk', ": away ? `<div class=\"panel\">${putAwayNote}</div>` : `<div id=\"fWalkBody\">"],
       ['an open Stage 4 record set', "${away ? `<div class=\"panel\">${putAwayNote}</div>` : `<div class=\"panel\">${fCutHead(cd, st)}</div>"]]) {
       assert.ok(page.includes(frag), `put away does not collapse ${what}`);
     }
+    // AND HOME BEATS IT (3.108.0): with nothing under this row there is
+    // nothing to put away, so Home is what is drawn and the press is dead.
+    assert.ok(page.includes('${!open ? `<div class="panel">${F_HOME_NOTE}</div>`'),
+      'Home draws the put away line, or draws nothing at all where it should say it is Home');
     // and it is REMEMBERED FOR THE SET, not for one walk: it says what the
     // owner wants to look at, not where any one walk has got to, so it holds
     // while the coin and shape box is moved (as the bar and the target do)
@@ -2767,6 +2779,93 @@ module.exports = {
     assert.ok(hold.includes("const rb = $('#fRebuild');") && hold.includes('if (fRichGoing(d)) fRichWatch(st);'),
       'the press that fills the section is wired outside the section, so it is dead on the Stage 4 record set view');
     assert.ok(page.includes('  fWireHold(st, d);\n  fWatchCutBox();'), 'the Stage 4 record set view does not wire the section it now draws');
+  },
+
+  // ---- THE SCREEN HAS TWO STATES AND ONLY TWO (3.108.0, owner order
+  // 2026-09-11).
+  //
+  // "Go to Funnel home bizarrely leaves 'new rule' selected ... on step 7.
+  // Declare and cut when used. it's like it remembers things that aren't
+  // actually saved. the whole point of the button is to drop a rule before
+  // finished and revert the screen to the Worth walking? section included ...
+  // so weird Frankenstein half-finished unnamed limbo state"
+  //
+  // ...and: "that button is active on the unit selector section when the Worth
+  // walking? is already displayed, when the point of making that button was to
+  // display the Worth walking? section."
+  //
+  //   HOME  the header section and the unit selector, nothing under them.
+  //   OPEN  something under the unit selector: a walk, or a Stage 4 record set.
+  theFunnelIsEitherHomeOrOpenAndThePressThatGoesHomeDropsTheWalk() {
+    const page = src('public/construct.js');
+    const lift = (head, end) => {
+      const at = page.indexOf(head);
+      assert.ok(at > 0, `${head} is gone`);
+      return page.slice(at, page.indexOf(end, at) + end.length);
+    };
+    // ONE predicate says which state the screen is in, and a Stage 4 record
+    // set showing is Open whatever else is true — it IS the thing under the row
+    // eslint-disable-next-line no-eval
+    const { fIsOpen, fWalkHasWork } = eval(`(() => {
+      let MEM = {};
+      const F_NEW = 'new';
+      const fSetMemory = () => MEM;
+      ${lift('const fOpenOf = (set) =>', '\n')}
+      ${lift('const fIsOpen = (st) =>', '\n')}
+      ${lift('const fWalkHasWork = (st) =>', ');\n')}
+      return { fIsOpen: (st, mem) => { MEM = mem || {}; return fIsOpen(st); }, fWalkHasWork };
+    })()`);
+    assert.strictEqual(fIsOpen({ set: 's', cut: 'new' }, {}), false, 'a screen with nothing under the unit selector does not read as Home');
+    assert.strictEqual(fIsOpen({ set: 's', cut: 'new' }, { open: true }), true, 'a walk opened on purpose does not read as Open');
+    assert.strictEqual(fIsOpen({ set: 's', cut: 's4-1' }, {}), true, 'a Stage 4 record set showing does not read as Open');
+
+    // WHAT COUNTS AS WORK, because warning about an untouched walk teaches
+    // the owner to click through warnings
+    assert.strictEqual(fWalkHasWork({ step: 1, rule: {}, steps: [] }), false, 'an untouched walk asks before it is dropped');
+    assert.strictEqual(fWalkHasWork({ step: 7, rule: {}, steps: [] }), true, 'a walk seven steps in is dropped without asking');
+    assert.strictEqual(fWalkHasWork({ step: 1, rule: { allowed: { gate: ['active'] } }, steps: [] }), true, 'a walk with a clause on it is dropped without asking');
+    assert.strictEqual(fWalkHasWork({ step: 1, rule: {}, steps: [{ n: 1 }] }), true, 'a walk that recorded a step is dropped without asking');
+    assert.strictEqual(fWalkHasWork({ step: 1, rule: {}, steps: [], walking: true }), true, 'a walk whose controls have been used is dropped without asking');
+
+    // AND HOME IS WHAT THE SCREEN DRAWS THERE, in words, rather than a blank
+    // space that reads as a screen which failed
+    assert.ok(/const F_HOME_NOTE = '<p class="note">Nothing is open\. Press <b>Walk this one<\/b>/.test(page),
+      'Home says nothing, so an empty screen reads as a broken one');
+    assert.ok(/const F_HOME_NAME = 'Funnel home';/.test(page),
+      'the bold name at Home still says new rule, naming something that is not on the screen');
+
+    // THE THREE THINGS THAT OPEN ONE, each of them the owner choosing a board
+    const unit = page.slice(page.indexOf('function fWireUnit(st, d) {'), page.indexOf('function fWireCut(d, st, cd) {'));
+    assert.ok(unit.includes('fMarkOpen(st.set, true);'), 'changing the coin and shape boxes leaves the screen at Home');
+    const hold = page.slice(page.indexOf('function fWireHold(st, d) {'), page.indexOf('function fWatchWalkStart'));
+    assert.ok(hold.includes('fMarkOpen(st.set, true);'), 'Walk this one leaves the screen at Home, so pressing it does nothing');
+    const opener = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fGoFunnelHome(st, d) {'));
+    assert.ok(opener.includes('fMarkOpen(st.set, true);'), 'choosing new rule leaves the screen at Home');
+
+    // ...AND THE ONE THAT CLOSES IT. It drops the walk EVERY time, which is
+    // the whole point of the press; before this it dropped one only when a
+    // Stage 4 set already carried that exact rule sentence.
+    const home = page.slice(page.indexOf('function fGoFunnelHome(st, d) {'), page.indexOf('function fWireCutPick(st, d) {'));
+    assert.ok(home.includes('fFreshWalk(st);') && !/fWalkWasAlreadyCut/.test(home),
+      'the press drops a walk only in some cases, so an unfinished one survives it');
+    assert.ok(/fRememberForSet\(st\.set, \{ open: false, away: false \}\)/.test(home),
+      'the press does not land at Home, or leaves put away remembered behind it');
+    assert.ok(home.includes('if (fWalkHasWork(st)) {') && home.includes("if (!confirm("),
+      'a walk is dropped with no warning and no way back');
+    assert.ok(/is on step \$\{st\.step \|\| 1\}/.test(home) && /cannot be brought back/.test(home),
+      'the warning does not say which walk is going, or does not say it cannot be undone');
+    assert.ok(/Stage 4 record sets already cut are not touched/.test(home),
+      'the warning does not say what it leaves alone, so it reads as deleting the sets too');
+
+    // BOTH PRESSES ARE DEAD AT HOME
+    const title = page.slice(page.indexOf('function fTitle(d, st, name, away, open)'), page.indexOf('const F_NEW_NAME'));
+    assert.ok(title.includes("const dead = open ? '' : ' disabled';"), 'nothing ghosts the presses at Home');
+    assert.ok(/<button id="fCutHome"\$\{dead\}/.test(title), 'Go to Funnel home is live at Home with nothing to go home from');
+    assert.ok(/putAwayBtn\([^)]*\$\{dead\}`\)/s.test(title), 'Put away is live at Home with nothing to put away');
+
+    // AND HOME PAYS FOR NO STEP READING, because it draws no step
+    assert.ok(page.includes("view: ((st.cut && st.cut !== F_NEW) || !fIsOpen(st)) ? 'cut' : null,"),
+      'Home reads a step nothing draws, so landing there costs seconds a draw');
   },
 
   // ---- WHEN `Worth walking?` HIDES: ONE PREDICATE, EVERY VIEW (3.107.0,
@@ -2789,7 +2888,7 @@ module.exports = {
     // ONE predicate decides it, and every place that draws the section asks it
     assert.equal((page.match(/const fHoldShown = /g) || []).length, 1, 'there is more than one predicate, so the two views can drift apart again');
     assert.equal((page.match(/\$\{fHoldPanel\(d, st\)\}/g) || []).length, 2, 'the section is drawn somewhere that does not ask the predicate');
-    assert.equal((page.match(/fHoldShown\(st, away\) \? `<div class="panel" id="fHoldWrap">\$\{fHoldPanel\(d, st\)\}<\/div>` : ''/g) || []).length, 2,
+    assert.equal((page.match(/fHoldShown\(st, away, (?:open|true)\) \? `<div class="panel" id="fHoldWrap">\$\{fHoldPanel\(d, st\)\}<\/div>` : ''/g) || []).length, 2,
       'a view draws the section without asking the predicate, or asks it and draws something else');
     const lift = (head, end) => {
       const at = page.indexOf(head);
@@ -2798,12 +2897,15 @@ module.exports = {
     };
     // eslint-disable-next-line no-eval
     const fHoldShown = eval(`(() => { ${lift('const fHoldShown = ', '\n')}\nreturn fHoldShown; })()`);
-    assert.strictEqual(fHoldShown({ walking: false }, false), true, 'a walk nothing has been pressed on hides the section');
-    assert.strictEqual(fHoldShown({ walking: true }, false), false, 'a walk being used does not hide the section');
+    assert.strictEqual(fHoldShown({ walking: false }, false, true), true, 'a walk nothing has been pressed on hides the section');
+    assert.strictEqual(fHoldShown({ walking: true }, false, true), false, 'a walk being used does not hide the section');
     // put away brings it back whatever the walk has done, because that is what
     // the owner asked put away to leave on screen
-    assert.strictEqual(fHoldShown({ walking: true }, true), true, 'put away does not bring the section back');
-    assert.strictEqual(fHoldShown({}, false), true, 'a walk saved before this was written hides the section it never began');
+    assert.strictEqual(fHoldShown({ walking: true }, true, true), true, 'put away does not bring the section back');
+    assert.strictEqual(fHoldShown({}, false, true), true, 'a walk saved before this was written hides the section it never began');
+    // AND AT HOME IT IS ALWAYS UP (3.108.0). Hiding it with nothing under the
+    // unit selector would leave that row alone on the screen.
+    assert.strictEqual(fHoldShown({ walking: true }, false, false), true, 'the section is hidden at Home, which leaves the screen as one row of boxes');
 
     // WHAT SETS IT: a control on the rail, on the step, or on the rule so far,
     // read from ONE listener over the panels that hold them -- so a control
@@ -2825,7 +2927,7 @@ module.exports = {
 
     // AND `walk this one` IS OUTSIDE IT -- the whole point of the seventh
     // order. It is drawn by the section itself, which is not in #fWalkBody.
-    const draw = page.slice(page.indexOf('  const away = fAway(st.set);\n  $(\'#view\').innerHTML'), page.indexOf('  fWire(st, d);\n  fWatchWalkStart(st);'));
+    const draw = page.slice(page.indexOf('  const away = fAway(st.set);\n  const open = fIsOpen(st);'), page.indexOf('  fWire(st, d);\n  fWatchWalkStart(st);'));
     assert.ok(draw.indexOf('id="fWalkBody"') > draw.indexOf('fHoldPanel(d, st)'),
       'the ranking section is inside the walk panels, so pressing walk this one would hide it');
     assert.ok(!/data-fhold/.test(draw.slice(draw.indexOf('id="fWalkBody"'))), 'walk this one is drawn inside the walk panels');
@@ -2880,13 +2982,13 @@ module.exports = {
     } finally { f.cleanup(); }
     // and the page acts on it
     const page = src('public/construct.js');
-    // 3.104.0: the reset moved into fGoNewRule, the ONE path back to the steps,
-    // so the press in the corner of the heading box cannot skip it. Both halves
-    // are checked -- the box routes there, and there is where the reset lives.
+    // 3.108.0: `new rule` OPENS a walk and has its own path. The reset lives
+    // there, so the box cannot skip it; the press beside the box drops a walk
+    // instead and is a different act entirely.
     const pick = page.slice(page.indexOf('function fWireCutPick('), page.indexOf('function fWireUnit('));
-    assert.ok(pick.includes('if (cs.value === F_NEW) { fGoNewRule(st, d); return; }'),
-      'choosing new rule takes its own route rather than the one path back to the steps');
-    const home = page.slice(page.indexOf('function fGoNewRule(st, d) {'), page.indexOf('function fWireCutPick('));
+    assert.ok(pick.includes('if (cs.value === F_NEW) { fOpenNewRule(st, d); return; }'),
+      'choosing new rule takes its own route rather than the path that opens a walk');
+    const home = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fGoFunnelHome('));
     assert.ok(home.includes('if (fWalkWasAlreadyCut(d)) fFreshWalk(st);'),
       'choosing new rule drops back into the finished walk at whatever step it ended on');
     // AND ONLY AGAINST THIS BOARD'S SETS (3.105.0). The box offers every Stage

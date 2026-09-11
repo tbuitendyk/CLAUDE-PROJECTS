@@ -1624,6 +1624,12 @@ at step 1.
 
 ### 20.7 `Go to Funnel home` is always there, and it brings the home view back
 
+> **Superseded by §21.** What this section describes shipped as 3.107.0 and
+> was wrong: the press kept an unfinished walk, which is the limbo the owner
+> named the next morning. Kept here because §21 is a correction to it and the
+> correction only makes sense beside what it corrects.
+
+
 > "that button to go back to the Funnel home `Go to Funnel home` needs to always
 > be available on the unit selector header which is the top section when a walk
 > is active. that way the current job can be closed / abandoned with that
@@ -1646,3 +1652,87 @@ again at step 1 when that walk has already written a Stage 4 record set. Making
 it always discard the walk would throw away a half-built rule on one press,
 which is not a change to make unasked. It is named in
 `LOOP-2026-09-10.md` for the owner to decide.
+
+
+## 21. Home and Open — the screen has two states and only two (owner order, 2026-09-11)
+
+> "Go to Funnel home bizarrely leaves `new rule` selected for example with
+> "Funnel - S3 #1b - LTCUSDT alongside DOGEUSDT and BCHUSDT daily-1d" on step
+> 7. Declare and cut when used. it's like it remembers things that aren't
+> actually saved. the whole point of the button is to drop a rule before
+> finished and revert the screen to the Worth walking? section included, but
+> against my direction you've made it into so weird Frankenstein half-finished
+> unnamed limbo state. it's a mess"
+
+...and, on the same screen:
+
+> "plus that button is active on the unit selector section when the Worth
+> walking? is already displayed, when the point of making that button was to
+> display the Worth walking? section."
+
+### 21.1 What was wrong
+
+The Funnel had no Home. It always drew a walk, so the press had nowhere to go.
+What it actually did was close a Stage 4 record set, clear the flag that hides
+the header section, and reset the walk **only** when a Stage 4 set already
+carried that exact rule sentence. On an unfinished walk that last test is
+false, so the step, the rule, the marks and the recorded steps all survived a
+press named for going home — step 7 still drawn, under a bold name reading
+`new rule`. Pressed with no Stage 4 set open, the only visible change was the
+header section reappearing.
+
+Both presses were also drawn live with nothing under the unit selector for
+either of them to act on, while `Delete Stage 4 record set…` beside them
+already ghosts when no set is chosen.
+
+### 21.2 The two states
+
+Named in the owner's own words for the two boxes at the top of the screen:
+
+| | What is on the screen |
+|---|---|
+| **Home** | the header section and the unit selector, nothing under them |
+| **Open** | something under the unit selector: a walk you have started, or a Stage 4 record set showing |
+
+**Open is remembered for the SET, not for one walk**, for the same reason put
+away is: it says what the owner wants on the screen, not where any one walk has
+got to. A Stage 4 record set showing is Open whatever else is true, because
+that set IS the thing under the unit selector.
+
+**Three things open one**, each of them the owner choosing a board to walk:
+`Walk this one` on a row of the header section, any change to `coin`,
+`alongside 1`, `alongside 2` or `chunk shape`, and choosing `new rule` in the
+`Stage 4 record set` box.
+
+**One thing closes it**: `Go to Funnel home`.
+
+### 21.3 What each press does now
+
+| Press | What it does |
+|---|---|
+| `Put away` | hides what is under the unit selector and KEEPS it. `Open` brings it back exactly as it was. |
+| `Go to Funnel home` | a Stage 4 record set is closed and not touched — it opens again from the box. A walk is DROPPED: its step, the rule, every recorded step and its marks, cleared and not recoverable. The screen lands at Home. |
+
+Both are ghosted at Home.
+
+**The press asks first**, and only when there is something to lose — a walk
+that has been used, is past step 1, has a clause on it, or recorded a step. An
+untouched walk goes without a question, because warning about nothing teaches
+the owner to click through warnings. The question names the coin and shape and
+the step it is on, says it cannot be brought back, and says that Stage 4 record
+sets already cut are not touched.
+
+**`new rule` and the press no longer share a path.** They shared one while they
+meant the same thing; they mean different things now, and one path cannot do
+both. `new rule` opens a walk, starting it again at step 1 when the walk in
+hand already wrote a set (owner order 2026-09-04). The press drops one.
+
+### 21.4 What Home says, and what it costs
+
+Home draws a line naming the ways out of it, because blank space under the unit
+selector reads as a screen that failed to draw. The bold name there reads
+`Funnel home` rather than `new rule` — a name for something that is not on the
+screen was half the complaint.
+
+Home also asks the service for no step reading, the same way an open Stage 4
+record set does. A step nobody can see is seconds of work per draw.

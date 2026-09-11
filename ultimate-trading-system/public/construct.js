@@ -4942,6 +4942,28 @@ function fRememberForSet(set, fields) {
 // unit -- exactly as the bar and the target above it do.
 const fAway = (set) => fSetMemory(set).away === true;
 
+// HOME AND OPEN — THE SCREEN HAS TWO STATES AND ONLY TWO (3.108.0, owner
+// order 2026-09-11: "TOP BOX = header section; SECOND BOX = unit selector ...
+// Home — TOP BOX and SECOND BOX, nothing under the SECOND BOX").
+//
+//   HOME  the header section and the unit selector, nothing under them.
+//   OPEN  something under the unit selector: a walk you have started, or a
+//         Stage 4 record set showing.
+//
+// Before this the screen had no Home at all. It always drew a walk, so `Go to
+// Funnel home` had nowhere to go: it closed a Stage 4 record set and left the
+// walk exactly where it was, which is how a step 7 rule survived a press
+// named for going home while the bold name above it read `new rule` (owner:
+// "so weird Frankenstein half-finished unnamed limbo state").
+//
+// OPEN IS REMEMBERED FOR THE SET, not for one walk, for the same reason put
+// away is: it says what the owner wants on the screen, not where any one walk
+// has got to. A Stage 4 record set showing is Open whatever it says, because
+// that set IS the thing under the unit selector.
+const fOpenOf = (set) => fSetMemory(set).open === true;
+const fMarkOpen = (set, on) => fRememberForSet(set, { open: !!on });
+const fIsOpen = (st) => !!((st.cut && st.cut !== F_NEW) || fOpenOf(st.set));
+
 // WHETHER `Worth walking?` IS DRAWN -- ONE PREDICATE, EVERY VIEW OF THIS
 // SCREEN (3.107.0, owner order 2026-09-10: "the display of the 'Worth
 // walking?' section at the top of the funnel page is inconsistent depending on
@@ -4962,7 +4984,10 @@ const fAway = (set) => fSetMemory(set).away === true;
 // And `put away` brings it back whatever the walk has done, because that is
 // what the owner asked put away to leave on screen: "collapses any open funnel
 // and just leaves the 'Worth walking?' and unit selector areas open".
-const fHoldShown = (st, away) => !!away || !st.walking;
+// AND AT HOME IT IS ALWAYS DRAWN (3.108.0). Hiding it with nothing open below
+// would leave the screen as the unit selector alone, which is the limbo this
+// release exists to end.
+const fHoldShown = (st, away, open) => !!away || !open || !st.walking;
 
 // WHAT A READING OF THE OTHER UNITS WAS READ FOR: the rule AND the bar. The
 // same rule under another share of the copies is another reading.
@@ -5031,8 +5056,12 @@ async function drawFunnel() {
       regionAtLeast: st.regionAtLeast,                      // step 5's bar; 0 is "made money", below 0 papers over dips
       regionReach: st.regionReach,                          // how far one step may reach; 1 is neighbours only
       regionAcross: st.regionAcross,                        // word-valued dials the region may step across
-      // showing a Stage 4 record set: no step is drawn, so no step is read
-      view: (st.cut && st.cut !== F_NEW) ? 'cut' : null,
+      // NO STEP DRAWN, NO STEP READ. A Stage 4 record set showing draws no
+      // step, and neither does Home (3.108.0) — reading one is seconds of
+      // work per draw for a panel that is not on the screen. The heading,
+      // the units, the cut sets and the rebuilt-number state all come back
+      // either way; only the step's own reading is skipped.
+      view: ((st.cut && st.cut !== F_NEW) || !fIsOpen(st)) ? 'cut' : null,
     });
   } finally { waitEnd(); }
   if (d && !d.totalling && !d.waiting && d.rebuilt) st.rebuilt = true;
@@ -5099,13 +5128,15 @@ async function drawFunnel() {
       : (d.step === 4 && !r.why ? { positive: r.positive, of: r.of, check: r.check || null } : null),
     keep: d.step === 5 && r.keep ? { ranges: r.keep.ranges || {}, allowed: r.keep.allowed || {} } : null,
   };
-  // PUT AWAY COLLAPSES EVERYTHING BELOW THE TWO PICKERS (3.107.0, owner order
-  // 2026-09-10). What is left is what the owner asked to be left: `Worth
-  // walking?` and the row of boxes that chooses what is walked.
+  // WHAT IS UNDER THE UNIT SELECTOR: nothing at Home, the put away line when
+  // it is put away, the walk when it is Open (3.108.0). One decision, taken
+  // here, so no part of the screen can be in a different state from the rest.
   const away = fAway(st.set);
-  $('#view').innerHTML = `${fHoldShown(st, away) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : ''}
-  <div class="panel">${fTitle(d, st, F_NEW_NAME, away)}</div>
-  ${away ? `<div class="panel">${putAwayNote}</div>` : `<div id="fWalkBody">
+  const open = fIsOpen(st);
+  $('#view').innerHTML = `${fHoldShown(st, away, open) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : ''}
+  <div class="panel">${fTitle(d, st, open ? F_NEW_NAME : F_HOME_NAME, away, open)}</div>
+  ${!open ? `<div class="panel">${F_HOME_NOTE}</div>`
+    : away ? `<div class="panel">${putAwayNote}</div>` : `<div id="fWalkBody">
   <div class="panel">${fHead(d)}${fRail(d, st)}</div>
   <div class="panel">
     <h3 style="margin-top:0">Step ${d.step} - ${esc(F_STEPS[d.step - 1][0])}</h3>
@@ -6299,9 +6330,11 @@ async function fDrawCut(d, st, cutId) {
   // `Worth walking?` was drawn above the steps and nowhere else, which is the
   // inconsistency the owner named; put away collapses an open Stage 4 record
   // set exactly as it collapses an open walk.
+  // A STAGE 4 RECORD SET SHOWING IS ALWAYS OPEN — it is the thing under the
+  // unit selector — so there is no Home branch on this path.
   const away = fAway(st.set);
-  $('#view').innerHTML = `${fHoldShown(st, away) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : ''}
-    <div class="panel">${fTitle(d, st, cd.set.name, away)}</div>
+  $('#view').innerHTML = `${fHoldShown(st, away, true) ? `<div class="panel" id="fHoldWrap">${fHoldPanel(d, st)}</div>` : ''}
+    <div class="panel">${fTitle(d, st, cd.set.name, away, true)}</div>
     ${away ? `<div class="panel">${putAwayNote}</div>` : `<div class="panel">${fCutHead(cd, st)}</div>
     <div class="panel">${fCutTable(cd, st)}</div>`}`;
   fWireCut(d, st, cd);
@@ -6336,7 +6369,7 @@ function fCutPickBox(d, st) {
 // not read or is still being totalled -- there is a MESSAGE below this row on
 // those, not a section, and a press that puts away the message saying why
 // nothing opened is a press that walls the owner in.
-function fTitle(d, st, name, away) {
+function fTitle(d, st, name, away, open) {
   // A STAGE 4 RECORD SET CAN BE DELETED FROM THE SCREEN IT LIVES ON (owner
   // order, 2026-09-06: "there's no way to delete s4 data" and "s1/2/3 wont
   // delete cause 4 exists").
@@ -6352,6 +6385,13 @@ function fTitle(d, st, name, away) {
   // what the system can do, the interface exposes).
   const chosen = st.cut && st.cut !== F_NEW ? st.cut : null;
   const gap = 'style="margin-left:auto"';
+  // BOTH PRESSES ARE DEAD AT HOME (3.108.0, owner order 2026-09-11: "that
+  // button is active on the unit selector section when the Worth walking? is
+  // already displayed, when the point of making that button was to display
+  // the Worth walking? section"). Neither has anything to act on with nothing
+  // under this row, and a control that looks live and is not is the fault
+  // `Delete Stage 4 record set…` beside them already avoids.
+  const dead = open ? '' : ' disabled';
   return `<div class="row" style="align-items:flex-end">
       ${fUnitPicker(d)}
       ${fCutPickBox(d, st)}
@@ -6359,9 +6399,9 @@ function fTitle(d, st, name, away) {
         title="permanently deletes the Stage 4 record set chosen beside this, and nothing else. Its parent stage 3 set, and the stage 2 and stage 1 sets above that, cannot be deleted while a set cut from them is still here — so this is what clears the way.">Delete Stage 4 record set…</button>
       ${away == null ? '' : putAwayBtn('ffold', 1, !away, chosen
     ? 'the Stage 4 record set open below this row'
-    : 'the steps below this row, and the rule so far', gap)}
-      <button id="fCutHome" ${away == null ? gap : ''}
-        title="closes whatever is open below - a Stage 4 record set, or a walk part way through the steps - and goes back to the top of the Funnel, exactly as choosing new rule in the box beside this does. Nothing is deleted and nothing is written: a set stays where it is and opens again from that box, and a walk that has already written a set starts again at step 1.">Go to Funnel home</button>
+    : 'the steps below this row, and the rule so far', `${gap}${dead}`)}
+      <button id="fCutHome"${dead} ${away == null ? gap : ''}
+        title="goes back to Home: this section and the one above it, with nothing under them. A Stage 4 record set showing is closed and is not touched — it opens again from the box beside this. A WALK IS DROPPED: its step, the rule you have built and everything the walk recorded are cleared and cannot be brought back, and you are asked first. Use Put away instead to keep a walk and look at the section above.">Go to Funnel home</button>
     </div>
     <p class="note" style="margin:.35rem 0 0">${(d.cuts || []).filter((c) => c.mine).length} Stage 4 record set(s) have been cut from this coin and shape,
       and the box offers all ${(d.cuts || []).length} cut from this stage 3 record set - one from another coin and shape says which.
@@ -6370,6 +6410,16 @@ function fTitle(d, st, name, away) {
 }
 // what the bold name says while the steps are being walked
 const F_NEW_NAME = 'new rule';
+// ...and what it says with nothing open under this row (3.108.0). It read
+// `new rule` there too, over a part-built rule the owner had not asked to
+// keep -- a name for something that was not on the screen.
+const F_HOME_NAME = 'Funnel home';
+
+// WHAT HOME SAYS (3.108.0). Blank space under the unit selector reads as a
+// screen that failed to draw, so Home says it is Home and names the two ways
+// out of it -- both of them controls on this screen, in the words they carry.
+const F_HOME_NOTE = '<p class="note">Nothing is open. Press <b>Walk this one</b> on a row above to start a walk on that coin and shape, '
+  + 'or change <b>coin</b> or <b>chunk shape</b> to walk another. A <b>Stage 4 record set</b> opens from the box beside them.</p>';
 
 // THE HEADING, AS THE OWNER DREW IT (2026-09-04, reordered 3.61.0). Display
 // only, one control on it: the name. It reads top to bottom as one progression
@@ -6634,21 +6684,62 @@ function fWatchCutBox() {
 // walk is recognised by its own rule SENTENCE, which is the sentence the set it
 // wrote carries -- so this works on sets cut before it was written, and never
 // resets a walk that produced nothing.
-function fGoNewRule(st, d) {
+// LEAVING A STAGE 4 RECORD SET. Both paths below do it and neither does
+// anything else to it: the set stays exactly where it is and opens again from
+// the box.
+function fCloseCut(st) { st.cut = F_NEW; st.setRebuiltSaid = null; }
+
+// IS THERE ANYTHING TO LOSE. A walk nobody has touched is not work, and
+// warning about it teaches the owner to click through warnings.
+const fWalkHasWork = (st) => !!(st.walking || (st.steps || []).length || (st.step || 1) > 1
+  || Object.keys((st.rule || {}).ranges || {}).length
+  || Object.keys((st.rule || {}).allowed || {}).length
+  || Object.keys((st.rule || {}).floors || {}).length);
+
+// `new rule` IN THE BOX OPENS A WALK. It is the box saying "not a Stage 4
+// record set, the steps instead", so it goes to the steps -- and it starts
+// them again at step 1 when the walk in hand has already written a set (owner
+// order 2026-09-04: "don't go back to step 7 the previous finished rule if a
+// record set already exists"). It does NOT drop an unfinished walk; that is
+// the other press, and the two mean different things now (3.108.0).
+function fOpenNewRule(st, d) {
+  fCloseCut(st);
   if (fWalkWasAlreadyCut(d)) fFreshWalk(st);
-  // AND THE HOME VIEW IS WHAT COMES BACK (3.107.0). `Worth walking?` hides
-  // while a walk is being used, so a press called `Go to Funnel home` that
-  // left it hidden would leave the screen looking exactly as it did before it
-  // was pressed. This clears only that -- the walk keeps its place and its
-  // rule, and using any of its controls hides the section again.
-  st.walking = false;
-  st.cut = F_NEW; st.setRebuiltSaid = null; fSave(); drawFunnel();
+  fMarkOpen(st.set, true);
+  fSave(); drawFunnel();
+}
+
+// `Go to Funnel home` DROPS THE WALK (3.108.0, owner order 2026-09-11: "the
+// whole point of the button is to drop a rule before finished and revert the
+// screen to the Worth walking? section included").
+//
+// It used to reset the walk only when a Stage 4 record set already carried
+// that exact rule sentence, so an UNFINISHED walk survived it whole -- step 7
+// still drawn, the rule still on it, under a bold name reading `new rule`.
+// That is what the owner called the limbo state, and it is the one thing this
+// press exists to end. It drops the walk every time now, and asks first when
+// there is anything in it to lose.
+function fGoFunnelHome(st, d) {
+  if (fWalkHasWork(st)) {
+    const who = (d && (d.unitName || d.unit)) || 'this coin and shape';
+    if (!confirm(`Drop this walk?\n\n${who} is on step ${st.step || 1}. The rule you have built, every step the walk `
+      + 'recorded and its marks are cleared, and they cannot be brought back.\n\n'
+      + 'Stage 4 record sets already cut are not touched. To keep the walk and read the section above it, '
+      + 'press Put away instead.')) return;
+  }
+  fCloseCut(st);
+  fFreshWalk(st);
+  // AND PUT AWAY IS CLEARED WITH IT. Home is a clean slate: a remembered put
+  // away that reappeared the next time something opened would be exactly the
+  // hidden state this press exists to clear.
+  fRememberForSet(st.set, { open: false, away: false });
+  fSave(); drawFunnel();
 }
 function fWireCutPick(st, d) {
   const cs = $('#fCutPick');
   if (cs) {
     cs.onchange = () => {
-      if (cs.value === F_NEW) { fGoNewRule(st, d); return; }
+      if (cs.value === F_NEW) { fOpenNewRule(st, d); return; }
       st.cut = cs.value; st.setRebuiltSaid = null; fSave(); drawFunnel();
     };
   }
@@ -6656,7 +6747,7 @@ function fWireCutPick(st, d) {
   // press, before any early return: a set that will NOT open is exactly the one
   // you most want to leave, and its panel never renders.
   const home = $('#fCutHome');
-  if (home) home.onclick = () => fGoNewRule(st, d);
+  if (home) home.onclick = () => fGoFunnelHome(st, d);
   // PUT AWAY IS WIRED HERE TOO, for the same reason: it is on this row, this
   // row is drawn on both views of the screen, and one handler for one control
   // is what keeps the two views agreeing about what it does.
@@ -6685,6 +6776,11 @@ function fFreshWalk(st) {
 function fWireUnit(st, d) {
   const go = (key) => {
     fSave();
+    // CHOOSING A COIN AND SHAPE OPENS ITS WALK (3.108.0). Home is a state the
+    // owner lands in and leaves on purpose; picking a board to walk is
+    // leaving it. Remembered for the SET, so it is set here and read after
+    // the chosen board's own walk has loaded.
+    fMarkOpen(st.set, true);
     fUnitChoose(st.set, key || 'all');
     fState = null;
     drawFunnel();
@@ -6745,9 +6841,10 @@ function fWireCut(d, st, cd) {
       const done = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, { confirm: typed.trim() });
       if (done && done.deleted) {
         alert(`Deleted ${done.name} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
-        // the same two lines the picker uses when it is moved to new rule:
-        // the set that was chosen is gone, so the screen cannot stay in it
-        st.cut = F_NEW; st.setRebuiltSaid = null; fSave(); drawFunnel();
+        // the set that was chosen is gone, so the screen cannot stay in it.
+        // It goes HOME rather than onto a walk (3.108.0): nothing was open
+        // but that set, and opening something else is the owner's choice.
+        fCloseCut(st); fMarkOpen(st.set, false); fSave(); drawFunnel();
       }
     };
   }
@@ -7083,6 +7180,7 @@ function fWireHold(st, d) {
   document.querySelectorAll('[data-fhold]').forEach((b) => {
     b.onclick = () => {
       fSave();
+      fMarkOpen(st.set, true);                            // it opens a walk (3.108.0)
       fUnitChoose(st.set, b.dataset.fhold);
       fState = null;
       drawFunnel();

@@ -619,8 +619,8 @@ window.HELP = {
         more: 'What you accepted is written on the set in words - "accepted 4 of 6; the check managed 3 of 6" - as a mark, so anyone reading the set later can see how much of the board the rule held on and how much of that the check managed anyway. It is disabled when there is nothing to compare.',
       },
       fCutHome: {
-        what: 'Leaves the Stage 4 record set on screen and goes back to the steps.',
-        more: 'It does exactly what choosing "new rule" in the box beside it does, and it is here because after the steps write a set you are looking at that set with no obvious way out. Nothing is deleted and nothing is written: the set stays where it is and opens again from that box whenever you want it. If the walk you are returning to already produced this set, it starts again at step 1 with an empty rule - a finished walk reopened at its last step is not a new rule, it is the old one wearing the words.',
+        what: 'Goes back to Home: this section and the one above it, with nothing under them. A walk on screen is DROPPED, and you are asked first.',
+        more: 'Home is where the Funnel starts and where this press puts it back. What happens to what was open depends on what it was. A Stage 4 record set is closed and nothing else - it stays exactly where it is and opens again from the box beside this. A walk is thrown away: its step, the rule you have built, every step it recorded and its marks, and none of it can be brought back. You are asked before that happens, and the question names the coin and shape and the step it is on. Stage 4 record sets you have already cut are never touched by it. To keep a walk and read the section above it instead, press "Put away" - that hides the walk and brings it back exactly as you left it. Both presses are ghosted at Home, because there is nothing under this row for either of them to act on.',
       },
       fSetRebuild: {
         what: "Prices this record set's own settings again and keeps the answer on the set itself.",

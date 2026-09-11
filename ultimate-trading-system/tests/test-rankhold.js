@@ -303,7 +303,7 @@ module.exports = {
     const page = src('public/construct.js');
     // 3.107.0: the section is drawn under a predicate rather than unconditionally
     // (FUNNEL-DESIGN.md §20.6), so the slice starts at the predicate.
-    const draw = page.slice(page.indexOf("  const away = fAway(st.set);\n  $('#view').innerHTML"), page.indexOf('  fWire(st, d);\n  fWatchWalkStart(st);\n}'));
+    const draw = page.slice(page.indexOf("  const away = fAway(st.set);\n  const open = fIsOpen(st);"), page.indexOf('  fWire(st, d);\n  fWatchWalkStart(st);\n}'));
     const atHold = draw.indexOf('fHoldPanel(d, st)');
     const atStep = draw.indexOf('Step ${d.step}');
     assert.ok(atHold > 0, 'the ranking is not drawn on the Funnel at all');
@@ -312,7 +312,7 @@ module.exports = {
     // before the header area ... the point is largely to confirm that given
     // units are worth even funneling"). Above the coin picker, because walking
     // a row IS the picking: read the table, then choose.
-    assert.ok(atHold < draw.indexOf('fTitle(d, st, F_NEW_NAME, away)'), 'the ranking is drawn below the picker it is supposed to be read before');
+    assert.ok(atHold < draw.indexOf('fTitle(d, st, open ? F_NEW_NAME : F_HOME_NAME, away, open)'), 'the ranking is drawn below the picker it is supposed to be read before');
     assert.ok(atHold < draw.indexOf('fHead(d)'), 'the ranking is drawn below the set heading rather than first');
     // THE TABLE SHOWS WHAT THE OWNER ASKED FOR AND HIDES NOTHING ELSE, and it
     // says how many rows it is not showing (RULE ZERO: a curated list takes the
