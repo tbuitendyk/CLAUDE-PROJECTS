@@ -1029,7 +1029,7 @@ module.exports = {
     assert.ok(s4.includes('id="fAccept4"'), 'step 4 has an accept');
     assert.ok(s4.includes('The check managed'), 'and prints what the check managed beside the real count');
     const s5 = fn('fStep5', 'fLadder');
-    assert.ok(s5.includes('id="fKeepRegion"'), 'step 5 keeps the widest region');
+    assert.ok(s5.includes('id="fKeepRegion"'), 'step 5 has no press that keeps the auto-plateau region');
     assert.ok(!s5.includes('JSON.stringify'), 'and never prints its answer as raw JSON');
     const s6 = fn('fStep6', 'fStep7');
     assert.ok(s6.includes("fLadder('worst losing streak'") && s6.includes("fLadder('trades'"), 'step 6 shows what each limit would keep');
