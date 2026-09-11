@@ -77,6 +77,68 @@ The parts are **not** independent. Where one leans on another, the part says so.
 > is a fraction of a full stage 1 sweep, which trains every combination in the
 > universe. The blocker I put here has largely gone with it.
 
+> **BUILDING, 2026-09-11.** The owner: "i don't care about timing retraining for
+> the Part 1 as some kind of blocker. just queue up part 1 next" — so the timing
+> measurement is withdrawn as a blocker and the cost is discovered by building
+> it. And the open question this part raised is ANSWERED by the owner: **a
+> pass's judging stretch is NOT a counted look.** Five stretches never opened
+> before are five fresh rolls, not five spends of the one look; the single
+> verdict's held-back read stays the counted one.
+
+### 1.0 The rule this is judged by, written before any of it was built
+
+Written first and on purpose, so that no number produced later can be talked
+into being a success (RULE SIX's discipline, which is worth keeping whether or
+not a loop is running).
+
+**Done means all six, and any one of them failing means not done:**
+
+1. **Five passes on ONE coin and shape, and the reserve in none of them.** A
+   test asserts no pass's judging stretch overlaps the reserve, on real stored
+   ranges — not on a comment saying it does not.
+2. **Every score is against the copy count the ORIGINAL run used at that
+   stage**, read off the set, never typed. A test changes a stored count and
+   watches the reading move; if it does not move, the count is not being read.
+3. **One retrain per pass, shared by both sides.** The settings the rule kept
+   and the sample it dropped are priced against the SAME retrained forecasts.
+   If the retrain happens twice per pass, the control is not free and the part
+   is built wrong.
+4. **No pass stamps a counted look.** A test runs the passes and asserts the
+   set's held-back-read stamp is exactly what it was before. This is the
+   owner's ruling and it is the one thing here that cannot be got back if it
+   ships wrong.
+5. **The block draws ABOVE the single verdict.** A weaker number read first
+   becomes the number that is remembered.
+6. **Green suite, a Help entry for every new control the Help tab can see,
+   every new rendered label on the word list regenerated from what the box
+   serves, a deploy whose health check passes, and a mutation guard for each of
+   1 to 5** — because a behaviour with no guard is a behaviour that reverts
+   quietly.
+
+### 1.0a What I expect to go wrong, written before looking
+
+- **The retrain may not take an arbitrary boundary.** If stage 1's stretch
+  layout is fixed in the engine rather than passed in, then sliding it is a
+  change to the engine and not a new caller — a much bigger release than one
+  Verify block, and it would put every record set on the box in question. If
+  that is what the code says, the honest move is to PARK the sliding boundary,
+  say so, and put it to the owner (RULE ZERO) rather than change the engine
+  unasked.
+- **The copies almost certainly cannot be carried between passes**, because a
+  copy set is keyed to the window it was built on. So the cost is five times
+  (retrain + copies + pricing), which may be hours. It has to be a started and
+  polled job with real progress, never a held request — the same contract the
+  other Verify reads already use.
+- **"The bare unit at stage 1" may have no number today.** If no single stored
+  figure means that, one has to be chosen. That is a small choice inside an
+  approved step, so it is mine to make and to record here — but it must be
+  built from something already stored, never from a new measurement invented to
+  make the level scoreable.
+- **Twenty copies give a resolution of one part in twenty**, so a pass can only
+  be stated in steps of five percent. Keeping the original counts is right for
+  comparability and it is still coarse. Saying "cleared four of five passes" off
+  a five-percent grid is a coarser claim than it sounds.
+
 ## The problem
 
 A single held-back stretch is one roll of the dice. Whatever that stretch
