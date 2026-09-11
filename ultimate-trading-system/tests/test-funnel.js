@@ -2759,7 +2759,7 @@ module.exports = {
     }
     // AND HOME BEATS IT (3.108.0): with nothing under this row there is
     // nothing to put away, so Home is what is drawn and the press is dead.
-    assert.ok(page.includes('${!open ? `<div class="panel">${F_HOME_NOTE}</div>`'),
+    assert.ok(page.includes('${!open ? `<div class="panel">${fHomeNote()}</div>`'),
       'Home draws the put away line, or draws nothing at all where it should say it is Home');
     // and it is REMEMBERED FOR THE SET, not for one walk: it says what the
     // owner wants to look at, not where any one walk has got to, so it holds
@@ -2829,8 +2829,11 @@ module.exports = {
 
     // AND HOME IS WHAT THE SCREEN DRAWS THERE, in words, rather than a blank
     // space that reads as a screen which failed
-    assert.ok(/const F_HOME_NOTE = '<p class="note">Nothing is open\. Press <b>Walk this one<\/b>/.test(page),
+    assert.ok(/function fHomeNote\(\) \{\n  return `<p class="note">Nothing is open\. Press <b>Walk this one<\/b>/.test(page),
       'Home says nothing, so an empty screen reads as a broken one');
+    // A FUNCTION, so the word list generator can follow it. Behind a plain
+    // string constant the sentence is on the screen and on no list.
+    assert.ok(!/const F_HOME_NOTE/.test(page), 'the sentence Home prints is hidden from the word list behind a constant');
     assert.ok(/const F_HOME_NAME = 'Funnel home';/.test(page),
       'the bold name at Home still says new rule, naming something that is not on the screen');
 
