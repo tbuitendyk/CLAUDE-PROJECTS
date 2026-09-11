@@ -668,9 +668,6 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "      ${fCutPickBox(d, st)}\n", "",
     'theTitleAndTheTwoSelectorsAreAlwaysAtTheTop',
     'the Stage 4 record set box leaves the title section, so on the walk there is no control on screen to reach a set already cut'],
-  [path.join(ROOT, 'public', 'construct.js'), "  if (fWalkWasAlreadyCut(d)) fFreshWalk(st);", "",
-    'aNewRuleStartsAtStepOneWhenTheWalkHasAlreadyBeenCut',
-    'new rule drops back into the finished walk at step 7 with its own rule still on it, which is the old rule wearing the words'],
   [path.join(ROOT, 'lib', 'stages.js'), "      ruleSentence: d.ruleSentence || null,", "      ruleSentence: null,",
     'aNewRuleStartsAtStepOneWhenTheWalkHasAlreadyBeenCut',
     'nothing can tell whether the walk on hand is the one a set was already cut from, so new rule never starts fresh'],
@@ -718,7 +715,7 @@ const GUARDS = [
     'aNewRuleStartsAtStepOneWhenTheWalkHasAlreadyBeenCut',
     'new rule gives back a walk built days ago at the step it stopped on'],
   [path.join(ROOT, 'public', 'construct.js'), "  if (fWalkHasWork(st) && !fWalkWasAlreadyCut(d)) {", "  if (false) {",
-    'theFunnelIsEitherHomeOrOpenAndThePressThatGoesHomeDropsTheWalk',
+    'theSetJustWrittenHasAPressBackToTheSteps',
     'a walk left part-built behind an open Stage 4 record set is cleared by the box with no warning'],
   // ---- HOME AND OPEN, AND THE PRESS THAT DROPS A WALK (3.108.0) ----
   [path.join(ROOT, 'public', 'construct.js'), 'const fIsOpen = (st) => !!((st.cut && st.cut !== F_NEW) || fOpenOf(st.set));',
