@@ -2667,7 +2667,7 @@ module.exports = {
     assert.ok(title.includes("const gap = 'style=\"margin-left:auto\"';"), 'the gap that pushes the right-hand group over is gone');
     assert.ok(/\$\{away == null \? '' : putAwayBtn\('ffold', 1, !away,/.test(title), 'the put away press is not in the selector header');
     assert.ok(/putAwayBtn\([^)]*`\$\{gap\}\$\{dead\}`\)/s.test(title), 'the put away press does not carry the gap, so it sits mid-row');
-    assert.ok(/<button id="fCutHome"\$\{dead\} \$\{away == null \? gap : ''\}/.test(title),
+    assert.ok(/<button id="fCutHome"\$\{noDrop\} \$\{away == null \? gap : ''\}/.test(title),
       'the press does not sit hard right in the heading box when it is the only one of the two drawn');
     // it shares the delete press's row, so it shares its baseline (RULE FOUR)
     const row = title.slice(title.indexOf('<div class="row" style="align-items:flex-end">'), title.indexOf('</div>'));
@@ -2692,7 +2692,7 @@ module.exports = {
     // case the condition used to leave without one.
     assert.ok(!/\$\{chosen \? `<button id="fCutHome"/.test(title),
       'the press is drawn only when a Stage 4 set is open, so a walk part way through has no way out');
-    assert.ok(/^\s*<button id="fCutHome"\$\{dead\} /m.test(title),
+    assert.ok(/^\s*<button id="fCutHome"\$\{noDrop\} /m.test(title),
       'the press is not drawn unconditionally in the selector header');
 
     // ONE PATH. Both the box and the press call it, and it is the one that
@@ -2709,8 +2709,15 @@ module.exports = {
       'the press does not drop the walk, so a part-built rule survives a press named for going home');
     assert.ok(/fRememberForSet\(st\.set, \{ open: false, away: false \}\)/.test(home),
       'the press does not land the screen at Home, or leaves put away remembered behind it');
-    assert.ok(home.includes('if (fWalkHasWork(st)) {') && home.includes('if (!confirm('),
+    assert.ok(home.includes('if (!confirm('),
       'the press drops a walk without asking, and there is no way to bring one back');
+    // GHOSTED WHENEVER `Worth walking?` IS ON THE SCREEN (3.108.2, owner
+    // order said twice). One test and no other: the press exists to put that
+    // section back, so with it already there the press has nothing to do —
+    // at Home, over a Stage 4 record set that was cut and finished, or over
+    // a walk nothing has been done to yet.
+    assert.ok(page.includes("  const noDrop = fHoldShown(st, away, open) ? ' disabled' : '';"),
+      'the press is live with Worth walking? already displayed, which is the one thing it is for');
     const wire = page.slice(page.indexOf('function fWireCutPick(st, d) {'), page.indexOf('const fWalkWasAlreadyCut'));
     assert.ok(wire.includes('if (cs.value === F_NEW) { fOpenNewRule(st, d); return; }'), 'the box takes its own route to opening a walk');
     assert.ok(wire.includes("const home = $('#fCutHome');") && wire.includes('home.onclick = () => fGoFunnelHome(st, d);'),
@@ -2853,8 +2860,10 @@ module.exports = {
       'the press drops a walk only in some cases, so an unfinished one survives it');
     assert.ok(/fRememberForSet\(st\.set, \{ open: false, away: false \}\)/.test(home),
       'the press does not land at Home, or leaves put away remembered behind it');
-    assert.ok(home.includes('if (fWalkHasWork(st)) {') && home.includes("if (!confirm("),
-      'a walk is dropped with no warning and no way back');
+    // ASKED EVERY TIME (3.108.2): the press is live only when there is a walk
+    // to drop, so the guard is the ghosting and the question is always true.
+    assert.ok(home.includes('if (!confirm(') && !/if \(fWalkHasWork\(st\)\) \{/.test(home),
+      'a walk is dropped with no warning, or the warning is guessed at instead of guaranteed');
     assert.ok(/is on step \$\{st\.step \|\| 1\}/.test(home) && /cannot be brought back/.test(home),
       'the warning does not say which walk is going, or does not say it cannot be undone');
     assert.ok(/Stage 4 record sets already cut are not touched/.test(home),
@@ -2863,7 +2872,7 @@ module.exports = {
     // BOTH PRESSES ARE DEAD AT HOME
     const title = page.slice(page.indexOf('function fTitle(d, st, name, away, open)'), page.indexOf('const F_NEW_NAME'));
     assert.ok(title.includes("const dead = open ? '' : ' disabled';"), 'nothing ghosts the presses at Home');
-    assert.ok(/<button id="fCutHome"\$\{dead\}/.test(title), 'Go to Funnel home is live at Home with nothing to go home from');
+    assert.ok(/<button id="fCutHome"\$\{noDrop\}/.test(title), 'Go to Funnel home is live with no walk to drop');
     assert.ok(/putAwayBtn\([^)]*\$\{dead\}`\)/s.test(title), 'Put away is live at Home with nothing to put away');
 
     // AND HOME PAYS FOR NO STEP READING, because it draws no step

@@ -1711,16 +1711,33 @@ that set IS the thing under the unit selector.
 | Press | What it does |
 |---|---|
 | `Put away` | hides what is under the unit selector and KEEPS it. `Open` brings it back exactly as it was. |
-| `Go to Funnel home` | a Stage 4 record set is closed and not touched — it opens again from the box. A walk is DROPPED: its step, the rule, every recorded step and its marks, cleared and not recoverable. The screen lands at Home. |
+| `Go to Funnel home` | DROPS the walk under the unit selector: its step, the rule, every recorded step and its marks, cleared and not recoverable. The screen lands at Home. |
 
-Both are ghosted at Home.
+`Put away` is ghosted at Home.
 
-**The press asks first**, and only when there is something to lose — a walk
-that has been used, is past step 1, has a clause on it, or recorded a step. An
-untouched walk goes without a question, because warning about nothing teaches
-the owner to click through warnings. The question names the coin and shape and
-the step it is on, says it cannot be brought back, and says that Stage 4 record
-sets already cut are not touched.
+**`Go to Funnel home` is ghosted whenever the header section is displayed**
+(owner order, 2026-09-11, said twice):
+
+> "TOP SECTION WORTH WALKING? IS DISPLAYED AND YOU HAVE THE BUTTON 'GO TO
+> FUNNEL HOME' SELECTABLE -- THAT'S WHAT THE BUTTON IS SUPPOSED TO DO."
+
+That is the whole test and it needs no other. The press exists to put the
+header section back; with it already there the press has nothing to do,
+whatever is underneath. It covers Home. It covers a Stage 4 record set showing
+— "the rule has been completely executed and it should remain associated with
+that record set ... THEY'VE BEEN CUT TO A RECORD SET". It covers a walk nothing
+has been done to yet. And 3.108.0 got all three wrong by inventing its own
+test instead of using the owner's.
+
+**The press always asks**, and it can afford to state the step as a fact
+because of the rule above: the header section is hidden only once a walk
+control has been used, so the one state the press is live in is a walk with
+work in it. The question names the coin and shape and the step it is on, says
+it cannot be brought back, and says that Stage 4 record sets already cut are
+not touched.
+
+**A Stage 4 record set is closed by the box it was opened from**, never by
+this press. It is finished work and stays associated with what it holds.
 
 **`new rule` and the press no longer share a path.** They shared one while they
 meant the same thing; they mean different things now, and one path cannot do
