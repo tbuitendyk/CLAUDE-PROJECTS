@@ -1,23 +1,23 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "adb6f03ee73cd41827acde5106e49f7a9cb90b3d",
-  "subject": "3.107.1: one helper draws the beaten cell, and the served record catches up",
-  "capturedAt": "2026-09-10T08:33:00Z",
+  "commit": "159c7435b7a0512f67a5676d010accc7ef76d94b",
+  "subject": "3.107.2: every button starts with a capital letter",
+  "capturedAt": "2026-09-11T04:12:00Z",
   "files": {
     "public/construct.js": {
-      "sha256": "f12661bee26bd33b360dedc2d354c95a06355ee31320a786ca38d5e496189291",
-      "bytes": 537408
+      "sha256": "889e6da700140bd56be33648f2864f88eab2013414aa915e000b5d3a9eb8c965",
+      "bytes": 537414
     },
     "public/help-content.js": {
-      "sha256": "af8bfe8c5b0a837773eb4e341ece6d3396eae63599d273f23f4bc494cd694a85",
+      "sha256": "0cf3ca42a5da7ed2a0f02b187ae5d17f9ece5ea99852a751a5c3c201149f2d08",
       "bytes": 96494
     },
     "public/setup.html": {
-      "sha256": "fd6446750d5c8e73fb5431f9b1705e14262a830969fa366eb7bd2391f23cf0ca",
+      "sha256": "960408460c2fb531f1a6b45cf1f4bbec8bd8860242c01d55bde0893ebbb57b5e",
       "bytes": 30724
     },
     "public/trade.html": {
-      "sha256": "3d0e1330262596ee7a80eff7f4f9ac996cb8deee128886847b662ef2a2ffd29d",
+      "sha256": "c7ae2c00699bd71b458ba017c54883e96902a00416db98ec1744bd9180641aa2",
       "bytes": 83318
     }
   },

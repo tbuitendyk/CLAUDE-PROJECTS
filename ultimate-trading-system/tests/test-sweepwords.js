@@ -279,12 +279,12 @@ module.exports = {
   // while a screen called its helpers directly. Boards does not: it draws its
   // three stage tables through bDrawStage1/2/3, and each of those draws its
   // paging bar through bPager — two hops away. At one level the bar was
-  // invisible all over again, so `prev`, `next` and the "N rows · page X of Y"
+  // invisible all over again, so `Prev`, `Next` and the "N rows · page X of Y"
   // line were on the owner's screen and on no list. Both directions of the
   // check read through the same reader, so neither could see the hole.
   async theReaderFollowsWhatARendererDrawsWith() {
     const boards = drawBody('drawBoards');
-    for (const w of ['>prev<', '>next<', 'rows · page']) {
+    for (const w of ['>Prev<', '>Next<', 'rows · page']) {
       assert.ok(boards.includes(w),
         `the Boards reader cannot see "${w}" — it is on the screen and would be on no list`);
     }
