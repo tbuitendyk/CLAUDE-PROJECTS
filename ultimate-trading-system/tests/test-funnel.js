@@ -2213,7 +2213,9 @@ module.exports = {
     }
     // 3.102.0: the press it names is above the steps, so that is where the
     // label and the line beside it are checked.
-    const panel6 = page.slice(page.indexOf('function fHoldPanel(d, st) {'), page.indexOf('function fStep6(d, st, r) {'));
+    // 3.108.5: the press moved into fRebuildPress so a refusal on this step
+    // can carry a copy of it; the slice starts there.
+    const panel6 = page.slice(page.indexOf('function fRebuildPress(d, named) {'), page.indexOf('function fStep6(d, st, r) {'));
     assert.ok(panel6.includes('>Work out the test history numbers</button>'), 'the steps name a press that is drawn nowhere on this screen');
     // 3.81.0: the line beside the button is no longer one fixed sentence -- it
     // says how many settings already carry the numbers, the progress while it
@@ -2221,11 +2223,30 @@ module.exports = {
     // the first draw and every poll say the same thing.
     assert.ok(panel6.includes('${esc(fRichLine(d))}'), 'the line beside the button no longer says what the press would do');
     // the trades ladder is put on a yearly footing and the dollar one is not
-    assert.ok(step.includes("fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex)"), 'the trades ladder is not given the window');
-    assert.ok(step.includes("fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)"), 'the dollar ladder must not be read as a rate');
+    assert.ok(step.includes("fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex, d)"), 'the trades ladder is not given the window');
+    // AND BOTH LADDERS ARE HANDED THE READ (3.108.5), because a ladder that
+    // refuses for want of the numbers now carries the press that works them
+    // out, and the press has to know whether it is already going.
+    const lad6 = page.slice(page.indexOf('function fLadder(name, l, word, ex, d) {'), page.indexOf('const fPerYear = (n, ex) =>'));
+    assert.ok(lad6.includes('${fRebuildPress(d, false)}'),
+      'the refusal names a press and does not carry one, so there is no way to act on it from this step');
+    assert.ok(!/press Work out the test history numbers first/.test(lad6),
+      'the refusal still sends the owner to a press that is not on the screen while a walk is being used');
+    // BOTH COPIES SAY THE SAME THING while it runs, because they are one press
+    // drawn twice. One of them reading the old line is the drift a shared
+    // control exists to stop.
+    assert.ok(page.includes("const fRebuildSay = (text) => document.querySelectorAll('[data-frebuildmsg]')"),
+      'the two copies of the press do not say the same thing, so one sits on a stale line while the other works');
+    assert.ok(page.includes("const rbs = [...document.querySelectorAll('[data-frebuild]')];")
+      && page.includes('rbs.forEach((b) => { b.disabled = true; });'),
+    'the two copies of the press are not wired together, so one stays live while the other works');
+    assert.ok(step.includes("fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null, d)"), 'the dollar ladder must not be read as a rate');
     const lad = page.slice(page.indexOf('function fLadder('), page.indexOf('const F_HOLD_SHOW = ['));
     assert.ok(lad.includes('${ex ? fPerYear(x.at, ex) : \'\'}'), 'a rung does not say what it comes to a year');
-    assert.ok(lad.includes('press Work out the test history numbers first'), 'the empty ladder does not say what to press');
+    // 3.108.5: it no longer SAYS what to press, it carries the press. The
+    // section that holds the other copy is not on the screen while a walk is
+    // being used, so naming it from here named something unreachable.
+    assert.ok(lad.includes('${fRebuildPress(d, false)}'), 'the empty ladder gives no way to work the numbers out');
     // the answer carries it, for the units the reading covers
     const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
     assert.ok(lib.includes('exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || []),'), 'step 6\'s answer does not carry the exposure');
@@ -2245,7 +2266,8 @@ module.exports = {
   // source-scanning tests covered this step and neither pressed it.
   async pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet() {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-    const press = page.slice(page.indexOf("const rb = $('#fRebuild');"), page.indexOf("const rb = $('#fRebuild');") + 1400);
+    const press = page.slice(page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];"),
+      page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];") + 1400);
     assert.ok(!/labels: \[\]/.test(press), 'the press asks for an empty list of settings again, which the service refuses');
     // 3.102.0: the whole board is prepped, so the press has nothing to pick and
     // nothing to name. A rule sent here would be a rule that decides what gets
@@ -2796,7 +2818,7 @@ module.exports = {
     // own controls are not drawn at all -- so a press wired beside those would
     // be on screen and dead.
     const hold = page.slice(page.indexOf('function fWireHold(st, d) {'), page.indexOf('function fWatchWalkStart'));
-    assert.ok(hold.includes("const rb = $('#fRebuild');") && hold.includes('if (fRichGoing(d)) fRichWatch(st);'),
+    assert.ok(hold.includes("const rbs = [...document.querySelectorAll('[data-frebuild]')];") && hold.includes('if (fRichGoing(d)) fRichWatch(st);'),
       'the press that fills the section is wired outside the section, so it is dead on the Stage 4 record set view');
     assert.ok(page.includes('  fWireHold(st, d);\n  fWatchCutBox();'), 'the Stage 4 record set view does not wire the section it now draws');
   },
@@ -3704,7 +3726,7 @@ module.exports = {
     // the two presses on this screen that can take a while use it
     const cutWire = page.slice(page.indexOf("const cut = $('#fCut');"), page.indexOf("document.querySelectorAll('[data-frm]')"));
     assert.ok(cutWire.includes('}, WHERE_FUNNEL);'), 'writing a set still points at Sweep and Boards, which know nothing about it');
-    const rb = page.slice(page.indexOf("const rb = $('#fRebuild');"), page.indexOf("const cs = $('#fClose');"));
+    const rb = page.slice(page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];"), page.indexOf("const cs = $('#fClose');"));
     // 3.81.0: the press starts a run and comes straight back, so it can no
     // longer time out -- but the start itself still can, and it points here.
     assert.ok(/\{\}, WHERE_FUNNEL\);/.test(rb),

@@ -709,6 +709,14 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "    const board = await funnelBoard(String(id), t, 'all');", "    const board = await funnelBoard(String(id), t, state.unit);",
     'pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet',
     'the press prices one board again instead of the whole set, so the ranking above step 1 reads a slice and calls it the set'],
+  // ---- A REFUSAL THAT NAMES A PRESS CARRIES IT (3.108.5) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      <div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false)}</div>`;", '"";',
+    'theSixthStepSaysWhatItsLimitsAreLimitsOn',
+    'step 6 refuses for want of numbers and gives no way to work them out, because the press that does lives in a section a walk being used hides'],
+  [path.join(ROOT, 'public', 'construct.js'), "const fRebuildSay = (text) => document.querySelectorAll('[data-frebuildmsg]')",
+    "const fRebuildSay = (text) => document.querySelectorAll('#fRebuildMsg')",
+    'theSixthStepSaysWhatItsLimitsAreLimitsOn',
+    'only one copy of the press says what is happening, so the other sits reading the old line while it runs'],
   // ---- CHOOSING A BOARD LANDS ON THE STEPS (3.108.4) ----
   [path.join(ROOT, 'public', 'construct.js'), "  const next = fLoad();                                   // the chosen board's own walk\n  next.cut = F_NEW;\n  fSave();\n", "",
     'theFunnelIsEitherHomeOrOpenAndThePressThatGoesHomeDropsTheWalk',

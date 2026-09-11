@@ -349,7 +349,7 @@ module.exports = {
   // this part was written to prevent.
   async theHeadingAsksAQuestionAndNeverClaimsAConfirmation() {
     const page = src('public/construct.js');
-    const panel = page.slice(page.indexOf('function fHoldPanel(d, st) {'), page.indexOf('function fStep6(d, st, r) {'));
+    const panel = page.slice(page.indexOf('function fRebuildPress(d, named) {'), page.indexOf('function fStep6(d, st, r) {'));
     assert.ok(panel.includes('<h3 style="margin-top:0">Worth walking?</h3>'), 'the block is not headed with the question it answers');
     assert.ok(!/[Cc]onfirm/.test(panel), 'the block claims to confirm something; it can only fail to rule something out');
     assert.ok(/has not been shown\s+to work; it has only failed to be ruled out/.test(panel),

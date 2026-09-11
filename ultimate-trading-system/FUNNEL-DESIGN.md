@@ -1783,3 +1783,20 @@ screen was half the complaint.
 
 Home also asks the service for no step reading, the same way an open Stage 4
 record set does. A step nobody can see is seconds of work per draw.
+
+### 21.5 A refusal that names a press carries it (owner order, 2026-09-11)
+
+> "on 6. Exposure there's a message 'worst losing streak: no survivor carries
+> this number yet - press Work out the test history numbers first.' with no
+> button to do so"
+
+`Work out the test history numbers` lives in the header section, and §21.2
+hides that section while a walk is being used. Step 6 is reached by using the
+walk, so every refusal on it named a press the owner had no way to reach from
+where they were standing.
+
+The press is one helper now, drawn in two places: the header section, and any
+refusal that needs it. Both copies are wired together — they sleep together
+on a press and say the same thing while it runs, because they are one press
+drawn twice. Exactly one copy carries the ids, because the Help tab's control
+reader indexes by id and two of the same id is one control counted twice.

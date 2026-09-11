@@ -5838,9 +5838,15 @@ function fStep5(r, d, st) {
 }
 
 // WHAT EACH LIMIT WOULD KEEP, so the number is set with its cost in view.
-function fLadder(name, l, word, ex) {
+function fLadder(name, l, word, ex, d) {
   if (!l) return '';
-  if (!l.measured) return `<p class="note muted">${esc(name)}: no survivor carries this number yet - press Work out the test history numbers first.</p>`;
+  // A REFUSAL THAT NAMES A PRESS CARRIES IT (3.108.5). The press lives in the
+  // header section, which is not on the screen while a walk is being used, so
+  // this line named something the owner had no way to reach from here.
+  if (!l.measured) {
+    return `<p class="note muted">${esc(name)}: no survivor carries this number yet.</p>
+      <div class="row" style="align-items:flex-end">${fRebuildPress(d, false)}</div>`;
+  }
   // a trade count is put on a yearly footing beside each rung (3.57.0); a
   // dollar figure is already in dollars at the stake named above
   return `<p class="note">${esc(name)} - what each limit would keep of ${l.of}: ${l.rungs.map((x) => `${word} ${fFix(x.at)}${ex ? fPerYear(x.at, ex) : ''} keeps ${x.keeps}`).join('; ')}.</p>`;
@@ -6074,6 +6080,27 @@ function fHoldTable(t, bar, walking) {
       the same as a part that traded and broke even, so a board of rarely-trading settings has a large block of
       settings tied on nothing; that pulls a reading towards <b>0.00</b> rather than flattering it.</p>`;
 }
+// THE PRESS THAT WORKS THE MISSING NUMBERS OUT, drawable wherever a reading
+// refuses for want of them (3.108.5, owner order 2026-09-11: "on 6. Exposure
+// there's a message 'worst losing streak: no survivor carries this number yet
+// - press Work out the test history numbers first.' with no button to do so").
+//
+// It lives in the header section, and that section is hidden while a walk is
+// being used -- so every refusal that named it was pointing at a press the
+// owner could not see. It is one helper now, drawn in both places, and every
+// copy is wired together and says the same thing: two presses that can drift
+// out of step is the fault this shares one to stop.
+//
+// `named` carries the ids. Exactly one copy may, because the Help tab's
+// control reader indexes by id and two of the same id is one control counted
+// twice; the other copy is found by its data attribute, as the pagers are.
+function fRebuildPress(d, named) {
+  return `<button ${named ? 'id="fRebuild" ' : ''}class="pri" data-frebuild="1"${fRichOff(d) ? ' disabled' : ''}>Work out the test history numbers</button>
+      <span ${named ? 'id="fRebuildMsg" ' : ''}data-frebuildmsg="1" class="note">${esc(fRichLine(d))}</span>`;
+}
+// every copy of it says the same thing, because they are the same press
+const fRebuildSay = (text) => document.querySelectorAll('[data-frebuildmsg]').forEach((m) => { m.textContent = text; });
+
 function fHoldPanel(d, st) {
   const bar = fHoldBar(st.set);
   const t = fHoldSeen && fHoldSeen.set === st.set ? fHoldSeen.table : null;
@@ -6093,8 +6120,7 @@ function fHoldPanel(d, st) {
       that can only be spent once - and it decides nothing. A coin and shape that clears the bar has not been shown
       to work; it has only failed to be ruled out.</p>
     <div class="row" style="align-items:flex-end">
-      <button id="fRebuild" class="pri"${fRichOff(d) ? ' disabled' : ''}>Work out the test history numbers</button>
-      <span id="fRebuildMsg" class="note">${esc(fRichLine(d))}</span></div>
+      ${fRebuildPress(d, true)}</div>
     ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
     <div class="row" style="align-items:flex-end">
       <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
@@ -6183,8 +6209,8 @@ function fStep6(d, st, r) {
     ${howTo}
     ${money}
     ${when}
-    ${fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)}
-    ${fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex)}
+    ${fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null, d)}
+    ${fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex, d)}
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <label class="f">worst losing streak allowed<input id="fDD" type="number" style="width:8rem"
         value="${esc(String(dd.max == null ? '' : dd.max))}"></label>
@@ -7054,15 +7080,14 @@ async function fRichWatch(st) {
     for (;;) {
       // eslint-disable-next-line no-await-in-loop
       const p = await api(`api/funnel/${encodeURIComponent(st.set)}/rebuild`).catch(() => null);
-      const msg = $('#fRebuildMsg');
-      if (!p) { if (msg) msg.textContent = 'the service stopped answering — nothing was written'; return; }
-      if (p.error) { if (msg) msg.textContent = `FAILED — ${p.error}`; return; }
+      if (!p) { fRebuildSay('the service stopped answering — nothing was written'); return; }
+      if (p.error) { fRebuildSay(`FAILED — ${p.error}`); return; }
       if (p.result) {
         const out = p.result;
         // the tables of the set are not built yet, so there were no survivors
         // to work anything out for. Said plainly; nothing was priced.
         if (out.totalling || out.waiting) {
-          if (msg) msg.textContent = out.waiting || 'the tables of this set are being worked out — this step reads them when they land';
+          fRebuildSay(out.waiting || 'the tables of this set are being worked out — this step reads them when they land');
           return;
         }
         st.rebuilt = true;
@@ -7150,16 +7175,20 @@ function fWireHold(st, d) {
   // draws the values in when it lands -- no second press, and nothing held
   // open for the gateway to give up on. A page reloaded in the middle picks
   // the run back up from the read, because the read carries it.
-  const rb = $('#fRebuild');
-  if (rb && !rb.disabled) {
+  // EVERY COPY OF THE PRESS, wired together (3.108.5): the one in this section
+  // and the one a refusal on step 6 carries. They are the same press, so they
+  // sleep together and say the same thing.
+  const rbs = [...document.querySelectorAll('[data-frebuild]')];
+  for (const rb of rbs) {
+    if (rb.disabled) continue;
     rb.onclick = async () => {
-      rb.disabled = true;
-      $('#fRebuildMsg').textContent = 'working them out — this prices every setting in this record set again from its parent set';
+      rbs.forEach((b) => { b.disabled = true; });
+      fRebuildSay('working them out — this prices every setting in this record set again from its parent set');
       // NOTHING TO NAME (3.102.0, owner order 2026-09-10). It used to send the
       // rule so the service could work out which survivors to price; the whole
       // board is priced now, so there is nothing to pick and nothing to send.
       const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);
-      if (!started) { rb.disabled = false; $('#fRebuildMsg').textContent = fRichLine(d); return; }
+      if (!started) { rbs.forEach((b) => { b.disabled = false; }); fRebuildSay(fRichLine(d)); return; }
       await fRichWatch(st);
     };
   }
