@@ -7077,10 +7077,15 @@ async function fRichWatch(st) {
         drawFunnel();
         return;
       }
-      if (msg) {
-        msg.textContent = (p.of ? `working them out — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} settings`
-          : 'working them out') + fCpuWords(p.cpu);
-      }
+      // THE COUNT, EVERY POLL (3.109.1). This read `msg`, a variable 3.108.5
+      // deleted when the two copies of the press started speaking through
+      // fRebuildSay -- so the FIRST progress poll threw, the watcher died in
+      // its finally, and the line sat on "working them out — this prices every
+      // setting in this record set again from its parent set" until something
+      // else redrew the screen. `node --check` cannot see an undefined name
+      // and no test pressed this loop, which is how it shipped.
+      fRebuildSay((p.of ? `working them out — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} settings`
+        : 'working them out') + fCpuWords(p.cpu));
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 1500));
     }

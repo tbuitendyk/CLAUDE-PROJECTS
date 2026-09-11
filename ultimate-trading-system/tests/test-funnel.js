@@ -2756,6 +2756,58 @@ module.exports = {
     assert.ok(page.includes('  fWireHold(st, d);\n  fWatchCutBox();'), 'the Stage 4 record set view does not wire the section it now draws');
   },
 
+  // ---- THE PROGRESS LINE IS WRITTEN EVERY POLL, AND THE WATCHER IS RUN TO
+  // PROVE IT (3.109.1, owner report 2026-09-11).
+  //
+  // "working them out — this prices every setting in this record set again
+  // from its parent set -- no update for the first few minutes ... finally
+  // this: 'working them out — 95 of 300 settings · 56% of 8 cores busy' after
+  // waiting 5 minutes and going away from the screen and back."
+  //
+  // 3.108.5 gave the two copies of the press one voice, `fRebuildSay`, and
+  // deleted the `msg` variable the watcher's other branches had used. The
+  // PROGRESS branch still read it. So the first poll threw, the watcher died
+  // in its `finally`, and the line sat on what the press had written until
+  // some other redraw happened to run — which is what going away and back did.
+  //
+  // `node --check` cannot see an undefined name, this project has no linter,
+  // and every other test here reads the source rather than running it. So
+  // this one RUNS the loop, with the service and the screen stubbed, and
+  // reads back what was said.
+  async theWatcherSaysHowFarItHasGotOnEveryPoll() {
+    const page = src('public/construct.js');
+    const lift = (head, end) => {
+      const at = page.indexOf(head);
+      assert.ok(at > 0, `${head} is gone`);
+      return page.slice(at, page.indexOf(end, at) + end.length);
+    };
+    const said = [];
+    const build = new Function('said', 'replies', 'sleepMs', `
+      ${lift('function fCpuWords(cpu) {', '\n}\n')}
+      const fRebuildSay = (text) => { said.push(text); };
+      const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); return replies.shift(); };
+      const setTimeout = (fn) => fn();          // no real waiting in a test
+      let fRichWatching = false;
+      let fHoldSeen = null;
+      let fHoldAsked = null;
+      const fSave = () => {};
+      const drawFunnel = () => {};
+      ${lift('async function fRichWatch(st) {', '\n}\n')}
+      return fRichWatch;
+    `);
+    const watch = build(said, [
+      { done: 95, of: 300, cpu: { busy: 0.56, cores: 8 } },
+      { done: 220, of: 300, cpu: { busy: 0.5, cores: 8 } },
+      { error: 'stop the test here' },
+    ], 0);
+    await watch({ set: 's3-test' });
+    assert.deepStrictEqual(said, [
+      'working them out — 95 of 300 settings · 56% of 8 cores busy',
+      'working them out — 220 of 300 settings · 50% of 8 cores busy',
+      'FAILED — stop the test here',
+    ], 'the watcher does not say how far it has got on every poll');
+  },
+
   // ---- THE SCREEN HAS TWO STATES AND ONLY TWO (3.108.0, owner order
   // 2026-09-11).
   //

@@ -709,6 +709,11 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "    const board = await funnelBoard(String(id), t, 'all');", "    const board = await funnelBoard(String(id), t, state.unit);",
     'pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet',
     'the press prices one board again instead of the whole set, so the ranking above step 1 reads a slice and calls it the set'],
+  // ---- THE WATCHER SAYS HOW FAR IT HAS GOT (3.109.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      fRebuildSay((p.of ? `working them out",
+    "      if (msg) msg.textContent = ((p.of ? `working them out",
+    'theWatcherSaysHowFarItHasGotOnEveryPoll',
+    'the progress branch reads a variable no longer declared, so the first poll throws and the line never moves again'],
   // ---- Go to Funnel home IS GONE AND STAYS GONE (3.109.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "    : 'the steps below this row, and the rule so far', `${gap}${dead}`)}",
     "    : 'the steps below this row, and the rule so far', `${gap}${dead}`)}\n      <button id=\"fCutHome\">Go to Funnel home</button>",
