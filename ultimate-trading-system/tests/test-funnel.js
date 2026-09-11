@@ -31,6 +31,8 @@ function s3rows() {
 }
 
 const src = (f) => fs.readFileSync(path.join(__dirname, '..', f), 'utf8');
+// the page's own escaping, for asserting on text it draws
+const esc0 = (x) => String(x).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
 // A STAGE 3 SET ON DISK FOR THE PER-UNIT BOARD (§17): three units -- AAA on
 // daily-1d, AAA on daily-2d, BBB alongside AAA on daily-1d -- four settings
@@ -3585,6 +3587,65 @@ module.exports = {
       'a press writes only its own settings over the top of every setting an earlier press worked out');
     assert.ok(save.includes('kept: had && had.settings ? Object.keys(had.settings).length : 0,'),
       'the answer does not say how many were already there, so nothing can tell adding from replacing');
+  },
+
+  // OWNER, 2026-09-11: "why are the names of the stage 4 record sets getting
+  // longer with repeated info? i'm not doing that so it must be your code"
+  //
+  // RUNS THE OPTION BUILDER on the four names actually on the box, so what this
+  // asserts is the text of the rows the owner reads.
+  theStageFourListSaysTheCoinAndShapeOnce() {
+    const page = src('public/construct.js');
+    const at = page.indexOf('function fCutPickOption(c, st, who) {');
+    assert.ok(at > 0, 'the row the list draws is no longer built in one place');
+    const end = page.indexOf('\n}\n', at) + 3;
+    const opt = new Function(`
+      const esc = (x) => String(x);
+      ${page.slice(at, end)}
+      return fCutPickOption;
+    `)();
+    const who = 'LTCUSDT alongside SOLUSDT and UNIUSDT daily-3d';
+    const st = { cut: 'nothing-chosen' };
+
+    // THE NAME A CUT WRITES ITSELF already carries the coin and shape, so the
+    // list must not carry it a second time
+    const own = opt({ id: 's4-a', name: `S4 #4 - ${who}`, mine: false }, st, who);
+    assert.strictEqual((own.match(/LTCUSDT alongside SOLUSDT and UNIUSDT daily-3d/g) || []).length, 1,
+      'the list says the coin and shape twice on a set whose own name already says it');
+    assert.ok(!own.includes('—'), 'the list still appends a coin and shape the name already carries');
+
+    // A NAME THAT DOES NOT SAY IT still gets it, which is what the suffix is for
+    const typed = opt({ id: 's4-b', name: 'the one that beat buy and hold', mine: false }, st, who);
+    assert.ok(typed.includes(`the one that beat buy and hold — ${who}`),
+      'a set cut on another coin and shape is no longer identifiable in the list');
+
+    // and a set on the board chosen above never carries it, as before
+    const here = opt({ id: 's4-c', name: 'anything at all', mine: true }, st, who);
+    assert.ok(!here.includes(who), 'a set on the board chosen above is told which board it is on');
+
+    // the chosen one is still the one selected
+    assert.ok(opt({ id: 'nothing-chosen', name: 'x', mine: true }, st, who).includes('selected'),
+      'the set showing is not the one the box has selected');
+
+    // THE FOUR NAMES ON THE BOX, read off it 2026-09-11. Every one was typed
+    // into the name box on step 7 -- nothing in the code composes a name like
+    // these -- and the list must print each of them once and whole.
+    for (const name of [
+      '199 setting rule for Funnel - S3 #1b - LTCUSDT alongside XLMUSDT and ATOMUSDT daily-4d',
+      '14 setting rule for Funnel - S3 #1b - LTCUSDT alongside DOGEUSDT and BCHUSDT daily-1d (only one trade taken)',
+      '38 setting rule for Funnel - S3 #1b - LTCUSDT alongside DOGEUSDT and XLMUSDT daily-2d',
+      '48 setting rule for Funnel - S3 #1b - LTCUSDT alongside SOLUSDT and UNIUSDT daily-3d']) {
+      const coinAndShape = name.slice(name.indexOf('LTCUSDT'));
+      const row = opt({ id: 's4-real', name, mine: false }, st, coinAndShape);
+      assert.strictEqual((row.match(new RegExp(coinAndShape.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'g')) || []).length, 1,
+        `the list says the coin and shape twice on "${name}"`);
+      assert.ok(row.includes(esc0(name)), 'the list does not print the set\'s own name whole');
+    }
+
+    // AND NOTHING ELSE APPENDS. One place builds this row; a second copy is how
+    // the two would drift apart again.
+    assert.strictEqual((page.match(/— \$\{esc\(who\)\}/g) || []).length, 1,
+      'more than one place appends a coin and shape to a record set name');
   },
 
   // OWNER, 2026-09-11: "after accepting and cutting those tables are gone ...

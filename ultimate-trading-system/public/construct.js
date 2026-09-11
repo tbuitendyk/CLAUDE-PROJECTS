@@ -6373,6 +6373,21 @@ async function fDrawCut(d, st, cutId) {
   fWatchCutBox();
 }
 
+// AND IT SAYS THE COIN AND SHAPE ONCE (3.110.1, owner order 2026-09-11: "why
+// are the names of the stage 4 record sets getting longer with repeated info?
+// i'm not doing that so it must be your code").
+//
+// Two of mine met here. The name a cut writes itself is `S4 #<seq> - <coin and
+// shape>`, and this list then appended the same coin and shape again to every
+// set that is not on the board chosen above -- so every row but one printed it
+// TWICE, and printed it once more for each further set cut on another board.
+// Appended only where the name does not already carry it, which keeps what the
+// suffix is for (3.104.1: a set cut on another board has to be identifiable in
+// the list without remembering what was chosen when it was written).
+function fCutPickOption(c, st, who) {
+  const say = !c.mine && who && !String(c.name || '').includes(who);
+  return `<option value="${esc(c.id)}" ${c.id === st.cut ? 'selected' : ''}>${esc(c.name)}${say ? ` — ${esc(who)}` : ''}</option>`;
+}
 // THE DROP-DOWN IS ON BOTH HEADINGS (3.58.0). It was on the Stage 4 heading
 // only, and that made the walk a one-way door: choose `new rule` and there was
 // no control left on the screen to get back to a set already cut. The owner's
@@ -6384,7 +6399,7 @@ async function fDrawCut(d, st, cutId) {
 function fCutPickBox(d, st) {
   const cuts = d.cuts || [];
   const named = (key) => ((d.units || []).find((u) => u.key === key) || {}).name || key || 'all units together';
-  return `<label class="f">Stage 4 record set<select id="fCutPick" style="min-width:20rem">${cuts.map((c) => `<option value="${esc(c.id)}" ${c.id === st.cut ? 'selected' : ''}>${esc(c.name)}${c.mine ? '' : ` — ${esc(named(c.unit))}`}</option>`).join('')}<option value="new" ${st.cut === F_NEW ? 'selected' : ''}>new rule</option></select></label>`;
+  return `<label class="f">Stage 4 record set<select id="fCutPick" style="min-width:20rem">${cuts.map((c) => fCutPickOption(c, st, named(c.unit))).join('')}<option value="new" ${st.cut === F_NEW ? 'selected' : ''}>new rule</option></select></label>`;
 }
 // ONE HEADING, NOT TWO. This drew "Funnel - <set> - <coin and shape>" above a
 // heading that says the same thing plus the counts, which is the owner's own

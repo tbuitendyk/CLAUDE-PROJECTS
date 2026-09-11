@@ -709,6 +709,11 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "    const board = await funnelBoard(String(id), t, 'all');", "    const board = await funnelBoard(String(id), t, state.unit);",
     'pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet',
     'the press prices one board again instead of the whole set, so the ranking above step 1 reads a slice and calls it the set'],
+  // ---- THE LIST SAYS THE COIN AND SHAPE ONCE (3.110.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), "  const say = !c.mine && who && !String(c.name || '').includes(who);",
+    "  const say = !c.mine;",
+    'theStageFourListSaysTheCoinAndShapeOnce',
+    'every row prints the coin and shape a second time, after the name the cut wrote has already said it'],
   // ---- THE TWO READINGS SURVIVE THE CUT (3.110.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "    of: all.length,\n    sealedOn,\n    against,\n",
     "    of: all.length,\n    sealedOn,\n",
