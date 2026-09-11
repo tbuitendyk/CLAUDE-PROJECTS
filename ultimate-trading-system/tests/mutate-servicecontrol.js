@@ -709,6 +709,14 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "    const board = await funnelBoard(String(id), t, 'all');", "    const board = await funnelBoard(String(id), t, state.unit);",
     'pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet',
     'the press prices one board again instead of the whole set, so the ranking above step 1 reads a slice and calls it the set'],
+  // ---- CHOOSING A BOARD LANDS ON THE STEPS (3.108.4) ----
+  [path.join(ROOT, 'public', 'construct.js'), "  const next = fLoad();                                   // the chosen board's own walk\n  next.cut = F_NEW;\n  fSave();\n", "",
+    'theFunnelIsEitherHomeOrOpenAndThePressThatGoesHomeDropsTheWalk',
+    'choosing a coin or a chunk shape opens somebody else\'s finished Stage 4 record set instead of the steps for the board just chosen'],
+  [path.join(ROOT, 'public', 'construct.js'), '    b.onclick = () => fOpenBoard(st.set, b.dataset.fhold);',
+    "    b.onclick = () => { fUnitChoose(st.set, b.dataset.fhold); fState = null; drawFunnel(); };",
+    'theFunnelIsEitherHomeOrOpenAndThePressThatGoesHomeDropsTheWalk',
+    'Walk this one takes its own route again, so it lands on a Stage 4 record set while the four boxes land on the steps'],
   // ---- `new rule` MAKES A NEW RULE (3.108.3) ----
   [path.join(ROOT, 'public', 'construct.js'), "  fCloseCut(st);\n  fFreshWalk(st);\n  fMarkOpen(st.set, true);",
     "  fCloseCut(st);\n  if (fWalkWasAlreadyCut(d)) fFreshWalk(st);\n  fMarkOpen(st.set, true);",

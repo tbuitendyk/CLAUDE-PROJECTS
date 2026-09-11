@@ -2858,10 +2858,17 @@ module.exports = {
       'the bold name at Home still says new rule, naming something that is not on the screen');
 
     // THE THREE THINGS THAT OPEN ONE, each of them the owner choosing a board
+    // 3.108.4: the four boxes and `Walk this one` go through ONE door, so
+    // neither can drift from the other.
+    const board = page.slice(page.indexOf('function fOpenBoard(set, key) {'), page.indexOf('function fWireUnit(st, d) {'));
+    assert.ok(board.includes('fMarkOpen(set, true);'), 'choosing a board leaves the screen at Home');
+    assert.ok(board.includes('const next = fLoad();') && board.includes('next.cut = F_NEW;'),
+      'choosing a board lands on a Stage 4 record set instead of on the steps for the board just chosen');
     const unit = page.slice(page.indexOf('function fWireUnit(st, d) {'), page.indexOf('function fWireCut(d, st, cd) {'));
-    assert.ok(unit.includes('fMarkOpen(st.set, true);'), 'changing the coin and shape boxes leaves the screen at Home');
+    assert.ok(unit.includes('const go = (key) => fOpenBoard(st.set, key);'), 'the coin and shape boxes take their own route onto a board');
     const hold = page.slice(page.indexOf('function fWireHold(st, d) {'), page.indexOf('function fWatchWalkStart'));
-    assert.ok(hold.includes('fMarkOpen(st.set, true);'), 'Walk this one leaves the screen at Home, so pressing it does nothing');
+    assert.ok(hold.includes('b.onclick = () => fOpenBoard(st.set, b.dataset.fhold);'),
+      'Walk this one takes its own route onto a board, so it can land on a Stage 4 record set while the boxes do not');
     const opener = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fGoFunnelHome(st, d) {'));
     assert.ok(opener.includes('fMarkOpen(st.set, true);'), 'choosing new rule leaves the screen at Home');
 

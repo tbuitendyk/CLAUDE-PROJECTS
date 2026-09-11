@@ -325,7 +325,9 @@ module.exports = {
     // and each row hands the walk over through the SAME door every other choice
     // of coin and shape goes through
     const wire = page.slice(page.indexOf('function fWireHold(st, d) {'), page.indexOf('function fWatchWalkStart(st) {'));
-    assert.ok(wire.includes('fUnitChoose(st.set, b.dataset.fhold);'), 'walking a row does not choose the coin and shape the way the picker does');
+    // 3.108.4: through fOpenBoard, the one door the four boxes above also use
+    assert.ok(wire.includes('b.onclick = () => fOpenBoard(st.set, b.dataset.fhold);'),
+      'walking a row does not choose the coin and shape the way the picker does');
     assert.ok(wire.includes("document.querySelectorAll('[data-fhold]').forEach"),
       'the rows are not wired by walking the table just drawn — a listener on the whole page fires once per redraw since load');
     // the three numbers are kept for the SET, not for one coin and shape's walk

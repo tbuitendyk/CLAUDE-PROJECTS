@@ -6821,20 +6821,40 @@ function fFreshWalk(st) {
   st.walking = false;                                     // no control on it has been used yet (3.107.0)
   st.acrossAsked = null; st.read = null; st.rebuilt = false; st.rebuiltSaid = null;
 }
+// CHOOSING A BOARD PUTS THE Stage 4 record set BOX ON `new rule` (3.108.4,
+// owner order 2026-09-11: "when a coin or alongside 1/2 or chunk shape is
+// selected then the Stage 4 record set selector MUST CHANGE TO new").
+//
+// It did not. A board with sets cut from it opened on the newest of them,
+// because a walk never visited carries no choice and the screen filled one in
+// (§17.2). So choosing a coin landed on somebody else's finished rule instead
+// of on the steps for the coin just chosen.
+//
+// THE WALK ITSELF IS NOT TOUCHED. One rule per coin and shape, remembered
+// (§17): a board walked to step 5 and come back to is still on step 5. Only
+// which of the two things is SHOWN changes -- the steps, never a set. A new
+// rule on that board is `new rule` in the box, which makes one (3.108.3).
+//
+// Both doors onto a board go through here, so neither can drift: the four
+// boxes, and `Walk this one` on the section above them.
+function fOpenBoard(set, key) {
+  fSave();
+  // Home is a state the owner lands in and leaves on purpose; picking a board
+  // to walk is leaving it. Remembered for the SET, so it is set here and read
+  // after the chosen board's own walk has loaded.
+  fMarkOpen(set, true);
+  fUnitChoose(set, key || 'all');
+  fState = null;
+  const next = fLoad();                                   // the chosen board's own walk
+  next.cut = F_NEW;
+  fSave();
+  drawFunnel();
+}
+
 // and one for the coin-and-shape box, for the same reason: this walk keeps its
 // place, the chosen board is remembered, and the next load is that board's own
 function fWireUnit(st, d) {
-  const go = (key) => {
-    fSave();
-    // CHOOSING A COIN AND SHAPE OPENS ITS WALK (3.108.0). Home is a state the
-    // owner lands in and leaves on purpose; picking a board to walk is
-    // leaving it. Remembered for the SET, so it is set here and read after
-    // the chosen board's own walk has loaded.
-    fMarkOpen(st.set, true);
-    fUnitChoose(st.set, key || 'all');
-    fState = null;
-    drawFunnel();
-  };
+  const go = (key) => fOpenBoard(st.set, key);
   // WHAT IS IN THE BOXES RIGHT NOW, not what was in them when the page drew:
   // the boxes to the left of the one just changed have to be read live, or
   // changing the coin and then the shape would resolve against the old coin.
@@ -7228,13 +7248,10 @@ function fWireHold(st, d) {
   // the rows just drawn -- a listener on the whole page would fire once per
   // redraw since load.
   document.querySelectorAll('[data-fhold]').forEach((b) => {
-    b.onclick = () => {
-      fSave();
-      fMarkOpen(st.set, true);                            // it opens a walk (3.108.0)
-      fUnitChoose(st.set, b.dataset.fhold);
-      fState = null;
-      drawFunnel();
-    };
+    // THE SAME DOOR THE FOUR BOXES GO THROUGH (3.108.4). A press that says
+    // Walk this one and opens a Stage 4 record set instead is the same fault
+    // wearing a different control.
+    b.onclick = () => fOpenBoard(st.set, b.dataset.fhold);
   });
 }
 

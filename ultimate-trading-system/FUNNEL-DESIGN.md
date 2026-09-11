@@ -1704,6 +1704,23 @@ that set IS the thing under the unit selector.
 `alongside 1`, `alongside 2` or `chunk shape`, and choosing `new rule` in the
 `Stage 4 record set` box.
 
+**Choosing a board always lands on the steps** (owner order, 2026-09-11: "when
+a coin or alongside 1/2 or chunk shape is selected then the Stage 4 record set
+selector MUST CHANGE TO new"). It did not: a board with sets cut from it
+opened on the newest of them, because a walk never visited carries no choice
+and the screen filled one in (§17.2) — so choosing a coin landed on somebody
+else's finished rule instead of on the steps for the coin just chosen. The
+box reads `new rule` after any of the four boxes moves.
+
+The walk itself is untouched by this. One rule per coin and shape, remembered
+(§17): a board walked to step 5 and come back to is still on step 5. Only
+which of the two things is SHOWN changes. A new rule on that board is `new
+rule` in the box, which makes one.
+
+`Walk this one` goes through the same door, so the two cannot drift: a press
+that says walk and opens a record set is the same fault wearing a different
+control.
+
 **One thing closes it**: `Go to Funnel home`.
 
 ### 21.3 What each press does now
