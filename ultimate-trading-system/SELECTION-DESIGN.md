@@ -948,6 +948,108 @@ owner's to weigh.
 
 ---
 
+# Part 8 — judge the thing you would trade, not the average of everything kept
+
+> **Owner, 2026-09-11, on reading a FAIL:** "when 18 actual settings selections
+> within a rule pass ALL 5 and then you mark it FAIL?!? — get real! we need to
+> keep that code and make the pass/fail rational."
+>
+> **THIS IS DONE BEFORE PART 1 IS FINISHED**, because Part 1 carries the same
+> fault in its own scoring, and because it changes a number that is on the
+> owner's screen today.
+
+## The problem
+
+**The verdict decides PASS or FAIL on the average of every setting the rule
+kept.** Two lines of `lib/funnelverify.js` do it:
+
+```
+const real = mean(...)                              // the mean over ALL survivors
+pass: comparisons.known && positive && comparisons.beatsBest === true
+```
+
+On the owner's own set, read 2026-09-11: **98 of 98 survivors made money on the
+held stretch, 18 of 98 beat all four comparisons — and the set reads FAIL**,
+because the average of the 98 does not clear.
+
+Two faults, stacked:
+
+**One: it judges a basket nobody will ever hold.** A figure averaged across 98
+settings describes buying all 98 at once in equal size. Nobody is going to do
+that. One setting goes live, or a named handful does. Part 6 already says this
+in as many words — "the thing judged is not the thing traded" — and nobody
+connected it to the gate that prints FAIL.
+
+**Two: the bar is picked after the fact.** `beatsBest` is the maximum of the
+four comparisons. Knowing in advance which of being long every period, being
+short every period, buying the coin and going away or shorting it and going
+away is the one to be on IS a forecast, and the hardest one. Beating each of
+the four on its own is a claim somebody could have made beforehand; beating the
+best of them is not. (Owner's correction, 2026-09-11: "there were 4 'no
+forecast' set-ups ... picking the right one in advance IS a forecast".)
+
+**And Part 1 repeats the first fault.** Its own results line says "cleared on
+how many of the passes", which is a sentence about the set rather than about
+anything tradeable. "The set cleared 4 of 5" means nothing. "18 settings cleared
+all 3 passes, here they are" means something.
+
+## The change
+
+1. **Count per setting, never the average.** How many survivors made money, how
+   many beat each of the four, how many beat all four — with the settings that
+   did so named, not just counted.
+2. **The gate is about a tradeable thing.** A set passes when at least one
+   survivor clears every bar on its own, and the screen says which. Whether a
+   named setting or a named group is the claim is Part 6's business; until Part
+   6 exists, "at least one clears everything, and here it is" is the honest
+   version and it is a far better gate than the average.
+3. **The average stays on the screen, labelled as what it is** — what holding
+   every survivor in equal size would have made. It is a real number for a
+   question somebody might ask; it is not the verdict.
+4. **The four are reported separately, and the best-of-four is marked as the
+   hindsight reading it is.** Both are worth printing. Only one of them is a
+   bar a person could have aimed at.
+5. **Part 1's five-pass block follows the same rule**: a row per pass, and the
+   summary counts SETTINGS that cleared every pass, never passes that the set
+   cleared.
+
+## What gets REMOVED
+
+Nothing. The one-off reading of the held stretch stays exactly as it is — it is
+the one reading on the real held stretch, it is what History's reserve grade is
+keyed to, and the owner has said plainly to keep it. What changes is the
+sentence the verdict draws from it.
+
+## What it needs from the other parts
+
+Part 6 would say WHICH setting or group is claimed, which is the fully honest
+version of point 2. This part does not wait for it: "at least one survivor
+clears everything on its own" is already a stricter and more meaningful gate
+than the average, and it can ship first.
+
+## What I am assuming
+
+- **That at least one clearing survivor is the right default gate.** It is the
+  weakest honest claim, and on a set of a hundred it will pass often. It is an
+  improvement on the average because it is about something real, not because it
+  is harder. If the owner wants a harder one — a minimum count, or a share — it
+  is a number they set, and under Part 6 it should be set before the counts are
+  visible.
+- **That naming the clearing settings does not become a shopping list.** It
+  might. A list of the settings that cleared, read after the held stretch is
+  open, is the held stretch being shopped — which the screen already warns
+  about for its own table. The same warning belongs here.
+
+## What it costs
+
+**Small, and smaller than it looks.** Every number this needs is already worked
+out per setting: V4 already reads every survivor against its own copies and is
+already information-only, and the four comparisons are already stored per hold
+length. Nothing new is measured. What changes is which numbers the verdict
+sentence is built from — reporting, not arithmetic.
+
+---
+
 # Where the effort goes
 
 | Part | Machine cost | Build cost | Blocked on |
@@ -959,6 +1061,7 @@ owner's to weigh.
 | 5 — bar for the whole search | none | small | is the luck figure fit for this at all |
 | 6 — claim written first | none | medium | making a look an event |
 | 7 — what the thrown-away settings did | none | small | **BUILT 3.100.0** |
+| 8 — judge the thing you would trade | none | small | nothing; **Part 1 waits on it** |
 
 **Parts 2, 4 and 7 are BUILT and on the box.** Part 2 shipped as 3.100.0, with
 the table that replaced its prose line in 3.101.0. Part 7 shipped as 3.100.0.
@@ -972,8 +1075,13 @@ What was true is that those numbers only ever covered the settings a rule
 happened to keep. `work out the missing numbers` now runs for the whole record
 set, once, before the walk begins.
 
-**Part 1 is the one unblocked part still to build**, once one retrain of one
-unit has been timed.
+**Part 1 is the one unblocked part still to build.** The timing question was
+withdrawn as a blocker by the owner on 2026-09-11 ("i don't care about timing
+retraining for the Part 1 as some kind of blocker"), and its engine is built
+(§1.0b, §1.0c). **It now waits on Part 8**, because its results line counts
+passes a set cleared rather than settings that cleared, which is the same fault
+Part 8 exists to end — and there is no sense building a screen around a summary
+that has to be rewritten.
 
 **Everything else needs an answer first**, and the answers are cheap: time one
 pass of stage 1, decide whether the held-back column can leave the choosing
