@@ -540,7 +540,7 @@ app.post('/api/funnel/:id/across', (req, res) => {
 });
 app.get('/api/funnel/:id/across', (req, res) => res.json(stages.funnelAcrossStatus(req.params.id)));
 
-// WHICH CROSSES ARE WORTH READING (§18): started on the box, polled by the
+// WHICH CROSSES ARE WORTH READING (§18a): started on the box, polled by the
 // page, one reading at a time. Read-only -- it writes nothing and changes no
 // rule; it only says which pairs of dials are worth gridding.
 app.post('/api/funnel/:id/crosses', (req, res) => {

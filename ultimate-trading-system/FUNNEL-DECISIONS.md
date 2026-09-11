@@ -803,7 +803,7 @@ made while building it that the design did not already settle.
     a different kind of setting, so keeping it is choosing a kind rather than
     picking a peak. Second digit: new behaviour on an existing control.
 96. **Step 3 says which crosses are worth reading** (3.63.0, owner order
-    2026-09-04; the design is FUNNEL-DESIGN.md §18, written before a line of it
+    2026-09-04; the design is FUNNEL-DESIGN.md §18a, written before a line of it
     was coded). Choosing which two dials to grid was guesswork with step 1's top
     two filled in. Now every pair whose values still vary is read, and the ones
     that say something are listed, ordered by how many scrambled copies each

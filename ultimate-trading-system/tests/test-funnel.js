@@ -3268,7 +3268,7 @@ module.exports = {
       'the rule does not read back as "is none"');
   },
 
-  // ---- WHICH CROSSES ARE WORTH READING (3.63.0, FUNNEL-DESIGN.md §18) ------
+  // ---- WHICH CROSSES ARE WORTH READING (3.63.0, FUNNEL-DESIGN.md §18a) ------
   //
   // A board where one dial is flat, one pair genuinely interacts, and the rest
   // do not: gate pays only at x, and only while entry is 1. decision does
@@ -3587,6 +3587,64 @@ module.exports = {
       'a press writes only its own settings over the top of every setting an earlier press worked out');
     assert.ok(save.includes('kept: had && had.settings ? Object.keys(had.settings).length : 0,'),
       'the answer does not say how many were already there, so nothing can tell adding from replacing');
+  },
+
+  // OWNER, 2026-09-11: "fix the three document faults"
+  //
+  // The design record is what a session reads before touching this screen, and
+  // every `§n` in the code points into it. Two sections both numbered 18 made
+  // seventeen of those references ambiguous; nothing said which was meant, and
+  // nothing would have said so next time either. This test is the something.
+  theDesignRecordNumbersEverySectionOnceAndEveryReferenceLands() {
+    const doc = src('FUNNEL-DESIGN.md');
+    const heads = [...doc.matchAll(/^## (\d+[a-z]?)\. /gm)].map((m) => m[1]);
+    assert.ok(heads.length > 20, `only ${heads.length} numbered sections found — the heading shape has changed`);
+
+    // ONE NUMBER, ONE SECTION
+    const seen = new Set();
+    for (const h of heads) {
+      assert.ok(!seen.has(h), `two sections are both numbered ${h}, so every §${h} in the code points at one of two places`);
+      seen.add(h);
+    }
+
+    // AND IN ORDER, so a letter is an insertion and never a section out of place
+    const rank = (h) => Number(h.replace(/[a-z]$/, '')) + (/[a-z]$/.test(h) ? 0.5 : 0);
+    for (let i = 1; i < heads.length; i++) {
+      assert.ok(rank(heads[i]) > rank(heads[i - 1]),
+        `section ${heads[i]} is written after ${heads[i - 1]}, so the record does not read in order`);
+    }
+
+    // EVERY SUBSECTION BELONGS TO A SECTION THAT EXISTS
+    for (const m of doc.matchAll(/^### (\d+[a-z]?)\.\d+[a-z]? /gm)) {
+      assert.ok(seen.has(m[1]), `a subsection is numbered ${m[1]}.x and there is no section ${m[1]}`);
+    }
+
+    // EVERY §n IN THE CODE, THE TESTS AND THE OTHER RECORDS LANDS SOMEWHERE
+    //
+    // WITH ONE EXCEPTION, NAMED RATHER THAN FIXED. `§5.7` at FUNNEL-DESIGN.md:107
+    // resolves to nothing — §5 has no subsections and the sentence plainly means
+    // §6.7, `Step 7 — declare and cut`. It was already wrong before the three
+    // faults the owner sent me at, and finding a defect is not permission to fix
+    // it (RULE ZERO), so it is listed here where nobody can read past it. The
+    // day it is corrected, this line comes out and nothing else changes.
+    const KNOWN_WRONG = new Set(['5.7']);
+    const subs = new Set([...doc.matchAll(/^### (\d+[a-z]?\.\d+[a-z]?) /gm)].map((m) => m[1]));
+    for (const f of ['public/construct.js', 'lib/funnel.js', 'lib/funnelset.js', 'lib/stages.js', 'lib/plateau.js',
+      'server.js', 'tests/test-funnel.js', 'tests/test-rankhold.js', 'FUNNEL-DECISIONS.md', 'FUNNEL-DESIGN.md']) {
+      for (const m of src(f).matchAll(/§(\d+[a-z]?(?:\.\d+[a-z]?)?)/g)) {
+        const at = m[1];
+        if (KNOWN_WRONG.has(at)) continue;
+        assert.ok(at.includes('.') ? subs.has(at) : seen.has(at),
+          `${f} points at §${at} and the design record has no such section`);
+      }
+    }
+
+    // AND THE ONE CONTROL THE RECORD NAMES, IT NAMES AS THE SCREEN DOES (RULE ONE)
+    const page = src('public/construct.js');
+    for (const m of doc.matchAll(/\*\*The control\*\* is `([^`]+)`/g)) {
+      assert.ok(page.includes(`>${m[1]}</button>`),
+        `the record calls a control "${m[1]}" and no button on the page carries that label`);
+    }
   },
 
   // OWNER, 2026-09-11: "why are the names of the stage 4 record sets getting

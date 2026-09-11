@@ -1288,7 +1288,16 @@ of. A board below its chance count is telling you something too.
 
 ---
 
-## 18. Which crosses are worth reading — step 3's own guidance (owner order, 2026-09-04)
+## 18a. Which crosses are worth reading — step 3's own guidance (owner order, 2026-09-04)
+
+**Numbered `18a` because §18 above already had the number** (owner order,
+2026-09-11: fix the document faults). This section was written two days after
+the bar and took 18 as well, so every `§18` in the code pointed at one of two
+sections and nothing said which. The letter follows this file's own way of
+inserting a section without renumbering the ones after it — §16.4a and §17.3a
+were added the same way — so every reference to §19, §20, §21 and §22 still
+lands where it did, and so does every reference in a commit message already
+pushed. `§18` now means the bar, and only the bar.
 
 The owner's words: "i certainly would like an automated process on this 'step 3
 - do two dials interact' in order to get automated guidance on this step
@@ -1304,7 +1313,7 @@ Before this, the only guidance on step 3 was that the two pickers default to
 step 1's top two dials. Nothing scored pairs, and §15's auto mode -- designed
 2026-09-01, not built -- never said which pair a machine should look at either.
 
-### 18.1 When a cross adds value: two conditions, both already in the code
+### 18a.1 When a cross adds value: two conditions, both already in the code
 
 A pair is offered only when BOTH hold:
 
@@ -1318,7 +1327,7 @@ A pair is offered only when BOTH hold:
 Fail either and the pair is not listed. Nothing new was invented for this: both
 conditions are read off machinery the manual walk already runs.
 
-### 18.2 The score: three levels, every one of them against the copies
+### 18a.2 The score: three levels, every one of them against the copies
 
 1. **How many copies the block beats**, counted over every square INSIDE the
    block against every kept copy, as a share. The owner's stated currency:
@@ -1339,7 +1348,7 @@ square against its own scrambled selves. A test scans for it.
 **The corner refused in §16 stays refused**: no margin scaled to the scatter, no
 chosen multiple. The bar the owner set on the heading is the only threshold.
 
-### 18.3 Which pairs are eligible, and why the list shortens
+### 18a.3 Which pairs are eligible, and why the list shortens
 
 A dial is eligible when the settings that survive the rule hold two or more of
 its values. A dial the rule has pinned cannot form a grid and drops out.
@@ -1349,7 +1358,7 @@ of them leaves the list at once. That is the owner's "it will affect the
 availability and value of those that remain", and it is why the list is a
 function of the rule rather than something computed once.
 
-### 18.4 The list regenerates on the rule, never on a timer
+### 18a.4 The list regenerates on the rule, never on a timer
 
 The reading is held under a key of (record set, coin and shape, rule, bar, thin
 floor). A redraw that changes none of those shows the held list at once. A rule
@@ -1360,7 +1369,7 @@ With the switch on, a changed key STARTS a fresh reading by itself. With it off,
 the button is the only way. Both controls are always on the screen; the switch
 decides whether the list keeps itself up to date.
 
-### 18.5 What it costs, measured
+### 18a.5 What it costs, measured
 
 Measured on the owner's own board, 2026-09-04: one pair — the real grid plus all
 twenty kept scrambled copies — took **688ms over 1,904 surviving settings**.
@@ -1382,7 +1391,7 @@ box corrects itself rather than lying twice.
 The owner refused a cap (2026-09-04): the estimate is shown and the decision is
 theirs. Capping would be curating what they may ask for.
 
-### 18.6 What is shown
+### 18a.6 What is shown
 
 Above the two pickers, always. Per row: the two dials by their Sweep names, the
 block corner to corner, how many squares of the grid it covers, how many copies
@@ -1395,7 +1404,7 @@ them by hand does.
 pairs read, none of them interact" is a result. Silence and "nothing found" look
 identical otherwise.
 
-### 18.7 What it records
+### 18a.7 What it records
 
 Loading a cross from the list writes the same recorded step a hand-picked pair
 writes, plus a flag saying it came from the list — §15.6's rule for a choice a
@@ -1455,7 +1464,7 @@ it stores `bandPct` beside `bandMode`. So the `t` column, the `t` filters and
 the Funnel's `t` dial are untouched, and nothing on disk needs migrating. Which
 setting asked for it is on the setting's own name, which reads `t own`.
 
-**The control** is `load training setup` on the stage 3 set-up. It fills
+**The control** is `Load training setup` on the stage 3 set-up. It fills
 `quorum by`, `entry`, `t`, `band % (or auto)`, `decision`, `24/5` and every
 permute — and it starts nothing. There is nothing left for it to guess at: two
 of the values it sets are themselves per-unit.
@@ -1780,7 +1789,7 @@ on a press and say the same thing while it runs, because they are one press
 drawn twice. Exactly one copy carries the ids, because the Help tab's control
 reader indexes by id and two of the same id is one control counted twice.
 
-## §22 What a rule had to beat, after the cut (owner order, 2026-09-11)
+## 22. What a rule had to beat, after the cut (owner order, 2026-09-11)
 
 > "so don't you think it would be useful to NOT HIDE that info … after
 > accepting and cutting those tables are gone … and can't be viewed again when

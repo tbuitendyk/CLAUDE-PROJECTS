@@ -627,7 +627,7 @@ function ladderFor(rows, field, dir) {
   };
 }
 
-// ---- WHICH CROSSES ARE WORTH READING (§18, owner order 2026-09-04) ----------
+// ---- WHICH CROSSES ARE WORTH READING (§18a, owner order 2026-09-04) ----------
 //
 // Step 3 asks whether two dials interact. Until now the only guidance on WHICH
 // two was that the pickers defaulted to step 1's top two. This reads every pair
@@ -651,7 +651,7 @@ function blockSpans(blk, g) {
   const spansB = blk.b.from === g.bVals[0] && blk.b.to === g.bVals[g.bVals.length - 1];
   // TWO TESTS, AND THE LIST WANTS THE STRICT ONE. `interact` is the loose test
   // the step 3 mark has always used: the block does not cover the whole grid.
-  // `joint` is the one §18 needs: the block is strictly inside on BOTH axes.
+  // `joint` is the one §18a needs: the block is strictly inside on BOTH axes.
   //
   // The difference is not academic (found by testing the list on a fixture
   // where one dial is flat, 2026-09-04). A block spanning one axis whole says
@@ -663,7 +663,7 @@ function blockSpans(blk, g) {
 }
 // A DIAL IS ELIGIBLE when the settings that survive hold two or more of its
 // values. One value is not a grid axis, and a dial the rule has pinned has
-// exactly one -- which is why the list shortens as the rule narrows (§18.3).
+// exactly one -- which is why the list shortens as the rule narrows (§18a.3).
 function eligibleDials(rows) {
   return ALL_DIALS.filter((d) => {
     const seen = new Set();
@@ -671,7 +671,7 @@ function eligibleDials(rows) {
     return false;
   });
 }
-// WHAT THE READING WILL COST, BEFORE IT IS STARTED (§18.5). Measured on the
+// WHAT THE READING WILL COST, BEFORE IT IS STARTED (§18a.5). Measured on the
 // owner's own board, 2026-09-04: one pair -- the real grid and all twenty kept
 // scrambled copies -- took 688ms over 1,904 surviving settings. That is the
 // rate below, and it is a FIRST estimate only: once the first pair has been
@@ -698,7 +698,7 @@ async function crossesWorthReading(rows, opts = {}, note = null) {
   const [ha, hb] = kind === 'halves' ? splitHalf(rows, seed) : [null, null];
   // A DIAL IS ELIGIBLE when the survivors hold two or more of its values. One
   // value is not a grid axis, and a dial the rule has pinned has exactly one --
-  // which is why the list shortens as the rule narrows (§18.3).
+  // which is why the list shortens as the rule narrows (§18a.3).
   const free = eligibleDials(rows);
   const pairs = [];
   for (let i = 0; i < free.length; i++) for (let j = i + 1; j < free.length; j++) pairs.push([free[i], free[j]]);

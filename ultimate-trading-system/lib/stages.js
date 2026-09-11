@@ -4968,7 +4968,7 @@ function funnelAcrossStatus(id) {
   return acrossStatus(acrossRun);
 }
 
-// ---- WHICH CROSSES ARE WORTH READING, STARTED AND POLLED (§18) -------------
+// ---- WHICH CROSSES ARE WORTH READING, STARTED AND POLLED (§18a) -------------
 //
 // Same shape as `read the other units`: one reading at a time, keyed on
 // everything that could change the answer, polled by the page. Keyed on the
@@ -5259,7 +5259,7 @@ async function funnelRead(id, state = {}) {
     const block = (a && b) ? F.recommendBlock(g, checkGrids, kind, { barPct: F.barPctOf(state) }) : null;
     out.reading = { ...g, floorCost: F.floorCost(g, state.floorChoices), checkGrids, block, noise: { of: keptN, used: keptN, kind } };
     // WHAT READING EVERY PAIR WOULD COST, on the screen before it is started
-    // (§18.5). Cheap: one pass over the survivors to see which dials still
+    // (§18a.5). Cheap: one pass over the survivors to see which dials still
     // have two values, and arithmetic from there.
     out.reading.crossesOffer = F.crossesOffer(rows, { floor });
     // THE DIALS INTERACT when the best block does not span every value the

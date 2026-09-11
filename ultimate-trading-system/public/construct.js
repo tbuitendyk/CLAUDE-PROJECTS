@@ -4992,7 +4992,7 @@ const fHoldShown = (st, away, open) => !!away || !open || !st.walking;
 // WHAT A READING OF THE OTHER UNITS WAS READ FOR: the rule AND the bar. The
 // same rule under another share of the copies is another reading.
 const fAcrossKey = (st) => JSON.stringify([st.rule, st.barPct == null ? null : st.barPct]);
-// WHAT A CROSSES READING IS HELD UNDER (§18.4): the rule, the bar AND the thin
+// WHAT A CROSSES READING IS HELD UNDER (§18a.4): the rule, the bar AND the thin
 // floor, because the floor decides which squares count and so changes every
 // block on every pair. A reading whose key has moved is not shown -- a list
 // worked out under a rule that no longer holds is worse than no list.
@@ -5551,7 +5551,7 @@ function fStep2(r, st) {
         than picking a peak. The rule then reads <b>${esc(fDialLabel(st.dial))} is none</b>.</p>` : ''}`}`;
 }
 
-// WHICH CROSSES ARE WORTH READING (§18, owner order 2026-09-04). Always on the
+// WHICH CROSSES ARE WORTH READING (§18a, owner order 2026-09-04). Always on the
 // screen, above the two pickers; the switch and the button start it. It lists
 // only the pairs that say something the two single-dial ranges cannot, scored
 // on how many of the scrambled copies each block beats -- never on money.
@@ -7002,7 +7002,7 @@ function fRuleBox(d, st) {
 // polled every two seconds, the count of boards read on the line beside the
 // button. The result is kept under the rule it was read for; a result the box
 // holds for some other reading (another rule, another window) is left alone.
-// FOLLOWING A READING OF THE CROSSES (§18): started on the box and polled every
+// FOLLOWING A READING OF THE CROSSES (§18a): started on the box and polled every
 // two seconds, with what is left worked out from the pairs already read rather
 // than from the estimate the screen showed before it began.
 async function fCrossFollow(st, status) {
@@ -7494,7 +7494,7 @@ function fWire(st, d) {
     fRecord({ n: 3, what: `a block on ${fDialLabel(st.dialA)} x ${fDialLabel(st.dialB)}`, chose: `${va[0]}..${va[va.length - 1]} x ${vb[0]}..${vb[vb.length - 1]}${pk ? '' : ' (recommended)'}` });
     fSave(); drawFunnel();
   };
-  // WHICH CROSSES ARE WORTH READING (§18). The switch keeps the list up to date
+  // WHICH CROSSES ARE WORTH READING (§18a). The switch keeps the list up to date
   // as the rule narrows; the button reads them once. Both are always drawn.
   const startCrosses = async () => {
     const key = fCrossKey(st);
@@ -7509,7 +7509,7 @@ function fWire(st, d) {
   if (cx) cx.onclick = () => { cx.disabled = true; st.crossesFailed = null; startCrosses(); };
   const cxOn = $('#fCrossOn');
   if (cxOn) cxOn.onchange = () => { st.crossesOn = cxOn.checked; st.crossesFailed = null; fSave(); if (st.crossesOn) startCrosses(); else drawFunnel(); };
-  // ON THE SWITCH, A RULE THAT HAS MOVED READS ITSELF AGAIN (§18.4) -- and a
+  // ON THE SWITCH, A RULE THAT HAS MOVED READS ITSELF AGAIN (§18a.4) -- and a
   // reading that FAILED is not, or a reading that cannot work would be started
   // on every single draw.
   const crossKey = fCrossKey(st);
