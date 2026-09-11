@@ -37,6 +37,7 @@ const INLINE = {
   s3Unit: require('./stagework').s3UnitTask,
   s3Tally: require('./stagework').s3TallyShardTask,
   hlTrain: require('./halflife').hlTrainTask,
+  passTrain: require('./passes').passTrainTask,
   ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
 };
 

@@ -113,6 +113,85 @@ module.exports = {
       'the clamp lost or invented chunks');
   },
 
+  // THE JOB THAT TRAINS ONE PASS. Run with the chunk-cutting stubbed, because
+  // the real thing needs candles -- but run, not scanned, so the things that
+  // matter are exercised: that the parent's own layout travels untouched, that
+  // the pass rides on top of it as a modifier, that every member is trained on
+  // the pass's TRAIN and asked to vote on its test slice AND the stretch it is
+  // judged on, and that a pass with nothing to be judged on is refused rather
+  // than quietly returned.
+  async theJobThatTrainsOnePassCarriesTheParentsLayoutAndRefusesAnEmptyJudge() {
+    const path = require('path');
+    const swPath = require.resolve('../lib/stagework');
+    const real = require.cache[swPath];
+    const chunk = (i) => ({ startTs: i * 86400000, diffPct: 1, x: [0, 0, 0] });
+    const seen = { params: null, trained: [] };
+    const stub = {
+      ...require('../lib/stagework'),
+      async unitChunks(combo, geometry, p) {
+        seen.params = p;
+        return {
+          geo: { featureHours: 192 },
+          split: {
+            trainChunks: [chunk(1), chunk(2)],
+            testChunks: [chunk(3)],
+            holdChunks: p.__noJudge ? [] : [chunk(4), chunk(5)],
+            bandPct: 7,
+          },
+          windows: { layout: p.windowLayout, pass: { of: p.pass.of, k: p.pass.k } },
+        };
+      },
+      async trainProbMember(a) {
+        seen.trained.push({ model: a.model, train: a.trainChunks.length, predict: a.predictChunks.length });
+        return { saved: { kind: a.model }, picked: 1, tauProbs: [[0.5]], probs: [[0.5]] };
+      },
+    };
+    require.cache[swPath] = { ...real, exports: stub };
+    delete require.cache[require.resolve('../lib/passes')];
+    try {
+      const { passTrainTask } = require('../lib/passes');
+      const base = {
+        combo: { size: 1, trade: 'AAAUSDT' },
+        geometry: 'daily-3d',
+        specs: [{ model: 'logreg', view: 'full' }, { model: 'boost', view: 'prices' }],
+        params: { windowLayout: 'reserve61', nullN: 20, seed: 7 },
+        of: 3,
+        k: 2,
+      };
+      const out = await passTrainTask(base);
+      // THE PARENT'S LAYOUT TRAVELS UNTOUCHED, and the pass rides on top of it
+      assert.strictEqual(seen.params.windowLayout, 'reserve61',
+        'the job changed the layout the set was built on, so what it seals would change under it');
+      assert.deepStrictEqual(seen.params.pass, { of: 3, k: 2 }, 'the pass is not handed through as a modifier');
+      assert.strictEqual(seen.params.nullN, 20, 'the set\'s own settings do not reach the training job');
+      // every member trained on THIS pass's train, and asked to vote on the
+      // test slice and the stretch it is judged on, both
+      assert.strictEqual(seen.trained.length, 2, 'not every member of the set\'s own committee was trained');
+      for (const t of seen.trained) {
+        assert.strictEqual(t.train, 2, 'a member was trained on something other than this pass\'s train');
+        assert.strictEqual(t.predict, 3, 'a member was not asked to vote on both the test slice and the stretch it is judged on');
+      }
+      assert.deepStrictEqual(out.counts, { train: 2, test: 1, judge: 2 }, 'the counts a pass reports are not the ones it used');
+      assert.strictEqual(out.trainedBandPct, 7, 'the band the pass trained at does not travel with it');
+      assert.strictEqual(out.ts.judge.length, 2, 'the days the pass was judged on do not travel with it');
+      assert.strictEqual(out.k, 2, 'a pass does not say which pass it is');
+      // AND A PASS WITH NOTHING TO BE JUDGED ON IS REFUSED, never returned
+      // half-formed for something downstream to read as an empty answer
+      await assert.rejects(() => passTrainTask({ ...base, params: { ...base.params, __noJudge: true } }),
+        /no judging stretch/, 'a pass with nothing to judge on comes back as an answer');
+    } finally {
+      require.cache[swPath] = real;
+      delete require.cache[require.resolve('../lib/passes')];
+    }
+  },
+
+  // IT IS ON THE WORKER, or nothing can run it
+  theTrainingJobIsOnTheWorkersList() {
+    const w = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'worker.js'), 'utf8');
+    assert.ok(/passTrain: require\('\.\/passes'\)\.passTrainTask,/.test(w),
+      'the job that trains a pass is not on the worker, so a run would have nothing to hand its passes to');
+  },
+
   // THE SHAPE OF THE CHANGE IN THE ENGINE: the set's own layout seals first,
   // the pass cuts what is left, and the pass code names no layout at all. If a
   // pass ever grows its own idea of a reserve, the 13% is written twice and the
