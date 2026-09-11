@@ -521,6 +521,55 @@ The premise underneath is a design opinion, not a fact, and it should be
 argued with rather than nodded at: **a number that can be reached while choosing
 will eventually be used, whatever anyone intends.**
 
+## FOUND 2026-09-11: the held stretch is not fresh at the cut, and it orders the board
+
+The owner asked a plain question — was a stage 3 record set judged only on
+**test**? — and the answer is no, in a way that is larger than the column this
+part was written about.
+
+**Read out of the code, not remembered:**
+
+- **Stage 3 prices every setting on BOTH stretches.** The real pricing and the
+  kept scrambled copies on **test**, and then the real pricing, the four
+  comparisons and the scrambled copies on **held** (`lib/stagework.js`, the
+  `if (holdChunks.length)` block). Every record carries `avgTest` and
+  `avgHold`.
+- **`beat` is a HELD number**: how many of that setting's held scrambled copies
+  its held money beat. `pairs` is the held copy count and is zero when there is
+  no held stretch (`lib/stagework.js:1212`).
+- **The stage 3 ranked table is ordered by that number.** With nothing picked,
+  `lib/stages.js:4229` sorts every setting by `beat / pairs`, best first — the
+  share of held scrambled copies each one beat.
+
+**So the held stretch was read for all 2,752 settings when the sweep ran, and
+it is what orders the table.** Not a column that could be sorted by; the
+default ordering itself.
+
+**The scope, bounded honestly, because the first telling of this was wider than
+the code supports.** The Funnel's own per-unit board is NOT ordered that way —
+`loadUnitBoard` returns rows in record order and the walk reads `avgTest` and
+nothing else. What is ordered by the held reading is the stage 3 ranked table,
+which is where a set is looked at before anything is walked.
+
+**Why it matters more than the column this part was written about.** Part 3
+above is about `avg held-back $` being reachable — a floor and a sorter someone
+might use. This is not reachability. It is the order the settings arrive in,
+applied to every set, without anybody choosing it. The premise underneath Part
+3 — that a number reachable while choosing will eventually be used — does not
+even need to be argued here: this one is used by default.
+
+**And it makes a sentence on the Funnel untrue.** That screen says "The
+held-back window is opened once, at the cut." For the walk itself that is
+right. For the pipeline it is not: the held stretch was priced for every
+setting at stage 3, long before any cut, and the ranking built from it is on
+the screen where a set is chosen to walk.
+
+**Not fixed, and not scoped here.** Whether the fix is to rank on test money,
+to leave the ranking alone and say plainly what it reads, or to accept it and
+correct the Funnel's sentence, is the owner's call — and the first of those
+would change what every existing set's table looks like without re-running
+anything, which is its own decision under RULE NINE.
+
 ## The change
 
 Built so it cannot happen, rather than kept as a habit. Three parts.
