@@ -1011,7 +1011,9 @@ all 3 passes, here they are" means something.
    bar a person could have aimed at.
 5. **Part 1's five-pass block follows the same rule**: a row per pass, and the
    summary counts SETTINGS that cleared every pass, never passes that the set
-   cleared.
+   cleared. **Part 1 applies this itself and does not wait for the rest of
+   Part 8** — the rule costs nothing to obey when the block is written for the
+   first time.
 
 ## What gets REMOVED
 
@@ -1061,7 +1063,7 @@ sentence is built from — reporting, not arithmetic.
 | 5 — bar for the whole search | none | small | is the luck figure fit for this at all |
 | 6 — claim written first | none | medium | making a look an event |
 | 7 — what the thrown-away settings did | none | small | **BUILT 3.100.0** |
-| 8 — judge the thing you would trade | none | small | nothing; **Part 1 waits on it** |
+| 8 — judge the thing you would trade | none | small | nothing |
 
 **Parts 2, 4 and 7 are BUILT and on the box.** Part 2 shipped as 3.100.0, with
 the table that replaced its prose line in 3.101.0. Part 7 shipped as 3.100.0.
@@ -1075,13 +1077,12 @@ What was true is that those numbers only ever covered the settings a rule
 happened to keep. `work out the missing numbers` now runs for the whole record
 set, once, before the walk begins.
 
-**Part 1 is the one unblocked part still to build.** The timing question was
-withdrawn as a blocker by the owner on 2026-09-11 ("i don't care about timing
-retraining for the Part 1 as some kind of blocker"), and its engine is built
-(§1.0b, §1.0c). **It now waits on Part 8**, because its results line counts
-passes a set cleared rather than settings that cleared, which is the same fault
-Part 8 exists to end — and there is no sense building a screen around a summary
-that has to be rewritten.
+**Part 1 is being built now, and it does not wait on Part 8.** The timing
+question was withdrawn as a blocker by the owner ("i don't care about timing
+retraining for the Part 1 as some kind of blocker"), and the engine is done
+(§1.0b, §1.0c). Part 8's rule simply applies to Part 1's own summary from the
+start: it counts SETTINGS that cleared every pass and names them, never passes
+that a set cleared. A session that turned that into a dependency invented one.
 
 **Everything else needs an answer first**, and the answers are cheap: time one
 pass of stage 1, decide whether the held-back column can leave the choosing
