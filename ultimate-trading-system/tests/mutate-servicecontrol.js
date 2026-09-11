@@ -712,6 +712,14 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "    const board = await funnelBoard(String(id), t, 'all');", "    const board = await funnelBoard(String(id), t, state.unit);",
     'pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet',
     'the press prices one board again instead of the whole set, so the ranking above step 1 reads a slice and calls it the set'],
+  // ---- `new rule` MAKES A NEW RULE (3.108.3) ----
+  [path.join(ROOT, 'public', 'construct.js'), "  fCloseCut(st);\n  fFreshWalk(st);\n  fMarkOpen(st.set, true);",
+    "  fCloseCut(st);\n  if (fWalkWasAlreadyCut(d)) fFreshWalk(st);\n  fMarkOpen(st.set, true);",
+    'aNewRuleStartsAtStepOneWhenTheWalkHasAlreadyBeenCut',
+    'new rule gives back a walk built days ago at the step it stopped on'],
+  [path.join(ROOT, 'public', 'construct.js'), "  if (fWalkHasWork(st) && !fWalkWasAlreadyCut(d)) {", "  if (false) {",
+    'theFunnelIsEitherHomeOrOpenAndThePressThatGoesHomeDropsTheWalk',
+    'a walk left part-built behind an open Stage 4 record set is cleared by the box with no warning'],
   // ---- HOME AND OPEN, AND THE PRESS THAT DROPS A WALK (3.108.0) ----
   [path.join(ROOT, 'public', 'construct.js'), 'const fIsOpen = (st) => !!((st.cut && st.cut !== F_NEW) || fOpenOf(st.set));',
     'const fIsOpen = () => true;',

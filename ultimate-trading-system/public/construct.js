@@ -6727,8 +6727,32 @@ const fWalkHasWork = (st) => !!(st.walking || (st.steps || []).length || (st.ste
 // record set already exists"). It does NOT drop an unfinished walk; that is
 // the other press, and the two mean different things now (3.108.0).
 function fOpenNewRule(st, d) {
+  // `new rule` MAKES A NEW RULE. ALWAYS (owner order 2026-09-11: "so when
+  // 'new rule' is selected the system must make a new rule. it's not rocket
+  // science").
+  //
+  // It only started one again when the walk in hand had already been cut to a
+  // Stage 4 record set. Any other saved walk was re-opened at whatever step it
+  // had reached, so choosing `new rule` could land on step 5 of something
+  // built days ago -- a box that says new and gives you old.
+  //
+  // ASKED FIRST when that costs the owner something. This is only ever reached
+  // from a Stage 4 record set showing, because the box already reads `new
+  // rule` on a walk and a select fires nothing when its value does not change
+  // -- so the walk being thrown away here is one left part-built behind an
+  // open set. A walk already cut is finished, and a walk nothing was done to
+  // costs nothing, so neither asks.
+  if (fWalkHasWork(st) && !fWalkWasAlreadyCut(d)) {
+    const who = (d && (d.unitName || d.unit)) || 'this coin and shape';
+    if (!confirm(`Start a new rule?\n\n${who} has a walk part way through, on step ${st.step || 1}. Starting a new `
+      + 'rule clears it: the rule you had built, every step it recorded and its marks, and none of it can be '
+      + 'brought back.\n\nStage 4 record sets already cut are not touched.')) {
+      drawFunnel();                                       // the box snapped to new rule; put it back
+      return;
+    }
+  }
   fCloseCut(st);
-  if (fWalkWasAlreadyCut(d)) fFreshWalk(st);
+  fFreshWalk(st);
   fMarkOpen(st.set, true);
   fSave(); drawFunnel();
 }

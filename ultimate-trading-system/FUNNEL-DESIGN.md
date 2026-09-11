@@ -1741,8 +1741,21 @@ this press. It is finished work and stays associated with what it holds.
 
 **`new rule` and the press no longer share a path.** They shared one while they
 meant the same thing; they mean different things now, and one path cannot do
-both. `new rule` opens a walk, starting it again at step 1 when the walk in
-hand already wrote a set (owner order 2026-09-04). The press drops one.
+both. The press drops a walk; `new rule` makes one.
+
+**And `new rule` MAKES A NEW RULE, always** (owner order, 2026-09-11: "so when
+`new rule` is selected the system must make a new rule. it's not rocket
+science"). It used to start one again only when the walk in hand had already
+been cut to a Stage 4 record set; any other saved walk came back at whatever
+step it had reached, so the box could say new and give you something built
+days ago. It is step 1 with an empty rule now, every time.
+
+It asks first when that costs something. The box already reads `new rule`
+while a walk is open, and a drop-down fires nothing when its value does not
+change, so this is only ever reached from a Stage 4 record set showing — the
+walk it would clear is one left part-built behind an open set. A walk already
+cut is finished and a walk nothing was done to costs nothing, so neither asks.
+Saying no puts the box back on the set it was showing.
 
 ### 21.4 What Home says, and what it costs
 

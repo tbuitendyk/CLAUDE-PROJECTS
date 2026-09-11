@@ -543,8 +543,8 @@ window.HELP = {
         more: 'Fixed when the unit was trained, so this box offers only the shapes the set holds for the coins chosen to its left. Change a box on the left and anything on the right that no longer exists is dropped for the nearest board that does.',
       },
       fCutPick: {
-        what: 'Which Stage 4 record set to look at, of the ones already cut from this coin and shape. Choose "new rule" to start the steps again and cut another.',
-        more: 'A coin and shape with nothing cut from it opens on step 1, the way it always has. Once one or more have been cut from it, it opens on the newest instead: the heading becomes the record of that set - its rule, its target size, the bar it was read under, whether its window was sealed, and how the walk went - and the settings it kept are listed below it, one row each, sortable by any column. Nothing on that screen changes anything except the name. Only the sets cut from THIS coin and shape are offered; another has its own.',
+        what: 'Which Stage 4 record set to look at, of the ones already cut from this coin and shape. Choose "new rule" to start the steps again and cut another - it always gives you a new rule, at step 1 with nothing on it.',
+        more: '"new rule" means what it says: step 1, an empty rule, whatever was on the walk before. If that clears a walk you had part way through, you are asked first and told which step it was on; a walk whose rule has already been cut to a set is finished and goes without a question. A coin and shape with nothing cut from it opens on step 1, the way it always has. Once one or more have been cut from it, it opens on the newest instead: the heading becomes the record of that set - its rule, its target size, the bar it was read under, whether its window was sealed, and how the walk went - and the settings it kept are listed below it, one row each, sortable by any column. Nothing on that screen changes anything except the name. Only the sets cut from THIS coin and shape are offered; another has its own.',
       },
       fCutName: {
         what: 'The name of the Stage 4 record set showing. Type a new one and press Rename.',

@@ -2701,9 +2701,22 @@ module.exports = {
     // while they meant the same thing. `new rule` opens a walk; the press
     // DROPS one and goes Home, and one path cannot do both.
     const open4 = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fGoFunnelHome(st, d) {'));
-    assert.ok(open4.includes('fCloseCut(st);') && open4.includes('if (fWalkWasAlreadyCut(d)) fFreshWalk(st);')
-      && open4.includes('fMarkOpen(st.set, true);'),
-    'choosing new rule does not open a walk, or does not start one again at step 1 when this walk already wrote a set');
+    assert.ok(open4.includes('fCloseCut(st);') && open4.includes('fMarkOpen(st.set, true);'),
+      'choosing new rule does not open a walk');
+    // ALWAYS A NEW RULE (3.108.3, owner order 2026-09-11: "so when 'new rule'
+    // is selected the system must make a new rule. it's not rocket science").
+    // It reset only a walk that had already been cut, so any other saved walk
+    // came back at whatever step it had reached.
+    assert.ok(/\n  fCloseCut\(st\);\n  fFreshWalk\(st\);\n/.test(open4),
+      'choosing new rule gives back an old walk at the step it stopped on');
+    assert.ok(!/if \(fWalkWasAlreadyCut\(d\)\) fFreshWalk\(st\);/.test(open4),
+      'the fresh start is still conditional, so new rule sometimes gives you the old one');
+    // ...and it asks before clearing a walk that has work in it, naming the step
+    assert.ok(open4.includes('if (fWalkHasWork(st) && !fWalkWasAlreadyCut(d)) {')
+      && open4.includes('if (!confirm(`Start a new rule?') && /has a walk part way through, on step/.test(open4),
+    'a part-built walk is cleared with no warning, or the warning does not say which step it was on');
+    assert.ok(/drawFunnel\(\);                                       \/\/ the box snapped to new rule; put it back/.test(open4),
+      'saying no leaves the box reading new rule over a Stage 4 record set it did not open');
     const home = page.slice(page.indexOf('function fGoFunnelHome(st, d) {'), page.indexOf('function fWireCutPick(st, d) {'));
     assert.ok(home.includes('fCloseCut(st);') && home.includes('fFreshWalk(st);'),
       'the press does not drop the walk, so a part-built rule survives a press named for going home');
@@ -3000,9 +3013,11 @@ module.exports = {
     const pick = page.slice(page.indexOf('function fWireCutPick('), page.indexOf('function fWireUnit('));
     assert.ok(pick.includes('if (cs.value === F_NEW) { fOpenNewRule(st, d); return; }'),
       'choosing new rule takes its own route rather than the path that opens a walk');
+    // 3.108.3: unconditional. It reset only a walk already cut, which is why
+    // any OTHER saved walk came back at the step it had reached.
     const home = page.slice(page.indexOf('function fOpenNewRule(st, d) {'), page.indexOf('function fGoFunnelHome('));
-    assert.ok(home.includes('if (fWalkWasAlreadyCut(d)) fFreshWalk(st);'),
-      'choosing new rule drops back into the finished walk at whatever step it ended on');
+    assert.ok(/\n  fCloseCut\(st\);\n  fFreshWalk\(st\);\n/.test(home),
+      'choosing new rule drops back into a walk at whatever step it stopped on');
     // AND ONLY AGAINST THIS BOARD'S SETS (3.105.0). The box offers every Stage
     // 4 set of the stage 3 record set now, and the same rule written on another
     // coin has the same sentence -- so without `mine` a walk in hand would be
