@@ -548,7 +548,7 @@ carried out 2026-08-28 under its own GO — decision 50.
     reads, and a test holds the two equal on blocks that fold for every
     reason a block can. The launch still builds and folds. The gateway's
     timeout is untouched. Third digit.
-60. **`start stage 3` answers at once; the settings are built behind it**
+60. **`Start stage 3` answers at once; the settings are built behind it**
     (3.47.0, owner order 2026-09-02: the press would "go away and do nothing
     for a minute before crashing without a message" -- and the run had in
     fact started). Two costs sat in front of the answer: every candle file of
@@ -589,7 +589,7 @@ carried out 2026-08-28 under its own GO — decision 50.
     box it waits on changes. Hiding stays for a box that cannot exist at all
     (`market` has no rails). Second digit.
 63. **The launch's answer is run, not read** (3.48.1, owner report
-    2026-09-03: pressing `start stage 3` said "nothing changed settings is
+    2026-09-03: pressing `Start stage 3` said "nothing changed settings is
     not defined" -- and the run had started). #60 moved the built block into
     the background part and left the answer line reading it by name, so every
     press started a run and then told the browser it had failed. The answer
@@ -700,7 +700,7 @@ carried out 2026-08-28 under its own GO — decision 50.
     never the whole unit again. The screen: the control on the running line
     reads `pause` on a stage 3 run and `stop` on the others; a paused run is
     an entry in the stage 3 section's box, everything below the box is
-    ghosted while it is chosen, and `start stage 3` starts it again. The
+    ghosted while it is chosen, and `Start stage 3` starts it again. The
     rehearsal proves a paused run, a run killed outright and a run paused
     through the debugger all land equal to the run that was never stopped on
     everything that does not depend on the deals. Second digit: new
@@ -930,7 +930,7 @@ carried out 2026-08-28 under its own GO — decision 50.
 77. **The rule on the other units and the held-back ride, on Verify** (3.88.0,
     loop, VERIFY-DESIGN.md V6 and V7, section 9 step 3). Two presses under the
     verdict, both information and never a gate. The first walks the same boards
-    the Funnel's "read the other units" walks, with the held-back fields: each
+    the Funnel's "Read the other units" walks, with the held-back fields: each
     other unit's figure is the mean held-back money of the settings the set's
     rule keeps there, read against that unit's own scrambled copies at the
     verdict's declared bar resolved for that unit's copy count; a unit where the

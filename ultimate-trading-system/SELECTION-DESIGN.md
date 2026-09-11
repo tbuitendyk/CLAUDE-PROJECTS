@@ -521,7 +521,7 @@ can still stop something.
 ## Per unit, and a table of all of them (owner, 2026-09-09)
 
 **It should not be limited to the one unit being walked.** A stage 3 record set
-covers many units — the **Funnel** offers `read the other units`, and **Verify**
+covers many units — the **Funnel** offers `Read the other units`, and **Verify**
 speaks of every `other coin-and-shape unit` of the stage 3 set the current one
 was cut from. So run it per unit: rank that unit's settings on the first half of
 test, score them on the second, and get one number per unit.

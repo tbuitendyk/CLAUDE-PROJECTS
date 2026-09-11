@@ -247,7 +247,7 @@ const COL = {
   fAcrossUnit: 'one of the other coin-and-shape units of this set. The rule built on this walk was applied to that unit\'s own records.',
   fAcrossSurvivors: 'how many of that unit\'s settings the rule keeps, out of all it has.',
   fCrossPair: 'the two dials this row is about. Every pair of dials whose values still vary among the settings your rule keeps is read; this is one of the pairs that turned out to say something.',
-  fCrossBlock: 'the largest rectangle of boxes on that pair\'s grid that all beat the check, corner to corner. Pressing load this grid opens it so you can see it and keep it.',
+  fCrossBlock: 'the largest rectangle of boxes on that pair\'s grid that all beat the check, corner to corner. Pressing Load this grid opens it so you can see it and keep it.',
   fCrossSquares: 'how many boxes that block covers, of how many boxes the whole grid has. A block covering the whole grid is not listed at all: it says nothing the two dials could not say separately.',
   fCrossBeats: 'across every box inside the block, against every scrambled copy of the table: how many of those comparisons the real box won, of how many there were. This is what the list is ordered by, and it is the only thing it is ordered by until two pairs tie.',
   fCrossLead: 'how far above the copies\' typical the block sits, in units of how far apart the copies are. Breaks a tie after the beats column and the size.',
@@ -580,14 +580,14 @@ async function drawData() {
       ${cth('pair','pair')}${cth('months','months')}${cth('from','from')}${cth('to','to')}${cth('manage','manage','text-align:left')}</tr></thead><tbody>
       ${rows.map((r) => (`
         <tr><td>${esc(r.symbol)}</td><td>${r.months ?? '—'}</td><td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td>
-          <td style="text-align:left"><button type="button" class="ds-refresh" data-sym="${esc(r.symbol)}">refresh to latest</button>
+          <td style="text-align:left"><button type="button" class="ds-refresh" data-sym="${esc(r.symbol)}">Refresh to latest</button>
             <!-- toMonth, not to. cacheState reports the "to" field at DAY
                  precision whenever day files exist (the normal state after any
                  refresh), and the trim endpoint accepts YYYY-MM only — so the
                  prompt pre-filled a value the server then refused, on every pair
                  with fresh days (audit 2026-08-17). -->
-            <button type="button" class="ds-trim" data-sym="${esc(r.symbol)}" data-from="${esc(String(r.from || '').slice(0, 7))}" data-to="${esc(r.toMonth || String(r.to || '').slice(0, 7))}">trim…</button>
-            <button type="button" class="ds-purge" data-sym="${esc(r.symbol)}">purge…</button></td></tr>`)).join('')}</tbody></table>`
+            <button type="button" class="ds-trim" data-sym="${esc(r.symbol)}" data-from="${esc(String(r.from || '').slice(0, 7))}" data-to="${esc(r.toMonth || String(r.to || '').slice(0, 7))}">Trim…</button>
+            <button type="button" class="ds-purge" data-sym="${esc(r.symbol)}">Purge…</button></td></tr>`)).join('')}</tbody></table>`
     : `<p class="note">nothing cached yet — download below</p>`}</div>
     <h3>Download / refresh</h3>
     <div class="row" style="align-items:flex-end">
@@ -934,7 +934,7 @@ async function swProgress() {
       ? `<span class="muted">no estimate until the first ${esc(String(pf.phaseWord || 'unit').replace(/s$/, ''))} lands</span>` : null,
   ].filter(Boolean).join(' · ');
   el.innerHTML = row
-    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="swStop" class="danger">${row.stage === 3 ? 'pause' : 'stop'}</button>`
+    ? `<b>${esc(row.name)}</b> is going: ${esc(row.progress || '…')}${tail ? ` · ${tail}` : ''} <button id="swStop" class="danger">${row.stage === 3 ? 'Pause' : 'Stop'}</button>`
     : `a stage run is going (${esc(st.running)})`;
   const stop = $('#swStop');
   if (stop) stop.onclick = async () => { await tryPost(`api/stageset/${st.running}/stop`, {}); swProgress(); };
@@ -1340,13 +1340,13 @@ async function swCounts() {
       const cut = got.filtered
         ? `<br><span class="warn">the filters saved on the parent's table leave <b>${Number(got.filtered.held).toLocaleString()}</b> `
           + `of its ${Number(got.filtered.of).toLocaleString()} records, and the carry takes the top of those. `
-          + 'Press clear filters under its table on Boards to carry from the whole set.</span>'
+          + 'Press Clear filters under its table on Boards to carry from the whole set.</span>'
         : '';
       html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${units && perUnit.length ? ` — ${perUnit.length.toLocaleString()} units hold ${pricings.toLocaleString()} between them`
         + (fewer ? ` <span class="muted">(${fewer.toLocaleString()} of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)</span>` : '')
         + ` × ${per3().toLocaleString()} readings ≈ ${(pricings * per3()).toLocaleString()} pricings — no trainings` : ''}`
         + cut
-        + (refuse ? `<br><b class="neg">start stage 3 will refuse: ${esc(refuse.message)}</b>`
+        + (refuse ? `<br><b class="neg">Start stage 3 will refuse: ${esc(refuse.message)}</b>`
           : tight ? `<br><span class="warn">${esc(tight.message)}</span>` : '');
     }
     swSayCount(c3, html, r.why);
@@ -1704,7 +1704,7 @@ function namePanel1(doc) {
   return `<div class="panel">
         <div class="row" style="align-items:flex-end">
           <label class="f">name<input id="bName1" value="${esc(doc.name || '')}" maxlength="80" style="width:14rem" ${off ? 'disabled' : ''}></label>
-          <button id="bRename1" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>rename</button>
+          <button id="bRename1" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>Rename</button>
           <span id="bNameMsg1" class="note">${doc.nameEditedAt ? `renamed ${esc(String(doc.nameEditedAt).slice(0, 16))}` : ''}</span>
         </div>
       </div>`;
@@ -1714,7 +1714,7 @@ function namePanel2(doc) {
   return `<div class="panel">
         <div class="row" style="align-items:flex-end">
           <label class="f">name<input id="bName2" value="${esc(doc.name || '')}" maxlength="80" style="width:14rem" ${off ? 'disabled' : ''}></label>
-          <button id="bRename2" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>rename</button>
+          <button id="bRename2" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>Rename</button>
           <span id="bNameMsg2" class="note">${doc.nameEditedAt ? `renamed ${esc(String(doc.nameEditedAt).slice(0, 16))}` : ''}</span>
         </div>
       </div>`;
@@ -1724,7 +1724,7 @@ function namePanel3(doc) {
   return `<div class="panel">
         <div class="row" style="align-items:flex-end">
           <label class="f">name<input id="bName3" value="${esc(doc.name || '')}" maxlength="80" style="width:14rem" ${off ? 'disabled' : ''}></label>
-          <button id="bRename3" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>rename</button>
+          <button id="bRename3" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>Rename</button>
           <span id="bNameMsg3" class="note">${doc.nameEditedAt ? `renamed ${esc(String(doc.nameEditedAt).slice(0, 16))}` : ''}</span>
         </div>
       </div>`;
@@ -1735,7 +1735,7 @@ function notesPanel1(doc) {
         <label class="f" for="bNotes1">notes — why this run exists, what it showed, what it cost</label>
         <div class="row" style="align-items:flex-start;margin-top:.15rem">
           <textarea id="bNotes1" rows="3" style="flex:1;font:inherit" ${off ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
-          <button id="bNotesSave1" ${off ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
+          <button id="bNotesSave1" ${off ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>Save notes</button>
           <span id="bNotesMsg1" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
         </div>
       </div>`;
@@ -1746,7 +1746,7 @@ function notesPanel2(doc) {
         <label class="f" for="bNotes2">notes — why this run exists, what it showed, what it cost</label>
         <div class="row" style="align-items:flex-start;margin-top:.15rem">
           <textarea id="bNotes2" rows="3" style="flex:1;font:inherit" ${off ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
-          <button id="bNotesSave2" ${off ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
+          <button id="bNotesSave2" ${off ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>Save notes</button>
           <span id="bNotesMsg2" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
         </div>
       </div>`;
@@ -1757,7 +1757,7 @@ function notesPanel3(doc) {
         <label class="f" for="bNotes3">notes — why this run exists, what it showed, what it cost</label>
         <div class="row" style="align-items:flex-start;margin-top:.15rem">
           <textarea id="bNotes3" rows="3" style="flex:1;font:inherit" ${off ? 'disabled' : ''}>${esc(doc.notes || '')}</textarea>
-          <button id="bNotesSave3" ${off ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>save notes</button>
+          <button id="bNotesSave3" ${off ? 'disabled title="notes save after the run finishes — the engine refuses writes while it computes"' : ''}>Save notes</button>
           <span id="bNotesMsg3" class="note">${doc.notesEditedAt ? `last edited ${esc(String(doc.notesEditedAt).slice(0, 16))}` : ''}</span>
         </div>
       </div>`;
@@ -1790,7 +1790,7 @@ function bKeptFillPanel(doc) {
       <h3 style="margin-top:0">Filling in the kept null money</h3>
       <div class="row" style="align-items:flex-end">
       <label class="f" title="how many of this set's null-set deals should have their money written down, so the Funnel has a whole second copy of Table 3.A and Table 3.B made of scrambled money to measure against. It re-prices only what is missing, never the whole run, and it proves itself against the money already stored before anything is swapped.">null set money kept<input id="bKeptN" type="number" value="${want}" min="0" max="${nullN}" data-have="${have}" data-rows="${rows}" style="width:4.5rem" ${off ? 'disabled' : ''}></label>
-      <button id="bKeptGo" ${off ? 'disabled title="the set is still working — a fill waits until it has landed"' : ''}>fill in the kept null money</button>
+      <button id="bKeptGo" ${off ? 'disabled title="the set is still working — a fill waits until it has landed"' : ''}>Fill in the kept null money</button>
       <span id="bKeptMsg" class="note">${have ? `this set keeps ${have} of its ${nullN}. Pressing at ${have} does nothing; a higher number adds only the missing scrambles and asks first.` : `this set keeps none of its ${nullN}.`}${nullN && rows && !have ? ` Keeping ${want} re-prices ${cost(want).toLocaleString()} times, across ${rows.toLocaleString()} rows.` : ''}</span>
       </div>
     </div>`;
@@ -2693,7 +2693,7 @@ async function drawTune() {
     ${isSet ? tnTargetRowHtml(chosen, tnPickVal, tnWins) : ''}
     <div class="row" style="margin-bottom:.4rem">
       <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is ${floorPc}, which is twice the ${tripPc} it costs to trade in and out at ${feePc} each way — tighter than the round trip and a triggered stop is a guaranteed loss, tighter than the floor and it fires on ordinary hourly noise. This button writes the live engine's own risk parameter, so the floor is the lab rate rather than any one profile's fee.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="${floorPct}" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
-      <button id="stopCustomApply">apply custom</button>
+      <button id="stopCustomApply">Apply custom</button>
       <button id="stopClear" title="run with NO fixed stop. The position then rests on its scheduled exit alone.">No stop (clear)</button>
     </div>
     <!-- YOUR REASON, WRITTEN BY YOU. The record carries a reason beside the
@@ -2704,7 +2704,7 @@ async function drawTune() {
          and editable on its own afterwards. -->
     <div class="row" style="margin-bottom:.4rem">
       <label class="f" title="why you chose this. Saved with the number and shown on the Trade screen beside it. Yours to write and to change at any time.">your reason for this choice<input id="stopWhy" type="text" maxlength="300" placeholder="why this stop, or why none" value="${esc(applied.why || '')}" style="width:32rem"></label>
-      <button id="stopWhySave" title="save the reason on its own, leaving the stop exactly as it is">save the reason</button>
+      <button id="stopWhySave" title="save the reason on its own, leaving the stop exactly as it is">Save the reason</button>
     </div>
     ${applied.chosen ? `<div class="note" style="margin-bottom:.4rem">on record: ${applied.stopPct != null ? pct(applied.stopPct) : 'no stop'}${applied.why ? ` — ${esc(applied.why)}` : ' — no reason recorded'}${applied.utc ? ` (${esc(String(applied.utc).slice(0, 10))}${applied.by ? ', ' + esc(applied.by) : ''})` : ''}</div>` : '<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded yet</div>'}
     <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop</button>
@@ -2729,7 +2729,7 @@ async function drawTune() {
         <td class="neg">${usd(-Math.abs(c.winnerProfitForfeitedUsd || 0))}</td><td>${c.losersCut}</td>
         <td class="${(c.loserPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.loserPnlDeltaUsd)}</td>
         <td class="${(c.netPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${usd(c.netPnlDeltaUsd)}</b></td>
-        <td>${s.appliesToLiveRule ? `<button data-stop="${c.stopPct}">apply to the live rule</button>` : ''}</td></tr>`).join('')}
+        <td>${s.appliesToLiveRule ? `<button data-stop="${c.stopPct}">Apply to the live rule</button>` : ''}</td></tr>`).join('')}
       </tbody></table></div>
       <p class="note">NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. Apply buttons exist
         only for the running engine; for a lab row the number informs the greenlight instead.</p>`;
@@ -2997,7 +2997,7 @@ function glStage4PanelHtml(list, chosen, d) {
       <div class="row" style="margin-top:.4rem;align-items:flex-end">
         <label class="f" style="flex:1" title="what you want to see on screen for this configuration">name<input id="gl4Name" style="width:100%" placeholder="e.g. XRP weekly, depth pick"></label>
         <label class="f" style="flex:2" title="the reasoning that cleared it. Required, kept forever with the record.">why — the decision record (required)<input id="gl4Why" style="width:100%" placeholder="e.g. verdict PASS on Verify; reserve grade look 1 PASS; other units 8 of 9 positive"></label>
-        <button id="gl4Go" class="pri">GREENLIGHT this survivor</button></div>`}` : ''}
+        <button id="gl4Go" class="pri">Greenlight this survivor</button></div>`}` : ''}
   </div>`;
 }
 async function drawGreenlight() {
@@ -3111,7 +3111,7 @@ async function drawSweep() {
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName1" placeholder="${esc(nextNames[1] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc1" style="width:100%"></label>
-      <button id="swGo1" class="pri">start stage 1</button>
+      <button id="swGo1" class="pri">Start stage 1</button>
     </div>
     <p class="note" style="margin:.4rem 0 0" id="swCost1">…</p>
     <div id="swOut1"></div>
@@ -3127,7 +3127,7 @@ async function drawSweep() {
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName2" placeholder="${esc(nextNames[2] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc2" style="width:100%"></label>
-      <button id="swGo2" class="pri">start stage 2</button>
+      <button id="swGo2" class="pri">Start stage 2</button>
     </div>
     <p class="note" style="margin:.4rem 0 0">BOOST is the second kind of member — a different way of working out a forecast from the same prices.
       The LOGREG members are reused, never retrained; only the BOOST members train (4 per coin on its own, 5 alongside others),
@@ -3148,7 +3148,7 @@ async function drawSweep() {
       <label class="f" title="how many of the null set's money figures to write down, rather than just counting them. Keeping some builds a whole second copy of the stage 3 tables out of scrambled money alone, which is the only thing the Funnel can measure a real result against. Costs one extra pricing per setting per coin for each one kept, so 10 makes the run about 10% longer. 0 keeps none, which is how every run before this one worked.">null set money kept<input id="swKeep3" type="number" value="10" min="0" style="width:4.5rem"></label>
     </div>
     <div class="row" style="margin-top:.5rem">
-      <button id="swTrained3" title="fills the boxes below with the conditions the units were actually trained and scored under in stages 1 and 2, so what those stages did can be priced here as one setting and read against everything else on the same table. Those stages open at the close of the chunk and hold to the chunk's own end, add every member's lean together and take the winning side whatever the margin, with no head count and nothing to clear. Nothing is started: the boxes are filled and you press start stage 3 yourself.">load training setup</button>
+      <button id="swTrained3" title="fills the boxes below with the conditions the units were actually trained and scored under in stages 1 and 2, so what those stages did can be priced here as one setting and read against everything else on the same table. Those stages open at the close of the chunk and hold to the chunk's own end, add every member's lean together and take the winning side whatever the margin, with no head count and nothing to clear. Nothing is started: the boxes are filled and you press start stage 3 yourself.">Load training setup</button>
       <span id="swTrainedSaid" class="note"></span>
     </div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
@@ -3212,7 +3212,7 @@ async function drawSweep() {
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName3" placeholder="${esc(nextNames[3] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc3" style="width:100%"></label>
-      <button id="swGo3" class="pri">start stage 3</button>
+      <button id="swGo3" class="pri">Start stage 3</button>
     </div>
     <div id="swOut3"></div>
   </div>`;
@@ -3321,7 +3321,7 @@ async function drawSweep() {
     setV('#swT', 'own'); setC('#swPermT', false);
     said.textContent = 'filled in: quorum by trained, entry market, t the chunk\u2019s own, band % (or auto) auto, '
       + 'decision argmax, 24/5 off, every permute off. That is one setting, and it prices every unit at the hold '
-      + 'length and the band its own stage 1 worked out \u2014 press start stage 3 when you are ready.';
+      + 'length and the band its own stage 1 worked out \u2014 press Start stage 3 when you are ready.';
     rememberSweepForm();
     swProvenance();
     swCounts();
@@ -3506,7 +3506,7 @@ async function drawBoards() {
       <h3 style="margin:0">Stage 1</h3>
       <label class="f">record set<select id="bPick1" style="min-width:26rem">${bOptions(1, s1sel)}</select></label>
       <button id="bDelete1" class="danger" ${s1sel ? '' : 'disabled'}>Delete record set…</button>
-      <button id="bCopySettings1" ${s1sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
+      <button id="bCopySettings1" ${s1sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">Copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s1sel))}
     </div>
     <div id="bS1"></div>
@@ -3517,7 +3517,7 @@ async function drawBoards() {
       <h3 style="margin:0">Stage 2</h3>
       <label class="f">record set<select id="bPick2" style="min-width:26rem">${bOptions(2, s2sel, s1sel)}</select></label>
       <button id="bDelete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
-      <button id="bCopySettings2" ${s2sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
+      <button id="bCopySettings2" ${s2sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">Copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s2sel))}
     </div>
     <div id="bS2"></div>
@@ -3528,7 +3528,7 @@ async function drawBoards() {
       <h3 style="margin:0">Stage 3</h3>
       <label class="f">record set<select id="bPick3" style="min-width:26rem">${bOptions(3, s3sel, s2sel)}</select></label>
       <button id="bDelete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
-      <button id="bCopySettings3" ${s3sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">copy settings into the form</button>
+      <button id="bCopySettings3" ${s3sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">Copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s3sel))}
     </div>
     <div id="bS3"></div>
@@ -3636,7 +3636,7 @@ async function drawBoards() {
       // would have let a real outage hide behind a legitimate notice.
       ? `<div class="panel" data-role="set-incomplete" style="border-color:var(--neg)"><b class="neg">THIS SET DOES NOT MATCH ITS OWN PLAN.</b>
        ${Number((doc.counts || {}).failures || 0)} unit(s) failed and are missing from every table below — read the numbers accordingly.
-       ${doc.stage === 1 ? `<div class="row" style="margin-top:.5rem"><button id="bFillUnits" data-bfillunits="${esc(doc.id)}">put the missing units back</button>
+       ${doc.stage === 1 ? `<div class="row" style="margin-top:.5rem"><button id="bFillUnits" data-bfillunits="${esc(doc.id)}">Put the missing units back</button>
        <span id="bFillUnitsSaid" class="note"></span></div>` : ''}</div>` : '';
     if (doc.stage === 1) await bDrawStage1(doc, incomplete, view, `#bT${stage}`);
     else if (doc.stage === 2) await bDrawStage2(doc, incomplete, view, `#bT${stage}`);
@@ -3724,7 +3724,7 @@ const bth = 'style="padding:.3rem .5rem;max-width:7.5rem;white-space:normal;vert
 // `extra` is where the CALLER lines the press up against the group it belongs
 // to, because only the caller knows what is beside it (RULE FOUR).
 const putAwayBtn = (attr, value, open, what, extra) => `<button data-${attr}="${esc(String(value))}" ${extra || ''}
-  title="puts ${esc(what)} away, or brings it back. The last state is remembered.">${open ? 'put away' : 'open'}</button>`;
+  title="puts ${esc(what)} away, or brings it back. The last state is remembered.">${open ? 'Put away' : 'Open'}</button>`;
 const putAwayNote = '<p class="note">put away — press open to bring it back</p>';
 
 // THE PAGE NUMBER IS TYPED, NOT WALKED TO (owner order, 2026-08-29). prev and
@@ -3740,8 +3740,8 @@ function bPager(total, from, n, key) {
     <input data-bpageto="${key}" data-bpages="${pages}" data-bper="${n}" type="number" min="1" max="${pages}" step="1" value="${page}"
       style="width:5.5rem;vertical-align:baseline"
       title="the page showing. Type the page you want and press enter, or use the arrows on the box; prev and next move one page at a time. A number past the end goes to the last page."> of ${pages}
-    <button data-bpage="${key}:${Math.max(0, from - n)}">prev</button>
-    <button data-bpage="${key}:${Math.min((pages - 1) * n, from + n)}">next</button></p>`;
+    <button data-bpage="${key}:${Math.max(0, from - n)}">Prev</button>
+    <button data-bpage="${key}:${Math.min((pages - 1) * n, from + n)}">Next</button></p>`;
 }
 // THE SORT SELECTORS ON THE STAGE TABLES (owner order, 2026-08-27). Each
 // sortable column carries a small button: click sorts by it, click again
@@ -4052,10 +4052,10 @@ function bFilterGrid(key, specs, spread) {
   // word on the screen that the closed word list cannot see.
   const head = sp4 ? `<span></span><span></span><span class="fhead">minimum</span><span class="fhead">median</span><span class="fhead">average</span><span class="fhead">maximum</span>` : '';
   return `<div class="filters${sp4 ? ' withspread' : ''}">${head}${specs.map((sp) => `<label title="${esc(sp[3])}"><span class="fname">${esc(sp[1])}</span><span class="fbox">${box(sp)}</span>${stats(sp)}</label>`).join('')}
-    <span class="frow"><button data-bapply="${key}" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">apply settings</button>
-    <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press apply settings — one wait for the whole set of boxes rather than one wait per box, and on a large record set each wait is minutes."><input type="checkbox" data-bauto="${key}"${bAuto(key) ? ' checked' : ''}> auto-apply settings</label>
-    <button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">clear filters</button>${
-  key === 'S3C' && bView().s3cBeforePin ? '<button data-bunpin3b title="puts the filters back exactly as they were before show in 3.B took them off, and lets go of the setting it pinned.">revert filters</button>' : ''}</span></div>${
+    <span class="frow"><button data-bapply="${key}" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">Apply settings</button>
+    <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply settings — one wait for the whole set of boxes rather than one wait per box, and on a large record set each wait is minutes."><input type="checkbox" data-bauto="${key}"${bAuto(key) ? ' checked' : ''}> auto-apply settings</label>
+    <button data-bfilterclear="${key}" title="empties every filter above and shows the whole table again">Clear filters</button>${
+  key === 'S3C' && bView().s3cBeforePin ? '<button data-bunpin3b title="puts the filters back exactly as they were before show in 3.B took them off, and lets go of the setting it pinned.">Revert filters</button>' : ''}</span></div>${
   sp4 ? `<p class="note">The four numbers beside each box are what that column holds in the rows the table is showing now, after every filter above. They move as you filter.</p>` : ''}`;
 }
 function bWireFilters(root, doc) {
@@ -4158,7 +4158,7 @@ function bPinnedRecord(r) {
 // is either true or it is not, and a false one says how many and shows three.
 function bCheckLine(doc, check) {
   if (!check) {
-    return `<p class="note"><button id="bCheckSet" data-bcheck="${esc(doc.id)}">check this set</button>
+    return `<p class="note"><button id="bCheckSet" data-bcheck="${esc(doc.id)}">Check this set</button>
       <span class="muted">reads every record and says whether the set is sound. It adds nothing and changes nothing.</span></p>`;
   }
   if (check.error) return `<p class="note warn">the check could not run: ${esc(check.error)}</p>`;
@@ -4174,7 +4174,7 @@ function bCheckLine(doc, check) {
     <p style="margin:.1rem 0 .4rem"><b>${check.ok && (!b || b.ok) ? 'This set is sound.' : 'This set is NOT sound.'}</b>
     <span class="muted">${Number(check.rows || 0).toLocaleString()} records, ${Number(check.settings || 0).toLocaleString()} settings, ${check.units} units.</span></p>
     <ul style="margin:.2rem 0 .3rem 1.1rem; padding:0">${rows}${blockLine}</ul>
-    <button id="bCheckSet" data-bcheck="${esc(doc.id)}">check this set</button></div>`;
+    <button id="bCheckSet" data-bcheck="${esc(doc.id)}">Check this set</button></div>`;
 }
 function bUndoLine(doc, undoing) {
   if (undoing && undoing.error) {
@@ -4192,7 +4192,7 @@ function bUndoLine(doc, undoing) {
     that stopped or died leaves these behind. They cover some of this set’s coins and not others, which would read on every
     table as an ordinary row resting on fewer. Undoing puts the set back exactly as it was before that run started; filling in
     again then prices the whole thing once.
-    <button id="bUndoAppend" data-bundoappend="${esc(doc.id)}">undo the unfinished run</button></p>`;
+    <button id="bUndoAppend" data-bundoappend="${esc(doc.id)}">Undo the unfinished run</button></p>`;
 }
 // SETTINGS THE BLOCK NO LONGER DECLARES (owner order, 2026-08-30). Drawn above
 // the fill-in line, which is the order they have to happen in: filling in
@@ -4217,7 +4217,7 @@ function bDropLine(doc, gap, dropping) {
     They price a trade that another setting it holds already prices, so every one of them is a second copy of a row that is
     already here. Dropping them deletes those rows and renumbers what is left; nothing else is touched, and the tables are
     worked out again afterwards.
-    <button id="bDropUndeclared" data-bdrop="${esc(doc.id)}">drop the settings the block does not declare</button></p>`;
+    <button id="bDropUndeclared" data-bdrop="${esc(doc.id)}">Drop the settings the block does not declare</button></p>`;
 }
 function bFillInLine(doc, gap, filling) {
   if (filling && filling.error) {
@@ -4228,7 +4228,7 @@ function bFillInLine(doc, gap, filling) {
     return `<p class="note">filling in the settings this block declares: <b>${Number(filling.done).toLocaleString()} of ${Number(filling.total).toLocaleString()} units</b>${pct}
       — running in the background; the tables are worked out again when it lands. This page asks again every few seconds.
       ${filling.stopping ? '<b>stopping after this unit.</b>'
-    : `<button id="bStopFill" data-bstopfill="${esc(doc.id)}">stop after this unit</button>`}</p>`;
+    : `<button id="bStopFill" data-bstopfill="${esc(doc.id)}">Stop after this unit</button>`}</p>`;
   }
   if (filling && filling.stopped) {
     return `<p class="note warn"><b>the run was stopped after ${Number(filling.done).toLocaleString()} of ${Number(filling.total).toLocaleString()} units.</b>
@@ -4245,7 +4245,7 @@ function bFillInLine(doc, gap, filling) {
     The missing ${Number(gap.missing).toLocaleString()} are ways of asking that did not exist when it ran, so nothing here can answer for them.
     Pricing them is ${Number(gap.pricings).toLocaleString()} pricings over ${gap.units} unit(s); nothing already priced is read, touched or priced again.
     ${stop ? `<b>It cannot be done on this set:</b> ${esc(gap.gate.message)}`
-    : `<button id="bFillIn" data-bfillin="${esc(doc.id)}">fill in the missing settings</button>`}</p>`;
+    : `<button id="bFillIn" data-bfillin="${esc(doc.id)}">Fill in the missing settings</button>`}</p>`;
 }
 
 // A TABLE WRITES INTO ITS MOUNT ONLY IF THE MOUNT IS STILL THERE (2026-08-29).
@@ -4414,7 +4414,7 @@ async function bDrawStage2(doc, incomplete, view, mount) {
     ${bShown(t)}
     ${bPager((t && t.total) || 0, from, 100, 'S2')}
     <p class="note"><b data-bpickcount="S2">${picked.size.toLocaleString()}</b> picked on this record set
-      <button data-bpickclear="S2"${picked.size ? '' : ' disabled'} title="clears every pick on this record set, on every page">clear picks</button>
+      <button data-bpickclear="S2"${picked.size ? '' : ' disabled'} title="clears every pick on this record set, on every page">Clear picks</button>
       <span>- tick records to pick them; the stage 3 set-up on Sweep prices exactly the picked records when its records to price says Selected records.</span></p>
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 3
       carry forward takes the top of. With nothing picked: forecast score — all members, best first; ties keep their
@@ -4556,7 +4556,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     <div class="scrollx"><table style="border-collapse:collapse">
       <thead><tr style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="where this setting sits in the table as it is ordered and filtered right now. It is a position, not a score: change the sort or a filter and the same setting gets a different number.">#</th>
-        <th ${bth} style="white-space:nowrap" title="shows, in Table 3.B below, only the coins this setting was priced on and nothing else. Those rows average every decision, band and 24/5 variant of the setting, not just this row's — the rows column there says how many. Press clear filters under Table 3.B to bring the rest back.">show in 3.B</th>
+        <th ${bth} style="white-space:nowrap" title="shows, in Table 3.B below, only the coins this setting was priced on and nothing else. Those rows average every decision, band and 24/5 variant of the setting, not just this row's — the rows column there says how many. Press Clear filters under Table 3.B to bring the rest back.">show in 3.B</th>
         <th ${bth} title="how the members' votes become a call — priced from the kept votes.">decision${bRankSortBtn(doc, 'decision', 'asc')}</th>
         <th ${bth} title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history.">band${bRankSortBtn(doc, 'bandMode', 'asc')}</th>
         <th ${bth} title="whether this setting trades weekdays only.">24/5${bRankSortBtn(doc, 'weekdaysOnly', 'asc')}</th>
@@ -4583,7 +4583,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd0} class="muted" style="white-space:nowrap">${(from + i + 1).toLocaleString()}</td>
         <td ${btd} style="white-space:nowrap"><button id="bPin3b" data-bpin3b="${esc(String(r.label).split(' · ')[0])}"
           data-bpindec="${esc(String(r.decision))}" data-bpinband="${esc(String(r.bandMode))}" data-bpinwk="${r.weekdaysOnly ? 1 : 0}"
-          style="white-space:nowrap${bPinnedRow(r) ? ';font-weight:700' : ''}">show in 3.B</button></td>
+          style="white-space:nowrap${bPinnedRow(r) ? ';font-weight:700' : ''}">Show in 3.B</button></td>
         <td ${btd}>${esc(r.decision)}</td>
         <td ${btd}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
         <td ${btd}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
@@ -4624,7 +4624,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['minVsLong', 'avg vs always-long at least, $', 'num', 'hides rows that beat just holding the coin by less than this. Empty hides nothing.'],
     ['minBeatNoise', 'beat the kept null money at least, %', 'num', 'hides rows that beat less than this share of the kept scrambled copies of the whole table. Empty hides nothing.'],
     ['minAgreed', 'share that agreed at least, %', 'num', 'hides rows whose records agreed by less than this on average. Empty hides nothing.'],
-    ['setting', 'Table 3.A selection setting', 'text', 'shows only the coins of the setting named here, matched whole. show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
+    ['setting', 'Table 3.A selection setting', 'text', 'shows only the coins of the setting named here, matched whole. Show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
   ], coins && coins.spread)}
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
@@ -4653,7 +4653,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${bMoney(r.avgVsLong)}</td>
         <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
         <td ${btd}>${r.rows}</td>
-        <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ records' : 'records'}</button></td></tr>`;
+        <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ Records' : 'Records'}</button></td></tr>`;
   }).join('') || '<tr><td colspan="12" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${bShown({ total: (coins && coins.total) || 0, of: ((coins && coins.total) || 0) + ((coins && coins.removed) || 0) })}
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
@@ -4805,7 +4805,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <tbody>${(got.rows || []).map((r) => {
     const h = r.holdout || null;
     const mine = bPinnedRecord(r);
-    return `<tr${mine ? ' class="pinned" title="this is the row of Table 3.A you pressed show in 3.B on"' : ''}>
+    return `<tr${mine ? ' class="pinned" title="this is the row of Table 3.A you pressed Show in 3.B on"' : ''}>
           <td style="padding:.2rem .5rem .2rem 0">${esc(r.decision)}</td>
           <td style="padding:.2rem .5rem">${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
           <td style="padding:.2rem .5rem">${r.weekdaysOnly ? 'yes' : 'no'}</td>
@@ -4881,13 +4881,13 @@ drawBoards = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(.
 // held-back numbers would spend the only window that can judge the answer.
 
 const F_STEPS = [
-  ['which dials move the result', 'nothing is cut here, review the table'],
-  ['the shape of a dial', 'pick a range, never a value'],
-  ['do two dials interact', 'the grid, with thin squares marked'],
-  ['does it hold elsewhere', 'across whatever this set can offer'],
-  ['a plateau or a knife edge', 'the widest region and its middle'],
-  ['exposure', 'drawdown, worst trade, stops'],
-  ['declare and cut', 'the rule, written as a Stage 4 set'],
+  ['Which dials move the result', 'nothing is cut here, review the table'],
+  ['The shape of a dial', 'pick a range, never a value'],
+  ['Do two dials interact', 'the grid, with thin squares marked'],
+  ['Does it hold elsewhere', 'across whatever this set can offer'],
+  ['A plateau or a knife edge', 'the widest region and its middle'],
+  ['Exposure', 'drawdown, worst trade, stops'],
+  ['Declare and cut', 'the rule, written as a Stage 4 set'],
 ];
 
 // what each mark says, in the same words the set records (lib/funnelset.js MARKS)
@@ -5424,7 +5424,7 @@ function fStep1(r) {
         <td>${esc(checkOf(x))}</td><td>${fFix(x.range)}</td>
         <td>${(x.values || []).length}</td>
         <td class="${(x.balance || {}).balanced ? 'muted' : 'warn'}">${fFix((x.balance || {}).even)}</td>
-        <td><button data-fnarrow="${esc(x.dial)}" title="opens the next step with this dial chosen, so its range can be set. Nothing is cut by pressing it.">narrow this one</button></td></tr>`).join('')}
+        <td><button data-fnarrow="${esc(x.dial)}" title="opens the next step with this dial chosen, so its range can be set. Nothing is cut by pressing it.">Narrow this one</button></td></tr>`).join('')}
     </tbody></table>
     <p class="note"><b>Split-half:</b> ${sh.why ? esc(sh.why)
     : `one half leads with ${esc((sh.a || []).map(fDialLabel).join(', '))} and the other with ${esc((sh.b || []).map(fDialLabel).join(', '))} - ${sh.agrees
@@ -5499,17 +5499,17 @@ function fStep2(r, st) {
     ${rec.ordered === false
     ? `<div class="row" style="align-items:flex-end;margin-top:.5rem">
         ${r.groups.map((g) => `<label class="c"><input type="checkbox" data-fval="${esc(String(g.value))}" ${chosen.has(String(g.value)) ? 'checked' : ''}> ${esc(String(g.value))}</label>`).join('')}
-        <button id="fKeepValues" class="pri">keep these values</button>
+        <button id="fKeepValues" class="pri">Keep these values</button>
         <span class="note" id="fKeepCount">keeps ${Number(keptByValues).toLocaleString()} of ${Number(total).toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}</span></div>`
     : `<div class="row" style="align-items:flex-end;margin-top:.5rem">
         <label class="f">keep from<input id="fMin" style="width:7rem" value="${esc(String(lo))}"></label>
         <label class="f">to<input id="fMax" style="width:7rem" value="${esc(String(hi))}"></label>
         ${hasNone ? `<label class="c"><input type="checkbox" id="fAlsoNone" ${alsoNone ? 'checked' : ''}> also keep none</label>` : ''}
-        <button id="fAddRange" class="pri">add this range to the rule</button>
+        <button id="fAddRange" class="pri">Add this range to the rule</button>
         <span class="note" id="fKeepCount">keeps ${Number(keptByRange).toLocaleString()} of ${Number(total).toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}</span>
         <span class="note">a RANGE, never a value - picking the peak is the shopping this walk exists to avoid</span></div>
       ${hasNone ? `<p class="note"><b>To keep none and nothing else:</b> clear both boxes, tick <b>also keep none</b>, and press
-        <b>add this range to the rule</b>. The count beside the button says what that leaves before you press it.
+        <b>Add this range to the rule</b>. The count beside the button says what that leaves before you press it.
         <b>none</b> is the one value that can be kept on its own here: it is not a point on this dial's scale, it is the
         settings that have no ${esc(fDialLabel(st.dial))} at all, so keeping it is choosing a kind of setting rather
         than picking a peak. The rule then reads <b>${esc(fDialLabel(st.dial))} is none</b>.</p>` : ''}`}`;
@@ -5526,7 +5526,7 @@ function fCrosses(r, st) {
   const going = st.crossesAsked && st.crossesAsked.key === key;
   const head = `<div class="row" style="align-items:flex-end">
       <label class="c"><input type="checkbox" id="fCrossOn" ${st.crossesOn ? 'checked' : ''}> keep this list up to date</label>
-      <button id="fCrosses" ${going ? 'disabled' : ''}>read every pair</button>
+      <button id="fCrosses" ${going ? 'disabled' : ''}>Read every pair</button>
       <span class="note" id="fCrossMsg">${going ? 'starting' : ''}</span></div>`;
   const cost = `<p class="note"><b>${Number(off.dials ? off.dials.length : 0)}</b> dial(s) still vary across the
       <b>${Number(off.rows || 0).toLocaleString()}</b> settings your rule keeps, which is <b>${Number(off.pairs || 0)}</b>
@@ -5538,11 +5538,11 @@ function fCrosses(r, st) {
   const failed = st.crossesFailed && st.crossesFailed.key === key ? st.crossesFailed.why : null;
   if (failed) {
     return `${head}${cost}<p class="note neg">The last reading of these pairs failed: ${esc(failed)}. Press
-      <b>read every pair</b> to try again - it is not started again by itself, or a reading that cannot work would
+      <b>Read every pair</b> to try again - it is not started again by itself, or a reading that cannot work would
       be started on every draw.</p>`;
   }
   if (!held) {
-    return `${head}${cost}<p class="note">Press <b>read every pair</b> for the list, or tick
+    return `${head}${cost}<p class="note">Press <b>Read every pair</b> for the list, or tick
       <b>keep this list up to date</b> and it is read again by itself every time your rule changes.</p>`;
   }
   const list = held.crosses || [];
@@ -5560,7 +5560,7 @@ function fCrosses(r, st) {
         <td ${btd}>${Number(x.won)} of ${Number(x.of)}</td>
         <td ${btd}>${fFix(x.lead, 1)}</td>
         <td ${btd0}>${esc(fDialLabel(x.a))} pays only at <b>${esc(x.block.a.from)}..${esc(x.block.a.to)}</b>, and only while ${esc(fDialLabel(x.b))} is <b>${esc(x.block.b.from)}..${esc(x.block.b.to)}</b></td>
-        <td ${btd}><button data-fcross="${esc(x.a)}|${esc(x.b)}">load this grid</button></td>
+        <td ${btd}><button data-fcross="${esc(x.a)}|${esc(x.b)}">Load this grid</button></td>
       </tr>`).join('')}</tbody></table>`;
 }
 
@@ -5571,20 +5571,20 @@ function fStep3(r, st) {
       <label class="f">first dial<select id="fA">${fDialOptions(a0)}</select></label>
       <label class="f">second dial<select id="fB">${fDialOptions(b0)}</select></label>
       <label class="f">thin below<input id="fFloor" type="number" min="0" style="width:6rem" value="${st.floor || 0}"></label>
-      <button id="fGrid" class="pri">read the grid</button></div>`;
+      <button id="fGrid" class="pri">Read the grid</button></div>`;
   // HOW TO WALK THIS STEP, ON THE SCREEN (owner order, 2026-09-04: "you need
   // to have plain steps to walk this step 3"). Every control is named as it
   // is drawn below, and every sentence says what pressing it does.
   const howTo = `<ol class="note fhow">
       <li>Set <b>first dial</b> and <b>second dial</b> to the two dials to compare.</li>
       <li>Set <b>thin below</b>: a box on the grid holding fewer settings than this number is greyed out, shows its count in brackets, and can never be bold or part of a block.</li>
-      <li>Press <b>read the grid</b> to build the grid for those two dials with that cut-off. Changing a dial box reads the grid again by itself; a new thin below number needs the button.</li>
-      <li>Bold boxes beat the check. The outlined block is the largest rectangle of bold boxes. Press <b>keep this block</b> to write it into the rule.</li>
+      <li>Press <b>Read the grid</b> to build the grid for those two dials with that cut-off. Changing a dial box reads the grid again by itself; a new thin below number needs the button.</li>
+      <li>Bold boxes beat the check. The outlined block is the largest rectangle of bold boxes. Press <b>Keep this block</b> to write it into the rule.</li>
       <li>Or click one box on the grid to start a block of your own...</li>
       <li>...then click the box at the opposite corner to finish it. Your block turns green, and the green line under the grid says which values it covers...</li>
-      <li>...then press <b>keep this block</b> to write your block into the rule instead of the outlined one.</li>
+      <li>...then press <b>Keep this block</b> to write your block into the rule instead of the outlined one.</li>
     </ol>`;
-  if (!r.grid) return `${fCrosses(r, st)}${howTo}${pickers}<p class="note">name two dials and read the grid</p>`;
+  if (!r.grid) return `${fCrosses(r, st)}${howTo}${pickers}<p class="note">name two dials and press Read the grid</p>`;
   const kind = (r.noise || {}).kind;
   const blk = (r.block || {}).block;
   const counting = new Set((r.block || {}).counting || []);
@@ -5655,7 +5655,7 @@ function fStep3(r, st) {
       <span class="note">${blk ? `Recommended block: ${esc(fDialLabel(r.dialA))} ${esc(blk.a.from)} to ${esc(blk.a.to)}, ${esc(fDialLabel(r.dialB))} ${esc(blk.b.from)} to ${esc(blk.b.to)} - ${blk.squares} square(s).${worthOf(blk.a.from, blk.a.to, blk.b.from, blk.b.to)}`
       : `No block - ${esc((r.block || {}).why || 'no square beats the check')}.`}
       ${pk && pk.a1 != null ? ` <b class="fpick">Your block: ${esc(fDialLabel(r.dialA))} ${esc(pk.a0)} to ${esc(pk.a1)}, ${esc(fDialLabel(r.dialB))} ${esc(pk.b0)} to ${esc(pk.b1)}.</b>${worthOf(pk.a0, pk.a1, pk.b0, pk.b1)}` : (pk && pk.a0 != null ? ' <b class="fpick">One corner chosen - press the other.</b>' : '')}</span>
-      <button id="fKeepBlock" class="pri" ${(pk && pk.a1 != null) || blk ? '' : 'disabled'}>keep this block</button>
+      <button id="fKeepBlock" class="pri" ${(pk && pk.a1 != null) || blk ? '' : 'disabled'}>Keep this block</button>
       <span class="note">writes a range on BOTH dials in one step, replacing what the rule held for them. Your own block if you chose one, else the recommended one.</span></div>`;
 }
 
@@ -5673,14 +5673,14 @@ function fStep4(r, st) {
     return `<p class="note">Read across the <b>${r.others}</b> other coin-and-shape unit${r.others === 1 ? '' : 's'} of this set: the
         rule you have built here, applied to each of their records.</p>
       <div class="row" style="align-items:flex-end">
-        <button id="fAcross" class="pri" ${asked ? 'disabled' : ''}>read the other units</button>
+        <button id="fAcross" class="pri" ${asked ? 'disabled' : ''}>Read the other units</button>
         <span id="fAcrossMsg" class="note">${a ? `<span>read at ${esc(new Date(a.at).toLocaleTimeString())}</span>` : `<span>not read yet for this rule - ${r.others} boards, read one at a time</span>`}</span></div>
       ${a ? `<p class="note"><b>${a.positive} of ${a.of}</b> other units are positive under this rule, and on
         <b>${a.clearBar} of ${a.of}</b> the money of the survivors clears the bar against the scrambled copies of that unit.</p>
       <table><thead><tr>${cth('unit', 'fAcrossUnit')}${cth('survivors', 'fAcrossSurvivors')}${cth('avg test', 'fAvgTest')}${cth('check', 'fCheck')}</tr></thead>
         <tbody>${a.units.map((u) => `<tr class="${u.clears ? 'cnt' : (u.avgTest == null ? 'dim' : '')}"><td>${esc(u.name)}</td><td>${Number(u.survivors).toLocaleString()} of ${Number(u.of).toLocaleString()}</td><td>${fFix(u.avgTest)}</td><td>${u.k ? `<span>beats ${u.beats} of ${u.k}${u.lead == null ? '' : ` - lead ${Number(u.lead).toFixed(1)}`}</span>` : '-'}</td></tr>`).join('')}</tbody></table>
       <div class="row" style="align-items:flex-end;margin-top:.5rem">
-        <button id="fAccept4" class="pri">accept and carry on</button>
+        <button id="fAccept4" class="pri">Accept and carry on</button>
         <span class="note">records "accepted ${a.positive} of ${a.of} other units positive; ${a.clearBar} clear the bar" as a mark on the set, and opens the next step</span></div>` : ''}`;
   }
   const slices = r.slices || [];
@@ -5708,7 +5708,7 @@ function fStep4(r, st) {
     <table><thead><tr>${cth('slice', 'fSlice')}${cth('settings', 'fSettings')}${cth('avg test', 'fAvgTest')}</tr></thead>
       <tbody>${slices.map((x) => `<tr><td>${esc(x.key)}</td><td>${x.n}</td><td>${fFix(x.mean)}</td></tr>`).join('')}</tbody></table>
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
-      <button id="fAccept4" class="pri" ${r.why ? 'disabled' : ''}>accept and carry on</button>
+      <button id="fAccept4" class="pri" ${r.why ? 'disabled' : ''}>Accept and carry on</button>
       <span class="note">records what you accepted - "${esc(said)}" - as a mark on the set, and opens the next step</span></div>`;
 }
 
@@ -5744,7 +5744,7 @@ function fStep5(r, d, st) {
         style="width:7rem" value="${esc(String(at))}"></label>
       <label class="f">join settings up to this many apart<input id="fRegionReach" type="number" min="1" step="1"
         style="width:6rem" value="${esc(String(reach))}"></label>
-      <button id="fRegionRead">read the region again</button>
+      <button id="fRegionRead">Read the region again</button>
       <span class="note">dollars, per setting, and a setting has to beat this number, not match it - at <b>0</b> a
         setting that broke even to the cent is left out. <b>0</b> is "it made money", which is how this step has always read.
         A number below 0 papers over settings that lost that much or less, so one weak setting cannot split a wide
@@ -5769,7 +5769,7 @@ function fStep5(r, d, st) {
   // counts -- and a rule that keeps the same rows TODAY still keeps different
   // rows on a scrambled copy, which is the comparison this whole step rests on.
   const mine = `<div class="row" style="align-items:flex-end;margin-top:.5rem">
-      <button id="fKeepMine">keep my own rule and go on</button>
+      <button id="fKeepMine">Keep my own rule and go on</button>
       <span class="note">leaves every range and value you chose exactly as it is and moves to step 6 - keeps
         <b>${Number(keep.mineKeeps || 0).toLocaleString()}</b> of ${Number(d.of || 0).toLocaleString()}. Nothing on this
         step is written into the rule, and the set will say the auto-plateau region was never kept.</span></div>
@@ -5793,7 +5793,7 @@ function fStep5(r, d, st) {
       ${allowed.map(([k, v]) => `<tr><td>${esc(fDialLabel(k))}</td><td colspan="2">${esc(v.join(', '))}</td></tr>`).join('')}
     </tbody></table>
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
-      <button id="fKeepRegion" class="pri">keep the auto-plateau region</button>
+      <button id="fKeepRegion" class="pri">Keep the auto-plateau region</button>
       <span class="note">replaces every range and value in the rule with the region's edges above - keeps
         <b>${Number(keep.keeps || 0).toLocaleString()}</b> of ${Number(d.of || 0).toLocaleString()}${d.target ? ` - target ${Number(d.target).toLocaleString()}` : ''}</span></div>
     ${keep.sentence ? `<p class="note muted" style="margin:.2rem 0 0">the region's rule: ${esc(keep.sentence)}</p>` : ''}
@@ -5809,7 +5809,7 @@ function fStep5(r, d, st) {
 // WHAT EACH LIMIT WOULD KEEP, so the number is set with its cost in view.
 function fLadder(name, l, word, ex) {
   if (!l) return '';
-  if (!l.measured) return `<p class="note muted">${esc(name)}: no survivor carries this number yet - press work out the test history numbers first.</p>`;
+  if (!l.measured) return `<p class="note muted">${esc(name)}: no survivor carries this number yet - press Work out the test history numbers first.</p>`;
   // a trade count is put on a yearly footing beside each rung (3.57.0); a
   // dollar figure is already in dollars at the stake named above
   return `<p class="note">${esc(name)} - what each limit would keep of ${l.of}: ${l.rungs.map((x) => `${word} ${fFix(x.at)}${ex ? fPerYear(x.at, ex) : ''} keeps ${x.keeps}`).join('; ')}.</p>`;
@@ -6014,7 +6014,7 @@ function fHoldTable(t, bar, walking) {
       <td>${Number(u.usable).toLocaleString()}</td>
       <td>${u.noThirds ? Number(u.noThirds).toLocaleString() : '-'}</td>
       <td>${verdict}</td>
-      <td>${here ? '<span class="muted">this walk</span>' : `<button data-fhold="${esc(u.unit)}">walk this one</button>`}</td></tr>`;
+      <td>${here ? '<span class="muted">this walk</span>' : `<button data-fhold="${esc(u.unit)}">Walk this one</button>`}</td></tr>`;
   }).join('');
   return `<div class="scrollx"><table><thead><tr>
       <th title="one coin at one chunk shape, read alongside the coins named beside it — the same coin and shape the picker below chooses between.">coin and shape</th>${head}
@@ -6062,11 +6062,11 @@ function fHoldPanel(d, st) {
       that can only be spent once - and it decides nothing. A coin and shape that clears the bar has not been shown
       to work; it has only failed to be ruled out.</p>
     <div class="row" style="align-items:flex-end">
-      <button id="fRebuild" class="pri"${fRichOff(d) ? ' disabled' : ''}>work out the test history numbers</button>
+      <button id="fRebuild" class="pri"${fRichOff(d) ? ' disabled' : ''}>Work out the test history numbers</button>
       <span id="fRebuildMsg" class="note">${esc(fRichLine(d))}</span></div>
     ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
     <div class="row" style="align-items:flex-end">
-      <button id="fHoldRead"${ready ? '' : ' disabled'}>read the ranking</button>
+      <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
       <label class="f" title="how much of the order has to survive the move, from -1 to 1. Leave it blank and no row can clear the bar, because nothing has been asked of it.">how much must hold<input
         id="fHoldAtLeast" type="number" step="0.05" min="-1" max="1" style="width:6rem"
         value="${bar.atLeast == null ? '' : esc(String(bar.atLeast))}"></label>
@@ -6134,14 +6134,14 @@ function fStep6(d, st, r) {
         about <b>${w.perYearFactor ? Math.round((Number(tr.min) || 20) * w.perYearFactor).toLocaleString() : '-'}</b> a year.</p>`
     : `<p class="note muted">The window the trades were counted over cannot be worked out${ex.why ? ` - ${esc(ex.why)}` : ''}, so a trade count here cannot be put on a yearly footing.</p>`;
   const howTo = `<ol class="note fhow">
-      <li>These numbers come from <b>work out the test history numbers</b>, at the top of this screen. Nothing below can be read or
+      <li>These numbers come from <b>Work out the test history numbers</b>, at the top of this screen. Nothing below can be read or
         set until that has run for this record set: the two limits are read off the settings themselves, and no
         setting carries these numbers until it is pressed. It changes no rule and no record.</li>
       <li>Read the two lines below: what each limit would keep, of the settings that survive.</li>
       <li>Set <b>worst losing streak allowed</b> - in dollars, per coin: the deepest the running total ever sat below
         its own best point. A setting whose worst streak is deeper than this is dropped.</li>
       <li>Set <b>fewest trades</b> - counted over the window named above. A setting that traded fewer times is dropped.</li>
-      <li>Press <b>add these limits to the rule</b>. Both limits go into the rule together, and the survivor count at
+      <li>Press <b>Add these limits to the rule</b>. Both limits go into the rule together, and the survivor count at
         the top moves.</li>
     </ol>`;
   return `<p class="note">The numbers a sweep does not keep - the worst losing streak, the biggest single loss, how
@@ -6159,7 +6159,7 @@ function fStep6(d, st, r) {
         value="${esc(String(dd.max == null ? '' : dd.max))}"></label>
       <label class="f">fewest trades<input id="fTrades" type="number" style="width:8rem"
         value="${esc(String(tr.min == null ? '' : tr.min))}"></label>
-      <button id="fAddFloors">add these limits to the rule</button>
+      <button id="fAddFloors">Add these limits to the rule</button>
       <span class="note">${w ? `a trade count here is over ${Math.round(w.weeks)} weeks${tr.min ? fPerYear(tr.min, ex) : ''}` : 'the window these trades were counted over is not known for this set'}</span></div>
     <p class="note" id="fFloorsKeeps">${esc(fKeepsWords(d.survivors, d.of, d.target))}</p>`;
 }
@@ -6185,7 +6185,7 @@ function fStep7(d, st) {
         placeholder="left blank, it is numbered"></label>
       <label class="f">how to reach the target<select id="fClose">${vocabOptions('funnelClosing', cl.key)}</select></label>
       ${top}
-      <button id="fCut" class="pri">write the Stage 4 set</button><span id="fCutMsg" class="note"></span></div>
+      <button id="fCut" class="pri">Write the Stage 4 set</button><span id="fCutMsg" class="note"></span></div>
     <p class="note"><b>Taking the top N is shopping</b>, on the board this walk exists to stop you shopping. It is
       offered because the choice is yours, and whichever you use is recorded on the set so the final check knows what
       it is judging. Only columns a scrambled copy of the table really has are offered, so the same rule takes the
@@ -6400,13 +6400,13 @@ function fCutNumbers(rec) {
   const haveAll = mine.every((n) => n >= Number(rec.had || 0));
   return `<p class="note neg">This rule reads ${names}, and ${lost.map((f) => Number((rec.onParent || {})[f] || 0).toLocaleString()).join(' and ')}
       of its ${Number(rec.had || 0).toLocaleString()} settings still carry ${lost.length > 1 ? 'them' : 'it'} on the parent's board. Those numbers are not
-      stored by a sweep. They are worked out by <b>work out the test history numbers</b>, at the top of a Funnel walk,
+      stored by a sweep. They are worked out by <b>Work out the test history numbers</b>, at the top of a Funnel walk,
       and kept beside the parent record set - so a set cut before that was pressed over the whole of its parent can
       find them gone from the parent's board. ${haveAll
     ? 'This set kept its own copy, so the rows below and their columns are complete.'
     : 'This set has no copy of its own, so the columns below are empty and the rule cannot be re-applied.'}</p>
     <div class="row" style="align-items:flex-end;margin-top:.4rem">
-      <button id="fSetRebuild">work out the test history numbers</button>
+      <button id="fSetRebuild">Work out the test history numbers</button>
       <span id="fSetRebuildMsg" class="note">prices this set's own ${Number(rec.had || 0).toLocaleString()} settings again from the
         parent's records and keeps the answer <b>on this set</b>, where the press at the top of a walk keeps it beside
         the parent. Minutes, and it waits for any sweep that is running.</span></div>`;
@@ -6423,7 +6423,7 @@ function fCutHead(cd, st) {
   const who = `${esc(parentName)} - ${esc(unitName)}`;
   return `<div class="row" style="align-items:flex-end">
       <label class="f">name<input id="fCutName" value="${esc(s.name || '')}" maxlength="80" style="width:26rem"></label>
-      <button id="fCutRename">rename</button>
+      <button id="fCutRename">Rename</button>
       <span id="fCutNameMsg" class="note">${s.nameEditedAt ? `renamed ${esc(String(s.nameEditedAt).slice(0, 16))}` : `cut ${esc(String(s.createdAt || '').slice(0, 16))}`}${s.release ? ` by release ${esc(s.release)}` : ''}</span>
     </div>
     <p class="note"><b>The rules below were built on test money</b> - the steps read the test window and nothing
@@ -6519,7 +6519,7 @@ function fCutTable(cd, st) {
       than repeated on every row.</p>
     ${gaps ? `<p class="note muted">The numbers a sweep does not keep - worst losing streak, biggest single loss, best
       single trade, trades won, stopped out, gross per trade - are not on this set. Either it was cut without pressing
-      <b>work out the test history numbers</b> at the top of a Funnel walk, or it was cut before a set kept its own copy of them.
+      <b>Work out the test history numbers</b> at the top of a Funnel walk, or it was cut before a set kept its own copy of them.
       The same press on the heading above prices this set's own settings again and keeps the
       answer here, for good.</p>` : ''}
     <p class="note"><b>Order the whole set by</b> setting${fcSort('label', cd)}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))}${fcSort(k, cd)}`).join('')}${has('members') ? ` &middot; members${fcSort('members', cd)}` : ''}${has('avgRung') ? ` &middot; rung${fcSort('avgRung', cd)}` : ''}${has('avgVoices') ? ` &middot; voices${fcSort('avgVoices', cd)}` : ''}
@@ -6808,8 +6808,8 @@ function fWireCut(d, st, cd) {
 function fRuleBox(d, st) {
   const clauses = st ? fRuleClauses(st) : [];
   return `<h3 style="margin-top:0">The rule so far</h3><p class="note">${esc(fRuleWords(d.ruleSentence))}</p>
-    ${clauses.length ? `<ul class="note frule">${clauses.map((c) => `<li>${esc(c.text)} <button data-frm="${esc(`${c.kind}|${c.key}`)}">remove</button></li>`).join('')}</ul>` : ''}
-    <div class="row"><button id="fClear">start the rule again</button>
+    ${clauses.length ? `<ul class="note frule">${clauses.map((c) => `<li>${esc(c.text)} <button data-frm="${esc(`${c.kind}|${c.key}`)}">Remove</button></li>`).join('')}</ul>` : ''}
+    <div class="row"><button id="fClear">Start the rule again</button>
       <span class="note">keeps the set open and clears every choice - recorded as going back</span></div>`;
 }
 

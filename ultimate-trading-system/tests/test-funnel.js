@@ -1073,7 +1073,7 @@ module.exports = {
     assert.strictEqual(P.widestRegion([], o).avgPnl, null, 'no region reads as a break-even rather than as nothing');
 
     // BOTH COUNTS AND BOTH RULES, ON THE TWO PRESSES
-    assert.ok(/keep my own rule and go on<\/button>\s*<span class="note">leaves every range and value you chose exactly as it is and moves to step 6 - keeps/.test(five),
+    assert.ok(/Keep my own rule and go on<\/button>\s*<span class="note">leaves every range and value you chose exactly as it is and moves to step 6 - keeps/.test(five),
       'the press that keeps your own rule does not say what it keeps');
     assert.ok(five.includes('${Number(keep.mineKeeps || 0).toLocaleString()}'), 'it does not read the count the service worked out');
     assert.ok(/your rule: \$\{esc\(keep\.mineSentence\)\}/.test(five) && /the region's rule: \$\{esc\(keep\.sentence\)\}/.test(five),
@@ -1638,7 +1638,7 @@ module.exports = {
     const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const s4 = src.slice(src.indexOf('function fStep4('), src.indexOf('\nfunction fStep5('));
     assert.ok(s4.includes('if (r.pressed) {'), 'step 4 on a unit\'s board is its own drawing');
-    assert.ok(s4.includes('<button id="fAcross" class="pri" ${asked ? \'disabled\' : \'\'}>read the other units</button>'), 'read by pressing');
+    assert.ok(s4.includes('<button id="fAcross" class="pri" ${asked ? \'disabled\' : \'\'}>Read the other units</button>'), 'read by pressing');
     assert.ok(s4.includes("${r.others} boards, read one at a time"), 'the count of other boards is the set\'s, never typed');
     assert.ok(!/nine/.test(s4), 'no typed nine');
     assert.ok(s4.includes("const a = st.across && st.across.ruleKey === fAcrossKey(st) ? st.across : null;"),
@@ -1663,7 +1663,7 @@ module.exports = {
     assert.ok(follow.includes('if (fState !== st) return;'), 'a follower whose walk has left the screen stops');
     assert.ok(wire.includes('if (ax && ax.disabled && st.acrossAsked && !(st.across && st.across.ruleKey === st.acrossAsked.ruleKey)) fAcrossFollow(st, null);'),
       'a reading started before the page was left is followed again, not asked for twice');
-    assert.ok(s4.includes("<button id=\"fAcross\" class=\"pri\" ${asked ? 'disabled' : ''}>read the other units</button>"), 'the button is held while its reading runs');
+    assert.ok(s4.includes("<button id=\"fAcross\" class=\"pri\" ${asked ? 'disabled' : ''}>Read the other units</button>"), 'the button is held while its reading runs');
   },
 
   // ---- THE BAR (§18, owner order 2026-09-02: "that bar should be down at
@@ -1921,11 +1921,11 @@ module.exports = {
     const how = step.slice(step.indexOf('<ol class="note fhow">'), step.indexOf('</ol>'));
     assert.ok(how.length > 0, 'step 3 carries no numbered steps');
     assert.strictEqual(how.split('<li>').length - 1, 7, 'the walk is seven steps, the ones the owner wrote');
-    for (const control of ['<b>first dial</b>', '<b>second dial</b>', '<b>thin below</b>', '<b>read the grid</b>', '<b>keep this block</b>']) {
+    for (const control of ['<b>first dial</b>', '<b>second dial</b>', '<b>thin below</b>', '<b>Read the grid</b>', '<b>Keep this block</b>']) {
       assert.ok(how.includes(control), `the steps do not name ${control}`);
     }
     // every control the steps name is one this step draws, with that label
-    for (const label of ['first dial', 'second dial', 'thin below', 'read the grid', 'keep this block']) {
+    for (const label of ['first dial', 'second dial', 'thin below', 'Read the grid', 'Keep this block']) {
       assert.ok(step.includes(`>${label}<`) || step.includes(`${label}<input`) || step.includes(`${label}<select`), `the steps name "${label}", which step 3 does not draw`);
     }
     assert.ok(how.includes('greyed out, shows its count in brackets, and can never be bold or part of a block'), 'thin below is not explained in plain words');
@@ -2007,7 +2007,7 @@ module.exports = {
     assert.ok(box.includes("out.push({ kind: 'ranges', key: dial, text: `${fDialLabel(dial)} ${span}${also}` });"), 'a range clause is not listed with its dial named');
     assert.ok(box.includes("out.push({ kind: 'allowed', key: dial, text: `${fDialLabel(dial)} is ${vals.join(' or ')}` });"), 'a word clause is not listed');
     assert.ok(box.includes("out.push({ kind: 'floors', key: field, text: `${field} at least ${spec.min}` });"), 'a floor is not listed');
-    assert.ok(box.includes('<button data-frm="${esc(`${c.kind}|${c.key}`)}">remove</button>'), 'a clause has no remove of its own');
+    assert.ok(box.includes('<button data-frm="${esc(`${c.kind}|${c.key}`)}">Remove</button>'), 'a clause has no remove of its own');
     const wire = page.slice(page.indexOf("document.querySelectorAll('[data-frm]').forEach((b) => {"), page.indexOf("const cl = $('#fClear');"));
     assert.ok(wire.includes('delete st.rule[kind][key];'), 'remove does not drop the clause');
     assert.ok(wire.includes("fRecord({ n: st.step, what: `removed from the rule: ${gone}`, chose: 'removed' });"), 'a removal is not recorded in the walk\'s notes');
@@ -2199,22 +2199,22 @@ module.exports = {
     // 3.102.0: the press moved above the steps and preps the whole record set,
     // so step 6 points AT it rather than holding it. Both halves are checked:
     // the step names the press, and it says the numbers are not this step's.
-    assert.ok(/These numbers come from <b>work out the test history numbers<\/b>, at the top of this screen/.test(how),
+    assert.ok(/These numbers come from <b>Work out the test history numbers<\/b>, at the top of this screen/.test(how),
       'the steps do not point at the press that works the numbers out');
     assert.ok(!/<button id="fRebuild"/.test(step), 'the press is on step 6 again — it preps the whole record set and belongs above the steps');
     assert.ok(how.includes('It changes no rule and no record'), 'the steps do not say that pressing it is safe');
     assert.ok(how.includes('in dollars, per coin'), 'the steps do not say what the losing streak is measured in');
     assert.ok(how.includes('counted over the window named above'), 'the steps do not say what the trade count is counted over');
-    for (const control of ['<b>work out the test history numbers</b>', '<b>worst losing streak allowed</b>', '<b>fewest trades</b>', '<b>add these limits to the rule</b>']) {
+    for (const control of ['<b>Work out the test history numbers</b>', '<b>worst losing streak allowed</b>', '<b>fewest trades</b>', '<b>Add these limits to the rule</b>']) {
       assert.ok(how.includes(control), `the steps do not name ${control}`);
     }
-    for (const label of ['worst losing streak allowed', 'fewest trades', 'add these limits to the rule']) {
+    for (const label of ['worst losing streak allowed', 'fewest trades', 'Add these limits to the rule']) {
       assert.ok(step.includes(`>${label}<`) || step.includes(`${label}<input`), `the steps name "${label}", which step 6 does not draw`);
     }
     // 3.102.0: the press it names is above the steps, so that is where the
     // label and the line beside it are checked.
     const panel6 = page.slice(page.indexOf('function fHoldPanel(d, st) {'), page.indexOf('function fStep6(d, st, r) {'));
-    assert.ok(panel6.includes('>work out the test history numbers</button>'), 'the steps name a press that is drawn nowhere on this screen');
+    assert.ok(panel6.includes('>Work out the test history numbers</button>'), 'the steps name a press that is drawn nowhere on this screen');
     // 3.81.0: the line beside the button is no longer one fixed sentence -- it
     // says how many settings already carry the numbers, the progress while it
     // works, and the cpu load with it. One wording, drawn through fRichLine, so
@@ -2225,7 +2225,7 @@ module.exports = {
     assert.ok(step.includes("fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null)"), 'the dollar ladder must not be read as a rate');
     const lad = page.slice(page.indexOf('function fLadder('), page.indexOf('const F_HOLD_SHOW = ['));
     assert.ok(lad.includes('${ex ? fPerYear(x.at, ex) : \'\'}'), 'a rung does not say what it comes to a year');
-    assert.ok(lad.includes('press work out the test history numbers first'), 'the empty ladder does not say what to press');
+    assert.ok(lad.includes('press Work out the test history numbers first'), 'the empty ladder does not say what to press');
     // the answer carries it, for the units the reading covers
     const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
     assert.ok(lib.includes('exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || []),'), 'step 6\'s answer does not carry the exposure');
@@ -2728,7 +2728,7 @@ module.exports = {
   thePutAwayPressIsTheOneBoardsDrawsAndItLeavesTheTopTwoSectionsUp() {
     const page = src('public/construct.js');
     // the words are in ONE place, so the two screens cannot come to disagree
-    assert.equal((page.match(/'put away' : 'open'/g) || []).length, 1,
+    assert.equal((page.match(/'Put away' : 'Open'/g) || []).length, 1,
       'the two words are written in more than one place, so one screen can be renamed without the other');
     assert.equal((page.match(/put away — press open to bring it back/g) || []).length, 1,
       'the sentence left where the panels were is written in more than one place');
@@ -3486,7 +3486,7 @@ module.exports = {
     const page = src('public/construct.js');
     const nb = page.slice(page.indexOf('function fCutNumbers(rec) {'), page.indexOf('function fCutHead(cd, st) {'));
     assert.ok(nb.includes('id="fSetRebuild"'), 'there is no way to put back the numbers a later pass took away');
-    assert.ok(nb.includes('>work out the test history numbers</button>'), 'the control does not say what it does');
+    assert.ok(nb.includes('>Work out the test history numbers</button>'), 'the control does not say what it does');
     // AND NOTHING ON THIS SCREEN NAMES THE PRESS BY A NAME IT NO LONGER HAS, or
     // sends the owner to a step it no longer sits on (3.103.2). Both were true
     // of this panel after the walk's press moved and was renamed.
@@ -3496,7 +3496,7 @@ module.exports = {
     const entry = help.slice(help.indexOf('fSetRebuild: {'), help.indexOf('fRegionAtLeast: {'));
     assert.ok(!/step 6/.test(entry), 'the help for this press still names step 6');
     assert.ok(!/work out the missing numbers/.test(entry), 'the help for this press still uses the old name');
-    assert.ok(/work out the test history numbers/.test(entry), 'the help does not name the press a walk uses, so the two read as unrelated');
+    assert.ok(/Work out the test history numbers/.test(entry), 'the help does not name the press a walk uses, so the two read as unrelated');
     assert.ok(nb.includes("This set kept its own copy, so the rows below and their columns are complete."),
       'a set that kept its own copy is not told so, and reads as broken');
     assert.ok(nb.includes('This set has no copy of its own, so the columns below are empty and the rule cannot be re-applied.'),
@@ -3639,7 +3639,7 @@ module.exports = {
     const page = src('public/construct.js');
     const step = page.slice(page.indexOf('function fStep5(r, d, st) {'), page.indexOf('// WHAT EACH LIMIT WOULD KEEP'));
     assert.ok(step.includes('id="fKeepMine"'), 'there is no way past step 5 that keeps the rule you built');
-    assert.ok(step.includes('keep my own rule and go on'), 'the control does not say what it does');
+    assert.ok(step.includes('Keep my own rule and go on'), 'the control does not say what it does');
     // it is drawn whether or not there is a region to keep
     assert.ok(step.indexOf('${mine}') > step.indexOf('No region:'), 'the way past step 5 is only offered when there IS a region, and a walk with none is the case that needs it most');
     const wire = page.slice(page.indexOf("const km = $('#fKeepMine');"), page.indexOf("const kr = $('#fKeepRegion');"));

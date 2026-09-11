@@ -411,7 +411,7 @@ made while building it that the design did not already settle.
     tested"). Two faults, both met on XRP after keeping gate = directional.
     A reason on step 2 ("only one value ... was swept" -- wrong too: the rule
     had fixed it) replaced the whole step, dial box included, so the next
-    dial could only be reached by going back. Then `narrow this one` on t
+    dial could only be reached by going back. Then `Narrow this one` on t
     did nothing: a range recommendation carried its count under `values`,
     the page took it for a list, the draw threw before it painted, and the
     page stayed on step 1 in silence. The reason now says what is true and
@@ -441,14 +441,14 @@ made while building it that the design did not already settle.
     3 ... MAKE THE USER SELECTED BLOCK SHADED LIGHT GREEN ... make the text
     area 'Your block: ...' BOLD DARK GREEN so it's obvious what's going on").
     The step drew its controls and a one-line note and left the owner to
-    guess what `read the grid` was for and how a block of their own is
+    guess what `Read the grid` was for and how a block of their own is
     chosen. Now seven numbered steps sit above the controls, before the grid
     is read and after, each naming the control as it is drawn and saying
     what pressing it does: the two dial boxes, `thin below` (a box holding
     fewer settings than the number is greyed out with its count in brackets
-    and can never be bold or part of a block), `read the grid` (builds the
+    and can never be bold or part of a block), `Read the grid` (builds the
     grid; a dial box re-reads by itself, a new thin below number needs the
-    button), `keep this block` for the outlined block, and the two clicks
+    button), `Keep this block` for the outlined block, and the two clicks
     that make a block of the owner's own. The boxes of that block are shaded
     green and the line saying which values it covers is bold in dark green,
     in both themes. Third digit: wording and colour.
@@ -819,7 +819,7 @@ made while building it that the design did not already settle.
     * **It yields between pairs.** A hundred pairs over a hundred thousand
       settings is minutes of arithmetic, and a synchronous loop that long stops
       every other screen dead. It yields the way a unit's board yields between
-      blocks, and it is started-and-polled like `read the other units`.
+      blocks, and it is started-and-polled like `Read the other units`.
     * **It says what it will cost first.** Measured on the owner's board: one
       pair took 688ms over 1,904 survivors. That rate gives the first estimate;
       once the first pair is read the rest is re-worked from the time it
@@ -944,7 +944,7 @@ made while building it that the design did not already settle.
      takes the room the row has left, and the rows box is a little shorter**
      (2026-09-04, three owner orders in a row).
 
-     **`write the Stage 4 set`.** *"the behavior needs to be refresh the new
+     **`Write the Stage 4 set`.** *"the behavior needs to be refresh the new
      item into the Stage 4 record set list at the top and then display that new
      record set."* It used to force the walk to stay on screen and print one
      line beside the button. That was deliberate in 3.58.0 -- a redraw with
@@ -1321,7 +1321,7 @@ made while building it that the design did not already settle.
 
 111. **rowstore.remove takes the WHOLE store directory, and I called it as if
      it took one store** (2026-09-06). It destroyed an eighteen-hour run of
-     10,200 units the first time the owner pressed `put the missing units back`.
+     10,200 units the first time the owner pressed `Put the missing units back`.
 
      `remove(runId)` has one parameter. `remove(id, 'ranking')` silently ignores
      the second and deletes the record set's entire store directory: the

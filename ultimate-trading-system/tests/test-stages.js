@@ -2415,7 +2415,7 @@ module.exports = {
     // A BUTTON THAT WRAPS MAKES EVERY ROW OF THE TABLE TALLER (RULE FOUR).
     // Three words in a narrow column broke over two lines and doubled the
     // height of all 329,280 rows.
-    assert.ok(/data-bpin3b="[^"]*"[^>]*white-space:nowrap[^>]*>show in 3\.B<\/button>/.test(ui),
+    assert.ok(/data-bpin3b="[^"]*"[^>]*white-space:nowrap[^>]*>Show in 3\.B<\/button>/.test(ui),
       'the button can wrap, which makes every row of Table 3.A twice as tall');
     assert.ok(/offset: 0 \},\n      \}\);/.test(ui),
       'pinning leaves the every-coin table on whatever page it was, which can be past the end of what is left');
@@ -2425,8 +2425,8 @@ module.exports = {
       'pinning adds the setting beside whatever floors were already on, so it cannot show all of its coins');
     // ...and what was there is kept, so one press puts it back
     assert.ok(/s3cBeforePin: before,/.test(ui), 'nothing remembers the filters that were taken off');
-    assert.ok(/data-bunpin3b/.test(ui) && /revert filters/.test(ui),
-      'there is no way to put the filters back after show in 3.B took them off');
+    assert.ok(/data-bunpin3b/.test(ui) && /Revert filters/.test(ui),
+      'there is no way to put the filters back after Show in 3.B took them off');
     assert.ok(/all\.S3C = \{ \.\.\.\(bView\(\)\.s3cBeforePin \|\| \{\}\) \};/.test(ui),
       'putting them back does not restore what was remembered');
     assert.ok(/s3cBeforePin: null/.test(ui), 'the remembered filters are never let go of, so the button never goes away');
@@ -3514,8 +3514,8 @@ module.exports = {
     assert.ok(/data-bpages="\$\{pages\}"/.test(pager) && /data-bper="\$\{n\}"/.test(pager),
       'the box does not carry how many pages there are or how big one is, so nothing can work out where to go');
     assert.ok(/title="the page showing/.test(pager), 'the box carries no hover saying what it is');
-    assert.ok(/prev<\/button>/.test(pager) && /next<\/button>/.test(pager),
-      'typing a page must be added BESIDE prev and next, not instead of them');
+    assert.ok(/Prev<\/button>/.test(pager) && /Next<\/button>/.test(pager),
+      'typing a page must be added BESIDE Prev and Next, not instead of them');
 
     const wire = ui.slice(ui.indexOf('function bWirePager('), ui.indexOf('function bCoinSortBtn('));
     assert.ok(/Math\.min\(pages, Math\.max\(1, want\)\)/.test(wire),

@@ -780,7 +780,7 @@ module.exports = {
     assert.ok(src.includes('starts again where it was paused:') && src.includes('the boxes below are this run\'s own and cannot be changed here'), 'the count line says what a start-again does');
     assert.ok(src.includes('await startPost(`api/stageset/${encodeURIComponent(cont)}/continue`, {});'), 'start stage 3 posts the start-again for the chosen run, through the post that does not put up a dialog when the gateway gives up');
     assert.ok(src.includes('started again <b>${esc(again.name)}</b> — progress above; the set lands on Boards.'), 'the message beside the button points at the running line, which carries the reading and then the pricing');
-    assert.ok(src.includes("<button id=\"swStop\" class=\"danger\">${row.stage === 3 ? 'pause' : 'stop'}</button>"), 'the running line\'s control reads pause on a stage 3 run and stop on the others');
+    assert.ok(src.includes("<button id=\"swStop\" class=\"danger\">${row.stage === 3 ? 'Pause' : 'Stop'}</button>"), 'the running line\'s control reads Pause on a stage 3 run and Stop on the others');
     assert.ok(src.includes("const cont = s3v.startsWith('continue:') ? s3v.slice('continue:'.length) : null;") && src.includes('const pausedRow = cont ? rowOf(cont) : null;'),
       'the provenance colours judge a paused run through its own stage 2 parent');
     assert.ok(src.includes("else if (cont && !pausedRow) paint('#swH3', false, 'the paused record set named here is not on this box any more');"));
@@ -804,7 +804,7 @@ module.exports = {
     // eslint-disable-next-line no-new-func
     new Function('window', fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8'))(sandbox);
     const h = sandbox.HELP.sweep.controls;
-    assert.ok(h.swFrom3.what.includes('A paused stage 3 run is offered here too, and start stage 3 then starts it again where it stopped.'));
+    assert.ok(h.swFrom3.what.includes('A paused stage 3 run is offered here too, and Start stage 3 then starts it again where it stopped.'));
     assert.ok(h.swFrom3.more.includes('While a paused run is chosen the boxes below are ghosted'));
     assert.ok(h.swGo3.what.includes('With a paused run chosen in the box above, starts that run again where it stopped.'));
     assert.ok(h.swStop.what.startsWith('Pauses a stage 3 run, or stops a stage 1 or 2 run.'));

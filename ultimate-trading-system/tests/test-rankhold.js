@@ -355,7 +355,7 @@ module.exports = {
     // THE PRESS SAYS WHAT IT WORKS OUT (owner order, 2026-09-10). It is pressed
     // on every stage 3 set that is not ready, so its name has to survive being
     // read cold.
-    assert.ok(panel.includes('>work out the test history numbers</button>'), 'the press does not say what it works out');
+    assert.ok(panel.includes('>Work out the test history numbers</button>'), 'the press does not say what it works out');
     assert.ok(!/work out the missing numbers/.test(panel), 'the press still calls them missing numbers');
     // and every place on this screen that names it names the same thing
     const funnel = page.slice(page.indexOf('function fLadder('), page.indexOf('function fStep7('));

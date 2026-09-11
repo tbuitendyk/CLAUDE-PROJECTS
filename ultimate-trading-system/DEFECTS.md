@@ -33,7 +33,7 @@ is unchanged and the carry follows the sort saved on the table. Stage 2 now
 deals the parent's null set again for every member instead of copying the
 stage 1 numbers. Existing stage 1 and 2 sets are filled in from Boards.
 
-**Still open.** The held-back read after `write the Stage 4 set` is designed
+**Still open.** The held-back read after `Write the Stage 4 set` is designed
 and not built; the chain today ends with no held-back verdict. And the
 training itself still weights every day the same -- weighting days by the
 size of their move is a separate decision the owner has not taken.
@@ -624,7 +624,7 @@ stay as the record of what was wrong.
   `decision`, `weekdaysOnly`, `entry`, `gate`, `agreeRule`, `agreeBar` and
   `agreeBoth` have words for values, not numbers. The rule can hold them (the
   `allowed` part, read by `applyRule` in `lib/funnelset.js`) but nothing on the
-  screen ever writes it: `add this range to the rule` writes only `ranges`, and
+  screen ever writes it: `Add this range to the rule` writes only `ranges`, and
   `keep from` / `to` cannot say "gate is active or directional". So a rule can never
   say anything about which gate, which entry, or 24/5. **What the fix is:** on
   step 2, a box per value for a word-valued dial, writing `allowed`.
@@ -644,7 +644,7 @@ stay as the record of what was wrong.
   the worst losing streak, the worst trade and the rest to the screen for the
   proof — and nothing kept them. So `worst losing streak allowed` could never
   match a row: the rule refuses a number that is not there, and no row carried
-  one, so `add these limits to the rule` with that box filled emptied the
+  one, so `Add these limits to the rule` with that box filled emptied the
   survivors to nothing. **What the fix is:** keep them beside the set, keyed by
   setting, and lay them onto the survivors before the rule is applied
   (`saveFunnelRich` / `withFunnelRich` in `lib/stages.js`).

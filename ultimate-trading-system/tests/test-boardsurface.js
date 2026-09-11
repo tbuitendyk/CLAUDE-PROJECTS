@@ -133,7 +133,7 @@ module.exports = {
   // SERVICE's sentence printed word for word -- a second copy of those reasons
   // on this page would be a second answer to one question.
   theShortStageOneSetOffersToPutItsMissingUnitsBack() {
-    assert.ok(UI.includes('<button id="bFillUnits" data-bfillunits="${esc(doc.id)}">put the missing units back</button>'),
+    assert.ok(UI.includes('<button id="bFillUnits" data-bfillunits="${esc(doc.id)}">Put the missing units back</button>'),
       'a short stage 1 set carries the control');
     const at = UI.indexOf('async function bWireFillUnits(doc) {');
     assert.ok(at > 0, 'and it is wired');

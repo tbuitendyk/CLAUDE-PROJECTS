@@ -48,7 +48,7 @@ module.exports = {
       'a filtered table has no way to put its boxes on in one go, so every box is its own wait');
     assert.ok(/data-bauto="\$\{key\}"/.test(grid),
       'there is no way to turn the one-at-a-time behaviour back on');
-    assert.ok(/>apply settings</.test(grid) && />\s*auto-apply settings</.test(grid),
+    assert.ok(/>Apply settings</.test(grid) && />\s*auto-apply settings</.test(grid),
       'the two controls are not named on the screen');
     // KEYED PER TABLE. One shared name and Stage 1's button would put Stage 3's
     // boxes on — and the two are read from different halves of the page.

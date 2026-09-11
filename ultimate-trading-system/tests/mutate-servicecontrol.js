@@ -54,8 +54,8 @@ const GUARDS = [
     'theControlsOwnUnitAlwaysRestartsAndIsTiny', 'the one way back does not come back on its own'],
   [COMPUTE, 'if (!platforms().some((p) => p.id === platformId)) {', 'if (false) {',
     'aRoleCanOnlyPointAtAPlatformThatExists', 'a role can be pointed at a platform that does not exist, silently'],
-  [path.join(ROOT, 'public', 'construct.html'), '<button class="themebtn" id="themebtn">◐ theme</button>',
-    '<button class="themebtn" id="cpubtn">CPU —</button>\n      <button class="themebtn" id="themebtn">◐ theme</button>',
+  [path.join(ROOT, 'public', 'construct.html'), '<button class="themebtn" id="themebtn">◐ Theme</button>',
+    '<button class="themebtn" id="cpubtn">CPU —</button>\n      <button class="themebtn" id="themebtn">◐ Theme</button>',
     'theCpuDialLivesOnTheComputeTabAlone', 'the removed CPU button grows back beside the theme button and the dial has two homes again'],
   [path.join(ROOT, 'public', 'construct.js'), 'if (!el.title) el.title = text;', 'el.title = text;',
     'everyControlsHelpBecomesItsHover', 'the wired hover overwrites every hand-written warning in the templates'],
@@ -348,7 +348,7 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), "    else if (n > st.step) markStep(st.step);", '',
     'marksTravelFromThePageToTheSetAndBack',
     'walking past a disagreement leaves no mark, and the set reads as clean evidence'],
-  [path.join(ROOT, 'public', 'construct.js'), '<button id="fKeepRegion" class="pri">keep the widest region</button>', '',
+  [path.join(ROOT, 'public', 'construct.js'), '<button id="fKeepRegion" class="pri">Keep the auto-plateau region</button>', '',
     'everyStepHasItsControlAndItsCheckDrawn',
     'step 5 goes back to printing an answer nobody can act on'],
   // 3.39.1 -- the top-up, the fill box, the poll redraw.
@@ -534,7 +534,7 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "  const nowOwn = S4.applyRule(mine, S4.normaliseRule(doc.rule));", "  const nowOwn = now;",
     'aSetSaysWhichNumbersItsRuleReadsAreGoneAndOffersToWorkThemOut',
     'the set cannot tell a board that moved from a number that was taken away, so it reads as broken either way'],
-  [path.join(ROOT, 'public', 'construct.js'), '      <button id="fSetRebuild">work out the test history numbers</button>', '',
+  [path.join(ROOT, 'public', 'construct.js'), '      <button id="fSetRebuild">Work out the test history numbers</button>', '',
     'aSetSaysWhichNumbersItsRuleReadsAreGoneAndOffersToWorkThemOut',
     'a set whose numbers a later pass took away has no way at all to get them back'],
   // ---- THE NAME THE OWNER TYPED STAYS IN THE BOX (3.67.1) ----
@@ -740,7 +740,7 @@ const GUARDS = [
     'thePutAwayPressIsTheOneBoardsDrawsAndItLeavesTheTopTwoSectionsUp',
     'put away is never remembered, so the press redraws the screen exactly as it was'],
   [path.join(ROOT, 'public', 'construct.js'), 'const foldBtn = (stage) => putAwayBtn(\'bfold\', stage, fold[stage], "this stage\'s table");',
-    'const foldBtn = (stage) => `<button data-bfold="${stage}" title="puts this stage\'s table away, or brings it back. The last state is remembered.">${fold[stage] ? \'put away\' : \'open\'}</button>`;',
+    'const foldBtn = (stage) => `<button data-bfold="${stage}" title="puts this stage\'s table away, or brings it back. The last state is remembered.">${fold[stage] ? \'Put away\' : \'Open\'}</button>`;',
     'thePutAwayPressIsTheOneBoardsDrawsAndItLeavesTheTopTwoSectionsUp',
     'Boards keeps its own copy of the press again, so one screen can be renamed without the other'],
   [path.join(ROOT, 'public', 'construct.js'), "${away ? `<div class=\"panel\">${putAwayNote}</div>` : `<div id=\"fWalkBody\">",
@@ -796,8 +796,8 @@ const GUARDS = [
     'theSetJustWrittenHasAPressBackToTheSteps',
     'nothing pushes the right-hand presses over, so they sit against the delete press instead of in the corner'],
   // ---- ONE JOB, ONE NAME, ON BOTH SCREENS (3.103.2) ----
-  [path.join(ROOT, 'public', 'construct.js'), '<button id="fSetRebuild">work out the test history numbers</button>',
-    '<button id="fSetRebuild">work out the missing numbers</button>',
+  [path.join(ROOT, 'public', 'construct.js'), '<button id="fSetRebuild">Work out the test history numbers</button>',
+    '<button id="fSetRebuild">Work out the missing numbers</button>',
     'aSetSaysWhichNumbersItsRuleReadsAreGoneAndOffersToWorkThemOut',
     'the Stage 4 set goes back to a name no other screen uses, for the same job the walk names differently'],
   // ---- ENSURE ANSWERS WHETHER, readTally ANSWERS WITH WHAT (3.103.1) ----

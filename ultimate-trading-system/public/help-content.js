@@ -205,7 +205,7 @@ window.HELP = {
       swDesc2: { what: 'Why this stage 2 exists. Kept on the record set.' },
       swGo2: { what: 'Starts stage 2 on the chosen parent. Only the BOOST members train.' },
       swFrom3: {
-        what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever. A paused stage 3 run is offered here too, and start stage 3 then starts it again where it stopped.',
+        what: 'Which finished stage 2 record set the pricing reads its kept votes from. A stage 3 set names this parent forever. A paused stage 3 run is offered here too, and Start stage 3 then starts it again where it stopped.',
         more: 'A paused run keeps every record it had already priced and the state it held in memory when it was paused, so starting it again prices only what is left. While a paused run is chosen the boxes below are ghosted: it keeps the settings it was launched with, and none of them can be changed here. A run that was interrupted by a service restart, or that failed, is offered the same way when it kept that state.',
       },
       swPick3: {
@@ -236,7 +236,7 @@ window.HELP = {
           + 'null set prices it anyway. Both are rounded to the cent.',
       },
       swTrained3: {
-        what: 'Fills the boxes below with the conditions the units were actually trained and scored under in stages 1 and 2, so what those stages did can be priced here as one setting and read on the same table as everything else. Nothing is started: press start stage 3 yourself.',
+        what: 'Fills the boxes below with the conditions the units were actually trained and scored under in stages 1 and 2, so what those stages did can be priced here as one setting and read on the same table as everything else. Nothing is started: press Start stage 3 yourself.',
         more: 'It sets quorum by to trained, entry to market, t to the chunk\u2019s own, band % (or auto) to auto, decision to argmax, 24/5 off and every permute off. Two of those are not fixed numbers: the chunk\u2019s own means each unit is held for exactly as long as its own chunk shape is held in stages 1 and 2 \u2014 60 hours on a weekly 8-day chunk, 17 on a daily 1-day or 2-day, 41 on a daily 3-day or 4-day \u2014 and auto means each unit is priced at the width its own stage 1 worked out. So this is ONE setting that is nevertheless right on every unit, however many chunk shapes the records carry, and both values are read off what stage 1 already stored rather than worked out again.',
       },
       swT: {
@@ -391,7 +391,7 @@ window.HELP = {
         + 'moment, after every filter already in force, so a floor is set by reading rather than by guessing and '
         + 'asking again; they move as you filter. A filter that takes words rather than a number leaves its four '
         + 'cells empty. Every table that runs past one page also lets the page be typed: the box between rows '
-        + 'and prev holds the page showing, and a number past the end goes to the last page.\n\n'
+        + 'and Prev holds the page showing, and a number past the end goes to the last page.\n\n'
         + 'Two columns describe the agreement, and they are different numbers. share is what the setting was '
         + 'built to demand, and rung it landed on is what that share worked out to for these coins — six of '
         + 'eight, say. share that agreed is what the members actually did at the moments the setting spoke. A '
@@ -409,7 +409,7 @@ window.HELP = {
         what: 'Shows, in Table 3.B below, only the coins this setting was priced on — and picks this exact setting out of them.',
         more: 'It takes every other filter on Table 3.B off first, so none of the setting\'s coins can be hidden by '
           + 'something set earlier, and it brings that table onto the screen.\n\n'
-          + 'The button you pressed stays bold until you press another one or press revert filters.\n\n'
+          + 'The button you pressed stays bold until you press another one or press Revert filters.\n\n'
           + 'Each of those coins opens its records straight away, and one record in each is highlighted: the eight '
           + 'records under a coin are the decision, band and 24/5 variants of the setting, and the highlighted one is '
           + 'the row of Table 3.A you actually pressed. So the averages above and the one setting you asked about are '
@@ -547,7 +547,7 @@ window.HELP = {
         more: 'A coin and shape with nothing cut from it opens on step 1, the way it always has. Once one or more have been cut from it, it opens on the newest instead: the heading becomes the record of that set - its rule, its target size, the bar it was read under, whether its window was sealed, and how the walk went - and the settings it kept are listed below it, one row each, sortable by any column. Nothing on that screen changes anything except the name. Only the sets cut from THIS coin and shape are offered; another has its own.',
       },
       fCutName: {
-        what: 'The name of the Stage 4 record set showing. Type a new one and press rename.',
+        what: 'The name of the Stage 4 record set showing. Type a new one and press Rename.',
         more: 'Eighty characters at most, and no two record sets may share a name. The name is what every list and heading shows, so changing it here changes it everywhere.',
       },
       fCutDelete: {
@@ -568,7 +568,7 @@ window.HELP = {
       },
       fAcross: {
         what: 'Applies the rule you have built on this unit to each of the other units\' records, one at a time, and reports how many come out positive.',
-        more: 'This is the honest form of "does it hold elsewhere": the same rule on other coins and shapes, judged against each of their own scrambled copies. It is pressed rather than automatic because it reads every other unit\'s board, one at a time. The result is kept for this exact rule; change the rule and it asks again.',
+        more: 'This is the honest form of "Does it hold elsewhere": the same rule on other coins and shapes, judged against each of their own scrambled copies. It is pressed rather than automatic because it reads every other unit\'s board, one at a time. The result is kept for this exact rule; change the rule and it asks again.',
       },
       fBar: {
         what: 'The share of the scrambled copies a value has to beat to count as real - to go bold, to be recommended, to be a square in a block. 80% unless you change it, and the count that comes to on this set is printed beside the box.',
@@ -624,7 +624,7 @@ window.HELP = {
       },
       fSetRebuild: {
         what: "Prices this record set's own settings again and keeps the answer on the set itself.",
-        more: 'Six numbers are not stored by a sweep - the worst losing streak, the biggest single loss, the best single trade, how many trades won, how many were stopped out, and the gross per trade. On a walk they are worked out by "work out the test history numbers" at the top of the screen, for every setting in the stage 3 record set, and kept in one file beside THAT set. A set cut before that press had covered the whole of its parent can find them gone from the parent\'s board: its columns go empty and, if its rule puts a limit on the worst losing streak or on trades, its rule stops keeping anything at all. This press is the one thing that puts it right, and it differs from the one on a walk in where the answer lands - it keeps it on THIS set, for good, so nothing done to the parent can take it away again. It takes minutes and it waits for any sweep that is running.',
+        more: 'Six numbers are not stored by a sweep - the worst losing streak, the biggest single loss, the best single trade, how many trades won, how many were stopped out, and the gross per trade. On a walk they are worked out by "Work out the test history numbers" at the top of the screen, for every setting in the stage 3 record set, and kept in one file beside THAT set. A set cut before that press had covered the whole of its parent can find them gone from the parent\'s board: its columns go empty and, if its rule puts a limit on the worst losing streak or on trades, its rule stops keeping anything at all. This press is the one thing that puts it right, and it differs from the one on a walk in where the answer lands - it keeps it on THIS set, for good, so nothing done to the parent can take it away again. It takes minutes and it waits for any sweep that is running.',
       },
       fRegionAtLeast: {
         what: 'How much a setting is allowed to lose and still count as part of the region. A setting has to BEAT this number, not match it, so at 0 one that broke even to the cent is left out. 0 means it has to have made money, which is how this step has always read.',
@@ -652,7 +652,7 @@ window.HELP = {
       },
       fGrid: {
         what: 'Builds the grid for the two dials named in the boxes, with the thin below cut-off. Changing a dial box reads the grid again by itself; a new thin below number needs this button.',
-        more: 'Nothing here changes the rule - this step is for looking. Only keep this block writes anything.',
+        more: 'Nothing here changes the rule - this step is for looking. Only Keep this block writes anything.',
       },
       fRebuild: {
         what: 'Works out the numbers a sweep does not keep - the worst losing streak, the biggest single loss, how many trades won, how much of the result rests on guessing what happened inside a single bar, and what each setting made in each of the three parts of the test window. Press it FIRST, before anything below: it runs for every setting in the record set, and nothing else on this screen can be read until it has. Every stage 3 record set needs it pressed once before it can be walked.',

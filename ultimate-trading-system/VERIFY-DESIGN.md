@@ -137,9 +137,9 @@ Every reading rule is written onto the set before its number is computed, and ea
 ### V6. Does it hold elsewhere, on the held-back window (pressed, polled)
 
 - **Question.** The same rule on each of the other 299 boards: does it make held-back money, and does it beat those boards' own scrambled copies?
-- **Reads.** Each other board, the rule, its survivors' held-back money and held-back scrambles. Step 4 of the Funnel does this on the test window ("read the other units"); this is the same read with the held-back fields, and, like V3, it is new code beside the existing loop.
+- **Reads.** Each other board, the rule, its survivors' held-back money and held-back scrambles. Step 4 of the Funnel does this on the test window ("Read the other units"); this is the same read with the held-back fields, and, like V3, it is new code beside the existing loop.
 - **Rule.** Printed as two counts, how many of the 299 are positive and how many clear the bar (proposed wording, matching the mark the walk already records: "accepted 182 of 299 other units positive; 151 clear the bar"), beside the walk's own test-window counts. Informational; a mark when fewer than half are positive.
-- **Cost.** About five seconds a board on this box, so about 25 minutes for 299. Started and polled, one at a time, the shape "read the other units" already has.
+- **Cost.** About five seconds a board on this box, so about 25 minutes for 299. Started and polled, one at a time, the shape "Read the other units" already has.
 - **Optional, off by default, owner's call.** Two report-only lines: the same rule read on the test window against its scrambles (frozen, never a gate, because the rule was chosen against those very copies); and a bound on top-N shopping (the best 199 by test money on the real board against the best 199 by scrambled test money on each copy, like against like). Neither is ever a FAIL.
 
 ### V7. The ride on the held-back window (optional, prices)

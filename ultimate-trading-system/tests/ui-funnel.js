@@ -335,7 +335,7 @@ function requirePlaywright() {
     `the panel says how many pairs there are: ${cxText.slice(0, 260)}`);
   expect(/Nothing here is ranked by money/.test(cxText), 'the panel does not say what the list is ordered on');
   const viewText = await page.locator('#view').innerText();
-  expect(viewText.indexOf('still vary across the') < viewText.indexOf('read the grid'), 'the list sits below the pickers, and the owner asked for above');
+  expect(viewText.indexOf('still vary across the') < viewText.indexOf('Read the grid'), 'the list sits below the pickers, and the owner asked for above');
   await page.locator('#fCrosses').click();
   await page.waitForTimeout(900);
   const listed = await page.locator('#view').innerText();
@@ -416,7 +416,7 @@ function requirePlaywright() {
   expect(/The trades are counted over 2025-06-02 to 2025-10-20/.test(six), `step 6 names the window: ${six.slice(six.indexOf('The trades are counted'), six.indexOf('The trades are counted') + 160)}`);
   expect(/20 weeks, or 140 days/.test(six), 'step 6 says how long the window is');
   expect(/at least 20\.00 \(about 52 a year\) keeps 12/.test(six), `the trades ladder is put on a yearly footing: ${six.slice(six.indexOf('trades - what'), six.indexOf('trades - what') + 200)}`);
-  expect(/These numbers come from <b>work out the test history numbers<\/b>/.test(six), 'step 6 names the press that works the numbers out');
+  expect(/These numbers come from <b>Work out the test history numbers<\/b>/.test(six), 'step 6 names the press that works the numbers out');
   // before the press, the worst losing streak is on nothing and says so (3.65.1)
   expect(/worst losing streak: no survivor carries this number yet/.test(six),
     `before the press the dollar limit says nothing carries it: ${six.slice(six.indexOf('worst losing streak'), six.indexOf('worst losing streak') + 140)}`);
@@ -512,7 +512,7 @@ function requirePlaywright() {
     'the rule build settings line is on the heading');
   expect(/The sealed window is intact on XRPUSDT weekly-8d/.test(cutText),
     `the sealed line is on the heading and names the unit: ${cutText.slice(cutText.indexOf('The sealed'), cutText.indexOf('The sealed') + 130)}`);
-  expect(/Step 7 - declare and cut: accept what the rule gives/.test(cutText), 'the last step and the closing are on the heading');
+  expect(/Step 7 - Declare and cut: accept what the rule gives/.test(cutText), 'the last step and the closing are on the heading');
   expect(/21 choice\(s\) recorded on the way, 5 step\(s\) back/.test(cutText), 'how the walk went is on the heading');
   expect(/S4 #1 - XRPUSDT weekly-8d/.test(cutText), "the Stage 4 record set's own name is the bold name at the top");
   expect(/The rules below were built on test money/.test(cutText), 'the frame speaks of both rules on the heading');

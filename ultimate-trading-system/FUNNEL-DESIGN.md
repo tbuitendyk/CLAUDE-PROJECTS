@@ -446,7 +446,7 @@ an order is a property of the run, not of the library.
   of the count being a field and not a constant.
 
 **What shipped differs from this in two ways** (3.107.0, §20.1 and §20.3): the
-press that keeps the region is called `keep the auto-plateau region`, and the
+press that keeps the region is called `Keep the auto-plateau region`, and the
 copies' region sizes are drawn as a box with the smallest, average, middle and
 largest of both what they kept and what they made a setting, ours on the same
 rows — not as a run of numbers.
@@ -719,7 +719,7 @@ the survivor count, and every choice it made written into the record as steps.
 
 Step 7 is untouched and gains nothing: the owner gets the same
 `how to reach the target` list with the same three options, the same count, the
-same `write the Stage 4 set` button. Auto mode stops exactly where the manual
+same `Write the Stage 4 set` button. Auto mode stops exactly where the manual
 walk stops.
 
 That is one stopping point, not two. The owner first asked for a choice between
@@ -940,7 +940,7 @@ Three defects, logged in `DEFECTS.md` under 2026-09-02:
   the number of settings each value carries forward; `keep from` / `to`
   pre-filled with §16.2's recommendation; a live line as the boxes are edited:
   *this range keeps N of M — target T*.
-- *Control:* `add this range to the rule` as now. For a word-valued dial, a box
+- *Control:* `Add this range to the rule` as now. For a word-valued dial, a box
   per value, writing `allowed` — the missing half of the rule.
 - *Recorded:* the range or the values; whether the recommendation was accepted
   or edited, and to what; the shape word. Mark: the shape was a spike.
@@ -1374,7 +1374,7 @@ survivor count and the number of kept copies. Two ends of the range:
   part of an hour**.
 
 So it is a started-and-polled reading with a count on the line beside it, the
-same shape as `read the other units`, and **it says what it will cost before it
+same shape as `Read the other units`, and **it says what it will cost before it
 runs**. The first estimate comes from a measured rate; once the first pair is
 read the estimate is re-worked from the time that pair actually took, so a slow
 box corrects itself rather than lying twice.
@@ -1473,7 +1473,7 @@ are about the screen; one is about which numbers the screen is allowed to read.
 The pre-registered plan, the success rule and the decisions taken are in
 `LOOP-2026-09-10.md`.
 
-### 20.1 `keep the auto-plateau region`, not `keep the widest region`
+### 20.1 `Keep the auto-plateau region`, not `keep the widest region`
 
 > "using a button name `keep the auto-plateau region` would be much more
 > meaningful to me than `keep the widest region` ... how am i supposed to know
@@ -1553,7 +1553,7 @@ the most that can be on the table at once across all of them, in dollars, and
 the single heaviest unit named with its own count. The per-unit detail is not
 moved to a table either — three hundred rows is the same problem wearing a grid.
 
-### 20.5 `put away`, the control Boards already has
+### 20.5 `Put away`, the control Boards already has
 
 > "Back at the main Funnel view there should be a `put away` just like by the
 > Stage 1/2/3 areas on Boards which collapses any open funnel and just leaves
@@ -1563,7 +1563,7 @@ Boards' three stage sections and the Funnel's open walk are the same act —
 collapse what is drawn below, remember it, bring it back — so they draw **one**
 button now, from one helper, with the same two words and the same sentence left
 where the panels were. Two spellings of one control is how one screen comes to
-say `hide` and the other `put away`.
+say `hide` and the other `Put away`.
 
 - It collapses everything below the row of boxes, on both views of the screen:
   the seven steps and the rule so far, or an open Stage 4 record set.
@@ -1599,7 +1599,7 @@ opened Stage 4 record set — the inconsistency the owner named. **One predicate
 decides it everywhere now**, and it reads two things and nothing else:
 
 1. **Has a control on this walk actually been used?** If yes, the section is
-   hidden. If no, it is drawn — so pressing `walk this one`, reading a step 1
+   hidden. If no, it is drawn — so pressing `Walk this one`, reading a step 1
    table and scrolling does not hide it, which is the whole point of the
    seventh order.
 2. **Is the funnel put away?** If yes, the section comes back whatever the walk
