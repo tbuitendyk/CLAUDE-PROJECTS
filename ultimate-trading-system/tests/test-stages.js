@@ -4704,8 +4704,29 @@ module.exports = {
     assert.match(msg, /the 80\/20 window layout was removed/, 'a launch asking for it is refused by name');
     const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
     assert.ok(!/legacy80/.test(sw.replace(/\/\/[^\n]*/g, '')), 'the chunk split no longer knows the name');
-    // re-aimed 3.94.0: the retrain layout (the History half-life run) is the one split with no held-back slice, and its judge is the Reserve
-    assert.ok(/const split = retrainTrain != null \? splitAndLabelAt\(workChunks, branch, retrainTrain\) : splitAndLabel\(workChunks, branch, true\);/.test(sw), 'every layout keeps a held-back slice, except the retrain layout whose judge is the Reserve');
+    // re-aimed 3.94.0: the retrain layout (the History half-life run) is the one
+    // split with no held-back slice, and its judge is the Reserve.
+    // RE-AIMED AGAIN 3.111.0, at the invariant rather than at one line of it.
+    // The five passes added a third branch, and a pass DOES keep a held-back
+    // slice -- its judging stretch occupies that slot, which is what lets
+    // everything downstream price it without knowing a pass happened. So the
+    // thing worth pinning is not the shape of the expression, it is that
+    // splitAndLabelAt -- the splitter that returns no held-back slice -- is
+    // reached from exactly ONE layout, and that layout is the retrain one.
+    const pick = sw.slice(sw.indexOf('const split = passCut ?'), sw.indexOf('// THE ACTUAL DATE RANGES'));
+    assert.ok(pick.length > 80 && pick.length < 500, 'the chunk split no longer chooses its splitter in one place');
+    assert.strictEqual((pick.match(/splitAndLabelAt\(/g) || []).length, 1,
+      'more than one layout, or none, reaches the splitter that returns no held-back slice');
+    assert.ok(/retrainTrain != null \? splitAndLabelAt\(workChunks, branch, retrainTrain\)/.test(pick),
+      'the layout with no held-back slice is no longer the retrain layout');
+    assert.ok(/passCut \? splitAndLabelPass\(workChunks, branch, passCut\.nTrain, passCut\.judge\)/.test(pick),
+      'a pass is split by something other than the splitter that gives it a judging stretch and keeps the band off it');
+    assert.ok(/: splitAndLabel\(workChunks, branch, true\);/.test(pick),
+      'every other layout no longer falls through to the split that keeps a held-back slice');
+    // and a pass really does come back with one, run rather than read
+    const made = require('../lib/bracketwork').splitAndLabelPass(
+      Array.from({ length: 400 }, (_, i) => ({ startTs: i, diffPct: (i % 31) - 15 })), { band: 'auto' }, 280, 40);
+    assert.strictEqual(made.holdChunks.length, 40, 'a pass comes back with no held-back slice, so its judge would never be priced');
   },
 
   // A PRICED RECORD NAMES THE CHOICES THAT MADE IT (owner order, 2026-08-26;

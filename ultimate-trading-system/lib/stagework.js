@@ -24,7 +24,9 @@
 // simCell, holdControls) — reimplementing any of them would let the two
 // worlds' numbers quietly disagree.
 const bracketLib = require('./bracket');
-const { buildCombo, splitAndLabel, splitAndLabelAt, quorumCall, declaredQuorumFor } = require('./bracketwork');
+const {
+  buildCombo, splitAndLabel, splitAndLabelAt, splitAndLabelPass, splitBounds, quorumCall, declaredQuorumFor,
+} = require('./bracketwork');
 const agreement = require('./agreement');
 // THE ONE DEFINITION OF A COMMITTEE'S CALL (3.91.0): calls from votes, the
 // committee's shape on its test slice, what is enough, the stream. Shared with
@@ -375,6 +377,47 @@ function pinnedFilesFor(pin) {
   if (pinCache.size > 8) pinCache.delete(pinCache.keys().next().value);
   return got;
 }
+// THE SHAPE OF ONE PASS, WORKED OUT WITHOUT TOUCHING A CANDLE (3.111.0,
+// SELECTION-DESIGN.md Part 1). Its own function for three reasons: the screen
+// prints the whole five-pass plan BEFORE anything is run, a test can walk every
+// pass of a real chunk count and prove none of them reaches the seal, and the
+// arithmetic then lives in one place instead of once in the engine and again in
+// whatever draws it.
+//
+// The reserve is 13% of everything, sealed exactly as reserve61 seals it. What
+// is left is cut into TWICE AS MANY PARTS AS THERE ARE PASSES, so the first
+// pass learns on half the history and each later pass gains one judging width:
+// pass k learns on the first (of + k - 1) parts and is judged on the next. The
+// LAST pass's judge absorbs the remainder.
+//
+// THE PART IS FLOORED, NOT ROUNDED, and that is the whole reason this exists as
+// arithmetic somebody can check: rounded, the fifth pass of a 2,315-chunk
+// history ended four chunks INSIDE the seal -- the one stretch this part
+// promises never to touch. Floored, the last judge ends exactly on the boundary.
+//
+// The train-to-test ratio is the engine's own, read out of splitBounds rather
+// than typed, so a pass splits its history the way every other reading of this
+// unit splits it. A pass has no held-back slice of its own: its JUDGING stretch
+// takes that slot, which is what lets everything downstream price it without
+// knowing a pass happened.
+function passGeometry(nAll, ofRaw, kRaw) {
+  const of = Math.max(2, Math.floor(Number(ofRaw) || 0));
+  const k = Math.max(1, Math.min(of, Math.floor(Number(kRaw) || 0)));
+  const n = Math.max(0, Math.floor(Number(nAll) || 0));
+  const reserve = Math.max(2, Math.round(n * 0.13));
+  const room = n - reserve;
+  const part = Math.floor(room / (of * 2));
+  const before = part * (of + k - 1);
+  const judge = k === of ? room - before : part;
+  const r = splitBounds(1000, true);                        // the engine's own 70:15, never typed
+  const nTrain = Math.round(before * (r.nTrain / (r.nTrain + r.nTest)));
+  return {
+    of, k, reserve, room, part, before, judge, nTrain,
+    nTest: before - nTrain,
+    endsAt: before + judge,                                 // the last chunk this pass may read
+  };
+}
+
 async function unitChunks(combo, geometry, p) {
   const branch = { geometry, decision: 'argmax', band: 'auto', weekdaysOnly: false };
   const { geo, maps, chunks } = await buildCombo(combo, branch, {
@@ -406,9 +449,36 @@ async function unitChunks(combo, geometry, p) {
     workChunks = workChunks.slice(0, nAll - nReserve);
     retrainTrain = Math.round(nAll * 0.72);
   }
+  // ONE PASS OF THE FIVE (3.111.0, SELECTION-DESIGN.md Part 1). The sealed
+  // reserve comes off exactly as reserve61 seals it, and appears in no pass.
+  //
+  // WHAT IS LEFT IS CUT INTO TWICE AS MANY PARTS AS THERE ARE PASSES, so the
+  // first pass learns on half the history and each later pass gains exactly one
+  // judging width: pass k learns on the first (of + k - 1) parts and is judged
+  // on the next one. The LAST pass's judge absorbs the remainder.
+  //
+  // THE PART IS FLOORED, NOT ROUNDED, and that is the whole reason this reads
+  // the way it does: rounded, the fifth pass of a 2,315-chunk history ended four
+  // chunks INSIDE the seal -- the one thing this part promises never to touch.
+  // Floored, the last judge ends exactly on the boundary.
+  //
+  // The train-to-test ratio is the engine's own, read out of splitBounds rather
+  // than typed here, so a pass splits its history the way every other reading
+  // of this unit splits it. A pass has no held-back slice of its own: its
+  // JUDGING stretch takes that slot, which is what lets everything downstream
+  // price it without knowing a pass happened.
+  let passCut = null;
+  if (p.windowLayout === 'pass') {
+    const g = passGeometry(workChunks.length, (p.pass || {}).of, (p.pass || {}).k);
+    const sealed = workChunks.slice(workChunks.length - g.reserve);
+    reserve = { chunks: g.reserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
+    passCut = g;
+    workChunks = workChunks.slice(0, g.before + g.judge);   // nothing beyond this pass's own judge
+  }
   // every layout keeps a held-back slice (the 80/20 layout, which kept none, went 2026-09-08),
   // except the retrain layout, whose judge is the Reserve
-  const split = retrainTrain != null ? splitAndLabelAt(workChunks, branch, retrainTrain) : splitAndLabel(workChunks, branch, true);
+  const split = passCut ? splitAndLabelPass(workChunks, branch, passCut.nTrain, passCut.judge)
+    : retrainTrain != null ? splitAndLabelAt(workChunks, branch, retrainTrain) : splitAndLabel(workChunks, branch, true);
   // THE ACTUAL DATE RANGES EVERY RUN USED (3.85.0, owner order 2026-09-07: "on
   // all s1/2/3 sweep runs the three actual date ranges for 70/15/15 and
   // 61/13/13 should be stored"). Written on every stage 1 and 2 record and,
@@ -421,6 +491,10 @@ async function unitChunks(combo, geometry, p) {
     layout: p.windowLayout || null,
     train: span(split.trainChunks), test: span(split.testChunks), hold: span(split.holdChunks),
     unread: reserve ? { fromTs: reserve.fromTs, chunks: reserve.chunks, seenToTs: reserve.toTs } : null,
+    // WHICH PASS THIS IS, AND WHERE ITS JUDGE SAT (3.111.0). The screen prints
+    // chunk counts and dates per pass, and it must print the ones the pass
+    // actually used rather than the ones a table predicted.
+    pass: passCut ? { ...passCut, room: passCut.before + passCut.judge } : null,
   };
   return { geo, maps, split, reserve, windows };
 }
@@ -1358,6 +1432,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 // came out once the box served a vocabulary without it.
 
 module.exports = {
+  passGeometry,
   s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
   moneyWeights, weightsFor, weightsSaid, trainOnOf, capOf, TRAIN_ON, WEIGHT_CAP_DEFAULT,
   agreedKey, agreedKeyOfRecord, agrOf,

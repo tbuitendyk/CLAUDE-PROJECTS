@@ -198,9 +198,37 @@ function splitAndLabelAt(chunks, branch, nTrain) {
   return { trainChunks, testChunks, holdChunks: [], bandPct };
 }
 
+// THE SAME LABELLING AGAIN, WITH A JUDGE STRETCH THE CALLER SIZES (3.111.0,
+// SELECTION-DESIGN.md Part 1). splitAndLabelAt above gives train and test at a
+// stated boundary and no third stretch; the five passes need a third, because a
+// pass is judged on the stretch immediately after its own test slice.
+//
+// THE BAND COMES FROM THE TRAINING SLICE AND NEVER FROM THE JUDGE. That is not
+// a nicety: the band decides what counts as a move worth trading, so a band
+// fitted with the judging stretch in hand has read the answer before the
+// question. splitAndLabel and splitAndLabelAt both take it from train; so does
+// this, and the judging chunks are labelled with it afterwards like every
+// other chunk.
+//
+// `chunks` is everything up to and including the judge -- the caller has already
+// cut the sealed reserve off the end, so nothing here can reach it.
+function splitAndLabelPass(chunks, branch, nTrain, nJudge) {
+  const n = chunks.length;
+  const judge = Math.max(1, Math.min(n - MIN_CHUNKS - 1, Math.floor(Number(nJudge) || 0)));
+  const keep = Math.max(0, Math.min(n - judge - 1, Math.floor(Number(nTrain) || 0)));
+  const trainChunks = chunks.slice(0, keep);
+  const testChunks = chunks.slice(keep, n - judge);
+  const holdChunks = chunks.slice(n - judge);
+  if (trainChunks.length < MIN_CHUNKS) throw new Error(`only ${trainChunks.length} training chunks in this pass`);
+  if (!testChunks.length) throw new Error('this pass has no test slice between its training slice and its judging stretch');
+  const bandPct = branch.band === 'auto' ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(branch.band);
+  for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
+  return { trainChunks, testChunks, holdChunks, bandPct };
+}
+
 // (splitByLayout and the quota window layouts were purged 2026-08-03 on the
 // owner's order: the interlaced construction broke the signal it was meant to
 // test. Nothing can run them; lib/rng.js keeps the one function that outlived
 // their module.)
 
-module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelAt, splitBounds };
+module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelAt, splitAndLabelPass, splitBounds };
