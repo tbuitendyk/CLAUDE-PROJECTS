@@ -117,7 +117,7 @@ module.exports = {
     const u3 = ['A', 'B', 'C'];
     const geos = ['weekly-8d', 'daily-4d'];
     // both lists named: this test is about the combo arithmetic, and a blank
-    // compare list means all 17 default pairs now (3.75.0), which is a
+    // compare list means all 17 default coins now (3.75.0), which is a
     // different question and is held in its own test below
     assert.strictEqual(stages.unitsFor(u3, { singles: true }, geos, u3).length, 6);
     assert.strictEqual(stages.unitsFor(u3, { doubles: true }, geos, u3).length, 12);
@@ -4809,7 +4809,7 @@ module.exports = {
   async aLaunchWithNothingToScoreSaysWhichBoxIsShortAndByHowMany() {
     // compare coins spelled out and holding nothing but the traded coin: there
     // is no OTHER coin in it, so a triple has nothing to read LTCUSDT against.
-    // (Blank would be the 17 default pairs and would run — that is the point
+    // (Blank would be the 17 default coins and would run — that is the point
     // of the box, and it is held in the test above.)
     const base = { sizes: { triples: true }, nullN: 3, fee: 0.00125, universe: ['LTCUSDT'], compare: ['LTCUSDT'], name: `t-${Date.now().toString(36)}` };
     let msg = '';

@@ -487,7 +487,7 @@ module.exports = {
     assert.ok(/swGhostGroup\('#swGrpCompare', !\(\$\('#swDoubles'\)[\s\S]{0,140}?swTriples/.test(SWEEP),
       'the compare box must be greyed whenever neither doubles nor triples is ticked');
     // and its own label says what blank means, in the same words as the box beside it
-    assert.ok(SWEEP.includes('compare coins (blank = all 17 default pairs)'),
+    assert.ok(SWEEP.includes('compare coins (blank = all 17 default coins)'),
       'blank is the universe, and the label must say so — the same way trade coins does');
   },
 };

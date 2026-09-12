@@ -140,7 +140,7 @@ window.HELP = {
       ...CAMPAIGN_PANEL_CONTROLS,
       swUni: { what: 'The coins this run buys and sells. Leave it blank to use all of the ones held; write them separated by commas to narrow it down.' },
       swCompare: {
-        what: 'The coins each traded coin is READ AGAINST. They are context only \u2014 never bought, never sold. Left blank they are all 17 default pairs, the same as the box beside it, so one coin in trade coins and nothing here is that coin against everything.',
+        what: 'The coins each traded coin is READ AGAINST. They are context only \u2014 never bought, never sold. Left blank they are all 17 default coins, the same as the box beside it, so one coin in trade coins and nothing here is that coin against everything.',
         more: 'Only doubles and triples read it. A single is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing anywhere reads what is in it. It exists so one coin can be read against a whole field: with one list, asking for triples on a single coin gave nothing at all, because a triple reads a coin against two OTHERS and a list of one holds no others. A coin appearing in both lists is never read against itself. Doubles need one other coin, triples need two.',
       },
       swSingles: {

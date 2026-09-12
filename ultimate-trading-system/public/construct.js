@@ -1063,7 +1063,7 @@ function swProvenance() {
     //
     // A stage 1 run writes down what it ACTUALLY read, not what was in the box
     // -- that is RULE NINE, and it is right. Blank `compare coins` is recorded
-    // as the seventeen default pairs; blank month boxes are recorded as the
+    // as the seventeen default coins; blank month boxes are recorded as the
     // months the launch fell back to. Held up to the raw box, every one of
     // those reads as a disagreement, so a set launched from a blank compare
     // coins box -- which is every set on the box -- painted Stage 2 red the
@@ -3105,8 +3105,8 @@ async function drawSweep() {
       The fee prices only the tuning-slice $ on Boards: each unit's own votes on the last quarter of its training window,
       one buy or sell per chunk in the direction they lean, read against the same null set.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="the coins this run actually buys and sells. Blank means all 17 default pairs.">trade coins (blank = all 17 default pairs)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:16rem"></label>
-      <span id="swGrpCompare"><label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means all 17 default pairs, the same as the box beside it, so one coin typed into trade coins with nothing here is that coin against everything. Only doubles and triples read this: singles is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing reads it.">compare coins (blank = all 17 default pairs)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label></span>
+      <label class="f" title="the coins this run actually buys and sells. Blank means all 17 default coins.">trade coins (blank = all 17 default coins)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:16rem"></label>
+      <span id="swGrpCompare"><label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means all 17 default coins, the same as the box beside it, so one coin typed into trade coins with nothing here is that coin against everything. Only doubles and triples read this: singles is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing reads it.">compare coins (blank = all 17 default coins)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label></span>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
       <label class="c"><input type="checkbox" id="swTriples"> triples</label>
