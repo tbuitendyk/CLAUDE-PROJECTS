@@ -280,12 +280,18 @@ const COL = {
   fAvgTest: 'average test-window dollars across the settings behind this row. TEST money, never held-back - the held-back window is opened once, at the cut, on what survives.',
   fGridCell: 'average test dollars for the settings holding both this column value and this row value. Greyed with a count beside it when fewer settings sit behind it than the thin-square floor.',
   fSlice: 'one coin, chunk shape, third of the window or dial value the surviving settings are being compared across - whichever of those this set can offer.',
-  // Data
+  // Data. THE KEY STAYS `pair` AND THE COLUMN IS LABELLED `coin`
+  // (owner order, 2026-09-12: "The word is coins, not pair"). COL is one
+  // flat map across every screen and `coin` is already taken, by the
+  // every-coin table on Boards -- so renaming this key would not rename a
+  // column, it would silently replace that screen's hover text with this
+  // one. The key is internal and nobody can see it; the label is what the
+  // rule is about.
   pair: 'the Binance symbol, hourly candles.',
-  months: 'how many whole months of hourly candles are cached on this box for the pair.',
+  months: 'how many whole months of hourly candles are cached on this box for the coin.',
   from: 'first cached month, YYYY-MM.',
   to: 'last cached month, YYYY-MM. The current month is partial until it closes.',
-  manage: 'per-pair actions. Downloading is by month; purging removes the cached candles, not any run that used them.',
+  manage: 'per-coin actions. Downloading is by month; purging removes the cached candles, not any run that used them.',
   // saved-run lists
   run: 'the run id. The timestamp in it is when the job was FIRED, in UTC.',
   kind: 'which stage produced it — stage 1, 2, 3 or 4. Different stages read differently.',
@@ -595,21 +601,21 @@ async function drawData() {
       current month. Trim keeps only a range, deleting the rest. Purge deletes the whole asset. Every write refuses
       while a job runs; purge and trim DELETE data — the only way back is downloading again.</p>
     <div class="scrollx" id="dataTbl">${rows.length ? `<table><thead><tr>
-      ${cth('pair','pair')}${cth('months','months')}${cth('from','from')}${cth('to','to')}${cth('manage','manage','text-align:left')}</tr></thead><tbody>
+      ${cth('coin','pair')}${cth('months','months')}${cth('from','from')}${cth('to','to')}${cth('manage','manage','text-align:left')}</tr></thead><tbody>
       ${rows.map((r) => (`
         <tr><td>${esc(r.symbol)}</td><td>${r.months ?? '—'}</td><td>${esc(r.from || '—')}</td><td>${esc(r.to || '—')}</td>
           <td style="text-align:left"><button type="button" class="ds-refresh" data-sym="${esc(r.symbol)}">Refresh to latest</button>
             <!-- toMonth, not to. cacheState reports the "to" field at DAY
                  precision whenever day files exist (the normal state after any
                  refresh), and the trim endpoint accepts YYYY-MM only — so the
-                 prompt pre-filled a value the server then refused, on every pair
+                 prompt pre-filled a value the server then refused, on every coin
                  with fresh days (audit 2026-08-17). -->
             <button type="button" class="ds-trim" data-sym="${esc(r.symbol)}" data-from="${esc(String(r.from || '').slice(0, 7))}" data-to="${esc(r.toMonth || String(r.to || '').slice(0, 7))}">Trim…</button>
             <button type="button" class="ds-purge" data-sym="${esc(r.symbol)}">Purge…</button></td></tr>`)).join('')}</tbody></table>`
     : `<p class="note">nothing cached yet — download below</p>`}</div>
     <h3>Download / refresh</h3>
     <div class="row" style="align-items:flex-end">
-      <label class="f">download new pair(s), comma-sep<input id="dlPairs" placeholder="LTCUSDT,XRPUSDT" style="width:16rem"></label>
+      <label class="f">download new coin(s), comma-sep<input id="dlPairs" placeholder="LTCUSDT,XRPUSDT" style="width:16rem"></label>
       <label class="f">from<input id="dlStart" type="month"></label>
       <label class="f">to<input id="dlEnd" type="month"></label>
       <button id="dlBtn" class="pri">Download</button>
@@ -624,7 +630,7 @@ async function drawData() {
            to the bottom like its neighbours, and centres the button and the
            status against each other inside itself. -->
       <div style="display:flex;align-items:center;gap:.8rem;flex:1 1 18rem;min-width:0">
-        <button id="dlRefreshAll" title="Every cached pair: fetch from its newest cached month through the current month">Global Refresh</button>
+        <button id="dlRefreshAll" title="Every cached coin: fetch from its newest cached month through the current month">Global Refresh</button>
         <!-- Wraps to a second line inside the group rather than pushing the
              group onto one of its own, which would put it back underneath. -->
         <div id="dlOut" class="note" style="min-width:0"></div>
@@ -663,7 +669,7 @@ async function drawData() {
   });
   $('#dlBtn').onclick = () => {
     const pairs = $('#dlPairs').value.split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
-    if (!pairs.length) { alert('name at least one pair'); return; }
+    if (!pairs.length) { alert('name at least one coin'); return; }
     if (!$('#dlStart').value || !$('#dlEnd').value) { alert('pick both months'); return; }
     dsCall('api/data/download', { symbols: pairs, startMonth: $('#dlStart').value, endMonth: $('#dlEnd').value });
   };

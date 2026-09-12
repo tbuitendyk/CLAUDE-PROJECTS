@@ -34,14 +34,15 @@ built in either order.
 | `member` | One forecast inside it. On **Sweep** and **Boards**. |
 | `logreg`, `boost` | The two different ways a forecast is worked out. Both on **Sweep** and **Boards**. |
 | type | Trending up overall, or trending down overall. The owner's word for it in conversation. **There is no name for this on any screen, because nothing on any screen does it yet.** |
-| the new tab | Where stage zero would live. The owner said "something like coins", sitting between **Data** and **Sweep**. It does not exist, so it has no screen name and none is used here. |
+| the new tab | It exists now: the **Coins** tab, and its design is written in `COINS.md`. Where stage zero would live. The owner said "something like coins", sitting between **Data** and **Sweep**. It does not exist, so it has no screen name and none is used here. |
 | `always long` | Open a position on every period in the up direction, at the setting's own horizon and costs. On **Funnel**, **Verify** and **History**. |
 | the short version of `always long` | The same on every period in the down direction. **There is no name for this on any screen.** In the code it sits beside `always long` and is built the same way. |
 
-One naming point that matters for a tab sitting between two others. **Data**
-says `pair`. **Sweep**, **Boards**, **Funnel**, **Verify** and **History** say
-`coin`. A new tab between them will have to pick one, and whichever it picks it
-will disagree with a neighbour.
+One naming point, **settled by the owner on 2026-09-12: the word is `coin`.**
+It used to be that **Data** said `pair` while **Sweep**, **Boards**, **Funnel**,
+**Verify** and **History** said `coin`, so a new tab between them had to pick
+one and disagree with a neighbour. **Data** was changed to say `coin` in
+3.114.1. Every screen agrees, and this document says `coin` throughout.
 
 ---
 
@@ -410,7 +411,6 @@ of `VERIFY-DESIGN.md`. This design should not be judged without it.
 
 # What is not decided
 
-- Whether the new tab says `pair` like **Data** or `coin` like everywhere else.
 - What the tab, its controls and its columns are called. None of them exist, so
   none of them has a name, and none is invented here.
 - The rule for picking the fall-back percentage when the count jumps past the

@@ -50,10 +50,11 @@ is plainly a coin picker. Where this document says Coins picks coins "the way
 **Sweep** does", it means the same kind of choice, not a label anybody can
 point at.
 
-**One naming decision that has to be made and is not made here.** **Data** says
-`pair`. **Sweep**, **Boards**, **Funnel**, **Verify** and **History** say
-`coin`. A tab sitting between **Data** and **Sweep** must pick one, and
-whichever it picks it disagrees with a neighbour.
+**The naming decision is made: the word is `coin`.** Owner, 2026-09-12: *"The
+word is coins, not pair."* This tab says `coin`, the same as **Sweep**,
+**Boards**, **Funnel**, **Verify** and **History**. **Data** was the one screen
+still saying `pair` and it was changed to match in 3.114.1, so there is no
+longer a neighbour to disagree with.
 
 ---
 
@@ -486,6 +487,8 @@ without it.
   figure**, and both are shown and labelled.
 - **2026-09-12 — Sweep's coin list comes out of Coins**, rather than being
   typed in.
+- **2026-09-12 — the word is `coin`, not `pair`.** This tab says `coin`, and
+  **Data** was changed to say it too (3.114.1), so every screen now agrees.
 - **2026-09-12 — the `train` and `test` boundaries are FIXED and this tab
   never moves them.** Only the fall-back percentage is tuned. This replaces
   `TREND-TRAINING-DESIGN.md` section D's sliding boundary, its cap, and the
@@ -501,7 +504,6 @@ without it.
   number the owner types, or one Coins recommends. Either way it is exposed
   through the interface, never baked in (RULE FIVE).
 - **Whether the balance test is one number or two, and where it is set.**
-- **Whether this tab says `pair` like Data or `coin` like everywhere else.**
 - **The name of every control on this screen.**
 - **Every cost in this document. Not one of them has been measured.**
 
