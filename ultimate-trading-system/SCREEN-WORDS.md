@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **85d779e53f1b — what the box is serving**, not from the working tree.
+Generated from **58d611c0e659 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,30 +89,108 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (1)
+## What the controls are called (58)
 
+- `— not what the boxes above say`
+- `— press`
+- `: average 1 across`
+- `(asked`
+- `/ falling`
+- `% by`
+- `% to`
+- `%, ceiling`
+- `A side thinner than`
+- `above`
+- `across`
+- `again to bring`
+- `answers`
+- `Both move with how much`
+- `change(s) wanted,`
+- `changes of direction`
+- `changes of direction wanted`
+- `chunk shape`
+- `coin`
 - `Coins`
+- `drift`
+- `drift parts`
+- `drift parts, 24/5`
+- `fall-back %`
+- `height:`
+- `history a coin has`
+- `it is`
+- `more month(s) cached since`
+- `not`
+- `not reached`
+- `Nothing here refuses a`
+- `of a part will not be`
+- `of the`
+- `of them held at the ceiling of`
+- `of these`
+- `order by`
+- `periods`
+- `periods ·`
+- `periods,`
+- `read at:`
+- `read over`
+- `Read these coins`
+- `rows below`
+- `same under either window layout:`
+- `split`
+- `step, %`
+- `Stop`
+- `the last reading stopped:`
+- `The two traditional numbers`
+- `the walk`
+- `training weight over`
+- `try from, %`
+- `try to, %`
+- `turn(s) · rising`
+- `UTC · release`
+- `weight ceiling`
+- `window layout`
+- `worst tail slice`
 
-## What the dropdowns offer (0)
+## What the dropdowns offer (7)
 
-_none_
+- `61/13/13/13 (sealed exam)`
+- `70/15/15`
+- `Daily 1-day`
+- `Daily 2-day`
+- `Daily 3-day`
+- `Daily 4-day`
+- `Weekly 8-day`
 
-## Sentences the page prints (9)
+## Sentences the page prints (24)
 
-- Not built yet.
-- Nothing on this screen does anything, and there is nothing here to press.
-- What it is for: working out and recording, across all the history there is, the stretches in which
-- each coin was rising and the stretches in which it was falling.
-- What it will change: the sweep will be able to run two ways. The way it runs today, where one set
-- of forecasts is trained on all of a coin's history; and a second way, where two sets are trained, one on the
-- rising stretches and one on the falling ones. A record set built the second way is a different thing from one
-- built the first way, so this sits before the sweep rather than after it.
-- It changes nothing about any record set already on this box.
+- What each coin's history holds: the stretches in which it was rising, the stretches in which it
+- was falling, and how those fall across train, test, held-back and the reserve.
+- coin.
+- Every figure is a reading — which coins a sweep runs on is your choice, made by looking at these.
+- coins (blank = all 17 default coins)
+- worked out before more history was cached for that coin — read
+- up to date.
+- read at different values from the boxes above. Each row says what it was read at.
+- file(s) on the box could not be read back:
+- are worked out from an untuned reading of direction and are the
+- is the most one-sided any stretch the layouts carve
+- turns out to be, anywhere in the span — a low number means somewhere in this history there is a stretch that
+- runs all one way.
+- is how much that balance moves from part to part.
+- , because both measure over a share of the span: a coin with a few dozen periods reads
+- worse on the first and better on the second than the same coin with a thousand, so two coins with different
+- amounts of cached history cannot be compared on either. The periods column is there to be read beside them.
+- rescued by weighting — that is where the engine's own ceiling of
+- stops being able to correct the imbalance, and below it staying quiet starts winning. It is marked below and
+- a cut-off.
+- no coin has been read at this chunk shape
+- · thinner than weighting can correct
+- <span style="display:inline-block;width:4px;
+- px;margin-right:1px;vertical-align:bottom;background:var(
 
-## Every word, flat (76)
+## Every word, flat (222)
 
 ```
-able about across after all already and any anything are be before box. built change changes coin Coins different does each falling falling. first for forecasts from here history in is it It it. Not Nothing nothing of on one ones. out press. rather record recording rising run runs screen second set sets sits so stretches sweep than the The there thing this to today trained two was way ways. What where which will working yet.
+1-day 1px 2-day 3-day 4-day 4px 8-day able above above. across again all amounts an and answers any anywhere are asked at at. average back background balance be because been before being below beside better blank Both both bottom box boxes bring by cached can cannot carve ceiling change changes choice chunk coin coin. Coins coins column compared correct could cut-off. Daily date. default different direction display dozen drift each Each either either. engine Every exam fall fall-back falling few figure file first for from has height held held-back here history holds how imbalance in inline-block is it It last layout layouts looking low made margin-right marked means measure month more most move moves much no not Nothing number numbers of on one one-sided order out over own part part. parts periods press px quiet reached Read read reading reads refuses release rescued reserve. rising row rows runs same say says sealed second shape share side since slice so somewhere span split starts staying step Stop stopped stops stretch stretches style sweep tail test than that the The them them. there these these. thinner this those thousand to traditional train training try turn turns two under untuned up UTC values var vertical-align walk wanted was way. Weekly weight weighting What what where which width will window winning. with worked worse worst your
 ```
 
 ---
