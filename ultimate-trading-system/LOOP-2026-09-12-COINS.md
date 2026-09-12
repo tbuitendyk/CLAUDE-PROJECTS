@@ -691,3 +691,38 @@ scan a comment could defeat.
 
 955 tests pass.
 
+## C10 — deployed, and one thing PARKED rather than fixed
+
+**3.119.0 is on the box.** `busy: none` before it, `healthz OK` after, served
+record captured from the box, word lists regenerated from that commit, suite
+green at 955 after the regeneration.
+
+### PARKED: the word list cannot see a label made only of digits
+
+Found while checking the regenerated list, and **not fixed, because it is not
+this loop's work** (RULE SIX: work discovered along the way is written down and
+left for the owner).
+
+`phrases()` in `tests/sweep-words.js` drops any line with no letter in it:
+
+```js
+if (!/[A-Za-z]/.test(line)) continue;
+if (/^[^A-Za-z]*$/.test(line)) continue;      // the same test twice
+```
+
+So a control whose whole label is `24/5` is invisible to the generator. It is
+not a Coins problem: with that condition relaxed to accept a digit, the label
+appears on **three** tabs, so it has been missing from the owner's lists since
+before this loop.
+
+**Measured, so the owner can decide in a minute.** Changing it to
+`if (!/[A-Za-z0-9]/.test(line)) continue;` adds exactly six entries across the
+whole file: `24/5` on three tabs — right — and `0`, `1`, `1.00`, `0.00` on two
+others, which are values the screen prints and not names of anything. That
+second half is the over-collecting fault RULE ONE-A warns about in the other
+direction, which is why this is a judgement and not a typo.
+
+**Until the owner rules on it: `24/5` is not on the Coins list, so it is not a
+word I may use about that screen.** It is named here, in a record, rather than
+in anything written for the owner to act on.
+

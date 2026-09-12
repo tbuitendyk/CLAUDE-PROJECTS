@@ -851,6 +851,14 @@ owner's call, not a session's:**
   and the retrain layout). There is now one shared function beside
   `splitBounds` and this tab reads it; the engine still types its own. Pointing
   those two at it is an engine change and was not in this loop's work.
+- **The word-list generator cannot see a control whose label is only digits.**
+  `phrases()` in `tests/sweep-words.js` drops any line with no letter in it, so
+  a control labelled `24/5` is invisible to it — on three tabs, not only this
+  one, and since before this tab existed. Relaxing the test to accept a digit
+  adds exactly six entries across the whole file: that label on three tabs, and
+  `0`, `1`, `1.00`, `0.00` on two others, which are printed values and not the
+  name of anything. Over-collecting is the opposite fault and RULE ONE-A names
+  it, so this is the owner's call.
 - **A percentage step small enough to be absurd is walked in full.** At a step
   of one ten-millionth over the default range that is roughly 290 million
   typings per coin, about 22 minutes with nothing else able to run. The box on
