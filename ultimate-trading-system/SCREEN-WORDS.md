@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **2bd2219c7a7d — what the box is serving**, not from the working tree.
+Generated from **962fc3a33587 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -521,7 +521,7 @@ able about across after all already and any anything are be before box. built ch
 - Show in 3.B
 - share that agreed is empty on this set —
 - Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
-- nothing picked: beat its own null set, best first. Independent voices below members means the committees held
+- nothing picked: beat the kept null money, best first. Independent voices below members means the committees held
 - near-copies, so the setting rests on fewer real opinions than its member count suggests.
 - Table 3.B: Every coin of every setting
 - — one row for each "short" setting x (each coin + chunk shape); every row averages the "factored out" settings: decision, band and 24/5 variants of the short setting, which are provided as sub-rows
