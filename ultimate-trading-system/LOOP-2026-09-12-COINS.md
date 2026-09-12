@@ -335,3 +335,26 @@ by assertion.
 - **`order by` is a control, not a decision.** The open item asking which of
   the two traditional numbers should order the list is answered by not
   answering it in code.
+
+## C7a — two guards caught the new screen, and both were right (3.118.1)
+
+The full suite on 3.118.0 came back with two failures. Both were real gaps in
+the new screen, and both were fixed at the cause rather than in the test.
+
+**`cLayout` was drawing its own two options.** Those values are the ENGINE'S —
+they are what `lib/coins.js` keys a reading by and what a sweep launches with.
+It now draws from the same vocabulary `#swLayout` draws from, so there is one
+list rather than a copy that can drift. Better than registering an exception,
+which is what the lazy fix would have been.
+
+**`cOrder` genuinely reaches no backend** — it decides which row the owner
+wants at the top of a list they are reading, and nothing is posted when it
+changes. Declared as screen state where the guard looks, with the reason.
+
+**Eight column headings carried no description.** All eight now say what they
+hold, including why the walk is worth looking at and why the two traditional
+numbers do not move when the fall-back percentage is re-tuned.
+
+Second time in this loop the suite caught something in shared files that the
+narrow checks could not. Both times the risk was named before committing rather
+than discovered after.

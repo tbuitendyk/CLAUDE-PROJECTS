@@ -7843,10 +7843,7 @@ async function drawCoins() {
 
   <div class="panel">
     <div class="row">
-      <label class="f" title="which window layout's reading to show. A coin can read differently under the two, so this is per layout.">window layout<select id="cLayout">
-        <option value="reserve61"${cState.layout === 'reserve61' ? ' selected' : ''}>61/13/13/13 (sealed exam)</option>
-        <option value="split70"${cState.layout === 'split70' ? ' selected' : ''}>70/15/15</option>
-      </select></label>
+      <label class="f" title="which window layout's reading to show. A coin can read differently under the two, so this is per layout.">window layout<select id="cLayout">${vocabOptions('windowLayout', cState.layout)}</select></label>
       <label class="f" title="which reading to order the list by. Nothing is decided by this — it is only which one you want at the top.">order by<select id="cOrder">
         <option value="coin"${cState.orderBy === 'coin' ? ' selected' : ''}>coin</option>
         <option value="tail"${cState.orderBy === 'tail' ? ' selected' : ''}>worst tail slice</option>
@@ -7861,8 +7858,14 @@ async function drawCoins() {
       runs all one way. <b>drift</b> is how much that balance moves from part to part.</p>
     ${!rows.length ? '<p class="note">nothing read yet at this chunk shape — press <b>Read these coins</b> above</p>' : `
     <div class="scrollx"><table><thead><tr>
-      <th>coin</th><th>periods</th><th>fall-back %</th><th>changes of direction</th><th>the walk</th>
-      <th>worst tail slice</th><th>drift</th><th>read over</th></tr></thead><tbody>
+      <th title="the coin this row reads.">coin</th>
+      <th title="how many periods of this coin's history there are at this chunk shape. One period is one step of that shape's clock.">periods</th>
+      <th title="the fall-back percentage found for this coin: how far price has to fall back from a high before that high is called the end of a rising stretch. It is not fixed across coins — each one gets the largest percentage that gives at least the number of changes asked for.">fall-back %</th>
+      <th title="how many changes of direction that percentage gives across train and test. When it gives more than were asked for, the number asked for is shown beside it in brackets.">changes of direction</th>
+      <th title="the shape of the search: one bar per percentage tried, its height the count of changes at that percentage, with the one taken marked. A coin whose bars are level across a band is steady; one with a spike is balanced on an edge.">the walk</th>
+      <th title="the most one-sided any stretch the window layouts carve turns out to be, anywhere in the span. Half means evenly split; near zero means somewhere in this history there is a stretch that runs all one way. Worked out from an untuned reading of direction, so the fall-back percentage never moves it.">worst tail slice</th>
+      <th title="how much the balance between rising and falling moves from one part of the span to the next. Zero means every part looks the same; a large number means the mix changes as you go. Also untuned.">drift</th>
+      <th title="the span of history this reading was worked out from. A coin whose history has grown since reads as stale rather than quietly wrong.">read over</th></tr></thead><tbody>
       ${rows.map((r) => {
     const rd = r.readings && r.readings[cState.layout];
     const span = r.provenance && r.provenance.fromTs

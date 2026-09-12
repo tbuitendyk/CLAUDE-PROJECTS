@@ -282,6 +282,14 @@ module.exports = {
       // same shape: the campaign picker's options are the names the service
       // itself reports, and a NEW name is typed in the box beside it
       'cxCampPick',
+      // Coins' order-by is screen state and reaches no backend at all: it
+      // decides which row the owner wants at the top of a list they are
+      // reading, and nothing is posted anywhere when it changes. Its window
+      // layout picker is NOT here, because those values ARE the engine's --
+      // it draws from the same vocabulary #swLayout draws from, so there is
+      // one list rather than a copy, and this guard sees no literal values in
+      // it to check.
+      'cOrder',
       // same shape again, and the allow-list is enforced rather than restated:
       // every option is the name of a service the machine itself reported, and
       // the control refuses any name that is not in that same list at the
