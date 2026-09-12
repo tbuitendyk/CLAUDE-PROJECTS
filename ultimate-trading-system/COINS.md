@@ -169,9 +169,13 @@ scale, which is consistent with typing each coin on its own history.
 **Two things about the search, both of which shape the build:**
 
 - **The count moves in whole steps**, so it can jump from six to nine with
-  nothing between. Recommended rule, **not yet the owner's decision**: take the
-  largest percentage that gives at least the number asked for. Largest keeps
-  the stretches clean; at-least means never coming up short.
+  nothing between. **The rule, decided by the owner on 2026-09-12: take the
+  LARGEST percentage that gives AT LEAST the number asked for.** Largest keeps
+  the stretches clean — a smaller percentage would chop them finer than needed.
+  At-least means the search never comes up short of what was asked. Where the
+  count jumps straight past the target, the percentage on the near side of the
+  jump is the one taken, and the count it actually delivered is reported
+  alongside the one that was asked for, so a coin that overshot says so.
 - **The count does NOT simply rise as the percentage falls.** An earlier turn
   moves where later ones land. So walk the percentage across a range and read
   the count off each one. That is cheap, and **the shape of that walk, per
@@ -709,6 +713,10 @@ without it.
   figure**, and both are shown and labelled.
 - **2026-09-12 — Sweep's coin list comes out of Coins**, rather than being
   typed in.
+- **2026-09-12 — the fall-back percentage search takes the LARGEST percentage
+  that gives AT LEAST the number of changes asked for.** The owner, asked
+  directly, answered yes to the recommendation that had been sitting in
+  section 4. That was the last thing genuinely blocking a build of this tab.
 - **2026-09-12 — this tab REPORTS and never refuses.** No cut-offs anywhere on
   it, on any reading. The owner: *"We're not even blocking coins with this
   anyways. We're only reporting."* This replaces the premise inherited from
@@ -741,8 +749,6 @@ without it.
   down-weighting one changes almost nothing. Section 6.
 - **Which of the two traditional numbers orders the list** — the worst tail
   slice, or the drift.
-- **The rule for picking the fall-back percentage when the count jumps past the
-  target.** A recommendation is in section 4; it is not the owner's decision.
 - **What the screen should show first** for each of fitting, choosing and
   judging — which of the readings in section 8 leads, and which sit behind it.
   There is no bar to set, so this is a question about presentation, not about
