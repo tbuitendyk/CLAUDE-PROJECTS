@@ -67,7 +67,9 @@ Two things come out of that, and they are the whole point of the tab:
 
 1. **Better choices at Sweep.** You go into a sweep knowing which coins have
    history worth training on, instead of finding out afterwards. **The list of
-   coins Sweep works from comes out of Coins rather than being typed in.**
+   coins Sweep works from comes out of Coins rather than being typed in** — but
+   Coins never decides that list on its own. It shows what each coin's history
+   holds and the owner picks from it (section 8).
 2. **The numbers a coin needs to be trained two ways** — how many `rising`
    stretches and how many `falling` stretches it has, where they fall, and how
    the time divides between them, recorded against that coin's history.
@@ -416,46 +418,59 @@ it is written down as one.
 slice in section 11 is *defined* on the tail. Hold out the tail and the score
 the owner asked for cannot be computed at all.
 
-## 8. How much of each kind, and where
+## 8. What is read, and where — reported, never enforced
 
-Worked out in advance, and **separately for each of the three jobs a stretch
-can do**:
+**This tab reports. It does not refuse.** Owner's decision, 2026-09-12, and it
+governs everything below: *"We're not even blocking coins with this anyways.
+We're only reporting."*
 
-| type of history | what it needs enough of |
+That matters because the wording here used to say otherwise. It came out of
+`TREND-TRAINING-DESIGN.md`, which opens stage zero as *"a pass that decides
+which coins are eligible"* — and this document then carried both premises at
+once, saying "never a gate" in one place and setting floors a coin "must stay
+clear of" in another. **The owner's premise is the one that survives.** There
+are no cut-offs anywhere on this tab. Every figure below is something you look
+at and sort by, and you decide.
+
+### What is read, per part of history
+
+Worked out separately for each of the three jobs a stretch can do:
+
+| type of history | what it is worth knowing |
 |---|---|
-| **fitting** | enough separate `rising` and `falling` stretches for both sets of `members` to learn the difference, not memorise one era |
-| **choosing** | enough of both that a choice made here is not a choice about one direction |
-| **judging** | enough of both that the claim is a claim about trading, not about a market that only went one way |
+| **fitting** | how many separate `rising` and `falling` stretches there are for the two sets of `members` to learn from, and whether either side is one era wearing a type's name |
+| **choosing** | whether a choice made here would be a choice about one direction |
+| **judging** | whether a claim made here is a claim about trading, or about a market that only went one way |
 
-**This is a per-type requirement.** One number for the whole span does not
-answer it — a span can be beautifully mixed and still have a stretch inside it
-that runs one way from end to end.
+**Read per part, not per span.** A span can be beautifully mixed and still hold
+a stretch inside it that runs one way from end to end. That is the whole reason
+these are separate numbers rather than one.
 
-### The concrete demands
+### The readings
 
-- **At least two of each type inside `test`.** Two of each means `test` holds at
-  least four stretches and three changes of direction, so it actually exercises
-  whether the forecasts hand over. A weaker demand — some number of periods of
-  each type — could be met by one long rise and one long fall with a single
-  handover, which tests almost nothing. **Counted as turns, per section 5** —
-  turns never get cut at a boundary, so this demand needs no stub arithmetic at
-  all. The balance demands below are the ones that read the median.
-- **Each type must appear more than ONCE inside the training stretch, in
-  SEPARATED stretches.** One long stretch of a type can be memorised as a
-  period of the calendar. This belongs in this tab's filter, alongside "both
-  types present".
-- **Both `train` and `test` have to satisfy the balance, not just the total.**
-  If the changes all land in the training part, `test` could be one long rise,
-  and testing then says nothing about handing over.
-- **The count of changes is NOT the same as the balance.** A coin can give ten
-  changes and still spend 85% of its time rising. Then the falling models see a
-  tenth of the periods as real calls and the rest as stay-quiet. So this tab
-  needs **both** numbers: how many changes, and how the time divides. The
-  second decides whether a coin is trainable at all.
-- **There is a floor the balance must stay clear of, and it comes out of the
-  code.** See finding 5 in section 14: below roughly one row in sixty (~1.7%),
-  the existing weight cap under-corrects and staying quiet starts winning
-  again. That is a number this tab must not let a coin sit under.
+- **Turns inside each part.** Two of each type inside `test` means four
+  stretches and three changes of direction — enough that it actually exercises
+  the forecasts handing over. A weaker reading, some number of periods of each
+  type, could be satisfied by one long rise and one long fall with a single
+  handover, which shows almost nothing. **Counted as turns, per section 5** —
+  turns never get cut at a boundary, so this reading needs no stub arithmetic.
+- **Whether each type appears more than ONCE inside `train`, in SEPARATED
+  stretches.** One long stretch of a type can be memorised as a period of the
+  calendar rather than learned as a condition. A coin with one long rise and
+  one long fall is worth knowing about before it is swept, not after.
+- **The split of time, per part** — how much of `train` was `rising` against
+  `falling`, and the same for `test`, `held` and `reserve`. Two numbers, one per
+  type, reported. **Not a test, and there is no cut-off on either of them.**
+- **The count of changes is NOT the same as the split of time.** A coin can turn
+  ten times and still spend 85% of its time rising; the falling set then sees a
+  tenth of the periods as real calls and the rest as stay-quiet. Both numbers
+  are needed and neither substitutes for the other.
+- **Where a side falls under the level the training arithmetic can correct
+  for** — roughly one row in sixty, about 1.7%, from finding 5 in section 14.
+  Below that the existing weight cap under-corrects and staying quiet starts
+  winning. **This is shown beside the coin, not enforced.** It tells you the
+  thin side of that coin will not be rescued by weighting, and you decide what
+  to do about it.
 
 ### The boundaries do NOT move — owner's decision, 2026-09-12
 
@@ -480,13 +495,13 @@ Three things follow, and two of them are improvements:
 - **No training data is given away.** Moving the boundary earlier would have
   taken the most recent part of `train` — the periods closest to what the
   forecasts will face — and handed them to `test`. That cost is gone.
-- **The one lever has to satisfy two demands at once.** The number of changes
+- **The one lever is pulled towards two things at once.** The number of changes
   across `train` and `test`, and two of each type inside `test`, are both
   reached by lowering the same percentage. Changes are not spread evenly in
   time, so getting four stretches into the last 13% may need far more total
-  changes than would otherwise be asked for. **Solve for both at once, per
-  coin, rather than in sequence, or they fight** — and when no percentage
-  satisfies both, say so on the screen rather than moving anything.
+  changes than would otherwise be wanted. **Solve for both at once, per coin,
+  rather than in sequence, or they fight** — and when no percentage reaches
+  both, say so on the screen rather than moving anything or dropping the coin.
 
 ## 9. Both window layouts, every coin
 
@@ -617,14 +632,19 @@ listed so nobody thinks this tab solved them.
    number of answers times that answer's rows, capped at 20. With three answers
    the cap binds once an answer falls below about 1.7% of rows. Below that the
    weighting under-corrects and staying quiet starts winning — the exact thing
-   the owner said must not happen. **So the balance test on this tab has a
-   number it must stay clear of**, and the cap should be visible on a screen
-   rather than a constant in a file (RULE FIVE).
+   the owner said must not happen. **So this tab has a number worth SHOWING
+   beside a coin** — not a limit it enforces (section 8). A coin whose thin
+   side is under it will not be rescued by weighting, and that is a thing to
+   know before sweeping it, not a reason for this tab to refuse it. The cap
+   itself should be visible on a screen rather than a constant in a file
+   (RULE FIVE).
 2. **Weighting cannot manufacture data.** On a coin that is 90% one way, each
    real period of the other counts nine times, so a handful of unusual periods
    in one short stretch drive the whole model. Weighting repairs a mild
-   imbalance; it cannot repair a thin one. That is the argument for the balance
-   being decided on this tab rather than left for the weighting to rescue.
+   imbalance; it cannot repair a thin one. That is why the split of time is
+   worth reading on this tab rather than assumed away — not so this tab can
+   refuse a coin, but so nobody expects the weighting to fix a side that is
+   simply not there.
 3. **The band that decides "too small to bother with" must be chosen AFTER the
    mask.** `balancedBandPct` in `lib/dataset.js` picks that band as the move
    size making about one period in three say nothing, computed from the training
@@ -689,6 +709,12 @@ without it.
   figure**, and both are shown and labelled.
 - **2026-09-12 — Sweep's coin list comes out of Coins**, rather than being
   typed in.
+- **2026-09-12 — this tab REPORTS and never refuses.** No cut-offs anywhere on
+  it, on any reading. The owner: *"We're not even blocking coins with this
+  anyways. We're only reporting."* This replaces the premise inherited from
+  `TREND-TRAINING-DESIGN.md`, which opens stage zero as a pass that decides
+  which coins are eligible. Every figure is shown and sortable; the choice is
+  the owner's at the screen. Section 8.
 - **2026-09-12 — stretches are CUT AT EVERY BOUNDARY**, so each belongs to
   exactly one of `train`, `test`, `held`, `reserve`. Stubs count as fractions
   of that type's median full length; turns are counted directly and need no
@@ -717,10 +743,10 @@ without it.
   slice, or the drift.
 - **The rule for picking the fall-back percentage when the count jumps past the
   target.** A recommendation is in section 4; it is not the owner's decision.
-- **What counts as "enough"** for each of fitting, choosing and judging — a
-  number the owner types, or one Coins recommends. Either way it is exposed
-  through the interface, never baked in (RULE FIVE).
-- **Whether the balance test is one number or two, and where it is set.**
+- **What the screen should show first** for each of fitting, choosing and
+  judging — which of the readings in section 8 leads, and which sit behind it.
+  There is no bar to set, so this is a question about presentation, not about
+  what a coin has to clear.
 - **The name of every control on this screen.**
 - **Every cost in this document. Not one of them has been measured.**
 
