@@ -66,6 +66,106 @@ measured, that is written at the top as a **blocker**, not buried in a bullet.
 
 The parts are **not** independent. Where one leans on another, the part says so.
 
+**Eight parts now.** Part 8 was added on 2026-09-11, and the rule below it was
+added the same day — it governs every part and is the reason several of them
+exist.
+
+---
+
+# THE HISTORY BUDGET RULE (owner order, 2026-09-11)
+
+> The owner, on discovering that the **held** stretch had already been read for
+> every setting back at the stage 3 sweep: "you've been killing us trying to
+> find a bit of clean data for the verification tab and here we find out like
+> some kind of revelation that the third history chunk HAS ALREADY BEEN USED
+> WAY BACK ON THE STAGE 3 SWEEP."
+
+**History is finite and cannot be replaced.** Every stretch of it is spent the
+first time something reads it, and no later reading of the same stretch is a
+second opinion. Until now the pipeline has spent it without a plan, and the
+result is that the verification problem looks unsolvable when it is not.
+
+## Where every stretch actually goes today
+
+Read out of the code, not remembered. For a 61/13/13/13 set:
+
+| stretch | what reads it today |
+|---|---|
+| **train**, first 75% | fits the models. Nothing is chosen here. |
+| **train**, last 25% | the money that RANKS AND KEEPS units at stage 1 and stage 2 |
+| **test** | stage 1 and 2 forecast score; stage 3 prices every setting; EVERY dial the Funnel keeps |
+| **held** | stage 3 prices every setting; **it orders the stage 3 table**; Verify's verdict; History's judge on a 70/15/15 set |
+| **reserve** | the reserve grade; History's judge on a 61/13/13/13 set |
+
+Four stretches, and only **reserve** arrives at the end unspent — and History
+spends that.
+
+## The rule
+
+**A stretch of history does exactly one of three jobs, and never two.**
+
+1. **FITTING.** The models learn here. Nothing is chosen and nothing is
+   claimed.
+2. **CHOOSING.** Anything that narrows: which coins survive stage 1 and stage
+   2, which dials the Funnel keeps, which stop and which order size Tune
+   picks.
+3. **JUDGING.** A claim about what will happen. Spent once, and worthless the
+   second time.
+
+**All choosing may share ONE stretch.** Selection piles up there and that is
+expected, because nothing there is a claim. **Every judgement needs a stretch
+nothing has read** — that is the entire definition of a judgement.
+
+**The arithmetic of it.** You need one fitting stretch, one choosing stretch,
+and one judging stretch per judgement. The pipeline wants at least two
+judgements (Verify, and History's comparison) and really three (the reserve
+grade). Four stretches fits that exactly — **but only if nothing does two
+jobs. Today three things do.**
+
+## What that says about where a number may be read
+
+- **Sweep, Boards and the Funnel are choosing screens.** They may show the
+  choosing stretch and nothing else. No held column, no ordering by a held
+  number.
+- **Verify holds the first judging stretch, and must be the first thing that
+  has ever read it.**
+- **History's comparison is a judgement too, and must use a DIFFERENT stretch
+  from Verify's.** On a 61/13/13/13 set it uses the reserve, which is right.
+  On a 70/15/15 set it uses **held** — the stretch Verify just spent — which
+  is not. That is one reason the 61/13/13/13 layout is the healthier of the
+  two.
+- **Tune is a CHOOSING screen, not a judging one.** Picking a stop and an order
+  size is narrowing. It reads held-back today and counts each press as a look,
+  which is honest bookkeeping of a thing that should not be happening at all.
+- **Greenlight and the reserve grade take the last unspent stretch**, and
+  nothing before them may touch it.
+
+## The one change that pays for itself immediately
+
+**Stage 3 should not price on held.**
+
+It does so to produce `beat`, `avgHold` and the four comparisons — and the main
+use of `beat` is to **sort the ranked table** (`lib/stages.js:4229`, by
+`beat / pairs`). The Funnel chooses on test money and never reads any of it.
+
+So the held stretch — the one stretch that could give Verify a genuinely first
+look — is being spent on a sort order. **If that table sorted on test money
+against its own test copies, held would arrive at Verify untouched.** No data
+is lost, nothing needs re-running to change an ordering, and the verification
+problem stops being a hunt for clean data.
+
+That is the highest-value item in this whole document and it is not in any of
+the eight parts.
+
+## And it says where Part 1's passes belong
+
+The **fitting** stretch is the only part of the budget that can be spent more
+than once, because every pass trains again on its own slice and nothing there
+ever chose anything. So walk-forward passes belong inside it — and nowhere
+else. Judging a pass on the choosing stretch judges dials on the data that
+picked them; judging one on a judging stretch spends a claim to answer a
+different question.
+
 ---
 
 # Part 1 — judge on several stretches, not one, on Verify
