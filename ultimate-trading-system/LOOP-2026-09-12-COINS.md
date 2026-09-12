@@ -206,3 +206,47 @@ five turns and 16% gives **six** — which a bisection fails.
   type — whichever way it finished. Two types, no third bucket, no holes.
 - The search walks the whole range rather than bisecting, and returns the walk
   itself, because the walk is what the screen draws.
+
+## C2, C3, C4 — cutting, the weight, the traditional score (done, 3.116.0)
+
+Eight more tests, fourteen in the file. Two pre-registered checks failed first
+and one of them found something the design document had wrong.
+
+**C3.3 REPRODUCED, first time.** The owner's own example: 7 periods moving 1.6%
+and 35 moving 0.086%. Unweighted the slow group outpulls the fast **5.00 to
+1**; weighted, the fast group outpulls the slow by **3.7209 to 1**, inside the
+pre-registered band of 3.73 ± 0.05. The arithmetic written into `COINS.md`
+section 6 stands.
+
+**C3.1 found a claim in my own code that was false.** The comment said the
+scale that leaves the average at 1 with nothing over the ceiling "exists
+whenever the cap is above 1". It does not. A period that did not move weighs
+nothing, so the whole average has to come from the periods that did: on five
+periods where only one moved, no scale can lift the average past the ceiling
+over five. The fixed point exists when **the ceiling is at least the period
+count divided by how many periods moved.**
+
+Below that it now says so and **names the ceiling that would work** — it does
+not hand back a mean that is not 1 while calling itself normalised. It is not a
+refusal of the coin: the weights are still produced and still say which periods
+matter. The ceiling is the owner's control, so the honest answer is to tell
+them what it needs to be.
+
+**C4.1 held.** On a span balanced overall whose last 13% only rises, the whole
+span reads 0.5 and the worst slice reads 0, and it points at the tail. The two
+do not move together, which is the entire point of the number.
+
+**Choices made inside the step:**
+
+- **A stub with no full stretch of its type to measure against reads as
+  UNANSWERED, not zero.** Zero would read as "none of it", and a stub that
+  cannot be compared has not answered the question.
+- **The scale is found by bisection**, not by scaling then clipping (which
+  breaks the mean) or clipping then scaling (which breaks the ceiling).
+- **The drift is the average step between neighbouring parts' balances**, which
+  is the literal reading of "how much the balance moves from part to part", and
+  the per-part balances come back with it because they are what the screen
+  draws.
+- **`trainingWeights` is tested for not knowing which set it is for.** Its body
+  is scanned for `rising` and `falling`. One vector, shared — a function that
+  learns which side it is weighting has already gone wrong.

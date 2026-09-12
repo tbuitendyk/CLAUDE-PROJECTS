@@ -6,7 +6,11 @@
 // LOOP-2026-09-12-COINS.md section A BEFORE any of this ran, which is the only
 // reason a green result here means anything.
 const { assert } = require('./helpers');
-const { typeStretches, searchFallback } = require('../lib/coins');
+const {
+  typeStretches, searchFallback,
+  cutAtBoundaries, medianFullLengths, countStretches, turnsIn,
+  splitOfTime, worstTailSlice, balanceDrift, trainingWeights,
+} = require('../lib/coins');
 
 // A PRICE PATH WITH TURNS WHERE WE PUT THEM. Each leg moves `swing` percent
 // from where the last one ended, in `legLen` equal steps, so the turns land on
@@ -194,5 +198,225 @@ module.exports = {
       assert.ok(!('pass' in out) && !('ok' in out) && !('eligible' in out),
         'no function here answers with a pass, an ok or an eligibility');
     }
+  },
+// ---- C2: cutting at the boundaries -----------------------------------------
+
+  // C2.1, C2.2 and C2.5, all pre-registered. The pieces sum back to the
+  // original, the turn counts are IDENTICAL before and after cutting, and no
+  // part ever holds more than two stubs.
+  cuttingSplitsAStretchWithoutLosingOrInventingAnyPeriod() {
+    const { prices } = builtPath(7, { swing: 20, legLen: 13 });
+    const r = typeStretches(prices, 9);
+    const n = prices.length;
+    const parts = [
+      { name: 'train', from: 0, to: Math.round(n * 0.61) - 1 },
+      { name: 'test', from: Math.round(n * 0.61), to: Math.round(n * 0.74) - 1 },
+      { name: 'held', from: Math.round(n * 0.74), to: Math.round(n * 0.87) - 1 },
+      { name: 'reserve', from: Math.round(n * 0.87), to: n - 1 },
+    ];
+    const cut = cutAtBoundaries(r.stretches, parts);
+
+    // every period lands in exactly one piece of exactly one part
+    let seen = 0;
+    for (const p of cut) {
+      let expect = p.from;
+      for (const piece of p.pieces) {
+        assert.strictEqual(piece.from, expect, 'the pieces of a part must be contiguous');
+        expect = piece.to + 1;
+        seen += piece.length;
+      }
+      assert.strictEqual(expect, p.to + 1, `${p.part} must be covered end to end`);
+      // C2.5: at most two stubs per part, because only the edges get cut
+      const stubs = p.pieces.filter((x) => x.stub).length;
+      assert.ok(stubs <= 2, `${p.part} came back with ${stubs} stubs — only the two edges can be cut`);
+      // and a stub can only be at an edge
+      for (let i = 0; i < p.pieces.length; i++) {
+        if (p.pieces[i].stub) assert.ok(i === 0 || i === p.pieces.length - 1, 'a stub can only be at an edge');
+      }
+    }
+    assert.strictEqual(seen, n, 'cutting must neither lose nor invent a period');
+
+    // C2.2: TURNS ARE THE SAME BEFORE AND AFTER. If this ever fails, the claim
+    // that handover needs no stub arithmetic is wrong and COINS.md section 5
+    // has to be reopened.
+    const after = parts.reduce((a, p) => a + turnsIn(r.turns, p), 0);
+    assert.strictEqual(after, r.turns.length, 'cutting must not cut a turn');
+  },
+
+  // C2.3 and C2.4: a stub counts as its share of the median, and two half-median
+  // stubs add to exactly one.
+  twoStubsOfHalfTheMedianAddUpToOne() {
+    // eight full rising stretches of length 10, so the median is plainly 10
+    const pieces = [];
+    for (let i = 0; i < 8; i++) pieces.push({ from: i * 10, to: i * 10 + 9, type: 'rising', length: 10, stub: false });
+    const cutPart = { part: 'train', from: 0, to: 79, pieces };
+    const med = medianFullLengths([cutPart]);
+    assert.strictEqual(med.rising, 10, 'the median full length is ten');
+
+    const withStubs = {
+      part: 'test',
+      pieces: [
+        { from: 0, to: 4, type: 'rising', length: 5, stub: true },
+        { from: 5, to: 9, type: 'rising', length: 5, stub: true },
+      ],
+    };
+    const c = countStretches(withStubs, med);
+    assert.ok(Math.abs(c.rising.count - 1) < 1e-12,
+      `two stubs of half the median must add to one, got ${c.rising.count}`);
+    assert.strictEqual(c.rising.full, 0);
+    assert.strictEqual(c.rising.stubs, 2);
+
+    // a full stretch is one, and a tiny stub against a big median is nearly nothing
+    const tiny = { part: 'test', pieces: [{ from: 0, to: 2, type: 'rising', length: 3, stub: true }] };
+    assert.ok(Math.abs(countStretches(tiny, med).rising.count - 0.3) < 1e-12);
+
+    // and a stub with no full stretch of its type to measure against reads as
+    // UNANSWERED, never as zero
+    const orphan = { part: 'test', pieces: [{ from: 0, to: 4, type: 'falling', length: 5, stub: true }] };
+    assert.strictEqual(countStretches(orphan, med).falling.count, null,
+      'a stub with nothing to compare to has not answered the question');
+  },
+
+  // ---- C3: the training weight ------------------------------------------------
+
+  // C3.3, the number pre-registered in the loop record before any of it ran:
+  // the owner's own example must reproduce. 7 periods moving 1.6% and 35 moving
+  // 0.086% -- unweighted the slow group outpulls the fast 5.00 to 1; weighted,
+  // the fast group outpulls the slow by 3.73 +/- 0.05 to 1.
+  theOwnersOwnExampleReproduces() {
+    const moves = [];
+    for (let i = 0; i < 7; i++) moves.push(1.6);
+    for (let i = 0; i < 35; i++) moves.push(0.086);
+
+    const unweightedFast = 7;
+    const unweightedSlow = 35;
+    assert.ok(Math.abs(unweightedSlow / unweightedFast - 5) < 1e-12,
+      'unweighted, the slow five weeks outpull the fast week five to one');
+
+    const w = trainingWeights(moves, { cap: 20 });
+    const fast = w.weights.slice(0, 7).reduce((a, b) => a + b, 0);
+    const slow = w.weights.slice(7).reduce((a, b) => a + b, 0);
+    const ratio = fast / slow;
+    assert.ok(Math.abs(ratio - 3.73) <= 0.05,
+      `the pre-registered band is 3.73 +/- 0.05 and the weighting gives ${ratio.toFixed(4)} — `
+      + 'outside it means the arithmetic written into COINS.md section 6 is wrong');
+  },
+
+  // C3.1 and C3.2: the mean is exactly 1 and nothing exceeds the ceiling, on
+  // shapes chosen to make those two fight.
+  theMeanWeightIsOneAndNothingExceedsTheCeiling() {
+    const cases = [
+      [1.6, 0.086, 3, 0.001, 12, 0.4],
+      new Array(200).fill(0).map((_, i) => (i === 0 ? 500 : 0.01)),   // one violent period
+      new Array(50).fill(0).map((_, i) => (i % 2 ? 1 : -1)),          // signs must not matter
+    ];
+    for (const moves of cases) {
+      for (const cap of [1.5, 3, 20]) {
+        const w = trainingWeights(moves, { cap });
+        assert.strictEqual(w.reachedMean, true, 'these shapes can all reach an average of 1');
+        assert.ok(Math.abs(w.mean - 1) < 1e-9,
+          `mean must be 1, got ${w.mean} (cap ${cap}, ${moves.length} periods)`);
+        for (const x of w.weights) {
+          assert.ok(x <= cap + 1e-9, `a weight of ${x} broke the ceiling of ${cap}`);
+          assert.ok(x >= 0, 'no weight may be negative');
+        }
+      }
+    }
+    // the sign of the move must not change its weight
+    const a = trainingWeights([2, -3, 1], { cap: 20 }).weights;
+    const b = trainingWeights([-2, 3, -1], { cap: 20 }).weights;
+    assert.deepStrictEqual(b, a, 'a fall of 3% must weigh the same as a rise of 3%');
+    // a ceiling at or below 1 cannot leave the mean at 1, and it says so
+    assert.throws(() => trainingWeights([1, 2], { cap: 1 }), /ceiling must be above 1/);
+
+    // AND THE CASE THAT BROKE THE FIRST VERSION. A period that did not move
+    // weighs nothing, so with four of five periods flat the whole average has
+    // to come from the fifth and no scale can lift it past the ceiling over
+    // five. This must say so and name the ceiling that would work -- never
+    // hand back a mean that is not 1 while calling itself normalised.
+    const thin = trainingWeights([0, 0, 5, 0, 0], { cap: 1.5 });
+    assert.strictEqual(thin.reachedMean, false, 'it must not claim an average it did not reach');
+    assert.ok(Math.abs(thin.needCap - 5) < 1e-9, `a ceiling of five would do it, it says ${thin.needCap}`);
+    assert.ok(/only 1 of 5 periods moved/.test(thin.why), 'and it says why in a sentence');
+    // raise the ceiling to what it named and the average is reachable
+    const ok = trainingWeights([0, 0, 5, 0, 0], { cap: 5 });
+    assert.strictEqual(ok.reachedMean, true);
+    assert.ok(Math.abs(ok.mean - 1) < 1e-9);
+    // nothing moved at all: every period weighs the same rather than dividing by zero
+    const dead = trainingWeights([0, 0, 0], { cap: 20 });
+    assert.deepStrictEqual(dead.weights, [1, 1, 1]);
+  },
+
+  // C3.4: ONE VECTOR, SHARED BY BOTH SETS. The function must not learn which
+  // set it is for -- if it ever needs to, the design was wrong.
+  theWeightIsOneVectorAndKnowsNothingAboutWhichSetItIsFor() {
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'coins.js'), 'utf8');
+    assert.ok(/function trainingWeights\(moves, opts = \{\}\) \{/.test(src),
+      'trainingWeights takes the moves and its options, and nothing that says which set it is for');
+    const at = src.indexOf('function trainingWeights(');
+    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
+    for (const word of ['rising', 'falling']) {
+      assert.ok(!new RegExp(`\\b${word}\\b`).test(body),
+        `the body of trainingWeights mentions "${word}" — it is ONE vector shared by both sets, and a function that knows which side it is weighting has already gone wrong`);
+    }
+    // and the same moves give the same weights however they are asked for
+    const once = trainingWeights([3, 1, 4, 1, 5], { cap: 20 }).weights;
+    const twice = trainingWeights([3, 1, 4, 1, 5], { cap: 20 }).weights;
+    assert.deepStrictEqual(twice, once, 'it is deterministic');
+  },
+
+  // ---- C4: the traditional score ----------------------------------------------
+
+  // C4.1, pre-registered: on a span balanced overall whose last 13% only rises,
+  // the worst tail slice reads at or near 0 while the whole-span balance reads
+  // near 0.5. If they move together, the number is measuring nothing.
+  theWorstTailSliceSeesAOneWayTailThatTheWholeSpanBalanceHides() {
+    const moves = [];
+    for (let i = 0; i < 174; i++) moves.push(i % 2 ? 1 : -1);   // dead balanced
+    for (let i = 0; i < 26; i++) moves.push(1);                 // the last 13% only rises
+    const whole = splitOfTime(moves);
+    assert.ok(Math.abs(whole.balance - 0.5) < 0.07,
+      `the whole span must still read near balanced, got ${whole.balance}`);
+    const worst = worstTailSlice(moves);
+    assert.ok(worst.balance <= 0.02,
+      `the worst slice must see the one-way tail, got ${worst.balance}`);
+    assert.ok(worst.from >= 160, 'and it must point AT the tail, not somewhere else');
+
+    // C4.2: balanced everywhere and both read near a half
+    const even = [];
+    for (let i = 0; i < 200; i++) even.push(i % 2 ? 1 : -1);
+    assert.ok(Math.abs(splitOfTime(even).balance - 0.5) < 1e-9);
+    assert.ok(worstTailSlice(even).balance >= 0.45, 'nothing one-way anywhere, so no slice is one-way');
+  },
+
+  // C4.3: the traditional numbers read an UNTUNED direction. Re-tune the
+  // fall-back percentage and they must not move at all.
+  theTraditionalNumbersDoNotMoveWhenTheTunedPercentageMoves() {
+    const { prices } = builtPath(9, { swing: 17, legLen: 11 });
+    const moves = [];
+    for (let i = 1; i < prices.length; i++) moves.push(((prices[i] - prices[i - 1]) / prices[i - 1]) * 100);
+    const before = { worst: worstTailSlice(moves).balance, drift: balanceDrift(moves, 8).drift };
+    // the tuned typing changes wildly across these percentages
+    const counts = [3, 9, 20].map((p) => typeStretches(prices, p).turns.length);
+    assert.ok(new Set(counts).size > 1, 'the tuned typing must actually differ across these percentages');
+    const after = { worst: worstTailSlice(moves).balance, drift: balanceDrift(moves, 8).drift };
+    assert.deepStrictEqual(after, before, 'the traditional numbers must not read the tuned percentage');
+  },
+
+  // The drift number does what it says: it moves when the balance moves from
+  // part to part, and sits at zero when every part is the same.
+  theDriftMovesOnlyWhenTheBalanceMovesFromPartToPart() {
+    const even = [];
+    for (let i = 0; i < 240; i++) even.push(i % 2 ? 1 : -1);
+    const flat = balanceDrift(even, 8);
+    assert.ok(flat.drift < 1e-9, `every part identical must drift at zero, got ${flat.drift}`);
+    assert.strictEqual(flat.parts.length, 8);
+
+    const swinging = [];
+    for (let p = 0; p < 8; p++) {
+      for (let i = 0; i < 30; i++) swinging.push(p % 2 ? 1 : (i % 2 ? 1 : -1));
+    }
+    assert.ok(balanceDrift(swinging, 8).drift > 0.3,
+      'parts that alternate between balanced and one-way must drift hard');
   },
 };
