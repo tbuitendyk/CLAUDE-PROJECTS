@@ -15,8 +15,11 @@ Three kinds of thing are in this file and they are kept apart on purpose:
   asked for these to be recorded here; recording is not agreeing, and none of it
   is their decision yet.
 
-It is a companion to `SELECTION-DESIGN.md` and does not overlap it. That one is
-about how a setting earns the right to be believed. This one is about how the
+It is a companion to `SELECTION-DESIGN.md` and `VERIFY-DESIGN.md`, and does not
+overlap either. Those two are about how a setting earns the right to be
+believed — the first holds the doctrine and the choosing screens, the second
+holds everything that belongs to **Verify** (they were one document until
+2026-09-12). This one is about how the
 forecasts are trained in the first place. The two are independent and can be
 built in either order.
 
@@ -401,7 +404,7 @@ fall and following it would have scored beautifully there, and against the money
 gate as it stands today it would be indistinguishable from real signal.
 
 **The comparison that separates them is the best of all four**, which is Part 2
-of `SELECTION-DESIGN.md`. This design should not be judged without it.
+of `VERIFY-DESIGN.md`. This design should not be judged without it.
 
 ---
 

@@ -2067,7 +2067,7 @@ function vSetPanelHtml(list, chosen, d) {
 function vTyped(id) { const v = $(id).value; return v === '' ? '' : Number(v); }
 // THE RULE ON THE OTHER UNITS, HELD-BACK WINDOW (V6, 3.88.0): the newest reading
 // in full, earlier ones one line each; every press appends and none is overwritten.
-// WHAT THE RULE DROPPED, ON THE SAME WINDOW (V8, 3.100.0, SELECTION-DESIGN.md
+// WHAT THE RULE DROPPED, ON THE SAME WINDOW (V8, 3.100.0, VERIFY-DESIGN.md
 // Part 7). A count of survivors that cleared a bar is unreadable without the
 // same count for what did not survive. Information only, never a gate.
 function vDroppedHtml(d) {
@@ -4628,7 +4628,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ${bShown(ranked)}
     ${bPager((ranked && ranked.total) || 0, from, 100, 'S3R')}
     <p class="note">Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
-      nothing picked: beat its own null set, best first. Independent voices below members means the committees held
+      nothing picked: beat the kept null money, best first. Independent voices below members means the committees held
       near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
     `}
     <div class="t3break"></div>

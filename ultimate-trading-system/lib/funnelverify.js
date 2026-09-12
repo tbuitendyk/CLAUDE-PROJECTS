@@ -361,7 +361,7 @@ function rideOf(perSetting, { unitKey, keyOf, labels }) {
 // anything. The caller builds one set of comparisons per side for that reason.
 //
 // INFORMATION ONLY. This never gates a set. It is a reading about the choosing,
-// not about the rule, and Part 5 of SELECTION-DESIGN.md is where gating on it
+// not about the rule, and Part 5 of VERIFY-DESIGN.md is where gating on it
 // would be argued.
 function sideRead(rows, controls) {
   const list = rows || [];

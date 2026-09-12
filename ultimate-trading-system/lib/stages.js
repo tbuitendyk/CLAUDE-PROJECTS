@@ -1243,6 +1243,35 @@ const DERIVED = {
   _bar: (r) => (r.agreeBar == null ? 'does not apply' : r.agreeBar === 'own' ? 'its own history' : 'all of them'),
   _sharePct: (r) => (r.share == null ? null : r.share * 100),
 };
+
+// THE ORDER THE STAGE 3 RANKED TABLE ARRIVES IN when no column is picked
+// (owner order, 2026-09-12 -- SELECTION-DESIGN.md, the history budget rule).
+//
+// It reads the TEST-side share -- of the kept scrambled copies of the whole
+// table, how many this row's avg test $ beat -- through the SAME definition
+// the floor on that column reads. It never touches beat/pairs, which are
+// worked out on the held-back stretch.
+//
+// WHY THE DEFAULT ORDER AND NOT JUST THE COLUMN: an order is a choosing act.
+// A table that arrives sorted by a held-back number has spent that stretch on
+// every setting of every set before anybody chose anything -- and the
+// held-back stretch is the one Verify has to be reading for the first time.
+// Sorting or filtering by a held-back column is still one press away and is
+// still counted as a look; what is gone is the held-back reading being the
+// order by default, on every set, chosen by nobody.
+//
+// A row on a set that kept no scrambled copies has no share. It sits below
+// every row that has one, in setting order -- the same place a row with no
+// held-back stretch sat under the order this replaces.
+//
+// USED IN TWO PLACES ON PURPOSE: buildTally sorts the stored list with it, so
+// a tally written from now on holds this order; stage3Ranked sorts with it
+// again when no column is picked, so the sets already on the box read the
+// same way with nothing re-totalled and no reader asking how old a tally is.
+const rankedDefaultOrder = (a, b) => {
+  const share = (r) => { const v = DERIVED._beatNoisePct(r); return v == null ? -1 : v; };
+  return (share(b) - share(a)) || (a.si - b.si);
+};
 const readsField = (field) => DERIVED[field] || ((r) => r[field]);
 function withDerived(r) {
   const out = { ...r };
@@ -4226,7 +4255,7 @@ async function buildTally(doc, pool = null, note = null) {
     });
     acc.perSetting.delete(key);
   }
-  ranked.sort((a, b) => ((b.pairs ? b.beat / b.pairs : -1) - (a.pairs ? a.beat / a.pairs : -1)) || (a.si - b.si));
+  ranked.sort(rankedDefaultOrder);
   const coins = [];
   for (const [key, k] of acc.perCoin) {
     const kTest = k.testN ? k.test / k.testN : null;
@@ -6414,7 +6443,7 @@ function funnelVerifyStart(id, asked = {}) {
 // one line per set for the set list: how many blocks, and what the verdict said
 // ---- V8: what the settings the rule DROPPED did on the same window (3.100.0) ----
 //
-// SELECTION-DESIGN.md Part 7. A count of survivors that cleared a bar is
+// VERIFY-DESIGN.md Part 7. A count of survivors that cleared a bar is
 // unreadable without the same count for what did not survive: if nearly every
 // setting on the board was positive on the held-back window, "all the survivors
 // positive" says the window rose and says nothing about the picking.
@@ -7854,17 +7883,18 @@ function stage3Ranked(id, from, n, filters = null) {
   const t = readTally(id);
   if (!t) return null;
   // The saved sort orders the WHOLE ranked list before the page is cut, so
-  // page one really is the top of everything; the fixed rule the totalling
-  // wrote (beat its own null set, best first) when nothing is picked. The
-  // rows are tagged and untagged around the sort so the cached tally itself
-  // is never reordered.
+  // page one really is the top of everything; rankedDefaultOrder when nothing
+  // is picked -- applied here as well as at totalling time so a tally written
+  // before that order changed reads the same as one written after it, with
+  // nothing re-totalled. The rows are tagged and untagged around the sort so
+  // the cached tally itself is never reordered.
   let rows;
   let sort = [];
   if (doc && Array.isArray(doc.sort) && doc.sort.length) {
     sort = doc.sort;
     rows = applySort(3, t.ranked.map((r, i) => ({ ...r, _i: i })), doc.sort, (a, b) => a._i - b._i);
   } else {
-    rows = t.ranked.map((r, i) => ({ ...r, _i: i }));
+    rows = t.ranked.map((r, i) => ({ ...r, _i: i })).sort(rankedDefaultOrder);
   }
   const of = rows.length;
   rows = applyFilters(3, rows, filters);

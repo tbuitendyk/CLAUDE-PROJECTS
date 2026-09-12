@@ -378,7 +378,7 @@ function pinnedFilesFor(pin) {
   return got;
 }
 // THE SHAPE OF ONE PASS, WORKED OUT WITHOUT TOUCHING A CANDLE (3.111.0,
-// SELECTION-DESIGN.md Part 1). Its own function for three reasons: the screen
+// VERIFY-DESIGN.md Part 1). Its own function for three reasons: the screen
 // prints the whole plan BEFORE anything is run, a test can walk every pass of a
 // real history and prove none of them reaches whatever is sealed, and the
 // arithmetic then lives in one place instead of once in the engine and again in
@@ -452,7 +452,7 @@ async function unitChunks(combo, geometry, p) {
     workChunks = workChunks.slice(0, nAll - nReserve);
     retrainTrain = Math.round(nAll * 0.72);
   }
-  // ONE PASS OF THE FIVE (3.111.0, SELECTION-DESIGN.md Part 1). The sealed
+  // ONE PASS OF THE FIVE (3.111.0, VERIFY-DESIGN.md Part 1). The sealed
   // reserve comes off exactly as reserve61 seals it, and appears in no pass.
   //
   // WHAT IS LEFT IS CUT INTO TWICE AS MANY PARTS AS THERE ARE PASSES, so the
@@ -470,7 +470,7 @@ async function unitChunks(combo, geometry, p) {
   // of this unit splits it. A pass has no held-back slice of its own: its
   // JUDGING stretch takes that slot, which is what lets everything downstream
   // price it without knowing a pass happened.
-  // ONE PASS OF THE FIVE (3.111.0, SELECTION-DESIGN.md Part 1).
+  // ONE PASS OF THE FIVE (3.111.0, VERIFY-DESIGN.md Part 1).
   //
   // A PASS IS NOT A LAYOUT, IT IS A MODIFIER ON ONE (3.111.1). Whatever the set
   // was built on has already sealed what it seals, a few lines above -- 13% for

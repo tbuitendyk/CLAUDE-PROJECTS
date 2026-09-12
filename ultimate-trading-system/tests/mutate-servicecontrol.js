@@ -129,6 +129,21 @@ const GUARDS = [
     'theRankedTableSortsByOnePickedColumn', 'the picked column saves but the ranked table silently keeps its own order — the screen claims one order and shows another'],
   [path.join(ROOT, 'lib', 'stages.js'), "  if (stage === 3 && spec.length > 1) throw new Error('one column at a time on this table');", '',
     'theRankedTableSortsByOnePickedColumn', 'two saved columns reach a table whose buttons promise one, and what ordered the page becomes unreadable'],
+  // THE ORDER THE STAGE 3 RANKED TABLE ARRIVES IN (3.114.0). Three guards
+  // because there are three separate ways to lose it: the stored order, the
+  // served order, and the reading the order is worked out from. Each names the
+  // test that READS THE LINE IT BREAKS -- the first two are told apart by which
+  // of the two sorts they remove, and only the third can see the comparator.
+  [path.join(ROOT, 'lib', 'stages.js'), '  ranked.sort(rankedDefaultOrder);', '',
+    'theRankedTableSortsByOnePickedColumn', 'the totalling stops ordering what it writes, and the stored settings sit in whatever order the accumulator happened to hold them'],
+  [path.join(ROOT, 'lib', 'stages.js'),
+    '    rows = t.ranked.map((r, i) => ({ ...r, _i: i })).sort(rankedDefaultOrder);',
+    '    rows = t.ranked.map((r, i) => ({ ...r, _i: i }));',
+    'aSetTotalledBeforeThisOrderExistedStillReadsInIt', 'every set already on the box goes back to being served in the order it was totalled in, and the line under the table names an order the screen is not showing'],
+  [path.join(ROOT, 'lib', 'stages.js'),
+    '  const share = (r) => { const v = DERIVED._beatNoisePct(r); return v == null ? -1 : v; };',
+    '  const share = (r) => (r.pairs ? (r.beat / r.pairs) * 100 : -1);',
+    'theRankedTablesOwnOrderNeverReadsTheHeldBackStretch', 'the table goes back to arriving in an order worked out from the held-back stretch, on every set, chosen by nobody'],
   // RE-ANCHORED 2026-08-28: cellForUnits went with the per-committee-size
   // agreement counts when the share dial replaced them, so this guard had been
   // matching nothing. What the count must still ride is the launch's own

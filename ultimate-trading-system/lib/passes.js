@@ -1,4 +1,4 @@
-// passes.js -- THE FIVE PASSES (SELECTION-DESIGN.md Part 1): one coin and
+// passes.js -- THE FIVE PASSES (VERIFY-DESIGN.md Part 1): one coin and
 // shape, its forecasts TRAINED AGAIN with the boundary sliding forward, and
 // judged each time on the stretch immediately after that pass's own test
 // slice.

@@ -1071,21 +1071,33 @@ module.exports = {
       fs.mkdirSync(SETS_DIR, { recursive: true });
       fs.writeFileSync(file, JSON.stringify(doc));
       const w = rowstore.writer(id, 'records');
-      const mk = (si, tHours, hold, beat) => ({
+      const mk = (si, tHours, hold, beat, noiseTest) => ({
         si, label: `q2/6 x t${tHours}h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false,
         bandPct: 2, entry: 'breakout', gate: 'directional', dMult: 1.5, tHours, trailMult: null, armMult: null,
         quorum: 2, members: 6, pnl: 10, trades: 3,
         holdout: { pnl: hold, trades: 4, stops: 1, vsAlwaysLong: 2 },
-        beat, pairs: 9, lead: 1.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+        beat, pairs: 9, lead: 1.5, noiseTest, noiseHold: null,
+        u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
       });
-      w.push(mk(0, 17, 30, 3));
-      w.push(mk(1, 65, -4, 8));
-      w.push(mk(2, 41, 12, 5));
+      // EVERY ROW MAKES THE SAME TEST MONEY (10), so what separates them is
+      // only the scrambled copies each one beat. The three orders are made
+      // deliberately different from each other so this cannot pass by accident:
+      //   by the kept scrambled copies (test)  t41 3 of 4, t17 2 of 4, t65 1 of 4
+      //   by beat its own null set (held-back) t65 8 of 9, t41 5 of 9, t17 3 of 9
+      //   by setting number                    t17, t65, t41
+      w.push(mk(0, 17, 30, 3, [1, 2, 30, 40]));
+      w.push(mk(1, 65, -4, 8, [1, 20, 30, 40]));
+      w.push(mk(2, 41, 12, 5, [1, 2, 3, 40]));
       w.close();
       await stages.buildTally(doc);
 
-      // nothing picked: the totalling's own order — beat share, best first
-      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.tHours), [65, 41, 17]);
+      // NOTHING PICKED: the totalling's own order -- beat the kept null money,
+      // best first, which is a TEST reading. Not beat its own null set, which
+      // is worked out on the held-back stretch and would give [65, 41, 17].
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.tHours), [41, 17, 65]);
+      // and the stored list holds that same order, so the tally a walk is
+      // handed and the table the owner reads cannot be two orders
+      assert.deepStrictEqual(stages.readTally(id).ranked.map((r) => r.tHours), [41, 17, 65]);
       // one column picked: the whole list reorders, and the pick echoes back
       stages.setSetSort(id, [{ key: 'avgHold', dir: 'desc' }]);
       const byHold = stages.stage3Ranked(id, 0, 10);
@@ -1103,6 +1115,131 @@ module.exports = {
     } finally {
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // THE TABLE'S OWN ORDER CANNOT BE MOVED BY THE HELD-BACK STRETCH (owner
+  // order, 2026-09-12; SELECTION-DESIGN.md, the history budget rule). The
+  // positive half is above: the kept scrambled copies -- a test reading --
+  // decide it. This is the negative half, and it is the one that matters,
+  // because the fault it guards against is an order nobody chose.
+  //
+  // Three sets, identical in everything the test window sees and as different
+  // as they can be made in everything the held-back window sees. If any part
+  // of the held-back reading reaches the order, at least two of the three come
+  // back different.
+  async theRankedTablesOwnOrderNeverReadsTheHeldBackStretch() {
+    const stamp = Date.now().toString(36);
+    const made = [];
+    const build = async (tag, rows) => {
+      const id = `s3-test-${stamp}-${tag}`;
+      const file = path.join(SETS_DIR, `${id}.json`);
+      made.push({ id, file });
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({
+        id, stage: 3, seq: 999986, name: `S3 #${tag}`, status: 'done', createdAt: new Date().toISOString(),
+        plan: { units: 1, settings: rows.length }, params: { nullN: 9 },
+        recordsVersion: stages.RECORDS_V,
+      }));
+      const w = rowstore.writer(id, 'records');
+      for (const [si, tHours, hold, beat, noiseTest] of rows) {
+        w.push({
+          si, label: `q2/6 x t${tHours}h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto',
+          weekdaysOnly: false, bandPct: 2, entry: 'breakout', gate: 'directional', dMult: 1.5, tHours,
+          trailMult: null, armMult: null, quorum: 2, members: 6, pnl: 10, trades: 3,
+          holdout: { pnl: hold, trades: 4, stops: 1, vsAlwaysLong: hold },
+          beat, pairs: 9, lead: hold, noiseTest, noiseHold: null,
+          u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+        });
+      }
+      w.close();
+      await stages.buildTally({ id });
+      return stages.stage3Ranked(id, 0, 10).rows.map((r) => r.tHours);
+    };
+    try {
+      // the same three test readings both times: t41 beats 3 of its 4 kept
+      // scrambled copies, t17 beats 2, t65 beats 1
+      const nA = [1, 2, 30, 40];       // setting 0, t17 -- 2 of 4
+      const nB = [1, 20, 30, 40];      // setting 1, t65 -- 1 of 4
+      const nC = [1, 2, 3, 40];        // setting 2, t41 -- 3 of 4
+      const kind = await build('hk', [[0, 17, 30, 3, nA], [1, 65, -4, 8, nB], [2, 41, 12, 5, nC]]);
+      const cruel = await build('hc', [[0, 17, -900, 9, nA], [1, 65, 800, 0, nB], [2, 41, 0, 4, nC]]);
+      assert.deepStrictEqual(kind, [41, 17, 65], 'the kept scrambled copies order it');
+      assert.deepStrictEqual(cruel, kind,
+        'held-back money, its comparisons and its lead were all turned upside down and the order did not move');
+
+      // AND WHERE THERE IS NOTHING TEST-SIDE TO ORDER BY -- a set that kept no
+      // scrambled copies, which is every set totalled before they existed --
+      // the fallback is the setting number, never the held-back reading.
+      const bare = await build('hn', [[0, 17, -900, 9, null], [1, 65, 800, 0, null], [2, 41, 0, 4, null]]);
+      assert.deepStrictEqual(bare, [17, 65, 41],
+        'no kept scrambled copies: setting order, not the order the held-back comparisons would give');
+    } finally {
+      for (const m of made) {
+        try { fs.rmSync(m.file, { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(path.join(SETS_DIR, `${m.id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+        try { fs.rmSync(rowstore.storeDir(m.id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      }
+    }
+  },
+
+  // A SET TOTALLED BEFORE THIS ORDER EXISTED READS IN IT ANYWAY (3.114.0).
+  // This is why the order is applied in two places and not one. Every stage 3
+  // set on the box was totalled while the stored order was worked out from the
+  // held-back stretch, and re-totalling them to change a sort would be hours of
+  // compute for a display order. So the table sorts what it reads as well.
+  //
+  // The tally is written back with its settings in a deliberately wrong order
+  // and the read has to put them right. Nothing in the file says which order it
+  // was written in -- so this cannot be passing by reading a marker, and no
+  // reader has to ask how old a set is (RULE NINE).
+  async aSetTotalledBeforeThisOrderExistedStillReadsInIt() {
+    const id = `s3-test-${Date.now().toString(36)}-ro`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    const tf = path.join(SETS_DIR, `${id}-tally.json.gz`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({
+        id, stage: 3, seq: 999985, name: 'S3 #ro', status: 'done', createdAt: new Date().toISOString(),
+        plan: { units: 1, settings: 3 }, params: { nullN: 9 }, recordsVersion: stages.RECORDS_V,
+      }));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, tHours, noiseTest) => ({
+        si, label: `q2/6 x t${tHours}h · argmax auto 24/7`, decision: 'argmax', bandMode: 'auto',
+        weekdaysOnly: false, bandPct: 2, entry: 'breakout', gate: 'directional', dMult: 1.5, tHours,
+        trailMult: null, armMult: null, quorum: 2, members: 6, pnl: 10, trades: 3,
+        holdout: { pnl: 5, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat: 4, pairs: 9, lead: 1, noiseTest, noiseHold: null,
+        u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+      });
+      w.push(mk(0, 17, [1, 2, 30, 40]));      // beats 2 of 4
+      w.push(mk(1, 65, [1, 20, 30, 40]));     // beats 1 of 4
+      w.push(mk(2, 41, [1, 2, 3, 40]));       // beats 3 of 4
+      w.close();
+      await stages.buildTally({ id });
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.tHours), [41, 17, 65],
+        'the freshly totalled set reads in the order this release writes');
+
+      // REWRITE THE STORED FILE with the settings in the wrong order, exactly
+      // as a set totalled under an older order sits on disk today. The head
+      // line and the coins lines are put back untouched, so only the order of
+      // the settings differs from what was written a moment ago.
+      const lines = zlib.gunzipSync(fs.readFileSync(tf)).toString('utf8').split('\n');
+      const head = JSON.parse(lines[0]);
+      const settings = lines.slice(1, 1 + head.ranked);
+      assert.strictEqual(settings.length, 3, 'the fixture holds three settings');
+      const rest = lines.slice(1 + head.ranked);
+      const wrong = [settings[1], settings[0], settings[2]];      // 65, 41, 17 -- none of them right
+      fs.writeFileSync(tf, zlib.gzipSync(Buffer.from([lines[0], ...wrong, ...rest].join('\n'), 'utf8')));
+      const then = new Date(Date.now() + 4000);
+      fs.utimesSync(tf, then, then);          // the read remembers a file by its stamp and size
+
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.tHours), [41, 17, 65],
+        'a set whose stored order is wrong is still served in the order the table promises');
+    } finally {
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(tf, { force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
     }
   },

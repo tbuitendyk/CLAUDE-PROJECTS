@@ -625,7 +625,7 @@ app.post('/api/funnel/set/:id/others', (req, res) => {
 });
 app.get('/api/funnel/set/:id/others/status', (req, res) => res.json(stages.funnelOthersStatus(req.params.id)));
 // WHAT THE SETTINGS THE RULE DROPPED DID ON THE SAME WINDOW (V8, 3.100.0,
-// SELECTION-DESIGN.md Part 7). It prices nothing -- every figure is already on
+// VERIFY-DESIGN.md Part 7). It prices nothing -- every figure is already on
 // the board -- so it answers in one request rather than being polled. It is
 // still a read of the held-back window, so it is a counted look, and it is
 // information only: it never gates a set.

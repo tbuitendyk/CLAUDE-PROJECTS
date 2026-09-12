@@ -1,4 +1,4 @@
-// THE PASSES (SELECTION-DESIGN.md Part 1) -- one coin and shape, trained again
+// THE PASSES (VERIFY-DESIGN.md Part 1) -- one coin and shape, trained again
 // with the boundary sliding forward, judged each time on the stretch after its
 // own test slice.
 //

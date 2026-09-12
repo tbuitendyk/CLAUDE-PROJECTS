@@ -1015,7 +1015,7 @@ module.exports = {
     assert.ok(/not known<\/span>/.test(ui) && /'no figure'/.test(ui), 'an absent figure reads not known, never no');
   },
 
-  // WHAT THE RULE DROPPED (V8, 3.100.0, SELECTION-DESIGN.md Part 7). A count of
+  // WHAT THE RULE DROPPED (V8, 3.100.0, VERIFY-DESIGN.md Part 7). A count of
   // survivors that clear a bar is unreadable without the same count for what
   // did not survive. The reading this defends is the one the failed set of
   // 2026-09-09 never got: 199 of 199 survivors positive on the held-back

@@ -1,10 +1,46 @@
-# Verify, re-pointed at a Stage 4 record set
+# Verify: what was built, and what is still to come
 
-Design proposal, 2026-09-07. Nothing here is built. Every item waits for its own `GO NOW!`.
+**Restructured 2026-09-12** (owner `GO NOW!`), when the tabs were put in the
+order the work is actually done in — `Data · Coins · Sweep · Boards · Funnel ·
+History · Tune · Verify · Greenlight · Help`. This is now the one document for
+the **Verify** tab, in two halves.
+
+**PART ONE — WHAT WAS BUILT** is sections 1 to 9 below. It was written as a
+proposal on 2026-09-07 and then built: 3.86.0 through 3.92.0 under the owner's
+`LOOP NOW!` of that night, plus 3.86.1, 3.89.1 and 3.92.1. **It is written in
+the future tense throughout because it was written before the work, so read it
+as the record of what shipped, not as a plan for what might.** Section 9 is the
+step-by-step record, and where the built thing differs from the proposal it
+says so there.
+
+**PART TWO — WHAT IS STILL TO COME** is Parts 1, 2, 5, 6, 7 and 8, moved here
+whole from `SELECTION-DESIGN.md` on the same day. **Their numbers did not
+change**, so every pointer to "Part N" in the code, the tests and the other
+documents still means the same part; only the file moved. Parts 2 and 7 are
+marked BUILT in their own headings. Parts 1, 5, 6 and 8 are not built.
+
+**Two things are deliberately NOT repeated here**, because one copy of each is
+the only way they stay true:
+
+- **THE HISTORY BUDGET RULE**, in `SELECTION-DESIGN.md`. It governs every part
+  in both documents — which stretch of history may be spent on what, and how
+  often. Read it before any part below.
+- **The vocabulary table**, also in `SELECTION-DESIGN.md` under "Read the words
+  first". Every word used here is on it.
+
+**Parts 3 and 4 stayed in `SELECTION-DESIGN.md`**, because they belong to
+**Boards** and the **Funnel** — the screens where choosing happens — not here.
 
 How names are written: a label in double quotes is on a screen today, quoted character for character from `SCREEN-WORDS.md`, with the tab named where it is not obvious. A label marked (proposed) is on no screen yet and may not be spoken of as one until it is deployed, fingerprinted and the word list regenerated. Where a name from the code cannot be avoided it is in code font and explained in plain words at that spot.
 
 How this was checked: I read the code, ran five read-only probe scripts against the box (the set listing, its heading, its recorded steps, the record-set inventory, and the rule replayed on its board), and then ran a review pass of 39 independent readers, designers, judges and refuters over the code. Two claims I had made were corrected by that pass and are corrected here.
+
+---
+
+# PART ONE — WHAT WAS BUILT (3.86.0 to 3.92.0)
+
+*Written 2026-09-07 as a proposal, in the future tense, and built that night
+and the following days. Section 9 records each step as it landed.*
 
 ## Summary
 
@@ -353,4 +389,749 @@ The owner's words: "start with writing any date ranges that are missing from rec
 - **Deploys are parked, and stay parked.** The box serves 8e26910 (3.86.1). At 02:40 UTC the runner's own certificate, read through the proxy tunnel, was still the one that expired at 00:35 UTC (a first read at 02:37 UTC saw a fresh certificate and was wrong: it was the sandbox's egress gateway's, not the runner's). The gated chain asked the box and refused on no answer, as it is built to. Once the owner renews the certificate the chain is: the gated deploy on `busy: none`, the fingerprint into `SERVED.json`, the word lists, the narrow tests, the record commit. Until then no label named in steps 2 to 8 is on the owner's screen, and the word lists do not carry them.
 - **Parked findings for the owner:** ~~lengthening the stage-engine check's span (step 2)~~ — ordered and done, 3.92.1 (decision 83); the walk's across counts (step 3); the word list's brace-less-helper quirk (step 5); the stage launches not refusing during a rebuild or a ride; tasks #47 and #54. Nothing in the loop pressed a verdict, a grade, a capture, a scan or an activation on the owner's box.
 
-Nothing here is built. Every item waits for `GO NOW!` for that batch — or `LOOP NOW!` to process the entire document without interruption. A loop over this document starts only once section 8 is answered, because a loop may not decide for the owner; and what RULE SIX always stops still stops, so nothing that arms real money (section 6, the live path) is switched on inside it.
+*That closing line said "Nothing here is built. Every item waits for `GO NOW!`" — true on 2026-09-07 and false ever since. Everything in PART ONE was built and every deploy in the parked chain above has since gone out. The one thing that is still true is the last clause, and it is permanent: nothing that arms real money (section 6, the live path) is switched on inside a loop, or outside one, without the owner. PART TWO below is where the unbuilt work now lives.*
+
+---
+
+# PART TWO — WHAT IS STILL TO COME
+
+Six parts, moved here whole from `SELECTION-DESIGN.md` on 2026-09-12, with
+their numbers unchanged. They are in number order, not build order.
+
+| Part | State |
+|---|---|
+| 1 — judge on several stretches, not one | the engine is built and reachable from no screen; the screen is next |
+| 2 — the bar is the best of all four comparisons | BUILT, 3.100.0 and 3.101.0 |
+| 5 — set the bar for the whole search | blocked |
+| 6 — write down the claim before the stretch is opened | blocked |
+| 7 — what the settings you threw away did on held-back | BUILT, 3.100.0 |
+| 8 — judge the thing you would trade | not built |
+
+**Parts 3 and 4 are not here.** They belong to **Boards** and the **Funnel**
+and are written in `SELECTION-DESIGN.md`, along with the doctrine every part
+below has to obey.
+
+---
+
+# Part 1 — judge on several stretches, not one, on Verify
+
+> **Reshaped 2026-09-09 by the owner, and the reshaping is the good part.** My
+> version re-ran the whole sweep five times and I said the cost was the thing
+> most likely to sink it. The owner's version runs on the ONE `unit` the
+> **Funnel** already narrowed to — one coin, its companions and one shape. That
+> is a fraction of a full stage 1 sweep, which trains every combination in the
+> universe. The blocker I put here has largely gone with it.
+
+> **BUILDING, 2026-09-11.** The owner: "i don't care about timing retraining for
+> the Part 1 as some kind of blocker. just queue up part 1 next" — so the timing
+> measurement is withdrawn as a blocker and the cost is discovered by building
+> it. And the open question this part raised is ANSWERED by the owner: **a
+> pass's judging stretch is NOT a counted look.** Five stretches never opened
+> before are five fresh rolls, not five spends of the one look; the single
+> verdict's held-back read stays the counted one.
+
+### 1.0 The rule this is judged by, written before any of it was built
+
+Written first and on purpose, so that no number produced later can be talked
+into being a success (RULE SIX's discipline, which is worth keeping whether or
+not a loop is running).
+
+**Done means all six, and any one of them failing means not done:**
+
+1. **Five passes on ONE coin and shape, and the reserve in none of them.** A
+   test asserts no pass's judging stretch overlaps the reserve, on real stored
+   ranges — not on a comment saying it does not.
+2. **Every score is against the copy count the ORIGINAL run used at that
+   stage**, read off the set, never typed. A test changes a stored count and
+   watches the reading move; if it does not move, the count is not being read.
+3. **One retrain per pass, shared by both sides.** The settings the rule kept
+   and the sample it dropped are priced against the SAME retrained forecasts.
+   If the retrain happens twice per pass, the control is not free and the part
+   is built wrong.
+4. **No pass stamps a counted look.** A test runs the passes and asserts the
+   set's held-back-read stamp is exactly what it was before. This is the
+   owner's ruling and it is the one thing here that cannot be got back if it
+   ships wrong.
+5. **The block draws ABOVE the single verdict.** A weaker number read first
+   becomes the number that is remembered.
+6. **Green suite, a Help entry for every new control the Help tab can see,
+   every new rendered label on the word list regenerated from what the box
+   serves, a deploy whose health check passes, and a mutation guard for each of
+   1 to 5** — because a behaviour with no guard is a behaviour that reverts
+   quietly.
+
+### 1.0a What I expect to go wrong, written before looking
+
+- **The retrain may not take an arbitrary boundary.** If stage 1's stretch
+  layout is fixed in the engine rather than passed in, then sliding it is a
+  change to the engine and not a new caller — a much bigger release than one
+  Verify block, and it would put every record set on the box in question. If
+  that is what the code says, the honest move is to PARK the sliding boundary,
+  say so, and put it to the owner (RULE ZERO) rather than change the engine
+  unasked.
+- **The copies almost certainly cannot be carried between passes**, because a
+  copy set is keyed to the window it was built on. So the cost is five times
+  (retrain + copies + pricing), which may be hours. It has to be a started and
+  polled job with real progress, never a held request — the same contract the
+  other Verify reads already use.
+- **"The bare unit at stage 1" may have no number today.** If no single stored
+  figure means that, one has to be chosen. That is a small choice inside an
+  approved step, so it is mine to make and to record here — but it must be
+  built from something already stored, never from a new measurement invented to
+  make the level scoreable.
+- **Twenty copies give a resolution of one part in twenty**, so a pass can only
+  be stated in steps of five percent. Keeping the original counts is right for
+  comparability and it is still coarse. Saying "cleared four of five passes" off
+  a five-percent grid is a coarser claim than it sounds.
+
+### 1.0b What the code actually says, read before building
+
+Six readers mapped the engine and six adversarial checkers tried to refute
+them: 184 facts confirmed, 51 claims thrown out. What survived, and what it
+changes:
+
+**The sliding boundary is nearly free, but not quite free.**
+`splitAndLabelAt(chunks, branch, nTrain)` already takes the training length
+from its caller and is already in production for the History retrain. What it
+does NOT give is a third stretch: it returns `holdChunks: []`, and it labels
+only the chunks handed to it. So a pass is built by slicing the chunk list into
+"everything before the judge" and "the judge", calling `splitAndLabelAt` on the
+first, and labelling the judge with the band that call RETURNS. The band comes
+from the training slice and never from the judge — that is not a nicety, it is
+the difference between a judgement and a rehearsal. `unitChunks` decides the
+layout internally from two literal names, so this is one added branch there,
+additive, changing no existing layout.
+
+**The copies need no new builder.** `keepN` and `keepFrom` beside the payload
+give each pass its copies on that pass's own stretches, the way the noise top-up
+already does. Independent draws per pass come from the TAG `dealOrder` already
+takes as an argument — a new tag per pass, not a new random source.
+
+**Levels 1 and 2 have no stored number to read, as §1.0a feared.** What exists
+to re-derive is the forecast score, and every one of its five call sites scores
+on TEST labels — there is no hold-stretch scorer. So the level is the forecast
+score on that pass's judge labels: the same arithmetic, new labels, nothing
+invented.
+
+**The cost is much larger than the first reading said, and it is worth saying
+out loud.** One boost member is ten seconds when the fitting stops early and
+about 134 when it keeps improving; a triple-coin unit's committee is 10 to 22
+minutes of fitting at full CPU, not the 43 seconds a noise-floor measurement
+suggested. Five passes is therefore roughly **one to two hours** of retraining
+alone, before any pricing, and a triple-coin unit reloads its candle maps every
+pass because the cache is four deep and never hits for three coins. This has to
+be a started-and-polled job with real progress, and the owner should know the
+figure even though they have ruled the measurement is not a blocker.
+
+**Where it goes:** `public/construct.js:2044`, between the press row and the
+verdict blocks — which satisfies "above the single verdict" without pushing the
+set picker down. The watcher to copy is the one the ride uses, paired with a
+progress-bearing status door; the verdict's own watcher carries no progress and
+is the wrong shape. Eleven tests scan Verify's source, one of them pinning three
+substrings in order, so they move with this.
+
+### 1.0c THE FAULT IN THIS PART'S OWN TABLE, found before building it
+
+The five-pass table above is wrong in two ways, and both were found by working
+its arithmetic back against the engine rather than by being told.
+
+**One: it reaches into the reserve.** The table takes the judging width as
+`round(non-reserve / 10)` = 232, and pass 5 then ends at chunk 2319 of 2315
+non-reserve chunks — four chunks inside the sealed reserve this part promises in
+its own words never to touch. Taking the width as `floor` gives 231 and letting
+the last judge absorb the remainder ends it exactly on the boundary. Fixed here.
+
+**Two, and it is the one that matters: every judging stretch is already spoken
+for.** The owner's sets are `reserve61`, which seals 13% and then splits the
+rest 70/15/15 — which is where the name 61/13/13/13 comes from. For the owner's
+set that puts the original run's fitting and tuning on chunks 1 to 1968, its
+held stretch at 1969 to 2315, and the reserve beyond. Against that:
+
+| pass | judges | of that, inside the already-spent held stretch | inside what the original run chose the dials on |
+|---|---|---|---|
+| 1 | 1156-1386 | 0 | all 231 |
+| 2 | 1387-1617 | 0 | all 231 |
+| 3 | 1618-1848 | 0 | all 231 |
+| 4 | 1849-2079 | 111 | 120 |
+| 5 | 2080-2315 | all 236 | 0 |
+
+**So the owner's ruling that a judging stretch is not a counted look holds for
+passes 1 to 3 and fails for 4 and 5 on its own stated grounds.** Pass 5's
+judging stretch IS the held stretch the single verdict already read. It is not a
+stretch never opened before.
+
+**What this does to each level.** Levels 1 and 2 are clean on all five passes:
+each pass retrains, so its judge is genuinely unseen by THAT pass's forecasts,
+and there are no dials to contaminate. That is the half this document says
+cannot be answered today, and it works. Level 3 is not out-of-sample on any
+pass: retraining the forecasts does not de-contaminate the DIALS, which were
+chosen knowing chunks 1 to 1968 — inside passes 1 to 4's judges — while pass 5
+judges them on a window already spent. §1's own assumption that "cleared it five
+times is a claim about the dials" is right and does not go far enough: the dials
+were picked inside four of the five stretches they are being judged on.
+
+**What is built because of it:** every pass's row prints how much of its judging
+stretch fell inside the selection window and how much was the already-spent held
+stretch, and the level-3 line says plainly that it is not an out-of-sample
+reading. A five-pass record that reads as five confirmations when it is none is
+the exact fault this document exists to prevent, and a screen that knows the
+number and does not say it is worse than one that never worked it out.
+
+**Left for the owner** (and not decided by a session): whether level 3 earns its
+compute at all, given it cannot be out-of-sample, or whether the kept-against-
+dropped difference should carry that question instead — where the contamination
+falls on both sides equally and the gap still means something.
+
+## The problem
+
+A single held-back stretch is one roll of the dice. Whatever that stretch
+happened to do dominates the answer, and nothing separates a setting that works
+from a setting that suited that stretch. Once opened it is spent — a second look
+at the same stretch is not a second roll.
+
+## What is on Verify today
+
+Read out of the word list generated from what the box serves. Three blocks.
+
+**The verdict.** "The verdict on a `Stage 4 record set`". Pressed with
+`Read the rule against nothing on the held-back window`. Two boxes set it:
+`bar share %` and `noise must lose at least %`. It reads what the `survivors`
+made on the held-back window against four comparisons, of which two gate —
+`buying the coin and going away` and `shorting it and going away` — while
+`being long every period` and `being short every period` are shown and, in the
+page's own words, "the window's direction and never a gate". Around it sit
+`Rules declared before the numbers:`, `Looks at the held-back window before any
+stamp:`, `Every survivor against its own copies:` with its by-chance count, the
+`sanity:` line on the scrambled copies, and `Line A` and `Line B, the bound on
+shopping`.
+
+**The other units.** `Read the rule on the other units' held-back windows` runs
+the same rule on every other coin-and-shape `unit` of the stage 3 set this was
+cut from, each on its own held-back window against its own copies. Two counts,
+information only, never a gate. About five seconds a `unit`.
+
+**The ride.** `Work out the held-back ride` gives, per survivor,
+`largest drawdown $`, `worst trade $`, `best trade $`, `trades won`,
+`stopped out`, `gross per trade $` and `money by third`, beside the same on the
+test window. Information only, and every press is a counted look.
+
+Two things worth noticing before adding anything. Verify already refuses to sort
+its tables, and says why: "There is no sort on this table: a sort is a look."
+That is Part 3's principle, already applied here. And
+`Rules declared before the numbers:` is already Part 6 in embryo.
+
+## The change, as an added block on Verify
+
+Take the one `unit` the **Funnel** worked on. Retrain it five times with the
+boundary sliding forward, and score three things on each pass against the same
+copy counts the original run used at each stage. Nothing touches the reserve.
+
+For the owner's set the passes divide the coin's history like this. The reserve
+stays sealed at 346 chunks and appears in no pass.
+
+| pass | train | test | judge |
+|---|---|---|---|
+| 1 | 954 | 205 | 232 |
+| 2 | 1,145 | 246 | 232 |
+| 3 | 1,336 | 287 | 232 |
+| 4 | 1,527 | 328 | 232 |
+| 5 | 1,719 | 368 | 232 |
+
+Train and test do exactly what they do now. The judge column is that pass's
+held-back stretch, opened only after the choosing is finished.
+
+**Scored on each pass, at three levels:**
+
+1. the bare `unit` at stage 1, against that stage's own copy count
+2. the bare `unit` at stage 2, against that stage's own copy count
+3. the `survivors` at stage 3, against that stage's own copy count
+
+Splitting one and two from three splits a question that is currently answered as
+one number: do the forecasts still work on data they never saw, and separately,
+do the trade settings still work. Today you cannot tell which half failed.
+
+**And the control, which is nearly free.** The **Funnel** kept 199 settings of
+2,752 for this set. Put a sample of the other 2,553 through the same five
+passes. The expensive part is retraining the `unit`, and the kept and the
+rejected share those same trained forecasts, so adding the rejected ones is only
+more pricing against models already paid for. If the rejected do as well as the
+`survivors` across five passes, the picking added nothing and the 199 are just
+the top of a pile that was all doing well, not a selection.
+
+The same control has a much cheaper form that needs none of this built, on the
+held-back stretch that already exists. That is Part 7, and it should be built
+first.
+
+## What gets ADDED to Verify
+
+**Controls.**
+
+- One press to run the passes. It needs a name and I am not going to invent one
+  here; the existing presses on the page are phrased as instructions, which is
+  the pattern to follow.
+- A box for how many passes.
+- A box for how many rejected settings to sample, with none as a legal value.
+- Nothing else. The copy counts are read from the stages the set was built by,
+  never typed, so they cannot drift from what the original run used.
+
+**Results.** One table, one row per pass, showing the train, test and judge
+chunk counts and dates for that pass, then for each of the three levels: what
+was made, what the copies made, and `beats N of K`. Under it, a single line:
+cleared on how many of the passes. Beside each survivor figure, the same figure
+for the rejected sample.
+
+## What gets REMOVED
+
+Nothing. I looked for something and there isn't anything.
+
+The single verdict stays, because it is what History's reserve grade is keyed to
+and because it is the one reading on the real held-back stretch.
+`The rule on the other units` stays, because it answers a different question:
+the same rule elsewhere, one window each, rather than this `unit` across five.
+The ride stays.
+
+**One thing should move rather than go.** The five-pass record is stronger
+evidence than the single verdict, so it should sit above it on the page. A
+weaker number read first becomes the number people remember.
+
+## What it needs from the other parts
+
+Part 2, because a record of clearing a soft bar is a record of nothing. And it
+needs one question answered that I cannot answer: **is each pass's judging
+stretch a counted look?** Each one is a stretch never opened before, so the
+natural reading is no. That has to be decided rather than assumed, and it
+belongs with Part 6.
+
+## What I am assuming
+
+- **That five retrains of one `unit` is affordable.** Far more likely than my
+  version, but still unmeasured. One retrain of this `unit` is the number to get.
+- **That claiming the same six dials is the same claim on every pass.** Each
+  pass retrains, so the forecasts behind a setting on pass five are not those
+  behind it on pass one. "Cleared it five times" is a claim about the dials.
+  That is probably what you want, since the dials are what carries forward, but
+  it should be said rather than assumed.
+- **That the copy counts hold up at five passes.** Twenty copies gives a
+  resolution of one part in twenty, so a pass can only be stated in steps of
+  five percent. Keeping them as the original run had them is right for
+  comparability. It is still coarse and worth knowing.
+
+## What it costs
+
+Five retrains of one `unit`, plus five sets of scrambled copies, plus pricing
+the kept and the sampled rejected settings on each pass. The copies have to be
+rebuilt per pass from that pass's own stretches and cannot be carried over.
+
+This is far cheaper than the version I first wrote, and it is the only part of
+this document whose cost I still cannot put a number on.
+
+# Part 2 — make the bar the best of all four comparisons
+
+> **BUILT AND DEPLOYED, 3.100.0 (the gate) and 3.101.0 (the table).** The gate
+> is the best of all four. The four are shown on **Verify** as a table with a
+> heading on every column, replacing the prose line that carried them, after the
+> owner found that line flipping its subject halfway through. Nothing below is
+> outstanding.
+>
+> **This part was wrong in the first draft and I told the owner the wrong thing
+> in conversation before writing it.** I said the money gate was buying the coin
+> and going away, and that this was a soft one-sided bar. It is not one-sided.
+> What the code actually requires is all three of: money above zero, beats
+> `buying the coin and going away`, and beats `shorting it and going away`.
+> That is already a best-of-two bar, and it already rules out a fixed direction
+> lean against the one-trade pair. The rest of this part is rewritten against
+> what is really there.
+
+## The problem
+
+The gate today uses the two one-trade comparisons. Those carry almost no dealing
+costs, because they are one trade over the whole stretch. The code's own note on
+them says this makes them the **harder** bar over a trending stretch and the
+easier one over a chopping stretch.
+
+The two every-period comparisons — `always long` and its short version — pay a
+round trip on every single period. Over a long stretch that is a very large cost
+load, so they are usually the **easier** bar in a trending stretch.
+
+So neither pair is harder in general. Each is harder in different conditions,
+and the pair used today is chosen without reference to which condition holds.
+That is the real fault: **the bar's difficulty moves with the market and nobody
+decided that it should.**
+
+## The change
+
+Gate on the best of all four, plus zero:
+
+- `always long`
+- its short version
+- `buying the coin and going away`
+- `shorting it and going away`
+- and being in the money at all
+
+A setting passes only by beating the highest of them. This is strictly harder
+than today and strictly harder than what the first draft proposed, and it does
+not depend on guessing which condition the stretch was in.
+
+## What it needs from the other parts
+
+Part 1, and this is the important one. Taking the best of four removes exactly
+one advantage: the advantage a setting gets from having leaned the way the
+stretch happened to go. It does nothing about ordinary luck — a setting that
+traded rarely and caught a few big moves still clears it. Only judging on
+several stretches turns that into something you can see.
+
+## What I am assuming
+
+- **That a fixed direction lean is worth this much attention.** It is what bit
+  us. It is not the only way to look good without being good.
+- **That the four are comparable enough to take a maximum over.** They are not
+  built alike. The every-period pair opens a position on every period regardless
+  of what the setting did, so they do **not** trade the same number of times as
+  the setting — the first draft said they did, and that was wrong. Taking a
+  maximum over four things measured on different trade counts needs a reason,
+  and the reason I would give is that each answers "could this have been got
+  without the forecasts", which is the question the gate is for.
+- **That the scrambled copies do not already cover this.** They may partly. They
+  deal the same calls onto other days, so a setting that is long nearly always
+  looks similar on every copy, which means the copies bar already penalises a
+  flat direction lean to some degree. How much, I have not measured.
+- **That a maximum is the right shape, rather than a margin read against
+  something.** A stronger version is to measure the margin over the best of the
+  four in units of how much that stretch moved about, so the bar means the same
+  thing in a calm stretch and a wild one. That is more work and I think it is
+  better. It is worth deciding which.
+
+## What gets ADDED to Verify
+
+Almost nothing, because the four figures are already on the page. Verify prints
+`buying the coin and going away` and `shorting it and going away` as the two
+that gate, and says of the other two, in its own words, that
+`being long every period` and `being short every period` "are the window's
+direction and never a gate".
+
+So the addition is one line: **did the rule beat the best of the four**, stated
+plainly rather than left for the eye to work out across four figures. And that
+line becomes what decides pass or fail, replacing the two that decide today.
+
+Nothing is removed. All four figures stay printed exactly as they are.
+
+## What it costs
+
+Small. All four are already computed and stored, for every `setting`, not only
+for the `survivors`. This is a change to which number decides pass or fail, and
+which is only shown.
+
+---
+
+# Part 5 — set the bar for the whole search, not one setting at a time
+
+> **Blocker.** This part rests entirely on one figure being fit for a purpose it
+> was not built for, and the code says twice that it is not. Until that is
+> settled, building this would refuse real work on a wrong number, which is
+> worse than the note it replaces.
+
+## The problem
+
+If you try a great many settings and each has some chance of clearing its bar by
+luck, a good number clear it by luck. A count of survivors means nothing until
+you know how many would have survived with no skill at all.
+
+**What exists today, exactly.** **Verify** prints a line of the form "N of M
+survivors clear the same bar on their own copies, about X would by chance". That
+line is about settings that have **already been selected**, measured against
+their own scrambled copies, and the same line ends by saying it is never a gate.
+The code says the same thing in its own comment.
+
+So the figure that exists is not the figure this part needs. What is needed is:
+of everything that was **tried**, how many would clear by luck. That is a
+different question about a different population.
+
+## The change
+
+Two things, neither of which can be made until the blocker above is resolved.
+
+1. **Refuse rather than note.** If the count that cleared is not clearly above
+   what luck would give, the set does not go forward — with both numbers side by
+   side, and no way to read past it.
+2. **Count everything that was tried, not just the last step.** Every step you
+   keep the best of is another go at `shopping`, and they add up. A count of
+   tries has to carry forward through the whole **Funnel**.
+
+## What it needs from the other parts
+
+Part 6, and this is a genuine problem with the part as written. Whatever number
+counts as "clearly above" has to be set by the owner, and a threshold typed
+while both counts are on screen is a bar chosen knowing what will clear it —
+exactly what Part 6 exists to stop. So the threshold has to be registered under
+Part 6 before the counts are visible, or this part is a speed bump rather than a
+gate and should be argued for on that basis.
+
+## What I am assuming
+
+- **That the tries are independent.** They are not. Settings share dials, coins
+  and stretches, and the code already says so about the survivors. A raw count
+  of tries fed into a luck figure that assumes independence overstates the luck.
+  What is wanted is an effective count, or a bound, not a raw one.
+- **That the count of tries is knowable across the whole Funnel.** Each step
+  knows what it started with, but nothing carries that from one step to the
+  next today, so it would have to be added.
+
+## What it costs
+
+Small once the blocker is answered: carrying a running count from step to step,
+and one refusal.
+
+---
+
+# Part 6 — write down the claim before the stretch is opened
+
+> **Blocker.** Everything in this part rests on the claim being written at the
+> same moment the look is counted. Today a look is not an event — the count is
+> worked out afterwards from the steps the **Funnel** stored. So making a look
+> into a thing that happens, and can carry a claim, is the first piece of work,
+> not a detail.
+
+## The problem
+
+**The claim is written after the answer is known.** Which figure, which
+comparison, what bar — all of it can be settled once the numbers are visible.
+No single choice is dishonest. Together they mean the bar was chosen knowing
+what would clear it, and such a bar is not evidence.
+
+**The thing judged is not the thing traded.** A figure averaged across two
+hundred survivors describes holding all two hundred at once, which nobody is
+going to do. If one of them goes live, the average said nothing about it.
+
+## The change
+
+Before the held-back stretch is opened, the system records:
+
+- which setting, or which named group of settings, is claimed
+- which figure decides it
+- which comparison it must beat
+- what the bar is
+- how many settings were tried to get here
+
+**The claim written before the stretch was opened is the one that is judged.**
+A later one is written beside it, marked as written after the fact, and cannot
+replace it. Both stay visible.
+
+And what is judged is what is traded. One setting going live is named up front
+and judged alone. A group traded together is judged on the money the group would
+have made, not on the average of the settings in it.
+
+## What it needs from the other parts
+
+Part 5 depends on this. Part 1 raises the unanswered question of whether each
+judging stretch is a look, which this part has to answer.
+
+## What I am assuming
+
+- **That you are usually claiming one setting or a named group.** The case in
+  front of us is not that — it is two hundred survivors chosen after the fact,
+  and this part as written does not cover it. Either a bar for
+  choosing-after-the-fact gets designed here, or this part is honestly labelled
+  as being for a future way of working and the current way stays uncovered. I
+  have not designed that bar and it is the largest hole in this document.
+- **That recording the claim is quick to use.** If it is a form to fill in
+  before every look it will be resented and worked around. It should be filled
+  in from what the **Funnel** already knows, with the owner confirming.
+
+## What it costs
+
+Not small, because of the blocker. Making a look an event that happens, rather
+than a number worked out afterwards, is the real work. Less than the first draft
+implied, though: **Verify already prints `Rules declared before the numbers:`**,
+so the place to hang a claim exists and what is missing is the binding of it to
+the moment of looking. Attaching a claim to it
+after that is easy.
+
+---
+
+# Part 7 — what the settings you threw away did on held
+
+> **BUILT AND DEPLOYED, 3.100.0.** `Read what the rule dropped` is on
+> **Verify**, with the how-many box and both sides in one table. Nothing below
+> is outstanding except the question of whether it should ever gate, which is
+> Part 5's and still blocked.
+>
+> **The cheapest thing in this document, and it needs nothing else built
+> first.** No retraining, no extra passes, no new arithmetic. Every figure it
+> reads is already sitting in the record set.
+
+## The problem
+
+For the set this document was written after, the **Funnel** kept 199 settings
+out of 2,752. All 199 were positive on the held-back stretch, against about 32
+expected to clear their own bar by chance. That reads as overwhelming evidence.
+
+It is only evidence if the 2,553 that were thrown away did worse. Nobody has
+ever asked. If nearly all 2,752 were positive on that stretch, then 199 of 199
+says the stretch rose. It says nothing whatever about the picking, and the 199
+are just the top of a pile that was all doing well.
+
+This is general. Any count of `survivors` that clear a bar is unreadable without
+the same count for what did not survive.
+
+## The change
+
+One block on Verify, behind its own press, information only.
+
+The sharpest form is a single comparison:
+
+- of all 2,752 settings, how many were positive on held
+- of the 199 `survivors`, how many were positive on held
+
+Beside it, the same two counts against the best of the four comparisons rather
+than against zero, since Part 2 makes that the bar that matters.
+
+If the two shares are close, the picking added nothing. If the `survivors` pull
+clearly ahead, that is the first direct evidence that the choosing does
+something.
+
+## What gets ADDED to Verify
+
+**Controls.** One press. A box for how many of the non-kept settings to read,
+with all of them as a legal value, since reading them is cheap.
+
+**Results.** Two rows, kept and not kept, each with the count of settings, how
+many were positive on held, how many beat the best of the four, and the average.
+Under them one line saying how far apart the two rows are.
+
+## What gets REMOVED
+
+Nothing.
+
+## What it needs from the other parts
+
+Part 2, for the "beat the best of the four" column to mean anything. And it runs
+into Part 5's unresolved question — whether a result this damning should refuse
+the set rather than merely print. Build it printing. Decide gating when Part 5's
+blocker is answered.
+
+## What I am assuming
+
+- **That every setting has its held figures stored, not just the `survivors`.**
+  The stage 3 pricing computes held money and all four comparisons per setting,
+  so this should hold. Whether all 2,752 of this set's settings actually carry
+  them is a read of the record set away and should be checked before building.
+- **That reading them is affordable.** It is a read of stored rows, no pricing,
+  so it should be fast. Unmeasured on a set this size.
+- **That comparing two averages is the right reading.** Where the `survivors`
+  sit inside the whole spread may say more than the gap between two averages. I
+  would show both.
+
+## The risk, and it is real
+
+This is a read of the held-back stretch, so it must sit behind a counted press
+like everything else that touches it. It cannot change a choosing that has
+already happened. It can change the NEXT one, if the answer sends you back to
+walk the **Funnel** again knowing it. No screen can prevent that, and it is the
+owner's to weigh.
+
+---
+
+# Part 8 — judge the thing you would trade, not the average of everything kept
+
+> **Owner, 2026-09-11, on reading a FAIL:** "when 18 actual settings selections
+> within a rule pass ALL 5 and then you mark it FAIL?!? — get real! we need to
+> keep that code and make the pass/fail rational."
+>
+> **THIS IS DONE BEFORE PART 1 IS FINISHED**, because Part 1 carries the same
+> fault in its own scoring, and because it changes a number that is on the
+> owner's screen today.
+
+## The problem
+
+**The verdict decides PASS or FAIL on the average of every setting the rule
+kept.** Two lines of `lib/funnelverify.js` do it:
+
+```
+const real = mean(...)                              // the mean over ALL survivors
+pass: comparisons.known && positive && comparisons.beatsBest === true
+```
+
+On the owner's own set, read 2026-09-11: **98 of 98 survivors made money on the
+held stretch, 18 of 98 beat all four comparisons — and the set reads FAIL**,
+because the average of the 98 does not clear.
+
+Two faults, stacked:
+
+**One: it judges a basket nobody will ever hold.** A figure averaged across 98
+settings describes buying all 98 at once in equal size. Nobody is going to do
+that. One setting goes live, or a named handful does. Part 6 already says this
+in as many words — "the thing judged is not the thing traded" — and nobody
+connected it to the gate that prints FAIL.
+
+**Two: the bar is picked after the fact.** `beatsBest` is the maximum of the
+four comparisons. Knowing in advance which of being long every period, being
+short every period, buying the coin and going away or shorting it and going
+away is the one to be on IS a forecast, and the hardest one. Beating each of
+the four on its own is a claim somebody could have made beforehand; beating the
+best of them is not. (Owner's correction, 2026-09-11: "there were 4 'no
+forecast' set-ups ... picking the right one in advance IS a forecast".)
+
+**And Part 1 repeats the first fault.** Its own results line says "cleared on
+how many of the passes", which is a sentence about the set rather than about
+anything tradeable. "The set cleared 4 of 5" means nothing. "18 settings cleared
+all 3 passes, here they are" means something.
+
+## The change
+
+1. **Count per setting, never the average.** How many survivors made money, how
+   many beat each of the four, how many beat all four — with the settings that
+   did so named, not just counted.
+2. **The gate is about a tradeable thing.** A set passes when at least one
+   survivor clears every bar on its own, and the screen says which. Whether a
+   named setting or a named group is the claim is Part 6's business; until Part
+   6 exists, "at least one clears everything, and here it is" is the honest
+   version and it is a far better gate than the average.
+3. **The average stays on the screen, labelled as what it is** — what holding
+   every survivor in equal size would have made. It is a real number for a
+   question somebody might ask; it is not the verdict.
+4. **The four are reported separately, and the best-of-four is marked as the
+   hindsight reading it is.** Both are worth printing. Only one of them is a
+   bar a person could have aimed at.
+5. **Part 1's five-pass block follows the same rule**: a row per pass, and the
+   summary counts SETTINGS that cleared every pass, never passes that the set
+   cleared. **Part 1 applies this itself and does not wait for the rest of
+   Part 8** — the rule costs nothing to obey when the block is written for the
+   first time.
+
+## What gets REMOVED
+
+Nothing. The one-off reading of the held stretch stays exactly as it is — it is
+the one reading on the real held stretch, it is what History's reserve grade is
+keyed to, and the owner has said plainly to keep it. What changes is the
+sentence the verdict draws from it.
+
+## What it needs from the other parts
+
+Part 6 would say WHICH setting or group is claimed, which is the fully honest
+version of point 2. This part does not wait for it: "at least one survivor
+clears everything on its own" is already a stricter and more meaningful gate
+than the average, and it can ship first.
+
+## What I am assuming
+
+- **That at least one clearing survivor is the right default gate.** It is the
+  weakest honest claim, and on a set of a hundred it will pass often. It is an
+  improvement on the average because it is about something real, not because it
+  is harder. If the owner wants a harder one — a minimum count, or a share — it
+  is a number they set, and under Part 6 it should be set before the counts are
+  visible.
+- **That naming the clearing settings does not become a shopping list.** It
+  might. A list of the settings that cleared, read after the held stretch is
+  open, is the held stretch being shopped — which the screen already warns
+  about for its own table. The same warning belongs here.
+
+## What it costs
+
+**Small, and smaller than it looks.** Every number this needs is already worked
+out per setting: V4 already reads every survivor against its own copies and is
+already information-only, and the four comparisons are already stored per hold
+length. Nothing new is measured. What changes is which numbers the verdict
+sentence is built from — reporting, not arithmetic.
+
+---
+

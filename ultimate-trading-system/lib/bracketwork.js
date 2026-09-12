@@ -199,7 +199,7 @@ function splitAndLabelAt(chunks, branch, nTrain) {
 }
 
 // THE SAME LABELLING AGAIN, WITH A JUDGE STRETCH THE CALLER SIZES (3.111.0,
-// SELECTION-DESIGN.md Part 1). splitAndLabelAt above gives train and test at a
+// VERIFY-DESIGN.md Part 1). splitAndLabelAt above gives train and test at a
 // stated boundary and no third stretch; the five passes need a third, because a
 // pass is judged on the stretch immediately after its own test slice.
 //
