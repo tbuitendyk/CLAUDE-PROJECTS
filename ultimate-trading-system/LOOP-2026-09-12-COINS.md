@@ -165,3 +165,44 @@ guards run AFTER the deploy and never gate it (RULE EIGHT).
 
 Pre-registration committed before any code. The numbers in C3.3 and C4.1 are
 the ones to hold me to.
+
+## C1 — the typing and the percentage search (done, 3.115.0)
+
+`lib/coins.js`: `typeStretches` and `searchFallback`. `tests/test-coins.js`,
+six tests, added to the runner.
+
+**Both pre-registered checks earned their place, and both failed first.**
+
+**C1.3 caught a real bug.** A one-way rising path came back with ONE turn, at
+index 0. With no direction established yet, the rise away from the opening
+price fired the falling branch, which closed a `falling` stretch that had never
+existed. Nothing is in progress before the first period, so there is nothing
+there to close: the first trigger now only sets the direction when the extreme
+IS the start. The same bug was behind the first test's failure too — two
+failures, one cause.
+
+**The test of the test failed, and the test was what was wrong.** The loop
+record said: if no path shows the count rising as the percentage rises, the
+walk is not exploring and the test is too easy. It showed nothing across forty
+smooth paths. A probe over four hundred rough walks found **five** — all at
+high percentages where the turn count is small. So the effect documented in
+`COINS.md` section 4 is real, it is rare (about one path in eighty), and smooth
+paths cannot show it.
+
+Without the pre-registration that would have been written up as "monotone after
+all, claim withdrawn", and the search would have been safe to rewrite as a
+bisection. It is not. The test now pins a known case by seed — 15.75% gives
+five turns and 16% gives **six** — which a bisection fails.
+
+**Choices made inside the step, recorded rather than asked about:**
+
+- The price series is one price per period, and the natural one is the price a
+  trade would open at, which a chunk already carries. Boundaries then snap to
+  period boundaries for free rather than being rounded to a calendar.
+- The extreme belongs to the stretch that ended AT it; the next stretch starts
+  on the following period. That is what makes the stretches tile the span with
+  nothing in two of them.
+- A path that never moves far enough for a direction to exist still gets a
+  type — whichever way it finished. Two types, no third bucket, no holes.
+- The search walks the whole range rather than bisecting, and returns the walk
+  itself, because the walk is what the screen draws.
