@@ -318,12 +318,16 @@ function coinsRecords(query = {}) {
   }
   rows.sort((a, b) => String(a.coin).localeCompare(String(b.coin)));
   unreadable.sort((a, b) => String(a.coin).localeCompare(String(b.coin)));
-  // THE LEVEL A SIDE HAS TO CLEAR BEFORE WEIGHTING CAN CORRECT FOR IT (COINS.md
-  // section 8, finding 1 in section 14). Read out of the engine's own class
-  // weighting, never typed here: a share thinner than this hits the engine's
-  // ceiling, so the weighting under-corrects and staying quiet starts winning.
-  // SHOWN beside the coin, never enforced.
-  const bracket = require('./bracket');
+  // NO LEVEL A THIN SIDE HAS TO CLEAR, because there is no weighting for it to
+  // be rescued by. 3.119.0 served one, worked out from the class ceiling in
+  // `lib/bracket.js`, and the Coins screen printed it as 1.7%. That ceiling is
+  // inside `trainMember`, which the three-stage engine does not call: it trains
+  // through `trainProbMember`, which passes the money weights and no class
+  // weights at all. The figure was true of code the owner never runs.
+  //
+  // WHAT THE SCREEN SAYS INSTEAD is the plainer and more useful fact: a thin
+  // side gets no help whatever, at any thinness. That is a reason to read the
+  // split of time, which is what this tab is for.
   return {
     geometry,
     records: rows,
@@ -331,7 +335,7 @@ function coinsRecords(query = {}) {
     defaults: DEFAULTS,
     layouts: layouts(),
     recordVersion: RECORD_V,
-    thinSide: { level: bracket.thinSideLevel(), answers: bracket.CLASSES.length, cap: bracket.CLASS_WEIGHT_CAP },
+    rareSideWeighting: false,
   };
 }
 

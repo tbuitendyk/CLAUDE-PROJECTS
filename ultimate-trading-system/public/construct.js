@@ -7864,7 +7864,7 @@ async function drawCoins() {
   const defs = (d && d.defaults) || {};
   const recs = (d && d.records) || [];
   const unreadable = (d && d.unreadable) || [];
-  const thin = (d && d.thinSide) || null;
+  const rareSide = d ? d.rareSideWeighting : null;
   const running = !!(st && st.running);
   const rows = cOrder(recs, cState.orderBy, cState.layout);
   const box = (k, dflt) => esc(String(cState[k] === '' || cState[k] == null ? (dflt ?? '') : cState[k]));
@@ -7931,10 +7931,10 @@ async function drawCoins() {
       history a coin has</b>, because both measure over a share of the span: a coin with a few dozen periods reads
       worse on the first and better on the second than the same coin with a thousand, so two coins with different
       amounts of cached history cannot be compared on either. The periods column is there to be read beside them.</p>
-    ${thin ? `<p class="note">A side thinner than <b>${(thin.level * 100).toFixed(1)}%</b> of a part will not be
-      rescued by weighting — that is where the engine's own ceiling of ${thin.cap} across ${thin.answers} answers
-      stops being able to correct the imbalance, and below it staying quiet starts winning. It is marked below and
-      it is <b>not</b> a cut-off.</p>` : ''}
+    ${rareSide === false ? `<p class="note"><b>A thin side gets no help at all.</b> The training does not weigh a rare
+      answer up to make up for there being few of it — so however thin one side of a part is, nothing corrects for
+      it, and a side with a handful of periods in it is learned from a handful of periods. That is a reason to read
+      the split below, not a cut-off: no coin is refused for it.</p>` : ''}
     ${!rows.length ? `<p class="note">no coin has been read at this chunk shape${unreadable.length ? ' that this release can read' : ''} — press <b>Read these coins</b> above</p>` : `
     <div class="scrollx"><table class="s4"><thead><tr>
       <th title="the coin this row reads.">coin</th>
@@ -7963,10 +7963,9 @@ async function drawCoins() {
       <tr class="s4hold"><td colspan="8" class="s4tag">
         ${has ? rd.perPart.map((q) => {
       const sp = (rd.split || []).find((s) => s.part === q.part) || {};
-      const low = sp.balance != null && thin && sp.balance < thin.level;
       return `<span style="margin-right:1.2rem"><b>${esc(q.part)}</b> ${q.periods} periods ·
           ${q.turns} turn(s) · rising ${cNum(q.stretches.rising.count, 2)} / falling ${cNum(q.stretches.falling.count, 2)} ·
-          split ${cPct(sp.balance)}${low ? ' <span class="warn">· thinner than weighting can correct</span>' : ''}${cTypeNote(q)}</span>`;
+          split ${cPct(sp.balance)}${cTypeNote(q)}</span>`;
     }).join('') : `<span>${esc((rd && rd.why) || r.why || 'no reading at this window layout')}</span>`}
         ${!has && rd && rd.split ? `<div>${rd.split.map((s) => `<span style="margin-right:1.2rem"><b>${esc(s.part)}</b> split ${cPct(s.balance)}</span>`).join('')}</div>` : ''}
         ${rd && rd.searchedOver && rd.searchedOver.note ? `<div class="muted">${esc(rd.searchedOver.note)}</div>` : ''}

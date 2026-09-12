@@ -510,12 +510,17 @@ these are separate numbers rather than one.
   ten times and still spend 85% of its time rising; the falling set then sees a
   tenth of the periods as real calls and the rest as stay-quiet. Both numbers
   are needed and neither substitutes for the other.
-- **Where a side falls under the level the training arithmetic can correct
-  for** — roughly one row in sixty, about 1.7%, from finding 5 in section 14.
-  Below that the existing weight cap under-corrects and staying quiet starts
-  winning. **This is shown beside the coin, not enforced.** It tells you the
-  thin side of that coin will not be rescued by weighting, and you decide what
-  to do about it.
+- **That a thin side is not corrected for AT ALL.** Stated as a plain sentence
+  on the screen, not as a level, and not enforced. **Corrected 2026-09-12:**
+  this bullet used to name a level — one row in sixty, about 1.7% — under which
+  the training's weighting stops being able to compensate. That level is real
+  but it lives in `trainMember` in `lib/bracket.js`, and the three-stage engine
+  **does not call that function**. It trains through `trainProbMember` in
+  `lib/stagework.js`, which passes the money weights and no class weights at
+  all. So there is no weighting for a thin side to fall out of: it is not
+  compensated for at any thinness. That is a plainer thing to say and a stronger
+  reason to read the split of time, which is what this tab is for. See finding 1
+  in section 14.
 
 ### The boundaries do NOT move — owner's decision, 2026-09-12
 
@@ -704,17 +709,30 @@ listed so nobody thinks this tab solved them.
 
 **Bearing on Coins:**
 
-1. **The weight cap starts biting at about one row in sixty.**
-   `lib/bracket.js` sets each answer's weight to the row count divided by the
-   number of answers times that answer's rows, capped at 20. With three answers
-   the cap binds once an answer falls below about 1.7% of rows. Below that the
-   weighting under-corrects and staying quiet starts winning — the exact thing
-   the owner said must not happen. **So this tab has a number worth SHOWING
-   beside a coin** — not a limit it enforces (section 8). A coin whose thin
-   side is under it will not be rescued by weighting, and that is a thing to
-   know before sweeping it, not a reason for this tab to refuse it. The cap
-   itself should be visible on a screen rather than a constant in a file
-   (RULE FIVE).
+1. **THE SWEEP ENGINE DOES NOT WEIGH A RARE ANSWER UP AT ALL.** Corrected
+   2026-09-12, and the correction is larger than the finding it replaces.
+
+   This finding used to read: `lib/bracket.js` sets each answer's weight to the
+   row count divided by the answers present times that answer's rows, capped at
+   20, so with three answers the cap binds once an answer falls below about 1.7%
+   of rows — a number worth SHOWING beside a coin. 3.119.0 shipped exactly that
+   sentence onto the Coins screen.
+
+   **It is false about every run the owner makes.** That arithmetic is inside
+   `trainMember`, and nothing in `lib/` calls `trainMember` — it is referenced
+   from one test file and from comments. The three-stage engine trains through
+   `trainProbMember` in `lib/stagework.js`, which calls `tuneAndTrain` with
+   `exampleWeights` and nothing else; `classWeights` there defaults to null.
+
+   **So a rare answer gets no help whatever**, at 1.7% or at 30%. There is no
+   ceiling to expose, because there is no weighting under it. Making that
+   ceiling a control, which was the plan for this release, would have put a knob
+   on code the owner never runs.
+
+   **What the tab says now**: that a thin side is not corrected for at all. What
+   is NOT settled, and is the owner's to settle: whether the engine SHOULD
+   balance a rare answer. The two-set design in section 2 assumes something
+   handles the thin side, and today nothing does. It is in section 17.
 2. **Weighting cannot manufacture data.** On a coin that is 90% one way, each
    real period of the other counts nine times, so a handful of unusual periods
    in one short stretch drive the whole model. Weighting repairs a mild
@@ -843,10 +861,13 @@ owner's call, not a session's:**
   defensible here and only here, because a Coins reading costs seconds and can
   be re-taken, unlike a sweep set — but RULE NINE's default is migrate, so the
   owner should say which they want before a second shape change happens.
-- **The engine's own class-weight ceiling is a constant in `lib/bracket.js`**,
-  not a control (RULE FIVE). Section 14 finding 1 already said it should be on
-  a screen. This tab now READS it, so the level it quotes is always the
-  engine's — but the ceiling itself is still not the owner's to set.
+- **WHETHER THE ENGINE SHOULD BALANCE A RARE ANSWER AT ALL.** Replaces the item
+  that asked for its ceiling to be a control (2026-09-12). There is no ceiling
+  to expose: the trainer the engine runs passes no class weights, so a rare
+  answer is not weighed up by anything — see finding 1 in section 14. The two-set
+  design in section 2 assumes the thin side is handled and today nothing handles
+  it. Building that is a change to how every model is fitted and it is the
+  owner's call, not a session's.
 - **The reserve share is typed twice in `lib/stagework.js`** (the sealed layout
   and the retrain layout). There is now one shared function beside
   `splitBounds` and this tab reads it; the engine still types its own. Pointing

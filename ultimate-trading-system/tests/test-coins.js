@@ -909,7 +909,8 @@ module.exports = {
         'both the older shape and the broken file must be NAMED, not dropped');
       for (const u of got.unreadable) assert.ok(/read the coin again/.test(u.why), `${u.coin} must say what to do about it`);
       assert.strictEqual(got.recordVersion, runner.RECORD_V, 'the answer says which shape this release reads');
-      assert.ok(got.thinSide && got.thinSide.level > 0, 'and carries the level a side has to clear to be weightable');
+      assert.strictEqual(got.rareSideWeighting, false, 'and says plainly that a rare side is not weighted up at all');
+      assert.strictEqual(got.thinSide, undefined, 'the level that was worked out from a ceiling the engine never applies must not come back');
     } finally {
       for (const f of made) { try { fs.unlinkSync(f); } catch (_) { /* gone */ } }
       try { fs.rmdirSync(dir); } catch (_) { /* gone */ }
@@ -918,16 +919,55 @@ module.exports = {
 
   // THE LEVEL BELOW WHICH WEIGHTING CANNOT HELP IS THE ENGINE'S OWN, not a
   // number typed on a screen (COINS.md section 8, finding 1 in section 14).
-  theThinSideLevelIsReadFromTheEnginesOwnWeighting() {
-    const bracket = require('../lib/bracket');
-    assert.strictEqual(bracket.thinSideLevel(), 1 / (bracket.CLASSES.length * bracket.CLASS_WEIGHT_CAP),
-      'the level is not one over answers times the ceiling');
-    assert.ok(Math.abs(bracket.thinSideLevel() - 0.016667) < 1e-5,
-      `with ${bracket.CLASSES.length} answers and a ceiling of ${bracket.CLASS_WEIGHT_CAP} the level is about 1.7%`);
-    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'bracket.js'), 'utf8');
-    const at = src.indexOf('classWeights[cl] = counts[cl] > 0');
-    assert.ok(at > 0 && /CLASS_WEIGHT_CAP/.test(src.slice(at, at + 200)),
-      'the engine types its own ceiling instead of reading the named one, so the screen can quote a different number');
+  // THE SCREEN MAY NOT PROMISE WEIGHTING THAT DOES NOT HAPPEN (3.120.0).
+  //
+  // 3.119.0 put a figure on the Coins screen -- "a side thinner than 1.7% will
+  // not be rescued by weighting" -- worked out from the class ceiling in
+  // `lib/bracket.js`. That ceiling sits inside `trainMember`, and the
+  // three-stage engine does not call it: it trains through `trainProbMember`,
+  // which passes the money weights and no class weights at all. The sentence
+  // was true of code the owner never runs.
+  //
+  // This pins the fact, not the wording: whatever the screen says about a thin
+  // side, it must not say weighting will help while the trainer passes none.
+  theTrainerWeighsNoRareAnswerUpAndTheScreenDoesNotPretendItDoes() {
+    const fs = require('fs');
+    const path = require('path');
+    const root = path.join(__dirname, '..');
+    const strip = (s) => s.split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+
+    // 1. the trainer the engine really runs passes no class weights
+    const work = strip(fs.readFileSync(path.join(root, 'lib', 'stagework.js'), 'utf8'));
+    const fn = work.slice(work.indexOf('async function trainProbMember('), work.indexOf('\n}', work.indexOf('async function trainProbMember(')));
+    assert.ok(fn.length > 500, 'the trainer the engine runs has changed shape — re-aim this before trusting it');
+    const weighs = /classWeights/.test(fn);
+
+    // 2. and the one that does is called by nothing in lib/
+    const libDir = path.join(root, 'lib');
+    const callers = fs.readdirSync(libDir).filter((f) => f.endsWith('.js') && f !== 'bracket.js')
+      .filter((f) => /\btrainMember\s*\(/.test(strip(fs.readFileSync(path.join(libDir, f), 'utf8'))));
+
+    // 3. so the screen must not promise it
+    const page = strip(fs.readFileSync(path.join(root, 'public', 'construct.js'), 'utf8'));
+    const at = page.indexOf('async function drawCoins()');
+    const screen = page.slice(at, page.indexOf('\n}', page.indexOf('$(\'#cRun\').onclick', at)));
+    assert.ok(screen.length > 1000, 'the Coins screen has changed shape — re-aim this before trusting it');
+    const promises = /rescued by weighting|weighting can correct|thinner than weighting/.test(screen);
+
+    if (!weighs && !callers.length) {
+      assert.ok(!promises,
+        'the trainer weighs no rare answer up and nothing in lib/ calls the one that does, yet the Coins screen '
+        + 'still tells the owner weighting will rescue a thin side. That sentence is about code they never run.');
+      const run = strip(fs.readFileSync(path.join(root, 'lib', 'coinsrun.js'), 'utf8'));
+      assert.ok(!/thinSideLevel/.test(run), 'the runner still works out a level from a ceiling the engine never applies');
+    } else {
+      // the engine has GAINED class weighting since this was written. That is a
+      // change worth noticing rather than passing quietly, so it says so.
+      assert.ok(promises,
+        `the engine now weighs a rare answer up (classWeights in the trainer: ${weighs}; callers of trainMember in lib/: `
+        + `${callers.join(', ') || 'none'}) and the Coins screen no longer says so — the two have come apart again, `
+        + 'the other way round this time.');
+    }
   },
 
   // ---- what the adversarial pass on the tests themselves found unpinned -------

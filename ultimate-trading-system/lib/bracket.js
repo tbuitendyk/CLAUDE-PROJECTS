@@ -578,17 +578,23 @@ function bestCell(rows, minTrades) {
 // directional hunter (balanced class weights, τ from validation dollars).
 const { standardizeFit, standardizeApply, tuneAndTrain, trainSoftmax, predict: predictLogreg, CLASSES } = require('./logreg');
 
-// HOW FAR THE CLASS WEIGHTING WILL GO to correct an uneven training set, and the
-// share of rows below which it stops being able to. Named here rather than typed
-// into the line below because COINS.md section 8 requires the second number
-// SHOWN beside a coin -- a side thinner than this will not be rescued by
-// weighting, whatever the weighting is asked for -- and a number the screen
-// quotes has to be the same number the engine uses.
+// HOW FAR THE CLASS WEIGHTING BELOW WILL GO to correct an uneven training set.
+//
+// READ THIS BEFORE QUOTING IT ANYWHERE. `trainMember` is NOT the trainer the
+// three-stage sweep engine runs. That engine trains through `trainProbMember`
+// in `lib/stagework.js`, which calls `tuneAndTrain` with `exampleWeights` and
+// NOTHING ELSE -- and `classWeights` there defaults to null. So no sweep the
+// owner launches weights a rare answer up by anything at all, and this ceiling
+// governs nothing they run. `trainMember` is referenced from one test file and
+// from comments; no code in `lib/` calls it.
+//
+// 3.119.0 shipped a sentence on the Coins screen worked out from this constant
+// -- "a side thinner than 1.7% will not be rescued by weighting" -- which is
+// false about every run the owner makes, because there is no weighting to be
+// rescued by. The helper that computed it is deleted. Whether the engine SHOULD
+// balance a rare answer is the owner's decision and it is written up in the
+// loop record, not settled here.
 const CLASS_WEIGHT_CAP = 20;
-// The weight of an answer is the row count over the answers present times that
-// answer's rows; the cap binds once that exceeds it, which is exactly when the
-// answer's share of the rows falls under one over answers-times-cap.
-const thinSideLevel = (answers = CLASSES.length, cap = CLASS_WEIGHT_CAP) => 1 / (answers * cap);
 const { trainBoost, predictBoost } = require('./boost');
 const { tuneTau } = require('./pipeline');
 const { directionalCall } = require('./paper');
@@ -695,4 +701,4 @@ function predictMember(saved, x) {
   return out.label;
 }
 
-module.exports = { comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET, T_TRAINED_HOURS, T_OWN, holdHoursOf, tHoursOn, CLASSES, CLASS_WEIGHT_CAP, thinSideLevel };
+module.exports = { comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET, T_TRAINED_HOURS, T_OWN, holdHoursOf, tHoursOn, CLASSES, CLASS_WEIGHT_CAP };

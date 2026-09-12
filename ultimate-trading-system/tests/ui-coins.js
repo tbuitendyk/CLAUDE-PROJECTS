@@ -73,7 +73,7 @@ const RECORDS = [
   record('EEEUSDT', { worst: null, drift: null, months: 4, target: 6, read: false }),
 ];
 const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT__daily-4d.json', why: 'this reading was written under record shape 1 and this release reads shape 2 — read the coin again to replace it' }];
-const THIN = { level: 1 / 60, answers: 3, cap: 20 };
+
 const DATA_STATE = { symbols: [
   { symbol: 'AAAUSDT', months: 17, from: '2024-01', to: '2026-05' },
   { symbol: 'BBBUSDT', months: 17, from: '2024-01', to: '2026-05' },
@@ -102,7 +102,7 @@ function requirePlaywright() {
   let started = null;
   await page.route('**/api/coins/records**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
     geometry: 'daily-4d', records: RECORDS, unreadable: UNREADABLE, defaults: DEFAULTS,
-    layouts: ['split70', 'reserve61'], recordVersion: 2, thinSide: THIN,
+    layouts: ['split70', 'reserve61'], recordVersion: 2, rareSideWeighting: false,
   }) }));
   await page.route('**/api/coins/run', (route) => {
     if (route.request().method() === 'POST') { started = JSON.parse(route.request().postData() || '{}'); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ started: true, of: 5 }) }); }
@@ -132,7 +132,8 @@ function requirePlaywright() {
   }
   expect(/FFFUSDT/.test(body) && /record shape 1/.test(body), 'a record this release cannot read is named, not dropped');
   expect(!/nothing read yet/.test(body), 'with records on the screen it does not say nothing was read');
-  expect(/1\.7%/.test(body), 'the level a side must clear to be weightable is stated');
+  expect(/thin side gets no help at all/i.test(body), 'the screen says plainly that a rare side is not weighted up');
+  expect(!/rescued by weighting|thinner than weighting/.test(body), 'the screen still promises weighting that the trainer never does');
   expect(/more month\(s\) cached since/.test(body), 'the coin whose history has grown since reads as behind');
   expect(/not what the boxes above say/.test(body), 'the row read at other values says so');
   expect(/release 3\.119\.0/.test(body), 'each row names the release that took it');
@@ -160,7 +161,7 @@ function requirePlaywright() {
   expect(/no whole falling stretch/.test(after) || /one whole falling stretch/.test(after),
     'the note about a type appearing once or not at all says which type');
   expect(!/a type appears only once/.test(after), 'the old sentence that fired at zero is gone');
-  expect(/thinner than weighting can correct/.test(after), 'a side under the level is marked on the part it is in');
+  expect(/train .*periods/i.test(after), 'each part of the history reports its periods');
 
   // WHAT IS TYPED SURVIVES A REDRAW. This is the one that used to be wiped
   // twice a second while the owner was still typing.

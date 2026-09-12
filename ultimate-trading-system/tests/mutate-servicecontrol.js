@@ -1375,8 +1375,10 @@ const GUARDS = [
     'theTailWidthsAreTheOnesTheLayoutsActuallyCarve', 'the two window widths are a second copy of the engine\'s split, typed here, and two copies drift'],
   [path.join(ROOT, 'lib', 'coins.js'), "    split: parts.map((p) => ({ part: p.name, from: p.from, to: p.to, ...splitOfTime(moves.slice(p.from, p.to + 1)) })),", '    split: search.reached ? parts.map((p) => ({ part: p.name, from: p.from, to: p.to, ...splitOfTime(moves.slice(p.from, p.to + 1)) })) : null,',
     'aCoinTheSearchCannotSatisfyStillGetsARecord', 'a coin the percentage search cannot satisfy is withheld a reading that never needed the percentage at all'],
-  [path.join(ROOT, 'lib', 'bracket.js'), 'Math.min(CLASS_WEIGHT_CAP, ytr.length / (present.length * counts[cl]))', 'Math.min(20, ytr.length / (present.length * counts[cl]))',
-    'theThinSideLevelIsReadFromTheEnginesOwnWeighting', 'the engine types its own ceiling, so the level the Coins screen quotes can drift away from the one the training really uses'],
+  [path.join(ROOT, 'public', 'construct.js'), '<b>A thin side gets no help at all.</b> The training does not weigh a rare', '<b>A thin side under 1.7% is not rescued by weighting.</b> The training does not weigh a rare',
+    'theTrainerWeighsNoRareAnswerUpAndTheScreenDoesNotPretendItDoes', 'the screen tells the owner weighting will rescue a thin side while the trainer passes no class weights at all -- which is what 3.119.0 shipped'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), '    rareSideWeighting: false,', '    rareSideWeighting: true,',
+    'aRecordThisReleaseCannotReadIsNamedRatherThanHidden', 'the screen is told a rare answer IS weighed up, which is the false claim the other way round'],
 ];
 
 const only = process.argv[2] || '';
