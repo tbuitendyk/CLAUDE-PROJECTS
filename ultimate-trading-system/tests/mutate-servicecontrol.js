@@ -1352,6 +1352,12 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), '      biggestBeforeCap: (r.trainedOn || {}).biggestBeforeCap ?? null,\n      atCeiling: (r.trainedOn || {}).atCeiling ?? null,', '      biggestBeforeCap: null,\n      atCeiling: null,',
     'theStageTablesPageInRecordedOrder', 'the stage 1 table stops serving the two numbers, so the column is there and always empty'],
 
+  // ---- too little history for the number to mean anything (3.120.0) --------
+  [path.join(ROOT, 'lib', 'coins.js'), '    const canTell = real < low || real > high;', '    const canTell = true;',
+    'theScreenIsToldWhenAHistoryIsTooShortForTheNumberToMeanAnything', 'a forty-period coin reads as though its numbers mean something, which is the case the whole reading exists to catch'],
+  [path.join(ROOT, 'public', 'construct.js'), '  if (!c || c.canTell !== false) return \'\';', '  return \'\';\n  // eslint-disable-next-line no-unreachable\n  if (!c || c.canTell !== false) return \'\';',
+    'theCoinsScreenMarksANumberItCannotTrust', 'the screen never marks a number it cannot trust, so a reading that means nothing reads exactly like one that does'],
+
   // ---- COINS (3.119.0, after the four adversarial reviewers) ---------------
   // Each of these names the test that READS THE LINE IT BREAKS, not the test
   // with the nearest-sounding name (RULE EIGHT).

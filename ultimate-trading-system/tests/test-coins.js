@@ -9,7 +9,7 @@ const { assert } = require('./helpers');
 const {
   typeStretches, searchFallback,
   cutAtBoundaries, medianFullLengths, countStretches, turnsIn,
-  splitOfTime, layoutWidths, worstTailSlice, balanceDrift, traditionalReading, trainingWeights,
+  splitOfTime, layoutWidths, worstTailSlice, balanceDrift, shuffledCopy, canTheReadingTell, traditionalReading, trainingWeights,
   partsFor, checkedParts, coinReading,
 } = require('../lib/coins');
 
@@ -219,7 +219,7 @@ module.exports = {
     // data mid-stretch; `reachedMean` whether the average weight could be
     // brought to 1 under the owner's ceiling. Anything else that is a bare yes
     // or no has to be argued for in this list before it can ship.
-    const allowed = new Set(['reached', 'overshot', 'stub', 'open', 'reachedMean']);
+    const allowed = new Set(['reached', 'overshot', 'stub', 'open', 'reachedMean', 'canTell']);
     const walk = (v, path) => {
       if (Array.isArray(v)) { v.forEach((x, i) => walk(x, `${path}[${i}]`)); return; }
       if (!v || typeof v !== 'object') return;
@@ -1293,6 +1293,109 @@ module.exports = {
     const body = src.slice(at, src.indexOf('\n}', at));
     assert.ok(!/reserve61|split70|layout\b|pct|search/.test(body),
       'the traditional reading names a window layout or reads the tuned percentage');
+  },
+
+  // TOO LITTLE HISTORY FOR THE NUMBER TO SAY ANYTHING, WORKED OUT AND NOT SET
+  // (3.120.0, owner order 2026-09-12: "plan the code based on the length of the
+  // history ... if there's not enough history and things get sketchy, just put
+  // that on the screen", and on where the line sits: "that's the code that
+  // needs to put something on the screen. Not you.").
+  theScreenIsToldWhenAHistoryIsTooShortForTheNumberToMeanAnything() {
+    let st = 4321;
+    const rnd = () => ((st = (st * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const fair = (n) => Array.from({ length: n }, () => (rnd() < 0.5 ? 1 : -1));
+    // a coin with a REAL one-way run buried in it, at several lengths
+    const trended = (n) => {
+      const mv = fair(n);
+      const at = Math.floor(n * 0.62);
+      for (let i = at; i < at + Math.round(n * 0.14); i++) mv[i] = 1;
+      return mv;
+    };
+    const tell = (mv) => canTheReadingTell(mv, { driftParts: 8, shuffles: 200 });
+
+    // THE CASE THE RULE WAS WRITTEN TO CATCH. Forty periods cannot say anything
+    // about a coin, however one-way it really is.
+    const short = tell(trended(40));
+    assert.strictEqual(short.worstTailSlice.canTell, false,
+      'forty periods must not be trusted to tell a one-way coin from any other');
+    assert.ok(short.worstTailSlice.why && /too few/.test(short.worstTailSlice.why),
+      `and it must say why in a sentence: ${short.worstTailSlice.why}`);
+    assert.ok(short.worstTailSlice.why.includes('40 periods'), 'the sentence must name how much history there is');
+
+    // AND THE CASE IT MUST NOT CATCH. Two thousand periods with the same real
+    // run in them is a reading worth having, and must not be marked.
+    const long = tell(trended(2040));
+    assert.strictEqual(long.worstTailSlice.canTell, true,
+      'two thousand periods with a real one-way run in them must be trusted');
+    assert.strictEqual(long.worstTailSlice.why, null, 'and must carry no warning sentence');
+    assert.ok(long.worstTailSlice.value < long.worstTailSlice.low,
+      'it is trusted because the coin scores outside everything a no-trend version of itself scored');
+
+    // A COIN WITH NO TREND AT ALL is never tellable at any length, which is
+    // right: there is nothing in it to tell.
+    for (const n of [40, 300, 2040]) {
+      assert.strictEqual(tell(fair(n)).worstTailSlice.canTell, false,
+        `a coin with no trend at ${n} periods must never read as telling anything`);
+    }
+
+    // NOTHING IS TYPED. No line, no cut-off, no length written down anywhere in
+    // the function -- it is worked out from the coin's own periods every time.
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'coins.js'), 'utf8');
+    const at = src.indexOf('function canTheReadingTell(');
+    const body = src.slice(at, src.indexOf('\nfunction ', at)).split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    assert.ok(body.length > 400, 'the function has changed shape — re-aim this before trusting it');
+    const numbers = (body.match(/\b\d+(\.\d+)?\b/g) || []).filter((x) => !['0', '1', '2', '3', '20260912'].includes(x));
+    assert.deepStrictEqual(numbers, ['200'],
+      `the only number allowed here is the default count of shuffles, which is a control; found ${numbers.join(', ')}`);
+
+    // IT IS THE SAME ANSWER EVERY TIME. Nothing in this system reports a number
+    // that changes between two reads of the same data (RULE SEVEN).
+    // THE SAME COIN, not two coins built from the same recipe. The first
+    // version of this line called the builder twice; the builder draws from a
+    // running number, so it made two different coins and the test failed on its
+    // own fixture rather than on the code.
+    const same = trended(300);
+    const once = tell(same);
+    const twice = tell(same);
+    assert.deepStrictEqual(JSON.parse(JSON.stringify(once)), JSON.parse(JSON.stringify(twice)),
+      'two reads of the same coin gave two different answers');
+    assert.deepStrictEqual(shuffledCopy([1, 2, 3, 4, 5], 7), shuffledCopy([1, 2, 3, 4, 5], 7),
+      'the shuffle is not deterministic');
+    assert.notDeepStrictEqual(shuffledCopy([1, 2, 3, 4, 5], 7), shuffledCopy([1, 2, 3, 4, 5], 8),
+      'every shuffle is the same shuffle, so the readings are all one reading');
+    assert.deepStrictEqual(shuffledCopy([1, 2, 3, 4, 5], 7).slice().sort(), [1, 2, 3, 4, 5],
+      'the shuffle lost or invented a period');
+
+    // AND IT RIDES ON THE READING, so the screen has it without asking again
+    const prices = [];
+    for (let i = 0; i < 220; i++) prices.push(100 * (1.01 ** (i % 40)));
+    const mv = prices.map((p, i) => (i ? ((p - prices[i - 1]) / prices[i - 1]) * 100 : 0.1));
+    const trad = traditionalReading(mv, { driftParts: 8, shuffles: 40 });
+    assert.ok(trad.canTell && trad.canTell.worstTailSlice && trad.canTell.drift,
+      'the reading the screen draws does not carry whether its numbers can tell anything');
+    assert.strictEqual(trad.canTell.shuffles, 40, 'and it is worked out at the count the caller set');
+  },
+
+  // AND THE SCREEN DRAWS THE MARK. The reading can be perfect and say nothing
+  // if the page never renders it -- which is how the thin-side figure came to
+  // be quietly wrong for a whole release.
+  theCoinsScreenMarksANumberItCannotTrust() {
+    const fs = require('fs');
+    const path = require('path');
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const at = page.indexOf('function cCannot(');
+    assert.ok(at > 0, 'the Coins screen has no mark for a number it cannot trust');
+    const fn = page.slice(at, page.indexOf('\n}', at));
+    assert.ok(/canTell !== false/.test(fn), 'the mark does not read whether the number can tell anything');
+    assert.ok(/cannot tell/.test(fn), 'the mark says nothing the owner can read');
+    assert.ok(/title="\$\{esc\(c\.why/.test(fn), 'the mark carries no reason, so it cannot be looked into');
+    // and it is drawn beside BOTH numbers, not just one
+    const draw = page.slice(page.indexOf('async function drawCoins()'));
+    assert.ok(/cCannot\(r\.traditional, 'worstTailSlice'\)/.test(draw), 'the worst tail slice is never marked');
+    assert.ok(/cCannot\(r\.traditional, 'drift'\)/.test(draw), 'the drift is never marked');
+    // the shuffle count is a control like every other input here (RULE FIVE)
+    assert.ok(/id="cShuf"/.test(draw), 'the number of shuffles is not something the owner can set');
+    assert.ok(/shuffles: box\('shuffles'/.test(draw), 'and what is set is not sent with the run');
   },
 
   // A SPLIT THAT LEAVES A PART EMPTY IS SAID, NOT SERVED. It is not a refusal of

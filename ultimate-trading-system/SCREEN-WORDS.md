@@ -89,7 +89,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (58)
+## What the controls are called (59)
 
 - `— not what the boxes above say`
 - `— press`
@@ -99,6 +99,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `% by`
 - `% to`
 - `%, ceiling`
+- `24/5`
 - `A side thinner than`
 - `above`
 - `across`
@@ -197,7 +198,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Sweep
 
-## What the controls are called (84)
+## What the controls are called (85)
 
 - `— each says why:`
 - `— none —`
@@ -206,6 +207,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `, and`
 - `” — record sets & greenlights`
 - `” will permanently remove:`
+- `24/5`
 - `all loaded data`
 - `are already priced and are kept`
 - `arm`
@@ -413,13 +415,14 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Boards
 
-## What the controls are called (128)
+## What the controls are called (129)
 
 - `— nothing came out of`
 - `— pick a stage`
 - `+both`
 - `+hold`
 - `1v`
+- `24/5`
 - `alongside`
 - `any`
 - `Apply settings`

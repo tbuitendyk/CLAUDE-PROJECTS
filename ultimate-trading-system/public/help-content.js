@@ -887,6 +887,14 @@ window.HELP = {
         + 'confirmed once price has fallen back from it, so a change sitting near the end of test cannot be '
         + 'confirmed without looking at held-back. The search is not allowed to look, so it counts what it can '
         + 'see and says on the row when there turn out to be more. Its count is a floor, never an overstatement.'],
+      ['When a history is too short for either number to mean anything',
+        'Both numbers are marked "cannot tell" on a coin whose history is too short for them to say anything about '
+        + "it. Nothing is set or typed to decide that: the coin's own periods are shuffled into a different order "
+        + 'hundreds of times — the same coin with its trend taken away — and the two numbers are read off each '
+        + 'shuffle. If the coin\'s own answer sits inside what those shuffles score, then a coin with no trend at all '
+        + 'could have scored the same, so the number is telling you how much history there is rather than what is in '
+        + 'it. Hover the mark to see the range. It is never a cut-off and no coin is refused for it. In practice a few '
+        + 'dozen periods can tell nothing and a few hundred can tell plainly.'],
       ['Reading these numbers between one coin and another',
         'Both untuned numbers measure over a share of the span, so both move with how much history a coin has. '
         + 'A coin with a few dozen periods reads worse on worst tail slice and better on drift than the same coin '
@@ -913,6 +921,7 @@ window.HELP = {
       cStep: 'how far apart the percentages tried are. Every value in the range is tried rather than bisected, because the count of changes does not simply rise as the percentage falls.',
       cCap: 'the most any one period may weigh in training, as a multiple of the average. It must be above 1, and on a coin where too few periods moved it has to be higher still — the reading says so and names the value that would work.',
       cDrift: 'how many equal parts the span is cut into to measure how the balance moves from part to part.',
+      cShuf: "how many times a coin's own periods are shuffled into a different order to work out whether the two untuned numbers can say anything about it at this much history. There is no line to set: a shuffle is that coin with its trend taken away, and if the coin's own answer sits inside what the shuffles score then a coin with no trend could have scored the same. More shuffles only sharpen the same answer.",
       cRun: 'reads every coin named above at the chunk shape above, and writes what it finds against that coin\'s history. One coin that cannot be read does not stop the others.',
       cStop: 'stops after the coin being read now. What has already been written stays, and the line beside the buttons says a stopped run was stopped and where it got to.',
       cLayout: 'which window layout\'s reading to show. A coin can read differently under the two, so the reading is kept per layout. The two untuned numbers are the same under either.',

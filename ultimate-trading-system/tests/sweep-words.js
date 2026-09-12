@@ -262,8 +262,23 @@ function phrases(text) {
     line = line.replace(/&amp;/g, '&').replace(/&nbsp;/g, ' ');
     line = line.replace(/\s+/g, ' ').trim();
     if (!line) continue;
-    if (!/[A-Za-z]/.test(line)) continue;
-    if (/^[^A-Za-z]*$/.test(line)) continue;
+    // A LABEL MADE ONLY OF DIGITS IS STILL A LABEL (owner order, 2026-09-12:
+    // "Just make an exception for 24/5 and forget about the other numbers").
+    //
+    // This dropped every line with no letter in it, which made a control
+    // labelled `24/5` invisible to the generator -- on THREE tabs, since before
+    // the Coins tab existed. Under RULE ONE-A the list is the only vocabulary
+    // permitted about a screen, so a label the list cannot hold is a label
+    // nobody may use about a control the owner is looking at.
+    //
+    // A rule rather than a typed exception for that one label: this list has
+    // been wrong five times by being typed, and a rule cannot go stale. What is
+    // still dropped is a line that is ONLY a number -- `0`, `1.00` -- because
+    // those are values the screen prints, not the name of anything.
+    //
+    // Measured before it shipped: exactly three entries are added, all `24/5`.
+    if (!/[A-Za-z0-9]/.test(line)) continue;
+    if (/^[\d.,]+$/.test(line)) continue;
     out.push(line);
   }
   return out;

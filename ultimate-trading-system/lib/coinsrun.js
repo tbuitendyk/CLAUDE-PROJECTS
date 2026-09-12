@@ -41,6 +41,11 @@ const DEFAULTS = Object.freeze({
   cap: 20,
   driftParts: 8,
   weekdaysOnly: false,
+  // how many times a coin's own periods are shuffled to work out whether either
+  // untuned number can say anything about it at this much history (COINS.md
+  // section 11). A precision setting, not a threshold -- there is no line to
+  // set, and more shuffles only sharpen the same answer.
+  shuffles: 200,
 });
 
 // THE WINDOW LAYOUTS ARE READ FROM THE SAME LIST THE DROPDOWNS ARE DRAWN FROM,
@@ -105,6 +110,7 @@ async function readOneCoin(coin, params, onNote = () => {}) {
   const kept = {
     target: params.target, from: params.from, to: params.to, step: params.step,
     cap: params.cap, driftParts: params.driftParts, weekdaysOnly: !!params.weekdaysOnly,
+    shuffles: params.shuffles,
   };
 
   onNote(`${coin}: reading its cached prices`);
@@ -146,7 +152,7 @@ async function readOneCoin(coin, params, onNote = () => {}) {
     // ONE PER COIN, NOT ONE PER LAYOUT (COINS.md section 11). It was inside the
     // per-layout reading before, so every record carried two byte-identical
     // copies of it.
-    traditional: prices.length ? coins.traditionalReading(moves, { driftParts: params.driftParts }) : null,
+    traditional: prices.length ? coins.traditionalReading(moves, { driftParts: params.driftParts, shuffles: params.shuffles }) : null,
     readings: {},
   };
 
@@ -186,6 +192,7 @@ function normalise(body = {}) {
     step: num(body.step, DEFAULTS.step),
     cap: num(body.cap, DEFAULTS.cap),
     driftParts: Math.max(2, Math.floor(num(body.driftParts, DEFAULTS.driftParts))),
+    shuffles: Math.max(2, Math.floor(num(body.shuffles, DEFAULTS.shuffles))),
     weekdaysOnly: body.weekdaysOnly === true || String(body.weekdaysOnly) === 'true',
   };
   if (!GEOMETRIES[p.geometry]) throw new Error(`unknown chunk shape '${p.geometry}'`);
@@ -219,7 +226,7 @@ async function runAll(p) {
       // two fail, press again for one, and the two were gone with nothing said.
       const rec = blankRecord(coin, p.geometry, {
         target: p.target, from: p.from, to: p.to, step: p.step,
-        cap: p.cap, driftParts: p.driftParts, weekdaysOnly: !!p.weekdaysOnly,
+        cap: p.cap, driftParts: p.driftParts, weekdaysOnly: !!p.weekdaysOnly, shuffles: p.shuffles,
       }, String(err.message || err));
       try { fs.writeFileSync(recordFile(coin, p.geometry), `${JSON.stringify(rec)}\n`); } catch (_) { /* the disk said no; the run carries on */ }
       run.couldNotRead.push({ coin, why: rec.why });

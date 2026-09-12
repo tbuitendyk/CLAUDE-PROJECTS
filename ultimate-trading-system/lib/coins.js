@@ -538,11 +538,100 @@ function checkedParts(n, layout) {
 // sign of that period's own move, never from the tuned stretches, so re-tuning
 // the fall-back percentage for two-set training can never move a coin's
 // traditional score (COINS.md section 11).
+// CAN EITHER NUMBER TELL THIS COIN FROM A COIN WITH NO TREND AT ALL, at this
+// much history? (Owner order, 2026-09-12: "plan the code based on the length of
+// the history. And if you have to make some kind of flag or warning if there's
+// not enough history and things get sketchy, just put that on the screen." And
+// on where the line sits: "that's the code that needs to put something on the
+// screen. Not you.")
+//
+// SO THERE IS NO LINE TO SET, and no number typed anywhere. The coin's OWN
+// moves are shuffled into a different order many times and the same two numbers
+// read off each shuffle. A shuffle has the coin's periods and none of its
+// order, so it is that coin with its trend taken away.
+//
+// If every shuffle gives the SAME answer as every other, the number is not
+// reading the coin at all -- it is a constant of how much history there is, and
+// it cannot separate this coin from any other of that length. That is the whole
+// test and it has no threshold in it. At forty periods the worst tail slice
+// reads 0 for the coin and 0 for every shuffle of it; past a few hundred the
+// shuffles spread out and it separates cleanly.
+//
+// THE SHUFFLE IS DETERMINISTIC. Same coin, same answer, every time, for ever --
+// there is no randomness in anything this system reports (RULE SEVEN).
+function shuffledCopy(arr, seed) {
+  let s = (seed >>> 0) || 1;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const out = arr.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const t = out[i]; out[i] = out[j]; out[j] = t;
+  }
+  return out;
+}
+function canTheReadingTell(moves, opts = {}) {
+  const tries = Math.max(2, Math.floor(Number(opts.shuffles) || 0) || 200);
+  const widths = layoutWidths(moves.length);
+  const realWorst = worstTailSlice(moves, widths).balance;
+  const realDrift = balanceDrift(moves, opts.driftParts).drift;
+  const worst = [];
+  const drift = [];
+  for (let i = 0; i < tries; i++) {
+    const mixed = shuffledCopy(moves, 20260912 + i);
+    const w = worstTailSlice(mixed, widths).balance;
+    const d = balanceDrift(mixed, opts.driftParts).drift;
+    if (w != null) worst.push(w);
+    if (d != null) drift.push(d);
+  }
+  // THE TEST, AND IT HAS NO THRESHOLD IN IT: could a coin with no trend at all,
+  // of exactly this length, have produced the number this coin produced? The
+  // shuffles ARE that coin -- its own periods, its trend taken away -- so if
+  // the coin's own answer sits anywhere inside the range they cover, the answer
+  // says nothing about this coin that its length does not already say.
+  //
+  // THE FIRST VERSION OF THIS ASKED A WEAKER QUESTION -- whether the shuffles
+  // ever disagreed with each other -- and it passed a forty-period coin, which
+  // is the exact case the pre-registered rule said it had to catch. Two answers
+  // out of two hundred is not a number that can tell anything apart. The rule
+  // was written before the code and it caught the code, which is what it is for.
+  const say = (real, list, name) => {
+    if (real == null || !list.length) {
+      return { canTell: false, of: list.length, low: null, high: null, value: real ?? null,
+        why: `${name} could not be worked out over ${moves.length} periods at all` };
+    }
+    const low = Math.min(...list);
+    const high = Math.max(...list);
+    const canTell = real < low || real > high;
+    return {
+      canTell,
+      value: real,
+      low,
+      high,
+      of: list.length,
+      why: canTell ? null
+        : `${moves.length} periods is too few for ${name} to say anything about this coin. Shuffle its own periods `
+          + `into ${list.length} different orders -- the same coin with its trend taken away -- and they score `
+          + `between ${low.toFixed(3)} and ${high.toFixed(3)}. This coin scores ${real.toFixed(3)}, which is inside `
+          + 'that. A coin with no trend at all could have scored the same, so the number is telling you how much '
+          + 'history there is, not what is in it.',
+    };
+  };
+  return {
+    worstTailSlice: say(realWorst, worst, 'the worst tail slice'),
+    drift: say(realDrift, drift, 'the drift'),
+    periods: moves.length,
+    shuffles: tries,
+  };
+}
+
 function traditionalReading(moves, opts = {}) {
   return {
     whole: splitOfTime(moves),
     worstTailSlice: worstTailSlice(moves, layoutWidths(moves.length)),
     drift: balanceDrift(moves, opts.driftParts),
+    // whether either number can tell this coin apart from one with no trend at
+    // all, at this much history -- derived, never a typed line (see above)
+    canTell: canTheReadingTell(moves, opts),
     // NAMED, BECAUSE BOTH NUMBERS MOVE WITH IT. The window the worst tail slice
     // slides is a share of the span and the drift's parts are a share of the
     // span, so a coin with less cached history is measured over shorter runs
@@ -689,7 +778,7 @@ function coinReading(prices, moves, opts = {}) {
 module.exports = {
   typeStretches, searchFallback,
   cutAtBoundaries, medianFullLengths, countStretches, turnsIn,
-  splitOfTime, layoutWidths, worstTailSlice, balanceDrift, traditionalReading,
+  splitOfTime, layoutWidths, worstTailSlice, balanceDrift, shuffledCopy, canTheReadingTell, traditionalReading,
   trainingWeights,
   partsFor, checkedParts, coinReading,
 };

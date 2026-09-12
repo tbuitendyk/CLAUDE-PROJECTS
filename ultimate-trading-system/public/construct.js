@@ -7769,7 +7769,7 @@ const C_KEY = 'cx-coins';
 const cState = (() => {
   const d = {
     geometry: 'daily-4d', layout: 'reserve61', orderBy: 'coin',
-    coins: '', target: '', from: '', to: '', step: '', cap: '', drift: '', weekdays: false,
+    coins: '', target: '', from: '', to: '', step: '', cap: '', drift: '', shuffles: '', weekdays: false,
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
 })();
@@ -7827,6 +7827,19 @@ const cPct = (v) => (v == null ? '<span class="muted">—</span>' : `${(v * 100)
 const cNum = (v, d = 2) => (v == null ? '<span class="muted">—</span>' : Number(v).toFixed(d));
 const cDay = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : null);
 
+// TOO LITTLE HISTORY FOR THIS NUMBER TO SAY ANYTHING (3.120.0, owner order
+// 2026-09-12: "if there's not enough history and things get sketchy, just put
+// that on the screen"). There is no line set anywhere: the reading works out
+// whether a coin with no trend at all, of exactly this length, could have
+// scored what this coin scored, by shuffling the coin's own periods. When it
+// could have, the number is about the length and not about the coin, and this
+// marks it. It is not a cut-off and no coin is refused for it.
+function cCannot(trad, which) {
+  const c = trad && trad.canTell && trad.canTell[which];
+  if (!c || c.canTell !== false) return '';
+  return ` <span class="warn" title="${esc(c.why || '')}">· cannot tell</span>`;
+}
+
 // THE WALK, DRAWN. The count of changes of direction at each percentage tried,
 // per coin. It is the shape of the search, and it says at a glance whether a
 // coin's count is steady across a band of percentages or balanced on an edge.
@@ -7879,7 +7892,7 @@ async function drawCoins() {
   // what they were actually read at. When those differ the screen says so
   // rather than letting a table of numbers sit silently under a box that did
   // not produce them.
-  const asked = { target: Number(box('target', defs.target)), from: Number(box('from', defs.from)), to: Number(box('to', defs.to)), step: Number(box('step', defs.step)), cap: Number(box('cap', defs.cap)), driftParts: Number(box('drift', defs.driftParts)), weekdaysOnly: !!cState.weekdays };
+  const asked = { target: Number(box('target', defs.target)), from: Number(box('from', defs.from)), to: Number(box('to', defs.to)), step: Number(box('step', defs.step)), cap: Number(box('cap', defs.cap)), driftParts: Number(box('drift', defs.driftParts)), shuffles: Number(box('shuffles', defs.shuffles)), weekdaysOnly: !!cState.weekdays };
   const differs = (r) => !r.params || Object.keys(asked).some((k) => String(r.params[k]) !== String(asked[k]));
   const stale = (r) => {
     const c = cachedNow.get(String(r.coin).toUpperCase());
@@ -7907,6 +7920,7 @@ async function drawCoins() {
       <label class="f" title="how far apart the percentages tried are. The walk is exhaustive: the count of changes does not simply rise as the percentage falls, so every value in the range is tried rather than bisected — a very small step here is a very long walk.">step, %<input id="cStep" type="number" step="0.1" min="0.01" value="${box('step', defs.step)}" style="width:5rem"${off}></label>
       <label class="f" title="the most any one period may weigh in training, as a multiple of the average. One violent period would otherwise dominate everything. It must be above 1, and on a coin where too few periods moved it has to be higher still — the reading says so and names the value.">weight ceiling<input id="cCap" type="number" step="1" min="1.5" value="${box('cap', defs.cap)}" style="width:5rem"${off}></label>
       <label class="f" title="how many equal parts the span is cut into to measure how the balance moves from part to part.">drift parts<input id="cDrift" type="number" min="2" value="${box('drift', defs.driftParts)}" style="width:5rem"${off}></label>
+      <label class="f" title="how many times a coin's own periods are shuffled into a different order to work out whether the two untuned numbers can say anything about it at this much history. It is not a cut-off and there is nothing to set a line at — more shuffles only sharpen the same answer.">shuffles<input id="cShuf" type="number" min="2" step="50" value="${box('shuffles', defs.shuffles)}" style="width:5rem"${off}></label>
     </div>
     <div class="row">
       <button id="cRun" class="pri"${off}>Read these coins</button>
@@ -7961,8 +7975,8 @@ async function drawCoins() {
       <td>${rd && rd.search && rd.search.reached ? `${rd.search.pct}%` : '<span class="muted">not reached</span>'}</td>
       <td>${rd && rd.search && rd.search.reached ? `${rd.search.turns}${rd.search.overshot ? ` <span class="muted">(asked ${rd.search.asked})</span>` : ''}` : '<span class="muted">—</span>'}</td>
       <td>${rd && rd.search ? cWalk(rd.search.walk, rd.search.pct) : ''}</td>
-      <td>${r.traditional ? cPct(r.traditional.worstTailSlice.balance) : '<span class="muted">—</span>'}</td>
-      <td>${r.traditional ? cNum(r.traditional.drift.drift, 3) : '<span class="muted">—</span>'}</td>
+      <td>${r.traditional ? `${cPct(r.traditional.worstTailSlice.balance)}${cCannot(r.traditional, 'worstTailSlice')}` : '<span class="muted">—</span>'}</td>
+      <td>${r.traditional ? `${cNum(r.traditional.drift.drift, 3)}${cCannot(r.traditional, 'drift')}` : '<span class="muted">—</span>'}</td>
       <td class="muted" style="text-align:left">${esc(span)}<br>${esc(String(r.provenance && r.provenance.capturedAt ? r.provenance.capturedAt : '').replace('T', ' ').slice(0, 16))} UTC · release ${esc(String((r.provenance && r.provenance.release) || '—'))}${grew ? `<br><span class="warn">${grew} more month(s) cached since</span>` : ''}</td></tr>
       <tr class="s4hold"><td colspan="8" class="s4tag">
         ${has ? rd.perPart.map((q) => {
@@ -7975,7 +7989,7 @@ async function drawCoins() {
         ${rd && rd.searchedOver && rd.searchedOver.note ? `<div class="muted">${esc(rd.searchedOver.note)}</div>` : ''}
         ${rd && rd.weight && !rd.weight.reachedMean ? `<div class="warn">${esc(rd.weight.why)}</div>` : ''}
         ${rd && rd.weight && rd.weight.reachedMean ? `<div class="muted">training weight over ${esc(rd.weight.over)}: average 1 across ${rd.weight.periods} periods, ${rd.weight.capped} of them held at the ceiling of ${rd.weight.cap}</div>` : ''}
-        <div class="muted">read at: ${p.target} change(s) wanted, ${p.from}% to ${p.to}% by ${p.step}%, ceiling ${p.cap}, ${p.driftParts} drift parts, 24/5 ${p.weekdaysOnly ? 'on' : 'off'}${differs(r) ? ' <span class="warn">— not what the boxes above say</span>' : ''}</div>
+        <div class="muted">read at: ${p.target} change(s) wanted, ${p.from}% to ${p.to}% by ${p.step}%, ceiling ${p.cap}, ${p.driftParts} drift parts, ${p.shuffles ?? '?'} shuffles, 24/5 ${p.weekdaysOnly ? 'on' : 'off'}${differs(r) ? ' <span class="warn">— not what the boxes above say</span>' : ''}</div>
       </td></tr>`;
   }).join('')}
     </tbody></table></div>`}
@@ -7989,7 +8003,7 @@ async function drawCoins() {
   };
   keep('#cCoins', 'coins'); keep('#cTarget', 'target'); keep('#cFrom', 'from');
   keep('#cTo', 'to'); keep('#cStep', 'step'); keep('#cCap', 'cap'); keep('#cDrift', 'drift');
-  keep('#cWk', 'weekdays', 'checked');
+  keep('#cShuf', 'shuffles'); keep('#cWk', 'weekdays', 'checked');
   const geom = $('#cGeom');
   if (geom) {
     geom.innerHTML = vocabOptions('geometry', cState.geometry);
@@ -8004,7 +8018,7 @@ async function drawCoins() {
       coins: cState.coins, geometry: cState.geometry,
       target: box('target', defs.target), from: box('from', defs.from), to: box('to', defs.to),
       step: box('step', defs.step), cap: box('cap', defs.cap), driftParts: box('drift', defs.driftParts),
-      weekdaysOnly: !!cState.weekdays,
+      shuffles: box('shuffles', defs.shuffles), weekdaysOnly: !!cState.weekdays,
     };
     try { await post('api/coins/run', body); } catch (err) {
       $('#cOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';

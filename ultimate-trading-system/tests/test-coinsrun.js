@@ -42,6 +42,9 @@ async function withPrices(rows, months, fn) {
 
 const PARAMS = {
   geometry: 'daily-4d', target: 6, from: 1, to: 30, step: 0.5, cap: 20, driftParts: 8, weekdaysOnly: false,
+  // few shuffles on purpose: these tests are about the plumbing, and the
+  // arithmetic they would sharpen is checked next door
+  shuffles: 20,
 };
 
 module.exports = {
@@ -101,9 +104,9 @@ module.exports = {
   async theRecordSaysWhatItWasReadAtAndOverWhat() {
     const rows = candles(24 * 400);
     await withPrices(rows, 14, async () => {
-      const rec = await runner.readOneCoin('XRPUSDT', { ...PARAMS, target: 4, cap: 12, weekdaysOnly: true });
+      const rec = await runner.readOneCoin('XRPUSDT', { ...PARAMS, target: 4, cap: 12, weekdaysOnly: true, shuffles: 200 });
       assert.deepStrictEqual(rec.params, {
-        target: 4, from: 1, to: 30, step: 0.5, cap: 12, driftParts: 8, weekdaysOnly: true,
+        target: 4, from: 1, to: 30, step: 0.5, cap: 12, driftParts: 8, weekdaysOnly: true, shuffles: 200,
       }, 'the record must carry every value it was read at, not the defaults');
       assert.strictEqual(rec.provenance.candles, rows.length, 'and how many candles were behind it');
       assert.strictEqual(rec.provenance.cachedMonths, 14, 'and how many months were cached at the time');
