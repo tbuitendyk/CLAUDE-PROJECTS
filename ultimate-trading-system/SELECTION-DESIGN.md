@@ -235,6 +235,63 @@ compromise: it becomes the exploring layout, with time itself as its reserve.
 History's comparison and Tune's reads move to the choosing stretch — and
 neither needs new machinery to do it.
 
+## THE STEP THAT PUTS THIS ORDER ON THE SCREEN (owner order, 2026-09-11)
+
+The rule above says all narrowing happens before the one judgement. The tabs do
+not currently read that way, and the owner's instruction is to make them: put
+the **Coins** tab in as a stub, and move **Verify** to second to last.
+
+**`TABS` in `public/construct.js` today:**
+
+```
+Data · Sweep · Boards · Funnel · Verify · History · Tune · Greenlight · Help
+```
+
+**After this step:**
+
+```
+Data · Coins · Sweep · Boards · Funnel · History · Tune · Verify · Greenlight · Help
+```
+
+`Help` sits outside the flow and stays at the end; **Verify** is second to last
+of the tabs that are the flow, immediately before **Greenlight**.
+
+**Why the order is the deliverable and not decoration.** The tab strip is the
+only place the pipeline is stated to the owner as a sequence. With Verify
+sitting fifth, the screen says the judgement happens before History and Tune
+have finished narrowing — which is the arrangement the budget rule above says
+spends a judging stretch on a choosing act. Moving Verify to the end makes the
+screen say what the rule requires: **everything that picks, then the one thing
+that judges, then Greenlight.**
+
+**Coins goes in as a STUB, not as a build.** It sits between Data and Sweep,
+where it belongs, and it says what it will do and that it does not do it yet.
+Two reasons for the stub rather than nothing: the tab strip is the statement of
+the pipeline, so a step missing from it is a step missing from the owner's
+picture of the system; and when Coins is built it will offer Sweep a second
+mode — the existing one set of trained models, and a new two sets, up and down
+— which changes what every record set below it is, so the place it will occupy
+should be visible while that is still ahead of us rather than appearing as a
+surprise.
+
+**What a stub must NOT do.** It must not offer a control that does nothing. An
+empty tab that names its future controls is a tab that invites the owner to
+press something that is not there — the same fault as naming a screen that does
+not exist. It says what it is for, that it is not built, and nothing else.
+
+**What this step is not.** It is not the reclassification the section above
+calls for. Moving Verify's TAB does not move Verify's READ: History and Tune
+still read the judging stretch until their reads are moved to the choosing
+stretch, and until then the screen will be stating an order the code does not
+keep. That gap should be short, and it should be named on the screen if it is
+going to be long.
+
+**Cost:** the tab list is one array, and every screen is dispatched from it. The
+word lists regenerate per tab from the code, so a new tab gets its own list
+without anybody asking. The Help tab's control reader indexes by id, so a stub
+carrying no id-bearing control needs no help entry — and if it carries one, it
+needs one.
+
 ## And it says where Part 1's passes belong
 
 The **fitting** stretch is the only part of the budget that can be spent more
