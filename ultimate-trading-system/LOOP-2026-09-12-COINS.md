@@ -299,3 +299,39 @@ the search's count is a floor.
 - A coin the search cannot satisfy **still gets a record**, with the
   traditional numbers on it and a sentence saying what happened. `perPart` is
   null rather than a row of zeros, because there is no typing to report.
+
+## C6, C7 — the runner, the endpoints, the screen, the help (3.118.0)
+
+`lib/coinsrun.js`, four routes under `/api/coins/`, the **Coins** screen in
+place of the stub, and the help entry rewritten from "not built yet" to what it
+does.
+
+**The periods are the sweep's own periods.** The runner builds chunks with
+`buildComboChunks`, the same function a stage 1 launch builds them with, so a
+reading on this tab lines up period for period with the run it is vetting for.
+Building them another way here would be a second definition of what a period
+is.
+
+**Prices and moves come off the same chunk**: `c1`, the price a trade would
+open at, gives a price series already on period boundaries with nothing
+rounded; `diffPct` is the move over that period's own trade window, which is
+what its label is made from. So the weight reads the period's own outcome and
+nothing beyond it — the not-a-leak argument, made by construction rather than
+by assertion.
+
+**Choices made inside the step:**
+
+- **One coin that cannot be read is recorded and the run carries on.** One
+  missing cache must not cost the other sixteen their reading.
+- **The defaults are served by the server**, not typed into the page, so the
+  screen and the run cannot disagree about what an unset box means.
+- **The record is per coin per chunk shape**, one file each, because a reading
+  is about a coin's history rather than about a run.
+- **The walk is drawn.** A bar per percentage tried, the picked one marked. It
+  is the cheapest way to see whether a coin's count is steady across a band or
+  balanced on an edge, which is the thing section 4 says the walk is for.
+- **The screen remembers what it was looking at** — chunk shape, layout, order
+  — the way the other screens do.
+- **`order by` is a control, not a decision.** The open item asking which of
+  the two traditional numbers should order the list is answered by not
+  answering it in code.

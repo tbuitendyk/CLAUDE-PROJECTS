@@ -858,25 +858,52 @@ window.HELP = {
   coins: {
     title: 'Coins',
     how: [
-      ['Nothing on this screen works yet',
-        'There is no control here and nothing to press. It is on the strip because the strip is where the order of '
-        + 'the work is written down, and a step missing from it is a step missing from your picture of how the '
-        + 'system runs. Leaving it out until it is built would mean the order appears to change the day it lands.'],
-      ['What it will work out',
-        'For every coin, across all the history there is, the stretches in which it was rising and the stretches in '
-        + 'which it was falling. That is a reading about the coin itself rather than about any setting or any rule, '
-        + 'which is why it belongs on its own screen and why it can be worked out once and read many times.'],
-      ['It will sit before the sweep, not after it',
-        'What it works out changes what the sweep trains: instead of one set of forecasts learning from all of a '
-        + 'coin\'s history at once, there will be the option of two, one learning from the rising stretches and one '
-        + 'from the falling. A record set built that way is a different thing from one built the way they are built '
-        + 'today, so this has to come before the sweep rather than somewhere further along.'],
+      ['What this screen is for, and what it will never do',
+        'It reads what each coin\'s history actually holds: the stretches in which it was rising, the stretches '
+        + 'in which it was falling, and how those fall across train, test, held-back and the reserve. It REPORTS. '
+        + 'It never refuses a coin and it never decides which coins a sweep runs on — every figure here is '
+        + 'something to look at and sort by, and the choice of what to sweep stays yours, made by reading them.'],
+      ['How a change of direction is found',
+        'Price is walked forward keeping the highest point seen. When it has fallen back from that high by more '
+        + 'than a set percentage, that high is where the rising stretch ended and the falling one began, and the '
+        + 'same rule runs the other way. It is worked out from returns rather than price levels, so a ten per cent '
+        + 'move counts the same at fifty dollars and at five thousand. The percentage is not fixed across coins: '
+        + 'you say how many changes of direction you want, and each coin gets the LARGEST percentage that gives at '
+        + 'least that many. The walk beside each coin shows the count at every percentage tried, so you can see '
+        + 'whether a coin sits steady across a band of them or balanced on an edge.'],
+      ['The two numbers that do not read the tuned percentage',
+        'Worst tail slice and drift are worked out from a plain, untuned reading of direction, so re-tuning the '
+        + 'percentage above never moves them. Worst tail slice slides a window the size the window layouts '
+        + 'actually carve across the whole span and reports the most one-sided any position turns out to be — a '
+        + 'low number means somewhere in this history there is a stretch that runs all one way, which is the case '
+        + 'that has been hard to get good results from. Drift is how much that balance moves from part to part, '
+        + 'which is what shows you WHERE the one-sided stretch is rather than only that one exists.'],
+      ['Why the search stops at the end of test',
+        'The percentage is chosen by reading train and test only. Held-back and the reserve get no vote in it — '
+        + 'the settled percentage is then applied to the whole span and what is in them is reported, never fed '
+        + 'back. One thing follows from that and is worth knowing: a change of direction is only confirmed once '
+        + 'price has fallen back from it, so a change sitting near the end of test cannot be confirmed without '
+        + 'looking at held-back. The search is not allowed to look, so it counts what it can see and says on the '
+        + 'row when there turn out to be more. Its count is a floor, never an overstatement.'],
     ],
-    intro: 'Working out and writing down, across all the history there is, the stretches in which each coin was '
-      + 'rising and the stretches in which it was falling. Once that exists the sweep can be run a second way: '
-      + 'instead of one set of forecasts trained on all of a coin\'s history, two sets, one trained on the rising '
-      + 'stretches and one on the falling. None of it is built, and none of it changes any record set already here.',
-    controls: {},
+    intro: 'What each coin\'s history holds, read before anything is trained: the stretches in which it was rising '
+      + 'and the stretches in which it was falling, per window layout, per part of the history. It exists so a sweep '
+      + 'can be started knowing which coins have history worth training on, and so a coin has the numbers behind it '
+      + 'if it is going to be trained two ways. Nothing on this screen refuses a coin or decides anything.',
+    controls: {
+      cCoins: 'which coins to read, comma separated. Blank reads the default list, the same one a blank box on Sweep resolves to.',
+      cGeom: 'the chunk shape to read them at. A period is one step of this shape\'s clock, and it is the same period a sweep at this shape would train on.',
+      cTarget: 'how many changes of direction you want across train and test. Each coin gets the largest fall-back percentage that gives at least this many.',
+      cFrom: 'the smallest fall-back percentage to try.',
+      cTo: 'the largest fall-back percentage to try.',
+      cStep: 'how far apart the percentages tried are. Every value in the range is tried rather than bisected, because the count of changes does not simply rise as the percentage falls.',
+      cCap: 'the most any one period may weigh in training, as a multiple of the average. It must be above 1, and on a coin where too few periods moved it has to be higher still — the reading says so and names the value that would work.',
+      cDrift: 'how many equal parts the span is cut into to measure how the balance moves from part to part.',
+      cRun: 'reads every coin named above at the chunk shape above, and writes what it finds against that coin\'s history. One coin that cannot be read does not stop the others.',
+      cStop: 'stops after the coin being read now. What has already been written stays.',
+      cLayout: 'which window layout\'s reading to show. A coin can read differently under the two, so the reading is kept per layout.',
+      cOrder: 'which reading to put at the top of the list. Nothing is decided by this — it is only the order you want to look in.',
+    },
   },
   greenlight: {
     title: 'Greenlight',

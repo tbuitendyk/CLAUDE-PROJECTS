@@ -174,6 +174,26 @@ app.post('/api/compute-config', (req, res) => {
 
 app.get('/api/data-state', (req, res) => res.json({ symbols: cacheState() }));
 
+// ---- COINS: vetting a coin's history before anything is trained -------------
+// (COINS.md; owner LOOP NOW! 2026-09-12.) Every figure these serve is a reading
+// to look at. Nothing here refuses a coin, and nothing here decides which coins
+// a sweep runs on -- that is the owner's, at the screen.
+const coinsrun = require('./lib/coinsrun');
+
+app.post('/api/coins/run', (req, res) => {
+  try { return res.json(coinsrun.coinsRunStart(req.body || {})); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
+// Polling through the POST would restart the reading on every poll, so the
+// status has its own door -- the same shape as every other pressed job here.
+app.get('/api/coins/run', (req, res) => res.json(coinsrun.coinsRunStatus()));
+app.post('/api/coins/stop', (req, res) => res.json(coinsrun.coinsRunStop()));
+app.get('/api/coins/records', (req, res) => {
+  try { return res.json(coinsrun.coinsRecords(req.query || {})); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+
+
 
 // ---- data management (owner order, 2026-08-03): the "available data on
 // server" section gains download / refresh / purge / range controls. All
