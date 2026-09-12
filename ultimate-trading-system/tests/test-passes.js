@@ -220,4 +220,42 @@ module.exports = {
     assert.ok(/hold: span\(split\.holdChunks\)/.test(fn), 'the judging stretch no longer lands in the held-back slot');
     assert.ok(fn.includes('pass: passCut ?'), 'the windows a pass used do not travel with it, so the screen would have to guess them');
   },
+
+  // THE SHARE THAT IS SEALED OFF HAS EXACTLY ONE HOME (owner order, 2026-09-12:
+  // "just do it once in one place, like good code design"). It was in four: the
+  // sealed layout and the retrain layout in lib/stagework.js, a named constant
+  // in lib/stages.js, and one in lib/bracketwork.js. Four copies of one number
+  // that had to agree forever, with nothing keeping them agreeing.
+  theSealedShareIsWrittenDownInExactlyOnePlace() {
+    const fs = require('fs');
+    const path = require('path');
+    const dir = path.join(__dirname, '..', 'lib');
+    const homes = [];
+    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) {
+      // comments stripped: a scan a comment can trigger proves nothing
+      const src = fs.readFileSync(path.join(dir, f), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+      const hits = (src.match(/0\.13\b/g) || []).length;
+      if (hits) homes.push(`${f} (${hits})`);
+    }
+    assert.deepStrictEqual(homes, ['bracketwork.js (1)'],
+      `the sealed share is written down in more than one place: ${homes.join(', ')}`);
+
+    // and it really is what every reader uses
+    const bw = require('../lib/bracketwork');
+    assert.strictEqual(bw.RESERVE_SHARE, 0.13, 'the one home does not hold the share');
+    for (const n of [40, 200, 725, 3140]) {
+      assert.strictEqual(bw.reserveChunks(n), Math.max(2, Math.round(n * bw.RESERVE_SHARE)),
+        `the helper and the share disagree at ${n} periods`);
+    }
+    const work = fs.readFileSync(path.join(dir, 'stagework.js'), 'utf8');
+    assert.strictEqual((work.match(/reserveChunks\(/g) || []).length, 2,
+      'both the sealed layout and the retrain layout must seal through the one helper');
+    const coins = require('../lib/coins');
+    for (const n of [200, 725]) {
+      const parts = coins.partsFor(n, 'reserve61');
+      const res = parts[parts.length - 1];
+      assert.strictEqual(res.to - res.from + 1, bw.reserveChunks(n),
+        `the Coins reading seals a different number of periods from the engine at ${n}`);
+    }
+  },
 };

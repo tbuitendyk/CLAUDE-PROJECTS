@@ -26,6 +26,7 @@
 const bracketLib = require('./bracket');
 const {
   buildCombo, splitAndLabel, splitAndLabelAt, splitAndLabelPass, splitBounds, quorumCall, declaredQuorumFor,
+  reserveChunks,
 } = require('./bracketwork');
 const agreement = require('./agreement');
 // THE ONE DEFINITION OF A COMMITTEE'S CALL (3.91.0): calls from votes, the
@@ -433,7 +434,7 @@ async function unitChunks(combo, geometry, p) {
   // chunk's trade can reach
   const reachOf = (c) => c.startTs + geo.exitOffsetH * 3600000;
   if (p.windowLayout === 'reserve61') {
-    const nReserve = Math.max(2, Math.round(workChunks.length * 0.13));
+    const nReserve = reserveChunks(workChunks.length);
     const sealed = workChunks.slice(workChunks.length - nReserve);
     reserve = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
     workChunks = workChunks.slice(0, workChunks.length - nReserve);
@@ -446,7 +447,7 @@ async function unitChunks(combo, geometry, p) {
   let retrainTrain = null;
   if (p.windowLayout === 'retrain72') {
     const nAll = workChunks.length;
-    const nReserve = Math.max(2, Math.round(nAll * 0.13));
+    const nReserve = reserveChunks(nAll);
     const sealed = workChunks.slice(nAll - nReserve);
     reserve = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
     workChunks = workChunks.slice(0, nAll - nReserve);

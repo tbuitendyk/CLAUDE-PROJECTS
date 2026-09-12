@@ -148,16 +148,22 @@ function splitBounds(n, holdout) {
   return { nTrain: n - nTest - nHold, nTest, nHold };
 }
 
+// THE SHARE OF THE WHOLE SPAN THAT IS SEALED OFF AS THE RESERVE, and the only
+// place in the system that says what it is (owner order, 2026-09-12: "That
+// thirteen at the end is always gonna exist ... just do it once in one place,
+// like good code design").
+//
+// IT IS NOT A CONTROL, deliberately. The owner's ruling: it is a fixed property
+// of how the history is divided, not a setting. What it must not be is FOUR
+// copies -- it was typed twice in `lib/stagework.js`, once as a named constant
+// in `lib/stages.js`, and once here, and nothing kept the four in step.
+const RESERVE_SHARE = 0.13;
+
 // HOW MANY PERIODS COME OFF THE END AS THE SEALED RESERVE, before the split
 // above is taken of what is left. Here beside `splitBounds` because it is the
-// same arithmetic one step earlier, and because the alternative is every caller
-// typing 0.13 (COINS.md; the Coins reading now reads it from here).
-//
-// STILL TYPED TWICE IN `lib/stagework.js` (the sealed layout and the retrain
-// layout), which is the engine and not this loop's to change. Named in the loop
-// record so it is a known duplicate rather than a hidden one.
+// same arithmetic one step earlier.
 function reserveChunks(n) {
-  return Math.max(2, Math.round(n * 0.13));
+  return Math.max(2, Math.round(n * RESERVE_SHARE));
 }
 
 // LABEL ROTATION, in two scopes.
@@ -243,4 +249,4 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge) {
 // test. Nothing can run them; lib/rng.js keeps the one function that outlived
 // their module.)
 
-module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelAt, splitAndLabelPass, splitBounds, reserveChunks };
+module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelAt, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };

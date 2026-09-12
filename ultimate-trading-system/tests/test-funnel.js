@@ -2092,38 +2092,45 @@ module.exports = {
     const { NOTIONAL } = require('../lib/paper');
     const day = 86400000;
     const from = Date.UTC(2025, 0, 6);
-    // A UNIT'S TEST WINDOW, worked out from the sealed bounds its record
-    // carries and the split the run used: the sealed part is the last 13% of
-    // the whole, the held-back part the last 15% of what is left, and the
-    // test window the 15% before that.
-    const weekly = stages.testWindowOfUnit({ geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } });
-    assert.ok(weekly, 'a unit with sealed bounds has no test window worked out');
-    assert.strictEqual(weekly.chunks, 20, '20 sealed chunks of 13% means 134 work chunks, and 15% of those is 20');
+    // A UNIT'S TEST WINDOW IS READ OFF THE RECORD, never rebuilt (3.120.0).
+    // Since 3.85.0 every record carries the actual date ranges the run used, so
+    // this is a lookup. It used to divide the sealed chunk count by 0.13 to
+    // recover the whole span and take 15% of what was left -- rounding at every
+    // step, to rebuild a range sitting on the record beside it.
+    const win = (fromTs, toTs, chunks) => ({ test: { fromTs, toTs, chunks } });
+    const weekly = stages.testWindowOfUnit({ geometry: 'weekly-8d', windows: win(from - 280 * day, from - 140 * day, 20) });
+    assert.ok(weekly, 'a unit whose record carries its ranges has no test window read off it');
+    assert.strictEqual(weekly.chunks, 20, 'the chunk count is the stored one');
     assert.strictEqual(Math.round(weekly.days), 140, 'twenty weekly chunks is 140 days');
-    assert.strictEqual(weekly.toTs, from - 20 * 7 * day, 'the window ends where the held-back part begins, which is 20 chunks before the sealed part');
+    assert.strictEqual(weekly.toTs, from - 140 * day, 'the window ends exactly where the record says it ended');
+    assert.strictEqual(weekly.fromTs, from - 280 * day, 'and begins exactly where the record says it began');
     assert.ok(weekly.perYearFactor > 2.5 && weekly.perYearFactor < 2.7, `140 days is about 2.6 of them in a year, not ${weekly.perYearFactor}`);
-    // a daily unit steps a day, not a week, so the same chunk count is a
-    // shorter window -- the step is the unit's own
-    const daily = stages.testWindowOfUnit({ geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } });
+    // a daily unit's window is its own stored one, whatever shape it is
+    const daily = stages.testWindowOfUnit({ geometry: 'daily-4d', windows: win(from - 120 * day, from - 60 * day, 60) });
     assert.strictEqual(Math.round(daily.days), 60, 'sixty daily chunks is 60 days');
-    // AND A REAL RECORD CARRIES NO END TIMESTAMP (owner, 2026-09-04: "'The
-    // window the trades were counted over cannot be worked out' ... i don't
-    // believe you"). The stored bounds are { chunks, fromTs } and nothing
-    // else, and demanding a toTs made every set on the box say it could not
-    // be worked out. The step comes from the shape; the anchor is where the
-    // sealed window begins.
-    const real = stages.testWindowOfUnit({ geometry: 'weekly-8d', reserve: { chunks: 46, fromTs: 1758499200000 } });
-    assert.ok(real, 'a record with chunks and fromTs and no toTs must still give a window — that is the shape every record on the box has');
-    assert.strictEqual(new Date(real.fromTs).toISOString().slice(0, 10), '2023-12-18');
-    assert.strictEqual(new Date(real.toTs).toISOString().slice(0, 10), '2024-11-04');
-    assert.strictEqual(Math.round(real.days), 322, '46 weekly chunks is 322 days');
-    // a set with no sealed bounds says so rather than inventing a window
-    assert.strictEqual(stages.testWindowOfUnit({ geometry: 'daily-1d', reserve: null }), null);
-    assert.strictEqual(stages.testWindowOfUnit({ geometry: 'daily-1d', reserve: { chunks: 10 } }), null, 'no anchor, no window');
+
+    // EXACTLY, NOT APPROXIMATELY. This is the whole reason the arithmetic went:
+    // the recovered span was only good to about four chunks, so each end could
+    // be a day or a week out and the per-year figure with it. An awkward range
+    // that no rounding could land on proves it is a lookup.
+    const odd = { fromTs: 1700000123456, toTs: 1711111987654, chunks: 137 };
+    const read = stages.testWindowOfUnit({ geometry: 'weekly-8d', windows: { test: odd } });
+    assert.deepStrictEqual([read.fromTs, read.toTs, read.chunks], [odd.fromTs, odd.toTs, odd.chunks],
+      'the window must be the stored one to the millisecond, not a reconstruction that lands near it');
+
+    // AND NO FALLBACK TO THE OLD ARITHMETIC (RULE NINE: no legacy branch). A
+    // unit carrying the sealed bounds but no stored ranges has no window, and
+    // says so with null rather than rebuilding one.
+    assert.strictEqual(stages.testWindowOfUnit({ geometry: 'weekly-8d', reserve: { chunks: 46, fromTs: 1758499200000 } }), null,
+      'the sealed bounds alone must NOT produce a window — that reconstruction is deleted, not kept as a fallback');
+    assert.strictEqual(stages.testWindowOfUnit({ geometry: 'daily-1d', windows: null }), null);
+    assert.strictEqual(stages.testWindowOfUnit({ geometry: 'daily-1d', windows: { test: null } }), null, 'no stored range, no window');
+    assert.strictEqual(stages.testWindowOfUnit({ geometry: 'daily-1d', windows: { test: { fromTs: 5, toTs: 5 } } }), null,
+      'a range that ends where it starts is not a window');
     // THE EXPOSURE over the units a reading covers
     const ex = stages.exposureOf({ params: { windowLayout: 'reserve61' } }, [
-      { trade: 'XRPUSDT', geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } },
-      { trade: 'BTCUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } },
+      { trade: 'XRPUSDT', geometry: 'weekly-8d', windows: win(from - 280 * day, from - 140 * day, 20) },
+      { trade: 'BTCUSDT', geometry: 'daily-4d', windows: win(from - 120 * day, from - 60 * day, 60) },
     ]);
     assert.strictEqual(ex.stake, NOTIONAL, 'the stake is the engine\'s, never a number typed on the page');
     assert.strictEqual(ex.stake, 100);
@@ -2134,34 +2141,34 @@ module.exports = {
     // the daily one (a start every 24) holds six.
     assert.strictEqual(ex.holdHours, null, 'with no hold named nothing about overlap can be claimed');
     const held = stages.exposureOf({ params: { windowLayout: 'reserve61' } }, [
-      { trade: 'XRPUSDT', geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } },
-      { trade: 'BTCUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } },
+      { trade: 'XRPUSDT', geometry: 'weekly-8d', windows: win(from - 280 * day, from - 140 * day, 20) },
+      { trade: 'BTCUSDT', geometry: 'daily-4d', windows: win(from - 120 * day, from - 60 * day, 60) },
     ], { holdHours: 137 });
     assert.deepStrictEqual(held.perUnit.map((u) => [u.stepHours, u.atOnce, u.mostAtOnce]), [[168, 1, 100], [24, 6, 600]],
       'a weekly unit holds one at a time at a 137-hour hold; a daily one holds six');
     assert.strictEqual(held.mostAtOnce, 700, 'the most on the table is every unit\'s own overlap added up, not one stake per coin');
     const short = stages.exposureOf({ params: { windowLayout: 'reserve61' } },
-      [{ trade: 'BTCUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } }], { holdHours: 17 });
+      [{ trade: 'BTCUSDT', geometry: 'daily-4d', windows: win(from - 120 * day, from - 60 * day, 60) }], { holdHours: 17 });
     assert.strictEqual(short.perUnit[0].atOnce, 1, 'a 17-hour hold on a daily start holds one at a time');
     assert.strictEqual(short.mostAtOnce, 100);
     assert.strictEqual(Math.round(ex.window.days), 140, 'the window spans the longest of the units\' own');
     assert.strictEqual(Math.round(20 * ex.window.perYearFactor), 52, '20 trades over 140 days is about 52 a year');
     // the same coin twice under two shapes is ONE coin on the table
     const twice = stages.exposureOf({ params: { windowLayout: 'reserve61' } }, [
-      { trade: 'XRPUSDT', geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } },
-      { trade: 'XRPUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } },
+      { trade: 'XRPUSDT', geometry: 'weekly-8d', windows: win(from - 280 * day, from - 140 * day, 20) },
+      { trade: 'XRPUSDT', geometry: 'daily-4d', windows: win(from - 120 * day, from - 60 * day, 60) },
     ]);
     assert.strictEqual(twice.coins, 1, 'one coin under two shapes is one coin');
     // ...but two shapes of it can both be in a trade, so what is on the table
     // is both of them, not one
     const twiceHeld = stages.exposureOf({ params: { windowLayout: 'reserve61' } }, [
-      { trade: 'XRPUSDT', geometry: 'weekly-8d', reserve: { chunks: 20, fromTs: from, toTs: from + 20 * 7 * day } },
-      { trade: 'XRPUSDT', geometry: 'daily-4d', reserve: { chunks: 60, fromTs: from, toTs: from + 60 * day } },
+      { trade: 'XRPUSDT', geometry: 'weekly-8d', windows: win(from - 280 * day, from - 140 * day, 20) },
+      { trade: 'XRPUSDT', geometry: 'daily-4d', windows: win(from - 120 * day, from - 60 * day, 60) },
     ], { holdHours: 65 });
     assert.deepStrictEqual(twiceHeld.perUnit.map((u) => u.atOnce), [1, 3], 'a 65-hour hold is one weekly start and three daily ones');
     assert.strictEqual(twiceHeld.mostAtOnce, 400, 'one coin under two shapes can still have four stakes on the table');
     // and a set the window cannot be worked out for says why
-    const none = stages.exposureOf({ params: { windowLayout: 'split70' } }, [{ trade: 'X', geometry: 'daily-1d', reserve: null }]);
+    const none = stages.exposureOf({ params: { windowLayout: 'split70' } }, [{ trade: 'X', geometry: 'daily-1d', windows: null }]);
     assert.strictEqual(none.window, null);
     assert.ok(/only reserve61 records the bounds/.test(none.why), `it must say why: ${none.why}`);
     // ---- and the step prints it ----

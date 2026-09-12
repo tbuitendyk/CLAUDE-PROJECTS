@@ -2055,6 +2055,9 @@ function sealedWindowOf(doc) {
   const units = records.map((r) => ({
     u: r.u, trade: r.trade, ctx1: r.ctx1 ?? null, ctx2: r.ctx2 ?? null,
     geometry: r.geometry, reserve: r.reserve || null,
+    // THE DATE RANGES THE RUN ACTUALLY USED (3.85.0), carried through so the
+    // test window is READ rather than rebuilt from the sealed count.
+    windows: r.windows || null,
   }));
   return sealedFromUnits(layout, units);
 }
@@ -2174,32 +2177,36 @@ function windowsOfSet(doc) {
 // unit's own (a daily shape steps a day, a weekly one a week), and the sealed
 // record says how many chunks it holds, so the work window's length is read
 // off the same arithmetic the run split on rather than guessed from months.
-const TEST_SHARE = 0.15;         // of the work window, the same split the run used
-const HOLD_SHARE = 0.15;         // held back after it
-const RESERVE_SHARE = 0.13;      // sealed off the whole, before the work window
+// THE WINDOW A UNIT WAS TESTED OVER, READ OFF THE RECORD THAT STORES IT.
+//
+// IT USED TO BE RECONSTRUCTED, and there was never a reason to. Since 3.85.0
+// every stage 1 and 2 record carries the actual train, test and held-back date
+// ranges the run used (owner order, 2026-09-07). This function was dividing the
+// sealed chunk count by 0.13 to recover the whole span, subtracting to get the
+// work window, and taking 15% of that -- rebuilding, with rounding error at
+// every step, a range sitting on the record beside it.
+//
+// The rounding was the visible fault (the recovered span is only accurate to
+// about four chunks, so each end of the reported window could be a day or a
+// week out, and the per-year figure with it). The real fault was doing the
+// arithmetic at all. Owner, 2026-09-12: "if that's gonna cause a problem, then
+// fix it in the code. Don't just report it."
+//
+// NO FALLBACK TO THE OLD ARITHMETIC (RULE NINE). A unit whose ranges were never
+// kept has no window, says so with null, and the readers above already handle
+// that case -- they were written for it.
 function testWindowOfUnit(unit) {
-  const res = unit && unit.reserve;
-  // WHAT A RECORD ACTUALLY CARRIES (owner, 2026-09-04: "'The window the trades
-  // were counted over cannot be worked out' ... i don't believe you"). Right:
-  // the record holds `chunks` and `fromTs` and NO end timestamp, and this
-  // demanded one, so every set on the box said the window could not be worked
-  // out. It never needed one -- the step comes from the shape, and where the
-  // sealed window BEGINS is where the work window ended, which is the only
-  // anchor the arithmetic below uses.
-  if (!res || !res.fromTs || !res.chunks) return null;
-  const geo = (require('./dataset').GEOMETRIES || {})[unit.geometry] || null;
-  const stepMs = geo && geo.stepHours ? geo.stepHours * 3600 * 1000
-    : (res.toTs ? (res.toTs - res.fromTs) / res.chunks : 0);
-  if (!(stepMs > 0)) return null;
-  const whole = Math.round(res.chunks / RESERVE_SHARE);      // the sealed part is that share of it
-  const work = Math.max(1, whole - res.chunks);
-  const nHold = Math.max(2, Math.round(work * HOLD_SHARE));
-  const nTest = Math.max(2, Math.round(work * TEST_SHARE));
-  const workEnd = res.fromTs;                                // the sealed window starts where work ended
-  const toTs = workEnd - nHold * stepMs;
-  const fromTs = toTs - nTest * stepMs;
-  const days = (toTs - fromTs) / 86400000;
-  return { fromTs, toTs, chunks: nTest, days, weeks: days / 7, perYearFactor: days > 0 ? 365.25 / days : null };
+  const w = unit && unit.windows && unit.windows.test;
+  if (!w || !Number.isFinite(w.fromTs) || !Number.isFinite(w.toTs) || !(w.toTs > w.fromTs)) return null;
+  const days = (w.toTs - w.fromTs) / 86400000;
+  return {
+    fromTs: w.fromTs,
+    toTs: w.toTs,
+    chunks: Number.isFinite(w.chunks) ? w.chunks : null,
+    days,
+    weeks: days / 7,
+    perYearFactor: days > 0 ? 365.25 / days : null,
+  };
 }
 // the same, for every unit a reading covers: the window each was tested over,
 // and the stake that can be on the table at once across them
@@ -2233,7 +2240,7 @@ function exposureOf(doc, units, opts = {}) {
     mostAtOnce: known.length === list.length && list.length ? known.reduce((a, u) => a + u.mostAtOnce, 0) : null,
     window: from && to ? { fromTs: from, toTs: to, days, weeks: days / 7, perYearFactor: days > 0 ? 365.25 / days : null } : null,
     why: windows.length ? null : (((doc || {}).params || {}).windowLayout === 'reserve61'
-      ? 'the units carry no sealed window, so the window they were tested over cannot be worked out'
+      ? 'the units carry no stored date ranges, so the window they were tested over cannot be read — that is a set written before 3.85.0'
       : `this set's window layout is ${((doc || {}).params || {}).windowLayout || 'unrecorded'} — only reserve61 records the bounds this is worked out from`),
   };
 }
