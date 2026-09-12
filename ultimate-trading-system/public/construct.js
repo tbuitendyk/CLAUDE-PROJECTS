@@ -391,9 +391,27 @@ $('#themebtn').onclick = () => {
 // the code to those obsolete items"). Sweep and Boards below ARE the
 // three-stage system: the two earlier working screens and the two drawings
 // they were designed on are gone, and nothing is named after them.
-const TABS = [['data', 'Data'], ['sweep', 'Sweep'], ['boards', 'Boards'], ['funnel', 'Funnel'],
+// THE TAB STRIP IS THE PIPELINE, STATED (3.113.0, owner order 2026-09-11,
+// SELECTION-DESIGN.md "the step that puts this order on the screen").
+//
+// It is the only place the sequence is written down for the owner, so the
+// order it reads in is a claim about how the work goes. Verify sat fifth,
+// which said the judgement happens before History and Tune have finished
+// narrowing -- and under the history budget rule that is a judging stretch
+// spent on a choosing act. It now sits last of the tabs that ARE the flow,
+// immediately before Greenlight: everything that picks, then the one thing
+// that judges, then the decision to trade. Help is not part of the flow and
+// stays at the end.
+//
+// AND MOVING THE TAB DOES NOT MOVE THE READ. History and Tune still read the
+// judging stretch until their reads are moved to the choosing stretch, so
+// until that lands the strip states an order the engine does not yet keep.
+// That is named here rather than left for somebody to discover.
+const TABS = [['data', 'Data'], ['coins', 'Coins'],
+  ['sweep', 'Sweep'], ['boards', 'Boards'], ['funnel', 'Funnel'],
+  ['history', 'History'], ['tune', 'Tune'],
   ['verify', 'Verify'],
-  ['history', 'History'], ['tune', 'Tune'], ['greenlight', 'Greenlight'], ['help', 'Help']];
+  ['greenlight', 'Greenlight'], ['help', 'Help']];
 let tab = localStorage.getItem('cx-tab') || 'sweep';
 
 // WHERE YOU WERE ON EACH TAB (owner, 2026-08-21).
@@ -7717,6 +7735,7 @@ function fWire(st, d) {
 }
 
 drawData = waitWrap(drawData);
+drawCoins = waitWrap(drawCoins);
 drawSweep = waitWrap(drawSweep);
 drawBoards = waitWrap(drawBoards);
 drawVerify = waitWrap(drawVerify);
@@ -7725,6 +7744,33 @@ drawTune = waitWrap(drawTune);
 drawGreenlight = waitWrap(drawGreenlight);
 drawFunnel = waitWrap(drawFunnel);
 drawHelp = waitWrap(drawHelp);
+
+// COINS -- A STUB, AND IT SAYS SO (3.113.0, owner order 2026-09-11).
+//
+// It is here before it is built because the tab strip is where the pipeline is
+// stated, and a step missing from the strip is a step missing from the owner's
+// picture of the system. When it is built it gives the sweep a second way to
+// run -- the one set of trained models it has now, and a second set trained on
+// up and down periods separately -- which changes what every record set below
+// it is. The place that will occupy should be visible while it is still ahead.
+//
+// IT OFFERS NO CONTROL. A screen that names a control it does not have invites
+// a press that goes nowhere, which is the same fault as naming a screen that
+// does not exist. It says what it is for, that it is not built, and stops.
+async function drawCoins() {
+  $('#view').innerHTML = `<div class="panel">
+    <h3 style="margin-top:0">Coins</h3>
+    <p class="note"><b>Not built yet.</b> Nothing on this screen does anything, and there is nothing here to press.</p>
+    <p class="note">What it is for: working out and recording, across all the history there is, the stretches in which
+      each coin was rising and the stretches in which it was falling.</p>
+    <p class="note">What it will change: the sweep will be able to run two ways. The way it runs today, where one set
+      of forecasts is trained on all of a coin's history; and a second way, where two sets are trained, one on the
+      rising stretches and one on the falling ones. A record set built the second way is a different thing from one
+      built the first way, so this sits before the sweep rather than after it.</p>
+    <p class="note">It changes nothing about any record set already on this box.</p>
+  </div>`;
+}
+drawCoins = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('coins'); return r; })(drawCoins);
 
 function draw() {
   renderTabs(); renderStrip();
@@ -7751,15 +7797,15 @@ function draw() {
     v.prepend(el);
   };
   const section = tab === 'data' ? drawData()
-    : tab === 'sweep' ? drawSweep()
-      : tab === 'boards' ? drawBoards()
-        : tab === 'funnel' ? drawFunnel()
-        : tab === 'verify' ? drawVerify()
-                  : tab === 'history' ? drawHistory()
-                    : tab === 'tune' ? drawTune()
-                      : tab === 'greenlight' ? drawGreenlight()
-
-                        : drawHelp();
+    : tab === 'coins' ? drawCoins()
+      : tab === 'sweep' ? drawSweep()
+        : tab === 'boards' ? drawBoards()
+          : tab === 'funnel' ? drawFunnel()
+            : tab === 'history' ? drawHistory()
+              : tab === 'tune' ? drawTune()
+                : tab === 'verify' ? drawVerify()
+                  : tab === 'greenlight' ? drawGreenlight()
+                    : drawHelp();
   // A section that THROWS must say so. Without the rejection arm the promise
   // rejects, the banner never runs, and #view keeps whatever was there — on a
   // first load that is nothing at all, so a hard failure renders as a blank

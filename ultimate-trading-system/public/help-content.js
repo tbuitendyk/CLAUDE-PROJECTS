@@ -855,6 +855,29 @@ window.HELP = {
     },
   },
 
+  coins: {
+    title: 'Coins',
+    how: [
+      ['Nothing on this screen works yet',
+        'There is no control here and nothing to press. It is on the strip because the strip is where the order of '
+        + 'the work is written down, and a step missing from it is a step missing from your picture of how the '
+        + 'system runs. Leaving it out until it is built would mean the order appears to change the day it lands.'],
+      ['What it will work out',
+        'For every coin, across all the history there is, the stretches in which it was rising and the stretches in '
+        + 'which it was falling. That is a reading about the coin itself rather than about any setting or any rule, '
+        + 'which is why it belongs on its own screen and why it can be worked out once and read many times.'],
+      ['It will sit before the sweep, not after it',
+        'What it works out changes what the sweep trains: instead of one set of forecasts learning from all of a '
+        + 'coin\'s history at once, there will be the option of two, one learning from the rising stretches and one '
+        + 'from the falling. A record set built that way is a different thing from one built the way they are built '
+        + 'today, so this has to come before the sweep rather than somewhere further along.'],
+    ],
+    intro: 'Working out and writing down, across all the history there is, the stretches in which each coin was '
+      + 'rising and the stretches in which it was falling. Once that exists the sweep can be run a second way: '
+      + 'instead of one set of forecasts trained on all of a coin\'s history, two sets, one trained on the rising '
+      + 'stretches and one on the falling. None of it is built, and none of it changes any record set already here.',
+    controls: {},
+  },
   greenlight: {
     title: 'Greenlight',
     how: [
