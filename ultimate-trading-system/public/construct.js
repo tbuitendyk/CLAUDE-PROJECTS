@@ -7754,8 +7754,19 @@ drawHelp = waitWrap(drawHelp);
 // WHAT THE SCREEN IS LOOKING AT, remembered across flips the way every other
 // screen here remembers its own view.
 const C_KEY = 'cx-coins';
+// WHAT THE SCREEN IS LOOKING AT AND WHAT IS TYPED IN ITS BOXES, remembered
+// across flips the way every other screen here remembers its own view.
+//
+// THE TYPED VALUES LIVE HERE, NOT IN THE MARKUP, because this panel redraws
+// itself every two seconds while a reading runs. The first version rebuilt the
+// boxes from the server's defaults on every one of those redraws and gave the
+// coin box no value at all, so anything typed was wiped twice a second while
+// the owner was still typing it.
 const cState = (() => {
-  const d = { geometry: 'daily-4d', layout: 'reserve61', orderBy: 'coin' };
+  const d = {
+    geometry: 'daily-4d', layout: 'reserve61', orderBy: 'coin',
+    coins: '', target: '', from: '', to: '', step: '', cap: '', drift: '', weekdays: false,
+  };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
 })();
 const cRemember = () => { try { localStorage.setItem(C_KEY, JSON.stringify(cState)); } catch (_) { /* private window */ } };
@@ -7772,22 +7783,45 @@ const cRemember = () => { try { localStorage.setItem(C_KEY, JSON.stringify(cStat
 // start with come from the server's own defaults so the screen and the run
 // cannot disagree about what "unset" means.
 let coinsPoll = null;
+// THE EVERY-TWO-SECONDS ASK REDRAWS QUIETLY, the same way Boards' does. The
+// full-screen wait box flashing twice a second is not information, and while it
+// is up it swallows clicks -- including the one on Stop.
+function cPollRedraw() {
+  waitSilent = true;
+  try { holdScrollMemory(); return drawCoins().then(() => holdScrollMemory()); } finally { waitSilent = false; }
+}
+
+// THE ORDERINGS, AND WHICH WAY EACH ONE RUNS. Two of these are readings where
+// LOW is the alarming end and two are readings where high is; putting them all
+// in one direction buried the coins the owner is looking for at the bottom of
+// the list. A coin the reading could not be taken for sorts LAST under every
+// ordering -- never mixed in among the measured ones, and never at the top of
+// a worst-first list, which is where "not measured" used to land.
+const C_ORDERS = [
+  { value: 'coin', label: 'coin', dir: 0, of: () => null },
+  { value: 'tail', label: 'worst tail slice — most one-sided first', dir: 1, of: (r) => (r.traditional ? r.traditional.worstTailSlice.balance : null) },
+  { value: 'drift', label: 'drift — largest first', dir: -1, of: (r) => (r.traditional ? r.traditional.drift.drift : null) },
+  { value: 'pct', label: 'fall-back % — largest first', dir: -1, of: (r, l) => (r.readings && r.readings[l] && r.readings[l].search && r.readings[l].search.reached ? r.readings[l].search.pct : null) },
+  { value: 'turns', label: 'changes of direction — most first', dir: -1, of: (r, l) => (r.readings && r.readings[l] && r.readings[l].search && r.readings[l].search.reached ? r.readings[l].search.turns : null) },
+  { value: 'periods', label: 'periods — most first', dir: -1, of: (r) => (r.periods || null) },
+];
 function cOrder(recs, by, layout) {
-  const key = (r) => {
-    const rd = r.readings && r.readings[layout];
-    if (by === 'coin') return null;
-    if (by === 'tail') return rd ? (rd.traditional.worstTailSlice.balance ?? -1) : -1;
-    if (by === 'drift') return rd ? (rd.traditional.drift.drift ?? -1) : -1;
-    if (by === 'pct') return rd && rd.search.reached ? rd.search.pct : -1;
-    if (by === 'turns') return rd && rd.search.reached ? rd.search.turns : -1;
-    return null;
-  };
+  const spec = C_ORDERS.find((o) => o.value === by) || C_ORDERS[0];
+  const byCoin = (a, b) => String(a.coin).localeCompare(String(b.coin));
   const out = recs.slice();
-  if (by === 'coin') return out.sort((a, b) => String(a.coin).localeCompare(String(b.coin)));
-  return out.sort((a, b) => (key(b) - key(a)) || String(a.coin).localeCompare(String(b.coin)));
+  if (!spec.dir) return out.sort(byCoin);
+  return out.sort((a, b) => {
+    const x = spec.of(a, layout);
+    const y = spec.of(b, layout);
+    if (x == null && y == null) return byCoin(a, b);
+    if (x == null) return 1;                    // not measured always last
+    if (y == null) return -1;
+    return (spec.dir * (x - y)) || byCoin(a, b);
+  });
 }
 const cPct = (v) => (v == null ? '<span class="muted">—</span>' : `${(v * 100).toFixed(1)}%`);
 const cNum = (v, d = 2) => (v == null ? '<span class="muted">—</span>' : Number(v).toFixed(d));
+const cDay = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : null);
 
 // THE WALK, DRAWN. The count of changes of direction at each percentage tried,
 // per coin. It is the shape of the search, and it says at a glance whether a
@@ -7799,18 +7833,57 @@ function cWalk(walk, picked) {
     const h = Math.max(1, Math.round((w.turns / max) * 22));
     const on = picked != null && Math.abs(w.pct - picked) < 1e-9;
     return `<span title="${w.pct}% gives ${w.turns} change(s) of direction" style="display:inline-block;width:4px;`
-      + `height:${h}px;margin-right:1px;vertical-align:bottom;background:${on ? 'var(--pos,#2b8a3e)' : '#8aa'}"></span>`;
+      + `height:${h}px;margin-right:1px;vertical-align:bottom;background:var(${on ? '--pos' : '--dim'})"></span>`;
   }).join('');
   return `<span style="display:inline-block;line-height:0">${bars}</span>`;
+}
+
+// HOW MANY WHOLE STRETCHES OF EACH TYPE A PART HOLDS, said in words rather than
+// left to a tick. The first version drew one sentence for two different facts
+// and got both wrong: it fired when a type appeared NO times as well as once,
+// and it never said which type it meant.
+function cTypeNote(p) {
+  const r = p.stretches.rising.full;
+  const f = p.stretches.falling.full;
+  const say = (n, w) => (n === 0 ? `no whole ${w} stretch` : `one whole ${w} stretch`);
+  if (r >= 2 && f >= 2) return '';
+  const bits = [];
+  if (r < 2) bits.push(say(r, 'rising'));
+  if (f < 2) bits.push(say(f, 'falling'));
+  return ` <span class="warn">· ${bits.join(' and ')}</span>`;
 }
 
 async function drawCoins() {
   const d = await apiOr('api/coins/records?geometry=' + encodeURIComponent(cState.geometry), null);
   const st = await apiOr('api/coins/run', null);
+  // WHAT IS CACHED NOW, so a reading taken before more history arrived can be
+  // said to be behind it. The column used to promise exactly this and nothing
+  // computed it: a month-old reading and one taken a minute ago drew the same.
+  const now = await apiOr('api/data-state', null);
+  const cachedNow = new Map(((now && now.symbols) || []).map((s) => [String(s.symbol).toUpperCase(), s]));
   const defs = (d && d.defaults) || {};
   const recs = (d && d.records) || [];
+  const unreadable = (d && d.unreadable) || [];
+  const thin = (d && d.thinSide) || null;
   const running = !!(st && st.running);
   const rows = cOrder(recs, cState.orderBy, cState.layout);
+  const box = (k, dflt) => esc(String(cState[k] === '' || cState[k] == null ? (dflt ?? '') : cState[k]));
+  const off = running ? ' disabled' : '';
+
+  // WHAT THE BOXES SAY AGAINST WHAT THE ROWS WERE READ AT. The boxes hold what
+  // the owner typed and are never overwritten by a redraw; the records hold
+  // what they were actually read at. When those differ the screen says so
+  // rather than letting a table of numbers sit silently under a box that did
+  // not produce them.
+  const asked = { target: Number(box('target', defs.target)), from: Number(box('from', defs.from)), to: Number(box('to', defs.to)), step: Number(box('step', defs.step)), cap: Number(box('cap', defs.cap)), driftParts: Number(box('drift', defs.driftParts)), weekdaysOnly: !!cState.weekdays };
+  const differs = (r) => !r.params || Object.keys(asked).some((k) => String(r.params[k]) !== String(asked[k]));
+  const stale = (r) => {
+    const c = cachedNow.get(String(r.coin).toUpperCase());
+    if (!c || r.provenance == null || r.provenance.cachedMonths == null) return null;
+    return c.months > r.provenance.cachedMonths ? c.months - r.provenance.cachedMonths : 0;
+  };
+  const behind = rows.filter((r) => stale(r) > 0).length;
+  const atOther = rows.filter(differs).length;
 
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Coins</h3>
@@ -7819,76 +7892,101 @@ async function drawCoins() {
       coin.</b> Every figure is a reading — which coins a sweep runs on is your choice, made by looking at these.</p>
 
     <div class="row">
-      <label class="f" title="which coins to read, comma separated. Blank reads the default list, the same one a blank box on Sweep resolves to.">coins (blank = all 17 default coins)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" style="width:16rem"></label>
-      <label class="f" title="the chunk shape to read them at. A period is one step of this shape's clock, and it is the same period a sweep at this shape would train on.">chunk shape<select id="cGeom"></select></label>
-      <label class="f" title="how many changes of direction you want across train and test. Each coin gets whatever fall-back percentage delivers at least this many — the largest one that does.">changes of direction wanted<input id="cTarget" type="number" min="1" value="${defs.target ?? 6}" style="width:5rem"></label>
+      <label class="f" title="which coins to read, comma separated. Blank reads the default list, the same one a blank box on Sweep resolves to.">coins (blank = all 17 default coins)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${box('coins')}" style="width:16rem"${off}></label>
+      <label class="f" title="the chunk shape to read them at. A period is one step of this shape's clock, and it is the same period a sweep at this shape would train on.">chunk shape<select id="cGeom"${off}></select></label>
+      <label class="f" title="how many changes of direction you want across train and test. Each coin gets whatever fall-back percentage delivers at least this many — the largest one that does.">changes of direction wanted<input id="cTarget" type="number" min="1" value="${box('target', defs.target)}" style="width:5rem"${off}></label>
+      <label class="f" title="whether the periods are built weekdays only, exactly as a sweep with this setting builds them. It changes how many periods a coin has, so a reading taken with it off does not describe a run made with it on.">24/5<input id="cWk" type="checkbox"${cState.weekdays ? ' checked' : ''}${off}></label>
     </div>
     <div class="row">
-      <label class="f" title="the smallest fall-back percentage to try.">try from, %<input id="cFrom" type="number" step="0.5" min="0.5" value="${defs.from ?? 1}" style="width:5rem"></label>
-      <label class="f" title="the largest fall-back percentage to try.">try to, %<input id="cTo" type="number" step="0.5" min="1" value="${defs.to ?? 30}" style="width:5rem"></label>
-      <label class="f" title="how far apart the percentages tried are. The walk is exhaustive: the count of changes does not simply rise as the percentage falls, so every value in the range is tried rather than bisected.">step, %<input id="cStep" type="number" step="0.1" min="0.1" value="${defs.step ?? 0.5}" style="width:5rem"></label>
-      <label class="f" title="the most any one period may weigh in training, as a multiple of the average. One violent period would otherwise dominate everything. It must be above 1, and on a coin where too few periods moved it has to be higher still — the reading says so and names the value.">weight ceiling<input id="cCap" type="number" step="1" min="1.5" value="${defs.cap ?? 20}" style="width:5rem"></label>
-      <label class="f" title="how many equal parts the span is cut into to measure how the balance moves from part to part.">drift parts<input id="cDrift" type="number" min="2" value="${defs.driftParts ?? 8}" style="width:5rem"></label>
+      <label class="f" title="the smallest fall-back percentage to try.">try from, %<input id="cFrom" type="number" step="0.5" min="0.1" value="${box('from', defs.from)}" style="width:5rem"${off}></label>
+      <label class="f" title="the largest fall-back percentage to try.">try to, %<input id="cTo" type="number" step="0.5" min="0.2" value="${box('to', defs.to)}" style="width:5rem"${off}></label>
+      <label class="f" title="how far apart the percentages tried are. The walk is exhaustive: the count of changes does not simply rise as the percentage falls, so every value in the range is tried rather than bisected — a very small step here is a very long walk.">step, %<input id="cStep" type="number" step="0.1" min="0.01" value="${box('step', defs.step)}" style="width:5rem"${off}></label>
+      <label class="f" title="the most any one period may weigh in training, as a multiple of the average. One violent period would otherwise dominate everything. It must be above 1, and on a coin where too few periods moved it has to be higher still — the reading says so and names the value.">weight ceiling<input id="cCap" type="number" step="1" min="1.5" value="${box('cap', defs.cap)}" style="width:5rem"${off}></label>
+      <label class="f" title="how many equal parts the span is cut into to measure how the balance moves from part to part.">drift parts<input id="cDrift" type="number" min="2" value="${box('drift', defs.driftParts)}" style="width:5rem"${off}></label>
     </div>
     <div class="row">
-      <button id="cRun" class="pri" ${running ? 'disabled' : ''}>Read these coins</button>
+      <button id="cRun" class="pri"${off}>Read these coins</button>
       ${running ? '<button id="cStop">Stop</button>' : ''}
-      <div id="cOut" class="note">${running
+      <span id="cOut" class="muted">${running
     ? `reading — ${st.done} of ${st.of} done${st.note ? `: ${esc(st.note)}` : ''}`
-    : (st && st.finishedAt ? `last read ${esc(String(st.finishedAt).replace('T', ' ').slice(0, 16))} UTC — ${(st.wrote || []).length} written, ${(st.refused || []).length} refused` : 'nothing read yet')}</div>
+    : (st && st.finishedAt
+      ? `${st.stopped ? `stopped after ${st.stoppedAt} of ${st.of}` : 'finished'} ${esc(String(st.finishedAt).replace('T', ' ').slice(0, 16))} UTC — ${(st.wrote || []).length} read, ${(st.couldNotRead || []).length} could not be read`
+      : (recs.length || unreadable.length ? 'nothing read since this service last started' : 'nothing read yet'))}</span>
     </div>
     ${st && st.error ? `<p class="note warn">the last reading stopped: ${esc(st.error)}</p>` : ''}
-    ${st && (st.refused || []).length ? `<p class="note warn">${st.refused.map((r) => `${esc(r.coin)}: ${esc(r.why)}`).join('<br>')}</p>` : ''}
+    ${behind ? `<p class="note warn">${behind} of these ${behind === 1 ? 'readings was' : 'readings were'} worked out before more history was cached for that coin — read ${behind === 1 ? 'it' : 'them'} again to bring ${behind === 1 ? 'it' : 'them'} up to date.</p>` : ''}
+    ${atOther ? `<p class="note">${atOther} of the ${rows.length} rows below ${atOther === 1 ? 'was' : 'were'} read at different values from the boxes above. Each row says what it was read at.</p>` : ''}
+    ${unreadable.length ? `<p class="note warn">${unreadable.length} file(s) on the box could not be read back:<br>${unreadable.map((u) => `<b>${esc(u.coin)}</b> — ${esc(u.why)}`).join('<br>')}</p>` : ''}
   </div>
 
   <div class="panel">
     <div class="row">
       <label class="f" title="which window layout's reading to show. A coin can read differently under the two, so this is per layout.">window layout<select id="cLayout">${vocabOptions('windowLayout', cState.layout)}</select></label>
-      <label class="f" title="which reading to order the list by. Nothing is decided by this — it is only which one you want at the top.">order by<select id="cOrder">
-        <option value="coin"${cState.orderBy === 'coin' ? ' selected' : ''}>coin</option>
-        <option value="tail"${cState.orderBy === 'tail' ? ' selected' : ''}>worst tail slice</option>
-        <option value="drift"${cState.orderBy === 'drift' ? ' selected' : ''}>drift</option>
-        <option value="pct"${cState.orderBy === 'pct' ? ' selected' : ''}>fall-back %</option>
-        <option value="turns"${cState.orderBy === 'turns' ? ' selected' : ''}>changes of direction</option>
-      </select></label>
+      <label class="f" title="which reading to order the list by, and which end of it comes first. Nothing is decided by this — it is only which one you want at the top. A coin that could not be measured sorts last whichever is chosen.">order by<select id="cOrder">${C_ORDERS.map((o) => `<option value="${o.value}"${cState.orderBy === o.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
     </div>
     <p class="note"><b>The two traditional numbers</b> are worked out from an untuned reading of direction and are the
       same under either window layout: <b>worst tail slice</b> is the most one-sided any stretch the layouts carve
       turns out to be, anywhere in the span — a low number means somewhere in this history there is a stretch that
-      runs all one way. <b>drift</b> is how much that balance moves from part to part.</p>
-    ${!rows.length ? '<p class="note">nothing read yet at this chunk shape — press <b>Read these coins</b> above</p>' : `
-    <div class="scrollx"><table><thead><tr>
+      runs all one way. <b>drift</b> is how much that balance moves from part to part. <b>Both move with how much
+      history a coin has</b>, because both measure over a share of the span: a coin with a few dozen periods reads
+      worse on the first and better on the second than the same coin with a thousand, so two coins with different
+      amounts of cached history cannot be compared on either. The periods column is there to be read beside them.</p>
+    ${thin ? `<p class="note">A side thinner than <b>${(thin.level * 100).toFixed(1)}%</b> of a part will not be
+      rescued by weighting — that is where the engine's own ceiling of ${thin.cap} across ${thin.answers} answers
+      stops being able to correct the imbalance, and below it staying quiet starts winning. It is marked below and
+      it is <b>not</b> a cut-off.</p>` : ''}
+    ${!rows.length ? `<p class="note">no coin has been read at this chunk shape${unreadable.length ? ' that this release can read' : ''} — press <b>Read these coins</b> above</p>` : `
+    <div class="scrollx"><table class="s4"><thead><tr>
       <th title="the coin this row reads.">coin</th>
-      <th title="how many periods of this coin's history there are at this chunk shape. One period is one step of that shape's clock.">periods</th>
+      <th title="how many periods of this coin's history there are at this chunk shape, with the 24/5 setting this row was read at. One period is one step of that shape's clock. Both traditional numbers move with this, so read them beside it.">periods</th>
       <th title="the fall-back percentage found for this coin: how far price has to fall back from a high before that high is called the end of a rising stretch. It is not fixed across coins — each one gets the largest percentage that gives at least the number of changes asked for.">fall-back %</th>
       <th title="how many changes of direction that percentage gives across train and test. When it gives more than were asked for, the number asked for is shown beside it in brackets.">changes of direction</th>
       <th title="the shape of the search: one bar per percentage tried, its height the count of changes at that percentage, with the one taken marked. A coin whose bars are level across a band is steady; one with a spike is balanced on an edge.">the walk</th>
       <th title="the most one-sided any stretch the window layouts carve turns out to be, anywhere in the span. Half means evenly split; near zero means somewhere in this history there is a stretch that runs all one way. Worked out from an untuned reading of direction, so the fall-back percentage never moves it.">worst tail slice</th>
       <th title="how much the balance between rising and falling moves from one part of the span to the next. Zero means every part looks the same; a large number means the mix changes as you go. Also untuned.">drift</th>
-      <th title="the span of history this reading was worked out from. A coin whose history has grown since reads as stale rather than quietly wrong.">read over</th></tr></thead><tbody>
+      <th title="the span of history this reading was worked out from, when it was taken, and the release that took it. When more history has been cached for the coin since, this says how much.">read over</th></tr></thead><tbody>
       ${rows.map((r) => {
     const rd = r.readings && r.readings[cState.layout];
+    const has = !!(rd && rd.perPart);
     const span = r.provenance && r.provenance.fromTs
-      ? `${new Date(r.provenance.fromTs).toISOString().slice(0, 10)} to ${new Date(r.provenance.toTs).toISOString().slice(0, 10)}`
-      : '—';
-    return `<tr><td><b>${esc(r.coin)}</b></td><td>${r.periods}</td>
-      <td>${rd && rd.search.reached ? `${rd.search.pct}%` : '<span class="muted">not reached</span>'}</td>
-      <td>${rd && rd.search.reached ? `${rd.search.turns}${rd.search.overshot ? ` <span class="muted">(asked ${rd.search.asked})</span>` : ''}` : '<span class="muted">—</span>'}</td>
-      <td>${rd ? cWalk(rd.search.walk, rd.search.pct) : ''}</td>
-      <td>${rd ? cPct(rd.traditional.worstTailSlice.balance) : ''}</td>
-      <td>${rd ? cNum(rd.traditional.drift.drift, 3) : ''}</td>
-      <td class="muted">${esc(span)}</td></tr>
-      ${rd && rd.perPart ? `<tr><td colspan="8" style="padding:.1rem .5rem .5rem 1.5rem">
-        ${rd.perPart.map((p) => `<span style="margin-right:1.2rem"><b>${esc(p.part)}</b> ${p.periods} periods ·
-          ${p.turns} turn(s) · rising ${cNum(p.stretches.rising.count, 2)} / falling ${cNum(p.stretches.falling.count, 2)} ·
-          split ${cPct(p.split.balance)}${p.repeats.rising && p.repeats.falling ? '' : ' <span class="warn">· a type appears only once</span>'}</span>`).join('')}
-        ${rd.searchedOver && rd.searchedOver.note ? `<div class="note muted">${esc(rd.searchedOver.note)}</div>` : ''}
-        ${rd.weight && !rd.weight.reachedMean ? `<div class="note warn">${esc(rd.weight.why)}</div>` : ''}
-      </td></tr>` : `<tr><td colspan="8" class="note muted" style="padding:.1rem .5rem .5rem 1.5rem">${esc(rd && rd.why ? rd.why : 'no typing to report')}</td></tr>`}`;
+      ? `${cDay(r.provenance.fromTs)} to ${cDay(r.provenance.toTs)}`
+      : 'no span recorded';
+    const grew = stale(r);
+    const p = r.params || {};
+    return `<tr><td><b>${esc(r.coin)}</b></td><td>${r.periods}${p.weekdaysOnly ? ' <span class="muted">24/5</span>' : ''}</td>
+      <td>${rd && rd.search && rd.search.reached ? `${rd.search.pct}%` : '<span class="muted">not reached</span>'}</td>
+      <td>${rd && rd.search && rd.search.reached ? `${rd.search.turns}${rd.search.overshot ? ` <span class="muted">(asked ${rd.search.asked})</span>` : ''}` : '<span class="muted">—</span>'}</td>
+      <td>${rd && rd.search ? cWalk(rd.search.walk, rd.search.pct) : ''}</td>
+      <td>${r.traditional ? cPct(r.traditional.worstTailSlice.balance) : '<span class="muted">—</span>'}</td>
+      <td>${r.traditional ? cNum(r.traditional.drift.drift, 3) : '<span class="muted">—</span>'}</td>
+      <td class="muted" style="text-align:left">${esc(span)}<br>${esc(String(r.provenance && r.provenance.capturedAt ? r.provenance.capturedAt : '').replace('T', ' ').slice(0, 16))} UTC · release ${esc(String((r.provenance && r.provenance.release) || '—'))}${grew ? `<br><span class="warn">${grew} more month(s) cached since</span>` : ''}</td></tr>
+      <tr class="s4hold"><td colspan="8" class="s4tag">
+        ${has ? rd.perPart.map((q) => {
+      const sp = (rd.split || []).find((s) => s.part === q.part) || {};
+      const low = sp.balance != null && thin && sp.balance < thin.level;
+      return `<span style="margin-right:1.2rem"><b>${esc(q.part)}</b> ${q.periods} periods ·
+          ${q.turns} turn(s) · rising ${cNum(q.stretches.rising.count, 2)} / falling ${cNum(q.stretches.falling.count, 2)} ·
+          split ${cPct(sp.balance)}${low ? ' <span class="warn">· thinner than weighting can correct</span>' : ''}${cTypeNote(q)}</span>`;
+    }).join('') : `<span>${esc((rd && rd.why) || r.why || 'no reading at this window layout')}</span>`}
+        ${!has && rd && rd.split ? `<div>${rd.split.map((s) => `<span style="margin-right:1.2rem"><b>${esc(s.part)}</b> split ${cPct(s.balance)}</span>`).join('')}</div>` : ''}
+        ${rd && rd.searchedOver && rd.searchedOver.note ? `<div class="muted">${esc(rd.searchedOver.note)}</div>` : ''}
+        ${rd && rd.weight && !rd.weight.reachedMean ? `<div class="warn">${esc(rd.weight.why)}</div>` : ''}
+        ${rd && rd.weight && rd.weight.reachedMean ? `<div class="muted">training weight over ${esc(rd.weight.over)}: average 1 across ${rd.weight.periods} periods, ${rd.weight.capped} of them held at the ceiling of ${rd.weight.cap}</div>` : ''}
+        <div class="muted">read at: ${p.target} change(s) wanted, ${p.from}% to ${p.to}% by ${p.step}%, ceiling ${p.cap}, ${p.driftParts} drift parts, 24/5 ${p.weekdaysOnly ? 'on' : 'off'}${differs(r) ? ' <span class="warn">— not what the boxes above say</span>' : ''}</div>
+      </td></tr>`;
   }).join('')}
     </tbody></table></div>`}
   </div>`;
 
+  const keep = (id, key, prop = 'value') => {
+    const el = $(id);
+    if (!el) return;
+    el.oninput = () => { cState[key] = el[prop]; cRemember(); };
+    el.onchange = () => { cState[key] = el[prop]; cRemember(); };
+  };
+  keep('#cCoins', 'coins'); keep('#cTarget', 'target'); keep('#cFrom', 'from');
+  keep('#cTo', 'to'); keep('#cStep', 'step'); keep('#cCap', 'cap'); keep('#cDrift', 'drift');
+  keep('#cWk', 'weekdays', 'checked');
   const geom = $('#cGeom');
   if (geom) {
     geom.innerHTML = vocabOptions('geometry', cState.geometry);
@@ -7898,22 +7996,34 @@ async function drawCoins() {
   $('#cOrder').onchange = (e) => { cState.orderBy = e.target.value; cRemember(); draw(); };
   $('#cRun').onclick = async () => {
     $('#cRun').disabled = true;
-    $('#cOut').innerHTML = '<p class="note" style="margin:.4rem 0 0">starting…</p>';
+    $('#cOut').innerHTML = 'starting…';
     const body = {
-      coins: $('#cCoins').value, geometry: cState.geometry,
-      target: $('#cTarget').value, from: $('#cFrom').value, to: $('#cTo').value,
-      step: $('#cStep').value, cap: $('#cCap').value, driftParts: $('#cDrift').value,
+      coins: cState.coins, geometry: cState.geometry,
+      target: box('target', defs.target), from: box('from', defs.from), to: box('to', defs.to),
+      step: box('step', defs.step), cap: box('cap', defs.cap), driftParts: box('drift', defs.driftParts),
+      weekdaysOnly: !!cState.weekdays,
     };
     try { await post('api/coins/run', body); } catch (err) {
-      $('#cOut').innerHTML = '<p class="note warn" style="margin:.4rem 0 0">' + esc(err.message) + '</p>';
+      $('#cOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
       $('#cRun').disabled = false;
       return;
     }
     draw();
   };
-  if ($('#cStop')) $('#cStop').onclick = async () => { await post('api/coins/stop', {}).catch(() => {}); draw(); };
+  // THE STOP ANSWERS, and its answer is shown. The route replies with a reason
+  // when there is nothing to stop; the first version threw that reply away, so
+  // pressing it did and said nothing at all.
+  if ($('#cStop')) {
+    $('#cStop').onclick = async () => {
+      $('#cStop').disabled = true;
+      let ans = null;
+      try { ans = await post('api/coins/stop', {}); } catch (err) { ans = { stopping: false, why: err.message }; }
+      if (ans && !ans.stopping) $('#cOut').innerHTML = '<span class="warn">' + esc(ans.why || 'nothing was stopped') + '</span>';
+      else $('#cOut').innerHTML = 'stopping after the coin being read now…';
+    };
+  }
   if (coinsPoll) { clearTimeout(coinsPoll); coinsPoll = null; }
-  if (running) coinsPoll = setTimeout(() => { if (tab === 'coins') draw(); }, 2000);
+  if (running) coinsPoll = setTimeout(() => { if (tab === 'coins') cPollRedraw(); }, 2000);
 }
 drawCoins = ((fn) => async (...a) => { holdScrollMemory(); const r = await fn(...a); hoverFromHelp('coins'); return r; })(drawCoins);
 

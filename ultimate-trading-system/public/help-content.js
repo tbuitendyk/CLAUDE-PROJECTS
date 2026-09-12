@@ -864,8 +864,8 @@ window.HELP = {
         + 'It never refuses a coin and it never decides which coins a sweep runs on — every figure here is '
         + 'something to look at and sort by, and the choice of what to sweep stays yours, made by reading them.'],
       ['How a change of direction is found',
-        'Price is walked forward keeping the highest point seen. When it has fallen back from that high by more '
-        + 'than a set percentage, that high is where the rising stretch ended and the falling one began, and the '
+        'Price is walked forward keeping the highest point seen. When it has fallen back from that high by at '
+        + 'least a set percentage, that high is where the rising stretch ended and the falling one began, and the '
         + 'same rule runs the other way. It is worked out from returns rather than price levels, so a ten per cent '
         + 'move counts the same at fifty dollars and at five thousand. The percentage is not fixed across coins: '
         + 'you say how many changes of direction you want, and each coin gets the LARGEST percentage that gives at '
@@ -881,10 +881,23 @@ window.HELP = {
       ['Why the search stops at the end of test',
         'The percentage is chosen by reading train and test only. Held-back and the reserve get no vote in it — '
         + 'the settled percentage is then applied to the whole span and what is in them is reported, never fed '
-        + 'back. One thing follows from that and is worth knowing: a change of direction is only confirmed once '
-        + 'price has fallen back from it, so a change sitting near the end of test cannot be confirmed without '
-        + 'looking at held-back. The search is not allowed to look, so it counts what it can see and says on the '
-        + 'row when there turn out to be more. Its count is a floor, never an overstatement.'],
+        + 'back. That holds for every figure and not only the percentage: each part of the history is read by a '
+        + 'walk that stops at that part\'s own end, so nothing that happens later can move what an earlier part '
+        + 'says, at any distance. One thing follows from it and is worth knowing: a change of direction is only '
+        + 'confirmed once price has fallen back from it, so a change sitting near the end of test cannot be '
+        + 'confirmed without looking at held-back. The search is not allowed to look, so it counts what it can '
+        + 'see and says on the row when there turn out to be more. Its count is a floor, never an overstatement.'],
+      ['Reading these numbers between one coin and another',
+        'Both untuned numbers measure over a share of the span, so both move with how much history a coin has. '
+        + 'A coin with a few dozen periods reads worse on worst tail slice and better on drift than the same coin '
+        + 'with a thousand — at forty periods most coins with no trend at all score the worst value worst tail '
+        + 'slice has. Two coins with different amounts of cached history cannot be compared on either number, '
+        + 'which is why the periods column sits beside them.'],
+      ['What a reading says about itself',
+        'Every row carries the span of history it was worked out from, when it was taken, the release that took '
+        + 'it and the values it was read at. When more history has been cached for that coin since, the row says '
+        + 'how much and the panel above counts how many rows are behind. A reading is never quietly out of date. '
+        + 'And a coin that could not be read gets a row too, with a sentence saying why — it is never left off.'],
     ],
     intro: 'What each coin\'s history holds, read before anything is trained: the stretches in which it was rising '
       + 'and the stretches in which it was falling, per window layout, per part of the history. It exists so a sweep '
@@ -893,6 +906,7 @@ window.HELP = {
     controls: {
       cCoins: 'which coins to read, comma separated. Blank reads the default list, the same one a blank box on Sweep resolves to.',
       cGeom: 'the chunk shape to read them at. A period is one step of this shape\'s clock, and it is the same period a sweep at this shape would train on.',
+      cWk: 'whether the periods are built weekdays only, exactly as a sweep with this setting builds them. It changes how many periods a coin has — at the four-day shape, several times as many with it off — so a reading taken one way does not describe a run made the other.',
       cTarget: 'how many changes of direction you want across train and test. Each coin gets the largest fall-back percentage that gives at least this many.',
       cFrom: 'the smallest fall-back percentage to try.',
       cTo: 'the largest fall-back percentage to try.',
@@ -900,9 +914,9 @@ window.HELP = {
       cCap: 'the most any one period may weigh in training, as a multiple of the average. It must be above 1, and on a coin where too few periods moved it has to be higher still — the reading says so and names the value that would work.',
       cDrift: 'how many equal parts the span is cut into to measure how the balance moves from part to part.',
       cRun: 'reads every coin named above at the chunk shape above, and writes what it finds against that coin\'s history. One coin that cannot be read does not stop the others.',
-      cStop: 'stops after the coin being read now. What has already been written stays.',
-      cLayout: 'which window layout\'s reading to show. A coin can read differently under the two, so the reading is kept per layout.',
-      cOrder: 'which reading to put at the top of the list. Nothing is decided by this — it is only the order you want to look in.',
+      cStop: 'stops after the coin being read now. What has already been written stays, and the line beside the buttons says a stopped run was stopped and where it got to.',
+      cLayout: 'which window layout\'s reading to show. A coin can read differently under the two, so the reading is kept per layout. The two untuned numbers are the same under either.',
+      cOrder: 'which reading to put at the top of the list, and which end of it comes first. Nothing is decided by this — it is only the order you want to look in. A coin that could not be measured sorts last whichever is chosen.',
     },
   },
   greenlight: {

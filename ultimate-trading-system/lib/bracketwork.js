@@ -148,6 +148,18 @@ function splitBounds(n, holdout) {
   return { nTrain: n - nTest - nHold, nTest, nHold };
 }
 
+// HOW MANY PERIODS COME OFF THE END AS THE SEALED RESERVE, before the split
+// above is taken of what is left. Here beside `splitBounds` because it is the
+// same arithmetic one step earlier, and because the alternative is every caller
+// typing 0.13 (COINS.md; the Coins reading now reads it from here).
+//
+// STILL TYPED TWICE IN `lib/stagework.js` (the sealed layout and the retrain
+// layout), which is the engine and not this loop's to change. Named in the loop
+// record so it is a known duplicate rather than a hidden one.
+function reserveChunks(n) {
+  return Math.max(2, Math.round(n * 0.13));
+}
+
 // LABEL ROTATION, in two scopes.
 //
 // 'series' (the original): rotate diffPct across the whole series, then split.
@@ -231,4 +243,4 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge) {
 // test. Nothing can run them; lib/rng.js keeps the one function that outlived
 // their module.)
 
-module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelAt, splitAndLabelPass, splitBounds };
+module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelAt, splitAndLabelPass, splitBounds, reserveChunks };

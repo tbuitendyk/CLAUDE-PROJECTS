@@ -120,9 +120,15 @@ stretch is one or the other, so nothing is left unclassified.
 
 **How a turn is found: by how far price falls back.** Walk the price forward
 and keep the highest point seen. When price has fallen back from that high by
-more than a set percentage, mark the high as where the `rising` stretch ended
+**at least** a set percentage, mark the high as where the `rising` stretch ended
 and the `falling` one began. Same rule the other way. Between two turns the
 stretch is `rising` or `falling` by construction.
+
+*This paragraph said "more than" until 2026-09-12. The code has always read "at
+least", and at the exact boundary those are different rules. The wording was
+corrected to the code rather than the code to the wording: changing the
+comparison moves every number on the tab, and neither side of that boundary is
+more defensible than the other.*
 
 **Two alternatives were considered and rejected**, and the reasons are kept
 here so nobody re-proposes them:
@@ -198,6 +204,41 @@ enough. It knows nothing about where `train` ends and `test` begins. So a
 `test` / `held`, and `held` / `reserve`. Every stretch then belongs to exactly
 one part of the history, and every count in this document is unambiguous about
 which part it is a count of.
+
+### And each part is drawn by a walk that stops at that part's own end
+
+**Added 2026-09-12, after the adversarial pass found the first build breaking
+section 7.** The first build drew the stretches with ONE walk over the whole
+span and only then cut them. The percentage it found was clean and stayed clean
+under attack. The stretches were not.
+
+A high only becomes a turn once price has fallen back from it, and that
+fall-back can arrive in `held` or in the sealed `reserve`. Until it does, the
+walk's last stretch runs to the end of ALL the data. So whether a piece sitting
+inside `test` was a whole stretch or a left-over end depended on price the
+reading is forbidden to consider — and the median those left-over ends are
+measured against is built from that same set. Two price series identical for
+every period of `train`, `test` and `held`, differing only inside the sealed
+`reserve`, reported different medians and a different count of stretches **in
+`train`**.
+
+**So: `train` is read from a walk over `train`; `test` from a walk over
+`train` + `test`; `held` from a walk out to the end of `held`; `reserve` from
+the whole span.** The walk is prefix-deterministic — every stretch a turn
+closed is identical in any walk that reaches that far — so the only thing this
+changes is the unfinished run at the end, which is exactly the thing that was
+reaching back. Nothing later can move an earlier part's figures now, at any
+distance.
+
+**The one coupling that remains is stated rather than hidden.** The median is a
+`train` + `test` quantity by design (below), so a change inside `test` does move
+`train`'s stub arithmetic. That is the rule as written and it is what the
+owner asked for. What is not defensible, and no longer happens, is anything
+past the end of `test` moving either of them.
+
+**An unfinished run is a left-over end.** No turn ended it — it ran out of
+data — which is exactly the definition below. It was not marked as one, so the
+last part of every span counted an unfinished run as a whole stretch.
 
 ### The stubs that cutting creates
 
@@ -589,6 +630,38 @@ one-sided stretch is, not merely that one exists.
 **Both are shown, and both are labelled on the screen so it is plain which is
 which.** Never two bare figures side by side.
 
+**And both move with how much history a coin has** (measured 2026-09-12, after
+the adversarial pass). Each measures over a SHARE of the span, so a short coin
+is measured over short windows. On a coin with no trend at all, 300 trials per
+length:
+
+| periods | worst tail slice reads 0 | mean worst tail slice | mean drift |
+|---|---|---|---|
+| 40 | 72.7% | 0.046 | 0.120 |
+| 100 | 1% | 0.185 | 0.094 |
+| 1000 | 0% | 0.393 | 0.030 |
+| 2000 | 0% | 0.425 | 0.021 |
+
+Nearly three quarters of trendless forty-period coins score the worst value the
+first number has. **Two coins with different amounts of cached history are not
+comparable on either number**, and ordering the table by one of them orders it
+partly by how much history each coin happens to have. That is said on the
+screen, in the note above the table, and the period count sits beside both
+numbers so it can be read with them.
+
+**What is NOT done about it, and why.** No cut-off, no normalising, no
+adjustment: this tab reports (section 8), and an adjustment would be a second
+arithmetic to argue with. A reference point — what a no-trend coin of that
+length would have scored — is the obvious next thing and it is **an open item
+for the owner**, not something a session decides. It is in section 17.
+
+**The widths are the ones the layouts actually carve**, read out of the
+engine's own split at that period count — the sealed `reserve` of the four-way
+layout and the held-back stretch of the three-way one. Both layouts always, so
+this stays one reading per coin. They are never typed here; the first build had
+`0.13` and `0.15` as a default argument nothing ever passed, which is a second
+copy of the arithmetic and a value with no control (RULE FIVE).
+
 ## 12. The metadata written on a coin's history
 
 When the settings have been tuned on a coin's history, they are **saved as
@@ -755,6 +828,35 @@ without it.
   what a coin has to clear.
 - **The name of every control on this screen.**
 - **Every cost in this document. Not one of them has been measured.**
+
+**Added 2026-09-12 by the adversarial pass, and every one of these is the
+owner's call, not a session's:**
+
+- **A reference point for the two traditional numbers.** Both move with how
+  much history a coin has (section 11), so 0.05 cannot be told from alarming
+  without knowing what a no-trend coin of that length would score. Working that
+  out per coin is cheap — scramble the coin's own moves a few hundred times and
+  read the same number off each — but it is a new reading on the screen and it
+  is not in this document, so it waits.
+- **What to do about a record written under an older shape.** Today the reader
+  NAMES it and says to read the coin again; it does not migrate it. That is
+  defensible here and only here, because a Coins reading costs seconds and can
+  be re-taken, unlike a sweep set — but RULE NINE's default is migrate, so the
+  owner should say which they want before a second shape change happens.
+- **The engine's own class-weight ceiling is a constant in `lib/bracket.js`**,
+  not a control (RULE FIVE). Section 14 finding 1 already said it should be on
+  a screen. This tab now READS it, so the level it quotes is always the
+  engine's — but the ceiling itself is still not the owner's to set.
+- **The reserve share is typed twice in `lib/stagework.js`** (the sealed layout
+  and the retrain layout). There is now one shared function beside
+  `splitBounds` and this tab reads it; the engine still types its own. Pointing
+  those two at it is an engine change and was not in this loop's work.
+- **A percentage step small enough to be absurd is walked in full.** At a step
+  of one ten-millionth over the default range that is roughly 290 million
+  typings per coin, about 22 minutes with nothing else able to run. The box on
+  the screen carries a smallest step, which is the owner's control; no cut-off
+  was added in the code, because a cut-off is a number to argue with and this
+  tab does not have those.
 
 ## 18. What is not in here
 

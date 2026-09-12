@@ -9,14 +9,26 @@
 // buildComboChunks, the same function a stage 1 launch builds them with, so a
 // reading on this tab lines up period for period with the run it is vetting
 // for. Building them another way here would be a second definition of what a
-// period is.
+// period is. That claim was FALSE in the first version, which pinned the
+// weekday filter off while it is a per-run sweep setting: with it on the same
+// coin gives 104 periods at the four-day shape against 725 with it off, so the
+// reading was about a different series from the run it was vetting. It is a
+// control now, like everything else here (RULE FIVE).
+//
+// AND NOTHING HERE REFUSES A COIN (COINS.md section 8; owner, 2026-09-12: "We're
+// not even blocking coins with this anyways. We're only reporting."). The first
+// version threw on a coin with fewer than forty periods and threw on a coin with
+// no cached prices, and a thrown coin vanished from the screen with its reason
+// held in memory until the next press wiped it. Every chosen coin gets a record
+// on disk now, whether it could be read or not, and a record that could not be
+// read says why in a sentence.
 const fs = require('fs');
 const path = require('path');
 const coins = require('./coins');
 const { GEOMETRIES } = require('./dataset');
 
 const DIR = path.join(__dirname, '..', 'data', 'coins');
-const RECORD_V = 1;
+const RECORD_V = 2;
 
 // THE DEFAULTS ARE STARTING VALUES, NOT LIMITS. Every one of them is a control
 // on the screen (RULE FIVE); these are only what the boxes are filled with
@@ -28,8 +40,17 @@ const DEFAULTS = Object.freeze({
   step: 0.5,
   cap: 20,
   driftParts: 8,
+  weekdaysOnly: false,
 });
-const LAYOUTS = Object.freeze(['reserve61', 'split70']);
+
+// THE WINDOW LAYOUTS ARE READ FROM THE SAME LIST THE DROPDOWNS ARE DRAWN FROM,
+// never typed here. Typed, they were a second copy: add a layout to the
+// vocabulary and the screen would offer it while every cell for it came back
+// empty, because the reading had never been taken.
+function layouts() {
+  const v = require('./vocabulary').vocabulary();
+  return (v.windowLayout || []).map((o) => String(o.value));
+}
 
 function ensureDir() { try { fs.mkdirSync(DIR, { recursive: true }); } catch (_) { /* already there */ } }
 const recordFile = (coin, geometry) => path.join(DIR, `${String(coin).toUpperCase()}__${geometry}.json`);
@@ -52,44 +73,67 @@ function seriesOf(chunks) {
   return { prices, moves };
 }
 
+// THE RECORD EVERY COIN GETS, read or not. `readings` carries one entry per
+// window layout; an entry is either the reading or a sentence saying why there
+// is none. `why` at the top is for a coin that could not get as far as a
+// reading at all.
+function blankRecord(coin, geometry, params, why) {
+  return {
+    v: RECORD_V,
+    coin: String(coin).toUpperCase(),
+    geometry,
+    periods: 0,
+    read: false,
+    why,
+    provenance: {
+      release: require('../package.json').version,
+      capturedAt: new Date().toISOString(),
+      fromTs: null, toTs: null, cachedMonths: null, candles: 0,
+    },
+    params,
+    traditional: null,
+    readings: {},
+  };
+}
+
 async function readOneCoin(coin, params, onNote = () => {}) {
   const geometry = params.geometry;
   if (!GEOMETRIES[geometry]) throw new Error(`unknown chunk shape '${geometry}'`);
   const pipeline = require('./pipeline');
   const { toHourlyMap, forwardFill } = require('./dataset');
   const bracket = require('./bracket');
+  const kept = {
+    target: params.target, from: params.from, to: params.to, step: params.step,
+    cap: params.cap, driftParts: params.driftParts, weekdaysOnly: !!params.weekdaysOnly,
+  };
 
   onNote(`${coin}: reading its cached prices`);
   const loaded = await pipeline.loadSymbolAll(coin, (m) => onNote(`${coin}: ${m}`));
-  if (!loaded.rows.length) throw new Error(`${coin} has no cached prices on this box — download them on Data first`);
-  const map = forwardFill(toHourlyMap(loaded.rows));
+  if (!loaded.rows.length) {
+    return blankRecord(coin, geometry, kept, `${coin} has no cached prices on this box — download them on Data first`);
+  }
+  // forwardFill HANDS BACK A WRAPPER and the filled prices are inside it. The
+  // first version passed the wrapper straight on as the price map, so every
+  // coin threw on the first period built and the tab read nothing at all,
+  // ever. Nineteen tests were green and not one of them loaded this file.
+  const map = forwardFill(toHourlyMap(loaded.rows)).map;
 
   onNote(`${coin}: building ${geometry} periods`);
-  const built = bracket.buildComboChunks({ trade: map }, geometry, false);
+  const built = bracket.buildComboChunks({ trade: map }, geometry, !!params.weekdaysOnly);
   const { prices, moves } = seriesOf(built.chunks);
-  if (prices.length < 40) throw new Error(`${coin} gives only ${prices.length} periods at ${geometry} — too few to read anything from`);
-
-  const readings = {};
-  for (const layout of LAYOUTS) {
-    onNote(`${coin}: reading it as ${layout}`);
-    readings[layout] = coins.coinReading(prices, moves, {
-      layout,
-      target: params.target, from: params.from, to: params.to, step: params.step,
-      cap: params.cap, driftParts: params.driftParts,
-    });
-  }
-
   const first = built.chunks.find((c) => c.c1 != null);
   const last = [...built.chunks].reverse().find((c) => c.c1 != null);
-  return {
+
+  const rec = {
     v: RECORD_V,
     coin: String(coin).toUpperCase(),
     geometry,
     periods: prices.length,
+    read: prices.length > 0,
+    why: prices.length ? null : `${coin} gives no complete ${geometry} periods from the prices cached on this box`,
     // THE PROVENANCE (COINS.md section 12). A score cannot be read honestly
-    // without knowing which span and which parameter values produced it, and a
-    // coin whose history has since grown must read as STALE rather than
-    // quietly wrong -- which is what the span and the release are for.
+    // without knowing which span and which parameter values produced it, so
+    // both are on the record and both are drawn beside the reading.
     provenance: {
       release: require('../package.json').version,
       capturedAt: new Date().toISOString(),
@@ -98,17 +142,37 @@ async function readOneCoin(coin, params, onNote = () => {}) {
       cachedMonths: loaded.cachedMonthCount,
       candles: loaded.rows.length,
     },
-    params: {
-      target: params.target, from: params.from, to: params.to, step: params.step,
-      cap: params.cap, driftParts: params.driftParts,
-    },
-    readings,
+    params: kept,
+    // ONE PER COIN, NOT ONE PER LAYOUT (COINS.md section 11). It was inside the
+    // per-layout reading before, so every record carried two byte-identical
+    // copies of it.
+    traditional: prices.length ? coins.traditionalReading(moves, { driftParts: params.driftParts }) : null,
+    readings: {},
   };
+
+  for (const layout of layouts()) {
+    if (!prices.length) { rec.readings[layout] = { layout, why: rec.why }; continue; }
+    onNote(`${coin}: reading it as ${layout}`);
+    try {
+      rec.readings[layout] = coins.coinReading(prices, moves, {
+        layout,
+        target: params.target, from: params.from, to: params.to, step: params.step,
+        cap: params.cap,
+      });
+    } catch (err) {
+      // NOT A REFUSAL OF THE COIN. The arithmetic could not be done for this one
+      // layout -- too few periods for its split to leave every stretch with
+      // something in it, most likely -- so that is what the record says, and
+      // every other layout and the traditional score are still there.
+      rec.readings[layout] = { layout, why: String(err.message || err) };
+    }
+  }
+  return rec;
 }
 
 // ---- the run -----------------------------------------------------------------
 
-let run = null;   // { coins, done, of, note, error, finishedAt, started }
+let run = null;
 
 function normalise(body = {}) {
   const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
@@ -122,6 +186,7 @@ function normalise(body = {}) {
     step: num(body.step, DEFAULTS.step),
     cap: num(body.cap, DEFAULTS.cap),
     driftParts: Math.max(2, Math.floor(num(body.driftParts, DEFAULTS.driftParts))),
+    weekdaysOnly: body.weekdaysOnly === true || String(body.weekdaysOnly) === 'true',
   };
   if (!GEOMETRIES[p.geometry]) throw new Error(`unknown chunk shape '${p.geometry}'`);
   if (p.to <= p.from) throw new Error(`the percentage range must run upwards — ${p.from}% to ${p.to}% does not`);
@@ -142,18 +207,30 @@ function busyWhy() {
 async function runAll(p) {
   ensureDir();
   for (const coin of p.coins) {
-    if (run && run.stop) { run.note = 'stopped'; break; }
+    if (run && run.stop) break;
     try {
       const rec = await readOneCoin(coin, p, (m) => { if (run) run.note = m; });
       fs.writeFileSync(recordFile(coin, p.geometry), `${JSON.stringify(rec)}\n`);
-      run.wrote.push(coin);
+      if (rec.read) run.wrote.push(coin); else run.couldNotRead.push({ coin, why: rec.why });
     } catch (err) {
-      // A COIN THAT CANNOT BE READ IS RECORDED AND THE RUN CARRIES ON. One coin
-      // with no cached prices must not cost the other sixteen their reading.
-      run.refused.push({ coin, why: String(err.message || err) });
+      // A COIN THAT THREW ON THE WAY IN STILL GETS A RECORD, so the screen shows
+      // it with its reason instead of leaving it out. The first version kept
+      // the reason in memory only, on the latest press: read seventeen coins,
+      // two fail, press again for one, and the two were gone with nothing said.
+      const rec = blankRecord(coin, p.geometry, {
+        target: p.target, from: p.from, to: p.to, step: p.step,
+        cap: p.cap, driftParts: p.driftParts, weekdaysOnly: !!p.weekdaysOnly,
+      }, String(err.message || err));
+      try { fs.writeFileSync(recordFile(coin, p.geometry), `${JSON.stringify(rec)}\n`); } catch (_) { /* the disk said no; the run carries on */ }
+      run.couldNotRead.push({ coin, why: rec.why });
     }
     run.done++;
   }
+  // STOPPED IS NOT FINISHED, and the screen has to be able to tell them apart.
+  // The first version set the note to 'stopped' and then wiped it on the next
+  // line, and never put the stop flag in the status -- so a run halted at coin
+  // 4 of 17 read word for word like a completed 4-coin run.
+  run.stoppedAt = run.stop ? run.done : null;
   run.finishedAt = new Date().toISOString();
   run.note = null;
 }
@@ -164,24 +241,31 @@ function coinsRunStart(body = {}) {
   const p = normalise(body);
   run = {
     started: new Date().toISOString(), params: p, of: p.coins.length, done: 0,
-    wrote: [], refused: [], note: 'starting', error: null, finishedAt: null, stop: false,
+    wrote: [], couldNotRead: [], note: 'starting', error: null, finishedAt: null,
+    stop: false, stoppedAt: null,
   };
   runAll(p).catch((err) => { run.error = String(err.message || err); run.finishedAt = new Date().toISOString(); });
   return { started: true, of: p.coins.length, params: p };
 }
 
 function coinsRunStatus() {
-  if (!run) return { running: false, started: null, done: 0, of: 0, wrote: [], refused: [], note: null, error: null, finishedAt: null };
+  if (!run) {
+    return {
+      running: false, started: null, done: 0, of: 0, wrote: [], couldNotRead: [],
+      note: null, error: null, finishedAt: null, stopped: false, stoppedAt: null, params: null,
+    };
+  }
   return {
     running: !run.finishedAt && !run.error,
     started: run.started, done: run.done, of: run.of,
-    wrote: run.wrote.slice(), refused: run.refused.slice(),
-    note: run.note, error: run.error, finishedAt: run.finishedAt, params: run.params,
+    wrote: run.wrote.slice(), couldNotRead: run.couldNotRead.slice(),
+    note: run.note, error: run.error, finishedAt: run.finishedAt,
+    stopped: !!run.stop, stoppedAt: run.stoppedAt, params: run.params,
   };
 }
 
 function coinsRunStop() {
-  if (!run || run.finishedAt) return { stopping: false, why: 'nothing is running' };
+  if (!run || run.finishedAt) return { stopping: false, why: 'nothing is running to stop' };
   run.stop = true;
   return { stopping: true };
 }
@@ -194,26 +278,66 @@ function readRecord(coin, geometry) {
 
 // EVERY RECORD ON THE BOX FOR ONE CHUNK SHAPE. Ordered by the caller's choice,
 // which is a control on the screen and never decided here (RULE FIVE).
+//
+// A FILE THAT CANNOT BE READ IS NAMED, NEVER DROPPED. The first version skipped
+// both an unparseable file and a record written under an older shape, in
+// silence -- so a release bump made the owner's readings disappear from the
+// screen with nothing saying where they went, and the screen then said nothing
+// had ever been read. That is the RULE NINE hole: what is on disk either says
+// what it is in today's words or it is migrated, and either way the reader
+// says which.
 function coinsRecords(query = {}) {
   ensureDir();
   const geometry = String(query.geometry || 'daily-4d');
   const rows = [];
+  const unreadable = [];
   let files = [];
   try { files = fs.readdirSync(DIR); } catch (_) { files = []; }
   for (const f of files) {
     if (!f.endsWith(`__${geometry}.json`)) continue;
+    const coin = f.slice(0, f.length - `__${geometry}.json`.length);
     let rec = null;
-    try { rec = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')); } catch (_) { continue; }
-    if (!rec || rec.v !== RECORD_V) continue;
+    try { rec = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')); } catch (err) {
+      unreadable.push({ coin, file: f, why: `this file could not be read back: ${String(err.message || err)} — read the coin again to replace it` });
+      continue;
+    }
+    if (!rec || typeof rec !== 'object') {
+      unreadable.push({ coin, file: f, why: 'this file holds nothing a reading could be taken from — read the coin again to replace it' });
+      continue;
+    }
+    if (rec.v !== RECORD_V) {
+      unreadable.push({
+        coin, file: f,
+        why: `this reading was written under record shape ${rec.v == null ? '(none)' : rec.v} and this release reads shape ${RECORD_V} — read the coin again to replace it`,
+        release: rec.provenance ? rec.provenance.release : null,
+        capturedAt: rec.provenance ? rec.provenance.capturedAt : null,
+      });
+      continue;
+    }
     rows.push(rec);
   }
   rows.sort((a, b) => String(a.coin).localeCompare(String(b.coin)));
-  return { geometry, records: rows, defaults: DEFAULTS, layouts: LAYOUTS.slice() };
+  unreadable.sort((a, b) => String(a.coin).localeCompare(String(b.coin)));
+  // THE LEVEL A SIDE HAS TO CLEAR BEFORE WEIGHTING CAN CORRECT FOR IT (COINS.md
+  // section 8, finding 1 in section 14). Read out of the engine's own class
+  // weighting, never typed here: a share thinner than this hits the engine's
+  // ceiling, so the weighting under-corrects and staying quiet starts winning.
+  // SHOWN beside the coin, never enforced.
+  const bracket = require('./bracket');
+  return {
+    geometry,
+    records: rows,
+    unreadable,
+    defaults: DEFAULTS,
+    layouts: layouts(),
+    recordVersion: RECORD_V,
+    thinSide: { level: bracket.thinSideLevel(), answers: bracket.CLASSES.length, cap: bracket.CLASS_WEIGHT_CAP },
+  };
 }
 
 module.exports = {
-  DEFAULTS, LAYOUTS, RECORD_V,
-  seriesOf, readOneCoin, normalise,
+  DEFAULTS, RECORD_V, layouts,
+  seriesOf, readOneCoin, blankRecord, normalise,
   coinsRunStart, coinsRunStatus, coinsRunStop, coinsRecords, readRecord,
   recordFile,
 };

@@ -567,3 +567,127 @@ everything. And it is a setting baked into code with no control — RULE FIVE.
   a step below a millionth prints in exponential form, reads as zero places,
   and produces five thousand identical rows all typing the same percentage.
 
+## C8d — the tests reviewer, triaged before any fix
+
+Fourth and last. It was pointed at the tests and asked one question: what can
+break while they stay green. Its headline answers it.
+
+### 29. Nine hundred and eighteen tests pass with five real defects in place
+
+All five at once, in `lib/coins.js`, suite fully green:
+
+| what was broken | what it means |
+|---|---|
+| no cut piece is ever a left-over end | the whole stub and median arithmetic goes dead |
+| the traditional widths taken from the tuned percentage | the one thing that reading must never depend on |
+| the owner's upper percentage clipped at 20 | a control silently ignored |
+| the weight grows a which-set argument | the single shared vector, gone |
+| the record hands back a refusal | the rule the tab is built on |
+
+`lib/coins.js` is read by exactly two things: the runner, which **has no test
+file at all**, and `tests/test-coins.js`. So that one file is the whole
+defence, and what it misses, nothing catches.
+
+### 30. Two tests cannot fail
+
+- **The one whose name promises the traditional numbers do not move when the
+  percentage is re-tuned** makes the same two calls with the same arguments on
+  two pure functions, with a call in between whose result nothing reads. It
+  catches a leak through module state and nothing else. It never calls the
+  reading, which is where the leak would be.
+- **The one presented as the owner's own worked example** asserts that 35
+  divided by 7 is 5, on two numbers written three lines above it. It is
+  arithmetic on literals. (The other half of that test, the tolerance on 3.73,
+  is genuinely tight and does pin what it claims.)
+
+### 31. Eight rules from the pre-registration are claimed met and are not pinned
+
+C1.5 (the count landing exactly on target — never generated, so the flag can be
+permanently on); C2.2 (a turn on a part boundary — no turn in the fixture lands
+on one, and that is the only case the rule is about); C2.3/2.4/2.5 (checked on
+hand-built pieces, never on real cut output, and every fixture length is the
+same number so a mean would pass where the design says median); C3.2 (the
+ceiling is never anything but 20 at the record); C3.4 (defeated by an options
+key, and separately by a comment inside the function truncating the scan);
+C4.3; C5 (the provenance block lives in the file with no tests); C6/C7 (an
+input with no control, no caller and no default entry).
+
+### 32. Two negative scans that pass when the code is deleted
+
+`nothingInHereRefusesACoin` is a closed list of four words, and the record scan
+is a closed list of four keys. Adding a refusal under any fifth name is green.
+
+### 33. A run of survivors, each a real defect
+
+The last period falling into no stretch at all; the fall-back window sliding
+three periods at a time so it is no longer the worst found anywhere; a zero
+move counted as a rise; the drift's divisor dropped so the number stops being
+comparable between coins; the weight summary computed over `test` and labelled
+`train`; every part's period count off by one; the search's own walk used as
+the yardstick for the search.
+
+### And one code observation, not a test one
+
+A coin whose percentage search fails is handed `weight: null`. The weight is
+worked out from the moves and the ceiling and never touches the search. The one
+number this tab exists to produce for Sweep is withheld because a different
+reading failed.
+
+## C9 — the fixes, all in one pass (3.119.0)
+
+Four reviewers, thirty-three findings, one pass. Second digit: a new control
+and new behaviour, and the record shape moved from 1 to 2 — but no Coins record
+exists on the box, nothing was ever deployed, so nothing on disk is lost. The
+first digit is untouched, which is what protects every record set the owner has
+(RULE ONE-C).
+
+**The tab reads now.** `forwardFill` hands back a wrapper; the runner takes the
+prices out of it. Verified end to end with candles in and a record out, which
+is the test that did not exist.
+
+**Nothing later can move what an earlier part reports.** Every part is drawn by
+a walk that stops at that part's own end. The reviewer's own two demos, which
+moved `train` by changing the sealed reserve, now come back identical. The one
+coupling that remains — the median is a train-and-test quantity by design — is
+written into COINS.md section 5 rather than left to be discovered again.
+
+**Nothing refuses a coin, anywhere.** The forty-period floor is gone, the
+no-cached-prices throw is gone, and every coin the run touches gets a record on
+disk whether it could be read or not. So a coin that failed is on the screen
+with its reason after a restart, which it was not.
+
+**Every reading that never needed the percentage is produced whether the search
+reached or not** — the split of time per part and the training weight. The one
+number this tab exists to hand to Sweep was being withheld because a different
+reading failed.
+
+**The arithmetic**: equal parts really equal (the drift was reading 36% low on
+the case it exists to catch); the weight says so when no scale can bring the
+average to 1; one unusable price costs that period and no other; the percentage
+grid no longer collapses at a small step; every width walked is recorded.
+
+**The screen**: the sort runs the right way per reading and puts "not measured"
+last; the stale check is real, against what is cached now; stop is told apart
+from finished and its refusal is shown; the redraw is quiet and never touches
+what is typed; every row says what it was read at and when; "a type appears
+only once" says which type and no longer fires at zero.
+
+**The words that were only in code are now derived**: the two tail widths come
+from the engine's split, the window layouts from the dropdown's own list, the
+reserve share from one shared function, and the level below which weighting
+cannot help from the engine's own ceiling — 1.7%, which COINS.md section 8
+required on the screen and which did not exist anywhere.
+
+**The tests**: `tests/test-coinsrun.js` is new — seven tests, all end to end,
+because the whole defence was one file that never loaded the runner. In
+`tests/test-coins.js` the two tests that could not fail are replaced, the two
+closed word lists are gone (the record is now checked by its shape: a bare yes
+or no anywhere in a reading must be one of five named ones), and every rule the
+reviewer found unpinned has a test: the count landing exactly on target, a turn
+on a part boundary, a one-period tail, all four search controls, the median
+against a mean, the `over` filter, the reachability boundary walked rather than
+sampled, the weight vector's blindness by behaviour rather than by a source
+scan a comment could defeat.
+
+955 tests pass.
+

@@ -577,6 +577,18 @@ function bestCell(rows, minTrades) {
 // Decision semantics mirror the pipeline exactly: argmax label, or the
 // directional hunter (balanced class weights, τ from validation dollars).
 const { standardizeFit, standardizeApply, tuneAndTrain, trainSoftmax, predict: predictLogreg, CLASSES } = require('./logreg');
+
+// HOW FAR THE CLASS WEIGHTING WILL GO to correct an uneven training set, and the
+// share of rows below which it stops being able to. Named here rather than typed
+// into the line below because COINS.md section 8 requires the second number
+// SHOWN beside a coin -- a side thinner than this will not be rescued by
+// weighting, whatever the weighting is asked for -- and a number the screen
+// quotes has to be the same number the engine uses.
+const CLASS_WEIGHT_CAP = 20;
+// The weight of an answer is the row count over the answers present times that
+// answer's rows; the cap binds once that exceeds it, which is exactly when the
+// answer's share of the rows falls under one over answers-times-cap.
+const thinSideLevel = (answers = CLASSES.length, cap = CLASS_WEIGHT_CAP) => 1 / (answers * cap);
 const { trainBoost, predictBoost } = require('./boost');
 const { tuneTau } = require('./pipeline');
 const { directionalCall } = require('./paper');
@@ -608,7 +620,7 @@ async function trainMember({ model, viewIdx, trainChunks, testChunks, decision, 
     for (const cl of CLASSES) counts[cl] = ytr.filter((l) => l === cl).length;
     const present = CLASSES.filter((cl) => counts[cl] > 0);
     classWeights = {};
-    for (const cl of CLASSES) classWeights[cl] = counts[cl] > 0 ? Math.min(20, ytr.length / (present.length * counts[cl])) : 1;
+    for (const cl of CLASSES) classWeights[cl] = counts[cl] > 0 ? Math.min(CLASS_WEIGHT_CAP, ytr.length / (present.length * counts[cl])) : 1;
   }
   const wFor = (labels, offset = 0) => {
     if (!classWeights && !ageWeights) return null;
@@ -683,4 +695,4 @@ function predictMember(saved, x) {
   return out.label;
 }
 
-module.exports = { comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET, T_TRAINED_HOURS, T_OWN, holdHoursOf, tHoursOn };
+module.exports = { comboViews, buildComboChunks, newBook, simBracket, simMarket, holdControls, simCell, execSweep, bestCell, trainMember, predictMember, GATES, ENTRIES, D_MULTS, T_HOURS, TRAIL_MULTS, ARM_MULTS, PER_ASSET, T_TRAINED_HOURS, T_OWN, holdHoursOf, tHoursOn, CLASSES, CLASS_WEIGHT_CAP, thinSideLevel };

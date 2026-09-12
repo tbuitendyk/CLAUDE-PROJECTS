@@ -14,9 +14,16 @@
 // ---- the typing -------------------------------------------------------------
 
 // HOW A TURN IS FOUND (COINS.md section 3): walk forward keeping the running
-// high; when price has fallen back from that high by more than pctBack, the
+// high; when price has fallen back from that high by AT LEAST pctBack, the
 // high is where the rising stretch ended and the falling one began. Mirrored
 // for the other direction.
+//
+// AT LEAST, NOT MORE THAN. The comparison is `>=` and always has been; this
+// line and COINS.md section 3 both said "more than", which is a different rule
+// at the exact boundary. The wording was corrected to the code (2026-09-12,
+// found by the adversarial pass) rather than the other way round: changing the
+// comparison would move every number on the tab, and nothing on either side of
+// that boundary is more defensible than the other.
 //
 // IT IS A RETURN, NEVER A PRICE LEVEL. The fall is measured against the
 // extreme it is retracing from, so a 10% move counts the same at $50 and at
@@ -30,14 +37,21 @@ function typeStretches(prices, pctBack) {
   const n = Array.isArray(prices) ? prices.length : 0;
   const pct = Number(pctBack);
   if (!(pct > 0)) throw new Error('the fall-back percentage must be above zero');
-  if (n < 2) return { pct, turns: [], stretches: n ? [{ from: 0, to: 0, type: 'rising' }] : [] };
+  if (n < 2) return { pct, turns: [], stretches: n ? [{ from: 0, to: 0, type: 'rising', open: true }] : [] };
 
   const frac = pct / 100;
   const turns = [];
   const stretches = [];
   let dir = null;                 // 'rising' | 'falling', unknown until price moves
-  let hi = prices[0]; let hiIdx = 0;
-  let lo = prices[0]; let loIdx = 0;
+  // A PRICE OF ZERO OR BELOW IS NOT A BASE A RETURN CAN BE MEASURED FROM, so it
+  // never becomes the running extreme and never triggers a comparison. The first
+  // version guarded the division with `lo > 0` at the comparison alone, and
+  // because the running low only ever falls until a turn resets it, one zero
+  // switched rise detection off for the WHOLE of the rest of the series: ten
+  // periods with three obvious reversals came back as one stretch and no turns.
+  // The period is still inside its stretch; it just cannot be an extreme.
+  let hi = prices[0] > 0 ? prices[0] : null; let hiIdx = 0;
+  let lo = prices[0] > 0 ? prices[0] : null; let loIdx = 0;
   let start = 0;                  // where the stretch in progress began
 
   // A turn CLOSES the stretch in progress at the extreme, and opens the next
@@ -53,10 +67,12 @@ function typeStretches(prices, pctBack) {
 
   for (let i = 1; i < n; i++) {
     const p = prices[i];
+    if (!(p > 0)) continue;                      // see above: not a base for a return
+    if (hi === null) { hi = p; hiIdx = i; lo = p; loIdx = i; continue; }
     if (p > hi) { hi = p; hiIdx = i; }
     if (p < lo) { lo = p; loIdx = i; }
-    const fellBack = hi > 0 && (hi - p) / hi >= frac;
-    const roseBack = lo > 0 && (p - lo) / lo >= frac;
+    const fellBack = (hi - p) / hi >= frac;
+    const roseBack = (p - lo) / lo >= frac;
     if (dir !== 'falling' && fellBack && hiIdx >= start) {
       // THE FIRST TRIGGER ONLY SETS THE DIRECTION WHEN THE EXTREME IS THE
       // START ITSELF. Found by the pre-registered check C1.3, which a
@@ -86,9 +102,17 @@ function typeStretches(prices, pctBack) {
   // stretch. Its type is the direction in progress; when price never moved far
   // enough for a direction to exist at all, it is whichever way the span
   // finished, so a flat coin still gets a type rather than a hole.
+  //
+  // AND IT IS MARKED OPEN, because a turn is not what ended it -- it ran out of
+  // data. The comment above `cutAtBoundaries` defines a left-over end as a piece
+  // the cut ended rather than a turn, and by that definition this is one. It was
+  // not marked, so the last part of every span counted an unfinished run as a
+  // whole stretch, and (worse) the walk's trailing stretch stretched to the end
+  // of ALL the data, which is how price inside the sealed reserve was reaching
+  // back into what train reported.
   if (start <= n - 1) {
     const type = dir || (prices[n - 1] >= prices[start] ? 'rising' : 'falling');
-    stretches.push({ from: start, to: n - 1, type });
+    stretches.push({ from: start, to: n - 1, type, open: true });
   }
   return { pct, turns, stretches };
 }
@@ -115,9 +139,15 @@ function searchFallback(prices, opts = {}) {
   if (to < from) throw new Error(`the percentage range runs backwards (${from} to ${to})`);
 
   const walk = [];
-  const places = Math.max(0, Math.min(6, String(step).split('.')[1] ? String(step).split('.')[1].length : 0));
+  // THE GRID IS ROUNDED TO KILL THE DUST that `from + k * step` accumulates, and
+  // that is all the rounding is for. The first version worked out how many
+  // decimal places to keep by reading the PRINTED form of the step -- so a step
+  // below a millionth, which JavaScript prints in exponential form, read as no
+  // decimal places at all and collapsed the whole grid: five thousand rows, each
+  // typing the identical percentage. Significant figures do not care how the
+  // number prints.
   for (let k = 0; ; k++) {
-    const pct = Number((from + k * step).toFixed(places + 3));
+    const pct = Number((from + k * step).toPrecision(12));
     if (pct > to + 1e-9) break;
     const r = typeStretches(prices, pct);
     walk.push({ pct, turns: r.turns.length, stretches: r.stretches.length });
@@ -169,7 +199,9 @@ function searchFallback(prices, opts = {}) {
 // belongs to exactly one part (COINS.md section 5).
 //
 // A piece is a STUB when the cut is what ended it, rather than a turn. There
-// are at most two per part, one at each end, because only the edges get cut.
+// are at most two per part, one at each end, because only the edges get cut --
+// plus the unfinished run at the very end of the walk, which no turn ended
+// either, so it counts as one too.
 function cutAtBoundaries(stretches, parts) {
   const out = [];
   for (const part of parts) {
@@ -180,8 +212,9 @@ function cutAtBoundaries(stretches, parts) {
       if (to < from) continue;
       pieces.push({
         from, to, type: s.type, length: to - from + 1,
-        // cut on either side means the cut ended it, not a turn
-        stub: from > s.from || to < s.to,
+        // cut on either side means the cut ended it, not a turn; and an open
+        // stretch was ended by running out of data, which is not a turn either
+        stub: from > s.from || to < s.to || !!s.open,
       });
     }
     out.push({ part: part.name, from: part.from, to: part.to, pieces });
@@ -261,22 +294,55 @@ function splitOfTime(moves) {
   return { rising: up / n, falling: down / n, balance: Math.min(up, down) / n, periods: n };
 }
 
+// THE WIDTHS THE TWO LAYOUTS ACTUALLY CARVE, at this many periods, read out of
+// the engine's own split rather than typed (COINS.md section 11: "a window the
+// size the layouts actually carve"). The first version typed 0.13 and 0.15 as a
+// default argument that nothing ever passed -- a second copy of the arithmetic
+// and a knob with no control, which is the fault `partsFor` refuses a hundred
+// lines below and RULE FIVE forbids outright.
+//
+// BOTH LAYOUTS, ALWAYS, so this stays ONE reading per coin and not one per
+// layout (COINS.md section 11 is explicit about that). The sealed reserve of
+// the four-way split and the held-back stretch of the three-way one are the two
+// tails a coin can be asked to hand over; the worst of either is the reading.
+function layoutWidths(periods) {
+  const seen = [];
+  for (const layout of ['reserve61', 'split70']) {
+    let parts;
+    try { parts = partsFor(periods, layout); } catch (_) { continue; }
+    const last = parts[parts.length - 1];
+    const w = last.to - last.from + 1;
+    if (w >= 2 && w <= periods && !seen.includes(w)) seen.push(w);
+  }
+  return seen.sort((a, b) => a - b);
+}
+
 // NUMBER ONE OF THE TRADITIONAL SCORE -- the worst tail slice. Slide a window
 // the size the layouts actually carve across the whole span and take the WORST
 // balance found anywhere. It answers the failure the owner saw directly:
 // somewhere in this history there is a stretch that runs all one way.
-function worstTailSlice(moves, shares = [0.13, 0.15]) {
+//
+// IT MOVES WITH HOW MUCH HISTORY A COIN HAS, and that is named on the screen
+// rather than hidden. The window is a share of the span, so a short coin is
+// measured over a short window, and a short window of a perfectly fair coin
+// lands one-way often: at forty periods nearly three quarters of trendless
+// coins score exactly zero, at a thousand periods none of them do. Two coins
+// with different amounts of cached history are NOT comparable on this number.
+function worstTailSlice(moves, widths) {
+  const list = Array.isArray(widths) ? widths : [];
   let worst = null;
   const at = [];
-  for (const share of shares) {
-    const w = Math.max(2, Math.round(moves.length * share));
-    if (w > moves.length) continue;
+  for (const w of list) {
+    if (!(w >= 2) || w > moves.length) continue;
+    // RECORDED BECAUSE IT WAS WALKED, not because it produced the answer. The
+    // first version pushed inside `if (worst)`, so a width that was walked and
+    // beaten vanished from the record of what was walked.
+    at.push({ width: w });
     for (let i = 0; i + w <= moves.length; i++) {
       const b = splitOfTime(moves.slice(i, i + w)).balance;
       if (b == null) continue;
-      if (worst == null || b < worst.balance) worst = { balance: b, from: i, to: i + w - 1, width: w, share };
+      if (worst == null || b < worst.balance) worst = { balance: b, from: i, to: i + w - 1, width: w };
     }
-    if (worst) at.push({ share, width: w });
   }
   return worst ? { ...worst, widths: at } : { balance: null, from: null, to: null, width: null, widths: at };
 }
@@ -285,14 +351,22 @@ function worstTailSlice(moves, shares = [0.13, 0.15]) {
 // balance, and score how much that balance MOVES from part to part. This is
 // what catches "the training part was a general mix and the last part was all
 // one way", and the per-part balances are what the screen draws.
+//
+// EQUAL MEANS EQUAL. The first version took the floor of the division and gave
+// the last part the whole remainder: on 159 moves the widths came out
+// 19,19,19,19,19,19,19,26, and that oversized last part diluted a one-way tail
+// with balanced periods and reported the drift 36% too low -- on exactly the
+// case this number exists to catch. Worst seen between 40 and 400 periods was
+// 47: a last part 12 wide against 5. Rounding the boundaries instead leaves
+// every part within one period of every other.
 function balanceDrift(moves, partsWanted = 8) {
   const k = Math.max(2, Math.floor(Number(partsWanted) || 0));
   if (moves.length < k * 2) return { drift: null, parts: [], wanted: k, why: 'too few periods to cut into that many parts' };
-  const size = Math.floor(moves.length / k);
+  const edge = (i) => Math.round((i * moves.length) / k);
   const parts = [];
   for (let i = 0; i < k; i++) {
-    const from = i * size;
-    const to = i === k - 1 ? moves.length - 1 : (i + 1) * size - 1;
+    const from = edge(i);
+    const to = edge(i + 1) - 1;
     parts.push({ from, to, ...splitOfTime(moves.slice(from, to + 1)) });
   }
   const bs = parts.map((p) => p.balance).filter((b) => b != null);
@@ -368,6 +442,26 @@ function trainingWeights(moves, opts = {}) {
   let lo = 0;
   let hi = 1;
   while (meanAt(hi) < 1 && hi < 1e12) hi *= 2;
+  // THE DOUBLING CAN RUN OUT BEFORE IT FINDS AN UPPER BRACKET, and then there
+  // is nothing to bisect between. The first version went straight on: every
+  // midpoint tested low, `lo` climbed to `hi`, and it returned "reached" with a
+  // mean of 0.11. It takes moves near the smallest number the machine can tell
+  // from zero, so no real price reaches it -- but the sentence this function
+  // already writes for the other unreachable case was being bypassed rather
+  // than extended, which is the fault, not the odds of hitting it.
+  if (meanAt(hi) < 1) {
+    const weights = raw.map((w) => Math.min(hi * w, cap));
+    return {
+      weights,
+      cap,
+      mean: weights.reduce((a, b) => a + b, 0) / n,
+      capped: weights.filter((w) => w >= cap - 1e-12).length,
+      reachedMean: false,
+      needCap: null,
+      why: 'the moves in this stretch are so small that no scale this machine can hold lifts the average weight to 1 — '
+        + `the largest it reaches is ${meanAt(hi).toPrecision(3)}`,
+    };
+  }
   for (let i = 0; i < 200; i++) {
     const mid = (lo + hi) / 2;
     if (meanAt(mid) < 1) lo = mid; else hi = mid;
@@ -386,9 +480,9 @@ function trainingWeights(moves, opts = {}) {
 // Typing the percentages here would be a second copy of the arithmetic, and
 // two copies drift.
 function partsFor(n, layout) {
-  const { splitBounds } = require('./bracketwork');
+  const { splitBounds, reserveChunks } = require('./bracketwork');
   if (layout === 'reserve61') {
-    const nReserve = Math.max(2, Math.round(n * 0.13));
+    const nReserve = reserveChunks(n);
     const rest = n - nReserve;
     const b = splitBounds(rest, true);
     return [
@@ -409,100 +503,95 @@ function partsFor(n, layout) {
   throw new Error(`unknown window layout '${layout}'`);
 }
 
+// A SPLIT THAT LEAVES A STRETCH WITH NOTHING IN IT IS NOT A SPLIT, and saying
+// so is the honest answer for a coin with almost no history. It is NOT a refusal
+// of the coin (COINS.md section 8): the traditional score and every other layout
+// are still read, and the sentence goes on the record beside them. The floor
+// this puts on the period count is whatever the engine's own arithmetic implies
+// -- there is no number typed here to be argued with.
+function checkedParts(n, layout) {
+  const parts = partsFor(n, layout);
+  for (const p of parts) {
+    if (p.to < p.from) {
+      throw new Error(`${n} periods do not divide into ${layout} — the split leaves '${p.name}' with no periods in it`);
+    }
+  }
+  for (let i = 1; i < parts.length; i++) {
+    if (parts[i].from !== parts[i - 1].to + 1) {
+      throw new Error(`${n} periods do not divide into ${layout} — '${parts[i - 1].name}' and '${parts[i].name}' do not meet`);
+    }
+  }
+  if (parts[0].from !== 0 || parts[parts.length - 1].to !== n - 1) {
+    throw new Error(`${n} periods do not divide into ${layout} — the parts do not cover the span`);
+  }
+  return parts;
+}
+
+// ---- the traditional score, one per coin, no layout ------------------------
+
+// ONE READING PER COIN, NOT ONE PER LAYOUT (COINS.md section 11 is explicit).
+// It used to be computed inside the per-layout reading, so every record on disk
+// carried two byte-identical copies of it -- two copies of one fact, which is
+// the thing RULE NINE exists to stop.
+//
+// NOTHING TUNED GOES INTO IT. The direction of each period is read from the
+// sign of that period's own move, never from the tuned stretches, so re-tuning
+// the fall-back percentage for two-set training can never move a coin's
+// traditional score (COINS.md section 11).
+function traditionalReading(moves, opts = {}) {
+  return {
+    whole: splitOfTime(moves),
+    worstTailSlice: worstTailSlice(moves, layoutWidths(moves.length)),
+    drift: balanceDrift(moves, opts.driftParts),
+    // NAMED, BECAUSE BOTH NUMBERS MOVE WITH IT. The window the worst tail slice
+    // slides is a share of the span and the drift's parts are a share of the
+    // span, so a coin with less cached history is measured over shorter runs
+    // and reads worse on one and better on the other. Two coins with different
+    // amounts of history are not comparable on either number, and the screen
+    // has to say so rather than rank them side by side in silence.
+    periods: moves.length,
+  };
+}
+
 // ---- one coin, one window layout, one reading -------------------------------
 
 // THE SEARCH READS `train` AND `test` ONLY (COINS.md section 7). The settled
-// percentage is then applied to the WHOLE span and what is in `held` and
-// `reserve` is REPORTED -- never fed back into the search. So you find out
-// before sweeping that a coin's held-back stretch runs one way, instead of
-// finding out at Verify after the whole sweep is spent.
+// percentage is then applied to `held` and `reserve` and what is there is
+// REPORTED -- never fed back. So you find out before sweeping that a coin's
+// held-back stretch runs one way, instead of finding out at Verify after the
+// whole sweep is spent.
+//
+// AND "NEVER FED BACK" MEANS EVERY NUMBER, NOT JUST THE PERCENTAGE. The first
+// version drew the stretches with ONE walk over the whole span and only then
+// cut them at the boundaries. The percentage was clean and stayed clean under
+// attack -- but the stretches were not. A high near the end of `test` only
+// becomes a turn once price has fallen back from it, and that fall-back can
+// arrive in `held` or in the sealed `reserve`; until it does, the walk's last
+// stretch runs to the end of ALL the data. So whether a piece sitting inside
+// `test` was a whole stretch or a left-over end depended on price the reading
+// is forbidden to consider, and the median those left-over ends are measured
+// against was built from that same set. Two series identical for every period
+// of `train` and `test` and `held`, differing only inside the sealed reserve,
+// reported different medians and a different number of stretches in `train`.
+//
+// SO EVERY PART IS DRAWN BY A WALK THAT STOPS AT THAT PART'S OWN END. `train`
+// is read from a walk over `train`; `test` from a walk over `train` + `test`;
+// and so on out to the whole span for the last part. The walk is
+// prefix-deterministic -- every stretch closed by a turn is identical in any
+// walk that reaches that far -- so the only thing this changes is the
+// unfinished run at the end, which is exactly the thing that was reaching back.
+// Nothing later can move an earlier part's figures now, at any distance.
 //
 // AND NOTHING HERE REFUSES THE COIN. Every field below is a figure to look at.
 function coinReading(prices, moves, opts = {}) {
   if (!Array.isArray(prices) || !Array.isArray(moves)) throw new Error('coinReading wants a price per period and a move per period');
   if (prices.length !== moves.length) throw new Error(`${prices.length} prices and ${moves.length} moves — there must be one of each per period`);
   const layout = String(opts.layout || '');
-  const parts = partsFor(prices.length, layout);
+  const parts = checkedParts(prices.length, layout);
   const searchEnd = parts[1].to;                       // the end of `test`
 
   const search = searchFallback(prices.slice(0, searchEnd + 1), {
     target: opts.target, from: opts.from, to: opts.to, step: opts.step,
-  });
-
-  const out = {
-    layout,
-    periods: prices.length,
-    parts: parts.map((p) => ({ ...p, periods: p.to - p.from + 1 })),
-    searchedOver: { from: 0, to: searchEnd, parts: [parts[0].name, parts[1].name] },
-    search,
-    // THE TRADITIONAL READING, worked out from an untuned direction over the
-    // whole span, so re-tuning the percentage above never moves it.
-    traditional: {
-      whole: splitOfTime(moves),
-      worstTailSlice: worstTailSlice(moves, opts.tailShares),
-      drift: balanceDrift(moves, opts.driftParts),
-    },
-    typed: null,
-    medians: null,
-    perPart: null,
-    weight: null,
-  };
-
-  if (!search.reached) {
-    out.why = search.why;
-    return out;
-  }
-
-  const typed = typeStretches(prices, search.pct);
-
-  // A TURN IS CONFIRMED LATER THAN THE PERIOD IT MARKS, and that makes the
-  // search's count a floor rather than the final one. Found by looking at the
-  // output on 2026-09-12, not by being told.
-  //
-  // The rule marks the high as the turn only once price has fallen back from
-  // it, which happens some periods later. So a turn sitting near the end of
-  // `test` cannot be confirmed from `train` and `test` alone -- the fall-back
-  // that proves it is in `held`. Type the whole span with the same percentage
-  // and that turn appears.
-  //
-  // THIS IS LEFT AS IT IS, ON PURPOSE. Letting those turns into the search
-  // would give `held` a vote in choosing the percentage, which is exactly what
-  // COINS.md section 7 forbids. Turns are only ever ADDED by later data and
-  // never taken away, so what the search counted is a floor and the reading
-  // errs in the honest direction. What is NOT acceptable is the two numbers
-  // disagreeing silently, so both are reported and the gap is named.
-  const withLater = typed.turns.filter((t) => t <= searchEnd).length;
-  out.searchedOver.turnsTheSearchCounted = search.turns;
-  out.searchedOver.turnsOnceLaterDataIsSeen = withLater;
-  if (withLater !== search.turns) {
-    out.searchedOver.note = `${withLater - search.turns} more change(s) of direction sit inside train and test `
-      + 'than the search could count: a turn is only confirmed once price has fallen back from it, and for a turn '
-      + 'near the end of test that fall-back is in held. The search is not allowed to look there, so it counted '
-      + 'what it could see.';
-  }
-
-  const cut = cutAtBoundaries(typed.stretches, parts);
-  const medians = medianFullLengths(cut, ['train', 'test']);
-  out.typed = { pct: search.pct, turns: typed.turns.length, stretches: typed.stretches.length };
-  out.medians = medians;
-  out.perPart = cut.map((c) => {
-    const counts = countStretches(c, medians);
-    return {
-      part: c.part,
-      from: c.from,
-      to: c.to,
-      periods: c.to - c.from + 1,
-      // TURNS, COUNTED DIRECTLY. They never get cut, so this needs no stub
-      // arithmetic (COINS.md section 5).
-      turns: turnsIn(typed.turns, c),
-      stretches: counts,
-      // MORE THAN ONE FULL STRETCH OF A TYPE means it cannot be memorised as a
-      // single period of the calendar. Stretches alternate, so two full ones
-      // of a type are separated by construction.
-      repeats: { rising: counts.rising.full >= 2, falling: counts.falling.full >= 2 },
-      split: splitOfTime(moves.slice(c.from, c.to + 1)),
-      stubs: c.pieces.filter((p) => p.stub).length,
-    };
   });
 
   // THE WEIGHT SUMMARY, over `train`, which is what gets trained on. The vector
@@ -511,10 +600,88 @@ function coinReading(prices, moves, opts = {}) {
   // (RULE NINE). Sweep recomputes it from this same function.
   const trainMoves = moves.slice(parts[0].from, parts[0].to + 1);
   const w = trainingWeights(trainMoves, { cap: opts.cap });
-  out.weight = {
-    cap: w.cap, mean: w.mean, capped: w.capped, reachedMean: w.reachedMean !== false,
-    needCap: w.needCap ?? null, why: w.why ?? null, over: 'train', periods: trainMoves.length,
+
+  const out = {
+    layout,
+    periods: prices.length,
+    parts: parts.map((p) => ({ ...p, periods: p.to - p.from + 1 })),
+    searchedOver: { from: 0, to: searchEnd, parts: [parts[0].name, parts[1].name] },
+    search,
+    // NEITHER OF THESE NEEDS THE PERCENTAGE, so neither waits on it. The split
+    // of time reads the sign of each period's own move; the training weight
+    // reads how far each period moved and the owner's ceiling. The first
+    // version returned both as null whenever the percentage search came up
+    // short -- so a coin the search could not satisfy was withheld the one
+    // number this tab exists to hand to Sweep, because a different reading
+    // failed. COINS.md section 8 lists the split per part as a reading in its
+    // own right.
+    split: parts.map((p) => ({ part: p.name, from: p.from, to: p.to, ...splitOfTime(moves.slice(p.from, p.to + 1)) })),
+    weight: {
+      cap: w.cap, mean: w.mean, capped: w.capped, reachedMean: w.reachedMean !== false,
+      needCap: w.needCap ?? null, why: w.why ?? null, over: parts[0].name, periods: trainMoves.length,
+    },
+    typed: null,
+    medians: null,
+    perPart: null,
   };
+
+  if (!search.reached) {
+    out.why = search.why;
+    return out;
+  }
+
+  // ONE WALK PER PART END, and none of them sees past the part it is for.
+  const walks = new Map();
+  const walkTo = (end) => {
+    if (!walks.has(end)) walks.set(end, typeStretches(prices.slice(0, end + 1), search.pct));
+    return walks.get(end);
+  };
+  const whole = walkTo(prices.length - 1);
+
+  // A TURN IS CONFIRMED LATER THAN THE PERIOD IT MARKS, and that makes the
+  // search's count a floor rather than the final one. Found by looking at the
+  // output on 2026-09-12, not by being told.
+  //
+  // The rule marks the high as the turn only once price has fallen back from
+  // it, which happens some periods later. So a turn sitting near the end of
+  // `test` cannot be confirmed from `train` and `test` alone -- the fall-back
+  // that proves it is in `held`.
+  //
+  // THE SEARCH IS LEFT AS IT IS, ON PURPOSE, and so are the per-part figures:
+  // letting those turns into either would give `held` a vote, which is exactly
+  // what COINS.md section 7 forbids. Turns are only ever ADDED by later data
+  // and never taken away, so what the search counted is a floor and the reading
+  // errs in the honest direction. What is NOT acceptable is the two numbers
+  // disagreeing silently, so both are reported, plainly labelled, and the gap
+  // is named in a sentence.
+  const withLater = whole.turns.filter((t) => t <= searchEnd).length;
+  out.searchedOver.turnsTheSearchCounted = search.turns;
+  out.searchedOver.turnsOnceLaterDataIsSeen = withLater;
+  if (withLater !== search.turns) {
+    out.searchedOver.note = `${withLater - search.turns} more change(s) of direction sit inside train and test `
+      + 'than the search could count: a turn is only confirmed once price has fallen back from it, and for a turn '
+      + 'near the end of test that fall-back is in held. The search is not allowed to look there, so it counted '
+      + 'what it could see. The figures per part below are the ones the search could see.';
+  }
+
+  const cut = parts.map((p) => cutAtBoundaries(walkTo(p.to).stretches, [p])[0]);
+  const medians = medianFullLengths(cut, [parts[0].name, parts[1].name]);
+  out.typed = { pct: search.pct, turns: whole.turns.length, stretches: whole.stretches.length };
+  out.medians = medians;
+  out.perPart = cut.map((c) => ({
+    part: c.part,
+    from: c.from,
+    to: c.to,
+    periods: c.to - c.from + 1,
+    // TURNS, COUNTED DIRECTLY. They never get cut, so this needs no stub
+    // arithmetic (COINS.md section 5).
+    turns: turnsIn(walkTo(c.to).turns, c),
+    stretches: countStretches(c, medians),
+    // THE SPLIT IS ALREADY ABOVE, in `split`, computed whether the search
+    // reached or not. Repeating it here would be two copies of one fact.
+    stubs: c.pieces.filter((p) => p.stub).length,
+  }));
+
   return out;
 }
 
@@ -522,7 +689,7 @@ function coinReading(prices, moves, opts = {}) {
 module.exports = {
   typeStretches, searchFallback,
   cutAtBoundaries, medianFullLengths, countStretches, turnsIn,
-  splitOfTime, worstTailSlice, balanceDrift,
+  splitOfTime, layoutWidths, worstTailSlice, balanceDrift, traditionalReading,
   trainingWeights,
-  partsFor, coinReading,
+  partsFor, checkedParts, coinReading,
 };
