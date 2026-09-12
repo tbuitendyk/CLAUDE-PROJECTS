@@ -358,3 +358,67 @@ numbers do not move when the fall-back percentage is re-tuned.
 Second time in this loop the suite caught something in shared files that the
 narrow checks could not. Both times the risk was named before committing rather
 than discovered after.
+
+## C8 — the adversarial pass: the screen reviewer's findings, triaged
+
+Four reviewers were launched, each told to REFUTE rather than confirm. The one
+on the screen and the rules came back first. Its findings, sorted by whether
+they are a lie, a breach, or a cost — and every one of them is inside this
+loop's named work, so they get fixed here rather than parked.
+
+### MUST FIX — the screen says something untrue
+
+1. **`worst tail slice` sorts backwards.** Low is bad — the note on the screen
+   says so — and the ordering puts the largest first, so choosing it buries the
+   one-sided coins at the bottom and puts the healthiest at the top. Four of
+   the five orderings put the worst first; this one runs the opposite way.
+2. **The `read over` hover promises staleness detection that does not exist.**
+   Nothing compares the record's span against what is cached now, and neither
+   `capturedAt` nor the release is rendered. A month-old reading looks exactly
+   like one taken a minute ago.
+3. **Stop is indistinguishable from finished.** The note is set and then wiped
+   on the next line, and `stop` is not in the status, so a run stopped at coin
+   4 of 17 reads word for word like a completed 4-coin run.
+4. **Stop's refusal is swallowed.** The route answers 200 with a reason and the
+   page throws it away, so pressing it when nothing runs does and says nothing.
+5. **"nothing read yet" over a full table.** The run state is in memory, so
+   after a restart the line says nothing has been read while the table below it
+   shows every record on disk.
+6. **"a type appears only once" fires when it appears ZERO times**, and never
+   says which type.
+
+### MUST FIX — a doctrine breach
+
+7. **A hardcoded forty-period minimum REFUSES a coin** (`lib/coinsrun.js`).
+   This tab reports and never refuses. That is the rule the whole design turns
+   on and I wrote a refusal into the loader.
+
+### MUST FIX — it destroys what the owner typed
+
+8. **The two-second poll rebuilds the panel and blanks every box.** The coin
+   list has no value attribute at all, the six number boxes snap back to the
+   server defaults, and none of them is disabled while the run is going — so
+   the screen invites typing and throws it away twice a second. It also flashes
+   the full-screen wait box, which swallows clicks. Boards already solved this
+   with a quiet redraw and Coins does not use it.
+9. **The boxes are filled from the server defaults, never from the record's own
+   parameters.** Run at twelve changes wanted and the table shows readings made
+   at twelve while the box reads six, with nothing saying which produced what.
+
+### SHOULD FIX — self-contradiction, waste, RULE FIVE
+
+10. **`0.13` is typed in `partsFor`, directly under a comment saying the
+    percentages are never typed here.** My own comment, contradicted eight
+    lines later.
+11. **`tailShares` is a real knob with no control and no caller.**
+12. **`LAYOUTS` is typed in the runner** while the dropdown reads the
+    vocabulary; add a layout there and every cell renders empty.
+13. **`traditional` is stored twice per record**, byte-identical, because it is
+    computed per layout and does not depend on the layout.
+14. **`capped` is written and never shown**, and the flat-coin sentence can
+    never render because `reachedMean` is undefined on that path.
+15. **A record file that fails to parse is dropped in silence**, and the screen
+    then says nothing has been read.
+16. RULE FOUR: one raw colour, a note nested in a note that shifts the status
+    line below its buttons, and two rows per coin with no separator where the
+    page already has a convention for exactly that.
