@@ -1343,6 +1343,40 @@ const GUARDS = [
     'theStageLaunchesReadTheRoleAndRefuseAnUnreachablePlatform', 'the one definition answers nothing, so every reader of it is a decoration'],
   [path.join(ROOT, 'lib', 'stages.js'), "function createPool() {\n  sweepHereOrRefuse();\n  return buildPool();", "function createPool() {\n  return buildPool();",
     'theStageLaunchesReadTheRoleAndRefuseAnUnreachablePlatform', 'the backstop is gone, so a launch by another road builds its workers here whatever the Compute tab says'],
+
+  // ---- COINS (3.119.0, after the four adversarial reviewers) ---------------
+  // Each of these names the test that READS THE LINE IT BREAKS, not the test
+  // with the nearest-sounding name (RULE EIGHT).
+  [path.join(ROOT, 'lib', 'coinsrun.js'), 'const map = forwardFill(toHourlyMap(loaded.rows)).map;', 'const map = forwardFill(toHourlyMap(loaded.rows));',
+    'aCoinWithCachedPricesActuallyGetsARead', 'the tab reads nothing at all: every coin throws on the first period built and lands in the unread list, which is exactly how this shipped'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), 'if (rec.read) run.wrote.push(coin); else run.couldNotRead.push({ coin, why: rec.why });', 'if (rec.read) run.wrote.push(coin);',
+    'everyCoinTheRunTouchedIsOnDiskAfterwards', 'a coin that could not be read is not counted anywhere, so the screen cannot say how many failed'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), 'run.stoppedAt = run.stop ? run.done : null;', 'run.stoppedAt = null;',
+    'stoppingIsToldApartFromFinishing', 'a run stopped at coin 4 of 17 reads word for word like a completed 4-coin run'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), '    if (rec.v !== RECORD_V) {\n      unreadable.push({', '    if (rec.v !== RECORD_V) {\n      if (1) continue;\n      unreadable.push({',
+    'aRecordThisReleaseCannotReadIsNamedRatherThanHidden', 'a release bump deletes the owner\'s readings from the screen in silence, and the screen then says nothing was ever read'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), '    layouts: layouts(),', "    layouts: ['reserve61', 'split70'],",
+    'theRunnerReadsEveryLayoutTheScreenOffers', 'the list of window layouts is typed in a second place, so adding one leaves the screen offering a reading nobody ever took'],
+  [path.join(ROOT, 'lib', 'coins.js'), '  const cut = parts.map((p) => cutAtBoundaries(walkTo(p.to).stretches, [p])[0]);', '  const cut = cutAtBoundaries(whole.stretches, parts);',
+    'nothingAfterAPartCanMoveWhatThatPartReports', 'price inside the sealed reserve moves the median and moves what train reports with it, which COINS.md section 7 forbids'],
+  [path.join(ROOT, 'lib', 'coins.js'), '        stub: from > s.from || to < s.to || !!s.open,', '        stub: from > s.from || to < s.to,',
+    'theStubArithmeticRunsOnWhatTheCutterActuallyProduces', 'a run that never turned -- it ran out of data -- counts as a whole stretch in the last part of every span'],
+  [path.join(ROOT, 'lib', 'coins.js'), '  const edge = (i) => Math.round((i * moves.length) / k);\n  const parts = [];\n  for (let i = 0; i < k; i++) {\n    const from = edge(i);\n    const to = edge(i + 1) - 1;', '  const size = Math.floor(moves.length / k);\n  const parts = [];\n  for (let i = 0; i < k; i++) {\n    const from = i * size;\n    const to = i === k - 1 ? moves.length - 1 : (i + 1) * size - 1;',
+    'theDriftIsAnAverageOverEqualPartsAndTheCallerSaysHowMany', 'the last part swallows the remainder and dilutes a one-way tail with balanced periods, reading 36% low on the case this number exists to catch'],
+  [path.join(ROOT, 'lib', 'coins.js'), '  if (meanAt(hi) < 1) {\n    const weights = raw.map((w) => Math.min(hi * w, cap));', '  if (false) {\n    const weights = raw.map((w) => Math.min(hi * w, cap));',
+    'theCeilingThatCannotReachAMeanOfOneIsFoundExactly', 'an average of 0.11 is reported as an average of 1, which is the thing the sentence beside it promises never happens'],
+  [path.join(ROOT, 'lib', 'coins.js'), '    const pct = Number((from + k * step).toPrecision(12));', "    const pct = Number((from + k * step).toFixed(String(step).split('.')[1] ? String(step).split('.')[1].length + 3 : 3));",
+    'everyValueTheOwnerSetsForTheSearchIsObeyed', 'a step too small to print as a decimal collapses the whole walk onto one percentage, tried over and over'],
+  [path.join(ROOT, 'lib', 'coins.js'), '    if (!(p > 0)) continue;                      // see above: not a base for a return', '    if (false) continue;',
+    'aPriceOfZeroCostsThatPeriodAndNoOther', 'one unusable price switches rise detection off for the whole of the rest of the series'],
+  [path.join(ROOT, 'lib', 'coins.js'), '    at.push({ width: w });\n    for (let i = 0; i + w <= moves.length; i++) {', '    for (let i = 0; i + w <= moves.length; i++) {',
+    'theWorstTailSliceSeesAOneWayTailThatTheWholeSpanBalanceHides', 'a window that was walked and beaten vanishes from the record of what was walked'],
+  [path.join(ROOT, 'lib', 'coins.js'), '  const seen = [];\n  for (const layout of [\'reserve61\', \'split70\']) {', '  const seen = [Math.max(2, Math.round(periods * 0.13)), Math.max(2, Math.round(periods * 0.15))];\n  for (const layout of []) {',
+    'theTailWidthsAreTheOnesTheLayoutsActuallyCarve', 'the two window widths are a second copy of the engine\'s split, typed here, and two copies drift'],
+  [path.join(ROOT, 'lib', 'coins.js'), "    split: parts.map((p) => ({ part: p.name, from: p.from, to: p.to, ...splitOfTime(moves.slice(p.from, p.to + 1)) })),", '    split: search.reached ? parts.map((p) => ({ part: p.name, from: p.from, to: p.to, ...splitOfTime(moves.slice(p.from, p.to + 1)) })) : null,',
+    'aCoinTheSearchCannotSatisfyStillGetsARecord', 'a coin the percentage search cannot satisfy is withheld a reading that never needed the percentage at all'],
+  [path.join(ROOT, 'lib', 'bracket.js'), 'Math.min(CLASS_WEIGHT_CAP, ytr.length / (present.length * counts[cl]))', 'Math.min(20, ytr.length / (present.length * counts[cl]))',
+    'theThinSideLevelIsReadFromTheEnginesOwnWeighting', 'the engine types its own ceiling, so the level the Coins screen quotes can drift away from the one the training really uses'],
 ];
 
 const only = process.argv[2] || '';

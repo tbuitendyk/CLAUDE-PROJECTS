@@ -726,3 +726,43 @@ direction, which is why this is a judgement and not a typo.
 word I may use about that screen.** It is named here, in a record, rather than
 in anything written for the owner to act on.
 
+## C11 — the guards, run after the deploy, and two of them caught me
+
+Fifteen guards for the Coins code, each naming the test that reads the line it
+breaks. Run AFTER the deploy and never gating it (RULE EIGHT). Thirteen were
+right first time. Two read MISS, and both were my fault in a way worth writing
+down, because both are the same fault the tests reviewer had just found twice
+in this file.
+
+**The most important guard in the set was blind.** Break the per-part walk —
+put every part back on one whole-span cut, which is the bug the whole release
+is about — and `nothingAfterAPartCanMoveWhatThatPartReports` stayed green. Its
+fixture nudged the future by a uniform multiple, which leaves the shape of the
+path intact, so whether a pending peak later gets confirmed never changed and
+the property under test was never reached. A test named for a property its
+fixture cannot exercise is the same shape as the two that could not fail.
+
+It is rebuilt in two halves that can both fail. The first works out, from
+scratch and without asking the reading, what each part's pieces and turns
+should be from a walk stopping at that part's end, and compares. The second
+replaces the whole future past the end of `test`, four different ways, from
+every seventh period on.
+
+And it corrected me on the rule itself. My first version asserted that nothing
+after a part's end can move that part — which is FALSE inside `train` and
+`test`, because a change there moves the percentage the search picks, and a
+different percentage re-types everything. That is the design, not a leak. The
+true rule is narrower and is now what the test says: past the end of `test`,
+nothing moves at all.
+
+**And a guard whose line was not the one doing the work.** Removing the
+"a price of nothing cannot be a base for a return" line left the answer
+unchanged on the fixture — because dividing by a running low of zero gives
+infinity, which happens to fire the rise and land on the right answer. It is
+not right in general, and it took a search over four thousand random paths to
+find one that shows it: without the line the walk names the unusable period
+ITSELF as where the market turned. That path is now in the test, with the
+reason it had to be hunted for.
+
+Fifteen of fifteen now catch. 955 tests still pass.
+

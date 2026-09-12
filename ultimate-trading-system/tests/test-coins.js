@@ -655,50 +655,69 @@ module.exports = {
     const parts = partsFor(base.length, 'reserve61');
     const plain = coinReading(base, mv(base), opts);
 
-    // one changed period, walked forward from the start of test to the last
-    let past = 0;
-    for (let at = parts[1].from; at < base.length; at += 7) {
-      const other = base.slice();
-      for (let i = at; i < other.length; i++) other[i] *= 1.4;      // a step change from `at` on
-      const got = coinReading(other, mv(other), opts);
-
-      // A PART'S OWN FIGURES come from a walk that stopped at that part's end,
-      // so nothing after it can touch them. The one exception is stated rather
-      // than waved at: `count` divides a left-over end by the MEDIAN, and the
-      // median is a train-and-test quantity by design (COINS.md section 5), so
-      // a change inside test legitimately moves train's count. Everything that
-      // is the part's own -- its turns, its pieces, its split of time -- may
-      // not move at any distance.
-      for (const p of plain.perPart) {
-        if (p.to >= at) continue;                                   // this part contains the change
-        const q = got.perPart.find((x) => x.part === p.part);
-        const own = (x) => ({
-          turns: x.turns, stubs: x.stubs, periods: x.periods,
-          rising: { full: x.stretches.rising.full, stubs: x.stretches.rising.stubs, stubLength: x.stretches.rising.stubLength },
-          falling: { full: x.stretches.falling.full, stubs: x.stretches.falling.stubs, stubLength: x.stretches.falling.stubLength },
-        });
-        assert.deepStrictEqual(own(q), own(p),
-          `a change at period ${at} moved what ${p.part} (which ends at ${p.to}) reports`);
-        assert.deepStrictEqual(got.split.find((x) => x.part === p.part), plain.split.find((x) => x.part === p.part),
-          `a change at period ${at} moved ${p.part}'s split of time`);
+    // PART ONE: at the settled percentage, each part's pieces are the ones a
+    // walk that STOPS AT THAT PART'S END produces. Worked out here from
+    // scratch, so it cannot agree with the reading by sharing its mistake --
+    // which is what a fixture-and-a-hope test does. Under the version that
+    // drew every part from one whole-span walk, this fails on the parts whose
+    // last stretch had not turned yet.
+    for (const p of parts) {
+      const own = cutAtBoundaries(typeStretches(base.slice(0, p.to + 1), plain.search.pct).stretches, [p])[0];
+      const got = plain.perPart.find((x) => x.part === p.name);
+      assert.deepStrictEqual(got.stubs, own.pieces.filter((x) => x.stub).length,
+        `${p.name} was not cut from a walk that stops at ${p.to}`);
+      for (const type of ['rising', 'falling']) {
+        const mine = own.pieces.filter((x) => x.type === type);
+        assert.strictEqual(got.stretches[type].full, mine.filter((x) => !x.stub).length,
+          `${p.name}: whole ${type} stretches must be the ones a walk stopping at ${p.to} leaves`);
+        assert.strictEqual(got.stretches[type].stubLength, mine.filter((x) => x.stub).reduce((a, x) => a + x.length, 0),
+          `${p.name}: the left-over ${type} length must be what a walk stopping at ${p.to} leaves`);
       }
+      assert.strictEqual(got.turns, turnsIn(typeStretches(base.slice(0, p.to + 1), plain.search.pct).turns, p),
+        `${p.name}'s turns must be the ones a walk stopping at ${p.to} found`);
+    }
+    // and the medians read train and test and stop there
+    assert.deepStrictEqual(plain.medians, medianFullLengths(
+      parts.map((p) => cutAtBoundaries(typeStretches(base.slice(0, p.to + 1), plain.search.pct).stretches, [p])[0]),
+      ['train', 'test'],
+    ), 'the median is not the median of what train and test leave');
 
-      // AND PAST THE END OF test, NOTHING AT ALL. This is the rule COINS.md
-      // section 7 states -- held and reserve are reported and never fed back --
-      // and it is the one the first version broke: price inside the sealed
-      // reserve moved the median and moved train's counts with it.
-      if (parts[1].to < at) {
+    // PART TWO: replace the whole future past the end of test and nothing
+    // moves -- not the percentage, not the median, not one figure for train or
+    // for test. COINS.md section 7: held and reserve are reported and never
+    // fed back. Four different futures, from every seventh period on, because
+    // a uniform nudge leaves the shape of the path intact and never reaches
+    // the case this is about (a peak at the end of test that later price
+    // either does or does not confirm).
+    //
+    // ONLY PAST THE END OF test. Inside train or test a change moves the
+    // percentage the search picks, and a different percentage re-types
+    // everything, train included. That is the design and not a leak.
+    const futures = [['everything rises', (p) => p * 1.03], ['everything falls', (p) => p * 0.97],
+      ['a saw', (p, i) => p * (i % 2 ? 1.05 : 0.95)], ['dead flat', (p) => p]];
+    let past = 0;
+    for (let at = parts[1].to + 1; at < base.length; at += 7) {
+      for (const [name, step] of futures) {
+        const other = base.slice();
+        for (let i = at; i < other.length; i++) other[i] = step(other[i - 1], i - at);
+        const got = coinReading(other, mv(other), opts);
         past++;
-        assert.strictEqual(got.search.pct, plain.search.pct, `a change at ${at} moved the percentage`);
-        assert.deepStrictEqual(got.medians, plain.medians,
-          `a change at period ${at}, past the end of test, moved the median`);
-        for (const name of ['train', 'test']) {
-          assert.deepStrictEqual(got.perPart.find((p) => p.part === name), plain.perPart.find((p) => p.part === name),
-            `a change at period ${at}, past the end of test, moved what ${name} reports`);
+        assert.strictEqual(got.search.pct, plain.search.pct, `${name} from period ${at} moved the percentage`);
+        assert.deepStrictEqual(got.medians, plain.medians, `${name} from period ${at} moved the median`);
+        for (const nm of ['train', 'test']) {
+          assert.deepStrictEqual(got.perPart.find((p) => p.part === nm), plain.perPart.find((p) => p.part === nm),
+            `${name} from period ${at} moved what ${nm} reports`);
+          assert.deepStrictEqual(got.split.find((p) => p.part === nm), plain.split.find((p) => p.part === nm),
+            `${name} from period ${at} moved ${nm}'s split of time`);
+        }
+        // and held's own figures do not move when only the reserve does
+        if (at > parts[2].to) {
+          assert.deepStrictEqual(got.perPart.find((p) => p.part === 'held'), plain.perPart.find((p) => p.part === 'held'),
+            `${name} from period ${at}, inside the sealed reserve, moved what held reports`);
         }
       }
     }
-    assert.ok(past >= 8, `this must actually reach past the end of test — it only got there ${past} time(s)`);
+    assert.ok(past >= 40, `this must actually replace the future many times over — it only did so ${past} time(s)`);
   },
 
   // A TURN IS CONFIRMED LATER THAN THE PERIOD IT MARKS, so the search's count
@@ -1006,6 +1025,21 @@ module.exports = {
     // a series that opens on one, too
     assert.ok(typeStretches([0, 100, 90, 120, 100, 130, 100], 10).turns.length >= 1,
       'a series whose first price is unusable must still find its turns');
+
+    // AND A TURN IS NEVER PLACED AT ONE. This is the case the guard is really
+    // for, and it took a search over four thousand paths to find one where the
+    // answer visibly differs -- without the guard the running low sits at zero,
+    // every later rise measures as infinite, and the walk names the unusable
+    // period itself as where the market turned. Found by breaking the line on
+    // purpose and looking for a path that could tell: the first version of this
+    // test could not, and the guard read MISS.
+    const path = [97.89, 108.69, 89.62, 0, 63.89, 78.18, 80.13, 64.95, 59.39, 65.18, 69.75, 63.23];
+    const t = typeStretches(path, 5);
+    assert.deepStrictEqual(t.turns, [1, 4, 6, 8, 10],
+      'the turn after the unusable period must be the real low beside it, never the unusable period itself');
+    for (const turn of t.turns) {
+      assert.ok(path[turn] > 0, `a turn was placed at period ${turn}, where the price is ${path[turn]} — no market turned there`);
+    }
   },
 
   // C2.2 head on: a turn that lands EXACTLY on a part boundary. No fixture had
