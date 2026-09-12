@@ -766,3 +766,54 @@ reason it had to be hunted for.
 
 Fifteen of fifteen now catch. 955 tests still pass.
 
+## C12 — the screen pressed for real, and the loop closes
+
+`tests/ui-coins.js` drives the Coins screen in a browser against canned service
+answers and presses what the owner would press. Twenty-nine checks, no error on
+the page. It exists because the headline failure of this loop was shipping
+something that had never been run, and the unit tests could not have caught it.
+
+What it proves, on the real screen rather than in the source:
+
+- every coin draws, including one that could not be read and one written under
+  a shape this release cannot read;
+- the two orderings where LOW is the alarming end put the alarming coin first,
+  and a coin that could not be measured is last under both;
+- what is typed in the boxes survives the two-second redraw — the coin box, the
+  number boxes and the 24/5 tick — and every one of them is off while a reading
+  runs, instead of inviting typing that is thrown away;
+- pressing stop with nothing running shows the reason instead of doing nothing;
+- a stopped run reads as stopped and says where it got to;
+- the level a side must clear before weighting can correct it is on the screen,
+  and the part that falls under it is marked;
+- the coin whose cached history has grown since its reading says so;
+- the note about a type says which type, and does not fire at zero.
+
+**And one small thing NOT done, on purpose.** The other two browser checks have
+an `npm run` alias; this one does not. `package.json` counts as a product file
+to the release check, so a one-line alias would move the release number — and
+moving it makes the planted check read NOT CHECKED, which costs the owner a
+re-run for nothing. It runs as `node tests/ui-coins.js`, that is in its header,
+and folding the alias in beside the next real change is a one-liner.
+
+## The loop is finished
+
+Named work: build the Coins tab's functionality and data structures, launch
+adversarial testing, deploy. All three are done.
+
+**On the box:** 3.119.0, healthy, idle. Served record captured from it, word
+lists regenerated from it, 955 tests pass, fifteen mutation guards on the new
+code all catch.
+
+**Waiting for the owner, and nothing here was decided for them:**
+
+1. The two traditional numbers move with how much history a coin has. A
+   reference point would fix that and it is a new reading — COINS.md section 17.
+2. Whether a Coins record written under an older shape should MIGRATE rather
+   than be re-read. Today it is named with what to do about it.
+3. The word list cannot see a control whose label is only digits. Three tabs
+   affected, the fix measured, the cost of the fix named — section C10 above.
+4. The engine's class ceiling and the reserve share are still constants in the
+   engine, not controls. Both named in COINS.md section 17.
+
+**Nothing was armed, nothing irreversible was done, and no first digit moved.**
