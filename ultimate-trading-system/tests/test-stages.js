@@ -404,6 +404,47 @@ module.exports = {
       { by: 'direction', asked: 'money', why: 'no training trade carried a move to weigh by' },
       'a run that could not weigh by money reads as though it did');
     assert.equal(sw.weightsSaid({}, null).by, 'direction', 'a plain run does not say how it was trained');
+
+    // HOW HARD THE CEILING HAD TO WORK (3.120.0, owner order 2026-09-12: "the
+    // maximum that we're dealing with perhaps in a chunk of data so that we can
+    // evaluate really how much it should be toned down").
+    //
+    // The record used to carry the largest weight AFTER the ceiling clipped it,
+    // so at a ceiling of 5 it read 5 or less whatever the data held and could
+    // never say how far anything was being toned down.
+    const p5 = { trainOn: 'money', weightCap: 5 };
+    const read5 = sw.weightReadingFor(p5, crash, fee);
+    const said5 = sw.weightsSaid(p5, sw.moneyWeights(crash, fee, 5), read5);
+    assert.ok(said5.biggestBeforeCap > 5,
+      `the biggest before the ceiling must be able to exceed it — got ${said5.biggestBeforeCap} at a ceiling of 5`);
+    assert.strictEqual(said5.biggestKept, 5, 'and the biggest that survived the ceiling is the ceiling');
+    assert.ok(said5.atCeiling >= 1, 'at least one chunk was held at the ceiling and the record must say how many');
+    assert.strictEqual(said5.of, crash.length, 'and out of how many');
+
+    // THE NUMBER THAT ANSWERS THE QUESTION DOES NOT MOVE WITH THE CEILING. It
+    // is a fact about the data, not about the setting; only how many were held
+    // and what survived move.
+    const at20 = sw.weightsSaid({ trainOn: 'money', weightCap: 20 },
+      sw.moneyWeights(crash, fee, 20), sw.weightReadingFor({ trainOn: 'money', weightCap: 20 }, crash, fee));
+    assert.ok(Math.abs(at20.biggestBeforeCap - said5.biggestBeforeCap) < 1e-9,
+      'the biggest before the ceiling moved when the ceiling moved, so it is not the biggest before the ceiling');
+    assert.ok(at20.biggestKept > said5.biggestKept, 'a higher ceiling must let a bigger weight through');
+    assert.ok(at20.atCeiling <= said5.atCeiling, 'a higher ceiling cannot hold MORE chunks down');
+
+    // with the ceiling off, nothing is held and the biggest kept IS the biggest
+    const off = sw.weightsSaid({ trainOn: 'money', weightCap: 0 },
+      sw.moneyWeights(crash, fee, 0), sw.weightReadingFor({ trainOn: 'money', weightCap: 0 }, crash, fee));
+    assert.strictEqual(off.atCeiling, 0, 'with no ceiling nothing can be held at one');
+    assert.ok(Math.abs(off.biggestKept - off.biggestBeforeCap) < 0.01,
+      'with no ceiling the biggest kept and the biggest before it are the same weight');
+
+    // AND IT IS READ OFF THE STAKES, NOT OFF THE WEIGHTS. Reading it off the
+    // weights is exactly how it came to be a number that could never exceed the
+    // ceiling, so the two readers share one definition of a chunk's stake.
+    const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'stagework.js'), 'utf8');
+    const fn = src.slice(src.indexOf('function moneyWeightReading('), src.indexOf('\n}', src.indexOf('function moneyWeightReading(')));
+    assert.ok(/moneyStakes\(/.test(fn), 'the reading builds its own stakes instead of sharing the one definition');
+    assert.ok(!/weights/.test(fn), 'the reading looks at the weights, which are already clipped');
   },
 
   // THE ONE THAT MATTERS: it changes what the forecast LEARNS. A source scan
@@ -941,7 +982,11 @@ module.exports = {
       fs.writeFileSync(file, JSON.stringify({ id, stage: 1, seq: 999997, name: 'S1 #pg', status: 'done', createdAt: new Date().toISOString(), plan: { units: 3 } }));
       const rec = rowstore.writer(id, 'records');
       for (let u = 0; u < 3; u++) {
-        rec.push({ u, trade: `C${u}`, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2, counts: {}, specs: [], score: 10 - u, beat: u, pairs: 19, lead: u, nullScores: [], blocks: {} });
+        rec.push({ u, trade: `C${u}`, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2, counts: {}, specs: [], score: 10 - u, beat: u, pairs: 19, lead: u, nullScores: [], blocks: {},
+          // what the run was trained under, including how hard the ceiling had
+          // to work (3.120.0) -- stored on every record and, before this, read
+          // by nothing at all
+          trainedOn: { by: 'money', cap: 10, biggestKept: 10, of: 400, biggestBeforeCap: 31.5 + u, atCeiling: 4 + u } });
       }
       rec.close();
       const rk = rowstore.writer(id, 'ranking');
@@ -954,6 +999,13 @@ module.exports = {
       assert.deepStrictEqual(page.rows.map((r) => r.trade), ['C2', 'C1'], 'the table serves the recorded ranking order');
       const page2 = stages.stage1Table(id, 2, 2);
       assert.deepStrictEqual(page2.rows.map((r) => r.trade), ['C0']);
+      // AND THE TABLE CARRIES HOW HARD THE CEILING HAD TO WORK (3.120.0). It
+      // was on the record from the start and reached no screen at all.
+      assert.deepStrictEqual(page.rows.map((r) => r.biggestBeforeCap), [33.5, 32.5],
+        'the stage 1 table does not serve the biggest weight before the ceiling');
+      assert.deepStrictEqual(page.rows.map((r) => r.atCeiling), [6, 5],
+        'the stage 1 table does not serve how many were held at the ceiling');
+      assert.strictEqual(page2.rows[0].biggestBeforeCap, 31.5, 'and it is the row\'s own, not the first row\'s');
     } finally {
       try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
@@ -4278,12 +4330,28 @@ module.exports = {
     for (const th of ["tuning-slice $${bSortBtn(doc, 'money', 'desc')}", "beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}", "lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}"]) {
       assert.ok(s1.includes(th), `the stage 1 table has the column ${th}`);
     }
-    assert.ok(s1.includes('colspan="12"'), 'the empty row spans the new columns');
+    // THE EMPTY ROW SPANS EXACTLY THE COLUMNS THERE ARE, counted rather than
+    // typed: a typed colspan goes stale the moment a column is added, which is
+    // what happened when this one gained a column (3.120.0).
+    const spans = (block, what) => {
+      const heads = (block.match(/<th /g) || []).length;
+      const span = /colspan="(\d+)" class="empty"/.exec(block);
+      assert.ok(span, `${what}: the empty row has no colspan at all`);
+      assert.strictEqual(Number(span[1]), heads,
+        `${what}: the empty row spans ${span[1]} of ${heads} columns`);
+    };
+    spans(s1, 'the stage 1 table');
     const s2 = UI.slice(UI.indexOf('async function bDrawStage2('), UI.indexOf('\nasync function bDrawStage3('));
     for (const th of ["tuning-slice $ — stage 1 members${bSortBtn(doc, 'money3', 'desc')}", "tuning-slice $ — all members${bSortBtn(doc, 'moneyAll', 'desc')}", "beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}", "lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}"]) {
       assert.ok(s2.includes(th), `the stage 2 table has the column ${th}`);
     }
-    assert.ok(s2.includes('colspan="17"'), 'the empty row spans the new columns');
+    spans(s2, 'the stage 2 table');
+    // and both carry the reading that says whether the ceiling is doing anything
+    for (const [block, what] of [[s1, 'stage 1'], [s2, 'stage 2']]) {
+      assert.ok(block.includes("biggest before the ceiling${bSortBtn(doc, 'biggestBeforeCap', 'desc')}"),
+        `the ${what} table does not say how big the biggest weight was before the ceiling`);
+      assert.ok(/r\.atCeiling/.test(block), `the ${what} table does not say how many were held at the ceiling`);
+    }
     assert.ok(!s2.includes('the BOOST members never face a null set'), 'the sentence that said the BOOST members never face a null set is gone');
     // every sortable key on the stage 1 and 2 tables has the words the chain line prints
     for (const key of Object.keys(stages.FILTER_DEFS[1]).concat(Object.keys(stages.FILTER_DEFS[2]))) assert.ok(key, key);

@@ -68,7 +68,7 @@ async function trainStageCommittee(cfg, closed, moments, views, fee) {
     members.push({ spec, ...m });
   }
   const nTest = testChunks.length;
-  return { split, members, nTest, weightsSaid: sw.weightsSaid(training, weights) };
+  return { split, members, nTest, weightsSaid: sw.weightsSaid(training, weights, sw.weightReadingFor(training, trainChunks, fee)) };
 }
 
 // The committee's call for `target` under the configuration's own agreement.

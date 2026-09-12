@@ -290,18 +290,42 @@ function weightsFor(p, trainChunks, fee) {
 // WHAT THE UNIT WAS ACTUALLY TRAINED UNDER, written onto its record. A setting
 // that was asked for and could not be honoured -- no chunk with a move on it,
 // so nothing to weigh by -- must not read as though it was.
-function weightsSaid(p, weights) {
+// WHAT THE UNIT WAS TRAINED UNDER, AND HOW HARD THE CEILING HAD TO WORK.
+//
+// The two numbers the owner asked for (2026-09-12): "that number should be
+// exposed, both the maximum that we're dealing with perhaps in a chunk of data
+// so that we can evaluate really how much it should be toned down."
+//
+// `biggestBeforeCap` is the one that was missing and it is the one that answers
+// the question. The first version reported the largest of the weights AFTER the
+// ceiling had already clipped them, so at a ceiling of 5 it read 5 or less
+// whatever the data held, and could never say how far anything was being toned
+// down. `atCeiling` is the other half: one chunk clipped is not four hundred.
+//
+// `biggestKept` is the old `biggest` under a name that says which one it is.
+// Renamed rather than reused, because a record that means two different things
+// under one key is the fault RULE NINE exists to stop.
+function weightsSaid(p, weights, reading = null) {
   const asked = trainOnOf(p);
   if (asked !== 'money') return { by: 'direction' };
   if (!weights) return { by: 'direction', asked: 'money', why: 'no training trade carried a move to weigh by' };
   let hi = 0;
   for (const w of weights) if (w > hi) hi = w;
-  return { by: 'money', cap: capOf(p), biggest: Math.round(hi * 100) / 100, of: weights.length };
+  const out = { by: 'money', cap: capOf(p), biggestKept: Math.round(hi * 100) / 100, of: weights.length };
+  if (reading) {
+    out.biggestBeforeCap = Math.round(reading.biggestBeforeCap * 100) / 100;
+    out.atCeiling = reading.atCeiling;
+  }
+  return out;
 }
-function moneyWeights(chunks, feePerLeg, capMult = WEIGHT_CAP_DEFAULT) {
+
+// THE STAKE EACH CHUNK CARRIES, and the average of them. One definition, read
+// by both the weights and the reading of those weights, so the two can never
+// describe different arithmetic.
+function moneyStakes(chunks, feePerLeg, who = 'moneyStakes') {
   const list = Array.isArray(chunks) ? chunks : [];
   if (!list.length) return null;
-  const trip = NOTIONAL * 2 * feeRate(feePerLeg, 'moneyWeights');
+  const trip = NOTIONAL * 2 * feeRate(feePerLeg, who);
   const stakes = list.map((c) => {
     const d = Number(c && c.diffPct);
     // a chunk with no move on the record teaches nothing about size; it is
@@ -311,9 +335,35 @@ function moneyWeights(chunks, feePerLeg, capMult = WEIGHT_CAP_DEFAULT) {
   });
   const total = stakes.reduce((a2, b2) => a2 + b2, 0);
   if (!(total > 0)) return null;                       // nothing to weigh by
-  const avg = total / stakes.length;
-  const cap = Number.isFinite(Number(capMult)) && Number(capMult) > 0 ? Number(capMult) : Infinity;
-  return stakes.map((x) => Math.min(cap, x / avg));
+  return { stakes, avg: total / stakes.length };
+}
+const capFrom = (capMult) => (Number.isFinite(Number(capMult)) && Number(capMult) > 0 ? Number(capMult) : Infinity);
+function moneyWeights(chunks, feePerLeg, capMult = WEIGHT_CAP_DEFAULT) {
+  const s = moneyStakes(chunks, feePerLeg, 'moneyWeights');
+  if (!s) return null;
+  const cap = capFrom(capMult);
+  return s.stakes.map((x) => Math.min(cap, x / s.avg));
+}
+// HOW BIG THE BIGGEST WOULD HAVE BEEN, and how many the ceiling held down. Read
+// off the same stakes the weights are built from, never off the weights
+// themselves -- reading it off the weights is exactly how the first version came
+// to report a number that could never exceed the ceiling.
+function moneyWeightReading(chunks, feePerLeg, capMult = WEIGHT_CAP_DEFAULT) {
+  const s = moneyStakes(chunks, feePerLeg, 'moneyWeightReading');
+  if (!s) return null;
+  const cap = capFrom(capMult);
+  let hi = 0;
+  let at = 0;
+  for (const x of s.stakes) {
+    const raw = x / s.avg;
+    if (raw > hi) hi = raw;
+    if (raw >= cap) at++;
+  }
+  return { biggestBeforeCap: hi, atCeiling: at, of: s.stakes.length, cap: Number.isFinite(cap) ? cap : null };
+}
+// The reading for a launch, or null when it is not training by money at all.
+function weightReadingFor(p, trainChunks, fee) {
+  return trainOnOf(p) === 'money' ? moneyWeightReading(trainChunks, fee, capOf(p)) : null;
 }
 
 async function trainProbMember({ model, viewIdx, trainChunks, predictChunks, weights = null }) {
@@ -571,6 +621,7 @@ async function s1UnitTask(task) {
   // under -- so a set says how it was trained rather than leaving it to be
   // guessed at from the release it was made under.
   const weights = weightsFor(p, trainChunks, fee);
+  const weightReading = weightReadingFor(p, trainChunks, fee);
   const members = [];
   for (const spec of specs) {
     const m = await trainProbMember({ model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights });
@@ -615,7 +666,7 @@ async function s1UnitTask(task) {
     labels: { test: testLabels, hold: holdChunks.map((c) => c.label) },
     score, nullScores, beat, pairs: nullN, lead: leadOver(score, nullScores),
     tuning,
-    trainedOn: weightsSaid(p, weights),
+    trainedOn: weightsSaid(p, weights, weightReading),
   };
 }
 
@@ -647,6 +698,7 @@ async function s2UnitTask(task) {
   // cannot differ -- half a committee trained on direction and half on money
   // would be two different committees wearing one name.
   const weights = weightsFor(p, trainChunks, fee);
+  const weightReading = weightReadingFor(p, trainChunks, fee);
   const members = [];
   for (const spec of specs) {
     const m = await trainProbMember({ model: spec.model, viewIdx: views[spec.view], trainChunks, predictChunks, weights });
@@ -686,7 +738,7 @@ async function s2UnitTask(task) {
     score3, scoreAll, helped: scoreAll - score3,
     beat, pairs: nullN, lead: leadOver(scoreAll, nullScores), nullScores,
     tuning3, tuning,
-    trainedOn: weightsSaid(p, weights),
+    trainedOn: weightsSaid(p, weights, weightReading),
     windows,
   };
 }
@@ -1443,7 +1495,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 module.exports = {
   passGeometry,
   s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
-  moneyWeights, weightsFor, weightsSaid, trainOnOf, capOf, TRAIN_ON, WEIGHT_CAP_DEFAULT,
+  moneyWeights, moneyStakes, moneyWeightReading, weightsFor, weightReadingFor, weightsSaid, trainOnOf, capOf, TRAIN_ON, WEIGHT_CAP_DEFAULT,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,
   addNoiseRow, mergeNoise, meanNoise, cents,

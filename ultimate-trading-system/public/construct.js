@@ -4337,7 +4337,8 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th>
         <th ${bth} title="the unit's own votes on the tuning slice — the last quarter of its training window, which the fit never saw and the test window is not — priced one buy or sell per chunk in the direction they lean, held from the entry hour to the exit hour, at the fee declared on Sweep. US dollars on $100 a trade, after fees.">tuning-slice $${bSortBtn(doc, 'money', 'desc')}</th>
         <th ${bth} title="of its null set — the same votes dealt onto other days of the tuning slice — how many this unit's tuning-slice $ beat">beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}</th>
-        <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th></tr></thead>
+        <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th>
+        <th ${bth} title="when this unit was trained by the money each trade was worth: how many ordinary trades the biggest one would have counted for if nothing had held it down, and after the slash how many were held at the ceiling you set. It is what says whether that ceiling is doing anything, and how far it is toning things down. Blank when the run was trained by direction only.">biggest before the ceiling${bSortBtn(doc, 'biggestBeforeCap', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${btdN0}>${Number(r.rank).toLocaleString()}</td>
         <td ${btdN}>${bCoin(r)}</td>
@@ -4350,7 +4351,8 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <td ${btdN}>${bLead(r.lead)}</td>
         <td ${btdN}>${bMoney(r.money)}</td>
         <td ${btdN}>${bShare(r.pairs && r.beatMoney != null ? r.beatMoney / r.pairs : null, r.beatMoney, r.pairs)}</td>
-        <td ${btdN}>${bLead(r.leadMoney)}</td></tr>`).join('') || '<tr><td colspan="12" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btdN}>${bLead(r.leadMoney)}</td>
+        <td ${btdN}>${r.biggestBeforeCap == null ? '<span class="muted">—</span>' : `${Number(r.biggestBeforeCap).toFixed(1)}<span class="muted"> / ${r.atCeiling == null ? '?' : r.atCeiling} held</span>`}</td></tr>`).join('') || '<tr><td colspan="13" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${bShown(t)}
     ${bPager((t && t.total) || 0, from, 100, 'S1')}
     <p class="note">Ordered by the sort picked on the columns — saved on this record set, and exactly what a stage 2
@@ -4416,7 +4418,8 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <th ${bth} title="of its null set — the parent's own deals, dealt again here: the same votes with the calendar shuffled away — how many the forecast score of EVERY member on this row beat, BOOST included">beat its own null set${bSortBtn(doc, 'beat', 'desc')}</th>
         <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — every member on the row">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th>
         <th ${bth} title="of its null set — the same votes dealt onto other days of the tuning slice — how many this row's tuning-slice $ with every member pooled beat">beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}</th>
-        <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread — every member pooled">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th></tr></thead>
+        <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread — every member pooled">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th>
+        <th ${bth} title="when this unit was trained by the money each trade was worth: how many ordinary trades the biggest one would have counted for if nothing had held it down, and after the slash how many were held at the ceiling you set. It is what says whether that ceiling is doing anything, and how far it is toning things down. Blank when the run was trained by direction only.">biggest before the ceiling${bSortBtn(doc, 'biggestBeforeCap', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${btdN0}><input type="checkbox" data-bpick="S2:${r.u}"${picked.has(r.u) ? ' checked' : ''} title="picks this record. Saved on this record set the moment it changes."></td>
         <td ${btdN}>${Number(r.rank).toLocaleString()}</td>
@@ -4434,7 +4437,8 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <td ${btdN}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
         <td ${btdN}>${bLead(r.lead)}</td>
         <td ${btdN}>${bShare(r.pairs && r.beatMoney != null ? r.beatMoney / r.pairs : null, r.beatMoney, r.pairs)}</td>
-        <td ${btdN}>${bLead(r.leadMoney)}</td></tr>`).join('') || '<tr><td colspan="17" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btdN}>${bLead(r.leadMoney)}</td>
+        <td ${btdN}>${r.biggestBeforeCap == null ? '<span class="muted">—</span>' : `${Number(r.biggestBeforeCap).toFixed(1)}<span class="muted"> / ${r.atCeiling == null ? '?' : r.atCeiling} held</span>`}</td></tr>`).join('') || '<tr><td colspan="18" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${bShown(t)}
     ${bPager((t && t.total) || 0, from, 100, 'S2')}
     <p class="note"><b data-bpickcount="S2">${picked.size.toLocaleString()}</b> picked on this record set

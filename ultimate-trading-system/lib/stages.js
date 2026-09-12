@@ -1077,11 +1077,13 @@ const SORT_KEYS = {
   1: {
     trade: 's', ctx: 's', geometry: 's', members: 'n', voices: 'n', score: 'n', beat: 'share', lead: 'n',
     money: 'n', beatMoney: 'share', leadMoney: 'n',
+    biggestBeforeCap: 'n',
   },
   2: {
     s1rank: 'n', trade: 's', ctx: 's', geometry: 's', members: 'n', voices: 'n',
     score3: 'n', scoreAll: 'n', helped: 'n', beat: 'share', lead: 'n',
     money3: 'n', moneyAll: 'n', beatMoney: 'share', leadMoney: 'n',
+    biggestBeforeCap: 'n',
   },
   // Stage 3's ranked table (owner order, 2026-08-27): every column may be
   // picked, ONE at a time — nothing carries out of stage 3, so the sort is
@@ -1112,6 +1114,7 @@ const SORT_WORDS = {
   avgTrades: 'avg held-back trades', avgVsLong: 'avg vs always-long $',
   avgLead: 'lead over null set', coinsInMoney: 'coins in the money',
   beatNoise: 'beat the kept null money',
+  biggestBeforeCap: 'biggest before the ceiling',
 };
 function sortLabel(spec) {
   return (spec || []).map((s) => `${SORT_WORDS[s.key] || s.key} ${s.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', ');
@@ -4633,6 +4636,12 @@ function stage1Table(id, from, n, filters = null) {
       members: (r.specs || []).length, voices: r.voices ?? null,
       score: row.score, beat: row.beat, pairs: row.pairs, lead: row.lead,
       money: r.money ?? null, beatMoney: r.beatMoney ?? null, leadMoney: r.leadMoney ?? null,
+      // HOW HARD THE CEILING HAD TO WORK ON THIS UNIT (3.120.0). Stored on the
+      // record since the run; it reached no screen at all until now, and the
+      // one number it did carry was the largest weight AFTER clipping, which
+      // can never exceed the ceiling and so can never say anything about it.
+      biggestBeforeCap: (r.trainedOn || {}).biggestBeforeCap ?? null,
+      atCeiling: (r.trainedOn || {}).atCeiling ?? null,
     };
   });
   if (Array.isArray(doc.sort) && doc.sort.length) rows = applySort(1, rows, doc.sort, (a, b) => a._i - b._i);
@@ -4669,6 +4678,10 @@ function stage2Rows(id) {
     score3: r.score3, scoreAll: r.scoreAll, helped: r.helped,
     beat: r.beat, pairs: r.pairs, lead: r.lead,
     money3: r.money3 ?? null, moneyAll: r.money ?? null, beatMoney: r.beatMoney ?? null, leadMoney: r.leadMoney ?? null,
+    // how hard the ceiling had to work on this unit (3.120.0), same two
+    // numbers stage 1 carries and from the same place on the record
+    biggestBeforeCap: (r.trainedOn || {}).biggestBeforeCap ?? null,
+    atCeiling: (r.trainedOn || {}).atCeiling ?? null,
   }));
 }
 // the saved sort orders the whole table; best all-members forecast score

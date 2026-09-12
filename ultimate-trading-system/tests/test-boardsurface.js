@@ -44,7 +44,12 @@ module.exports = {
     assert.ok(body.includes('<button data-bpickclear="S2"'), 'and every pick can be cleared at once');
     assert.ok(body.includes('<b data-bpickcount="S2">${picked.size.toLocaleString()}</b> picked on this record set'), 'the count of picks is on the screen');
     assert.ok(body.includes("const picked = new Set((t && t.picked) || []);"), 'the ticks are drawn from the picks the set serves with its table');
-    assert.ok(body.includes('colspan="17"'), 'the empty row spans the new column too');
+    // counted, never typed: a typed colspan goes stale the moment a column is
+    // added, which is what happened at 3.120.0
+    const heads = (body.match(/<th /g) || []).length;
+    const span = /colspan="(\d+)" class="empty"/.exec(body);
+    assert.ok(span, 'the empty row has no colspan at all');
+    assert.strictEqual(Number(span[1]), heads, `the empty row spans ${span && span[1]} of ${heads} columns`);
     assert.ok(body.includes('bWirePicks(doc, mount, t);'), 'the ticks are wired');
     const wire = UI.slice(UI.indexOf('function bWirePicks('), UI.indexOf('\nasync function bDrawStage3('));
     assert.ok(wire.includes("await tryPost(`api/stageset/${encodeURIComponent(doc.id)}/picked`, { picked: [...next] });"),

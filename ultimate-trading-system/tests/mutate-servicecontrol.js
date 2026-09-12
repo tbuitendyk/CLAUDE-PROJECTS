@@ -1344,6 +1344,14 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "function createPool() {\n  sweepHereOrRefuse();\n  return buildPool();", "function createPool() {\n  return buildPool();",
     'theStageLaunchesReadTheRoleAndRefuseAnUnreachablePlatform', 'the backstop is gone, so a launch by another road builds its workers here whatever the Compute tab says'],
 
+  // ---- how hard the weight ceiling had to work (3.120.0) -------------------
+  [path.join(ROOT, 'lib', 'stagework.js'), '  return { biggestBeforeCap: hi, atCeiling: at,', '  return { biggestBeforeCap: Math.min(hi, cap), atCeiling: at,',
+    'theWeightOfATrainingTradeIsWhatItsDecisionWasWorth', 'the biggest weight is clipped to the ceiling before it is reported, which is the fault this reading exists to fix -- it could then never say how far anything was toned down'],
+  [path.join(ROOT, 'lib', 'stagework.js'), '    out.biggestBeforeCap = Math.round(reading.biggestBeforeCap * 100) / 100;\n    out.atCeiling = reading.atCeiling;', '    out.atCeiling = reading.atCeiling;',
+    'theWeightOfATrainingTradeIsWhatItsDecisionWasWorth', 'the record no longer carries the biggest weight before the ceiling, so nothing on the screen can say whether the ceiling is doing anything'],
+  [path.join(ROOT, 'lib', 'stages.js'), '      biggestBeforeCap: (r.trainedOn || {}).biggestBeforeCap ?? null,\n      atCeiling: (r.trainedOn || {}).atCeiling ?? null,', '      biggestBeforeCap: null,\n      atCeiling: null,',
+    'theStageTablesPageInRecordedOrder', 'the stage 1 table stops serving the two numbers, so the column is there and always empty'],
+
   // ---- COINS (3.119.0, after the four adversarial reviewers) ---------------
   // Each of these names the test that READS THE LINE IT BREAKS, not the test
   // with the nearest-sounding name (RULE EIGHT).
