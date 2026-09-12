@@ -157,6 +157,84 @@ problem stops being a hunt for clean data.
 That is the highest-value item in this whole document and it is not in any of
 the eight parts.
 
+## Both layouts under this rule, and how 70/15/15 survives it
+
+The owner, 2026-09-11: "i would rather not lose that 70/15/15 config as it gives
+us beefier history to work with all around."
+
+**What it buys, on the owner's 2,661 chunks, worked out from `splitBounds`:**
+
+| | train | test | held | reserve |
+|---|---|---|---|---|
+| 61/13/13/13 | 1,621 | 347 | 347 | 346 |
+| 70/15/15 | **1,863** | **399** | **399** | none |
+
+Every working stretch is 15% larger. 242 more chunks of training is the
+difference between a model and a better model, and that is worth keeping.
+
+**What it costs, precisely: it has ONE judging stretch and the pipeline wants
+two or three.** Today it hides that by letting History judge on **held** — the
+stretch Verify just spent.
+
+### No step needs to be cut. Two steps are misfiled.
+
+Count what consumes a judging stretch today: Verify's verdict, History's
+comparison, Tune's reads, the reserve grade. Under the rule above, only
+**Verify** and **the reserve grade** are judgements at all.
+
+- **History's comparison is a CHOOSING act.** It asks whether weighting recent
+  data more heavily does better, and it **picks a half-life per record**.
+  Picking is narrowing, and narrowing belongs on the choosing stretch.
+- **Tune is the same.** Picking a protective stop and an order size is
+  narrowing. It reads held-back today, which on 70/15/15 means Tune eats
+  Verify's only stretch.
+
+**So reclassify rather than cut, and the order changes:**
+
+**Funnel → History → Tune → Verify.**
+
+All narrowing — units, dials, half-life, stop, order size — happens on the
+choosing stretch. Then the judging stretch is spent once, on the final
+candidate, by Verify.
+
+**And this closes a gap that is open today.** A 4.h set cannot currently be
+verified: Verify refuses a derived set, while the comment on the 4.h build says
+it "stands on the source's PASS" and nothing enforces that the source has one.
+Under this order the 4.h set IS the thing Verify judges. No inheritance, no
+unenforced gate, no refusal to work around.
+
+### On 70/15/15 the reserve is not missing — it has not arrived
+
+The unread window is already open-ended by design: it starts somewhere and runs
+to whatever data exists when it is finally read. A 70/15/15 set seals nothing,
+so its unread window is simply **everything after the run's last chunk**. Real
+time supplies it, and it grows on its own.
+
+For the last check before real money that is STRONGER than a sealed slice: it
+is data that did not exist when the decision was made, so nothing can have
+leaked into it.
+
+**The honest cost is the wait.** On a daily-3d shape a few hundred new chunks
+is years; on daily-1d it is months. So the reserve grade is in hand on the day
+with 61/13/13/13, and only after a wait with 70/15/15.
+
+### The recommendation: keep both, for different jobs
+
+**70/15/15 is the exploring layout.** While rules are still being built and
+nothing is going live this month, the extra 242 chunks make better models to
+explore with, and the reserve accumulates in the background while the work goes
+on.
+
+**61/13/13/13 is the layout for a run meant to be traded**, where the sealed
+grade has to be in hand on the day rather than in a year.
+
+That keeps the layout the owner does not want to lose and stops it being a
+compromise: it becomes the exploring layout, with time itself as its reserve.
+
+**Neither layout is honest until the two reclassifications above are made** —
+History's comparison and Tune's reads move to the choosing stretch — and
+neither needs new machinery to do it.
+
 ## And it says where Part 1's passes belong
 
 The **fitting** stretch is the only part of the budget that can be spent more
