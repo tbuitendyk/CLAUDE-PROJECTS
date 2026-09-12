@@ -378,9 +378,151 @@ function trainingWeights(moves, opts = {}) {
   return { weights, cap, mean, capped: weights.filter((w) => w >= cap - 1e-12).length, reachedMean: true };
 }
 
+// ---- the parts of history, read from the engine's own arithmetic ------------
+
+// NEVER TYPED AS 61/13/13/13 OR 70/15/15. The divisions come from the same
+// splitBounds the sweep engine splits by, and the sealed reserve comes off
+// exactly the way the engine seals it -- 13% of the span, before the split.
+// Typing the percentages here would be a second copy of the arithmetic, and
+// two copies drift.
+function partsFor(n, layout) {
+  const { splitBounds } = require('./bracketwork');
+  if (layout === 'reserve61') {
+    const nReserve = Math.max(2, Math.round(n * 0.13));
+    const rest = n - nReserve;
+    const b = splitBounds(rest, true);
+    return [
+      { name: 'train', from: 0, to: b.nTrain - 1 },
+      { name: 'test', from: b.nTrain, to: b.nTrain + b.nTest - 1 },
+      { name: 'held', from: b.nTrain + b.nTest, to: rest - 1 },
+      { name: 'reserve', from: rest, to: n - 1 },
+    ];
+  }
+  if (layout === 'split70') {
+    const b = splitBounds(n, true);
+    return [
+      { name: 'train', from: 0, to: b.nTrain - 1 },
+      { name: 'test', from: b.nTrain, to: b.nTrain + b.nTest - 1 },
+      { name: 'held', from: b.nTrain + b.nTest, to: n - 1 },
+    ];
+  }
+  throw new Error(`unknown window layout '${layout}'`);
+}
+
+// ---- one coin, one window layout, one reading -------------------------------
+
+// THE SEARCH READS `train` AND `test` ONLY (COINS.md section 7). The settled
+// percentage is then applied to the WHOLE span and what is in `held` and
+// `reserve` is REPORTED -- never fed back into the search. So you find out
+// before sweeping that a coin's held-back stretch runs one way, instead of
+// finding out at Verify after the whole sweep is spent.
+//
+// AND NOTHING HERE REFUSES THE COIN. Every field below is a figure to look at.
+function coinReading(prices, moves, opts = {}) {
+  if (!Array.isArray(prices) || !Array.isArray(moves)) throw new Error('coinReading wants a price per period and a move per period');
+  if (prices.length !== moves.length) throw new Error(`${prices.length} prices and ${moves.length} moves — there must be one of each per period`);
+  const layout = String(opts.layout || '');
+  const parts = partsFor(prices.length, layout);
+  const searchEnd = parts[1].to;                       // the end of `test`
+
+  const search = searchFallback(prices.slice(0, searchEnd + 1), {
+    target: opts.target, from: opts.from, to: opts.to, step: opts.step,
+  });
+
+  const out = {
+    layout,
+    periods: prices.length,
+    parts: parts.map((p) => ({ ...p, periods: p.to - p.from + 1 })),
+    searchedOver: { from: 0, to: searchEnd, parts: [parts[0].name, parts[1].name] },
+    search,
+    // THE TRADITIONAL READING, worked out from an untuned direction over the
+    // whole span, so re-tuning the percentage above never moves it.
+    traditional: {
+      whole: splitOfTime(moves),
+      worstTailSlice: worstTailSlice(moves, opts.tailShares),
+      drift: balanceDrift(moves, opts.driftParts),
+    },
+    typed: null,
+    medians: null,
+    perPart: null,
+    weight: null,
+  };
+
+  if (!search.reached) {
+    out.why = search.why;
+    return out;
+  }
+
+  const typed = typeStretches(prices, search.pct);
+
+  // A TURN IS CONFIRMED LATER THAN THE PERIOD IT MARKS, and that makes the
+  // search's count a floor rather than the final one. Found by looking at the
+  // output on 2026-09-12, not by being told.
+  //
+  // The rule marks the high as the turn only once price has fallen back from
+  // it, which happens some periods later. So a turn sitting near the end of
+  // `test` cannot be confirmed from `train` and `test` alone -- the fall-back
+  // that proves it is in `held`. Type the whole span with the same percentage
+  // and that turn appears.
+  //
+  // THIS IS LEFT AS IT IS, ON PURPOSE. Letting those turns into the search
+  // would give `held` a vote in choosing the percentage, which is exactly what
+  // COINS.md section 7 forbids. Turns are only ever ADDED by later data and
+  // never taken away, so what the search counted is a floor and the reading
+  // errs in the honest direction. What is NOT acceptable is the two numbers
+  // disagreeing silently, so both are reported and the gap is named.
+  const withLater = typed.turns.filter((t) => t <= searchEnd).length;
+  out.searchedOver.turnsTheSearchCounted = search.turns;
+  out.searchedOver.turnsOnceLaterDataIsSeen = withLater;
+  if (withLater !== search.turns) {
+    out.searchedOver.note = `${withLater - search.turns} more change(s) of direction sit inside train and test `
+      + 'than the search could count: a turn is only confirmed once price has fallen back from it, and for a turn '
+      + 'near the end of test that fall-back is in held. The search is not allowed to look there, so it counted '
+      + 'what it could see.';
+  }
+
+  const cut = cutAtBoundaries(typed.stretches, parts);
+  const medians = medianFullLengths(cut, ['train', 'test']);
+  out.typed = { pct: search.pct, turns: typed.turns.length, stretches: typed.stretches.length };
+  out.medians = medians;
+  out.perPart = cut.map((c) => {
+    const counts = countStretches(c, medians);
+    return {
+      part: c.part,
+      from: c.from,
+      to: c.to,
+      periods: c.to - c.from + 1,
+      // TURNS, COUNTED DIRECTLY. They never get cut, so this needs no stub
+      // arithmetic (COINS.md section 5).
+      turns: turnsIn(typed.turns, c),
+      stretches: counts,
+      // MORE THAN ONE FULL STRETCH OF A TYPE means it cannot be memorised as a
+      // single period of the calendar. Stretches alternate, so two full ones
+      // of a type are separated by construction.
+      repeats: { rising: counts.rising.full >= 2, falling: counts.falling.full >= 2 },
+      split: splitOfTime(moves.slice(c.from, c.to + 1)),
+      stubs: c.pieces.filter((p) => p.stub).length,
+    };
+  });
+
+  // THE WEIGHT SUMMARY, over `train`, which is what gets trained on. The vector
+  // itself is NOT stored: it is deterministic from the moves and the ceiling,
+  // and a stored copy is a second version of the same fact waiting to go stale
+  // (RULE NINE). Sweep recomputes it from this same function.
+  const trainMoves = moves.slice(parts[0].from, parts[0].to + 1);
+  const w = trainingWeights(trainMoves, { cap: opts.cap });
+  out.weight = {
+    cap: w.cap, mean: w.mean, capped: w.capped, reachedMean: w.reachedMean !== false,
+    needCap: w.needCap ?? null, why: w.why ?? null, over: 'train', periods: trainMoves.length,
+  };
+  return out;
+}
+
+
 module.exports = {
   typeStretches, searchFallback,
   cutAtBoundaries, medianFullLengths, countStretches, turnsIn,
   splitOfTime, worstTailSlice, balanceDrift,
   trainingWeights,
+  partsFor, coinReading,
 };

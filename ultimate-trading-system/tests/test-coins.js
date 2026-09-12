@@ -10,6 +10,7 @@ const {
   typeStretches, searchFallback,
   cutAtBoundaries, medianFullLengths, countStretches, turnsIn,
   splitOfTime, worstTailSlice, balanceDrift, trainingWeights,
+  partsFor, coinReading,
 } = require('../lib/coins');
 
 // A PRICE PATH WITH TURNS WHERE WE PUT THEM. Each leg moves `swing` percent
@@ -354,7 +355,8 @@ module.exports = {
     assert.ok(/function trainingWeights\(moves, opts = \{\}\) \{/.test(src),
       'trainingWeights takes the moves and its options, and nothing that says which set it is for');
     const at = src.indexOf('function trainingWeights(');
-    const body = src.slice(at, src.indexOf('\nmodule.exports', at));
+    const nextSection = src.indexOf('\n// ----', at);
+    const body = src.slice(at, nextSection > 0 ? nextSection : src.length);
     for (const word of ['rising', 'falling']) {
       assert.ok(!new RegExp(`\\b${word}\\b`).test(body),
         `the body of trainingWeights mentions "${word}" — it is ONE vector shared by both sets, and a function that knows which side it is weighting has already gone wrong`);
@@ -418,5 +420,162 @@ module.exports = {
     }
     assert.ok(balanceDrift(swinging, 8).drift > 0.3,
       'parts that alternate between balanced and one-way must drift hard');
+  },
+  // ---- C5: the per-coin record --------------------------------------------
+
+  // THE DIVISIONS COME FROM THE ENGINE'S OWN ARITHMETIC, never typed here as
+  // 61/13/13/13 and 70/15/15. Two copies of the same percentages drift.
+  theWindowLayoutsAreReadFromTheEnginesOwnSplit() {
+    const { splitBounds } = require('../lib/bracketwork');
+    for (const n of [200, 400, 1000, 2661]) {
+      const four = partsFor(n, 'reserve61');
+      const three = partsFor(n, 'split70');
+      assert.deepStrictEqual(four.map((p) => p.name), ['train', 'test', 'held', 'reserve']);
+      assert.deepStrictEqual(three.map((p) => p.name), ['train', 'test', 'held']);
+      for (const parts of [four, three]) {
+        let expect = 0;
+        for (const p of parts) {
+          assert.strictEqual(p.from, expect, 'the parts must be contiguous');
+          assert.ok(p.to >= p.from, 'no part may be empty');
+          expect = p.to + 1;
+        }
+        assert.strictEqual(expect, n, 'the parts must cover every period');
+      }
+      // and they agree with splitBounds rather than with a typed percentage
+      const nReserve = Math.max(2, Math.round(n * 0.13));
+      const b4 = splitBounds(n - nReserve, true);
+      assert.strictEqual(four[0].to + 1, b4.nTrain, 'train is what splitBounds says on the unsealed part');
+      assert.strictEqual(n - four[3].from, nReserve, 'and the reserve is sealed the way the engine seals it');
+      const b3 = splitBounds(n, true);
+      assert.strictEqual(three[0].to + 1, b3.nTrain, 'train is what splitBounds says on the whole span');
+    }
+    assert.throws(() => partsFor(400, 'something-else'), /unknown window layout/);
+  },
+
+  // THE ONE THAT MATTERS MOST (COINS.md section 7): the search reads `train`
+  // and `test` ONLY. Rewrite everything after `test` and the percentage the
+  // search picks must not move by a hair.
+  theSearchNeverReadsHeldOrReserve() {
+    const base = [100];
+    let st = 4242;
+    const rnd = () => ((st = (st * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let i = 1; i < 500; i++) base.push(base[i - 1] * (1 + (rnd() - 0.48) * 5 / 100));
+    const moves = base.map((p, i) => (i ? ((p - base[i - 1]) / base[i - 1]) * 100 : 0.1));
+
+    for (const layout of ['reserve61', 'split70']) {
+      const parts = partsFor(base.length, layout);
+      const end = parts[1].to;
+      const opts = { layout, target: 5, from: 1, to: 25, step: 0.5, cap: 20 };
+      const plain = coinReading(base, moves, opts);
+
+      // three different futures, all wild, none of which may touch the search
+      // A UNIFORM RESCALE IS NOT A DIFFERENT FUTURE. The first version of
+      // this used p / 6, which leaves every return identical -- the
+      // returns-not-levels property doing exactly what it is there for, and
+      // the test was wrong to expect the reading to move. These three change
+      // the direction mix itself.
+      for (const [name, step] of [
+        ['every period rises', 1.012],
+        ['every period falls', 0.988],
+        ['a saw', null],
+      ]) {
+        const other = base.slice();
+        for (let i = end + 1; i < other.length; i++) {
+          other[i] = step === null
+            ? other[i - 1] * ((i - end) % 2 ? 1.03 : 0.97)
+            : other[i - 1] * step;
+        }
+        const om = other.map((p, i) => (i ? ((p - other[i - 1]) / other[i - 1]) * 100 : 0.1));
+        const got = coinReading(other, om, opts);
+        assert.strictEqual(got.search.pct, plain.search.pct,
+          `${layout}: ${name} after the end of test moved the percentage the search picked`);
+        assert.deepStrictEqual(got.search.walk, plain.search.walk,
+          `${layout}: ${name} changed the walk itself — held and reserve got a vote`);
+        // and the reading of held DID move, or nothing was being reported
+        const heldBefore = plain.perPart.find((p) => p.part === 'held').split.balance;
+        const heldAfter = got.perPart.find((p) => p.part === 'held').split.balance;
+        if (name !== 'a saw') {
+          assert.ok(heldAfter < 0.02,
+            `${layout}: with ${name} after the end of test, held must read as one-way (got ${heldAfter}) — or nothing is being reported`);
+          assert.notStrictEqual(heldAfter, heldBefore, `${layout}: ${name} must move the reading of held`);
+        }
+      }
+    }
+  },
+
+  // A TURN IS CONFIRMED LATER THAN THE PERIOD IT MARKS, so the search's count
+  // is a floor. Found by looking at the output rather than by being told. The
+  // two numbers must never disagree silently.
+  theGapBetweenWhatTheSearchSawAndWhatIsThereIsReported() {
+    const prices = [100];
+    let st = 12345;
+    const rnd = () => ((st = (st * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let i = 1; i < 400; i++) prices.push(prices[i - 1] * (1 + (rnd() - 0.48) * 6 / 100));
+    const moves = prices.map((p, i) => (i ? ((p - prices[i - 1]) / prices[i - 1]) * 100 : 0.1));
+    const r = coinReading(prices, moves, { layout: 'reserve61', target: 6, from: 1, to: 25, step: 0.5, cap: 20 });
+
+    assert.strictEqual(r.searchedOver.turnsTheSearchCounted, 6, 'the search counted six on this path at this target');
+    assert.strictEqual(r.searchedOver.turnsOnceLaterDataIsSeen, 7, 'and typing the whole span shows seven inside the same window');
+    assert.ok(/more change\(s\) of direction sit inside train and test/.test(r.searchedOver.note),
+      'the gap must be named on the record, never left to be noticed');
+
+    // TURNS ARE ONLY EVER ADDED BY LATER DATA, NEVER TAKEN AWAY. That is what
+    // makes the search's count a floor and the reading honest in the direction
+    // that matters. If this ever fails the search is no longer a lower bound.
+    for (const pct of [4, 7, 10, 14, 20]) {
+      const parts = partsFor(prices.length, 'reserve61');
+      const end = parts[1].to;
+      const trunc = typeStretches(prices.slice(0, end + 1), pct).turns;
+      const whole = typeStretches(prices, pct).turns.filter((t) => t <= end);
+      for (const t of trunc) {
+        assert.ok(whole.includes(t),
+          `${pct}%: the turn at ${t} was seen on the truncated span and lost on the whole one — the search is not a floor`);
+      }
+    }
+  },
+
+  // The record carries what section 12 says it carries, and none of it is a
+  // verdict. This tab reports.
+  theRecordCarriesEveryReadingAndNoVerdict() {
+    const prices = [100];
+    let st = 777;
+    const rnd = () => ((st = (st * 1664525 + 1013904223) >>> 0) / 4294967296);
+    for (let i = 1; i < 450; i++) prices.push(prices[i - 1] * (1 + (rnd() - 0.47) * 5 / 100));
+    const moves = prices.map((p, i) => (i ? ((p - prices[i - 1]) / prices[i - 1]) * 100 : 0.1));
+    const r = coinReading(prices, moves, { layout: 'reserve61', target: 4, from: 1, to: 25, step: 0.5, cap: 20, driftParts: 8 });
+
+    assert.ok(r.search.reached, 'this path reaches four changes of direction');
+    assert.strictEqual(r.perPart.length, 4, 'one reading per part of history');
+    for (const p of r.perPart) {
+      assert.ok(typeof p.turns === 'number', `${p.part} must report its turns`);
+      assert.ok(p.stretches.rising && p.stretches.falling, `${p.part} must report both types`);
+      assert.ok(p.split && typeof p.split.balance === 'number', `${p.part} must report its split of time`);
+      assert.ok(typeof p.repeats.rising === 'boolean', `${p.part} must say whether a type repeats`);
+      assert.ok(p.stubs <= 2, 'at most two stubs per part');
+    }
+    assert.ok(r.traditional.worstTailSlice && r.traditional.drift, 'both traditional numbers are on the record');
+    assert.ok(r.weight && r.weight.over === 'train', 'the weight summary is over train, which is what gets trained on');
+    // the vector itself is NOT stored -- it is deterministic from the moves and
+    // the ceiling, and a stored copy is a second version waiting to go stale
+    assert.strictEqual(r.weight.weights, undefined, 'the weight vector is recomputed, never stored beside the moves');
+
+    const flat = JSON.stringify(r);
+    for (const word of ['"pass"', '"fail"', '"eligible"', '"verdict"']) {
+      assert.ok(!flat.includes(word), `the record must not carry ${word} — this tab reports (COINS.md section 8)`);
+    }
+  },
+
+  // A coin the search cannot satisfy still gets a record, with the traditional
+  // numbers on it and a sentence saying what happened. It is never dropped.
+  aCoinTheSearchCannotSatisfyStillGetsARecord() {
+    const prices = [];
+    for (let i = 0; i < 300; i++) prices.push(100 + Math.sin(i / 40) * 0.4);
+    const moves = prices.map((p, i) => (i ? ((p - prices[i - 1]) / prices[i - 1]) * 100 : 0.01));
+    const r = coinReading(prices, moves, { layout: 'split70', target: 50, from: 5, to: 30, step: 1, cap: 20 });
+    assert.strictEqual(r.search.reached, false, 'fifty changes are not in this path');
+    assert.ok(r.why && /no percentage between/.test(r.why), 'and the record says why in a sentence');
+    assert.ok(r.traditional.whole && r.traditional.worstTailSlice, 'the traditional numbers are still there');
+    assert.strictEqual(r.perPart, null, 'there is no typing to report per part, and it says so with null rather than zeros');
+    assert.ok(r.parts.length === 3, 'and the parts are still described');
   },
 };

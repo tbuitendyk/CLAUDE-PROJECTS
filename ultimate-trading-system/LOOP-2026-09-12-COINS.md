@@ -250,3 +250,52 @@ do not move together, which is the entire point of the number.
 - **`trainingWeights` is tested for not knowing which set it is for.** Its body
   is scanned for `rising` and `falling`. One vector, shared — a function that
   learns which side it is weighting has already gone wrong.
+
+## C5 — the per-coin record (done, 3.117.0)
+
+`partsFor` and `coinReading`. Five more tests, nineteen in the file.
+
+**The divisions are read from the engine's own `splitBounds`**, never typed
+here as 61/13/13/13 and 70/15/15, and the sealed reserve comes off exactly the
+way the engine seals it. Two copies of the same percentages drift; there is one.
+
+**The strongest test in the file is `theSearchNeverReadsHeldOrReserve`.** It
+rewrites everything after the end of `test` three different ways and asserts
+the percentage the search picked — and the whole walk behind it — does not move
+by a hair, while what is REPORTED about `held` does. That is `COINS.md` section
+7 pinned rather than intended.
+
+**HUNTED, not reported to me: a turn is confirmed later than the period it
+marks.** Found by reading the smoke-test output. The rule marks a high as a
+turn only once price has fallen back from it, which happens some periods later
+— so a turn near the end of `test` cannot be confirmed from `train` and `test`
+alone, because the fall-back that proves it is in `held`. Type the whole span
+with the same percentage and that turn appears. On the probe path: the search
+counted **6**, the whole-span typing shows **7** inside the same window.
+
+**It is left as it is, on purpose, and reported.** Letting those turns into the
+search would give `held` a vote in choosing the percentage, which section 7
+forbids. What is not acceptable is the two numbers disagreeing silently, so the
+record carries both and names the gap in a sentence. And the direction is
+pinned by test: turns are only ever ADDED by later data, never taken away, so
+the search's count is a floor.
+
+**Two test faults of my own, both found by the tests failing:**
+
+- The scan proving `trainingWeights` does not know which set it is for was
+  reading past that function into `coinReading`, which legitimately talks about
+  rising and falling.
+- A "collapse" future built as `price / 6` is a **uniform rescale**, which
+  leaves every return identical. The returns-not-levels property doing exactly
+  what it is for, and the test was wrong to expect the reading to move.
+
+**Choices made inside the step:**
+
+- **The weight vector is NOT stored.** It is deterministic from the moves and
+  the ceiling, and a stored copy is a second version of the same fact waiting
+  to go stale (RULE NINE). The summary is stored; Sweep recomputes the vector
+  from this same function.
+- **The weight summary is over `train`**, because that is what gets trained on.
+- A coin the search cannot satisfy **still gets a record**, with the
+  traditional numbers on it and a sentence saying what happened. `perPart` is
+  null rather than a row of zeros, because there is no typing to report.
