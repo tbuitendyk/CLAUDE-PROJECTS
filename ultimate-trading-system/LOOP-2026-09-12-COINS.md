@@ -422,3 +422,148 @@ loop's named work, so they get fixed here rather than parked.
 16. RULE FOUR: one raw colour, a note nested in a note that shifts the status
     line below its buttons, and two rows per coin with no separator where the
     page already has a convention for exactly that.
+
+## C8b — the doctrine reviewer, triaged before any fix
+
+Second of four back. It was asked one question: does the code do what the
+document says. It reproduced every claim with a script rather than describing
+it, which is why the numbers below are quoted rather than summarised. Six of
+its findings are the screen reviewer's already (the forty-period refusal, "a
+type appears only once", the sort, the missing provenance, the silent drop of
+an unreadable file, `tailShares`). Five are new, and one of those five is the
+worst thing found in this loop.
+
+### The worst one — later data changes what the earlier parts report
+
+The percentage is clean. I could not move it, and neither could the reviewer:
+the walk that searches for it reads `train` and `test` and stops. That was the
+part I guarded and it holds.
+
+**What is not clean is everything downstream of it.** The stretches are drawn
+by one walk over the whole span, and only then cut at the part boundaries. So
+whether a piece sitting inside `test` counts as a whole stretch or as a
+left-over end depends on price that arrives in `held` — and the median those
+left-over ends are measured against is built from that same set. Change
+nothing except the last thirty periods, inside `held` and `reserve`, and:
+
+```
+fall-back % chosen:  A = 21.5   B = 21.5    walk identical? true
+medians  A: {"rising":25.5,"falling":30}
+         B: {"rising":21,"falling":30}
+train:   A rising 3.137…   B rising 3.381…
+```
+
+`train` — the one part with no possible connection to the end of the history —
+reports a different number. The same demo run with the difference moved inside
+the sealed `reserve` alone moves `test` from 2 turns to 3.
+
+**And the guard I wrote cannot see it.** `theSearchNeverReadsHeldOrReserve`
+asserts the two fields that cannot move. Run that test's own fixture and its
+own three futures with two more assertions and the medians move while the
+percentage and the walk do not. The suite is green and has been all along.
+That is RULE EIGHT pointing at me: a guard aimed at the wrong line proves
+nothing, and it proves it loudly.
+
+Whether this is a fault or a fact is the thing to settle before touching it. A
+stretch that runs from `test` into `held` really is one stretch; its length is
+not knowable without the later price. What is NOT defensible is `train` moving.
+
+### The other four new ones
+
+17. **A failed search withholds readings that never needed it.** When no
+    percentage reaches the number of changes asked for, the reading comes back
+    with everything null — including the split of time per part, which is
+    worked out from the plain direction of each period and needs no percentage
+    at all. The document lists that split as a reading in its own right. It is
+    suppressed because a different reading failed.
+18. **A refusal lives in memory and only for the latest press.** Read
+    seventeen coins, two refuse, press again for one coin — the two are gone
+    from the screen with nothing said. A coin that refused on the latest press
+    still shows its older reading with no mark on it.
+19. **An unreadable record is a RULE NINE hole, not just a silent drop.** A
+    record written under an older shape is skipped, so a release bump deletes
+    the owner's readings from the screen instead of migrating them.
+20. **The ~1.7% reading the document requires per coin does not exist**
+    anywhere in the code.
+
+## C8c — the arithmetic reviewer, triaged before any fix
+
+Third of four. It was pointed at the numbers alone and told to demonstrate,
+not describe. It cleared a great deal — the stretch typing tiles correctly over
+24,000 fuzz cases with the turn always at the true extreme, the cutting tiles
+over 12,000, the search picks the largest reaching percentage, the placement of
+the worst tail slice matches an independent implementation on 400 series, and
+the claim that later data only ever ADDS turns is provably true and held over
+1,800 readings. Then it found this.
+
+### 21. THE TAB READS NOTHING. Not one coin, ever.
+
+`forwardFill()` hands back a wrapper with the filled prices inside it. The
+runner assigns the wrapper and passes it on as the prices. The one other caller
+in the repo, written months ago, takes the prices out of it; mine does not.
+
+Every coin throws on the first period built, every coin lands in the refused
+list, and the tab reports nothing written and everything refused, for ever.
+
+**I built a tab and never ran it.** Nineteen tests pass and not one of them
+loads the runner — the tests exercise the arithmetic, and the arithmetic is
+fine. The single line that joins the arithmetic to the data was never executed
+by anything. That is the whole of the failure and it is mine: a green suite was
+read as a working tab.
+
+### 22. Both scores measure how much history a coin has
+
+A coin with no trend at all, 300 fair-coin trials per length:
+
+| periods | worst tail slice reads 0 | mean worst tail slice | mean drift |
+|---|---|---|---|
+| 40 | **72.7%** | 0.046 | 0.120 |
+| 100 | 1% | 0.185 | 0.094 |
+| 1000 | 0% | 0.393 | 0.030 |
+| 2000 | 0% | 0.425 | 0.021 |
+
+Nearly three quarters of trendless forty-period coins score the worst value the
+number has. Ordering the table by either score orders it by how much history
+each coin happens to have cached. Nothing on the record says what a no-trend
+coin of that length would have scored, so 0.05 cannot be told from alarming.
+
+### 23. The last of the equal parts is not equal
+
+The document says equal parts, the comment in the code says equal parts, the
+hover on the screen says equal parts, and the last one swallows the remainder.
+On 159 moves the widths come out `19,19,19,19,19,19,19,26`, and the oversized
+last part dilutes a one-way tail with balanced periods — **the score comes out
+36% too low on exactly the case the second number exists to catch.** Worst case
+between 40 and 400 periods is 47 periods: a last part 12 wide against 5.
+
+### 24. The weight says it reached a mean of one when it did not
+
+The doubling that looks for an upper bracket stops at 2^40. Past that the
+bisection has no bracket, every midpoint tests low, and the function returns
+"reached" with a mean of 0.11. It needs percentage moves near the smallest
+number the machine can tell from zero, so no real price reaches it — but the
+sentence this function already writes for the other unreachable case is
+bypassed rather than extended.
+
+### 25. The reading is built for a sweep setting it hardcodes
+
+The periods are built with the weekday filter forced off. It is a per-run sweep
+setting, and with it on the same coin gives **725 periods against 104** at the
+four-day shape. The header of my own file claims a reading here "lines up
+period for period with the run it is vetting for". With that setting on it does
+not: different periods, different boundaries, different percentage, different
+everything. And it is a setting baked into code with no control — RULE FIVE.
+
+### 26–28. Three smaller ones
+
+- The widths the worst-tail-slice walk tried are recorded only when that width
+  produced a result, so a window that was walked and found nothing vanishes
+  from the record of what was walked.
+- A price of exactly zero permanently disables rise detection for the rest of
+  the series: the guard silences the comparison for ever instead of for that
+  one period. Ten periods with three obvious reversals come back as one
+  stretch and no turns.
+- The step's decimal places are read out of the PRINTED form of the number, so
+  a step below a millionth prints in exponential form, reads as zero places,
+  and produces five thousand identical rows all typing the same percentage.
+
