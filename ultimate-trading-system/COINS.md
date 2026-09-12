@@ -11,9 +11,9 @@ nothing on it, and every piece below waits for the owner, one at a time.
 same way `TREND-TRAINING-DESIGN.md` keeps them apart:
 
 - **The owner's design** — sections 1 to 11. Recorded as given.
-- **Findings read out of the code** — section 12. Read out of the named file,
+- **Findings read out of the code** — section 14. Read out of the named file,
   in the session that wrote it. Findings, not decisions.
-- **What I proposed** — section 13, and it is marked as mine at the top of it.
+- **What I proposed** — section 15, and it is marked as mine at the top of it.
   Recording is not agreeing.
 
 **Where this sits.** `TREND-TRAINING-DESIGN.md` is the design for sorting
@@ -181,7 +181,207 @@ scale, which is consistent with typing each coin on its own history.
 labels depend on it and stage 1 needs those labels. It is tied to the price
 data as it stood on the day it was worked out.
 
-## 5. Which stretches the search may read
+## 5. Cutting stretches at the boundaries, and counting what is left
+
+**A stretch does not respect the divisions.** The fall-back rule walks price
+forward across the history and marks a turn wherever price falls back far
+enough. It knows nothing about where `train` ends and `test` begins. So a
+`rising` stretch can start in `train` and finish in `test`.
+
+**Owner's decision, 2026-09-12: cut at EVERY boundary.** `train` / `test`,
+`test` / `held`, and `held` / `reserve`. Every stretch then belongs to exactly
+one part of the history, and every count in this document is unambiguous about
+which part it is a count of.
+
+### The stubs that cutting creates
+
+Cutting produces **stubs**: a stretch bounded by a turn on one side and a
+calendar cut on the other. There are **at most two per part of the history**,
+one at each end, because only the edges can be cut.
+
+The question is whether a stub counts towards a demand like "two of each type
+inside `test`". A stub of three days is not a trend; a stub of five weeks
+plainly is. The owner, 2026-09-12: *"an algorithm that looks at the average
+length of these stretches and figures out the stub pieces if they add up to
+one."*
+
+**The rule, and it needs no new parameter.** For each type, on each coin, take
+the **median** length of that type's FULL stretches across `train` + `test`.
+Then, for any part of the history:
+
+> count = (full stretches of this type in it) + (that type's stub lengths) ÷ (that median)
+
+Two half-length stubs add up to one. A three-day stub against a six-week median
+contributes 0.07 and changes nothing.
+
+**Median, not mean.** Stretch lengths are skewed — a few long trends drag a mean
+upwards, which would make every stub count for less than it deserves.
+
+**Fractions, not a threshold.** A threshold has a cliff: a stub one day under it
+counts nothing, one day over counts as a whole stretch. That is the same fault
+that sank the flat type in section 6 — a small move in a parameter flipping the
+answer. A fraction has no cliff, and the median comes out of the coin's own
+data rather than being typed.
+
+### One demand does not need any of this
+
+The stub rule serves ONE of the two demands. The other dissolves:
+
+- **Balance** — how much of a part of the history is `rising` against `falling`
+  — is about lengths. Stubs matter. Use the count above.
+- **Handover** — does this part actually exercise the forecasts changing hands
+  — is about **turns**. A turn either falls inside a window or it does not.
+  **Turns never get cut.** So count them directly: two of each type means at
+  least three turns inside the window, and no stub rule is involved.
+
+One number cannot serve both. Two numbers, and only one of them reads the
+median.
+
+## 6. The training weight Coins produces
+
+This section exists because of a question the owner asked on 2026-09-12, and
+the answer changed the design. It began as *should there be a third type,
+flat?* — and ended somewhere better.
+
+### Why a third type was rejected, and what replaced it
+
+A flat type would be a stretch that moved too little to be either. It has one
+fatal problem, and the owner found it: **the typing has hindsight and a
+`member` does not.** A turn is found by looking at where price went next, so
+"flat" is a property of a whole stretch. At trade time a `member` sees only
+what came before. Training it towards a target built from information it can
+never have when it acts is training it towards something undetectable.
+
+It is worse for flat than for the other two. Trends persist — thirty days into
+a rise, the recent past looks like a rise. **A flat patch and the first days of
+a trend look identical until the trend moves.**
+
+So flat is not a type. **It is a weight.** Keep two types, keep exactly the
+silence they already have, and weight down the periods where little was
+happening so they teach each `member` less. Nothing has to be detected at trade
+time; the model was simply taught less by the periods that had less to teach.
+
+### What it buys, with the owner's own example
+
+A `rising` stretch: 15% over six weeks. But twelve of those fifteen points
+happen in one week, and the other three spread across five weeks.
+
+On daily periods that is roughly 7 periods moving 1.6% each, and 35 periods
+moving 0.086% each.
+
+| | count | weight each | total pull |
+|---|---|---|---|
+| the fast week | 7 | 1 | 7 |
+| the slow five weeks | 35 | 1 | 35 |
+
+**Unweighted, the drift outvotes the real move 5 to 1**, and the `rising` set
+learns the drift.
+
+| | count | weight each | total pull |
+|---|---|---|---|
+| the fast week | 7 | 1.6 | 11.2 |
+| the slow five weeks | 35 | 0.086 | 3.0 |
+
+**Weighted, the fast week wins 3.7 to 1.** That reversal is the whole point.
+
+### The mechanism
+
+**One number per period, every period.** There is no chunking to invent: the
+training already takes one weight per row and refuses unless the list is
+exactly as long as the training rows, and one row is one period. On any
+`daily-` chunk shape a period is a day, so per day and per period are the same
+thing there; on `weekly-8d` a period is a week.
+
+**The number is how far price moved over the span that period is about** — from
+where its trade would open to where it would close. It needs no new parameter,
+because it is already worked out: it is what that period's label comes from.
+
+**Normalised so the average weight across the training rows is 1**, so what
+changes is which rows matter relative to each other, not how much training
+happens overall.
+
+**Capped**, because one violent period would otherwise dominate everything. The
+ceiling is a control on a screen, never a constant in a file (RULE FIVE).
+
+### ONE weight vector, shared by both sets
+
+This is the part that is easy to get wrong, so it is stated plainly.
+
+**The same number applies to both sets of `members` on the same period. Not
+mirrored, not inverted.** In a fast `rising` week the `rising` set learns hard
+to call and the `falling` set learns hard to hold — because that is the week
+where a falling model speaking would cost the most. In a slow drift both learn
+faintly, for the same reason in reverse.
+
+So it is one vector per coin and chunk shape, not one per set.
+
+### What it does NOT change, and what it does NOT do
+
+**It does not change who is silent.** The `rising` set is trained towards
+silence across every `falling` stretch, and the `falling` set across every
+`rising` stretch. That is unchanged and nothing here touches it. **The weight
+says how hard to learn a row's lesson. It never changes which lesson that row
+carries.** A falling-set row inside a `rising` stretch has the target "no call"
+whether its weight is 0.1 or 3.0.
+
+**It does not teach silence, either.** Down-weighting a period is not the same
+as labelling it "no call". Those 35 drift periods still carry a target and the
+`rising` set still votes on days that look like them — it has just been taught
+about them faintly. **The thing that produces silence is the band**:
+`balancedBandPct` already labels a period "nothing" when its move is under a
+threshold, tuned so about one period in three says nothing.
+
+So the two do different halves of one job and have to be set together:
+
+- **the band is the cliff** — below it, no call at all
+- **the weight is the taper above it** — small-but-not-tiny moves teach less
+
+Without the weight the cliff is all there is, and 35 periods sitting *just*
+above it still swamp the 7 that matter. That is the gap this fills.
+
+### Why it is not a leak
+
+It reads the period's own outcome, which the training already sees as that
+period's label. It reads nothing from beyond the period that the label does not
+already carry, and every weight is fixed before training starts. It is the same
+shape as the class weighting already in use.
+
+### The guard it needs, and the bet it makes
+
+**It multiplies against weights that already exist** — the balance weighting,
+the recency weighting on **History**, and the difficulty weighting proposed for
+**Sweep** if that is ever built. Three or four multiplied together can leave
+almost all of the effective training resting on a handful of periods. The
+recency weighting already refuses when too little effective history is left.
+**The same guard has to cover all of them together rather than each alone**, or
+it passes three times and still leaves nothing.
+
+**And the honest bet, recorded as a bet rather than a fact.** Weighting towards
+the periods that moved means each `member` sees the big moves clearly and the
+mild ones faintly. If what it actually meets is mostly mild, it has been
+trained for the wrong thing. The counter is that mild periods do not need skill
+— a fixed direction handles them and the four comparisons already price that —
+but that is a claim about which kind of period will dominate, and nobody has
+measured it.
+
+### Where the work is split
+
+**Coins works the number out and stores it** against the coin's history, beside
+the type labels, per section 12. **Sweep multiplies it in** when it trains. How
+the training applies it belongs with `TREND-TRAINING-DESIGN.md`, not here.
+
+### Open, and not guessed at
+
+**Whether the weight should act on runs rather than on single periods.**
+Periods overlap in what they read: on `daily-4d` they start a day apart but
+each reads back 96 hours, so neighbouring rows share three quarters of their
+window. Four adjacent periods are not four independent observations — they are
+closer to one seen four times. Which means down-weighting a single period
+changes almost nothing, and **if this is going to bite it may have to act on
+runs of periods rather than on rows one at a time.** Worth settling before it
+is built.
+
+## 7. Which stretches the search may read
 
 **Owner's decision, 2026-09-12**, and it replaces what `TREND-TRAINING-DESIGN.md`
 section A says. That document says *"Held and reserve are never opened by any of
@@ -213,10 +413,10 @@ for profit, and the type labels never reach trade time — but it is a bias and
 it is written down as one.
 
 **Why holding the two stretches out entirely was rejected:** the worst tail
-slice in section 9 is *defined* on the tail. Hold out the tail and the score
+slice in section 11 is *defined* on the tail. Hold out the tail and the score
 the owner asked for cannot be computed at all.
 
-## 6. How much of each kind, and where
+## 8. How much of each kind, and where
 
 Worked out in advance, and **separately for each of the three jobs a stretch
 can do**:
@@ -237,7 +437,9 @@ that runs one way from end to end.
   least four stretches and three changes of direction, so it actually exercises
   whether the forecasts hand over. A weaker demand — some number of periods of
   each type — could be met by one long rise and one long fall with a single
-  handover, which tests almost nothing.
+  handover, which tests almost nothing. **Counted as turns, per section 5** —
+  turns never get cut at a boundary, so this demand needs no stub arithmetic at
+  all. The balance demands below are the ones that read the median.
 - **Each type must appear more than ONCE inside the training stretch, in
   SEPARATED stretches.** One long stretch of a type can be memorised as a
   period of the calendar. This belongs in this tab's filter, alongside "both
@@ -251,7 +453,7 @@ that runs one way from end to end.
   needs **both** numbers: how many changes, and how the time divides. The
   second decides whether a coin is trainable at all.
 - **There is a floor the balance must stay clear of, and it comes out of the
-  code.** See finding 5 in section 12: below roughly one row in sixty (~1.7%),
+  code.** See finding 5 in section 14: below roughly one row in sixty (~1.7%),
   the existing weight cap under-corrects and staying quiet starts winning
   again. That is a number this tab must not let a coin sit under.
 
@@ -273,7 +475,7 @@ Three things follow, and two of them are improvements:
   coin's `test` was, by construction, a turning stretch — a clean one-way
   stretch would never have been tested on. A rule could then be tuned on
   switching and judged on a stretch that never switched. With the boundaries
-  fixed, `test` is whatever the history actually put there, and section 5
+  fixed, `test` is whatever the history actually put there, and section 7
   reports it either way.
 - **No training data is given away.** Moving the boundary earlier would have
   taken the most recent part of `train` — the periods closest to what the
@@ -286,7 +488,7 @@ Three things follow, and two of them are improvements:
   coin, rather than in sequence, or they fight** — and when no percentage
   satisfies both, say so on the screen rather than moving anything.
 
-## 7. Both window layouts, every coin
+## 9. Both window layouts, every coin
 
 **Coins works out and tunes the parameters for BOTH `window layout` choices —
 `61/13/13/13 (sealed exam)` and `70/15/15` — for every coin.**
@@ -310,7 +512,7 @@ coin **per layout**, and so is the ordering.
 elsewhere, and it is repeated here because it changes what a coin's fitness
 under `70/15/15` is actually for.
 
-## 8. What a coin ends up with
+## 10. What a coin ends up with
 
 **Three readings per coin.**
 
@@ -322,7 +524,7 @@ under `70/15/15` is actually for.
 
 The third is the one that decides whether a coin is worth sweeping at all.
 
-## 9. The traditional score
+## 11. The traditional score
 
 This is the reading for the way the system works today — one set of `members`,
 voting everywhere — and it is **one reading per coin, not per layout**.
@@ -368,7 +570,7 @@ one-sided stretch is, not merely that one exists.
 **Both are shown, and both are labelled on the screen so it is plain which is
 which.** Never two bare figures side by side.
 
-## 10. The metadata written on a coin's history
+## 12. The metadata written on a coin's history
 
 When the settings have been tuned on a coin's history, they are **saved as
 metadata against that coin's history** — they belong to the coin, not to a run.
@@ -381,28 +583,28 @@ What is recorded:
 - **the type labels** the settled percentage produces, since stage 1 needs them;
 - **the counts and the balance of each type, per stretch** — `train`, `test`,
   `held` and `reserve` separately, not just per span;
-- **the three readings** from section 8;
+- **the three readings** from section 10;
 - **the provenance: the total range the history data came from.**
 
 The provenance is not decoration. A score cannot be read honestly without
 knowing which span and which parameter values produced it, and a coin whose
 history has since grown must read as **stale** rather than quietly wrong.
 
-## 11. The screen
+## 13. The screen
 
 - A **score per coin**, with the coins **ordered by it**.
 - The score reads **visually** — you can see what you are looking at per coin,
-  not only a number. Section 4's walk and section 9's drift are what make that
+  not only a number. Section 4's walk and section 11's drift are what make that
   possible.
-- Every figure labelled, per section 9.
+- Every figure labelled, per section 11.
 - The `held` and `reserve` reading shown as a **warning, never a gate**, per
-  section 5.
+  section 7.
 
 Nothing here has a name yet. Naming waits until the controls exist, are
 deployed, and the word list is regenerated from what the box serves
 (RULE ONE-A).
 
-## 12. Findings read out of the code
+## 14. Findings read out of the code
 
 Every one of these was read out of the named file. **They are findings, not
 decisions.** Three bear directly on this tab; three belong to **Sweep** and are
@@ -451,7 +653,7 @@ listed so nobody thinks this tab solved them.
    falling model would look like two kinds of evidence agreeing when only one of
    them is awake.
 
-## 13. The risk that is mine, not the owner's
+## 15. The risk that is mine, not the owner's
 
 > Proposed 2026-09-09 and recorded at the owner's request. Recording is not
 > agreeing.
@@ -469,7 +671,7 @@ gate as it stands today it would be indistinguishable from real signal.
 of `VERIFY-DESIGN.md`. Nothing built out of this document should be judged
 without it.
 
-## 14. Decisions taken
+## 16. Decisions taken
 
 - **2026-09-12 — the budget rule does not apply to this tab.** Coins reads all
   of the history, including `held` and `reserve`. A session raised that as a
@@ -478,7 +680,7 @@ without it.
   training and getting bent out of shape on making choosing at this stage is
   completely irrelevant."* Settled. Not to be reopened.
 - **2026-09-12 — the parameter search reads `train` + `test` only; `held` and
-  `reserve` are read and REPORTED, never fed back.** Section 5. This replaces
+  `reserve` are read and REPORTED, never fed back.** Section 7. This replaces
   `TREND-TRAINING-DESIGN.md` section A's "held and reserve are never opened".
 - **2026-09-12 — the `held` / `reserve` reading is never a gate.** Warn, show,
   sort, override. A one-directional `reserve` is a test case, not a defect.
@@ -487,15 +689,30 @@ without it.
   figure**, and both are shown and labelled.
 - **2026-09-12 — Sweep's coin list comes out of Coins**, rather than being
   typed in.
+- **2026-09-12 — stretches are CUT AT EVERY BOUNDARY**, so each belongs to
+  exactly one of `train`, `test`, `held`, `reserve`. Stubs count as fractions
+  of that type's median full length; turns are counted directly and need no
+  stub rule. Section 5.
+- **2026-09-12 — there is no third type. Flatness is a WEIGHT, not a label.**
+  A flat type cannot work: the typing has hindsight and a `member` does not,
+  so it would be trained towards something undetectable at trade time. The
+  weight does the same job with no detectability requirement. Section 6.
+- **2026-09-12 — ONE weight vector, shared by both sets of `members`.** Not
+  mirrored, not inverted. And it changes nothing about who is silent: the
+  weight says how hard to learn a row, never which lesson that row carries.
+  Section 6.
 - **2026-09-12 — the word is `coin`, not `pair`.** This tab says `coin`, and
   **Data** was changed to say it too (3.114.1), so every screen now agrees.
 - **2026-09-12 — the `train` and `test` boundaries are FIXED and this tab
   never moves them.** Only the fall-back percentage is tuned. This replaces
   `TREND-TRAINING-DESIGN.md` section D's sliding boundary, its cap, and the
-  rejection of coins that needed the boundary moved too far. Section 6.
+  rejection of coins that needed the boundary moved too far. Section 8.
 
-## 15. Open items
+## 17. Open items
 
+- **Whether the training weight acts on runs of periods rather than on single
+  periods.** Neighbouring periods share most of their look-back window, so
+  down-weighting one changes almost nothing. Section 6.
 - **Which of the two traditional numbers orders the list** — the worst tail
   slice, or the drift.
 - **The rule for picking the fall-back percentage when the count jumps past the
@@ -507,11 +724,14 @@ without it.
 - **The name of every control on this screen.**
 - **Every cost in this document. Not one of them has been measured.**
 
-## 16. What is not in here
+## 18. What is not in here
 
 - **How the two sets of `members` are actually trained**, the masking, the
   balance weighting and the difficulty weighting. All of that stays in
-  `TREND-TRAINING-DESIGN.md`; it belongs to **Sweep**.
+  `TREND-TRAINING-DESIGN.md`; it belongs to **Sweep**. The one place this
+  document crosses into it is section 6, and only as far as the boundary drawn
+  there: **Coins works the training weight out and stores it; Sweep multiplies
+  it in.**
 - **The parameter values themselves.** This document says what is tuned and
   what it is tuned for; it does not pick numbers.
 - **Anything about the record sets already on the box.** Coins changes nothing
