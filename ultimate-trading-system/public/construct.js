@@ -7871,24 +7871,28 @@ function cLayoutStrip(layoutKey, lay, n, side, ts) {
 // the owner's screen and on no list, which RULE ONE-A names as a hole. The
 // number of columns is read from the row below, never typed.
 const C_COLS = 15;
+// ...AND AS ONE TEMPLATE LITERAL. 3.126.0 wrote them as single-quoted strings
+// joined with +, and the generator reads a screen's words out of template
+// literals; the headings were still on no list. The served list is checked
+// after every deploy, which is how both misses were found.
 function cHead() {
-  return '<thead><tr>'
-    + '<th title="the stretch of the bar this row counts">part</th>'
-    + '<th title="the day of the first decision in it">starts</th>'
-    + '<th title="how many decisions it holds">decisions</th>'
-    + '<th title="how many read rising">rising</th>'
-    + '<th title="how many read falling">falling</th>'
-    + '<th title="how many read sit out">sit out</th>'
-    + '<th title="the smaller of rising and falling. A gap built on forty decisions is not a gap.">thin side</th>'
-    + '<th title="how many times the colour changes inside this stretch">changes</th>'
-    + '<th title="decisions per colour change. A reading that flips every day is not a regime.">run</th>'
-    + '<th title="of the decisions whose window read rising, the share whose trade then went up">up after rising</th>'
-    + '<th title="of the decisions whose window read falling, the share whose trade then went up">up after falling</th>'
-    + '<th title="up after rising minus up after falling, in percentage points. Zero means the two sets of members would learn the same lesson twice.">gap (points)</th>'
-    + '<th title="the average move from open to close of the trades whose window read rising">move after rising</th>'
-    + '<th title="the same after a falling window">move after falling</th>'
-    + '<th title="move after rising minus move after falling">gap (move)</th>'
-    + '</tr></thead>';
+  return `<thead><tr>
+    <th title="the stretch of the bar this row counts">part</th>
+    <th title="the day of the first decision in it">starts</th>
+    <th title="how many decisions it holds">decisions</th>
+    <th title="how many read rising">rising</th>
+    <th title="how many read falling">falling</th>
+    <th title="how many read sit out">sit out</th>
+    <th title="the smaller of rising and falling. A gap built on forty decisions is not a gap.">thin side</th>
+    <th title="how many times the colour changes inside this stretch">changes</th>
+    <th title="decisions per colour change. A reading that flips every day is not a regime.">run</th>
+    <th title="of the decisions whose window read rising, the share whose trade then went up">up after rising</th>
+    <th title="of the decisions whose window read falling, the share whose trade then went up">up after falling</th>
+    <th title="up after rising minus up after falling, in percentage points. Zero means the two sets of members would learn the same lesson twice.">gap (points)</th>
+    <th title="the average move from open to close of the trades whose window read rising">move after rising</th>
+    <th title="the same after a falling window">move after falling</th>
+    <th title="move after rising minus move after falling">gap (move)</th>
+  </tr></thead>`;
 }
 function cCells(ts, p) {
   const g = p.gap || {};
