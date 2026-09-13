@@ -7799,6 +7799,18 @@ const cNum = (v, d = 2) => (v == null ? '—' : Number(v).toFixed(d));
 const cMove = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}%`);
 const cDay = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : '—');
 const cWhen = (iso) => (iso ? String(iso).replace('T', ' ').slice(0, 16) : '—');
+// THE MOMENTS COME AS HOURS SINCE THE ONE BEFORE; rebuilt once per bar and
+// kept on it, for the strips' dates and the hover alike.
+const cTsOf = (s) => {
+  if (!s._ts) {
+    const ts = [s.t0];
+    for (const d of s.dt || []) ts.push(ts[ts.length - 1] + d * 3600000);
+    s._ts = ts;
+  }
+  return s._ts;
+};
+const cShare = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
+const cPts = (v) => (v == null ? '—' : `${v > 0 ? '+' : ''}${(v * 100).toFixed(1)} pts`);
 const cLayoutLabel = (key) => {
   if (key == null || key === '') return '—';
   const o = VOCAB && Array.isArray(VOCAB.windowLayout) ? VOCAB.windowLayout.find((x) => String(x.value) === String(key)) : null;
@@ -7838,18 +7850,54 @@ function cStatusLine(st, anyRead) {
 // THE DIVISION ABOVE OR BELOW A BAR: one box per part, as wide as the share of
 // decisions that part holds, so it lines up with the bar by construction and
 // not by adjustment (RULE FOUR).
-function cLayoutStrip(layoutKey, lay, n, side) {
+//
+// EVERY BOX SAYS THE DAY ITS PART STARTS (owner, 2026-09-13: "put the start
+// yyyy-mm-dd on each section"), read off the first decision in it.
+function cLayoutStrip(layoutKey, lay, n, side, ts) {
   const name = cLayoutLabel(layoutKey);
   if (!lay || lay.why) return `<div class="clay ${side}" title="${esc(name)}"><span class="muted">${esc(name)}: ${esc((lay && lay.why) || 'no division')}</span></div>`;
-  return `<div class="clay ${side}" title="${esc(name)} — ${lay.parts.map((p) => `${p.name} ${p.decisions}`).join(', ')}">${lay.parts.map((p) => `<div class="cpart ${p.name}" style="width:${((p.decisions / n) * 100).toFixed(3)}%"><span>${esc(p.name)}</span></div>`).join('')}</div>`;
+  return `<div class="clay ${side}" title="${esc(name)} — ${lay.parts.map((p) => `${p.name} ${p.decisions}`).join(', ')}">${lay.parts.map((p) => `<div class="cpart ${p.name}" style="width:${((p.decisions / n) * 100).toFixed(3)}%"><span>${esc(p.name)}</span> <span class="cdate">${cDay(ts[p.from])}</span></div>`).join('')}</div>`;
 }
-// THE NUMBERS BESIDE A BAR, per part under one layout: how many read rising,
-// how many falling, how many sit out, and how many times the colour changes.
-function cCountsLine(layoutKey, lay) {
-  const name = cLayoutLabel(layoutKey);
-  if (!lay || lay.why) return `<div class="cnums muted"><b>${esc(name)}</b> ${esc((lay && lay.why) || '')}</div>`;
-  return `<div class="cnums"><b>${esc(name)}</b> ${lay.parts.map((p) => `<span class="cpartnum"><b>${esc(p.name)}</b> ${p.decisions}: `
-    + `<span class="cr">${p.rising} rising</span> · <span class="cf">${p.falling} falling</span> · <span class="cs">${p.sitOut} sit out</span> · ${p.changes} changes</span>`).join(' <span class="muted">|</span> ')}</div>`;
+// THE NUMBERS UNDER A BAR, one table: the whole bar, then every part under
+// each layout. Per row: the three readings, the thin side, the colour changes,
+// the run length, and THE GAP -- how differently a trade turned out after a
+// rising window than after a falling one, as a share that went up and as an
+// average move (owner, 2026-09-13: "add the gap metric too").
+const C_COLS = [
+  ['part', 'the stretch of the bar this row counts'],
+  ['starts', 'the day of the first decision in it'],
+  ['decisions', 'how many decisions it holds'],
+  ['rising', 'how many read rising'],
+  ['falling', 'how many read falling'],
+  ['sit out', 'how many read sit out'],
+  ['thin side', 'the smaller of rising and falling. A gap built on forty decisions is not a gap.'],
+  ['changes', 'how many times the colour changes inside this stretch'],
+  ['run', 'decisions per colour change. A reading that flips every day is not a regime.'],
+  ['up after rising', 'of the decisions whose window read rising, the share whose trade then went up'],
+  ['up after falling', 'of the decisions whose window read falling, the share whose trade then went up'],
+  ['gap (points)', 'up after rising minus up after falling, in percentage points. Zero means the two sets of members would learn the same lesson twice.'],
+  ['move after rising', 'the average move from open to close of the trades whose window read rising'],
+  ['move after falling', 'the same after a falling window'],
+  ['gap (move)', 'move after rising minus move after falling'],
+];
+function cRow(label, ts, p) {
+  const g = p.gap || {};
+  const R = g.afterRising || {}; const F = g.afterFalling || {};
+  return `<tr><td>${esc(label)}</td><td>${cDay(ts[p.from])}</td><td>${p.decisions}</td>`
+    + `<td class="cr">${p.rising}</td><td class="cf">${p.falling}</td><td class="cs">${p.sitOut}</td>`
+    + `<td>${g.thinSide ? `${g.thinSide.n} ${esc(g.thinSide.which)}` : '—'}</td><td>${p.changes}</td><td>${cNum(p.run, 1)}</td>`
+    + `<td>${cShare(R.shareUp)}</td><td>${cShare(F.shareUp)}</td><td><b>${cPts(g.gapShare)}</b></td>`
+    + `<td>${cMove(R.meanOut)}</td><td>${cMove(F.meanOut)}</td><td><b>${cMove(g.gapMove)}</b></td></tr>`;
+}
+function cTable(s, layouts) {
+  const ts = cTsOf(s);
+  const rows = [cRow('whole', ts, { ...s.whole, from: 0 })];
+  for (const layout of layouts) {
+    const lay = s.layouts[layout];
+    rows.push(`<tr class="cgrp"><td colspan="${C_COLS.length}">${esc(cLayoutLabel(layout))}${lay && lay.why ? ` <span class="muted">${esc(lay.why)}</span>` : ''}</td></tr>`);
+    if (lay && lay.parts) for (const p of lay.parts) rows.push(cRow(p.name, ts, p));
+  }
+  return `<div class="scrollx"><table class="cgap"><thead><tr>${C_COLS.map(([h, t]) => `<th title="${esc(t)}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
 }
 // ONE BAR: its heading, the division above, the bar itself, the division below,
 // and the numbers. The bar is a canvas painted after the markup lands.
@@ -7858,18 +7906,16 @@ function cShapeBlock(coin, shape, s, layouts) {
     return `<div class="cshape"><div class="chead"><b>${esc(shape.label)}</b> <span class="muted">${esc((s && s.why) || 'not read')}</span></div></div>`;
   }
   const n = s.periods;
-  const w = s.whole || {};
+  const ts = cTsOf(s);
   const above = layouts[0]; const below = layouts[1];
   return `<div class="cshape">
     <div class="chead"><b>${esc(shape.label)}</b> <span class="muted">${shape.windowHours}-hour window · one decision a ${esc(shape.every)}, opening ${esc(shape.at)} ·
-      ${n} decisions from ${cDay(s.span && s.span.fromTs)} to ${cDay(s.span && s.span.toTs)}${s.skipped ? ` · ${s.skipped} skipped for an unusable first price` : ''}</span></div>
-    ${cLayoutStrip(above, s.layouts[above], n, 'above')}
+      ${n} decisions from ${cDay(s.span && s.span.fromTs)} to ${cDay(s.span && s.span.toTs)}${s.skipped ? ` · ${s.skipped} skipped for an unusable first price` : ''} ·
+      window moves from ${cMove(s.range && s.range.largestFall)} to ${cMove(s.range && s.range.largestRise)} · median ${cNum(s.yardstick)}% · sit out under ±${cNum(s.threshold)}%</span></div>
+    ${cLayoutStrip(above, s.layouts[above], n, 'above', ts)}
     <canvas class="cbar" data-coin="${esc(coin)}" data-shape="${esc(shape.key)}" title="hover a point on the bar to read that decision"></canvas>
-    ${cLayoutStrip(below, s.layouts[below], n, 'below')}
-    <div class="cnums"><span class="cr">${w.rising} rising</span> · <span class="cf">${w.falling} falling</span> · <span class="cs">${w.sitOut} sit out</span> · ${w.changes} changes ·
-      window moves from ${cMove(s.range && s.range.largestFall)} to ${cMove(s.range && s.range.largestRise)} · median ${cNum(s.yardstick)}% · sit out under ±${cNum(s.threshold)}%</div>
-    ${cCountsLine(above, s.layouts[above])}
-    ${cCountsLine(below, s.layouts[below])}
+    ${cLayoutStrip(below, s.layouts[below], n, 'below', ts)}
+    ${cTable(s, layouts)}
   </div>`;
 }
 // THE BARS, PAINTED. Consecutive decisions of one colour are one rectangle, so
@@ -7898,15 +7944,10 @@ function cPaintBars(recs) {
       g.fillRect(x0, 0, x1 - x0, H);
       i = j + 1;
     }
-    // the moments come as hours since the one before; rebuilt once per bar
-    if (!s._ts) {
-      const ts = [s.t0];
-      for (const d of s.dt || []) ts.push(ts[ts.length - 1] + d * 3600000);
-      s._ts = ts;
-    }
+    const ts = cTsOf(s);
     cv.onmousemove = (e) => {
       const k = Math.min(n - 1, Math.max(0, Math.floor((e.offsetX / W) * n)));
-      cv.title = `${cDay(s._ts[k])} · window move ${cMove(s.move[k])} · ${C_WORD[s.reading[k]]}`;
+      cv.title = `${cDay(ts[k])} · window move ${cMove(s.move[k])} · ${C_WORD[s.reading[k]]} · trade ${cMove(s.out && s.out[k])}`;
     };
   }
 }

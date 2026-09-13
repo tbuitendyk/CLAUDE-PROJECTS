@@ -10,7 +10,7 @@ const fs = require('fs');
 const path = require('path');
 const {
   shapes, windowMoves, medianAbsMove, readingsUnderBand,
-  partsFor, layoutParts, countIn, shapeSummary,
+  partsFor, layoutParts, countIn, gapIn, runLength, stretchOf, shapeSummary,
 } = require('../lib/coins');
 const { GEOMETRIES, toHourlyMap, forwardFill } = require('../lib/dataset');
 
@@ -73,7 +73,47 @@ module.exports = {
         assert.ok(Math.abs(wm.move[i] - notThis) > 1e-6, `${key} decision ${i}: reads the first candle's close`);
       }
       assert.deepStrictEqual(wm.span, { fromTs: wm.ts[0], toTs: wm.ts[wm.ts.length - 1] });
+      // C1.5: the trade's own outcome rides with every decision, and it is the
+      // chunk's own diffPct -- the number the training's label is made from
+      assert.strictEqual(wm.out.length, wm.periods, `${key}: an outcome per decision`);
+      for (let i = 0; i < wm.out.length; i++) assert.ok(Math.abs(wm.out[i] - built[i].diffPct) < 1e-3, `${key} decision ${i}: outcome ${wm.out[i]} is not the chunk's ${built[i].diffPct}`);
     }
+  },
+
+  // C5.1: the gap is rising minus falling, both as a share that went up and as
+  // an average move; sit-out decisions are in neither side; the thin side is
+  // the smaller count; a side with nothing in it makes the gap null.
+  theGapIsRisingMinusFallingAndSitOutIsInNeitherSide() {
+    //            r    r    f    f    s    r    f
+    const out = [ 2,  -1,   1,  -3,  99,   4,  -2];
+    const g = gapIn('rrffsrf', out, 0, 6);
+    assert.deepStrictEqual(g.afterRising, { n: 3, shareUp: 2 / 3, meanOut: (2 - 1 + 4) / 3 });
+    assert.deepStrictEqual(g.afterFalling, { n: 3, shareUp: 1 / 3, meanOut: (1 - 3 - 2) / 3 });
+    assert.ok(Math.abs(g.gapShare - 1 / 3) < 1e-12, 'gap in share: rising minus falling');
+    assert.ok(Math.abs(g.gapMove - (5 / 3 - (-4 / 3))) < 1e-12, 'gap in move: rising minus falling');
+    assert.deepStrictEqual(g.thinSide, { n: 3, which: 'rising' }, 'equal counts: rising is named as the thin side');
+    // the 99 sat out and moved nothing
+    assert.strictEqual(gapIn('rrffsrf', out, 0, 6).afterRising.meanOut, gapIn('rrffrrf', out, 0, 6).afterRising.meanOut - 0 === undefined ? 0 : g.afterRising.meanOut);
+    // a stretch with no falling decisions has no gap, and says so with a null
+    const only = gapIn('rrsr', [1, 2, 3, -1], 0, 3);
+    assert.strictEqual(only.afterFalling.n, 0);
+    assert.strictEqual(only.afterFalling.shareUp, null);
+    assert.strictEqual(only.gapShare, null);
+    assert.strictEqual(only.gapMove, null);
+    assert.deepStrictEqual(only.thinSide, { n: 0, which: 'falling' });
+    // a sub-stretch reads only its own decisions
+    const sub = gapIn('rrffsrf', out, 2, 4);
+    assert.strictEqual(sub.afterRising.n, 0);
+    assert.strictEqual(sub.afterFalling.n, 2);
+    // the run length: decisions per colour change, and nothing over nothing
+    assert.strictEqual(runLength({ decisions: 20, changes: 4 }), 4);
+    assert.strictEqual(runLength({ decisions: 7, changes: 0 }), 7);
+    assert.strictEqual(runLength({ decisions: 0, changes: 0 }), null);
+    const st = stretchOf('rrffsrf', out, 0, 6);
+    assert.strictEqual(st.decisions, 7);
+    assert.strictEqual(st.changes, 4);
+    assert.strictEqual(st.run, 7 / 5);
+    assert.deepStrictEqual(st.gap, g);
   },
 
   // C1.3: nothing after a decision's open can move its reading. The same is
@@ -181,6 +221,10 @@ module.exports = {
     let t = s.t0;
     for (let i = 1; i < wm.ts.length; i++) { t += s.dt[i - 1] * HOUR; assert.strictEqual(t, wm.ts[i], `moment ${i} does not rebuild from the hours`); }
     for (let i = 0; i < wm.move.length; i++) assert.ok(Math.abs(s.move[i] - wm.move[i]) < 0.005 + 1e-9, `move ${i} sent to more than two places or wrong`);
+    assert.strictEqual(s.out.length, wm.periods, 'an outcome per decision goes out with the bar');
+    for (let i = 0; i < wm.out.length; i++) assert.ok(Math.abs(s.out[i] - wm.out[i]) < 0.005 + 1e-9, `outcome ${i} sent to more than two places or wrong`);
+    assert.deepStrictEqual(s.whole.gap, gapIn(s.reading, wm.out, 0, wm.periods - 1), 'the whole bar carries its gap');
+    assert.strictEqual(s.whole.run, runLength(s.whole));
     const w = s.whole;
     assert.strictEqual(w.rising + w.falling + w.sitOut, wm.periods, 'the whole-bar counts cover every decision');
     assert.strictEqual(s.range.largestRise, Math.max(...wm.move));
@@ -193,10 +237,15 @@ module.exports = {
       assert.strictEqual(sum, wm.periods, `${layout}: the parts' counts cover every decision`);
       assert.deepStrictEqual(lay.parts.map((p) => p.name), layout === 'reserve61' ? ['train', 'test', 'held', 'reserve'] : ['train', 'test', 'held']);
       for (const p of lay.parts) assert.deepStrictEqual({ r: p.rising, f: p.falling, s: p.sitOut, c: p.changes }, (() => { const c = countIn(s.reading, p.from, p.to); return { r: c.rising, f: c.falling, s: c.sitOut, c: c.changes }; })());
+      for (const p of lay.parts) {
+        assert.deepStrictEqual(p.gap, gapIn(s.reading, wm.out, p.from, p.to), `${layout} ${p.name}: the part carries its own gap, read over its own decisions`);
+        assert.strictEqual(p.run, runLength(p));
+      }
     }
     // a shape with nothing in it sums up without throwing and says why per layout
-    const empty = shapeSummary({ ts: [], move: [] }, 50, ['split70']);
+    const empty = shapeSummary({ ts: [], move: [], out: [] }, 50, ['split70']);
     assert.strictEqual(empty.periods, 0);
+    assert.strictEqual(empty.whole.gap.gapShare, null);
     assert.ok(empty.layouts.split70.why);
   },
 };

@@ -39,10 +39,12 @@ const BAND_KEY = 'coins_sit_out_band';
 // though it were current (RULE NINE; owner, 2026-09-13: "Just code it right
 // for this time" -- no migration, the reader says which shape a file is and
 // asks for the coin to be read again). 6 (3.124.0): the window move per
-// decision per chunk shape. Shapes 1 to 5 held stretches, fall-back
-// percentages, per-hold readings and two untuned numbers, none of which the
-// design carries any more, so none of them can be drawn here.
-const RECORD_V = 6;
+// decision per chunk shape. 7 (3.125.0): and the trade's own outcome beside
+// it, which the gap is read against; a shape-6 record has no outcomes, so it
+// cannot be drawn. Shapes 1 to 5 held stretches, fall-back percentages,
+// per-hold readings and two untuned numbers, none of which the design carries
+// any more.
+const RECORD_V = 7;
 
 // THE DEFAULT IS A STARTING VALUE, NOT A LIMIT. The band is a control on the
 // screen (RULE FIVE); this is only what it reads before the owner sets it. 50
@@ -153,7 +155,7 @@ async function readOneCoin(coin, onNote = () => {}) {
     try {
       const wm = coins.windowMoves(map, s.key);
       rec.shapes[s.key] = wm.periods
-        ? { periods: wm.periods, span: wm.span, skipped: wm.skipped, ts: wm.ts, move: wm.move }
+        ? { periods: wm.periods, span: wm.span, skipped: wm.skipped, ts: wm.ts, move: wm.move, out: wm.out }
         : { periods: 0, why: `${coin} offers no complete ${s.label} decisions from the prices cached on this box` };
     } catch (err) {
       // NOT A REFUSAL OF THE COIN. One shape could not be built -- too few

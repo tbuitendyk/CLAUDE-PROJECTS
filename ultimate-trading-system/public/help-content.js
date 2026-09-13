@@ -871,7 +871,8 @@ window.HELP = {
         + 'of that window to the price the trade opens at. Green: it rose by more than the sit-out band. Red: it '
         + 'fell by more. Black: it moved too little either way, and a decision like that would sit out. Nothing '
         + 'after the open is read, so the same reading is known live at the moment a real trade would open. Hover '
-        + 'a point on a bar to read that decision\'s day, its window move and how it reads.'],
+        + 'a point on a bar to read that decision\'s day, its window move, how it reads, and how its trade then '
+        + 'went.'],
       ['Five bars, and why not three',
         'One bar per chunk shape. Daily 1-day and Daily 2-day open their trades at the same moments but read '
         + 'different windows, 24 hours against 48, so the same moment can read differently under each; the same '
@@ -880,10 +881,24 @@ window.HELP = {
       ['The two divisions marked on every bar',
         'Above each bar, 70/15/15 marks where train, test and held fall. Below it, the shaded boxes mark '
         + '61/13/13/13 (sealed exam): train, test, held and the reserve. Each box is as wide as the share of '
-        + 'decisions that part holds, so it lines up with the bar exactly. The numbers under the bar count, per '
-        + 'part under each division, how many decisions read rising, how many falling, how many sit out, and how '
-        + 'many times the colour changes — a held or a reserve that is all one colour is exactly the thing this '
-        + 'screen exists to show you before the sweep is spent.'],
+        + 'decisions that part holds, so it lines up with the bar exactly, and each box says the day its part '
+        + 'starts; the test box above is shaded. The table under the bar counts, per part under each division, '
+        + 'how many decisions read rising, how many falling, how many sit out, and how many times the colour '
+        + 'changes — a held or a reserve that is all one colour is exactly the thing this screen exists to show '
+        + 'you before the sweep is spent.'],
+      ['The gap: what dual member voting is betting on',
+        'Under every bar, one table. Its first row is the whole bar; then every part under 70/15/15; then '
+        + 'every part under 61/13/13/13 (sealed exam), each with the day it starts. Beside the counts of rising, '
+        + 'falling and sit out is the gap: of the decisions whose window read rising, the share whose trade then '
+        + 'went up, against the same share after a falling window, and the difference in points; and the average '
+        + 'move from open to close after each kind of window, and that difference. The window ends where the '
+        + 'trade opens, so nothing leaks between them. A gap near zero means a set trained towards rising and a '
+        + 'set trained towards falling would learn the same lesson twice, and each would be silent half the time '
+        + 'for nothing: that coin stays on the traditional single member set voting. A wide gap means the split '
+        + 'has something to learn from. Two columns qualify it: the thin side, the smaller of rising and falling, '
+        + 'because a gap built on forty decisions is not a gap; and the run, decisions per colour change, '
+        + 'because a reading that flips every day is not a regime. Read the gap per part — one that is there in '
+        + 'train and gone in held is the case that has burned us before. None of it is a cut-off.'],
       ['The sit-out band: one number, every coin on its own scale',
         'You type one number. On each coin, for each shape, it is read against that coin\'s median window move '
         + 'ignoring direction — the median, because a few wild days do not move it — so the same setting means the '

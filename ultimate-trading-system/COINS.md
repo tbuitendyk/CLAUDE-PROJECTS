@@ -203,6 +203,39 @@ live while a reading runs because it is not part of one. The band control is
 labelled `sit-out band, % of the median window move`, quoted from the word
 list regenerated from the deployed screen (RULE ONE-A, 3.124.0 served).
 
+**The gap, and the two marks on every box (owner, 2026-09-13, built 3.125.0).**
+The owner, after seeing 3.124.0: *"i like it ... let's shade the TEST header
+on the 70/15/15 window and let's put the start yyyy-mm-dd on each section"*,
+then, asked what would be a good general metric for aptness to dual member
+voting, *"GO NOW! and add the gap metric too w/ deploy"*.
+
+- The `test` box in the `70/15/15` strip above each bar is shaded. Every box,
+  above and below, says the day its part starts, read off the first decision
+  in it.
+- **The gap** is how differently a trade turns out after a rising window than
+  after a falling one. Of the decisions whose window read rising, the share
+  whose trade then went up, against the same share after a falling window,
+  and the difference in points; and the average move from open to close after
+  each kind of window, and that difference. Rising minus falling, both ways.
+  Sit-out decisions are in neither side. The window ends where the trade
+  opens, so nothing leaks between them. A gap near zero means the two sets of
+  `members` would learn the same lesson twice; a wide one means the split has
+  something to learn from.
+- **Beside it, what qualifies it.** The thin side: the smaller of rising and
+  falling, because a gap built on forty decisions is not a gap. The run:
+  decisions per colour change, because a reading that flips every day is not
+  a regime. Neither is a cut-off.
+- **Per part.** Under each bar, one table: the whole bar, then every part
+  under each layout, each row with the day it starts, the three counts, the
+  thin side, the changes, the run, and the gap both ways. A gap that is there
+  in train and gone in held is the case that has burned us before.
+- **What it needs on the record**: the trade's own outcome beside every
+  decision — the chunk's own move from open to close, the number the label is
+  made from. Record shape 7. A shape-6 file is named and read again.
+- **What it cannot tell**: how much the features gain from the split; only
+  training shows that. And neighbouring windows overlap, so the gap is
+  noisier than the counts suggest.
+
 **Everything else on the tab today goes.** The walk, `fall-back %`, `changes of
 direction`, `changes of direction wanted`, `try from, %`, `try to, %`,
 `step, %`, `drift parts`, `shuffles`, `most one-sided stretch`, `drift`,

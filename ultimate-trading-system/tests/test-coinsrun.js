@@ -68,6 +68,7 @@ module.exports = {
         assert.ok(s.periods > 20, `${key} read only ${s.periods} decisions`);
         assert.strictEqual(s.ts.length, s.periods);
         assert.strictEqual(s.move.length, s.periods);
+        assert.strictEqual(s.out.length, s.periods, `${key}: an outcome per decision on the record`);
         assert.ok(s.span && s.span.fromTs <= s.span.toTs);
       }
       assert.strictEqual(rec.provenance.cachedMonths, 14);
@@ -117,6 +118,7 @@ module.exports = {
       for (const s of coins.shapes()) {
         const sum = a.shapes[s.key];
         assert.ok(sum.periods > 0 && /^[rfs]+$/.test(sum.reading), `${s.key} is summed up for drawing`);
+        assert.ok(sum.whole && sum.whole.gap && 'gapShare' in sum.whole.gap, `${s.key} carries the gap`);
         assert.ok(sum.layouts && Object.keys(sum.layouts).length === served.layouts.length, `${s.key} is divided under every layout`);
       }
     } finally { files.forEach(rm); }
@@ -151,13 +153,14 @@ module.exports = {
     const junk = runner.recordFile('ZZZJUNKUSDT');
     try {
       fs.mkdirSync(path.dirname(f), { recursive: true });
-      fs.writeFileSync(f, JSON.stringify({ v: 5, coin: 'ZZZOLDUSDT', read: true, provenance: { release: '3.123.0', capturedAt: '2026-09-13T00:00:00Z' }, holds: {} }));
+      // a shape-6 record has moves and no outcomes, so it cannot be drawn either
+      fs.writeFileSync(f, JSON.stringify({ v: 6, coin: 'ZZZOLDUSDT', read: true, provenance: { release: '3.124.0', capturedAt: '2026-09-13T00:00:00Z' }, shapes: {} }));
       fs.writeFileSync(junk, '{not json');
       const served = runner.coinsRecords();
       assert.ok(!served.records.some((r) => r.coin === 'ZZZOLDUSDT'), 'an old-shape record is not drawn as though current');
       const named = served.unreadable.find((u) => u.coin === 'ZZZOLDUSDT');
-      assert.ok(named && /record shape 5/.test(named.why) && new RegExp(`shape ${runner.RECORD_V}`).test(named.why), `named with both shapes: ${named && named.why}`);
-      assert.strictEqual(named.release, '3.123.0');
+      assert.ok(named && /record shape 6/.test(named.why) && new RegExp(`shape ${runner.RECORD_V}`).test(named.why), `named with both shapes: ${named && named.why}`);
+      assert.strictEqual(named.release, '3.124.0');
       const bad = served.unreadable.find((u) => u.coin === 'ZZZJUNKUSDT');
       assert.ok(bad && /could not be read back/.test(bad.why), 'an unparseable file is named too');
     } finally { rm(f); rm(junk); }

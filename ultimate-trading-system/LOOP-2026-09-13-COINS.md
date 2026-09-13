@@ -193,3 +193,27 @@ old lines replaced by fifteen aimed at the new.
   8643e3e; `SERVED.json` written from its output; `node tests/sweep-words.js
   --write` regenerated `SCREEN-WORDS.md` from that commit (10 tabs, 814
   control labels, 90 options); `test-sweepwords.js` and `test-help.js` green.
+
+## G. After the loop — 3.125.0, on a `GO NOW!` (2026-09-13)
+
+Not part of the loop; recorded here so the day's deploys are in one place.
+The owner, after seeing 3.124.0: shade the `test` box in the `70/15/15`
+strip; a start date in every box; and the gap, which they asked for after
+asking what a good general metric for aptness to dual member voting would be.
+COINS.md Part one section 4 carries the design.
+
+- **Record shape 7**: the trade's own outcome (`diffPct`, the chunk's move
+  from open to close) beside every decision. A shape-6 file is named and
+  read again — the owner's "code it right for this time" holds.
+- **The gap is one function**, `gapIn`, over any stretch of the bar: rising
+  minus falling, as a share that went up and as an average move; sit-out
+  decisions in neither side; thin side and run length beside it.
+- **One table per bar** replaced the three number lines: the whole bar, then
+  every part under each layout, fifteen named columns. Hover on each heading
+  says what the column is.
+- **The hover on a bar** now ends with how that decision's trade went.
+- **A defect found by the owner, NOT fixed, outside this batch**: a file
+  from record shape 3 is named `COIN__shape.json`, so a re-read writes
+  `COIN.json` beside it and the notice "read the coin again to replace it"
+  stays. Fixing it deletes a file on the box when the coin is read; that
+  waits for the owner's word.

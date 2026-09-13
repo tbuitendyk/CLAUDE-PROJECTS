@@ -73,25 +73,35 @@ function shapes() {
 //
 // The move is a percentage of the window's first price, so a ten per cent
 // move counts the same at fifty dollars and at five thousand.
+//
+// AND THE TRADE'S OWN OUTCOME RIDES WITH IT (owner, 2026-09-13: "add the gap
+// metric too"). `out` is the chunk's own diffPct -- how far price moved from
+// the open of the trade to its close, the number the training's label is made
+// from. It is what the gap below is read against: how differently a trade
+// turns out after a rising window than after a falling one. The window ends
+// at the open and the outcome starts there, so the two never overlap.
 function windowMoves(map, geometry) {
   const bracket = require('./bracket');
   const built = bracket.buildComboChunks({ trade: map }, geometry, false);
   const ts = [];
   const move = [];
+  const out = [];
   let skipped = 0;
   for (const c of built.chunks) {
-    if (c.c1 == null) continue;
+    if (c.c1 == null || c.diffPct == null) continue;
     const first = map.get(c.startTs);
     // A PRICE OF ZERO OR BELOW IS NOT A BASE A RETURN CAN BE MEASURED FROM.
     // That decision is skipped and counted, never invented.
     if (!first || !(first.open > 0)) { skipped++; continue; }
     ts.push(c.startTs);
     move.push(Number((((c.c1 - first.open) / first.open) * 100).toFixed(4)));
+    out.push(Number(Number(c.diffPct).toFixed(4)));
   }
   return {
     periods: ts.length,
     ts,
     move,
+    out,
     skipped,
     span: ts.length ? { fromTs: ts[0], toTs: ts[ts.length - 1] } : null,
   };
@@ -180,6 +190,45 @@ function countIn(reading, from, to) {
   return { decisions: Math.max(0, to - from + 1), rising, falling, sitOut, changes };
 }
 
+// THE GAP: how differently a trade turns out after a rising window than after
+// a falling one, over a stretch of the bar. Two readings of it, both shown:
+// the share of trades that went up after each kind of window, and the average
+// move from open to close after each. The gap is rising minus falling. Zero
+// means the two sets of members would learn the same lesson twice; wide means
+// the split has something to learn from. Sit-out decisions are in neither
+// side, because neither set would be trained to call on them.
+//
+// BESIDE IT, WHAT QUALIFIES IT. The thin side: the smaller of the two counts,
+// because a gap built on forty falling decisions is not a gap. The run length:
+// decisions per colour change, because a reading that flips every day is not
+// a regime. Neither is a cut-off; both are there to be read with the gap.
+function gapIn(reading, out, from, to) {
+  const side = { n: 0, up: 0, sum: 0 };
+  const r = { ...side }; const f = { ...side };
+  for (let i = from; i <= to; i++) {
+    const c = reading[i];
+    const o = Number(out[i]);
+    if (c === 'r') { r.n++; if (o > 0) r.up++; r.sum += o; } else if (c === 'f') { f.n++; if (o > 0) f.up++; f.sum += o; }
+  }
+  const fin = (x) => ({ n: x.n, shareUp: x.n ? x.up / x.n : null, meanOut: x.n ? x.sum / x.n : null });
+  const R = fin(r); const F = fin(f);
+  return {
+    afterRising: R,
+    afterFalling: F,
+    gapShare: R.n && F.n ? R.shareUp - F.shareUp : null,
+    gapMove: R.n && F.n ? R.meanOut - F.meanOut : null,
+    thinSide: R.n <= F.n ? { n: R.n, which: 'rising' } : { n: F.n, which: 'falling' },
+  };
+}
+function runLength(counts) {
+  return counts.decisions ? counts.decisions / (counts.changes + 1) : null;
+}
+// one stretch of the bar, everything the table prints for it
+function stretchOf(reading, out, from, to) {
+  const c = countIn(reading, from, to);
+  return { ...c, run: runLength(c), gap: gapIn(reading, out, from, to) };
+}
+
 // ONE SHAPE OF ONE COIN, SUMMED UP UNDER THE BAND: everything the screen draws
 // for one bar. The moves and the moments come back with it because the bar is
 // drawn from them and the hover reads them; the reading string is what colours
@@ -187,6 +236,7 @@ function countIn(reading, from, to) {
 function shapeSummary(shapeRec, band, layouts) {
   const move = Array.isArray(shapeRec && shapeRec.move) ? shapeRec.move : [];
   const ts = Array.isArray(shapeRec && shapeRec.ts) ? shapeRec.ts : [];
+  const out = Array.isArray(shapeRec && shapeRec.out) ? shapeRec.out : [];
   const n = move.length;
   const { yardstick, threshold, reading } = readingsUnderBand(move, band);
   let largestRise = null; let largestFall = null;
@@ -199,7 +249,7 @@ function shapeSummary(shapeRec, band, layouts) {
     if (!n) { byLayout[layout] = { why: 'no decisions to divide' }; continue; }
     const lp = layoutParts(n, layout);
     byLayout[layout] = lp.parts
-      ? { parts: lp.parts.map((p) => ({ ...p, ...countIn(reading, p.from, p.to) })) }
+      ? { parts: lp.parts.map((p) => ({ ...p, ...stretchOf(reading, out, p.from, p.to) })) }
       : { why: lp.why };
   }
   // THE MOMENTS GO OUT AS HOURS SINCE THE ONE BEFORE, and the moves to two
@@ -217,16 +267,17 @@ function shapeSummary(shapeRec, band, layouts) {
     yardstick,
     threshold,
     range: { largestRise, largestFall },
-    whole: countIn(reading, 0, n - 1),
+    whole: stretchOf(reading, out, 0, n - 1),
     layouts: byLayout,
     reading,
     t0: ts.length ? ts[0] : null,
     dt,
     move: move.map((m) => Number(Number(m).toFixed(2))),
+    out: out.map((o) => Number(Number(o).toFixed(2))),
   };
 }
 
 module.exports = {
   shapes, windowMoves, medianAbsMove, readingsUnderBand,
-  partsFor, layoutParts, countIn, shapeSummary,
+  partsFor, layoutParts, countIn, gapIn, runLength, stretchOf, shapeSummary,
 };
