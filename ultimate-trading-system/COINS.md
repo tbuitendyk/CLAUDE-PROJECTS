@@ -1,28 +1,340 @@
-# Coins — vetting a coin's history before anything is trained
+# Coins — a picture of each coin's history, for choosing how to train on it
 
-Dictated by the owner on 2026-09-12 and written down here in their words, then
-completed on the same day by folding in everything technical from
-`TREND-TRAINING-DESIGN.md` that belongs to this tab.
+**Redesigned by the owner on 2026-09-13.** This document is in two parts.
+**Part one is the design now.** Part two is the design of 2026-09-12, which
+filled this document until today; it is superseded, kept below for the record,
+and is not to be built from.
 
-**Nothing in this document is built.** The **Coins** tab exists as a screen with
-nothing on it, and every piece below waits for the owner, one at a time.
+**What is built and what is not.** Everything Part two describes was built and
+is on the box as of 3.123.0. **Nothing in Part one is built.** The code on the
+tab is the old design, and it stays exactly as it is until the owner authorises
+the change, task by task (RULE ZERO). The commit that wrote this changed this
+document and nothing else.
 
-**Three kinds of thing are in here and they are kept apart on purpose**, the
-same way `TREND-TRAINING-DESIGN.md` keeps them apart:
+Three kinds of thing are in Part one and they are kept apart on purpose:
 
-- **The owner's design** — sections 1 to 11. Recorded as given.
-- **Findings read out of the code** — section 14. Read out of the named file,
-  in the session that wrote it. Findings, not decisions.
-- **What I proposed** — section 15, and it is marked as mine at the top of it.
-  Recording is not agreeing.
+- **The owner's design** — sections 1 to 6. Recorded as given, in their words
+  where they gave them (2026-09-13).
+- **What I recommend** — marked as mine wherever it appears. Recording is not
+  agreeing, and none of it is decided until the owner says so.
+- **Findings read out of the code** — section 8. Read out of the named file in
+  the session that wrote this. Findings, not decisions.
 
-**Where this sits.** `TREND-TRAINING-DESIGN.md` is the design for sorting
-history into rising and falling stretches and training on it, spoken by the
-owner on 2026-09-09. This document is the **Coins** tab specifically: what that
-tab does, what it produces, and what it hands to **Sweep**. Everything about
-how the two sets of `members` are actually trained stays in that document.
+**Where this sits.** `TREND-TRAINING-DESIGN.md` (2026-09-09) is the design for
+sorting history into rising and falling stretches and training two sets of
+`members` on them. Part one replaces the "stretches" half of that: nothing is a
+stretch any more, and section 6 says exactly which of its decisions this
+reverses. How the two sets are trained still belongs to that document and to
+**Sweep**, and Part one crosses into it only as far as section 5.
 
 ---
+
+# Part one — the design (owner, 2026-09-13)
+
+## The words
+
+Every name below is either quoted from the code that draws a screen, in the
+session that wrote this, or is plainly marked as having no screen name yet.
+
+| Word here | Where it comes from |
+|---|---|
+| `coin` | On **Coins** and every other screen. |
+| `coins (blank = all N downloaded)` | The box on **Coins** today (`drawCoins()` in `public/construct.js`). N is the live count of coins downloaded on the box; the owner said "eighteen" and the screen says whatever the number is that day. |
+| `Read these coins` | The button on **Coins** today. |
+| `chunk shape` | On **Sweep**. Five choices, quoted from the **Sweep** list: `Daily 1-day`, `Daily 2-day`, `Daily 3-day`, `Daily 4-day`, `Weekly 8-day`. |
+| `window layout` | On **Sweep**. Two choices: `61/13/13/13 (sealed exam)` and `70/15/15`. |
+| train, test, held, reserve | The parts a coin's history divides into. The owner's four words, used exactly as they are (RULE ONE-D). |
+| decision | One moment a setup could open a trade: one chunk. Read from `lib/dataset.js`: on the four daily shapes, one a day, the trade opening at 01:00; on `Weekly 8-day`, one a week, opening Tuesday 03:00. The owner's word. **No screen name.** |
+| window | The run of hourly candles a decision reads before its trade opens: 24, 48, 72, 96 or 192 hours by `chunk shape` (`featureHours` in `lib/dataset.js`). The owner's phrase is "analysis window". **No screen name.** |
+| window move | How far price moved from the first candle of a decision's window to the price its trade opens at, as a percentage of the first. **No screen name.** |
+| rising, falling, sit out | The three things a decision can read as. `rising` and `falling` are printed on **Coins** today; **sit out** is the owner's phrase and is on no screen yet. |
+| the sit-out band | The one number that decides sit out. **No screen name yet.** |
+| dual member voting, traditional single member set voting | The owner's names for the two training modes on **Sweep**. **Neither is on a screen yet.** |
+| `member`, `members`, `committee` | On **Sweep** and **Boards**. One forecast, the group of them, and the whole group that votes on one coin. |
+| `weight ceiling` | On **Coins** today: the most any one row may weigh in training, as a multiple of the average. |
+
+## 1. What Coins is for
+
+The owner, 2026-09-13: *"the screen basically becomes a visual analysis of the
+variability of the coins and consistency to give us an idea about the aptness
+for dual member voting as opposed to the traditional single member set voting."*
+
+It is a picture, per coin, of what the reading **Sweep** will train on says
+across the coin's whole cached history, drawn before any sweep is spent. It
+decides nothing. Nothing on it refuses a coin — the 2026-09-12 ruling stands:
+*"We're not even blocking coins with this anyways. We're only reporting."*
+
+**What it is NOT for any more.** It does not find stretches, it does not tune a
+percentage, it does not store anything against a coin, and it has nothing to do
+with trade length. The owner, 2026-09-13: *"As far as I can see, there's no
+reason to work out the stretches by trade length. The whole point of this
+exercise is to determine to characterize the nature of the historic data that
+is being used to train the models."*
+
+## 2. The reading: one decision at a time, from what that decision can see
+
+**The point, in the owner's words.** *"The idea is to categorize the history
+into rising and falling sections so that for any given decision in the
+training, the section can be identified to sit out for rising trained models
+when the trend is down or sit out for down trained models when the trend is up.
+That's the point. and then to associate with those pieces of up and down
+trending history, the strength of the trend, relatively speaking, to be able to
+put a waiting [weighting] on the training. That's all we're doing here."*
+
+**Where the reading is taken.** *"It would be rather how much price has moved
+from the start of this examination period for the trade window in question. So,
+for example, on a four day chunk, there's going to be four in play potentially
+simultaneously at all times, and the start of the history characterization for
+each chunk is the start of that chunks analysis window. So the data is
+available in real time before the trade for training."*
+
+So, for every decision, on its own:
+
+- **The window move** is the price change from the first candle of the
+  decision's window to the price its trade opens at. Nothing after the open is
+  read. On `Daily 4-day` that is four days of price; on `Weekly 8-day`, eight.
+- **Rising** if the window move is up by more than the sit-out band. **Falling**
+  if down by more than it. **Sit out** otherwise.
+- **The strength** is the size of the window move, relative to the coin
+  (section 3).
+- **Every decision is read alone.** Neighbouring decisions overlap in what they
+  read — on a four-day shape four windows are open at once — and each is read
+  on its own window regardless.
+- **It is known live.** The same reading, from the same candles, at the moment
+  a real trade would open. That is what lets a set of `members` sit out at
+  trade time, which the old design could not do.
+
+**Nothing is stored and nothing is added to a chunk.** The owner: *"it does not
+need a new field. We have all the hourly candles and each unit being trained is
+going to know when the training starts for the next iteration."* Each unit
+being trained has its window's start time and the hourly candles, and works the
+window move out on the spot. **Coins** does the same when it draws.
+
+**Trade length does not enter.** The window belongs to the `chunk shape`; how
+long the trade is then held changes nothing about what the decision saw before
+it opened.
+
+## 3. The sit-out band: one number, every coin on its own scale
+
+The owner: *"we probably also wanna have a way to tune the sit out band, and
+that is something that probably should have one number that gets applied to all
+of the coins, but relative to that, each coin's variability. In other words, a
+five percent number, for example, might mean one thing on Bitcoin might mean
+something else on Doge, depending on the range of typical up and down
+movement."*
+
+- **One number, typed once.** It has one home. **Coins** draws with it and
+  **Sweep** trains with the same one, so the picture and the training can never
+  disagree. (The same principle the owner set on 2026-09-13 for the sealed
+  share: *"just do it once in one place, like good code design."*)
+- **Applied per coin, per `chunk shape`, against that coin's typical window
+  move.** The number is a share of the coin's own scale, not a percentage of
+  price.
+
+**The yardstick — MY RECOMMENDATION, not decided.** The owner said *"as a
+percentage or median however you think is best to handle that against the
+history data"*. My answer: the yardstick is the **median** of the coin's window
+moves over its whole cached history for that `chunk shape`, ignoring direction.
+Median rather than mean because a few wild days do not move it. The band is
+then a share of that median: a setting of 50 means a decision sits out when its
+window moved less than half what this coin typically moves over that window.
+The median itself is worth printing beside each bar, so the setting can be read
+against the number it is applied to. **This is mine until the owner says
+otherwise.**
+
+**It is NOT the band that already exists in the code.** `balancedBandPct` in
+`lib/dataset.js` is a band on the trade's OUTCOME — the move from open to close
+— and it makes the row's label "nothing". The sit-out band is on the WINDOW,
+before the open. Two different bands on two different stretches of time. They
+must not be merged and neither replaces the other.
+
+## 4. The screen
+
+**Three controls, and nothing else.** The owner: *"we're gonna be looking for
+probably three controls on the coins tab."*
+
+1. `coins (blank = all N downloaded)` — kept exactly as it is. Blank reads every
+   coin downloaded on the box, whatever that count is on the day.
+2. **The sit-out band** — one number, section 3. No name yet.
+3. `Read these coins` — kept exactly as it is. *"which could be just one or the
+   whole batch, whatever whatever is in the box."*
+
+No ordering control, no `window layout` control, no `chunk shape` control: every
+shape and both layouts are always drawn.
+
+**Per coin, five bars, one per `chunk shape`.** The owner: *"one record per
+shape"*, and *"five colored bars that just give us the decisions that would be
+made across the entire history depicted with probably red, green, and black for
+sit out."*
+
+- Each bar is the coin's whole cached history, left to right.
+- **One coloured unit is one decision**: green for rising, red for falling,
+  black for sit out. On each daily shape that is seven decisions a week; on
+  `Weekly 8-day`, one. So the bar lines up one for one with the rows training
+  will see. The owner: *"that could be lined up to the actual trading decisions
+  that'll be made under the training as well."*
+- **Above each bar**, division lines marking `70/15/15`: train, test, held.
+- **Below each bar**, shaded bars marking `61/13/13/13 (sealed exam)`: train,
+  test, held, reserve. The owner: *"seventy fifteen fifteen on top and even
+  just shaded bars underneath each colored bar that show the sixty one,
+  thirteen, thirteen, thirteen layout, sealed exam layout."*
+
+**Beside each bar, the numbers.** The owner: *"statistics on the number of
+changes and the ranges."*
+
+- Per part of the history, under each layout: how many decisions read rising,
+  how many falling, how many sit out.
+- How many times the colour changes along the bar.
+- The range of the window moves: the largest rise and the largest fall.
+- (Mine, section 3:) the median the band is read against.
+
+**Why five bars and not three.** The owner first said three records — one and
+two day, three and four day, eight day — counting the three trade lengths,
+which is fifteen starts a week. The correction to five came after this finding:
+`Daily 1-day` and `Daily 2-day` open their trades at the same moments but read
+different windows, 24 hours against 48, so the same moment reads differently
+under each. Same for three and four day. One bar per shape.
+
+**Everything else on the tab today goes.** The walk, `fall-back %`, `changes of
+direction`, `changes of direction wanted`, `try from, %`, `try to, %`,
+`step, %`, `drift parts`, `shuffles`, `most one-sided stretch`, `drift`,
+`cannot tell`, `window layout`, `order by`, the `trade length` rows, the
+`read over` column, the per-part stretch counts under each row, the training
+weight summary, and the record written to disk per coin. All of it belongs to
+the design in Part two. What `weight ceiling` becomes is in section 5.
+
+## 5. What Sweep does with it
+
+This is the boundary, not the whole. How two sets of `members` are trained
+stays with `TREND-TRAINING-DESIGN.md` and **Sweep**; what follows is only what
+the reading above hands over.
+
+**Two training modes.** The owner: *"So we have the traditional training mode,
+which just trains one set of members to try to detect up and down both
+together. And then we have another one that is a more advanced training mode
+where we just check a box, and that box means characterize this particular
+decision that is under the microscope right now as being trending up, trending
+down, and perhaps with a band of sit out as well. And then training specific
+models for that characterization."*
+
+- **Off** — traditional single member set voting. What runs today: one set of
+  `members`, trained on every row, voting everywhere. Unchanged.
+- **On** — dual member voting. One box on **Sweep**, no name yet. With it on:
+  - every row is read as in section 2, from its own window, with the one
+    sit-out band of section 3;
+  - **two sets of `members`.** The rising set's target is the row's label where
+    the decision reads rising, and "no call" where it reads falling or sit out.
+    The falling set is the mirror;
+  - **the weight** of a row is its window move's strength, brought to an average
+    of 1 under the `weight ceiling`, which moves from **Coins** to **Sweep**
+    with it;
+  - **voting:** the set matching the decision's reading votes; the other sits
+    out; in the band, neither.
+- **Live** is the same reading at the open, from the same candles. Nothing has
+  to be detected by a model; the reading is arithmetic on the window.
+
+**Cost, unmeasured, as before.** Two sets is twice the stage 1 training, and
+stage 3 grows worse than twice because the count of `members` sets how many
+rungs the agreement dial offers.
+
+## 6. What this reverses, and what stands
+
+**Reversed by the owner, 2026-09-13.** Each of these was the owner's own
+decision on 2026-09-12, and each is now the other way:
+
+- **"Nothing reads the type at trade time."** Something does now. That rule was
+  safe to make because the old type LOOKED FORWARD — a stretch was typed by
+  where price went next — so reading it live would have leaked. The new reading
+  looks only back, at the window, so reading it live leaks nothing. The reason
+  for the rule is gone with the rule.
+- **"No third bucket; flatness is a weight, not a label."** There is a third
+  reading now: sit out. Flat was rejected because *"the typing has hindsight
+  and a `member` does not"*. The new reading has no hindsight, so the objection
+  that killed it does not apply.
+- **The stretches.** The fall-back walk, the percentage solved per coin, the
+  count of changes wanted, the search over a range, cutting stretches at every
+  boundary, stubs and the median stub rule, turns counted directly. All gone:
+  nothing is a stretch any more. Each decision is read alone.
+- **The training weight from the trade's own outcome** becomes the weight from
+  the window move. Still one number per row, still average 1 under a ceiling,
+  still one vector shared by both sets.
+- **A record per coin on disk, per hold** becomes nothing on disk. Read live
+  from the cached candles every time the screen draws.
+- **Reading per trade length** is gone from this tab entirely.
+- **The three readings per coin, the two traditional numbers, the shuffles and
+  the can-tell mark** are gone.
+
+**Standing, untouched by this redesign:**
+
+- This tab REPORTS and never refuses. No cut-offs anywhere on it.
+- The word is `coin`, not `pair`.
+- The train and test boundaries are fixed; nothing on this tab moves them.
+- The budget rule does not apply to this tab; it reads all of the history.
+- Sweep's coin list comes out of Coins rather than being typed in — the owner
+  has not said otherwise, so it stands.
+- The starting anchors stay where the engine pins them.
+- A blank coin box means every coin downloaded on the box.
+
+## 7. Not decided, and whose call it is
+
+- **The yardstick for the sit-out band** (section 3). Mine is the median of the
+  coin's window moves for that shape. The owner's call.
+- **The name of the sit-out band control** and of the box on **Sweep**. Named
+  when built, deployed, and the word list regenerated from what the box serves
+  (RULE ONE-A).
+- **Where on the screen the numbers sit** relative to the bars. Presentation
+  only.
+- **Whether the bars should also show strength**, a deeper shade for a bigger
+  window move. Not asked for; not proposed; recorded so nobody adds it
+  unasked.
+- **Every cost.** Not one has been measured.
+
+## 8. Findings read out of the code, 2026-09-13
+
+Every one read out of the named file in the session that wrote this. Findings,
+not decisions.
+
+1. **The chunk builder already holds everything the reading needs.**
+   `buildChunks` in `lib/dataset.js` takes the run of hourly candles from the
+   window's start over `featureHours`, and stores the trade's opening price on
+   the chunk as `c1`. The move between the first of those candles and `c1` is
+   not stored, and per the owner it does not need to be: whoever has the
+   window's start time and the hourly map can work it out.
+2. **The features never carry the whole-window move.** Rule 2 in
+   `lib/features.js`: every window a feature reads is a quarter or a half of
+   the chunk, never the whole. So nothing in training sees this number today,
+   and it is not a leak to add the reading: it uses only what the row already
+   could see.
+3. **The weight arithmetic can be reused as written.** `trainingWeights` in
+   `lib/coins.js` takes any list of moves, brings the average to 1 under a
+   ceiling by bisection, and says so when no ceiling can. Hand it window moves
+   instead of trade outcomes and it does section 5's job. Whether it stays in
+   that file is a build choice.
+4. **There is already a band in the code and it is a different band.**
+   `balancedBandPct` in `lib/dataset.js` is on the trade's outcome, after the
+   close (section 3). Not the sit-out band.
+5. **Five shapes, three holds.** `lib/dataset.js` lines 32–36: `Daily 1-day`
+   and `Daily 2-day` both open at hour 25 and 49 past a daily start, 01:00 on
+   the clock, but read 24 and 48 candles. `Daily 3-day` and `Daily 4-day` the
+   same at 72 and 96. `Weekly 8-day` reads 192 and opens Tuesday 03:00. That is
+   why section 4 has five bars.
+6. **Everything section 4 deletes is live code today**, in `lib/coins.js`,
+   `lib/coinsrun.js`, the `Coins` part of `public/construct.js`, its help
+   entries in `public/help-content.js`, the `api/coins/*` routes in
+   `server.js`, and the tests `tests/test-coins.js`, `tests/test-coinsrun.js`
+   and `tests/ui-coins.js`. Deleting it is a change to `lib/` and `public/`
+   and moves the release number (RULE ONE-C, second digit: a control goes and
+   a control arrives). It waits for its own `GO NOW!`.
+
+---
+
+# Part two — the design of 2026-09-12, SUPERSEDED on 2026-09-13
+
+**Everything from here to the end of the file is the design that Part one
+replaced.** It is kept because it was built, it is on the box as of 3.123.0,
+and the decisions in it that still stand are listed in Part one section 6. Do
+not build from it. Where it says "this tab" it means the tab as it was, and
+where it says a thing is "the whole point" it means it was.
 
 ## Read this first: there are almost no screen words yet
 
