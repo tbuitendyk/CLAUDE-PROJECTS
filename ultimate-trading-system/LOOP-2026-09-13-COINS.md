@@ -250,3 +250,19 @@ should be. GO NOW! with deploy."* Both halves built:
   **The fifteen table headings are still not**: the generator reads labels
   out of template literals, and the headings were written in single-quoted
   strings joined with `+`. Fixed in 3.126.1, below.
+
+## I. 3.126.1 — the headings on the list (2026-09-13)
+
+- The fifteen headings written as one template literal. Checked against the
+  working tree first (all fifteen, `whole` and `Remove these files` collected
+  for Coins), then deployed 06:55 UTC (`busy: none`, health check OK, the box
+  serves b122ba9). `SCREEN-WORDS.md` regenerated: 827 control labels, and all
+  seventeen are on the Coins list.
+- **A finding for the owner, not fixed** (RULE ZERO): the check that walks
+  from the page to the list, `theWordListSeesEveryVisibleLabel`, stayed green
+  through both misses. It reads template literals the same way the generator
+  does, so markup written in a quoted string is invisible to both, and a hole
+  of that shape is caught only by reading the regenerated list against the
+  screen by hand, as here. Closing it means teaching that check to read quoted
+  strings that carry tags, which is a change to the tests and theirs to
+  authorise.

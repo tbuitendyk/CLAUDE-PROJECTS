@@ -249,11 +249,18 @@ however it should be."* Both:
   beside the note that names it and removes exactly those files, found again
   on the box at the moment of the press, never taken from the page. A record
   this release can draw is never touched, and it refuses while a read is
-  running. Its label is quoted from the word list once 3.126.0 is served.
+  running. It is labelled `Remove these files`, quoted from the word list
+  regenerated from the deployed screen.
 
 **And the table's headings are markup the word list can see.** 3.125.0 built
 them from a list inside a template, so fifteen words were on the owner's
-screen and on no list — the hole RULE ONE-A names. Written out as tags now.
+screen and on no list — the hole RULE ONE-A names. 3.126.0 wrote them out as
+quoted strings and the list still could not see them; 3.126.1 writes them as
+one template literal, and the list regenerated from the served screen carries
+all fifteen: `part`, `starts`, `decisions`, `rising`, `falling`, `sit out`,
+`thin side`, `changes`, `run`, `up after rising`, `up after falling`,
+`gap (points)`, `move after rising`, `move after falling`, `gap (move)`, and
+the row `whole`.
 
 **Everything else on the tab today goes.** The walk, `fall-back %`, `changes of
 direction`, `changes of direction wanted`, `try from, %`, `try to, %`,

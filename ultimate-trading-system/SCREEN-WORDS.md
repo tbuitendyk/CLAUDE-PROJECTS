@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **5592905cfdf5 — what the box is serving**, not from the working tree.
+Generated from **b122ba913193 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,7 +89,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (36)
+## What the controls are called (51)
 
 - `-hour window · one decision a`
 - `— press`
@@ -101,26 +101,41 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Below it,`
 - `black`
 - `candles`
+- `changes`
 - `Coins`
 - `coins (blank = all`
 - `could not be read:`
 - `decision`
 - `decision's own window,`
+- `decisions`
 - `decisions from`
 - `downloaded)`
+- `falling`
+- `gap (move)`
+- `gap (points)`
 - `green`
 - `It is a share`
 - `more month(s) cached since`
+- `move after falling`
+- `move after rising`
 - `no coin has been read`
 - `One coloured unit is one`
+- `part`
 - `read`
 - `Read these coins`
 - `red`
 - `Remove these files`
 - `removes exactly the`
+- `rising`
+- `run`
+- `sit out`
+- `starts`
 - `Stop`
 - `the last reading stopped:`
+- `thin side`
 - `to`
+- `up after falling`
+- `up after rising`
 - `UTC · release`
 - `where it fell,`
 - `where it moved`
@@ -149,10 +164,10 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - file(s) on disk this release cannot draw:
 - file(s) named above and nothing else
 
-## Every word, flat (142)
+## Every word, flat (154)
 
 ```
--hour Above above across again. all and apt at band bar be been Below better black blank cached candles cannot Change chunk coin coin. Coins coins coloured could decision decisions disk downloaded draw dual each either else every exactly exam fell file files for from green half has held held. here history is it It judge last left less little median member month more move moved moves named no not Nothing nothing number number. of on one One opening or out out. over own per picture press price read Read reading recolours red refuses release Remove removes reserve. rose rows same scale. sealed set shape share since single sit sit-out sits Stop stopped Sweep test than that the The these this to too traditional train trains typically under unit UTC voting voting. way what when where whether whole window window. with would
+-hour Above above across after again. all and apt at band bar be been Below better black blank cached candles cannot Change changes chunk coin coin. Coins coins coloured could decision decisions disk downloaded draw dual each either else every exactly exam falling fell file files for from gap green half has held held. here history is it It judge last left less little median member month more move moved moves named no not Nothing nothing number number. of on one One opening or out out. over own part per picture points press price read Read reading recolours red refuses release Remove removes reserve. rising rose rows run same scale. sealed set shape share side since single sit sit-out sits starts Stop stopped Sweep test than that the The these thin this to too traditional train trains typically under unit up UTC voting voting. way what when where whether whole window window. with would
 ```
 
 ---
