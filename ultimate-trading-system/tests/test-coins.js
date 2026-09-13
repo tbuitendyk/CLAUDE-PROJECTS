@@ -9,7 +9,7 @@ const { assert } = require('./helpers');
 const {
   typeStretches, searchFallback,
   cutAtBoundaries, medianFullLengths, countStretches, turnsIn,
-  splitOfTime, layoutWidths, worstTailSlice, balanceDrift, shuffledCopy, canTheReadingTell, traditionalReading, trainingWeights,
+  splitOfTime, layoutWidths, mostOneSidedStretch, balanceDrift, shuffledCopy, canTheReadingTell, traditionalReading, trainingWeights,
   partsFor, checkedParts, coinReading,
 } = require('../lib/coins');
 
@@ -203,7 +203,7 @@ module.exports = {
       typeStretches(prices, 5),
       searchFallback(prices, { target: 999 }),
       splitOfTime(lm),
-      worstTailSlice(lm, layoutWidths(lm.length)),
+      mostOneSidedStretch(lm, layoutWidths(lm.length)),
       balanceDrift(lm, 8),
       traditionalReading(lm, { driftParts: 8 }),
       trainingWeights(lm, { cap: 20 }),
@@ -427,7 +427,7 @@ module.exports = {
   // ---- C4: the traditional score ----------------------------------------------
 
   // C4.1, pre-registered: on a span balanced overall whose last 13% only rises,
-  // the worst tail slice reads at or near 0 while the whole-span balance reads
+  // the most one-sided stretch reads at or near 0 while the whole-span balance reads
   // near 0.5. If they move together, the number is measuring nothing.
   theWorstTailSliceSeesAOneWayTailThatTheWholeSpanBalanceHides() {
     const moves = [];
@@ -437,7 +437,7 @@ module.exports = {
     assert.ok(Math.abs(whole.balance - 0.5) < 0.07,
       `the whole span must still read near balanced, got ${whole.balance}`);
     const widths = layoutWidths(moves.length);
-    const worst = worstTailSlice(moves, widths);
+    const worst = mostOneSidedStretch(moves, widths);
     assert.ok(worst.balance <= 0.02,
       `the worst slice must see the one-way tail, got ${worst.balance}`);
     assert.ok(worst.from >= 160, 'and it must point AT the tail, not somewhere else');
@@ -446,13 +446,13 @@ module.exports = {
     const even = [];
     for (let i = 0; i < 200; i++) even.push(i % 2 ? 1 : -1);
     assert.ok(Math.abs(splitOfTime(even).balance - 0.5) < 1e-9);
-    assert.ok(worstTailSlice(even, layoutWidths(even.length)).balance >= 0.45, 'nothing one-way anywhere, so no slice is one-way');
+    assert.ok(mostOneSidedStretch(even, layoutWidths(even.length)).balance >= 0.45, 'nothing one-way anywhere, so no slice is one-way');
 
     // THE WIDTHS ARE THE CALLER'S. Hand it a width and it must walk THAT width,
     // not one of its own choosing. (The reviewer's mutation "ignore the caller's
     // widths" was green: nothing checked.)
     for (const w of [4, 7, 31]) {
-      const got = worstTailSlice(moves, [w]);
+      const got = mostOneSidedStretch(moves, [w]);
       assert.strictEqual(got.width, w, `asked for a window of ${w} and got ${got.width}`);
       assert.strictEqual(got.to - got.from + 1, w, 'the slice named must be the width asked for');
       assert.deepStrictEqual(got.widths, [{ width: w }], 'the record of what was walked must name that width');
@@ -464,7 +464,7 @@ module.exports = {
     const hidden = [];
     for (let i = 0; i < 60; i++) hidden.push(i % 2 ? 1 : -1);
     for (let i = 0; i < 5; i++) hidden[31 + i] = 1;             // one-way run at 31..35, an odd start
-    const found = worstTailSlice(hidden, [5]);
+    const found = mostOneSidedStretch(hidden, [5]);
     assert.strictEqual(found.from, 31, `the worst five-wide window starts at 31, got ${found.from}`);
     assert.strictEqual(found.balance, 0, 'and it runs entirely one way');
 
@@ -477,12 +477,12 @@ module.exports = {
     assert.strictEqual(splitOfTime(still).balance, 0.5, 'and those four are evenly split');
 
     // NO WIDTH IS NO READING, and it says so rather than guessing.
-    const none = worstTailSlice(moves, []);
+    const none = mostOneSidedStretch(moves, []);
     assert.deepStrictEqual({ balance: none.balance, width: none.width, widths: none.widths },
       { balance: null, width: null, widths: [] }, 'with no width to walk there is no reading');
 
     // EVERY WIDTH WALKED IS RECORDED, whether or not it produced the answer.
-    const flat = worstTailSlice(new Array(60).fill(0), [8, 9]);
+    const flat = mostOneSidedStretch(new Array(60).fill(0), [8, 9]);
     assert.deepStrictEqual(flat.widths, [{ width: 8 }, { width: 9 }],
       'a width that was walked and found nothing must still be in the record of what was walked');
   },
@@ -503,7 +503,7 @@ module.exports = {
     assert.strictEqual(layoutWidths.length, 1, 'the widths are a function of the period count alone');
     const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'coins.js'), 'utf8');
     const at = src.indexOf('function layoutWidths');
-    const body = src.slice(at, src.indexOf('function worstTailSlice', at));
+    const body = src.slice(at, src.indexOf('function mostOneSidedStretch', at));
     // ASKED AS A VALUE, NOT AS A SPELLING. This used to match /0\.13|0\.15/,
     // and `.13`, `0.130` and `13e-2` are the same number to the engine and
     // invisible to that -- so the second copy this exists to stop could be
@@ -513,8 +513,8 @@ module.exports = {
     const typedIn = (chunk) => numberLiteralsIn(chunk).filter((v) => SHARES.includes(v));
     assert.deepStrictEqual(typedIn(body), [],
       'the shares are typed in layoutWidths, which is the second copy this exists to stop');
-    assert.deepStrictEqual(typedIn(src.slice(src.indexOf('function worstTailSlice'), src.indexOf('function balanceDrift'))), [],
-      'the shares are typed in worstTailSlice');
+    assert.deepStrictEqual(typedIn(src.slice(src.indexOf('function mostOneSidedStretch'), src.indexOf('function balanceDrift'))), [],
+      'the shares are typed in mostOneSidedStretch');
   },
 
   // C4.3: the traditional numbers read an UNTUNED direction. Re-tune the
@@ -523,11 +523,11 @@ module.exports = {
     const { prices } = builtPath(9, { swing: 17, legLen: 11 });
     const moves = [];
     for (let i = 1; i < prices.length; i++) moves.push(((prices[i] - prices[i - 1]) / prices[i - 1]) * 100);
-    const before = { worst: worstTailSlice(moves).balance, drift: balanceDrift(moves, 8).drift };
+    const before = { worst: mostOneSidedStretch(moves).balance, drift: balanceDrift(moves, 8).drift };
     // the tuned typing changes wildly across these percentages
     const counts = [3, 9, 20].map((p) => typeStretches(prices, p).turns.length);
     assert.ok(new Set(counts).size > 1, 'the tuned typing must actually differ across these percentages');
-    const after = { worst: worstTailSlice(moves).balance, drift: balanceDrift(moves, 8).drift };
+    const after = { worst: mostOneSidedStretch(moves).balance, drift: balanceDrift(moves, 8).drift };
     assert.deepStrictEqual(after, before, 'the traditional numbers must not read the tuned percentage');
   },
 
@@ -1328,25 +1328,25 @@ module.exports = {
     // THE CASE THE RULE WAS WRITTEN TO CATCH. Forty periods cannot say anything
     // about a coin, however one-way it really is.
     const short = tell(trended(40));
-    assert.strictEqual(short.worstTailSlice.canTell, false,
+    assert.strictEqual(short.mostOneSidedStretch.canTell, false,
       'forty periods must not be trusted to tell a one-way coin from any other');
-    assert.ok(short.worstTailSlice.why && /too few/.test(short.worstTailSlice.why),
-      `and it must say why in a sentence: ${short.worstTailSlice.why}`);
-    assert.ok(short.worstTailSlice.why.includes('40 periods'), 'the sentence must name how much history there is');
+    assert.ok(short.mostOneSidedStretch.why && /too few/.test(short.mostOneSidedStretch.why),
+      `and it must say why in a sentence: ${short.mostOneSidedStretch.why}`);
+    assert.ok(short.mostOneSidedStretch.why.includes('40 periods'), 'the sentence must name how much history there is');
 
     // AND THE CASE IT MUST NOT CATCH. Two thousand periods with the same real
     // run in them is a reading worth having, and must not be marked.
     const long = tell(trended(2040));
-    assert.strictEqual(long.worstTailSlice.canTell, true,
+    assert.strictEqual(long.mostOneSidedStretch.canTell, true,
       'two thousand periods with a real one-way run in them must be trusted');
-    assert.strictEqual(long.worstTailSlice.why, null, 'and must carry no warning sentence');
-    assert.ok(long.worstTailSlice.value < long.worstTailSlice.low,
+    assert.strictEqual(long.mostOneSidedStretch.why, null, 'and must carry no warning sentence');
+    assert.ok(long.mostOneSidedStretch.value < long.mostOneSidedStretch.low,
       'it is trusted because the coin scores outside everything a no-trend version of itself scored');
 
     // A COIN WITH NO TREND AT ALL is never tellable at any length, which is
     // right: there is nothing in it to tell.
     for (const n of [40, 300, 2040]) {
-      assert.strictEqual(tell(fair(n)).worstTailSlice.canTell, false,
+      assert.strictEqual(tell(fair(n)).mostOneSidedStretch.canTell, false,
         `a coin with no trend at ${n} periods must never read as telling anything`);
     }
 
@@ -1383,7 +1383,7 @@ module.exports = {
     for (let i = 0; i < 220; i++) prices.push(100 * (1.01 ** (i % 40)));
     const mv = prices.map((p, i) => (i ? ((p - prices[i - 1]) / prices[i - 1]) * 100 : 0.1));
     const trad = traditionalReading(mv, { driftParts: 8, shuffles: 40 });
-    assert.ok(trad.canTell && trad.canTell.worstTailSlice && trad.canTell.drift,
+    assert.ok(trad.canTell && trad.canTell.mostOneSidedStretch && trad.canTell.drift,
       'the reading the screen draws does not carry whether its numbers can tell anything');
     assert.strictEqual(trad.canTell.shuffles, 40, 'and it is worked out at the count the caller set');
   },
@@ -1405,7 +1405,7 @@ module.exports = {
     const hold = (key, hours, periods) => ({
       hold: { key, hours, every: 'day', at: '01:00', startsPerWeek: 7 },
       periods, read: true, why: null, span: { fromTs: 1, toTs: 2 },
-      traditional: { worstTailSlice: { balance: 0.4 }, drift: { drift: 0.01 } }, readings: { reserve61: {} },
+      traditional: { mostOneSidedStretch: { balance: 0.4 }, drift: { drift: 0.01 } }, readings: { reserve61: {} },
     });
     const rows = cRows([
       { coin: 'AAAUSDT', provenance: { release: 'x' }, params: { target: 6 }, why: null,
@@ -1445,21 +1445,21 @@ module.exports = {
     const esc = (x) => String(x).replace(/"/g, '&quot;');
     // eslint-disable-next-line no-eval
     const cCannot = eval(`(${fn.trim()})`);
-    const trad = (worst, drift) => ({ canTell: { worstTailSlice: worst, drift } });
+    const trad = (worst, drift) => ({ canTell: { mostOneSidedStretch: worst, drift } });
     const cannot = { canTell: false, why: 'the reason the owner reads' };
     const can = { canTell: true, why: null };
-    const out = cCannot(trad(cannot, can), 'worstTailSlice');
+    const out = cCannot(trad(cannot, can), 'mostOneSidedStretch');
     assert.ok(/cannot tell/.test(out), `the mark says nothing the owner can read: ${JSON.stringify(out)}`);
     assert.ok(out.includes('the reason the owner reads'),
       'the mark carries no reason, so it cannot be looked into');
     assert.strictEqual(cCannot(trad(cannot, can), 'drift'), '',
       'a number that CAN tell something is marked anyway, so the mark means nothing');
-    assert.strictEqual(cCannot(trad(can, can), 'worstTailSlice'), '', 'every number is marked');
+    assert.strictEqual(cCannot(trad(can, can), 'mostOneSidedStretch'), '', 'every number is marked');
     assert.strictEqual(cCannot(null, 'drift'), '', 'a coin with no reading at all is marked');
     assert.strictEqual(cCannot({}, 'drift'), '', 'a reading with no answer on it is marked');
     // and it is drawn beside BOTH numbers, not just one
     const draw = page.slice(page.indexOf('async function drawCoins()'));
-    assert.ok(/cCannot\(r\.traditional, 'worstTailSlice'\)/.test(draw), 'the worst tail slice is never marked');
+    assert.ok(/cCannot\(r\.traditional, 'mostOneSidedStretch'\)/.test(draw), 'the most one-sided stretch is never marked');
     assert.ok(/cCannot\(r\.traditional, 'drift'\)/.test(draw), 'the drift is never marked');
     // the shuffle count is a control like every other input here (RULE FIVE)
     assert.ok(/id="cShuf"/.test(draw), 'the number of shuffles is not something the owner can set');

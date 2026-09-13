@@ -872,8 +872,8 @@ window.HELP = {
         + 'least that many. The walk beside each coin shows the count at every percentage tried, so you can see '
         + 'whether a coin sits steady across a band of them or balanced on an edge.'],
       ['The two numbers that do not read the tuned percentage',
-        'Worst tail slice and drift are worked out from a plain, untuned reading of direction, so re-tuning the '
-        + 'percentage above never moves them. Worst tail slice slides a window the size the window layouts '
+        'Most one-sided stretch and drift are worked out from a plain, untuned reading of direction, so re-tuning the '
+        + 'percentage above never moves them. Most one-sided stretch slides a window the size the window layouts '
         + 'actually carve across the whole span and reports the most one-sided any position turns out to be — a '
         + 'low number means somewhere in this history there is a stretch that runs all one way, which is the case '
         + 'that has been hard to get good results from. Drift is how much that balance moves from part to part, '
@@ -897,7 +897,7 @@ window.HELP = {
         + 'dozen periods can tell nothing and a few hundred can tell plainly.'],
       ['Reading these numbers between one coin and another',
         'Both untuned numbers measure over a share of the span, so both move with how much history a coin has. '
-        + 'A coin with a few dozen periods reads worse on worst tail slice and better on drift than the same coin '
+        + 'A coin with a few dozen periods reads worse on most one-sided stretch and better on drift than the same coin '
         + 'with a thousand — at forty periods most coins with no trend at all score the worst value worst tail '
         + 'slice has. Two coins with different amounts of cached history cannot be compared on either number, '
         + 'which is why the periods column sits beside them.'],

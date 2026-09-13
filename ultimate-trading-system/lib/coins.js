@@ -317,7 +317,7 @@ function layoutWidths(periods) {
   return seen.sort((a, b) => a - b);
 }
 
-// NUMBER ONE OF THE TRADITIONAL SCORE -- the worst tail slice. Slide a window
+// NUMBER ONE OF THE TRADITIONAL SCORE -- the most one-sided stretch. Slide a window
 // the size the layouts actually carve across the whole span and take the WORST
 // balance found anywhere. It answers the failure the owner saw directly:
 // somewhere in this history there is a stretch that runs all one way.
@@ -328,7 +328,7 @@ function layoutWidths(periods) {
 // lands one-way often: at forty periods nearly three quarters of trendless
 // coins score exactly zero, at a thousand periods none of them do. Two coins
 // with different amounts of cached history are NOT comparable on this number.
-function worstTailSlice(moves, widths) {
+function mostOneSidedStretch(moves, widths) {
   const list = Array.isArray(widths) ? widths : [];
   let worst = null;
   const at = [];
@@ -553,7 +553,7 @@ function checkedParts(n, layout) {
 // If every shuffle gives the SAME answer as every other, the number is not
 // reading the coin at all -- it is a constant of how much history there is, and
 // it cannot separate this coin from any other of that length. That is the whole
-// test and it has no threshold in it. At forty periods the worst tail slice
+// test and it has no threshold in it. At forty periods the most one-sided stretch
 // reads 0 for the coin and 0 for every shuffle of it; past a few hundred the
 // shuffles spread out and it separates cleanly.
 //
@@ -572,13 +572,13 @@ function shuffledCopy(arr, seed) {
 function canTheReadingTell(moves, opts = {}) {
   const tries = Math.max(2, Math.floor(Number(opts.shuffles) || 0) || 200);
   const widths = layoutWidths(moves.length);
-  const realWorst = worstTailSlice(moves, widths).balance;
+  const realWorst = mostOneSidedStretch(moves, widths).balance;
   const realDrift = balanceDrift(moves, opts.driftParts).drift;
   const worst = [];
   const drift = [];
   for (let i = 0; i < tries; i++) {
     const mixed = shuffledCopy(moves, 20260912 + i);
-    const w = worstTailSlice(mixed, widths).balance;
+    const w = mostOneSidedStretch(mixed, widths).balance;
     const d = balanceDrift(mixed, opts.driftParts).drift;
     if (w != null) worst.push(w);
     if (d != null) drift.push(d);
@@ -625,7 +625,7 @@ function canTheReadingTell(moves, opts = {}) {
     };
   };
   return {
-    worstTailSlice: say(realWorst, worst, 'the worst tail slice'),
+    mostOneSidedStretch: say(realWorst, worst, 'the most one-sided stretch'),
     drift: say(realDrift, drift, 'the drift'),
     periods: moves.length,
     shuffles: tries,
@@ -635,12 +635,12 @@ function canTheReadingTell(moves, opts = {}) {
 function traditionalReading(moves, opts = {}) {
   return {
     whole: splitOfTime(moves),
-    worstTailSlice: worstTailSlice(moves, layoutWidths(moves.length)),
+    mostOneSidedStretch: mostOneSidedStretch(moves, layoutWidths(moves.length)),
     drift: balanceDrift(moves, opts.driftParts),
     // whether either number can tell this coin apart from one with no trend at
     // all, at this much history -- derived, never a typed line (see above)
     canTell: canTheReadingTell(moves, opts),
-    // NAMED, BECAUSE BOTH NUMBERS MOVE WITH IT. The window the worst tail slice
+    // NAMED, BECAUSE BOTH NUMBERS MOVE WITH IT. The window the most one-sided stretch
     // slides is a share of the span and the drift's parts are a share of the
     // span, so a coin with less cached history is measured over shorter runs
     // and reads worse on one and better on the other. Two coins with different
@@ -786,7 +786,7 @@ function coinReading(prices, moves, opts = {}) {
 module.exports = {
   typeStretches, searchFallback,
   cutAtBoundaries, medianFullLengths, countStretches, turnsIn,
-  splitOfTime, layoutWidths, worstTailSlice, balanceDrift, shuffledCopy, canTheReadingTell, traditionalReading,
+  splitOfTime, layoutWidths, mostOneSidedStretch, balanceDrift, shuffledCopy, canTheReadingTell, traditionalReading,
   trainingWeights,
   partsFor, checkedParts, coinReading,
 };

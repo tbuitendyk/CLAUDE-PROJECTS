@@ -7808,7 +7808,7 @@ function cPollRedraw() {
 // a worst-first list, which is where "not measured" used to land.
 const C_ORDERS = [
   { value: 'coin', label: 'coin', dir: 0, of: () => null },
-  { value: 'tail', label: 'worst tail slice — most one-sided first', dir: 1, of: (r) => (r.traditional ? r.traditional.worstTailSlice.balance : null) },
+  { value: 'tail', label: 'most one-sided stretch — worst first', dir: 1, of: (r) => (r.traditional ? r.traditional.mostOneSidedStretch.balance : null) },
   { value: 'drift', label: 'drift — largest first', dir: -1, of: (r) => (r.traditional ? r.traditional.drift.drift : null) },
   { value: 'pct', label: 'fall-back % — largest first', dir: -1, of: (r, l) => (r.readings && r.readings[l] && r.readings[l].search && r.readings[l].search.reached ? r.readings[l].search.pct : null) },
   { value: 'turns', label: 'changes of direction — most first', dir: -1, of: (r, l) => (r.readings && r.readings[l] && r.readings[l].search && r.readings[l].search.reached ? r.readings[l].search.turns : null) },
@@ -7984,8 +7984,8 @@ async function drawCoins() {
       <label class="f" title="which reading to order the list by, and which end of it comes first. Nothing is decided by this — it is only which one you want at the top. A coin that could not be measured sorts last whichever is chosen.">order by<select id="cOrder">${C_ORDERS.map((o) => `<option value="${o.value}"${cState.orderBy === o.value ? ' selected' : ''}>${esc(o.label)}</option>`).join('')}</select></label>
     </div>
     <p class="note"><b>The two traditional numbers</b> are worked out from an untuned reading of direction and are the
-      same under either window layout: <b>worst tail slice</b> is the most one-sided any stretch the layouts carve
-      turns out to be, anywhere in the span — a low number means somewhere in this history there is a stretch that
+      same under either window layout: <b>most one-sided stretch</b> is how lopsided the worst stretch anywhere in
+      the span turns out to be, measured over stretches the size of the ones a coin is judged on — a low number means somewhere in this history there is a stretch that
       runs all one way. <b>drift</b> is how much that balance moves from part to part. <b>Both move with how much
       history a coin has</b>, because both measure over a share of the span: a coin with a few dozen periods reads
       worse on the first and better on the second than the same coin with a thousand, so two coins with different
@@ -8002,7 +8002,7 @@ async function drawCoins() {
       <th title="the fall-back percentage found for this coin: how far price has to fall back from a high before that high is called the end of a rising stretch. It is not fixed across coins — each one gets the largest percentage that gives at least the number of changes asked for.">fall-back %</th>
       <th title="how many changes of direction that percentage gives across train and test. When it gives more than were asked for, the number asked for is shown beside it in brackets.">changes of direction</th>
       <th title="the shape of the search: one bar per percentage tried, its height the count of changes at that percentage, with the one taken marked. A coin whose bars are level across a band is steady; one with a spike is balanced on an edge.">the walk</th>
-      <th title="the most one-sided any stretch the window layouts carve turns out to be, anywhere in the span. Half means evenly split; near zero means somewhere in this history there is a stretch that runs all one way. Worked out from an untuned reading of direction, so the fall-back percentage never moves it.">worst tail slice</th>
+      <th title="the most one-sided any stretch the window layouts carve turns out to be, anywhere in the span. Half means evenly split; near zero means somewhere in this history there is a stretch that runs all one way. Worked out from an untuned reading of direction, so the fall-back percentage never moves it.">most one-sided stretch</th>
       <th title="how much the balance between rising and falling moves from one part of the span to the next. Zero means every part looks the same; a large number means the mix changes as you go. Also untuned.">drift</th>
       <th title="the span of history this reading was worked out from, when it was taken, and the release that took it. When more history has been cached for the coin since, this says how much.">read over</th></tr></thead><tbody>
       ${rows.map((r) => {
@@ -8019,7 +8019,7 @@ async function drawCoins() {
       <td>${rd && rd.search && rd.search.reached ? `${rd.search.pct}%` : '<span class="muted">not reached</span>'}</td>
       <td>${rd && rd.search && rd.search.reached ? `${rd.search.turns}${rd.search.overshot ? ` <span class="muted">(asked ${rd.search.asked})</span>` : ''}` : '<span class="muted">—</span>'}</td>
       <td>${rd && rd.search ? cWalk(rd.search.walk, rd.search.pct) : ''}</td>
-      <td>${r.traditional ? `${cPct(r.traditional.worstTailSlice.balance)}${cCannot(r.traditional, 'worstTailSlice')}` : '<span class="muted">—</span>'}</td>
+      <td>${r.traditional ? `${cPct(r.traditional.mostOneSidedStretch.balance)}${cCannot(r.traditional, 'mostOneSidedStretch')}` : '<span class="muted">—</span>'}</td>
       <td>${r.traditional ? `${cNum(r.traditional.drift.drift, 3)}${cCannot(r.traditional, 'drift')}` : '<span class="muted">—</span>'}</td>
       <td class="muted" style="text-align:left">${esc(span)}<br>${esc(String(r.provenance && r.provenance.capturedAt ? r.provenance.capturedAt : '').replace('T', ' ').slice(0, 16))} UTC · release ${esc(String((r.provenance && r.provenance.release) || '—'))}${grew ? `<br><span class="warn">${grew} more month(s) cached since</span>` : ''}</td></tr>
       <tr class="s4hold"><td colspan="9" class="s4tag">

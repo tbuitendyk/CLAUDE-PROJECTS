@@ -78,9 +78,9 @@ function holdOf(h, { worst, drift, periods, read = true, canTell = null }) {
     span: { fromTs: Date.UTC(2024, 0, 1), toTs: Date.UTC(2026, 5, 1) },
     traditional: read ? {
       whole: { rising: 0.52, falling: 0.48, balance: 0.48, periods },
-      worstTailSlice: worst == null ? { balance: null, from: null, to: null, width: null, widths: [] } : { balance: worst, from: 10, to: 35, width: 26, widths: [{ width: 26 }, { width: 30 }] },
+      mostOneSidedStretch: worst == null ? { balance: null, from: null, to: null, width: null, widths: [] } : { balance: worst, from: 10, to: 35, width: 26, widths: [{ width: 26 }, { width: 30 }] },
       drift: { drift, parts: [], wanted: 8 },
-      canTell: canTell || { worstTailSlice: tells(worst, 0.1, 0.4), drift: tells(drift, 0.005, 0.05), periods, shuffles: 200 },
+      canTell: canTell || { mostOneSidedStretch: tells(worst, 0.1, 0.4), drift: tells(drift, 0.005, 0.05), periods, shuffles: 200 },
       periods,
     } : null,
     readings: read ? { reserve61: reading('reserve61', FOUR), split70: reading('split70', THREE) } : {},
@@ -92,7 +92,7 @@ function record(coin, { worst, drift, months, target, read = true, canTell = nul
   // reason the three rows are not three copies of one reading
   for (const h of HOLDS) holds[h.key] = holdOf(h, { worst, drift, periods: h.hours === 60 ? 40 : 200, read, canTell });
   return {
-    v: 4, coin, read,
+    v: 5, coin, read,
     why: read ? null : `${coin} has no cached prices on this box — download them on Data first`,
     provenance: { release: '3.119.0', capturedAt: '2026-09-11T09:00:00Z', cachedMonths: months, candles: 12000 },
     params: { ...DEFAULTS, target },
@@ -105,14 +105,14 @@ const RECORDS = [
   // mark has to land on that one cell and on no other -- a fixture where every
   // number can tell something exercises nothing, which is what this file did.
   record('BBBUSDT', { worst: 0.00, drift: 0.31, months: 17, target: 6,
-    canTell: { worstTailSlice: tellsNot(0.0, 0.02, 0.31, 'the worst tail slice'), drift: tells(0.31, 0.005, 0.05), periods: 200, shuffles: 200 } }),
+    canTell: { mostOneSidedStretch: tellsNot(0.0, 0.02, 0.31, 'the most one-sided stretch'), drift: tells(0.31, 0.005, 0.05), periods: 200, shuffles: 200 } }),
   // and one where neither could be worked out at all
   record('CCCUSDT', { worst: null, drift: null, months: 17, target: 6,
-    canTell: { worstTailSlice: tellsNothingAtAll('the worst tail slice'), drift: tellsNothingAtAll('the drift'), periods: 200, shuffles: 200 } }),
+    canTell: { mostOneSidedStretch: tellsNothingAtAll('the most one-sided stretch'), drift: tellsNothingAtAll('the drift'), periods: 200, shuffles: 200 } }),
   record('DDDUSDT', { worst: 0.20, drift: 0.11, months: 12, target: 20 }),
   record('EEEUSDT', { worst: null, drift: null, months: 4, target: 6, read: false }),
 ];
-const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT__daily-4d.json', why: 'this reading was written under record shape 3 and this release reads shape 4 — read the coin again to replace it' }];
+const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT__daily-4d.json', why: 'this reading was written under record shape 4 and this release reads shape 5 — read the coin again to replace it' }];
 
 const DATA_STATE = { symbols: [
   { symbol: 'AAAUSDT', months: 17, from: '2024-01', to: '2026-05' },
@@ -142,7 +142,7 @@ function requirePlaywright() {
   let started = null;
   await page.route('**/api/coins/records**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
     geometry: 'daily-4d', records: RECORDS, unreadable: UNREADABLE, defaults: DEFAULTS,
-    layouts: ['split70', 'reserve61'], recordVersion: 4, rareSideWeighting: false, holds: HOLDS,
+    layouts: ['split70', 'reserve61'], recordVersion: 5, rareSideWeighting: false, holds: HOLDS,
   }) }));
   await page.route('**/api/coins/run', (route) => {
     if (route.request().method() === 'POST') { started = JSON.parse(route.request().postData() || '{}'); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ started: true, of: 5 }) }); }
@@ -170,7 +170,7 @@ function requirePlaywright() {
   for (const coin of ['AAAUSDT', 'BBBUSDT', 'CCCUSDT', 'DDDUSDT', 'EEEUSDT']) {
     expect(body.includes(coin), `${coin} is on the screen`);
   }
-  expect(/FFFUSDT/.test(body) && /record shape 3/.test(body), 'a record this release cannot read is named, not dropped');
+  expect(/FFFUSDT/.test(body) && /record shape 4/.test(body), 'a record this release cannot read is named, not dropped');
   expect(!/nothing read yet/.test(body), 'with records on the screen it does not say nothing was read');
   expect(/thin side gets no help at all/i.test(body), 'the screen says plainly that a rare side is not weighted up');
   expect(!/rescued by weighting|thinner than weighting/.test(body), 'the screen still promises weighting that the trainer never does');
@@ -198,7 +198,7 @@ function requirePlaywright() {
   const byTail = await order('tail');
   // FOUR READ COINS AT THREE HOLDS EACH, plus the one with no prices at all
   expect(byTail.length === 13, `every coin gets a row per hold, got ${byTail.length}: ${byTail.join(',')}`);
-  expect(byTail[0] === 'BBBUSDT', `worst tail slice puts the one-way coin first, got ${byTail[0]}`);
+  expect(byTail[0] === 'BBBUSDT', `most one-sided stretch puts the one-way coin first, got ${byTail[0]}`);
   expect(byTail[byTail.length - 1] === 'EEEUSDT', `and the coin with nothing read last, got ${byTail.join(',')}`);
   expect(byTail.lastIndexOf('CCCUSDT') > byTail.lastIndexOf('DDDUSDT'), 'a coin with no reading never outranks one with a bad reading');
   const byDrift = await order('drift');
@@ -221,7 +221,7 @@ function requirePlaywright() {
   expect(!/a type appears only once/.test(after), 'the old sentence that fired at zero is gone');
   expect(/train .*periods/i.test(after), 'each part of the history reports its periods');
 
-  // THE MARK LANDS ON THE ONE CELL THAT EARNED IT. BBB's worst tail slice says
+  // THE MARK LANDS ON THE ONE CELL THAT EARNED IT. BBB's most one-sided stretch says
   // nothing its own shuffles do not, its drift does; CCC could work out
   // neither. Read cell by cell, because a mark on the whole row, or on every
   // row, reads the same in the page text and means nothing.
@@ -232,7 +232,7 @@ function requirePlaywright() {
   }, coin);
   const MARK = 'cannot tell';
   const bbb = await cellsOf('BBBUSDT');
-  expect(!!bbb && bbb[6].includes(MARK), `the worst tail slice BBBUSDT cannot trust is not marked, got ${bbb && bbb[6]}`);
+  expect(!!bbb && bbb[6].includes(MARK), `the most one-sided stretch BBBUSDT cannot trust is not marked, got ${bbb && bbb[6]}`);
   expect(!!bbb && !bbb[7].includes(MARK), `BBBUSDT's drift CAN tell something and is marked anyway, got ${bbb && bbb[7]}`);
   const aaa = await cellsOf('AAAUSDT');
   expect(!!aaa && !aaa[6].includes(MARK) && !aaa[7].includes(MARK), 'AAAUSDT can tell on both numbers and is marked anyway');

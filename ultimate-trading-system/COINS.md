@@ -620,7 +620,7 @@ reason.
 
 ### Two numbers, both shown, both labelled
 
-**Number one — the worst tail slice.** Slide a window the size the layouts
+**Number one — the most one-sided stretch.** Slide a window the size the layouts
 actually carve — the last 13% and the last 15% — across the whole span. At each
 position measure how balanced `rising` and `falling` are. The score is the
 **worst** balance found anywhere. It answers the failure above directly:
@@ -640,7 +640,7 @@ the adversarial pass). Each measures over a SHARE of the span, so a short coin
 is measured over short windows. On a coin with no trend at all, 300 trials per
 length:
 
-| periods | worst tail slice reads 0 | mean worst tail slice | mean drift |
+| periods | most one-sided stretch reads 0 | mean most one-sided stretch | mean drift |
 |---|---|---|---|
 | 40 | 72.7% | 0.046 | 0.120 |
 | 100 | 1% | 0.185 | 0.094 |
@@ -743,7 +743,7 @@ for it** (section 8).
 
 Measured on a coin with a real one-way run buried in it:
 
-| periods | can the worst tail slice tell? | the coin | its own shuffles |
+| periods | can the most one-sided stretch tell? | the coin | its own shuffles |
 |---|---|---|---|
 | 40 | **no** | 0.000 | 0.000 – 0.167 |
 | 100 | **no** | 0.000 | 0.000 – 0.308 |

@@ -57,7 +57,12 @@ const DIR = path.join(__dirname, '..', 'data', 'coins');
 // only -- 24/5 was not in the key -- so reading a coin with it on overwrote the
 // reading taken with it off, same file, last press wins, with nothing but the
 // line under the row to say which one survived.
-const RECORD_V = 4;
+//
+// 5 (3.123.0): `worstTailSlice` is `mostOneSidedStretch` on every record. The
+// owner: "It has nothing to do with a worst tail slice. That's the worst
+// possible name." It never was a tail -- the window slides across the whole
+// span -- so the name said the one thing the measurement does not do.
+const RECORD_V = 5;
 
 // THE DEFAULTS ARE STARTING VALUES, NOT LIMITS. Every one of them is a control
 // on the screen (RULE FIVE); these are only what the boxes are filled with
