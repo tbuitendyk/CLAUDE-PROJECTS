@@ -1372,7 +1372,12 @@ const GUARDS = [
   // Each of these names the test that READS THE LINE IT BREAKS (RULE EIGHT).
   [path.join(ROOT, 'lib', 'dataset.js'), "    .filter((s) => s && isRealCoin(s))", "    .filter((s) => !!s)",
     'theValuesTheOwnerTypesAreTheValuesThatRun', 'a blank coin box sweeps up the fabricated coins the checks and the tests write into the same cache, and the owner trains and trades on invented prices'],
-  [path.join(ROOT, 'lib', 'dataset.js'), "    if (!have || g.featureHours < GEOMETRIES[have].featureHours) pick.set(hours, name);", "    if (!have) pick.set(hours, name);",
+  // BROKEN THE OTHER WAY ROUND ON PURPOSE. Dropping the comparison entirely
+  // leaves the FIRST shape of each hold winning, and the order the geometries
+  // happen to be written in already puts the shortest look-back first — so that
+  // mutation changed nothing and the guard MISSED. What has to be caught is the
+  // longer look-back being chosen, which really does lose trades.
+  [path.join(ROOT, 'lib', 'dataset.js'), "    if (!have || g.featureHours < GEOMETRIES[have].featureHours) pick.set(hours, name);", "    if (!have || g.featureHours > GEOMETRIES[have].featureHours) pick.set(hours, name);",
     'theFiveChunkShapesAreReallyThreeSetsOfTrades', 'a hold is read from the shape with the longer look-back, which starts later and so offers fewer trades than the history really held'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), "  const built = bracket.buildComboChunks({ trade: map }, hold.geometry, false);", "  const built = bracket.buildComboChunks({ trade: map }, hold.geometry, true);",
     'aCoinWithCachedPricesActuallyGetsARead', 'the weekend start days are filtered out again, so the screen describes a rule we chose rather than what the history offered — which is the whole fault this release fixed'],
@@ -1380,8 +1385,12 @@ const GUARDS = [
     'aCoinWithCachedPricesActuallyGetsARead', 'only the shortest hold is ever read, so two thirds of what a history offers is missing and nothing says it is'],
   [path.join(ROOT, 'public', 'construct.js'), "    for (const h of holds) {\n      out.push({", "    for (const h of holds.slice(0, 1)) {\n      out.push({",
     'theCoinsTableDrawsARowForEveryHold', 'the table draws one row a coin again, so two of the three holds are read, stored and never shown'],
-  [path.join(ROOT, 'lib', 'coinsrun.js'), "const recordFile = (coin) => path.join(DIR, `${String(coin).toUpperCase()}.json`);", "const recordFile = (coin) => path.join(DIR, `${String(coin).toUpperCase()}__x.json`);",
-    'everyCoinTheRunTouchedIsOnDiskAfterwards', 'a record is written under a name the reader does not serve, so every reading lands on disk and none of it reaches the screen'],
+  // NOT THE FILE NAME. Breaking that MISSED, and rightly: the reader takes any
+  // .json in the folder and every record says its own coin, so the name is not
+  // what carries a reading to the screen. What is, is the reader looking at the
+  // folder at all.
+  [path.join(ROOT, 'lib', 'coinsrun.js'), "    if (!f.endsWith('.json')) continue;", "    if (!f.endsWith('.json-none')) continue;",
+    'everyCoinTheRunTouchedIsOnDiskAfterwards', 'every reading lands on disk and none of it reaches the screen, which then says nothing was ever read'],
 
   // ---- COINS (3.119.0, after the four adversarial reviewers) ---------------
   // Each of these names the test that READS THE LINE IT BREAKS, not the test
