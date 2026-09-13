@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **58d611c0e659 — what the box is serving**, not from the working tree.
+Generated from **23ee7428dbe7 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,22 +89,20 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (59)
+## What the controls are called (57)
 
 - `— not what the boxes above say`
 - `— press`
 - `: average 1 across`
+- `· cannot tell`
 - `(asked`
 - `/ falling`
 - `% by`
 - `% to`
 - `%, ceiling`
 - `24/5`
-- `A side thinner than`
 - `above`
-- `across`
 - `again to bring`
-- `answers`
 - `Both move with how much`
 - `change(s) wanted,`
 - `changes of direction`
@@ -114,16 +112,13 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Coins`
 - `drift`
 - `drift parts`
-- `drift parts, 24/5`
+- `drift parts,`
 - `fall-back %`
 - `height:`
 - `history a coin has`
-- `it is`
 - `more month(s) cached since`
-- `not`
 - `not reached`
 - `Nothing here refuses a`
-- `of a part will not be`
 - `of the`
 - `of them held at the ceiling of`
 - `of these`
@@ -136,10 +131,13 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Read these coins`
 - `rows below`
 - `same under either window layout:`
+- `shuffles`
+- `shuffles, 24/5`
 - `split`
 - `step, %`
 - `Stop`
 - `the last reading stopped:`
+- `The training does not weigh a rare`
 - `The two traditional numbers`
 - `the walk`
 - `training weight over`
@@ -180,18 +178,18 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - , because both measure over a share of the span: a coin with a few dozen periods reads
 - worse on the first and better on the second than the same coin with a thousand, so two coins with different
 - amounts of cached history cannot be compared on either. The periods column is there to be read beside them.
-- rescued by weighting — that is where the engine's own ceiling of
-- stops being able to correct the imbalance, and below it staying quiet starts winning. It is marked below and
-- a cut-off.
+- A thin side gets no help at all.
+- answer up to make up for there being few of it — so however thin one side of a part is, nothing corrects for
+- it, and a side with a handful of periods in it is learned from a handful of periods. That is a reason to read
+- the split below, not a cut-off: no coin is refused for it.
 - no coin has been read at this chunk shape
-- · thinner than weighting can correct
 - <span style="display:inline-block;width:4px;
 - px;margin-right:1px;vertical-align:bottom;background:var(
 
-## Every word, flat (222)
+## Every word, flat (224)
 
 ```
-1-day 1px 2-day 3-day 4-day 4px 8-day able above above. across again all amounts an and answers any anywhere are asked at at. average back background balance be because been before being below beside better blank Both both bottom box boxes bring by cached can cannot carve ceiling change changes choice chunk coin coin. Coins coins column compared correct could cut-off. Daily date. default different direction display dozen drift each Each either either. engine Every exam fall fall-back falling few figure file first for from has height held held-back here history holds how imbalance in inline-block is it It last layout layouts looking low made margin-right marked means measure month more most move moves much no not Nothing number numbers of on one one-sided order out over own part part. parts periods press px quiet reached Read read reading reads refuses release rescued reserve. rising row rows runs same say says sealed second shape share side since slice so somewhere span split starts staying step Stop stopped stops stretch stretches style sweep tail test than that the The them them. there these these. thinner this those thousand to traditional train training try turn turns two under untuned up UTC values var vertical-align walk wanted was way. Weekly weight weighting What what where which width will window winning. with worked worse worst your
+1-day 1px 2-day 3-day 4-day 4px 8-day above above. across again all all. amounts an and answer any anywhere are asked at at. average back background balance be because been before being below beside better blank Both both bottom box boxes bring by cached cannot carve ceiling change changes choice chunk coin coin. Coins coins column compared corrects could cut-off Daily date. default different direction display does dozen drift each Each either either. Every exam fall fall-back falling few figure file first for from gets handful has height held held-back help here history holds how however in inline-block is it it. last layout layouts learned looking low made make margin-right means measure month more most move moves much no not Nothing nothing number numbers of on one one-sided order out over part part. parts periods periods. press px rare reached Read read reading reads reason refused refuses release reserve. rising row rows runs same say says sealed second shape share shuffles side since slice so somewhere span split step Stop stopped stretch stretches style sweep tail tell test than that That the The them them. there these these. thin this those thousand to traditional train training try turn turns two under untuned up UTC values var vertical-align walk wanted was way. Weekly weigh weight What what which width window with worked worse worst your
 ```
 
 ---
@@ -415,7 +413,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Boards
 
-## What the controls are called (129)
+## What the controls are called (131)
 
 - `— nothing came out of`
 - `— pick a stage`
@@ -441,6 +439,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `beat its own null set`
 - `beat the kept null money`
 - `before BOOST)`
+- `biggest before the ceiling`
 - `BOOST`
 - `call`
 - `campaign:`
@@ -473,6 +472,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `fuller board helped?`
 - `gate`
 - `h`
+- `held`
 - `held-back $`
 - `held-back stops`
 - `held-back trades`
@@ -636,10 +636,10 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - are ways of asking that did not exist when it ran, so nothing here can answer for them.
 - unit(s); nothing already priced is read, touched or priced again.
 
-## Every word, flat (432)
+## Every word, flat (434)
 
 ```
-1v 3.A 3.B above above. accordingly. active actually added adding adds after afterwards. again again. agreed all alone alone. alongside already always-long an and another answer any appear Apply apply are argmax arm arrow as asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat before behind. belong below beside best block board Boards BOOST both bought box breakout bring broken building but by call came campaign can cannot carry changes Check check child chunk Clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons conviction Copy copy cost could count cover Data Date decision DECISION declare declare. declared declares declares. Delete deletes did died directional disk DOES does done Drop dropping Dropping each Each either else empty end entry every Every exactly exist exists factored FACTORED failed FAILED families few fewer fewer. Fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into is it It it. its Its ITS keep kept landed lands. last lead leaves left line list LOGREG looks. market MATCH maximum means median member members minimum missing money move name names near-copies never Next NOT not not. notes nothing nothing. now null numbers of of. offers old on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press Prev price priced prices Pricing pricing. pricings promoted proved provenance provided put Put puts quarter quorum ran ranges ranked read reads real record records records. Rename renumbers replaced rest restart. resting rests Revert row rows rule. run rung running Save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show Show showed showing shows. Size smaller so some sort sound. stage Stage STAMP started still Stop stopped stopping stops sub-rows suggests. swapped Sweep table Table tables takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to top totalled totalling touched touched. trade trades trail trained training tried tuning-slice Undo undoing Undoing unfinished unit unit. units units. variants visible voices votes vs was way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you your
+1v 3.A 3.B above above. accordingly. active actually added adding adds after afterwards. again again. agreed all alone alone. alongside already always-long an and another answer any appear Apply apply are argmax arm arrow as asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat before behind. belong below beside best biggest block board Boards BOOST both bought box breakout bring broken building but by call came campaign can cannot carry ceiling changes Check check child chunk Clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons conviction Copy copy cost could count cover Data Date decision DECISION declare declare. declared declares declares. Delete deletes did died directional disk DOES does done Drop dropping Dropping each Each either else empty end entry every Every exactly exist exists factored FACTORED failed FAILED families few fewer fewer. Fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into is it It it. its Its ITS keep kept landed lands. last lead leaves left line list LOGREG looks. market MATCH maximum means median member members minimum missing money move name names near-copies never Next NOT not not. notes nothing nothing. now null numbers of of. offers old on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press Prev price priced prices Pricing pricing. pricings promoted proved provenance provided put Put puts quarter quorum ran ranges ranked read reads real record records records. Rename renumbers replaced rest restart. resting rests Revert row rows rule. run rung running Save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show Show showed showing shows. Size smaller so some sort sound. stage Stage STAMP started still Stop stopped stopping stops sub-rows suggests. swapped Sweep table Table tables takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to top totalled totalling touched touched. trade trades trail trained training tried tuning-slice Undo undoing Undoing unfinished unit unit. units units. variants visible voices votes vs was way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you your
 ```
 
 ---
