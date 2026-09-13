@@ -2092,7 +2092,7 @@ module.exports = {
     const { NOTIONAL } = require('../lib/paper');
     const day = 86400000;
     const from = Date.UTC(2025, 0, 6);
-    // A UNIT'S TEST WINDOW IS READ OFF THE RECORD, never rebuilt (3.120.0).
+    // A UNIT'S TEST WINDOW IS READ OFF THE RECORD, never rebuilt (3.121.0).
     // Since 3.85.0 every record carries the actual date ranges the run used, so
     // this is a lookup. It used to divide the sealed chunk count by 0.13 to
     // recover the whole span and take 15% of what was left -- rounding at every

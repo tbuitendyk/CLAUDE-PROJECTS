@@ -8,20 +8,20 @@
 //
 // It answers the three Coins reads itself, so nothing depends on what is cached
 // on the machine, and it writes nothing.
-//   node tests/ui-coins.js
+//   npm run test:ui:coins        (or: node tests/ui-coins.js)
 //
-// NOT an npm script, deliberately. package.json counts as a product file to the
-// release check (RULE ONE-C), so adding a one-line alias for a browser check
-// would move the release number -- and moving it makes the planted check read
-// NOT CHECKED, which costs the owner a re-run for nothing. Folding the alias in
-// alongside the next real change is a one-liner; it is in the loop record.
+// The alias was held back when this file was written: package.json counts as a
+// product file to the release check (RULE ONE-C), so adding it on its own would
+// have moved the release number for a browser check and made the planted check
+// read NOT CHECKED, costing the owner a re-run for nothing. It is folded in
+// here, alongside a release that was moving anyway.
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.UI_TEST_PORT || 8201);
 
-const DEFAULTS = { target: 6, from: 1, to: 30, step: 0.5, cap: 20, driftParts: 8, weekdaysOnly: false };
+const DEFAULTS = { target: 6, from: 1, to: 30, step: 0.5, cap: 20, driftParts: 8, weekdaysOnly: false, shuffles: 200 };
 const parts = (names) => names.map((n, i) => ({ part: n, from: i * 50, to: i * 50 + 49, periods: 50 }));
 function reading(layout, names, { reached = true, worst = 0.3 } = {}) {
   const p = parts(names);
@@ -50,9 +50,20 @@ function reading(layout, names, { reached = true, worst = 0.3 } = {}) {
 }
 const FOUR = ['train', 'test', 'held', 'reserve'];
 const THREE = ['train', 'test', 'held'];
-function record(coin, { worst, drift, months, target, read = true }) {
+// whether either untuned number tells this coin apart from a coin with no
+// trend, in the shape lib/coins.js really returns -- `low`/`high` are the range
+// the shuffles cover and `value` is this coin's own answer
+const tells = (value, low, high) => ({ canTell: true, value, low, high, of: 200, why: null });
+const tellsNot = (value, low, high, name) => ({
+  canTell: false, value, low, high, of: 200,
+  why: `${name} does not tell this coin apart from a coin with no trend at all. Shuffle its own 200 periods into `
+    + `200 different orders -- the same coin with its trend taken away -- and they score between ${low} and ${high}.`,
+});
+const tellsNothingAtAll = (name) => ({ canTell: false, of: 0, low: null, high: null, value: null,
+  why: `${name} could not be worked out over 200 periods at all` });
+function record(coin, { worst, drift, months, target, read = true, canTell = null }) {
   return {
-    v: 2, coin, geometry: 'daily-4d', periods: 200, read,
+    v: 3, coin, geometry: 'daily-4d', periods: 200, read,
     why: read ? null : `${coin} has no cached prices on this box — download them on Data first`,
     provenance: { release: '3.119.0', capturedAt: '2026-09-11T09:00:00Z', fromTs: Date.UTC(2024, 0, 1), toTs: Date.UTC(2026, 5, 1), cachedMonths: months, candles: 12000 },
     params: { ...DEFAULTS, target },
@@ -60,6 +71,7 @@ function record(coin, { worst, drift, months, target, read = true }) {
       whole: { rising: 0.52, falling: 0.48, balance: 0.48, periods: 200 },
       worstTailSlice: worst == null ? { balance: null, from: null, to: null, width: null, widths: [] } : { balance: worst, from: 10, to: 35, width: 26, widths: [{ width: 26 }, { width: 30 }] },
       drift: { drift, parts: [], wanted: 8 },
+      canTell: canTell || { worstTailSlice: tells(worst, 0.1, 0.4), drift: tells(drift, 0.005, 0.05), periods: 200, shuffles: 200 },
       periods: 200,
     } : null,
     readings: read ? { reserve61: reading('reserve61', FOUR), split70: reading('split70', THREE) } : {},
@@ -67,12 +79,18 @@ function record(coin, { worst, drift, months, target, read = true }) {
 }
 const RECORDS = [
   record('AAAUSDT', { worst: 0.45, drift: 0.02, months: 17, target: 6 }),
-  record('BBBUSDT', { worst: 0.00, drift: 0.31, months: 17, target: 6 }),
-  record('CCCUSDT', { worst: null, drift: null, months: 17, target: 6 }),
+  // ONE COIN WHERE ONE OF THE TWO NUMBERS SAYS NOTHING AND THE OTHER DOES. The
+  // mark has to land on that one cell and on no other -- a fixture where every
+  // number can tell something exercises nothing, which is what this file did.
+  record('BBBUSDT', { worst: 0.00, drift: 0.31, months: 17, target: 6,
+    canTell: { worstTailSlice: tellsNot(0.0, 0.02, 0.31, 'the worst tail slice'), drift: tells(0.31, 0.005, 0.05), periods: 200, shuffles: 200 } }),
+  // and one where neither could be worked out at all
+  record('CCCUSDT', { worst: null, drift: null, months: 17, target: 6,
+    canTell: { worstTailSlice: tellsNothingAtAll('the worst tail slice'), drift: tellsNothingAtAll('the drift'), periods: 200, shuffles: 200 } }),
   record('DDDUSDT', { worst: 0.20, drift: 0.11, months: 12, target: 20 }),
   record('EEEUSDT', { worst: null, drift: null, months: 4, target: 6, read: false }),
 ];
-const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT__daily-4d.json', why: 'this reading was written under record shape 1 and this release reads shape 2 — read the coin again to replace it' }];
+const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT__daily-4d.json', why: 'this reading was written under record shape 2 and this release reads shape 3 — read the coin again to replace it' }];
 
 const DATA_STATE = { symbols: [
   { symbol: 'AAAUSDT', months: 17, from: '2024-01', to: '2026-05' },
@@ -102,7 +120,7 @@ function requirePlaywright() {
   let started = null;
   await page.route('**/api/coins/records**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
     geometry: 'daily-4d', records: RECORDS, unreadable: UNREADABLE, defaults: DEFAULTS,
-    layouts: ['split70', 'reserve61'], recordVersion: 2, rareSideWeighting: false,
+    layouts: ['split70', 'reserve61'], recordVersion: 3, rareSideWeighting: false,
   }) }));
   await page.route('**/api/coins/run', (route) => {
     if (route.request().method() === 'POST') { started = JSON.parse(route.request().postData() || '{}'); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ started: true, of: 5 }) }); }
@@ -130,12 +148,15 @@ function requirePlaywright() {
   for (const coin of ['AAAUSDT', 'BBBUSDT', 'CCCUSDT', 'DDDUSDT', 'EEEUSDT']) {
     expect(body.includes(coin), `${coin} is on the screen`);
   }
-  expect(/FFFUSDT/.test(body) && /record shape 1/.test(body), 'a record this release cannot read is named, not dropped');
+  expect(/FFFUSDT/.test(body) && /record shape 2/.test(body), 'a record this release cannot read is named, not dropped');
   expect(!/nothing read yet/.test(body), 'with records on the screen it does not say nothing was read');
   expect(/thin side gets no help at all/i.test(body), 'the screen says plainly that a rare side is not weighted up');
   expect(!/rescued by weighting|thinner than weighting/.test(body), 'the screen still promises weighting that the trainer never does');
   expect(/more month\(s\) cached since/.test(body), 'the coin whose history has grown since reads as behind');
-  expect(/not what the boxes above say/.test(body), 'the row read at other values says so');
+  // ONE ROW, NOT FIVE. Every row said this while the fixture was missing a
+  // setting the page compares -- the assertion passed and proved nothing.
+  expect((body.match(/not what the boxes above say/g) || []).length === 1,
+    `exactly one row was read at other values, got ${(body.match(/not what the boxes above say/g) || []).length}`);
   expect(/release 3\.119\.0/.test(body), 'each row names the release that took it');
 
   // THE ORDERINGS. Worst first where low is bad, largest first where high is,
@@ -162,6 +183,37 @@ function requirePlaywright() {
     'the note about a type appearing once or not at all says which type');
   expect(!/a type appears only once/.test(after), 'the old sentence that fired at zero is gone');
   expect(/train .*periods/i.test(after), 'each part of the history reports its periods');
+
+  // THE MARK LANDS ON THE ONE CELL THAT EARNED IT. BBB's worst tail slice says
+  // nothing its own shuffles do not, its drift does; CCC could work out
+  // neither. Read cell by cell, because a mark on the whole row, or on every
+  // row, reads the same in the page text and means nothing.
+  const cellsOf = (coin) => page.evaluate((c) => {
+    const rows = [...document.querySelectorAll('#view table tbody tr')];
+    const tr = rows.find((r) => r.querySelector('td b') && r.querySelector('td b').textContent === c);
+    return tr ? [...tr.querySelectorAll('td')].map((td) => td.textContent) : null;
+  }, coin);
+  const MARK = 'cannot tell';
+  const bbb = await cellsOf('BBBUSDT');
+  expect(!!bbb && bbb[5].includes(MARK), `the worst tail slice BBBUSDT cannot trust is not marked, got ${bbb && bbb[5]}`);
+  expect(!!bbb && !bbb[6].includes(MARK), `BBBUSDT's drift CAN tell something and is marked anyway, got ${bbb && bbb[6]}`);
+  const aaa = await cellsOf('AAAUSDT');
+  expect(!!aaa && !aaa[5].includes(MARK) && !aaa[6].includes(MARK), 'AAAUSDT can tell on both numbers and is marked anyway');
+  const ccc = await cellsOf('CCCUSDT');
+  expect(!!ccc && ccc[5].includes(MARK) && ccc[6].includes(MARK), 'CCCUSDT could work out neither number and neither is marked');
+  expect((after.match(/cannot tell/g) || []).length === 3,
+    `three cells across five coins earned the mark, got ${(after.match(/cannot tell/g) || []).length}`);
+  // and the reason rides with it, or there is nothing to look into
+  const why = await page.evaluate(() => {
+    const rows = [...document.querySelectorAll('#view table tbody tr')];
+    const tr = rows.find((r) => r.querySelector('td b') && r.querySelector('td b').textContent === 'BBBUSDT');
+    const m = tr && [...tr.querySelectorAll('td')][5].querySelector('span[title]');
+    return m ? m.getAttribute('title') : '';
+  });
+  expect(/does not tell this coin apart/.test(why), `the mark carries no reason, got ${JSON.stringify(why)}`);
+  // the shuffle count is on the screen beside the rest of what the read used
+  expect(/200 shuffles/.test(after), 'the row does not say how many shuffles the reading was taken at');
+  expect(!/\? shuffles/.test(after), 'a row is drawing a literal question mark where the shuffle count belongs');
 
   // WHAT IS TYPED SURVIVES A REDRAW. This is the one that used to be wiped
   // twice a second while the owner was still typing.

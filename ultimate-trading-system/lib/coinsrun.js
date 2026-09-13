@@ -28,7 +28,14 @@ const coins = require('./coins');
 const { GEOMETRIES } = require('./dataset');
 
 const DIR = path.join(__dirname, '..', 'data', 'coins');
-const RECORD_V = 2;
+// THE RECORD SHAPE. It moves whenever what is written changes, so a reading
+// taken under an older shape is NAMED on the screen rather than drawn as
+// though it were current (RULE NINE). 3 (3.121.0): every record now carries
+// `canTell` -- whether either untuned number tells this coin apart from a coin
+// with no trend -- and the shuffle count it was worked out at. A shape-2
+// record has neither, and drawn as current it shows a literal "?" where the
+// count belongs and no mark where the warning belongs.
+const RECORD_V = 3;
 
 // THE DEFAULTS ARE STARTING VALUES, NOT LIMITS. Every one of them is a control
 // on the screen (RULE FIVE); these are only what the boxes are filled with
@@ -44,7 +51,8 @@ const DEFAULTS = Object.freeze({
   // how many times a coin's own periods are shuffled to work out whether either
   // untuned number can say anything about it at this much history (COINS.md
   // section 11). A precision setting, not a threshold -- there is no line to
-  // set, and more shuffles only sharpen the same answer.
+  // set. More shuffles only ever widen the range the shuffles cover, so
+  // raising this can turn a can tell into a cannot tell and never back.
   shuffles: 200,
 });
 

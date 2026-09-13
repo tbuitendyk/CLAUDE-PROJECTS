@@ -287,6 +287,51 @@ module.exports = {
     assert.strictEqual(d2.status, 'done', `stage 2 ended ${d2.status}: ${JSON.stringify(d2.failures)}`);
     assert.strictEqual(rowstore.count(s2.id, 'records'), 2, 'two units to price');
     state.s2 = d2;
+
+    // WHAT THE UNIT WAS TRAINED UNDER IS ON THE RECORD THE RUN JUST WROTE
+    // (3.121.0). Asked of records these two launches PRODUCED, never of a
+    // record pushed into the store by hand -- that is the whole point of it
+    // being here. The unit task had returned this since 3.69.0 and not one of
+    // the three record writers copied it across, so the two screens that read
+    // it served nothing on every unit of every run and no test could see it:
+    // every test in reach built its own record with the field already on it.
+    for (const [id, which] of [[s1.id, 'stage 1'], [s2.id, 'stage 2']]) {
+      const rows = rowstore.readAll(id, 'records');
+      assert.ok(rows.length, `${which} wrote no records`);
+      for (const r of rows) {
+        assert.ok(r.trainedOn && typeof r.trainedOn === 'object',
+          `${which} unit ${r.u} reached disk with nothing saying what it was trained under`);
+        assert.strictEqual(r.trainedOn.by, 'direction',
+          `${which} unit ${r.u} says it was trained by ${(r.trainedOn || {}).by}, and this launch asked for direction`);
+      }
+    }
+
+    // AND THE TWO NUMBERS THE CEILING IS JUDGED BY, off a run that really was
+    // trained by the money each trade was worth. One more stage 1 on the same
+    // two coins, about a second: without it the only money-trained record any
+    // test has ever read is one a test wrote itself.
+    const s1m = stages.startStage1({
+      universe: [A, B], sizes: { singles: true }, geometry: 'daily-1d',
+      windowLayout: 'reserve61', allLoaded: false, startMonth: '2024-01', endMonth: '2024-12',
+      nullN: NULL_N, fee: FEE, trainOn: 'money', weightCap: 5,
+      name: `ZZZ pause stage 1 money ${stamp()}`, desc: 'pause rehearsal',
+    });
+    made.push(s1m.id);
+    const dm = await untilLanded(s1m.id);
+    assert.strictEqual(dm.status, 'done', `the money stage 1 ended ${dm.status}: ${JSON.stringify(dm.failures)}`);
+    const mrows = rowstore.readAll(s1m.id, 'records');
+    assert.ok(mrows.length, 'the money stage 1 wrote no records');
+    for (const r of mrows) {
+      const t = r.trainedOn || {};
+      assert.strictEqual(t.by, 'money', `unit ${r.u} was launched by money and its record says ${t.by}`);
+      assert.ok(Number.isFinite(t.biggestBeforeCap),
+        `unit ${r.u} reached disk with no biggest weight before the ceiling`);
+      assert.ok(t.biggestBeforeCap >= t.biggestKept - 1e-9,
+        `unit ${r.u}: the biggest before the ceiling (${t.biggestBeforeCap}) is under the biggest kept (${t.biggestKept}), which cannot happen`);
+      assert.ok(Number.isInteger(t.atCeiling) && t.atCeiling >= 0,
+        `unit ${r.u} reached disk with no count of how many were held at the ceiling`);
+      assert.ok(t.atCeiling <= t.of, `unit ${r.u}: more held at the ceiling than there were to hold`);
+    }
   },
 
   async aRunThatWasNeverStoppedIsTheReference() {

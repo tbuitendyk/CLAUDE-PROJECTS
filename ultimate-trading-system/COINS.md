@@ -667,6 +667,57 @@ this stays one reading per coin. They are never typed here; the first build had
 `0.13` and `0.15` as a default argument nothing ever passed, which is a second
 copy of the arithmetic and a value with no control (RULE FIVE).
 
+
+### When a number does not tell the coin apart from one with no trend
+
+**Added 3.121.0** (owner order, 2026-09-12: *"plan the code based on the length
+of the history. And if you have to make some kind of flag or warning if there's
+not enough history and things get sketchy, just put that on the screen."* And on
+where the line sits: *"that's the code that needs to put something on the
+screen. Not you."*)
+
+**There is no line, and no number is written down anywhere.** The coin's own
+periods are shuffled into a different order two hundred times — that is the same
+coin with its trend taken away — and both numbers are read off each shuffle. The
+question is then simply: **could a coin with no trend at all, of exactly this
+length, have scored what this coin scored?**
+
+If it could, the screen marks it, and the range the shuffles covered is in the
+hover. **The mark does not say WHY**, because this reading cannot know: either
+there is no trend in the coin to find, or there are too few periods here to
+separate one from the other. Both read exactly the same. The first version of
+the sentence behind the mark said "N periods is too few", and that is a cause
+it cannot see — a coin with no trend at twenty thousand periods reads the same
+as a coin with a trend at forty. **It is never a cut-off and no coin is refused
+for it** (section 8).
+
+Measured on a coin with a real one-way run buried in it:
+
+| periods | can the worst tail slice tell? | the coin | its own shuffles |
+|---|---|---|---|
+| 40 | **no** | 0.000 | 0.000 – 0.167 |
+| 100 | **no** | 0.000 | 0.000 – 0.308 |
+| 300 | yes | 0.000 | 0.103 – 0.289 |
+| 2040 | yes | 0.000 | 0.325 – 0.385 |
+
+A coin with no trend at all is never tellable at any length, which is right:
+there is nothing in it to tell.
+
+**How many shuffles is a control**, with a default, like every other value on
+this tab. It is a precision setting and not a threshold — there is nothing to
+set a line at. Raising it is STRICTER, not sharper: the range the shuffles cover
+only ever widens as more are taken, so more shuffles can turn a `can tell` into
+a `cannot tell` and never the other way round.
+
+**The shuffle is deterministic.** Same coin, same answer, for ever. Nothing this
+system reports changes between two reads of the same data (RULE SEVEN).
+
+**The first version of this test was wrong and the pre-registered rule caught
+it.** It asked only whether the shuffles ever disagreed with each other, and at
+forty periods two of two hundred did — so it passed the exact case the rule said
+it had to catch. Two answers out of two hundred is not a number that can tell
+anything apart. The criterion was changed; the check was not.
+
 ## 12. The metadata written on a coin's history
 
 When the settings have been tuned on a coin's history, they are **saved as
@@ -833,6 +884,34 @@ without it.
   `TREND-TRAINING-DESIGN.md` section D's sliding boundary, its cap, and the
   rejection of coins that needed the boundary moved too far. Section 8.
 
+**Settled 2026-09-13, in the batch that shipped 3.121.0. Each of these was an
+open item in section 17 until it was; they are struck from there, not left in
+both places.**
+
+- **2026-09-13 — the reference point for the two numbers is BUILT.** Both move
+  with how much history a coin has, and there is now a per-coin answer to
+  whether either of them tells that coin apart from a coin with no trend:
+  shuffle the coin's own periods, read the same number off each shuffle, and
+  mark the number when the coin's own answer sits inside what the shuffles
+  cover. No line is written down anywhere and no coin is refused. Section 11.
+- **2026-09-13 — a record written under an older shape is NAMED, not
+  migrated.** The owner's ruling: *"I'm gonna be deleting all of the data that
+  we have under the current system, so we don't care about any migration ...
+  Just code it right for this time."* So there is no migration code on this tab
+  and none is to be written; the reader says which shape a record is and to
+  read the coin again. RULE TEN's point exactly: a repair nobody can retire is
+  worse than none.
+- **2026-09-13 — the share that is sealed off has ONE home.** The owner:
+  *"just do it once in one place, like good code design."* `RESERVE_SHARE` and
+  `reserveChunks` sit beside `splitBounds` in `lib/bracketwork.js`; the sealed
+  layout, the retrain layout and this tab all read them. A test walks every
+  file under `lib/` and fails on a second one.
+- **2026-09-13 — the word list gets an exception for `24/5` and for no other
+  all-digit label.** The owner, asked: *"Just make an exception for 24/5 and
+  forget about the other numbers."* A label of bare digits is still invisible to
+  the generator, deliberately — over-collecting authorises words the owner
+  cannot see, which is the fault RULE ONE-A names.
+
 ## 17. Open items
 
 - **Whether the training weight acts on runs of periods rather than on single
@@ -850,17 +929,6 @@ without it.
 **Added 2026-09-12 by the adversarial pass, and every one of these is the
 owner's call, not a session's:**
 
-- **A reference point for the two traditional numbers.** Both move with how
-  much history a coin has (section 11), so 0.05 cannot be told from alarming
-  without knowing what a no-trend coin of that length would score. Working that
-  out per coin is cheap — scramble the coin's own moves a few hundred times and
-  read the same number off each — but it is a new reading on the screen and it
-  is not in this document, so it waits.
-- **What to do about a record written under an older shape.** Today the reader
-  NAMES it and says to read the coin again; it does not migrate it. That is
-  defensible here and only here, because a Coins reading costs seconds and can
-  be re-taken, unlike a sweep set — but RULE NINE's default is migrate, so the
-  owner should say which they want before a second shape change happens.
 - **WHETHER THE ENGINE SHOULD BALANCE A RARE ANSWER AT ALL.** Replaces the item
   that asked for its ceiling to be a control (2026-09-12). There is no ceiling
   to expose: the trainer the engine runs passes no class weights, so a rare
@@ -868,18 +936,6 @@ owner's call, not a session's:**
   design in section 2 assumes the thin side is handled and today nothing handles
   it. Building that is a change to how every model is fitted and it is the
   owner's call, not a session's.
-- **The reserve share is typed twice in `lib/stagework.js`** (the sealed layout
-  and the retrain layout). There is now one shared function beside
-  `splitBounds` and this tab reads it; the engine still types its own. Pointing
-  those two at it is an engine change and was not in this loop's work.
-- **The word-list generator cannot see a control whose label is only digits.**
-  `phrases()` in `tests/sweep-words.js` drops any line with no letter in it, so
-  a control labelled `24/5` is invisible to it — on three tabs, not only this
-  one, and since before this tab existed. Relaxing the test to accept a digit
-  adds exactly six entries across the whole file: that label on three tabs, and
-  `0`, `1`, `1.00`, `0.00` on two others, which are printed values and not the
-  name of anything. Over-collecting is the opposite fault and RULE ONE-A names
-  it, so this is the owner's call.
 - **A percentage step small enough to be absurd is walked in full.** At a step
   of one ten-millionth over the default range that is roughly 290 million
   typings per coin, about 22 minutes with nothing else able to run. The box on

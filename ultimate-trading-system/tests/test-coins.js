@@ -504,8 +504,16 @@ module.exports = {
     const src = require('fs').readFileSync(require('path').join(__dirname, '..', 'lib', 'coins.js'), 'utf8');
     const at = src.indexOf('function layoutWidths');
     const body = src.slice(at, src.indexOf('function worstTailSlice', at));
-    assert.ok(!/0\.13|0\.15/.test(body), 'the shares are typed in layoutWidths, which is the second copy this exists to stop');
-    assert.ok(!/0\.13|0\.15/.test(src.slice(src.indexOf('function worstTailSlice'), src.indexOf('function balanceDrift'))),
+    // ASKED AS A VALUE, NOT AS A SPELLING. This used to match /0\.13|0\.15/,
+    // and `.13`, `0.130` and `13e-2` are the same number to the engine and
+    // invisible to that -- so the second copy this exists to stop could be
+    // typed straight back in with a green suite.
+    const { numberLiteralsIn } = require('./helpers');
+    const SHARES = [0.13, 0.15];
+    const typedIn = (chunk) => numberLiteralsIn(chunk).filter((v) => SHARES.includes(v));
+    assert.deepStrictEqual(typedIn(body), [],
+      'the shares are typed in layoutWidths, which is the second copy this exists to stop');
+    assert.deepStrictEqual(typedIn(src.slice(src.indexOf('function worstTailSlice'), src.indexOf('function balanceDrift'))), [],
       'the shares are typed in worstTailSlice');
   },
 
@@ -919,7 +927,7 @@ module.exports = {
 
   // THE LEVEL BELOW WHICH WEIGHTING CANNOT HELP IS THE ENGINE'S OWN, not a
   // number typed on a screen (COINS.md section 8, finding 1 in section 14).
-  // THE SCREEN MAY NOT PROMISE WEIGHTING THAT DOES NOT HAPPEN (3.120.0).
+  // THE SCREEN MAY NOT PROMISE WEIGHTING THAT DOES NOT HAPPEN (3.121.0).
   //
   // 3.119.0 put a figure on the Coins screen -- "a side thinner than 1.7% will
   // not be rescued by weighting" -- worked out from the class ceiling in
@@ -1296,7 +1304,7 @@ module.exports = {
   },
 
   // TOO LITTLE HISTORY FOR THE NUMBER TO SAY ANYTHING, WORKED OUT AND NOT SET
-  // (3.120.0, owner order 2026-09-12: "plan the code based on the length of the
+  // (3.121.0, owner order 2026-09-12: "plan the code based on the length of the
   // history ... if there's not enough history and things get sketchy, just put
   // that on the screen", and on where the line sits: "that's the code that
   // needs to put something on the screen. Not you.").
@@ -1385,10 +1393,29 @@ module.exports = {
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
     const at = page.indexOf('function cCannot(');
     assert.ok(at > 0, 'the Coins screen has no mark for a number it cannot trust');
-    const fn = page.slice(at, page.indexOf('\n}', at));
-    assert.ok(/canTell !== false/.test(fn), 'the mark does not read whether the number can tell anything');
-    assert.ok(/cannot tell/.test(fn), 'the mark says nothing the owner can read');
-    assert.ok(/title="\$\{esc\(c\.why/.test(fn), 'the mark carries no reason, so it cannot be looked into');
+    const fn = page.slice(at, page.indexOf('\n}', at) + 2);
+    // RUN IT, DO NOT GREP IT. Grepped, this passed on a version of the mark
+    // with `return '';` pasted in above every line it scanned for -- the words
+    // were all still in the file and the mark drew nothing. So the function is
+    // lifted out and called, with the page's own escaper stubbed, and what
+    // comes back is read (RULE EIGHT: a guard names the test that READS the
+    // line it breaks, and a scan cannot read a line that is never reached).
+    // eslint-disable-next-line no-unused-vars
+    const esc = (x) => String(x).replace(/"/g, '&quot;');
+    // eslint-disable-next-line no-eval
+    const cCannot = eval(`(${fn.trim()})`);
+    const trad = (worst, drift) => ({ canTell: { worstTailSlice: worst, drift } });
+    const cannot = { canTell: false, why: 'the reason the owner reads' };
+    const can = { canTell: true, why: null };
+    const out = cCannot(trad(cannot, can), 'worstTailSlice');
+    assert.ok(/cannot tell/.test(out), `the mark says nothing the owner can read: ${JSON.stringify(out)}`);
+    assert.ok(out.includes('the reason the owner reads'),
+      'the mark carries no reason, so it cannot be looked into');
+    assert.strictEqual(cCannot(trad(cannot, can), 'drift'), '',
+      'a number that CAN tell something is marked anyway, so the mark means nothing');
+    assert.strictEqual(cCannot(trad(can, can), 'worstTailSlice'), '', 'every number is marked');
+    assert.strictEqual(cCannot(null, 'drift'), '', 'a coin with no reading at all is marked');
+    assert.strictEqual(cCannot({}, 'drift'), '', 'a reading with no answer on it is marked');
     // and it is drawn beside BOTH numbers, not just one
     const draw = page.slice(page.indexOf('async function drawCoins()'));
     assert.ok(/cCannot\(r\.traditional, 'worstTailSlice'\)/.test(draw), 'the worst tail slice is never marked');

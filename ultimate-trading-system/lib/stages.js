@@ -736,7 +736,7 @@ function startStage1(params) {
           // they were cast on, and every copy of its null set in cents
           money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
           nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
-          // WHAT THIS UNIT WAS ACTUALLY TRAINED UNDER (3.120.0), including how
+          // WHAT THIS UNIT WAS ACTUALLY TRAINED UNDER (3.121.0), including how
           // big the biggest training weight would have been with nothing
           // holding it down and how many were held at the ceiling. The task
           // has returned this since 3.69.0 and no writer ever copied it, so it
@@ -1585,7 +1585,7 @@ function startStage2(params) {
           beat: res.beat, pairs: res.pairs, lead: res.lead, nullScores: res.nullScores,
           money3: res.tuning3.money, money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
           nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
-          // what this unit was trained under (3.120.0). This stage retrains, so
+          // what this unit was trained under (3.121.0). This stage retrains, so
           // its own answer is the one that counts; the parent's stands only if
           // this stage did not produce one.
           trainedOn: res.trainedOn || rec.trainedOn || null,
@@ -4648,10 +4648,12 @@ function stage1Table(id, from, n, filters = null) {
       members: (r.specs || []).length, voices: r.voices ?? null,
       score: row.score, beat: row.beat, pairs: row.pairs, lead: row.lead,
       money: r.money ?? null, beatMoney: r.beatMoney ?? null, leadMoney: r.leadMoney ?? null,
-      // HOW HARD THE CEILING HAD TO WORK ON THIS UNIT (3.120.0). Stored on the
-      // record since the run; it reached no screen at all until now, and the
-      // one number it did carry was the largest weight AFTER clipping, which
-      // can never exceed the ceiling and so can never say anything about it.
+      // HOW HARD THE CEILING HAD TO WORK ON THIS UNIT (3.121.0). The unit task
+      // worked these out from 3.69.0 and no writer copied them, so they first
+      // reach a record here -- a run finished before this release carries
+      // nothing and reads blank, whatever it was trained on. The one number
+      // that was on the record was the largest weight AFTER clipping, which can
+      // never exceed the ceiling and so can never say anything about it.
       biggestBeforeCap: (r.trainedOn || {}).biggestBeforeCap ?? null,
       atCeiling: (r.trainedOn || {}).atCeiling ?? null,
     };
@@ -4690,7 +4692,7 @@ function stage2Rows(id) {
     score3: r.score3, scoreAll: r.scoreAll, helped: r.helped,
     beat: r.beat, pairs: r.pairs, lead: r.lead,
     money3: r.money3 ?? null, moneyAll: r.money ?? null, beatMoney: r.beatMoney ?? null, leadMoney: r.leadMoney ?? null,
-    // how hard the ceiling had to work on this unit (3.120.0), same two
+    // how hard the ceiling had to work on this unit (3.121.0), same two
     // numbers stage 1 carries and from the same place on the record
     biggestBeforeCap: (r.trainedOn || {}).biggestBeforeCap ?? null,
     atCeiling: (r.trainedOn || {}).atCeiling ?? null,

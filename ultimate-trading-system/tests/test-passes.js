@@ -229,13 +229,19 @@ module.exports = {
   theSealedShareIsWrittenDownInExactlyOnePlace() {
     const fs = require('fs');
     const path = require('path');
+    const { numberLiteralsIn } = require('./helpers');
     const dir = path.join(__dirname, '..', 'lib');
+    // EVERY FILE UNDER lib/, AND THE SHARE AS A VALUE. This walked the top
+    // level only and matched the spelling /0\.13\b/ -- so a second home in a
+    // folder below, or one typed `.13` or `13e-2`, was a copy this could not
+    // see, in the one test whose whole job is to prove there is only one.
+    const walk = (d, rel = '') => fs.readdirSync(d, { withFileTypes: true }).flatMap((e) => (e.isDirectory()
+      ? walk(path.join(d, e.name), `${rel}${e.name}/`)
+      : (e.name.endsWith('.js') ? [[path.join(d, e.name), `${rel}${e.name}`]] : [])));
     const homes = [];
-    for (const f of fs.readdirSync(dir).filter((x) => x.endsWith('.js'))) {
-      // comments stripped: a scan a comment can trigger proves nothing
-      const src = fs.readFileSync(path.join(dir, f), 'utf8').split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
-      const hits = (src.match(/0\.13\b/g) || []).length;
-      if (hits) homes.push(`${f} (${hits})`);
+    for (const [full, name] of walk(dir)) {
+      const hits = numberLiteralsIn(fs.readFileSync(full, 'utf8')).filter((v) => v === 0.13).length;
+      if (hits) homes.push(`${name} (${hits})`);
     }
     assert.deepStrictEqual(homes, ['bracketwork.js (1)'],
       `the sealed share is written down in more than one place: ${homes.join(', ')}`);

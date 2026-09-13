@@ -4338,7 +4338,7 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <th ${bth} title="the unit's own votes on the tuning slice — the last quarter of its training window, which the fit never saw and the test window is not — priced one buy or sell per chunk in the direction they lean, held from the entry hour to the exit hour, at the fee declared on Sweep. US dollars on $100 a trade, after fees.">tuning-slice $${bSortBtn(doc, 'money', 'desc')}</th>
         <th ${bth} title="of its null set — the same votes dealt onto other days of the tuning slice — how many this unit's tuning-slice $ beat">beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}</th>
         <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th>
-        <th ${bth} title="when this unit was trained by the money each trade was worth: how many ordinary trades the biggest one would have counted for if nothing had held it down, and after the slash how many were held at the ceiling you set. It is what says whether that ceiling is doing anything, and how far it is toning things down. Blank when the run was trained by direction only.">biggest before the ceiling${bSortBtn(doc, 'biggestBeforeCap', 'desc')}</th></tr></thead>
+        <th ${bth} title="when this unit was trained by the money each trade was worth: how many ordinary trades the biggest one would have counted for if nothing had held it down, and after the slash how many were held at the ceiling you set. It is what says whether that ceiling is doing anything, and how far it is toning things down. Blank when the run was trained by direction only, and on any run that finished before this began being recorded.">biggest before the ceiling${bSortBtn(doc, 'biggestBeforeCap', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${btdN0}>${Number(r.rank).toLocaleString()}</td>
         <td ${btdN}>${bCoin(r)}</td>
@@ -4419,7 +4419,7 @@ async function bDrawStage2(doc, incomplete, view, mount) {
         <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — every member on the row">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th>
         <th ${bth} title="of its null set — the same votes dealt onto other days of the tuning slice — how many this row's tuning-slice $ with every member pooled beat">beat its own null set — tuning-slice $${bSortBtn(doc, 'beatMoney', 'desc')}</th>
         <th ${bth} title="how far above its null set's typical tuning-slice $ the real one sits, against the null set's own spread — every member pooled">lead over null set — tuning-slice $${bSortBtn(doc, 'leadMoney', 'desc')}</th>
-        <th ${bth} title="when this unit was trained by the money each trade was worth: how many ordinary trades the biggest one would have counted for if nothing had held it down, and after the slash how many were held at the ceiling you set. It is what says whether that ceiling is doing anything, and how far it is toning things down. Blank when the run was trained by direction only.">biggest before the ceiling${bSortBtn(doc, 'biggestBeforeCap', 'desc')}</th></tr></thead>
+        <th ${bth} title="when this unit was trained by the money each trade was worth: how many ordinary trades the biggest one would have counted for if nothing had held it down, and after the slash how many were held at the ceiling you set. It is what says whether that ceiling is doing anything, and how far it is toning things down. Blank when the run was trained by direction only, and on any run that finished before this began being recorded.">biggest before the ceiling${bSortBtn(doc, 'biggestBeforeCap', 'desc')}</th></tr></thead>
       <tbody>${rows.map((r) => `<tr>
         <td ${btdN0}><input type="checkbox" data-bpick="S2:${r.u}"${picked.has(r.u) ? ' checked' : ''} title="picks this record. Saved on this record set the moment it changes."></td>
         <td ${btdN}>${Number(r.rank).toLocaleString()}</td>
@@ -7827,13 +7827,15 @@ const cPct = (v) => (v == null ? '<span class="muted">—</span>' : `${(v * 100)
 const cNum = (v, d = 2) => (v == null ? '<span class="muted">—</span>' : Number(v).toFixed(d));
 const cDay = (ts) => (ts ? new Date(ts).toISOString().slice(0, 10) : null);
 
-// TOO LITTLE HISTORY FOR THIS NUMBER TO SAY ANYTHING (3.120.0, owner order
-// 2026-09-12: "if there's not enough history and things get sketchy, just put
-// that on the screen"). There is no line set anywhere: the reading works out
-// whether a coin with no trend at all, of exactly this length, could have
-// scored what this coin scored, by shuffling the coin's own periods. When it
-// could have, the number is about the length and not about the coin, and this
-// marks it. It is not a cut-off and no coin is refused for it.
+// THE NUMBER DOES NOT TELL THIS COIN APART FROM ONE WITH NO TREND (3.121.0,
+// owner order 2026-09-12: "if there's not enough history and things get
+// sketchy, just put that on the screen"). There is no line set anywhere: the
+// reading works out whether a coin with no trend at all, of exactly this
+// length, could have scored what this coin scored, by shuffling the coin's own
+// periods. When it could have, this marks it -- and the sentence behind the
+// mark says BOTH things that can cause it, because the reading cannot tell
+// them apart: too few periods to separate anything, or nothing in this coin to
+// find. It is not a cut-off and no coin is refused for it.
 function cCannot(trad, which) {
   const c = trad && trad.canTell && trad.canTell[which];
   if (!c || c.canTell !== false) return '';
@@ -7920,7 +7922,7 @@ async function drawCoins() {
       <label class="f" title="how far apart the percentages tried are. The walk is exhaustive: the count of changes does not simply rise as the percentage falls, so every value in the range is tried rather than bisected — a very small step here is a very long walk.">step, %<input id="cStep" type="number" step="0.1" min="0.01" value="${box('step', defs.step)}" style="width:5rem"${off}></label>
       <label class="f" title="the most any one period may weigh in training, as a multiple of the average. One violent period would otherwise dominate everything. It must be above 1, and on a coin where too few periods moved it has to be higher still — the reading says so and names the value.">weight ceiling<input id="cCap" type="number" step="1" min="1.5" value="${box('cap', defs.cap)}" style="width:5rem"${off}></label>
       <label class="f" title="how many equal parts the span is cut into to measure how the balance moves from part to part.">drift parts<input id="cDrift" type="number" min="2" value="${box('drift', defs.driftParts)}" style="width:5rem"${off}></label>
-      <label class="f" title="how many times a coin's own periods are shuffled into a different order to work out whether the two untuned numbers can say anything about it at this much history. It is not a cut-off and there is nothing to set a line at — more shuffles only sharpen the same answer.">shuffles<input id="cShuf" type="number" min="2" step="50" value="${box('shuffles', defs.shuffles)}" style="width:5rem"${off}></label>
+      <label class="f" title="how many times a coin's own periods are shuffled into a different order to work out whether the two untuned numbers can say anything about it at this much history. It is not a cut-off and there is nothing to set a line at. More shuffles only ever WIDEN the range the shuffles cover, so raising this can turn a can tell into a cannot tell and never the other way round: it is a stricter reading, not a sharper one.">shuffles<input id="cShuf" type="number" min="2" step="1" value="${box('shuffles', defs.shuffles)}" style="width:5rem"${off}></label>
     </div>
     <div class="row">
       <button id="cRun" class="pri"${off}>Read these coins</button>

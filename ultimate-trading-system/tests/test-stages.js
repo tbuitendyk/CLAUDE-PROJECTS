@@ -405,7 +405,7 @@ module.exports = {
       'a run that could not weigh by money reads as though it did');
     assert.equal(sw.weightsSaid({}, null).by, 'direction', 'a plain run does not say how it was trained');
 
-    // HOW HARD THE CEILING HAD TO WORK (3.120.0, owner order 2026-09-12: "the
+    // HOW HARD THE CEILING HAD TO WORK (3.121.0, owner order 2026-09-12: "the
     // maximum that we're dealing with perhaps in a chunk of data so that we can
     // evaluate really how much it should be toned down").
     //
@@ -984,7 +984,7 @@ module.exports = {
       for (let u = 0; u < 3; u++) {
         rec.push({ u, trade: `C${u}`, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2, counts: {}, specs: [], score: 10 - u, beat: u, pairs: 19, lead: u, nullScores: [], blocks: {},
           // what the run was trained under, including how hard the ceiling had
-          // to work (3.120.0) -- stored on every record and, before this, read
+          // to work (3.121.0) -- stored on every record and, before this, read
           // by nothing at all
           trainedOn: { by: 'money', cap: 10, biggestKept: 10, of: 400, biggestBeforeCap: 31.5 + u, atCeiling: 4 + u } });
       }
@@ -999,7 +999,7 @@ module.exports = {
       assert.deepStrictEqual(page.rows.map((r) => r.trade), ['C2', 'C1'], 'the table serves the recorded ranking order');
       const page2 = stages.stage1Table(id, 2, 2);
       assert.deepStrictEqual(page2.rows.map((r) => r.trade), ['C0']);
-      // AND THE TABLE CARRIES HOW HARD THE CEILING HAD TO WORK (3.120.0). It
+      // AND THE TABLE CARRIES HOW HARD THE CEILING HAD TO WORK (3.121.0). It
       // was on the record from the start and reached no screen at all.
       assert.deepStrictEqual(page.rows.map((r) => r.biggestBeforeCap), [33.5, 32.5],
         'the stage 1 table does not serve the biggest weight before the ceiling');
@@ -1018,9 +1018,14 @@ module.exports = {
     try {
       fs.writeFileSync(file2, JSON.stringify({ id: id2, stage: 2, seq: 999990, name: 'S2 #pg', status: 'done', createdAt: new Date().toISOString(), plan: { units: 3 } }));
       const rec2 = rowstore.writer(id2, 'records');
-      rec2.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'C0', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 4, scoreAll: 5, helped: 1, beat: 17, pairs: 19, lead: 2.5 });
-      rec2.push({ u: 1, carriedRank: 2, s1rank: 2, trade: 'C1', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8, scoreAll: 9, helped: 1, beat: 19, pairs: 19, lead: 4 });
-      rec2.push({ u: 2, carriedRank: 3, s1rank: 3, trade: 'C2', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8.5, scoreAll: 9, helped: 0.5, beat: 12, pairs: 19, lead: 1 });
+      rec2.push({ u: 0, carriedRank: 1, s1rank: 1, trade: 'C0', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 4, scoreAll: 5, helped: 1, beat: 17, pairs: 19, lead: 2.5,
+        trainedOn: { by: 'money', cap: 10, biggestKept: 10, of: 400, biggestBeforeCap: 12.5, atCeiling: 2 } });
+      rec2.push({ u: 1, carriedRank: 2, s1rank: 2, trade: 'C1', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8, scoreAll: 9, helped: 1, beat: 19, pairs: 19, lead: 4,
+        trainedOn: { by: 'money', cap: 10, biggestKept: 10, of: 400, biggestBeforeCap: 44.25, atCeiling: 9 } });
+      // and one unit trained by direction, which carries neither number -- the
+      // blank the screen prints has to come from the record, not from a gap
+      rec2.push({ u: 2, carriedRank: 3, s1rank: 3, trade: 'C2', ctx1: null, ctx2: null, geometry: 'daily-4d', specs: [], score3: 8.5, scoreAll: 9, helped: 0.5, beat: 12, pairs: 19, lead: 1,
+        trainedOn: { by: 'direction' } });
       rec2.close();
       const t2 = stages.stage2Table(id2, 0, 10);
       assert.deepStrictEqual(t2.rows.map((r) => r.trade), ['C1', 'C2', 'C0'],
@@ -1030,6 +1035,17 @@ module.exports = {
       // the unit's stage 1 reading rides along for the table's null set columns
       assert.deepStrictEqual(t2.rows.map((r) => [r.beat, r.pairs, r.lead]), [[19, 19, 4], [12, 19, 1], [17, 19, 2.5]],
         'beat its own null set and lead over null set are served with each carried row');
+      // AND THE STAGE 2 TABLE CARRIES HOW HARD THE CEILING HAD TO WORK TOO
+      // (3.121.0), row by row, in the table's own order -- C1 first, then C2
+      // which was trained by direction and so has neither number, then C0.
+      assert.deepStrictEqual(t2.rows.map((r) => r.biggestBeforeCap), [44.25, null, 12.5],
+        'the stage 2 table does not serve the biggest weight before the ceiling');
+      assert.deepStrictEqual(t2.rows.map((r) => r.atCeiling), [9, null, 2],
+        'the stage 2 table does not serve how many were held at the ceiling');
+      const raw = stages.stage2Rows(id2);
+      assert.deepStrictEqual(raw.map((r) => [r.u, r.biggestBeforeCap, r.atCeiling]),
+        [[0, 12.5, 2], [1, 44.25, 9], [2, null, null]],
+        'the rows the carry reads must carry the same two numbers the table draws');
     } finally {
       try { fs.rmSync(dir2, { recursive: true, force: true }); } catch (_) { /* fixture */ }
       try { fs.rmSync(file2, { force: true }); } catch (_) { /* fixture */ }
@@ -4332,7 +4348,7 @@ module.exports = {
     }
     // THE EMPTY ROW SPANS EXACTLY THE COLUMNS THERE ARE, counted rather than
     // typed: a typed colspan goes stale the moment a column is added, which is
-    // what happened when this one gained a column (3.120.0).
+    // what happened when this one gained a column (3.121.0).
     const spans = (block, what) => {
       const heads = (block.match(/<th /g) || []).length;
       const span = /colspan="(\d+)" class="empty"/.exec(block);

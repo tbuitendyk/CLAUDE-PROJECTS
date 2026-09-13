@@ -597,7 +597,7 @@ function canTheReadingTell(moves, opts = {}) {
   const say = (real, list, name) => {
     if (real == null || !list.length) {
       return { canTell: false, of: list.length, low: null, high: null, value: real ?? null,
-        why: `${name} could not be worked out over ${moves.length} periods at all` };
+        why: `${name} could not be worked out over ${moves.length} periods at all` };   // this one really is the length
     }
     const low = Math.min(...list);
     const high = Math.max(...list);
@@ -608,12 +608,20 @@ function canTheReadingTell(moves, opts = {}) {
       low,
       high,
       of: list.length,
+      // WHAT WAS MEASURED, NEVER WHY. The first version of this sentence said
+      // "N periods is too few", and that is a cause this reading cannot know:
+      // a coin with no trend at twenty thousand periods reads exactly the same
+      // as a coin with a trend at forty, and the test my own file pins says so
+      // ("a coin with no trend at 2040 periods must never read as telling
+      // anything"). So the sentence reports the two numbers and names both
+      // possible causes, because it cannot tell them apart.
       why: canTell ? null
-        : `${moves.length} periods is too few for ${name} to say anything about this coin. Shuffle its own periods `
-          + `into ${list.length} different orders -- the same coin with its trend taken away -- and they score `
-          + `between ${low.toFixed(3)} and ${high.toFixed(3)}. This coin scores ${real.toFixed(3)}, which is inside `
-          + 'that. A coin with no trend at all could have scored the same, so the number is telling you how much '
-          + 'history there is, not what is in it.',
+        : `${name} does not tell this coin apart from a coin with no trend at all. Shuffle its own `
+          + `${moves.length} periods into ${list.length} different orders -- the same coin with its trend taken `
+          + `away -- and they score between ${low.toFixed(3)} and ${high.toFixed(3)}. This coin scores `
+          + `${real.toFixed(3)}, which is inside that. Either there is no trend in this coin to find, or there are `
+          + 'too few periods here to separate one from the other -- the fewer the periods, the wider that spread '
+          + 'gets. This number cannot say which of the two it is.',
     };
   };
   return {

@@ -45,7 +45,7 @@ module.exports = {
     assert.ok(body.includes('<b data-bpickcount="S2">${picked.size.toLocaleString()}</b> picked on this record set'), 'the count of picks is on the screen');
     assert.ok(body.includes("const picked = new Set((t && t.picked) || []);"), 'the ticks are drawn from the picks the set serves with its table');
     // counted, never typed: a typed colspan goes stale the moment a column is
-    // added, which is what happened at 3.120.0
+    // added, which is what happened at 3.121.0
     const heads = (body.match(/<th /g) || []).length;
     const span = /colspan="(\d+)" class="empty"/.exec(body);
     assert.ok(span, 'the empty row has no colspan at all');

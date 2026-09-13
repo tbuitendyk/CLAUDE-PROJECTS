@@ -511,10 +511,10 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stagework.js'), "    return Math.max(0, m - trip) + m + trip;", "    return m;",
     'theWeightOfATrainingTradeIsWhatItsDecisionWasWorth',
     'a trade too small to cover its fees is worth nothing, so nothing teaches the forecast to stay out and every crumb is taken'],
-  [path.join(ROOT, 'lib', 'stagework.js'), "  return stakes.map((x) => Math.min(cap, x / avg));", "  return stakes.map((x) => x / avg);",
+  [path.join(ROOT, 'lib', 'stagework.js'), "  return s.stakes.map((x) => Math.min(cap, x / s.avg));", "  return s.stakes.map((x) => x / s.avg);",
     'theWeightOfATrainingTradeIsWhatItsDecisionWasWorth',
     'one freak trade can outweigh fifty ordinary ones and the limit on the screen does nothing'],
-  [path.join(ROOT, 'lib', 'stagework.js'), "  return stakes.map((x) => Math.min(cap, x / avg));", "  return stakes.map((x) => Math.min(cap, x));",
+  [path.join(ROOT, 'lib', 'stagework.js'), "  return s.stakes.map((x) => Math.min(cap, x / s.avg));", "  return s.stakes.map((x) => Math.min(cap, x));",
     'theWeightOfATrainingTradeIsWhatItsDecisionWasWorth',
     'the average trade no longer counts 1, so the strength of the fit means something different from run to run'],
   [path.join(ROOT, 'lib', 'stagework.js'), "    const { model: m, chosenLambda } = await tuneAndTrain(Ztr, ytr, { onProgress: () => {}, exampleWeights: wAll });",
@@ -900,9 +900,9 @@ const GUARDS = [
     'theRankingIsOneWhenTheOrderSurvivesAndMinusOneWhenItInverts',
     'every setting on the same money reads as an answer rather than as no answer at all'],
   // ---- STEP 6 SAYS WHAT ITS LIMITS ARE LIMITS ON (3.57.0) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "  const toTs = workEnd - nHold * stepMs;", "  const toTs = workEnd;",
+  [path.join(ROOT, 'lib', 'stages.js'), "  const w = unit && unit.windows && unit.windows.test;", "  const w = unit && unit.windows && unit.windows.hold;",
     'theSixthStepSaysWhatItsLimitsAreLimitsOn',
-    'the window the trades are counted over runs into the held-back time, so a trade count is measured against the wrong stretch of history'],
+    'the window the trades are counted over is the held-back stretch instead of the tested one, so a trade count is measured against the wrong stretch of history'],
   [path.join(ROOT, 'lib', 'stages.js'), "    const atOnce = stepHours && holdHours ? Math.max(1, Math.ceil(holdHours / stepHours)) : (stepHours ? 1 : null);",
     "    const atOnce = stepHours ? 1 : null;",
     'theSixthStepSaysWhatItsLimitsAreLimitsOn',
@@ -1344,15 +1344,25 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "function createPool() {\n  sweepHereOrRefuse();\n  return buildPool();", "function createPool() {\n  return buildPool();",
     'theStageLaunchesReadTheRoleAndRefuseAnUnreachablePlatform', 'the backstop is gone, so a launch by another road builds its workers here whatever the Compute tab says'],
 
-  // ---- how hard the weight ceiling had to work (3.120.0) -------------------
+  // ---- how hard the weight ceiling had to work (3.121.0) -------------------
   [path.join(ROOT, 'lib', 'stagework.js'), '  return { biggestBeforeCap: hi, atCeiling: at,', '  return { biggestBeforeCap: Math.min(hi, cap), atCeiling: at,',
     'theWeightOfATrainingTradeIsWhatItsDecisionWasWorth', 'the biggest weight is clipped to the ceiling before it is reported, which is the fault this reading exists to fix -- it could then never say how far anything was toned down'],
   [path.join(ROOT, 'lib', 'stagework.js'), '    out.biggestBeforeCap = Math.round(reading.biggestBeforeCap * 100) / 100;\n    out.atCeiling = reading.atCeiling;', '    out.atCeiling = reading.atCeiling;',
     'theWeightOfATrainingTradeIsWhatItsDecisionWasWorth', 'the record no longer carries the biggest weight before the ceiling, so nothing on the screen can say whether the ceiling is doing anything'],
   [path.join(ROOT, 'lib', 'stages.js'), '      biggestBeforeCap: (r.trainedOn || {}).biggestBeforeCap ?? null,\n      atCeiling: (r.trainedOn || {}).atCeiling ?? null,', '      biggestBeforeCap: null,\n      atCeiling: null,',
     'theStageTablesPageInRecordedOrder', 'the stage 1 table stops serving the two numbers, so the column is there and always empty'],
+  [path.join(ROOT, 'lib', 'stages.js'), '    biggestBeforeCap: (r.trainedOn || {}).biggestBeforeCap ?? null,\n    atCeiling: (r.trainedOn || {}).atCeiling ?? null,', '    biggestBeforeCap: null,\n    atCeiling: null,',
+    'theStageTablesPageInRecordedOrder', 'the stage 2 rows stop serving the two numbers, so the column is empty on the second table and the carry that reads these rows loses them too'],
+  // AND THE TWO ABOVE ONLY MATTER IF THE RECORD CARRIES ANYTHING AT ALL. These
+  // two break the writers, and the test they name reads records two real
+  // launches PRODUCED -- not a record a test pushed into the store itself,
+  // which is exactly how the dead path shipped in the first place.
+  [path.join(ROOT, 'lib', 'stages.js'), 'trainedOn: res.trainedOn || null,', 'trainedOn: null,',
+    'theFixtureCoinsAndTheirStageTwoParentAreBuilt', 'no stage 1 record ever says what it was trained under, so both new columns serve nothing on every unit of every run and the hover\'s "blank means trained by direction only" is false on a money-trained run'],
+  [path.join(ROOT, 'lib', 'stages.js'), 'trainedOn: res.trainedOn || rec.trainedOn || null,', 'trainedOn: null,',
+    'theFixtureCoinsAndTheirStageTwoParentAreBuilt', 'no stage 2 record says what it was trained under, so the second table\'s column is empty however the run was launched'],
 
-  // ---- too little history for the number to mean anything (3.120.0) --------
+  // ---- too little history for the number to mean anything (3.121.0) --------
   [path.join(ROOT, 'lib', 'coins.js'), '    const canTell = real < low || real > high;', '    const canTell = true;',
     'theScreenIsToldWhenAHistoryIsTooShortForTheNumberToMeanAnything', 'a forty-period coin reads as though its numbers mean something, which is the case the whole reading exists to catch'],
   [path.join(ROOT, 'public', 'construct.js'), '  if (!c || c.canTell !== false) return \'\';', '  return \'\';\n  // eslint-disable-next-line no-unreachable\n  if (!c || c.canTell !== false) return \'\';',
