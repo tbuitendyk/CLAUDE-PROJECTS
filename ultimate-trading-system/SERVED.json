@@ -1,12 +1,12 @@
 {
-  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "b122ba91319308be5d450e14110bbfa419c2c5f6",
-  "subject": "3.126.1: the table's headings as one template literal, so the word list sees them",
-  "capturedAt": "2026-09-13T06:55:11Z",
+  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
+  "commit": "778488de1643c250989ef432a78aec544a15ee79",
+  "subject": "3.127.1: the sweet spot's line says what share of the history its band still calls; the loop record's findings, decisions and build; COINS.md section 9",
+  "capturedAt": "2026-09-13T16:53:26Z",
   "files": {
     "public/construct.js": {
-      "sha256": "00984bf655e045864f814ebe03f218165dc07992cf2d0032ebb70764d3eadf4b",
-      "bytes": 572068
+      "sha256": "13bc473db500316bbecb30d3060fb9ebd01c11b2ed84a49e6774218a84823898",
+      "bytes": 576439
     },
     "public/help-content.js": {
       "sha256": "74a5fb708b442e98c1afafdda92ecdc73589dc22602ebfab3a351bd1ebc92922",

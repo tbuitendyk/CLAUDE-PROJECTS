@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **b122ba913193 — what the box is serving**, not from the working tree.
+Generated from **778488de1643 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,15 +89,20 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (51)
+## What the controls are called (58)
 
 - `-hour window · one decision a`
 - `— press`
 - `, opening`
 - `, the same rows Sweep trains on:`
+- `· at band`
 - `· median`
+- `· plateau`
 - `% · sit out under ±`
+- `× chance`
 - `above`
+- `at band`
+- `bands, mean`
 - `Below it,`
 - `black`
 - `candles`
@@ -110,6 +115,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `decisions`
 - `decisions from`
 - `downloaded)`
+- `edge`
 - `falling`
 - `gap (move)`
 - `gap (points)`
@@ -128,6 +134,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `removes exactly the`
 - `rising`
 - `run`
+- `signal`
 - `sit out`
 - `starts`
 - `Stop`
@@ -148,7 +155,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `61/13/13/13 (sealed exam)`
 - `70/15/15`
 
-## Sentences the page prints (13)
+## Sentences the page prints (14)
 
 - A picture of each coin's history, one bar per chunk shape, to judge whether the coin is apt for
 - dual member voting or better left on the traditional single member set voting.
@@ -163,11 +170,12 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - sit-out band, % of the median window move
 - file(s) on disk this release cannot draw:
 - file(s) named above and nothing else
+- no band beats chance for three steps together
 
-## Every word, flat (154)
+## Every word, flat (164)
 
 ```
--hour Above above across after again. all and apt at band bar be been Below better black blank cached candles cannot Change changes chunk coin coin. Coins coins coloured could decision decisions disk downloaded draw dual each either else every exactly exam falling fell file files for from gap green half has held held. here history is it It judge last left less little median member month more move moved moves named no not Nothing nothing number number. of on one One opening or out out. over own part per picture points press price read Read reading recolours red refuses release Remove removes reserve. rising rose rows run same scale. sealed set shape share side since single sit sit-out sits starts Stop stopped Sweep test than that the The these thin this to too traditional train trains typically under unit up UTC voting voting. way what when where whether whole window window. with would
+-hour Above above across after again. all and apt at band bands bar be beats been Below better black blank cached candles cannot chance Change changes chunk coin coin. Coins coins coloured could decision decisions disk downloaded draw dual each edge either else every exactly exam falling fell file files for from gap green half has held held. here history is it It judge last left less little mean median member month more move moved moves named no not Nothing nothing number number. of on one One opening or out out. over own part per picture plateau points press price read Read reading recolours red refuses release Remove removes reserve. rising rose rows run same scale. sealed set shape share side signal since single sit sit-out sits starts steps Stop stopped Sweep test than that the The these thin this three to together too traditional train trains typically under unit up UTC voting voting. way what when where whether whole window window. with would
 ```
 
 ---
