@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **8b2faee26450 — what the box is serving**, not from the working tree.
+Generated from **8643e3e627fe — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,109 +89,71 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (62)
+## What the controls are called (38)
 
-- `— not what the boxes above say`
+- `-hour window · one decision a`
 - `— press`
-- `: average 1 across`
-- `· cannot tell`
-- `(asked`
-- `/ falling`
-- `% by`
-- `% to`
-- `%, ceiling`
+- `, opening`
+- `, the same rows Sweep trains on:`
+- `· median`
+- `% · sit out under ±`
 - `above`
-- `again to bring`
-- `below`
-- `Both move with how much`
-- `change(s) wanted,`
-- `changes of direction`
-- `changes of direction wanted`
-- `coin`
+- `Below it,`
+- `black`
+- `candles`
+- `changes`
+- `changes ·`
 - `Coins`
 - `coins (blank = all`
+- `could not be read:`
+- `decision`
+- `decision's own window,`
+- `decisions from`
 - `downloaded)`
-- `drift`
-- `drift parts`
-- `drift parts,`
-- `every`
-- `fall-back %`
-- `h`
-- `height:`
-- `history a coin has`
+- `falling`
+- `green`
+- `It is a share`
 - `more month(s) cached since`
 - `no coin has been read`
-- `not reached`
-- `Nothing here refuses a`
-- `of the`
-- `of them held at the ceiling of`
-- `of these`
-- `order by`
-- `periods`
-- `periods ·`
-- `periods,`
-- `read at:`
-- `read over`
+- `One coloured unit is one`
+- `read`
 - `Read these coins`
-- `same under either window layout:`
-- `shuffles`
-- `split`
-- `starting`
-- `step, %`
+- `red`
+- `rising`
+- `sit out`
 - `Stop`
-- `That is`
 - `the last reading stopped:`
-- `The training does not weigh a rare`
-- `The two traditional numbers`
-- `the walk`
-- `trade length`
-- `training weight over`
-- `try from, %`
-- `try to, %`
-- `turn(s) · rising`
+- `to`
 - `UTC · release`
-- `weight ceiling`
-- `window layout`
-- `worst tail slice`
+- `where it fell,`
+- `where it moved`
+- `where price rose across that`
+- `window moves from`
 
 ## What the dropdowns offer (2)
 
 - `61/13/13/13 (sealed exam)`
 - `70/15/15`
 
-## Sentences the page prints (26)
+## Sentences the page prints (12)
 
-- What each coin's history holds: the stretches in which it was rising, the stretches in which it
-- was falling, and how those fall across train, test, held-back and the reserve.
-- coin.
-- Every figure is a reading — which coins a sweep runs on is your choice, made by looking at these.
-- Every coin is read at every trade length, and you set nothing to make that happen.
-- A trade length is how long a position is open; the starting times are fixed and are shown beside each one.
-- possible starts a week. Nothing else
-- about how a trade is run changes what a history contains, so nothing else is asked for here.
-- read before more history was cached for it — read
-- up to date.
-- read at different values from the boxes above. Each row says what it was read at.
-- file(s) on the box could not be read back:
-- are worked out from an untuned reading of direction and are the
-- is the most one-sided any stretch the layouts carve
-- turns out to be, anywhere in the span — a low number means somewhere in this history there is a stretch that
-- runs all one way.
-- is how much that balance moves from part to part.
-- , because both measure over a share of the span: a coin with a few dozen periods reads
-- worse on the first and better on the second than the same coin with a thousand, so two coins with different
-- amounts of cached history cannot be compared on either. The periods column is there to be read beside them.
-- A thin side gets no help at all.
-- answer up to make up for there being few of it — so however thin one side of a part is, nothing corrects for
-- it, and a side with a handful of periods in it is learned from a handful of periods. That is a reason to read
-- the split below, not a cut-off: no coin is refused for it.
-- <span style="display:inline-block;width:4px;
-- px;margin-right:1px;vertical-align:bottom;background:var(
+- A picture of each coin's history, one bar per chunk shape, to judge whether the coin is apt for
+- dual member voting or better left on the traditional single member set voting.
+- too little either way and would sit out. Above each bar,
+- : train, test, held.
+- : train, test, held, reserve.
+- Nothing here refuses a coin.
+- The sit-out band is one number for every coin, read on each coin's own scale.
+- of that coin's median window move for the shape: at 50, a decision sits out when it moved less than half what
+- the coin typically moves over that window. Change it and every bar recolours; nothing is read again. Sweep
+- trains with this same number.
+- sit-out band, % of the median window move
+- file(s) on disk this release cannot draw:
 
-## Every word, flat (236)
+## Every word, flat (138)
 
 ```
-1px 4px about above above. across again all all. amounts an and answer any anywhere are asked at at. average back background balance be because been before being below beside better blank Both both bottom box boxes bring by cached cannot carve ceiling change changes choice coin coin. Coins coins column compared contains corrects could cut-off date. different direction display does downloaded dozen drift each Each either either. else Every every exam fall fall-back falling few figure file first fixed for from gets handful happen. has height held held-back help here here. history holds how however in inline-block is it it. last layout layouts learned length long looking low made make margin-right means measure month more most move moves much no not Nothing nothing number numbers of on one one-sided one. open order out over part part. parts periods periods. position possible press px rare reached read Read reading reads reason refused refuses release reserve. rising row run runs same say says sealed second set share shown shuffles side since slice so somewhere span split starting starts step Stop stopped stretch stretches style sweep tail tell test than that That the The them them. there these these. thin this those thousand times to trade traditional train training try turn turns two under untuned up UTC values var vertical-align walk wanted was way. week. weigh weight What what which width window with worked worse worst you your
+-hour Above above across again. all and apt at band bar be been Below better black blank cached candles cannot Change changes chunk coin coin. Coins coins coloured could decision decisions disk downloaded draw dual each either every exam falling fell file for from green half has held held. here history is it It judge last left less little median member month more move moved moves no not Nothing nothing number number. of on one One opening or out out. over own per picture press price read Read reading recolours red refuses release reserve. rising rose rows same scale. sealed set shape share since single sit sit-out sits Stop stopped Sweep test than that the The these this to too traditional train trains typically under unit UTC voting voting. way what when where whether window window. with would
 ```
 
 ---

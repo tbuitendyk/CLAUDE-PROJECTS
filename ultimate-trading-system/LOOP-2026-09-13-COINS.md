@@ -175,4 +175,21 @@ old lines replaced by fifteen aimed at the new.
 
 ## F. What reached the environment
 
-Filled in as it happens, below.
+- **Commit e593fb7** — COINS.md Part one written (document only), pushed to
+  `claude/uts-build-out-7f2lmv`.
+- **Commit 8643e3e** — the build, 3.124.0. `npm test` green (883 tests);
+  `tests/ui-coins.js` green in a real browser; fifteen mutation guards each
+  caught by its own test. Pushed to `claude/uts-build-out-7f2lmv` and
+  fast-forwarded onto `ultimate-trading-system`, the branch `deploy-uts.sh`
+  deploys from. No force, no rewrite.
+- **Before deploying**: `uts-box-busy.sh` on the box answered `busy: none`,
+  so the restart interrupted no run.
+- **Deploy**: `deploy-uts.sh` through the deploy-control service, 06:20 UTC.
+  The box fetched `8b2faee..8643e3e`, synced the files, installed
+  dependencies, restarted the service, and its own health check answered OK.
+  The previous generation was confirmed still active. The candle cache was
+  left alone.
+- **Served record**: `uts-served-fingerprint.sh` reports the box serving
+  8643e3e; `SERVED.json` written from its output; `node tests/sweep-words.js
+  --write` regenerated `SCREEN-WORDS.md` from that commit (10 tabs, 814
+  control labels, 90 options); `test-sweepwords.js` and `test-help.js` green.
