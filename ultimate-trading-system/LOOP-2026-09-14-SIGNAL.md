@@ -257,8 +257,15 @@ instrument itself:
 Release **3.127.0** (second digit: new behaviour on the screen and record
 shape 8), then **3.127.1** (third digit: the sweet spot's line says what share
 of the history its band still calls — a reading at band 260 is an edge on the
-few decisions that moved that far). Commits 90749fc, 94c9736, 80a51ef and the
-shipping commit on the session branch; 3.127.0 was never deployed on its own.
+few decisions that moved that far), then **3.127.2** (third digit: every
+sentence on the line sits in a template that carries a tag, and the eight
+trait words have one home in `lib/coinsignal.js` that the word-list generator
+reads — because the list regenerated after the 3.127.1 deploy had holes: the
+trait words, `the colour changes no call`, `no ratio`, `% called` and both
+link-cut sentences were on the owner's screen and on no list, the exact fault
+RULE ONE-A was written to end). Commits 90749fc, 94c9736, 80a51ef, 778488d
+and the 3.127.2 commit on the session branch; 3.127.0 was never deployed on
+its own.
 
 - `lib/coinsignal.js` — the arithmetic, pure, no I/O: the grid (B1); the
   overlap factor read off the shape's hours (S4); the leans and the two-way

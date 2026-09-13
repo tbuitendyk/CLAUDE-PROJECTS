@@ -7941,15 +7941,30 @@ function cSweepStrip(sig) {
     const v = p.smoothed == null ? 0 : Math.max(0, Math.min(C_SIG_CAP, p.smoothed));
     const h = Math.max(1, Math.round((v / C_SIG_CAP) * 22));
     const cls = p.band === spot ? 'spot' : (inPlateau(p.band) ? 'plat' : (p.smoothed != null && p.smoothed >= 1 ? 'over' : 'under'));
-    return `<span class="csw ${cls}" style="height:${h}px" title="band ${p.band}: ${cRatioWords(p)}${p.called == null ? '' : `, ${(p.called * 100).toFixed(0)}% of decisions called`}"></span>`;
+    return `<span class="csw ${cls}" style="height:${h}px" title="band ${p.band}: ${cRatioWords(p).replace(/<[^>]*>/g, '')}${p.called == null ? '' : `, ${(p.called * 100).toFixed(0)}% of decisions called`}"></span>`;
   }).join('')}</span>`;
 }
-// one band's reading in words: the ratio, or why there is none
+// one band's reading in words: the ratio, or why there is none. Every
+// sentence here carries a tag ON PURPOSE: the closed word list (RULE ONE-A,
+// tests/sweep-words.js) reads page text out of strings that hold a tag, at
+// any depth, and nothing else -- a bare string inside an interpolation is
+// invisible to it, and 3.127.1 shipped three of these sentences that way.
 function cRatioWords(p) {
-  if (!p) return 'no ratio';
-  if (p.same) return 'the colour changes no call';
-  if (p.ratio == null) return 'no ratio';
-  return `${cNum(p.ratio, 2)}× chance`;
+  // template literals, not quoted strings: at statement level the list reads
+  // only templates that hold a tag
+  if (!p) return `<span>no ratio</span>`;
+  if (p.same) return `<span>the colour changes no call</span>`;
+  if (p.ratio == null) return `<span>no ratio</span>`;
+  return `<span>${cNum(p.ratio, 2)}× chance</span>`;
+}
+function cCalledWords(called) {
+  return called == null ? '' : `<span>, ${(called * 100).toFixed(0)}% called</span>`;
+}
+function cLinkCutWords(lc) {
+  if (!lc) return '';
+  return lc.asStrong == null
+    ? `<span>· with the link cut, a plateau in ${lc.found} of ${lc.trials}</span>`
+    : `<span>· with the link cut, one at least this strong in ${lc.asStrong} of ${lc.trials}</span>`;
 }
 function cSignalLine(sig, band) {
   if (!sig) return '';
@@ -7962,12 +7977,12 @@ function cSignalLine(sig, band) {
   // an edge on the few decisions that moved that far, and the reader must
   // see that beside the ratio
   const spotRead = sig.sweetSpot ? (sig.sweep || []).find((p) => p.band === sig.sweetSpot.band) : null;
-  const spotCalled = spotRead && spotRead.called != null ? `, ${(spotRead.called * 100).toFixed(0)}% called` : '';
+  const spotCalled = spotRead ? cCalledWords(spotRead.called) : '';
   const head = sig.plateau && sig.sweetSpot
     ? `<b>signal</b> edge <b>${cNum(sig.sweetSpot.ratio, 2)}× chance</b> at band ${sig.sweetSpot.band}${spotCalled} <span class="muted">· plateau ${sig.plateau.fromBand}–${sig.plateau.toBand}, ${sig.plateau.points} bands, mean ${cNum(sig.plateau.meanRatio, 2)}×</span>`
     : `<b>signal</b> <span class="muted">no band beats chance for three steps together${sig.why ? ` — ${esc(sig.why)}` : ''}</span>`;
   return `<div class="csig">${head} ${words}
-    <span class="muted">· at band ${esc(String(band))}: ${cRatioWords(cur)}${cur.called == null ? '' : `, ${(cur.called * 100).toFixed(0)}% called`}${lc ? ` · with the link cut, ${lc.asStrong == null ? `a plateau in ${lc.found} of ${lc.trials}` : `one at least this strong in ${lc.asStrong} of ${lc.trials}`}` : ''}</span>
+    <span class="muted">· at band ${esc(String(band))}: ${cRatioWords(cur)}${cCalledWords(cur.called)} ${cLinkCutWords(lc)}</span>
     ${cSweepStrip(sig)}</div>`;
 }
 

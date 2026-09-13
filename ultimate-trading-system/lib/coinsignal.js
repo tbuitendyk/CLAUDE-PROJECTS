@@ -196,37 +196,45 @@ function findPlateau(bands, ratios) {
   };
 }
 
-// THE TRAITS (S6), one word each, read at one band.
+// THE TRAITS (S6), one word each, read at one band. The eight words have ONE
+// home here: the screen prints them as marks, and the closed word list
+// (tests/sweep-words.js) reads them from this object the way it reads the
+// other values a screen prints out of the engine.
+const TRAIT_WORDS = Object.freeze({
+  reverting: 'reverting', trending: 'trending',
+  steady: 'steady', fading: 'fading', mixed: 'mixed',
+  often: 'often', much: 'much', both: 'both',
+});
 function holdingOf(signs) {
   // signs: per part in time order, +1/-1/0/null; null and 0 are skipped
   const s = signs.filter((x) => x != null && x !== 0);
   if (s.length < 2) return null;
   const first = s[0];
-  if (s.every((x) => x === first)) return 'steady';
+  if (s.every((x) => x === first)) return TRAIT_WORDS.steady;
   // fading: everything that disagrees is a suffix
   let i = s.length - 1;
   while (i > 0 && s[i] !== first) i--;
   const suffixOnly = s.slice(0, i + 1).every((x) => x === first);
-  return suffixOnly ? 'fading' : 'mixed';
+  return suffixOnly ? TRAIT_WORDS.fading : TRAIT_WORDS.mixed;
 }
 function combineHolding(a, b) {
   const list = [a, b].filter(Boolean);
   if (!list.length) return null;
-  if (list.includes('mixed')) return 'mixed';
-  if (list.includes('fading')) return 'fading';
-  return 'steady';
+  if (list.includes(TRAIT_WORDS.mixed)) return TRAIT_WORDS.mixed;
+  if (list.includes(TRAIT_WORDS.fading)) return TRAIT_WORDS.fading;
+  return TRAIT_WORDS.steady;
 }
 function traitsAt(bandRead, layouts, trainLayout) {
   const g = bandRead.gaps;
   const trainParts = g[trainLayout];
   const train = trainParts ? trainParts[0] : null;
   const dirSign = train ? sgn(train.gapShare == null ? 0 : train.gapShare) : 0;
-  const direction = dirSign < 0 ? 'reverting' : dirSign > 0 ? 'trending' : null;
+  const direction = dirSign < 0 ? TRAIT_WORDS.reverting : dirSign > 0 ? TRAIT_WORDS.trending : null;
   const holdOf = (field) => combineHolding(...layouts.map((l) => (g[l] ? holdingOf(g[l].map((p) => sgn(p[field] == null ? 0 : p[field]))) : null)));
   const often = holdOf('gapShare');
   const much = holdOf('gapMove');
-  const holds = (h) => h === 'steady';
-  const carrier = holds(often) && holds(much) ? 'both' : holds(often) ? 'often' : holds(much) ? 'much' : null;
+  const holds = (h) => h === TRAIT_WORDS.steady;
+  const carrier = holds(often) && holds(much) ? TRAIT_WORDS.both : holds(often) ? TRAIT_WORDS.often : holds(much) ? TRAIT_WORDS.much : null;
   return { direction, holding: often, carrier, holdingMove: much };
 }
 
@@ -347,7 +355,7 @@ function linkCutWorth(plateau, linkCut) {
 }
 
 module.exports = {
-  BAND_GRID, PLATEAU_MIN_POINTS, CHANCE_BAR,
+  BAND_GRID, PLATEAU_MIN_POINTS, CHANCE_BAR, TRAIT_WORDS,
   bandGrid, overlapFactor, leansOn, edgeOn, readBand, smooth3, findPlateau,
   holdingOf, traitsAt, trainLayoutOf, signalSummary, shuffledCopy, shuffledWithin, plateauFalseAlarms, plateauStrength, linkCutWorth,
 };

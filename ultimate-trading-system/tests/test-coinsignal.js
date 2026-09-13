@@ -150,6 +150,11 @@ module.exports = {
     assert.deepStrictEqual([t2.direction, t2.holding, t2.carrier], ['trending', 'fading', 'much'], 'points fade at the end while the move holds: the carrier is the move');
     const t3 = S.traitsAt(mk([0.0, 0.1, -0.1, 0.1], [0.5, -0.5, 0.5, -0.5]), LAYOUTS, 'split70');
     assert.deepStrictEqual([t3.direction, t3.holding, t3.carrier], [null, 'mixed', null]);
+    // the eight words have one home, and every trait the reading prints is one of them
+    assert.deepStrictEqual(Object.values(S.TRAIT_WORDS).sort(), ['both', 'fading', 'mixed', 'much', 'often', 'reverting', 'steady', 'trending']);
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsignal.js'), 'utf8');
+    const traitsBody = src.slice(src.indexOf('function holdingOf'), src.indexOf('// THE WHOLE READING'));
+    for (const w of Object.values(S.TRAIT_WORDS)) assert.ok(!new RegExp(`'${w}'`).test(traitsBody), `'${w}' is typed again in the traits instead of read from TRAIT_WORDS`);
   },
 
   // S1 + S8: a built-in signal is found, noise is not, and every shape gets an answer

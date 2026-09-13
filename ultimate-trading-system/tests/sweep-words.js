@@ -370,9 +370,15 @@ function optionWords(body) {
 // spec values, the value sets are read from the engine — the same way the
 // dropdown choices already are.
 function dataValueWords(body) {
-  if (!/m\.spec\s*&&\s*m\.spec\.(view|model)/.test(body)) return [];
-  const bw = require(path.join(ROOT, 'lib', 'bracketwork'));
   const out = new Set();
+  // THE TRAIT MARKS ON COINS (3.127.2): one word each, printed out of the
+  // signal reading. The eight words have one home in lib/coinsignal.js and
+  // are read from there, the same way as below.
+  if (/class="ctrait"/.test(body)) {
+    for (const w of Object.values(require(path.join(ROOT, 'lib', 'coinsignal')).TRAIT_WORDS)) out.add(w);
+  }
+  if (!/m\.spec\s*&&\s*m\.spec\.(view|model)/.test(body)) return [...out];
+  const bw = require(path.join(ROOT, 'lib', 'bracketwork'));
   for (const v of bw.slimViewsFor(1)) out.add(v);
   for (const v of bw.slimViewsFor(2)) out.add(v);
   // the two ways of working out a forecast, read off the stage engine's own
