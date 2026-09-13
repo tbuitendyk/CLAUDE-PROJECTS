@@ -5,15 +5,30 @@
 // which is where the arithmetic lives and where it is tested. Nothing here
 // decides anything about a coin: it loads, it measures, it writes.
 //
-// THE PERIODS ARE THE SWEEP'S OWN PERIODS. The chunks come from
-// buildComboChunks, the same function a stage 1 launch builds them with, so a
-// reading on this tab lines up period for period with the run it is vetting
-// for. Building them another way here would be a second definition of what a
-// period is. That claim was FALSE in the first version, which pinned the
-// weekday filter off while it is a per-run sweep setting: with it on the same
-// coin gives 104 periods at the four-day shape against 725 with it off, so the
-// reading was about a different series from the run it was vetting. It is a
-// control now, like everything else here (RULE FIVE).
+// IT CHARACTERISES THE HISTORY, NOT OUR TREATMENT OF IT (owner order,
+// 2026-09-13: "principally we are characterizing the HISTORY, not our treatment
+// of the history", and "chunk shape and 24/5 are actually completely irrelevant
+// here -- you need to look at the three hold types and their possible starting
+// anchors only").
+//
+// Until now this tab made the owner pick a chunk shape and a 24/5 setting
+// before it would say anything, and then reported what ONE treatment of the
+// history holds while its own opening line said it reported what the history
+// holds. Both were wrong to ask. A chunk shape's name is its look-back, which
+// only feeds training and changes nothing about the trade; measured, the five
+// shapes collapse to three holds -- 17 hours, 41 hours and 60 hours -- and
+// 24/5 was never a property of the coin at all, only a rule about which start
+// days we allow.
+//
+// So every coin is now read at all three holds, at the anchors the engine
+// pins (owner: "hold the anchors as they are"): 01:00 every day for the two
+// daily holds, Tuesday 03:00 for the weekly one. Fifteen possible starts a
+// week, and no treatment left for the owner to choose before they can look.
+//
+// THE TRADES ARE THE SWEEP'S OWN TRADES. They come from buildComboChunks, the
+// same function a stage 1 launch builds them with, so a reading here lines up
+// trade for trade with the runs it is vetting for. Building them another way
+// would be a second definition of what a trade is.
 //
 // AND NOTHING HERE REFUSES A COIN (COINS.md section 8; owner, 2026-09-12: "We're
 // not even blocking coins with this anyways. We're only reporting."). The first
@@ -25,17 +40,24 @@
 const fs = require('fs');
 const path = require('path');
 const coins = require('./coins');
-const { GEOMETRIES } = require('./dataset');
+const { holdTypes } = require('./dataset');
+// through the module, so a test can stand in for the cache (see lib/stages.js)
+const defaultCoins = (...a) => require('./dataset').defaultCoins(...a);
 
 const DIR = path.join(__dirname, '..', 'data', 'coins');
 // THE RECORD SHAPE. It moves whenever what is written changes, so a reading
 // taken under an older shape is NAMED on the screen rather than drawn as
-// though it were current (RULE NINE). 3 (3.121.0): every record now carries
-// `canTell` -- whether either untuned number tells this coin apart from a coin
-// with no trend -- and the shuffle count it was worked out at. A shape-2
-// record has neither, and drawn as current it shows a literal "?" where the
-// count belongs and no mark where the warning belongs.
-const RECORD_V = 3;
+// though it were current (RULE NINE). 4 (3.122.0): one record per coin, no
+// longer one per coin and chunk shape, and it carries a reading per HOLD
+// instead of a reading of whichever treatment was chosen. A shape-3 record
+// describes one treatment and has no way to say which hold it was, so it
+// cannot be drawn in this table at all.
+//
+// AND IT CLOSES A COLLISION. A shape-3 record was keyed by coin and chunk shape
+// only -- 24/5 was not in the key -- so reading a coin with it on overwrote the
+// reading taken with it off, same file, last press wins, with nothing but the
+// line under the row to say which one survived.
+const RECORD_V = 4;
 
 // THE DEFAULTS ARE STARTING VALUES, NOT LIMITS. Every one of them is a control
 // on the screen (RULE FIVE); these are only what the boxes are filled with
@@ -47,7 +69,6 @@ const DEFAULTS = Object.freeze({
   step: 0.5,
   cap: 20,
   driftParts: 8,
-  weekdaysOnly: false,
   // how many times a coin's own periods are shuffled to work out whether either
   // untuned number can say anything about it at this much history (COINS.md
   // section 11). A precision setting, not a threshold -- there is no line to
@@ -66,7 +87,9 @@ function layouts() {
 }
 
 function ensureDir() { try { fs.mkdirSync(DIR, { recursive: true }); } catch (_) { /* already there */ } }
-const recordFile = (coin, geometry) => path.join(DIR, `${String(coin).toUpperCase()}__${geometry}.json`);
+// ONE FILE PER COIN. It was one per coin and chunk shape, which is how a
+// treatment ended up in the name of a thing that is meant to describe a coin.
+const recordFile = (coin) => path.join(DIR, `${String(coin).toUpperCase()}.json`);
 
 // ---- one coin ----------------------------------------------------------------
 
@@ -86,101 +109,112 @@ function seriesOf(chunks) {
   return { prices, moves };
 }
 
-// THE RECORD EVERY COIN GETS, read or not. `readings` carries one entry per
-// window layout; an entry is either the reading or a sentence saying why there
-// is none. `why` at the top is for a coin that could not get as far as a
-// reading at all.
-function blankRecord(coin, geometry, params, why) {
+// THE RECORD EVERY COIN GETS, read or not. `holds` carries one entry per hold
+// the engine's shapes offer; an entry is either the reading or a sentence
+// saying why there is none. `why` at the top is for a coin that could not get
+// as far as a reading at all.
+function blankRecord(coin, params, why) {
   return {
     v: RECORD_V,
     coin: String(coin).toUpperCase(),
-    geometry,
-    periods: 0,
     read: false,
     why,
     provenance: {
       release: require('../package.json').version,
       capturedAt: new Date().toISOString(),
-      fromTs: null, toTs: null, cachedMonths: null, candles: 0,
+      cachedMonths: null, candles: 0,
     },
     params,
-    traditional: null,
-    readings: {},
+    holds: {},
   };
 }
 
-async function readOneCoin(coin, params, onNote = () => {}) {
-  const geometry = params.geometry;
-  if (!GEOMETRIES[geometry]) throw new Error(`unknown chunk shape '${geometry}'`);
-  const pipeline = require('./pipeline');
-  const { toHourlyMap, forwardFill } = require('./dataset');
+// ONE HOLD, ON PRICES ALREADY LOADED. Everything the tab reports about a coin
+// is reported once per hold, because a hold is the only thing about our
+// treatment that changes what trades the history actually offered.
+function readOneHold(coin, hold, map, params, onNote = () => {}) {
   const bracket = require('./bracket');
-  const kept = {
-    target: params.target, from: params.from, to: params.to, step: params.step,
-    cap: params.cap, driftParts: params.driftParts, weekdaysOnly: !!params.weekdaysOnly,
-    shuffles: params.shuffles,
-  };
-
-  onNote(`${coin}: reading its cached prices`);
-  const loaded = await pipeline.loadSymbolAll(coin, (m) => onNote(`${coin}: ${m}`));
-  if (!loaded.rows.length) {
-    return blankRecord(coin, geometry, kept, `${coin} has no cached prices on this box — download them on Data first`);
-  }
-  // forwardFill HANDS BACK A WRAPPER and the filled prices are inside it. The
-  // first version passed the wrapper straight on as the price map, so every
-  // coin threw on the first period built and the tab read nothing at all,
-  // ever. Nineteen tests were green and not one of them loaded this file.
-  const map = forwardFill(toHourlyMap(loaded.rows)).map;
-
-  onNote(`${coin}: building ${geometry} periods`);
-  const built = bracket.buildComboChunks({ trade: map }, geometry, !!params.weekdaysOnly);
+  onNote(`${coin}: ${hold.hours}-hour trades`);
+  // WEEKDAYS ARE NOT FILTERED, and that is the anchors being held where they
+  // are (owner, 2026-09-13). 24/5 is a rule about which start days we allow
+  // ourselves, not something the coin's history has an opinion about.
+  const built = bracket.buildComboChunks({ trade: map }, hold.geometry, false);
   const { prices, moves } = seriesOf(built.chunks);
   const first = built.chunks.find((c) => c.c1 != null);
   const last = [...built.chunks].reverse().find((c) => c.c1 != null);
-
-  const rec = {
-    v: RECORD_V,
-    coin: String(coin).toUpperCase(),
-    geometry,
+  const out = {
+    hold: { key: hold.key, hours: hold.hours, every: hold.every, at: hold.at, startsPerWeek: hold.startsPerWeek },
     periods: prices.length,
     read: prices.length > 0,
-    why: prices.length ? null : `${coin} gives no complete ${geometry} periods from the prices cached on this box`,
-    // THE PROVENANCE (COINS.md section 12). A score cannot be read honestly
-    // without knowing which span and which parameter values produced it, so
-    // both are on the record and both are drawn beside the reading.
-    provenance: {
-      release: require('../package.json').version,
-      capturedAt: new Date().toISOString(),
-      fromTs: first ? first.startTs : null,
-      toTs: last ? last.startTs : null,
-      cachedMonths: loaded.cachedMonthCount,
-      candles: loaded.rows.length,
-    },
-    params: kept,
-    // ONE PER COIN, NOT ONE PER LAYOUT (COINS.md section 11). It was inside the
-    // per-layout reading before, so every record carried two byte-identical
-    // copies of it.
-    traditional: prices.length ? coins.traditionalReading(moves, { driftParts: params.driftParts, shuffles: params.shuffles }) : null,
+    why: prices.length ? null : `${coin} offers no complete ${hold.hours}-hour trades from the prices cached on this box`,
+    span: { fromTs: first ? first.startTs : null, toTs: last ? last.startTs : null },
+    traditional: prices.length
+      ? coins.traditionalReading(moves, { driftParts: params.driftParts, shuffles: params.shuffles })
+      : null,
     readings: {},
   };
-
   for (const layout of layouts()) {
-    if (!prices.length) { rec.readings[layout] = { layout, why: rec.why }; continue; }
-    onNote(`${coin}: reading it as ${layout}`);
+    if (!prices.length) { out.readings[layout] = { layout, why: out.why }; continue; }
     try {
-      rec.readings[layout] = coins.coinReading(prices, moves, {
+      out.readings[layout] = coins.coinReading(prices, moves, {
         layout,
         target: params.target, from: params.from, to: params.to, step: params.step,
         cap: params.cap,
       });
     } catch (err) {
       // NOT A REFUSAL OF THE COIN. The arithmetic could not be done for this one
-      // layout -- too few periods for its split to leave every stretch with
-      // something in it, most likely -- so that is what the record says, and
-      // every other layout and the traditional score are still there.
-      rec.readings[layout] = { layout, why: String(err.message || err) };
+      // window layout -- too few trades for its split to leave every stretch
+      // with something in it, most likely -- so that is what the record says,
+      // and every other layout, every other hold and the two untuned numbers
+      // are still there.
+      out.readings[layout] = { layout, why: String(err.message || err) };
     }
   }
+  return out;
+}
+
+async function readOneCoin(coin, params, onNote = () => {}) {
+  const pipeline = require('./pipeline');
+  const { toHourlyMap, forwardFill } = require('./dataset');
+  const kept = {
+    target: params.target, from: params.from, to: params.to, step: params.step,
+    cap: params.cap, driftParts: params.driftParts, shuffles: params.shuffles,
+  };
+
+  onNote(`${coin}: reading its cached prices`);
+  const loaded = await pipeline.loadSymbolAll(coin, (m) => onNote(`${coin}: ${m}`));
+  if (!loaded.rows.length) {
+    return blankRecord(coin, kept, `${coin} has no cached prices on this box — download them on Data first`);
+  }
+  // forwardFill HANDS BACK A WRAPPER and the filled prices are inside it. The
+  // first version passed the wrapper straight on as the price map, so every
+  // coin threw on the first trade built and the tab read nothing at all, ever.
+  // Nineteen tests were green and not one of them loaded this file.
+  const map = forwardFill(toHourlyMap(loaded.rows)).map;
+
+  const rec = {
+    v: RECORD_V,
+    coin: String(coin).toUpperCase(),
+    read: false,
+    why: null,
+    // THE PROVENANCE (COINS.md section 12). A score cannot be read honestly
+    // without knowing which span and which parameter values produced it, so
+    // both are on the record and both are drawn beside the reading. The span
+    // belongs to each hold, because the holds do not start or end together.
+    provenance: {
+      release: require('../package.json').version,
+      capturedAt: new Date().toISOString(),
+      cachedMonths: loaded.cachedMonthCount,
+      candles: loaded.rows.length,
+    },
+    params: kept,
+    holds: {},
+  };
+  for (const hold of holdTypes()) {
+    rec.holds[hold.key] = readOneHold(coin, hold, map, params, onNote);
+  }
+  rec.read = Object.values(rec.holds).some((h) => h.read);
+  if (!rec.read) rec.why = `${coin} offers no complete trades at any hold from the prices cached on this box`;
   return rec;
 }
 
@@ -192,8 +226,7 @@ function normalise(body = {}) {
   const num = (v, d) => (Number.isFinite(Number(v)) && Number(v) > 0 ? Number(v) : d);
   const list = String(body.coins || '').split(',').map((s) => s.trim().toUpperCase()).filter(Boolean);
   const p = {
-    coins: list.length ? [...new Set(list)] : require('./dataset').DEFAULT_PAIRS.slice(),
-    geometry: String(body.geometry || 'daily-4d'),
+    coins: list.length ? [...new Set(list)] : defaultCoins(),
     target: Math.max(1, Math.floor(num(body.target, DEFAULTS.target))),
     from: num(body.from, DEFAULTS.from),
     to: num(body.to, DEFAULTS.to),
@@ -201,9 +234,10 @@ function normalise(body = {}) {
     cap: num(body.cap, DEFAULTS.cap),
     driftParts: Math.max(2, Math.floor(num(body.driftParts, DEFAULTS.driftParts))),
     shuffles: Math.max(2, Math.floor(num(body.shuffles, DEFAULTS.shuffles))),
-    weekdaysOnly: body.weekdaysOnly === true || String(body.weekdaysOnly) === 'true',
   };
-  if (!GEOMETRIES[p.geometry]) throw new Error(`unknown chunk shape '${p.geometry}'`);
+  // A BLANK BOX ON A BOX WITH NOTHING DOWNLOADED IS NO COINS, and saying so is
+  // better than starting a run that reads nothing (owner order, 2026-09-13).
+  if (!p.coins.length) throw new Error('no coins are downloaded on this box — download some on Data first, or type the ones you want');
   if (p.to <= p.from) throw new Error(`the percentage range must run upwards — ${p.from}% to ${p.to}% does not`);
   if (p.cap <= 1) throw new Error(`the weight ceiling must be above 1 — ${p.cap} cannot leave the average weight at 1`);
   return p;
@@ -225,18 +259,18 @@ async function runAll(p) {
     if (run && run.stop) break;
     try {
       const rec = await readOneCoin(coin, p, (m) => { if (run) run.note = m; });
-      fs.writeFileSync(recordFile(coin, p.geometry), `${JSON.stringify(rec)}\n`);
+      fs.writeFileSync(recordFile(coin), `${JSON.stringify(rec)}\n`);
       if (rec.read) run.wrote.push(coin); else run.couldNotRead.push({ coin, why: rec.why });
     } catch (err) {
       // A COIN THAT THREW ON THE WAY IN STILL GETS A RECORD, so the screen shows
       // it with its reason instead of leaving it out. The first version kept
       // the reason in memory only, on the latest press: read seventeen coins,
       // two fail, press again for one, and the two were gone with nothing said.
-      const rec = blankRecord(coin, p.geometry, {
+      const rec = blankRecord(coin, {
         target: p.target, from: p.from, to: p.to, step: p.step,
-        cap: p.cap, driftParts: p.driftParts, weekdaysOnly: !!p.weekdaysOnly, shuffles: p.shuffles,
+        cap: p.cap, driftParts: p.driftParts, shuffles: p.shuffles,
       }, String(err.message || err));
-      try { fs.writeFileSync(recordFile(coin, p.geometry), `${JSON.stringify(rec)}\n`); } catch (_) { /* the disk said no; the run carries on */ }
+      try { fs.writeFileSync(recordFile(coin), `${JSON.stringify(rec)}\n`); } catch (_) { /* the disk said no; the run carries on */ }
       run.couldNotRead.push({ coin, why: rec.why });
     }
     run.done++;
@@ -287,12 +321,13 @@ function coinsRunStop() {
 
 // ---- reading the records back -------------------------------------------------
 
-function readRecord(coin, geometry) {
-  try { return JSON.parse(fs.readFileSync(recordFile(coin, geometry), 'utf8')); } catch (_) { return null; }
+function readRecord(coin) {
+  try { return JSON.parse(fs.readFileSync(recordFile(coin), 'utf8')); } catch (_) { return null; }
 }
 
-// EVERY RECORD ON THE BOX FOR ONE CHUNK SHAPE. Ordered by the caller's choice,
-// which is a control on the screen and never decided here (RULE FIVE).
+// EVERY RECORD ON THE BOX. There is no chunk shape to select by any more: one
+// record per coin, carrying every hold. Ordered by the caller's choice, which
+// is a control on the screen and never decided here (RULE FIVE).
 //
 // A FILE THAT CANNOT BE READ IS NAMED, NEVER DROPPED. The first version skipped
 // both an unparseable file and a record written under an older shape, in
@@ -301,16 +336,19 @@ function readRecord(coin, geometry) {
 // had ever been read. That is the RULE NINE hole: what is on disk either says
 // what it is in today's words or it is migrated, and either way the reader
 // says which.
-function coinsRecords(query = {}) {
+function coinsRecords() {
   ensureDir();
-  const geometry = String(query.geometry || 'daily-4d');
   const rows = [];
   const unreadable = [];
   let files = [];
   try { files = fs.readdirSync(DIR); } catch (_) { files = []; }
   for (const f of files) {
-    if (!f.endsWith(`__${geometry}.json`)) continue;
-    const coin = f.slice(0, f.length - `__${geometry}.json`.length);
+    if (!f.endsWith('.json')) continue;
+    // THE NAME OFF THE FILE IS ONLY A FALL-BACK. A record that parses says its
+    // own coin; a file written under the old one-per-chunk-shape name still
+    // has to be NAMED on the screen rather than skipped, so it is read the same
+    // way as any other and refused on its shape.
+    const coin = f.slice(0, f.length - '.json'.length).split('__')[0];
     let rec = null;
     try { rec = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')); } catch (err) {
       unreadable.push({ coin, file: f, why: `this file could not be read back: ${String(err.message || err)} — read the coin again to replace it` });
@@ -344,7 +382,10 @@ function coinsRecords(query = {}) {
   // side gets no help whatever, at any thinness. That is a reason to read the
   // split of time, which is what this tab is for.
   return {
-    geometry,
+    holds: holdTypes(),
+    // what a blank coin box means, as a count, so the label can say it without
+    // the number being typed anywhere
+    downloaded: defaultCoins().length,
     records: rows,
     unreadable,
     defaults: DEFAULTS,
@@ -356,7 +397,7 @@ function coinsRecords(query = {}) {
 
 module.exports = {
   DEFAULTS, RECORD_V, layouts,
-  seriesOf, readOneCoin, blankRecord, normalise,
+  seriesOf, readOneCoin, readOneHold, blankRecord, normalise,
   coinsRunStart, coinsRunStatus, coinsRunStop, coinsRecords, readRecord,
   recordFile,
 };

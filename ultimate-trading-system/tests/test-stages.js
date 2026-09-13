@@ -62,6 +62,17 @@ function cleanLaunchParent(pid) {
   }
 }
 
+// WHAT A BLANK COIN BOX MEANS IS READ OFF THE CACHE (3.122.0), so a test about
+// blank has to say what is downloaded rather than depend on what happens to be
+// on the machine it runs on. It stands in for the cache the way the Coins tests
+// stand in for the price loader, and puts it back afterwards.
+function withDownloaded(list, fn) {
+  const dataset = require('../lib/dataset');
+  const was = dataset.defaultCoins;
+  dataset.defaultCoins = () => list.slice();
+  try { return fn(); } finally { dataset.defaultCoins = was; }
+}
+
 module.exports = {
   // The fixed rule, by hand: two members over three chunks, labels up /
   // nowhere / down. Pooled surenesses on what happened: 0.35 + 0.65 + 0.5.
@@ -117,7 +128,7 @@ module.exports = {
     const u3 = ['A', 'B', 'C'];
     const geos = ['weekly-8d', 'daily-4d'];
     // both lists named: this test is about the combo arithmetic, and a blank
-    // compare list means all 17 default coins now (3.75.0), which is a
+    // compare list means every coin downloaded now (3.75.0, 3.122.0), which is a
     // different question and is held in its own test below
     assert.strictEqual(stages.unitsFor(u3, { singles: true }, geos, u3).length, 6);
     assert.strictEqual(stages.unitsFor(u3, { doubles: true }, geos, u3).length, 12);
@@ -537,8 +548,10 @@ module.exports = {
   async theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    assert.ok(srv.includes("app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam), nextNames: stages.nextNames() }));"),
-      'the record-set list does not carry the next free names');
+    assert.ok(srv.includes("nextNames: stages.nextNames(), coinsDownloaded: require('./lib/dataset').defaultCoins() }));"),
+      'the record-set list does not carry the next free names, or what a blank coin box resolves to');
+    assert.ok(srv.includes("app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam),"),
+      'and it is still the list of sets that carries them');
     assert.ok(ui.includes("  const nextNames = st.nextNames || {};"), 'Sweep does not read the next free names off the list');
     for (const n of [1, 2, 3]) {
       assert.ok(ui.includes(`      <label class="f">name<input id="swName${n}" placeholder="\${esc(nextNames[${n}] || '')}" maxlength="80" style="width:10rem"></label>\n      <label class="f" style="flex:1">description<input id="swDesc${n}" style="width:100%"></label>`),
@@ -4156,7 +4169,11 @@ module.exports = {
     const at = UI.indexOf('function swProvenance() {');
     assert.ok(at > 0, 'swProvenance is gone');
     const body = UI.slice(at, UI.indexOf('\n}\n', at) + 3);
-    const DEFAULTS = require('../lib/dataset').DEFAULT_PAIRS;
+    // ITS OWN LIST, NOT THE MACHINE'S CACHE. This is a truth table about
+    // colours; which coins are downloaded where it runs is not part of it.
+    // BTCUSDT is deliberately NOT in it: two rows below type that coin into a
+    // box precisely because it is one the set was not run with.
+    const DEFAULTS = ['LTCUSDT', 'ETHUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT'];
 
     // the owner's own set, read off the box 2026-09-06
     // THROUGH publicParams, WHICH IS WHAT THE PAGE ACTUALLY RECEIVES. Handing
@@ -4196,8 +4213,11 @@ module.exports = {
       };
       // eslint-disable-next-line no-unused-vars
       const esc = (x) => String(x);
+      // WHAT A BLANK COIN BOX RESOLVES TO, the way the page has it (3.122.0):
+      // off /api/stagesets, not off the vocabulary -- the vocabulary holds the
+      // CHOICES a control offers and no control offers a coin list.
       // eslint-disable-next-line no-unused-vars
-      const VOCAB = { defaultPairs: DEFAULTS.map((x) => ({ value: x, label: x })) };
+      const swDefaultCoins = DEFAULTS.slice();
       // eslint-disable-next-line no-unused-vars
       const swSetsCache = [S1, S2];
       // eslint-disable-next-line no-eval
@@ -4305,7 +4325,7 @@ module.exports = {
 
     // THE COMPARE COINS. The launch records the resolved list, and records it
     // EMPTY when neither doubles nor triples reads it; the screen must do both.
-    assert.ok(LIB.includes("const compareUsed = (compare.length ? compare : DEFAULT_PAIRS)\n    .filter(() => sizes.doubles || sizes.triples);"),
+    assert.ok(LIB.includes("const compareUsed = (compare.length ? compare : defaultCoins())\n    .filter(() => sizes.doubles || sizes.triples);"),
       'the launch no longer resolves the compare coins this way — the screen below copies this rule and has to move with it');
     assert.ok(/const wantCmp = \(\(c\('#swDoubles'\) \|\| c\('#swTriples'\)\) \? \(boxCmp\.length \? boxCmp : defaults\) : \[\]\)/.test(fn),
       'the compare coins are compared as typed, so a blank box reads as disagreeing with the seventeen default pairs the run actually read — Stage 2 is red for ever');
@@ -4871,15 +4891,25 @@ module.exports = {
     // with nothing beside it is somebody asking for that coin against
     // everything, which is the whole reason the box exists — and the trade box
     // already reads blank the same way, on its own label.
-    const DEF = require('../lib/dataset').DEFAULT_PAIRS;
-    const blank = stages.unitsFor(['LTCUSDT'], { triples: true }, g, []);
-    const spelled = stages.unitsFor(['LTCUSDT'], { triples: true }, g, DEF);
-    assert.deepStrictEqual(blank, spelled, 'blank must be the default pairs spelled out, exactly');
-    assert.ok(blank.length > 0, 'and it must produce units — this is the case that refused');
-    // a coin in trade coins that is ALSO in the default pairs is still never
-    // read against itself, so the count is over the others alone
-    const n = DEF.length - (DEF.includes('LTCUSDT') ? 1 : 0);
-    assert.strictEqual(blank.length, (n * (n - 1)) / 2, 'every pair of the others, and no pair holding the coin itself');
+    const DEF = ['LTCUSDT', 'AAAUSDT', 'BBBUSDT', 'CCCUSDT', 'DDDUSDT'];
+    withDownloaded(DEF, () => {
+      const blank = stages.unitsFor(['LTCUSDT'], { triples: true }, g, []);
+      const spelled = stages.unitsFor(['LTCUSDT'], { triples: true }, g, DEF);
+      assert.deepStrictEqual(blank, spelled, 'blank must be every downloaded coin spelled out, exactly');
+      assert.ok(blank.length > 0, 'and it must produce units — this is the case that refused');
+      // a coin in trade coins that is ALSO downloaded is still never read
+      // against itself, so the count is over the others alone
+      const n = DEF.length - (DEF.includes('LTCUSDT') ? 1 : 0);
+      assert.strictEqual(blank.length, (n * (n - 1)) / 2 * g.length, 'every pair of the others, per shape, and no pair holding the coin itself');
+    });
+    // AND A BOX WITH NOTHING DOWNLOADED MEANS NOTHING (3.122.0). Blank used to
+    // be a typed list that always had seventeen names in it; read off the cache
+    // it can be empty, and the launch has to say so rather than build no units
+    // and leave the owner guessing which box was wrong.
+    withDownloaded([], () => {
+      assert.deepStrictEqual(stages.unitsFor(['LTCUSDT'], { triples: true }, g, []), [],
+        'nothing downloaded means nothing to read a coin against');
+    });
     // AND SINGLES NEVER READS IT. There is nothing for a coin on its own to be
     // read against, so whatever is in the box changes nothing at all.
     assert.deepStrictEqual(stages.unitsFor(['LTCUSDT'], { singles: true }, g, ['AAAUSDT', 'BBBUSDT']),
@@ -4893,7 +4923,7 @@ module.exports = {
   async aLaunchWithNothingToScoreSaysWhichBoxIsShortAndByHowMany() {
     // compare coins spelled out and holding nothing but the traded coin: there
     // is no OTHER coin in it, so a triple has nothing to read LTCUSDT against.
-    // (Blank would be the 17 default coins and would run — that is the point
+    // (Blank would be every coin downloaded and would run — that is the point
     // of the box, and it is held in the test above.)
     const base = { sizes: { triples: true }, nullN: 3, fee: 0.00125, universe: ['LTCUSDT'], compare: ['LTCUSDT'], name: `t-${Date.now().toString(36)}` };
     let msg = '';
@@ -4905,8 +4935,9 @@ module.exports = {
     // Asked of the enumerator, not of startStage1: launching a real run inside
     // a test claims the one heavy-job slot and every assertion after it reads
     // "one heavy job at a time" instead of what it was checking.
-    assert.ok(stages.unitsFor(['LTCUSDT'], { triples: true }, ['daily-4d'], []).length > 0,
-      'one coin with a blank compare box must have plenty to score — it is that coin against every default pair');
+    assert.ok(withDownloaded(['LTCUSDT', 'AAAUSDT', 'BBBUSDT', 'CCCUSDT'],
+      () => stages.unitsFor(['LTCUSDT'], { triples: true }, ['daily-4d'], []).length) > 0,
+      'one coin with a blank compare box must have plenty to score — it is that coin against every coin downloaded');
     // doubles is short by one, and says so in its own words
     let msg2 = '';
     try { stages.startStage1({ ...base, sizes: { doubles: true } }); } catch (err) { msg2 = String(err.message); }

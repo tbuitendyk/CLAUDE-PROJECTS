@@ -309,8 +309,28 @@ function servedVocabulary() {
   const m = new Module(file, module);
   m.filename = file;
   m.paths = Module._nodeModulePaths(path.dirname(file));
-  m._compile(src, file);
-  vocabularyFn = m.exports.vocabulary;
+  try {
+    m._compile(src, file);
+    const fn = m.exports.vocabulary;
+    fn();                                   // it has to actually run, not just compile
+    vocabularyFn = fn;
+  } catch (err) {
+    // ONLY THIS ONE FILE COMES FROM THE COMMIT; what it requires comes from the
+    // working tree. So a change to something the vocabulary READS -- not to the
+    // vocabulary itself -- leaves the served copy calling a name that no longer
+    // exists, and every word list becomes un-generatable between that commit and
+    // its deploy. That is the deploy-blocking drift this function was written to
+    // end, arriving by a different door (3.122.0: the coin list stopped being a
+    // typed array and `DEFAULT_PAIRS` went with it).
+    //
+    // The PAGE SOURCE still comes from the served commit, which is what RULE
+    // ONE-A is about. Only the choice lists fall back, and it says so out loud
+    // every run rather than quietly describing the wrong screen.
+    process.stderr.write(`sweep-words: the served commit's choice lists could not be built (${String(err.message || err)})\n`
+      + '            — falling back to the working tree for choices only; the page source is still the served commit.\n'
+      + '            This clears itself at the next deploy and re-fingerprint.\n');
+    vocabularyFn = require(path.join(ROOT, 'lib', 'vocabulary')).vocabulary;
+  }
   return vocabularyFn;
 }
 function optionWords(body) {

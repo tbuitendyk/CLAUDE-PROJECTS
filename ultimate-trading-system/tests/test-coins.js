@@ -864,7 +864,7 @@ module.exports = {
   // and nothing in the suite loaded the runner.
   everyRecordSaysWhatItIsAndWhenItWasTaken() {
     const runner = require('../lib/coinsrun');
-    const rec = runner.blankRecord('LTCUSDT', 'daily-4d', { target: 6 }, 'no cached prices');
+    const rec = runner.blankRecord('LTCUSDT', { target: 6 }, 'no cached prices');
     assert.strictEqual(rec.v, runner.RECORD_V, 'a record says which shape it is');
     assert.strictEqual(rec.read, false, 'a record that could not be read says so');
     assert.ok(rec.why && rec.why.length > 5, 'and says why in a sentence');
@@ -902,19 +902,23 @@ module.exports = {
     const path = require('path');
     const runner = require('../lib/coinsrun');
     const dir = fs.mkdtempSync(path.join(require('os').tmpdir(), 'coinsrec-'));
-    const real = runner.recordFile('AAAUSDT', 'daily-4d');
+    const real = runner.recordFile('AAAUSDT');
     const home = path.dirname(real);
     const made = [];
     const write = (name, body) => { const f = path.join(home, name); fs.writeFileSync(f, body); made.push(f); };
     try {
       fs.mkdirSync(home, { recursive: true });
-      write('ZZZAUSDT__testshape.json', `${JSON.stringify({ ...runner.blankRecord('ZZZAUSDT', 'testshape', {}, 'nothing'), v: runner.RECORD_V })}\n`);
-      write('ZZZBUSDT__testshape.json', `${JSON.stringify({ ...runner.blankRecord('ZZZBUSDT', 'testshape', {}, 'nothing'), v: 0 })}\n`);
-      write('ZZZCUSDT__testshape.json', '{"v":2,"coin":"ZZZ');
-      const got = runner.coinsRecords({ geometry: 'testshape' });
+      write('ZZZAUSDT.json', `${JSON.stringify({ ...runner.blankRecord('ZZZAUSDT', {}, 'nothing'), v: runner.RECORD_V })}\n`);
+      write('ZZZBUSDT.json', `${JSON.stringify({ ...runner.blankRecord('ZZZBUSDT', {}, 'nothing'), v: 0 })}\n`);
+      write('ZZZCUSDT.json', '{"v":2,"coin":"ZZZ');
+      // AND A FILE LEFT BEHIND UNDER THE OLD ONE-PER-CHUNK-SHAPE NAME. It is
+      // read like any other and refused on its shape, so the owner is told it
+      // is there rather than left wondering where a reading went (RULE NINE).
+      write('ZZZDUSDT__daily-4d.json', `${JSON.stringify({ v: 3, coin: 'ZZZDUSDT', geometry: 'daily-4d' })}\n`);
+      const got = runner.coinsRecords();
       assert.deepStrictEqual(got.records.map((r) => r.coin), ['ZZZAUSDT'], 'the readable record is served');
-      assert.deepStrictEqual(got.unreadable.map((u) => u.coin).sort(), ['ZZZBUSDT', 'ZZZCUSDT'],
-        'both the older shape and the broken file must be NAMED, not dropped');
+      assert.deepStrictEqual(got.unreadable.map((u) => u.coin).sort(), ['ZZZBUSDT', 'ZZZCUSDT', 'ZZZDUSDT'],
+        'the older shape, the file under the old name and the broken file must all be NAMED, not dropped');
       for (const u of got.unreadable) assert.ok(/read the coin again/.test(u.why), `${u.coin} must say what to do about it`);
       assert.strictEqual(got.recordVersion, runner.RECORD_V, 'the answer says which shape this release reads');
       assert.strictEqual(got.rareSideWeighting, false, 'and says plainly that a rare side is not weighted up at all');
@@ -1382,6 +1386,43 @@ module.exports = {
     assert.ok(trad.canTell && trad.canTell.worstTailSlice && trad.canTell.drift,
       'the reading the screen draws does not carry whether its numbers can tell anything');
     assert.strictEqual(trad.canTell.shuffles, 40, 'and it is worked out at the count the caller set');
+  },
+
+  // ONE ROW PER COIN AND HOLD, RUN RATHER THAN GREPPED (3.122.0). The screen no
+  // longer asks for a treatment before it will draw, so the flattening from one
+  // record to three rows is the thing that makes every hold visible -- and a
+  // scan of the source cannot tell a flattening that works from one that hands
+  // back the records untouched.
+  theCoinsTableDrawsARowForEveryHold() {
+    const fs = require('fs');
+    const path = require('path');
+    const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const at = page.indexOf('function cRows(');
+    assert.ok(at > 0, 'the Coins screen has no way of drawing a row per hold');
+    const fn = page.slice(at, page.indexOf('\n}', at) + 2);
+    // eslint-disable-next-line no-eval
+    const cRows = eval(`(${fn.trim()})`);
+    const hold = (key, hours, periods) => ({
+      hold: { key, hours, every: 'day', at: '01:00', startsPerWeek: 7 },
+      periods, read: true, why: null, span: { fromTs: 1, toTs: 2 },
+      traditional: { worstTailSlice: { balance: 0.4 }, drift: { drift: 0.01 } }, readings: { reserve61: {} },
+    });
+    const rows = cRows([
+      { coin: 'AAAUSDT', provenance: { release: 'x' }, params: { target: 6 }, why: null,
+        holds: { '17h': hold('17h', 17, 900), '41h': hold('41h', 41, 890), '60h': hold('60h', 60, 120) } },
+      { coin: 'BBBUSDT', provenance: { release: 'x' }, params: { target: 6 }, why: 'no cached prices', holds: {} },
+    ]);
+    assert.strictEqual(rows.length, 4, `three holds for the read coin and one row for the coin that could not be read, got ${rows.length}`);
+    assert.deepStrictEqual(rows.slice(0, 3).map((r) => r.hold.key), ['17h', '41h', '60h'],
+      'every hold on the record must become a row');
+    assert.deepStrictEqual(rows.slice(0, 3).map((r) => r.periods), [900, 890, 120],
+      'and each row must carry its OWN hold\'s trade count, not the coin\'s first');
+    for (const r of rows.slice(0, 3)) {
+      assert.strictEqual(r.coin, 'AAAUSDT', 'every row says which coin it is');
+      assert.ok(r.provenance && r.params, 'and carries what the record was read at, so the row can say so');
+    }
+    assert.strictEqual(rows[3].hold, null, 'a coin with nothing read still gets a row');
+    assert.strictEqual(rows[3].why, 'no cached prices', 'carrying its reason');
   },
 
   // AND THE SCREEN DRAWS THE MARK. The reading can be perfect and say nothing

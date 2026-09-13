@@ -189,7 +189,7 @@ app.post('/api/coins/run', (req, res) => {
 app.get('/api/coins/run', (req, res) => res.json(coinsrun.coinsRunStatus()));
 app.post('/api/coins/stop', (req, res) => res.json(coinsrun.coinsRunStop()));
 app.get('/api/coins/records', (req, res) => {
-  try { return res.json(coinsrun.coinsRecords(req.query || {})); }
+  try { return res.json(coinsrun.coinsRecords()); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
 
@@ -428,7 +428,12 @@ app.post('/api/stage-gate', (req, res) => {
 });
 
 // the stage-engine check's own sets are never listed for a screen
-app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam), nextNames: stages.nextNames() }));
+// HOW MANY COINS A BLANK BOX MEANS, sent with the sets the Sweep screen already
+// asks for (3.122.0). It rides here rather than coming off the vocabulary,
+// because the vocabulary's lists are the CHOICES a control offers -- and the
+// word-list generator reads them as exactly that, so naming one for a count
+// would put every coin's ticker on Sweep's closed word list.
+app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam), nextNames: stages.nextNames(), coinsDownloaded: require('./lib/dataset').defaultCoins() }));
 
 app.get('/api/stageset/:id', (req, res) => {
   const doc = stages.getSet(req.params.id);
@@ -840,7 +845,7 @@ app.get('/api/stageset/:id/coin-rows', (req, res) => {
 app.post('/api/stage1-count', (req, res) => {
   const b = req.body || {};
   try {
-    const universe = Array.isArray(b.universe) && b.universe.length ? b.universe.map((s) => String(s).toUpperCase()) : require('./lib/dataset').DEFAULT_PAIRS;
+    const universe = Array.isArray(b.universe) && b.universe.length ? b.universe.map((s) => String(s).toUpperCase()) : require('./lib/dataset').defaultCoins();
     if (universe.some((p) => !SYMBOL_RE.test(p))) return res.status(400).json({ error: 'trade coins must be symbols like DOTUSDT' });
     // the coins each traded coin is read against (3.75.0). Empty means the
     // traded coins themselves, which is the launch's own rule — the cost line

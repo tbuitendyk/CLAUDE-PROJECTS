@@ -284,7 +284,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `was run with`
 - `window layout`
 
-## What the dropdowns offer (73)
+## What the dropdowns offer (56)
 
 - `0.25×`
 - `0.5×`
@@ -321,13 +321,8 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `95%`
 - `98%`
 - `active`
-- `ADAUSDT`
 - `all of them`
 - `argmax`
-- `ATOMUSDT`
-- `AVAXUSDT`
-- `BCHUSDT`
-- `BNBUSDT`
 - `breakout`
 - `conviction`
 - `count`
@@ -336,29 +331,17 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Daily 3-day`
 - `Daily 4-day`
 - `directional`
-- `DOGEUSDT`
-- `DOTUSDT`
-- `ETCUSDT`
-- `ETHUSDT`
 - `families`
 - `its own history`
-- `LINKUSDT`
-- `LTCUSDT`
 - `market`
 - `N records`
 - `off`
 - `Selected records`
-- `SOLUSDT`
 - `static`
 - `the chunk's own`
 - `trained`
-- `TRXUSDT`
-- `UNIUSDT`
 - `voices`
 - `Weekly 8-day`
-- `XLMUSDT`
-- `XRPUSDT`
-- `ZECUSDT`
 
 ## Sentences the page prints (40)
 
@@ -403,10 +386,10 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - the filters saved on the parent's table leave
 - of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)
 
-## Every word, flat (371)
+## Every word, flat (354)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above act. active ADAUSDT add again against agree all alongside already and another any are argmax arm as at ATOMUSDT attaches auto AVAXUSDT band bar BCHUSDT be because been belonging beside best biggest blank block BNBUSDT Boards Boards. BOOST both box boxes breakout but buy by came Campaign campaign campaigns cannot carried carries carry chain chunk coin coins committee compare conviction count cover crumbs Currently cut daily Daily data day decide decision declared default Delete deleted. Deleting deployed. description different direction directional DOGEUSDT DOTUSDT doubles Each each end ends enough entry estimate ETCUSDT ETHUSDT every Every everything exam exist existing families fee fees fewer files filters finished first fit. folded for forecast forward four freak from gate go going good greenlight greenlights has here history hold holds how in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit LINKUSDT live Load loaded locked LOGREG LTCUSDT many market may member members members. minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary others out own parent parent. passes paused per permanently permute places plain price priced prices prices. Progress progress quarter Quorum quorum rank read reads record records refuse remove removed Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape share side side. single singles size small so SOLUSDT stage Stage stages start Start started starts static stayed staying still Sweep sweeps tab table taking teaches than that the The their them them. there These they this This those three times to too trade Trade trades trail train trained training trains travels tree triples TRXUSDT tuning tuning-slice turns undone. unit units units. UNIUSDT until up UTC View voice voices vote votes voting was wastes way way. week weekly Weekly weigh weightless were What when where while whole why will window with working worth writes wrong XLMUSDT XRPUSDT yet ZECUSDT
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above act. active add again against agree all alongside already and another any are argmax arm as at attaches auto band bar be because been belonging beside best biggest blank block Boards Boards. BOOST both box boxes breakout but buy by came Campaign campaign campaigns cannot carried carries carry chain chunk coin coins committee compare conviction count cover crumbs Currently cut daily Daily data day decide decision declared default Delete deleted. Deleting deployed. description different direction directional doubles Each each end ends enough entry estimate every Every everything exam exist existing families fee fees fewer files filters finished first fit. folded for forecast forward four freak from gate go going good greenlight greenlights has here history hold holds how in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit live Load loaded locked LOGREG many market may member members members. minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary others out own parent parent. passes paused per permanently permute places plain price priced prices prices. Progress progress quarter Quorum quorum rank read reads record records refuse remove removed Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape share side side. single singles size small so stage Stage stages start Start started starts static stayed staying still Sweep sweeps tab table taking teaches than that the The their them them. there These they this This those three times to too trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns undone. unit units units. until up UTC View voice voices vote votes voting was wastes way way. week weekly Weekly weigh weightless were What when where while whole why will window with working worth writes wrong yet
 ```
 
 ---

@@ -1063,7 +1063,7 @@ function swProvenance() {
     //
     // A stage 1 run writes down what it ACTUALLY read, not what was in the box
     // -- that is RULE NINE, and it is right. Blank `compare coins` is recorded
-    // as the seventeen default coins; blank month boxes are recorded as the
+    // as every coin downloaded; blank month boxes are recorded as the
     // months the launch fell back to. Held up to the raw box, every one of
     // those reads as a disagreement, so a set launched from a blank compare
     // coins box -- which is every set on the box -- painted Stage 2 red the
@@ -1074,7 +1074,7 @@ function swProvenance() {
     // is compared. The trade coins box has always been read this way; the other
     // two were not. Where these two files must agree, they are named together:
     // theStageHeadingsCompareABoxTheWayTheLaunchResolvesIt reads both.
-    const defaults = ((VOCAB && VOCAB.defaultPairs) || []).map((o) => String(o.value));
+    const defaults = swDefaultCoins.slice();
     const coinsIn = (sel) => (v(sel) || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean);
     const boxUni = coinsIn('#swUni');
     const wantUni = (boxUni.length ? boxUni : defaults).slice().sort().join(',');
@@ -1500,6 +1500,7 @@ function fillStageForm(doc) {
 // change and written back on every draw.
 
 let swSetsCache = null;
+let swDefaultCoins = [];   // every coin downloaded, which is what a blank coin box means
 
 // A run's stored settings, written back into the boxes. ONE mapping, used by
 // "copy settings into the form" on the Boards section and by the running-job
@@ -3081,6 +3082,10 @@ async function drawSweep() {
   ]);
   const sets = st.sets || [];
   swSetsCache = sets;
+  // WHAT A BLANK COIN BOX RESOLVES TO, off the same answer (3.122.0). The
+  // stage headings compare a blank box the way the launch resolves it, so they
+  // need the names and not just how many there are.
+  swDefaultCoins = st.coinsDownloaded || [];
   // the next free name per stage, shown greyed in each name box as the
   // suggestion an empty box takes
   const nextNames = st.nextNames || {};
@@ -3105,8 +3110,8 @@ async function drawSweep() {
       The fee prices only the tuning-slice $ on Boards: each unit's own votes on the last quarter of its training window,
       one buy or sell per chunk in the direction they lean, read against the same null set.</p>
     <div class="row" style="align-items:flex-end">
-      <label class="f" title="the coins this run actually buys and sells. Blank means all 17 default coins.">trade coins (blank = all 17 default coins)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:16rem"></label>
-      <span id="swGrpCompare"><label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means all 17 default coins, the same as the box beside it, so one coin typed into trade coins with nothing here is that coin against everything. Only doubles and triples read this: singles is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing reads it.">compare coins (blank = all 17 default coins)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label></span>
+      <label class="f" title="the coins this run actually buys and sells. Blank means every coin whose prices are downloaded on this box.">trade coins (blank = all ${swDefaultCoins.length} downloaded)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:16rem"></label>
+      <span id="swGrpCompare"><label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means every coin downloaded on this box, the same as the box beside it, so one coin typed into trade coins with nothing here is that coin against everything. Only doubles and triples read this: singles is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing reads it.">compare coins (blank = all ${swDefaultCoins.length} downloaded)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label></span>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
       <label class="c"><input type="checkbox" id="swTriples"> triples</label>
@@ -7768,8 +7773,8 @@ const C_KEY = 'cx-coins';
 // the owner was still typing it.
 const cState = (() => {
   const d = {
-    geometry: 'daily-4d', layout: 'reserve61', orderBy: 'coin',
-    coins: '', target: '', from: '', to: '', step: '', cap: '', drift: '', shuffles: '', weekdays: false,
+    layout: 'reserve61', orderBy: 'coin',
+    coins: '', target: '', from: '', to: '', step: '', cap: '', drift: '', shuffles: '',
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
 })();
@@ -7808,11 +7813,38 @@ const C_ORDERS = [
   { value: 'pct', label: 'fall-back % — largest first', dir: -1, of: (r, l) => (r.readings && r.readings[l] && r.readings[l].search && r.readings[l].search.reached ? r.readings[l].search.pct : null) },
   { value: 'turns', label: 'changes of direction — most first', dir: -1, of: (r, l) => (r.readings && r.readings[l] && r.readings[l].search && r.readings[l].search.reached ? r.readings[l].search.turns : null) },
   { value: 'periods', label: 'periods — most first', dir: -1, of: (r) => (r.periods || null) },
+  { value: 'hold', label: 'trade length — shortest first', dir: 1, of: (r) => (r.hold ? r.hold.hours : null) },
 ];
-function cOrder(recs, by, layout) {
+// ONE ROW PER COIN AND HOLD (3.122.0). A record describes a coin; a coin's
+// history offers three different sets of trades, one per hold, and they read
+// differently -- so each is its own row rather than something chosen in a box
+// before the table will draw. A coin whose record holds nothing still gets one
+// row, carrying its reason, instead of vanishing.
+function cRows(recs) {
+  const out = [];
+  for (const r of recs) {
+    const holds = Object.values(r.holds || {});
+    if (!holds.length) {
+      out.push({ coin: r.coin, provenance: r.provenance, params: r.params, why: r.why, hold: null, periods: 0, traditional: null, readings: {}, span: null });
+      continue;
+    }
+    for (const h of holds) {
+      out.push({
+        coin: r.coin, provenance: r.provenance, params: r.params,
+        why: h.why || r.why, hold: h.hold, periods: h.periods,
+        traditional: h.traditional, readings: h.readings || {}, span: h.span || null,
+      });
+    }
+  }
+  return out;
+}
+function cOrder(rows, by, layout) {
   const spec = C_ORDERS.find((o) => o.value === by) || C_ORDERS[0];
-  const byCoin = (a, b) => String(a.coin).localeCompare(String(b.coin));
-  const out = recs.slice();
+  // the coin, then its shortest trade first -- so a coin's three rows always
+  // sit together and always in the same order
+  const byCoin = (a, b) => String(a.coin).localeCompare(String(b.coin))
+    || ((a.hold ? a.hold.hours : 0) - (b.hold ? b.hold.hours : 0));
+  const out = rows.slice();
   if (!spec.dir) return out.sort(byCoin);
   return out.sort((a, b) => {
     const x = spec.of(a, layout);
@@ -7873,7 +7905,7 @@ function cTypeNote(p) {
 }
 
 async function drawCoins() {
-  const d = await apiOr('api/coins/records?geometry=' + encodeURIComponent(cState.geometry), null);
+  const d = await apiOr('api/coins/records', null);
   const st = await apiOr('api/coins/run', null);
   // WHAT IS CACHED NOW, so a reading taken before more history arrived can be
   // said to be behind it. The column used to promise exactly this and nothing
@@ -7885,7 +7917,8 @@ async function drawCoins() {
   const unreadable = (d && d.unreadable) || [];
   const rareSide = d ? d.rareSideWeighting : null;
   const running = !!(st && st.running);
-  const rows = cOrder(recs, cState.orderBy, cState.layout);
+  const holdsOffered = (d && d.holds) || [];
+  const rows = cOrder(cRows(recs), cState.orderBy, cState.layout);
   const box = (k, dflt) => esc(String(cState[k] === '' || cState[k] == null ? (dflt ?? '') : cState[k]));
   const off = running ? ' disabled' : '';
 
@@ -7894,27 +7927,33 @@ async function drawCoins() {
   // what they were actually read at. When those differ the screen says so
   // rather than letting a table of numbers sit silently under a box that did
   // not produce them.
-  const asked = { target: Number(box('target', defs.target)), from: Number(box('from', defs.from)), to: Number(box('to', defs.to)), step: Number(box('step', defs.step)), cap: Number(box('cap', defs.cap)), driftParts: Number(box('drift', defs.driftParts)), shuffles: Number(box('shuffles', defs.shuffles)), weekdaysOnly: !!cState.weekdays };
+  const asked = { target: Number(box('target', defs.target)), from: Number(box('from', defs.from)), to: Number(box('to', defs.to)), step: Number(box('step', defs.step)), cap: Number(box('cap', defs.cap)), driftParts: Number(box('drift', defs.driftParts)), shuffles: Number(box('shuffles', defs.shuffles)) };
   const differs = (r) => !r.params || Object.keys(asked).some((k) => String(r.params[k]) !== String(asked[k]));
   const stale = (r) => {
     const c = cachedNow.get(String(r.coin).toUpperCase());
     if (!c || r.provenance == null || r.provenance.cachedMonths == null) return null;
     return c.months > r.provenance.cachedMonths ? c.months - r.provenance.cachedMonths : 0;
   };
-  const behind = rows.filter((r) => stale(r) > 0).length;
-  const atOther = rows.filter(differs).length;
+  // COUNTED PER COIN, NOT PER ROW. Each coin has a row per hold and they share
+  // one record, so counting rows says "three readings are behind" about one
+  // coin that is behind once.
+  const behind = recs.filter((r) => stale(r) > 0).length;
+  const atOther = recs.filter(differs).length;
 
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Coins</h3>
     <p class="note">What each coin's history holds: the stretches in which it was rising, the stretches in which it
       was falling, and how those fall across train, test, held-back and the reserve. <b>Nothing here refuses a
       coin.</b> Every figure is a reading — which coins a sweep runs on is your choice, made by looking at these.</p>
+    <p class="note"><b>Every coin is read at every trade length, and you set nothing to make that happen.</b>
+      A trade length is how long a position is open; the starting times are fixed and are shown beside each one.
+      ${holdsOffered.map((h) => `<b>${h.hours}h</b> starting ${esc(h.at)} every ${esc(h.every)}`).join(' · ')}.
+      That is ${holdsOffered.reduce((n, h) => n + (h.startsPerWeek || 0), 0)} possible starts a week. Nothing else
+      about how a trade is run changes what a history contains, so nothing else is asked for here.</p>
 
     <div class="row">
-      <label class="f" title="which coins to read, comma separated. Blank reads the default list, the same one a blank box on Sweep resolves to.">coins (blank = all 17 default coins)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${box('coins')}" style="width:16rem"${off}></label>
-      <label class="f" title="the chunk shape to read them at. A period is one step of this shape's clock, and it is the same period a sweep at this shape would train on.">chunk shape<select id="cGeom"${off}></select></label>
+      <label class="f" title="which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep.">coins (blank = all ${d && d.downloaded != null ? d.downloaded : '—'} downloaded)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${box('coins')}" style="width:16rem"${off}></label>
       <label class="f" title="how many changes of direction you want across train and test. Each coin gets whatever fall-back percentage delivers at least this many — the largest one that does.">changes of direction wanted<input id="cTarget" type="number" min="1" value="${box('target', defs.target)}" style="width:5rem"${off}></label>
-      <label class="f" title="whether the periods are built weekdays only, exactly as a sweep with this setting builds them. It changes how many periods a coin has, so a reading taken with it off does not describe a run made with it on.">24/5<input id="cWk" type="checkbox"${cState.weekdays ? ' checked' : ''}${off}></label>
     </div>
     <div class="row">
       <label class="f" title="the smallest fall-back percentage to try.">try from, %<input id="cFrom" type="number" step="0.5" min="0.1" value="${box('from', defs.from)}" style="width:5rem"${off}></label>
@@ -7934,8 +7973,8 @@ async function drawCoins() {
       : (recs.length || unreadable.length ? 'nothing read since this service last started' : 'nothing read yet'))}</span>
     </div>
     ${st && st.error ? `<p class="note warn">the last reading stopped: ${esc(st.error)}</p>` : ''}
-    ${behind ? `<p class="note warn">${behind} of these ${behind === 1 ? 'readings was' : 'readings were'} worked out before more history was cached for that coin — read ${behind === 1 ? 'it' : 'them'} again to bring ${behind === 1 ? 'it' : 'them'} up to date.</p>` : ''}
-    ${atOther ? `<p class="note">${atOther} of the ${rows.length} rows below ${atOther === 1 ? 'was' : 'were'} read at different values from the boxes above. Each row says what it was read at.</p>` : ''}
+    ${behind ? `<p class="note warn">${behind} of these ${behind === 1 ? 'coins was' : 'coins were'} read before more history was cached for it — read ${behind === 1 ? 'it' : 'them'} again to bring ${behind === 1 ? 'it' : 'them'} up to date.</p>` : ''}
+    ${atOther ? `<p class="note">${atOther} of the ${recs.length} ${recs.length === 1 ? 'coin' : 'coins'} below ${atOther === 1 ? 'was' : 'were'} read at different values from the boxes above. Each row says what it was read at.</p>` : ''}
     ${unreadable.length ? `<p class="note warn">${unreadable.length} file(s) on the box could not be read back:<br>${unreadable.map((u) => `<b>${esc(u.coin)}</b> — ${esc(u.why)}`).join('<br>')}</p>` : ''}
   </div>
 
@@ -7955,10 +7994,11 @@ async function drawCoins() {
       answer up to make up for there being few of it — so however thin one side of a part is, nothing corrects for
       it, and a side with a handful of periods in it is learned from a handful of periods. That is a reason to read
       the split below, not a cut-off: no coin is refused for it.</p>` : ''}
-    ${!rows.length ? `<p class="note">no coin has been read at this chunk shape${unreadable.length ? ' that this release can read' : ''} — press <b>Read these coins</b> above</p>` : `
+    ${!rows.length ? `<p class="note">no coin has been read${unreadable.length ? ' that this release can read' : ''} — press <b>Read these coins</b> above</p>` : `
     <div class="scrollx"><table class="s4"><thead><tr>
       <th title="the coin this row reads.">coin</th>
-      <th title="how many periods of this coin's history there are at this chunk shape, with the 24/5 setting this row was read at. One period is one step of that shape's clock. Both traditional numbers move with this, so read them beside it.">periods</th>
+      <th title="how long a position is open on this row, and when one can start. The starting times are fixed: 01:00 every day for the two shorter ones, Tuesday for the longest. Every coin is read at all of them, so a coin has one row each.">trade length</th>
+      <th title="how many of these trades this coin's history offers — one period is one trade that could have been opened and closed. Both traditional numbers move with this, so read them beside it.">periods</th>
       <th title="the fall-back percentage found for this coin: how far price has to fall back from a high before that high is called the end of a rising stretch. It is not fixed across coins — each one gets the largest percentage that gives at least the number of changes asked for.">fall-back %</th>
       <th title="how many changes of direction that percentage gives across train and test. When it gives more than were asked for, the number asked for is shown beside it in brackets.">changes of direction</th>
       <th title="the shape of the search: one bar per percentage tried, its height the count of changes at that percentage, with the one taken marked. A coin whose bars are level across a band is steady; one with a spike is balanced on an edge.">the walk</th>
@@ -7968,19 +8008,21 @@ async function drawCoins() {
       ${rows.map((r) => {
     const rd = r.readings && r.readings[cState.layout];
     const has = !!(rd && rd.perPart);
-    const span = r.provenance && r.provenance.fromTs
-      ? `${cDay(r.provenance.fromTs)} to ${cDay(r.provenance.toTs)}`
+    const span = r.span && r.span.fromTs
+      ? `${cDay(r.span.fromTs)} to ${cDay(r.span.toTs)}`
       : 'no span recorded';
     const grew = stale(r);
     const p = r.params || {};
-    return `<tr><td><b>${esc(r.coin)}</b></td><td>${r.periods}${p.weekdaysOnly ? ' <span class="muted">24/5</span>' : ''}</td>
+    return `<tr><td><b>${esc(r.coin)}</b></td>
+      <td>${r.hold ? `${r.hold.hours}h<br><span class="muted">${esc(r.hold.at)} every ${esc(r.hold.every)}</span>` : '<span class="muted">—</span>'}</td>
+      <td>${r.periods}</td>
       <td>${rd && rd.search && rd.search.reached ? `${rd.search.pct}%` : '<span class="muted">not reached</span>'}</td>
       <td>${rd && rd.search && rd.search.reached ? `${rd.search.turns}${rd.search.overshot ? ` <span class="muted">(asked ${rd.search.asked})</span>` : ''}` : '<span class="muted">—</span>'}</td>
       <td>${rd && rd.search ? cWalk(rd.search.walk, rd.search.pct) : ''}</td>
       <td>${r.traditional ? `${cPct(r.traditional.worstTailSlice.balance)}${cCannot(r.traditional, 'worstTailSlice')}` : '<span class="muted">—</span>'}</td>
       <td>${r.traditional ? `${cNum(r.traditional.drift.drift, 3)}${cCannot(r.traditional, 'drift')}` : '<span class="muted">—</span>'}</td>
       <td class="muted" style="text-align:left">${esc(span)}<br>${esc(String(r.provenance && r.provenance.capturedAt ? r.provenance.capturedAt : '').replace('T', ' ').slice(0, 16))} UTC · release ${esc(String((r.provenance && r.provenance.release) || '—'))}${grew ? `<br><span class="warn">${grew} more month(s) cached since</span>` : ''}</td></tr>
-      <tr class="s4hold"><td colspan="8" class="s4tag">
+      <tr class="s4hold"><td colspan="9" class="s4tag">
         ${has ? rd.perPart.map((q) => {
       const sp = (rd.split || []).find((s) => s.part === q.part) || {};
       return `<span style="margin-right:1.2rem"><b>${esc(q.part)}</b> ${q.periods} periods ·
@@ -7991,7 +8033,7 @@ async function drawCoins() {
         ${rd && rd.searchedOver && rd.searchedOver.note ? `<div class="muted">${esc(rd.searchedOver.note)}</div>` : ''}
         ${rd && rd.weight && !rd.weight.reachedMean ? `<div class="warn">${esc(rd.weight.why)}</div>` : ''}
         ${rd && rd.weight && rd.weight.reachedMean ? `<div class="muted">training weight over ${esc(rd.weight.over)}: average 1 across ${rd.weight.periods} periods, ${rd.weight.capped} of them held at the ceiling of ${rd.weight.cap}</div>` : ''}
-        <div class="muted">read at: ${p.target} change(s) wanted, ${p.from}% to ${p.to}% by ${p.step}%, ceiling ${p.cap}, ${p.driftParts} drift parts, ${p.shuffles ?? '?'} shuffles, 24/5 ${p.weekdaysOnly ? 'on' : 'off'}${differs(r) ? ' <span class="warn">— not what the boxes above say</span>' : ''}</div>
+        <div class="muted">read at: ${p.target} change(s) wanted, ${p.from}% to ${p.to}% by ${p.step}%, ceiling ${p.cap}, ${p.driftParts} drift parts, ${p.shuffles ?? '?'} shuffles${differs(r) ? ' <span class="warn">— not what the boxes above say</span>' : ''}</div>
       </td></tr>`;
   }).join('')}
     </tbody></table></div>`}
@@ -8005,22 +8047,17 @@ async function drawCoins() {
   };
   keep('#cCoins', 'coins'); keep('#cTarget', 'target'); keep('#cFrom', 'from');
   keep('#cTo', 'to'); keep('#cStep', 'step'); keep('#cCap', 'cap'); keep('#cDrift', 'drift');
-  keep('#cShuf', 'shuffles'); keep('#cWk', 'weekdays', 'checked');
-  const geom = $('#cGeom');
-  if (geom) {
-    geom.innerHTML = vocabOptions('geometry', cState.geometry);
-    geom.onchange = () => { cState.geometry = geom.value; cRemember(); draw(); };
-  }
+  keep('#cShuf', 'shuffles');
   $('#cLayout').onchange = (e) => { cState.layout = e.target.value; cRemember(); draw(); };
   $('#cOrder').onchange = (e) => { cState.orderBy = e.target.value; cRemember(); draw(); };
   $('#cRun').onclick = async () => {
     $('#cRun').disabled = true;
     $('#cOut').innerHTML = 'starting…';
     const body = {
-      coins: cState.coins, geometry: cState.geometry,
+      coins: cState.coins,
       target: box('target', defs.target), from: box('from', defs.from), to: box('to', defs.to),
       step: box('step', defs.step), cap: box('cap', defs.cap), driftParts: box('drift', defs.driftParts),
-      shuffles: box('shuffles', defs.shuffles), weekdaysOnly: !!cState.weekdays,
+      shuffles: box('shuffles', defs.shuffles),
     };
     try { await post('api/coins/run', body); } catch (err) {
       $('#cOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';

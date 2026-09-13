@@ -494,8 +494,16 @@ module.exports = {
     assert.ok(SWEEP.includes('<span id="swGrpCompare">'), 'the compare box needs a group the ghoster can reach');
     assert.ok(/swGhostGroup\('#swGrpCompare', !\(\$\('#swDoubles'\)[\s\S]{0,140}?swTriples/.test(SWEEP),
       'the compare box must be greyed whenever neither doubles nor triples is ticked');
-    // and its own label says what blank means, in the same words as the box beside it
-    assert.ok(SWEEP.includes('compare coins (blank = all 17 default coins)'),
-      'blank is the universe, and the label must say so — the same way trade coins does');
+    // AND ITS OWN LABEL SAYS WHAT BLANK MEANS, in the same words as the box
+    // beside it -- and the COUNT IS NEVER TYPED (3.122.0). It was "17" in three
+    // labels and a refusal sentence while the box held eighteen coins, which is
+    // four copies of one number with nothing keeping them agreeing.
+    const LABEL = '(blank = all ${swDefaultCoins.length} downloaded)';
+    assert.ok(SWEEP.includes(`compare coins ${LABEL}`),
+      'blank is every coin downloaded, and the label must say so — the same way trade coins does');
+    assert.ok(SWEEP.includes(`trade coins ${LABEL}`),
+      'and trade coins must say it the same way, from the same count');
+    assert.ok(!/all \d+ default (coins|pairs)/.test(SWEEP),
+      'a coin count is typed into a Sweep label — it must be read from the list the service serves');
   },
 };

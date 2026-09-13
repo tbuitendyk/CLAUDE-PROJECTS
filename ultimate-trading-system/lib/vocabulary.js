@@ -33,11 +33,14 @@ function vocabulary() {
   const mult = (v) => `${v}×`;
 
   return {
-    // The default pairs, served so a screen can compare a blank universe box
-    // against what a launch would actually resolve it to — the same list the
-    // launches read (lib/dataset.js DEFAULT_PAIRS), never a copy. No dropdown
-    // is drawn from it; the Sweep provenance check reads the values.
-    defaultPairs: require('./dataset').DEFAULT_PAIRS.map((p) => ({ value: p, label: p })),
+    // THE COIN LIST IS NOT HERE (3.122.0). It was, so that Sweep could compare a
+    // blank coin box against what a launch resolves it to -- but everything in
+    // this object is read as THE CHOICES A CONTROL OFFERS, by the screens and
+    // by the closed-word-list generator alike, and no dropdown is drawn from
+    // the coin list. Kept here it put every coin's ticker on Sweep's word list
+    // as a choice the owner could pick, and once the list came off the cache
+    // rather than a typed array, the word list moved whenever a coin was
+    // downloaded. The names ride with /api/stagesets instead.
     // What the engine can carry out. Read from the code, complete.
     // The label is DERIVED from the key rather than kept in a second list, so a
     // geometry added to lib/dataset.js reads properly on screen without anybody

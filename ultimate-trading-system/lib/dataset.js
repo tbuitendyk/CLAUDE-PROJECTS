@@ -36,6 +36,50 @@ const GEOMETRIES = {
   'daily-4d': { featureHours: 96, stepHours: 24, anchor: 'daily', labelMode: 'points', entryOffsetH: 97, exitOffsetH: 138 },
 };
 
+// WHAT A HISTORY ACTUALLY OFFERS IS A HOLD, NOT A CHUNK SHAPE (owner order,
+// 2026-09-13: "chunk shape and 24/5 are actually completely irrelevant here ...
+// you need to look at the three hold types and their possible starting anchors
+// only").
+//
+// A chunk shape's name is its LOOK-BACK -- how far back the training reads
+// before it decides. The look-back changes nothing about the trade itself, so
+// two shapes with the same hold and the same entry anchor offer the SAME
+// trades. Measured on an 80-day series: daily-1d and daily-2d share 78 of 79
+// entry times (both enter 01:00 every day, both hold 17 hours), and daily-3d
+// and daily-4d share 75 of 76. Five shapes, three holds.
+//
+// So these are grouped by hold length, one entry each, DERIVED and never typed
+// -- add a geometry with a new hold tomorrow and the Coins screen gains a
+// reading for it without anybody remembering to add one. The shape each hold is
+// built from is the one with the shortest look-back: it starts earliest, so it
+// offers the most trades of that hold.
+//
+// THE ANCHORS STAY WHERE THEY ARE (owner, 2026-09-13: "hold the anchors as they
+// are"). The daily shapes enter at 01:00 and the weekly one on Tuesday; both
+// are pinned in GEOMETRIES above and read back from there, never restated.
+const DAY_NAMES = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+function holdTypes() {
+  const pick = new Map();
+  for (const [name, g] of Object.entries(GEOMETRIES)) {
+    const hours = g.exitOffsetH - g.entryOffsetH;
+    const have = pick.get(hours);
+    if (!have || g.featureHours < GEOMETRIES[have].featureHours) pick.set(hours, name);
+  }
+  return [...pick.entries()].sort((a, b) => a[0] - b[0]).map(([hours, geometry]) => {
+    const g = GEOMETRIES[geometry];
+    const hh = String(g.entryOffsetH % 24).padStart(2, '0');
+    const weekly = g.stepHours >= 168;
+    return {
+      key: `${hours}h`,
+      hours,
+      geometry,
+      every: weekly ? 'week' : 'day',
+      at: weekly ? `${DAY_NAMES[Math.floor(g.entryOffsetH / 24) % 7]} ${hh}:00` : `${hh}:00`,
+      startsPerWeek: Math.round((7 * 24) / g.stepHours),
+    };
+  });
+}
+
 // 24/5 mode: keep only daily-geometry starts whose FEATURE window sits
 // entirely on weekdays and whose entry candle lands on a weekday — crypto
 // trades through weekends, but weekend microstructure (thin volume, gap-y
@@ -254,18 +298,36 @@ function buildChunks(tradeMap, compareMap, dormantPct, featureSet = 'compressed'
   return { chunks, dropped, considered: starts.length };
 }
 
-// The default coin universe a stage 1 launch reads when its trade box is
-// blank: high-market-cap USDT pairs with long Binance spot history (all listed
-// 2017–2020, still major in mid-2026). Served through the vocabulary so a
-// screen compares a blank box against the same list the launch resolves it to.
-const DEFAULT_PAIRS = [
-  'ETHUSDT', 'BNBUSDT', 'XRPUSDT', 'ADAUSDT', 'SOLUSDT', 'DOGEUSDT',
-  'LTCUSDT', 'LINKUSDT', 'DOTUSDT', 'AVAXUSDT', 'TRXUSDT', 'XLMUSDT',
-  'ETCUSDT', 'ATOMUSDT', 'BCHUSDT', 'UNIUSDT', 'ZECUSDT',
-];
+// WHAT A BLANK COIN BOX MEANS: every coin whose prices are downloaded on this
+// box, in name order (owner order, 2026-09-13). It was a typed list of
+// seventeen, and the count "17" was typed again into three labels and a
+// refusal sentence -- four copies of one number with nothing keeping them
+// agreeing. The box holds eighteen coins; the list left BTCUSDT out, because in
+// the system this one replaced BTC was the coin everything else was read
+// against. So a blank box silently dropped it, and the screen said 17 while the
+// owner could count 18.
+//
+// Read from the cache, there is no list to keep and no number to type. The cost
+// is that a blank box is a moving target: two blank launches on different days
+// can read different coins. Every run writes down what it actually resolved to
+// (RULE NINE), so what ran is never in doubt afterwards.
+const NOT_A_REAL_COIN = /^(PLANTEDSTAGE|ZZZ)/;
+function isRealCoin(symbol) { return !NOT_A_REAL_COIN.test(String(symbol || '').toUpperCase()); }
+function defaultCoins() {
+  // THE FABRICATED COINS LIVE IN THE SAME CACHE. The stage-engine check writes
+  // two of them and the tests write their own, and a blank box that swept them
+  // up would train and trade on invented prices. One rule for what is not a
+  // real coin, here, read by everything that needs it -- lib/stagegate.js's own
+  // answer comes from this one.
+  const { cacheState } = require('./binance');
+  return cacheState().map((s) => String(s.symbol || '').toUpperCase())
+    .filter((s) => s && isRealCoin(s))
+    .sort();
+}
 
 module.exports = {
-  DEFAULT_PAIRS,
+  defaultCoins, isRealCoin, NOT_A_REAL_COIN,
+  holdTypes,
   weekdaysApply, WEEKDAY_STARTS,
   toHourlyMap,
   forwardFill,

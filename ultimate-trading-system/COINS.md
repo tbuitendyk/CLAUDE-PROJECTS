@@ -38,7 +38,8 @@ needed this document says plainly that there is no name for it yet.
 | **type** | Rising overall, or falling overall. The owner's word for it in conversation. **There is no name for this on any screen**, because nothing on any screen does it yet. |
 | `window layout` | On **Sweep**. Its two choices are `61/13/13/13 (sealed exam)` and `70/15/15`, quoted from the **Sweep** list. |
 | `train`, `test`, `held`, `reserve` | The four parts a coin's history divides into. The owner's four words, used exactly as they are (RULE ONE-D). |
-| period | One step of the system's clock. With `chunk shape` set to a daily choice, one day. `chunk shape` is on **Sweep**, **Boards** and **Funnel**. |
+| period | **One trade the history could have offered**: a price a position would open at, and how far price moved by the time it closed. Not a calendar slot. On **Coins** the column is `periods` and each row says its `trade length` beside it. |
+| `trade length` | On **Coins**. How long a position stays open — 17, 41 or 60 hours — with the times one can start beside it. Every coin is read at all three. |
 | stretch | A number of periods one after another, with no gaps. |
 | `member`, `members` | One forecast, and the group of them. On **Sweep** and **Boards**. |
 | the `committee` | The whole group of forecasts that vote on one coin. On **Sweep** and **Boards**. |
@@ -335,9 +336,8 @@ learns the drift.
 
 **One number per period, every period.** There is no chunking to invent: the
 training already takes one weight per row and refuses unless the list is
-exactly as long as the training rows, and one row is one period. On any
-`daily-` chunk shape a period is a day, so per day and per period are the same
-thing there; on `weekly-8d` a period is a week.
+exactly as long as the training rows, and one row is one period — one trade
+that could have been opened and closed.
 
 **The number is how far price moved over the span that period is about** — from
 where its trade would open to where it would close. It needs no new parameter,
@@ -360,7 +360,7 @@ to call and the `falling` set learns hard to hold — because that is the week
 where a falling model speaking would cost the most. In a slow drift both learn
 faintly, for the same reason in reverse.
 
-So it is one vector per coin and chunk shape, not one per set.
+So it is one vector per coin and `trade length`, not one per set.
 
 ### What it does NOT change, and what it does NOT do
 
@@ -668,6 +668,56 @@ this stays one reading per coin. They are never typed here; the first build had
 copy of the arithmetic and a value with no control (RULE FIVE).
 
 
+### It characterises the HISTORY, never our treatment of it
+
+**Added 3.122.0** (owner order, 2026-09-13: *"principally we are characterizing
+the HISTORY, not our treatment of the history"*, and *"chunk shape and 24/5 are
+actually completely irrelevant here — you need to look at the three hold types
+and their possible starting anchors only"*).
+
+Until this release the screen would say nothing until a `chunk shape` and a
+`24/5` setting had been chosen, and then reported what ONE treatment of a
+history holds while its own opening line said it reported what the history
+holds. Both controls are gone.
+
+**A chunk shape's name is its LOOK-BACK, not how long a trade is held.** The
+look-back only feeds training; it changes nothing about the trade. So two shapes
+that hold for the same time and start at the same moment offer the SAME trades.
+Measured on an 80-day series: `Daily 1-day` and `Daily 2-day` share 78 of 79
+entry times, `Daily 3-day` and `Daily 4-day` share 75 of 76. Five shapes, three
+holds.
+
+| how long a position is open | when one can start | starts a week |
+|---|---|---|
+| 17 hours | 01:00, any day | 7 |
+| 41 hours | 01:00, any day | 7 |
+| 60 hours | Tuesday 03:00 | 1 |
+
+Fifteen possible starts a week, which is the whole of what this history has to
+offer. **Every coin is read at all three, and nothing is asked for to make that
+happen.**
+
+**The anchors stay where they are** (owner, 2026-09-13: *"hold the anchors as
+they are"*). The 01:00 entry and the Tuesday anchor are pinned in the engine's
+own shapes and read back from there, never restated. They are choices, not facts
+about the price — unpinned it would be twenty-four starts a day rather than one —
+and unpinning them is a separate decision nobody has taken.
+
+**`24/5` was never a property of a coin.** It is a rule about which start days we
+allow ourselves. With the anchors held, every start day counts, so it is not a
+setting here at all.
+
+**The three numbers are derived, never typed.** The holds come from grouping the
+engine's own shapes by how long each holds; add a shape with a new hold tomorrow
+and this screen gains a row for it without anybody remembering to add one.
+
+**And it closed a collision.** A reading used to be stored per coin and chunk
+shape, with `24/5` not in the key at all — so reading a coin with it on
+overwrote the reading taken with it off, same file, last press wins, with
+nothing but the line under the row to say which one survived. One record per
+coin now, carrying every hold.
+
+
 ### When a number does not tell the coin apart from one with no trend
 
 **Added 3.121.0** (owner order, 2026-09-12: *"plan the code based on the length
@@ -911,6 +961,28 @@ both places.**
   forget about the other numbers."* A label of bare digits is still invisible to
   the generator, deliberately — over-collecting authorises words the owner
   cannot see, which is the fault RULE ONE-A names.
+
+**Settled 2026-09-13, in the batch that shipped 3.122.0:**
+
+- **2026-09-13 — this tab characterises the HISTORY, not our treatment of it.**
+  The owner: *"principally we are characterizing the HISTORY, not our treatment
+  of the history"*, and *"chunk shape and 24/5 are actually completely
+  irrelevant here — you need to look at the three hold types and their possible
+  starting anchors only"*. `chunk shape` and `24/5` are gone from **Coins**;
+  every coin is read at all three holds. Section 11.
+- **2026-09-13 — the starting anchors stay exactly where the engine pins
+  them.** The owner, asked directly: *"hold the anchors as they are"*. 01:00
+  every day for the two shorter holds, Tuesday for the longest — fifteen
+  possible starts a week. Opening them up is a separate decision and is not
+  taken.
+- **2026-09-13 — a blank coin box means every coin downloaded on the box.**
+  The owner: *"either we keep count of the number of coins and the default
+  tracks the number we've got downloaded OR we just say 'all coins'"*, and then
+  chose the first. The typed list of seventeen is deleted, and with it four
+  typed copies of the number 17 in labels and a refusal sentence. The cost,
+  said out loud and accepted: a blank box is a moving target, so two blank
+  launches on different days can read different coins. Every run writes down
+  what it actually resolved to, so what ran is never in doubt afterwards.
 
 ## 17. Open items
 

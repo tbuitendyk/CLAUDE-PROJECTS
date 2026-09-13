@@ -18,7 +18,12 @@ const path = require('path');
 const rowstore = require('./rowstore');
 const { createPool: buildPool } = require('./pool');
 const { stampManifest, manifestDiff, pinnedFilesOf, pinnedIntact } = require('./manifest');
-const { GEOMETRIES, DEFAULT_PAIRS } = require('./dataset');
+const { GEOMETRIES } = require('./dataset');
+// CALLED THROUGH THE MODULE, never pulled out at require time: what a blank
+// coin box means is now read off the cache, and a test that cannot stand in for
+// the cache would be a test of whatever happens to be downloaded on the machine
+// it runs on.
+const defaultCoins = (...a) => require('./dataset').defaultCoins(...a);
 const bracketLib = require('./bracket');
 const agreement = require('./agreement');
 // One training per reading — read from the reading list itself, so adding a
@@ -417,11 +422,11 @@ function unitsFor(trade, sizes, geometries, compare = null) {
   const combos = [];
   const u = trade;
   // BLANK COMPARE COINS MEANS THE UNIVERSE (owner, 2026-09-06: "BLANK = THE
-  // UNIVERSE"). The trade box already reads blank as all the default pairs and
+  // UNIVERSE"). The trade box already reads blank as every coin downloaded and
   // says so on its own label; the compare box reads it the same way, because a
   // coin typed into trade coins with nothing beside it is somebody asking for
   // that coin against everything, which is the whole reason this box exists.
-  const c = (compare && compare.length) ? compare : DEFAULT_PAIRS;
+  const c = (compare && compare.length) ? compare : defaultCoins();
   // a coin is never read against itself, whichever list it came from
   const others = (a) => c.filter((x) => x !== a);
   if (sizes.singles) for (const a of u) combos.push({ trade: a, ctx1: null, ctx2: null, size: 1 });
@@ -594,7 +599,7 @@ function startStage1(params) {
   claimOrRefuse(params);
   const universe = Array.isArray(params.universe) && params.universe.length
     ? params.universe.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
-    : DEFAULT_PAIRS;
+    : defaultCoins();
   // THE COINS EACH TRADED COIN IS READ AGAINST (3.75.0, owner order). Left
   // empty it is the traded coins themselves, which is what every run before
   // this did — so an old set relaunched from its own params comes out
@@ -658,7 +663,7 @@ function startStage1(params) {
   // WHAT THE RUN ACTUALLY READ, WRITTEN DOWN. A set that recorded an empty box
   // would depend for ever on what empty happened to mean the day it is read
   // back (RULE NINE: a record says what it is, in today's words).
-  const compareUsed = (compare.length ? compare : DEFAULT_PAIRS)
+  const compareUsed = (compare.length ? compare : defaultCoins())
     .filter(() => sizes.doubles || sizes.triples);
   // A REFUSAL SAYS WHICH BOX IS WRONG AND BY HOW MUCH (owner, 2026-09-06:
   // "what's this nonsense?"). "the universe and sizes produced no units" is
@@ -666,7 +671,7 @@ function startStage1(params) {
   // about it. Every way of getting here is a coin count that cannot fill the
   // shape asked for, so the sentence says exactly that.
   if (!units.length) {
-    const reads = (compare.length ? compare : DEFAULT_PAIRS);
+    const reads = (compare.length ? compare : defaultCoins());
     const need = sizes.triples ? 3 : sizes.doubles ? 2 : 1;
     const what = sizes.triples ? 'triples' : sizes.doubles ? 'doubles' : 'singles';
     // the coins that are actually AVAILABLE to read a traded coin against: a
@@ -675,7 +680,7 @@ function startStage1(params) {
     throw new Error(`nothing to score: ${what} reads each traded coin against `
       + `${need - 1} other ${need - 1 === 1 ? 'coin' : 'coins'}, and compare coins offers `
       + `${spare} that ${spare === 1 ? 'is' : 'are'} not itself (${reads.join(', ') || 'nothing'})`
-      + `${compare.length ? '' : ' — all 17 default pairs, because compare coins is blank'}. `
+      + `${compare.length ? '' : ` — all ${reads.length} coin(s) downloaded on this box, because compare coins is blank`}. `
       + `Put ${need - 1} or more other coin(s) in compare coins, or tick singles.`);
   }
 

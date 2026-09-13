@@ -1368,6 +1368,21 @@ const GUARDS = [
   [path.join(ROOT, 'public', 'construct.js'), '  if (!c || c.canTell !== false) return \'\';', '  return \'\';\n  // eslint-disable-next-line no-unreachable\n  if (!c || c.canTell !== false) return \'\';',
     'theCoinsScreenMarksANumberItCannotTrust', 'the screen never marks a number it cannot trust, so a reading that means nothing reads exactly like one that does'],
 
+  // ---- COINS CHARACTERISES THE HISTORY, NOT OUR TREATMENT (3.122.0) -------
+  // Each of these names the test that READS THE LINE IT BREAKS (RULE EIGHT).
+  [path.join(ROOT, 'lib', 'dataset.js'), "    .filter((s) => s && isRealCoin(s))", "    .filter((s) => !!s)",
+    'theValuesTheOwnerTypesAreTheValuesThatRun', 'a blank coin box sweeps up the fabricated coins the checks and the tests write into the same cache, and the owner trains and trades on invented prices'],
+  [path.join(ROOT, 'lib', 'dataset.js'), "    if (!have || g.featureHours < GEOMETRIES[have].featureHours) pick.set(hours, name);", "    if (!have) pick.set(hours, name);",
+    'theFiveChunkShapesAreReallyThreeSetsOfTrades', 'a hold is read from the shape with the longer look-back, which starts later and so offers fewer trades than the history really held'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), "  const built = bracket.buildComboChunks({ trade: map }, hold.geometry, false);", "  const built = bracket.buildComboChunks({ trade: map }, hold.geometry, true);",
+    'aCoinWithCachedPricesActuallyGetsARead', 'the weekend start days are filtered out again, so the screen describes a rule we chose rather than what the history offered — which is the whole fault this release fixed'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), "  for (const hold of holdTypes()) {", "  for (const hold of holdTypes().slice(0, 1)) {",
+    'aCoinWithCachedPricesActuallyGetsARead', 'only the shortest hold is ever read, so two thirds of what a history offers is missing and nothing says it is'],
+  [path.join(ROOT, 'public', 'construct.js'), "    for (const h of holds) {\n      out.push({", "    for (const h of holds.slice(0, 1)) {\n      out.push({",
+    'theCoinsTableDrawsARowForEveryHold', 'the table draws one row a coin again, so two of the three holds are read, stored and never shown'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), "const recordFile = (coin) => path.join(DIR, `${String(coin).toUpperCase()}.json`);", "const recordFile = (coin) => path.join(DIR, `${String(coin).toUpperCase()}__x.json`);",
+    'everyCoinTheRunTouchedIsOnDiskAfterwards', 'a record is written under a name the reader does not serve, so every reading lands on disk and none of it reaches the screen'],
+
   // ---- COINS (3.119.0, after the four adversarial reviewers) ---------------
   // Each of these names the test that READS THE LINE IT BREAKS, not the test
   // with the nearest-sounding name (RULE EIGHT).
