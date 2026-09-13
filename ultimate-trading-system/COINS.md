@@ -44,14 +44,14 @@ session that wrote this, or is plainly marked as having no screen name yet.
 | `chunk shape` | On **Sweep**. Five choices, quoted from the **Sweep** list: `Daily 1-day`, `Daily 2-day`, `Daily 3-day`, `Daily 4-day`, `Weekly 8-day`. |
 | `window layout` | On **Sweep**. Two choices: `61/13/13/13 (sealed exam)` and `70/15/15`. |
 | train, test, held, reserve | The parts a coin's history divides into. The owner's four words, used exactly as they are (RULE ONE-D). |
-| decision | One moment a setup could open a trade: one chunk. Read from `lib/dataset.js`: on the four daily shapes, one a day, the trade opening at 01:00; on `Weekly 8-day`, one a week, opening Tuesday 03:00. The owner's word. **No screen name.** |
+| `decision`, `decisions` | One moment a setup could open a trade: one chunk. Read from `lib/dataset.js`: on the four daily shapes, one a day, the trade opening at 01:00; on `Weekly 8-day`, one a week, opening Tuesday 03:00. The owner's word, and printed on **Coins** since 3.124.0 (`SCREEN-WORDS.md`, the **Coins** list). |
 | window | The run of hourly candles a decision reads before its trade opens: 24, 48, 72, 96 or 192 hours by `chunk shape` (`featureHours` in `lib/dataset.js`). The owner's phrase is "analysis window". **No screen name.** |
-| window move | How far price moved from the first candle of a decision's window to the price its trade opens at, as a percentage of the first. **No screen name.** |
-| rising, falling, sit out | The three things a decision can read as. `rising` and `falling` are printed on **Coins** today; **sit out** is the owner's phrase and is on no screen yet. |
-| the sit-out band | The one number that decides sit out. **No screen name yet.** |
-| dual member voting, traditional single member set voting | The owner's names for the two training modes on **Sweep**. **Neither is on a screen yet.** |
+| window move | How far price moved from the first candle of a decision's window to the price its trade opens at, as a percentage of the first. On **Coins** since 3.124.0, in the band's label and in `window moves from`. |
+| `rising`, `falling`, `sit out` | The three things a decision can read as. All three printed on **Coins** since 3.124.0, with their colours `green`, `red` and `black` beside them. |
+| `sit-out band, % of the median window move` | The one number that decides sit out. The control on **Coins** since 3.124.0, quoted from the word list generated from the deployed screen. |
+| dual member voting, traditional single member set voting | The owner's names for the two training modes on **Sweep**. Printed on **Coins** since 3.124.0 in the sentence that says what the screen is for; the box on **Sweep** that switches them is not built (section 5, parked). |
 | `member`, `members`, `committee` | On **Sweep** and **Boards**. One forecast, the group of them, and the whole group that votes on one coin. |
-| `weight ceiling` | On **Coins** today: the most any one row may weigh in training, as a multiple of the average. |
+| weight ceiling | Was on **Coins** until 3.124.0; gone with the old design. Returns on **Sweep** with the dual member voting mode (section 5). |
 
 ## 1. What Coins is for
 
@@ -155,7 +155,7 @@ probably three controls on the coins tab."*
 
 1. `coins (blank = all N downloaded)` — kept exactly as it is. Blank reads every
    coin downloaded on the box, whatever that count is on the day.
-2. **The sit-out band** — one number, section 3. No name yet.
+2. **`sit-out band, % of the median window move`** — one number, section 3. Built 3.124.0; the label is quoted from the word list generated from the deployed screen.
 3. `Read these coins` — kept exactly as it is. *"which could be just one or the
    whole batch, whatever whatever is in the box."*
 
@@ -199,9 +199,9 @@ under each. Same for three and four day. One bar per shape.
 light track so black reads on the dark theme; the band's default is 50; one
 line under each coin's name says when it was read, by which release, from how
 many candles, and how many months have been cached since; the band box stays
-live while a reading runs because it is not part of one. The label on the
-band control is quoted here only once the word list is regenerated from the
-deployed screen (RULE ONE-A).
+live while a reading runs because it is not part of one. The band control is
+labelled `sit-out band, % of the median window move`, quoted from the word
+list regenerated from the deployed screen (RULE ONE-A, 3.124.0 served).
 
 **Everything else on the tab today goes.** The walk, `fall-back %`, `changes of
 direction`, `changes of direction wanted`, `try from, %`, `try to, %`,
@@ -291,9 +291,9 @@ decision on 2026-09-12, and each is now the other way:
 
 - **The yardstick for the sit-out band** (section 3). Mine is the median of the
   coin's window moves for that shape. The owner's call.
-- **The name of the sit-out band control** and of the box on **Sweep**. Named
-  when built, deployed, and the word list regenerated from what the box serves
-  (RULE ONE-A).
+- **The name of the box on **Sweep****. The band control is named (section 4,
+  3.124.0). The Sweep box is named when built, deployed, and the word list
+  regenerated from what the box serves (RULE ONE-A).
 - **Where on the screen the numbers sit** relative to the bars. Presentation
   only.
 - **Whether the bars should also show strength**, a deeper shade for a bigger
