@@ -313,4 +313,29 @@ its own.
 
 ## F. What reached the environment
 
-(filled as it lands)
+- **The vps-access branch** (the read-only door): `scripts/uts-coins-signal.sh`
+  in three versions (a77a91b, c59c838, 24dcb69). READ-ONLY throughout: it
+  fetches this branch's `lib/` into `/tmp/uts-signal-src` on the box, reads a
+  coin's record off disk, and writes nothing under `/opt`. Three passes over
+  all 18 coins, one coin per call.
+- **The box, 2026-09-13 16:52 UTC**: deployed b122ba9 (3.126.1) → 778488d
+  (3.127.1); `healthz OK on 127.0.0.1:8094`; the service restarted once. The
+  box was idle (`busy: none`) before the deploy.
+- **The box, 2026-09-13 ~17:10 UTC**: deployed 778488d → 2ab96d1 (3.127.2);
+  `healthz OK`; one more restart; idle before it.
+- **`SERVED.json`** captured after each deploy; **`SCREEN-WORDS.md`**
+  regenerated from the served commit each time. After the second, the Coins
+  list carries every word on the new line and the eight trait words under
+  "Values the screen shows as data"; `tests/test-sweepwords.js` green.
+- **Guards**: every guard on `lib/coinsignal.js` and `lib/coinsrun.js` was
+  deleted in turn and the suite caught every one — run after each deploy,
+  never gating it (RULE EIGHT).
+- **Not touched**: the band on the box (still 50), every record under
+  `data/coins/` (all 18 still record shape 7 — the owner presses
+  `Read these coins` to bring them to shape 8), Sweep, the members, anything
+  trading.
+
+**What the owner will see on Coins**: every coin named as written under an
+older record shape until it is read again, exactly as after 3.124.0. One
+press of `Read these coins` with the box blank reads all 18; the link-cut
+check adds fifty analyses per shape, about a second a coin.

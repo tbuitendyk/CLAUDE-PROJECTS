@@ -412,9 +412,10 @@ section C.
 **Nothing on the screen changes shape.** The three controls stay as they are.
 Under each bar's heading there is now one more line, and every word on it is
 quoted below from `cSignalLine` in `public/construct.js`, read in the session
-that wrote this. The word list for **Coins** is regenerated from the served
-screen after the deploy, as RULE ONE-A requires; until then these are words
-the code draws, not yet words on the list.
+that wrote this. The word list for **Coins** was regenerated from the served
+screen after the 3.127.2 deploy (RULE ONE-A): every sentence below and all
+eight trait words are on it, the trait words under "Values the screen shows
+as data".
 
 **The line, left to right.**
 

@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **778488de1643 — what the box is serving**, not from the working tree.
+Generated from **2ab96d17c1b5 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,7 +89,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (58)
+## What the controls are called (63)
 
 - `-hour window · one decision a`
 - `— press`
@@ -98,7 +98,9 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `· at band`
 - `· median`
 - `· plateau`
+- `· with the link cut, a plateau in`
 - `% · sit out under ±`
+- `% called`
 - `× chance`
 - `above`
 - `at band`
@@ -125,6 +127,8 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `move after falling`
 - `move after rising`
 - `no coin has been read`
+- `no ratio`
+- `of`
 - `One coloured unit is one`
 - `part`
 - `read`
@@ -138,6 +142,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `sit out`
 - `starts`
 - `Stop`
+- `the colour changes no call`
 - `the last reading stopped:`
 - `thin side`
 - `to`
@@ -155,7 +160,18 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `61/13/13/13 (sealed exam)`
 - `70/15/15`
 
-## Sentences the page prints (14)
+## Values the screen shows as data (8)
+
+- `both`
+- `fading`
+- `mixed`
+- `much`
+- `often`
+- `reverting`
+- `steady`
+- `trending`
+
+## Sentences the page prints (15)
 
 - A picture of each coin's history, one bar per chunk shape, to judge whether the coin is apt for
 - dual member voting or better left on the traditional single member set voting.
@@ -171,11 +187,12 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - file(s) on disk this release cannot draw:
 - file(s) named above and nothing else
 - no band beats chance for three steps together
+- · with the link cut, one at least this strong in
 
-## Every word, flat (164)
+## Every word, flat (181)
 
 ```
--hour Above above across after again. all and apt at band bands bar be beats been Below better black blank cached candles cannot chance Change changes chunk coin coin. Coins coins coloured could decision decisions disk downloaded draw dual each edge either else every exactly exam falling fell file files for from gap green half has held held. here history is it It judge last left less little mean median member month more move moved moves named no not Nothing nothing number number. of on one One opening or out out. over own part per picture plateau points press price read Read reading recolours red refuses release Remove removes reserve. rising rose rows run same scale. sealed set shape share side signal since single sit sit-out sits starts steps Stop stopped Sweep test than that the The these thin this three to together too traditional train trains typically under unit up UTC voting voting. way what when where whether whole window window. with would
+-hour Above above across after again. all and apt at band bands bar be beats been Below better black blank both cached call called candles cannot chance Change changes chunk coin coin. Coins coins colour coloured could cut decision decisions disk downloaded draw dual each edge either else every exactly exam fading falling fell file files for from gap green half has held held. here history in is it It judge last least left less link little mean median member mixed month more move moved moves much named no not Nothing nothing number number. of often on one One opening or out out. over own part per picture plateau points press price ratio read Read reading recolours red refuses release Remove removes reserve. reverting rising rose rows run same scale. sealed set shape share side signal since single sit sit-out sits starts steady steps Stop stopped strong Sweep test than that the The these thin this three to together too traditional train trains trending typically under unit up UTC voting voting. way what when where whether whole window window. with would
 ```
 
 ---
