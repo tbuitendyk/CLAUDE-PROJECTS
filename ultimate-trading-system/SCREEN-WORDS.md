@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **23ee7428dbe7 — what the box is serving**, not from the working tree.
+Generated from **8b2faee26450 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,7 +89,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (57)
+## What the controls are called (62)
 
 - `— not what the boxes above say`
 - `— press`
@@ -100,23 +100,27 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `% by`
 - `% to`
 - `%, ceiling`
-- `24/5`
 - `above`
 - `again to bring`
+- `below`
 - `Both move with how much`
 - `change(s) wanted,`
 - `changes of direction`
 - `changes of direction wanted`
-- `chunk shape`
 - `coin`
 - `Coins`
+- `coins (blank = all`
+- `downloaded)`
 - `drift`
 - `drift parts`
 - `drift parts,`
+- `every`
 - `fall-back %`
+- `h`
 - `height:`
 - `history a coin has`
 - `more month(s) cached since`
+- `no coin has been read`
 - `not reached`
 - `Nothing here refuses a`
 - `of the`
@@ -129,17 +133,18 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `read at:`
 - `read over`
 - `Read these coins`
-- `rows below`
 - `same under either window layout:`
 - `shuffles`
-- `shuffles, 24/5`
 - `split`
+- `starting`
 - `step, %`
 - `Stop`
+- `That is`
 - `the last reading stopped:`
 - `The training does not weigh a rare`
 - `The two traditional numbers`
 - `the walk`
+- `trade length`
 - `training weight over`
 - `try from, %`
 - `try to, %`
@@ -149,24 +154,22 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `window layout`
 - `worst tail slice`
 
-## What the dropdowns offer (7)
+## What the dropdowns offer (2)
 
 - `61/13/13/13 (sealed exam)`
 - `70/15/15`
-- `Daily 1-day`
-- `Daily 2-day`
-- `Daily 3-day`
-- `Daily 4-day`
-- `Weekly 8-day`
 
-## Sentences the page prints (24)
+## Sentences the page prints (26)
 
 - What each coin's history holds: the stretches in which it was rising, the stretches in which it
 - was falling, and how those fall across train, test, held-back and the reserve.
 - coin.
 - Every figure is a reading — which coins a sweep runs on is your choice, made by looking at these.
-- coins (blank = all 17 default coins)
-- worked out before more history was cached for that coin — read
+- Every coin is read at every trade length, and you set nothing to make that happen.
+- A trade length is how long a position is open; the starting times are fixed and are shown beside each one.
+- possible starts a week. Nothing else
+- about how a trade is run changes what a history contains, so nothing else is asked for here.
+- read before more history was cached for it — read
 - up to date.
 - read at different values from the boxes above. Each row says what it was read at.
 - file(s) on the box could not be read back:
@@ -182,21 +185,20 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - answer up to make up for there being few of it — so however thin one side of a part is, nothing corrects for
 - it, and a side with a handful of periods in it is learned from a handful of periods. That is a reason to read
 - the split below, not a cut-off: no coin is refused for it.
-- no coin has been read at this chunk shape
 - <span style="display:inline-block;width:4px;
 - px;margin-right:1px;vertical-align:bottom;background:var(
 
-## Every word, flat (224)
+## Every word, flat (236)
 
 ```
-1-day 1px 2-day 3-day 4-day 4px 8-day above above. across again all all. amounts an and answer any anywhere are asked at at. average back background balance be because been before being below beside better blank Both both bottom box boxes bring by cached cannot carve ceiling change changes choice chunk coin coin. Coins coins column compared corrects could cut-off Daily date. default different direction display does dozen drift each Each either either. Every exam fall fall-back falling few figure file first for from gets handful has height held held-back help here history holds how however in inline-block is it it. last layout layouts learned looking low made make margin-right means measure month more most move moves much no not Nothing nothing number numbers of on one one-sided order out over part part. parts periods periods. press px rare reached Read read reading reads reason refused refuses release reserve. rising row rows runs same say says sealed second shape share shuffles side since slice so somewhere span split step Stop stopped stretch stretches style sweep tail tell test than that That the The them them. there these these. thin this those thousand to traditional train training try turn turns two under untuned up UTC values var vertical-align walk wanted was way. Weekly weigh weight What what which width window with worked worse worst your
+1px 4px about above above. across again all all. amounts an and answer any anywhere are asked at at. average back background balance be because been before being below beside better blank Both both bottom box boxes bring by cached cannot carve ceiling change changes choice coin coin. Coins coins column compared contains corrects could cut-off date. different direction display does downloaded dozen drift each Each either either. else Every every exam fall fall-back falling few figure file first fixed for from gets handful happen. has height held held-back help here here. history holds how however in inline-block is it it. last layout layouts learned length long looking low made make margin-right means measure month more most move moves much no not Nothing nothing number numbers of on one one-sided one. open order out over part part. parts periods periods. position possible press px rare reached read Read reading reads reason refused refuses release reserve. rising row run runs same say says sealed second set share shown shuffles side since slice so somewhere span split starting starts step Stop stopped stretch stretches style sweep tail tell test than that That the The them them. there these these. thin this those thousand times to trade traditional train training try turn turns two under untuned up UTC values var vertical-align walk wanted was way. week. weigh weight What what which width window with worked worse worst you your
 ```
 
 ---
 
 # Sweep
 
-## What the controls are called (85)
+## What the controls are called (88)
 
 - `— each says why:`
 - `— none —`
@@ -215,6 +217,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Campaign “`
 - `carry forward (0 = all)`
 - `chunk shape`
+- `compare coins (blank = all`
 - `Currently set:`
 - `d`
 - `decision`
@@ -224,6 +227,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Deleting “`
 - `description`
 - `doubles`
+- `downloaded)`
 - `end`
 - `entry`
 - `existing campaigns`
@@ -275,6 +279,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `The`
 - `the count is not known right now —`
 - `the most one trade may count for`
+- `trade coins (blank = all`
 - `trail`
 - `triples`
 - `units`
@@ -343,7 +348,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `voices`
 - `Weekly 8-day`
 
-## Sentences the page prints (40)
+## Sentences the page prints (38)
 
 - Each stage writes a record set the next one reads, and every set names its parent. What is
 - running, and everything finished, is on Boards.
@@ -352,8 +357,6 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - argmax fit. No trade shape and no decision exist here; those are priced later, at stage 3, from the votes this stage keeps.
 - The fee prices only the tuning-slice $ on Boards: each unit's own votes on the last quarter of its training window,
 - one buy or sell per chunk in the direction they lean, read against the same null set.
-- trade coins (blank = all 17 default coins)
-- compare coins (blank = all 17 default coins)
 - weigh each trade by the money it was worth
 - One chunk of history is one decision and one trade - a week on the weekly shape, a day on the
 - daily ones. Off, a trade where the price moved 0.6% and one where it moved 14% are the same single lesson, so a
@@ -389,7 +392,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 ## Every word, flat (354)
 
 ```
-1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above act. active add again against agree all alongside already and another any are argmax arm as at attaches auto band bar be because been belonging beside best biggest blank block Boards Boards. BOOST both box boxes breakout but buy by came Campaign campaign campaigns cannot carried carries carry chain chunk coin coins committee compare conviction count cover crumbs Currently cut daily Daily data day decide decision declared default Delete deleted. Deleting deployed. description different direction directional doubles Each each end ends enough entry estimate every Every everything exam exist existing families fee fees fewer files filters finished first fit. folded for forecast forward four freak from gate go going good greenlight greenlights has here history hold holds how in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit live Load loaded locked LOGREG many market may member members members. minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary others out own parent parent. passes paused per permanently permute places plain price priced prices prices. Progress progress quarter Quorum quorum rank read reads record records refuse remove removed Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape share side side. single singles size small so stage Stage stages start Start started starts static stayed staying still Sweep sweeps tab table taking teaches than that the The their them them. there These they this This those three times to too trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns undone. unit units units. until up UTC View voice voices vote votes voting was wastes way way. week weekly Weekly weigh weightless were What when where while whole why will window with working worth writes wrong yet
+1-day 113h 137h 161h 17h 2-day 3-day 4-day 41h 60h 65h 8-day 89h about above act. active add again against agree all alongside already and another any are argmax arm as at attaches auto band bar be because been belonging beside best biggest blank block Boards Boards. BOOST both box boxes breakout but buy by came Campaign campaign campaigns cannot carried carries carry chain chunk coin coins committee compare conviction count cover crumbs Currently cut daily Daily data day decide decision declared Delete deleted. Deleting deployed. description different direction directional doubles downloaded Each each end ends enough entry estimate every Every everything exam exist existing families fee fees fewer files filters finished first fit. folded for forecast forward four freak from gate go going good greenlight greenlights has here history hold holds how in into is it it. its itself judged keep keeps. kept kind kinds known lands landslide last later launched layout lean learning. leave lesson limit live Load loaded locked LOGREG many market may member members members. minted models money more. most moved name named names never new next nine No no none not nothing now null number of Off off off. on On once one One one. ones. only or orders ordinary others out own parent parent. passes paused per permanently permute places plain price priced prices prices. Progress progress quarter Quorum quorum rank read reads record records refuse remove removed Removed Retire retrained reused right rounds run running runs same saved says scans sealed second Selected sell set Set set. sets sets. setting settings setup setups. shape share side side. single singles size small so stage Stage stages start Start started starts static stayed staying still Sweep sweeps tab table taking teaches than that the The their them them. there These they this This those three times to too trade Trade trades trail train trained training trains travels tree triples tuning tuning-slice turns undone. unit units units. until up UTC View voice voices vote votes voting was wastes way way. week weekly Weekly weigh weightless were What when where while whole why will window with working worth writes wrong yet
 ```
 
 ---
