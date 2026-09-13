@@ -174,10 +174,10 @@ app.post('/api/compute-config', (req, res) => {
 
 app.get('/api/data-state', (req, res) => res.json({ symbols: cacheState() }));
 
-// ---- COINS: vetting a coin's history before anything is trained -------------
-// (COINS.md; owner LOOP NOW! 2026-09-12.) Every figure these serve is a reading
-// to look at. Nothing here refuses a coin, and nothing here decides which coins
-// a sweep runs on -- that is the owner's, at the screen.
+// ---- COINS: a picture of each coin's history, for choosing how to train on it
+// (COINS.md Part one; owner LOOP NOW! 2026-09-13.) Every figure these serve is
+// a reading to look at. Nothing here refuses a coin, and nothing here decides
+// which coins a sweep runs on -- that is the owner's, at the screen.
 const coinsrun = require('./lib/coinsrun');
 
 app.post('/api/coins/run', (req, res) => {
@@ -188,8 +188,25 @@ app.post('/api/coins/run', (req, res) => {
 // status has its own door -- the same shape as every other pressed job here.
 app.get('/api/coins/run', (req, res) => res.json(coinsrun.coinsRunStatus()));
 app.post('/api/coins/stop', (req, res) => res.json(coinsrun.coinsRunStop()));
+// COMPRESSED WHEN THE BROWSER TAKES IT. This one reply carries every decision
+// of every bar on the screen, which is far and away the largest thing any
+// Construct screen asks for, and it is nearly all repeated digits.
 app.get('/api/coins/records', (req, res) => {
-  try { return res.json(coinsrun.coinsRecords()); }
+  try {
+    const body = JSON.stringify(coinsrun.coinsRecords());
+    res.type('json');
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+      res.set('Content-Encoding', 'gzip');
+      return res.send(require('zlib').gzipSync(body));
+    }
+    return res.send(body);
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+// THE SIT-OUT BAND'S ONE DOOR. The number has one home (data/settings.json);
+// the screen sets it here and reads it back inside /api/coins/records, and
+// Sweep's dual member voting mode reads the same key when it is built.
+app.post('/api/coins/band', (req, res) => {
+  try { return res.json(coinsrun.setSitOutBand((req.body || {}).band)); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
 

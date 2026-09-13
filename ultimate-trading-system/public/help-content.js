@@ -859,71 +859,53 @@ window.HELP = {
     title: 'Coins',
     how: [
       ['What this screen is for, and what it will never do',
-        'It reads what each coin\'s history actually holds: the stretches in which it was rising, the stretches '
-        + 'in which it was falling, and how those fall across train, test, held-back and the reserve. It REPORTS. '
-        + 'It never refuses a coin and it never decides which coins a sweep runs on — every figure here is '
-        + 'something to look at and sort by, and the choice of what to sweep stays yours, made by reading them.'],
-      ['How a change of direction is found',
-        'Price is walked forward keeping the highest point seen. When it has fallen back from that high by at '
-        + 'least a set percentage, that high is where the rising stretch ended and the falling one began, and the '
-        + 'same rule runs the other way. It is worked out from returns rather than price levels, so a ten per cent '
-        + 'move counts the same at fifty dollars and at five thousand. The percentage is not fixed across coins: '
-        + 'you say how many changes of direction you want, and each coin gets the LARGEST percentage that gives at '
-        + 'least that many. The walk beside each coin shows the count at every percentage tried, so you can see '
-        + 'whether a coin sits steady across a band of them or balanced on an edge.'],
-      ['The two numbers that do not read the tuned percentage',
-        'Most one-sided stretch and drift are worked out from a plain, untuned reading of direction, so re-tuning the '
-        + 'percentage above never moves them. Most one-sided stretch slides a window the size the window layouts '
-        + 'actually carve across the whole span and reports the most one-sided any position turns out to be — a '
-        + 'low number means somewhere in this history there is a stretch that runs all one way, which is the case '
-        + 'that has been hard to get good results from. Drift is how much that balance moves from part to part, '
-        + 'which is what shows you WHERE the one-sided stretch is rather than only that one exists.'],
-      ['Why the search stops at the end of test',
-        'The percentage is chosen by reading train and test only. Held-back and the reserve get no vote in it — '
-        + 'the settled percentage is then applied to the whole span and what is in them is reported, never fed '
-        + 'back. That holds for every figure and not only the percentage: each part of the history is read by a '
-        + 'walk that stops at that part\'s own end, so nothing that happens later can move what an earlier part '
-        + 'says, at any distance. One thing follows from it and is worth knowing: a change of direction is only '
-        + 'confirmed once price has fallen back from it, so a change sitting near the end of test cannot be '
-        + 'confirmed without looking at held-back. The search is not allowed to look, so it counts what it can '
-        + 'see and says on the row when there turn out to be more. Its count is a floor, never an overstatement.'],
-      ['When a history is too short for either number to mean anything',
-        'Both numbers are marked "cannot tell" on a coin whose history is too short for them to say anything about '
-        + "it. Nothing is set or typed to decide that: the coin's own periods are shuffled into a different order "
-        + 'hundreds of times — the same coin with its trend taken away — and the two numbers are read off each '
-        + 'shuffle. If the coin\'s own answer sits inside what those shuffles score, then a coin with no trend at all '
-        + 'could have scored the same, so the number is telling you how much history there is rather than what is in '
-        + 'it. Hover the mark to see the range. It is never a cut-off and no coin is refused for it. In practice a few '
-        + 'dozen periods can tell nothing and a few hundred can tell plainly.'],
-      ['Reading these numbers between one coin and another',
-        'Both untuned numbers measure over a share of the span, so both move with how much history a coin has. '
-        + 'A coin with a few dozen periods reads worse on most one-sided stretch and better on drift than the same coin '
-        + 'with a thousand — at forty periods most coins with no trend at all score the worst value worst tail '
-        + 'slice has. Two coins with different amounts of cached history cannot be compared on either number, '
-        + 'which is why the periods column sits beside them.'],
+        'It draws what each coin\'s history holds, decision by decision, so you can judge before a sweep whether '
+        + 'the coin is apt for dual member voting — two sets of members, one trained towards rising and one towards '
+        + 'falling, each sitting out on the other\'s kind of decision — or better left on the traditional single '
+        + 'member set voting. It REPORTS. It never refuses a coin and it never decides which coins a sweep runs on; '
+        + 'the choice of what to sweep stays yours, made by looking.'],
+      ['What one coloured unit is',
+        'One decision: one moment a setup could open a trade, which is one row of what Sweep trains on. Each is '
+        + 'read on its own window — the run of hourly candles that decision sees before its trade opens, 24 hours '
+        + 'on Daily 1-day up to 192 on Weekly 8-day. The window move is how far price moved from the first candle '
+        + 'of that window to the price the trade opens at. Green: it rose by more than the sit-out band. Red: it '
+        + 'fell by more. Black: it moved too little either way, and a decision like that would sit out. Nothing '
+        + 'after the open is read, so the same reading is known live at the moment a real trade would open. Hover '
+        + 'a point on a bar to read that decision\'s day, its window move and how it reads.'],
+      ['Five bars, and why not three',
+        'One bar per chunk shape. Daily 1-day and Daily 2-day open their trades at the same moments but read '
+        + 'different windows, 24 hours against 48, so the same moment can read differently under each; the same '
+        + 'holds for three-day and four-day. Trade length never enters: the window belongs to the shape, and how '
+        + 'long the trade is then held changes nothing about what the decision saw before it opened.'],
+      ['The two divisions marked on every bar',
+        'Above each bar, 70/15/15 marks where train, test and held fall. Below it, the shaded boxes mark '
+        + '61/13/13/13 (sealed exam): train, test, held and the reserve. Each box is as wide as the share of '
+        + 'decisions that part holds, so it lines up with the bar exactly. The numbers under the bar count, per '
+        + 'part under each division, how many decisions read rising, how many falling, how many sit out, and how '
+        + 'many times the colour changes — a held or a reserve that is all one colour is exactly the thing this '
+        + 'screen exists to show you before the sweep is spent.'],
+      ['The sit-out band: one number, every coin on its own scale',
+        'You type one number. On each coin, for each shape, it is read against that coin\'s median window move '
+        + 'ignoring direction — the median, because a few wild days do not move it — so the same setting means the '
+        + 'same thing on a calm coin and a wild one. At 50 a decision sits out when its window moved less than half '
+        + 'what the coin typically moves over that window; at 0 nothing sits out; higher blacks out more. It is '
+        + 'applied when the screen draws, never when a coin is read, so changing it recolours every bar at once and '
+        + 'reads no candle again. It lives in one place, and Sweep trains with the same number.'],
       ['What a reading says about itself',
-        'Every row carries the span of history it was worked out from, when it was taken, the release that took '
-        + 'it and the values it was read at. When more history has been cached for that coin since, the row says '
-        + 'how much and the panel above counts how many rows are behind. A reading is never quietly out of date. '
-        + 'And a coin that could not be read gets a row too, with a sentence saying why — it is never left off.'],
+        'Every coin\'s heading carries when it was read, the release that read it and how many candles it was read '
+        + 'from. When more history has been cached for that coin since, the heading says how many months. A coin '
+        + 'that could not be read is still listed, with a sentence saying why — it is never left off. A file on disk '
+        + 'written by an older release that drew something else is named at the top rather than drawn wrong.'],
     ],
-    intro: 'What each coin\'s history holds, read before anything is trained: the stretches in which it was rising '
-      + 'and the stretches in which it was falling, per window layout, per part of the history. It exists so a sweep '
-      + 'can be started knowing which coins have history worth training on, and so a coin has the numbers behind it '
-      + 'if it is going to be trained two ways. Nothing on this screen refuses a coin or decides anything.',
+    intro: 'A picture of each coin\'s history, one bar per chunk shape: every decision the history offers, coloured '
+      + 'green where price rose across that decision\'s own window, red where it fell, black where it moved too little '
+      + 'either way and would sit out. It exists so a sweep can be started knowing which coins are apt for dual member '
+      + 'voting. Nothing on this screen refuses a coin or decides anything.',
     controls: {
-      cCoins: 'which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep. There is no fixed list any more, so a coin downloaded today is read tomorrow without anybody adding it anywhere.',
-      cTarget: 'how many changes of direction you want across train and test. Each coin gets the largest fall-back percentage that gives at least this many.',
-      cFrom: 'the smallest fall-back percentage to try.',
-      cTo: 'the largest fall-back percentage to try.',
-      cStep: 'how far apart the percentages tried are. Every value in the range is tried rather than bisected, because the count of changes does not simply rise as the percentage falls.',
-      cCap: 'the most any one period may weigh in training, as a multiple of the average. It must be above 1, and on a coin where too few periods moved it has to be higher still — the reading says so and names the value that would work.',
-      cDrift: 'how many equal parts the span is cut into to measure how the balance moves from part to part.',
-      cShuf: "how many times a coin's own periods are shuffled into a different order to work out whether the two untuned numbers can say anything about it at this much history. There is no line to set: a shuffle is that coin with its trend taken away, and if the coin's own answer sits inside what the shuffles score then a coin with no trend could have scored the same. More shuffles only ever widen the range the shuffles cover, so raising this can turn a can tell into a cannot tell and never the other way round: it is a stricter reading, not a sharper one.",
-      cRun: 'reads every coin named above at the chunk shape above, and writes what it finds against that coin\'s history. One coin that cannot be read does not stop the others.',
+      cCoins: 'which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep. There is no fixed list, so a coin downloaded today is read tomorrow without anybody adding it anywhere.',
+      cBand: 'how small a window move counts as sit out, as a percentage of the coin\'s median window move for that shape. One number for every coin, read on each coin\'s own scale: at 50 a decision sits out when it moved less than half what the coin typically moves over that window. Change it and every bar recolours at once; nothing is read again. It has one home, and Sweep trains with this same number.',
+      cRun: 'reads every coin named above at every chunk shape, and writes each coin\'s window moves against its history. One coin that cannot be read does not stop the others. The sit-out band is not part of a reading, so changing it never needs this pressed again.',
       cStop: 'stops after the coin being read now. What has already been written stays, and the line beside the buttons says a stopped run was stopped and where it got to.',
-      cLayout: 'which window layout\'s reading to show. A coin can read differently under the two, so the reading is kept per layout. The two untuned numbers are the same under either.',
-      cOrder: 'which reading to put at the top of the list, and which end of it comes first. Nothing is decided by this — it is only the order you want to look in. A coin that could not be measured sorts last whichever is chosen.',
     },
   },
   greenlight: {

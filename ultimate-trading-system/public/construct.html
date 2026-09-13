@@ -110,6 +110,21 @@
   input, select, textarea { font:inherit; background:var(--tile); color:var(--fg);
     border:1px solid var(--line); border-radius:5px; padding:.28rem .45rem; }
   label.f { display:flex; flex-direction:column; gap:.15rem; font-size:.74rem; color:var(--dim); }
+  /* COINS: one bar per chunk shape, its two divisions and its numbers (COINS.md Part one). The
+     division boxes are sized by share of decisions, so they line up with the bar by construction. */
+  .cshape { margin:.7rem 0 1rem; }
+  .cshape .chead { font-size:.8rem; margin-bottom:.2rem; }
+  .cshape canvas.cbar { display:block; width:100%; height:18px; }
+  .clay { display:flex; width:100%; font-size:.66rem; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
+  .clay .cpart { box-sizing:border-box; overflow:hidden; white-space:nowrap; padding:0 .25rem; }
+  .clay.above .cpart { border-left:1px solid var(--dim); border-bottom:1px solid var(--dim); }
+  .clay.above .cpart:last-child { border-right:1px solid var(--dim); }
+  .clay.below .cpart { background:rgba(128,140,160,.18); border-left:1px solid var(--dim); }
+  .clay.below .cpart:nth-child(even) { background:rgba(128,140,160,.36); }
+  .clay.below .cpart:last-child { border-right:1px solid var(--dim); }
+  .cnums { font-size:.74rem; margin-top:.25rem; font-variant-numeric:tabular-nums; }
+  .cnums .cpartnum { white-space:nowrap; }
+  .cr { color:#1a9c3a; } .cf { color:#d0312d; } .cs { color:var(--fg); font-weight:600; }
   label.c { display:flex; align-items:center; gap:.35rem; font-size:.8rem; color:var(--fg); }
   /* FILTERS ABOVE A TABLE (owner order, 2026-08-28: "right justified filter
      names and their left justified value boxes all lined up properly"). One

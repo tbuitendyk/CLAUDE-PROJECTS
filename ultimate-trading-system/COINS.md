@@ -5,11 +5,11 @@
 filled this document until today; it is superseded, kept below for the record,
 and is not to be built from.
 
-**What is built and what is not.** Everything Part two describes was built and
-is on the box as of 3.123.0. **Nothing in Part one is built.** The code on the
-tab is the old design, and it stays exactly as it is until the owner authorises
-the change, task by task (RULE ZERO). The commit that wrote this changed this
-document and nothing else.
+**What is built and what is not.** Part one sections 1 to 4 are built in
+3.124.0 (owner `LOOP NOW!`, 2026-09-13; the record is
+`LOOP-2026-09-13-COINS.md`). Section 5, Sweep's dual member voting mode, is
+NOT built and is parked there with the reason. Everything Part two describes
+was built, was on the box as of 3.123.0, and is deleted in 3.124.0.
 
 Three kinds of thing are in Part one and they are kept apart on purpose:
 
@@ -195,6 +195,14 @@ which is fifteen starts a week. The correction to five came after this finding:
 different windows, 24 hours against 48, so the same moment reads differently
 under each. Same for three and four day. One bar per shape.
 
+**Built, 3.124.0** (`LOOP-2026-09-13-COINS.md`): the bars are painted on a
+light track so black reads on the dark theme; the band's default is 50; one
+line under each coin's name says when it was read, by which release, from how
+many candles, and how many months have been cached since; the band box stays
+live while a reading runs because it is not part of one. The label on the
+band control is quoted here only once the word list is regenerated from the
+deployed screen (RULE ONE-A).
+
 **Everything else on the tab today goes.** The walk, `fall-back %`, `changes of
 direction`, `changes of direction wanted`, `try from, %`, `try to, %`,
 `step, %`, `drift parts`, `shuffles`, `most one-sided stretch`, `drift`,
@@ -258,8 +266,12 @@ decision on 2026-09-12, and each is now the other way:
 - **The training weight from the trade's own outcome** becomes the weight from
   the window move. Still one number per row, still average 1 under a ceiling,
   still one vector shared by both sets.
-- **A record per coin on disk, per hold** becomes nothing on disk. Read live
-  from the cached candles every time the screen draws.
+- **A record per coin on disk, per hold** becomes a record per coin holding
+  the window moves per `chunk shape` — facts about the history, and what a
+  read costs. The band is NOT on it: it is applied when the screen draws, so
+  tuning it recolours every bar at once and reads no candle again. (Built
+  3.124.0; this line said "nothing on disk" until the build showed why a
+  reading is worth keeping. `LOOP-2026-09-13-COINS.md` section B.)
 - **Reading per trade length** is gone from this tab entirely.
 - **The three readings per coin, the two traditional numbers, the shuffles and
   the can-tell mark** are gone.

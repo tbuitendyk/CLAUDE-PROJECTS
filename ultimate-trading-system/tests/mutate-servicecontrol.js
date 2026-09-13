@@ -1362,71 +1362,38 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), 'trainedOn: res.trainedOn || rec.trainedOn || null,', 'trainedOn: null,',
     'theFixtureCoinsAndTheirStageTwoParentAreBuilt', 'no stage 2 record says what it was trained under, so the second table\'s column is empty however the run was launched'],
 
-  // ---- too little history for the number to mean anything (3.121.0) --------
-  [path.join(ROOT, 'lib', 'coins.js'), '    const canTell = real < low || real > high;', '    const canTell = true;',
-    'theScreenIsToldWhenAHistoryIsTooShortForTheNumberToMeanAnything', 'a forty-period coin reads as though its numbers mean something, which is the case the whole reading exists to catch'],
-  [path.join(ROOT, 'public', 'construct.js'), '  if (!c || c.canTell !== false) return \'\';', '  return \'\';\n  // eslint-disable-next-line no-unreachable\n  if (!c || c.canTell !== false) return \'\';',
-    'theCoinsScreenMarksANumberItCannotTrust', 'the screen never marks a number it cannot trust, so a reading that means nothing reads exactly like one that does'],
-
-  // ---- COINS CHARACTERISES THE HISTORY, NOT OUR TREATMENT (3.122.0) -------
+  // ---- COINS: every decision read on its own window (3.124.0) ---------------
   // Each of these names the test that READS THE LINE IT BREAKS (RULE EIGHT).
   [path.join(ROOT, 'lib', 'dataset.js'), "    .filter((s) => s && isRealCoin(s))", "    .filter((s) => !!s)",
     'theValuesTheOwnerTypesAreTheValuesThatRun', 'a blank coin box sweeps up the fabricated coins the checks and the tests write into the same cache, and the owner trains and trades on invented prices'],
-  // BROKEN THE OTHER WAY ROUND ON PURPOSE. Dropping the comparison entirely
-  // leaves the FIRST shape of each hold winning, and the order the geometries
-  // happen to be written in already puts the shortest look-back first — so that
-  // mutation changed nothing and the guard MISSED. What has to be caught is the
-  // longer look-back being chosen, which really does lose trades.
-  [path.join(ROOT, 'lib', 'dataset.js'), "    if (!have || g.featureHours < GEOMETRIES[have].featureHours) pick.set(hours, name);", "    if (!have || g.featureHours > GEOMETRIES[have].featureHours) pick.set(hours, name);",
-    'theFiveChunkShapesAreReallyThreeSetsOfTrades', 'a hold is read from the shape with the longer look-back, which starts later and so offers fewer trades than the history really held'],
-  [path.join(ROOT, 'lib', 'coinsrun.js'), "  const built = bracket.buildComboChunks({ trade: map }, hold.geometry, false);", "  const built = bracket.buildComboChunks({ trade: map }, hold.geometry, true);",
-    'aCoinWithCachedPricesActuallyGetsARead', 'the weekend start days are filtered out again, so the screen describes a rule we chose rather than what the history offered — which is the whole fault this release fixed'],
-  [path.join(ROOT, 'lib', 'coinsrun.js'), "  for (const hold of holdTypes()) {", "  for (const hold of holdTypes().slice(0, 1)) {",
-    'aCoinWithCachedPricesActuallyGetsARead', 'only the shortest hold is ever read, so two thirds of what a history offers is missing and nothing says it is'],
-  [path.join(ROOT, 'public', 'construct.js'), "    for (const h of holds) {\n      out.push({", "    for (const h of holds.slice(0, 1)) {\n      out.push({",
-    'theCoinsTableDrawsARowForEveryHold', 'the table draws one row a coin again, so two of the three holds are read, stored and never shown'],
-  // NOT THE FILE NAME. Breaking that MISSED, and rightly: the reader takes any
-  // .json in the folder and every record says its own coin, so the name is not
-  // what carries a reading to the screen. What is, is the reader looking at the
-  // folder at all.
-  [path.join(ROOT, 'lib', 'coinsrun.js'), "    if (!f.endsWith('.json')) continue;", "    if (!f.endsWith('.json-none')) continue;",
-    'everyCoinTheRunTouchedIsOnDiskAfterwards', 'every reading lands on disk and none of it reaches the screen, which then says nothing was ever read'],
-
-  // ---- COINS (3.119.0, after the four adversarial reviewers) ---------------
-  // Each of these names the test that READS THE LINE IT BREAKS, not the test
-  // with the nearest-sounding name (RULE EIGHT).
+  [path.join(ROOT, 'lib', 'coins.js'), "    move.push(Number((((c.c1 - first.open) / first.open) * 100).toFixed(4)));", "    move.push(Number((((c.c1 - first.close) / first.close) * 100).toFixed(4)));",
+    'aWindowMoveIsFromTheFirstCandleOfTheWindowToTheOpenOfTheTrade', 'the window move is read from the first candle\'s close rather than its open, which is not where the owner said the examination period starts'],
+  [path.join(ROOT, 'lib', 'coins.js'), "    if (!first || !(first.open > 0)) { skipped++; continue; }", "    if (!first) { skipped++; continue; }",
+    'aBadFirstPriceIsSkippedAndCountedNeverInvented', 'a first price of zero divides the move by nothing and a decision reads as infinitely risen'],
+  [path.join(ROOT, 'lib', 'coins.js'), "  return n % 2 ? abs[(n - 1) / 2] : (abs[n / 2 - 1] + abs[n / 2]) / 2;", "  return abs[Math.floor(n / 2)];",
+    'theBandIsAShareOfTheMedianAndReadsThreeWays', 'on an even count the yardstick is one of the two middles rather than their average, so the same band reads differently by whether a coin has an odd or an even number of decisions'],
+  [path.join(ROOT, 'lib', 'coins.js'), "  for (const m of move) reading += m > threshold ? 'r' : (m < -threshold ? 'f' : 's');", "  for (const m of move) reading += m > threshold ? 'r' : 'f';",
+    'theBandIsAShareOfTheMedianAndReadsThreeWays', 'nothing ever sits out: the band is on the screen and does nothing'],
+  [path.join(ROOT, 'lib', 'coins.js'), "    if (i > from && reading[i] !== reading[i - 1]) changes++;", "    if (i > 0 && reading[i] !== reading[i - 1]) changes++;",
+    'theCountsPerPartAddUpAndChangesAtABoundaryBelongToNeither', 'a colour change on the boundary between two parts is counted against the later part, so the parts\' changes add up to more than the bar has'],
+  [path.join(ROOT, 'lib', 'coins.js'), "    if (p.to < p.from) return { why:", "    if (false) return { why:",
+    'thePartsAreTheEnginesOwnSplitNeverTyped', 'three decisions divide four ways with a part that ends before it starts, and the screen draws a division that is not there'],
+  [path.join(ROOT, 'lib', 'coins.js'), "  for (let i = 1; i < ts.length; i++) dt.push(Math.round((ts[i] - ts[i - 1]) / 3600000));", "  for (let i = 1; i < ts.length; i++) dt.push(Math.round((ts[i] - ts[0]) / 3600000));",
+    'theSummaryCarriesWhatTheBarIsDrawnFromAndNothingHeavier', 'the hover on every bar names the wrong day for every decision after the first'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), 'const map = forwardFill(toHourlyMap(loaded.rows)).map;', 'const map = forwardFill(toHourlyMap(loaded.rows));',
-    'aCoinWithCachedPricesActuallyGetsARead', 'the tab reads nothing at all: every coin throws on the first period built and lands in the unread list, which is exactly how this shipped'],
+    'aCoinWithCachedPricesActuallyGetsARead', 'the tab reads nothing at all: every coin throws on the first decision built and lands in the unread list, which is exactly how the first tab shipped'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), 'if (rec.read) run.wrote.push(coin); else run.couldNotRead.push({ coin, why: rec.why });', 'if (rec.read) run.wrote.push(coin);',
     'everyCoinTheRunTouchedIsOnDiskAfterwards', 'a coin that could not be read is not counted anywhere, so the screen cannot say how many failed'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), 'run.stoppedAt = run.stop ? run.done : null;', 'run.stoppedAt = null;',
-    'stoppingIsToldApartFromFinishing', 'a run stopped at coin 4 of 17 reads word for word like a completed 4-coin run'],
+    'stoppingIsToldApartFromFinishing', 'a run stopped at coin 1 of 3 reads word for word like a completed 1-coin run'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), '    if (rec.v !== RECORD_V) {\n      unreadable.push({', '    if (rec.v !== RECORD_V) {\n      if (1) continue;\n      unreadable.push({',
     'aRecordThisReleaseCannotReadIsNamedRatherThanHidden', 'a release bump deletes the owner\'s readings from the screen in silence, and the screen then says nothing was ever read'],
-  [path.join(ROOT, 'lib', 'coinsrun.js'), '    layouts: layouts(),', "    layouts: ['reserve61', 'split70'],",
-    'theRunnerReadsEveryLayoutTheScreenOffers', 'the list of window layouts is typed in a second place, so adding one leaves the screen offering a reading nobody ever took'],
-  [path.join(ROOT, 'lib', 'coins.js'), '  const cut = parts.map((p) => cutAtBoundaries(walkTo(p.to).stretches, [p])[0]);', '  const cut = cutAtBoundaries(whole.stretches, parts);',
-    'nothingAfterAPartCanMoveWhatThatPartReports', 'price inside the sealed reserve moves the median and moves what train reports with it, which COINS.md section 7 forbids'],
-  [path.join(ROOT, 'lib', 'coins.js'), '        stub: from > s.from || to < s.to || !!s.open,', '        stub: from > s.from || to < s.to,',
-    'theStubArithmeticRunsOnWhatTheCutterActuallyProduces', 'a run that never turned -- it ran out of data -- counts as a whole stretch in the last part of every span'],
-  [path.join(ROOT, 'lib', 'coins.js'), '  const edge = (i) => Math.round((i * moves.length) / k);\n  const parts = [];\n  for (let i = 0; i < k; i++) {\n    const from = edge(i);\n    const to = edge(i + 1) - 1;', '  const size = Math.floor(moves.length / k);\n  const parts = [];\n  for (let i = 0; i < k; i++) {\n    const from = i * size;\n    const to = i === k - 1 ? moves.length - 1 : (i + 1) * size - 1;',
-    'theDriftIsAnAverageOverEqualPartsAndTheCallerSaysHowMany', 'the last part swallows the remainder and dilutes a one-way tail with balanced periods, reading 36% low on the case this number exists to catch'],
-  [path.join(ROOT, 'lib', 'coins.js'), '  if (meanAt(hi) < 1) {\n    const weights = raw.map((w) => Math.min(hi * w, cap));', '  if (false) {\n    const weights = raw.map((w) => Math.min(hi * w, cap));',
-    'theCeilingThatCannotReachAMeanOfOneIsFoundExactly', 'an average of 0.11 is reported as an average of 1, which is the thing the sentence beside it promises never happens'],
-  [path.join(ROOT, 'lib', 'coins.js'), '    const pct = Number((from + k * step).toPrecision(12));', "    const pct = Number((from + k * step).toFixed(String(step).split('.')[1] ? String(step).split('.')[1].length + 3 : 3));",
-    'everyValueTheOwnerSetsForTheSearchIsObeyed', 'a step too small to print as a decimal collapses the whole walk onto one percentage, tried over and over'],
-  [path.join(ROOT, 'lib', 'coins.js'), '    if (!(p > 0)) continue;                      // see above: not a base for a return', '    if (false) continue;',
-    'aPriceOfZeroCostsThatPeriodAndNoOther', 'one unusable price switches rise detection off for the whole of the rest of the series'],
-  [path.join(ROOT, 'lib', 'coins.js'), '    at.push({ width: w });\n    for (let i = 0; i + w <= moves.length; i++) {', '    for (let i = 0; i + w <= moves.length; i++) {',
-    'theWorstTailSliceSeesAOneWayTailThatTheWholeSpanBalanceHides', 'a window that was walked and beaten vanishes from the record of what was walked'],
-  [path.join(ROOT, 'lib', 'coins.js'), '  const seen = [];\n  for (const layout of [\'reserve61\', \'split70\']) {', '  const seen = [Math.max(2, Math.round(periods * 0.13)), Math.max(2, Math.round(periods * 0.15))];\n  for (const layout of []) {',
-    'theTailWidthsAreTheOnesTheLayoutsActuallyCarve', 'the two window widths are a second copy of the engine\'s split, typed here, and two copies drift'],
-  [path.join(ROOT, 'lib', 'coins.js'), "    split: parts.map((p) => ({ part: p.name, from: p.from, to: p.to, ...splitOfTime(moves.slice(p.from, p.to + 1)) })),", '    split: search.reached ? parts.map((p) => ({ part: p.name, from: p.from, to: p.to, ...splitOfTime(moves.slice(p.from, p.to + 1)) })) : null,',
-    'aCoinTheSearchCannotSatisfyStillGetsARecord', 'a coin the percentage search cannot satisfy is withheld a reading that never needed the percentage at all'],
-  [path.join(ROOT, 'public', 'construct.js'), '<b>A thin side gets no help at all.</b> The training does not weigh a rare', '<b>A thin side under 1.7% is not rescued by weighting.</b> The training does not weigh a rare',
-    'theTrainerWeighsNoRareAnswerUpAndTheScreenDoesNotPretendItDoes', 'the screen tells the owner weighting will rescue a thin side while the trainer passes no class weights at all -- which is what 3.119.0 shipped'],
-  [path.join(ROOT, 'lib', 'coinsrun.js'), '    rareSideWeighting: false,', '    rareSideWeighting: true,',
-    'aRecordThisReleaseCannotReadIsNamedRatherThanHidden', 'the screen is told a rare answer IS weighed up, which is the false claim the other way round'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), '    layouts: lays,', "    layouts: ['reserve61', 'split70'],",
+    'theRunnerReadsEveryLayoutTheScreenOffers', 'the list of window layouts is typed in a second place, so adding one leaves the bars marked with a division nobody divided'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), '  const band = sitOutBand();\n  const lays = layouts();', '  const band = DEFAULTS.band;\n  const lays = layouts();',
+    'theBandHasOneHomeAndRecoloursWithoutAReRead', 'the band the owner sets is saved and never read back, so every bar is drawn at the default whatever the box says'],
+  [path.join(ROOT, 'lib', 'coinsrun.js'), "  settings[BAND_KEY] = v;", "  const fresh = {}; fresh[BAND_KEY] = v; return (fs.writeFileSync(SETTINGS_FILE, JSON.stringify(fresh)), { band: v });",
+    'theBandHasOneHomeAndRecoloursWithoutAReRead', 'setting the band wipes every other setting in the file it shares'],
 ];
 
 const only = process.argv[2] || '';

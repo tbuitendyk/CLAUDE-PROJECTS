@@ -1,123 +1,51 @@
-// THE COINS SCREEN, PRESSED FOR REAL (3.119.0).
+// THE COINS SCREEN, PRESSED FOR REAL (COINS.md Part one; 3.124.0).
 //
-// WHY THIS EXISTS. The tab shipped without ever having been run: nineteen unit
-// tests were green while the runner could not read a single coin. The end-to-end
-// runner test next door covers that half. This covers the other half -- that the
-// screen draws at all, and that the things the adversarial pass found wrong on it
-// are right when a browser really presses them.
+// The unit tests next door check the arithmetic and the plumbing. This checks
+// the other half -- that the screen draws what the design says and nothing it
+// says has gone: three controls, five bars a coin, the two divisions marked on
+// every bar, the counts beside them, the hover on a bar, and that the band is
+// set the moment it changes.
 //
-// It answers the three Coins reads itself, so nothing depends on what is cached
-// on the machine, and it writes nothing.
+// It answers the Coins reads itself, so nothing depends on what is cached on
+// the machine, and it writes nothing.
 //   npm run test:ui:coins        (or: node tests/ui-coins.js)
-//
-// The alias was held back when this file was written: package.json counts as a
-// product file to the release check (RULE ONE-C), so adding it on its own would
-// have moved the release number for a browser check and made the planted check
-// read NOT CHECKED, costing the owner a re-run for nothing. It is folded in
-// here, alongside a release that was moving anyway.
 const { spawn } = require('child_process');
 const path = require('path');
 const fs = require('fs');
 const ROOT = path.join(__dirname, '..');
 const PORT = Number(process.env.UI_TEST_PORT || 8201);
 
-const DEFAULTS = { target: 6, from: 1, to: 30, step: 0.5, cap: 20, driftParts: 8, shuffles: 200 };
-const parts = (names) => names.map((n, i) => ({ part: n, from: i * 50, to: i * 50 + 49, periods: 50 }));
-function reading(layout, names, { reached = true, worst = 0.3 } = {}) {
-  const p = parts(names);
-  return {
-    layout,
-    periods: names.length * 50,
-    parts: p,
-    searchedOver: { from: 0, to: 99, parts: ['train', 'test'], turnsTheSearchCounted: 6, turnsOnceLaterDataIsSeen: 6 },
-    search: reached
-      ? { asked: 6, reached: true, pct: 12.5, turns: 7, overshot: true, walk: [{ pct: 11, turns: 9 }, { pct: 12.5, turns: 7 }, { pct: 14, turns: 4 }] }
-      : { asked: 60, reached: false, pct: null, turns: null, overshot: false, best: { pct: 14, turns: 4 }, walk: [{ pct: 14, turns: 4 }] },
-    split: p.map((q, i) => ({ part: q.part, from: q.from, to: q.to, rising: i === 3 ? 0.995 : 0.55, falling: i === 3 ? 0.005 : 0.45, balance: i === 3 ? 0.005 : 0.45, periods: 50 })),
-    weight: { cap: 20, mean: 1, capped: 3, reachedMean: true, needCap: null, why: null, over: 'train', periods: 50 },
-    typed: reached ? { pct: 12.5, turns: 7, stretches: 8 } : null,
-    medians: reached ? { rising: 12, falling: 9 } : null,
-    perPart: reached ? p.map((q, i) => ({
-      part: q.part, from: q.from, to: q.to, periods: 50, turns: 2 - (i > 1 ? 1 : 0),
-      stretches: {
-        rising: { full: i === 2 ? 1 : 2, stubs: 1, stubLength: 6, median: 12, count: 2.5 },
-        falling: { full: i === 2 ? 0 : 2, stubs: 0, stubLength: 0, median: 9, count: 2 },
-      },
-      stubs: 1,
-    })) : null,
-    why: reached ? undefined : 'no percentage between 1% and 30% gives 60 change(s) of direction on this coin — the most any of them gives is 4, at 14%',
-  };
+// THE FIVE SHAPES AND TWO LAYOUTS, SHAPED EXACTLY AS THE SERVICE HANDS THEM
+// BACK -- read from the modules rather than typed, because a fixture that
+// invented its own shape is how a dead mark once shipped unnoticed.
+const SHAPES = require('../lib/coins').shapes();
+const LAYOUTS = require('../lib/coinsrun').layouts();
+const { shapeSummary } = require('../lib/coins');
+const HOUR = 3600000;
+// a synthetic shape record: n decisions, a day apart, moves that swing so every
+// colour appears and the bar has several runs
+function shapeRec(n, { start = Date.UTC(2024, 0, 1), swing = 3 } = {}) {
+  const ts = []; const move = [];
+  for (let i = 0; i < n; i++) { ts.push(start + i * 24 * HOUR); move.push(Number((Math.sin(i / 9) * swing + (i % 7 === 0 ? 0 : 0.3)).toFixed(4))); }
+  return { periods: n, span: { fromTs: ts[0], toTs: ts[n - 1] }, skipped: 0, ts, move };
 }
-const FOUR = ['train', 'test', 'held', 'reserve'];
-const THREE = ['train', 'test', 'held'];
-// whether either untuned number tells this coin apart from a coin with no
-// trend, in the shape lib/coins.js really returns -- `low`/`high` are the range
-// the shuffles cover and `value` is this coin's own answer
-const tells = (value, low, high) => ({ canTell: true, value, low, high, of: 200, why: null });
-const tellsNot = (value, low, high, name) => ({
-  canTell: false, value, low, high, of: 200,
-  why: `${name} does not tell this coin apart from a coin with no trend at all. Shuffle its own 200 periods into `
-    + `200 different orders -- the same coin with its trend taken away -- and they score between ${low} and ${high}.`,
-});
-const tellsNothingAtAll = (name) => ({ canTell: false, of: 0, low: null, high: null, value: null,
-  why: `${name} could not be worked out over 200 periods at all` });
-// THE THREE HOLDS THE SCREEN NOW DRAWS A ROW EACH FOR (3.122.0). Shaped exactly
-// as lib/dataset.js holdTypes() hands them back, because a fixture that
-// invented its own shape is how the last dead mark shipped unnoticed.
-const HOLDS = [
-  { key: '17h', hours: 17, every: 'day', at: '01:00', startsPerWeek: 7 },
-  { key: '41h', hours: 41, every: 'day', at: '01:00', startsPerWeek: 7 },
-  { key: '60h', hours: 60, every: 'week', at: 'Tuesday 03:00', startsPerWeek: 1 },
-];
-function holdOf(h, { worst, drift, periods, read = true, canTell = null }) {
+function record(coin, { read = true, months = 17, n = 300, why = null } = {}) {
+  const shapes = {};
+  if (read) for (const s of SHAPES) shapes[s.key] = shapeSummary(shapeRec(s.every === 'week' ? Math.round(n / 7) : n), 50, LAYOUTS);
   return {
-    hold: h,
-    periods,
-    read,
-    why: read ? null : `offers no complete ${h.hours}-hour trades from the prices cached on this box`,
-    span: { fromTs: Date.UTC(2024, 0, 1), toTs: Date.UTC(2026, 5, 1) },
-    traditional: read ? {
-      whole: { rising: 0.52, falling: 0.48, balance: 0.48, periods },
-      mostOneSidedStretch: worst == null ? { balance: null, from: null, to: null, width: null, widths: [] } : { balance: worst, from: 10, to: 35, width: 26, widths: [{ width: 26 }, { width: 30 }] },
-      drift: { drift, parts: [], wanted: 8 },
-      canTell: canTell || { mostOneSidedStretch: tells(worst, 0.1, 0.4), drift: tells(drift, 0.005, 0.05), periods, shuffles: 200 },
-      periods,
-    } : null,
-    readings: read ? { reserve61: reading('reserve61', FOUR), split70: reading('split70', THREE) } : {},
-  };
-}
-function record(coin, { worst, drift, months, target, read = true, canTell = null }) {
-  const holds = {};
-  // the weekly hold really does offer far fewer trades, which is the whole
-  // reason the three rows are not three copies of one reading
-  for (const h of HOLDS) holds[h.key] = holdOf(h, { worst, drift, periods: h.hours === 60 ? 40 : 200, read, canTell });
-  return {
-    v: 5, coin, read,
-    why: read ? null : `${coin} has no cached prices on this box — download them on Data first`,
-    provenance: { release: '3.119.0', capturedAt: '2026-09-11T09:00:00Z', cachedMonths: months, candles: 12000 },
-    params: { ...DEFAULTS, target },
-    holds: read ? holds : {},
+    coin, read, why: read ? null : (why || `${coin} has no cached prices on this box — download them on Data first`),
+    provenance: { release: '3.124.0', capturedAt: '2026-09-13T09:00:00Z', cachedMonths: months, candles: 12000 },
+    shapes,
   };
 }
 const RECORDS = [
-  record('AAAUSDT', { worst: 0.45, drift: 0.02, months: 17, target: 6 }),
-  // ONE COIN WHERE ONE OF THE TWO NUMBERS SAYS NOTHING AND THE OTHER DOES. The
-  // mark has to land on that one cell and on no other -- a fixture where every
-  // number can tell something exercises nothing, which is what this file did.
-  record('BBBUSDT', { worst: 0.00, drift: 0.31, months: 17, target: 6,
-    canTell: { mostOneSidedStretch: tellsNot(0.0, 0.02, 0.31, 'the most one-sided stretch'), drift: tells(0.31, 0.005, 0.05), periods: 200, shuffles: 200 } }),
-  // and one where neither could be worked out at all
-  record('CCCUSDT', { worst: null, drift: null, months: 17, target: 6,
-    canTell: { mostOneSidedStretch: tellsNothingAtAll('the most one-sided stretch'), drift: tellsNothingAtAll('the drift'), periods: 200, shuffles: 200 } }),
-  record('DDDUSDT', { worst: 0.20, drift: 0.11, months: 12, target: 20 }),
-  record('EEEUSDT', { worst: null, drift: null, months: 4, target: 6, read: false }),
+  record('AAAUSDT'),
+  record('DDDUSDT', { months: 12 }),
+  record('EEEUSDT', { read: false, months: 4 }),
 ];
-const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT__daily-4d.json', why: 'this reading was written under record shape 4 and this release reads shape 5 — read the coin again to replace it' }];
-
+const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT.json', why: 'this reading was written under record shape 5 and this release reads shape 6 — read the coin again to replace it', release: '3.123.0' }];
 const DATA_STATE = { symbols: [
   { symbol: 'AAAUSDT', months: 17, from: '2024-01', to: '2026-05' },
-  { symbol: 'BBBUSDT', months: 17, from: '2024-01', to: '2026-05' },
-  { symbol: 'CCCUSDT', months: 17, from: '2024-01', to: '2026-05' },
   { symbol: 'DDDUSDT', months: 19, from: '2024-01', to: '2026-07' },   // grown since DDD was read
 ] };
 
@@ -138,14 +66,21 @@ function requirePlaywright() {
   page.on('dialog', async (d) => { errors.push(`dialog: ${d.message()}`); await d.dismiss(); });
 
   let runStatus = { running: false, started: null, done: 0, of: 0, wrote: [], couldNotRead: [], note: null, error: null, finishedAt: null, stopped: false, stoppedAt: null, params: null };
+  let band = 50;
+  let bandPosts = [];
   let stopPresses = 0;
   let started = null;
-  await page.route('**/api/coins/records**', (route) => route.fulfill({ contentType: 'application/json', body: JSON.stringify({
-    geometry: 'daily-4d', records: RECORDS, unreadable: UNREADABLE, defaults: DEFAULTS,
-    layouts: ['split70', 'reserve61'], recordVersion: 5, rareSideWeighting: false, holds: HOLDS,
-  }) }));
+  let recordsFetches = 0;
+  await page.route('**/api/coins/records**', (route) => { recordsFetches++; return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
+    shapes: SHAPES, layouts: LAYOUTS, band: { value: band, default: 50, home: 'data/settings.json' },
+    downloaded: 18, records: RECORDS, unreadable: UNREADABLE, recordVersion: 6,
+  }) }); });
+  await page.route('**/api/coins/band', (route) => {
+    const b = JSON.parse(route.request().postData() || '{}'); bandPosts.push(b.band); band = Number(b.band);
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ band }) });
+  });
   await page.route('**/api/coins/run', (route) => {
-    if (route.request().method() === 'POST') { started = JSON.parse(route.request().postData() || '{}'); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ started: true, of: 5 }) }); }
+    if (route.request().method() === 'POST') { started = JSON.parse(route.request().postData() || '{}'); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ started: true, of: 3 }) }); }
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify(runStatus) });
   });
   await page.route('**/api/coins/stop', (route) => {
@@ -159,132 +94,117 @@ function requirePlaywright() {
   const fails = [];
   const expect = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) fails.push(what); };
   await page.waitForSelector('#cRun', { timeout: 15000 });
-  // textContent, NOT innerText: this page upper-cases some of its own text in
-  // the stylesheet, and innerText hands back what the eye sees rather than what
-  // the code wrote. Matching against the rendered case would pin the stylesheet
-  // rather than the wording.
+  await page.waitForTimeout(300);
+  // textContent, NOT innerText: the stylesheet upper-cases the part names.
   const text = async () => page.locator('#view').textContent();
 
   expect(/Coins/.test(await page.locator('#view h3').first().textContent()), 'the screen draws');
   const body = await text();
-  for (const coin of ['AAAUSDT', 'BBBUSDT', 'CCCUSDT', 'DDDUSDT', 'EEEUSDT']) {
-    expect(body.includes(coin), `${coin} is on the screen`);
+
+  // THREE CONTROLS AND NOTHING ELSE.
+  const controls = await page.evaluate(() => [...document.querySelectorAll('#view input, #view select, #view button, #view textarea')].map((e) => e.id));
+  expect(controls.sort().join(',') === ['cBand', 'cCoins', 'cRun'].join(','), `three controls and nothing else, got: ${controls.join(', ')}`);
+  for (const gone of ['cTarget', 'cFrom', 'cTo', 'cStep', 'cCap', 'cDrift', 'cShuf', 'cLayout', 'cOrder', 'cGeom', 'cWk']) {
+    expect(await page.locator(`#${gone}`).count() === 0, `${gone} is gone from the screen`);
   }
-  expect(/FFFUSDT/.test(body) && /record shape 4/.test(body), 'a record this release cannot read is named, not dropped');
-  expect(!/nothing read yet/.test(body), 'with records on the screen it does not say nothing was read');
-  expect(/thin side gets no help at all/i.test(body), 'the screen says plainly that a rare side is not weighted up');
-  expect(!/rescued by weighting|thinner than weighting/.test(body), 'the screen still promises weighting that the trainer never does');
-  expect(/more month\(s\) cached since/.test(body), 'the coin whose history has grown since reads as behind');
-  // ONE ROW, NOT FIVE. Every row said this while the fixture was missing a
-  // setting the page compares -- the assertion passed and proved nothing.
-  expect((body.match(/not what the boxes above say/g) || []).length === 3,
-    `exactly one coin was read at other values, and it has a row per hold — got ${(body.match(/not what the boxes above say/g) || []).length}`);
-  // once per ROW, because every one of that coin's rows is a reading taken
-  // before the newer history arrived -- sorted by drift you may only be looking
-  // at one of them, and it is behind too
-  expect((body.match(/more month\(s\) cached since/g) || []).length === 3,
-    'the behind mark must ride every row of the coin that is behind');
-  expect(/1 of these coins was read before more history/.test(body),
-    'and the line at the top counts COINS, not rows — one coin behind is one, not three');
-  expect(/release 3\.119\.0/.test(body), 'each row names the release that took it');
-
-  // THE ORDERINGS. Worst first where low is bad, largest first where high is,
-  // and a coin that could not be measured last under both.
-  const order = async (v) => {
-    await page.selectOption('#cOrder', v);
-    await page.waitForTimeout(250);
-    return page.locator('#view table tbody tr:not(.s4hold) td:first-child b').allTextContents();
-  };
-  const byTail = await order('tail');
-  // FOUR READ COINS AT THREE HOLDS EACH, plus the one with no prices at all
-  expect(byTail.length === 13, `every coin gets a row per hold, got ${byTail.length}: ${byTail.join(',')}`);
-  expect(byTail[0] === 'BBBUSDT', `most one-sided stretch puts the one-way coin first, got ${byTail[0]}`);
-  expect(byTail[byTail.length - 1] === 'EEEUSDT', `and the coin with nothing read last, got ${byTail.join(',')}`);
-  expect(byTail.lastIndexOf('CCCUSDT') > byTail.lastIndexOf('DDDUSDT'), 'a coin with no reading never outranks one with a bad reading');
-  const byDrift = await order('drift');
-  expect(byDrift[0] === 'BBBUSDT', `drift puts the largest first, got ${byDrift[0]}`);
-  expect(byDrift.lastIndexOf('CCCUSDT') > byDrift.lastIndexOf('AAAUSDT'), 'and not-measured is last on drift too');
-  // AND THE THREE HOLDS ARE ALL DRAWN, with no control asked for to get them
-  const byHold = await page.locator('#view table tbody tr:not(.s4hold) td:nth-child(2)').allTextContents();
-  for (const want of ['17h', '41h', '60h']) {
-    expect(byHold.some((c) => c.includes(want)), `${want} trades are never drawn: ${byHold.join(' | ')}`);
+  expect(/all 18 downloaded/.test(body), 'the coin box says how many are downloaded, from the service');
+  expect(await page.inputValue('#cBand') === '50', `the band box shows the number the service holds, got ${await page.inputValue('#cBand')}`);
+  for (const word of ['drift', 'shuffles', 'fall-back', 'changes of direction', 'most one-sided', 'trade length', 'cannot tell', 'weight ceiling']) {
+    expect(!new RegExp(word, 'i').test(body), `the old design's word '${word}' is off the screen`);
   }
-  expect(byHold.filter((c) => c.includes('Tuesday')).length >= 1, 'the weekly hold never says when it starts');
-  expect(byHold.filter((c) => c.includes('01:00')).length >= 2, 'the daily holds never say when they start');
 
-  // THE TYPE NOTE names the type, and does not fire when both appear twice.
-  await page.selectOption('#cOrder', 'coin');
-  await page.waitForTimeout(250);
-  const after = await text();
-  expect(/no whole falling stretch/.test(after) || /one whole falling stretch/.test(after),
-    'the note about a type appearing once or not at all says which type');
-  expect(!/a type appears only once/.test(after), 'the old sentence that fired at zero is gone');
-  expect(/train .*periods/i.test(after), 'each part of the history reports its periods');
+  // FIVE BARS A COIN, ONE PER SHAPE, EACH WITH ITS DIVISIONS AND ITS NUMBERS.
+  for (const coin of ['AAAUSDT', 'DDDUSDT', 'EEEUSDT']) expect(body.includes(coin), `${coin} is on the screen`);
+  const bars = await page.evaluate(() => [...document.querySelectorAll('canvas.cbar')].map((c) => `${c.dataset.coin}:${c.dataset.shape}`));
+  expect(bars.length === 2 * SHAPES.length, `two read coins × ${SHAPES.length} shapes = ${2 * SHAPES.length} bars, got ${bars.length}`);
+  for (const s of SHAPES) {
+    expect(bars.includes(`AAAUSDT:${s.key}`), `AAAUSDT has a bar for ${s.label}`);
+    expect(body.includes(s.label), `the bar is named ${s.label}, as Sweep names the shape`);
+  }
+  expect(!bars.some((b) => b.startsWith('EEEUSDT')), 'a coin that could not be read has no bars');
+  expect(/EEEUSDT.*no cached prices/.test(body), 'and says why');
+  // painted: every bar has real width and its pixels are not all the track colour
+  const painted = await page.evaluate(() => [...document.querySelectorAll('canvas.cbar')].map((c) => {
+    const g = c.getContext('2d'); const d = g.getImageData(0, 0, c.width, 1).data;
+    const colours = new Set(); for (let i = 0; i < d.length; i += 4) colours.add(`${d[i]},${d[i + 1]},${d[i + 2]}`);
+    return { w: c.width, colours: colours.size };
+  }));
+  expect(painted.every((p) => p.w > 200), `every bar is drawn at the panel's width, got ${painted.map((p) => p.w).join(',')}`);
+  expect(painted.every((p) => p.colours >= 3), `every bar shows all three colours, got ${painted.map((p) => p.colours).join(',')}`);
+  // the two divisions, above and below, with the part names in order
+  const strips = await page.evaluate(() => [...document.querySelectorAll('.cshape')].map((s) => ({
+    above: [...s.querySelectorAll('.clay.above .cpart span')].map((e) => e.textContent),
+    below: [...s.querySelectorAll('.clay.below .cpart span')].map((e) => e.textContent),
+    widthsAbove: [...s.querySelectorAll('.clay.above .cpart')].map((e) => e.style.width),
+  })));
+  expect(strips.length === 2 * SHAPES.length, 'a block per bar');
+  expect(strips.every((s) => s.above.join(',') === 'train,test,held'), `above every bar: train, test, held — got ${JSON.stringify(strips[0].above)}`);
+  expect(strips.every((s) => s.below.join(',') === 'train,test,held,reserve'), `below every bar: train, test, held, reserve — got ${JSON.stringify(strips[0].below)}`);
+  expect(strips.every((s) => s.widthsAbove.every((w) => /^\d+(\.\d+)?%$/.test(w))), 'each division box is sized as a share of the decisions');
+  const sumW = strips[0].widthsAbove.reduce((a, w) => a + parseFloat(w), 0);
+  expect(Math.abs(sumW - 100) < 0.05, `the division boxes span the bar exactly, got ${sumW}%`);
+  expect(/70\/15\/15/.test(body) && /61\/13\/13\/13 \(sealed exam\)/.test(body), 'both layouts are named on the screen as Sweep names them');
+  // the numbers: per part, rising / falling / sit out / changes, under both layouts
+  const nums = await page.evaluate(() => [...document.querySelectorAll('.cshape')].map((s) => [...s.querySelectorAll('.cnums')].map((e) => e.textContent)));
+  expect(nums.every((n) => n.length === 3), 'three number lines under every bar: the whole, then one per layout');
+  expect(nums.every((n) => /\d+ rising/.test(n[0]) && /\d+ falling/.test(n[0]) && /\d+ sit out/.test(n[0]) && /\d+ changes/.test(n[0])), 'the whole-bar line counts all three readings and the changes');
+  expect(nums.every((n) => /window moves from [-+][\d.]+% to [-+][\d.]+%/.test(n[0]) && /median [\d.]+%/.test(n[0]) && /sit out under ±[\d.]+%/.test(n[0])), 'and the range, the median and the band as a move');
+  expect(nums.every((n) => (n[1].match(/rising/g) || []).length === 3 && (n[2].match(/rising/g) || []).length === 4), 'three parts counted under 70/15/15 and four under 61/13/13/13');
+  expect(/AAAUSDT.*release 3\.124\.0/.test(body), 'each coin names the release that read it');
+  expect(/DDDUSDT.*more month\(s\) cached since/.test(body), 'the coin whose history has grown since reads as behind');
+  expect(!/AAAUSDT[^]*?more month\(s\) cached since[^]*?DDDUSDT/.test(body), 'and the one that has not does not');
+  expect(/FFFUSDT/.test(body) && /record shape 5/.test(body), 'a file this release cannot draw is named, not dropped');
 
-  // THE MARK LANDS ON THE ONE CELL THAT EARNED IT. BBB's most one-sided stretch says
-  // nothing its own shuffles do not, its drift does; CCC could work out
-  // neither. Read cell by cell, because a mark on the whole row, or on every
-  // row, reads the same in the page text and means nothing.
-  const cellsOf = (coin) => page.evaluate((c) => {
-    const rows = [...document.querySelectorAll('#view table tbody tr')];
-    const tr = rows.find((r) => r.querySelector('td b') && r.querySelector('td b').textContent === c);
-    return tr ? [...tr.querySelectorAll('td')].map((td) => td.textContent) : null;
-  }, coin);
-  const MARK = 'cannot tell';
-  const bbb = await cellsOf('BBBUSDT');
-  expect(!!bbb && bbb[6].includes(MARK), `the most one-sided stretch BBBUSDT cannot trust is not marked, got ${bbb && bbb[6]}`);
-  expect(!!bbb && !bbb[7].includes(MARK), `BBBUSDT's drift CAN tell something and is marked anyway, got ${bbb && bbb[7]}`);
-  const aaa = await cellsOf('AAAUSDT');
-  expect(!!aaa && !aaa[6].includes(MARK) && !aaa[7].includes(MARK), 'AAAUSDT can tell on both numbers and is marked anyway');
-  const ccc = await cellsOf('CCCUSDT');
-  expect(!!ccc && ccc[6].includes(MARK) && ccc[7].includes(MARK), 'CCCUSDT could work out neither number and neither is marked');
-  // three holds a coin, so the mark lands three times per cell that earned it
-  expect((after.match(/cannot tell/g) || []).length === 9,
-    `nine marked cells across the read coins, got ${(after.match(/cannot tell/g) || []).length}`);
-  // and the reason rides with it, or there is nothing to look into
-  const why = await page.evaluate(() => {
-    const rows = [...document.querySelectorAll('#view table tbody tr')];
-    const tr = rows.find((r) => r.querySelector('td b') && r.querySelector('td b').textContent === 'BBBUSDT');
-    const m = tr && [...tr.querySelectorAll('td')][6].querySelector('span[title]');
-    return m ? m.getAttribute('title') : '';
-  });
-  expect(/does not tell this coin apart/.test(why), `the mark carries no reason, got ${JSON.stringify(why)}`);
-  // the shuffle count is on the screen beside the rest of what the read used
-  expect(/200 shuffles/.test(after), 'the row does not say how many shuffles the reading was taken at');
-  expect(!/\? shuffles/.test(after), 'a row is drawing a literal question mark where the shuffle count belongs');
+  // THE HOVER NAMES THE DECISION UNDER THE POINTER.
+  const cv = page.locator('canvas.cbar').first();
+  const box = await cv.boundingBox();
+  await page.mouse.move(box.x + box.width * 0.5, box.y + box.height / 2);
+  await page.waitForTimeout(100);
+  const title = await cv.getAttribute('title');
+  expect(/^\d{4}-\d\d-\d\d · window move [-+][\d.]+% · (rising|falling|sit out)$/.test(title || ''), `the hover names the day, the move and the reading, got ${JSON.stringify(title)}`);
 
-  // WHAT IS TYPED SURVIVES A REDRAW. This is the one that used to be wiped
-  // twice a second while the owner was still typing.
+  // THE BAND IS SET THE MOMENT IT CHANGES, AND THE BARS REDRAW.
+  const fetchesBefore = recordsFetches;
+  await page.fill('#cBand', '80');
+  await page.locator('#cBand').press('Tab');
+  await page.waitForTimeout(500);
+  expect(bandPosts.length === 1 && String(bandPosts[0]) === '80', `the new band reached the service once, got ${JSON.stringify(bandPosts)}`);
+  expect(recordsFetches > fetchesBefore, 'and the bars were asked for again');
+  expect(await page.inputValue('#cBand') === '80', 'the box shows what the service now holds');
+
+  // WHAT IS TYPED SURVIVES A REDRAW.
   await page.fill('#cCoins', 'LTCUSDT,XRPUSDT');
-  await page.fill('#cTarget', '11');
-  await page.selectOption('#cLayout', 'split70');
+  await page.fill('#cBand', '60');
+  await page.locator('#cBand').press('Tab');
   await page.waitForTimeout(400);
   expect(await page.inputValue('#cCoins') === 'LTCUSDT,XRPUSDT', 'the coin box keeps what was typed across a redraw');
-  expect(await page.inputValue('#cTarget') === '11', 'the number boxes keep what was typed across a redraw');
-  // AND THE TWO TREATMENT CONTROLS ARE GONE (owner order, 2026-09-13)
-  expect(await page.locator('#cGeom').count() === 0, 'the chunk shape box is still on Coins');
-  expect(await page.locator('#cWk').count() === 0, 'the 24/5 tick is still on Coins');
-  expect(!/all 17 /.test(body), 'a coin count is typed into the coins label');
 
-  // STOP ANSWERS. The route replies with a reason and the page must show it.
-  runStatus = { ...runStatus, running: true, started: '2026-09-12T06:00:00Z', done: 2, of: 5, note: 'AAAUSDT: reading its cached prices' };
-  // A REDRAW IS PROVOKED BY PRESSING SOMETHING, not by reaching into the page:
-  // `draw` is not on the window and a test that calls it would be testing a
-  // door the owner does not have.
-  await page.selectOption('#cOrder', 'periods');
+  // READ SENDS THE COINS TYPED, AND NOTHING ELSE.
+  await page.locator('#cRun').click();
+  await page.waitForTimeout(300);
+  expect(!!started && started.coins === 'LTCUSDT,XRPUSDT' && Object.keys(started).join(',') === 'coins', `the read carries the coins and nothing else, got ${JSON.stringify(started)}`);
+
+  // WHILE A READING RUNS the read button and the coin box are off, the band is
+  // not (it is not part of a reading), and Stop answers.
+  runStatus = { ...runStatus, running: true, started: '2026-09-13T06:00:00Z', done: 1, of: 3, note: 'AAAUSDT: Daily 4-day' };
+  await page.fill('#cBand', '70');
+  await page.locator('#cBand').press('Tab');
   await page.waitForSelector('#cStop', { timeout: 5000 });
   expect(await page.locator('#cRun').isDisabled(), 'the read button is off while a reading runs');
-  expect(await page.locator('#cCoins').isDisabled(), 'and so are the boxes, rather than inviting typing that is thrown away');
+  expect(await page.locator('#cCoins').isDisabled(), 'and so is the coin box');
+  expect(!(await page.locator('#cBand').isDisabled()), 'the band is still live: it is not part of a reading');
+  expect(/reading — 1 of 3 done: AAAUSDT: Daily 4-day/.test(await page.locator('#cOut').textContent()), 'the status says where the reading is');
   await page.locator('#cStop').click();
   await page.waitForTimeout(300);
   expect(stopPresses === 1, 'the stop press reached the service');
   expect(/nothing is running to stop/.test(await page.locator('#cOut').textContent()), 'and its answer is shown rather than swallowed');
 
   // A STOPPED RUN READS AS STOPPED.
-  runStatus = { ...runStatus, running: false, done: 2, finishedAt: '2026-09-12T06:05:00Z', stopped: true, stoppedAt: 2, wrote: ['AAAUSDT', 'BBBUSDT'], couldNotRead: [] };
-  await page.selectOption('#cOrder', 'coin');
-  await page.waitForTimeout(400);
-  expect(/stopped after 2 of 5/.test(await page.locator('#cOut').textContent()),
+  runStatus = { ...runStatus, running: false, done: 1, finishedAt: '2026-09-13T06:05:00Z', stopped: true, stoppedAt: 1, wrote: ['AAAUSDT'], couldNotRead: [] };
+  await page.fill('#cBand', '50');
+  await page.locator('#cBand').press('Tab');
+  await page.waitForTimeout(500);
+  expect(/stopped after 1 of 3/.test(await page.locator('#cOut').textContent()),
     `a stopped run says so and where it got to, got: ${await page.locator('#cOut').textContent()}`);
 
   expect(errors.length === 0, `no error on the page (${errors.join('; ') || 'none'})`);
