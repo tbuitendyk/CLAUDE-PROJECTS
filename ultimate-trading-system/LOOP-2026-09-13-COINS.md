@@ -243,3 +243,10 @@ should be. GO NOW! with deploy."* Both halves built:
   the generator sees them. Found by checking the regenerated list against
   the served screen, which is what the list is for.
 - Three tests, four guards, the browser check presses the control.
+- **Deployed 06:52 UTC**: `busy: none`; `deploy-uts.sh` fetched
+  `a90bd8a..5592905`, restarted the service, health check OK. The box serves
+  5592905; `SERVED.json` and `SCREEN-WORDS.md` regenerated from it (812
+  control labels). `Remove these files` and `whole` are on the Coins list.
+  **The fifteen table headings are still not**: the generator reads labels
+  out of template literals, and the headings were written in single-quoted
+  strings joined with `+`. Fixed in 3.126.1, below.
