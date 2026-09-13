@@ -115,6 +115,14 @@
   .cshape { margin:.7rem 0 1rem; }
   .cshape .chead { font-size:.8rem; margin-bottom:.2rem; }
   .cshape canvas.cbar { display:block; width:100%; height:18px; }
+  /* the signal line under each bar's heading: the reading, its one-word traits, and the band sweep as one bar per band */
+  .cshape .csig { font-size:.8rem; margin:0 0 .3rem; display:flex; flex-wrap:wrap; align-items:baseline; gap:.15rem .4rem; }
+  .cshape .csig .ctrait { display:inline-block; padding:0 .35rem; border:1px solid var(--line); border-radius:4px; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; }
+  .cshape .csig .csweep { display:inline-flex; align-items:flex-end; gap:1px; height:22px; vertical-align:baseline; }
+  .cshape .csig .csw { display:inline-block; width:5px; background:var(--line); }
+  .cshape .csig .csw.over { background:var(--dim); }
+  .cshape .csig .csw.plat { background:var(--accent); opacity:.65; }
+  .cshape .csig .csw.spot { background:var(--accent); }
   .clay { display:flex; width:100%; font-size:.66rem; color:var(--dim); text-transform:uppercase; letter-spacing:.04em; }
   .clay .cpart { box-sizing:border-box; overflow:hidden; white-space:nowrap; padding:0 .25rem; }
   .clay.above .cpart { border-left:1px solid var(--dim); border-bottom:1px solid var(--dim); }

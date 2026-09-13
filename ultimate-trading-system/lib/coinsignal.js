@@ -71,24 +71,37 @@ function leansOn(reading, out, from, to) {
 }
 
 // THE EDGE OVER CHANCE on a judging stretch, given the leans (S3).
+//
+// Chance's spread is the spread of EVERY outcome on the stretch, called or
+// sat out (B10): that is the null the link cut deals from -- the outcomes
+// dealt into a different order across all decisions -- and it does not shrink
+// with the band. Read over the two or three decisions a wide band still
+// calls, the spread once came out near zero and a ratio of 1264x with it.
+//
+// When both leans agree with the blind one, the colour-seeing trader makes
+// every call the blind one makes: the edge is exactly nothing and so is its
+// chance. That is a reading of 0, not a hole (B9). A hole is only a band
+// where no lean can be learned or nothing is called.
 function edgeOn(reading, out, from, to, leans, k) {
   const { dr, df, d1 } = leans;
-  let nr = 0; let nf = 0; let sum = 0; let sq = 0; let seen = 0; let blind = 0;
+  let nr = 0; let nf = 0; let sum = 0; let sq = 0; let all = 0; let seen = 0; let blind = 0;
   for (let i = from; i <= to; i++) {
     const c = reading[i];
-    if (c !== 'r' && c !== 'f') continue;
     const o = Number(out[i]);
+    if (Number.isFinite(o)) { sum += o; sq += o * o; all++; }
+    if (c !== 'r' && c !== 'f') continue;
     if (c === 'r') { nr++; seen += dr * o; } else { nf++; seen += df * o; }
     blind += d1 * o;
-    sum += o; sq += o * o;
   }
   const n = nr + nf;
-  if (!n || !leans.nr || !leans.nf) return { n, edge: null, chance: null, ratio: null };
+  if (!n || !all || !leans.nr || !leans.nf) return { n, edge: null, chance: null, ratio: null, same: false };
+  const same = dr === d1 && df === d1;
   const edge = (seen - blind) / n;
-  const mean = sum / n;
-  const sd = Math.sqrt(Math.max(0, sq / n - mean * mean));
+  const mean = sum / all;
+  const sd = Math.sqrt(Math.max(0, sq / all - mean * mean));
   const chance = (sd * Math.sqrt(k) * Math.sqrt(((dr - d1) ** 2) * nr + ((df - d1) ** 2) * nf)) / n;
-  return { n, edge, chance, ratio: chance > 0 ? edge / chance : null };
+  if (same) return { n, edge: 0, chance: 0, ratio: 0, same };
+  return { n, edge, chance, ratio: chance > 0 ? edge / chance : null, same };
 }
 
 // THE PARTS IN TIME ORDER, under one layout: null when the count will not divide.
@@ -130,6 +143,8 @@ function readBand(rec, band, k, layouts, trainLayout) {
     edge: edge.edge,
     chance: edge.chance,
     ratio: edge.ratio,
+    // true when the colour changes no call at this band: both leans are the blind one
+    same: !!edge.same,
     // edge per decision of the whole stretch, called or not: what the band is
     // buying when it sits decisions out, read beside edge per called trade
     perDecision: edge.edge == null || !n ? null : edge.edge * (called / n),
@@ -141,10 +156,17 @@ function readBand(rec, band, k, layouts, trainLayout) {
 // consecutive grid points whose smoothed ratio reaches the bar; between runs
 // of equal length, the one with the higher mean. The sweet spot is the middle
 // point of the run, the lower middle when it is even.
+//
+// A band with no reading stays a hole after smoothing (B11): a step that
+// cannot be read cannot be one of three steps that beat chance together. Its
+// neighbours smooth over what exists beside them. Before this, a hole took
+// its neighbours' average and a run once spanned two holes, five points wide
+// on three readings.
 function smooth3(values) {
   return values.map((v, i) => {
+    if (v == null || !Number.isFinite(v)) return null;
     const win = [values[i - 1], v, values[i + 1]].filter((x) => x != null && Number.isFinite(x));
-    return win.length ? win.reduce((a, b) => a + b, 0) / win.length : null;
+    return win.reduce((a, b) => a + b, 0) / win.length;
   });
 }
 function findPlateau(bands, ratios) {
@@ -235,20 +257,31 @@ function signalSummary(shapeRec, geometryKey, layouts, currentBand) {
     grid: BAND_GRID,
     k,
     trainLayout,
-    sweep: sweep.map((s) => ({ band: s.band, called: s.called, ratio: s.ratio, smoothed: s.smoothed, edge: s.edge, chance: s.chance, perDecision: s.perDecision, judged: s.judged })),
+    sweep: sweep.map((s) => ({ band: s.band, called: s.called, ratio: s.ratio, smoothed: s.smoothed, edge: s.edge, chance: s.chance, perDecision: s.perDecision, judged: s.judged, same: s.same })),
     plateau,
     sweetSpot,
     traits,
     traitsAtBand: atBand,
-    atCurrent: { band: currentBand, ratio: cur.ratio, edge: cur.edge, chance: cur.chance, called: cur.called, lean: cur.lean },
+    atCurrent: { band: currentBand, ratio: cur.ratio, edge: cur.edge, chance: cur.chance, called: cur.called, lean: cur.lean, same: cur.same },
     why: anyRatio ? null : 'the train part never holds both colours, so no lean can be learned at any band',
   };
 }
 
 // THE INSTRUMENT CHECKED AGAINST ITSELF (S7): the outcomes dealt into a
 // different order while the readings stay, so nothing links window to
-// outcome. How often the analysis still finds a plateau is what a plateau is
-// worth. Deterministic: same coin, same answer.
+// outcome. How often the analysis still finds a plateau -- and one at least
+// as strong as the real one -- is what a plateau is worth. Deterministic:
+// same coin, same answer.
+//
+// A plateau's STRENGTH is its width times its height: the number of grid
+// points in the run times their mean smoothed ratio (B12). The review of
+// 2026-09-13 found the bar of 1 across 31 bands still names a plateau in a
+// quarter of the shuffles (up to half on the short weekly rows), so the count
+// of any plateau says little; the count of one at least this strong is the
+// number that says what the real one is worth.
+function plateauStrength(plateau) {
+  return plateau ? plateau.points * plateau.meanRatio : null;
+}
 function shuffledCopy(arr, seed) {
   const out = arr.slice();
   let s = (seed >>> 0) || 1;
@@ -262,16 +295,26 @@ function shuffledCopy(arr, seed) {
 function plateauFalseAlarms(shapeRec, geometryKey, layouts, currentBand, trials = 50) {
   let found = 0;
   const ratios = [];
+  const strengths = [];
   for (let t = 0; t < trials; t++) {
     const cut = { move: shapeRec.move, out: shuffledCopy(shapeRec.out, 20260914 + t) };
     const s = signalSummary(cut, geometryKey, layouts, currentBand);
-    if (s.plateau) { found++; ratios.push(s.plateau.meanRatio); }
+    if (s.plateau) { found++; ratios.push(s.plateau.meanRatio); strengths.push(Number(plateauStrength(s.plateau).toFixed(3))); }
   }
-  return { trials, found, meanRatioWhenFound: ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null };
+  return { trials, found, meanRatioWhenFound: ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null, strengths };
+}
+// WHAT THE REAL PLATEAU IS WORTH against the stored shuffles: how many of them
+// produced a plateau at least this strong. Null when there is no real plateau
+// (then `found` alone is the reading) or no check was stored.
+function linkCutWorth(plateau, linkCut) {
+  if (!linkCut || !Array.isArray(linkCut.strengths)) return null;
+  const strength = plateauStrength(plateau);
+  const asStrong = strength == null ? null : linkCut.strengths.filter((w) => w >= strength - 1e-9).length;
+  return { trials: linkCut.trials, found: linkCut.found, strength, asStrong };
 }
 
 module.exports = {
   BAND_GRID, PLATEAU_MIN_POINTS, CHANCE_BAR,
   bandGrid, overlapFactor, leansOn, edgeOn, readBand, smooth3, findPlateau,
-  holdingOf, traitsAt, signalSummary, shuffledCopy, plateauFalseAlarms,
+  holdingOf, traitsAt, signalSummary, shuffledCopy, plateauFalseAlarms, plateauStrength, linkCutWorth,
 };

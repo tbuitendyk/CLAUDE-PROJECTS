@@ -79,6 +79,20 @@ module.exports = {
     // the overlap factor widens chance and shrinks the ratio, never the edge
     const wide = S.edgeOn(reading, out, 6, 11, leans, 4);
     assert.ok(Math.abs(wide.edge - e.edge) < 1e-12 && Math.abs(wide.chance - 2 * e.chance) < 1e-12, 'k=4 doubles chance and leaves the edge alone');
+    // B9: when both leans are the blind one the colour changes no call -- a
+    // reading of 0, never a hole
+    const agree = S.edgeOn(reading, out, 6, 11, { dr: 1, df: 1, d1: 1, nr: 3, nf: 3 }, 1);
+    assert.deepStrictEqual([agree.ratio, agree.edge, agree.same], [0, 0, true], 'leans that all agree read 0, and say so');
+    // B10: chance's spread is the spread of EVERY outcome on the stretch,
+    // called or sat out -- the null the link cut deals from
+    const withSitOut = 'rrffrf' + 'rfssss';
+    const o2 = [1, 2, -1, -1.5, 0.5, -0.5, /* judge: */ 2, -2, 10, -10, 10, -10];
+    const e2 = S.edgeOn(withSitOut, o2, 6, 11, leans, 1);
+    // called: r(2) f(-2): seen = 2 + 2 = 4, blind = 0, edge = 2; sd over all six
+    // judged outcomes = sqrt((4+4+100*4)/6) = sqrt(68), Σ = 4*1 -> chance = sqrt(68)*2/2
+    assert.ok(Math.abs(e2.edge - 2) < 1e-12);
+    assert.ok(Math.abs(e2.chance - Math.sqrt(68)) < 1e-9, `chance must read the spread of all six outcomes, got ${e2.chance}`);
+    assert.strictEqual(e2.n, 2, 'and the edge is still per called trade');
   },
 
   // S5: the plateau is the longest run of three or more smoothed points at
@@ -108,6 +122,16 @@ module.exports = {
     assert.strictEqual(S.findPlateau(bands, bands.map(() => 0.5)).plateau, null);
     // the smoothing is three wide and uses what exists at the ends
     assert.deepStrictEqual(S.smooth3([1, 2, 3]), [1.5, 2, 2.5]);
+    // B11: a hole stays a hole; its neighbours smooth over what exists
+    assert.deepStrictEqual(S.smooth3([1, null, 3]), [1, null, 3], 'a band with no reading is not given its neighbours\' average');
+    const holed = bands.map((b) => (b >= 100 && b <= 140 ? (b === 120 ? null : 1.5) : 0));
+    assert.strictEqual(S.findPlateau(bands, holed).plateau, null, 'two readings either side of a hole are not three steps together');
+    // a 0 (the colour changes no call) is a reading: it is smoothed with its
+    // neighbours like any other, and pulls a run of 1.2s under the bar
+    const zeroed = bands.map((b) => (b >= 100 && b <= 140 ? (b === 120 ? 0 : 1.2) : 0));
+    assert.strictEqual(S.findPlateau(bands, zeroed).plateau, null, 'a 0 in the middle of 1.2s pulls the run under the bar');
+    const dipped = bands.map((b) => (b >= 100 && b <= 140 ? (b === 120 ? 0 : 1.5) : 0));
+    assert.ok(S.findPlateau(bands, dipped).plateau, 'a 0 between 1.5s is smoothed to the bar and the run holds: a dip, not a hole');
   },
 
   // S6: the traits, by hand
@@ -158,6 +182,19 @@ module.exports = {
     assert.deepStrictEqual(a, b, 'same coin, same answer');
     assert.strictEqual(a.trials, 20);
     assert.ok(a.found < a.trials / 2, `with the link cut a plateau must be the exception, found ${a.found} of ${a.trials}`);
+    // B12: every shuffled plateau's strength (points × mean ratio) is kept, and
+    // the real one is judged against them
+    assert.strictEqual(a.strengths.length, a.found, 'one strength per plateau found');
+    const real = S.signalSummary(rec, 'daily-3d', LAYOUTS, 50).plateau;
+    assert.ok(Math.abs(S.plateauStrength(real) - real.points * real.meanRatio) < 1e-12, 'strength is width times height');
+    const worth = S.linkCutWorth(real, a);
+    assert.strictEqual(worth.trials, 20);
+    assert.strictEqual(worth.found, a.found);
+    assert.ok(worth.asStrong <= worth.found, 'as-strong can never exceed found');
+    assert.strictEqual(worth.asStrong, 0, `a built-in signal must beat every shuffled plateau, got ${worth.asStrong}`);
+    assert.strictEqual(S.linkCutWorth(null, a).asStrong, null, 'no real plateau: found alone is the reading');
+    assert.strictEqual(S.linkCutWorth(real, null), null, 'no stored check: nothing to say');
+    assert.strictEqual(S.linkCutWorth({ points: 3, meanRatio: 0.0001 }, a).asStrong, a.found, 'a plateau weaker than every shuffled one is beaten by all of them');
     // the shuffle keeps every outcome and only moves them
     const sh = S.shuffledCopy(rec.out, 5);
     assert.deepStrictEqual(sh.slice().sort(), rec.out.slice().sort(), 'a shuffle keeps the same numbers');

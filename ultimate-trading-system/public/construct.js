@@ -7789,6 +7789,7 @@ const cRemember = () => { try { localStorage.setItem(C_KEY, JSON.stringify(cStat
 let coinsPoll = null;
 let cLastDone = null;
 let cLastRecs = [];
+let cBandNow = '';      // the band the box is set to, for the signal line under each bar
 // THE COLOURS ARE THE OWNER'S: "red, green, and black for sit out". The bar is
 // drawn on a light track so black reads on the dark theme as well as the light
 // one -- black on this page's dark ground is invisible.
@@ -7913,6 +7914,58 @@ function cTable(s, layouts) {
   }
   return `<div class="scrollx"><table class="cgap">${cHead()}<tbody>${rows.join('')}</tbody></table></div>`;
 }
+// THE SIGNAL LINE UNDER EACH BAR'S HEADING (3.127.0; owner LOOP NOW!
+// 2026-09-14: "a general metric about 'aptness to coin history signal' ...
+// based on each shape within each coin ... wrapped in sit-out band sweeps ...
+// middle-of-plateau not spikes"). Everything on it is worked out by the code
+// on the same press; there is no control for it (owner: "We're not gonna
+// have a thousand controls on this screen").
+//
+// WHAT IT SAYS. The edge over chance at the sweet spot: what a trader who
+// sees the colour keeps per called trade beyond one who does not, in units of
+// what chance alone produces on a stretch that size -- learned on train,
+// judged on test and held. The plateau is the run of bands where that edge
+// beats chance; the sweet spot is its middle, never its peak. Three words
+// beside it: which way the signal runs, whether it holds through the newest
+// parts, and whether it is carried by how often or by how much. Then the
+// same number at the band the box is set to, and the instrument's own check:
+// how often a plateau still appeared with the link between window and
+// outcome cut. The sweep itself is drawn as one bar per band.
+const C_SIG_CAP = 3;      // the strip's height is clipped here so one wild band cannot flatten the rest
+function cSweepStrip(sig) {
+  const sw = (sig && sig.sweep) || [];
+  if (!sw.length) return '';
+  const inPlateau = (b) => sig.plateau && b >= sig.plateau.fromBand && b <= sig.plateau.toBand;
+  const spot = sig.sweetSpot ? sig.sweetSpot.band : null;
+  return `<span class="csweep" title="one bar per sit-out band from ${sig.grid.from} to ${sig.grid.to}: its height is the edge over chance there (smoothed three bands wide, clipped at ${C_SIG_CAP}×); the plateau is marked, and its middle">${sw.map((p) => {
+    const v = p.smoothed == null ? 0 : Math.max(0, Math.min(C_SIG_CAP, p.smoothed));
+    const h = Math.max(1, Math.round((v / C_SIG_CAP) * 22));
+    const cls = p.band === spot ? 'spot' : (inPlateau(p.band) ? 'plat' : (p.smoothed != null && p.smoothed >= 1 ? 'over' : 'under'));
+    return `<span class="csw ${cls}" style="height:${h}px" title="band ${p.band}: ${cRatioWords(p)}${p.called == null ? '' : `, ${(p.called * 100).toFixed(0)}% of decisions called`}"></span>`;
+  }).join('')}</span>`;
+}
+// one band's reading in words: the ratio, or why there is none
+function cRatioWords(p) {
+  if (!p) return 'no ratio';
+  if (p.same) return 'the colour changes no call';
+  if (p.ratio == null) return 'no ratio';
+  return `${cNum(p.ratio, 2)}× chance`;
+}
+function cSignalLine(sig, band) {
+  if (!sig) return '';
+  if (sig.why && !(sig.sweep && sig.sweep.length)) return `<div class="csig"><b>signal</b> <span class="muted">${esc(sig.why)}</span></div>`;
+  const t = sig.traits || {};
+  const words = [t.direction, t.holding, t.carrier].filter(Boolean).map((w) => `<span class="ctrait">${esc(w)}</span>`).join(' ');
+  const cur = sig.atCurrent || {};
+  const lc = sig.linkCut;
+  const head = sig.plateau && sig.sweetSpot
+    ? `<b>signal</b> edge <b>${cNum(sig.sweetSpot.ratio, 2)}× chance</b> at band ${sig.sweetSpot.band} <span class="muted">· plateau ${sig.plateau.fromBand}–${sig.plateau.toBand}, ${sig.plateau.points} bands, mean ${cNum(sig.plateau.meanRatio, 2)}×</span>`
+    : `<b>signal</b> <span class="muted">no band beats chance for three steps together${sig.why ? ` — ${esc(sig.why)}` : ''}</span>`;
+  return `<div class="csig">${head} ${words}
+    <span class="muted">· at band ${esc(String(band))}: ${cRatioWords(cur)}${cur.called == null ? '' : `, ${(cur.called * 100).toFixed(0)}% called`}${lc ? ` · with the link cut, ${lc.asStrong == null ? `a plateau in ${lc.found} of ${lc.trials}` : `one at least this strong in ${lc.asStrong} of ${lc.trials}`}` : ''}</span>
+    ${cSweepStrip(sig)}</div>`;
+}
+
 // ONE BAR: its heading, the division above, the bar itself, the division below,
 // and the numbers. The bar is a canvas painted after the markup lands.
 function cShapeBlock(coin, shape, s, layouts) {
@@ -7926,6 +7979,7 @@ function cShapeBlock(coin, shape, s, layouts) {
     <div class="chead"><b>${esc(shape.label)}</b> <span class="muted">${shape.windowHours}-hour window · one decision a ${esc(shape.every)}, opening ${esc(shape.at)} ·
       ${n} decisions from ${cDay(s.span && s.span.fromTs)} to ${cDay(s.span && s.span.toTs)}${s.skipped ? ` · ${s.skipped} skipped for an unusable first price` : ''} ·
       window moves from ${cMove(s.range && s.range.largestFall)} to ${cMove(s.range && s.range.largestRise)} · median ${cNum(s.yardstick)}% · sit out under ±${cNum(s.threshold)}%</span></div>
+    ${cSignalLine(s.signal, cBandNow)}
     ${cLayoutStrip(above, s.layouts[above], n, 'above', ts)}
     <canvas class="cbar" data-coin="${esc(coin)}" data-shape="${esc(shape.key)}" title="hover a point on the bar to read that decision"></canvas>
     ${cLayoutStrip(below, s.layouts[below], n, 'below', ts)}
@@ -7978,6 +8032,7 @@ async function drawCoins() {
   const recs = (d && d.records) || [];
   const unreadable = (d && d.unreadable) || [];
   const band = d && d.band ? d.band : { value: '', default: '' };
+  cBandNow = band.value;
   const running = !!(st && st.running);
   cLastDone = running ? st.done : null;
   const off = running ? ' disabled' : '';

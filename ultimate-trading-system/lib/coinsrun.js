@@ -372,7 +372,7 @@ function coinsRecords() {
       // check with the link cut (S7) was made when the coin was read and rides
       // on the record; it is copied beside the reading here.
       shapesOut[s.key].signal = signal.signalSummary(sr, s.key, lays, band);
-      shapesOut[s.key].signal.linkCut = sr.linkCut || null;
+      shapesOut[s.key].signal.linkCut = signal.linkCutWorth(shapesOut[s.key].signal.plateau, sr.linkCut);
     }
     rows.push({ coin: rec.coin, read: rec.read, why: rec.why, provenance: rec.provenance, shapes: shapesOut });
   }
