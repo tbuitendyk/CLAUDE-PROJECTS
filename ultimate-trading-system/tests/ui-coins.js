@@ -21,6 +21,7 @@ const PORT = Number(process.env.UI_TEST_PORT || 8201);
 const SHAPES = require('../lib/coins').shapes();
 const LAYOUTS = require('../lib/coinsrun').layouts();
 const { shapeSummary } = require('../lib/coins');
+const signal = require('../lib/coinsignal');
 const HOUR = 3600000;
 // a synthetic shape record: n decisions, a day apart, moves that swing so every
 // colour appears and the bar has several runs
@@ -36,7 +37,17 @@ function shapeRec(n, { start = Date.UTC(2024, 0, 1), swing = 3 } = {}) {
 }
 function record(coin, { read = true, months = 17, n = 300, why = null } = {}) {
   const shapes = {};
-  if (read) for (const s of SHAPES) shapes[s.key] = shapeSummary(shapeRec(s.every === 'week' ? Math.round(n / 7) : n), 50, LAYOUTS);
+  if (read) {
+    for (const s of SHAPES) {
+      const raw = shapeRec(s.every === 'week' ? Math.round(n / 7) : n);
+      const sum = shapeSummary(raw, 50, LAYOUTS);
+      // the signal reading as the service serves it (3.127.0): the sweep from
+      // the module, and a stored link-cut check with seven dealt plateaus
+      sum.signal = signal.signalSummary(raw, s.key, LAYOUTS, 50);
+      sum.signal.linkCut = signal.linkCutWorth(sum.signal.plateau, { trials: 50, found: 7, strengths: [3.1, 3.4, 4.0, 3.3, 5.2, 3.0, 3.6] });
+      shapes[s.key] = sum;
+    }
+  }
   return {
     coin, read, why: read ? null : (why || `${coin} has no cached prices on this box — download them on Data first`),
     provenance: { release: '3.124.0', capturedAt: '2026-09-13T09:00:00Z', cachedMonths: months, candles: 12000 },
@@ -48,7 +59,7 @@ const RECORDS = [
   record('DDDUSDT', { months: 12 }),
   record('EEEUSDT', { read: false, months: 4 }),
 ];
-const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT.json', why: 'this reading was written under record shape 6 and this release reads shape 7 — read the coin again to replace it', release: '3.124.0' }];
+const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT.json', why: 'this reading was written under record shape 6 and this release reads shape 8 — read the coin again to replace it', release: '3.124.0' }];
 const DATA_STATE = { symbols: [
   { symbol: 'AAAUSDT', months: 17, from: '2024-01', to: '2026-05' },
   { symbol: 'DDDUSDT', months: 19, from: '2024-01', to: '2026-07' },   // grown since DDD was read
@@ -78,7 +89,7 @@ function requirePlaywright() {
   let recordsFetches = 0;
   await page.route('**/api/coins/records**', (route) => { recordsFetches++; return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
     shapes: SHAPES, layouts: LAYOUTS, band: { value: band, default: 50, home: 'data/settings.json' },
-    downloaded: 18, records: RECORDS, unreadable, recordVersion: 7,
+    downloaded: 18, records: RECORDS, unreadable, recordVersion: 8,
   }) }); });
   let cleanPresses = 0;
   let unreadable = UNREADABLE;
@@ -193,6 +204,20 @@ function requirePlaywright() {
   expect(tables[0].rows[0].slice(9, 15).every((c) => c !== '—'), `the whole bar has both sides, got ${tables[0].rows[0].slice(9, 15).join(' | ')}`);
   expect(tables.some((t) => t.rows.some((r) => r[11] !== '+0.0 pts')), 'on this fixture the gap is plainly not zero somewhere');
   expect(tables.every((t) => /window moves from [-+][\d.]+% to [-+][\d.]+%/.test(t.head) && /median [\d.]+%/.test(t.head) && /sit out under ±[\d.]+%/.test(t.head)), 'the heading carries the range, the median and the band as a move');
+  // THE SIGNAL LINE UNDER EVERY BAR'S HEADING (3.127.0): the reading, its
+  // one-word traits, the band the box is set to, the instrument's own check,
+  // and the sweep as one bar per band.
+  const sigs = await page.evaluate(() => [...document.querySelectorAll('.cshape')].map((s) => {
+    const e = s.querySelector('.csig');
+    return { text: e ? e.textContent.replace(/\s+/g, ' ').trim() : null, bars: e ? e.querySelectorAll('.csw').length : 0, traits: e ? [...e.querySelectorAll('.ctrait')].map((t) => t.textContent) : [] };
+  }));
+  expect(sigs.length === 2 * SHAPES.length && sigs.every((s) => s.text && /^signal /.test(s.text)), `a signal line under every bar, and it says so first: ${JSON.stringify(sigs[0])}`);
+  expect(sigs.every((s) => /× chance at band \d+ · plateau \d+–\d+, \d+ bands, mean [\d.]+×/.test(s.text) || /no band beats chance for three steps together/.test(s.text)), `each line names a band and a ratio, or says no band beats chance: ${sigs[0].text}`);
+  expect(sigs.every((s) => / at band 50: (the colour changes no call|no ratio|[-+]?[\d.]+× chance)/.test(s.text)), `each line reads the band the box is set to: ${sigs[0].text}`);
+  expect(sigs.every((s) => / with the link cut, (a plateau in \d+ of 50|one at least this strong in \d+ of 50)/.test(s.text)), `each line carries the instrument's own check: ${sigs[0].text}`);
+  expect(sigs.every((s) => s.bars === signal.bandGrid().length), `the sweep is one bar per band, ${signal.bandGrid().length} of them, got ${sigs[0].bars}`);
+  expect(sigs.every((s) => s.traits.every((t) => ['reverting', 'trending', 'steady', 'fading', 'mixed', 'often', 'much', 'both'].includes(t))), `every trait is one of the eight words, got ${JSON.stringify(sigs[0].traits)}`);
+  expect(!/luck/i.test(body), 'the word luck is nowhere on the screen');
   expect(/AAAUSDT.*release 3\.124\.0/.test(body), 'each coin names the release that read it');
   expect(/DDDUSDT.*more month\(s\) cached since/.test(body), 'the coin whose history has grown since reads as behind');
   expect(!/AAAUSDT[^]*?more month\(s\) cached since[^]*?DDDUSDT/.test(body), 'and the one that has not does not');

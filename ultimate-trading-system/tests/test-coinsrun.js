@@ -12,6 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const runner = require('../lib/coinsrun');
 const coins = require('../lib/coins');
+const signalLib = require('../lib/coinsignal');
 
 // CANDLES IN THE SHAPE THE LOADER REALLY PRODUCES -- open/high/low/close and a
 // timestamp per hour.
@@ -70,6 +71,9 @@ module.exports = {
         assert.strictEqual(s.move.length, s.periods);
         assert.strictEqual(s.out.length, s.periods, `${key}: an outcome per decision on the record`);
         assert.ok(s.span && s.span.fromTs <= s.span.toTs);
+        // 3.127.0: the instrument's own check is worked out once, on the record
+        assert.ok(s.linkCut && s.linkCut.trials === runner.LINK_CUT_TRIALS && s.linkCut.found >= 0 && s.linkCut.found <= s.linkCut.trials, `${key}: the link-cut check is on the record`);
+        assert.ok(Array.isArray(s.linkCut.strengths) && s.linkCut.strengths.length === s.linkCut.found, `${key}: one strength per dealt plateau`);
       }
       assert.strictEqual(rec.provenance.cachedMonths, 14);
       assert.strictEqual(rec.provenance.candles, 24 * 400);
@@ -120,6 +124,10 @@ module.exports = {
         assert.ok(sum.periods > 0 && /^[rfs]+$/.test(sum.reading), `${s.key} is summed up for drawing`);
         assert.ok(sum.whole && sum.whole.gap && 'gapShare' in sum.whole.gap, `${s.key} carries the gap`);
         assert.ok(sum.layouts && Object.keys(sum.layouts).length === served.layouts.length, `${s.key} is divided under every layout`);
+        // 3.127.0: the signal reading rides on the reply, read at the band the box holds
+        assert.ok(sum.signal && Array.isArray(sum.signal.sweep) && sum.signal.sweep.length === signalLib.bandGrid().length, `${s.key} carries the band sweep`);
+        assert.strictEqual(sum.signal.atCurrent && sum.signal.atCurrent.band, served.band.value, `${s.key}: the signal is read at the band the box holds`);
+        assert.ok(sum.signal.linkCut && sum.signal.linkCut.trials === runner.LINK_CUT_TRIALS && 'asStrong' in sum.signal.linkCut, `${s.key}: the instrument's own check reaches the screen`);
       }
     } finally { files.forEach(rm); }
   },
@@ -272,6 +280,9 @@ module.exports = {
         const atHuge = runner.coinsRecords();
         assert.strictEqual(atHuge.band.value, 100000);
         const rHuge = atHuge.records.find((r) => r.coin === 'ZZZBANDUSDT').shapes['daily-2d'].reading;
+        // 3.127.0: the signal line is read at the band the box holds, not the default
+        assert.strictEqual(atHuge.records.find((r) => r.coin === 'ZZZBANDUSDT').shapes['daily-2d'].signal.atCurrent.band, 100000, 'the signal is read at the band the box holds');
+        assert.strictEqual(at0.records.find((r) => r.coin === 'ZZZBANDUSDT').shapes['daily-2d'].signal.atCurrent.band, 0);
         // at 0 only a move of exactly nothing sits out, and on these candles that is rare
         assert.ok((r0.match(/[rf]/g) || []).length > r0.length * 0.95, `at 0 nearly everything reads a direction: ${r0.slice(0, 40)}`);
         assert.ok(/^s+$/.test(rHuge), 'at a huge band everything sits out');

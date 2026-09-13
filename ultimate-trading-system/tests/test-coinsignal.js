@@ -195,6 +195,20 @@ module.exports = {
     assert.strictEqual(S.linkCutWorth(null, a).asStrong, null, 'no real plateau: found alone is the reading');
     assert.strictEqual(S.linkCutWorth(real, null), null, 'no stored check: nothing to say');
     assert.strictEqual(S.linkCutWorth({ points: 3, meanRatio: 0.0001 }, a).asStrong, a.found, 'a plateau weaker than every shuffled one is beaten by all of them');
+    const fake = { trials: 3, found: 3, strengths: [3, 6, 9] };
+    assert.strictEqual(S.linkCutWorth({ points: 5, meanRatio: 1 }, fake).asStrong, 2, 'strength 5 against 3, 6, 9: two are at least as strong');
+    // B13: the deal stays inside each part of the three-part layout, and a
+    // dealt series has no overlap
+    const parts = require('../lib/coins').layoutParts(rec.out.length, S.trainLayoutOf(LAYOUTS)).parts;
+    const within = S.shuffledWithin(rec.out, parts, 7);
+    for (const p of parts) {
+      assert.deepStrictEqual(within.slice(p.from, p.to + 1).sort(), rec.out.slice(p.from, p.to + 1).sort(), `${p.name} keeps its own outcomes`);
+    }
+    assert.notDeepStrictEqual(within, rec.out, 'and their order goes');
+    assert.strictEqual(S.signalSummary(rec, 'daily-3d', LAYOUTS, 50, { dealt: true }).k, 1, 'a dealt series shares no hours: k is 1');
+    assert.ok(S.signalSummary(rec, 'daily-3d', LAYOUTS, 50).k > 1.5, 'the real one keeps the shape\'s overlap');
+    const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsignal.js'), 'utf8');
+    assert.ok(/signalSummary\(cut, geometryKey, layouts, currentBand, \{ dealt: true \}\)/.test(src), 'the check deals with dealt: true');
     // the shuffle keeps every outcome and only moves them
     const sh = S.shuffledCopy(rec.out, 5);
     assert.deepStrictEqual(sh.slice().sort(), rec.out.slice().sort(), 'a shuffle keeps the same numbers');

@@ -230,16 +230,26 @@ function traitsAt(bandRead, layouts, trainLayout) {
   return { direction, holding: often, carrier, holdingMove: much };
 }
 
+// THE THREE-PART LAYOUT is the one whose split has the fewest parts: its
+// first part is train and everything after it is the judging stretch.
+function trainLayoutOf(layouts) {
+  return layouts.map((l) => ({ l, k: (() => { try { return coins.partsFor(100, l).length; } catch (_) { return Number.MAX_SAFE_INTEGER; } })() }))
+    .sort((a, b) => a.k - b.k)[0].l;
+}
+
 // THE WHOLE READING OF ONE SHAPE OF ONE COIN (S2, S5, S6, S8).
-function signalSummary(shapeRec, geometryKey, layouts, currentBand) {
+// `dealt` is set only by the link-cut check: outcomes dealt into another
+// order share no hours with their neighbours, so their overlap factor is 1
+// (B13) -- with the shape's own k the dealt ratios came out a third too
+// narrow on the 41-hour holds and every dealt plateau was rarer than it
+// should be.
+function signalSummary(shapeRec, geometryKey, layouts, currentBand, { dealt = false } = {}) {
   const move = Array.isArray(shapeRec && shapeRec.move) ? shapeRec.move : [];
   const out = Array.isArray(shapeRec && shapeRec.out) ? shapeRec.out : [];
   const n = move.length;
   const lays = layouts.slice();
-  // the three-part layout is the one whose split has the fewest parts
-  const trainLayout = lays.map((l) => ({ l, k: (() => { try { return coins.partsFor(100, l).length; } catch (_) { return Number.MAX_SAFE_INTEGER; } })() }))
-    .sort((a, b) => a.k - b.k)[0].l;
-  const k = overlapFactor(geometryKey);
+  const trainLayout = trainLayoutOf(lays);
+  const k = dealt ? 1 : overlapFactor(geometryKey);
   const grid = bandGrid();
   if (!n || out.length !== n) {
     return { grid: BAND_GRID, k, sweep: [], plateau: null, sweetSpot: null, traits: null, atCurrent: null, why: 'no decisions to read' };
@@ -273,6 +283,14 @@ function signalSummary(shapeRec, geometryKey, layouts, currentBand) {
 // as strong as the real one -- is what a plateau is worth. Deterministic:
 // same coin, same answer.
 //
+// THE DEAL STAYS INSIDE EACH PART (B13). Dealt across the whole history, a
+// coin whose last years were wilder than its first (or calmer) got a judging
+// stretch with the wrong spread: on one coin the dealt edges came out a
+// third the size the closed form said, on another half again as big. Each
+// part of the three-part layout keeps its own outcomes and only their order
+// goes, so the dealt stretch has the real stretch's spread and drift and the
+// only thing cut is the link between a window and its outcome.
+//
 // A plateau's STRENGTH is its width times its height: the number of grid
 // points in the run times their mean smoothed ratio (B12). The review of
 // 2026-09-13 found the bar of 1 across 31 bands still names a plateau in a
@@ -292,13 +310,28 @@ function shuffledCopy(arr, seed) {
   }
   return out;
 }
+function shuffledWithin(arr, parts, seed) {
+  const out = arr.slice();
+  let s = (seed >>> 0) || 1;
+  for (const p of parts) {
+    for (let i = p.to; i > p.from; i--) {
+      s = (s * 1664525 + 1013904223) >>> 0;
+      const j = p.from + (s % (i - p.from + 1));
+      const t = out[i]; out[i] = out[j]; out[j] = t;
+    }
+  }
+  return out;
+}
 function plateauFalseAlarms(shapeRec, geometryKey, layouts, currentBand, trials = 50) {
   let found = 0;
   const ratios = [];
   const strengths = [];
+  const n = Array.isArray(shapeRec && shapeRec.out) ? shapeRec.out.length : 0;
+  const parts = n ? partsOf(n, trainLayoutOf(layouts.slice())) : null;
+  const deal = (seed) => (parts ? shuffledWithin(shapeRec.out, parts, seed) : shuffledCopy(shapeRec.out, seed));
   for (let t = 0; t < trials; t++) {
-    const cut = { move: shapeRec.move, out: shuffledCopy(shapeRec.out, 20260914 + t) };
-    const s = signalSummary(cut, geometryKey, layouts, currentBand);
+    const cut = { move: shapeRec.move, out: deal(20260914 + t) };
+    const s = signalSummary(cut, geometryKey, layouts, currentBand, { dealt: true });
     if (s.plateau) { found++; ratios.push(s.plateau.meanRatio); strengths.push(Number(plateauStrength(s.plateau).toFixed(3))); }
   }
   return { trials, found, meanRatioWhenFound: ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null, strengths };
@@ -316,5 +349,5 @@ function linkCutWorth(plateau, linkCut) {
 module.exports = {
   BAND_GRID, PLATEAU_MIN_POINTS, CHANCE_BAR,
   bandGrid, overlapFactor, leansOn, edgeOn, readBand, smooth3, findPlateau,
-  holdingOf, traitsAt, signalSummary, shuffledCopy, plateauFalseAlarms, plateauStrength, linkCutWorth,
+  holdingOf, traitsAt, trainLayoutOf, signalSummary, shuffledCopy, shuffledWithin, plateauFalseAlarms, plateauStrength, linkCutWorth,
 };
