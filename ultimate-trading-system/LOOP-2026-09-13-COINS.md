@@ -223,3 +223,23 @@ COINS.md Part one section 4 carries the design.
   (809 control labels, 90 options); `test-sweepwords.js` and `test-help.js`
   green. Commit a90bd8a is on `claude/uts-build-out-7f2lmv` and fast-forwarded
   onto `ultimate-trading-system`.
+
+## H. After the loop — 3.126.0, on a `GO NOW!` (2026-09-13)
+
+The owner saw a shape-3 file named on the screen after a re-read and ruled:
+*"either (a) the code should never leave old data lying around or (b) there
+has to be a cleanup mechanism that the user can reach ... fix that however it
+should be. GO NOW! with deploy."* Both halves built:
+
+- **(a)** `removeOlderFilesFor(coin)` runs after each coin's record is
+  written: every other file in the folder that belongs to that coin, by name
+  or by the coin its contents say, goes. The status carries `replaced`.
+- **(b)** `POST /api/coins/cleanup` and a control on Coins beside the note,
+  offered only while there is something to remove. It re-scans the folder at
+  the moment of the press and deletes exactly the undrawable files; a
+  drawable record is never touched; it refuses while a read runs.
+- **The word-list hole from 3.125.0 closed in the same release**: the table's
+  fifteen headings and the `whole` row label are written out as markup, so
+  the generator sees them. Found by checking the regenerated list against
+  the served screen, which is what the list is for.
+- Three tests, four guards, the browser check presses the control.

@@ -7842,7 +7842,8 @@ function cStatusLine(st, anyRead) {
   if (st && st.running) return `reading — ${st.done} of ${st.of} done${st.note ? `: ${esc(st.note)}` : ''}`;
   if (st && st.finishedAt) {
     return `${st.stopped ? `stopped after ${st.stoppedAt} of ${st.of}` : 'finished'} ${esc(cWhen(st.finishedAt))} UTC — `
-      + `${(st.wrote || []).length} read, ${(st.couldNotRead || []).length} could not be read`;
+      + `${(st.wrote || []).length} read, ${(st.couldNotRead || []).length} could not be read`
+      + `${(st.replaced || []).length ? `, ${st.replaced.length} older file(s) replaced` : ''}`;
   }
   return anyRead ? 'nothing read since this service last started' : 'nothing read yet';
 }
@@ -7863,41 +7864,50 @@ function cLayoutStrip(layoutKey, lay, n, side, ts) {
 // the run length, and THE GAP -- how differently a trade turned out after a
 // rising window than after a falling one, as a share that went up and as an
 // average move (owner, 2026-09-13: "add the gap metric too").
-const C_COLS = [
-  ['part', 'the stretch of the bar this row counts'],
-  ['starts', 'the day of the first decision in it'],
-  ['decisions', 'how many decisions it holds'],
-  ['rising', 'how many read rising'],
-  ['falling', 'how many read falling'],
-  ['sit out', 'how many read sit out'],
-  ['thin side', 'the smaller of rising and falling. A gap built on forty decisions is not a gap.'],
-  ['changes', 'how many times the colour changes inside this stretch'],
-  ['run', 'decisions per colour change. A reading that flips every day is not a regime.'],
-  ['up after rising', 'of the decisions whose window read rising, the share whose trade then went up'],
-  ['up after falling', 'of the decisions whose window read falling, the share whose trade then went up'],
-  ['gap (points)', 'up after rising minus up after falling, in percentage points. Zero means the two sets of members would learn the same lesson twice.'],
-  ['move after rising', 'the average move from open to close of the trades whose window read rising'],
-  ['move after falling', 'the same after a falling window'],
-  ['gap (move)', 'move after rising minus move after falling'],
-];
-function cRow(label, ts, p) {
+//
+// THE HEADINGS ARE WRITTEN OUT AS MARKUP, not mapped from a list. 3.125.0
+// built them from an array inside a template and the closed word list, which
+// reads labels between tags, could not see one of them -- fifteen words on
+// the owner's screen and on no list, which RULE ONE-A names as a hole. The
+// number of columns is read from the row below, never typed.
+const C_COLS = 15;
+function cHead() {
+  return '<thead><tr>'
+    + '<th title="the stretch of the bar this row counts">part</th>'
+    + '<th title="the day of the first decision in it">starts</th>'
+    + '<th title="how many decisions it holds">decisions</th>'
+    + '<th title="how many read rising">rising</th>'
+    + '<th title="how many read falling">falling</th>'
+    + '<th title="how many read sit out">sit out</th>'
+    + '<th title="the smaller of rising and falling. A gap built on forty decisions is not a gap.">thin side</th>'
+    + '<th title="how many times the colour changes inside this stretch">changes</th>'
+    + '<th title="decisions per colour change. A reading that flips every day is not a regime.">run</th>'
+    + '<th title="of the decisions whose window read rising, the share whose trade then went up">up after rising</th>'
+    + '<th title="of the decisions whose window read falling, the share whose trade then went up">up after falling</th>'
+    + '<th title="up after rising minus up after falling, in percentage points. Zero means the two sets of members would learn the same lesson twice.">gap (points)</th>'
+    + '<th title="the average move from open to close of the trades whose window read rising">move after rising</th>'
+    + '<th title="the same after a falling window">move after falling</th>'
+    + '<th title="move after rising minus move after falling">gap (move)</th>'
+    + '</tr></thead>';
+}
+function cCells(ts, p) {
   const g = p.gap || {};
   const R = g.afterRising || {}; const F = g.afterFalling || {};
-  return `<tr><td>${esc(label)}</td><td>${cDay(ts[p.from])}</td><td>${p.decisions}</td>`
+  return `<td>${cDay(ts[p.from])}</td><td>${p.decisions}</td>`
     + `<td class="cr">${p.rising}</td><td class="cf">${p.falling}</td><td class="cs">${p.sitOut}</td>`
     + `<td>${g.thinSide ? `${g.thinSide.n} ${esc(g.thinSide.which)}` : '—'}</td><td>${p.changes}</td><td>${cNum(p.run, 1)}</td>`
     + `<td>${cShare(R.shareUp)}</td><td>${cShare(F.shareUp)}</td><td><b>${cPts(g.gapShare)}</b></td>`
-    + `<td>${cMove(R.meanOut)}</td><td>${cMove(F.meanOut)}</td><td><b>${cMove(g.gapMove)}</b></td></tr>`;
+    + `<td>${cMove(R.meanOut)}</td><td>${cMove(F.meanOut)}</td><td><b>${cMove(g.gapMove)}</b></td>`;
 }
 function cTable(s, layouts) {
   const ts = cTsOf(s);
-  const rows = [cRow('whole', ts, { ...s.whole, from: 0 })];
+  const rows = [`<tr><td>whole</td>${cCells(ts, { ...s.whole, from: 0 })}</tr>`];
   for (const layout of layouts) {
     const lay = s.layouts[layout];
-    rows.push(`<tr class="cgrp"><td colspan="${C_COLS.length}">${esc(cLayoutLabel(layout))}${lay && lay.why ? ` <span class="muted">${esc(lay.why)}</span>` : ''}</td></tr>`);
-    if (lay && lay.parts) for (const p of lay.parts) rows.push(cRow(p.name, ts, p));
+    rows.push(`<tr class="cgrp"><td colspan="${C_COLS}">${esc(cLayoutLabel(layout))}${lay && lay.why ? ` <span class="muted">${esc(lay.why)}</span>` : ''}</td></tr>`);
+    if (lay && lay.parts) for (const p of lay.parts) rows.push(`<tr><td>${esc(p.name)}</td>${cCells(ts, p)}</tr>`);
   }
-  return `<div class="scrollx"><table class="cgap"><thead><tr>${C_COLS.map(([h, t]) => `<th title="${esc(t)}">${esc(h)}</th>`).join('')}</tr></thead><tbody>${rows.join('')}</tbody></table></div>`;
+  return `<div class="scrollx"><table class="cgap">${cHead()}<tbody>${rows.join('')}</tbody></table></div>`;
 }
 // ONE BAR: its heading, the division above, the bar itself, the division below,
 // and the numbers. The bar is a canvas painted after the markup lands.
@@ -7996,7 +8006,8 @@ async function drawCoins() {
     </div>
     ${st && st.error ? `<p class="note warn">the last reading stopped: ${esc(st.error)}</p>` : ''}
     ${(st && st.couldNotRead && st.couldNotRead.length) ? `<p class="note warn">could not be read: ${st.couldNotRead.map((c) => `<b>${esc(c.coin)}</b> — ${esc(c.why)}`).join('; ')}</p>` : ''}
-    ${unreadable.length ? `<p class="note warn">${unreadable.length} file(s) on disk this release cannot draw: ${unreadable.map((u) => `<b>${esc(u.coin)}</b> — ${esc(u.why)}`).join('; ')}</p>` : ''}
+    ${unreadable.length ? `<p class="note warn">${unreadable.length} file(s) on disk this release cannot draw: ${unreadable.map((u) => `<b>${esc(u.coin)}</b> — ${esc(u.why)}`).join('; ')}</p>
+    <div class="row"><button id="cClean" class="danger"${off}>Remove these files</button><span id="cCleanOut" class="muted">removes exactly the ${unreadable.length} file(s) named above and nothing else</span></div>` : ''}
   </div>
   ${!recs.length ? `<div class="panel"><p class="note">no coin has been read${unreadable.length ? ' that this release can draw' : ''} — press <b>Read these coins</b> above</p></div>` : recs.map((r) => {
     const grew = behind(r);
@@ -8037,6 +8048,24 @@ async function drawCoins() {
     }
     draw();
   };
+  // THE CLEANUP THE OWNER CAN REACH. It removes exactly what the note above
+  // names, found again on the box at the moment of the press, and redraws.
+  if ($('#cClean')) {
+    $('#cClean').onclick = async () => {
+      $('#cClean').disabled = true;
+      let ans = null;
+      try { ans = await post('api/coins/cleanup', {}); } catch (err) {
+        $('#cCleanOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
+        $('#cClean').disabled = false;
+        return;
+      }
+      if (ans && ans.failed && ans.failed.length) {
+        $('#cCleanOut').innerHTML = '<span class="warn">' + esc(`${ans.removed.length} removed; ${ans.failed.length} could not be: ${ans.failed.map((f) => `${f.file} — ${f.why}`).join('; ')}`) + '</span>';
+        return;
+      }
+      draw();
+    };
+  }
   // THE STOP ANSWERS, and its answer is shown. The route replies with a reason
   // when there is nothing to stop; thrown away, pressing it did and said nothing.
   if ($('#cStop')) {

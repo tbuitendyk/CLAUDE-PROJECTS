@@ -236,6 +236,25 @@ voting, *"GO NOW! and add the gap metric too w/ deploy"*.
   training shows that. And neighbouring windows overlap, so the gap is
   noisier than the counts suggest.
 
+**Nothing old is left lying around (owner order, 2026-09-13, built 3.126.0).**
+The owner, on seeing a file from record shape 3 named on the screen after a
+re-read: *"either (a) the code should never leave old data lying around or
+(b) there has to be a cleanup mechanism that the user can reach ... fix that
+however it should be."* Both:
+
+- **(a)** Reading a coin replaces every older file for that coin — by its
+  name, or by the coin its contents say — as the new record lands. The
+  finished line says how many were replaced.
+- **(b)** While there is a file this release cannot draw, a control sits
+  beside the note that names it and removes exactly those files, found again
+  on the box at the moment of the press, never taken from the page. A record
+  this release can draw is never touched, and it refuses while a read is
+  running. Its label is quoted from the word list once 3.126.0 is served.
+
+**And the table's headings are markup the word list can see.** 3.125.0 built
+them from a list inside a template, so fifteen words were on the owner's
+screen and on no list — the hole RULE ONE-A names. Written out as tags now.
+
 **Everything else on the tab today goes.** The walk, `fall-back %`, `changes of
 direction`, `changes of direction wanted`, `try from, %`, `try to, %`,
 `step, %`, `drift parts`, `shuffles`, `most one-sided stretch`, `drift`,

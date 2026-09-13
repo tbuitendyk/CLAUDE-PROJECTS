@@ -192,6 +192,35 @@ function busyWhy() {
   return null;
 }
 
+// A READ REPLACES EVERY OLDER FILE FOR THAT COIN (owner order, 2026-09-13:
+// "the code should never leave old data lying around"). Record shape 3 wrote
+// one file per coin and chunk shape, named COIN__shape.json, so a re-read that
+// only wrote COIN.json left the old file beside it, still named on the screen
+// as one this release cannot draw, with a sentence promising a re-read would
+// replace it. It replaces it now: after the new record lands, every other
+// file in the folder that belongs to this coin -- by its name, or by the coin
+// its contents say -- goes.
+function coinOfFile(f) {
+  const byName = f.slice(0, f.length - '.json'.length).split('__')[0].toUpperCase();
+  try {
+    const rec = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
+    if (rec && typeof rec.coin === 'string' && rec.coin) return rec.coin.toUpperCase();
+  } catch (_) { /* unreadable: the name is all there is */ }
+  return byName;
+}
+function removeOlderFilesFor(coin) {
+  const keep = path.basename(recordFile(coin));
+  const removed = [];
+  let files = [];
+  try { files = fs.readdirSync(DIR); } catch (_) { return removed; }
+  for (const f of files) {
+    if (!f.endsWith('.json') || f === keep) continue;
+    if (coinOfFile(f) !== String(coin).toUpperCase()) continue;
+    try { fs.unlinkSync(path.join(DIR, f)); removed.push(f); } catch (_) { /* the disk said no; it stays named on the screen */ }
+  }
+  return removed;
+}
+
 async function runAll(p) {
   ensureDir();
   for (const coin of p.coins) {
@@ -199,6 +228,7 @@ async function runAll(p) {
     try {
       const rec = await readOneCoin(coin, (m) => { if (run) run.note = m; });
       fs.writeFileSync(recordFile(coin), `${JSON.stringify(rec)}\n`);
+      run.replaced.push(...removeOlderFilesFor(coin));
       if (rec.read) run.wrote.push(coin); else run.couldNotRead.push({ coin, why: rec.why });
     } catch (err) {
       // A COIN THAT THREW ON THE WAY IN STILL GETS A RECORD, so the screen shows
@@ -221,7 +251,7 @@ function coinsRunStart(body = {}) {
   const p = normalise(body);
   run = {
     started: new Date().toISOString(), params: p, of: p.coins.length, done: 0,
-    wrote: [], couldNotRead: [], note: 'starting', error: null, finishedAt: null,
+    wrote: [], couldNotRead: [], replaced: [], note: 'starting', error: null, finishedAt: null,
     stop: false, stoppedAt: null,
   };
   runAll(p).catch((err) => { run.error = String(err.message || err); run.finishedAt = new Date().toISOString(); });
@@ -231,14 +261,14 @@ function coinsRunStart(body = {}) {
 function coinsRunStatus() {
   if (!run) {
     return {
-      running: false, started: null, done: 0, of: 0, wrote: [], couldNotRead: [],
+      running: false, started: null, done: 0, of: 0, wrote: [], couldNotRead: [], replaced: [],
       note: null, error: null, finishedAt: null, stopped: false, stoppedAt: null, params: null,
     };
   }
   return {
     running: !run.finishedAt && !run.error,
     started: run.started, done: run.done, of: run.of,
-    wrote: run.wrote.slice(), couldNotRead: run.couldNotRead.slice(),
+    wrote: run.wrote.slice(), couldNotRead: run.couldNotRead.slice(), replaced: run.replaced.slice(),
     note: run.note, error: run.error, finishedAt: run.finishedAt,
     stopped: !!run.stop, stoppedAt: run.stoppedAt, params: run.params,
   };
@@ -264,11 +294,9 @@ function readRecord(coin) {
 // bump once made the owner's readings disappear from the screen with nothing
 // saying where they went. What is on disk either says what it is in today's
 // words or the reader says which shape it is and asks for the coin again.
-function coinsRecords() {
+function scanRecords() {
   ensureDir();
-  const band = sitOutBand();
-  const lays = layouts();
-  const rows = [];
+  const records = [];
   const unreadable = [];
   let files = [];
   try { files = fs.readdirSync(DIR); } catch (_) { files = []; }
@@ -277,22 +305,49 @@ function coinsRecords() {
     const coin = f.slice(0, f.length - '.json'.length).split('__')[0];
     let rec = null;
     try { rec = JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8')); } catch (err) {
-      unreadable.push({ coin, file: f, why: `this file could not be read back: ${String(err.message || err)} — read the coin again to replace it` });
+      unreadable.push({ coin, file: f, why: `this file could not be read back: ${String(err.message || err)} — read the coin again, or remove it below` });
       continue;
     }
     if (!rec || typeof rec !== 'object') {
-      unreadable.push({ coin, file: f, why: 'this file holds nothing a reading could be taken from — read the coin again to replace it' });
+      unreadable.push({ coin, file: f, why: 'this file holds nothing a reading could be taken from — read the coin again, or remove it below' });
       continue;
     }
     if (rec.v !== RECORD_V) {
       unreadable.push({
         coin, file: f,
-        why: `this reading was written under record shape ${rec.v == null ? '(none)' : rec.v} and this release reads shape ${RECORD_V} — read the coin again to replace it`,
+        why: `this reading was written under record shape ${rec.v == null ? '(none)' : rec.v} and this release reads shape ${RECORD_V} — read the coin again, or remove it below`,
         release: rec.provenance ? rec.provenance.release : null,
         capturedAt: rec.provenance ? rec.provenance.capturedAt : null,
       });
       continue;
     }
+    records.push(rec);
+  }
+  return { records, unreadable };
+}
+
+// THE CLEANUP THE OWNER CAN REACH (owner order, 2026-09-13: "there has to be a
+// cleanup mechanism that the user can reach"). It removes exactly the files
+// the screen names as ones this release cannot draw -- found again here, at
+// the moment of the press, never taken from the page -- and nothing else. A
+// record this release CAN draw is never touched by it.
+function coinsCleanup() {
+  if (run && !run.finishedAt && !run.error) throw new Error('a Coins reading is running — wait for it to finish before removing files');
+  const { unreadable } = scanRecords();
+  const removed = [];
+  const failed = [];
+  for (const u of unreadable) {
+    try { fs.unlinkSync(path.join(DIR, u.file)); removed.push(u.file); } catch (err) { failed.push({ file: u.file, why: String(err.message || err) }); }
+  }
+  return { removed, failed };
+}
+
+function coinsRecords() {
+  const band = sitOutBand();
+  const lays = layouts();
+  const rows = [];
+  const { records, unreadable } = scanRecords();
+  for (const rec of records) {
     const shapesOut = {};
     for (const s of coins.shapes()) {
       const sr = rec.shapes && rec.shapes[s.key];
@@ -319,7 +374,7 @@ function coinsRecords() {
 module.exports = {
   RECORD_V, DEFAULTS, BAND_KEY, layouts, recordFile,
   sitOutBand, setSitOutBand,
-  readOneCoin, normalise, busyWhy,
+  readOneCoin, normalise, busyWhy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
-  readRecord, coinsRecords,
+  readRecord, scanRecords, coinsRecords, coinsCleanup,
 };

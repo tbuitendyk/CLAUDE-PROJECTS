@@ -78,8 +78,14 @@ function requirePlaywright() {
   let recordsFetches = 0;
   await page.route('**/api/coins/records**', (route) => { recordsFetches++; return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
     shapes: SHAPES, layouts: LAYOUTS, band: { value: band, default: 50, home: 'data/settings.json' },
-    downloaded: 18, records: RECORDS, unreadable: UNREADABLE, recordVersion: 7,
+    downloaded: 18, records: RECORDS, unreadable, recordVersion: 7,
   }) }); });
+  let cleanPresses = 0;
+  let unreadable = UNREADABLE;
+  await page.route('**/api/coins/cleanup', (route) => {
+    cleanPresses++; unreadable = [];
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ removed: ['FFFUSDT.json'], failed: [] }) });
+  });
   await page.route('**/api/coins/band', (route) => {
     const b = JSON.parse(route.request().postData() || '{}'); bandPosts.push(b.band); band = Number(b.band);
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ band }) });
@@ -108,7 +114,7 @@ function requirePlaywright() {
 
   // THREE CONTROLS AND NOTHING ELSE.
   const controls = await page.evaluate(() => [...document.querySelectorAll('#view input, #view select, #view button, #view textarea')].map((e) => e.id));
-  expect(controls.sort().join(',') === ['cBand', 'cCoins', 'cRun'].join(','), `three controls and nothing else, got: ${controls.join(', ')}`);
+  expect(controls.sort().join(',') === ['cBand', 'cClean', 'cCoins', 'cRun'].join(','), `three controls, plus the cleanup while there is something to remove, and nothing else: ${controls.join(', ')}`);
   for (const gone of ['cTarget', 'cFrom', 'cTo', 'cStep', 'cCap', 'cDrift', 'cShuf', 'cLayout', 'cOrder', 'cGeom', 'cWk']) {
     expect(await page.locator(`#${gone}`).count() === 0, `${gone} is gone from the screen`);
   }
@@ -191,6 +197,14 @@ function requirePlaywright() {
   expect(/DDDUSDT.*more month\(s\) cached since/.test(body), 'the coin whose history has grown since reads as behind');
   expect(!/AAAUSDT[^]*?more month\(s\) cached since[^]*?DDDUSDT/.test(body), 'and the one that has not does not');
   expect(/FFFUSDT/.test(body) && /record shape 6/.test(body), 'a file this release cannot draw is named, not dropped');
+  // THE CLEANUP THE OWNER CAN REACH: offered beside the note, removes what it
+  // names, and goes away with the note once there is nothing left to remove.
+  expect(/removes exactly the 1 file\(s\) named above and nothing else/.test(body), 'the control says what it removes');
+  await page.locator('#cClean').click();
+  await page.waitForTimeout(500);
+  expect(cleanPresses === 1, 'the press reached the service');
+  expect(await page.locator('#cClean').count() === 0, 'with nothing left to remove the control is gone');
+  expect(!/cannot draw/.test(await text()), 'and so is the note');
 
   // THE HOVER NAMES THE DECISION UNDER THE POINTER.
   const cv = page.locator('canvas.cbar').first();

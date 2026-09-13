@@ -205,6 +205,12 @@ app.get('/api/coins/records', (req, res) => {
 // THE SIT-OUT BAND'S ONE DOOR. The number has one home (data/settings.json);
 // the screen sets it here and reads it back inside /api/coins/records, and
 // Sweep's dual member voting mode reads the same key when it is built.
+// THE CLEANUP DOOR: removes exactly the files the screen names as ones this
+// release cannot draw, found again on the box at the moment of the press.
+app.post('/api/coins/cleanup', (req, res) => {
+  try { return res.json(coinsrun.coinsCleanup()); }
+  catch (err) { return res.status(409).json({ error: err.message }); }
+});
 app.post('/api/coins/band', (req, res) => {
   try { return res.json(coinsrun.setSitOutBand((req.body || {}).band)); }
   catch (err) { return res.status(400).json({ error: err.message }); }

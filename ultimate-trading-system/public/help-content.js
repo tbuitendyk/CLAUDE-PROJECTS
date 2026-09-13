@@ -910,7 +910,9 @@ window.HELP = {
         'Every coin\'s heading carries when it was read, the release that read it and how many candles it was read '
         + 'from. When more history has been cached for that coin since, the heading says how many months. A coin '
         + 'that could not be read is still listed, with a sentence saying why — it is never left off. A file on disk '
-        + 'written by an older release that drew something else is named at the top rather than drawn wrong.'],
+        + 'written by an older release that drew something else is named at the top rather than drawn wrong, and '
+        + 'nothing old is left lying around: reading a coin replaces every older file for that coin, and the '
+        + 'control beside the note removes the ones a read does not reach.'],
     ],
     intro: 'A picture of each coin\'s history, one bar per chunk shape: every decision the history offers, coloured '
       + 'green where price rose across that decision\'s own window, red where it fell, black where it moved too little '
@@ -921,6 +923,7 @@ window.HELP = {
       cBand: 'how small a window move counts as sit out, as a percentage of the coin\'s median window move for that shape. One number for every coin, read on each coin\'s own scale: at 50 a decision sits out when it moved less than half what the coin typically moves over that window. Change it and every bar recolours at once; nothing is read again. It has one home, and Sweep trains with this same number.',
       cRun: 'reads every coin named above at every chunk shape, and writes each coin\'s window moves against its history. One coin that cannot be read does not stop the others. The sit-out band is not part of a reading, so changing it never needs this pressed again.',
       cStop: 'stops after the coin being read now. What has already been written stays, and the line beside the buttons says a stopped run was stopped and where it got to.',
+      cClean: 'removes exactly the files the note above names — the ones on disk this release cannot draw — and nothing else. They are found again on the box at the moment you press, never taken from the page, and a record this release can draw is never touched. It is only offered while there is something to remove. Reading a coin replaces its own older files by itself; this is for the files a read does not reach, such as a coin no longer downloaded.',
     },
   },
   greenlight: {

@@ -124,6 +124,83 @@ module.exports = {
     } finally { files.forEach(rm); }
   },
 
+  // A READ REPLACES EVERY OLDER FILE FOR THAT COIN, by name or by the coin the
+  // file's contents say, and touches no other coin's files (owner order,
+  // 2026-09-13: "the code should never leave old data lying around").
+  async aReadReplacesEveryOlderFileForThatCoin() {
+    const dir = path.dirname(runner.recordFile('AAA'));
+    fs.mkdirSync(dir, { recursive: true });
+    const mine = ['ZZZREPUSDT__daily-4d.json', 'ZZZREPUSDT__weekly-8d.json', 'zzzrepusdt-old-name.json'];
+    const theirs = ['ZZZOTHERUSDT__daily-4d.json', 'ZZZOTHERUSDT.json'];
+    const all = [...mine, ...theirs].map((f) => path.join(dir, f));
+    all.forEach(rm); rm(runner.recordFile('ZZZREPUSDT'));
+    try {
+      fs.writeFileSync(path.join(dir, mine[0]), JSON.stringify({ v: 3, coin: 'ZZZREPUSDT' }));
+      fs.writeFileSync(path.join(dir, mine[1]), '{not json at all');
+      fs.writeFileSync(path.join(dir, mine[2]), JSON.stringify({ v: 2, coin: 'zzzrepusdt' }));
+      fs.writeFileSync(path.join(dir, theirs[0]), JSON.stringify({ v: 3, coin: 'ZZZOTHERUSDT' }));
+      fs.writeFileSync(path.join(dir, theirs[1]), JSON.stringify({ v: 4, coin: 'ZZZOTHERUSDT' }));
+      await withPrices({ ZZZREPUSDT: { rows: candles(24 * 200), cachedMonthCount: 7 } }, async () => {
+        runner.coinsRunStart({ coins: 'ZZZREPUSDT' });
+        await until(() => !runner.coinsRunStatus().running);
+      });
+      const st = runner.coinsRunStatus();
+      assert.strictEqual(st.error, null, st.error);
+      assert.ok(fs.existsSync(runner.recordFile('ZZZREPUSDT')), 'the new record is on disk');
+      for (const f of mine) assert.ok(!fs.existsSync(path.join(dir, f)), `${f} is still lying around after the coin was read`);
+      for (const f of theirs) assert.ok(fs.existsSync(path.join(dir, f)), `${f} belongs to another coin and was removed`);
+      assert.deepStrictEqual(st.replaced.sort(), mine.slice().sort(), 'the status says exactly which files were replaced');
+      assert.deepStrictEqual(runner.removeOlderFilesFor('ZZZREPUSDT'), [], 'a second pass finds nothing to replace');
+    } finally { all.forEach(rm); rm(runner.recordFile('ZZZREPUSDT')); }
+  },
+
+  // THE CLEANUP THE OWNER CAN REACH removes exactly what the screen names as
+  // undrawable, and never a record this release can draw.
+  async theCleanupRemovesExactlyWhatCannotBeDrawnAndNothingElse() {
+    const dir = path.dirname(runner.recordFile('AAA'));
+    fs.mkdirSync(dir, { recursive: true });
+    const old1 = path.join(dir, 'ZZZCLNAUSDT__daily-4d.json');
+    const old2 = path.join(dir, 'ZZZCLNBUSDT.json');
+    const junk = path.join(dir, 'ZZZCLNCUSDT.json');
+    const good = runner.recordFile('ZZZCLNDUSDT');
+    [old1, old2, junk, good].forEach(rm);
+    try {
+      fs.writeFileSync(old1, JSON.stringify({ v: 3, coin: 'ZZZCLNAUSDT' }));
+      fs.writeFileSync(old2, JSON.stringify({ v: 6, coin: 'ZZZCLNBUSDT', shapes: {} }));
+      fs.writeFileSync(junk, 'nope');
+      await withPrices({ ZZZCLNDUSDT: { rows: candles(24 * 150), cachedMonthCount: 5 } }, async () => {
+        fs.writeFileSync(good, JSON.stringify(await runner.readOneCoin('ZZZCLNDUSDT')));
+      });
+      const before = runner.coinsRecords();
+      assert.deepStrictEqual(before.unreadable.map((u) => u.file).filter((f) => /ZZZCLN/.test(f)).sort(), [path.basename(old1), path.basename(old2), path.basename(junk)].sort());
+      assert.ok(before.unreadable.every((u) => /or remove it below/.test(u.why)), 'every named file says the control removes it');
+      const ans = runner.coinsCleanup();
+      assert.deepStrictEqual(ans.failed, []);
+      for (const f of [old1, old2, junk]) assert.ok(!fs.existsSync(f), `${path.basename(f)} was named as undrawable and is still there`);
+      assert.ok(fs.existsSync(good), 'a record this release can draw was removed');
+      assert.ok(ans.removed.includes(path.basename(old1)) && ans.removed.includes(path.basename(junk)), 'the answer names what went');
+      const after = runner.coinsRecords();
+      assert.ok(!after.unreadable.some((u) => /ZZZCLN/.test(u.file)), 'nothing undrawable is left for these coins');
+      assert.ok(after.records.some((r) => r.coin === 'ZZZCLNDUSDT'), 'and the drawable one is still served');
+    } finally { [old1, old2, junk, good].forEach(rm); }
+  },
+
+  // and it refuses while a reading runs, rather than deleting under a writer
+  async theCleanupWaitsForARunningRead() {
+    const coinsIn = ['ZZZCLNRUSDT'];
+    const files = coinsIn.map((c) => runner.recordFile(c));
+    files.forEach(rm);
+    try {
+      let handed = 0;
+      await withPrices(async () => { handed++; await new Promise((r) => setTimeout(r, 150)); return { rows: candles(24 * 100), cachedMonthCount: 3 }; }, async () => {
+        runner.coinsRunStart({ coins: coinsIn.join(',') });
+        await until(() => handed >= 1);
+        assert.throws(() => runner.coinsCleanup(), /wait for it to finish/);
+        await until(() => !runner.coinsRunStatus().running);
+      });
+    } finally { files.forEach(rm); }
+  },
+
   // STOPPED IS NOT FINISHED, and the status tells them apart.
   async stoppingIsToldApartFromFinishing() {
     const coinsIn = ['ZZZSTOPAUSDT', 'ZZZSTOPBUSDT', 'ZZZSTOPCUSDT'];
@@ -159,7 +236,7 @@ module.exports = {
       const served = runner.coinsRecords();
       assert.ok(!served.records.some((r) => r.coin === 'ZZZOLDUSDT'), 'an old-shape record is not drawn as though current');
       const named = served.unreadable.find((u) => u.coin === 'ZZZOLDUSDT');
-      assert.ok(named && /record shape 6/.test(named.why) && new RegExp(`shape ${runner.RECORD_V}`).test(named.why), `named with both shapes: ${named && named.why}`);
+      assert.ok(named && /record shape 6/.test(named.why) && new RegExp(`shape ${runner.RECORD_V}`).test(named.why) && /or remove it below/.test(named.why), `named with both shapes and the way out: ${named && named.why}`);
       assert.strictEqual(named.release, '3.124.0');
       const bad = served.unreadable.find((u) => u.coin === 'ZZZJUNKUSDT');
       assert.ok(bad && /could not be read back/.test(bad.why), 'an unparseable file is named too');
