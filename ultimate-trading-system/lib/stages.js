@@ -736,6 +736,12 @@ function startStage1(params) {
           // they were cast on, and every copy of its null set in cents
           money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
           nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
+          // WHAT THIS UNIT WAS ACTUALLY TRAINED UNDER (3.120.0), including how
+          // big the biggest training weight would have been with nothing
+          // holding it down and how many were held at the ceiling. The task
+          // has returned this since 3.69.0 and no writer ever copied it, so it
+          // reached disk for the first time here.
+          trainedOn: res.trainedOn || null,
           blocks: ranges,
         };
         w.records.push(records[i]);
@@ -962,6 +968,8 @@ function fillMissingUnitsStart(id) {
             nullScores: res.nullScores,
             money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
             nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
+            // see the stage 1 writer above: what this unit was trained under
+            trainedOn: res.trainedOn || null,
             blocks: ranges,
           });
           w.records.flush();
@@ -1577,6 +1585,10 @@ function startStage2(params) {
           beat: res.beat, pairs: res.pairs, lead: res.lead, nullScores: res.nullScores,
           money3: res.tuning3.money, money: res.tuning.money, moneyTrades: res.tuning.trades, moneyChunks: res.tuning.chunks,
           nullMoney: res.tuning.nullMoney, beatMoney: res.tuning.beat, leadMoney: res.tuning.lead,
+          // what this unit was trained under (3.120.0). This stage retrains, so
+          // its own answer is the one that counts; the parent's stands only if
+          // this stage did not produce one.
+          trainedOn: res.trainedOn || rec.trainedOn || null,
           blocks: ranges,
         };
         w.records.push(record);
