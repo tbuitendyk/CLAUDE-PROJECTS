@@ -27,6 +27,7 @@
 const fs = require('fs');
 const path = require('path');
 const coins = require('./coins');
+const signal = require('./coinsignal');
 // through the module, so a test can stand in for the cache (see lib/stages.js)
 const defaultCoins = (...a) => require('./dataset').defaultCoins(...a);
 
@@ -44,7 +45,15 @@ const BAND_KEY = 'coins_sit_out_band';
 // cannot be drawn. Shapes 1 to 5 held stretches, fall-back percentages,
 // per-hold readings and two untuned numbers, none of which the design carries
 // any more.
-const RECORD_V = 7;
+// 8 (3.127.0): beside each shape's moves, the instrument's own check -- how
+// often the signal analysis finds a plateau when the link between window and
+// outcome is cut by dealing the outcomes into another order (S7 of
+// LOOP-2026-09-14-SIGNAL.md). It is worked out once, when the coin is read,
+// because it costs fifty analyses per shape and would not survive a draw; it
+// depends on no band. A shape-7 record has no such check and is read again.
+const RECORD_V = 8;
+// how many deals the check makes per shape; one home
+const LINK_CUT_TRIALS = 50;
 
 // THE DEFAULT IS A STARTING VALUE, NOT A LIMIT. The band is a control on the
 // screen (RULE FIVE); this is only what it reads before the owner sets it. 50
@@ -157,6 +166,10 @@ async function readOneCoin(coin, onNote = () => {}) {
       rec.shapes[s.key] = wm.periods
         ? { periods: wm.periods, span: wm.span, skipped: wm.skipped, ts: wm.ts, move: wm.move, out: wm.out }
         : { periods: 0, why: `${coin} offers no complete ${s.label} decisions from the prices cached on this box` };
+      if (wm.periods) {
+        onNote(`${coin}: ${s.label} — checking the signal reading against itself`);
+        rec.shapes[s.key].linkCut = signal.plateauFalseAlarms(rec.shapes[s.key], s.key, layouts(), DEFAULTS.band, LINK_CUT_TRIALS);
+      }
     } catch (err) {
       // NOT A REFUSAL OF THE COIN. One shape could not be built -- too few
       // candles for its window, most likely -- so that is what the record
@@ -353,6 +366,13 @@ function coinsRecords() {
       const sr = rec.shapes && rec.shapes[s.key];
       if (!sr || !(sr.periods > 0)) { shapesOut[s.key] = { periods: 0, why: (sr && sr.why) || `${rec.coin} was not read at ${s.label}` }; continue; }
       shapesOut[s.key] = coins.shapeSummary(sr, band, lays);
+      // THE SIGNAL READING, on the same press and with no new control (S9):
+      // the band sweep, the plateau, the sweet spot and the traits, worked out
+      // from the record's moves and outcomes at every band of the grid. The
+      // check with the link cut (S7) was made when the coin was read and rides
+      // on the record; it is copied beside the reading here.
+      shapesOut[s.key].signal = signal.signalSummary(sr, s.key, lays, band);
+      shapesOut[s.key].signal.linkCut = sr.linkCut || null;
     }
     rows.push({ coin: rec.coin, read: rec.read, why: rec.why, provenance: rec.provenance, shapes: shapesOut });
   }
@@ -372,7 +392,7 @@ function coinsRecords() {
 }
 
 module.exports = {
-  RECORD_V, DEFAULTS, BAND_KEY, layouts, recordFile,
+  RECORD_V, DEFAULTS, BAND_KEY, LINK_CUT_TRIALS, layouts, recordFile,
   sitOutBand, setSitOutBand,
   readOneCoin, normalise, busyWhy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
