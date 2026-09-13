@@ -397,6 +397,94 @@ not decisions.
    and moves the release number (RULE ONE-C, second digit: a control goes and
    a control arrives). It waits for its own `GO NOW!`.
 
+## 9. The signal reading under each bar (3.127.0–3.127.1; owner LOOP NOW! 2026-09-14)
+
+The owner: *"build a scoring mechanism into the current code which basically
+BY CODE determines what you stated ... 'aptness to coin history signal'"*,
+then *"the analysis ... based on each shape within each coin"*, *"sit-out band
+sweeps (one per coin and shape) that find the sweet spot for the signal,
+focusing of course on middle-of-plateau not spikes"*, and *"We're not gonna
+have a thousand controls on this screen."* The rules were written before any
+number existed, in `LOOP-2026-09-14-SIGNAL.md` section A; the decisions taken
+along the way are its section B; what the review of all 18 coins found is its
+section C.
+
+**Nothing on the screen changes shape.** The three controls stay as they are.
+Under each bar's heading there is now one more line, and every word on it is
+quoted below from `cSignalLine` in `public/construct.js`, read in the session
+that wrote this. The word list for **Coins** is regenerated from the served
+screen after the deploy, as RULE ONE-A requires; until then these are words
+the code draws, not yet words on the list.
+
+**The line, left to right.**
+
+1. `signal` — the mark.
+2. Either `edge N× chance at band B, S% called · plateau A–C, P bands, mean
+   M×`, or the sentence `no band beats chance for three steps together`.
+   `S% called` is how much of the history the sweet spot's band still calls:
+   a band of 260 is an edge on the few decisions that moved that far, and the
+   reader sees that beside the ratio.
+   - *edge over chance*: on the first part of `70/15/15` (train), a trader
+     who sees the colour learns which way to trade after a rising window and
+     which way after a falling one; a trader who does not learns one way for
+     everything. Both then trade every called decision of test and held. The
+     edge is what the colour-seeing one keeps per called trade beyond the
+     blind one. Chance is the usual size of that number when the colours
+     carry nothing, widened where trades share hours (`Daily 3-day` and
+     `Daily 4-day` hold 41 hours on a 24-hour step). `N× chance` is the one
+     over the other.
+   - *the band sweep*: the sit-out band is tried at every step of ten from 0
+     to 300, on the same moves, without touching the band the box is set to.
+   - *the plateau*: the widest run of three or more consecutive bands whose
+     edge over chance, smoothed three bands wide, is at least 1. `band B` is
+     the middle of that run — the sweet spot — never its peak. `P bands` is
+     its width and `mean M×` its height.
+3. The traits, one word each, read at the sweet spot (or at the box's band
+   when there is no plateau):
+   - `reverting` or `trending` — on train, whether a rise is more often
+     followed by a fall (gap in points below zero) or by another rise.
+   - `steady`, `fading` or `mixed` — over the parts in time order under both
+     layouts, whether every part's gap points the same way as train's, or
+     only the last parts disagree, or the disagreement is scattered.
+   - `often`, `much` or `both` — what carries it: the gap in points holds
+     across the parts (how often), the gap in move holds (how much), or both.
+     Nothing when neither holds.
+4. `· at band X: ...` — the same reading at the band the box is set to:
+   `N× chance`, or `the colour changes no call` (both learned leans are the
+   blind one, so seeing the colour changes nothing and the edge is exactly
+   0), or `no ratio` (a lean could not be learned: train holds one colour
+   only, or nothing is called at this band). Then `N% called`.
+5. `· with the link cut, one at least this strong in F of 50` — the
+   instrument's own check. When the coin is read, the outcomes of each part
+   are dealt into a different order fifty times while the readings stay, so
+   nothing links a window to its outcome, and the whole analysis is run on
+   each deal. A plateau's strength is its width times its height. F is how
+   many of the fifty deals produced a plateau at least as strong as the real
+   one; 0 of 50 is as good as the check gets, 12 of 50 means a plateau like
+   this turns up by itself about one time in four. When there is no real
+   plateau the line says `a plateau in F of 50` instead: how often the
+   instrument names one on this shape when there is nothing to find.
+6. The sweep as one bar per band, in the grid's order: height is the smoothed
+   edge over chance, the plateau's bands are marked and its middle stands
+   out. Hovering a bar names its band and reading.
+
+**What the owner does.** Every reading on the box was taken under record
+shape 7. This release reads shape 8 (the check in item 5 lives on the
+record), so each coin reads as written under an older shape until
+`Read these coins` is pressed again. One press, blank box, reads all of them;
+the check costs fifty analyses per shape and adds about a second a coin.
+
+**What it does not do.** It refuses no coin and types no cut-off: the only bar
+anywhere is 1, chance's own size. It does not touch Sweep, the members, or
+any training. It reads the history and reports; whether a coin and shape are
+worth training on is still the owner's call, made with these numbers in
+front of them.
+
+**Where the words in item 3 may go next** (owner, 2026-09-13): *"if there are
+specific traits that differentiate you will make ONE WORD notations ... that
+may feed forward into member voting setups."* They are served per shape on
+the records reply and drawn as marks; nothing reads them yet.
+
 ---
 
 # Part two — the design of 2026-09-12, SUPERSEDED on 2026-09-13

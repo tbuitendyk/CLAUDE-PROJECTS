@@ -212,11 +212,12 @@ function requirePlaywright() {
     return { text: e ? e.textContent.replace(/\s+/g, ' ').trim() : null, bars: e ? e.querySelectorAll('.csw').length : 0, traits: e ? [...e.querySelectorAll('.ctrait')].map((t) => t.textContent) : [] };
   }));
   expect(sigs.length === 2 * SHAPES.length && sigs.every((s) => s.text && /^signal /.test(s.text)), `a signal line under every bar, and it says so first: ${JSON.stringify(sigs[0])}`);
-  expect(sigs.every((s) => /× chance at band \d+ · plateau \d+–\d+, \d+ bands, mean [\d.]+×/.test(s.text) || /no band beats chance for three steps together/.test(s.text)), `each line names a band and a ratio, or says no band beats chance: ${sigs[0].text}`);
+  expect(sigs.every((s) => /× chance at band \d+, \d+% called · plateau \d+–\d+, \d+ bands, mean [\d.]+×/.test(s.text) || /no band beats chance for three steps together/.test(s.text)), `each line names a band, a ratio and the share called, or says no band beats chance: ${sigs[0].text}`);
   expect(sigs.every((s) => / at band 50: (the colour changes no call|no ratio|[-+]?[\d.]+× chance)/.test(s.text)), `each line reads the band the box is set to: ${sigs[0].text}`);
   expect(sigs.every((s) => / with the link cut, (a plateau in \d+ of 50|one at least this strong in \d+ of 50)/.test(s.text)), `each line carries the instrument's own check: ${sigs[0].text}`);
   expect(sigs.every((s) => s.bars === signal.bandGrid().length), `the sweep is one bar per band, ${signal.bandGrid().length} of them, got ${sigs[0].bars}`);
   expect(sigs.every((s) => s.traits.every((t) => ['reverting', 'trending', 'steady', 'fading', 'mixed', 'often', 'much', 'both'].includes(t))), `every trait is one of the eight words, got ${JSON.stringify(sigs[0].traits)}`);
+  expect(sigs.some((s) => /× chance at band \d+, \d+% called · plateau/.test(s.text) && s.traits.length >= 2 && / one at least this strong in \d+ of 50/.test(s.text)), `on this fixture at least one bar finds a plateau, names its traits and weighs it against the deals: ${sigs.map((s) => s.text).join(' | ')}`);
   expect(!/luck/i.test(body), 'the word luck is nowhere on the screen');
   expect(/AAAUSDT.*release 3\.124\.0/.test(body), 'each coin names the release that read it');
   expect(/DDDUSDT.*more month\(s\) cached since/.test(body), 'the coin whose history has grown since reads as behind');

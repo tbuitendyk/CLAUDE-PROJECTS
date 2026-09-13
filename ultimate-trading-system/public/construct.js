@@ -7958,8 +7958,13 @@ function cSignalLine(sig, band) {
   const words = [t.direction, t.holding, t.carrier].filter(Boolean).map((w) => `<span class="ctrait">${esc(w)}</span>`).join(' ');
   const cur = sig.atCurrent || {};
   const lc = sig.linkCut;
+  // the sweet spot says how much of the history it calls: a band of 260 is
+  // an edge on the few decisions that moved that far, and the reader must
+  // see that beside the ratio
+  const spotRead = sig.sweetSpot ? (sig.sweep || []).find((p) => p.band === sig.sweetSpot.band) : null;
+  const spotCalled = spotRead && spotRead.called != null ? `, ${(spotRead.called * 100).toFixed(0)}% called` : '';
   const head = sig.plateau && sig.sweetSpot
-    ? `<b>signal</b> edge <b>${cNum(sig.sweetSpot.ratio, 2)}× chance</b> at band ${sig.sweetSpot.band} <span class="muted">· plateau ${sig.plateau.fromBand}–${sig.plateau.toBand}, ${sig.plateau.points} bands, mean ${cNum(sig.plateau.meanRatio, 2)}×</span>`
+    ? `<b>signal</b> edge <b>${cNum(sig.sweetSpot.ratio, 2)}× chance</b> at band ${sig.sweetSpot.band}${spotCalled} <span class="muted">· plateau ${sig.plateau.fromBand}–${sig.plateau.toBand}, ${sig.plateau.points} bands, mean ${cNum(sig.plateau.meanRatio, 2)}×</span>`
     : `<b>signal</b> <span class="muted">no band beats chance for three steps together${sig.why ? ` — ${esc(sig.why)}` : ''}</span>`;
   return `<div class="csig">${head} ${words}
     <span class="muted">· at band ${esc(String(band))}: ${cRatioWords(cur)}${cur.called == null ? '' : `, ${(cur.called * 100).toFixed(0)}% called`}${lc ? ` · with the link cut, ${lc.asStrong == null ? `a plateau in ${lc.found} of ${lc.trials}` : `one at least this strong in ${lc.asStrong} of ${lc.trials}`}` : ''}</span>
