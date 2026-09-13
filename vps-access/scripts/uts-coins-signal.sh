@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # uts-coins-signal.sh -- READ-ONLY. For one coin, per chunk shape: the sit-out
-# band sweep, the plateau and its sweet spot, the one-word traits, and how
-# often a plateau still appears with the link between window and outcome cut
+# band sweep, the plateau and its sweet spot, the one-word traits, how often a
+# plateau still appears with the link between window and outcome cut and how
+# many of those were at least as strong as the real one (B12), and the closed
+# form of chance checked against the spread of the dealt edges (B4)
 # (LOOP-2026-09-14-SIGNAL.md, sections A and C).
 #
 # ONE COPY OF THE ARITHMETIC. The analysis is the product's own lib/, fetched
@@ -35,14 +37,27 @@ for (const s of coins.shapes()) {
   const x = rec.shapes[s.key];
   if (!x || !x.periods) { console.log(`-- ${s.label}: ${(x && x.why) || "not read"}`); continue; }
   const g = S.signalSummary(x, s.key, lays, band);
-  const fa = S.plateauFalseAlarms(x, s.key, lays, band, 40);
+  // the link cut, dealt here so the per-band edges are in hand for the B4 check
+  const TRIALS = 40;
+  const dealt = g.sweep.map(() => []);
+  let found = 0; const strengths = [];
+  for (let t = 0; t < TRIALS; t++) {
+    const c = S.signalSummary({ move: x.move, out: S.shuffledCopy(x.out, 20260914 + t) }, s.key, lays, band);
+    c.sweep.forEach((p, i) => { if (p.edge != null && !p.same) dealt[i].push(p.edge); });
+    if (c.plateau) { found++; strengths.push(S.plateauStrength(c.plateau)); }
+  }
+  const fa = { trials: TRIALS, found, strengths, meanRatioWhenFound: null };
+  const worth = S.linkCutWorth(g.plateau, fa);
+  const sdOf = (a) => { if (a.length < 5) return null; const m = a.reduce((p, q) => p + q, 0) / a.length; return Math.sqrt(a.reduce((p, q) => p + (q - m) ** 2, 0) / a.length); };
+  const chk = g.sweep.filter((p) => p.band % 50 === 0).map((p, i) => { const sd = sdOf(dealt[g.sweep.indexOf(p)]); return `${p.band}:${p.chance == null || !sd ? "—" : (sd / p.chance).toFixed(2)}`; }).join(" ");
   const t = g.traits || {};
-  const sw = g.sweep.map((p) => `${p.band}:${p.ratio == null ? "—" : p.ratio.toFixed(1)}`).join(" ");
+  const sw = g.sweep.map((p) => `${p.band}:${p.same ? "0" : p.ratio == null ? "—" : p.ratio.toFixed(1)}`).join(" ");
   console.log(`-- ${s.label} · ${x.periods} decisions · k ${g.k.toFixed(2)}`);
-  console.log(`   at band ${band}: ${g.atCurrent.ratio == null ? "no ratio" : f(g.atCurrent.ratio, 2) + "x chance"} · called ${(g.atCurrent.called * 100).toFixed(0)}% · lean r/f/blind ${g.atCurrent.lean ? [g.atCurrent.lean.rising, g.atCurrent.lean.falling, g.atCurrent.lean.blind].join("/") : "—"}`);
+  console.log(`   at band ${band}: ${g.atCurrent.same ? "the colour changes no call" : g.atCurrent.ratio == null ? "no ratio" : f(g.atCurrent.ratio, 2) + "x chance"} · called ${(g.atCurrent.called * 100).toFixed(0)}% · lean r/f/blind ${g.atCurrent.lean ? [g.atCurrent.lean.rising, g.atCurrent.lean.falling, g.atCurrent.lean.blind].join("/") : "—"}`);
   console.log(`   plateau: ${g.plateau ? `${g.plateau.fromBand}..${g.plateau.toBand} (${g.plateau.points} pts, mean ${g.plateau.meanRatio.toFixed(2)}x) · sweet spot ${g.sweetSpot.band} at ${f(g.sweetSpot.ratio, 2)}x` : "none — no band beats chance for three steps"}${g.why ? " · " + g.why : ""}`);
   console.log(`   traits: ${t.direction || "—"} / ${t.holding || "—"} / ${t.carrier || "—"} (move: ${t.holdingMove || "—"}) at band ${g.traitsAtBand}`);
-  console.log(`   link cut: plateau in ${fa.found} of ${fa.trials}${fa.meanRatioWhenFound ? ` (mean ${fa.meanRatioWhenFound.toFixed(2)}x)` : ""}`);
+  console.log(`   link cut: plateau in ${fa.found} of ${fa.trials}${worth && worth.asStrong != null ? ` · at least as strong (${worth.strength.toFixed(1)}) in ${worth.asStrong} of ${fa.trials}` : ""}`);
+  console.log(`   chance check (dealt spread / closed form): ${chk}`);
   console.log(`   sweep: ${sw}`);
 }
 '
