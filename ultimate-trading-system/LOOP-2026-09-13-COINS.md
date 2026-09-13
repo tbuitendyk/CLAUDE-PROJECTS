@@ -217,3 +217,9 @@ COINS.md Part one section 4 carries the design.
   `COIN.json` beside it and the notice "read the coin again to replace it"
   stays. Fixing it deletes a file on the box when the coin is read; that
   waits for the owner's word.
+- **Deployed 06:45 UTC**: `uts-box-busy.sh` answered `busy: none`; `deploy-uts.sh`
+  fetched `8643e3e..a90bd8a`, restarted the service, health check OK. The box
+  serves a90bd8a; `SERVED.json` and `SCREEN-WORDS.md` regenerated from it
+  (809 control labels, 90 options); `test-sweepwords.js` and `test-help.js`
+  green. Commit a90bd8a is on `claude/uts-build-out-7f2lmv` and fast-forwarded
+  onto `ultimate-trading-system`.
