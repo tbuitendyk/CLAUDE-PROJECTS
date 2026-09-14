@@ -12,5 +12,5 @@ LOG=/var/log/nginx/www.buitendyk.ca.access.log
 echo "== page loads and rebuild presses under /uts/, oldest first (last $N lines of the log) =="
 tail -n "$N" "$LOG" | grep -E '/uts/(construct\.html|construct\.js|setup\.html|trade\.html|api/funnel/[^/ ]+/rebuild|api/funnel/[^/ ]+/read)' \
   | sed -E 's/^([0-9.]+) [^ ]+ [^ ]+ \[([^]]+)\] "([A-Z]+) ([^ ]+)[^"]*" ([0-9]+) [0-9-]+ "[^"]*" "([^"]*)"/\2  \3 \5  \4   ua=\6/' \
-  | grep -vE '"GET /uts/api/funnel/[^/ ]+/rebuild' \
-  | sed -E 's/ua=(Mozilla[^ ]*)[^ ]* [^ ]* [^ ]* \(([^;)]*)[^)]*\).*/ua=\1 (\2)/' | tail -60
+  | grep -vE 'GET [0-9]+  /uts/api/funnel/[^/ ]+/rebuild' \
+  | sed -E 's/ua=(Mozilla[^ ]*)[^ ]* [^ ]* [^ ]* \(([^;)]*)[^)]*\).*/ua=\1 (\2)/' | tail -120
