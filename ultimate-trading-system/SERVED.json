@@ -1,5 +1,5 @@
 {
-  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
+  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
   "commit": "0e697e8080baa07fa5ec7f0c24fabd744ece9bf8",
   "subject": "3.137.0: a page older than the box is refused and reloads itself",
   "capturedAt": "2026-09-14T22:14:33Z",
@@ -11,15 +11,7 @@
     "public/help-content.js": {
       "sha256": "dd7482acbb65836b7c8965b944d07cfc7d97516904bc59d7ae5310cbb3de8d1a",
       "bytes": 109770
-    },
-    "public/setup.html": {
-      "sha256": "a932565843472ec4de7e25de958b47028290c5ff8ad129064748f81e3e3f69e8",
-      "bytes": 32301
-    },
-    "public/trade.html": {
-      "sha256": "2a3a61ee22b322ed44c522bece62cd93baf4182b0a3c9ea6bd36dde07de18ba5",
-      "bytes": 84182
     }
   },
-  "htmlNotVerified": "public/construct.html is served with its cache markers rewritten to the content hash of each script, so its served bytes never equal its stored bytes. Nothing is generated from it."
+  "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
 }
