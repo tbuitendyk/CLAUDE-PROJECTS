@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **18bd965b980d — what the box is serving**, not from the working tree.
+Generated from **5ef215bd7c0f — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -774,7 +774,6 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `hours`
 - `hours, so up to`
 - `how many to keep`
-- `how much must hold`
 - `how to reach the target`
 - `in the table`
 - `is`
@@ -829,6 +828,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `or`
 - `or change`
 - `order by`
+- `order must agree by at least`
 - `Order the whole set by`
 - `other coin-and-shape unit`
 - `other units positive;`
