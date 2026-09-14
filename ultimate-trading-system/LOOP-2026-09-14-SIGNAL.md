@@ -652,3 +652,28 @@ Verify. Three orders, one release.
   picking a record set on Boards scrolls the page to the top; and the `Data
   fingerprint` line counts alongside coins as coins. Both are answered in the
   report with the fix each would take.
+
+## N. A one-unit set can be walked from Home; the bar box named for what it is — owner GO NOW! 2026-09-14 (3.131.1)
+
+The owner's Funnel sat at Home with every control dead after the test
+history numbers were worked out. Read from the code, not the data: since
+3.108.0 the only way to open a walk from Home is `Walk this one` on a row
+of the ranking table, and the row for the coin and shape the page held as
+current printed `this walk` whether or not a walk was open. A set with one
+coin and shape therefore had no `Walk this one` anywhere, the `coin` and
+`chunk shape` boxes had nothing else to pick, and the `Stage 4 record set`
+box was already on `new rule`. A dead end of the design meeting a one-unit
+set. Now a row reads `this walk` only while a walk is actually open on it;
+at Home, and with a Stage 4 record set showing, every row offers
+`Walk this one`.
+
+The box `how much must hold` is now `order must agree by at least`, and its
+hover and help entry say what the number is: the settings put in order by
+their money on one part of the test window and again on another, how far
+the two orders agree from -1 to 1, what 1.00, 0.00 and below zero mean, and
+that a coin and shape clears the bar when its number reaches this on as many
+of the four boundaries as `on how many of the four` asks for. Third digit:
+a fix and a wording change.
+
+Not touched: the rebuild's progress line and the Boards jump (task #95), and
+two older guards that skip since 3.131.0 rewrote their lines.

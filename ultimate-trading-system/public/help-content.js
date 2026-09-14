@@ -674,7 +674,7 @@ window.HELP = {
         more: 'The whole walk below is one way of choosing: order the settings by their money and keep the best. Nothing else on this screen asks whether that order means anything. This does, and it does it before you narrow anything - a coin and shape whose own order does not survive its own test window is worth knowing about now rather than after the held-back window has been opened on it. It reads nothing from the held-back window and nothing from the unread stretch, so it costs nothing that can only be spent once. It changes no rule and writes nothing.',
       },
       fHoldAtLeast: {
-        what: 'How much of the order has to survive the move, from -1 to 1. Leave it blank and no row can clear the bar, because nothing has been asked of it.',
+        what: 'The settings are put in order by the money they made on one part of the test window, then put in order again by their money on another part. This number is how far the two orders agree, from -1 to 1: 1.00 is the same order on both parts, 0.00 no relation at all, below zero the order comes out backwards. A coin and shape clears the bar when its number reaches this on as many of the four boundaries as on how many of the four asks for. Leave it blank and no row can clear the bar, because nothing has been asked of it.',
         more: '1.00 is the same order on both parts, 0.00 no relation at all, and below zero the order comes out backwards - which is worse than useless, because what is being selected for is actively wrong across the boundary. There is no right number here and none is suggested: what counts as enough is your call, and it is recorded as the bar you set.',
       },
       fHoldOn: {

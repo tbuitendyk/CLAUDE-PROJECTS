@@ -6303,6 +6303,13 @@ function fRebuildPress(d, named) {
 // every copy of it says the same thing, because they are the same press
 const fRebuildSay = (text) => document.querySelectorAll('[data-frebuildmsg]').forEach((m) => { m.textContent = text; });
 
+// WHICH ROW IS `this walk` (3.131.1, owner report: a set with one coin and
+// shape sat at Home with its only row reading `this walk`, and nothing on the
+// screen could open the walk -- the boxes had nothing else to pick and the
+// Stage 4 record set box was already on new rule). A row is this walk only
+// while a walk is actually open on that coin and shape. At Home, and with a
+// Stage 4 record set showing, every row offers Walk this one.
+const fWalkingUnit = (st, d) => (fOpenOf(st.set) && (!st.cut || st.cut === F_NEW) ? d.unit : null);
 function fHoldPanel(d, st) {
   const bar = fHoldBar(st.set);
   const t = fHoldSeen && fHoldSeen.set === st.set ? fHoldSeen.table : null;
@@ -6326,7 +6333,7 @@ function fHoldPanel(d, st) {
     ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
     <div class="row" style="align-items:flex-end">
       <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
-      <label class="f" title="how much of the order has to survive the move, from -1 to 1. Leave it blank and no row can clear the bar, because nothing has been asked of it.">how much must hold<input
+      <label class="f" title="The settings are put in order by the money they made on one part of the test window, then put in order again by their money on another part. This number is how far the two orders agree, from -1 to 1: 1.00 is the same order on both parts, 0.00 no relation at all, below zero the order comes out backwards. A coin and shape clears the bar when its number reaches this on as many of the four boundaries as on how many of the four asks for. Leave it blank and no row can clear the bar, because nothing has been asked of it.">order must agree by at least<input
         id="fHoldAtLeast" type="number" step="0.05" min="-1" max="1" style="width:6rem"
         value="${bar.atLeast == null ? '' : esc(String(bar.atLeast))}"></label>
       <label class="f" title="how many of the four boundaries have to reach that number. A boundary that could not be read is not a boundary that passed.">on how many of the four<input
@@ -6341,7 +6348,7 @@ function fHoldPanel(d, st) {
         id="fHoldSort">${F_HOLD_SORT.map(([k, w]) => `<option value="${k}"${k === bar.sort ? ' selected' : ''}>${esc(w)}</option>`).join('')}</select></label>
       <span id="fHoldMsg" class="note">${esc(ready ? `${t ? '' : 'not read yet - one press reads every coin and shape in this record set'}${partly}`
     : 'no setting in this record set carries what it made in each part of the test window - the press above works that out first')}</span></div>
-    ${t ? fHoldTable(t, bar, d.unit) : ''}`;
+    ${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : ''}`;
 }
 
 function fStep6(d, st, r) {
@@ -7328,7 +7335,7 @@ async function fRichWatch(st) {
 // lays the numbers on it, so a bar moved five times costs five bits of
 // arithmetic and no disk. Which is why they redraw the panel rather than
 // pressing anything.
-// The bar as a poll asks it. A blank `how much must hold` is sent blank, which
+// The bar as a poll asks it. A blank `order must agree by at least` is sent blank, which
 // the service reads as no bar set -- never as zero, which is a real bar.
 const fHoldQuery = (bar) => `atLeast=${bar.atLeast == null ? '' : encodeURIComponent(bar.atLeast)}`
   + `&onHowMany=${encodeURIComponent(bar.onHowMany)}`

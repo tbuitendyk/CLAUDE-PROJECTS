@@ -148,7 +148,7 @@ module.exports = {
   },
 
   // THE BAR IS THE OWNER'S, IN ONE PLACE, AND MOVING IT RE-READS NOTHING
-  // (RULE FIVE). Three numbers: how much must hold, on how many of the four,
+  // (RULE FIVE). Three numbers: order must agree by at least, on how many of the four,
   // and how few settings is too few to put a number on at all.
   async theBarIsTheOwnersAndReAppliesWithoutReReading() {
     const strong = { unit: 'A', name: 'A', ...RH.holdOfUnit(rows(40, (i) => [i, i, i]), 116) };
@@ -347,6 +347,49 @@ module.exports = {
   // (owner, 2026-09-10). A pass here is the absence of a red flag, so a heading
   // with "confirm" in it would make a pass read as proof -- the exact thing
   // this part was written to prevent.
+  // A SET WITH ONE COIN AND SHAPE CAN BE WALKED FROM HOME (3.131.1, owner
+  // report: "no controls function"). The row for the coin and shape the page
+  // held as current read `this walk` whether or not a walk was open, so a
+  // one-unit set at Home had no Walk this one anywhere, the boxes had nothing
+  // else to pick, and the Stage 4 record set box was already on new rule.
+  async aOneUnitSetAtHomeCanStillBeWalked() {
+    const page = src('public/construct.js');
+    assert.ok(page.includes("const fWalkingUnit = (st, d) => (fOpenOf(st.set) && (!st.cut || st.cut === F_NEW) ? d.unit : null);"),
+      'the row that reads this walk is not decided by whether a walk is actually open on it');
+    assert.ok(page.includes("${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : ''}"), 'the ranking table is still told the current unit is this walk at Home');
+    assert.ok(!page.includes('fHoldTable(t, bar, d.unit)'), 'the ranking table is handed the current unit straight, so at Home its row has no Walk this one');
+    // the row itself: this walk only for the unit handed in, Walk this one for every other row
+    const table = page.slice(page.indexOf('function fHoldTable(t, bar, walking) {'), page.indexOf('function fHoldPanel(d, st) {'));
+    assert.ok(table.includes('const here = u.unit === walking;'), 'a row is not compared to the walking unit');
+    assert.ok(table.includes('${here ? \'<span class="muted">this walk</span>\' : `<button data-fhold="${esc(u.unit)}">Walk this one</button>`}'),
+      'a row that is not this walk does not offer Walk this one');
+    // the helper's own arithmetic, run here: nothing open, or a Stage 4 record set showing, is no walking unit
+    const fn = new Function('fOpenOf', 'F_NEW', `${page.slice(page.indexOf('const fWalkingUnit = '), page.indexOf('function fHoldPanel(d, st) {'))}; return fWalkingUnit;`);
+    const closed = fn(() => false, 'new');
+    const open = fn(() => true, 'new');
+    assert.strictEqual(closed({ set: 's', cut: 'new' }, { unit: 'AAA|||daily-4d' }), null, 'at Home the current unit still reads as this walk');
+    assert.strictEqual(open({ set: 's', cut: 'new' }, { unit: 'AAA|||daily-4d' }), 'AAA|||daily-4d', 'with the walk open its unit is not this walk');
+    assert.strictEqual(open({ set: 's', cut: null }, { unit: 'AAA|||daily-4d' }), 'AAA|||daily-4d');
+    assert.strictEqual(open({ set: 's', cut: 's4-x' }, { unit: 'AAA|||daily-4d' }), null, 'with a Stage 4 record set showing its unit reads as this walk, and cannot be walked afresh from the row');
+    // and the home note still points at the button every row now carries
+    assert.ok(page.includes('Nothing is open. Press <b>Walk this one</b> on a row above to start a walk on that coin and shape,'), 'the home note no longer names the way out');
+    // THE BAR IS NAMED FOR WHAT IT IS (owner, 2026-09-14: "HOW MUCH OF WHAT MUST
+    // HOLD WHAT?!"). The label says what must agree, and the hover says what the
+    // number is, what its ends mean, and what clears the bar -- in words that
+    // are on the screen or plain English.
+    assert.ok(!page.includes('how much must hold<input') && !page.includes('>how much must hold<'), 'the old label is still drawn');
+    assert.ok(page.includes('>order must agree by at least<input\n        id="fHoldAtLeast"'), 'the bar box is not labelled order must agree by at least');
+    const hover = page.slice(page.lastIndexOf('<label class="f" title="', page.indexOf('>order must agree by at least<input')), page.indexOf('>order must agree by at least<input'));
+    for (const piece of ['put in order by the money they made on one part of the test window', 'how far the two orders agree, from -1 to 1', '1.00 is the same order on both parts',
+      '0.00 no relation at all', 'below zero the order comes out backwards', 'on as many of the four boundaries as on how many of the four asks for', 'Leave it blank and no row can clear the bar']) {
+      assert.ok(hover.includes(piece), `the hover does not say: ${piece}`);
+    }
+    const help = src('public/help-content.js');
+    const entry = help.slice(help.indexOf('fHoldAtLeast: {'), help.indexOf('fHoldOn: {'));
+    assert.ok(entry.includes('how far the two orders agree, from -1 to 1') && entry.includes('on as many of the four boundaries as on how many of the four asks for'),
+      'the help entry still explains the box in the words the owner could not read');
+  },
+
   async theHeadingAsksAQuestionAndNeverClaimsAConfirmation() {
     const page = src('public/construct.js');
     const panel = page.slice(page.indexOf('function fRebuildPress(d, named) {'), page.indexOf('function fStep6(d, st, r) {'));

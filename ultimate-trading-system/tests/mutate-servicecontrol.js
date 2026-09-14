@@ -1596,6 +1596,13 @@ const GUARDS = [
     'theBoardsScreenKeepsTheHeldBackColumnsBehindTheTick', 'the held-back window stays open across visits to Boards, and the second visit is an uncounted look'],
   [path.join(ROOT, 'public', 'construct.js'), "<li>Set <b>fewest test trades</b> - counted over the window named above.", "<li>Set <b>fewest trades</b> - counted over the window named above.",
     'theSixthStepSaysWhatItsLimitsAreLimitsOn', 'the numbered steps name the box by a label it no longer has (RULE ONE)'],
+  // ---- FUNNEL: a one-unit set at Home can be walked; the bar box named for what it is (3.131.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), "const fWalkingUnit = (st, d) => (fOpenOf(st.set) && (!st.cut || st.cut === F_NEW) ? d.unit : null);", "const fWalkingUnit = (st, d) => d.unit;",
+    'aOneUnitSetAtHomeCanStillBeWalked', 'at Home the current unit\'s row reads this walk and a one-unit set has no way to open its walk'],
+  [path.join(ROOT, 'public', 'construct.js'), "${t ? fHoldTable(t, bar, fWalkingUnit(st, d)) : ''}", "${t ? fHoldTable(t, bar, d.unit) : ''}",
+    'aOneUnitSetAtHomeCanStillBeWalked', 'the ranking table is handed the current unit straight, and its row loses Walk this one at Home'],
+  [path.join(ROOT, 'public', 'construct.js'), ">order must agree by at least<input", ">how much must hold<input",
+    'aOneUnitSetAtHomeCanStillBeWalked', 'the bar box goes back to a label that says neither what must agree nor with what'],
 ];
 
 const only = process.argv[2] || '';
