@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **2ab96d17c1b5 — what the box is serving**, not from the working tree.
+Generated from **6913a48f6f76 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -89,16 +89,18 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Coins
 
-## What the controls are called (63)
+## What the controls are called (66)
 
 - `-hour window · one decision a`
 - `— press`
 - `, opening`
 - `, the same rows Sweep trains on:`
 - `· at band`
+- `· band`
 - `· median`
 - `· plateau`
 - `· with the link cut, a plateau in`
+- `(its own sweet spot)`
 - `% · sit out under ±`
 - `% called`
 - `× chance`
@@ -117,6 +119,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `decisions`
 - `decisions from`
 - `downloaded)`
+- `each shape at its own sweet spot`
 - `edge`
 - `falling`
 - `gap (move)`
@@ -189,10 +192,10 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - no band beats chance for three steps together
 - · with the link cut, one at least this strong in
 
-## Every word, flat (181)
+## Every word, flat (184)
 
 ```
--hour Above above across after again. all and apt at band bands bar be beats been Below better black blank both cached call called candles cannot chance Change changes chunk coin coin. Coins coins colour coloured could cut decision decisions disk downloaded draw dual each edge either else every exactly exam fading falling fell file files for from gap green half has held held. here history in is it It judge last least left less link little mean median member mixed month more move moved moves much named no not Nothing nothing number number. of often on one One opening or out out. over own part per picture plateau points press price ratio read Read reading recolours red refuses release Remove removes reserve. reverting rising rose rows run same scale. sealed set shape share side signal since single sit sit-out sits starts steady steps Stop stopped strong Sweep test than that the The these thin this three to together too traditional train trains trending typically under unit up UTC voting voting. way what when where whether whole window window. with would
+-hour Above above across after again. all and apt at band bands bar be beats been Below better black blank both cached call called candles cannot chance Change changes chunk coin coin. Coins coins colour coloured could cut decision decisions disk downloaded draw dual each edge either else every exactly exam fading falling fell file files for from gap green half has held held. here history in is it It its judge last least left less link little mean median member mixed month more move moved moves much named no not Nothing nothing number number. of often on one One opening or out out. over own part per picture plateau points press price ratio read Read reading recolours red refuses release Remove removes reserve. reverting rising rose rows run same scale. sealed set shape share side signal since single sit sit-out sits spot starts steady steps Stop stopped strong Sweep sweet test than that the The these thin this three to together too traditional train trains trending typically under unit up UTC voting voting. way what when where whether whole window window. with would
 ```
 
 ---

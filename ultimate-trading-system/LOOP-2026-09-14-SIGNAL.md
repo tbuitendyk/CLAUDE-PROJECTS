@@ -389,6 +389,13 @@ the records reply comes back whole, 3.9 MB in 2.5 s; the front door proxies
 screen's status poll and its redraw, both waiting behind a read that never
 yielded. Not a crash, not a bad record.
 
+**Reached the environment**: deployed 2ab96d1 → 6913a48 (3.128.0),
+`healthz OK`, the box idle before it; `SERVED.json` captured and the word
+lists regenerated from it (the Coins list gains `each shape at its own sweet
+spot` and `(its own sweet spot)`); every guard on the signal module, the
+runner and the screen deleted in turn and caught. The records on the box are
+untouched: they are shape 8 and read as they are.
+
 **A sentence on the screen that is not true**, found while wiring the tick
 and left standing (RULE ZERO): the Coins note and the band box's hover say
 Sweep trains with this same number. Nothing in `lib/` reads
