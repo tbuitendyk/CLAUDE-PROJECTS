@@ -570,3 +570,18 @@ computed on the fly from what the record already holds.
 - **J4 — stage 2's two forecast score columns are untouched.** They have
   the same reading and the same fix; not in this order.
 
+## K. The ceiling box and its column name each other — owner GO NOW! 2026-09-14 (3.130.2)
+
+The owner asked whether `the most one trade may count for` on Sweep and
+`biggest before the ceiling` on Boards were the same thing, and why neither
+named the other. They are the two ends of one thing: the box sets the
+ceiling on how many ordinary trades the biggest may count for when weighing
+by money; the column reports, per unit, the biggest trade's count before
+the ceiling held it down and how many trades were held at it. The column's
+hover said "the ceiling you set", the box's help said "the limit", and the
+launch's refusal for a bad value called the box "the most one week may
+count for" — a name on no screen. All three now use the other's label as
+the screen draws it, on both tables that draw the column. The names
+themselves are unchanged; whether the two should share one name is the
+owner's call.
+

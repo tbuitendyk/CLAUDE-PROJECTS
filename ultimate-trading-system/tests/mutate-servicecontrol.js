@@ -1515,6 +1515,13 @@ const GUARDS = [
     'theForecastScoreShowsItsDenominatorAndShare', 'the count and the share are never printed'],
   [path.join(ROOT, 'lib', 'stages.js'), "      testChunks: (r.counts || {}).test ?? null,", "      testChunks: null,",
     'theForecastScoreShowsItsDenominatorAndShare', 'the table never serves the count, so every score reads as the bare sum'],
+  // ---- the ceiling box and its column name each other (3.130.2) ----
+  [path.join(ROOT, 'public', 'construct.js'), "the number in the box called the most one trade may count for on Sweep, stage 1.", "the ceiling you set.",
+    'theCeilingBoxAndItsColumnNameEachOther', 'the column paraphrases the box instead of naming it'],
+  [path.join(ROOT, 'public', 'help-content.js'), "What it did on each unit is the column called biggest before the ceiling on Boards, stage 1 table:", "What it did on each unit is a column on Boards:",
+    'theCeilingBoxAndItsColumnNameEachOther', 'the box points at a column without naming it'],
+  [path.join(ROOT, 'lib', 'stages.js'), "throw new Error(`the most one trade may count for must be 0 or more", "throw new Error(`the most one week may count for must be 0 or more",
+    'theCeilingBoxAndItsColumnNameEachOther', 'the refusal names a box that is on no screen'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), "  for (const u of unreadable) {\n    try { fs.unlinkSync(path.join(DIR, u.file)); removed.push(u.file); }", "  for (const u of []) {\n    try { fs.unlinkSync(path.join(DIR, u.file)); removed.push(u.file); }",
     'theCleanupRemovesExactlyWhatCannotBeDrawnAndNothingElse', 'the control the owner presses to remove the files removes nothing and reports nothing failed'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), "  if (run && !run.finishedAt && !run.error) throw new Error('a Coins reading is running — wait for it to finish before removing files');", "  if (false) throw new Error('a Coins reading is running — wait for it to finish before removing files');",

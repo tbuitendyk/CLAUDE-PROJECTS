@@ -678,7 +678,7 @@ function startStage1(params) {
   const weightCap = params.weightCap === undefined || params.weightCap === null || params.weightCap === ''
     ? sw.WEIGHT_CAP_DEFAULT : Number(params.weightCap);
   if (!Number.isFinite(weightCap) || weightCap < 0) {
-    throw new Error(`the most one week may count for must be 0 or more — got ${JSON.stringify(params.weightCap)}`);
+    throw new Error(`the most one trade may count for must be 0 or more — got ${JSON.stringify(params.weightCap)}`);
   }
   const p = {
     allLoaded: params.allLoaded !== false,

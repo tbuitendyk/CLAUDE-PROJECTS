@@ -916,6 +916,31 @@ module.exports = {
       'the heading says what the three parts of the cell are');
   },
 
+  // THE CEILING BOX AND ITS COLUMN NAME EACH OTHER EXACTLY (3.130.2, owner
+  // order): the box on Sweep sets the ceiling, the column on Boards reports
+  // what it did, and each says so using the other's label as the screen
+  // draws it -- never a paraphrase, and never a name that is on no screen.
+  async theCeilingBoxAndItsColumnNameEachOther() {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
+    const box = '>the most one trade may count for<input id="swCap1"';
+    assert.ok(src.includes(box), 'the box is drawn with that label on Sweep');
+    const heads = [...src.matchAll(/<th [^>]*title="([^"]*)">biggest before the ceiling/g)].map((m) => m[1]);
+    assert.strictEqual(heads.length, 2, 'the column is drawn on the stage 1 and stage 2 tables');
+    for (const h of heads) {
+      assert.ok(h.includes('the box called the most one trade may count for on Sweep'), 'the column names the box by its label');
+      assert.ok(h.includes('weigh each trade by the money it was worth ticked on Sweep'), 'and the tick that switches it on');
+      assert.ok(!/the ceiling you set/.test(h), 'no paraphrase in place of the name');
+    }
+    const entry = help.slice(help.indexOf('      swCap1: {'), help.indexOf('      swNull1: {'));
+    assert.ok(entry.includes('the column called biggest before the ceiling on Boards, stage 1 table'), 'the box names the column by its label');
+    assert.ok(entry.includes('weigh each trade by the money it was worth is ticked'), 'and the tick, by its label');
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(st.includes('throw new Error(`the most one trade may count for must be 0 or more'), 'the refusal names the box as the screen does');
+    assert.ok(!/most one week may count for/.test(st), 'a name that is on no screen is gone');
+    assert.throws(() => stages.startStage1({ universe: ['ZZZTESTUSDT'], sizes: { singles: true }, geometries: ['daily-4d'], fee: 0.00125, nullN: 4, windowLayout: 'reserve61', weightCap: -1 }), /the most one trade may count for must be 0 or more/);
+  },
+
 
   // WHAT EACH UNIT HOLDS (3.52.0, owner order 2026-09-04: "fold duplicates
   // per unit, which would let units hold different setting counts"). Two
