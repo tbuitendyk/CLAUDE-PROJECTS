@@ -600,3 +600,55 @@ them); the two greyed boxes are left out for such a set. The pairs ticked
 now ride on the same answer the headings already read the downloaded coins
 off, memoised on the record files.
 
+
+## M. The held-back window behind a tick; the trade floor reads test trades; confirm shown whole — owner GO NOW! 2026-09-14 (3.131.0)
+
+The owner's reading: the held-back window's numbers were on Boards for anyone
+to sort and filter by, which is a look the design says happens once, on
+Verify. Three orders, one release.
+
+- **M1 — Boards keeps the held-back columns behind `show the held-back
+  window`**, one tick above `Table 3.A`, off on every visit to Boards and not
+  remembered. Off: the six held-back columns of `Table 3.A`, the five of
+  `Table 3.B` and the six of the records under a row are not drawn; a saved
+  sort on one of them is set aside and the line under the tick says so; a
+  floor typed in one of their boxes is not applied; and none of those numbers
+  leaves the service, so the page cannot draw what it is not sent. On: they
+  are drawn, and the tick writes one dated look on the stage 3 record set,
+  whichever of the three were open. Verify counts those looks in its own line
+  the way it counts a scan on Tune: "Boards showed the held-back columns of
+  NAME N time(s), each a counted look". That line replaces Verify's old
+  standing caveat that Boards offers a sort and a filter on the held-back
+  money, which the tick has made untrue. A tick whose look fails to write
+  draws nothing.
+- **M2 — the Funnel's trade floor reads test trades.** Step 6's ladder and
+  the box `fewest test trades` read the test-window count now, and the
+  numbered steps name the box as it is. The ladder's yearly footing was
+  already the test window, so the count and its footing now agree; before, a
+  held-back count sat on a test-window footing. A rule cut before 3.131.0
+  keeps its held-back floor readable, its sentence says "held-back trades at
+  least N", and Verify still counts it as a look. Found on the way: a board
+  read on all units together takes its rows from the totalled tables, which
+  carried the held-back trade count and no test count, so the new floor would
+  have dropped every row there; the totalled rows now carry the test-window
+  trade count per coin, averaged. History's reserve reading
+  is the next tab; Tune is already behind its own tick; Verify reads the
+  window by design. None of the three touched.
+- **M3 — confirm is shown whole.** `confirm` prints `off` where it was off,
+  not a dash. The six numbers a verdict rests on (money and count of the
+  confirmed, the unconfirmed and the no-lean trades, the money at size 1, and
+  the money under the row's own value of confirm) print under the word on
+  `Table 3.A`, `Table 3.B` and the records under a row, not only in a hover.
+  `Table 3.B` gains a `confirm` column; the records under a row gain
+  `confirm` and `verdict`, and `held-back verdict` behind the tick.
+- **M4 — a fault found on the way and fixed here: one coin row per value of
+  confirm.** `Table 3.B` keyed a coin row on setting, coin, alongside and
+  chunk shape only, so the off record and the sized record of one short
+  setting were summed under one row and judged by the first record's
+  multipliers; the six numbers under a word could belong to two values of
+  confirm at once. The key carries confirm now. The tally version moves, so
+  every stage 3 set's tables rebuild once when next opened.
+- **M5 — reported by the owner during this build, not touched (RULE ZERO):**
+  picking a record set on Boards scrolls the page to the top; and the `Data
+  fingerprint` line counts alongside coins as coins. Both are answered in the
+  report with the fix each would take.

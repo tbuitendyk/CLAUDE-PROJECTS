@@ -138,9 +138,13 @@ function ruleSentence(rule) {
   for (const [dial, allowed] of Object.entries(R.allowed)) {
     if (Array.isArray(allowed) && allowed.length) parts.push(`${dial} is ${allowed.join(' or ')}`);
   }
+  // a floor is named in the screen's words, never by its field (3.131.0):
+  // avgTrades is the held-back count rules cut before 3.131.0 read
+  const FLOOR_WORDS = { maxDrawdown: 'worst losing streak', avgTrades: 'held-back trades', testTrades: 'test trades' };
   for (const [field, spec] of Object.entries(R.floors)) {
-    if (spec && spec.min != null) parts.push(`${field} at least ${spec.min}`);
-    if (spec && spec.max != null) parts.push(`${field} at most ${spec.max}`);
+    const word = FLOOR_WORDS[field] || field;
+    if (spec && spec.min != null) parts.push(`${word} at least ${spec.min}`);
+    if (spec && spec.max != null) parts.push(`${word} at most ${spec.max}`);
   }
   const base = parts.length ? parts.join('; ') : 'everything (no choices made yet)';
   // THE CUT IS IN THE SENTENCE. It is part of the rule and it is the part that

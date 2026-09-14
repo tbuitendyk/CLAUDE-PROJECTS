@@ -1034,7 +1034,7 @@ module.exports = {
     assert.ok(s5.includes('id="fKeepRegion"'), 'step 5 has no press that keeps the auto-plateau region');
     assert.ok(!s5.includes('JSON.stringify'), 'and never prints its answer as raw JSON');
     const s6 = fn('fStep6', 'fStep7');
-    assert.ok(s6.includes("fLadder('worst losing streak'") && s6.includes("fLadder('trades'"), 'step 6 shows what each limit would keep');
+    assert.ok(s6.includes("fLadder('worst losing streak'") && s6.includes("fLadder('test trades'"), 'step 6 shows what each limit would keep');
     // and every new control has help
     const h = src('public/help-content.js');
     for (const id of ['fKeepValues', 'fKeepBlock', 'fAccept4', 'fKeepRegion']) assert.ok(h.includes(`      ${id}: {`), `${id} has no help entry`);
@@ -2214,10 +2214,10 @@ module.exports = {
     assert.ok(how.includes('It changes no rule and no record'), 'the steps do not say that pressing it is safe');
     assert.ok(how.includes('in dollars, per coin'), 'the steps do not say what the losing streak is measured in');
     assert.ok(how.includes('counted over the window named above'), 'the steps do not say what the trade count is counted over');
-    for (const control of ['<b>Work out the test history numbers</b>', '<b>worst losing streak allowed</b>', '<b>fewest trades</b>', '<b>Add these limits to the rule</b>']) {
+    for (const control of ['<b>Work out the test history numbers</b>', '<b>worst losing streak allowed</b>', '<b>fewest test trades</b>', '<b>Add these limits to the rule</b>']) {
       assert.ok(how.includes(control), `the steps do not name ${control}`);
     }
-    for (const label of ['worst losing streak allowed', 'fewest trades', 'Add these limits to the rule']) {
+    for (const label of ['worst losing streak allowed', 'fewest test trades', 'Add these limits to the rule']) {
       assert.ok(step.includes(`>${label}<`) || step.includes(`${label}<input`), `the steps name "${label}", which step 6 does not draw`);
     }
     // 3.102.0: the press it names is above the steps, so that is where the
@@ -2232,7 +2232,7 @@ module.exports = {
     // the first draw and every poll say the same thing.
     assert.ok(panel6.includes('${esc(fRichLine(d))}'), 'the line beside the button no longer says what the press would do');
     // the trades ladder is put on a yearly footing and the dollar one is not
-    assert.ok(step.includes("fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex, d)"), 'the trades ladder is not given the window');
+    assert.ok(step.includes("fLadder('test trades', (r.ladders || {}).testTrades, 'at least', ex, d)"), 'the trades ladder is not given the window, or reads the held-back count (3.131.0: it reads test trades)');
     // AND BOTH LADDERS ARE HANDED THE READ (3.108.5), because a ladder that
     // refuses for want of the numbers now carries the press that works them
     // out, and the press has to know whether it is already going.
@@ -3866,7 +3866,7 @@ module.exports = {
       'a set that kept its own copy is not told so, and reads as broken');
     assert.ok(nb.includes('This set has no copy of its own, so the columns below are empty and the rule cannot be re-applied.'),
       'a set with nothing to fall back on is not told so');
-    assert.ok(/const F_LIMIT_WORDS = \{ maxDrawdown: 'worst losing streak', avgTrades: 'trades' \};/.test(page),
+    assert.ok(/const F_LIMIT_WORDS = \{ maxDrawdown: 'worst losing streak', avgTrades: 'held-back trades', testTrades: 'test trades' \};/.test(page),
       'the two limits are named to the owner in words that are not on the screen (RULE ONE)');
     // and the door it presses is started and polled, because it prices
     const srv = src('server.js');
@@ -4291,7 +4291,7 @@ module.exports.theRemainingCountIsAskedOnEveryKeystrokeAndTheLastAnswerWins = fu
 
   // IT IS THE SAME ARITHMETIC THE WALK USES. The page sends a whole rule built
   // the way fAddFloors builds it; the service applies it. No second filter.
-  assert.ok(/function fRuleWithFloors\(st\) \{[\s\S]{0,500}floors\.maxDrawdown = \{ max: Number\(dd\) \}[\s\S]{0,200}floors\.avgTrades = \{ min: Number\(tr\) \}/.test(src),
+  assert.ok(/function fRuleWithFloors\(st\) \{[\s\S]{0,500}floors\.maxDrawdown = \{ max: Number\(dd\) \}[\s\S]{0,200}floors\.testTrades = \{ min: Number\(tr\) \}/.test(src),
     'the typed limits are no longer folded into the rule the same way the press folds them');
   assert.ok(/async function funnelKeeps\(id, state = \{\}\) \{[\s\S]{0,900}S4\.applyRule\(all, rule\)\.length/.test(svc),
     'the count is no longer the same applyRule the walk uses');
@@ -4309,4 +4309,41 @@ module.exports.theRemainingCountIsAskedOnEveryKeystrokeAndTheLastAnswerWins = fu
   // ONE wording: the first draw and every keystroke print through it
   assert.ok(src.includes('${esc(fKeepsWords(d.survivors, d.of, d.target))}') && src.includes('fKeepsWords(out.keeps, out.of, st.target)'),
     'the first draw and the keystrokes no longer share one wording');
+};
+
+// THE TRADE FLOOR ON STEP 6 READS TEST TRADES (3.131.0, owner order: "point
+// funnels trade floor at test trades. So remove that in step six from looking
+// at the held back trade count"). A rule cut before this still reads the
+// held-back count, and its sentence says so.
+module.exports.theTradeFloorOnStepSixReadsTestTrades = function () {
+  const FS4 = require('../lib/funnelset');
+  const V = require('../lib/funnelverify');
+  // the board row carries both counts, named apart
+  const row = stages.boardRowOf({ si: 0, label: 'q x', trades: 7, pnl: 3, holdout: { pnl: 1, trades: 4 } }, 'AAA|||daily-4d');
+  assert.deepStrictEqual([row.testTrades, row.avgTrades], [7, 4]);
+  assert.strictEqual(stages.boardRowOf({ si: 0, label: 'q x', trades: null, pnl: 3, holdout: { pnl: 1, trades: 4 } }, 'k').testTrades, null, 'a missing test count is read as zero');
+  // step 6's ladder is on the test count, and on nothing held-back
+  const s = src('lib/stages.js');
+  const body = s.slice(s.indexOf('function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
+  assert.ok(body.includes("testTrades: F.ladderFor(rows, 'testTrades', 'min'),"), 'step 6: the trades ladder is not on the test count');
+  assert.ok(!body.includes("F.ladderFor(rows, 'avgTrades'"), 'step 6: a ladder still reads the held-back count');
+  // the rule takes the test floor; the held-back floor of a rule cut before stays readable, and counts as a look
+  assert.deepStrictEqual(V.LIMITS, ['maxDrawdown', 'avgTrades', 'testTrades']);
+  const now = V.ruleKeys({ ranges: {}, allowed: {}, floors: { testTrades: { min: 5 } } });
+  assert.deepStrictEqual([now.ok, now.bad, now.readsHeldBackTrades], [true, [], false], 'a test-trade floor is refused, or counted as a held-back look');
+  const before = V.ruleKeys({ ranges: {}, allowed: {}, floors: { avgTrades: { min: 5 } } });
+  assert.deepStrictEqual([before.ok, before.readsHeldBackTrades], [true, true], 'an older rule\'s held-back floor is no longer read, or no longer counted as a look');
+  assert.strictEqual(FS4.ruleSentence({ ranges: {}, allowed: {}, floors: { testTrades: { min: 5 }, avgTrades: { min: 3 }, maxDrawdown: { max: 90 } } }),
+    'test trades at least 5; held-back trades at least 3; worst losing streak at most 90', 'the rule sentence does not name the floors as the screen does');
+  // the page: the ladder, the box, what is written into the rule, and the words the limits are named by
+  const page = src('public/construct.js');
+  assert.ok(page.includes("fLadder('test trades', (r.ladders || {}).testTrades, 'at least', ex, d)"), 'the ladder on the page reads the held-back count');
+  assert.ok(page.includes('<label class="f">fewest test trades<input id="fTrades"'), 'the box is not named fewest test trades');
+  assert.ok(page.includes('<li>Set <b>fewest test trades</b> - counted over the window named above.'), 'the numbered steps name the box by a label it no longer has');
+  assert.ok(page.includes("delete floors.avgTrades;\n  if (tr === '' || tr == null) delete floors.testTrades; else floors.testTrades = { min: Number(tr) };"),
+    'adding the limits writes the held-back floor, or leaves an older one standing beside the test floor');
+  assert.ok(page.includes("if (tr === '') delete st.rule.floors.testTrades; else st.rule.floors.testTrades = { min: Number(tr) };"), 'the typed floor is written under the held-back name');
+  assert.ok(page.includes("const tr = (st.rule.floors || {}).testTrades || {};"), 'the box is not filled from the test floor');
+  assert.ok(page.includes("const F_LIMIT_WORDS = { maxDrawdown: 'worst losing streak', avgTrades: 'held-back trades', testTrades: 'test trades' };"), 'the limits are not named to the owner apart');
+  assert.ok(!page.includes('(r.ladders || {}).avgTrades'), 'a ladder on the page still reads the held-back count');
 };

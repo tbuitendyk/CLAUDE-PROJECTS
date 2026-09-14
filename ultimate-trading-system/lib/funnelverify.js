@@ -20,7 +20,7 @@
 const F = require('./funnel');
 
 const HELD = 'avgHold';                          // held-back money on a board row
-const LIMITS = ['maxDrawdown', 'avgTrades'];      // the two rebuilt-number limits step 6 can write
+const LIMITS = ['maxDrawdown', 'avgTrades', 'testTrades'];      // the rebuilt-number limits step 6 can write; avgTrades is the held-back count older rules read, testTrades the test count (3.131.0)
 const DEFAULT_SANITY_PCT = 50;
 // ALL FOUR GATE (3.100.0, owner order 2026-09-09). Until then the two
 // one-trade comparisons gated and the two every-period ones were printed as

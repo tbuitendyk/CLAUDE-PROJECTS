@@ -160,7 +160,7 @@ function reply(body) {
         window: { fromTs: from, toTs: from + 140 * day, days: 140, weeks: 20, perYearFactor: 365.25 / 140 }, why: null },
       ladders: { maxDrawdown: worked ? { field: 'maxDrawdown', dir: 'max', of: 40, measured: 40, rungs: [{ at: 12, keeps: 10 }, { at: 30, keeps: 40 }] }
         : { field: 'maxDrawdown', dir: 'max', of: 40, measured: 0, rungs: [] },
-        avgTrades: { field: 'avgTrades', dir: 'min', of: 40, measured: 40, rungs: [{ at: 6, keeps: 40 }, { at: 20, keeps: 12 }] } } } };
+        testTrades: { field: 'testTrades', dir: 'min', of: 40, measured: 40, rungs: [{ at: 6, keeps: 40 }, { at: 20, keeps: 12 }] } } } };
   }
   return { ...base, reading: { why: 'not canned' } };
 }

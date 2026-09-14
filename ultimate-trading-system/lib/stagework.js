@@ -1432,8 +1432,11 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   // the overlay are summed per coin (3.130.0)
   if (s.confirm === undefined) { s.confirm = r.confirm ?? 'off'; s.kx = r.lean ? r.lean.kx : null; s.ux = r.lean ? r.lean.ux : null; }
   let c = s.perCoin.get(r.trade);
-  if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0, agr: 0, agrN: 0 }; s.perCoin.set(r.trade, c); }
+  if (!c) { c = { test: 0, testN: 0, ttr: 0, ttrN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0, agr: 0, agrN: 0 }; s.perCoin.set(r.trade, c); }
   c.test += r.pnl || 0; c.testN++;
+  // the test-window trade count (3.131.0): what the Funnel's trade floor reads
+  // on a board read on all units together, whose rows are these totals
+  if (r.trades != null) { c.ttr += Number(r.trades) || 0; c.ttrN++; }
   if (r.lean) { c.lp = confirmLib.addParts(c.lp || null, r.lean.test); if (r.lean.hold) c.hlp = confirmLib.addParts(c.hlp || null, r.lean.hold); }
   if (r.rung != null) { c.rung += r.rung; c.rungN++; }
   if (r.voices != null) { c.voices += r.voices; c.voicesN++; }
@@ -1451,10 +1454,16 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   addNoiseRow(c, 'nh', r.noiseHold);
 
   const cellLabel = r.label.split(' · ')[0];
-  const ck = `${cellLabel}|${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}`;
+  // THE CONFIRM DIAL IS PART OF THE COIN ROW'S KEY (3.131.0): the short
+  // setting factors out decision, band and 24/5 -- and it factored out confirm
+  // too, so one coin row summed the same six numbers once per value and
+  // judged them by whichever value's multipliers came first. One row per
+  // value now, each with its own six numbers and its own word.
+  const confirm = r.confirm || 'off';
+  const ck = `${cellLabel}|${r.trade}|${r.ctx1 || ''}|${r.ctx2 || ''}|${r.geometry}|${confirm}`;
   let k = acc.perCoin.get(ck);
   if (!k) {
-    k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
+    k = { cellLabel, trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry, confirm,
       beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
       agr: 0, agrN: 0, rows: 0, b: new Set() };
     acc.perCoin.set(ck, k);
@@ -1538,8 +1547,9 @@ function mergeTallyAcc(acc, part) {
     if (!s) { s = { ...ps, perCoin: new Map() }; delete s.perCoin; s.perCoin = new Map(); acc.perSetting.set(ps.si, s); }
     for (const [trade, add] of ps.perCoin) {
       let c = s.perCoin.get(trade);
-      if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0, agr: 0, agrN: 0 }; s.perCoin.set(trade, c); }
+      if (!c) { c = { test: 0, testN: 0, ttr: 0, ttrN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0, agr: 0, agrN: 0 }; s.perCoin.set(trade, c); }
       c.test += add.test; c.testN += add.testN; c.hold += add.hold; c.holdN += add.holdN;
+      c.ttr += add.ttr || 0; c.ttrN += add.ttrN || 0;
       c.trades += add.trades; c.vsl += add.vsl; c.vsln += add.vsln;
       c.beat += add.beat; c.pairs += add.pairs;
       c.ld += add.ld || 0; c.ldN += add.ldN || 0;
@@ -1555,7 +1565,7 @@ function mergeTallyAcc(acc, part) {
   for (const [ck, add] of part.perCoin) {
     let k = acc.perCoin.get(ck);
     if (!k) {
-      k = { cellLabel: add.cellLabel, trade: add.trade, ctx1: add.ctx1, ctx2: add.ctx2, geometry: add.geometry,
+      k = { cellLabel: add.cellLabel, trade: add.trade, ctx1: add.ctx1, ctx2: add.ctx2, geometry: add.geometry, confirm: add.confirm || 'off',
         beat: 0, pairs: 0, test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, tradesN: 0, vsl: 0, vsln: 0,
         agr: 0, agrN: 0, rows: 0, b: new Set() };
       acc.perCoin.set(ck, k);

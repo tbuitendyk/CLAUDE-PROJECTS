@@ -416,6 +416,10 @@ window.HELP = {
         + 'tables, because only stage 3 prices it.'],
     ],
     controls: {
+      bHeldBack: {
+        what: 'Shows the held-back window on the stage 3 tables: the held-back columns of Table 3.A and Table 3.B and of the records under a row. Off every time this tab is opened. Ticking it on is written on this record set as one dated look, which Verify counts the way it counts a scan on Tune.',
+        more: 'Off, a sort saved on a held-back column is set aside and the table reads in its own order, and a floor on a held-back column is not applied \u2014 a table ordered or cut by hidden held-back money would still be a look. The held-back window is priced at stage 3 and kept for Verify; nothing on the Funnel reads it, and the trade floor on the Funnel\u2019s step 6 reads test trades.',
+      },
       bPin3b: {
         what: 'Shows, in Table 3.B below, only the coins this setting was priced on — and picks this exact setting out of them.',
         more: 'It takes every other filter on Table 3.B off first, so none of the setting\'s coins can be hidden by '

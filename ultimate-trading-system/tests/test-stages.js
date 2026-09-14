@@ -783,17 +783,26 @@ module.exports = {
       assert.strictEqual(r0.verdict, 'better signal');
       assert.strictEqual(C.verdictOf(r0.lean, 2, 1), 'better signal', 'and it is the one rule\'s word');
       assert.deepStrictEqual([r1.confirm, r1.lean, r1.verdict], ['off', null, null], 'off carries no lean and no word');
-      const kA = tally.coins.find((k) => k.trade === 'AAA' && k.cellLabel === 'q x');
+      const kA = tally.coins.find((k) => k.trade === 'AAA' && k.cellLabel === 'q x' && k.confirm === 'sized');
       const kB = tally.coins.find((k) => k.trade === 'BBB');
       assert.strictEqual(kA.verdict, 'better signal', 'coin AAA: its one record with a lean');
       assert.strictEqual(kB.verdict, 'just leverage', 'coin BBB: doubling trades that make the same per trade as the rest');
       assert.deepStrictEqual(kA.lean, { test: partsA, hold: null }, 'the per-coin row keeps the six numbers it judged');
-      assert.strictEqual(kA.rows, 2, 'the off record and the sized record of the same short setting are both under the coin');
+      // ONE COIN ROW PER VALUE OF CONFIRM (3.131.0). The off record and the
+      // sized record of the same short setting were once summed under one coin
+      // row, which judged the sum of both by the first row's multipliers.
+      assert.strictEqual(kA.rows, 1, 'the sized record alone is under the sized coin row');
+      const kOff = tally.coins.find((k) => k.trade === 'AAA' && k.cellLabel === 'q x' && k.confirm === 'off');
+      assert.ok(kOff && kOff !== kA, 'the off record of the same coin and short setting is not its own row');
+      assert.deepStrictEqual([kOff.rows, kOff.lean, kOff.verdict], [1, null, null], 'the off row carries a lean or a word');
+      assert.deepStrictEqual([kA.confirm, kA.kx, kA.ux], ['sized', 2, 1], 'the coin row does not say which value of confirm it is');
       // and the tables sort by the word in its written order, best first
       const byVerdict = stages.stage3Coins(id, { sort: 'verdict' });
-      assert.deepStrictEqual(byVerdict.rows.map((r) => r.verdict), ['better signal', 'just leverage'], 'best word first');
+      assert.deepStrictEqual(byVerdict.rows.map((r) => r.verdict), ['better signal', 'just leverage', null], 'best word first, a row with none last');
       const turned = stages.stage3Coins(id, { sort: 'verdict', flip: '1' });
-      assert.deepStrictEqual(turned.rows.map((r) => r.verdict), ['just leverage', 'better signal']);
+      assert.deepStrictEqual(turned.rows.map((r) => r.verdict), [null, 'just leverage', 'better signal']);
+      // and by the dial's own written order: off, confirmed only, sized
+      assert.deepStrictEqual(stages.stage3Coins(id, { sort: 'confirm' }).rows.map((r) => r.confirm), ['off', 'sized', 'sized'], 'confirm does not sort in the dial\'s written order');
       stages.setSetSort(id, [{ key: 'verdict', dir: 'desc' }]);
       assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.verdict), ['better signal', null], 'a row with no word sits last');
       // the sharded fold gives the same words
@@ -802,7 +811,7 @@ module.exports = {
       for (const r of rowstore.readAll(id, 'records').map((x) => x.row || x)) sw.tallyFold(acc, r, 0);
       const s0 = acc.perSetting.get(0);
       assert.strictEqual(sw.verdictOfCells([...s0.perCoin.values()], s0), 'better signal');
-      assert.strictEqual(sw.verdictOfCoin([...acc.perCoin.values()].find((k) => k.trade === 'AAA' && k.cellLabel === 'q x')), 'better signal');
+      assert.strictEqual(sw.verdictOfCoin([...acc.perCoin.values()].find((k) => k.trade === 'AAA' && k.cellLabel === 'q x' && k.confirm === 'sized')), 'better signal');
       assert.strictEqual(sw.verdictOfCoin([...acc.perCoin.values()].find((k) => k.trade === 'BBB')), 'just leverage');
       assert.strictEqual(sw.verdictOfCoin(null), null, 'no coin, no word');
     } finally {
@@ -866,8 +875,9 @@ module.exports = {
       '${bConfirm(r)}</td>', ">verdict${bCoinSortBtn(view, 'verdict', '\u2193')}</th>"]) {
       assert.ok(boards.includes(piece), `Boards must draw: ${piece}`);
     }
-    assert.strictEqual(boards.split('${bVerdict(r.verdict)}</td>').length - 1, 2, 'a verdict cell on Table 3.A and one on Table 3.B');
-    const cell = src.slice(src.indexOf('function bVerdict(word) {'), src.indexOf('function bRankSortBtn('));
+    // 3.131.0: each hands the word its six numbers, and the records under a row have their own two verdict cells
+    assert.strictEqual(boards.split('${bVerdict(r.verdict, ').length - 1, 2, 'a verdict cell on Table 3.A and one on Table 3.B');
+    const cell = src.slice(src.indexOf('function bVerdict(word, parts = null, confirm = null, kx = null, ux = null) {'), src.indexOf('function bRankSortBtn('));
     assert.ok(cell.includes('VOCAB.confirmVerdict') && cell.includes('title="${esc(hit.why)}"'), 'the hover on the word is the engine\'s own reason');
     // the sorts the screen offers are sorts the service implements
     const keys = require('../lib/stages');
@@ -1180,21 +1190,21 @@ module.exports = {
       // floors and sort through the serving path
       const tf = path.join(SETS_DIR, `${id}-tally.json.gz`);
       assert.ok(fs.existsSync(tf), 'the tally must be saved beside the set');
-      const coins = stages.stage3Coins(id, { sort: 'money', minPairs: 30 });
+      const coins = stages.stage3Coins(id, { sort: 'money', minPairs: 30, heldBack: '1' });
       assert.strictEqual(coins.rows.length, 1, 'only the 38-comparison row clears a floor of 30');
       assert.strictEqual(coins.removed, 2, 'and the line under the table owns up to both rows held back');
-      const sorted = stages.stage3Coins(id, { sort: 'money', minPairs: 10 });
+      const sorted = stages.stage3Coins(id, { sort: 'money', minPairs: 10, heldBack: '1' });
       assert.deepStrictEqual(sorted.rows.map((r) => r.avgHold), [20, 7, -4], 'money sort, whole set, best first');
       assert.deepStrictEqual(sorted.rows.map((r) => r.avgTest), [18, 9, -4], 'and every served row carries its avg test $');
       // one click on a column sorts it; a second click turns the whole order
       // the other way (owner order, 2026-08-27)
-      const byTest = stages.stage3Coins(id, { sort: 'test', minPairs: 10 });
+      const byTest = stages.stage3Coins(id, { sort: 'test', minPairs: 10, heldBack: '1' });
       assert.deepStrictEqual(byTest.rows.map((r) => r.avgTest), [18, 9, -4], 'avg test $ sorts the whole set, best first');
-      const turned = stages.stage3Coins(id, { sort: 'test', flip: '1', minPairs: 10 });
+      const turned = stages.stage3Coins(id, { sort: 'test', flip: '1', minPairs: 10, heldBack: '1' });
       assert.deepStrictEqual(turned.rows.map((r) => r.avgTest), [-4, 9, 18], 'a second click turns the whole order the other way');
-      const byRows = stages.stage3Coins(id, { sort: 'rows', minPairs: 10 });
+      const byRows = stages.stage3Coins(id, { sort: 'rows', minPairs: 10, heldBack: '1' });
       assert.strictEqual(byRows.rows[0].rows, 2, 'rows sorts by how many records the row averages');
-      const floored = stages.stage3Coins(id, { minVsLong: 0 });
+      const floored = stages.stage3Coins(id, { minVsLong: 0, heldBack: '1' });
       assert.ok(floored.rows.every((r) => r.avgVsLong >= 0), 'the vs always-long floor holds');
       // EVERY FLOOR THE TABLE OFFERS MUST ACTUALLY REMOVE ROWS. avg test $ was
       // drawn, sent and never read: a floor of a million on the owner's own
@@ -1203,12 +1213,24 @@ module.exports = {
       // value in its column.
       for (const [box, col] of [['minTest', 'avgTest'], ['minHold', 'avgHold'], ['minTrades', 'avgTrades'],
         ['minVsLong', 'avgVsLong'], ['minPairs', 'pairs']]) {
-        const all = stages.stage3Coins(id, {});
+        const all = stages.stage3Coins(id, { heldBack: '1' });
         assert.ok(all.rows.some((r) => r[col] != null), `the fixture has no ${col} to floor`);
-        const none = stages.stage3Coins(id, { [box]: 1e9 });
+        const none = stages.stage3Coins(id, { [box]: 1e9, heldBack: '1' });
         assert.strictEqual(none.rows.length, 0, `the "${box}" floor removes nothing — the box is drawn and never read`);
         assert.strictEqual(none.removed, all.total, `and the line under the table does not own up to what "${box}" held back`);
       }
+      // AND BEHIND THE TICK (3.131.0): a held-back floor is not applied, the
+      // held-back numbers do not leave the service, a held-back sort is set
+      // aside and the page is told which; the test floor still bites.
+      const hidden = stages.stage3Coins(id, { minPairs: 1e9, minHold: 1e9, minTrades: 1e9, minVsLong: 1e9, minShare: 1e9 });
+      assert.strictEqual(hidden.total, 3, 'a held-back floor is applied while the window is hidden');
+      assert.deepStrictEqual([hidden.heldBack, hidden.sortSetAside], [false, null]);
+      for (const r of hidden.rows) for (const k of ['share', 'beat', 'pairs', 'avgHold', 'avgTrades', 'avgVsLong', 'noiseHold']) assert.ok(!(k in r), `${k} leaves the service with the window hidden`);
+      assert.ok(hidden.rows.every((r) => r.avgTest != null), 'the test money does not ride with the window hidden');
+      assert.strictEqual(stages.stage3Coins(id, { minTest: 1e9 }).total, 0, 'the test floor does not bite with the window hidden');
+      const aside = stages.stage3Coins(id, { sort: 'money' });
+      assert.strictEqual(aside.sortSetAside, 'money', 'a held-back sort is not set aside while the window is hidden, or the page is not told which');
+      assert.deepStrictEqual(aside.rows.map((r) => r.avgTest), stages.stage3Coins(id, { sort: 'beatnoise' }).rows.map((r) => r.avgTest), 'with the sort set aside the table does not read in its own order');
 
       // the records under a row come back from only its blocks, grouped right
       const got = stages.stage3CoinRows(id, { cellLabel: 'q2/6 x', trade: 'AAA', ctx1: '', ctx2: '', geometry: 'daily-4d' });
@@ -1496,9 +1518,16 @@ module.exports = {
       assert.deepStrictEqual(stages.readTally(id).ranked.map((r) => r.tHours), [41, 17, 65]);
       // one column picked: the whole list reorders, and the pick echoes back
       stages.setSetSort(id, [{ key: 'avgHold', dir: 'desc' }]);
-      const byHold = stages.stage3Ranked(id, 0, 10);
+      const byHold = stages.stage3Ranked(id, 0, 10, null, { heldBack: true });
       assert.deepStrictEqual(byHold.rows.map((r) => r.avgHold), [30, 12, -4], 'the picked column orders the whole table');
       assert.deepStrictEqual(byHold.sort, [{ key: 'avgHold', dir: 'desc' }], 'the served page says what ordered it');
+      // BEHIND THE TICK (3.131.0) a held-back sort is set aside: the page is
+      // told which, the table reads in its own order, and the column is not served
+      const aside = stages.stage3Ranked(id, 0, 10);
+      assert.deepStrictEqual(aside.sortSetAside, [{ key: 'avgHold', dir: 'desc' }], 'the page is not told the saved sort was set aside');
+      assert.deepStrictEqual([aside.sort, aside.heldBack], [[], false]);
+      assert.deepStrictEqual(aside.rows.map((r) => r.tHours), [41, 17, 65], 'with the sort set aside the table does not read in its own order');
+      assert.ok(aside.rows.every((r) => !('avgHold' in r)), 'the held-back column leaves the service with the window hidden');
       stages.setSetSort(id, [{ key: 'tHours', dir: 'asc' }]);
       assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.tHours), [17, 41, 65], 'a dial column sorts too');
       // and the page cut comes AFTER the sort
@@ -2594,7 +2623,7 @@ module.exports = {
       w.close();
       await stages.buildTally(doc);
 
-      const all = stages.stage3Ranked(id, 0, 10);
+      const all = stages.stage3Ranked(id, 0, 10, null, { heldBack: true });
       assert.ok(all.spread, 'the served page carries no spread, so the boxes have nothing to show');
       // t: 17 41 65 89 -> an even count, so the middle is the two middle
       // values averaged, and it is NOT one of the values in the column
@@ -2612,7 +2641,7 @@ module.exports = {
 
       // AND THEY MOVE WITH THE FILTERS. With the two losing-or-small settings
       // filtered out the spread must describe what is left, not the four.
-      const some = stages.stage3Ranked(id, 0, 10, { holdMin: 10 });
+      const some = stages.stage3Ranked(id, 0, 10, { holdMin: 10 }, { heldBack: true });
       assert.strictEqual(some.total, 2, 'the fixture is wrong if the floor does not leave two rows');
       const h2 = some.spread.holdMin;
       assert.deepStrictEqual([h2.min, h2.median, h2.avg, h2.max], [12, 21, 21, 30],
@@ -2621,12 +2650,20 @@ module.exports = {
       assert.deepStrictEqual([t2.min, t2.max], [17, 65], 'and every other column must narrow with it');
 
       // the every-coin table's floors carry their own four, over its own rows
-      const cn = stages.stage3Coins(id, {});
+      const cn = stages.stage3Coins(id, { heldBack: '1' });
       assert.ok(cn.spread && cn.spread.minHold, 'the every-coin floors have no numbers beside them');
       assert.deepStrictEqual([cn.spread.minHold.min, cn.spread.minHold.max], [-4, 30]);
-      const cn2 = stages.stage3Coins(id, { minHold: 10 });
+      const cn2 = stages.stage3Coins(id, { minHold: 10, heldBack: '1' });
       assert.deepStrictEqual([cn2.spread.minHold.min, cn2.spread.minHold.max], [12, 30],
         'the every-coin numbers must follow its floors too');
+      // BEHIND THE TICK (3.131.0): a held-back floor is not applied, and the
+      // four numbers beside its box are not served, on either table
+      const hid = stages.stage3Ranked(id, 0, 10, { holdMin: 10 });
+      assert.strictEqual(hid.total, 4, 'the held-back floor is applied while the window is hidden');
+      assert.ok(!('holdMin' in hid.spread) && ('tMin' in hid.spread), 'the four numbers beside a held-back box are served while the window is hidden, or a dial box lost its four');
+      const hidC = stages.stage3Coins(id, { minHold: 10 });
+      assert.strictEqual(hidC.total, cn.total, 'the every-coin held-back floor is applied while the window is hidden');
+      assert.ok(!('minHold' in hidC.spread) && ('minTest' in hidC.spread), 'the every-coin numbers beside a held-back box are served while the window is hidden, or the test box lost its four');
     } finally {
       try { fs.unlinkSync(file); } catch (_) { /* gone */ }
       try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
@@ -5348,5 +5385,218 @@ module.exports = {
     const hb = head.indexOf('>held-back $</th>');
     assert.ok(tt >= 0 && bc >= 0 && hb >= 0 && tt < bc && bc < hb,
       'the records\' beat its own null set column is missing or out of its ordered place');
+  },
+
+  // THE HELD-BACK WINDOW IS BEHIND A TICK ON BOARDS (3.131.0, owner order:
+  // "hide it behind a tick that we can select, and it will count as a look the
+  // way tune does"). Off, the held-back numbers do not leave the service; on,
+  // one dated look is written on the stage 3 set, and Verify counts it.
+  async theHeldBackWindowIsBehindATickOnBoards() {
+    const stamp = Date.now().toString(36);
+    const id = `s3-test-${stamp}-tick`;
+    const s1 = `s1-test-${stamp}-tick`;
+    const busy = `s3-test-${stamp}-busy`;
+    const setFile = (x) => path.join(SETS_DIR, `${x}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      const base = { createdAt: new Date().toISOString(), plan: { units: 1, settings: 2 }, params: { nullN: 3 }, recordsVersion: stages.RECORDS_V };
+      fs.writeFileSync(setFile(id), JSON.stringify({ ...base, id, stage: 3, seq: 999985, name: 'S3 #tick', status: 'done' }));
+      fs.writeFileSync(setFile(s1), JSON.stringify({ ...base, id: s1, stage: 1, seq: 999984, name: 'S1 #tick', status: 'done' }));
+      fs.writeFileSync(setFile(busy), JSON.stringify({ ...base, id: busy, stage: 3, seq: 999983, name: 'S3 #busy', status: 'running' }));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, label, hold) => ({
+        si, label, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+        entry: 'market', gate: null, dMult: null, tHours: 65, trailMult: null, armMult: null,
+        quorum: 2, members: 6, pnl: 10 + si, trades: 3,
+        holdout: { pnl: hold, trades: 4, stops: 1, vsAlwaysLong: 2 },
+        beat: 2, pairs: 3, lead: 0.5, u: 0, trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+        confirm: 'off', lean: null, verdict: null,
+      });
+      w.push(mk(0, 'q x · argmax auto 24/7', 30));
+      w.push(mk(1, 'q y · argmax auto 24/7', -4));
+      w.close();
+      await stages.buildTally({ id });
+
+      // OFF: the held-back numbers do not leave the service, on either table
+      const off = stages.stage3Ranked(id, 0, 10);
+      assert.deepStrictEqual([off.heldBack, off.sortSetAside, off.total], [false, null, 2]);
+      for (const r of off.rows) for (const k of ['avgHold', 'avgTrades', 'avgVsLong', 'beat', 'pairs', 'avgLead', 'coinsInMoney']) assert.ok(!(k in r), `${k} left the service with the window hidden`);
+      assert.ok(off.rows.every((r) => r.avgTest != null), 'the test money does not ride with the window hidden');
+      // and the totalled rows carry the test-trade count, because a Funnel board
+      // read on all units together IS these rows and its trade floor reads it
+      assert.ok(off.rows.every((r) => r.testTrades === 3), 'a totalled row carries no test-trade count, so a floor on it drops every row of a board read on all units together');
+      const blend = await stages.funnelBoard(id, stages.readTally(id), 'all');
+      assert.deepStrictEqual(blend.all.map((r) => r.testTrades), [3, 3], 'the blended board has no test-trade count');
+      assert.strictEqual(require('../lib/funnel').ladderFor(blend.all, 'testTrades', 'min').measured, 2, 'the ladder on the blended board measures nothing');
+      const on = stages.stage3Ranked(id, 0, 10, null, { heldBack: true });
+      assert.deepStrictEqual([on.heldBack, on.rows.map((r) => r.avgHold).sort((a, b) => a - b)], [true, [-4, 30]], 'with the tick on the held-back column is not served');
+      const offC = stages.stage3Coins(id, {});
+      assert.deepStrictEqual([offC.heldBack, offC.total], [false, 2]);
+      for (const r of offC.rows) for (const k of ['share', 'beat', 'pairs', 'avgHold', 'avgTrades', 'avgVsLong']) assert.ok(!(k in r), `${k} left the every-coin table with the window hidden`);
+      assert.deepStrictEqual(stages.stage3Coins(id, { heldBack: '1' }).rows.map((r) => r.avgHold).sort((a, b) => a - b), [-4, 30]);
+      // a request that is not exactly '1' is off: the service cannot be talked into a look by a stale or malformed request
+      assert.strictEqual(stages.stage3Coins(id, { heldBack: 'true' }).heldBack, false);
+      assert.strictEqual(stages.stage3Ranked(id, 0, 10, null, { heldBack: 'yes' }).heldBack, true, 'the ranked door decides the tick, and hands the service a boolean');
+
+      // ON: one dated look on the set per tick, whichever tables were open
+      assert.strictEqual(stages.getSet(id).heldBackLooks, undefined, 'a fresh set carries looks');
+      const first = stages.recordHeldBackLook(id, ['Table 3.A', 'Table 3.B']);
+      assert.strictEqual(first.looks, 1);
+      assert.deepStrictEqual([first.look.on, first.look.tables], ['Boards', ['Table 3.A', 'Table 3.B']]);
+      assert.ok(!Number.isNaN(Date.parse(first.look.at)), 'the look is not dated');
+      const second = stages.recordHeldBackLook(id, ['Table 3.A', 'Table 3.B', 'records']);
+      assert.strictEqual(second.looks, 2, 'the second tick on is not a second look');
+      const looks = stages.getSet(id).heldBackLooks;
+      assert.strictEqual(looks.length, 2, 'the looks are not written on the set');
+      assert.deepStrictEqual(looks[1].tables, ['Table 3.A', 'Table 3.B', 'records']);
+      assert.strictEqual(stages.recordHeldBackLook(id, null).look.tables.length, 0, 'no table list is a refusal rather than an empty list');
+      assert.strictEqual(stages.recordHeldBackLook(id, new Array(20).fill('x')).look.tables.length, 8, 'the table list is not capped');
+      // refusals: unknown, not stage 3, still being written -- and a refusal writes nothing
+      for (const [bad, why] of [['no-such-set', /unknown record set/], [s1, /only a stage 3 record set/], [busy, /still being written/]]) {
+        let threw = null;
+        try { stages.recordHeldBackLook(bad, []); } catch (e) { threw = e.message; }
+        assert.ok(threw && why.test(threw), `${bad}: expected ${why}, got ${threw}`);
+      }
+      assert.strictEqual(stages.getSet(busy).heldBackLooks, undefined, 'a refusal wrote a look');
+
+      // VERIFY COUNTS THEM, the way it counts a scan on Tune
+      const seen = stages.verifyLooksOf({ parent: { id }, steps: [1, 2], backSteps: [1] }, null, 0);
+      assert.strictEqual(seen.boardLooks, 4);
+      assert.ok(seen.what.some((w) => w === 'Boards showed the held-back columns of S3 #tick 4 time(s), each a counted look'), seen.what.join(' | '));
+      assert.strictEqual(seen.unstamped, 4, 'the walk\'s own looks are no longer counted');
+      const none = stages.verifyLooksOf({ parent: { id: busy }, steps: [], backSteps: [] }, null, 0);
+      assert.strictEqual(none.boardLooks, 0);
+      assert.ok(none.what.some((w) => w === 'Boards has not shown the held-back columns of S3 #busy since they went behind a tick'), none.what.join(' | '));
+
+      // the doors: the ranked table is asked with the tick, and the look has its own door
+      const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+      assert.ok(srv.includes("{ heldBack: String(req.query.heldBack || '') === '1' }"), 'the ranked door does not pass the tick to the service');
+      assert.ok(srv.includes("app.post('/api/stageset/:id/held-back-look'") && srv.includes('stages.recordHeldBackLook(req.params.id, (req.body || {}).tables)'),
+        'there is no door for the look, or it does not write one');
+    } finally {
+      for (const x of [id, s1, busy]) { try { fs.unlinkSync(setFile(x)); } catch (_) { /* gone */ } }
+      try { fs.unlinkSync(path.join(SETS_DIR, `${id}-tally.json.gz`)); } catch (_) { /* gone */ }
+      rowstore.remove(id);
+    }
+  },
+
+  // THE SCREEN SIDE OF THE TICK (3.131.0): off on every visit, one tick above
+  // Table 3.A covering Table 3.A, Table 3.B and the records under a row, the
+  // look written before anything held-back is drawn, and every held-back
+  // column of the three tables inside the tick, head and cell alike.
+  theBoardsScreenKeepsTheHeldBackColumnsBehindTheTick() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    assert.ok(ui.includes('let bHeldBack = false;'), 'the tick has no page state');
+    // off on every visit: the tab click and the return from a Sweep launch both put it back
+    const tabs = ui.slice(ui.indexOf("$('#tabs').querySelectorAll('.tab').forEach((t) => {"), ui.indexOf('draw().then(() => restoreScroll(tab));  // and back to where we were on this one'));
+    assert.ok(tabs.includes('bHeldBack = false;'), 'a tab click does not hide the held-back window again');
+    assert.ok(ui.includes("    tab = 'sweep';\n    bHeldBack = false;"), 'the return to Sweep does not hide the held-back window again');
+    // the tick itself, above Table 3.A, and the note when a saved sort is set aside
+    assert.ok(ui.includes('<input type="checkbox" id="bHeldBack" ${bHeldBack ? \'checked\' : \'\'}> show the held-back window</label>'), 'the tick is not drawn, or not by that name');
+    assert.ok(ui.indexOf('id="bHeldBack"') < ui.indexOf('<b>Table 3.A: Settings, ranked</b>'), 'the tick is not above Table 3.A');
+    assert.ok(ui.includes('the sort saved on this set reads the held-back window (${esc(bHeldBackSortWords(ranked.sortSetAside))}); it is set aside while the window is hidden'),
+      'the page does not say a saved held-back sort was set aside');
+    assert.ok(ui.includes('Table 3.B was sorting by ${esc(B_HELD_BACK_WORDS_3B[coins.sortSetAside] || coins.sortSetAside)}, a held-back column; while the window is hidden it reads by beat the kept null money'),
+      'the page does not say which held-back column Table 3.B was sorting by');
+    // the words the two notes name a set-aside sort by are the headings on the screen, tied to their sort keys
+    const words3A = new Function(`${ui.slice(ui.indexOf('const B_HELD_BACK_WORDS_3A = '), ui.indexOf('const B_HELD_BACK_WORDS_3B = '))}; return B_HELD_BACK_WORDS_3A;`)();
+    const words3B = new Function(`${ui.slice(ui.indexOf('const B_HELD_BACK_WORDS_3B = '), ui.indexOf('function bHeldBackSortWords('))}; return B_HELD_BACK_WORDS_3B;`)();
+    assert.deepStrictEqual(Object.keys(words3A).sort(), ['avgHold', 'avgLead', 'avgTrades', 'avgVsLong', 'beat', 'coinsInMoney'], 'Table 3.A: a held-back sort key has no screen word');
+    assert.deepStrictEqual(Object.keys(words3B).sort(), ['money', 'pairs', 'share', 'trades', 'vslong'], 'Table 3.B: a held-back sort key has no screen word');
+    for (const [key, word] of Object.entries(words3A)) assert.ok(ui.includes(`>${word}\${bRankSortBtn(doc, '${key}'`), `Table 3.A: "${word}" is not the heading sorted by ${key}`);
+    for (const [key, word] of Object.entries(words3B)) assert.ok(ui.includes(`>${word}\${bCoinSortBtn(view, '${key}'`), `Table 3.B: "${word}" is not the heading sorted by ${key}`);
+    // both tables are asked with the tick, and the every-coin table's own order changes with it
+    assert.strictEqual(ui.split("heldBack: bHeldBack ? '1' : '',").length - 1, 2, 'the two table requests do not both carry the tick');
+    assert.ok(ui.includes("sort: coinsQ.sort || (bHeldBack ? 'share' : 'beatnoise')"), 'the every-coin table does not read in its own order with the window hidden');
+    // the look is written before anything held-back is drawn, and a failed write draws nothing
+    const wire = ui.slice(ui.indexOf("const hb = $(mount).querySelector('#bHeldBack');"), ui.indexOf("$(mount).querySelectorAll('[data-brec]')"));
+    assert.ok(wire.includes("const tables = ['Table 3.A', 'Table 3.B', ...(openKeys.size ? ['records'] : [])];"), 'the look does not say which tables were open');
+    assert.ok(wire.includes('const r = await tryPost(`api/stageset/${doc.id}/held-back-look`, { tables });'), 'ticking on writes no look');
+    assert.ok(wire.includes('if (!r) { bHeldBack = false; hb.checked = false; return; }'), 'a failed write still draws the held-back columns');
+    assert.ok(wire.indexOf('tryPost(') < wire.indexOf('bRedrawPeggedToCoinHead();'), 'the columns are drawn before the look is written');
+    // EVERY held-back column of the three tables sits inside the tick, head and
+    // cell alike. Read within the stage 3 drawer: the Funnel's cut table draws
+    // avg held-back $ too, and that is the once-only look the cut is for.
+    const start = ui.indexOf('async function bDrawStage3(');
+    const nextFn = /\n(?:async )?function /g;
+    nextFn.lastIndex = start + 1;
+    const b3 = ui.slice(start, nextFn.exec(ui).index);
+    assert.ok(b3.includes('coin-rows?') && b3.includes("querySelector('#bHeldBack')"), 'the records under a row and the tick are not drawn by the stage 3 drawer');
+    const blocks = [];
+    for (let at = 0; ;) {
+      const s = b3.indexOf('${bHeldBack ? `', at);
+      if (s < 0) break;
+      const e = b3.indexOf("` : ''}", s);
+      assert.ok(e > s, 'a tick block does not close');
+      blocks.push(b3.slice(s, e));
+      at = e;
+    }
+    const heads = blocks.flatMap((b) => [...b.matchAll(/<th [^>]*>(.*?)(?=\$\{|<)/g)].map((m) => m[1]));
+    const cells = blocks.reduce((a, b) => a + (b.match(/<td /g) || []).length, 0);
+    assert.deepStrictEqual(heads, [
+      'avg held-back $', 'avg held-back trades', 'avg vs always-long $', 'beat its own null set', 'lead over null set', 'coins in the money',
+      'beat its own null set', 'comparisons', 'avg held-back', 'avg trades', 'avg vs always-long',
+      'beat its own null set', 'held-back $', 'held-back trades', 'held-back stops', 'vs always-long', 'held-back verdict',
+    ], 'the held-back columns inside the tick are not the seventeen of Table 3.A, Table 3.B and the records under a row');
+    assert.strictEqual(cells, heads.length, 'a held-back heading and its cells are not inside the tick together');
+    assert.strictEqual(b3.split('...(bHeldBack ? [').length - 1, 4, 'the floors on the held-back columns are not inside the tick on both tables');
+    // and none of those headings is drawn outside the tick
+    const outside = blocks.reduce((x, b) => x.replace(b, ''), b3);
+    for (const h of ['>avg held-back $${', '>avg held-back trades', '>coins in the money', '>comparisons', '>held-back verdict']) {
+      assert.ok(!outside.includes(h), `"${h}" is drawn outside the tick too`);
+    }
+    // confirm prints as a value on both tables and the records, and the six numbers go under the word
+    assert.strictEqual(ui.split('<td ${btd}>${bConfirm(r)}</td>').length - 1, 2, 'Table 3.A and Table 3.B do not both print confirm through bConfirm');
+    assert.ok(ui.includes('<td ${btd}>${bVerdict(r.verdict, r.lean, r.confirm, r.kx, r.ux)}</td>'), 'Table 3.A does not hand the word its six numbers');
+    assert.ok(ui.includes('<td ${btd}>${bVerdict(r.verdict, r.lean ? r.lean.test : null, r.confirm, r.kx, r.ux)}</td>'), 'Table 3.B does not hand the word its six numbers');
+    assert.ok(ui.includes("confirm${bCoinSortBtn(view, 'confirm', '↑')}</th>"), 'Table 3.B has no confirm column');
+    assert.ok(ui.includes("const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry, r.confirm || 'off'].join('|');"),
+      'a coin row is not keyed by its value of confirm, so two rows of one coin open and close together');
+    assert.ok(ui.includes("const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry, confirm: confirm || 'off' }).toString();"),
+      'the records under a row are not asked for by the row\'s value of confirm');
+    assert.ok(ui.includes('or sized with its multipliers">confirm</th>') && ui.includes('Empty on a record priced with confirm off or with no lean.">verdict</th>'),
+      'the records under a row do not show confirm and verdict');
+    assert.ok(ui.includes('${bConfirm({ confirm: r.confirm, lean: r.lean, kx: r.lean ? r.lean.kx : null, ux: r.lean ? r.lean.ux : null })}'), 'a record\'s confirm is not printed through bConfirm');
+    assert.ok(ui.includes('${bVerdict(r.verdict ? r.verdict.test : null, r.lean ? r.lean.test : null, r.confirm, r.lean ? r.lean.kx : null, r.lean ? r.lean.ux : null)}'),
+      'a record\'s test verdict does not carry its six numbers');
+    assert.ok(ui.includes('${bVerdict(r.verdict ? r.verdict.hold : null, r.lean ? r.lean.hold : null, r.confirm, r.lean ? r.lean.kx : null, r.lean ? r.lean.ux : null)}'),
+      'a record\'s held-back verdict does not carry its six numbers');
+    const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
+    assert.ok(help.includes('bHeldBack: {'), 'the tick has no help entry');
+  },
+
+  // OFF IS PRINTED AS A VALUE, AND THE SIX NUMBERS ARE ON THE SCREEN (3.131.0,
+  // owner order: "put that off marker on as opposed to a dash ... I don't want
+  // them hiding just behind the tooltip"). The page's own helpers, run here.
+  theConfirmCellPrintsOffAndTheSixNumbersShowUnderTheWord() {
+    const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const body = ui.slice(ui.indexOf('function bConfirm(r) {'), ui.indexOf('function bRankSortBtn('));
+    const { bConfirm, bLeanNumbers, bVerdict } = new Function([
+      "const esc = (t) => String(t).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/\"/g, '&quot;');",
+      "const money = (v) => '$' + Number(v).toFixed(2);",
+      "const VOCAB = { confirmVerdict: [{ value: 'better signal', why: 'the rule' }] };",
+      body,
+      'return { bConfirm, bLeanNumbers, bVerdict };',
+    ].join('\n'))();
+    // off is printed as a value, not a dash
+    assert.strictEqual(bConfirm({ confirm: 'off' }), 'off');
+    assert.strictEqual(bConfirm({}), 'off', 'a record priced before the dial existed was priced off');
+    assert.strictEqual(bConfirm({ confirm: 'sized', kx: 2, ux: 1, lean: { c: {} } }), 'sized <span class="muted">×2/×1</span>');
+    assert.strictEqual(bConfirm({ confirm: 'confirmed only', lean: { c: {} } }), 'confirmed only');
+    assert.strictEqual(bConfirm({ confirm: 'confirmed only', lean: null }), 'confirmed only <span class="muted">(no unit carried a lean)</span>');
+    // the six numbers, visible under the word, never made up
+    const parts = { c: { pnl: 8, n: 4 }, u: { pnl: -3, n: 3 }, z: { pnl: 1, n: 1 } };
+    assert.strictEqual(bLeanNumbers(null, 'sized', 2, 1), '', 'numbers are made up where there is no lean');
+    assert.strictEqual(bLeanNumbers({ c: parts.c }, 'sized', 2, 1), '', 'half a lean prints half the numbers');
+    assert.strictEqual(bLeanNumbers(parts, 'sized', 2, 1),
+      '<div class="muted" style="white-space:nowrap;font-size:.85em">confirmed $8.00 over 4 · unconfirmed $-3.00 over 3 · no lean $1.00 over 1 · at size 1 $6.00 → sized $14.00</div>');
+    assert.ok(bLeanNumbers(parts, 'confirmed only').endsWith('at size 1 $6.00 → confirmed only $9.00</div>'), 'confirmed only does not drop the unconfirmed trades');
+    assert.ok(bLeanNumbers(parts, 'off').endsWith('at size 1 $6.00</div>'), 'off has money under it beyond the money at size 1');
+    // the word carries them on the screen, with a hover for the rule; no word, no numbers
+    const v = bVerdict('better signal', parts, 'sized', 2, 1);
+    assert.ok(v.startsWith('<span title="the rule">better signal</span><div class="muted"'), v);
+    assert.ok(!/title="[^"]*confirmed \$/.test(v), 'the six numbers are in a hover, not on the screen');
+    assert.strictEqual(bVerdict('better signal'), '<span title="the rule">better signal</span>');
+    assert.strictEqual(bVerdict(null, parts, 'sized', 2, 1), '<span class="muted">—</span>', 'no word, no numbers');
   },
 };

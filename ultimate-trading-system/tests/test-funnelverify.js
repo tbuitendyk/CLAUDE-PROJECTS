@@ -550,7 +550,8 @@ module.exports = {
       assert.strictEqual(b.lineB.n, 2);
       assert.strictEqual(r.pass, true);
       assert.strictEqual(b.looks.unstamped, 3, 'one step, one step back, and the cut view');
-      assert.ok(b.looks.what.some((w) => /Boards offers a sort and a filter/.test(w)));
+      // 3.131.0: Boards keeps the held-back columns behind a tick, and Verify says whether it has shown them
+      assert.ok(b.looks.what.some((w) => /^Boards (showed|has not shown) the held-back columns of /.test(w)), b.looks.what.join(' | '));
     } finally { f.cleanup(); }
   },
 

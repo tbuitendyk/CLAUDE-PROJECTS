@@ -3234,7 +3234,7 @@ function storeBudgetFor({ rows, freeBytes = null }) {
 // Line by line, no single string is ever longer than one entry, and the size
 // of the whole stops mattering. Derived, so the old one is not migrated: it
 // reads as an older shape and is rebuilt (RULE NINE).
-const TALLY_V = 7;   // 7 (3.130.0): the confirm dial, the lean parts and the verdict per setting and per coin
+const TALLY_V = 8;   // 8 (3.131.0): one coin row per value of confirm; 7 (3.130.0): the confirm dial, the lean parts and the verdict
 
 // ---- WHAT THE MEMBERS ACTUALLY DID -------------------------------------------
 //
@@ -4381,6 +4381,9 @@ async function buildTally(doc, pool = null, note = null) {
       coins: coinCells.length,
       coinsInMoney: coinHold.filter((v) => v != null && v > 0).length,
       avgTest: avgTest,
+      // the test-window trade count per coin, averaged (3.131.0): the Funnel's
+      // trade floor reads it, and a board read on all units together is these rows
+      testTrades: mean((c) => (c.ttrN ? c.ttr / c.ttrN : null)),
       avgHold: mean((c) => (c.holdN ? c.hold / c.holdN : null)),
       avgTrades: mean((c) => (c.holdN ? c.trades / c.holdN : null)),
       avgVsLong: mean((c) => (c.vsln ? c.vsl / c.vsln : null)),
@@ -4406,6 +4409,7 @@ async function buildTally(doc, pool = null, note = null) {
     const kNt = sw.meanNoise([k], 'nt');
     coins.push({
       cellLabel: k.cellLabel, trade: k.trade, ctx1: k.ctx1, ctx2: k.ctx2, geometry: k.geometry,
+      confirm: k.confirm || 'off',
       share: k.pairs ? k.beat / k.pairs : null, beat: k.beat, pairs: k.pairs,
       avgTest: k.testN ? k.test / k.testN : null,
       avgHold: k.holdN ? k.hold / k.holdN : null,
@@ -4413,8 +4417,10 @@ async function buildTally(doc, pool = null, note = null) {
       avgVsLong: k.vsln ? k.vsl / k.vsln : null,
       avgAgreed: k.agrN ? k.agr / k.agrN : null,
       rows: k.rows, b: [...k.b].sort((x, y) => x - y),
-      // the verdict over this coin's rows that carried a lean (3.130.0)
+      // the verdict over this coin's rows that carried a lean (3.130.0), and
+      // the multipliers they were priced with (3.131.0)
       lean: k.lp ? { test: k.lp, hold: k.hlp || null } : null,
+      kx: k.kx ?? null, ux: k.ux ?? null,
       verdict: sw.verdictOfCoin(k),
       noiseTest: kNt,
       noiseHold: sw.meanNoise([k], 'nh'),
@@ -4853,7 +4859,7 @@ function stage2Table(id, from, n, filters = null) {
   };
 }
 
-const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise', 'verdict'];
+const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise', 'verdict', 'confirm'];
 // What each floor on the every-coin table reads, in the shape spreadOf wants.
 // The table does its own filtering rather than going through FILTER_DEFS, so
 // its columns are named here — and they are named ONCE, beside the floors
@@ -4866,6 +4872,11 @@ const S3_COIN_FILTERS = {
 function stage3Coins(id, query) {
   const t = readTally(id);
   if (!t) return null;
+  // behind the tick (3.131.0): a held-back floor is not applied, a held-back
+  // sort is set aside, ties break on test money, and the held-back numbers
+  // do not leave the service
+  const heldBack = String((query || {}).heldBack || '') === '1';
+  if (!heldBack) query = withoutKeys(query, HELD_BACK_FILTERS_3B);
   const minPairs = Math.max(0, Math.floor(num(query.minPairs, 0)));
   const minShare = query.minShare === '' || query.minShare == null ? null : Number(query.minShare);
   const minHold = query.minHold === '' || query.minHold == null ? null : Number(query.minHold);
@@ -4896,7 +4907,11 @@ function stage3Coins(id, query) {
     // never asked, so a floor on it drops the row rather than reading a zero
     && (minBeatNoise == null || (r.noisePairs > 0 && ((r.beatNoise || 0) / r.noisePairs) * 100 >= minBeatNoise));
   const kept = t.coins.filter(clears);
-  const byShare = (a, b) => ((b.share ?? -1) - (a.share ?? -1)) || (b.pairs - a.pairs);
+  const byHeldBackShare = (a, b) => ((b.share ?? -1) - (a.share ?? -1)) || (b.pairs - a.pairs);
+  const byTestMoney = (a, b) => ((b.avgTest ?? -1e15) - (a.avgTest ?? -1e15))
+    || String(a.cellLabel).localeCompare(String(b.cellLabel)) || String(a.trade).localeCompare(String(b.trade)) || String(a.confirm || '').localeCompare(String(b.confirm || ''));
+  // the tie-break reads held-back only when the tick is on
+  const byShare = heldBack ? byHeldBackShare : byTestMoney;
   // The same share the floor reads, so a column cannot rank by one number
   // while the box beneath it filters on another.
   const noiseShare = (r) => (!r.noisePairs ? null : (r.beatNoise || 0) / r.noisePairs);
@@ -4914,8 +4929,12 @@ function stage3Coins(id, query) {
     setting: (a, b) => String(a.cellLabel).localeCompare(String(b.cellLabel)) || byShare(a, b),
     // best verdict first, in the verdict's written order; rows with none last
     verdict: (a, b) => ((verdictRank(b.verdict) ?? -1) - (verdictRank(a.verdict) ?? -1)) || byShare(a, b),
+    // the dial's own order: off, confirmed only, sized (3.131.0)
+    confirm: (a, b) => (confirmLib.CONFIRM_VALUES.indexOf(a.confirm || 'off') - confirmLib.CONFIRM_VALUES.indexOf(b.confirm || 'off')) || byShare(a, b),
   };
-  const key = S3_SORTS.includes(query.sort) ? query.sort : 'share';
+  const asked = S3_SORTS.includes(query.sort) ? query.sort : (heldBack ? 'share' : 'beatnoise');
+  const sortSetAside = !heldBack && HELD_BACK_SORTS_3B.has(asked) ? asked : null;
+  const key = sortSetAside ? 'beatnoise' : asked;
   // one click on a column sorts it its natural way — best first, or A to Z;
   // a second click turns the whole order the other way (owner order,
   // 2026-08-27). The flip reverses ties too, so the order stays total.
@@ -4926,11 +4945,25 @@ function stage3Coins(id, query) {
   // keyed on the floors only: the sort and the page reorder and cut the rows,
   // neither changes which rows are in them, so a page turn re-uses the answer.
   const floors = JSON.stringify(Object.keys(S3_COIN_FILTERS).map((k) => query[k] ?? ''));
-  const spread = cachedSpread(`3C|${id}|${t.builtAt}|${t.rows}|${floors}`, () => spreadOf(kept, S3_COIN_FILTERS));
+  const defs = heldBack ? S3_COIN_FILTERS : withoutKeys(S3_COIN_FILTERS, HELD_BACK_FILTERS_3B);
+  const spread = cachedSpread(`3C|${id}|${t.builtAt}|${t.rows}|${heldBack ? 'hb' : 'nohb'}|${floors}`, () => spreadOf(kept, defs));
   return {
-    total: kept.length, removed: t.coins.length - kept.length, from, spread,
-    rows: kept.slice(from, from + limit).map(({ b, ...row }) => row),
+    total: kept.length, removed: t.coins.length - kept.length, from, spread, heldBack, sortSetAside,
+    rows: kept.slice(from, from + limit).map(({ b, ...row }) => (heldBack ? row : withoutKeys(row, ['share', 'beat', 'pairs', 'avgHold', 'avgTrades', 'avgVsLong', 'noiseHold']))),
   };
+}
+// THE LOOK (3.131.0): ticking the held-back window on for a stage 3 set writes
+// one dated look on it, whichever tables are open, so Verify can count what
+// Boards showed the way it counts what Tune read.
+function recordHeldBackLook(id, tables) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error('unknown record set');
+  if (doc.stage !== 3) throw new Error('only a stage 3 record set shows the held-back window on Boards');
+  if (doc.status === 'running') throw new Error('the record set is still being written — its tables are not there to look at yet');
+  const look = { at: new Date().toISOString(), on: 'Boards', tables: Array.isArray(tables) ? tables.map(String).slice(0, 8) : [] };
+  doc.heldBackLooks = [...(doc.heldBackLooks || []), look];
+  saveSet(doc);
+  return { looks: doc.heldBackLooks.length, look };
 }
 
 // ---- THE FUNNEL'S VIEW OF A STAGE 3 SET ----------------------------------------
@@ -5014,6 +5047,9 @@ function boardRowOf(r, unitKey) {
     avgTest: r.pnl == null ? null : Number(r.pnl),
     avgHold: held,
     avgTrades: h && h.trades != null ? Number(h.trades) : null,
+    // the test-window trade count (3.131.0): what the Funnel's trade floor
+    // reads now, so a rule is cut without reading the held-back count
+    testTrades: r.trades == null ? null : Number(r.trades),
     avgVsLong: h && h.vsAlwaysLong != null ? Number(h.vsAlwaysLong) : null,
     avgLead: r.lead ?? null,
     beat: r.beat ?? null, pairs: r.pairs ?? null,
@@ -5592,7 +5628,7 @@ async function funnelRead(id, state = {}) {
       // WHAT EACH LIMIT WOULD KEEP, read off the survivors themselves
       ladders: {
         maxDrawdown: F.ladderFor(rows, 'maxDrawdown', 'max'),
-        avgTrades: F.ladderFor(rows, 'avgTrades', 'min'),
+        testTrades: F.ladderFor(rows, 'testTrades', 'min'),
       },
     };
   }
@@ -6445,10 +6481,14 @@ function windowsForVerify(doc, parent) {
 function verifyLooksOf(doc, keys, stamped) {
   const steps = (doc.steps || []).length;
   const back = (doc.backSteps || []).length;
+  const s3 = doc && doc.parent && doc.parent.id ? getSet(doc.parent.id) : null;
+  const boardLooks = ((s3 && s3.heldBackLooks) || []).length;
   const what = [
     `every step and step back of the walk printed the held-back line (${steps} step(s), ${back} step(s) back)`,
     'the cut view printed it once more',
-    'Boards offers a sort and a filter on avg held-back $ over the whole board',
+    // 3.131.0: Boards keeps the held-back columns behind a tick, off by default, and each tick on is a counted look on the stage 3 set
+    boardLooks ? `Boards showed the held-back columns of ${s3.name} ${boardLooks} time(s), each a counted look`
+      : `Boards has not shown the held-back columns of ${s3 ? s3.name : 'the stage 3 set'} since they went behind a tick`,
   ];
   if (keys && keys.readsHeldBackTrades) what.push('one floor of the rule read the held-back trade count');
   // the held-back ride (3.88.0) prints held-back numbers per survivor: a look, stamped
@@ -6460,7 +6500,7 @@ function verifyLooksOf(doc, keys, stamped) {
   // a half-life run judged on the Held window (a 70/15/15 set) read it once per press (3.94.0)
   const halfLifeReads = (doc.halflife || []).filter((r) => r && r.judge === 'hold').length;
   if (halfLifeReads) what.push(`the half-life run on History priced the held-back window ${halfLifeReads} time(s), each a stamped look`);
-  return { unstamped: steps + back + 1, stamped: stamped || 0, rides, tuneReads, halfLifeReads, what };
+  return { unstamped: steps + back + 1, stamped: stamped || 0, rides, tuneReads, halfLifeReads, boardLooks, what };
 }
 function verifyFooting(doc, join) {
   const V = require('./funnelverify');
@@ -8045,7 +8085,24 @@ async function funnelSetRows(id, opts = {}) {
   };
 }
 
-function stage3Ranked(id, from, n, filters = null) {
+// THE HELD-BACK WINDOW ON BOARDS IS BEHIND A TICK (3.131.0, owner order): off,
+// the held-back columns are not drawn, and a saved sort on one of them is set
+// aside for the table's own order -- a table ordered by hidden held-back
+// money would still be a look -- and a floor on one is not applied. The
+// service does both, so the page cannot be talked into a hidden look by a
+// stale request. On, a look is recorded on the set (recordHeldBackLook).
+const HELD_BACK_SORTS_3A = new Set(['avgHold', 'avgTrades', 'avgVsLong', 'beat', 'avgLead', 'coinsInMoney']);
+const HELD_BACK_FILTERS_3A = ['holdMin', 'tradesMin', 'vsLongMin', 'beatMin', 'leadMin', 'inMoneyMin'];
+const HELD_BACK_SORTS_3B = new Set(['share', 'pairs', 'money', 'trades', 'vslong']);
+const HELD_BACK_FILTERS_3B = ['minShare', 'minPairs', 'minHold', 'minTrades', 'minVsLong'];
+const withoutKeys = (obj, keys) => {
+  if (!obj || typeof obj !== 'object') return obj;
+  const out = { ...obj };
+  for (const k of keys) delete out[k];
+  return out;
+};
+function stage3Ranked(id, from, n, filters = null, opts = {}) {
+  const heldBack = !!(opts && opts.heldBack);
   const doc = getSet(id);
   const t = readTally(id);
   if (!t) return null;
@@ -8057,20 +8114,25 @@ function stage3Ranked(id, from, n, filters = null) {
   // the cached tally itself is never reordered.
   let rows;
   let sort = [];
-  if (doc && Array.isArray(doc.sort) && doc.sort.length) {
-    sort = doc.sort;
-    rows = applySort(3, t.ranked.map((r, i) => ({ ...r, _i: i })), doc.sort, (a, b) => a._i - b._i);
+  let sortSetAside = null;
+  const saved = doc && Array.isArray(doc.sort) && doc.sort.length ? doc.sort : null;
+  if (saved && !heldBack && saved.some((x) => HELD_BACK_SORTS_3A.has(String((x || {}).key)))) sortSetAside = saved;
+  if (saved && !sortSetAside) {
+    sort = saved;
+    rows = applySort(3, t.ranked.map((r, i) => ({ ...r, _i: i })), saved, (a, b) => a._i - b._i);
   } else {
     rows = t.ranked.map((r, i) => ({ ...r, _i: i })).sort(rankedDefaultOrder);
   }
   const of = rows.length;
-  rows = applyFilters(3, rows, filters);
-  const spread = cachedSpread(`3R|${id}|${t.builtAt}|${t.rows}|${JSON.stringify(filters || {})}`,
-    () => spreadOf(rows, FILTER_DEFS[3]));
+  const filtersUsed = heldBack ? filters : withoutKeys(filters, HELD_BACK_FILTERS_3A);
+  rows = applyFilters(3, rows, filtersUsed);
+  const defs = heldBack ? FILTER_DEFS[3] : withoutKeys(FILTER_DEFS[3], HELD_BACK_FILTERS_3A);
+  const spread = cachedSpread(`3R|${id}|${t.builtAt}|${t.rows}|${heldBack ? 'hb' : 'nohb'}|${JSON.stringify(filtersUsed || {})}`,
+    () => spreadOf(rows, defs));
   return {
-    total: rows.length, of, from, sort, spread,
+    total: rows.length, of, from, sort, spread, heldBack, sortSetAside,
     agreedError: (doc && doc.agreedError) || null,
-    rows: rows.slice(from, from + n).map(({ _i, ...r }) => r),
+    rows: rows.slice(from, from + n).map(({ _i, ...r }) => (heldBack ? r : withoutKeys(r, ['avgHold', 'avgTrades', 'avgVsLong', 'beat', 'pairs', 'avgLead', 'coinsInMoney']))),
   };
 }
 
@@ -8079,7 +8141,7 @@ function stage3CoinRows(id, query) {
   if (!t) return { indexed: false, why: 'the tables have not been totalled yet' };
   const hit = t.coins.find((k) => k.cellLabel === query.cellLabel && k.trade === query.trade
     && String(k.ctx1 || '') === String(query.ctx1 || '') && String(k.ctx2 || '') === String(query.ctx2 || '')
-    && k.geometry === query.geometry);
+    && k.geometry === query.geometry && (k.confirm || 'off') === String(query.confirm || 'off'));
   if (!hit) return { indexed: false, why: 'no such coin row in this set' };
   const agreedAt = readAgreed(id);
   const keyOf = require('./stagework').agreedKeyOfRecord;
@@ -8087,7 +8149,7 @@ function stage3CoinRows(id, query) {
     .map((x) => x.row)
     .filter((r) => r.label.split(' · ')[0] === hit.cellLabel && r.trade === hit.trade
       && String(r.ctx1 || '') === String(hit.ctx1 || '') && String(r.ctx2 || '') === String(hit.ctx2 || '')
-      && r.geometry === hit.geometry)
+      && r.geometry === hit.geometry && (r.confirm || 'off') === (hit.confirm || 'off'))
     // joined on the way out, from the same table the tables were totalled
     // from — it is not on the record, and this is the only place it is read
     .map((r) => ({ ...r, ...((agreedAt && agreedAt[`${r.u}|${keyOf(r)}`]) || {}) }));
@@ -8516,7 +8578,7 @@ module.exports = {
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
   settingsFor, unitsFor, unitsForPassers, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
-  setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
+  setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, recordHeldBackLook, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,
   spreadOf, S3_COIN_FILTERS,
   buildAgreedTable, readAgreed, writeAgreed, relaunchShapeOf, appendMissingSettings, missingSettingsOf,
@@ -8531,7 +8593,7 @@ module.exports = {
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
   unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
-  stage4GreenlightSource, stage4GreenlightDry,
+  stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet, derivedRefusalOf,
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,

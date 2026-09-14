@@ -527,7 +527,8 @@ let undoing = null;    // the pass that undoes what an unfinished fill-in left
 app.get('/api/stageset/:id/ranked', (req, res) => {
   let out;
   try {
-    out = stages.stage3Ranked(req.params.id, Math.max(0, Number(req.query.from) || 0), Math.max(1, Math.min(500, Number(req.query.n) || 100)), filtersOf(req.query));
+    out = stages.stage3Ranked(req.params.id, Math.max(0, Number(req.query.from) || 0), Math.max(1, Math.min(500, Number(req.query.n) || 100)), filtersOf(req.query),
+      { heldBack: String(req.query.heldBack || '') === '1' });
   } catch (err) { return res.status(400).json({ error: err.message }); }
   if (!out) {
     const t = stages.ensureTally(req.params.id);
@@ -1002,6 +1003,12 @@ app.post('/api/stageset/:id/name', (req, res) => {
 // THE STAGE 2 TABLE'S FILTERS, SAVED ON THE SET (3.78.0). Every other table's
 // filters are a view; these decide what a stage 3 launch prices, so they live
 // where the launch can read them — the same contract the sort has.
+// THE HELD-BACK LOOK ON BOARDS (3.131.0): ticking the held-back window on
+// writes one dated look on the stage 3 set, which Verify counts.
+app.post('/api/stageset/:id/held-back-look', (req, res) => {
+  try { return res.json(stages.recordHeldBackLook(req.params.id, (req.body || {}).tables)); }
+  catch (err) { return res.status(400).json({ error: String(err.message || err) }); }
+});
 app.post('/api/stageset/:id/filters', (req, res) => {
   try { return res.json(stages.setSetFilters(req.params.id, (req.body || {}).filters)); }
   catch (err) { return res.status(400).json({ error: String(err.message || err) }); }

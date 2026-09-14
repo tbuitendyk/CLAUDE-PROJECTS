@@ -526,6 +526,7 @@ function renderTabs() {
     t.onclick = () => {
       rememberScroll(tab);                    // where we were on the one we are leaving
       tab = t.dataset.k;
+      bHeldBack = false;                      // the held-back window is hidden again on every visit to Boards (3.131.0)
       localStorage.setItem('cx-tab', tab);
       draw().then(() => restoreScroll(tab));  // and back to where we were on this one
     };
@@ -1539,6 +1540,11 @@ function fillStageForm(doc) {
 let swSetsCache = null;
 let swDefaultCoins = [];   // every coin downloaded, which is what a blank coin box means
 let swPassersNow = [];     // the coins and shapes ticked on Coins now, off the same answer (3.130.3)
+// THE HELD-BACK WINDOW ON BOARDS IS BEHIND A TICK (3.131.0, owner order): off
+// on every visit to the tab, never remembered, so every showing is a
+// deliberate press and each press is written on the set as a look. Kept only
+// across the redraws of one visit (a sort, a page, a floor).
+let bHeldBack = false;
 
 // A run's stored settings, written back into the boxes. ONE mapping, used by
 // "copy settings into the form" on the Boards section and by the running-job
@@ -1956,6 +1962,7 @@ function wireKeptFill(id) {
     rememberScroll(tab);                     // keep the owner's place on the one being left
     try { localStorage.setItem(scrollKeyFor('sweep'), '0'); } catch (_) { /* private window */ }
     tab = 'sweep';
+    bHeldBack = false;
     localStorage.setItem('cx-tab', tab);
     draw().then(() => restoreScroll(tab));
   };
@@ -3885,17 +3892,44 @@ function bWireSort(doc, root) {
 // verdict is one of four words the engine decided; the word is printed as the
 // engine printed it and its hover says the rule it rests on, read off the
 // vocabulary (one home for the words, lib/confirm.js) rather than typed here.
+// the held-back columns of Table 3.A, by the sort key each carries, so a
+// sort set aside can be named as the heading names it
+const B_HELD_BACK_WORDS_3A = { avgHold: 'avg held-back $', avgTrades: 'avg held-back trades', avgVsLong: 'avg vs always-long $', beat: 'beat its own null set', avgLead: 'lead over null set', coinsInMoney: 'coins in the money' };
+const B_HELD_BACK_WORDS_3B = { share: 'beat its own null set', pairs: 'comparisons', money: 'avg held-back', trades: 'avg trades', vslong: 'avg vs always-long' };
+function bHeldBackSortWords(spec) {
+  return (Array.isArray(spec) ? spec : []).map((x) => B_HELD_BACK_WORDS_3A[(x || {}).key] || (x || {}).key || '').filter(Boolean).join(', ');
+}
 function bConfirm(r) {
   const v = r.confirm || 'off';
-  if (!r.lean) return '—';
-  if (v === 'sized') return `sized <span class="muted">\u00d7${esc(String(r.kx ?? ''))}/\u00d7${esc(String(r.ux ?? ''))}</span>`;
-  return esc(v);
+  // off is a value and is printed as one (3.131.0, owner: "put that off marker
+  // on as opposed to a dash"); the dash was every off row reading as nothing
+  if (v === 'off') return 'off';
+  const mult = v === 'sized' ? ` <span class="muted">\u00d7${esc(String(r.kx ?? ''))}/\u00d7${esc(String(r.ux ?? ''))}</span>` : '';
+  if (!r.lean) return `${esc(v)}${mult} <span class="muted">(no unit carried a lean)</span>`;
+  return `${esc(v)}${mult}`;
 }
-function bVerdict(word) {
+// THE SIX NUMBERS THE WORD RESTS ON, PRINTED UNDER IT (3.131.0, owner order:
+// "I don't want them hiding just behind the tooltip"): money and count of the
+// confirmed, the unconfirmed and the no-lean trades, the money at size 1 they
+// add up to, and the money under the row's own value of confirm. `parts` is
+// one window's { c, u, z }, each { pnl, n }; nothing is printed without it.
+function bLeanNumbers(parts, confirm, kx, ux) {
+  if (!parts || !parts.c || !parts.u || !parts.z) return '';
+  const P = (x) => (x && Number.isFinite(x.pnl) ? x.pnl : 0);
+  const N = (x) => (x && Number.isFinite(x.n) ? x.n : 0);
+  const at1 = P(parts.c) + P(parts.u) + P(parts.z);
+  const k = confirm === 'confirmed only' ? 1 : (confirm === 'sized' ? Number(kx ?? 2) : 1);
+  const u = confirm === 'confirmed only' ? 0 : (confirm === 'sized' ? Number(ux ?? 1) : 1);
+  const under = k * P(parts.c) + u * P(parts.u) + P(parts.z);
+  const part = (name, x) => `${name} ${money(P(x))} over ${N(x)}`;
+  return `<div class="muted" style="white-space:nowrap;font-size:.85em">${part('confirmed', parts.c)} \u00b7 ${part('unconfirmed', parts.u)} \u00b7 ${part('no lean', parts.z)}`
+    + ` \u00b7 at size 1 ${money(at1)}${confirm && confirm !== 'off' ? ` \u2192 ${esc(confirm)} ${money(under)}` : ''}</div>`;
+}
+function bVerdict(word, parts = null, confirm = null, kx = null, ux = null) {
   if (!word) return '<span class="muted">—</span>';
   const list = (VOCAB && VOCAB.confirmVerdict) || [];
   const hit = list.find((o) => o.value === word);
-  return `<span${hit && hit.why ? ` title="${esc(hit.why)}"` : ''}>${esc(word)}</span>`;
+  return `<span${hit && hit.why ? ` title="${esc(hit.why)}"` : ''}>${esc(word)}</span>${bLeanNumbers(parts, confirm, kx, ux)}`;
 }
 function bRankSortBtn(doc, key, firstDir) {
   const spec = Array.isArray(doc.sort) ? doc.sort : [];
@@ -4596,13 +4630,14 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   const coinsQ = view.coins || {};
   const coinF = bFilters('S3C');
   const qs = new URLSearchParams({
-    sort: coinsQ.sort || 'share', flip: coinsQ.flip ? '1' : '',
+    heldBack: bHeldBack ? '1' : '',
+    sort: coinsQ.sort || (bHeldBack ? 'share' : 'beatnoise'), flip: coinsQ.flip ? '1' : '',
     minPairs: coinF.minPairs ?? '', minShare: coinF.minShare ?? '', minTest: coinF.minTest ?? '',
     minHold: coinF.minHold ?? '', minTrades: coinF.minTrades ?? '', minVsLong: coinF.minVsLong ?? '',
     minAgreed: coinF.minAgreed ?? '', setting: coinF.setting ?? '',
     offset: coinsQ.offset || 0, limit: 100,
   }).toString();
-  const rankQs = new URLSearchParams({ from, n: 100, ...bFilters('S3R') }).toString();
+  const rankQs = new URLSearchParams({ from, n: 100, heldBack: bHeldBack ? '1' : '', ...bFilters('S3R') }).toString();
   const [ranked, coins, gap, filling, dropping, undoing] = await Promise.all([
     apiOr(`api/stageset/${doc.id}/ranked?${rankQs}`, null),
     apiOr(`api/stageset/${doc.id}/coins?${qs}`, null),
@@ -4630,7 +4665,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   }
   const rr = (ranked && ranked.rows) || [];
   const cr = (coins && coins.rows) || [];
-  const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry].join('|');
+  const keyOf = (r) => [r.cellLabel, r.trade, r.ctx1 || '', r.ctx2 || '', r.geometry, r.confirm || 'off'].join('|');
   // 'all' means every row the table is showing: set by show in 3.B, which
   // cannot know the keys until the rows come back from the service. Declared
   // after keyOf on purpose — a const read before its own line throws.
@@ -4643,6 +4678,11 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ${bUndoLine(doc, undoing)}
     ${(undoing && undoing.half) ? '' : bDropLine(doc, gap, dropping)}
     ${(undoing && undoing.half && !(filling && (filling.running || filling.stopped))) ? '' : bFillInLine(doc, gap, filling)}
+    <div class="row" style="margin:.2rem 0 .4rem">
+      <label class="c" title="the held-back window is priced at stage 3 and kept for Verify. Off, which is how this tab always opens, the held-back columns of Table 3.A, Table 3.B and the records under a row are not drawn, a saved sort on one of them is set aside, and a floor on one is not applied. On, they are drawn — and that is written on this record set as one dated look, which Verify counts the way it counts a scan on Tune."><input type="checkbox" id="bHeldBack" ${bHeldBack ? 'checked' : ''}> show the held-back window</label>
+      ${(ranked && ranked.sortSetAside) ? `<span class="note warn">the sort saved on this set reads the held-back window (${esc(bHeldBackSortWords(ranked.sortSetAside))}); it is set aside while the window is hidden, and the table reads in its own order</span>` : ''}
+      ${(coins && coins.sortSetAside) ? `<span class="note warn">Table 3.B was sorting by ${esc(B_HELD_BACK_WORDS_3B[coins.sortSetAside] || coins.sortSetAside)}, a held-back column; while the window is hidden it reads by beat the kept null money</span>` : ''}
+    </div>
     <p class="t3head"><b>Table 3.A: Settings, ranked</b> — one row per permuted Sweep Stage 3 setting, averaged over its coin/chunk-shape combinations promoted from Stage 2</p>
     ${bFilterGrid('S3R', [
     ['rule', 'quorum by', 'pick', 'shows only settings weighing the members this way. any shows every one.',
@@ -4661,13 +4701,17 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     ['tMax', 't at most, hours', 'num', 'hides settings held for more hours than this. Empty hides nothing.'],
     ['coinsMin', 'coins at least', 'num', 'hides settings priced on fewer coins than this. Empty hides nothing.'],
     ['testMin', 'avg test $ at least', 'num', 'hides settings whose average test money is below this. Empty hides nothing.'],
+    ...(bHeldBack ? [
     ['holdMin', 'avg held-back $ at least', 'num', 'hides settings whose average held-back money is below this. Empty hides nothing.'],
     ['tradesMin', 'avg held-back trades at least', 'num', 'hides settings with fewer average entries than this. Empty hides nothing.'],
     ['vsLongMin', 'avg vs always-long $ at least', 'num', 'hides settings that beat just holding the coin by less than this. Empty hides nothing.'],
     ['beatMin', 'beat its own null set at least, %', 'num', 'hides settings that won less than this share of their head-to-heads. Empty hides nothing.'],
     ['leadMin', 'lead over null set at least', 'num', 'hides settings whose lead over null set is below this. Empty hides nothing.'],
+    ] : []),
     ['beatNoiseMin', 'beat the kept null money at least, %', 'num', 'hides settings that beat less than this share of the kept scrambled copies of the whole table. Empty hides nothing.'],
+    ...(bHeldBack ? [
     ['inMoneyMin', 'coins in the money at least', 'num', 'hides settings where fewer coins than this made money. Empty hides nothing.'],
+    ] : []),
     ['voicesMin', 'independent voices at least', 'num', 'hides settings whose committees held fewer independent voices than this. Empty hides nothing.'],
     ['agreedMin', 'share that agreed at least, %', 'num', 'hides every setting whose members agreed by less than this on average. Empty hides nothing.'],
   ], ranked && ranked.spread)}
@@ -4692,13 +4736,13 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="how many INDEPENDENT voices the committees held, averaged over the coins. Members that call the same way almost every time count as one voice, so this is how many real opinions the setting rests on.">independent voices${bRankSortBtn(doc, 'avgVoices', 'desc')}</th>
         <th ${bth} title="how many coins this setting was priced on.">coins${bRankSortBtn(doc, 'coins', 'desc')}</th>
         <th ${bth} title="average money per coin on the test window — flattering by construction, because the carry was ordered on that window.">avg test $${bRankSortBtn(doc, 'avgTest', 'desc')}</th>
-        <th ${bth} title="the once-only look, on data no ordering ever read">avg held-back $${bRankSortBtn(doc, 'avgHold', 'desc')}</th>
+        ${bHeldBack ? `<th ${bth} title="the once-only look, on data no ordering ever read">avg held-back $${bRankSortBtn(doc, 'avgHold', 'desc')}</th>
         <th ${bth} title="average entries per coin in the held-back window.">avg held-back trades${bRankSortBtn(doc, 'avgTrades', 'desc')}</th>
         <th ${bth} title="average held-back money per coin minus just holding the coin over the same window.">avg vs always-long $${bRankSortBtn(doc, 'avgVsLong', 'desc')}</th>
-        <th ${bth} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set${bRankSortBtn(doc, 'beat', 'desc')}</th>
+        <th ${bth} title="across every coin and every null-set deal, the share of held-back head-to-heads won">beat its own null set${bRankSortBtn(doc, 'beat', 'desc')}</th>` : ''}
         <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what the shuffle managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bRankSortBtn(doc, 'beatNoise', 'desc')}</th>
-        <th ${bth} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set${bRankSortBtn(doc, 'avgLead', 'desc')}</th>
-        <th ${bth} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money${bRankSortBtn(doc, 'coinsInMoney', 'desc')}</th></tr></thead>
+        ${bHeldBack ? `<th ${bth} title="per coin, how far the real held-back money sits above its null-set deals' typical, against their spread — averaged over the coins. The tie-break's twin at the pricing stage.">lead over null set${bRankSortBtn(doc, 'avgLead', 'desc')}</th>
+        <th ${bth} title="of the coins priced, how many made money on the held-back window — an average carried by two big coins cannot hide here.">coins in the money${bRankSortBtn(doc, 'coinsInMoney', 'desc')}</th>` : ''}</tr></thead>
       <tbody>${rr.map((r, i) => `<tr>
         <td ${btd0} class="muted" style="white-space:nowrap">${(from + i + 1).toLocaleString()}</td>
         <td ${btd} style="white-space:nowrap"><button id="bPin3b" data-bpin3b="${esc(String(r.label).split(' · ')[0])}"
@@ -4707,8 +4751,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${esc(r.decision)}</td>
         <td ${btd}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
         <td ${btd}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
-        <td ${btd}${!r.lean ? ' class="muted"' : ''}>${bConfirm(r)}</td>
-        <td ${btd}>${bVerdict(r.verdict)}</td>
+        <td ${btd}>${bConfirm(r)}</td>
+        <td ${btd}>${bVerdict(r.verdict, r.lean, r.confirm, r.kx, r.ux)}</td>
         <td ${btd}>${esc(r.entry)}</td>
         <td ${btd}${r.entry === 'market' ? ' class="muted"' : ''}>${r.entry === 'market' ? '—' : esc(r.gate)}</td>
         <td ${btd}${r.dMult == null ? ' class="muted"' : ''}>${r.dMult == null ? '—' : `${r.dMult}×`}</td>
@@ -4721,29 +4765,33 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}${r.avgVoices != null && r.members && r.avgVoices < r.members ? ' class="warn"' : ''}>${r.avgVoices == null ? '—' : r.avgVoices.toFixed(1)}</td>
         <td ${btd}>${r.coins}</td>
         <td ${btd}>${bMoney(r.avgTest)}</td>
-        <td ${btd}>${bMoney(r.avgHold)}</td>
+        ${bHeldBack ? `<td ${btd}>${bMoney(r.avgHold)}</td>
         <td ${btd}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
         <td ${btd}>${bMoney(r.avgVsLong)}</td>
-        <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+        <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>` : ''}
         <td ${btd}>${r.noisePairs ? bShare(r.beatNoise / r.noisePairs, r.beatNoise, r.noisePairs) : '<span class="muted">—</span>'}</td>
-        <td ${btd}>${bLead(r.avgLead)}</td>
-        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="26" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        ${bHeldBack ? `<td ${btd}>${bLead(r.avgLead)}</td>
+        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td>` : ''}</tr>`).join('') || '<tr><td colspan="26" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${ranked && ranked.agreedError ? `<p class="note warn">share that agreed is empty on this set — ${esc(ranked.agreedError)}</p>` : ''}
     ${bShown(ranked)}
     ${bPager((ranked && ranked.total) || 0, from, 100, 'S3R')}
     <p class="note">Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
-      nothing picked: beat the kept null money, best first. Independent voices below members means the committees held
+      nothing picked, or with the held-back window hidden and a held-back sort saved: beat the kept null money, best first. Independent voices below members means the committees held
       near-copies, so the setting rests on fewer real opinions than its member count suggests.</p>
     `}
     <div class="t3break"></div>
     <p class="t3head"><b>Table 3.B: Every coin of every setting</b> — one row for each "short" setting x (each coin + chunk shape); every row averages the "factored out" settings: decision, band and 24/5 variants of the short setting, which are provided as sub-rows</p>
     ${bFilterGrid('S3C', [
+    ...(bHeldBack ? [
     ['minShare', 'beat its own null set at least, %', 'num', 'hides rows that won less than this share of their head-to-heads. Empty hides nothing.'],
     ['minPairs', 'comparisons at least', 'num', 'hides rows whose share rests on fewer head-to-heads than this. Empty hides nothing.'],
+    ] : []),
     ['minTest', 'avg test $ at least', 'num', 'hides rows whose average test-window money is below this. Empty hides nothing.'],
+    ...(bHeldBack ? [
     ['minHold', 'avg held-back at least, $', 'num', 'hides rows whose average held-back money is below this. Empty hides nothing.'],
     ['minTrades', 'avg trades at least', 'num', 'hides rows with fewer average entries than this. Empty hides nothing.'],
     ['minVsLong', 'avg vs always-long at least, $', 'num', 'hides rows that beat just holding the coin by less than this. Empty hides nothing.'],
+    ] : []),
     ['minBeatNoise', 'beat the kept null money at least, %', 'num', 'hides rows that beat less than this share of the kept scrambled copies of the whole table. Empty hides nothing.'],
     ['minAgreed', 'share that agreed at least, %', 'num', 'hides rows whose records agreed by less than this on average. Empty hides nothing.'],
     ['setting', 'Table 3.A selection setting', 'text', 'shows only the coins of the setting named here, matched whole. Show in 3.B on a row of Table 3.A fills this in for you and takes every other filter off. Empty shows every setting.', 'wide'],
@@ -4751,13 +4799,14 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     <div class="scrollx"><table style="border-collapse:collapse"><thead><tr data-bcoinhead style="text-align:left;border-bottom:1px solid var(--line)">
         <th ${bth.replace('.3rem .5rem', '.3rem .5rem .3rem 0')} title="the setting with decision, band and 24/5 taken out of its name, so one of these stands for all its decision, band and 24/5 variants at once — they are the records underneath, and the rows column counts them. Table 3.A holds the full settings, which is why it has more rows than this column has values.">SHORT SETTING: DECISION, BAND, 24/5 FACTORED OUT${bCoinSortBtn(view, 'setting', '↑')}</th>
         <th ${bth} title="the traded coin and the chunk shape it was priced at, and under them the one or two coins it is read alongside, on rows that have any. All of it is in this one cell, and the row is one setting on one coin at one chunk shape. What is listed after alongside is context only — read against, never bought or sold. Same word, same meaning, as the alongside column on the two tables above.">coin + chunk shape + alongside${bCoinSortBtn(view, 'coin', '↑')}</th>
-        <th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>
+        <th ${bth} title="what the coin's own lean changed about this coin's trades: off, confirmed only, or sized with its multipliers. One row per value, so the six numbers under verdict are this value's alone.">confirm${bCoinSortBtn(view, 'confirm', '↑')}</th>
+        ${bHeldBack ? `<th ${bth} title="of the head-to-heads between this coin's held-back money and its null-set deals, the share it won.">beat its own null set${bCoinSortBtn(view, 'share', '↓')}</th>` : ''}
         <th ${bth} title="of the kept scrambled copies of this whole table, how many this row's avg test $ beat. Two things make it different from beat its own null set: it reads TEST money, not held-back, so nothing here opens the sealed window; and each copy is the WHOLE table scrambled the same way, so a row has to beat what the shuffle managed across every setting, not just its own scrambled twins. Empty on a set that kept none - set null set money kept on Sweep before the run.">beat the kept null money${bCoinSortBtn(view, 'beatnoise', '↓')}</th>
-        <th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>
+        ${bHeldBack ? `<th ${bth} title="how many head-to-heads the share rests on.">comparisons${bCoinSortBtn(view, 'pairs', '↓')}</th>` : ''}
         <th ${bth} title="average test-window money per record — flattering by construction, because the carry was ordered on that window.">avg test $${bCoinSortBtn(view, 'test', '↓')}</th>
-        <th ${bth} title="average held-back money per record.">avg held-back${bCoinSortBtn(view, 'money', '↓')}</th>
+        ${bHeldBack ? `<th ${bth} title="average held-back money per record.">avg held-back${bCoinSortBtn(view, 'money', '↓')}</th>
         <th ${bth} title="average held-back entries per record.">avg trades${bCoinSortBtn(view, 'trades', '↓')}</th>
-        <th ${bth} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${bCoinSortBtn(view, 'vslong', '↓')}</th>
+        <th ${bth} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${bCoinSortBtn(view, 'vslong', '↓')}</th>` : ''}
         <th ${bth} title="what ACTUALLY agreed at the moments this coin's records spoke, averaged over the records underneath. Every rule fires at or above its bar, so this sits at the share or above it. Measured on the test window.">share that agreed${bCoinSortBtn(view, 'agreed', '↓')}</th>
         <th ${bth} title="what the coin's own lean was worth on this coin, judged from six numbers summed over the records underneath that carried a lean, on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty where no record underneath carried a lean.">verdict${bCoinSortBtn(view, 'verdict', '↓')}</th>
         <th ${bth} title="how many records this row averages — one per decision, band and 24/5 variant of the setting that this coin's units hold; a unit holds only the variants that place different orders on it.">rows${bCoinSortBtn(view, 'rows', '↓')}</th>
@@ -4767,18 +4816,19 @@ async function bDrawStage3(doc, incomplete, view, mount) {
     return `<tr data-bkey="${esc(k)}">
         <td ${btd0}>${esc(r.cellLabel)}</td>
         <td ${btd}>${bCoin(r)} <span class="muted">${esc(bGeo(r.geometry))}</span>${bAlso(r)}</td>
-        <td ${btd}>${bShare(r.share, r.beat, r.pairs)}</td>
+        <td ${btd}>${bConfirm(r)}</td>
+        ${bHeldBack ? `<td ${btd}>${bShare(r.share, r.beat, r.pairs)}</td>` : ''}
         <td ${btd}>${r.noisePairs ? bShare(r.beatNoise / r.noisePairs, r.beatNoise, r.noisePairs) : '<span class="muted">—</span>'}</td>
-        <td ${btd}>${Number(r.pairs).toLocaleString()}</td>
+        ${bHeldBack ? `<td ${btd}>${Number(r.pairs).toLocaleString()}</td>` : ''}
         <td ${btd}>${bMoney(r.avgTest)}</td>
-        <td ${btd}>${bMoney(r.avgHold)}</td>
+        ${bHeldBack ? `<td ${btd}>${bMoney(r.avgHold)}</td>
         <td ${btd}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
-        <td ${btd}>${bMoney(r.avgVsLong)}</td>
+        <td ${btd}>${bMoney(r.avgVsLong)}</td>` : ''}
         <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
-        <td ${btd}>${bVerdict(r.verdict)}</td>
+        <td ${btd}>${bVerdict(r.verdict, r.lean ? r.lean.test : null, r.confirm, r.kx, r.ux)}</td>
         <td ${btd}>${r.rows}</td>
         <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ Records' : 'Records'}</button></td></tr>`;
-  }).join('') || '<tr><td colspan="13" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
+  }).join('') || '<tr><td colspan="14" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${bShown({ total: (coins && coins.total) || 0, of: ((coins && coins.total) || 0) + ((coins && coins.removed) || 0) })}
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`)) return;
@@ -4822,6 +4872,21 @@ async function bDrawStage3(doc, incomplete, view, mount) {
       bRedrawScrolledToCoinHead();
     };
   });
+  const hb = $(mount).querySelector('#bHeldBack');
+  if (hb) {
+    hb.onchange = async () => {
+      bHeldBack = !!hb.checked;
+      if (bHeldBack) {
+        // the look is written before anything held-back is drawn, whichever
+        // tables are open on this visit
+        const tables = ['Table 3.A', 'Table 3.B', ...(openKeys.size ? ['records'] : [])];
+        const r = await tryPost(`api/stageset/${doc.id}/held-back-look`, { tables });
+        // tryPost has already said why in a dialog; nothing held-back is drawn on a failed write
+        if (!r) { bHeldBack = false; hb.checked = false; return; }
+      }
+      bRedrawPeggedToCoinHead();
+    };
+  }
   $(mount).querySelectorAll('[data-brec]').forEach((btn) => {
     btn.onclick = () => {
       const k = btn.dataset.brec;
@@ -4902,8 +4967,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
   for (const k of openKeys) {
     const tr = $(mount).querySelector(`tr[data-bkey="${CSS.escape(k)}"]`);
     if (!tr) continue;
-    const [cellLabel, trade, ctx1, ctx2, geometry] = k.split('|');
-    const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry }).toString();
+    const [cellLabel, trade, ctx1, ctx2, geometry, confirm] = k.split('|');
+    const q = new URLSearchParams({ cellLabel, trade, ctx1, ctx2, geometry, confirm: confirm || 'off' }).toString();
     const got = await apiOr(`api/stageset/${doc.id}/coin-rows?${q}`, null);
     const cell = document.createElement('tr');
     const td = document.createElement('td');
@@ -4917,15 +4982,18 @@ async function bDrawStage3(doc, incomplete, view, mount) {
           <th style="padding:.2rem .5rem .2rem 0" title="how the members' votes became this record's calls">decision</th>
           <th style="padding:.2rem .5rem" title="the band % (or auto) box as this record priced it. auto is worked out from the coin's own history; band % shows what it worked out to">band</th>
           <th style="padding:.2rem .5rem" title="whether this record traded weekdays only">24/5</th>
+          <th style="padding:.2rem .5rem" title="what the coin's own lean changed about this record's trades: off, confirmed only, or sized with its multipliers">confirm</th>
+          <th style="padding:.2rem .5rem" title="what the lean was worth on this record's test window, from the six numbers printed under the word: money and count of the confirmed, the unconfirmed and the no-lean trades, the money at size 1 they add up to, and the money under this record's value of confirm. Empty on a record priced with confirm off or with no lean.">verdict</th>
           <th style="padding:.2rem .5rem" title="what ACTUALLY agreed at the moments THIS record spoke, as a share of whatever its rule counts: the average, and in brackets the least and the most it ever got. The share it was built on is the floor of this, never the whole of it.">share that agreed</th>
           <th style="padding:.2rem .5rem" title="how far either side of the current price this record set its two levels, as a percentage of price">band %</th>
           <th style="padding:.2rem .5rem" title="profit-and-loss on the test window — the window the carry was ordered on">test $</th>
           <th style="padding:.2rem .5rem" title="entries in the test window">test trades</th>
-          <th style="padding:.2rem .5rem" title="of the head-to-heads between THIS record's held-back money and every null-set deal, the share it won">beat its own null set</th>
+          ${bHeldBack ? `<th style="padding:.2rem .5rem" title="of the head-to-heads between THIS record's held-back money and every null-set deal, the share it won">beat its own null set</th>
           <th style="padding:.2rem .5rem" title="the once-only look on data no ordering read — the number that counts">held-back $</th>
           <th style="padding:.2rem .5rem" title="entries in the held-back window">held-back trades</th>
           <th style="padding:.2rem .5rem" title="how many held-back positions closed at their stop">held-back stops</th>
-          <th style="padding:.2rem .5rem" title="this record's held-back money minus just holding the coin over the same window">vs always-long</th></tr></thead>
+          <th style="padding:.2rem .5rem" title="this record's held-back money minus just holding the coin over the same window">vs always-long</th>
+          <th style="padding:.2rem .5rem" title="the same word and six numbers as verdict, read on this record's held-back window instead of its test window">held-back verdict</th>` : ''}</tr></thead>
         <tbody>${(got.rows || []).map((r) => {
     const h = r.holdout || null;
     const mine = bPinnedRecord(r);
@@ -4933,16 +5001,19 @@ async function bDrawStage3(doc, incomplete, view, mount) {
           <td style="padding:.2rem .5rem .2rem 0">${esc(r.decision)}</td>
           <td style="padding:.2rem .5rem">${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
           <td style="padding:.2rem .5rem">${r.weekdaysOnly ? 'yes' : 'no'}</td>
+          <td style="padding:.2rem .5rem">${bConfirm({ confirm: r.confirm, lean: r.lean, kx: r.lean ? r.lean.kx : null, ux: r.lean ? r.lean.ux : null })}</td>
+          <td style="padding:.2rem .5rem">${bVerdict(r.verdict ? r.verdict.test : null, r.lean ? r.lean.test : null, r.confirm, r.lean ? r.lean.kx : null, r.lean ? r.lean.ux : null)}</td>
           <td style="padding:.2rem .5rem">${r.agreed == null ? '<span class="muted">—</span>'
       : `${r.agreed.toFixed(1)}%<span class="muted"> (${r.agreedLow.toFixed(1)}–${r.agreedHigh.toFixed(1)}%, ${Number(r.agreedN).toLocaleString()} call${r.agreedN === 1 ? '' : 's'})</span>`}</td>
           <td style="padding:.2rem .5rem">±${r.bandPct != null ? Number(r.bandPct).toFixed(2) : '—'}%</td>
           <td style="padding:.2rem .5rem">${bMoney(r.pnl)}</td>
           <td style="padding:.2rem .5rem">${r.trades ?? '—'}</td>
-          <td style="padding:.2rem .5rem">${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
+          ${bHeldBack ? `<td style="padding:.2rem .5rem">${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
           <td style="padding:.2rem .5rem">${h ? bMoney(h.pnl) : '<span class="muted">—</span>'}</td>
           <td style="padding:.2rem .5rem">${h && h.trades != null ? h.trades : '—'}</td>
           <td style="padding:.2rem .5rem">${h && h.stops != null ? h.stops : '—'}</td>
-          <td style="padding:.2rem .5rem">${h && h.vsAlwaysLong != null ? bMoney(h.vsAlwaysLong) : '<span class="muted">—</span>'}</td></tr>`;
+          <td style="padding:.2rem .5rem">${h && h.vsAlwaysLong != null ? bMoney(h.vsAlwaysLong) : '<span class="muted">—</span>'}</td>
+          <td style="padding:.2rem .5rem">${bVerdict(r.verdict ? r.verdict.hold : null, r.lean ? r.lean.hold : null, r.confirm, r.lean ? r.lean.kx : null, r.lean ? r.lean.ux : null)}</td>` : ''}</tr>`;
   }).join('')}</tbody></table></div>`;
     }
     cell.appendChild(td);
@@ -6013,7 +6084,9 @@ function fRuleWithFloors(st) {
   const tr = ($('#fTrades') || {}).value;
   const floors = { ...((st.rule || {}).floors || {}) };
   if (dd === '' || dd == null) delete floors.maxDrawdown; else floors.maxDrawdown = { max: Number(dd) };
-  if (tr === '' || tr == null) delete floors.avgTrades; else floors.avgTrades = { min: Number(tr) };
+  // 3.131.0: reads test trades; an older rule's held-back floor goes the moment this box is written
+  delete floors.avgTrades;
+  if (tr === '' || tr == null) delete floors.testTrades; else floors.testTrades = { min: Number(tr) };
   return { ...(st.rule || {}), floors };
 }
 
@@ -6273,7 +6346,7 @@ function fHoldPanel(d, st) {
 
 function fStep6(d, st, r) {
   const dd = (st.rule.floors || {}).maxDrawdown || {};
-  const tr = (st.rule.floors || {}).avgTrades || {};
+  const tr = (st.rule.floors || {}).testTrades || {};
   const ex = r.exposure || {};
   const w = ex.window || null;
   // WHAT THE TWO LIMITS ARE LIMITS ON (owner order, 2026-09-04: "how much are
@@ -6326,7 +6399,7 @@ function fStep6(d, st, r) {
       <li>Read the two lines below: what each limit would keep, of the settings that survive.</li>
       <li>Set <b>worst losing streak allowed</b> - in dollars, per coin: the deepest the running total ever sat below
         its own best point. A setting whose worst streak is deeper than this is dropped.</li>
-      <li>Set <b>fewest trades</b> - counted over the window named above. A setting that traded fewer times is dropped.</li>
+      <li>Set <b>fewest test trades</b> - counted over the window named above. A setting that traded fewer times is dropped.</li>
       <li>Press <b>Add these limits to the rule</b>. Both limits go into the rule together, and the survivor count at
         the top moves.</li>
     </ol>`;
@@ -6339,11 +6412,11 @@ function fStep6(d, st, r) {
     ${money}
     ${when}
     ${fLadder('worst losing streak', (r.ladders || {}).maxDrawdown, 'at most', null, d)}
-    ${fLadder('trades', (r.ladders || {}).avgTrades, 'at least', ex, d)}
+    ${fLadder('test trades', (r.ladders || {}).testTrades, 'at least', ex, d)}
     <div class="row" style="align-items:flex-end;margin-top:.5rem">
       <label class="f">worst losing streak allowed<input id="fDD" type="number" style="width:8rem"
         value="${esc(String(dd.max == null ? '' : dd.max))}"></label>
-      <label class="f">fewest trades<input id="fTrades" type="number" style="width:8rem"
+      <label class="f">fewest test trades<input id="fTrades" type="number" style="width:8rem"
         value="${esc(String(tr.min == null ? '' : tr.min))}"></label>
       <button id="fAddFloors">Add these limits to the rule</button>
       <span class="note">${w ? `a trade count here is over ${Math.round(w.weeks)} weeks${tr.min ? fPerYear(tr.min, ex) : ''}` : 'the window these trades were counted over is not known for this set'}</span></div>
@@ -6621,7 +6694,7 @@ function fHomeNote() {
 // one thing that can put it right: pricing its own settings again.
 // The two numbers a rule can put a limit on, in the words the table heading
 // above them uses. Nothing else in a rule reads a number the sweep did not keep.
-const F_LIMIT_WORDS = { maxDrawdown: 'worst losing streak', avgTrades: 'trades' };
+const F_LIMIT_WORDS = { maxDrawdown: 'worst losing streak', avgTrades: 'held-back trades', testTrades: 'test trades' };
 function fCutNumbers(rec) {
   const reads = Array.isArray(rec.reads) ? rec.reads : [];
   if (!reads.length) return '';
@@ -7755,7 +7828,8 @@ function fWire(st, d) {
     const dd = $('#fDD').value;
     const tr = $('#fTrades').value;
     if (dd === '') delete st.rule.floors.maxDrawdown; else st.rule.floors.maxDrawdown = { max: Number(dd) };
-    if (tr === '') delete st.rule.floors.avgTrades; else st.rule.floors.avgTrades = { min: Number(tr) };
+    delete st.rule.floors.avgTrades;
+    if (tr === '') delete st.rule.floors.testTrades; else st.rule.floors.testTrades = { min: Number(tr) };
     markStep(6);
     fRecord({ n: 6, what: 'exposure', chose: `worst streak ${dd}, fewest trades ${tr}` });
     fSave(); drawFunnel();
