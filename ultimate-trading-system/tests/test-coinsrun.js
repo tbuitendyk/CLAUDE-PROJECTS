@@ -423,6 +423,17 @@ module.exports = {
         assert.deepStrictEqual(Object.keys(row.lean).sort(), ['falling', 'rising'], 'the lean after each colour');
         assert.ok(Math.abs(row.tradesAMonth - (365.25 / 12) * row.called) < 1e-9, 'trades a month is decisions a month times the share called');
         assert.ok(Array.isArray(row.traits) && row.traits.length >= 1);
+        // THE LEANS STAGE 3 PRICES CONFIRM WITH (3.130.0): one per passer at
+        // the bar, keyed by coin and shape, carrying the band it was read at
+        // and the lean after each colour -- ticked or not, because the tick
+        // says what Sweep runs and the lean is a fact about the coin
+        const leans = runner.passerLeans();
+        assert.ok(row.yardstick > 0, 'the row carries the median window move the band is a share of');
+        assert.deepStrictEqual(leans['ZZZPASSAUSDT|daily-3d'], { band: row.band, yardstick: row.yardstick, rising: row.lean.rising, falling: row.lean.falling }, 'the passer\'s lean, as the row carries it, with the yardstick');
+        assert.strictEqual(leans['ZZZPASSBUSDT|daily-3d'], undefined, 'a coin and shape above the bar carries none');
+        runner.setPasserTicked('ZZZPASSAUSDT', 'daily-3d', false);
+        assert.ok(runner.passerLeans()['ZZZPASSAUSDT|daily-3d'], 'un-ticking changes what Sweep runs, not the lean');
+        runner.setPasserTicked('ZZZPASSAUSDT', 'daily-3d', true);
         // the bar moves the list: at 4 both pass, at 0 only the perfect one
         assert.deepStrictEqual(runner.setPassBar(4), { bar: 4 });
         assert.strictEqual(readSettings()[runner.PASS_BAR_KEY], 4, 'the bar lives beside the band');

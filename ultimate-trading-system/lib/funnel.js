@@ -28,7 +28,7 @@
 // "next value along" and can therefore have a SHAPE. Reading a hill off entry
 // or gate would be meaningless: 'market' is not next to 'breakout'.
 const ORDERED_DIALS = ['dMult', 'tHours', 'trailMult', 'armMult', 'bandMode', 'agreePct', 'agreeCopy', 'agreePersist'];
-const CATEGORICAL_DIALS = ['decision', 'weekdaysOnly', 'entry', 'gate', 'agreeRule', 'agreeBar', 'agreeBoth'];
+const CATEGORICAL_DIALS = ['decision', 'weekdaysOnly', 'entry', 'gate', 'agreeRule', 'agreeBar', 'agreeBoth', 'confirm'];
 const ALL_DIALS = [...ORDERED_DIALS, ...CATEGORICAL_DIALS];
 
 // The money every step reads. Named once so there is exactly one place that

@@ -571,6 +571,94 @@ and nothing else, and writes the pairs on the set, so the set says what ran
 even if Coins says something else later. Nothing ticked: the launch refuses
 and says so. Stages 2 and 3 inherit their units from the parent as before.
 
+## 11. The confirmation overlay — `confirm` on stage 3 (3.130.0; owner GO NOW! 2026-09-14)
+
+Written BEFORE any number existed, on the owner's order that the verdict be
+categorical on the screen: *"we need to be able to determine that
+categorically easily by what we see on screen."*
+
+**What it is.** One more stage 3 setting on Sweep, `confirm`, beside the
+other dials, with three values: `off`, `confirmed only`, `sized`; and two
+boxes it reads, `confirmed ×` (default 2) and `unconfirmed ×` (default 1).
+Nothing is trained. At pricing time, on a unit whose coin and `chunk shape`
+is listed among the coins and shapes that pass on Coins (section 10, at the
+bar, ticked or not), every decision's window colour is read at that unit's
+sweet spot band by the same arithmetic Coins uses, and the lean learned on
+train says which way a trade should go after `rising` and after `falling`.
+The committee's call on that decision is then one of three things:
+
+- **confirmed** — the call agrees with the lean;
+- **unconfirmed** — the call disagrees with the lean;
+- **no lean** — the decision sits under the band, or the unit is not a passer.
+
+`off` prices every trade at size 1, as today. `confirmed only` keeps
+confirmed and no-lean trades at size 1 and drops unconfirmed ones (it is
+`sized` with `confirmed ×` 1 and `unconfirmed ×` 0). `sized` keeps every
+trade and scales its money: confirmed by `confirmed ×`, unconfirmed by
+`unconfirmed ×`, no-lean by 1. The fee is a share of the position, so a trade
+at twice the size is exactly twice the money, fees included; no new
+simulator is needed. The scrambled copies are priced under the same rule.
+
+**On a unit that is not a passer** the three values place the same orders,
+so the fold that already keeps one copy of settings that price identical
+trades folds them into `off`; the count says so before the launch. A launch
+that asks for `confirmed only` or `sized` while none of its units is a passer
+is refused, in words.
+
+**The leans are written on the set** at launch (`confirmLeans`, one per
+coin and shape: the band, the lean after `rising`, the lean after
+`falling`), so the set says what it used even if Coins says something else
+later; a set continued or rebuilt reads them off its own record.
+
+**The verdict, per unit and per setting, and for the set as a whole.** Every
+row priced with `confirm` not `off` carries, per window (test, and held-back
+where priced), the money and count of its confirmed, unconfirmed and no-lean
+trades. From those six numbers, with the two multipliers:
+
+- money at size 1 = c + u + z; size at 1 = nc + nu + nz;
+- money sized = kx·c + ux·u + z; size sized = kx·nc + ux·nu + nz.
+
+And the word, decided in this order and printed beside the numbers it rests
+on, with a hover that says which comparison decided it:
+
+1. `adds nothing` — sized money is not above money at size 1.
+2. `just leverage` — sized money is above, but sized money per unit of size
+   is not above money at size 1 per unit of size. A bigger bet, not a
+   better one.
+3. `adds value` — both are above.
+4. `better signal` — `adds value`, and the confirmed trades make more per
+   trade than the unconfirmed ones, and more per trade than the no-lean
+   ones. The lean is telling the committee something it did not know.
+
+The set-level word is taken from the same six numbers summed over every
+unit of the setting. A row whose unit carried no lean has no word. The
+scrambled copies are still priced and still counted beside every row as
+before: the verdict compares two real rows; the null set says whether either
+beats chance.
+
+**Where it shows (as built, quoted from the code that draws it).** Sweep:
+under a `Confirmation` note at the end of the stage 3 block, the box
+`confirm` with `off` / `confirmed only` / `sized`, its `permute` tick, and
+the boxes `confirmed ×` (2) and `unconfirmed ×` (1); the cost line says how
+many of the units carry a lean, and the group is greyed when no unit being
+priced passes on Coins. Boards: `Table 3.A` gains `confirm` (the value, and
+`sized ×2/×1` with its multipliers; a dash on a setting none of whose units
+carried a lean) and `verdict`; `Table 3.B` gains `verdict` per coin. Both
+`verdict` columns sort in the verdict's written order, best first, and the
+hover on each word says which comparison decided it. The Funnel reads
+`confirm` as one more dial. The windows are read at the passer's band and at
+Coins' own yardstick (the coin's median window move on the Coins record,
+carried on the set with the lean), so a window's colour is the same on
+Boards as on Coins. The printed word is the test window's — the
+held-back six numbers ride on every row and on the tally, with no word
+printed from them yet (LOOP-2026-09-14-SIGNAL.md, I6).
+
+**Two things the section did not say, decided in the build and written in
+the loop record**: Greenlight refuses, in words, a survivor priced with
+`confirm` past `off`, because the live path reads no lean off Coins (I8);
+and Tune's per-trade capture prices each entry at size 1 without the lean
+(I9, parked for the owner).
+
 ---
 
 # Part two — the design of 2026-09-12, SUPERSEDED on 2026-09-13

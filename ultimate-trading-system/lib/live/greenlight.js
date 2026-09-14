@@ -63,6 +63,11 @@ function stage4Refusal(src) {
   const sv = src.survivor || {};
   const why = EXECUTOR_SHAPE({ entry: sv.entry, gate: sv.gate, trailMult: sv.trailMult ?? null, armMult: sv.armMult ?? null });
   if (why.length) return `the survivor cannot be traded as it was priced: ${why.join('; ')}`;
+  // THE CONFIRMATION OVERLAY (3.130.0) IS PRICED, NOT TRADED: the live path
+  // reads no lean off Coins, so a survivor priced with confirm past off would
+  // be traded at size 1 as though that were what its record says. Refused in
+  // words until the live path can read the lean.
+  if (sv.confirm && sv.confirm !== 'off') return `the survivor was priced with confirm set to ${sv.confirm}, and the live path has no reading of the coin's own lean yet — it cannot trade what was priced`;
   if (!Array.isArray(src.members) || !src.members.length) return 'the stage 2 set names no members for this unit, so nothing could be trained the same way';
   if (!Number.isFinite(sv.bandPct) || sv.bandPct <= 0) return 'the band this survivor was priced at is not on the record, so it cannot be frozen';
   return null;

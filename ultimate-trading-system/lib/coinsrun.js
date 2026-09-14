@@ -350,9 +350,44 @@ function coinsRunStop() {
   return { stopping: true };
 }
 
+// THE PASSERS, MEMOISED. The stage 3 cost line asks on every box change and
+// a full records reply costs seconds; the passers only change when a record
+// file or the settings file does, so the reply is kept until one of them
+// moves (names and mtimes compared, nothing assumed).
+let passersMemo = null;
+function passersStamp() {
+  const parts = [];
+  try { parts.push(`settings:${fs.statSync(SETTINGS_FILE).mtimeMs}`); } catch (_) { parts.push('settings:none'); }
+  try {
+    for (const f of fs.readdirSync(DIR).sort()) {
+      if (!f.endsWith('.json')) continue;
+      try { parts.push(`${f}:${fs.statSync(path.join(DIR, f)).mtimeMs}`); } catch (_) { parts.push(`${f}:gone`); }
+    }
+  } catch (_) { parts.push('dir:none'); }
+  return parts.join('|');
+}
+function passersCached() {
+  const stamp = passersStamp();
+  if (passersMemo && passersMemo.stamp === stamp) return passersMemo.rows;
+  const rows = coinsRecords().passers.rows;
+  passersMemo = { stamp, rows };
+  return rows;
+}
+
 // THE TICKED PASSERS AS UNITS OF A LAUNCH: what Sweep's own tick runs.
 function passingUnits() {
-  return coinsRecords().passers.rows.filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry }));
+  return passersCached().filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry }));
+}
+// THE LEAN EACH PASSER CARRIES, keyed by coin and shape: what stage 3's
+// confirm dial prices with (COINS.md section 11). Listed at the bar, ticked
+// or not: the tick says what Sweep RUNS, the lean is a fact about the coin.
+function passerLeans() {
+  const out = {};
+  for (const r of passersCached()) {
+    if (!r.lean || !(r.lean.rising || r.lean.falling)) continue;
+    out[`${r.coin}|${r.geometry}`] = { band: r.band, yardstick: r.yardstick ?? null, rising: r.lean.rising || 0, falling: r.lean.falling || 0 };
+  }
+  return out;
 }
 
 // ---- reading the records back -------------------------------------------------
@@ -459,6 +494,9 @@ function coinsRecords() {
           coin: rec.coin, geometry: s.key, shape: s.label,
           check: { asStrong: lc.asStrong, trials: lc.trials },
           band: sig.sweetSpot.band, called: spot.called == null ? null : spot.called,
+          // the median window move the band is a share of, so stage 3 reads
+          // this coin's windows at the same yardstick Coins did (3.130.0)
+          yardstick: coins.medianAbsMove(sr.move),
           edge: spot.edge == null ? null : spot.edge, perDecision: spot.perDecision == null ? null : spot.perDecision,
           ratio: spot.ratio == null ? null : spot.ratio, judged: spot.judged == null ? null : spot.judged,
           lean: at && at.lean ? { rising: at.lean.rising, falling: at.lean.falling } : null,
@@ -492,7 +530,7 @@ function coinsRecords() {
 module.exports = {
   RECORD_V, DEFAULTS, BAND_KEY, AUTO_KEY, PASS_BAR_KEY, PASS_OFF_KEY, LINK_CUT_TRIALS, layouts, recordFile,
   sitOutBand, setSitOutBand, bandAuto, setBandAuto,
-  passBar, setPassBar, passersOff, setPasserTicked, passingUnits,
+  passBar, setPassBar, passersOff, setPasserTicked, passingUnits, passersCached, passerLeans,
   readOneCoin, normalise, busyWhy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
   readRecord, scanRecords, coinsRecords, coinsCleanup,

@@ -221,6 +221,7 @@ const DIAL_ON_SWEEP = {
   agreeRule: 'quorum by',
   agreeBar: 'quorum bar',
   agreeBoth: 'both kinds',
+  confirm: 'confirm',
 };
 // A DIAL IS NAMED WITH ITS SWEEP LABEL EVERYWHERE THE FUNNEL SHOWS IT (owner
 // order, 2026-09-04: "give me the actual FULL NAMES OF THESE DIALS IN ALL OF
@@ -1342,6 +1343,13 @@ async function swCounts() {
       // set, so with only those units the box and its tick would change
       // nothing -- ghosted the way arm is under a static stop, never hidden.
       swGhostGroup('#swGrpWk', got.weekdaysApply === false);
+      // CONFIRM IS GHOSTED WHEN NO UNIT BEING PRICED PASSES ON COINS (3.130.0,
+      // COINS.md section 11): on such units the three values place the same
+      // trades, so the dial and its two boxes would change nothing. Ghosted
+      // only once there are units to price -- with no parent picked yet
+      // there is nothing to know.
+      const noLean = Array.isArray(got.unitSettings) && got.unitSettings.length > 0 && !got.leanUnits;
+      swGhostGroup('#swGrpConfirm', noLean);
       // the budget verdict comes from the SAME arithmetic the launch enforces:
       // a refusal is said here, before the button is pressed
       const refuse = (got.heap && got.heap.band === 'refuse' && got.heap) || (got.disk && got.disk.band === 'refuse' && got.disk) || null;
@@ -1367,7 +1375,13 @@ async function swCounts() {
           + `of its ${Number(got.filtered.of).toLocaleString()} records, and the carry takes the top of those. `
           + 'Press Clear filters under its table on Boards to carry from the whole set.</span>'
         : '';
-      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${units && perUnit.length ? ` — ${perUnit.length.toLocaleString()} units hold ${pricings.toLocaleString()} between them`
+      // THE LEAN'S PART OF THE COUNT (3.130.0): how many of the units to be
+      // priced pass on Coins, so the owner can see why confirm multiplied the
+      // block, or why it is greyed, without leaving this screen
+      const leanSaid = !Array.isArray(got.unitSettings) || !got.unitSettings.length ? ''
+        : noLean ? ' <span class="muted">(no unit being priced is among the coins and shapes that pass on Coins, so confirm is greyed)</span>'
+          : got.confirmWanted ? ` <span class="muted">(confirm reads a lean on ${Number(got.leanUnits).toLocaleString()} of the ${got.unitSettings.length.toLocaleString()} units; on the rest its values are one setting)</span>` : '';
+      html = `declared: <b>${got.settings.toLocaleString()} settings</b>${fold}${leanSaid}${units && perUnit.length ? ` — ${perUnit.length.toLocaleString()} units hold ${pricings.toLocaleString()} between them`
         + (fewer ? ` <span class="muted">(${fewer.toLocaleString()} of them hold fewer than the block: a setting that places the same orders on a unit as another is priced there once)</span>` : '')
         + ` × ${per3().toLocaleString()} readings ≈ ${(pricings * per3()).toLocaleString()} pricings — no trainings` : ''}`
         + cut
@@ -1409,6 +1423,10 @@ function swBlockParams() {
     band: $('#swBand').value.trim() === '' ? 'auto' : ($('#swBand').value.trim() === 'auto' ? 'auto' : Number($('#swBand').value)),
     permuteBand: $('#swPermBand').checked,
     weekdaysOnly: $('#swWk').checked, permuteWeekdays: $('#swPermWk').checked,
+    // THE CONFIRMATION OVERLAY (3.130.0): the dial, its permute, and the two
+    // multipliers sent as typed -- the engine refuses a bad one in words
+    confirm: $('#swConfirm').value, permuteConfirm: $('#swPermConfirm').checked,
+    confirmedX: $('#swConfirmedX').value, unconfirmedX: $('#swUnconfirmedX').value,
     // the agreement is its own dimension now, never part of the trade shape
     agreeRule: $('#swAgreeRule').value,
     agreeBar: $('#swAgreeBar').value,
@@ -1471,6 +1489,8 @@ function fillStageForm(doc) {
     setV('#swDec', p.decision || 'argmax'); setC('#swPermDec', p.permuteDecision);
     setV('#swBand', p.band ?? 'auto'); setC('#swPermBand', p.permuteBand);
     setC('#swWk', p.weekdaysOnly); setC('#swPermWk', p.permuteWeekdays);
+    setV('#swConfirm', p.confirm || 'off'); setC('#swPermConfirm', p.permuteConfirm);
+    setV('#swConfirmedX', p.confirmedX ?? 2); setV('#swUnconfirmedX', p.unconfirmedX ?? 1);
     const c = p.cell || {};
     setV('#swEntry', c.entry); setV('#swGate', c.gate); setV('#swD', c.dMult); setV('#swT', c.tHours);
     setV('#swTrail', c.trailMult == null ? '' : c.trailMult);
@@ -3238,6 +3258,13 @@ async function drawSweep() {
         <label class="f" title="how many decision moments in a row the same call must have stood before it is acted on. off acts at once.">hold<select id="swAgreeHold">${vocabOptions('agreeHold', '0')}</select></label>
         <label class="c" title="price every hold as its own setting."><input type="checkbox" id="swPermAgreeHold"> permute</label>
       </div>
+      <p class="note" style="margin:.6rem 0 .1rem"><b>Confirmation</b> — on a unit whose coin and chunk shape pass on Coins, every call the members make is checked against the way that coin itself has moved after a rising window and after a falling window, at its own sweet spot band. These boxes decide what that check changes. Greyed while no unit being priced passes.</p>
+      <div id="swGrpConfirm" style="display:flex;align-items:flex-end;gap:.45rem">
+        <label class="f" title="WHAT THE CHECK CHANGES. off: nothing, every trade at size 1, exactly as before this box existed. confirmed only: a call the coin's own lean disagrees with is not traded at all; the rest trade at size 1. sized: a call the lean agrees with trades at confirmed × the size, a call it disagrees with at unconfirmed × the size, and a call made when the coin sat inside its band trades at size 1. On a unit whose coin and chunk shape do not pass on Coins the three values place the same trades and are one setting there.">confirm<select id="swConfirm">${vocabOptions('confirm', 'off')}</select></label>
+        <label class="c" title="price all three values of confirm, each as its own setting, so the three can be read side by side on Boards."><input type="checkbox" id="swPermConfirm"> permute</label>
+        <label class="f" title="the size of a trade the coin's own lean agrees with, as a multiple of the plain size. Read by sized only. 2 doubles it; 0 drops it.">confirmed ×<input id="swConfirmedX" type="number" value="2" min="0" step="0.5" style="width:4.5rem"></label>
+        <label class="f" title="the size of a trade the coin's own lean disagrees with, as a multiple of the plain size. Read by sized only. 1 leaves it as it was; 0 drops it, which is what confirmed only does.">unconfirmed ×<input id="swUnconfirmedX" type="number" value="1" min="0" step="0.5" style="width:4.5rem"></label>
+      </div>
     </div>
     <div class="row" style="margin-top:.4rem"><span class="note" id="swCount">…</span></div>
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
@@ -3823,6 +3850,22 @@ function bWireSort(doc, root) {
 // column simply replaces the pick. Saved on the record set like the stage 1
 // and stage 2 sorts — but nothing carries out of stage 3, so the button
 // promises only what it does: the order of this table.
+// THE CONFIRM CELL AND THE VERDICT CELL (3.130.0, COINS.md section 11). The
+// verdict is one of four words the engine decided; the word is printed as the
+// engine printed it and its hover says the rule it rests on, read off the
+// vocabulary (one home for the words, lib/confirm.js) rather than typed here.
+function bConfirm(r) {
+  const v = r.confirm || 'off';
+  if (!r.lean) return '—';
+  if (v === 'sized') return `sized <span class="muted">\u00d7${esc(String(r.kx ?? ''))}/\u00d7${esc(String(r.ux ?? ''))}</span>`;
+  return esc(v);
+}
+function bVerdict(word) {
+  if (!word) return '<span class="muted">—</span>';
+  const list = (VOCAB && VOCAB.confirmVerdict) || [];
+  const hit = list.find((o) => o.value === word);
+  return `<span${hit && hit.why ? ` title="${esc(hit.why)}"` : ''}>${esc(word)}</span>`;
+}
 function bRankSortBtn(doc, key, firstDir) {
   const spec = Array.isArray(doc.sort) ? doc.sort : [];
   const at = spec.findIndex((s) => s.key === key);
@@ -4604,6 +4647,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="how the members' votes become a call — priced from the kept votes.">decision${bRankSortBtn(doc, 'decision', 'asc')}</th>
         <th ${bth} title="the size a move must reach to count as a move at all. auto is worked out from each coin's own history.">band${bRankSortBtn(doc, 'bandMode', 'asc')}</th>
         <th ${bth} title="whether this setting trades weekdays only.">24/5${bRankSortBtn(doc, 'weekdaysOnly', 'asc')}</th>
+        <th ${bth} title="what the coin's own lean changed about the trades, on units whose coin and chunk shape pass on Coins. off: nothing. confirmed only: calls the lean disagreed with were not traded. sized: calls the lean agreed with traded at the confirmed × multiple and calls it disagreed with at the unconfirmed × multiple, printed after it. A dash means no unit of this setting carried a lean.">confirm${bRankSortBtn(doc, 'confirm', 'asc')}</th>
+        <th ${bth} title="what the lean was worth, judged from six numbers summed over this setting's coins on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed — a bigger bet, not a better one. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty on a setting with confirm off or with no lean on any of its units.">verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>
         <th ${bth} title="how the position is opened.">entry${bRankSortBtn(doc, 'entry', 'asc')}</th>
         <th ${bth} title="when a position may be opened at all. A dash means the box does not apply to this setting.">gate${bRankSortBtn(doc, 'gate', 'asc')}</th>
         <th ${bth} title="how far from the starting price the opening level sits. A dash means it does not apply.">d${bRankSortBtn(doc, 'dMult', 'asc')}</th>
@@ -4631,6 +4676,8 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${esc(r.decision)}</td>
         <td ${btd}>${r.bandMode === 'auto' ? 'auto' : `${esc(String(r.bandMode))}%`}</td>
         <td ${btd}>${r.weekdaysOnly ? 'yes' : 'no'}</td>
+        <td ${btd}${!r.lean ? ' class="muted"' : ''}>${bConfirm(r)}</td>
+        <td ${btd}>${bVerdict(r.verdict)}</td>
         <td ${btd}>${esc(r.entry)}</td>
         <td ${btd}${r.entry === 'market' ? ' class="muted"' : ''}>${r.entry === 'market' ? '—' : esc(r.gate)}</td>
         <td ${btd}${r.dMult == null ? ' class="muted"' : ''}>${r.dMult == null ? '—' : `${r.dMult}×`}</td>
@@ -4649,7 +4696,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
         <td ${btd}>${r.noisePairs ? bShare(r.beatNoise / r.noisePairs, r.beatNoise, r.noisePairs) : '<span class="muted">—</span>'}</td>
         <td ${btd}>${bLead(r.avgLead)}</td>
-        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="24" class="empty">nothing here</td></tr>'}</tbody></table></div>
+        <td ${btd}${r.coinsInMoney > r.coins / 2 ? ' class="pos"' : ''}>${r.coinsInMoney} of ${r.coins}</td></tr>`).join('') || '<tr><td colspan="26" class="empty">nothing here</td></tr>'}</tbody></table></div>
     ${ranked && ranked.agreedError ? `<p class="note warn">share that agreed is empty on this set — ${esc(ranked.agreedError)}</p>` : ''}
     ${bShown(ranked)}
     ${bPager((ranked && ranked.total) || 0, from, 100, 'S3R')}
@@ -4681,6 +4728,7 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <th ${bth} title="average held-back entries per record.">avg trades${bCoinSortBtn(view, 'trades', '↓')}</th>
         <th ${bth} title="average held-back money minus just holding the coin over the same window.">avg vs always-long${bCoinSortBtn(view, 'vslong', '↓')}</th>
         <th ${bth} title="what ACTUALLY agreed at the moments this coin's records spoke, averaged over the records underneath. Every rule fires at or above its bar, so this sits at the share or above it. Measured on the test window.">share that agreed${bCoinSortBtn(view, 'agreed', '↓')}</th>
+        <th ${bth} title="what the coin's own lean was worth on this coin, judged from six numbers summed over the records underneath that carried a lean, on the test window: money and count of the confirmed, the unconfirmed and the no-lean trades. adds nothing: the money with the lean is not above the money at size 1. just leverage: more money, but not more per unit of size deployed. adds value: more money and more per unit of size. better signal: adds value, and the confirmed trades made more per trade than the unconfirmed and than the no-lean ones. Hover the word for the rule it rests on. Empty where no record underneath carried a lean.">verdict${bCoinSortBtn(view, 'verdict', '↓')}</th>
         <th ${bth} title="how many records this row averages — one per decision, band and 24/5 variant of the setting that this coin's units hold; a unit holds only the variants that place different orders on it.">rows${bCoinSortBtn(view, 'rows', '↓')}</th>
         <th ${bth} title="opens the records themselves below the row.">records</th></tr></thead>
       <tbody id="bCoinBody">${cr.map((r) => {
@@ -4696,9 +4744,10 @@ async function bDrawStage3(doc, incomplete, view, mount) {
         <td ${btd}>${r.avgTrades == null ? '—' : r.avgTrades.toFixed(1)}</td>
         <td ${btd}>${bMoney(r.avgVsLong)}</td>
         <td ${btd}>${r.avgAgreed == null ? '<span class="muted">—</span>' : `${r.avgAgreed.toFixed(1)}%`}</td>
+        <td ${btd}>${bVerdict(r.verdict)}</td>
         <td ${btd}>${r.rows}</td>
         <td ${btd}><button data-brec="${esc(k)}">${openKeys.has(k) ? '▾ Records' : 'Records'}</button></td></tr>`;
-  }).join('') || '<tr><td colspan="12" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
+  }).join('') || '<tr><td colspan="13" class="empty">nothing cleared the floors</td></tr>'}</tbody></table></div>
     ${bShown({ total: (coins && coins.total) || 0, of: ((coins && coins.total) || 0) + ((coins && coins.removed) || 0) })}
     ${bPager((coins && coins.total) || 0, coinsQ.offset || 0, 100, 'S3C')}
   </div>`)) return;

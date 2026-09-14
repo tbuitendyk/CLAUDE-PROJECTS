@@ -114,6 +114,9 @@ module.exports.aStage4GreenlightRefusesInWordsAndShuttlesOnlyIntoADraft = functi
     [() => gl.greenlightFromStage4(stage4Src(), { name: 'x' }), /WHY/],
     [() => gl.greenlightFromStage4(stage4Src(), { why: 'x' }), /NAME|name/],
     [() => gl.greenlightFromStage4(stage4Src({ survivor: { ...stage4Src().survivor, agreeRule: 'majority' } }), { name: 'x', why: 'x' }), /agreement\.rule/],
+    // 3.130.0: the live path reads no lean off Coins, so a survivor priced
+    // with confirm past off cannot be traded as it was priced
+    [() => gl.greenlightFromStage4(stage4Src({ survivor: { ...stage4Src().survivor, confirm: 'sized' } }), { name: 'x', why: 'x' }), /priced with confirm set to sized, and the live path has no reading of the coin's own lean yet/],
   ];
   for (const [fn, re] of cases) {
     let err = null;
@@ -122,6 +125,7 @@ module.exports.aStage4GreenlightRefusesInWordsAndShuttlesOnlyIntoADraft = functi
   }
   // the dry read's refusal is the same words the press throws
   assert.strictEqual(gl.stage4Refusal(stage4Src()), null);
+  assert.strictEqual(gl.stage4Refusal(stage4Src({ survivor: { ...stage4Src().survivor, confirm: 'off' } })), null, 'a survivor priced at off is what every survivor before 3.130.0 was');
   assert.ok(/a coin read on its own/.test(gl.stage4Refusal(stage4Src({ unit: { trade: 'LTCUSDT', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d' } }))));
   // MINTED, IT SHUTTLES INTO A DRAFT AND PASSES THE LIVE DOOR (3.91.0: the live
   // path speaks its agreement) -- and a draft trades nothing: only the owner's

@@ -360,6 +360,13 @@ window.HELP = {
         more: 'A hold is a plain noise filter: it costs entries and keeps only the calls the committee stayed with.',
       },
       swPermAgreeHold: { what: 'Price every hold as its own setting in the block.' },
+      swConfirm: {
+        what: 'What the coin\u2019s own lean changes about the trades, on a unit whose coin and chunk shape pass on Coins. off changes nothing: every trade at size 1, exactly as before this box existed. confirmed only drops every call the lean disagrees with. sized trades a call the lean agrees with at confirmed \u00d7 the size and one it disagrees with at unconfirmed \u00d7 the size.',
+        more: 'The lean is read the way Coins reads it: at the unit\u2019s own sweet spot band, each window is rising, falling or inside the band, and the coin\u2019s history says which way a trade should go after rising and after falling. A call made when the window sat inside the band has no lean and trades at size 1 under every value. A trade at twice the size is exactly twice the money, fees included, so the six numbers behind each row \u2014 money and count of the confirmed, the unconfirmed and the no-lean trades \u2014 say whether the lean adds anything: Boards prints a verdict word beside every setting and every coin. On a unit whose coin and chunk shape do not pass, the three values place the same trades and are priced once. Greyed while no unit being priced passes.',
+      },
+      swPermConfirm: { what: 'Price all three values of confirm, each as its own setting, so off, confirmed only and sized sit side by side on Boards. Only a unit that passes on Coins prices the three apart.' },
+      swConfirmedX: { what: 'The size of a trade the coin\u2019s own lean agrees with, as a multiple of the plain size. Read by sized only. 2 doubles it, 0 drops it.' },
+      swUnconfirmedX: { what: 'The size of a trade the coin\u2019s own lean disagrees with, as a multiple of the plain size. Read by sized only. 1 leaves it as it was; 0 drops it, which is what confirmed only does.' },
       swName3: {
         what: 'What this stage 3 record set is called everywhere it is named — on Boards, in every picker, on the status line. Yours to choose.',
         more: 'Left empty, it takes the next free number, which is what the box shows greyed. A name another record set already has is refused, so no two sets can share one; rename the other on Boards first.',

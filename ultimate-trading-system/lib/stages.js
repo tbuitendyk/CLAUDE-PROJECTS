@@ -25,6 +25,7 @@ const { GEOMETRIES } = require('./dataset');
 // it runs on.
 const defaultCoins = (...a) => require('./dataset').defaultCoins(...a);
 const bracketLib = require('./bracket');
+const confirmLib = require('./confirm');
 const agreement = require('./agreement');
 // One training per reading — read from the reading list itself, so adding a
 // reading can never leave a count behind that was typed in by hand.
@@ -1136,6 +1137,10 @@ const SORT_KEYS = {
     agreeRule: 's', avgAgreed: 'n', avgRung: 'n', avgVoices: 'n', members: 'n',
     coins: 'n', avgTest: 'n', avgHold: 'n', avgTrades: 'n', avgVsLong: 'n',
     beat: 'share', avgLead: 'n', coinsInMoney: 'n', beatNoise: 'share',
+    // the confirmation overlay (3.130.0): the dial's value, and the verdict
+    // word in its written order (adds nothing < just leverage < adds value <
+    // better signal), never alphabetically
+    confirm: 's', verdict: 'v',
   },
 };
 // The words the screens use for those keys, for the chain line — read the
@@ -1155,6 +1160,7 @@ const SORT_WORDS = {
   avgTrades: 'avg held-back trades', avgVsLong: 'avg vs always-long $',
   avgLead: 'lead over null set', coinsInMoney: 'coins in the money',
   beatNoise: 'beat the kept null money',
+  confirm: 'confirm', verdict: 'verdict',
   biggestBeforeCap: 'biggest before the ceiling',
 };
 function sortLabel(spec) {
@@ -1186,8 +1192,11 @@ const SHARE_FIELDS = {
   beatMoney: ['beatMoney', 'pairs'],
 };
 function shareNum(key) { return (SHARE_FIELDS[key] || SHARE_FIELDS.beat)[0]; }
+// the verdict's place in its written order, null where there is none
+const verdictRank = (w) => { const i = confirmLib.VERDICTS.indexOf(w); return i < 0 ? null : i; };
 function sortValue(kind, key, row) {
   if (kind === 's') return key === 'ctx' ? `${row.ctx1 || ''}${row.ctx2 ? ` + ${row.ctx2}` : ''}` : String(row[key] ?? '');
+  if (kind === 'v') return verdictRank(row[key]);
   if (kind === 'share') {
     const [num, den] = SHARE_FIELDS[key] || SHARE_FIELDS.beat;
     return !row[den] ? null : row[num] / row[den];
@@ -1884,22 +1893,27 @@ function weekdaysApplyTo(rec) { return require('./dataset').weekdaysApply(rec.ge
 // for 41h place the identical orders there and are one setting on that unit --
 // and on a weekly unit, where it is 60, they are two. Keying on the unresolved
 // value would price the same trade twice on every daily unit in the run.
-function foldKeyRest(st, wk, geometry) {
+// CONFIRM IS IN THE KEY ONLY ON A UNIT THAT CARRIES A LEAN (3.130.0): on any
+// other unit the three values place the identical orders, so they are one
+// setting there and fold into the first, exactly as 24/5 folds on a weekly
+// unit. A unit with a lean prices each value on its own.
+function foldKeyRest(st, wk, geometry, hasLean = false) {
   return [st.decision, wk ? 1 : 0, st.entry, st.gate, bracketLib.tHoursOn(st.tHours, geometry),
     st.agreeRule, st.agreeBar, st.agreePct, st.agreeRule === 'voices' ? st.agreeCopy : 0,
-    st.agreeBoth, st.agreePersist].join('|');
+    st.agreeBoth, st.agreePersist, hasLean ? (st.confirm || 'off') : 'off'].join('|');
 }
 // heldOn[u]: the settings unit u prices, as indexes into `settings`, in block order
-function heldOnFor(settings, records) {
+function heldOnFor(settings, records, leans = null) {
   const heldOn = [];
   for (const rec of records) {
     const repOf = shapeRepsFor(settings, [rec]);          // one unit's own geometry classes
     const wkApplies = weekdaysApplyTo(rec);
+    const hasLean = !!leanOf(leans, rec);
     const seen = new Set();
     const mine = [];
     for (let i = 0; i < settings.length; i++) {
       const st = settings[i];
-      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false, rec.geometry)}`;
+      const key = `${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wkApplies ? !!st.weekdaysOnly : false, rec.geometry, hasLean)}`;
       if (seen.has(key)) continue;
       seen.add(key);
       mine.push(i);
@@ -1908,9 +1922,9 @@ function heldOnFor(settings, records) {
   }
   return heldOn;
 }
-function foldSameTradeSettings(settings, records) {
+function foldSameTradeSettings(settings, records, leans = null) {
   if (!Array.isArray(records) || !records.length) return { kept: settings, folded: [], heldOn: [], unitFolded: [] };
-  const heldOn = heldOnFor(settings, records);
+  const heldOn = heldOnFor(settings, records, leans);
   const keptOnAny = new Uint8Array(settings.length);
   for (const list of heldOn) for (const i of list) keptOnAny[i] = 1;
   const kept = [];
@@ -1921,11 +1935,12 @@ function foldSameTradeSettings(settings, records) {
   if (heldOn.length) {
     const repOf = shapeRepsFor(settings, [records[0]]);
     const wk0 = weekdaysApplyTo(records[0]);
-    for (const i of heldOn[0]) firstOn0.set(`${repOf.get(shapeKeyOf(settings[i]))}|${foldKeyRest(settings[i], wk0 ? !!settings[i].weekdaysOnly : false, records[0].geometry)}`, settings[i].label);
+    const lean0 = !!leanOf(leans, records[0]);
+    for (const i of heldOn[0]) firstOn0.set(`${repOf.get(shapeKeyOf(settings[i]))}|${foldKeyRest(settings[i], wk0 ? !!settings[i].weekdaysOnly : false, records[0].geometry, lean0)}`, settings[i].label);
     for (let i = 0; i < settings.length; i++) {
       if (keptOnAny[i]) continue;
       const st = settings[i];
-      folded.push({ dropped: st.label, kept: firstOn0.get(`${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wk0 ? !!st.weekdaysOnly : false, records[0].geometry)}`) || null });
+      folded.push({ dropped: st.label, kept: firstOn0.get(`${repOf.get(shapeKeyOf(st))}|${foldKeyRest(st, wk0 ? !!st.weekdaysOnly : false, records[0].geometry, lean0)}`) || null });
     }
   }
   for (let i = 0; i < settings.length; i++) {
@@ -1969,32 +1984,67 @@ function shapeCellsFor(params) {
   delete shapePermute.agree;
   return require('./declared').expandDeclared(shapeCell, shapePermute, grid);
 }
-// The three plain axes of a block: decision, band and 24/5.
+// The four plain axes of a block: decision, band, 24/5 and confirm (3.130.0).
 function blockAxesFor(params) {
   const decisions = params.permuteDecision ? ['argmax', 'directional'] : [params.decision === 'directional' ? 'directional' : 'argmax'];
   const BAND_MENU = ['auto', 3, 5, 8];
   const bands = params.permuteBand ? BAND_MENU : [params.band === 'auto' || params.band === undefined || params.band === '' ? 'auto' : Number(params.band)];
   for (const b of bands) if (b !== 'auto' && !(Number.isFinite(b) && b > 0)) throw new Error(`band must be auto or a positive percent, not "${b}"`);
   const weekdays = params.permuteWeekdays ? [false, true] : [!!params.weekdaysOnly];
-  return { decisions, bands, weekdays };
+  // THE CONFIRMATION OVERLAY (COINS.md section 11): off, confirmed only, sized;
+  // and the two multipliers `sized` reads, refused rather than coerced
+  const confirmOne = params.confirm === undefined || params.confirm === null || params.confirm === '' ? 'off' : String(params.confirm);
+  if (!confirmLib.isConfirm(confirmOne)) throw new Error(`"${confirmOne}" is not a value of confirm (${confirmLib.CONFIRM_VALUES.join(' / ')})`);
+  const confirms = params.permuteConfirm ? confirmLib.CONFIRM_VALUES.slice() : [confirmOne];
+  const kx = confirmLib.multiplierOrRefuse(params.confirmedX, 'confirmed ×', confirmLib.DEFAULT_KX);
+  const ux = confirmLib.multiplierOrRefuse(params.unconfirmedX, 'unconfirmed ×', confirmLib.DEFAULT_UX);
+  return { decisions, bands, weekdays, confirms, kx, ux };
+}
+// whether a block asks for the lean at all: a permuted dial, or one set past off
+function confirmWanted(params) {
+  const { confirms } = blockAxesFor(params || {});
+  return confirms.some((c) => c !== 'off');
+}
+// THE LEAN EACH UNIT PRICES WITH, keyed by coin and shape, read off Coins'
+// passers at the moment of the count or the launch; a unit not listed there
+// has none and every value of confirm folds into off on it.
+function confirmLeansFor(records) {
+  const all = require('./coinsrun').passerLeans();
+  const out = {};
+  for (const rec of records || []) {
+    const key = `${rec.trade}|${rec.geometry}`;
+    if (all[key]) out[key] = all[key];
+  }
+  return out;
+}
+const leanOf = (leans, rec) => ((leans || {})[`${rec.trade}|${rec.geometry}`] || null);
+// the confirm dial's part of a setting's name: nothing when off, so a block
+// that never asked for the lean names its settings exactly as it always did
+function confirmLabel(confirm, kx, ux) {
+  if (confirm === 'confirmed only') return ' \u00b7 confirmed only';
+  if (confirm === 'sized') return ` \u00b7 sized \u00d7${kx}/\u00d7${ux}`;
+  return '';
 }
 function settingsFor(params, sizes = null) {
   const cells = shapeCellsFor(params);
   const agrees = agreementsFor(params, sizes);
-  const { decisions, bands, weekdays } = blockAxesFor(params);
+  const { decisions, bands, weekdays, confirms, kx, ux } = blockAxesFor(params);
   const out = [];
   for (const decision of decisions) {
     for (const band of bands) {
       for (const wk of weekdays) {
         for (const cell of cells) {
           for (const a of agrees) {
-            out.push({
-              ...cell, quorum: undefined,
-              agreeRule: a.rule, agreeBar: a.bar, agreePct: a.pct, agreeCopy: a.copy,
-              agreeBoth: a.bothModels, agreePersist: a.persist,
-              decision, band, weekdaysOnly: wk,
-              label: `${agreeLabel(a)} ${shapeLabel(cell)} \u00b7 ${decision} ${band === 'auto' ? 'auto' : `${band}%`} ${wk ? '24/5' : '24/7'}`,
-            });
+            for (const confirm of confirms) {
+              out.push({
+                ...cell, quorum: undefined,
+                agreeRule: a.rule, agreeBar: a.bar, agreePct: a.pct, agreeCopy: a.copy,
+                agreeBoth: a.bothModels, agreePersist: a.persist,
+                decision, band, weekdaysOnly: wk,
+                confirm, kx, ux,
+                label: `${agreeLabel(a)} ${shapeLabel(cell)} \u00b7 ${decision} ${band === 'auto' ? 'auto' : `${band}%`} ${wk ? '24/5' : '24/7'}${confirmLabel(confirm, kx, ux)}`,
+              });
+            }
           }
         }
       }
@@ -2332,12 +2382,15 @@ function noiseTwinOf(doc) {
 // bands: a few hundred shapes instead of a few hundred thousand settings,
 // worked out through the SAME shapeRepsFor the launch's fold reads, and a
 // test holds the two equal.
-function countDeclared(params, sizes, records) {
+function countDeclared(params, sizes, records, leans = null) {
   const cells = shapeCellsFor(params);
   const agrees = agreementsFor(params, sizes);
-  const { decisions, bands, weekdays } = blockAxesFor(params);
-  const declared = decisions.length * bands.length * weekdays.length * cells.length * agrees.length;
-  if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0, perUnit: [], pricings: 0, weekdaysApply: true };
+  const { decisions, bands, weekdays, confirms } = blockAxesFor(params);
+  const declared = decisions.length * bands.length * weekdays.length * cells.length * agrees.length * confirms.length;
+  if (!Array.isArray(records) || !records.length) return { declared, kept: declared, folded: 0, perUnit: [], pricings: 0, weekdaysApply: true, leanUnits: 0 };
+  // confirm multiplies only on a unit with a lean; on any other unit its
+  // values fold into one (the fold's own rule, foldKeyRest)
+  let leanUnits = 0;
   // THE FOLD'S KEY, LESS WHAT THE PRODUCT CARRIES: decision and agreement are
   // the same on every unit and multiply whatever is left, so the fold is
   // counted on the (band, 24/5, shape) items alone -- in the block's own
@@ -2359,6 +2412,8 @@ function countDeclared(params, sizes, records) {
     const repOf = shapeRepsFor(items.map((x) => x.shape), [rec]);
     const wkApplies = weekdaysApplyTo(rec);
     if (wkApplies) weekdaysApply = true;
+    const hasLean = !!leanOf(leans, rec);
+    if (hasLean) leanUnits++;
     const seen = new Set();
     let mine = 0;
     for (let i = 0; i < items.length; i++) {
@@ -2369,12 +2424,14 @@ function countDeclared(params, sizes, records) {
       keptOnAny[i] = 1;
       mine++;
     }
-    perUnit.push(decisions.length * agrees.length * mine);
+    perUnit.push(decisions.length * agrees.length * mine * (hasLean ? confirms.length : 1));
   }
   let union = 0;
   for (let i = 0; i < items.length; i++) if (keptOnAny[i]) union++;
-  const kept = decisions.length * agrees.length * union;
-  return { declared, kept, folded: declared - kept, perUnit, pricings: perUnit.reduce((a, b) => a + b, 0), weekdaysApply };
+  // every value of confirm is kept on SOME unit as soon as one unit carries a
+  // lean; with none, only the first value survives the fold anywhere
+  const kept = decisions.length * agrees.length * union * (leanUnits ? confirms.length : 1);
+  return { declared, kept, folded: declared - kept, perUnit, pricings: perUnit.reduce((a, b) => a + b, 0), weekdaysApply, leanUnits };
 }
 function stage3Declared(b) {
   const out = { units: null, coins: null };
@@ -2402,8 +2459,16 @@ function stage3Declared(b) {
   // the count is of what will actually be PRICED: two settings that place the
   // same orders on every unit are one setting -- counted without building
   // them, through the same shape pass the launch's fold reads
-  const counted = countDeclared(b || {}, sizes, records || []);
+  // the leans the launch itself would price with (3.130.0): read here too, so
+  // the cost line and the launch resolve confirm the same way. Read whatever
+  // the dial says, because the screen greys the dial off this count -- a
+  // count that only looked when the dial was already on could never let it
+  // be switched on.
+  const leans = records ? confirmLeansFor(records) : {};
+  const counted = countDeclared(b || {}, sizes, records || [], leans);
   out.settings = counted.kept;
+  out.leanUnits = counted.leanUnits;
+  out.confirmWanted = confirmWanted(b || {});
   out.declared = counted.declared;
   out.folded = counted.folded;
   // what the units will actually price, unit by unit, and whether any unit
@@ -2455,7 +2520,14 @@ function startStage3(params) {
   // themselves are built in the background under "writing the plan", checked
   // against these counts before anything is priced. A bad block still refuses
   // here: the count expands and validates the same trade shapes.
-  const counted = countDeclared(params, sizes, parentRecords);
+  // THE LEANS (COINS.md section 11): read off Coins' passers now, for the
+  // units this launch prices; refused in words when the dial asks for them
+  // and no unit has one, rather than pricing three copies of the same trades
+  const leans = confirmWanted(params) ? confirmLeansFor(parentRecords) : {};
+  if (confirmWanted(params) && !Object.keys(leans).length) {
+    throw new Error('none of the units this run prices is among the coins and shapes that pass on Coins, so confirm would change nothing — set confirm to off, or pick a parent whose units pass');
+  }
+  const counted = countDeclared(params, sizes, parentRecords, leans);
   if (!counted.kept) throw new Error('the block declared no settings');
 
   // the budget gate: the whole plan is known here, so a block that cannot
@@ -2512,6 +2584,13 @@ function startStage3(params) {
       agreePermuteBoth: !!params.agreePermuteBoth, agreePermutePersist: !!params.agreePermutePersist,
       decision: params.decision || 'argmax', band: params.band ?? 'auto', weekdaysOnly: !!params.weekdaysOnly,
       permuteDecision: !!params.permuteDecision, permuteBand: !!params.permuteBand, permuteWeekdays: !!params.permuteWeekdays,
+      // THE CONFIRMATION OVERLAY (3.130.0): the dial, its two multipliers, and
+      // the lean each unit priced with, written here so the set says what it
+      // used whatever Coins says later
+      confirm: blockAxesFor(params).confirms.length === 1 ? blockAxesFor(params).confirms[0] : 'off',
+      permuteConfirm: !!params.permuteConfirm,
+      confirmedX: blockAxesFor(params).kx, unconfirmedX: blockAxesFor(params).ux,
+      confirmLeans: leans,
       // the campaign in use at THIS launch, not the parent's (same rule as stage 2)
       campaign: require('./campaign').getCampaign() || null,
     },
@@ -2576,7 +2655,7 @@ function startStage3(params) {
     saveSet(doc);
     await new Promise((resolve) => { setImmediate(resolve); });
     const declaredSettings = settingsFor(params, sizes);
-    const { kept: settings, folded: sameTrade, heldOn } = foldSameTradeSettings(declaredSettings, parentRecords);
+    const { kept: settings, folded: sameTrade, heldOn } = foldSameTradeSettings(declaredSettings, parentRecords, leans);
     if (settings.length !== counted.kept || declaredSettings.length !== counted.declared) {
       throw new Error(`the count said ${counted.kept.toLocaleString()} settings (${counted.declared.toLocaleString()} declared) and the block `
         + `built ${settings.length.toLocaleString()} (${declaredSettings.length.toLocaleString()} declared) — the cost line and the launch disagree, so nothing was priced`);
@@ -2903,7 +2982,7 @@ function continueStage3(id) {
     saveSet(doc);
     await yieldNow();
     const sizes = [...new Set(parentRecords.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
-    const { kept: settings, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), parentRecords);
+    const { kept: settings, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), parentRecords, (doc.params || {}).confirmLeans || null);
     const labels = (doc.plan || {}).settingLabels || [];
     if (settings.length !== (doc.plan || {}).settings || labels.length !== settings.length || settings.some((st, i) => st.label !== labels[i])) {
       throw notStarted(`the block rebuilds to ${settings.length.toLocaleString()} settings and this run declared ${Number((doc.plan || {}).settings || 0).toLocaleString()} — `
@@ -3152,7 +3231,7 @@ function storeBudgetFor({ rows, freeBytes = null }) {
 // Line by line, no single string is ever longer than one entry, and the size
 // of the whole stops mattering. Derived, so the old one is not migrated: it
 // reads as an older shape and is rebuilt (RULE NINE).
-const TALLY_V = 6;
+const TALLY_V = 7;   // 7 (3.130.0): the confirm dial, the lean parts and the verdict per setting and per coin
 
 // ---- WHAT THE MEMBERS ACTUALLY DID -------------------------------------------
 //
@@ -3986,7 +4065,7 @@ function relaunchShapeOf(doc) {
   const { records } = stage3UnitsFor(parent, choice.carry, choice.selected);
   if (!records.length) throw new Error(`${parent.name} holds no records — the units cannot be rebuilt`);
   const sizes = [...new Set(records.map((r) => r.size || (r.ctx1 ? (r.ctx2 ? 3 : 2) : 1)))];
-  const { kept, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), records);
+  const { kept, heldOn } = foldSameTradeSettings(settingsFor(doc.params || {}, sizes), records, (doc.params || {}).confirmLeans || null);
   // every setting carries its place in the block, and heldOn[i] lists the
   // places records[i] holds
   return { parent, records, settings: kept.map((st, si) => ({ ...st, si })), heldOn };
@@ -4183,6 +4262,8 @@ function s3Payload({ doc, parent, rec, settings, fee, nullN, agreedOnly = false,
       members: rec.specs.map((spec, mi) => ({ spec, tauProbs: (tau.find((t) => t.mi === mi) || {}).probs || [] })),
     },
     settings, fee, nullN, keepN: agreedOnly ? 0 : (Number((doc.params || {}).keepN) || 0), seed: doc.seed,
+    // the lean this unit prices confirm with, off the set's own record (3.130.0)
+    lean: leanOf((doc.params || {}).confirmLeans, rec),
     // THE FOUR ON THE TEST WINDOW, only when asked (3.107.0): the rebuild wants
     // them, a launch must not pay four more simulations a unit for something
     // nothing on a launch reads.
@@ -4286,6 +4367,11 @@ async function buildTally(doc, pool = null, note = null) {
       agreeRule: st.agreeRule, agreeBar: st.agreeBar, agreePct: st.agreePct, agreeCopy: st.agreeCopy,
       agreeBoth: st.agreeBoth, agreePersist: st.agreePersist,
       members: st.members,
+      // THE CONFIRMATION OVERLAY (3.130.0): the dial's value, its multipliers,
+      // and the verdict from the six numbers summed over every coin priced
+      confirm: st.confirm || 'off', kx: st.kx ?? null, ux: st.ux ?? null,
+      lean: sw.leanSumOf(coinCells),
+      verdict: sw.verdictOfCells(coinCells, st),
       avgRung: mean((c) => (c.rungN ? c.rung / c.rungN : null)),
       avgVoices: mean((c) => (c.voicesN ? c.voices / c.voicesN : null)),
       avgAgreed: mean((c) => (c.agrN ? c.agr / c.agrN : null)),
@@ -4324,6 +4410,9 @@ async function buildTally(doc, pool = null, note = null) {
       avgVsLong: k.vsln ? k.vsl / k.vsln : null,
       avgAgreed: k.agrN ? k.agr / k.agrN : null,
       rows: k.rows, b: [...k.b].sort((x, y) => x - y),
+      // the verdict over this coin's rows that carried a lean (3.130.0)
+      lean: k.lp ? { test: k.lp, hold: k.hlp || null } : null,
+      verdict: sw.verdictOfCoin(k),
       noiseTest: kNt,
       noiseHold: sw.meanNoise([k], 'nh'),
       beatNoise: kNt && kTest != null ? kNt.filter((v) => v != null && kTest > v).length : null,
@@ -4757,7 +4846,7 @@ function stage2Table(id, from, n, filters = null) {
   };
 }
 
-const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise'];
+const S3_SORTS = ['share', 'pairs', 'test', 'money', 'trades', 'vslong', 'rows', 'coin', 'setting', 'agreed', 'beatnoise', 'verdict'];
 // What each floor on the every-coin table reads, in the shape spreadOf wants.
 // The table does its own filtering rather than going through FILTER_DEFS, so
 // its columns are named here — and they are named ONCE, beside the floors
@@ -4816,6 +4905,8 @@ function stage3Coins(id, query) {
     beatnoise: (a, b) => ((noiseShare(b) ?? -1) - (noiseShare(a) ?? -1)) || byShare(a, b),
     coin: (a, b) => String(a.trade).localeCompare(String(b.trade)) || byShare(a, b),
     setting: (a, b) => String(a.cellLabel).localeCompare(String(b.cellLabel)) || byShare(a, b),
+    // best verdict first, in the verdict's written order; rows with none last
+    verdict: (a, b) => ((verdictRank(b.verdict) ?? -1) - (verdictRank(a.verdict) ?? -1)) || byShare(a, b),
   };
   const key = S3_SORTS.includes(query.sort) ? query.sort : 'share';
   // one click on a column sorts it its natural way — best first, or A to Z;
@@ -4908,6 +4999,8 @@ function boardRowOf(r, unitKey) {
     trailMult: r.trailMult ?? null, armMult: r.armMult ?? null,
     agreeRule: r.agreeRule ?? null, agreeBar: r.agreeBar ?? null, agreePct: r.agreePct ?? null,
     agreeCopy: r.agreeCopy ?? null, agreeBoth: r.agreeBoth ?? null, agreePersist: r.agreePersist ?? null,
+    // the confirm dial (3.130.0): a record priced before it existed was priced off
+    confirm: r.confirm ?? 'off',
     members: r.members ?? null,
     avgRung: r.rung ?? null, avgVoices: r.voices ?? null,
     coins: 1, coinsInMoney: held != null && held > 0 ? 1 : 0,
@@ -8414,7 +8507,7 @@ module.exports = {
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, unitsForPassers, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, unitsForPassers, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, confirmWanted, confirmLeansFor, confirmLabel, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,

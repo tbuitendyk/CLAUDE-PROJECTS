@@ -435,3 +435,96 @@ Sweep trains with this same number. Nothing in `lib/` reads
 `coins_sit_out_band` (grep, 2026-09-14). That is the parked dual member
 voting mode (E). The owner decides whether the sentence goes or the mode
 gets built.
+
+## I. The confirmation overlay — owner GO NOW! 2026-09-14 (3.130.0)
+
+Pre-registered as COINS.md section 11 before any number existed; the owner's
+order: *"we need to be able to determine that categorically easily by what we
+see on screen."* Second digit: a new control and new behaviour.
+
+- **I1 — the lean is read at pricing time, on the unit's own candles.** A unit
+  whose coin and chunk shape pass on Coins is handed the passer's band and
+  its two leans (after `rising`, after `falling`); the worker reads every
+  chunk's window colour by the Coins arithmetic itself (`windowMoves`,
+  `readingsUnderBand` in `lib/coins.js`) at that band and at Coins' own
+  yardstick — the coin's median window move on the Coins record, carried on
+  the lean — so a window is the same colour here as on Coins whatever range
+  the run loaded (found hunting the instrument: the reserve grade prices the
+  held-back window on a map of that window alone, whose median is not the
+  coin's). Only the band, the yardstick and the two leans are written on the
+  set (`confirmLeans`), so a set continued or rebuilt reads them off its own
+  record whatever Coins says later.
+- **I2 — three runs of the one simulator, and the money added back up.**
+  Confirmed, unconfirmed and no-lean calls are priced as three call lists
+  over the same periods, scaled per kind and summed. That is exact because a
+  period's trade is priced on its own candles and nothing carries between
+  periods; held on a fixture through the worker's own window pricer: `sized`
+  ×1/×1 is the plain money to a cent, ×2/×1 adds exactly the confirmed money
+  once more, `confirmed only` takes exactly the unconfirmed money and trades
+  away. No new simulator, and `off` is byte for byte what every run before
+  this release priced.
+- **I3 — confirm is in the fold key only on a unit with a lean.** On any
+  other unit the three values place the same orders and fold into the first,
+  the way 24/5 folds on a weekly unit; the count says so before the launch
+  and a test holds count and fold equal with and without leans.
+- **I4 — the count reads the leans whatever the dial says.** The screen greys
+  the dial off the count; a count that only looked when the dial was already
+  on could never let it be switched on. The passers reply is memoised on the
+  settings file's and the record files' names and mtimes, so the cost line
+  does not pay seconds per box change.
+- **I5 — the rich figures are read at size 1 over the trades actually
+  taken.** Drawdown, wins and thirds come from one plain pass over the calls
+  that survived the split (a kind priced at ×0 leaves that pass too); money
+  and trade count come from the split. The kept scrambles and the null-set
+  deals go through the same split and skip the rich pass, as before.
+- **I6 — the printed word is the test window's.** Every row with a lean
+  stores its six numbers for the test window and, where priced, the held-back
+  window. The word beside a setting on `Table 3.A` and beside a coin on
+  `Table 3.B` is decided from the TEST six numbers summed over the rows,
+  because the word sorts the table and nothing may order a table by the
+  held-back window. The held-back six numbers are summed per setting and per
+  coin as well and ride on the tally (`hlp`), with no word printed from them
+  yet — a held-back verdict, if the owner wants one on the screen, is a
+  separate ask.
+- **I7 — the verdict sorts in its written order.** `adds nothing` < `just
+  leverage` < `adds value` < `better signal`, best first on one click, rows
+  with no word last; never alphabetically, which would put `better signal`
+  before `just leverage`.
+- **I8 — Greenlight refuses a survivor priced past `off`.** The live path
+  reads no lean off Coins, so a survivor priced `sized` or `confirmed only`
+  would be traded at size 1 as though that were its record. Refused in
+  words, tested, until the live path can read the lean. Not in section 11;
+  a consequence of the dial that could not be left silent.
+- **I9 — Tune's per-trade capture does not carry the lean (parked).** It
+  prices each entry on its own at size 1; a Stage 4 set built from a `sized`
+  setting is re-priced on Tune at size 1. Said here, left for the owner.
+- **I10 — the tables rebuild once.** `TALLY_V` moves to 7, so every stage 3
+  set's tables are rebuilt in the background the next time Boards opens them
+  (announced on the screen, as every retotal is). The records themselves are
+  untouched: an older record reads `confirm` as `off` with no lean and no
+  word, which is exactly what it was priced as.
+- **I12 — the window arithmetic moved to its own module, unchanged.** The
+  worker may not reach `lib/coins.js` (through the vocabulary it would reach
+  the orchestrator, and `test-pool.js` holds the worker's whole require tree
+  to that), so `windowMoves`, `medianAbsMove` and `readingsUnderBand` moved
+  verbatim to `lib/windowmove.js`; Coins re-exports them under the names
+  every caller already reads. One home, no copy.
+- **I11 — the Funnel reads `confirm` as one more dial.** A rule can name it,
+  and a Stage 4 set built under such a rule keeps only the rows at that
+  value; the board rows carry it (`off` on every record from before). Verify,
+  History and the rest read the rows as they are.
+
+**Hunted on the instrument, before the owner sees a number.** (a) A trade
+at twice the size being exactly twice the money rests on the fee being a
+share of the position — it is (`lib/paper.js`, per leg), and the fixture
+holds it. (b) The verdict compares sized money against size-1 money on the
+same trades, so a lean that never fires (every call a no-lean call) yields
+no word rather than `adds nothing`; a row with confirmed or unconfirmed
+trades and a tie in money reads `adds nothing`, the same money is not more
+money (test). (c) `better signal` demands the confirmed trades beat BOTH
+other kinds per trade; with no no-lean trades at all, beating the
+unconfirmed is enough, and with no unconfirmed trades the confirmed cannot
+be shown better than them, so `adds value` is the most such a row can say
+(tests). (d) The word is categorical and carries no chance rate of its own;
+the null set beside every row still says whether either money beats chance.
+

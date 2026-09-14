@@ -52,6 +52,12 @@ function vocabulary() {
       return { value: k, label: pretty };
     }),
     decision: asChoices(['argmax', 'directional']),
+    // THE CONFIRMATION OVERLAY'S DIAL (3.130.0, COINS.md section 11): its three
+    // values come from the one list the engine prices by, never typed here
+    confirm: asChoices(require('./confirm').CONFIRM_VALUES),
+    // the four verdict words Boards prints beside a setting and a coin, each
+    // with the rule it rests on for the hover -- one home, lib/confirm.js
+    confirmVerdict: require('./confirm').VERDICTS.map((w) => ({ value: w, label: w, why: require('./confirm').verdictWhy(w) })),
     entry: asChoices(bracket.ENTRIES),
     // the engine's own gate list (lib/bracket.js GATES): active and
     // directional, the same two the live side accepts

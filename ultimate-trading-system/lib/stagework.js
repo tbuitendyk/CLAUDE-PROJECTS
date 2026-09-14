@@ -37,6 +37,8 @@ const crypto = require('crypto');
 const { standardizeFit, standardizeApply, tuneAndTrain, trainSoftmax, predict: predictLogreg } = require('./logreg');
 const { trainBoost, predictBoost } = require('./boost');
 const { NOTIONAL, feeRate } = require('./paper');
+const confirmLib = require('./confirm');
+const windowLib = require('./windowmove');
 const { tuneTau } = require('./pipeline');
 const { directionalCall } = require('./paper');
 const { mulberry32 } = require('./rng');
@@ -1029,6 +1031,32 @@ async function s3UnitTask(task) {
     return out;
   };
   const pick = (arr, idxs) => idxs.map((i) => arr[i]);
+  // THE CONFIRMATION OVERLAY (COINS.md section 11, 3.130.0). A unit handed a
+  // lean reads every chunk's window colour at its sweet spot band by the same
+  // arithmetic Coins uses (lib/windowmove.js), on the same candles this unit is
+  // priced on, and the lean says which way a trade should go after each
+  // colour. Against it a call is confirmed, unconfirmed or has no lean, and
+  // the three kinds are priced by the one simulator each on their own so the
+  // money can be scaled per kind and added back up: a trade at twice the size
+  // is exactly twice the money, fees included, because the fee is a share of
+  // the position. The rich figures (drawdown, wins, thirds) are read at size 1
+  // from one pass over the trades actually taken.
+  const leanSignsFor = (chunksArr, tradeMap) => {
+    if (!task.lean || !chunksArr.length) return null;
+    const wm = windowLib.windowMoves(tradeMap, geometry);
+    const { reading } = windowLib.readingsUnderBand(wm.move, task.lean.band, task.lean.yardstick);
+    const byTs = new Map();
+    for (let i = 0; i < wm.ts.length; i++) byTs.set(wm.ts[i], reading[i]);
+    return confirmLib.leanSigns(chunksArr.map((c) => byTs.get(c.startTs) || 's'), task.lean);
+  };
+  const leanTest = leanSignsFor(testChunks, maps.trade);
+  const leanHold = leanSignsFor(holdChunks, holdTrade);
+  // price a window under a setting: plain when the setting is off or the unit
+  // has no lean; split three ways otherwise. `wantRich` adds the one pass at
+  // size 1 the rich figures are read from.
+  const priceLean = (cell, chunksArr, idxs, callsAll, tradeMap, signsAll, st, bandPct, wantRich) => priceLeanWindow(
+    cell, pick(chunksArr, idxs), pick(callsAll, idxs), tradeMap, geo, bandPct, fee, signsAll ? pick(signsAll, idxs) : null, st, wantRich,
+  );
   // THE PER-TRADE CAPTURE (3.92.0, Tune on a Stage 4 record set; VERIFY-DESIGN.md
   // section 9 step 8). The two tools on Tune take a LIST of entries -- the hour,
   // the side, how many members called that side -- and price them themselves;
@@ -1157,7 +1185,8 @@ async function s3UnitTask(task) {
     const tHours = bracketLib.tHoursOn(st.tHours, geometry);
     const cell = { entry: st.entry, gate: st.gate, dMult: st.dMult, tHours, trailMult: st.trailMult ?? null, armMult: st.armMult ?? null };
     const testCallsAll = streamFor(stream.decision, agr, -1, 'test');
-    const tRes = bracketLib.simCell(cell, pick(testChunks, tIdx), pick(testCallsAll, tIdx), maps.trade, geo, bandPct, fee);
+    const tPriced = priceLean(cell, testChunks, tIdx, testCallsAll, maps.trade, leanTest, st, bandPct, true);
+    const tRes = tPriced.res;
     // THE KEPT SCRAMBLES ON THE TEST WINDOW (FUNNEL-DESIGN.md 4.5). Together
     // these build a complete second copy of Table 3.A and Table 3.B out of
     // luck alone, so every reading the Funnel takes on the real table can be
@@ -1176,7 +1205,7 @@ async function s3UnitTask(task) {
     const noiseTest = [];
     for (let d = from; d < keep; d++) {
       const dt = streamFor(stream.decision, agr, d, 'test');
-      const dRes = bracketLib.simCell(cell, pick(testChunks, tIdx), pick(dt, tIdx), maps.trade, geo, bandPct, fee);
+      const dRes = priceLean(cell, testChunks, tIdx, dt, maps.trade, leanTest, st, bandPct, false).res;
       noiseTest.push(cents(dRes.pnl));
     }
     // THE KEPT SCRAMBLES ON THE HELD-BACK WINDOW. In a normal run these cost
@@ -1187,7 +1216,7 @@ async function s3UnitTask(task) {
     if (noiseOnly) {
       for (let d = from; d < keep && holdChunks.length; d++) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
-        noiseHold.push(cents(bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), holdTrade, geo, bandPct, fee).pnl));
+        noiseHold.push(cents(priceLean(cell, holdChunks, hIdx, dh, holdTrade, leanHold, st, bandPct, false).res.pnl));
       }
       // The label rides along so the merge joins on a name, never on a position.
       // Setting indexes are per block and two blocks both start at zero.
@@ -1200,9 +1229,12 @@ async function s3UnitTask(task) {
     let holdRich = null;
     let dealShape = null;
     let controls = null;
+    let holdLean = null;
     if (holdChunks.length) {
       const holdCallsAll = streamFor(stream.decision, agr, -1, 'hold');
-      const hRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(holdCallsAll, hIdx), holdTrade, geo, bandPct, fee);
+      const hPriced = priceLean(cell, holdChunks, hIdx, holdCallsAll, holdTrade, leanHold, st, bandPct, true);
+      const hRes = hPriced.res;
+      if (hPriced.parts) holdLean = { parts: hPriced.parts, size: hPriced.size };
       const hc = holdControlsFor(holdChunks, hIdx, tHours, stream.weekdaysOnly ? 'wk' : 'all');
       holdout = {
         pnl: hRes.pnl, trades: hRes.trades, stops: hRes.stops,
@@ -1225,7 +1257,7 @@ async function s3UnitTask(task) {
       const dealPnls = [];
       for (let d = 0; d < nullN; d++) {
         const dh = streamFor(stream.decision, agr, d, 'hold');
-        const dRes = bracketLib.simCell(cell, pick(holdChunks, hIdx), pick(dh, hIdx), holdTrade, geo, bandPct, fee);
+        const dRes = priceLean(cell, holdChunks, hIdx, dh, holdTrade, leanHold, st, bandPct, false).res;
         dealPnls.push(dRes.pnl);
         // FREE, unlike the test ones above: this pricing happens either way to
         // work out beat, and today its money is dropped the moment the count is
@@ -1262,6 +1294,18 @@ async function s3UnitTask(task) {
       members: memberProbs.length, voices: voicesFor(stream.decision, agr.copy).voices,
       pnl: tRes.pnl, trades: tRes.trades,
       holdout,
+      // THE CONFIRMATION OVERLAY (3.130.0): the dial's value on every row; the
+      // six numbers and the verdict per window on a row priced with a lean
+      confirm: st.confirm || 'off',
+      lean: tPriced.parts ? {
+        kx: tPriced.kx, ux: tPriced.ux,
+        test: partsCents(tPriced.parts), testSize: tPriced.size,
+        hold: holdLean ? partsCents(holdLean.parts) : null, holdSize: holdLean ? holdLean.size : null,
+      } : null,
+      verdict: tPriced.parts ? {
+        test: confirmLib.verdictOf(tPriced.parts, tPriced.kx, tPriced.ux),
+        hold: holdLean ? confirmLib.verdictOf(holdLean.parts, tPriced.kx, tPriced.ux) : null,
+      } : null,
       beat, pairs: holdChunks.length ? nullN : 0, lead,
       // ALWAYS PRESENT, null when nothing was kept. The row store's columns
       // only ever grow and a row written before a growth reads back short, so
@@ -1384,9 +1428,13 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
       perCoin: new Map() };
     acc.perSetting.set(r.si, s);
   }
+  // the confirm dial and its multipliers ride the setting; the six numbers of
+  // the overlay are summed per coin (3.130.0)
+  if (s.confirm === undefined) { s.confirm = r.confirm ?? 'off'; s.kx = r.lean ? r.lean.kx : null; s.ux = r.lean ? r.lean.ux : null; }
   let c = s.perCoin.get(r.trade);
   if (!c) { c = { test: 0, testN: 0, hold: 0, holdN: 0, trades: 0, vsl: 0, vsln: 0, beat: 0, pairs: 0, ld: 0, ldN: 0, rung: 0, rungN: 0, voices: 0, voicesN: 0, agr: 0, agrN: 0 }; s.perCoin.set(r.trade, c); }
   c.test += r.pnl || 0; c.testN++;
+  if (r.lean) { c.lp = confirmLib.addParts(c.lp || null, r.lean.test); if (r.lean.hold) c.hlp = confirmLib.addParts(c.hlp || null, r.lean.hold); }
   if (r.rung != null) { c.rung += r.rung; c.rungN++; }
   if (r.voices != null) { c.voices += r.voices; c.voicesN++; }
   // records priced before this measurement existed simply have no value here,
@@ -1415,6 +1463,7 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
   if (agreed && agreed.agreed != null) { k.agr += agreed.agreed; k.agrN++; }
   k.beat += r.beat || 0; k.pairs += r.pairs || 0;
   k.test += r.pnl || 0; k.testN++;
+  if (r.lean) { k.lp = confirmLib.addParts(k.lp || null, r.lean.test); if (r.lean.hold) k.hlp = confirmLib.addParts(k.hlp || null, r.lean.hold); if (k.kx == null) { k.kx = r.lean.kx; k.ux = r.lean.ux; } }
   if (r.holdout && r.holdout.pnl != null) {
     k.hold += r.holdout.pnl; k.holdN++;
     k.trades += r.holdout.trades || 0; k.tradesN++;
@@ -1428,6 +1477,53 @@ function tallyFold(acc, r, blockIdx, agreedAt = null) {
 // Across-thread shapes: Maps and Sets do not survive the worker boundary, so
 // a shard hands back plain arrays and the merge folds them into the same
 // accumulator shape the single pass builds.
+// ONE WINDOW PRICED UNDER THE LEAN (3.130.0, COINS.md section 11). Plain when
+// the setting is off or the unit has no lean -- byte for byte what every run
+// before this release priced. Otherwise the calls are split three ways
+// (confirmed, unconfirmed, no lean), each part is priced by the one simulator
+// on its own, and the money is scaled per part and added back up. `wantRich`
+// adds the one pass at size 1 over the trades actually taken, which the rich
+// figures (drawdown, wins, thirds) are read from; the noise copies skip it.
+function priceLeanWindow(cell, ch, calls, tradeMap, geo, bandPct, fee, signs, st, wantRich) {
+  const confirm = (st && st.confirm) || 'off';
+  if (!signs || confirm === 'off') return { res: bracketLib.simCell(cell, ch, calls, tradeMap, geo, bandPct, fee), parts: null };
+  const { c, u, z } = confirmLib.splitCalls(calls, signs);
+  const rc = bracketLib.simCell(cell, ch, c, tradeMap, geo, bandPct, fee);
+  const ru = bracketLib.simCell(cell, ch, u, tradeMap, geo, bandPct, fee);
+  const rz = bracketLib.simCell(cell, ch, z, tradeMap, geo, bandPct, fee);
+  const parts = { c: { pnl: rc.pnl, n: rc.trades }, u: { pnl: ru.pnl, n: ru.trades }, z: { pnl: rz.pnl, n: rz.trades } };
+  const { kx, ux } = confirmLib.multipliersOf(confirm, st.kx, st.ux);
+  const g = confirmLib.combine(parts, kx, ux);
+  let res = { pnl: g.pnl, trades: g.trades, stops: (rc.stops || 0) + (ru.stops || 0) + (rz.stops || 0) };
+  if (wantRich) {
+    // a part priced at size 0 was not taken: it leaves the rich pass too
+    const taken = calls.map((v, i) => (ux === 0 && signs[i] !== 0 && signs[i] !== v ? 0 : (kx === 0 && signs[i] !== 0 && signs[i] === v ? 0 : v)));
+    res = { ...bracketLib.simCell(cell, ch, taken, tradeMap, geo, bandPct, fee), pnl: g.pnl, trades: g.trades };
+  }
+  return { res, parts, size: g.size, kx, ux };
+}
+// the parts of a window, to the cent, so a row stores what a reader can add
+function partsCents(parts) {
+  const cents = (x) => (x == null || !Number.isFinite(x) ? null : Math.round(x * 100) / 100);
+  return { c: { pnl: cents(parts.c.pnl), n: parts.c.n }, u: { pnl: cents(parts.u.pnl), n: parts.u.n }, z: { pnl: cents(parts.z.pnl), n: parts.z.n } };
+}
+// THE VERDICT OVER MANY UNITS (3.130.0): the same six numbers, summed over the
+// cells, judged by the one rule; null where no cell carried a lean or the
+// setting is off
+function leanSumOf(cells) {
+  let acc = null;
+  for (const c of cells) if (c && c.lp) acc = confirmLib.addParts(acc, c.lp);
+  return acc;
+}
+function verdictOfCells(cells, st) {
+  if (!st || !st.confirm || st.confirm === 'off') return null;
+  const sum = leanSumOf(cells);
+  return sum ? confirmLib.verdictOf(sum, st.kx ?? confirmLib.DEFAULT_KX, st.ux ?? confirmLib.DEFAULT_UX) : null;
+}
+function verdictOfCoin(k) {
+  if (!k || !k.lp) return null;
+  return confirmLib.verdictOf(k.lp, k.kx ?? confirmLib.DEFAULT_KX, k.ux ?? confirmLib.DEFAULT_UX);
+}
 function serializeTallyAcc(acc) {
   return {
     rows: acc.rows,
@@ -1451,7 +1547,10 @@ function mergeTallyAcc(acc, part) {
       c.voices += add.voices || 0; c.voicesN += add.voicesN || 0;
       c.agr += add.agr || 0; c.agrN += add.agrN || 0;
       mergeNoise(c, 'nt', add.nt, add.ntN); mergeNoise(c, 'nh', add.nh, add.nhN);
+      if (add.lp) c.lp = confirmLib.addParts(c.lp || null, add.lp);
+      if (add.hlp) c.hlp = confirmLib.addParts(c.hlp || null, add.hlp);
     }
+    if (s.confirm === undefined && ps.confirm !== undefined) { s.confirm = ps.confirm; s.kx = ps.kx; s.ux = ps.ux; }
   }
   for (const [ck, add] of part.perCoin) {
     let k = acc.perCoin.get(ck);
@@ -1464,6 +1563,9 @@ function mergeTallyAcc(acc, part) {
     k.rows += add.rows;
     k.beat += add.beat; k.pairs += add.pairs;
     k.test += add.test || 0; k.testN += add.testN || 0;
+    if (add.lp) k.lp = confirmLib.addParts(k.lp || null, add.lp);
+    if (add.hlp) k.hlp = confirmLib.addParts(k.hlp || null, add.hlp);
+    if (k.kx == null && add.kx != null) { k.kx = add.kx; k.ux = add.ux; }
     k.hold += add.hold; k.holdN += add.holdN;
     k.trades += add.trades; k.tradesN += add.tradesN;
     k.vsl += add.vsl; k.vsln += add.vsln;
@@ -1494,7 +1596,7 @@ async function s3TallyShardTask({ id, blocks, agreedAt = null }) {
 
 module.exports = {
   passGeometry,
-  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept,
+  s1UnitTask, s2UnitTask, s3UnitTask, s3TallyShardTask, richOf, storedRecordOf, shapeOf, appendKept, priceLeanWindow, leanSumOf, verdictOfCells, verdictOfCoin, partsCents,
   moneyWeights, moneyStakes, moneyWeightReading, weightsFor, weightReadingFor, weightsSaid, trainOnOf, capOf, TRAIN_ON, WEIGHT_CAP_DEFAULT,
   agreedKey, agreedKeyOfRecord, agrOf,
   newTallyAcc, tallyFold, serializeTallyAcc, mergeTallyAcc,

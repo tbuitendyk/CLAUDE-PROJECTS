@@ -224,12 +224,12 @@ module.exports = {
     assert.ok(answer > 0 && bg > 0 && bg < answer, 'the launch has a background part and answers after starting it');
     const before = fn.slice(0, bg);
     const after = fn.slice(bg, answer);
-    assert.ok(before.includes('const counted = countDeclared(params, sizes, parentRecords);'), 'the gates read the count, not the built block');
+    assert.ok(before.includes('const counted = countDeclared(params, sizes, parentRecords, leans);'), 'the gates read the count, not the built block — with the leans the launch prices (3.130.0)');
     assert.ok(!before.includes('settingsFor(params, sizes)') && !before.includes('foldSameTradeSettings('), 'nothing before the answer builds or folds the settings');
     assert.ok(before.includes("if (!counted.kept) throw new Error('the block declared no settings');"), 'an empty block still refuses at the press');
     assert.ok(before.includes('tallyBudgetFor({ settings: counted.kept, coins: coinsN })') && before.includes('storeBudgetFor({ rows: counted.pricings })'),
       'both budget gates are the count\'s arithmetic — and the disk gate reads what the units hold between them, never settings × units');
-    assert.ok(after.includes('const declaredSettings = settingsFor(params, sizes);') && after.includes('foldSameTradeSettings(declaredSettings, parentRecords)'),
+    assert.ok(after.includes('const declaredSettings = settingsFor(params, sizes);') && after.includes('foldSameTradeSettings(declaredSettings, parentRecords, leans)'),
       'the block is built and folded behind the answer');
     // 3.82.0: the hand-out lives in runStage3Parts, shared with a paused run
     // started again; the launch checks the block, then calls it
@@ -616,10 +616,10 @@ module.exports = {
   // can: market cells with no geometry, an auto band that lands on a fixed
   // one across every unit, and a block with nothing to fold at all.
   async theStageThreeCountIsTheLaunchsFoldWithoutTheSettings() {
-    const same = (b, sizes, records, why) => {
+    const same = (b, sizes, records, why, leans = null) => {
       const slow = stages.settingsFor(b, sizes);
-      const fold = stages.foldSameTradeSettings(slow, records);
-      const fast = stages.countDeclared(b, sizes, records);
+      const fold = stages.foldSameTradeSettings(slow, records, leans);
+      const fast = stages.countDeclared(b, sizes, records, leans);
       assert.deepStrictEqual([fast.declared, fast.kept, fast.folded], [slow.length, fold.kept.length, fold.folded.length], why);
       // AND UNIT BY UNIT (3.52.0): what each unit will price, and the sum
       assert.deepStrictEqual(fast.perUnit, fold.heldOn.map((h) => h.length), `${why}: the count and the fold disagree about what a unit holds`);
@@ -655,7 +655,226 @@ module.exports = {
     const d = stages.stage3Declared({ ...big });
     assert.strictEqual(d.settings, stages.countDeclared(big, null, []).kept, 'with no parent named the count is the block itself');
     assert.deepStrictEqual([d.pricings, d.unitSettings, d.weekdaysApply], [0, [], true], 'with no parent named there is nothing per unit yet, and 24/5 is not ghosted');
+    // THE CONFIRM DIAL (3.130.0, COINS.md section 11): on a unit that carries
+    // a lean its three values price three different sets of trades; on any
+    // other unit they place the same orders and are one setting there
+    const lean = { 'AAAUSDT|daily-4d': { band: 140, yardstick: 3.2, rising: -1, falling: 1 } };
+    const plain = same({ cell, permuteBand: true }, [1], spread, 'no confirm asked for');
+    const noLean = same({ cell, permuteBand: true, permuteConfirm: true }, [1], spread, 'confirm permuted with no lean anywhere');
+    assert.strictEqual(noLean.declared, plain.declared * 3, 'three values are declared');
+    assert.strictEqual(noLean.kept, plain.kept, 'and with no lean on any unit they fold to one everywhere');
+    assert.deepStrictEqual(noLean.perUnit, plain.perUnit, 'every unit holds exactly what it held without the dial');
+    assert.strictEqual(noLean.leanUnits, 0);
+    const withLean = same({ cell, permuteBand: true, permuteConfirm: true }, [1], spread, 'confirm permuted, one unit with a lean', lean);
+    assert.strictEqual(withLean.leanUnits, 1, 'one of the three units carries a lean');
+    assert.strictEqual(withLean.perUnit[0], plain.perUnit[0] * 3, 'the unit with the lean prices all three values');
+    assert.deepStrictEqual(withLean.perUnit.slice(1), plain.perUnit.slice(1), 'the other units price one');
+    assert.strictEqual(withLean.kept, plain.kept * 3, 'every value is kept in the block as soon as one unit prices it');
+    assert.strictEqual(withLean.pricings, plain.pricings + 2 * plain.perUnit[0], 'the pricings grow by the lean unit\'s two extra copies alone');
+    const sizedOnly = same({ cell, permuteBand: true, confirm: 'sized' }, [1], spread, 'sized alone, one unit with a lean', lean);
+    assert.deepStrictEqual([sizedOnly.declared, sizedOnly.kept, sizedOnly.perUnit], [plain.declared, plain.kept, plain.perUnit], 'one value of confirm multiplies nothing');
+    assert.strictEqual(sizedOnly.leanUnits, 1);
   },
+
+  // THE DIAL NAMES ITS SETTINGS AND REFUSES WHAT IT CANNOT PRICE (3.130.0).
+  // off leaves every name exactly as it was, so a block that never asked for
+  // the lean is named as every block before this release; the other two
+  // values say so at the end of the name, sized with its two multipliers.
+  async theConfirmDialNamesItsSettingsAndRefusesBadValues() {
+    const cell = { entry: 'market', tHours: 65 };
+    const one = stages.settingsFor({ cell, agreeRule: 'count', agreePct: 50 }, [1]);
+    assert.strictEqual(one.length, 1);
+    assert.deepStrictEqual([one[0].confirm, one[0].kx, one[0].ux], ['off', 2, 1], 'off, with the default multipliers on the record');
+    assert.ok(!/confirm|sized/.test(one[0].label), `off adds nothing to the name: ${one[0].label}`);
+    const three = stages.settingsFor({ cell, agreeRule: 'count', agreePct: 50, permuteConfirm: true }, [1]);
+    assert.deepStrictEqual(three.map((st) => st.confirm), ['off', 'confirmed only', 'sized'], 'the three values in the dial\'s own order');
+    assert.strictEqual(three[1].label, `${one[0].label} \u00b7 confirmed only`);
+    assert.strictEqual(three[2].label, `${one[0].label} \u00b7 sized \u00d72/\u00d71`);
+    const typed = stages.settingsFor({ cell, agreeRule: 'count', agreePct: 50, confirm: 'sized', confirmedX: '3', unconfirmedX: 0.5 }, [1]);
+    assert.strictEqual(typed[0].label, `${one[0].label} \u00b7 sized \u00d73/\u00d70.5`, 'the boxes as typed, in the name');
+    assert.deepStrictEqual([typed[0].kx, typed[0].ux], [3, 0.5]);
+    assert.throws(() => stages.settingsFor({ cell, confirm: 'maybe' }, [1]), /"maybe" is not a value of confirm \(off \/ confirmed only \/ sized\)/);
+    assert.throws(() => stages.settingsFor({ cell, confirm: 'sized', confirmedX: -1 }, [1]), /confirmed \u00d7 must be a number of zero or more/);
+    assert.throws(() => stages.settingsFor({ cell, confirm: 'sized', unconfirmedX: 'two' }, [1]), /unconfirmed \u00d7 must be a number of zero or more/);
+    // whether a block asks for the lean at all
+    assert.strictEqual(stages.confirmWanted({ cell }), false);
+    assert.strictEqual(stages.confirmWanted({ cell, confirm: 'off' }), false);
+    assert.strictEqual(stages.confirmWanted({ cell, confirm: 'confirmed only' }), true);
+    assert.strictEqual(stages.confirmWanted({ cell, permuteConfirm: true }), true);
+    assert.deepStrictEqual([stages.confirmLabel('off', 2, 1), stages.confirmLabel('confirmed only', 2, 1), stages.confirmLabel('sized', 2, 1)],
+      ['', ' \u00b7 confirmed only', ' \u00b7 sized \u00d72/\u00d71']);
+    // the Funnel reads it as one more dial, and every screen offers the engine's list
+    assert.ok(require('../lib/funnel').CATEGORICAL_DIALS.includes('confirm'), 'the Funnel must read confirm as a dial');
+    const vocab = require('../lib/vocabulary').vocabulary();
+    assert.deepStrictEqual(vocab.confirm.map((o) => o.value), ['off', 'confirmed only', 'sized'], 'the dial\'s box is filled from the engine\'s list');
+    assert.deepStrictEqual(vocab.confirmVerdict.map((o) => o.value), ['adds nothing', 'just leverage', 'adds value', 'better signal']);
+    for (const o of vocab.confirmVerdict) assert.ok(o.why && o.why.length > 20, `${o.value} carries what it rests on for the hover`);
+  },
+
+  // A LAUNCH THAT ASKS FOR THE LEAN AND HAS NO UNIT TO READ IT ON IS REFUSED
+  // IN WORDS (3.130.0): pricing three copies of the same trades would be a
+  // block three times the size that says nothing. The count says the same
+  // thing before the press, so the screen can grey the dial.
+  async aLaunchAskingForConfirmRefusesWhenNoUnitPasses() {
+    const pid = writeLaunchParent('confirm');
+    try {
+      const d = stages.stage3Declared({ ...LAUNCH_BLOCK, from: pid, confirm: 'sized' });
+      assert.deepStrictEqual([d.leanUnits, d.confirmWanted], [0, true], 'the count says no unit carries a lean, and that the dial asked');
+      assert.strictEqual(stages.stage3Declared({ ...LAUNCH_BLOCK, from: pid }).confirmWanted, false, 'off asks for nothing');
+      let refused = null;
+      try { stages.startStage3({ ...LAUNCH_BLOCK, from: pid, confirm: 'sized' }); } catch (err) { refused = err.message; }
+      assert.ok(refused && /none of the units this run prices is among the coins and shapes that pass on Coins, so confirm would change nothing/.test(refused),
+        `expected the refusal in words, got: ${refused || 'a launch'}`);
+      assert.strictEqual(stages.listSets().filter((x) => (x.params || {}).from === pid).length, 0, 'nothing was written');
+      // permuted, the same: the block asked for the lean
+      refused = null;
+      try { stages.startStage3({ ...LAUNCH_BLOCK, from: pid, permuteConfirm: true }); } catch (err) { refused = err.message; }
+      assert.ok(refused && /confirm would change nothing/.test(refused), `permute asks for the lean too: ${refused || 'a launch'}`);
+      // and a launch at off writes its (empty) leans and the dial's value on the set
+      const got = stages.startStage3({ ...LAUNCH_BLOCK, from: pid, name: `confirm off ${pid.slice(-6)}` });
+      const doc = stages.getSet(got.id);
+      assert.deepStrictEqual([doc.params.confirm, doc.params.permuteConfirm, doc.params.confirmedX, doc.params.unconfirmedX, doc.params.confirmLeans],
+        ['off', false, 2, 1, {}], 'the set says what it used');
+      await untilEnded(got.id);
+    } finally { cleanLaunchParent(pid); }
+  },
+
+  // THE TALLY CARRIES THE LEAN AND THE VERDICT (3.130.0): per setting, from
+  // the six numbers summed over every coin; per coin, from the records under
+  // it that carried a lean. The words come from the one rule in lib/confirm.js
+  // and are held to it here by hand.
+  async theTallyCarriesTheLeanAndTheVerdictPerSettingAndPerCoin() {
+    const C = require('../lib/confirm');
+    const id = `s3-test-${Date.now().toString(36)}-lean`;
+    try {
+      // the set itself, so the ranked table and its saved sort can be read
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(path.join(SETS_DIR, `${id}.json`), JSON.stringify({
+        id, stage: 3, seq: 999986, name: 'S3 #lean', status: 'done', createdAt: new Date().toISOString(),
+        plan: { units: 1, settings: 2 }, params: { nullN: 3 }, recordsVersion: stages.RECORDS_V,
+      }));
+      const w = rowstore.writer(id, 'records');
+      const mk = (si, label, trade, confirm, lean, verdict, test = 10) => ({
+        si, label, decision: 'argmax', bandMode: 'auto', weekdaysOnly: false, bandPct: 2,
+        entry: 'market', gate: null, dMult: null, tHours: 65, trailMult: null, armMult: null,
+        quorum: 2, members: 6, pnl: test, trades: 3,
+        holdout: { pnl: 1, trades: 4, stops: 1, vsAlwaysLong: 0 },
+        beat: 1, pairs: 3, lead: null, u: 0, trade, ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d',
+        confirm, lean, verdict,
+      });
+      const partsA = { c: { pnl: 8, n: 4 }, u: { pnl: -3, n: 3 }, z: { pnl: 1, n: 1 } };   // better signal on its own
+      const partsB = { c: { pnl: 4, n: 4 }, u: { pnl: 3, n: 3 }, z: { pnl: 1, n: 1 } };    // just leverage on its own
+      w.push(mk(0, 'q x \u00b7 argmax auto 24/7 \u00b7 sized \u00d72/\u00d71', 'AAA', 'sized',
+        { kx: 2, ux: 1, test: partsA, testSize: 8 + 3 + 1, hold: null, holdSize: null }, { test: C.verdictOf(partsA, 2, 1), hold: null }));
+      w.push(mk(0, 'q x \u00b7 argmax auto 24/7 \u00b7 sized \u00d72/\u00d71', 'BBB', 'sized',
+        { kx: 2, ux: 1, test: partsB, testSize: 8 + 3 + 1, hold: null, holdSize: null }, { test: C.verdictOf(partsB, 2, 1), hold: null }));
+      // the same setting at off on a third coin: no lean, no word
+      w.push(mk(1, 'q x \u00b7 argmax auto 24/7', 'AAA', 'off', null, null));
+      w.close();
+      const tally = await stages.buildTally({ id });
+      const r0 = tally.ranked.find((r) => r.si === 0);
+      const r1 = tally.ranked.find((r) => r.si === 1);
+      assert.deepStrictEqual([r0.confirm, r0.kx, r0.ux], ['sized', 2, 1], 'the dial and its multipliers ride the ranked row');
+      assert.deepStrictEqual(r0.lean, C.addParts(C.addParts(null, partsA), partsB), 'the six numbers summed over the coins');
+      // by hand: c 12 of 8, u 0 of 6, z 2 of 2. At size 1: 14 over 16. Sized:
+      // 24 + 0 + 2 = 26 over 16 + 6 + 2 = 24. More money, more per unit of
+      // size, and the confirmed trades make 1.5 each against 0 and 1.
+      assert.strictEqual(r0.verdict, 'better signal');
+      assert.strictEqual(C.verdictOf(r0.lean, 2, 1), 'better signal', 'and it is the one rule\'s word');
+      assert.deepStrictEqual([r1.confirm, r1.lean, r1.verdict], ['off', null, null], 'off carries no lean and no word');
+      const kA = tally.coins.find((k) => k.trade === 'AAA' && k.cellLabel === 'q x');
+      const kB = tally.coins.find((k) => k.trade === 'BBB');
+      assert.strictEqual(kA.verdict, 'better signal', 'coin AAA: its one record with a lean');
+      assert.strictEqual(kB.verdict, 'just leverage', 'coin BBB: doubling trades that make the same per trade as the rest');
+      assert.deepStrictEqual(kA.lean, { test: partsA, hold: null }, 'the per-coin row keeps the six numbers it judged');
+      assert.strictEqual(kA.rows, 2, 'the off record and the sized record of the same short setting are both under the coin');
+      // and the tables sort by the word in its written order, best first
+      const byVerdict = stages.stage3Coins(id, { sort: 'verdict' });
+      assert.deepStrictEqual(byVerdict.rows.map((r) => r.verdict), ['better signal', 'just leverage'], 'best word first');
+      const turned = stages.stage3Coins(id, { sort: 'verdict', flip: '1' });
+      assert.deepStrictEqual(turned.rows.map((r) => r.verdict), ['just leverage', 'better signal']);
+      stages.setSetSort(id, [{ key: 'verdict', dir: 'desc' }]);
+      assert.deepStrictEqual(stages.stage3Ranked(id, 0, 10).rows.map((r) => r.verdict), ['better signal', null], 'a row with no word sits last');
+      // the sharded fold gives the same words
+      const sw = require('../lib/stagework');
+      const acc = sw.newTallyAcc();
+      for (const r of rowstore.readAll(id, 'records').map((x) => x.row || x)) sw.tallyFold(acc, r, 0);
+      const s0 = acc.perSetting.get(0);
+      assert.strictEqual(sw.verdictOfCells([...s0.perCoin.values()], s0), 'better signal');
+      assert.strictEqual(sw.verdictOfCoin([...acc.perCoin.values()].find((k) => k.trade === 'AAA' && k.cellLabel === 'q x')), 'better signal');
+      assert.strictEqual(sw.verdictOfCoin([...acc.perCoin.values()].find((k) => k.trade === 'BBB')), 'just leverage');
+      assert.strictEqual(sw.verdictOfCoin(null), null, 'no coin, no word');
+    } finally {
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(path.join(SETS_DIR, `${id}-tally.json.gz`), { force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(path.join(SETS_DIR, `${id}.json`), { force: true }); } catch (_) { /* fixture */ }
+    }
+  },
+
+  // THE WORKER PRICES EVERY WINDOW THROUGH THE LEAN SPLIT (3.130.0), read from
+  // the source because s3UnitTask cannot run without a real unit: the real
+  // test window, its kept scrambles, the held-back window, its kept scrambles
+  // and the null-set deals all go through the one function, and nothing in
+  // the task calls the simulator directly any more.
+  async theWorkerPricesEveryWindowThroughTheLeanSplit() {
+    const sw = fs.readFileSync(path.join(ROOT, 'lib', 'stagework.js'), 'utf8');
+    const task = sw.slice(sw.indexOf('async function s3UnitTask(task) {'), sw.indexOf('\n}\n', sw.indexOf('async function s3UnitTask(task) {')));
+    // the one direct call left is Tune's per-trade capture (3.92.0), which
+    // prices each entry on its own at size 1 and does not carry the lean --
+    // said in the loop record, left for the owner
+    assert.strictEqual(task.split('bracketLib.simCell(').length - 1, 1, 'the task must not price a window beside the lean split');
+    assert.ok(task.includes('const one = bracketLib.simCell(cell, [chunksArr[i]], [call], tradeMap, geo, bandPct, fee);'), 'and that one call is the per-trade capture');
+    const st = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(st.includes('    lean: leanOf((doc.params || {}).confirmLeans, rec),'), 'every unit is handed the lean the set wrote for it');
+    assert.strictEqual(task.split('priceLean(cell,').length - 1, 5, 'five windows are priced: test, its scrambles, held-back, its scrambles, the deals');
+    assert.ok(task.includes('const tPriced = priceLean(cell, testChunks, tIdx, testCallsAll, maps.trade, leanTest, st, bandPct, true);'), 'the real test window asks for the rich pass');
+    assert.ok(task.includes('const hPriced = priceLean(cell, holdChunks, hIdx, holdCallsAll, holdTrade, leanHold, st, bandPct, true);'), 'so does the real held-back window');
+    assert.ok(task.includes("priceLean(cell, testChunks, tIdx, dt, maps.trade, leanTest, st, bandPct, false).res"), 'the kept scrambles skip it');
+    assert.ok(task.includes("confirm: st.confirm || 'off',") && task.includes('lean: tPriced.parts ? {') && task.includes('verdict: tPriced.parts ? {'),
+      'every record carries the dial, and a record with a lean carries its six numbers and its word');
+    // the signs come from the same arithmetic Coins reads the windows with
+    assert.ok(task.includes('windowLib.windowMoves(tradeMap, geometry)') && task.includes('windowLib.readingsUnderBand(wm.move, task.lean.band, task.lean.yardstick)'),
+      'the lean is read at the unit\'s band and at Coins\' own yardstick by the one window arithmetic (lib/windowmove.js), not a copy of it');
+    assert.ok(!/require\('\.\/coins'\)/.test(sw), 'the worker must not reach lib/coins.js: through the vocabulary it would reach the orchestrator');
+    const fn = sw.slice(sw.indexOf('function priceLeanWindow('), sw.indexOf('function partsCents('));
+    assert.ok(fn.includes("if (!signs || confirm === 'off') return { res: bracketLib.simCell(cell, ch, calls, tradeMap, geo, bandPct, fee), parts: null };"),
+      'off and no lean price exactly as before this release');
+  },
+
+  // THE SCREENS (3.130.0): the dial and its two boxes on Sweep, sent with the
+  // block and greyed off the count; the two columns on Boards' Table 3.A and
+  // the one on Table 3.B, each cell drawn from the engine's word.
+  async theConfirmDialIsOnSweepAndItsVerdictOnBoards() {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const screens = require('../lib/screencontrols');
+    const sweep = screens.drawBody('drawSweep');
+    for (const piece of ['<div id="swGrpConfirm"', '>confirm<select id="swConfirm">${vocabOptions(\'confirm\', \'off\')}</select></label>',
+      '<input type="checkbox" id="swPermConfirm"> permute', '>confirmed \u00d7<input id="swConfirmedX" type="number" value="2" min="0"',
+      '>unconfirmed \u00d7<input id="swUnconfirmedX" type="number" value="1" min="0"']) {
+      assert.ok(sweep.includes(piece), `Sweep must draw: ${piece}`);
+    }
+    assert.ok(/confirm: \$\('#swConfirm'\)\.value, permuteConfirm: \$\('#swPermConfirm'\)\.checked,\s*confirmedX: \$\('#swConfirmedX'\)\.value, unconfirmedX: \$\('#swUnconfirmedX'\)\.value,/.test(src),
+      'the block sends the dial, its permute and the two boxes');
+    assert.ok(src.includes("const noLean = Array.isArray(got.unitSettings) && got.unitSettings.length > 0 && !got.leanUnits;") && src.includes("swGhostGroup('#swGrpConfirm', noLean);"),
+      'the dial is greyed when the count says no unit being priced carries a lean');
+    assert.ok(src.includes("setV('#swConfirm', p.confirm || 'off'); setC('#swPermConfirm', p.permuteConfirm);"), 'a set\'s boxes fill the dial back in');
+    const server = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    assert.ok(server.includes('leanUnits: d.leanUnits == null ? null : d.leanUnits, confirmWanted: !!d.confirmWanted'), 'the count route hands the screen the lean count');
+    const boards = screens.drawBody('drawBoards');
+    for (const piece of [">confirm${bRankSortBtn(doc, 'confirm', 'asc')}</th>", ">verdict${bRankSortBtn(doc, 'verdict', 'desc')}</th>",
+      '${bConfirm(r)}</td>', ">verdict${bCoinSortBtn(view, 'verdict', '\u2193')}</th>"]) {
+      assert.ok(boards.includes(piece), `Boards must draw: ${piece}`);
+    }
+    assert.strictEqual(boards.split('${bVerdict(r.verdict)}</td>').length - 1, 2, 'a verdict cell on Table 3.A and one on Table 3.B');
+    const cell = src.slice(src.indexOf('function bVerdict(word) {'), src.indexOf('function bRankSortBtn('));
+    assert.ok(cell.includes('VOCAB.confirmVerdict') && cell.includes('title="${esc(hit.why)}"'), 'the hover on the word is the engine\'s own reason');
+    // the sorts the screen offers are sorts the service implements
+    const keys = require('../lib/stages');
+    assert.ok(keys.S3_SORTS.includes('verdict'), 'Table 3.B sorts by the word');
+    assert.doesNotThrow(() => keys.validateSort(3, [{ key: 'verdict', dir: 'desc' }]));
+    assert.doesNotThrow(() => keys.validateSort(3, [{ key: 'confirm', dir: 'asc' }]));
+  },
+
 
   // WHAT EACH UNIT HOLDS (3.52.0, owner order 2026-09-04: "fold duplicates
   // per unit, which would let units hold different setting counts"). Two
@@ -2210,7 +2429,7 @@ module.exports = {
     const count = src.slice(src.indexOf('function countDeclared('), src.indexOf('function stage3Declared('));
     assert.ok(held.includes('shapeRepsFor(settings, [rec])') && count.includes('shapeRepsFor(items.map((x) => x.shape), [rec])'),
       'the holdings and the count both work out which shapes are the same trade ON ONE UNIT through shapeRepsFor');
-    assert.ok(fold.includes('const heldOn = heldOnFor(settings, records);'), 'the fold is built from the per-unit holdings, not beside them');
+    assert.ok(fold.includes('const heldOn = heldOnFor(settings, records, leans);'), 'the fold is built from the per-unit holdings, not beside them — and hands them the leans (3.130.0)');
   },
 
   // NEITHER HEAVY JOB CAN FIRE DURING THE OTHER (owner order, 2026-08-29: "fix
@@ -2689,7 +2908,7 @@ module.exports = {
     assert.strictEqual(n(ui.slice(hs, ui.indexOf('</thead>', hs)), 'th'),
       n(ui.slice(rk, ui.indexOf('<tr><td colspan', rk)), 'td'),
       'Table 3.A has a different number of headings and cells');
-    assert.ok(/colspan="24"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A');
+    assert.ok(/colspan="26"/.test(ui), 'the "nothing here" line no longer spans the whole of Table 3.A (26 columns since confirm and verdict, 3.130.0)');
   },
 
   // A BLOCK PRICED BEFORE IT WAS WHOLE CAN BE FILLED IN (owner order,

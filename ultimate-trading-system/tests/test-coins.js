@@ -160,6 +160,10 @@ module.exports = {
     assert.strictEqual(r.reading, 'ffsssrr', 'at half the median, ±1 and 0 sit out');
     assert.strictEqual(readingsUnderBand([-3, -2, -1, 0, 1, 2, 3], 0).reading, 'fffsrrr', 'at 0 only a move of exactly nothing sits out');
     assert.strictEqual(readingsUnderBand([-3, -2, -1, 0, 1, 2, 3], 100000).reading, 'sssssss', 'a huge band sits everything out');
+    // a yardstick handed in is used in place of the median of these moves (3.130.0)
+    assert.strictEqual(readingsUnderBand([-3, -2, -1, 0, 1, 2, 3], 50, 4).threshold, 2, 'the threshold is half the given yardstick');
+    assert.strictEqual(readingsUnderBand([-3, -2, -1, 0, 1, 2, 3], 50, 4).reading, 'fsssssr', 'read at the given yardstick, not at the median of 2');
+    assert.strictEqual(readingsUnderBand([-3, -2, -1, 0, 1, 2, 3], 50, null).yardstick, 2, 'none given: the median, as before');
     assert.throws(() => readingsUnderBand([1], -1), /zero or more/, 'a negative band is refused');
     assert.throws(() => readingsUnderBand([1], 'x'), /zero or more/, 'a non-number is refused');
   },
