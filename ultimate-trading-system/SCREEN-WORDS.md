@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **84669705fe54 — what the box is serving**, not from the working tree.
+Generated from **18bd965b980d — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -434,11 +434,14 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # Boards
 
-## What the controls are called (136)
+## What the controls are called (140)
 
 - `— nothing came out of`
 - `— pick a stage`
+- `(no unit carried a lean)`
 - `/\u00d7`
+- `\u00b7`
+- `\u00b7 at size 1`
 - `\u00d7`
 - `+both`
 - `+hold`
@@ -500,6 +503,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `held-back $`
 - `held-back stops`
 - `held-back trades`
+- `held-back verdict`
 - `held,`
 - `independent voices`
 - `is`
@@ -540,8 +544,8 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Save notes`
 - `settings,`
 - `share that agreed`
+- `show the held-back window`
 - `Size:`
-- `sized`
 - `Stage 1`
 - `stage 1 order`
 - `Stage 2`
@@ -593,7 +597,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `trained`
 - `voices`
 
-## Sentences the page prints (70)
+## Sentences the page prints (74)
 
 - Boards — the record sets, and what each stage wrote
 - One section per stage, the whole provenance on screen: picking a stage 3 record set fills the
@@ -626,13 +630,17 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - — the records are all kept; the totalling can be tried again after a service restart.
 - . This page asks again every few seconds.
 - — building in the background; the tables appear here when it lands. This page asks again every few seconds and leaves your place on it alone.
+- the sort saved on this set reads the held-back window (
+- ); it is set aside while the window is hidden, and the table reads in its own order
+- Table 3.B was sorting by
+- , a held-back column; while the window is hidden it reads by beat the kept null money
 - Table 3.A: Settings, ranked
 - — one row per permuted Sweep Stage 3 setting, averaged over its coin/chunk-shape combinations promoted from Stage 2
 - show in 3.B
 - Show in 3.B
 - share that agreed is empty on this set —
 - Ordered by the sort picked on the columns — one column at a time, saved on this record set. With
-- nothing picked: beat the kept null money, best first. Independent voices below members means the committees held
+- nothing picked, or with the held-back window hidden and a held-back sort saved: beat the kept null money, best first. Independent voices below members means the committees held
 - near-copies, so the setting rests on fewer real opinions than its member count suggests.
 - Table 3.B: Every coin of every setting
 - — one row for each "short" setting x (each coin + chunk shape); every row averages the "factored out" settings: decision, band and 24/5 variants of the short setting, which are provided as sub-rows
@@ -666,10 +674,10 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - are ways of asking that did not exist when it ran, so nothing here can answer for them.
 - unit(s); nothing already priced is read, touched or priced again.
 
-## Every word, flat (443)
+## Every word, flat (451)
 
 ```
-1v 3.A 3.B above above. accordingly. active actually added adding adds after afterwards. again again. agreed all alone alone. alongside already always-long an and another answer any appear Apply apply are argmax arm arrow as asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat before behind. belong below beside best better biggest block board Boards BOOST both bought box breakout bring broken building but by call came campaign can cannot carry ceiling changes Check check child chunk Clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons confirm conviction Copy copy cost could count cover Data Date decision DECISION declare declare. declared declares declares. Delete deletes did died directional disk DOES does done Drop dropping Dropping each Each either else empty end entry every Every exactly exist exists factored FACTORED failed FAILED families few fewer fewer. Fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast form forward four from fuller gate goes going held held-back helped here here. history hold holds if in independent Independent into is it It it. its Its ITS just keep kept landed lands. last lead leaves left leverage line list LOGREG looks. market MATCH maximum means median member members minimum missing money move name names near-copies never Next NOT not not. notes nothing nothing. now null numbers of of. offers old on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press Prev price priced prices Pricing pricing. pricings promoted proved provenance provided put Put puts quarter quorum ran ranges ranked read reads real record records records. Rename renumbers replaced rest restart. resting rests Revert row rows rule. run rung running Save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show Show showed showing shows. signal Size sized smaller so some sort sound. stage Stage STAMP started still Stop stopped stopping stops sub-rows suggests. swapped Sweep table Table tables takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to top totalled totalling touched touched. trade trades trail trained training tried tuning-slice u00d7 Undo undoing Undoing unfinished unit unit. units units. value variants verdict visible voices votes vs was way. ways were. what What when where whether which whole why window with With without worked would writes written wrote yet you your
+1v 3.A 3.B above above. accordingly. active actually added adding adds after afterwards. again again. agreed all alone alone. alongside already always-long an and another answer any appear Apply apply are argmax arm arrow as aside asking asks at auto-apply average averaged averages avg away away. back back. background band BAND be beat before behind. belong below beside best better biggest block board Boards BOOST both bought box breakout bring broken building but by call came campaign can cannot carried carry ceiling changes Check check child chunk Clear cleared coin coin/chunk-shape coins column columns combinations comes committee committees comparable compared comparisons confirm conviction Copy copy cost could count cover Data Date decision DECISION declare declare. declared declares declares. Delete deletes did died directional disk DOES does done Drop dropping Dropping each Each either else empty end entry every Every exactly exist exists factored FACTORED failed FAILED families few fewer fewer. Fill filled Filling filling fills filter filter. filters fingerprint finished finishes first first. fit fixed floors for forecast form forward four from fuller gate goes going held held-back helped here here. hidden history hold holds if in independent Independent into is it It it. its Its ITS just keep kept landed lands. last lead lean leaves left leverage line list LOGREG looks. market MATCH maximum means median member members minimum missing money move name names near-copies never Next no NOT not not. notes nothing nothing. now null numbers of of. offers old on once once. One one ones only opinions or order Ordered ordinary other others out OUT over OWN own page parent parents parts past per permuted pick picked picking picks place PLAN. pooled press Prev price priced prices Pricing pricing. pricings promoted proved provenance provided put Put puts quarter quorum ran ranges ranked read reads real record records records. Rename renumbers replaced rest restart. resting rests Revert row rows rule. run rung running Save saved saw says score screen second seconds seconds. section sections Selected selections service set SET set-up set. sets setting SETTING settings Settings settings. shape share short SHORT show Show showed showing shows. signal Size size smaller so some sort sorting sound. stage Stage STAMP started still Stop stopped stopping stops sub-rows suggests. swapped Sweep table Table tables takes test Test-window than that the The their them them. then there. these They they thing THIS this This those tick ties time to top totalled totalling touched touched. trade trades trail trained training tried tuning-slice u00b7 u00d7 Undo undoing Undoing unfinished unit unit. units units. value variants verdict visible voices votes vs was way. ways were. what What when where whether which while whole why window with With without worked would writes written wrote yet you your
 ```
 
 ---
@@ -752,7 +760,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `Every trade stakes`
 - `fewest chunks a part`
 - `fewest settings ranked`
-- `fewest trades`
+- `fewest test trades`
 - `Final Rule:`
 - `first → second`
 - `first dial`

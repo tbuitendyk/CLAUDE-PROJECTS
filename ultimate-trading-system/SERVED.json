@@ -1,25 +1,25 @@
 {
- "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
- "commit": "84669705fe54a569676d78d0e3112565c1cb68d6",
- "subject": "3.130.3: the stage headings compare the tick for a set launched from the Coins list",
- "capturedAt": "2026-09-14T05:57:37Z",
- "files": {
-  "public/construct.js": {
-   "sha256": "c8e1a33ccb1accb98495db5a22693b6666eae7f4708a84ff46e4a0076a1e81b4",
-   "bytes": 593109
+  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
+  "commit": "18bd965b980d283d6d5bdc12679aaad333ca949f",
+  "subject": "3.131.0: the held-back window behind a tick on Boards; the Funnel's trade floor reads test trades; confirm shown whole",
+  "capturedAt": "2026-09-14T07:20:05Z",
+  "files": {
+    "public/construct.js": {
+      "sha256": "b5191391b9464a3945725f3760b0442e5eb7bc9fa74fe935f7757d24891d2cb0",
+      "bytes": 600178
+    },
+    "public/help-content.js": {
+      "sha256": "6b4807f2952d56e6373e251d0250db534658d12a21a542c693b70798ffb2d0e9",
+      "bytes": 108596
+    },
+    "public/setup.html": {
+      "sha256": "960408460c2fb531f1a6b45cf1f4bbec8bd8860242c01d55bde0893ebbb57b5e",
+      "bytes": 30724
+    },
+    "public/trade.html": {
+      "sha256": "c7ae2c00699bd71b458ba017c54883e96902a00416db98ec1744bd9180641aa2",
+      "bytes": 83318
+    }
   },
-  "public/help-content.js": {
-   "sha256": "c33f491869ab056cd0c15252249265020d31d251aadfac90d9f191edc8818ede",
-   "bytes": 107870
-  },
-  "public/setup.html": {
-   "sha256": "960408460c2fb531f1a6b45cf1f4bbec8bd8860242c01d55bde0893ebbb57b5e",
-   "bytes": 30724
-  },
-  "public/trade.html": {
-   "sha256": "c7ae2c00699bd71b458ba017c54883e96902a00416db98ec1744bd9180641aa2",
-   "bytes": 83318
-  }
- },
- "htmlNotVerified": "public/construct.html is served with its cache markers rewritten to the content hash of each script, so its served bytes never equal its stored bytes. Nothing is generated from it."
+  "htmlNotVerified": "public/construct.html is served with its cache markers rewritten to the content hash of each script, so its served bytes never equal its stored bytes. Nothing is generated from it."
 }
