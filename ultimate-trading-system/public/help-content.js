@@ -373,6 +373,10 @@ window.HELP = {
       },
       swDesc3: { what: 'Why this stage 3 exists. Kept on the record set.' },
       swGo3: { what: 'Starts stage 3 — pricing only, no training. The tables land on Boards. With a paused run chosen in the box above, starts that run again where it stopped.' },
+      swDelete3: {
+        what: 'Deletes the paused stage 3 run chosen in from stage 2 record set, after asking you to type its record set id back. Everything it had priced goes with it.',
+        more: 'Live only while a paused run is chosen in that box, because that is all it acts on. A finished record set is deleted on Boards, with the same two steps. A run another record set names as its parent is refused, and nothing is deleted while a stage run is going.',
+      },
       swStop: { what: 'Pauses a stage 3 run, or stops a stage 1 or 2 run. Everything already written stays. A paused stage 3 run keeps the state it held in memory as well, and is offered in the stage 3 section\'s box to be started again; a stopped stage 1 or 2 run reports itself cancelled and cannot be.' },
 
     },

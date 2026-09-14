@@ -176,8 +176,12 @@ module.exports = {
       'it must be wired BEFORE the early return: a set that will not open is the one most likely to want deleting');
     // it asks first, and it takes the id typed back -- the same two steps the
     // stage 1, 2 and 3 deletes take, because this removes just as much
-    assert.ok(fn.includes("await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, {})"), 'it previews first');
-    assert.ok(fn.includes("if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return; }"),
+    // 3.133.0: through the one flow Boards and Sweep use, which previews first
+    // and refuses anything but the record set id typed back
+    assert.ok(fn.includes('const done = await deleteSetFlow(st.cut);'), 'it does not go through the one delete flow');
+    const flow = UI.slice(UI.indexOf('async function deleteSetFlow(id) {'), UI.indexOf('\n}\n', UI.indexOf('async function deleteSetFlow(id) {')));
+    assert.ok(flow.includes("await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, {})"), 'it previews first');
+    assert.ok(flow.includes("if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return null; }"),
       'and refuses anything but the record set id typed back');
     // ...and it only ever deletes the set that is CHOSEN, never the walk
     assert.ok(fn.includes('if (dl && st.cut && st.cut !== F_NEW)'),

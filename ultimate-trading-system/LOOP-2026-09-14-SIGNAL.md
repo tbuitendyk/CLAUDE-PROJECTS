@@ -700,3 +700,16 @@ two older guards that skip since 3.131.0 rewrote their lines.
   says "across N coins and shapes" on the line. The cut arithmetic is one
   function, `partSlices`; the stage 3 run keeps its own copy of the same
   arithmetic, untouched by this order. Second digit: new behaviour.
+
+## P. A paused run can be deleted from where it is chosen — owner GO NOW! 2026-09-14 (3.133.0)
+
+The stage 3 section on Sweep already offers a paused run in `from stage 2
+record set`, to be started again with `Start stage 3`. There was no way to
+delete one there; a paused run could only go through `Delete record set…`
+on Boards. `Delete record set…` now sits beside `Start stage 3`, live
+exactly while a paused run is chosen in that box, and it deletes that run
+through the same two steps as Boards: the service says what would go, the
+owner types the record set id back. The boxes then refill off the list the
+poll reads and the count line is asked again. Boards, the Funnel's Stage 4
+heading and Sweep now delete through ONE flow; the two earlier copies had
+already drifted on one detail. Second digit: a new control.

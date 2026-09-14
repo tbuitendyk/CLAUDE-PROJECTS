@@ -1616,6 +1616,15 @@ const GUARDS = [
     'theRebuildPricesEachUnitInPartsAndCountsSettings', 'the screen is not told how many coins and shapes the count runs over'],
   [path.join(ROOT, 'public', 'construct.js'), "const fAcrossWords = (units) => (Number(units) > 1 ? ` across ${Number(units).toLocaleString()} coins and shapes` : '');", "const fAcrossWords = (units) => '';",
     'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft', 'a set of several coins and shapes prints a count that reads as one set\'s settings'],
+  // ---- SWEEP: a paused run can be deleted from where it is chosen; one delete flow (3.133.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "    if (c.id === 'swDelete3') { c.disabled = !on; c.classList.toggle('ctl-off', !on); continue; }", "    if (c.id === 'swDelete3') { c.disabled = true; c.classList.toggle('ctl-off', true); continue; }",
+    'aPausedRunCanBeDeletedFromWhereItIsChosen', 'the delete is never live, so a paused run can be chosen and not deleted'],
+  [path.join(ROOT, 'public', 'construct.js'), "    const done = await deleteSetFlow(cont);\n    if (!done) return;\n    say('#swOut3'", "    const done = null;\n    if (!done) return;\n    say('#swOut3'",
+    'aPausedRunCanBeDeletedFromWhereItIsChosen', 'the press on Sweep deletes nothing'],
+  [path.join(ROOT, 'public', 'construct.js'), "  if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return null; }", "  if (false) { alert('That is not the record set id — nothing was deleted.'); return null; }",
+    'aPausedRunCanBeDeletedFromWhereItIsChosen', 'anything typed back deletes the set'],
+  [path.join(ROOT, 'public', 'construct.js'), "    await swProgress();\n    swCountsSoon();\n  };\n  $('#swGo3').onclick", "  };\n  $('#swGo3').onclick",
+    'aPausedRunCanBeDeletedFromWhereItIsChosen', 'after a delete the box still offers the run that is gone'],
 ];
 
 const only = process.argv[2] || '';

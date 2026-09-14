@@ -2611,12 +2611,17 @@ module.exports = {
     // 2026-09-06: "s1/2/3 wont delete cause 4 exists"). It counts TWO writes
     // because it asks the service what it is about to remove before it removes
     // it, which is the same two steps the stage 1, 2 and 3 deletes take.
-    const posts = wire.match(/tryPost\(/g) || [];
-    assert.equal(posts.length, 4, `the Stage 4 view makes ${posts.length} writes; it may make exactly four — the rename, working out its numbers, and the delete's preview and confirm`);
+    // 3.133.0: the delete's two posts live in the one flow every delete goes through
+    const flowAt = page.indexOf('async function deleteSetFlow(id) {');
+    const flowSrc = page.slice(flowAt, page.indexOf('\n}\n', flowAt));
+    const posts = [...(wire.match(/tryPost\(/g) || []), ...(flowSrc.match(/tryPost\(/g) || [])];
+    assert.equal(posts.length, 4, `the Stage 4 view and its delete flow make ${posts.length} writes; they may make exactly four — the rename, working out its numbers, and the delete's preview and confirm`);
+    assert.ok(wire.includes('deleteSetFlow(st.cut)'), 'the delete is not one of them');
     assert.ok(/api\/stageset\/\$\{encodeURIComponent\(cd\.set\.id\)\}\/name/.test(wire), 'the rename is not one of them');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(cd\.set\.id\)\}\/rebuild/.test(wire), 'working out this set\'s own numbers is not one of them');
-    assert.strictEqual((wire.match(/api\/stageset\/\$\{encodeURIComponent\(id\)\}\/delete/g) || []).length, 2,
+    assert.strictEqual((flowSrc.match(/api\/stageset\/\$\{encodeURIComponent\(id\)\}\/delete/g) || []).length, 2,
       'the delete must be the preview and the confirm, and nothing else');
+    assert.strictEqual((wire.match(/\/delete/g) || []).length, 0, 'the Stage 4 view deletes outside the one flow');
     // and it still changes NOTHING about the rule or the rows
     assert.ok(!/\/rows|\/step|userRule|ruleSentence/.test(wire.slice(wire.indexOf("const dl = $('#fCutDelete');"), wire.indexOf('if (!cd) return;'))),
       'the delete reaches for the rule or the rows — it may only remove the set');

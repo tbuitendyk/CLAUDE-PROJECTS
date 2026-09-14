@@ -811,6 +811,9 @@ function swContinueMode(on) {
   if (!panel) return;
   for (const c of panel.querySelectorAll('select, input, button')) {
     if (c.id === 'swFrom3' || c.id === 'swGo3') continue;
+    // the delete runs the other way: it acts on the paused run, so it is live
+    // exactly while one is chosen (3.133.0)
+    if (c.id === 'swDelete3') { c.disabled = !on; c.classList.toggle('ctl-off', !on); continue; }
     c.disabled = !!on;
     const holder = c.closest('label') || c;
     holder.classList.toggle('ctl-off', !!on);
@@ -3296,6 +3299,7 @@ async function drawSweep() {
       <label class="f">name<input id="swName3" placeholder="${esc(nextNames[3] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc3" style="width:100%"></label>
       <button id="swGo3" class="pri">Start stage 3</button>
+      <button id="swDelete3" class="danger" disabled title="deletes the paused run chosen in from stage 2 record set, after asking you to type its record set id back. Everything it had priced goes with it. Live only while a paused run is chosen there; a finished record set is deleted on Boards.">Delete record set…</button>
     </div>
     <div id="swOut3"></div>
   </div>`;
@@ -3342,6 +3346,20 @@ async function drawSweep() {
     });
     if (got && !got.pending) { rememberSweepForm(); say('#swOut2', `started <b>${esc(got.name)}</b> — ${got.units.toLocaleString()} carried units.`); }
     swAfterStart(got);
+  };
+  // DELETE A PAUSED RUN FROM WHERE IT IS CHOSEN (3.133.0, owner order: "there
+  // has to be a way to select and DELETE paused jobs also"). The one flow
+  // Boards and the Funnel use, on the run the box names. The boxes then
+  // refill off the list the poll reads, as they do when a run ends, and the
+  // count line is asked again so the section reads as it would on a fresh draw.
+  $('#swDelete3').onclick = async () => {
+    const cont = swContinueOf();
+    if (!cont) return;
+    const done = await deleteSetFlow(cont);
+    if (!done) return;
+    say('#swOut3', `deleted <b>${esc(done.name)}</b> — it is gone from the box above.`);
+    await swProgress();
+    swCountsSoon();
   };
   $('#swGo3').onclick = async () => {
     // with a paused run chosen in the box nothing is launched: it is started
@@ -3655,23 +3673,13 @@ async function drawBoards() {
       del.onclick = async () => {
         const id = selOf[stage];
         if (!id) return;
-        const look = await tryPost(`api/stageset/${id}/delete`, {});
-        if (!look) return;
-        if (!look.preview) { alert('Nothing was deleted — the service answered strangely.'); return; }
-        const typed = prompt(`Permanently delete ${look.name} (stage ${look.stage}, ${look.status})?\n\n`
-          + `${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
-          + `${look.desc ? `\n"${look.desc}"` : ''}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
-        if (typed === null) return;
-        if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return; }
-        const done = await tryPost(`api/stageset/${id}/delete`, { confirm: typed.trim() });
-        if (done && done.deleted) {
-          alert(`Deleted ${done.name} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
-          const patch = { [`s${stage}`]: null, openS3: [] };
-          if (stage <= 2) patch.s3 = null;
-          if (stage === 1) patch.s2 = null;
-          bSaveView(patch);
-          bRedrawPeggedTo(`#bPick${stage}`);
-        }
+        const done = await deleteSetFlow(id);
+        if (!done) return;
+        const patch = { [`s${stage}`]: null, openS3: [] };
+        if (stage <= 2) patch.s3 = null;
+        if (stage === 1) patch.s2 = null;
+        bSaveView(patch);
+        bRedrawPeggedTo(`#bPick${stage}`);
       };
     }
   }
@@ -3971,6 +3979,27 @@ async function drawBoardsHoldingPlace() {
     window.scrollTo(0, y);
     rememberScroll(tab);
   }));
+}
+
+// DELETING A RECORD SET IS ONE FLOW (3.133.0). Boards, the Funnel's Stage 4
+// heading and Sweep's stage 3 section all delete through this: the service
+// is asked what would go, the owner types the record set id back, and only
+// then is it deleted. Two copies of these lines had already drifted apart on
+// one detail; a third would not have stayed the same either. Returns what
+// was deleted, or null when nothing was.
+async function deleteSetFlow(id) {
+  const look = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, {});
+  if (!look) return null;
+  if (!look.preview) { alert('Nothing was deleted — the service answered strangely.'); return null; }
+  const typed = prompt(`Permanently delete ${look.name} (stage ${look.stage}, ${look.status})?\n\n`
+    + `${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
+    + `${look.desc ? `\n"${look.desc}"` : ''}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
+  if (typed === null) return null;
+  if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return null; }
+  const done = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, { confirm: typed.trim() });
+  if (!(done && done.deleted)) return null;
+  alert(`Deleted ${done.name} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
+  return done;
 }
 
 // A PICK ON BOARDS HOLDS ITS OWN BOX STILL (3.132.0, owner report 2026-09-14:
@@ -7150,23 +7179,12 @@ function fWireCut(d, st, cd) {
   const dl = $('#fCutDelete');
   if (dl && st.cut && st.cut !== F_NEW) {
     dl.onclick = async () => {
-      const id = st.cut;
-      const look = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, {});
-      if (!look) return;
-      if (!look.preview) { alert('Nothing was deleted — the service answered strangely.'); return; }
-      const typed = prompt(`Permanently delete ${look.name} (stage ${look.stage}, ${look.status})?\n\n`
-        + `${Number(look.rows).toLocaleString()} record row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
-        + `${look.desc ? `\n"${look.desc}"` : ''}\n\nType the record set id back to confirm:\n${look.confirmWith}`, '');
-      if (typed === null) return;
-      if (typed.trim() !== look.confirmWith) { alert('That is not the record set id — nothing was deleted.'); return; }
-      const done = await tryPost(`api/stageset/${encodeURIComponent(id)}/delete`, { confirm: typed.trim() });
-      if (done && done.deleted) {
-        alert(`Deleted ${done.name} — ${Number(done.rows).toLocaleString()} row(s), ${(done.bytes / 1048576).toFixed(1)} MB freed.`);
-        // the set that was chosen is gone, so the screen cannot stay in it.
-        // It goes HOME rather than onto a walk (3.108.0): nothing was open
-        // but that set, and opening something else is the owner's choice.
-        fCloseCut(st); fMarkOpen(st.set, false); fSave(); drawFunnel();
-      }
+      const done = await deleteSetFlow(st.cut);
+      if (!done) return;
+      // the set that was chosen is gone, so the screen cannot stay in it.
+      // It goes HOME rather than onto a walk (3.108.0): nothing was open
+      // but that set, and opening something else is the owner's choice.
+      fCloseCut(st); fMarkOpen(st.set, false); fSave(); drawFunnel();
     };
   }
   // the panels below exist only when the set opened; the two above are the way

@@ -788,6 +788,66 @@ module.exports = {
   // THE SCREEN: a paused run is an entry in the stage 3 section's box, the
   // boxes below it are ghosted while it is chosen, the same start button
   // starts it again, and the running line's control reads pause for stage 3
+  // A PAUSED RUN CAN BE DELETED FROM WHERE IT IS CHOSEN (3.133.0, owner order
+  // 2026-09-14: "on the stage 3 sweep there has to be a way to select and
+  // DELETE paused jobs also"). The stage 3 section's box already picks a paused
+  // run; a delete beside the start press acts on it, through the one flow
+  // Boards and the Funnel delete through, and is live only while one is chosen.
+  async aPausedRunCanBeDeletedFromWhereItIsChosen() {
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    // drawn beside the start press, dead until a paused run is chosen
+    assert.ok(src.includes('<button id="swGo3" class="pri">Start stage 3</button>\n      <button id="swDelete3" class="danger" disabled'), 'the delete is not drawn beside Start stage 3, or is not dead to begin with');
+    assert.ok(/<button id="swDelete3" class="danger" disabled title="[^"]*">Delete record set…<\/button>/.test(src), 'the delete is not named as Boards names it');
+    // the ghosting runs the other way for it: live exactly while a paused run is chosen
+    const ghost = src.slice(src.indexOf('function swContinueMode('), src.indexOf('// THE PARENT PICKERS FOLLOW WHAT IS ON THE BOX'));
+    const make = (id, tag) => ({ id, tag, disabled: false, off: false, closest: () => null, classList: { toggle(cls, on) { if (cls === 'ctl-off') this.owner.off = !!on; } } });
+    const controls = ['swFrom3', 'swGo3', 'swDelete3', 'swName3', 'swFee'].map((id) => { const c = make(id); c.classList.owner = c; return c; });
+    const panel = { querySelectorAll: () => controls };
+    // eslint-disable-next-line no-new-func
+    const swContinueMode = new Function('$', `${ghost}\nreturn swContinueMode;`)((sel) => (sel === '#swH3' ? { closest: () => panel } : null));
+    swContinueMode(true);
+    assert.deepStrictEqual(controls.map((c) => [c.id, c.disabled]), [['swFrom3', false], ['swGo3', false], ['swDelete3', false], ['swName3', true], ['swFee', true]],
+      'with a paused run chosen the delete is not live, or the boxes below are');
+    swContinueMode(false);
+    assert.deepStrictEqual(controls.map((c) => [c.id, c.disabled]), [['swFrom3', false], ['swGo3', false], ['swDelete3', true], ['swName3', false], ['swFee', false]],
+      'with no paused run chosen the delete is live, or the boxes below are dead');
+    assert.ok(controls.find((c) => c.id === 'swDelete3').off === true && controls.find((c) => c.id === 'swName3').off === false, 'the ghosting class does not follow the disabled state');
+    // the press: the chosen run, through the one flow, then the boxes refill and the count line is asked again
+    const wire = src.slice(src.indexOf("$('#swDelete3').onclick = async () => {"), src.indexOf("$('#swGo3').onclick = async () => {"));
+    assert.ok(wire.includes('const cont = swContinueOf();\n    if (!cont) return;'), 'the delete acts on something other than the paused run the box names');
+    assert.ok(wire.includes('const done = await deleteSetFlow(cont);\n    if (!done) return;'), 'the delete does not go through the one flow, or carries on after nothing was deleted');
+    assert.ok(wire.includes('await swProgress();\n    swCountsSoon();'), 'the boxes are not refilled and the count line not asked again after a delete');
+    // ONE FLOW: Boards and the Funnel go through the same function, and neither keeps a copy of its words
+    const boards = src.slice(src.indexOf("const del = $(`#bDelete${stage}`);"), src.indexOf("document.querySelectorAll('[data-bfold]')"));
+    assert.ok(boards.includes('const done = await deleteSetFlow(id);'), 'Boards keeps its own delete flow');
+    const cutWire = src.slice(src.indexOf("const dl = $('#fCutDelete');"), src.indexOf("const dl = $('#fCutDelete');") + 600);
+    assert.ok(cutWire.includes('const done = await deleteSetFlow(st.cut);'), 'the Funnel keeps its own delete flow');
+    assert.strictEqual(src.split('Type the record set id back to confirm:').length - 1, 1, 'the delete dialog is written in more than one place');
+    // the flow itself, run here: previews, refuses a wrong id without a second post, deletes on the right one
+    const flowSrc = src.slice(src.indexOf('async function deleteSetFlow(id) {'), src.indexOf('\n}\n', src.indexOf('async function deleteSetFlow(id) {')) + 3);
+    const run = async (answer, look, done) => {
+      const posts = []; const alerts = [];
+      const tryPost = async (p, body) => { posts.push([p, body]); return body && body.confirm != null ? done : look; };
+      // eslint-disable-next-line no-new-func
+      const flow = new Function('tryPost', 'prompt', 'alert', `${flowSrc}\nreturn deleteSetFlow;`)(tryPost, () => answer, (m) => alerts.push(m));
+      return { out: await flow('s3-x'), posts, alerts };
+    };
+    const look = { preview: true, id: 's3-x', name: 'S3 #x', stage: 3, status: 'paused', desc: '', rows: 12, bytes: 1048576, confirmWith: 's3-x' };
+    const wrong = await run('s3-y', look, { deleted: true });
+    assert.deepStrictEqual([wrong.out, wrong.posts.length], [null, 1], 'a wrong id typed back still deletes, or never previewed');
+    assert.ok(wrong.alerts.some((m) => /not the record set id/.test(m)), 'a wrong id is not refused in words');
+    const cancelled = await run(null, look, { deleted: true });
+    assert.deepStrictEqual([cancelled.out, cancelled.posts.length, cancelled.alerts.length], [null, 1, 0], 'cancelling the dialog deletes, or nags');
+    const right = await run(' s3-x ', look, { deleted: true, name: 'S3 #x', rows: 12, bytes: 1048576 });
+    assert.deepStrictEqual([right.out && right.out.deleted, right.posts.length, right.posts[1][1]], [true, 2, { confirm: 's3-x' }], 'the right id typed back does not delete, or sends it untrimmed');
+    assert.ok(right.alerts.some((m) => /^Deleted S3 #x/.test(m)), 'a delete is not reported');
+    const odd = await run('s3-x', { nope: true }, { deleted: true });
+    assert.deepStrictEqual([odd.out, odd.posts.length], [null, 1], 'a strange answer to the preview is deleted through anyway');
+    // and the help names it
+    const help = fs.readFileSync(path.join(ROOT, 'public', 'help-content.js'), 'utf8');
+    assert.ok(help.includes('swDelete3: {'), 'the delete has no help entry');
+  },
+
   async theSweepOffersAPausedRunWhereANewOneIsSetUp() {
     const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const seg = src.slice(src.indexOf('function swPausedOptions('), src.indexOf('// EVERYTHING BELOW THE BOX IS GHOSTED'));
