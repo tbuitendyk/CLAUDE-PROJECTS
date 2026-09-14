@@ -1,25 +1,25 @@
 {
-  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "febac61f49d798f659633288b54b4b783e5e3314",
-  "subject": "3.129.0: the passers -- the coins and shapes that pass the check, listed on Coins with their numbers and a tick each, and a Sweep tick that runs exactly those pairs",
-  "capturedAt": "2026-09-14T01:47:29Z",
-  "files": {
-    "public/construct.js": {
-      "sha256": "910d1106f904a6c9b42acb555a054b9499176025fb1d9ce9c21b0e40a5891029",
-      "bytes": 583965
-    },
-    "public/help-content.js": {
-      "sha256": "766fed69791531847cc8814335d03e7fb895b2015244a845c352ad07d94f8c9e",
-      "bytes": 105822
-    },
-    "public/setup.html": {
-      "sha256": "960408460c2fb531f1a6b45cf1f4bbec8bd8860242c01d55bde0893ebbb57b5e",
-      "bytes": 30724
-    },
-    "public/trade.html": {
-      "sha256": "c7ae2c00699bd71b458ba017c54883e96902a00416db98ec1744bd9180641aa2",
-      "bytes": 83318
-    }
+ "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
+ "commit": "f67a193f54e9b1018054686d32bd2d231bf49564",
+ "subject": "3.130.0: the confirmation overlay -- confirm on stage 3, priced against the coin's own lean, with a categorical verdict on Boards",
+ "capturedAt": "2026-09-14T04:01:39Z",
+ "files": {
+  "public/construct.js": {
+   "sha256": "049fad175b29e5639623bc7d4c2a21be4dcecfcd130fd66c5c799eecd0ae6777",
+   "bytes": 590431
   },
-  "htmlNotVerified": "public/construct.html is served with its cache markers rewritten to the content hash of each script, so its served bytes never equal its stored bytes. Nothing is generated from it."
+  "public/help-content.js": {
+   "sha256": "7dffa83b24417b79e860039d2301b4bcf2d7f68357f65bd5f8a350bbdf1d7435",
+   "bytes": 107628
+  },
+  "public/setup.html": {
+   "sha256": "960408460c2fb531f1a6b45cf1f4bbec8bd8860242c01d55bde0893ebbb57b5e",
+   "bytes": 30724
+  },
+  "public/trade.html": {
+   "sha256": "c7ae2c00699bd71b458ba017c54883e96902a00416db98ec1744bd9180641aa2",
+   "bytes": 83318
+  }
+ },
+ "htmlNotVerified": "public/construct.html is served with its cache markers rewritten to the content hash of each script, so its served bytes never equal its stored bytes. Nothing is generated from it."
 }
