@@ -420,6 +420,15 @@ of passers."* Built as COINS.md section 10 describes. Decisions:
   across four shapes is one launch of five units (singles), not five coins
   times four shapes.
 
+**Reached the environment**: deployed 6913a48 → febac61 (3.129.0),
+`healthz OK`, the box idle before it; `SERVED.json` captured and the word
+lists regenerated from it (the Coins list gains `coins and shapes that pass`,
+its column headings and `no coin and shape passes at this bar`; the Sweep
+list gains `only the coins and shapes ticked on Coins`); every guard on the
+passers deleted in turn and caught. The records on the box are untouched;
+the bar reads its default of 2 and every passer is ticked until the owner
+un-ticks it.
+
 **A sentence on the screen that is not true**, found while wiring the tick
 and left standing (RULE ZERO): the Coins note and the band box's hover say
 Sweep trains with this same number. Nothing in `lib/` reads
