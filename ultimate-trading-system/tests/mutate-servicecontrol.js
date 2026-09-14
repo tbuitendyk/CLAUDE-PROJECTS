@@ -124,7 +124,7 @@ const GUARDS = [
   // position inline now, so the old one-line anchor had gone stale and this
   // guard was testing nothing (the harness reported it as a SKIP).
   [path.join(ROOT, 'lib', 'stages.js'),
-    '    rows = applySort(3, t.ranked.map((r, i) => ({ ...r, _i: i })), doc.sort, (a, b) => a._i - b._i);',
+    '    rows = applySort(3, t.ranked.map((r, i) => ({ ...r, _i: i })), saved, (a, b) => a._i - b._i);',
     '    rows = t.ranked.map((r, i) => ({ ...r, _i: i }));',
     'theRankedTableSortsByOnePickedColumn', 'the picked column saves but the ranked table silently keeps its own order — the screen claims one order and shows another'],
   [path.join(ROOT, 'lib', 'stages.js'), "  if (stage === 3 && spec.length > 1) throw new Error('one column at a time on this table');", '',
@@ -239,7 +239,7 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), '      if (raw == null || raw === \'\') continue;', '',
     'aColumnWithNoNumbersInItSaysSoInsteadOfReadingZero',
     'a row that HAS no value is counted as a row worth zero — an empty column reads as a column of zeroes and every average is dragged towards one'],
-  [path.join(ROOT, 'lib', 'stages.js'), '() => spreadOf(rows, FILTER_DEFS[3])', '() => spreadOf(t.ranked, FILTER_DEFS[3])',
+  [path.join(ROOT, 'lib', 'stages.js'), '() => spreadOf(rows, defs)', '() => spreadOf(t.ranked, defs)',
     'theFourNumbersBesideEachFilterDescribeTheRowsTheTableIsHolding',
     'the numbers beside each box describe the whole record set instead of the rows the table is showing, so the next floor is set from a table nobody is looking at'],
   [path.join(ROOT, 'public', 'construct.js'), '], ranked && ranked.spread)}', '])}',
@@ -1170,7 +1170,7 @@ const GUARDS = [
     'changing one of the four boxes to something the boxes on its right cannot fit lands on no board at all, instead of dropping what cannot be honoured'],
   // ---- step 6's press: one press, progress, and no other loads (2026-09-07) --
   [path.join(ROOT, 'public', 'construct.js'),
-    "const fRichOf = (d) => (d && d.richOn) || { have: 0, need: Number((d && d.survivors) || 0), run: null };",
+    "const fRichOf = (d) => (d && d.richOn) || { have: 0, need: Number((d && d.of) || 0), run: null };",
     "const fRichOf = (d) => (d && d.richOn) || { have: 0, need: 0, run: null };",
     'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft',
     'a reply that carries no count of its own ghosts the press with no explanation, which is the fault this release fixes arriving by another door'],
@@ -1180,8 +1180,8 @@ const GUARDS = [
     'theRemainingCountIsAskedOnEveryKeystrokeAndTheLastAnswerWins',
     'a slow answer to an older keystroke overwrites the newer one, so the count under the boxes is for a value no longer in them'],
   [path.join(ROOT, 'lib', 'stages.js'),
-    '  const rich = richBusy();\n  if (rich) return rich;\n  return null;\n}',
-    '  return null;\n}',
+    '  const rich = richBusy();\n  if (rich) return rich;\n  // and the ranking read (3.102.0',
+    '  // and the ranking read (3.102.0',
     'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft',
     'a sweep, a stage run or a totalling can be started on top of the step 6 press and fight it for the same workers'],
   // ---- a stage 3 run paused and started again (3.82.0) ----------------------
