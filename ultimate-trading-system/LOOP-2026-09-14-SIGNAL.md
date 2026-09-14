@@ -585,3 +585,18 @@ the screen draws it, on both tables that draw the column. The names
 themselves are unchanged; whether the two should share one name is the
 owner's call.
 
+## L. The stage headings compare the tick — owner GO NOW! 2026-09-14 (3.130.3)
+
+The owner's stage 2 heading stayed red after S1-Pasers#1's stage 2 finished.
+The heading colours the provenance chain, not the run: the set named in
+`from stage 1 record set` is held up to the stage 1 boxes above. A set
+launched with `only the coins and shapes ticked on Coins` read the Coins
+list, not `trade coins` and `chunk shape` (greyed and unread under the
+tick), so holding those boxes up to it read as a mismatch whatever was
+typed. A defect of 3.129.0. Now the tick is compared as a box of its own,
+on against on; with both on, the pairs ticked on Coins now are held up to
+the pairs the set recorded (named coin and chunk shape as the screen names
+them); the two greyed boxes are left out for such a set. The pairs ticked
+now ride on the same answer the headings already read the downloaded coins
+off, memoised on the record files.
+

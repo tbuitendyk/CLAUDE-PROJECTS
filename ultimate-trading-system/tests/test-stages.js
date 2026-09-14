@@ -548,9 +548,10 @@ module.exports = {
   async theNameBoxIsOnEveryStageOfSweepAndTheLaunchSendsIt() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     const srv = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
-    assert.ok(srv.includes("nextNames: stages.nextNames(), coinsDownloaded: require('./lib/dataset').defaultCoins() }));"),
+    const list = srv.slice(srv.indexOf("app.get('/api/stagesets'"), srv.indexOf('\n}));', srv.indexOf("app.get('/api/stagesets'")));
+    assert.ok(list.includes('nextNames: stages.nextNames(),') && list.includes("coinsDownloaded: require('./lib/dataset').defaultCoins(),"),
       'the record-set list does not carry the next free names, or what a blank coin box resolves to');
-    assert.ok(srv.includes("app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam),"),
+    assert.ok(list.includes("app.get('/api/stagesets', (req, res) => res.json({") && list.includes('running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam),'),
       'and it is still the list of sets that carries them');
     assert.ok(ui.includes("  const nextNames = st.nextNames || {};"), 'Sweep does not read the next free names off the list');
     for (const n of [1, 2, 3]) {
@@ -914,6 +915,35 @@ module.exports = {
     assert.ok(src.includes('<td ${btdN}>${bForecastScore(r.score, r.testChunks)}</td>'), 'the stage 1 table draws the score through the helper');
     assert.ok(/title="the sureness the pooled votes placed on what actually happened, summed over the test window; then a slash and how many test chunks/.test(src),
       'the heading says what the three parts of the cell are');
+  },
+
+  // A SET LAUNCHED FROM THE COINS LIST IS HELD UP TO THE TICK, NOT TO THE
+  // GREYED BOXES (3.130.3, owner order: "fix it so the tick is compared
+  // instead"). Under "only the coins and shapes ticked on Coins" the launch
+  // never reads trade coins or chunk shape, so comparing them painted Stage 2
+  // red for ever. Read from the source, the way the chain routine's own test
+  // reads it, plus the launch's record and the route that hands the screen
+  // the pairs ticked now.
+  theStageHeadingsCompareTheTickForASetLaunchedFromCoins() {
+    const UI = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8')
+      .split('\n').filter((l) => !/^\s*\/\//.test(l)).join('\n');
+    const fn = UI.slice(UI.indexOf('function swProvenance() {'), UI.indexOf('\n}\n', UI.indexOf('function swProvenance() {')));
+    assert.ok(fn.includes("const tickBox = c('#swPassers');"), 'the tick is read as a box of its own');
+    assert.ok(fn.includes('const setPairs = Array.isArray(p.passers) && p.passers.length ? p.passers : null;'), 'and the set says whether it was launched with it');
+    assert.ok(fn.includes("['only the coins and shapes ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],"), 'the tick is compared, on against on');
+    assert.ok(fn.includes("? (tickBox && setPairs ? [['coins and shapes that pass', pairWords(swPassersNow), pairWords(setPairs)]] : [])"),
+      'with both on, the pairs ticked now are held up to the pairs the set recorded');
+    assert.ok(/: \[\['trade coins', wantUni\.split/.test(fn) && /\['chunk shape', shape\(c\('#swPermGeom'\), v\('#swGeom'\)\)/.test(fn),
+      'without the tick on either side the two boxes are compared as before');
+    // the launch records the pairs on the set, which is what the screen reads
+    const LIB = fs.readFileSync(path.join(ROOT, 'lib', 'stages.js'), 'utf8');
+    assert.ok(LIB.includes('passers: passers || null, campaign:'), 'the launch writes the pairs it ran, or null, on the set');
+    // and the pairs ticked now ride on the same answer the headings already read the downloaded coins off
+    const SRV = fs.readFileSync(path.join(ROOT, 'server.js'), 'utf8');
+    assert.ok(SRV.includes("passersTicked: (() => { try { return require('./lib/coinsrun').passingUnits(); } catch (_) { return []; } })(),"),
+      'the stagesets answer carries the pairs ticked on Coins now');
+    assert.ok(UI.includes('swPassersNow = st.passersTicked || [];') && UI.includes('if (Array.isArray(st.passersTicked)) swPassersNow = st.passersTicked;'),
+      'the screen keeps them on the draw and on every poll');
   },
 
   // THE CEILING BOX AND ITS COLUMN NAME EACH OTHER EXACTLY (3.130.2, owner

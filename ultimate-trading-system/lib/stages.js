@@ -254,6 +254,9 @@ function publicParams(d) {
     // the screen's own check against THIS function's output, so a field added
     // to one side and not the other fails the suite.
     universe: p.universe || null, compare: p.compare || null, geometries: p.geometries || null,
+    // the pairs a launch from the Coins list ran, or null (3.130.3): the
+    // stage headings hold such a set up to the tick and to these
+    passers: Array.isArray(p.passers) ? p.passers : null,
     trainOn: p.trainOn || null,
     allLoaded: p.allLoaded !== false, startMonth: p.startMonth || null, endMonth: p.endMonth || null,
   };

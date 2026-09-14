@@ -469,7 +469,16 @@ app.post('/api/stage-gate', (req, res) => {
 // because the vocabulary's lists are the CHOICES a control offers -- and the
 // word-list generator reads them as exactly that, so naming one for a count
 // would put every coin's ticker on Sweep's closed word list.
-app.get('/api/stagesets', (req, res) => res.json({ running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam), nextNames: stages.nextNames(), coinsDownloaded: require('./lib/dataset').defaultCoins() }));
+app.get('/api/stagesets', (req, res) => res.json({
+  running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam), nextNames: stages.nextNames(),
+  coinsDownloaded: require('./lib/dataset').defaultCoins(),
+  // THE PAIRS TICKED ON COINS NOW (3.130.3): the stage headings hold a set
+  // launched with "only the coins and shapes ticked on Coins" up to these,
+  // not to the trade coins and chunk shape boxes the launch never read.
+  // Memoised on the record files, so the poll that asks every few seconds
+  // pays a handful of stats, not a read.
+  passersTicked: (() => { try { return require('./lib/coinsrun').passingUnits(); } catch (_) { return []; } })(),
+}));
 
 app.get('/api/stageset/:id', (req, res) => {
   const doc = stages.getSet(req.params.id);

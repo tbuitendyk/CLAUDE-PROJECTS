@@ -868,6 +868,7 @@ async function swProgress() {
   // cost line are both judged off it, so a stale copy would answer for a box
   // that has just moved.
   swSetsCache = st.sets || [];
+  if (Array.isArray(st.passersTicked)) swPassersNow = st.passersTicked;
   const swMoved = swRefillParents(swSetsCache);
   // THE HEADING COLOURS ARE REPAINTED ON EVERY TICK, NOT ONLY WHEN A BOX MOVED
   // (3.76.2, owner order 2026-09-06: "JUST THINK ABOUT IT AND CODE IT RIGHT SO
@@ -1094,11 +1095,26 @@ function swProvenance() {
     const ticks = (a, b, cc) => `${a ? 'singles' : ''}${b ? ' doubles' : ''}${cc ? ' triples' : ''}`.trim() || 'none ticked';
     const shape = (perm, one) => (perm ? 'every chunk shape' : one);
     const months = (all, from, to) => (all ? 'all loaded data' : `${from} to ${to}`);
+    // ONLY THE COINS AND SHAPES TICKED ON COINS (3.130.3, owner order: "fix
+    // it so the tick is compared instead"). A set launched with the tick read
+    // the Coins list, not the trade coins and chunk shape boxes -- those are
+    // greyed and unread under it -- so holding the greyed boxes up to such a
+    // set painted Stage 2 red for ever, whatever was typed. The tick is
+    // compared as a box of its own, and when both sides have it on, the pairs
+    // ticked on Coins now are held up to the pairs the set recorded; the two
+    // greyed boxes are left out of the reading for such a set.
+    const tickBox = c('#swPassers');
+    const setPairs = Array.isArray(p.passers) && p.passers.length ? p.passers : null;
+    const geoWord = (g) => { const hit = ((VOCAB && VOCAB.geometry) || []).find((o) => o.value === g); return hit ? hit.label : String(g); };
+    const pairWords = (list) => (Array.isArray(list) ? list : []).map((x) => `${x.coin} ${geoWord(x.geometry)}`).sort().join(', ') || 'none';
     const CHECKS = [
-      ['trade coins', wantUni.split(',').join(', '), setUni.split(',').join(', ')],
+      ['only the coins and shapes ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],
+      ...(tickBox || setPairs
+        ? (tickBox && setPairs ? [['coins and shapes that pass', pairWords(swPassersNow), pairWords(setPairs)]] : [])
+        : [['trade coins', wantUni.split(',').join(', '), setUni.split(',').join(', ')],
+          ['chunk shape', shape(c('#swPermGeom'), v('#swGeom')), shape(geos.length > 1, geos[0] || 'unrecorded')]]),
       ['compare coins', wantCmp ? wantCmp.split(',').join(', ') : 'none', setCmp ? setCmp.split(',').join(', ') : 'none'],
       ['singles / doubles / triples', ticks(c('#swSingles'), c('#swDoubles'), c('#swTriples')), ticks(!!sz.singles, !!sz.doubles, !!sz.triples)],
-      ['chunk shape', shape(c('#swPermGeom'), v('#swGeom')), shape(geos.length > 1, geos[0] || 'unrecorded')],
       ['window layout', v('#swLayout'), p.windowLayout || 'unrecorded'],
       ['weigh each trade by the money it was worth', c('#swByMoney') ? 'on' : 'off', (p.trainOn || 'direction') === 'money' ? 'on' : 'off'],
       ['null set size', String(Number(v('#swNull1'))), String(Number(p.nullN))],
@@ -1522,6 +1538,7 @@ function fillStageForm(doc) {
 
 let swSetsCache = null;
 let swDefaultCoins = [];   // every coin downloaded, which is what a blank coin box means
+let swPassersNow = [];     // the coins and shapes ticked on Coins now, off the same answer (3.130.3)
 
 // A run's stored settings, written back into the boxes. ONE mapping, used by
 // "copy settings into the form" on the Boards section and by the running-job
@@ -3107,6 +3124,7 @@ async function drawSweep() {
   // stage headings compare a blank box the way the launch resolves it, so they
   // need the names and not just how many there are.
   swDefaultCoins = st.coinsDownloaded || [];
+  swPassersNow = st.passersTicked || [];
   // the next free name per stage, shown greyed in each name box as the
   // suggestion an empty box takes
   const nextNames = st.nextNames || {};

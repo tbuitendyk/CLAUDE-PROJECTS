@@ -1522,6 +1522,13 @@ const GUARDS = [
     'theCeilingBoxAndItsColumnNameEachOther', 'the box points at a column without naming it'],
   [path.join(ROOT, 'lib', 'stages.js'), "throw new Error(`the most one trade may count for must be 0 or more", "throw new Error(`the most one week may count for must be 0 or more",
     'theCeilingBoxAndItsColumnNameEachOther', 'the refusal names a box that is on no screen'],
+  // ---- SWEEP: a set launched from the Coins list is held up to the tick (3.130.3) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      ['only the coins and shapes ticked on Coins', tickBox ? 'on' : 'off', setPairs ? 'on' : 'off'],\n", "",
+    'theStageHeadingsCompareTheTickForASetLaunchedFromCoins', 'the tick is never compared, so a set launched with it and a box without it read as one'],
+  [path.join(ROOT, 'public', 'construct.js'), "        ? (tickBox && setPairs ? [['coins and shapes that pass', pairWords(swPassersNow), pairWords(setPairs)]] : [])", "        ? []",
+    'theStageHeadingsCompareTheTickForASetLaunchedFromCoins', 'the pairs are never compared, so un-ticking a coin on Coins leaves Stage 2 green'],
+  [path.join(ROOT, 'server.js'), "  passersTicked: (() => { try { return require('./lib/coinsrun').passingUnits(); } catch (_) { return []; } })(),", "  passersTicked: [],",
+    'theStageHeadingsCompareTheTickForASetLaunchedFromCoins', 'the screen is handed no pairs, so every set launched from Coins reads as run with none'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), "  for (const u of unreadable) {\n    try { fs.unlinkSync(path.join(DIR, u.file)); removed.push(u.file); }", "  for (const u of []) {\n    try { fs.unlinkSync(path.join(DIR, u.file)); removed.push(u.file); }",
     'theCleanupRemovesExactlyWhatCannotBeDrawnAndNothingElse', 'the control the owner presses to remove the files removes nothing and reports nothing failed'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), "  if (run && !run.finishedAt && !run.error) throw new Error('a Coins reading is running — wait for it to finish before removing files');", "  if (false) throw new Error('a Coins reading is running — wait for it to finish before removing files');",
