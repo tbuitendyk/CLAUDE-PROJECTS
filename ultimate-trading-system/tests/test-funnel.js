@@ -2247,20 +2247,20 @@ module.exports = {
     // label and the line beside it are checked.
     // 3.108.5: the press moved into fRebuildPress so a refusal on this step
     // can carry a copy of it; the slice starts there.
-    const panel6 = page.slice(page.indexOf('function fRebuildPress(d, named, scope) {'), page.indexOf('function fStep6(d, st, r) {'));
+    const panel6 = page.slice(page.indexOf('function fRebuildPress(d, named) {'), page.indexOf('function fStep6(d, st, r) {'));
     assert.ok(panel6.includes('>Work out the test history numbers</button>'), 'the steps name a press that is drawn nowhere on this screen');
     // 3.81.0: the line beside the button is no longer one fixed sentence -- it
     // says how many settings already carry the numbers, the progress while it
     // works, and the cpu load with it. One wording, drawn through fRichLine, so
     // the first draw and every poll say the same thing.
-    assert.ok(panel6.includes('${esc(all ? fRichSetLine(d) : fRichLine(d))}'), 'the line beside the button no longer says what the press would do');
+    assert.ok(panel6.includes('${esc(blend ? fRichSetLine(d) : fRichLine(d))}'), 'the line beside the button no longer says what the press would do');
     // the trades ladder is put on a yearly footing and the dollar one is not
     assert.ok(step.includes("fLadder('test trades', (r.ladders || {}).testTrades, 'at least', ex, d)"), 'the trades ladder is not given the window, or reads the held-back count (3.131.0: it reads test trades)');
     // AND BOTH LADDERS ARE HANDED THE READ (3.108.5), because a ladder that
     // refuses for want of the numbers now carries the press that works them
     // out, and the press has to know whether it is already going.
     const lad6 = page.slice(page.indexOf('function fLadder(name, l, word, ex, d) {'), page.indexOf('const fPerYear = (n, ex) =>'));
-    assert.ok(lad6.includes("${fRebuildPress(d, false, 'unit')}"),
+    assert.ok(lad6.includes('${fRebuildPress(d, false)}'),
       'the refusal names a press and does not carry one, so there is no way to act on it from this step');
     assert.ok(!/press Work out the test history numbers first/.test(lad6),
       'the refusal still sends the owner to a press that is not on the screen while a walk is being used');
@@ -2278,11 +2278,11 @@ module.exports = {
     // 3.108.5: it no longer SAYS what to press, it carries the press. The
     // section that holds the other copy is not on the screen while a walk is
     // being used, so naming it from here named something unreachable.
-    // 3.134.0: and the copy a refusal carries works out only the coin and
-    // shape the walk is on -- the walk is on one, and pricing the other
-    // fourteen to fill one ladder is the wait the owner reported.
-    assert.ok(lad.includes("${fRebuildPress(d, false, 'unit')}"),
-      'the empty ladder gives no way to work the numbers out, or its press works out more than the coin and shape the walk is on');
+    // 3.134.0/3.136.0: and the copy a refusal carries is the same press as
+    // every other -- it works out the board on screen, the coin and shape the
+    // walk is on, never the other fourteen to fill one ladder.
+    assert.ok(lad.includes('${fRebuildPress(d, false)}'),
+      'the empty ladder gives no way to work the numbers out, or its press is not the one press every copy is');
     // the answer carries it, for the units the reading covers
     const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
     assert.ok(lib.includes('exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || []),'), 'step 6\'s answer does not carry the exposure');
@@ -2308,16 +2308,18 @@ module.exports = {
     // 3.102.0: the whole board is prepped, so the press has no rule to pick and
     // none to name. A rule sent here would be a rule that decides what gets
     // priced, which is the behaviour that release took out.
-    // 3.134.0: the ONE thing it names is the scope. The copy beside the
-    // "Worth walking?" check keeps the whole set (Read the ranking needs every
-    // coin and shape); the copy on step 6 names the coin and shape the walk is
-    // on and nothing else. Which copy was pressed is read off the press itself.
-    assert.ok(press.includes("const all = rb.dataset.frebuild === 'all';"),
-      'the press does not read which copy was pressed, so both copies work out the same scope');
-    assert.ok(/\/rebuild`, all \? \{\} : \{ unit: unitNow \}, WHERE_FUNNEL\)/.test(press),
-      'the press names a rule or a bar again, or the step 6 copy no longer names only the coin and shape the walk is on');
-    assert.ok(press.includes("const unitNow = d && d.unit ? d.unit : (st.unit || 'all');"),
-      'the coin and shape the step 6 copy names is not the one the walk is on');
+    // 3.136.0 (owner order: "make the press follow the coin chooser"): the ONE
+    // thing it names is the board on screen -- the coin and shape chosen under
+    // coin, or 'all' for all units together. 3.134.0 had split it by copy and
+    // the copy beside Worth walking? priced every coin and shape whatever the
+    // chooser showed.
+    assert.ok(press.includes('const blend = !(d && d.unit);'),
+      'the press does not read whether the board on screen is one coin and shape or all of them');
+    assert.ok(/\/rebuild`, \{ unit: unitNow \}, WHERE_FUNNEL\)/.test(press),
+      'the press names a rule or a bar again, or no longer names the board on screen');
+    assert.ok(press.includes("const unitNow = blend ? 'all' : d.unit;"),
+      'the board the press names is not the one chosen under coin');
+    assert.ok(!/dataset\.frebuild === 'all'/.test(press), 'the press is split by copy again');
     // 3.81.0: the press starts a run and the watcher reads the answer, so the
     // tables-not-built reply is handled where the answer arrives
     const watch = page.slice(page.indexOf('async function fRichWatch(st) {'), page.indexOf('async function fHoldPoll(st) {'));
@@ -3832,10 +3834,9 @@ module.exports = {
       'a re-opened set does not draw the reading of the settings it kept');
     assert.ok(hd.includes('Two readings, and both matter'),
       'nothing says why both are drawn, so the pair reads as one number repeated');
-    // 3.134.0: and it is the step 6 copy, so it works out the coin and shape
-    // the walk is on and nothing else
-    assert.ok(hd.includes("const beatPress = s.unit ? `<div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false, 'unit')}</div>` : '';"),
-      'the press is not the one the walk draws, is not offered only where it would help, does not line up (RULE FOUR), or works out more than the coin and shape the walk is on');
+    // 3.136.0: the one press every copy is; it works out the board on screen
+    assert.ok(hd.includes("const beatPress = s.unit ? `<div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false)}</div>` : '';"),
+      'the press is not the one the walk draws, is not offered only where it would help, or does not line up (RULE FOUR)');
 
     // AND THE READ HANDS THEM OVER: the same two calls the walk makes, on the
     // parent's whole board and on the settings this set wrote down.
@@ -3980,9 +3981,9 @@ module.exports = {
     const rb = page.slice(page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];"), page.indexOf("const cs = $('#fClose');"));
     // 3.81.0: the press starts a run and comes straight back, so it can no
     // longer time out -- but the start itself still can, and it points here.
-    // 3.134.0: the body names the scope (the whole set, or the coin and shape
-    // the walk is on) -- and the place it points is still this screen.
-    assert.ok(/all \? \{\} : \{ unit: unitNow \}, WHERE_FUNNEL\);/.test(rb),
+    // 3.136.0: the body names the board on screen -- and the place it points
+    // is still this screen.
+    assert.ok(/\{ unit: unitNow \}, WHERE_FUNNEL\);/.test(rb),
       'working out the missing numbers still points at Sweep and Boards, which know nothing about it');
   },
 
@@ -4446,7 +4447,7 @@ module.exports.theRebuildPricesEachUnitInPartsAndCountsSettings = function () {
 // The press beside Worth walking? keeps the whole set, because Read the
 // ranking needs every coin and shape. Each says which; each is dead when its
 // own scope is done; a coin and shape prepared stays prepared.
-module.exports.theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn = function () {
+module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   const s = src('lib/stages.js');
   const start = s.slice(s.indexOf('function funnelRichStart(id, state = {}) {'), s.indexOf('function funnelRichStatus(id) {'));
   assert.ok(start.includes("const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;"), 'the press does not read which coin and shape it was aimed at');
@@ -4475,25 +4476,41 @@ module.exports.theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn = function 
   const read = s.slice(s.indexOf('async function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
   assert.ok(read.includes('const richSet = richSetOf(String(id), t, rich);') && read.includes('    richOn,\n    richSet,\n'), 'the read does not carry the every-coin-and-shape count');
   assert.ok(read.includes("return r.unit ? !!x.units[r.unit] : Object.keys(x.units).length >= (Number(rich.unitsTotal) || 0);"), 'a row is counted as carrying the numbers by a different rule than the one that lays them on');
-  // the page: two scopes, one press; the step 6 copies name the coin and shape, the one beside Worth walking? names nothing
+  // THE PAGE: ONE PRESS, DRAWN THREE TIMES, AND EVERY COPY FOLLOWS WHAT IS
+  // CHOSEN UNDER coin (3.136.0, owner order 2026-09-14: "make the press follow
+  // the coin chooser"). 3.134.0 split it by copy -- the copy beside Worth
+  // walking? priced every coin and shape whatever the chooser showed -- and
+  // the owner, with one coin picked, pressed it and got all fifteen.
   const page = src('public/construct.js');
-  assert.strictEqual(page.split("fRebuildPress(d, true, 'all')").length - 1, 1, 'the press beside Worth walking? is not the every-coin-and-shape one');
-  assert.strictEqual(page.split("fRebuildPress(d, false, 'unit')").length - 1, 2, 'the two copies on a walk are not the one-coin-and-shape ones');
-  assert.ok(!/fRebuildPress\(d, (true|false)\)/.test(page), 'a copy of the press has no scope');
-  assert.ok(page.includes('data-frebuild="${all ? \'all\' : \'unit\'}"'), 'a copy does not carry its scope');
+  assert.strictEqual(page.split('fRebuildPress(d, true)').length - 1, 1, 'the copy beside Worth walking? is not the one press');
+  assert.strictEqual(page.split('fRebuildPress(d, false)').length - 1, 2, 'the two copies on a walk are not the one press');
+  assert.ok(!/fRebuildPress\(d, (true|false), /.test(page), 'a copy of the press carries a scope of its own again');
+  assert.ok(page.includes('function fRebuildPress(d, named) {') && page.includes('data-frebuild="1"'), 'the press is drawn with a scope of its own');
   const wire = page.slice(page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];"), page.indexOf("const rd = $('#fHoldRead');"));
-  assert.ok(wire.includes("const all = rb.dataset.frebuild === 'all';"), 'the press does not read its own scope');
-  assert.ok(wire.includes("const unitNow = d && d.unit ? d.unit : (st.unit || 'all');") && wire.includes("all ? {} : { unit: unitNow }, WHERE_FUNNEL);"), 'the step 6 copy does not send the coin and shape the walk is on');
-  assert.ok(wire.includes("'working them out — this prices every setting of this coin and shape again from its parent set'"), 'the step 6 copy does not say what it prices');
-  // the lines: the one beside Worth walking? counts coins and shapes, dead only when every one is done
+  assert.ok(wire.includes('const blend = !(d && d.unit);') && wire.includes("const unitNow = blend ? 'all' : d.unit;") && wire.includes('{ unit: unitNow }, WHERE_FUNNEL);'),
+    'the press does not send the board on screen -- the coin and shape chosen under coin, or all of them');
+  assert.ok(wire.includes("'working them out — this prices every setting of this coin and shape again from its parent set'")
+    && wire.includes("'working them out — this prices every setting in this record set again from its parent set'"), 'the press does not say which board it prices');
+  // THE LINES, RUN: with a coin and shape on screen the press reads that
+  // board and is dead when it is done; with all units together it counts
+  // coins and shapes and is dead only when every one is done
   const lift = (head, end) => page.slice(page.indexOf(head), page.indexOf(end, page.indexOf(head)) + end.length);
   // eslint-disable-next-line no-new-func
-  const { fRichSetOff, fRichSetLine } = new Function(`${[lift('const fRichOf = (d)', '\n'), lift('const fRichGoing = (d)', '\n'), lift('function fCpuWords(cpu) {', '\n}\n'),
-    lift('const fAcrossWords = (units)', '\n'), lift('const fRichWhere = (d)', '\n'), lift('function fRichLine(d) {', '\n}\n'), lift('function fRichSetOff(d) {', '\n}\n'), lift('function fRichSetLine(d) {', '\n}\n')].join('\n')}\nreturn { fRichSetOff, fRichSetLine };`)();
-  const part = { richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 1 } };
-  assert.strictEqual(fRichSetOff(part), false, 'the every-coin-and-shape press is dead while fourteen coins and shapes still lack the numbers');
-  assert.ok(fRichSetLine(part).includes('1 of 15 coin(s) and shape(s) carry them'), `the line does not count coins and shapes: ${fRichSetLine(part)}`);
-  assert.strictEqual(fRichSetOff({ richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 15 } }), true, 'the every-coin-and-shape press is live with nothing left');
-  assert.ok(fRichSetLine({ richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 15 } }).startsWith('done — every one of the 15 coin(s) and shape(s)'));
-  assert.ok(fRichSetLine({ richOn: { have: 0, need: 640, run: { running: true, done: 10, of: 640, cpu: null } }, richSet: { units: 15, unitsDone: 1 } }).startsWith('working them out'), 'while it works the line is not the working line');
+  const { fRebuildPress, fRichSetOff, fRichSetLine } = new Function(`const esc = (t) => String(t == null ? '' : t);\n${[lift('const fRichOf = (d)', '\n'), lift('const fRichGoing = (d)', '\n'),
+    lift('function fRichOff(d) {', '\n}\n'), lift('function fCpuWords(cpu) {', '\n}\n'), lift('const fAcrossWords = (units)', '\n'), lift('const fRichWhere = (d)', '\n'),
+    lift('function fRichLine(d) {', '\n}\n'), lift('function fRichSetOff(d) {', '\n}\n'), lift('function fRichSetLine(d) {', '\n}\n'), lift('function fRebuildPress(d, named) {', '\n}\n')].join('\n')}\nreturn { fRebuildPress, fRichSetOff, fRichSetLine };`)();
+  const oneCoin = { unit: 'AAA|||daily-1d', richOn: { have: 0, need: 640, run: null }, richSet: { units: 15, unitsDone: 14 } };
+  const oneDone = { unit: 'AAA|||daily-1d', richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 1 } };
+  const allOf = { unit: null, richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 1 } };
+  const allDone = { unit: null, richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 15 } };
+  assert.ok(!/ disabled/.test(fRebuildPress(oneCoin, true)) && /on this coin and shape/.test(fRebuildPress(oneCoin, true)),
+    'with a coin and shape chosen and nothing worked out, the press is dead or does not say it is this coin and shape');
+  assert.ok(/ disabled/.test(fRebuildPress(oneDone, true)) && /done — all 640 setting\(s\) on this coin and shape carry them/.test(fRebuildPress(oneDone, true)),
+    'with the chosen coin and shape done, the press is live or is read off the other fourteen');
+  assert.ok(!/ disabled/.test(fRebuildPress(allOf, true)) && /1 of 15 coin\(s\) and shape\(s\) carry them/.test(fRebuildPress(allOf, true)),
+    'with all units together chosen and fourteen coins and shapes to go, the press is dead or does not count them');
+  assert.ok(/ disabled/.test(fRebuildPress(allDone, true)) && /done — every one of the 15 coin\(s\) and shape\(s\)/.test(fRebuildPress(allDone, true)),
+    'with every coin and shape done, the press beside all units together is live');
+  assert.strictEqual(fRichSetOff(allOf), false);
+  assert.ok(fRichSetLine({ unit: null, richOn: { have: 0, need: 640, run: { running: true, done: 10, of: 640, cpu: null } }, richSet: { units: 15, unitsDone: 1 } }).startsWith('working them out'), 'while it works the line is not the working line');
 };

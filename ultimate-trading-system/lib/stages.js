@@ -6392,14 +6392,14 @@ function funnelRichStart(id, state = {}) {
     }
     const t = readTally(String(id));
     if (!t) throw new Error('the tables of this record set cannot be read, so there is nothing to work out');
-    // ONE COIN AND SHAPE WHEN THE PRESS NAMES ONE (3.134.0, owner: "for what
-    // i'm doing ... should not this be coded more efficiently?"). The press on
-    // step 6 names the coin and shape the walk is on and prices that board
-    // alone; the press beside Worth walking? names nothing and prices every
-    // one, because Read the ranking needs all of them. The 3.102.0 objection
-    // was to pricing a rule's survivors, whose slice moved with every walk; a
-    // whole board of one coin and shape is the board the walk reads, and the
-    // file merges per unit, so each board prepared stays prepared.
+    // THE BOARD THE PRESS NAMES (3.134.0, owner: "for what i'm doing ...
+    // should not this be coded more efficiently?"; 3.136.0: "make the press
+    // follow the coin chooser"). Every copy of the press names the board on
+    // screen: the coin and shape chosen under coin, or 'all' for all units
+    // together, which prices every one. The 3.102.0 objection was to pricing
+    // a rule's survivors, whose slice moved with every walk; a whole board of
+    // one coin and shape is the board the walk reads, and the file merges per
+    // unit, so each board prepared stays prepared.
     const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;
     run.unit = unit;
     const board = await funnelBoard(String(id), t, unit || 'all');

@@ -83,5 +83,19 @@ module.exports = {
     const svcAt = conf.indexOf('location /uts/svc/');
     assert.ok(/auth_basic/.test(conf.slice(svcAt, svcAt + 900)),
       'the route must sit behind the same site password as every other location, not open a way around it');
+    // THE WAY BACK (3.136.0, owner order 2026-09-14: "it should not be possible
+    // to kill the engine such that we can't turn it back on"). The Setup page,
+    // whose Compute tab starts, stops and restarts the trading service, is
+    // served at its USUAL address by the always-up program -- never by the
+    // service it controls -- and so is the front door, which is that page.
+    // Exact matches, so they win over the /uts/ prefix that reaches the
+    // trading service.
+    for (const loc of ['location = /uts/setup.html {', 'location = /uts/ {']) {
+      const at = conf.indexOf(loc);
+      assert.ok(at > 0, `the website branch does not route ${loc.slice(0, -2)} to the always-up program, so stopping the engine from Setup leaves no way to load Setup again`);
+      const block = conf.slice(at, conf.indexOf('}', at));
+      assert.ok(/proxy_pass http:\/\/127\.0\.0\.1:8095\/setup\.html;/.test(block), `${loc.slice(0, -2)} must reach the Setup page on the always-up program on 8095`);
+      assert.ok(/auth_basic/.test(block), `${loc.slice(0, -2)} must sit behind the same site password as everything else`);
+    }
   },
 };

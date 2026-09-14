@@ -391,16 +391,20 @@ module.exports = {
 };
 
 // THE PAGE CAN ALWAYS BE RELOADED TO START THE ENGINE (3.135.0, owner order
-// 2026-09-14: "so i stopped a time wasting job by killing the engine on the
-// setup tab and after leaving the page i can't refresh it to restart the
-// engine. we need to always be able to reload the cpu page to restart the
-// engine even if it's not running"). The Setup page has two homes: the
-// trading service serves it at …/setup.html and the always-up program at
-// …/svc/setup.html. Loaded from the first, a reload with that service
-// stopped gets nothing back. So the page tells the two addresses apart from
-// where it was loaded, asks each program at its own absolute address, and once
-// the always-up program has answered it moves the address bar onto that
-// program's copy — and the two other pages send the owner there directly.
+// 2026-09-14: "we need to always be able to reload the cpu page to restart
+// the engine even if it's not running"; 3.136.0: "it should not be possible
+// to kill the engine such that we can't turn it back on"). The Setup page has
+// two homes: its usual address and the always-up program's own. The website's
+// routing serves the USUAL address from the always-up program (pinned in
+// test-svcroute.js), so a reload comes back with the engine stopped and so
+// does the front door. What this page must do is tell the two addresses
+// apart from wherever it was loaded, so one file asks each program at its own
+// absolute address from either -- from the always-up program's address the
+// Version tab and the sweep knobs used to fail, because they asked it for the
+// engine's answers. 3.135.0 also moved the address bar onto the always-up
+// program's copy and sent the Setup links there; with the routing doing the
+// job at the usual address that machinery went, so the address the owner
+// sees is the one they typed.
 module.exports.theSetupPageCanAlwaysBeReloadedToStartTheEngine = async function () {
   const read = (f) => fs.readFileSync(path.join(__dirname, '..', 'public', f), 'utf8');
   const page = read('setup.html');
@@ -419,32 +423,27 @@ module.exports.theSetupPageCanAlwaysBeReloadedToStartTheEngine = async function 
     assert.strictEqual(r.ENGINE_DIR, '/uts/', `${from}: the trading service's pages are not at its own address`);
     assert.strictEqual(r.CONTROL_DIR, '/uts/svc/', `${from}: the always-up program is not at its own address`);
   }
-  // EVERY ASK GOES THROUGH IT, both kinds, so a relative path never outlives
-  // the move of the address bar
-  assert.strictEqual(page.split('fetch(at(p)').length - 1, 2, 'an ask goes out relative to the page, so it goes to the wrong program after the address moves');
+  // EVERY ASK GOES THROUGH IT, both kinds
+  assert.strictEqual(page.split('fetch(at(p)').length - 1, 2, 'an ask goes out relative to the page, so from the always-up program\'s address it reaches the wrong program');
   assert.ok(!/fetch\(p[,)]/.test(page), 'an ask still goes out relative to the page');
   // THE THREE LINKS AT THE TOP are made absolute to the program that owns each
   // page, because the trading service's pages served read-only by the other
   // program cannot reach their own api
   assert.ok(page.includes("document.querySelectorAll('nav.toptabs a').forEach((a) => {")
     && page.includes("a.setAttribute('href', page === 'setup.html' ? CONTROL_DIR + page : ENGINE_DIR + page);"),
-  'the links at the top stay relative, so from the surviving address Construct and Trade open as dead copies');
-  // THE ADDRESS BAR MOVES ONLY AFTER THE ALWAYS-UP PROGRAM HAS ANSWERED FROM
-  // THERE, and moves without a reload
-  assert.ok(page.includes('let theWayBackKept = AT_SVC;'), 'a page already at the surviving address is moved again');
-  assert.ok(page.includes("try { history.replaceState(history.state, '', CONTROL_DIR + 'setup.html' + location.search + location.hash); } catch (_) { theWayBackKept = false; }"),
-    'the address bar is not moved onto the surviving address, or is moved by a reload');
-  assert.ok(page.includes("getJson('svc/api/state').then(keepTheWayBack, () => {});"),
-    'the address bar is moved before the always-up program has answered from there, or never');
-  assert.ok(!/location\.replace\(|location\.href = |location\.assign\(/.test(page), 'the Setup page reloads itself to move, which loses whatever the owner had open');
-  // AND THE OTHER TWO PAGES SEND THE OWNER STRAIGHT THERE — one nav, both
+  'the links at the top stay relative, so from the always-up program\'s address Construct and Trade open as dead copies');
+  // THE ADDRESS BAR IS LEFT ALONE (3.136.0): the usual address is the one the
+  // routing keeps alive, so nothing moves it and nothing reloads it
+  assert.ok(!/history\.replaceState|keepTheWayBack|theWayBackKept/.test(page), 'the page still moves its own address bar; the routing keeps the usual address alive and the address the owner typed is the one they should see');
+  assert.ok(!/location\.replace\(|location\.href = |location\.assign\(/.test(page), 'the Setup page reloads itself, which loses whatever the owner had open');
+  // AND THE OTHER TWO PAGES REACH SETUP AT ITS USUAL ADDRESS -- one nav, both
   // pages (RULE TWO for Trade: one nav above both branches)
   for (const f of ['construct.html', 'trade.html']) {
     const p = read(f);
-    assert.ok(p.includes('<a class="toptab" href="svc/setup.html">Setup</a>'), `${f}: the Setup link does not go to the address that survives the engine`);
-    assert.ok(!p.includes('href="setup.html"'), `${f}: a link still reaches Setup at the address that dies with the engine`);
+    assert.ok(p.includes('<a class="toptab" href="setup.html">Setup</a>'), `${f}: the Setup link does not reach the page at its usual address`);
+    assert.ok(!p.includes('svc/setup.html'), `${f}: a link still sends the owner to the always-up program's own address, which is not the one they typed`);
   }
   const cjs = read('construct.js');
-  assert.ok(cjs.includes("window.location.href = 'svc/setup.html'; };"), 'the stage-engine marker opens Setup at the address that dies with the engine');
-  assert.ok(!cjs.includes("window.location.href = 'setup.html'"), 'a press on Construct still opens Setup at the address that dies with the engine');
+  assert.ok(cjs.includes("window.location.href = 'setup.html'; };"), 'the stage-engine marker does not open Setup at its usual address');
+  assert.ok(!cjs.includes('svc/setup.html'), 'a press on Construct still opens Setup at the always-up program\'s own address');
 };

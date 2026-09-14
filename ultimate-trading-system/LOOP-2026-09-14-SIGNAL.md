@@ -761,3 +761,32 @@ behaviour. The one-line alternative — the website's own routing serving
 `/uts/setup.html` from the always-up program — lives on the website branch
 and is the owner's to order; it would make the moving unnecessary but it is
 not this branch's to change.
+
+## S. The press follows what is chosen under coin; the way back survives the engine — owner GO NOW! 2026-09-14 (3.136.0)
+
+Two orders in one sitting. "make the press follow the coin chooser": with a
+coin picked under `coin`, the only `Work out the test history numbers` on
+the set's home was the one beside `Worth walking?`, and 3.134.0 had made
+that copy price every coin and shape whatever the chooser showed. The owner
+pressed it and got all fifteen, twice, and killed the engine to stop it.
+Now every copy of the press is one press: it prices the board on screen,
+the coin and shape chosen under `coin` or every one for `all units
+together`, and its line says which. `Read the ranking` needed no change: it
+reads what carries the numbers and says how many settings were left out.
+
+"it should not be possible to kill the engine such that we can't turn it
+back on": the 3.135.0 answer moved the address bar once the page had loaded,
+which is no answer for a fresh tab typed to the usual address. The website's
+routing (website branch, deploy-website-reload.sh) now serves `/uts/setup.html`
+and the front door `/uts/` from the always-up program on 8095, never from
+the engine they start and stop, behind the same site password. The address
+move and the `svc/setup.html` links went with it; the page keeps only the
+resolver that lets one file ask each program at its own absolute address
+from either home. Second digit.
+
+The website deploy also showed the box's live vhost carried
+`include /etc/nginx/snippets/acme-challenge.conf;` in both ssl server blocks
+(added on the box 2026-09-08) and the branch did not, so the first deploy
+dropped them. Put into the branch and deployed again the same minute; the
+box is back to what it had plus the two routes, and the branch now matches
+the box.

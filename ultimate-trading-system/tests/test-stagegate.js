@@ -243,9 +243,9 @@ module.exports = {
     const strip = ui.slice(ui.indexOf('async function renderStrip()'), ui.indexOf('// ---- Data'));
     assert.ok(/api\('api\/stage-gate\/status'\)/.test(strip), 'the marker does not read the stage-engine check\'s own status');
     assert.ok(/stage-engine check:/.test(strip), 'the marker lost its label');
-    // 3.135.0: at the address the always-up program serves Setup from, so a
-    // reload of it comes back with the engine stopped
-    assert.ok(/localStorage\.setItem\('setup-tab', 'version'\)/.test(strip) && /window\.location\.href = 'svc\/setup\.html'/.test(strip), 'the marker beside "stage-engine check:" does not open Setup on Version at the address that survives the engine');
+    // 3.136.0: at Setup's usual address, which the website's routing serves
+    // from the always-up program, so it comes back with the engine stopped
+    assert.ok(/localStorage\.setItem\('setup-tab', 'version'\)/.test(strip) && /window\.location\.href = 'setup\.html'/.test(strip), 'the marker beside "stage-engine check:" does not open Setup on Version');
     assert.ok(!/tab = 'verify'/.test(strip), 'the marker still opens Verify');
     const help = src('public/help-content.js');
     for (const id of ['pgRun', 'sgRun']) assert.ok(!new RegExp(`\\b${id}: \\{`).test(help), `the help still describes ${id} on Verify`);

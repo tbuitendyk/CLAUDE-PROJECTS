@@ -569,9 +569,9 @@ async function renderStrip() {
     <span class="badge ${b.cls}" id="stripBadge" style="vertical-align:text-bottom" title="${esc(b.tip)}">${esc(b.text.toUpperCase())}</span>`;
   const btn = $('#stripBadge');
   // The marker opens the Setup page on its Version tab, where the check is run
-  // and read — at the address the always-up program serves it from (3.135.0),
-  // the same one the Setup link goes to, so a reload of it always comes back.
-  if (btn) btn.onclick = () => { try { localStorage.setItem('setup-tab', 'version'); } catch (_) { /* private window */ } window.location.href = 'svc/setup.html'; };
+  // and read. Its usual address is served by the always-up program through the
+  // website's own routing (3.136.0), so it comes back with the engine stopped.
+  if (btn) btn.onclick = () => { try { localStorage.setItem('setup-tab', 'version'); } catch (_) { /* private window */ } window.location.href = 'setup.html'; };
   // While a check is in flight, keep the marker honest without the owner having
   // to reload. One timer only, cleared the moment it lands.
   const going = !!(s.running || s.state === 'RUNNING');
@@ -6102,7 +6102,7 @@ function fLadder(name, l, word, ex, d) {
   // this line named something the owner had no way to reach from here.
   if (!l.measured) {
     return `<p class="note muted">${esc(name)}: no survivor carries this number yet.</p>
-      <div class="row" style="align-items:flex-end">${fRebuildPress(d, false, 'unit')}</div>`;
+      <div class="row" style="align-items:flex-end">${fRebuildPress(d, false)}</div>`;
   }
   // a trade count is put on a yearly footing beside each rung (3.57.0); a
   // dollar figure is already in dollars at the stake named above
@@ -6374,14 +6374,19 @@ function fHoldTable(t, bar, walking) {
 // `named` carries the ids. Exactly one copy may, because the Help tab's
 // control reader indexes by id and two of the same id is one control counted
 // twice; the other copy is found by its data attribute, as the pagers are.
-// TWO SCOPES, ONE PRESS (3.134.0). Beside Worth walking? it works out every
-// coin and shape, because Read the ranking needs all of them; on step 6 it
-// works out the coin and shape the walk is on and nothing else. Each copy
-// says which, and each is dead when its own scope has nothing left to do.
-function fRebuildPress(d, named, scope) {
-  const all = scope === 'all';
-  return `<button ${named ? 'id="fRebuild" ' : ''}class="pri" data-frebuild="${all ? 'all' : 'unit'}"${(all ? fRichSetOff(d) : fRichOff(d)) ? ' disabled' : ''}>Work out the test history numbers</button>
-      <span ${named ? 'id="fRebuildMsg" ' : ''}data-frebuildmsg="1" class="note">${esc(all ? fRichSetLine(d) : fRichLine(d))}</span>`;
+// ONE PRESS, AND IT FOLLOWS WHAT IS CHOSEN UNDER coin (3.136.0, owner order
+// 2026-09-14: "make the press follow the coin chooser"). Every copy prices the
+// board on screen: a coin and shape picked means that one only, all units
+// together means every one. 3.134.0 had split it by copy -- the one beside
+// Worth walking? priced every coin and shape whatever the chooser showed --
+// and the owner, with one coin picked, pressed it and got all fifteen. Each
+// copy's line says which board, and each is dead when that board has nothing
+// left to work out. Read the ranking needs no more than this: it reads what
+// carries the numbers and says how many settings were left out.
+function fRebuildPress(d, named) {
+  const blend = !(d && d.unit);
+  return `<button ${named ? 'id="fRebuild" ' : ''}class="pri" data-frebuild="1"${(blend ? fRichSetOff(d) : fRichOff(d)) ? ' disabled' : ''}>Work out the test history numbers</button>
+      <span ${named ? 'id="fRebuildMsg" ' : ''}data-frebuildmsg="1" class="note">${esc(blend ? fRichSetLine(d) : fRichLine(d))}</span>`;
 }
 // every copy of it says the same thing, because they are the same press
 const fRebuildSay = (text) => document.querySelectorAll('[data-frebuildmsg]').forEach((m) => { m.textContent = text; });
@@ -6412,7 +6417,7 @@ function fHoldPanel(d, st) {
       that can only be spent once - and it decides nothing. A coin and shape that clears the bar has not been shown
       to work; it has only failed to be ruled out.</p>
     <div class="row" style="align-items:flex-end">
-      ${fRebuildPress(d, true, 'all')}</div>
+      ${fRebuildPress(d, true)}</div>
     ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
     <div class="row" style="align-items:flex-end">
       <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
@@ -6822,7 +6827,7 @@ function fCutHead(cd, st, d) {
   // reach the moment the set was written. The press is offered only where it
   // would help: the four are kept per coin and shape, so a set cut on the blend
   // of all of them has nothing for it to work out.
-  const beatPress = s.unit ? `<div class="row" style="align-items:flex-end">${fRebuildPress(d, false, 'unit')}</div>` : '';
+  const beatPress = s.unit ? `<div class="row" style="align-items:flex-end">${fRebuildPress(d, false)}</div>` : '';
   return `<div class="row" style="align-items:flex-end">
       <label class="f">name<input id="fCutName" value="${esc(s.name || '')}" maxlength="80" style="width:26rem"></label>
       <button id="fCutRename">Rename</button>
@@ -7455,16 +7460,17 @@ function fWireHold(st, d) {
   for (const rb of rbs) {
     if (rb.disabled) continue;
     rb.onclick = async () => {
-      const all = rb.dataset.frebuild === 'all';
+      const blend = !(d && d.unit);
       rbs.forEach((b) => { b.disabled = true; });
-      fRebuildSay(all ? 'working them out — this prices every setting in this record set again from its parent set'
+      fRebuildSay(blend ? 'working them out — this prices every setting in this record set again from its parent set'
         : 'working them out — this prices every setting of this coin and shape again from its parent set');
-      // THE SCOPE IS ALL IT NAMES (3.134.0). The rule is never sent (3.102.0:
-      // the whole board is priced, never a rule's survivors); the step 6 copy
-      // names the coin and shape the walk is on, the other copy names nothing.
-      const unitNow = d && d.unit ? d.unit : (st.unit || 'all');
-      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, all ? {} : { unit: unitNow }, WHERE_FUNNEL);
-      if (!started) { rbs.forEach((b) => { b.disabled = false; }); fRebuildSay(fRichLine(d)); return; }
+      // THE BOARD ON SCREEN IS ALL IT NAMES (3.136.0): the coin and shape
+      // chosen under coin, or all of them for all units together. The rule is
+      // never sent (3.102.0: the whole board is priced, never a rule's
+      // survivors).
+      const unitNow = blend ? 'all' : d.unit;
+      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { unit: unitNow }, WHERE_FUNNEL);
+      if (!started) { rbs.forEach((b) => { b.disabled = false; }); fRebuildSay(blend ? fRichSetLine(d) : fRichLine(d)); return; }
       await fRichWatch(st);
     };
   }

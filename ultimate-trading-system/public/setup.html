@@ -143,15 +143,15 @@ const $ = (s, r) => (r || document).querySelector(s);
 const esc = (t) => String(t == null ? '' : t).replace(/&/g, '&amp;').replace(/</g, '&lt;');
 // WHERE THIS PAGE IS, AND WHERE IT ASKS (3.135.0, owner order 2026-09-14: "we
 // need to always be able to reload the cpu page to restart the engine even if
-// it's not running"). This page is served at two addresses: by the trading
-// service at …/setup.html, and by the small always-up program at
-// …/svc/setup.html. Loaded from the first, a reload after that service has
-// been stopped gets nothing back — which is exactly when the Compute tab is
-// needed, and it is how the owner was locked out. So the page works out both
-// addresses from wherever it was loaded, asks each program at its own
-// absolute address, and once the always-up program has answered it moves the
-// address bar onto that program's copy of itself. From then on a reload
-// always comes back, with the trading service running or not.
+// it's not running"; 3.136.0: "it should not be possible to kill the engine
+// such that we can't turn it back on"). This page is served at two addresses:
+// its usual one, …/setup.html, and the always-up program's own, …/svc/setup.html.
+// The website's routing serves the USUAL address from the always-up program
+// too, never from the trading service this page starts and stops -- so a
+// reload of it comes back with that service running or not, and so does the
+// front door of the system, which is this page. What is left for the page to
+// do is tell the two addresses apart from wherever it was loaded, so that one
+// file asks each program at its own absolute address from either.
 const HERE = location.pathname.replace(/[^/]*$/, '');
 const AT_SVC = /\/svc\/$/.test(HERE);
 const ENGINE_DIR = AT_SVC ? HERE.replace(/svc\/$/, '') : HERE;     // the trading service: its pages and its api/…
@@ -187,19 +187,6 @@ const postJson = async (p, body) => {
   if (!r.ok) throw new Error(j.error || ('HTTP ' + r.status));
   return j;
 };
-
-// THE ADDRESS BAR HOLDS THE ADDRESS THAT SURVIVES. Moved only after the
-// always-up program has answered from there, so a box whose route to it is
-// missing keeps the address it was loaded from rather than gaining a dead one.
-// Nothing is reloaded and nothing on the screen changes; the next reload is
-// what changes.
-let theWayBackKept = AT_SVC;
-function keepTheWayBack() {
-  if (theWayBackKept) return;
-  theWayBackKept = true;
-  try { history.replaceState(history.state, '', CONTROL_DIR + 'setup.html' + location.search + location.hash); } catch (_) { theWayBackKept = false; }
-}
-getJson('svc/api/state').then(keepTheWayBack, () => {});
 
 let tab = localStorage.getItem('setup-tab') || 'account';
 let cTimer = null;           // the thirty-second re-read, armed only while Compute shows

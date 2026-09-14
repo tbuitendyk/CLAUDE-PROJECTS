@@ -753,7 +753,7 @@ const GUARDS = [
     'thePutAwayPressSitsHardRightInTheSelectorHeader',
     'the press the owner had removed is back on the selector header'],
   // ---- A REFUSAL THAT NAMES A PRESS CARRIES IT (3.108.5) ----
-  [path.join(ROOT, 'public', 'construct.js'), "      <div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false, 'unit')}</div>`;", '"";',
+  [path.join(ROOT, 'public', 'construct.js'), "      <div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false)}</div>`;", '"";',
     'theSixthStepSaysWhatItsLimitsAreLimitsOn',
     'step 6 refuses for want of numbers and gives no way to work them out, because the press that does lives in a section a walk being used hides'],
   [path.join(ROOT, 'public', 'construct.js'), "const fRebuildSay = (text) => document.querySelectorAll('[data-frebuildmsg]')",
@@ -1627,26 +1627,27 @@ const GUARDS = [
     'aPausedRunCanBeDeletedFromWhereItIsChosen', 'after a delete the box still offers the run that is gone'],
   // ---- FUNNEL: the step 6 press works out only the coin and shape the walk is on; the file merges per unit (3.134.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), "    const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;", "    const unit = null;",
-    'theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn', 'every press prices every coin and shape again, fifteen boards for a walk that reads one'],
+    'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'every press prices every coin and shape again, fifteen boards for a walk that reads one'],
   [path.join(ROOT, 'lib', 'stages.js'), "  const unitsDone = units.filter((u) => (have.get(u.key) || 0) >= (need.get(u.key) || Infinity)).length;", "  const unitsDone = units.filter((u) => (have.get(u.key) || 0) >= (need.get(u.key) || 0)).length;",
-    'theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn', 'a coin and shape whose board size is not known counts as done'],
+    'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'a coin and shape whose board size is not known counts as done'],
   [path.join(ROOT, 'lib', 'stages.js'), "    const units = { ...((((had && had.settings) || {})[label] || {}).units || {}) };", "    const units = {};",
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', "a pass over one coin and shape wipes every other unit's numbers under the settings it touches"],
-  [path.join(ROOT, 'public', 'construct.js'), "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, all ? {} : { unit: unitNow }, WHERE_FUNNEL);", "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);",
-    'theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn', 'the step 6 press names no coin and shape, so it prices every one'],
+  [path.join(ROOT, 'public', 'construct.js'), "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { unit: unitNow }, WHERE_FUNNEL);", "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);",
+    'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'the press names no board, so it prices every coin and shape whatever is chosen under coin'],
+  // ---- ONE PRESS, AND IT FOLLOWS WHAT IS CHOSEN UNDER coin (3.136.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "      const unitNow = blend ? 'all' : d.unit;", "      const unitNow = 'all';",
+    'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'the press prices every coin and shape with one chosen under coin -- the fault the owner reported twice'],
+  [path.join(ROOT, 'public', 'construct.js'), "  const blend = !(d && d.unit);\n  return `<button ${named ? 'id=\"fRebuild\" ' : ''}class=\"pri\" data-frebuild=\"1\"${(blend ? fRichSetOff(d) : fRichOff(d)) ? ' disabled' : ''}>", "  const blend = true;\n  return `<button ${named ? 'id=\"fRebuild\" ' : ''}class=\"pri\" data-frebuild=\"1\"${(blend ? fRichSetOff(d) : fRichOff(d)) ? ' disabled' : ''}>",
+    'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'with a coin and shape chosen the press is read off every coin and shape: dead too early or live too long, and its line counts the wrong thing'],
   // ---- THE SETUP PAGE CAN ALWAYS BE RELOADED TO START THE ENGINE (3.135.0) ----
   [SETUP, "const at = (p) => (p.startsWith('svc/') ? CONTROL_DIR + p.slice(4) : ENGINE_DIR + p);", 'const at = (p) => p;',
     'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'every ask goes out relative to the page, so once the address bar has moved the trading service is asked through the wrong program'],
-  [SETUP, "getJson('svc/api/state').then(keepTheWayBack, () => {});", '',
-    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the address bar never moves onto the surviving address, so a reload after the engine is stopped gets nothing back'],
   [SETUP, "a.setAttribute('href', page === 'setup.html' ? CONTROL_DIR + page : ENGINE_DIR + page);", '',
     'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'from the surviving address the Construct and Trade links open read-only copies that cannot reach their own api'],
-  [path.join(ROOT, 'public', 'construct.html'), '<a class="toptab" href="svc/setup.html">Setup</a>', '<a class="toptab" href="setup.html">Setup</a>',
-    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the Setup link on Construct reaches the page at the address that dies with the engine'],
-  [path.join(ROOT, 'public', 'trade.html'), '<a class="toptab" href="svc/setup.html">Setup</a>', '<a class="toptab" href="setup.html">Setup</a>',
-    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the Setup link on Trade reaches the page at the address that dies with the engine'],
-  [path.join(ROOT, 'public', 'construct.js'), "window.location.href = 'svc/setup.html'; };", "window.location.href = 'setup.html'; };",
-    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the stage-engine marker opens Setup at the address that dies with the engine'],
+  [path.join(ROOT, 'public', 'construct.html'), '<a class="toptab" href="setup.html">Setup</a>', '<a class="toptab" href="svc/setup.html">Setup</a>',
+    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the Setup link on Construct leaves the usual address, which the website\'s routing keeps alive, for one the owner never typed'],
+  [path.join(ROOT, 'public', 'trade.html'), '<a class="toptab" href="setup.html">Setup</a>', '<a class="toptab" href="svc/setup.html">Setup</a>',
+    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the Setup link on Trade leaves the usual address, which the website\'s routing keeps alive, for one the owner never typed'],
 ];
 
 const only = process.argv[2] || '';
