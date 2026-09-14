@@ -6230,6 +6230,20 @@ function fRichSetOff(d) {
   if (!s.units) return true;
   return s.unitsDone >= s.units;
 }
+// ALL UNITS TOGETHER ASKS FIRST (3.138.0, owner order 2026-09-14: "make the
+// press ask before pricing all units"). Pricing every coin and shape is the
+// long job on this screen -- fifteen boards, a hundred thousand settings,
+// twenty minutes -- and twice tonight it was pressed with all units together
+// showing when one coin was wanted. One coin and shape is never asked about;
+// that is what the press is for.
+function fAllUnitsAsk(d) {
+  const s = (d && d.richSet) || { units: 0, unitsDone: 0 };
+  const units = Number(s.units || 0);
+  const left = Math.max(0, units - Number(s.unitsDone || 0));
+  return `Work out the test history numbers for ALL ${units.toLocaleString()} coins and shapes in this record set?\n\n`
+    + `That is every setting on every one of them (${left.toLocaleString()} still to do) — the long job on this screen, minutes to tens of minutes. `
+    + 'To price one coin and shape only, hit Cancel and pick it under coin.\n\nHit Cancel and nothing is done.';
+}
 function fRichSetLine(d) {
   const s = (d && d.richSet) || { units: 0, unitsDone: 0 };
   if (fRichGoing(d) || (fRichOf(d).run || {}).error) return fRichLine(d);
@@ -7475,6 +7489,9 @@ function fWireHold(st, d) {
     if (rb.disabled) continue;
     rb.onclick = async () => {
       const blend = !(d && d.unit);
+      // every coin and shape is asked about first (3.138.0); a Cancel leaves
+      // every copy live and sends nothing
+      if (blend && !confirm(fAllUnitsAsk(d))) return;
       rbs.forEach((b) => { b.disabled = true; });
       fRebuildSay(blend ? 'working them out — this prices every setting in this record set again from its parent set'
         : 'working them out — this prices every setting of this coin and shape again from its parent set');

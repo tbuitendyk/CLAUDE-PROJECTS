@@ -1634,6 +1634,11 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', "a pass over one coin and shape wipes every other unit's numbers under the settings it touches"],
   [path.join(ROOT, 'public', 'construct.js'), "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { unit: unitNow }, WHERE_FUNNEL);", "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);",
     'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'the press names no board, so it prices every coin and shape whatever is chosen under coin'],
+  // ---- ALL UNITS TOGETHER ASKS FIRST (3.138.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), '      if (blend && !confirm(fAllUnitsAsk(d))) return;', '',
+    'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'with all units together showing the press prices every coin and shape without asking -- the long job, started by one press'],
+  [path.join(ROOT, 'public', 'construct.js'), '      if (blend && !confirm(fAllUnitsAsk(d))) return;', '      if (!confirm(fAllUnitsAsk(d))) return;',
+    'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'one coin and shape is asked about too, so every press on a walk is interrupted by a question about the thing it is for'],
   // ---- A PAGE OLDER THAN THE BOX IS REFUSED (3.137.0) ----
   [path.join(ROOT, 'lib', 'stalepage.js'), "  if (!seen || String(seen) === String(here)) return null;", '  if (!seen || true) return null;',
     'aPageStampedWithAnotherReleaseIsRefusedAndOneWithNoStampIsNot', 'a page from the previous release is served, and asks the new engine the old question'],

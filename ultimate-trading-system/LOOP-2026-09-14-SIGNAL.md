@@ -812,3 +812,14 @@ the always-up program's copy of Setup — is never refused. Second digit.
 
 The whole-set rebuild that was running was cut short by the deploy, at the
 owner's word ("just deploy over top already").
+
+## U. All units together asks first — owner GO NOW! 2026-09-14 (3.138.0)
+
+The two whole-set presses of the evening were both from current pages (the
+web server's log names the script each one loaded), and the real page
+pressed in a browser sends a coin when a coin shows under `coin` and "all"
+only when it shows `all units together`. So the box showed `all units
+together` both times. With it showing, `Work out the test history numbers`
+now asks first — how many coins and shapes, how many still to do, how to
+price one only, and that Cancel does nothing — before any copy is ghosted
+or anything is sent. One coin and shape never asks. Second digit.

@@ -4491,6 +4491,19 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
     'the press does not send the board on screen -- the coin and shape chosen under coin, or all of them');
   assert.ok(wire.includes("'working them out — this prices every setting of this coin and shape again from its parent set'")
     && wire.includes("'working them out — this prices every setting in this record set again from its parent set'"), 'the press does not say which board it prices');
+  // ALL UNITS TOGETHER ASKS FIRST (3.138.0, owner order): before anything is
+  // ghosted or sent, and never for one coin and shape
+  const askAt = wire.indexOf('if (blend && !confirm(fAllUnitsAsk(d))) return;');
+  assert.ok(askAt > 0, 'with all units together showing the press prices every coin and shape without asking');
+  assert.ok(askAt < wire.indexOf('rbs.forEach((b) => { b.disabled = true; });'), 'the ask comes after the copies are ghosted, so a Cancel leaves them dead');
+  assert.ok(askAt < wire.indexOf('/rebuild`'), 'the ask comes after the press has been sent');
+  assert.ok(!/if \(!confirm\(fAllUnitsAsk/.test(wire), 'one coin and shape is asked about too, which is the press asking about the thing it is for');
+  const askLift = page.slice(page.indexOf('function fAllUnitsAsk(d) {'), page.indexOf('function fRichSetLine(d) {'));
+  // eslint-disable-next-line no-new-func
+  const fAllUnitsAsk = new Function(`${askLift}\nreturn fAllUnitsAsk;`)();
+  const ask = fAllUnitsAsk({ richSet: { units: 15, unitsDone: 1 } });
+  assert.ok(/ALL 15 coins and shapes/.test(ask) && /14 still to do/.test(ask), `the ask does not say how many coins and shapes it would price: ${ask}`);
+  assert.ok(/pick it under coin/.test(ask) && /Hit Cancel and nothing is done\./.test(ask), 'the ask does not say how to price one coin only, or what Cancel does');
   // THE LINES, RUN: with a coin and shape on screen the press reads that
   // board and is dead when it is done; with all units together it counts
   // coins and shapes and is dead only when every one is done
