@@ -5342,8 +5342,8 @@ async function funnelRead(id, state = {}) {
   const richHas = (r) => {
     const x = (rich && rich.settings) ? rich.settings[r.label] : null;
     if (!x || !x.units) return false;
-    // the same rule withFunnelRich lays them on by (3.134.0): a unit row its own, a blend row only when every unit is in
-    return r.unit ? !!x.units[r.unit] : Object.keys(x.units).length >= (Number(rich.unitsTotal) || 0);
+    // the same rule withFunnelRich lays them on by (3.134.0, 3.139.0): a unit row its own, a blend row only when every coin and shape of the set is done
+    return r.unit ? !!x.units[r.unit] : richAllIn(rich);
   };
   const richOn = { have: all.filter(richHas).length, need: all.length, run: funnelRichStatus(id) };
   // and for the press beside Worth walking?, which speaks for every coin and shape (3.134.0)
@@ -5919,23 +5919,14 @@ function saveFunnelRich(id, perSetting, testControls = null) {
       if (Array.isArray(tt.pnlThirds)) one.pnlThirds = tt.pnlThirds.slice();
       units[unitKeyOf(u)] = one;
     }
-    const row = {};
-    const list = Object.values(units);
-    for (const f of RICH_FIELDS) {
-      const vs = list.map((o) => o[f]).filter((v) => v != null && Number.isFinite(Number(v)));
-      if (vs.length) row[f] = vs.reduce((s, c) => s + Number(c), 0) / vs.length;
-    }
-    const thirds = list.map((o) => o.pnlThirds).filter(Array.isArray);
-    if (thirds.length) {
-      const w = Math.max(...thirds.map((x) => x.length));
-      row.pnlThirds = Array.from({ length: w }, (_, i) => {
-        const vs = thirds.map((x) => x[i]).filter((v) => v != null && Number.isFinite(Number(v)));
-        return vs.length ? vs.reduce((s, c) => s + Number(c), 0) / vs.length : null;
-      });
-    }
-    if (Object.keys(units).length) row.units = units;
-    out.settings[label] = row;
+    out.settings[label] = richRowOf(units);
   }
+  // HOW MANY COINS AND SHAPES ARE DONE (3.139.0): a blend row reads the
+  // average only once every one of them carries the numbers for every
+  // setting on its board, so the file says how many do. Off the tables when
+  // they are there; a file saved without tables counts a unit as done when it
+  // appears on as many settings as the most-covered unit does.
+  out.unitsDone = t ? richSetOf(String(id), t, out).unitsDone : unitsDoneWithoutTables(out);
   atomicWrite(funnelRichFile(id), JSON.stringify(out));
   return {
     settings: Object.keys(out.settings).length,
@@ -5948,12 +5939,46 @@ function saveFunnelRich(id, perSetting, testControls = null) {
 function readFunnelRich(id) {
   let x = null;
   try { x = JSON.parse(fs.readFileSync(funnelRichFile(id), 'utf8')); } catch (_) { return null; }
+  if (x && x.v === 3) x = migrateFunnelRichV3(String(id), x);
   // AN OLDER SHAPE READS AS ABSENT, never translated (RULE NINE). The rebuilt
   // numbers are derived from the records, so the screen offers the rebuild
   // again and the file is written back in today's shape -- the same way a
   // tally of an older shape is re-totalled rather than read around.
   return x && x.v === FUNNEL_RICH_V ? x : null;
 }
+// ---- TEMPORARY: THE THIRD-SHAPE FILE MOVES TO THE FOURTH (3.139.0) ----------
+// DELETE THIS BLOCK, ITS CALL ABOVE, ITS TEST AND ITS GUARD THE DAY NO v3 FILE
+// IS LEFT ON THE BOX (RULE TEN; two were there on 2026-09-14 22:42, both
+// complete). Owner order 2026-09-14: a whole-set prep finished at 21:13 under
+// 3.133.0 and 3.134.0 read it as absent; every redo since was killed. The
+// fourth shape holds the same per-unit entries and the same averages; what it
+// adds is how many coins and shapes the set has and how many are done, and
+// those are read off the tables. Migrated BESIDE, verified, then swapped
+// (RULE NINE): every label kept, every per-unit entry byte for byte, or the
+// file is left as it was and reads as absent.
+function migrateFunnelRichV3(id, x) {
+  const t = readTally(id);
+  const out = {
+    v: 4, savedAt: x.savedAt, release: x.release, migratedAt: new Date().toISOString(), migratedFrom: 3,
+    unitsTotal: t ? unitsOfSet(t, id).length : 0, settings: {}, testControls: { ...(x.testControls || {}) },
+  };
+  for (const [label, row] of Object.entries(x.settings || {})) {
+    const units = { ...((row && row.units) || {}) };
+    out.settings[label] = richRowOf(units);
+  }
+  if (!out.unitsTotal) out.unitsTotal = new Set(Object.values(out.settings).flatMap((r) => Object.keys(r.units || {}))).size;
+  out.unitsDone = t ? richSetOf(id, t, out).unitsDone : unitsDoneWithoutTables(out);
+  const same = Object.keys(out.settings).length === Object.keys(x.settings || {}).length
+    && Object.entries(x.settings || {}).every(([L, row]) => JSON.stringify((row && row.units) || {}) === JSON.stringify(out.settings[L].units || {}));
+  if (!same) return null;
+  const file = funnelRichFile(id);
+  fs.writeFileSync(`${file}.v4`, JSON.stringify(out));
+  const back = JSON.parse(fs.readFileSync(`${file}.v4`, 'utf8'));
+  if (back.v !== 4 || Object.keys(back.settings).length !== Object.keys(out.settings).length) { try { fs.unlinkSync(`${file}.v4`); } catch (_) { /* leave the v3 file */ } return null; }
+  fs.renameSync(`${file}.v4`, file);
+  return out;
+}
+// ---- end of the temporary block ---------------------------------------------
 // A STAGE 4 SET'S OWN COPY OF THE REBUILT NUMBERS, laid onto board rows
 // (3.68.0). The parent's file goes on first and this fills what it did not: so
 // the set's own screen is complete whatever has happened to the parent's file
@@ -5971,18 +5996,54 @@ function withOwnRich(rows, own) {
     return o;
   });
 }
+// ONE SETTING'S ROW IN THE FILE: the per-unit entries as handed in, and the
+// averages the blend reads worked out over every one of them (3.134.0; one
+// builder since 3.139.0, because the migration and the save must agree).
+function richRowOf(units) {
+  const row = {};
+  const list = Object.values(units);
+  for (const f of RICH_FIELDS) {
+    const vs = list.map((o) => o[f]).filter((v) => v != null && Number.isFinite(Number(v)));
+    if (vs.length) row[f] = vs.reduce((s, c) => s + Number(c), 0) / vs.length;
+  }
+  const thirds = list.map((o) => o.pnlThirds).filter(Array.isArray);
+  if (thirds.length) {
+    const w = Math.max(...thirds.map((x) => x.length));
+    row.pnlThirds = Array.from({ length: w }, (_, i) => {
+      const vs = thirds.map((x) => x[i]).filter((v) => v != null && Number.isFinite(Number(v)));
+      return vs.length ? vs.reduce((s, c) => s + Number(c), 0) / vs.length : null;
+    });
+  }
+  if (Object.keys(units).length) row.units = units;
+  return row;
+}
+// a file saved without tables: a unit is done when it appears on as many
+// settings as the most-covered unit does
+function unitsDoneWithoutTables(rich) {
+  const on = new Map();
+  for (const x of Object.values((rich && rich.settings) || {})) for (const k of Object.keys((x && x.units) || {})) on.set(k, (on.get(k) || 0) + 1);
+  const most = Math.max(0, ...on.values());
+  return most ? [...on.values()].filter((n) => n >= most).length : 0;
+}
+// EVERY COIN AND SHAPE OF THE SET CARRIES THE NUMBERS (3.139.0): the one rule
+// a blend row is laid onto by and counted as carrying them by. It replaces a
+// per-setting count against the set's unit count, which a setting held by
+// fewer units than the set has could never reach -- so a finished prep never
+// read as finished on the blend.
+const richAllIn = (rich) => !!rich && Number(rich.unitsTotal) > 0 && Number(rich.unitsDone) >= Number(rich.unitsTotal);
 // lay the rebuilt numbers onto rows by label; a row keeps what it already has
 function withFunnelRich(rows, rich) {
   if (!rich || !rich.settings) return rows;
-  const every = Number(rich.unitsTotal) || 0;
+  const allIn = richAllIn(rich);
   return rows.map((r) => {
     const x = rich.settings[r.label];
     if (!x || !x.units) return r;
     // A UNIT BOARD ROW TAKES THE UNIT'S OWN REBUILT NUMBERS OR NOTHING (3.134.0):
     // a coin and shape the numbers were never worked out for must not borrow
     // another's. The blend takes the average across units only once every
-    // unit of the set is in it, or a half-prepared set would read as a whole.
-    const src = r.unit ? (x.units[r.unit] || null) : (Object.keys(x.units).length >= every ? x : null);
+    // coin and shape of the set is done (3.139.0), or a half-prepared set
+    // would read as a whole.
+    const src = r.unit ? (x.units[r.unit] || null) : (allIn ? x : null);
     if (!src) return r;
     const o = { ...r };
     for (const [f, v] of Object.entries(src)) if (f !== 'units' && o[f] === undefined) o[f] = v;
@@ -6322,6 +6383,36 @@ function richSetOf(id, t, rich) {
   const unitsDone = units.filter((u) => (have.get(u.key) || 0) >= (need.get(u.key) || Infinity)).length;
   return { units: units.length, unitsDone };
 }
+// WHAT ONE COIN AND SHAPE STILL LACKS (3.139.0): the settings on its board
+// with no entry for it in the file, and the board's own stored money for each,
+// which is what the proof checks the rebuilt figure against.
+function richMissingFor(boardRows, had, unitKey) {
+  const labels = [];
+  const expect = {};
+  for (const r of (boardRows || [])) {
+    const L = String(r.label);
+    const e = had && had.settings ? had.settings[L] : null;
+    if (e && e.units && e.units[unitKey]) continue;
+    labels.push(L);
+    if (r.avgTest != null && Number.isFinite(Number(r.avgTest))) expect[L] = Number(r.avgTest);
+  }
+  return { labels, expect };
+}
+// one proof over every coin and shape priced, the way one pass reported one
+function mergeProofs(list) {
+  const ran = list.filter((p) => p && p.ran);
+  if (!ran.length) return list[0] || { ran: false, checked: 0, matched: 0, mismatches: [], why: 'nothing was checked' };
+  const out = { ran: true, checked: 0, matched: 0, mismatches: [], why: null };
+  const whys = [];
+  for (const p of ran) {
+    out.checked += Number(p.checked) || 0;
+    out.matched += Number(p.matched) || 0;
+    for (const m of (p.mismatches || [])) if (out.mismatches.length < 20) out.mismatches.push(m);
+    if (p.why) whys.push(p.why);
+  }
+  if (whys.length) out.why = whys.join('; ');
+  return out;
+}
 function richStatus(run) {
   return {
     running: !run.result && !run.error,
@@ -6402,24 +6493,54 @@ function funnelRichStart(id, state = {}) {
     // unit, so each board prepared stays prepared.
     const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;
     run.unit = unit;
-    const board = await funnelBoard(String(id), t, unit || 'all');
-    const labels = (board.all || []).map((r) => String(r.label));
-    if (!labels.length) throw new Error('this record set has no settings on its board, so there is nothing to work out');
-    // THE PROOF STILL TRAVELS WITH THE ANSWER, and over the whole board rather
-    // than the survivors, so it is a stronger check than the one it replaces.
-    // What it checks against is the board's own stored money for each setting.
-    const expect = {};
-    for (const r of (board.all || [])) {
-      if (r.avgTest != null && Number.isFinite(Number(r.avgTest))) expect[String(r.label)] = Number(r.avgTest);
+    // ONE COIN AND SHAPE AT A TIME, ONLY WHAT IT STILL LACKS, SAVED AS EACH LANDS
+    // (3.139.0, owner order 2026-09-14). Five whole-set preps in one evening
+    // were killed -- by a stop, and by every deploy -- and each began again
+    // from nothing, because the file was written once at the very end and the
+    // next press priced every setting again. Now each coin and shape's board
+    // is read, the settings it already carries are skipped, its part is priced
+    // and written before the next one starts; an interrupted prep costs at most
+    // one coin and shape's work, and the next press carries on from there. The
+    // count moves over what is left, not over the board.
+    const units = unitsOfSet(t, String(id));
+    const todo = unit ? units.filter((u) => u.key === unit) : units;
+    if (unit && !todo.length) throw new Error(`this set holds no unit called '${unit}'`);
+    const had = readFunnelRich(String(id));
+    const plan = [];
+    let onBoards = 0;
+    for (const u of todo) {
+      const board = await funnelBoard(String(id), t, u.key);
+      onBoards += (board.all || []).length;
+      const missing = richMissingFor(board.all, had, u.key);
+      if (missing.labels.length) plan.push({ unit: u, ...missing });
     }
-    run.of = labels.length;
-    const got = await rebuildRichFor(doc, labels, { unit, note: (done, of, x) => { run.done = done; run.of = of; run.units = (x || {}).units ?? run.units ?? null; } });
-    const proof = proveRebuild(got.perSetting, expect);
-    const kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);
+    if (!onBoards) throw new Error('this record set has no settings on its board, so there is nothing to work out');
+    run.units = plan.length;
+    run.of = plan.reduce((s, p) => s + p.labels.length, 0);
+    let kept = had ? { settings: Object.keys(had.settings || {}).length, added: 0, kept: Object.keys(had.settings || {}).length, fields: RICH_FIELDS, testControlUnits: Object.keys(had.testControls || {}).length } : null;
+    if (!run.of) {
+      return { settings: 0, units: 0, failures: [], kept, nothingMissing: true,
+        proof: { ran: false, checked: 0, matched: 0, mismatches: [], why: 'every setting already carried the numbers, so nothing was priced' } };
+    }
+    // THE PROOF STILL TRAVELS WITH THE ANSWER, per coin and shape against that
+    // board's own stored money for each setting, merged at the end.
+    const proofs = [];
+    const failures = [];
+    let settings = 0;
+    let doneBefore = 0;
+    for (const p of plan) {
+      const got = await rebuildRichFor(doc, p.labels, { unit: p.unit.key, note: (done) => { run.done = doneBefore + done; } });
+      doneBefore += p.labels.length;
+      run.done = doneBefore;
+      proofs.push(proveRebuild(got.perSetting, p.expect));
+      kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);
+      failures.push(...got.failures);
+      settings += got.settings;
+    }
     // A RANKING ALREADY READ WAS READ FROM THESE NUMBERS, so it is dropped
     // rather than served beside numbers it never saw (3.102.0).
     funnelRankHoldForget(doc.id);
-    return { settings: got.settings, units: got.units, failures: got.failures, proof, kept };
+    return { settings, units: plan.length, failures, proof: mergeProofs(proofs), kept };
   })()
     .then((out) => { run.result = out; if (run.of) run.done = run.of; })
     .catch((err) => { run.error = String((err && err.message) || err); });
@@ -8673,7 +8794,7 @@ module.exports = {
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
   unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
-  stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf, partSlices, richSetOf,
+  stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet, derivedRefusalOf,
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,

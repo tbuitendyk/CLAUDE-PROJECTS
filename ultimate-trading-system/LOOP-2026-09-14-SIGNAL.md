@@ -823,3 +823,34 @@ together` both times. With it showing, `Work out the test history numbers`
 now asks first — how many coins and shapes, how many still to do, how to
 price one only, and that Cancel does nothing — before any copy is ghosted
 or anything is sent. One coin and shape never asks. Second digit.
+
+## V. The finished prep is read again, and a prep no longer starts from nothing — owner GO NOW! 2026-09-14 (3.139.0)
+
+"This Work out the test history numbers BUTTON ALWAYS WANTS TO DO 100K
+CALCULATIONS. JUST FIX IT!" The box, read rather than reasoned about: the
+file beside `s3-mu1ikjw9-9` is the third shape, release 3.133.0, saved at
+21:13:26 — the owner's whole-set prep FINISHED, all fifteen coins and
+shapes. 3.134.0 moved the file to a fourth shape and read the third as
+absent, so every walk's step 6 found nothing and offered the whole set
+again; and every redo since was killed — by the owner's stop, and by each
+of five deploys — with the file written once at the very end, so each began
+again from nothing. The page was never the fault. The evening was.
+
+Three things, one release:
+- the third-shape file moves to the fourth on first read: same per-unit
+  entries byte for byte, the averages worked out by the one builder the save
+  uses, plus how many coins and shapes the set has and how many are done —
+  beside, verified, swapped (RULE NINE). One block under its own heading,
+  marked to die the day no third-shape file is left on the box (RULE TEN;
+  two were there at 22:42, both complete);
+- the prep goes one coin and shape at a time, prices only the settings that
+  one still lacks, and writes the file before the next starts. An
+  interrupted prep costs at most one coin and shape; the next press carries
+  on; the count moves over what is left. A set with nothing missing answers
+  at once and says so;
+- a blend row carries the numbers once every coin and shape of the set is
+  done, not when a setting's own unit count reaches the set's — a setting
+  held by fewer units than the set has could never reach it, so a finished
+  prep never read as finished on the blend.
+
+Second digit. The deploy killed nothing: no prep was running at 22:42.

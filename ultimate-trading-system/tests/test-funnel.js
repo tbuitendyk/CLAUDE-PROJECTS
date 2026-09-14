@@ -1608,6 +1608,7 @@ module.exports = {
       ], rich);
       assert.strictEqual(laid[0].maxDrawdown, 10, 'a unit\'s row reads the unit\'s own');
       assert.strictEqual(laid[1].maxDrawdown, 20);
+      assert.strictEqual(rich.unitsDone, 2, 'a file whose every unit is on every setting does not count them all as done');
       assert.strictEqual(laid[2].maxDrawdown, 15, 'a blend row reads the average');
       // 3.134.0: a unit the numbers were never worked out for takes NOTHING --
       // borrowing the average is how a coin and shape passed a limit on the
@@ -1619,8 +1620,16 @@ module.exports = {
       stages.saveFunnelRich(id, new Map([['q2', { label: 'q2', units: [{ ...unitA, rich: { test: { maxDrawdown: 40 } } }] }]]));
       const part = stages.readFunnelRich(id);
       assert.strictEqual(part.unitsTotal, 2, 'the set\'s unit count moved with a one-unit pass');
+      // 3.139.0: the file says how many coins and shapes are done, and the
+      // blend reads nothing until every one is -- a setting held by fewer
+      // units than the set has could never reach the set's count, so a
+      // finished prep never read as finished on the blend
+      assert.strictEqual(part.unitsDone, 1, 'a coin and shape short of a setting counts as done');
+      assert.strictEqual(stages.richAllIn(part), false);
       const half = stages.withFunnelRich([{ label: 'q2' }, { label: 'q2', unit: stages.unitKeyOf(unitA) }, { label: 'q2', unit: stages.unitKeyOf(unitB) }], part);
       assert.deepStrictEqual(half.map((r) => r.maxDrawdown), [undefined, 40, undefined], 'a half-prepared setting reads as whole on the blend, or its own unit does not read its own');
+      // q1 is on both units and the set is NOT all done, so even q1's blend row reads nothing now
+      assert.strictEqual(stages.withFunnelRich([{ label: 'q1' }], part)[0].maxDrawdown, undefined, 'a blend row reads the average while another coin and shape is still short');
       // a file of the older shape reads as absent, never translated
       fs.writeFileSync(file, JSON.stringify({ v: 1, settings: { q1: { maxDrawdown: 15 } } }));
       assert.strictEqual(stages.readFunnelRich(id), null, 'an older shape reads as absent, so the screen offers the rebuild again');
@@ -2335,10 +2344,17 @@ module.exports = {
     // THE WHOLE BOARD (3.102.0). Part 4 asks whether ranking the settings on one
     // part of the test window still picks winners on another, and a ranking over
     // the survivors of a rule already made by ranking is no test of anything.
-    // 3.134.0: every coin and shape unless the press names one
-    assert.ok(route.includes("const board = await funnelBoard(String(id), t, unit || 'all');"),
-      'the press reads something other than the whole board, so the numbers beside a set cover whatever a rule happened to keep');
-    assert.ok(route.includes('const labels = (board.all || []).map((r) => String(r.label));'), 'it prices something other than every setting on that board');
+    // 3.134.0: every coin and shape unless the press names one. 3.139.0: one
+    // coin and shape at a time, each board read whole, only what it still
+    // lacks priced, and written before the next one starts -- so a killed prep
+    // picks up where it stopped instead of starting again from nothing.
+    assert.ok(route.includes('const todo = unit ? units.filter((u) => u.key === unit) : units;'), 'the press prices something other than the coin and shape named, or every one');
+    assert.ok(route.includes('const board = await funnelBoard(String(id), t, u.key);') && route.includes('const missing = richMissingFor(board.all, had, u.key);'),
+      'a coin and shape is priced from something other than its whole board, or prices what it already carries again');
+    const loop = route.slice(route.indexOf('for (const p of plan) {'), route.indexOf('funnelRankHoldForget(doc.id);'));
+    assert.ok(loop.includes('kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);'), 'a coin and shape is not written before the next one starts, so a killed prep loses every one it finished');
+    assert.ok(loop.includes("const got = await rebuildRichFor(doc, p.labels, { unit: p.unit.key, note: (done) => { run.done = doneBefore + done; } });"), 'the count does not move over what is left across the coins and shapes');
+    assert.ok(route.includes('run.of = plan.reduce((s, p) => s + p.labels.length, 0);'), 'the count is over the board, not over what is left');
     assert.ok(/this record set has no settings on its board/.test(route),
       'a set with nothing on its board must say so in those words, not "nothing was asked for"');
     assert.ok(/\.catch\(\(err\) => \{ run\.error = String\(\(err && err\.message\) \|\| err\); \}\);/.test(route),
@@ -2349,9 +2365,10 @@ module.exports = {
     // the stored figures and the page has none, so it never ran. The board it
     // just read carries them, so the check always has something to check --
     // over every setting now, which is a stronger check than the one it replaced.
-    assert.ok(route.includes('if (r.avgTest != null && Number.isFinite(Number(r.avgTest))) expect[String(r.label)] = Number(r.avgTest);'),
+    const missingFn = lib.slice(lib.indexOf('function richMissingFor(boardRows, had, unitKey) {'), lib.indexOf('function mergeProofs(list) {'));
+    assert.ok(missingFn.includes('if (r.avgTest != null && Number.isFinite(Number(r.avgTest))) expect[L] = Number(r.avgTest);'),
       'the board is read without the money the sweep stored, so nothing can be checked against it');
-    assert.ok(route.includes('const proof = proveRebuild(got.perSetting, expect);'), 'the proof is handed something other than what was just read');
+    assert.ok(route.includes('proofs.push(proveRebuild(got.perSetting, p.expect));') && route.includes('proof: mergeProofs(proofs)'), 'the proof is handed something other than what was just read, or the proofs are not merged into the answer');
     // a reading of the ranking was read FROM these numbers, so it goes when they move
     assert.ok(route.includes('funnelRankHoldForget(doc.id);'),
       'a ranking already read is served beside numbers it never saw');
@@ -2418,7 +2435,7 @@ module.exports = {
     // is the blend's own -- the same figure the rebuild works out, averaged over
     // every unit. There is no single board left to name, and naming one would be
     // the false alarm this test was written about, pointing the other way.
-    assert.ok(lib2.includes('const proof = proveRebuild(got.perSetting, expect);'), 'the press hands the proof something other than what it just read');
+    assert.ok(lib2.includes('proofs.push(proveRebuild(got.perSetting, p.expect));'), 'the press hands the proof something other than what it just read');
     assert.ok(!lib2.includes("const onUnit = state.unit && String(state.unit) !== 'all' ? String(state.unit) : null;"),
       'the press still resolves a board to check on, which it no longer reads');
     const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
@@ -4438,7 +4455,11 @@ module.exports.theRebuildPricesEachUnitInPartsAndCountsSettings = function () {
   // the count reaches the screen with the unit count beside it
   const st = s.slice(s.indexOf('function richStatus(run) {'), s.indexOf('function funnelRichStart('));
   assert.ok(st.includes('units: run.units ?? null,'), 'the status does not say how many coins and shapes the count runs over');
-  assert.strictEqual(s.split('run.units = (x || {}).units ?? run.units ?? null;').length - 1, 3, 'not every rebuild takes the unit count from the note');
+  // 3.139.0: the parent's prep goes one coin and shape at a time, so its unit
+  // count is the plan's, not the note's; the two rebuilds that price a Stage 4
+  // set's own survivors still take it from the note
+  assert.strictEqual(s.split('run.units = (x || {}).units ?? run.units ?? null;').length - 1, 2, 'not every rebuild of a Stage 4 set takes the unit count from the note');
+  assert.ok(s.includes('run.units = plan.length;'), 'the prep does not say how many coins and shapes it is pricing');
 };
 
 // THE PRESS ON STEP 6 WORKS OUT ONLY THE COIN AND SHAPE THE WALK IS ON (3.134.0,
@@ -4451,8 +4472,8 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   const s = src('lib/stages.js');
   const start = s.slice(s.indexOf('function funnelRichStart(id, state = {}) {'), s.indexOf('function funnelRichStatus(id) {'));
   assert.ok(start.includes("const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;"), 'the press does not read which coin and shape it was aimed at');
-  assert.ok(start.includes("const board = await funnelBoard(String(id), t, unit || 'all');"), 'the board priced is not the one the press named');
-  assert.ok(start.includes('const got = await rebuildRichFor(doc, labels, { unit, note:'), 'the pricing is not held to the one coin and shape');
+  assert.ok(start.includes('const todo = unit ? units.filter((u) => u.key === unit) : units;'), 'the board priced is not the one the press named');
+  assert.ok(start.includes('const got = await rebuildRichFor(doc, p.labels, { unit: p.unit.key, note:'), 'the pricing is not held to the one coin and shape');
   assert.ok(start.includes('run.unit = unit;'), 'the status does not carry which coin and shape is being worked out');
   assert.ok(s.slice(s.indexOf('function richStatus(run) {'), s.indexOf('function funnelRichStart(')).includes('unit: run.unit ?? null,'));
   // every coin and shape, counted off the tables and the file alone
@@ -4475,7 +4496,7 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
   assert.deepStrictEqual(stages.richSetOf(null, null, rich), { units: 0, unitsDone: 0 }, 'no tables counts as something');
   const read = s.slice(s.indexOf('async function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
   assert.ok(read.includes('const richSet = richSetOf(String(id), t, rich);') && read.includes('    richOn,\n    richSet,\n'), 'the read does not carry the every-coin-and-shape count');
-  assert.ok(read.includes("return r.unit ? !!x.units[r.unit] : Object.keys(x.units).length >= (Number(rich.unitsTotal) || 0);"), 'a row is counted as carrying the numbers by a different rule than the one that lays them on');
+  assert.ok(read.includes('return r.unit ? !!x.units[r.unit] : richAllIn(rich);'), 'a row is counted as carrying the numbers by a different rule than the one that lays them on');
   // THE PAGE: ONE PRESS, DRAWN THREE TIMES, AND EVERY COPY FOLLOWS WHAT IS
   // CHOSEN UNDER coin (3.136.0, owner order 2026-09-14: "make the press follow
   // the coin chooser"). 3.134.0 split it by copy -- the copy beside Worth
@@ -4526,4 +4547,69 @@ module.exports.everyCopyOfThePressWorksOutWhatIsChosenUnderCoin = function () {
     'with every coin and shape done, the press beside all units together is live');
   assert.strictEqual(fRichSetOff(allOf), false);
   assert.ok(fRichSetLine({ unit: null, richOn: { have: 0, need: 640, run: { running: true, done: 10, of: 640, cpu: null } }, richSet: { units: 15, unitsDone: 1 } }).startsWith('working them out'), 'while it works the line is not the working line');
+};
+
+// A KILLED PREP PICKS UP WHERE IT STOPPED, AND THE THIRD-SHAPE FILE MOVES TO
+// THE FOURTH (3.139.0, owner order 2026-09-14: "JUST FIX IT"). The owner's
+// whole-set prep finished at 21:13 under 3.133.0; 3.134.0 read its file as
+// absent, and five redos in one evening were killed -- by a stop and by every
+// deploy -- each starting again from nothing because the file was written
+// once at the very end. Now what a coin and shape already carries is skipped,
+// each is written as it lands, and a v3 file is brought to v4 on first read.
+module.exports.aKilledPrepPicksUpWhereItStoppedAndAThirdShapeFileMovesToTheFourth = function () {
+  // WHAT A COIN AND SHAPE STILL LACKS: the settings on its board with no entry
+  // for it, with the stored money to check against where the board has one
+  const had = { settings: { a: { units: { u1: {}, u2: {} } }, b: { units: { u2: {} } } } };
+  const board = [{ label: 'a', avgTest: 1 }, { label: 'b', avgTest: 2 }, { label: 'c', avgTest: null }, { label: 'd', avgTest: 4 }];
+  assert.deepStrictEqual(stages.richMissingFor(board, had, 'u1'), { labels: ['b', 'c', 'd'], expect: { b: 2, d: 4 } }, 'a setting the coin and shape already carries is priced again, or one it lacks is skipped');
+  assert.deepStrictEqual(stages.richMissingFor(board, had, 'u2'), { labels: ['c', 'd'], expect: { d: 4 } });
+  assert.deepStrictEqual(stages.richMissingFor(board, null, 'u1').labels, ['a', 'b', 'c', 'd'], 'with no file every setting is missing');
+  // the proofs of the coins and shapes priced merge into one
+  const merged = stages.mergeProofs([{ ran: true, checked: 3, matched: 3, mismatches: [], why: null }, { ran: false, why: 'x' }, { ran: true, checked: 2, matched: 1, mismatches: [{ label: 'q' }], why: '1 differed' }]);
+  assert.deepStrictEqual(merged, { ran: true, checked: 5, matched: 4, mismatches: [{ label: 'q' }], why: '1 differed' });
+  assert.strictEqual(stages.mergeProofs([]).ran, false);
+
+  // THE THIRD SHAPE MOVES TO THE FOURTH on first read: every label kept, every
+  // per-unit entry byte for byte, the averages worked out the one way, the
+  // count of coins and shapes done worked out; the file on disk is the fourth
+  // shape afterwards, and a file the move cannot verify is left alone and
+  // reads as absent.
+  const id = `s3-v3move-${Date.now().toString(36)}`;
+  const file = stages.funnelRichFile(id);
+  const uA = 'AAA|||daily-1d';
+  const uB = 'BBB|||daily-1d';
+  const v3 = { v: 3, savedAt: '2026-09-14T21:13:26.337Z', release: '3.133.0',
+    settings: {
+      q1: { maxDrawdown: 15, units: { [uA]: { maxDrawdown: 10, wins: 3, pnlThirds: [1, 2, 3] }, [uB]: { maxDrawdown: 20, wins: 5, pnlThirds: [3, 4, 5] } } },
+      q2: { maxDrawdown: 40, units: { [uA]: { maxDrawdown: 40, wins: 1 } } },
+    },
+    testControls: { [uA]: { long: 1 }, [uB]: { long: 2 } } };
+  try {
+    fs.writeFileSync(file, JSON.stringify(v3));
+    const moved = stages.readFunnelRich(id);
+    assert.ok(moved && moved.v === 4, 'a third-shape file reads as absent instead of moving to the fourth');
+    assert.strictEqual(moved.migratedFrom, 3);
+    assert.strictEqual(moved.release, '3.133.0', 'the release the numbers were priced under is lost in the move');
+    assert.strictEqual(moved.unitsTotal, 2, 'without tables the units the file holds are not counted');
+    assert.strictEqual(moved.unitsDone, 1, 'a coin and shape short of a setting counts as done after the move');
+    assert.deepStrictEqual(moved.settings.q1.units, v3.settings.q1.units, 'a per-unit entry changed in the move');
+    assert.strictEqual(moved.settings.q1.maxDrawdown, 15);
+    assert.deepStrictEqual(moved.settings.q1.pnlThirds, [2, 3, 4]);
+    assert.strictEqual(moved.settings.q2.maxDrawdown, 40);
+    assert.deepStrictEqual(moved.testControls, v3.testControls, 'the four on the test window per unit are lost in the move');
+    const onDisk = JSON.parse(fs.readFileSync(file, 'utf8'));
+    assert.strictEqual(onDisk.v, 4, 'the file on disk is still the third shape after the move');
+    assert.ok(!fs.existsSync(`${file}.v4`), 'the beside copy is left behind');
+    assert.strictEqual(stages.readFunnelRich(id).migratedAt, onDisk.migratedAt, 'a second read moves it again');
+    // and the fourth shape laid on: unit rows their own, the blend nothing while a coin and shape is short
+    const laid = stages.withFunnelRich([{ label: 'q1', unit: uA }, { label: 'q1' }], moved);
+    assert.strictEqual(laid[0].maxDrawdown, 10);
+    assert.strictEqual(laid[1].maxDrawdown, undefined, 'the blend reads an average while a coin and shape is still short');
+  } finally { try { fs.rmSync(file, { force: true }); fs.rmSync(`${file}.v4`, { force: true }); } catch (_) { /* fixture */ } }
+  // the source: the move is one block under its own heading, called from the
+  // reader alone, and marked to die (RULE TEN)
+  const s = src('lib/stages.js');
+  assert.ok(s.includes('if (x && x.v === 3) x = migrateFunnelRichV3(String(id), x);'), 'the reader does not move a third-shape file');
+  assert.strictEqual(s.split('migrateFunnelRichV3(').length - 1, 2, 'the move is called from somewhere other than the reader');
+  assert.ok(/TEMPORARY: THE THIRD-SHAPE FILE MOVES TO THE FOURTH[\s\S]*DELETE THIS BLOCK/.test(s), 'the move is not marked as the temporary block it is');
 };
