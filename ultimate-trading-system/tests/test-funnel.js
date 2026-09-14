@@ -975,10 +975,12 @@ module.exports = {
   theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows() {
     const fs2 = require('fs');
     const id = 's3-test-funnelrich';
+    const uA = { trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d' };
+    const uB = { trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-2d' };
     const per = new Map([
-      ['a', { label: 'a', units: [{ rich: { test: { maxDrawdown: 100, worstTrade: -5, wins: 3, pnlThirds: [1, 2, 3] } } },
-        { rich: { test: { maxDrawdown: 300, worstTrade: -7, wins: 5, pnlThirds: [3, 2, 1] } } }] }],
-      ['b', { label: 'b', units: [{ rich: null }] }],
+      ['a', { label: 'a', units: [{ ...uA, rich: { test: { maxDrawdown: 100, worstTrade: -5, wins: 3, pnlThirds: [1, 2, 3] } } },
+        { ...uB, rich: { test: { maxDrawdown: 300, worstTrade: -7, wins: 5, pnlThirds: [3, 2, 1] } } }] }],
+      ['b', { label: 'b', units: [{ ...uA, rich: null }] }],
     ]);
     try {
       const got = stages.saveFunnelRich(id, per);
@@ -987,6 +989,17 @@ module.exports = {
       assert.strictEqual(rich.settings.a.maxDrawdown, 200, 'one number per setting is the average across its units');
       assert.deepStrictEqual(rich.settings.a.pnlThirds, [2, 2, 2]);
       assert.deepStrictEqual(rich.settings.b, {}, 'a setting with no rebuilt numbers carries none, never zeros');
+      assert.strictEqual(rich.unitsTotal, 2, 'a file saved without tables does not count the units it holds');
+      // PER UNIT, ADDED TO WHAT IS THERE (3.134.0): a second pass over one coin
+      // and shape tops up its own entry and leaves the other where it was, and
+      // the average the blend reads is worked out again over both
+      stages.saveFunnelRich(id, new Map([['a', { label: 'a', units: [{ ...uA, rich: { test: { maxDrawdown: 150, worstTrade: -5, wins: 3, pnlThirds: [2, 2, 3] } } }] }]]));
+      const again = stages.readFunnelRich(id);
+      assert.strictEqual(again.settings.a.units[stages.unitKeyOf(uB)].maxDrawdown, 300, 'a pass over one coin and shape wiped the other one\'s numbers');
+      assert.strictEqual(again.settings.a.units[stages.unitKeyOf(uA)].maxDrawdown, 150, 'the pass did not top up its own entry');
+      assert.strictEqual(again.settings.a.maxDrawdown, 225, 'the average the blend reads is not worked out over every unit the file holds');
+      assert.deepStrictEqual(again.settings.a.pnlThirds, [2.5, 2, 2]);
+      assert.strictEqual(again.unitsTotal, 2);
       const rows = stages.withFunnelRich([{ label: 'a', avgTrades: 9, maxDrawdown: 50 }, { label: 'b' }, { label: 'c' }], rich);
       assert.strictEqual(rows[0].maxDrawdown, 50, 'a number the row already carries is kept; the sidecar fills gaps only');
       assert.strictEqual(rows[0].worstTrade, -6, 'and a gap is filled from the sidecar');
@@ -1581,7 +1594,7 @@ module.exports = {
       assert.strictEqual(rich.v, stages.FUNNEL_RICH_V);
       // 3 (3.107.0): the file also carries the four things a rule has to beat,
       // read on the TEST window, per unit
-      assert.strictEqual(rich.v, 3, 'the shape that carries the test-window comparisons is the third');
+      assert.strictEqual(rich.v, 4, 'the shape that merges per unit and counts the set\'s units is the fourth (3.134.0)');
       const q1 = rich.settings.q1;
       assert.strictEqual(q1.maxDrawdown, 15, 'the blend\'s number is the average across units');
       assert.deepStrictEqual(q1.pnlThirds, [2, 3, 4]);
@@ -1596,8 +1609,18 @@ module.exports = {
       assert.strictEqual(laid[0].maxDrawdown, 10, 'a unit\'s row reads the unit\'s own');
       assert.strictEqual(laid[1].maxDrawdown, 20);
       assert.strictEqual(laid[2].maxDrawdown, 15, 'a blend row reads the average');
-      assert.strictEqual(laid[3].maxDrawdown, 15, 'a unit the rebuild did not cover reads the average -- there is no unit number to read');
+      // 3.134.0: a unit the numbers were never worked out for takes NOTHING --
+      // borrowing the average is how a coin and shape passed a limit on the
+      // strength of the others
+      assert.strictEqual(laid[3].maxDrawdown, undefined, 'a unit the rebuild did not cover borrows the average');
       assert.ok(!('units' in laid[0]), 'the per-unit table is not laid onto a row');
+      // and the blend takes the average only once every unit of the set is in
+      // the file: a pass over one coin and shape leaves the blend row bare
+      stages.saveFunnelRich(id, new Map([['q2', { label: 'q2', units: [{ ...unitA, rich: { test: { maxDrawdown: 40 } } }] }]]));
+      const part = stages.readFunnelRich(id);
+      assert.strictEqual(part.unitsTotal, 2, 'the set\'s unit count moved with a one-unit pass');
+      const half = stages.withFunnelRich([{ label: 'q2' }, { label: 'q2', unit: stages.unitKeyOf(unitA) }, { label: 'q2', unit: stages.unitKeyOf(unitB) }], part);
+      assert.deepStrictEqual(half.map((r) => r.maxDrawdown), [undefined, 40, undefined], 'a half-prepared setting reads as whole on the blend, or its own unit does not read its own');
       // a file of the older shape reads as absent, never translated
       fs.writeFileSync(file, JSON.stringify({ v: 1, settings: { q1: { maxDrawdown: 15 } } }));
       assert.strictEqual(stages.readFunnelRich(id), null, 'an older shape reads as absent, so the screen offers the rebuild again');
@@ -2224,20 +2247,20 @@ module.exports = {
     // label and the line beside it are checked.
     // 3.108.5: the press moved into fRebuildPress so a refusal on this step
     // can carry a copy of it; the slice starts there.
-    const panel6 = page.slice(page.indexOf('function fRebuildPress(d, named) {'), page.indexOf('function fStep6(d, st, r) {'));
+    const panel6 = page.slice(page.indexOf('function fRebuildPress(d, named, scope) {'), page.indexOf('function fStep6(d, st, r) {'));
     assert.ok(panel6.includes('>Work out the test history numbers</button>'), 'the steps name a press that is drawn nowhere on this screen');
     // 3.81.0: the line beside the button is no longer one fixed sentence -- it
     // says how many settings already carry the numbers, the progress while it
     // works, and the cpu load with it. One wording, drawn through fRichLine, so
     // the first draw and every poll say the same thing.
-    assert.ok(panel6.includes('${esc(fRichLine(d))}'), 'the line beside the button no longer says what the press would do');
+    assert.ok(panel6.includes('${esc(all ? fRichSetLine(d) : fRichLine(d))}'), 'the line beside the button no longer says what the press would do');
     // the trades ladder is put on a yearly footing and the dollar one is not
     assert.ok(step.includes("fLadder('test trades', (r.ladders || {}).testTrades, 'at least', ex, d)"), 'the trades ladder is not given the window, or reads the held-back count (3.131.0: it reads test trades)');
     // AND BOTH LADDERS ARE HANDED THE READ (3.108.5), because a ladder that
     // refuses for want of the numbers now carries the press that works them
     // out, and the press has to know whether it is already going.
     const lad6 = page.slice(page.indexOf('function fLadder(name, l, word, ex, d) {'), page.indexOf('const fPerYear = (n, ex) =>'));
-    assert.ok(lad6.includes('${fRebuildPress(d, false)}'),
+    assert.ok(lad6.includes("${fRebuildPress(d, false, 'unit')}"),
       'the refusal names a press and does not carry one, so there is no way to act on it from this step');
     assert.ok(!/press Work out the test history numbers first/.test(lad6),
       'the refusal still sends the owner to a press that is not on the screen while a walk is being used');
@@ -2255,7 +2278,11 @@ module.exports = {
     // 3.108.5: it no longer SAYS what to press, it carries the press. The
     // section that holds the other copy is not on the screen while a walk is
     // being used, so naming it from here named something unreachable.
-    assert.ok(lad.includes('${fRebuildPress(d, false)}'), 'the empty ladder gives no way to work the numbers out');
+    // 3.134.0: and the copy a refusal carries works out only the coin and
+    // shape the walk is on -- the walk is on one, and pricing the other
+    // fourteen to fill one ladder is the wait the owner reported.
+    assert.ok(lad.includes("${fRebuildPress(d, false, 'unit')}"),
+      'the empty ladder gives no way to work the numbers out, or its press works out more than the coin and shape the walk is on');
     // the answer carries it, for the units the reading covers
     const lib = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
     assert.ok(lib.includes('exposure: exposureOf(doc, mineOnly.length ? mineOnly : (sealed.units || []),'), 'step 6\'s answer does not carry the exposure');
@@ -2278,11 +2305,19 @@ module.exports = {
     const press = page.slice(page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];"),
       page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];") + 1400);
     assert.ok(!/labels: \[\]/.test(press), 'the press asks for an empty list of settings again, which the service refuses');
-    // 3.102.0: the whole board is prepped, so the press has nothing to pick and
-    // nothing to name. A rule sent here would be a rule that decides what gets
-    // priced, which is the behaviour this release took out.
-    assert.ok(/\/rebuild`, \{\}, WHERE_FUNNEL\)/.test(press),
-      'the press names a rule, a unit or a bar again — the press preps the whole record set and has nothing to choose');
+    // 3.102.0: the whole board is prepped, so the press has no rule to pick and
+    // none to name. A rule sent here would be a rule that decides what gets
+    // priced, which is the behaviour that release took out.
+    // 3.134.0: the ONE thing it names is the scope. The copy beside the
+    // "Worth walking?" check keeps the whole set (Read the ranking needs every
+    // coin and shape); the copy on step 6 names the coin and shape the walk is
+    // on and nothing else. Which copy was pressed is read off the press itself.
+    assert.ok(press.includes("const all = rb.dataset.frebuild === 'all';"),
+      'the press does not read which copy was pressed, so both copies work out the same scope');
+    assert.ok(/\/rebuild`, all \? \{\} : \{ unit: unitNow \}, WHERE_FUNNEL\)/.test(press),
+      'the press names a rule or a bar again, or the step 6 copy no longer names only the coin and shape the walk is on');
+    assert.ok(press.includes("const unitNow = d && d.unit ? d.unit : (st.unit || 'all');"),
+      'the coin and shape the step 6 copy names is not the one the walk is on');
     // 3.81.0: the press starts a run and the watcher reads the answer, so the
     // tables-not-built reply is handled where the answer arrives
     const watch = page.slice(page.indexOf('async function fRichWatch(st) {'), page.indexOf('async function fHoldPoll(st) {'));
@@ -2298,7 +2333,8 @@ module.exports = {
     // THE WHOLE BOARD (3.102.0). Part 4 asks whether ranking the settings on one
     // part of the test window still picks winners on another, and a ranking over
     // the survivors of a rule already made by ranking is no test of anything.
-    assert.ok(route.includes("const board = await funnelBoard(String(id), t, 'all');"),
+    // 3.134.0: every coin and shape unless the press names one
+    assert.ok(route.includes("const board = await funnelBoard(String(id), t, unit || 'all');"),
       'the press reads something other than the whole board, so the numbers beside a set cover whatever a rule happened to keep');
     assert.ok(route.includes('const labels = (board.all || []).map((r) => String(r.label));'), 'it prices something other than every setting on that board');
     assert.ok(/this record set has no settings on its board/.test(route),
@@ -3796,8 +3832,10 @@ module.exports = {
       'a re-opened set does not draw the reading of the settings it kept');
     assert.ok(hd.includes('Two readings, and both matter'),
       'nothing says why both are drawn, so the pair reads as one number repeated');
-    assert.ok(hd.includes("const beatPress = s.unit ? `<div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false)}</div>` : '';"),
-      'the press is not the one the walk draws, is not offered only where it would help, or does not line up (RULE FOUR)');
+    // 3.134.0: and it is the step 6 copy, so it works out the coin and shape
+    // the walk is on and nothing else
+    assert.ok(hd.includes("const beatPress = s.unit ? `<div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false, 'unit')}</div>` : '';"),
+      'the press is not the one the walk draws, is not offered only where it would help, does not line up (RULE FOUR), or works out more than the coin and shape the walk is on');
 
     // AND THE READ HANDS THEM OVER: the same two calls the walk makes, on the
     // parent's whole board and on the settings this set wrote down.
@@ -3942,7 +3980,9 @@ module.exports = {
     const rb = page.slice(page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];"), page.indexOf("const cs = $('#fClose');"));
     // 3.81.0: the press starts a run and comes straight back, so it can no
     // longer time out -- but the start itself still can, and it points here.
-    assert.ok(/\{\}, WHERE_FUNNEL\);/.test(rb),
+    // 3.134.0: the body names the scope (the whole set, or the coin and shape
+    // the walk is on) -- and the place it points is still this screen.
+    assert.ok(/all \? \{\} : \{ unit: unitNow \}, WHERE_FUNNEL\);/.test(rb),
       'working out the missing numbers still points at Sweep and Boards, which know nothing about it');
   },
 
@@ -4211,6 +4251,7 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
     lift('function fRichOff(d) {', '\n}\n'),
     lift('function fCpuWords(cpu) {', '\n}\n'),
     lift('const fAcrossWords = (units)', '\n'),
+    lift('const fRichWhere = (d)', '\n'),
     lift('function fRichLine(d) {', '\n}\n'),
   ].join('\n')}\nreturn { fRichOff, fRichLine }; })()`);
 
@@ -4245,6 +4286,11 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
     'a finished one says the numbers cover the survivors rather than the record set');
   assert.ok(fRichLine({ richOn: { have: 100, need: 640, run: null } }).includes('the other 540'),
     'and a part-done one says how many are left, not how many there are');
+  // 3.134.0: on a walk the count is the walked board's, and the line says so
+  assert.ok(/setting\(s\) on this coin and shape carry them/.test(fRichLine({ unit: 'AAA|||daily-4d', richOn: { have: 640, need: 640, run: null } })),
+    'a done line on a walk reads as if it covered the record set');
+  assert.ok(/of them on this coin and shape and finishes/.test(fRichLine({ unit: 'AAA|||daily-4d', richOn: { have: 0, need: 640, run: null } })),
+    'a not-done line on a walk does not say it is this coin and shape it works out');
   // a reading with nothing to difference against says nothing rather than 0%
   assert.ok(!/busy/.test(fRichLine({ richOn: { have: 0, need: 9, run: { running: true, done: 1, of: 9, cpu: { busy: null, cores: 4 } } } })),
     'an unknown cpu load prints as 0% busy, which reads as an idle box');
@@ -4392,4 +4438,55 @@ module.exports.theRebuildPricesEachUnitInPartsAndCountsSettings = function () {
   const st = s.slice(s.indexOf('function richStatus(run) {'), s.indexOf('function funnelRichStart('));
   assert.ok(st.includes('units: run.units ?? null,'), 'the status does not say how many coins and shapes the count runs over');
   assert.strictEqual(s.split('run.units = (x || {}).units ?? run.units ?? null;').length - 1, 3, 'not every rebuild takes the unit count from the note');
+};
+
+// THE PRESS ON STEP 6 WORKS OUT ONLY THE COIN AND SHAPE THE WALK IS ON (3.134.0,
+// owner: "for what i'm doing in this case, not using the Worth walking? check
+// but just trying out a unit ... should not this be coded more efficiently?").
+// The press beside Worth walking? keeps the whole set, because Read the
+// ranking needs every coin and shape. Each says which; each is dead when its
+// own scope is done; a coin and shape prepared stays prepared.
+module.exports.theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn = function () {
+  const s = src('lib/stages.js');
+  const start = s.slice(s.indexOf('function funnelRichStart(id, state = {}) {'), s.indexOf('function funnelRichStatus(id) {'));
+  assert.ok(start.includes("const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;"), 'the press does not read which coin and shape it was aimed at');
+  assert.ok(start.includes("const board = await funnelBoard(String(id), t, unit || 'all');"), 'the board priced is not the one the press named');
+  assert.ok(start.includes('const got = await rebuildRichFor(doc, labels, { unit, note:'), 'the pricing is not held to the one coin and shape');
+  assert.ok(start.includes('run.unit = unit;'), 'the status does not carry which coin and shape is being worked out');
+  assert.ok(s.slice(s.indexOf('function richStatus(run) {'), s.indexOf('function funnelRichStart(')).includes('unit: run.unit ?? null,'));
+  // every coin and shape, counted off the tables and the file alone
+  const t = { coins: [
+    { trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d', rows: 2 }, { trade: 'AAA', ctx1: null, ctx2: null, geometry: 'daily-1d', rows: 1 },
+    { trade: 'BBB', ctx1: null, ctx2: null, geometry: 'daily-1d', rows: 3 },
+  ] };
+  const kA = 'AAA|||daily-1d';
+  const kB = 'BBB|||daily-1d';
+  const rich = { unitsTotal: 2, settings: { 'q x': { units: { [kA]: {}, [kB]: {} } }, 'q y': { units: { [kA]: {}, [kB]: {} } }, 'q z': { units: { [kA]: {} } } } };
+  assert.deepStrictEqual(stages.richSetOf(null, t, rich), { units: 2, unitsDone: 1 }, 'a coin and shape with one setting short counts as done, or a whole one does not');
+  assert.deepStrictEqual(stages.richSetOf(null, t, null), { units: 2, unitsDone: 0 }, 'no file counts as done');
+  assert.deepStrictEqual(stages.richSetOf(null, null, rich), { units: 0, unitsDone: 0 }, 'no tables counts as something');
+  const read = s.slice(s.indexOf('async function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
+  assert.ok(read.includes('const richSet = richSetOf(String(id), t, rich);') && read.includes('    richOn,\n    richSet,\n'), 'the read does not carry the every-coin-and-shape count');
+  assert.ok(read.includes("return r.unit ? !!x.units[r.unit] : Object.keys(x.units).length >= (Number(rich.unitsTotal) || 0);"), 'a row is counted as carrying the numbers by a different rule than the one that lays them on');
+  // the page: two scopes, one press; the step 6 copies name the coin and shape, the one beside Worth walking? names nothing
+  const page = src('public/construct.js');
+  assert.strictEqual(page.split("fRebuildPress(d, true, 'all')").length - 1, 1, 'the press beside Worth walking? is not the every-coin-and-shape one');
+  assert.strictEqual(page.split("fRebuildPress(d, false, 'unit')").length - 1, 2, 'the two copies on a walk are not the one-coin-and-shape ones');
+  assert.ok(!/fRebuildPress\(d, (true|false)\)/.test(page), 'a copy of the press has no scope');
+  assert.ok(page.includes('data-frebuild="${all ? \'all\' : \'unit\'}"'), 'a copy does not carry its scope');
+  const wire = page.slice(page.indexOf("const rbs = [...document.querySelectorAll('[data-frebuild]')];"), page.indexOf("const rd = $('#fHoldRead');"));
+  assert.ok(wire.includes("const all = rb.dataset.frebuild === 'all';"), 'the press does not read its own scope');
+  assert.ok(wire.includes("const unitNow = d && d.unit ? d.unit : (st.unit || 'all');") && wire.includes("all ? {} : { unit: unitNow }, WHERE_FUNNEL);"), 'the step 6 copy does not send the coin and shape the walk is on');
+  assert.ok(wire.includes("'working them out — this prices every setting of this coin and shape again from its parent set'"), 'the step 6 copy does not say what it prices');
+  // the lines: the one beside Worth walking? counts coins and shapes, dead only when every one is done
+  const lift = (head, end) => page.slice(page.indexOf(head), page.indexOf(end, page.indexOf(head)) + end.length);
+  // eslint-disable-next-line no-new-func
+  const { fRichSetOff, fRichSetLine } = new Function(`${[lift('const fRichOf = (d)', '\n'), lift('const fRichGoing = (d)', '\n'), lift('function fCpuWords(cpu) {', '\n}\n'),
+    lift('const fAcrossWords = (units)', '\n'), lift('const fRichWhere = (d)', '\n'), lift('function fRichLine(d) {', '\n}\n'), lift('function fRichSetOff(d) {', '\n}\n'), lift('function fRichSetLine(d) {', '\n}\n')].join('\n')}\nreturn { fRichSetOff, fRichSetLine };`)();
+  const part = { richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 1 } };
+  assert.strictEqual(fRichSetOff(part), false, 'the every-coin-and-shape press is dead while fourteen coins and shapes still lack the numbers');
+  assert.ok(fRichSetLine(part).includes('1 of 15 coin(s) and shape(s) carry them'), `the line does not count coins and shapes: ${fRichSetLine(part)}`);
+  assert.strictEqual(fRichSetOff({ richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 15 } }), true, 'the every-coin-and-shape press is live with nothing left');
+  assert.ok(fRichSetLine({ richOn: { have: 640, need: 640, run: null }, richSet: { units: 15, unitsDone: 15 } }).startsWith('done — every one of the 15 coin(s) and shape(s)'));
+  assert.ok(fRichSetLine({ richOn: { have: 0, need: 640, run: { running: true, done: 10, of: 640, cpu: null } }, richSet: { units: 15, unitsDone: 1 } }).startsWith('working them out'), 'while it works the line is not the working line');
 };

@@ -353,8 +353,8 @@ const GUARDS = [
     '',
     'marksAreRecordedOnceAndRideOnTheSet',
     'every redraw doubles the marks and a set reads as walked past twelve disagreements that were one'],
-  [path.join(ROOT, 'lib', 'stages.js'), '    for (const [f, v] of Object.entries(x)) if (o[f] === undefined) o[f] = v;',
-    '    for (const [f, v] of Object.entries(x)) o[f] = v;',
+  [path.join(ROOT, 'lib', 'stages.js'), "    for (const [f, v] of Object.entries(src)) if (f !== 'units' && o[f] === undefined) o[f] = v;",
+    "    for (const [f, v] of Object.entries(src)) if (f !== 'units') o[f] = v;",
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows',
     'a number the tally already carries is overwritten by the rebuild copy, and the two can differ'],
   [path.join(ROOT, 'lib', 'stages.js'), '  const all = withFunnelRich(t.ranked || [], rich);', '  const all = t.ranked || [];',
@@ -408,7 +408,7 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "    const board = withFunnelRich(await loadUnitBoard(id, t, u.key), rich);", "    const board = await loadUnitBoard(id, t, u.key);",
     'readingTheOtherUnitsAppliesTheRuleToEachOfThem',
     'a rule with a limit on the worst losing streak keeps nothing on every other unit and reports each as empty'],
-  [path.join(ROOT, 'lib', 'stages.js'), "    const src = r.unit && x.units && x.units[r.unit] ? x.units[r.unit] : x;", "    const src = x;",
+  [path.join(ROOT, 'lib', 'stages.js'), "    const src = r.unit ? (x.units[r.unit] || null) : (Object.keys(x.units).length >= every ? x : null);", "    const src = r.unit ? (x.units[r.unit] || x) : x;",
     'aUnitBoardRowTakesTheUnitsOwnRebuiltNumbers',
     'a limit set on one unit reads the average across ten, and the unit whose losing streak is worst passes on the strength of the others'],
   [path.join(ROOT, 'lib', 'stages.js'), "  return x && x.v === FUNNEL_RICH_V ? x : null;", "  return x;",
@@ -721,7 +721,7 @@ const GUARDS = [
     'pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet',
     'every rebuild goes back to reading NOT checked against the sweep, so a run against moved price data looks the same as a sound one'],
   // ---- THE PRESS PREPS THE WHOLE RECORD SET (3.102.0) ----
-  [path.join(ROOT, 'lib', 'stages.js'), "    const board = await funnelBoard(String(id), t, 'all');", "    const board = await funnelBoard(String(id), t, state.unit);",
+  [path.join(ROOT, 'lib', 'stages.js'), "    const board = await funnelBoard(String(id), t, unit || 'all');", "    const board = await funnelBoard(String(id), t, 'all');",
     'pressingWorkOutTheMissingNumbersPrepsTheWholeRecordSet',
     'the press prices one board again instead of the whole set, so the ranking above step 1 reads a slice and calls it the set'],
   // ---- THE LIST SAYS THE COIN AND SHAPE ONCE (3.110.1) ----
@@ -753,7 +753,7 @@ const GUARDS = [
     'thePutAwayPressSitsHardRightInTheSelectorHeader',
     'the press the owner had removed is back on the selector header'],
   // ---- A REFUSAL THAT NAMES A PRESS CARRIES IT (3.108.5) ----
-  [path.join(ROOT, 'public', 'construct.js'), "      <div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false)}</div>`;", '"";',
+  [path.join(ROOT, 'public', 'construct.js'), "      <div class=\"row\" style=\"align-items:flex-end\">${fRebuildPress(d, false, 'unit')}</div>`;", '"";',
     'theSixthStepSaysWhatItsLimitsAreLimitsOn',
     'step 6 refuses for want of numbers and gives no way to work them out, because the press that does lives in a section a walk being used hides'],
   [path.join(ROOT, 'public', 'construct.js'), "const fRebuildSay = (text) => document.querySelectorAll('[data-frebuildmsg]')",
@@ -1625,6 +1625,15 @@ const GUARDS = [
     'aPausedRunCanBeDeletedFromWhereItIsChosen', 'anything typed back deletes the set'],
   [path.join(ROOT, 'public', 'construct.js'), "    await swProgress();\n    swCountsSoon();\n  };\n  $('#swGo3').onclick", "  };\n  $('#swGo3').onclick",
     'aPausedRunCanBeDeletedFromWhereItIsChosen', 'after a delete the box still offers the run that is gone'],
+  // ---- FUNNEL: the step 6 press works out only the coin and shape the walk is on; the file merges per unit (3.134.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "    const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;", "    const unit = null;",
+    'theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn', 'every press prices every coin and shape again, fifteen boards for a walk that reads one'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const unitsDone = units.filter((u) => (have.get(u.key) || 0) >= (need.get(u.key) || Infinity)).length;", "  const unitsDone = units.filter((u) => (have.get(u.key) || 0) >= (need.get(u.key) || 0)).length;",
+    'theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn', 'a coin and shape whose board size is not known counts as done'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    const units = { ...((((had && had.settings) || {})[label] || {}).units || {}) };", "    const units = {};",
+    'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', "a pass over one coin and shape wipes every other unit's numbers under the settings it touches"],
+  [path.join(ROOT, 'public', 'construct.js'), "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, all ? {} : { unit: unitNow }, WHERE_FUNNEL);", "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);",
+    'theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn', 'the step 6 press names no coin and shape, so it prices every one'],
 ];
 
 const only = process.argv[2] || '';

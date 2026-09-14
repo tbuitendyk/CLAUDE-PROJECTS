@@ -713,3 +713,28 @@ owner types the record set id back. The boxes then refill off the list the
 poll reads and the count line is asked again. Boards, the Funnel's Stage 4
 heading and Sweep now delete through ONE flow; the two earlier copies had
 already drifted on one detail. Second digit: a new control.
+
+## Q. The step 6 press works out only the coin and shape the walk is on — owner GO NOW! 2026-09-14 (3.134.0)
+
+The owner walked one coin and shape and `Work out the test history numbers`
+priced all fifteen, because 3.102.0 made the whole-set prep the only mode.
+The 3.102.0 objection was to pricing a rule's survivors, whose slice moved
+with every walk; a whole board of one coin and shape is the board the walk
+reads, and it has no such problem. Now the press on step 6 (and its copy in
+a step 6 refusal) works out the coin and shape the walk is on and nothing
+else; the press beside `Worth walking?` works out every coin and shape,
+because `Read the ranking` needs all of them. Each copy says which, and
+each is dead when its own scope has nothing left.
+
+For that to be safe the shared file changed shape (fourth): a pass over
+one coin and shape tops up its own entry under each setting and leaves the
+other units' numbers where they were, a setting's averages are worked out
+again over every unit the file holds, and the file says how many coins and
+shapes the set has. A unit's board reads its own numbers or nothing (it used
+to borrow the cross-unit average, so a coin and shape could pass a limit on
+the strength of the others); the blend reads the average only once every
+unit is in the file. A third-shape file reads as absent and is rebuilt, a
+coin and shape at a time as each is walked. The owner allowed the deploy to
+kill their running whole-set rebuild; it finished on its own before the
+deploy went out, and the third-shape file it wrote reads as absent under this
+release, so that whole-set pass bought nothing that survives.

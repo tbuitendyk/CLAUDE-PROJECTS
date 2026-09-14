@@ -5341,10 +5341,13 @@ async function funnelRead(id, state = {}) {
   // rule kept.
   const richHas = (r) => {
     const x = (rich && rich.settings) ? rich.settings[r.label] : null;
-    if (!x) return false;
-    return !(r.unit && x.units && !x.units[r.unit]);
+    if (!x || !x.units) return false;
+    // the same rule withFunnelRich lays them on by (3.134.0): a unit row its own, a blend row only when every unit is in
+    return r.unit ? !!x.units[r.unit] : Object.keys(x.units).length >= (Number(rich.unitsTotal) || 0);
   };
   const richOn = { have: all.filter(richHas).length, need: all.length, run: funnelRichStatus(id) };
+  // and for the press beside Worth walking?, which speaks for every coin and shape (3.134.0)
+  const richSet = richSetOf(String(id), t, rich);
   const seed = state.seed || id;
   const floor = state.floor == null ? 0 : Math.max(0, Math.floor(state.floor));
 
@@ -5423,6 +5426,7 @@ async function funnelRead(id, state = {}) {
     holdsAxis,
     rebuilt: !!(rich && rich.settings),
     richOn,
+    richSet,
     // THE STAGE 4 SETS ALREADY CUT FROM THIS COIN AND SHAPE (3.58.0). One read,
     // one truth about which sets belong to the board on screen.
     cuts: funnelCutsFor(id, board.unit),
@@ -5859,7 +5863,11 @@ const RICH_FIELDS = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 
 // 3 (3.107.0): the file also carries the four things a rule has to beat, read
 // on the TEST window, per unit. A file of the older shape reads as absent and
 // the screen offers the rebuild again (RULE NINE) -- nothing translates.
-const FUNNEL_RICH_V = 3;
+// 4 (3.134.0): the file says how many coins and shapes the set has, a pass over
+// one of them tops up its own entry under each setting, and the blend's
+// average is worked out over every unit the file holds. A v3 file reads as
+// absent and is rebuilt, a coin and shape at a time as each is walked.
+const FUNNEL_RICH_V = 4;
 // IT ADDS TO WHAT IS ALREADY THERE. IT NEVER REPLACES IT (3.68.0, owner order
 // 2026-09-05: "if we support multiple passes through the same stage 3 data,
 // saving stage 4 data sets to look for alternate rules, and then your design
@@ -5879,8 +5887,16 @@ const FUNNEL_RICH_V = 3;
 // gives the same answer, which is what the proof beside the press checks.
 function saveFunnelRich(id, perSetting, testControls = null) {
   const had = readFunnelRich(id);
+  // HOW MANY COINS AND SHAPES THE SET HAS (3.134.0): the blend reads a
+  // setting's average only once every one of them is in the file. From the
+  // tables when they are there; a file saved without tables counts the units
+  // it holds, which is every unit such a pass could know about.
+  const t = readTally(id);
+  const passUnits = new Set();
+  for (const e of perSetting.values()) for (const u of (e.units || [])) if (u.rich && u.rich.test) passUnits.add(unitKeyOf(u));
+  const unitsTotal = t ? unitsOfSet(t, id).length : Math.max(Number((had && had.unitsTotal) || 0), passUnits.size);
   const out = {
-    v: FUNNEL_RICH_V, savedAt: new Date().toISOString(), release: require('../package.json').version,
+    v: FUNNEL_RICH_V, savedAt: new Date().toISOString(), release: require('../package.json').version, unitsTotal,
     settings: had && had.settings ? { ...had.settings } : {},
     // THE FOUR ON THE TEST WINDOW, PER UNIT (3.107.0). Keyed by unit and by
     // hold length, exactly as the held-back ones are on the set, and merged the
@@ -5889,25 +5905,12 @@ function saveFunnelRich(id, perSetting, testControls = null) {
     testControls: { ...((had && had.testControls) || {}), ...(testControls || {}) },
   };
   for (const [label, e] of perSetting) {
-    const acc = {};
-    const thirds = [];
-    for (const u of (e.units || [])) {
-      const t = u.rich && u.rich.test;
-      if (!t) continue;
-      for (const f of RICH_FIELDS) {
-        const v = t[f];
-        if (v == null || !Number.isFinite(Number(v))) continue;
-        if (!acc[f]) acc[f] = { s: 0, n: 0 };
-        acc[f].s += Number(v); acc[f].n++;
-      }
-      if (Array.isArray(t.pnlThirds)) thirds.push(t.pnlThirds);
-    }
-    const row = {};
-    for (const [f, a] of Object.entries(acc)) row[f] = a.n ? a.s / a.n : null;
-    // AND PER UNIT (§17): on a unit's board the limits read the unit's own
-    // numbers, not an average across ten units. A setting with nothing
-    // rebuilt carries nothing -- not an empty table either.
-    const units = {};
+    // PER UNIT, ADDED TO WHAT IS THERE (3.134.0). A pass over one coin and
+    // shape tops up its own entry under the setting and leaves the other
+    // units' numbers where they were; the setting's averages -- what the
+    // blend reads -- are worked out again over every unit the file now holds.
+    // A setting with nothing rebuilt carries nothing, not an empty table.
+    const units = { ...((((had && had.settings) || {})[label] || {}).units || {}) };
     for (const u of (e.units || [])) {
       const tt = u.rich && u.rich.test;
       if (!tt) continue;
@@ -5916,14 +5919,21 @@ function saveFunnelRich(id, perSetting, testControls = null) {
       if (Array.isArray(tt.pnlThirds)) one.pnlThirds = tt.pnlThirds.slice();
       units[unitKeyOf(u)] = one;
     }
-    if (Object.keys(units).length) row.units = units;
+    const row = {};
+    const list = Object.values(units);
+    for (const f of RICH_FIELDS) {
+      const vs = list.map((o) => o[f]).filter((v) => v != null && Number.isFinite(Number(v)));
+      if (vs.length) row[f] = vs.reduce((s, c) => s + Number(c), 0) / vs.length;
+    }
+    const thirds = list.map((o) => o.pnlThirds).filter(Array.isArray);
     if (thirds.length) {
       const w = Math.max(...thirds.map((x) => x.length));
       row.pnlThirds = Array.from({ length: w }, (_, i) => {
         const vs = thirds.map((x) => x[i]).filter((v) => v != null && Number.isFinite(Number(v)));
-        return vs.length ? vs.reduce((a, c) => a + Number(c), 0) / vs.length : null;
+        return vs.length ? vs.reduce((s, c) => s + Number(c), 0) / vs.length : null;
       });
     }
+    if (Object.keys(units).length) row.units = units;
     out.settings[label] = row;
   }
   atomicWrite(funnelRichFile(id), JSON.stringify(out));
@@ -5964,12 +5974,16 @@ function withOwnRich(rows, own) {
 // lay the rebuilt numbers onto rows by label; a row keeps what it already has
 function withFunnelRich(rows, rich) {
   if (!rich || !rich.settings) return rows;
+  const every = Number(rich.unitsTotal) || 0;
   return rows.map((r) => {
     const x = rich.settings[r.label];
-    if (!x) return r;
-    // a unit board row takes the unit's own rebuilt numbers; the blend takes
-    // the average across units
-    const src = r.unit && x.units && x.units[r.unit] ? x.units[r.unit] : x;
+    if (!x || !x.units) return r;
+    // A UNIT BOARD ROW TAKES THE UNIT'S OWN REBUILT NUMBERS OR NOTHING (3.134.0):
+    // a coin and shape the numbers were never worked out for must not borrow
+    // another's. The blend takes the average across units only once every
+    // unit of the set is in it, or a half-prepared set would read as a whole.
+    const src = r.unit ? (x.units[r.unit] || null) : (Object.keys(x.units).length >= every ? x : null);
+    if (!src) return r;
     const o = { ...r };
     for (const [f, v] of Object.entries(src)) if (f !== 'units' && o[f] === undefined) o[f] = v;
     return o;
@@ -6295,12 +6309,27 @@ function cpuLoad() {
 // those refuse on top of IT. The other four pressed jobs on this screen refuse
 // by name where they start.
 let richRun = null;
+// EVERY COIN AND SHAPE, COUNTED WITHOUT READING A BOARD (3.134.0): how many of
+// the set's coins and shapes carry the numbers for every setting on their
+// board. What a board holds is read off the tables' coin rows (one record per
+// setting per unit); what the file holds, off its per-unit entries.
+function richSetOf(id, t, rich) {
+  const units = t ? unitsOfSet(t, id) : [];
+  const need = new Map();
+  for (const c of ((t && t.coins) || [])) { const k = unitKeyOf(c); need.set(k, (need.get(k) || 0) + (Number(c.rows) || 0)); }
+  const have = new Map();
+  for (const x of Object.values((rich && rich.settings) || {})) for (const k of Object.keys((x && x.units) || {})) have.set(k, (have.get(k) || 0) + 1);
+  const unitsDone = units.filter((u) => (have.get(u.key) || 0) >= (need.get(u.key) || Infinity)).length;
+  return { units: units.length, unitsDone };
+}
 function richStatus(run) {
   return {
     running: !run.result && !run.error,
     token: run.token, done: run.done, of: run.of,
     // how many coins and shapes the count runs over (3.132.0), so the line can say so
     units: run.units ?? null,
+    // the one coin and shape the press was aimed at, or null for every one (3.134.0)
+    unit: run.unit ?? null,
     // beside the count, so the owner can see the box working and not just a
     // number that has not moved
     cpu: cpuLoad(),
@@ -6334,7 +6363,7 @@ function funnelRichStart(id, state = {}) {
   const doc = getSet(id);
   if (!doc) throw new Error(`unknown record set '${id}'`);
   claimOrRefuse();
-  const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, units: null, result: null, error: null, promise: null };
+  const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, units: null, unit: null, result: null, error: null, promise: null };
   richRun = run;
   run.promise = (async () => {
     // THE WHOLE RECORD SET, NOT THE RULE'S SURVIVORS (3.102.0, owner order
@@ -6363,7 +6392,17 @@ function funnelRichStart(id, state = {}) {
     }
     const t = readTally(String(id));
     if (!t) throw new Error('the tables of this record set cannot be read, so there is nothing to work out');
-    const board = await funnelBoard(String(id), t, 'all');
+    // ONE COIN AND SHAPE WHEN THE PRESS NAMES ONE (3.134.0, owner: "for what
+    // i'm doing ... should not this be coded more efficiently?"). The press on
+    // step 6 names the coin and shape the walk is on and prices that board
+    // alone; the press beside Worth walking? names nothing and prices every
+    // one, because Read the ranking needs all of them. The 3.102.0 objection
+    // was to pricing a rule's survivors, whose slice moved with every walk; a
+    // whole board of one coin and shape is the board the walk reads, and the
+    // file merges per unit, so each board prepared stays prepared.
+    const unit = state && state.unit && state.unit !== 'all' ? String(state.unit) : null;
+    run.unit = unit;
+    const board = await funnelBoard(String(id), t, unit || 'all');
     const labels = (board.all || []).map((r) => String(r.label));
     if (!labels.length) throw new Error('this record set has no settings on its board, so there is nothing to work out');
     // THE PROOF STILL TRAVELS WITH THE ANSWER, and over the whole board rather
@@ -6374,7 +6413,7 @@ function funnelRichStart(id, state = {}) {
       if (r.avgTest != null && Number.isFinite(Number(r.avgTest))) expect[String(r.label)] = Number(r.avgTest);
     }
     run.of = labels.length;
-    const got = await rebuildRichFor(doc, labels, { note: (done, of, x) => { run.done = done; run.of = of; run.units = (x || {}).units ?? run.units ?? null; } });
+    const got = await rebuildRichFor(doc, labels, { unit, note: (done, of, x) => { run.done = done; run.of = of; run.units = (x || {}).units ?? run.units ?? null; } });
     const proof = proveRebuild(got.perSetting, expect);
     const kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);
     // A RANKING ALREADY READ WAS READ FROM THESE NUMBERS, so it is dropped
@@ -8634,7 +8673,7 @@ module.exports = {
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
   unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
-  stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf, partSlices,
+  stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf, partSlices, richSetOf,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet, derivedRefusalOf,
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,

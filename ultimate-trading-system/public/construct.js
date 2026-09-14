@@ -6101,7 +6101,7 @@ function fLadder(name, l, word, ex, d) {
   // this line named something the owner had no way to reach from here.
   if (!l.measured) {
     return `<p class="note muted">${esc(name)}: no survivor carries this number yet.</p>
-      <div class="row" style="align-items:flex-end">${fRebuildPress(d, false)}</div>`;
+      <div class="row" style="align-items:flex-end">${fRebuildPress(d, false, 'unit')}</div>`;
   }
   // a trade count is put on a yearly footing beside each rung (3.57.0); a
   // dollar figure is already in dollars at the stake named above
@@ -6187,21 +6187,40 @@ function fCpuWords(cpu) {
 }
 // the count runs over every coin and shape of the set (3.132.0); a set of more than one says so
 const fAcrossWords = (units) => (Number(units) > 1 ? ` across ${Number(units).toLocaleString()} coins and shapes` : '');
+// where the count the read carries was taken: the board the walk is on (3.134.0)
+const fRichWhere = (d) => (d && d.unit && d.unit !== 'all' ? 'on this coin and shape' : 'in this record set');
 function fRichLine(d) {
   const x = fRichOf(d);
   const run = x.run || {};
+  const where = fRichWhere(d);
   if (fRichGoing(d)) {
     return (run.of ? `working them out — ${Number(run.done || 0).toLocaleString()} of ${Number(run.of).toLocaleString()} settings${fAcrossWords(run.units)}`
       : 'working them out') + fCpuWords(run.cpu);
   }
   if (run.error) return `FAILED — ${String(run.error)}`;
-  if (!x.need) return 'this record set has no settings on its board, so there is nothing to work out';
-  if (x.have >= x.need) return `done — all ${Number(x.need).toLocaleString()} setting(s) in this record set carry them`;
+  if (!x.need) return `there are no settings ${where}, so there is nothing to work out`;
+  if (x.have >= x.need) return `done — all ${Number(x.need).toLocaleString()} setting(s) ${where} carry them`;
   if (x.have) {
     return `${Number(x.have).toLocaleString()} of ${Number(x.need).toLocaleString()} setting(s) carry them — `
       + `the press works out the other ${Number(x.need - x.have).toLocaleString()}`;
   }
-  return `not done yet — one press works out all ${Number(x.need).toLocaleString()} of them and finishes on its own`;
+  return `not done yet — one press works out all ${Number(x.need).toLocaleString()} of them ${where} and finishes on its own`;
+}
+// THE PRESS BESIDE Worth walking? SPEAKS FOR EVERY COIN AND SHAPE (3.134.0):
+// Read the ranking needs all of them, so this counts the coins and shapes
+// whose every setting carries the numbers, off the count the read carries.
+function fRichSetOff(d) {
+  const s = (d && d.richSet) || { units: 0, unitsDone: 0 };
+  if (fRichGoing(d)) return true;
+  if (!s.units) return true;
+  return s.unitsDone >= s.units;
+}
+function fRichSetLine(d) {
+  const s = (d && d.richSet) || { units: 0, unitsDone: 0 };
+  if (fRichGoing(d) || (fRichOf(d).run || {}).error) return fRichLine(d);
+  if (!s.units) return 'this record set has no coins and shapes on its board, so there is nothing to work out';
+  if (s.unitsDone >= s.units) return `done — every one of the ${Number(s.units).toLocaleString()} coin(s) and shape(s) in this record set carries them`;
+  return `${Number(s.unitsDone).toLocaleString()} of ${Number(s.units).toLocaleString()} coin(s) and shape(s) carry them for every setting — the press works out the rest, every coin and shape`;
 }
 // ---- DOES THE RANKING HOLD? (3.102.0, SELECTION-DESIGN.md Part 4) ----------
 //
@@ -6354,9 +6373,14 @@ function fHoldTable(t, bar, walking) {
 // `named` carries the ids. Exactly one copy may, because the Help tab's
 // control reader indexes by id and two of the same id is one control counted
 // twice; the other copy is found by its data attribute, as the pagers are.
-function fRebuildPress(d, named) {
-  return `<button ${named ? 'id="fRebuild" ' : ''}class="pri" data-frebuild="1"${fRichOff(d) ? ' disabled' : ''}>Work out the test history numbers</button>
-      <span ${named ? 'id="fRebuildMsg" ' : ''}data-frebuildmsg="1" class="note">${esc(fRichLine(d))}</span>`;
+// TWO SCOPES, ONE PRESS (3.134.0). Beside Worth walking? it works out every
+// coin and shape, because Read the ranking needs all of them; on step 6 it
+// works out the coin and shape the walk is on and nothing else. Each copy
+// says which, and each is dead when its own scope has nothing left to do.
+function fRebuildPress(d, named, scope) {
+  const all = scope === 'all';
+  return `<button ${named ? 'id="fRebuild" ' : ''}class="pri" data-frebuild="${all ? 'all' : 'unit'}"${(all ? fRichSetOff(d) : fRichOff(d)) ? ' disabled' : ''}>Work out the test history numbers</button>
+      <span ${named ? 'id="fRebuildMsg" ' : ''}data-frebuildmsg="1" class="note">${esc(all ? fRichSetLine(d) : fRichLine(d))}</span>`;
 }
 // every copy of it says the same thing, because they are the same press
 const fRebuildSay = (text) => document.querySelectorAll('[data-frebuildmsg]').forEach((m) => { m.textContent = text; });
@@ -6387,7 +6411,7 @@ function fHoldPanel(d, st) {
       that can only be spent once - and it decides nothing. A coin and shape that clears the bar has not been shown
       to work; it has only failed to be ruled out.</p>
     <div class="row" style="align-items:flex-end">
-      ${fRebuildPress(d, true)}</div>
+      ${fRebuildPress(d, true, 'all')}</div>
     ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
     <div class="row" style="align-items:flex-end">
       <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
@@ -6797,7 +6821,7 @@ function fCutHead(cd, st, d) {
   // reach the moment the set was written. The press is offered only where it
   // would help: the four are kept per coin and shape, so a set cut on the blend
   // of all of them has nothing for it to work out.
-  const beatPress = s.unit ? `<div class="row" style="align-items:flex-end">${fRebuildPress(d, false)}</div>` : '';
+  const beatPress = s.unit ? `<div class="row" style="align-items:flex-end">${fRebuildPress(d, false, 'unit')}</div>` : '';
   return `<div class="row" style="align-items:flex-end">
       <label class="f">name<input id="fCutName" value="${esc(s.name || '')}" maxlength="80" style="width:26rem"></label>
       <button id="fCutRename">Rename</button>
@@ -7430,12 +7454,15 @@ function fWireHold(st, d) {
   for (const rb of rbs) {
     if (rb.disabled) continue;
     rb.onclick = async () => {
+      const all = rb.dataset.frebuild === 'all';
       rbs.forEach((b) => { b.disabled = true; });
-      fRebuildSay('working them out — this prices every setting in this record set again from its parent set');
-      // NOTHING TO NAME (3.102.0, owner order 2026-09-10). It used to send the
-      // rule so the service could work out which survivors to price; the whole
-      // board is priced now, so there is nothing to pick and nothing to send.
-      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);
+      fRebuildSay(all ? 'working them out — this prices every setting in this record set again from its parent set'
+        : 'working them out — this prices every setting of this coin and shape again from its parent set');
+      // THE SCOPE IS ALL IT NAMES (3.134.0). The rule is never sent (3.102.0:
+      // the whole board is priced, never a rule's survivors); the step 6 copy
+      // names the coin and shape the walk is on, the other copy names nothing.
+      const unitNow = d && d.unit ? d.unit : (st.unit || 'all');
+      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, all ? {} : { unit: unitNow }, WHERE_FUNNEL);
       if (!started) { rbs.forEach((b) => { b.disabled = false; }); fRebuildSay(fRichLine(d)); return; }
       await fRichWatch(st);
     };
