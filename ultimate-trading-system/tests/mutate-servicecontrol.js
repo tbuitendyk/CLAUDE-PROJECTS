@@ -1508,6 +1508,13 @@ const GUARDS = [
     'theConfirmDialIsOnSweepAndItsVerdictOnBoards', 'Table 3.B has a verdict heading with no cell under it'],
   [path.join(ROOT, 'lib', 'funnel.js'), "const CATEGORICAL_DIALS = ['decision', 'weekdaysOnly', 'entry', 'gate', 'agreeRule', 'agreeBar', 'agreeBoth', 'confirm'];", "const CATEGORICAL_DIALS = ['decision', 'weekdaysOnly', 'entry', 'gate', 'agreeRule', 'agreeBar', 'agreeBoth'];",
     'theConfirmDialNamesItsSettingsAndRefusesBadValues', 'the Funnel cannot read confirm as a dial'],
+  // ---- BOARDS: the forecast score says what it is out of (3.130.1) ----
+  [path.join(ROOT, 'public', 'construct.js'), "        <td ${btdN}>${bForecastScore(r.score, r.testChunks)}</td>", "        <td ${btdN}>${r.score == null ? '\u2014' : r.score.toFixed(1)}</td>",
+    'theForecastScoreShowsItsDenominatorAndShare', 'the sum is drawn bare again, with nothing to read it against'],
+  [path.join(ROOT, 'public', 'construct.js'), "  if (!(n > 0)) return s;\n  return `${s} / ${Number(n).toLocaleString()} (${(100 * score / n).toFixed(1)}%)`;", "  return s;",
+    'theForecastScoreShowsItsDenominatorAndShare', 'the count and the share are never printed'],
+  [path.join(ROOT, 'lib', 'stages.js'), "      testChunks: (r.counts || {}).test ?? null,", "      testChunks: null,",
+    'theForecastScoreShowsItsDenominatorAndShare', 'the table never serves the count, so every score reads as the bare sum'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), "  for (const u of unreadable) {\n    try { fs.unlinkSync(path.join(DIR, u.file)); removed.push(u.file); }", "  for (const u of []) {\n    try { fs.unlinkSync(path.join(DIR, u.file)); removed.push(u.file); }",
     'theCleanupRemovesExactlyWhatCannotBeDrawnAndNothingElse', 'the control the owner presses to remove the files removes nothing and reports nothing failed'],
   [path.join(ROOT, 'lib', 'coinsrun.js'), "  if (run && !run.finishedAt && !run.error) throw new Error('a Coins reading is running — wait for it to finish before removing files');", "  if (false) throw new Error('a Coins reading is running — wait for it to finish before removing files');",

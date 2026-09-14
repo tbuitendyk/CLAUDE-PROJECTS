@@ -550,3 +550,23 @@ be shown better than them, so `adds value` is the most such a row can say
 (tests). (d) The word is categorical and carries no chance rate of its own;
 the null set beside every row still says whether either money beats chance.
 
+## J. The forecast score says what it is out of — owner GO NOW! 2026-09-14 (3.130.1)
+
+The owner, on being told how `forecast score` is worked out: *"would not the
+forecast score number require knowledge of the number of trades in the test
+stretch? Otherwise, how can we know the accuracy based on a single number."*
+It would, and the screen did not show it. The order: no new column; in the
+same cell, the sum, a slash, the denominator, and a percentage in brackets;
+computed on the fly from what the record already holds.
+
+- **J1 — the count was on every record and on no row.** Stage 1 writes
+  `counts.test` on each record; the table now serves it as `testChunks`.
+- **J2 — the cell reads `180.0 / 200 (90.0%)`.** The share is the sum
+  divided by the count: the average sureness placed on what happened, 100%
+  always sure and always right, 33.3% a third on everything. A record with
+  no count prints the sum alone; a share is never made up.
+- **J3 — the sort is unchanged**: the column still sorts by the sum, said
+  in its hover. Sorting by the share is a one-line change, awaiting a yes.
+- **J4 — stage 2's two forecast score columns are untouched.** They have
+  the same reading and the same fix; not in this order.
+

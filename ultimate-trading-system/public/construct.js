@@ -3454,6 +3454,19 @@ function bSaveView(patch) {
 }
 
 function bMoney(v) { return v == null ? '<span class="muted">—</span>' : `<span class="${v >= 0 ? 'pos' : 'neg'}">${money(v)}</span>`; }
+// THE FORECAST SCORE SAYS WHAT IT IS OUT OF (3.130.1, owner order: "make a
+// slash and then the denominator ... and then a space and a percentage in
+// parenthesis"). The sum alone cannot be read -- a unit with more test chunks
+// scores higher for the same skill -- so the cell prints the sum, a slash,
+// the number of test chunks it was summed over, and in brackets the sum as a
+// share of that count: the average sureness placed on what happened. With no
+// count on the record the sum stands alone; a share is never made up.
+function bForecastScore(score, n) {
+  if (score == null) return '\u2014';
+  const s = Number(score).toFixed(1);
+  if (!(n > 0)) return s;
+  return `${s} / ${Number(n).toLocaleString()} (${(100 * score / n).toFixed(1)}%)`;
+}
 // EVERY COMPARISON TIED IS NOT LOSING EVERY COMPARISON (owner order,
 // 2026-08-30). The service works out which rows those are and says so on the
 // row; this only prints it. Two places deciding the same thing is two places
@@ -4391,7 +4404,7 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <th ${bth} title="how long a stretch of prices each decision looks at, and how often a decision is made — fixed when the unit was trained.">chunk shape${bSortBtn(doc, 'geometry', 'asc')}</th>
         <th ${bth} title="how many members vote for this unit at stage 1 — one per reading, all LOGREG.">members${bSortBtn(doc, 'members', 'desc')}</th>
         <th ${bth} title="how many of those members are INDEPENDENT. Members that call the same way almost every time count as one voice however differently they were built, so this is the number of real opinions behind the vote.">independent voices${bSortBtn(doc, 'voices', 'desc')}</th>
-        <th ${bth} title="the sureness the pooled votes placed on what actually happened, summed over the test window. Comparable only among units of the same chunk shape — the two null-set columns are what compare across shapes.">forecast score${bSortBtn(doc, 'score', 'desc')}</th>
+        <th ${bth} title="the sureness the pooled votes placed on what actually happened, summed over the test window; then a slash and how many test chunks it was summed over; then, in brackets, the sum as a share of that count — the average sureness placed on what happened, so 100% is always sure and always right and 33.3% is a third on everything. The share compares across units and chunk shapes; the sum alone does not. Sorting this column sorts by the sum.">forecast score${bSortBtn(doc, 'score', 'desc')}</th>
         <th ${bth} title="of its null set — the same kept votes with the calendar shuffled away — how many this unit's forecast score beat">beat its own null set${bSortBtn(doc, 'beat', 'desc')}</th>
         <th ${bth} title="how far above its null set's typical forecast score the real one sits, against the null set's own spread — the tie-break">lead over null set${bSortBtn(doc, 'lead', 'desc')}</th>
         <th ${bth} title="the unit's own votes on the tuning slice — the last quarter of its training window, which the fit never saw and the test window is not — priced one buy or sell per chunk in the direction they lean, held from the entry hour to the exit hour, at the fee declared on Sweep. US dollars on $100 a trade, after fees.">tuning-slice $${bSortBtn(doc, 'money', 'desc')}</th>
@@ -4405,7 +4418,7 @@ async function bDrawStage1(doc, incomplete, view, mount) {
         <td ${btdN}>${esc(bGeo(r.geometry))}</td>
         <td ${btdN}>${r.members == null ? '—' : r.members}</td>
         <td ${btdN}${r.voices != null && r.members && r.voices < r.members ? ' class="warn"' : ''}>${r.voices == null ? '—' : r.voices}</td>
-        <td ${btdN}>${r.score == null ? '—' : r.score.toFixed(1)}</td>
+        <td ${btdN}>${bForecastScore(r.score, r.testChunks)}</td>
         <td ${btdN}>${bShare(r.pairs ? r.beat / r.pairs : null, r.beat, r.pairs)}</td>
         <td ${btdN}>${bLead(r.lead)}</td>
         <td ${btdN}>${bMoney(r.money)}</td>

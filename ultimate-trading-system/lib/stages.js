@@ -4769,6 +4769,10 @@ function stage1Table(id, from, n, filters = null) {
       trade: r.trade, ctx1: r.ctx1, ctx2: r.ctx2, geometry: r.geometry,
       members: (r.specs || []).length, voices: r.voices ?? null,
       score: row.score, beat: row.beat, pairs: row.pairs, lead: row.lead,
+      // WHAT THE SCORE IS OUT OF (3.130.1, owner order): the number of test
+      // chunks it was summed over, off the record's own counts, so the screen
+      // can print the sum, the count and the share without a column more
+      testChunks: (r.counts || {}).test ?? null,
       money: r.money ?? null, beatMoney: r.beatMoney ?? null, leadMoney: r.leadMoney ?? null,
       // HOW HARD THE CEILING HAD TO WORK ON THIS UNIT (3.121.0). The unit task
       // worked these out from 3.69.0 and no writer copied them, so they first

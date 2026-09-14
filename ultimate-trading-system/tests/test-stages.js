@@ -875,6 +875,47 @@ module.exports = {
     assert.doesNotThrow(() => keys.validateSort(3, [{ key: 'confirm', dir: 'asc' }]));
   },
 
+  // THE FORECAST SCORE SAYS WHAT IT IS OUT OF (3.130.1, owner order: "make a
+  // slash and then the denominator ... and then a space and a percentage in
+  // parenthesis"). The sum alone cannot be read: a unit with more test chunks
+  // scores higher for the same skill. The count is on every record already,
+  // so the table serves it and the cell divides on the fly.
+  async theForecastScoreShowsItsDenominatorAndShare() {
+    const id = `s1-test-${Date.now().toString(36)}-fs`;
+    const file = path.join(SETS_DIR, `${id}.json`);
+    try {
+      fs.mkdirSync(SETS_DIR, { recursive: true });
+      fs.writeFileSync(file, JSON.stringify({ id, stage: 1, seq: 999980, name: 'S1 #fs', status: 'done', createdAt: new Date().toISOString(), plan: { units: 2 }, params: { nullN: 4, fee: 0.00125 } }));
+      const rec = rowstore.writer(id, 'records');
+      rec.push({ u: 0, trade: 'C0', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2, counts: { train: 900, test: 200, hold: 200 }, specs: [], score: 180, beat: 4, pairs: 4, lead: 2, nullScores: [], blocks: {} });
+      rec.push({ u: 1, trade: 'C1', ctx1: null, ctx2: null, size: 1, geometry: 'daily-4d', bandPct: 2, counts: {}, specs: [], score: 9, beat: 2, pairs: 4, lead: 1, nullScores: [], blocks: {} });
+      rec.close();
+      const rk = rowstore.writer(id, 'ranking');
+      rk.push({ rank: 1, u: 0, beat: 4, pairs: 4, lead: 2, score: 180 });
+      rk.push({ rank: 2, u: 1, beat: 2, pairs: 4, lead: 1, score: 9 });
+      rk.close();
+      const rows = stages.stage1Table(id, 0, 10).rows;
+      assert.deepStrictEqual(rows.map((r) => [r.trade, r.score, r.testChunks]), [['C0', 180, 200], ['C1', 9, null]],
+        'the test chunk count rides on the row off the record\'s counts; a record without one reads blank');
+    } finally {
+      try { fs.rmSync(rowstore.storeDir(id), { recursive: true, force: true }); } catch (_) { /* fixture */ }
+      try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ }
+    }
+    // the cell, run exactly as the screen runs it
+    const src = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
+    const at = src.indexOf('function bForecastScore(score, n) {');
+    assert.ok(at > 0, 'the cell helper is gone');
+    const fn = new Function(`${src.slice(at, src.indexOf('\n}\n', at) + 3)}; return bForecastScore;`)();
+    assert.strictEqual(fn(180, 200), '180.0 / 200 (90.0%)', 'the sum, a slash, the count, and the share in brackets');
+    assert.strictEqual(fn(66.6667, 200), '66.7 / 200 (33.3%)', 'a third on everything reads 33.3%');
+    assert.strictEqual(fn(9, null), '9.0', 'no count on the record: the sum alone, never a made-up share');
+    assert.strictEqual(fn(9, 0), '9.0', 'a count of nothing is no denominator');
+    assert.strictEqual(fn(null, 200), '\u2014');
+    assert.ok(src.includes('<td ${btdN}>${bForecastScore(r.score, r.testChunks)}</td>'), 'the stage 1 table draws the score through the helper');
+    assert.ok(/title="the sureness the pooled votes placed on what actually happened, summed over the test window; then a slash and how many test chunks/.test(src),
+      'the heading says what the three parts of the cell are');
+  },
+
 
   // WHAT EACH UNIT HOLDS (3.52.0, owner order 2026-09-04: "fold duplicates
   // per unit, which would let units hold different setting counts"). Two
