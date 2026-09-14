@@ -677,3 +677,26 @@ a fix and a wording change.
 
 Not touched: the rebuild's progress line and the Boards jump (task #95), and
 two older guards that skip since 3.131.0 rewrote their lines.
+
+## O. A pick on Boards holds its box still; the rebuild in parts with an honest count — owner GO NOW! 2026-09-14 (3.132.0)
+
+- **O1 — Boards.** Picking in the `record set` box under `Stage 1`, `Stage 2`
+  or `Stage 3`, the put-away press beside it and the delete all redrew the tab
+  and restored the tab's remembered place. Wrong twice over: the redraw
+  empties the page first, the browser clamps the scroll to the top of that
+  short page and the clamp is recorded as the owner's place; and a stage 3
+  pick opens all three sections, so everything above the box grows and even
+  the right old place no longer sits at it. The pressed control is pegged now
+  the way `Table 3.B` pegs its heading row: where the box sits before the
+  redraw is where it sits after. The other presses on Boards that restore
+  from memory (notes, filters, page turns) are not in this order and are
+  untouched.
+- **O2 — the rebuild.** `Work out the test history numbers` handed one unit
+  to one worker and moved a count of units under the word settings, so the
+  owner's one-unit set said nothing for the whole run and kept one core of
+  eight busy. Each unit is now cut into parts the way a stage 3 run cuts its
+  units, every part its own payload, the count moving as parts land and
+  counting settings over every unit; a set of more than one coin and shape
+  says "across N coins and shapes" on the line. The cut arithmetic is one
+  function, `partSlices`; the stage 3 run keeps its own copy of the same
+  arithmetic, untouched by this order. Second digit: new behaviour.

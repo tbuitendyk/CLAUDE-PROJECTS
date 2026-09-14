@@ -1603,6 +1603,19 @@ const GUARDS = [
     'aOneUnitSetAtHomeCanStillBeWalked', 'the ranking table is handed the current unit straight, and its row loses Walk this one at Home'],
   [path.join(ROOT, 'public', 'construct.js'), ">order must agree by at least<input", ">how much must hold<input",
     'aOneUnitSetAtHomeCanStillBeWalked', 'the bar box goes back to a label that says neither what must agree nor with what'],
+  // ---- BOARDS: a pick holds its own box still; FUNNEL: the rebuild in parts with an honest count (3.132.0) ----
+  [path.join(ROOT, 'public', 'construct.js'), "        bRedrawPeggedTo(`#bPick${stage}`);\n      };\n    }\n    const del = $(`#bDelete${stage}`);", "        drawBoards().then(() => restoreScroll(tab));\n      };\n    }\n    const del = $(`#bDelete${stage}`);",
+    'aPickOnBoardsHoldsItsOwnBoxStill', 'a pick in the record set box restores from the memory the clamp overwrote, and the page jumps to the top'],
+  [path.join(ROOT, 'public', 'construct.js'), "    const again = document.querySelector(selector);\n    if (pegTop != null && again) {\n      window.scrollBy(0, again.getBoundingClientRect().top - pegTop);", "    const again = document.querySelector(selector);\n    if (pegTop != null && again) {\n      window.scrollTo(0, 0);",
+    'aPickOnBoardsHoldsItsOwnBoxStill', 'the pressed box is measured and then never put back'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const partsPerUnit = Math.max(1, Math.min(n, Math.max(1, workersN) * 4));", "  const partsPerUnit = 1;",
+    'theRebuildPricesEachUnitInPartsAndCountsSettings', 'a unit is one part again: one worker, and no count until it lands whole'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    done += part.to - part.from;\n    say();", "    done += part.to - part.from;",
+    'theRebuildPricesEachUnitInPartsAndCountsSettings', 'the count is worked out and never sent, so the line never moves'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    units: run.units ?? null,\n", "",
+    'theRebuildPricesEachUnitInPartsAndCountsSettings', 'the screen is not told how many coins and shapes the count runs over'],
+  [path.join(ROOT, 'public', 'construct.js'), "const fAcrossWords = (units) => (Number(units) > 1 ? ` across ${Number(units).toLocaleString()} coins and shapes` : '');", "const fAcrossWords = (units) => '';",
+    'theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft', 'a set of several coins and shapes prints a count that reads as one set\'s settings'],
 ];
 
 const only = process.argv[2] || '';

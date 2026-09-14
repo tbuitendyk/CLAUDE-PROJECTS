@@ -65,6 +65,31 @@ module.exports = {
   // place can be overwritten by the clamp while a long redraw has the page
   // short, so a restore from memory landed higher than the owner was. The
   // sorters take the height BEFORE the redraw and put it back exactly there.
+  // A PICK ON BOARDS HOLDS ITS OWN BOX STILL (3.132.0, owner report 2026-09-14:
+  // "when a stage 3 record set is selected on Boards the page jumps up and
+  // does not return to the stage 3 record set selector"). The pick redrew the
+  // tab and restored the remembered place, which the clamp had overwritten and
+  // which no longer sat at the box once the three sections opened above it.
+  // The pressed control is pegged instead, the way the coin table's head is.
+  async aPickOnBoardsHoldsItsOwnBoxStill() {
+    const src = CONSTRUCT_NOW();
+    const at = src.indexOf('async function bRedrawPeggedTo(selector) {');
+    assert.ok(at > 0, 'there is no pegged redraw for a pressed control');
+    const helper = src.slice(at, src.indexOf('\n}\n', at));
+    const before = helper.indexOf('const pegTop = el ? el.getBoundingClientRect().top : null;');
+    const draw = helper.indexOf('await drawBoards();');
+    const after = helper.indexOf('window.scrollBy(0, again.getBoundingClientRect().top - pegTop);');
+    assert.ok(before > 0 && draw > before && after > draw, 'the box is not measured before the redraw and put back after it');
+    assert.ok(helper.includes('rememberScroll(tab);'), 'the pegged place is not remembered, so the next restore lands elsewhere');
+    assert.ok(helper.indexOf('holdScrollMemory();') > 0 && helper.indexOf('holdScrollMemory();') < after, 'the memory is not held while the page moves itself');
+    // the three presses on the stage sections go through it, each pegged to its own control
+    const presses = src.slice(src.indexOf("  for (const stage of [1, 2, 3]) {\n    const pick = $(`#bPick${stage}`);"), src.indexOf('  // Each open section renders its set'));
+    assert.ok(presses.length > 200, 'the stage section presses are not where they were');
+    assert.strictEqual(presses.split("bRedrawPeggedTo(`#bPick${stage}`);").length - 1, 2, 'the pick and the delete do not both hold the record set box still');
+    assert.ok(presses.includes('bRedrawPeggedTo(`[data-bfold="${sN}"]`);'), 'a put away or open on a section does not hold its button still');
+    assert.ok(!presses.includes('drawBoards().then(() => restoreScroll(tab))'), 'a press on a stage section still restores from the memory the clamp can overwrite');
+  },
+
   async theColumnSortersOnBoardsLeaveThePageWhereItIs() {
     const src = CONSTRUCT_NOW();
     const at = src.indexOf('async function drawBoardsHoldingPlace()');

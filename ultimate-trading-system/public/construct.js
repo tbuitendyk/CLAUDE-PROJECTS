@@ -3647,7 +3647,7 @@ async function drawBoards() {
         if (stage === 1) bSaveView({ s1: idv, s2: null, s3: null, fold1: true, openS3: [] });
         if (stage === 2) bSaveView({ s1: idv ? parentOf(idv) : null, s2: idv, s3: null, fold1: true, fold2: true, openS3: [] });
         if (stage === 3) bSaveView({ s1: idv ? parentOf(parentOf(idv)) || null : null, s2: idv ? parentOf(idv) : null, s3: idv, fold1: true, fold2: true, fold3: true, openS3: [] });
-        drawBoards().then(() => restoreScroll(tab));
+        bRedrawPeggedTo(`#bPick${stage}`);
       };
     }
     const del = $(`#bDelete${stage}`);
@@ -3670,7 +3670,7 @@ async function drawBoards() {
           if (stage <= 2) patch.s3 = null;
           if (stage === 1) patch.s2 = null;
           bSaveView(patch);
-          drawBoards().then(() => restoreScroll(tab));
+          bRedrawPeggedTo(`#bPick${stage}`);
         }
       };
     }
@@ -3679,7 +3679,7 @@ async function drawBoards() {
     btn.onclick = () => {
       const sN = Number(btn.dataset.bfold);
       bSaveView({ [`fold${sN}`]: !fold[sN] });
-      drawBoards().then(() => restoreScroll(tab));
+      bRedrawPeggedTo(`[data-bfold="${sN}"]`);
     };
   });
 
@@ -3970,6 +3970,33 @@ async function drawBoardsHoldingPlace() {
     holdScrollMemory();
     window.scrollTo(0, y);
     rememberScroll(tab);
+  }));
+}
+
+// A PICK ON BOARDS HOLDS ITS OWN BOX STILL (3.132.0, owner report 2026-09-14:
+// "when a stage 3 record set is selected on Boards the page jumps up and does
+// not return to the stage 3 record set selector"). The pick redrew the whole
+// tab and then restored the tab's remembered place -- wrong twice over: the
+// redraw empties the page first, the browser clamps the scroll to the top of
+// that short page and the clamp is recorded as the owner's place; and a stage
+// 3 pick opens all three sections, so everything above the box grows and even
+// the right old place no longer sits at it. So the pressed control is pegged
+// the way the coin table's head is: where its box sits before the redraw is
+// where it sits after, whatever the sections above it did.
+async function bRedrawPeggedTo(selector) {
+  const el = document.querySelector(selector);
+  const pegTop = el ? el.getBoundingClientRect().top : null;
+  await drawBoards();
+  holdScrollMemory();
+  requestAnimationFrame(() => requestAnimationFrame(() => {
+    holdScrollMemory();
+    const again = document.querySelector(selector);
+    if (pegTop != null && again) {
+      window.scrollBy(0, again.getBoundingClientRect().top - pegTop);
+      rememberScroll(tab);
+    } else {
+      restoreScroll(tab);   // the control did not come back -- the old rule
+    }
   }));
 }
 
@@ -6129,11 +6156,13 @@ function fCpuWords(cpu) {
   if (!cpu || cpu.busy == null) return '';
   return ` · ${Math.round(cpu.busy * 100)}% of ${cpu.cores} core${cpu.cores === 1 ? '' : 's'} busy`;
 }
+// the count runs over every coin and shape of the set (3.132.0); a set of more than one says so
+const fAcrossWords = (units) => (Number(units) > 1 ? ` across ${Number(units).toLocaleString()} coins and shapes` : '');
 function fRichLine(d) {
   const x = fRichOf(d);
   const run = x.run || {};
   if (fRichGoing(d)) {
-    return (run.of ? `working them out — ${Number(run.done || 0).toLocaleString()} of ${Number(run.of).toLocaleString()} settings`
+    return (run.of ? `working them out — ${Number(run.done || 0).toLocaleString()} of ${Number(run.of).toLocaleString()} settings${fAcrossWords(run.units)}`
       : 'working them out') + fCpuWords(run.cpu);
   }
   if (run.error) return `FAILED — ${String(run.error)}`;
@@ -7322,7 +7351,7 @@ async function fRichWatch(st) {
       // setting in this record set again from its parent set" until something
       // else redrew the screen. `node --check` cannot see an undefined name
       // and no test pressed this loop, which is how it shipped.
-      fRebuildSay((p.of ? `working them out — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} settings`
+      fRebuildSay((p.of ? `working them out — ${Number(p.done || 0).toLocaleString()} of ${Number(p.of).toLocaleString()} settings${fAcrossWords(p.units)}`
         : 'working them out') + fCpuWords(p.cpu));
       // eslint-disable-next-line no-await-in-loop
       await new Promise((r) => setTimeout(r, 1500));

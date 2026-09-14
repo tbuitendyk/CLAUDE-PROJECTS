@@ -4167,6 +4167,19 @@ function proveRebuild(perSetting, expect, tol = 1e-6, onUnit = null) {
 // empty list and the service refused it, so `work out the missing numbers` had
 // never once run. The press names the rule now, and the survivors are worked
 // out HERE, through S4.applyRule -- the one function that applies a rule
+// HOW A UNIT'S SETTINGS ARE CUT INTO PARTS for the workers (3.132.0): the
+// arithmetic a stage 3 run uses on its units (runStage3Parts), so a rebuild
+// spreads over the box the way a run does and its count moves as parts land.
+// A unit with nothing to price still gets one empty part, so what rides
+// beside the settings (the four controls on its test window) comes back.
+function partSlices(n, workersN) {
+  if (!(n > 0)) return [[0, 0]];
+  const partsPerUnit = Math.max(1, Math.min(n, Math.max(1, workersN) * 4));
+  const partSize = Math.max(1, Math.ceil(n / partsPerUnit));
+  const out = [];
+  for (let from = 0; from < n; from += partSize) out.push([from, Math.min(n, from + partSize)]);
+  return out;
+}
 async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   const busy = stageRunning();
   if (busy) {
@@ -4201,10 +4214,32 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   }
   const fee = Number((doc.params || {}).fee) || 0;
   const nullN = Math.max(0, Math.floor(num((doc.params || {}).nullN, 19)));
-  const payloads = records.map((rec, i) => {
-    const mine = new Set(heldOn[i]);
-    return s3Payload({ doc, parent, rec, settings: use.filter((st) => mine.has(st.si)), fee, nullN, wantTestControls: true });
-  });
+  // IN PARTS ACROSS EVERY WORKER (3.132.0, owner report 2026-09-14: "zero
+  // status updates from hitting the button to completion"). One payload per
+  // unit put one worker on all of a unit's settings, so a set with one coin
+  // and shape kept one core of eight busy and said nothing until the whole
+  // unit landed -- and the count it then moved was units, printed as settings.
+  // Cut the way a stage 3 run cuts its units: the votes read once per unit,
+  // the settings sliced into parts, every part its own payload. The count
+  // moves as parts land and counts settings over every unit.
+  const pool = createPool();
+  activePool = pool;
+  const workersN = pool.parallel ? pool.workers.length : 1;
+  const parts = [];                     // { i: index into records, from, to } -- into the unit's own list
+  const payloads = [];
+  let ofSettings = 0;
+  try {
+    records.forEach((rec, i) => {
+      const mine = new Set(heldOn[i]);
+      const settingsHere = use.filter((st) => mine.has(st.si));
+      ofSettings += settingsHere.length;
+      const whole = s3Payload({ doc, parent, rec, settings: settingsHere, fee, nullN, wantTestControls: true });
+      for (const [from, to] of partSlices(settingsHere.length, workersN)) {
+        payloads.push({ ...whole, settings: settingsHere.slice(from, to) });
+        parts.push({ i, from, to });
+      }
+    });
+  } catch (err) { activePool = null; pool.abort(); throw err; }
 
   // si is per-BLOCK on the way back — the worker numbers what it was handed
   // from zero — so the label is what identifies a setting across units.
@@ -4216,11 +4251,13 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
   // settings rather than on every one of them.
   const testControls = {};
   const failures = [];
+  const failedUnits = new Set();
   let done = 0;
-  const pool = createPool();
-  activePool = pool;
-  await pool.forEach('s3Unit', payloads, (settled, i) => {
-    const rec = records[i];
+  const say = () => { if (opts.note) opts.note(done, ofSettings, { units: records.length }); };
+  say();                                // the line reads right before the first part lands
+  await pool.forEach('s3Unit', payloads, (settled, pi) => {
+    const part = parts[pi];
+    const rec = records[part.i];
     if (settled.ok && settled.value) {
       for (const row of settled.value.rows) {
         let e = perSetting.get(row.label);
@@ -4233,11 +4270,13 @@ async function rebuildRichFor(doc, wantedLabels, opts = {}) {
       if (settled.value.testControls && Object.keys(settled.value.testControls).length) {
         testControls[unitKeyOf(rec)] = settled.value.testControls;
       }
-    } else if (!settled.ok) {
+    } else if (!settled.ok && !failedUnits.has(part.i)) {
+      // one failure per unit, whichever of its parts failed first
+      failedUnits.add(part.i);
       failures.push({ unit: `${rec.trade}|${rec.geometry}`, error: String(settled.error || 'failed') });
     }
-    done++;
-    if (opts.note) opts.note(done, payloads.length);
+    done += part.to - part.from;
+    say();
   });
   activePool = null;
   for (const e of perSetting.values()) {
@@ -6260,6 +6299,8 @@ function richStatus(run) {
   return {
     running: !run.result && !run.error,
     token: run.token, done: run.done, of: run.of,
+    // how many coins and shapes the count runs over (3.132.0), so the line can say so
+    units: run.units ?? null,
     // beside the count, so the owner can see the box working and not just a
     // number that has not moved
     cpu: cpuLoad(),
@@ -6293,7 +6334,7 @@ function funnelRichStart(id, state = {}) {
   const doc = getSet(id);
   if (!doc) throw new Error(`unknown record set '${id}'`);
   claimOrRefuse();
-  const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, result: null, error: null, promise: null };
+  const run = { id: String(id), token: `${id}:${Date.now()}`, done: 0, of: 0, units: null, result: null, error: null, promise: null };
   richRun = run;
   run.promise = (async () => {
     // THE WHOLE RECORD SET, NOT THE RULE'S SURVIVORS (3.102.0, owner order
@@ -6333,7 +6374,7 @@ function funnelRichStart(id, state = {}) {
       if (r.avgTest != null && Number.isFinite(Number(r.avgTest))) expect[String(r.label)] = Number(r.avgTest);
     }
     run.of = labels.length;
-    const got = await rebuildRichFor(doc, labels, { note: (done, of) => { run.done = done; run.of = of; } });
+    const got = await rebuildRichFor(doc, labels, { note: (done, of, x) => { run.done = done; run.of = of; run.units = (x || {}).units ?? run.units ?? null; } });
     const proof = proveRebuild(got.perSetting, expect);
     const kept = saveFunnelRich(doc.id, got.perSetting, got.testControls);
     // A RANKING ALREADY READ WAS READ FROM THESE NUMBERS, so it is dropped
@@ -6384,7 +6425,7 @@ function rebuildSetRichStart(setId) {
   if (!labels.length) throw new Error('this set wrote down no settings, so there is nothing to work out');
   const run = { id: String(setId), token: `${setId}:${Date.now()}`, done: 0, of: labels.length, result: null, error: null, promise: null };
   setRichRun = run;
-  run.promise = rebuildRichFor(parent, labels, { note: (done, of) => { run.done = done; run.of = of; } })
+  run.promise = rebuildRichFor(parent, labels, { note: (done, of, x) => { run.done = done; run.of = of; run.units = (x || {}).units ?? run.units ?? null; } })
     .then((got) => {
       const kept = saveFunnelRich(parent.id, got.perSetting);
       // and the set's own copy is written from the board it was just priced on
@@ -6851,7 +6892,7 @@ function funnelRideStart(id) {
   const labels = (doc.survivors || []).map((x) => x.label);
   const run = { id, token: `${id}:${Date.now()}`, done: 0, of: labels.length, result: null, error: null, promise: null };
   rideRun = run;
-  run.promise = rebuildRichFor(parent, labels, { unit: doc.unit, note: (done, of) => { run.done = done; run.of = of; } })
+  run.promise = rebuildRichFor(parent, labels, { unit: doc.unit, note: (done, of, x) => { run.done = done; run.of = of; run.units = (x || {}).units ?? run.units ?? null; } })
     .then((got) => {
       const V = require('./funnelverify');
       const ride = V.rideOf(got.perSetting, { unitKey: doc.unit, keyOf: unitKeyOf, labels });
@@ -8593,7 +8634,7 @@ module.exports = {
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
   unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
-  stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf,
+  stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf, partSlices,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet, derivedRefusalOf,
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,

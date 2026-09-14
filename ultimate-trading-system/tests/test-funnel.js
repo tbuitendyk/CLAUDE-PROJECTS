@@ -2802,6 +2802,7 @@ module.exports = {
     const said = [];
     const build = new Function('said', 'replies', 'sleepMs', `
       ${lift('function fCpuWords(cpu) {', '\n}\n')}
+      ${lift('const fAcrossWords = (units)', '\n')}
       const fRebuildSay = (text) => { said.push(text); };
       const api = async () => { if (!replies.length) throw new Error('the test ran out of replies'); return replies.shift(); };
       const setTimeout = (fn) => fn();          // no real waiting in a test
@@ -4204,6 +4205,7 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
     lift('const fRichGoing = (d)', '\n'),
     lift('function fRichOff(d) {', '\n}\n'),
     lift('function fCpuWords(cpu) {', '\n}\n'),
+    lift('const fAcrossWords = (units)', '\n'),
     lift('function fRichLine(d) {', '\n}\n'),
   ].join('\n')}\nreturn { fRichOff, fRichLine }; })()`);
 
@@ -4229,6 +4231,10 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
   const going = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 128, of: 640, cpu: { busy: 0.87, cores: 4 } } } });
   assert.ok(going.includes('128 of 640 settings'), `the progress is not on the line: ${going}`);
   assert.ok(going.includes('87% of 4 cores busy'), `the cpu load is not on the line: ${going}`);
+  // 3.132.0: the count runs over every coin and shape, and a set of more than one says so
+  assert.ok(!going.includes('across'), `one coin and shape says across: ${going}`);
+  const many = fRichLine({ richOn: { have: 0, need: 640, run: { running: true, done: 6000, of: 60372, units: 3, cpu: { busy: 0.5, cores: 8 } } } });
+  assert.ok(many.includes('6,000 of 60,372 settings across 3 coins and shapes'), `a set of several coins and shapes does not say so: ${many}`);
   assert.ok(fRichLine({ richOn: { have: 640, need: 640, run: null } }).includes('done'), 'a finished one says so');
   assert.ok(/setting\(s\) in this record set/.test(fRichLine({ richOn: { have: 640, need: 640, run: null } })),
     'a finished one says the numbers cover the survivors rather than the record set');
@@ -4346,4 +4352,39 @@ module.exports.theTradeFloorOnStepSixReadsTestTrades = function () {
   assert.ok(page.includes("const tr = (st.rule.floors || {}).testTrades || {};"), 'the box is not filled from the test floor');
   assert.ok(page.includes("const F_LIMIT_WORDS = { maxDrawdown: 'worst losing streak', avgTrades: 'held-back trades', testTrades: 'test trades' };"), 'the limits are not named to the owner apart');
   assert.ok(!page.includes('(r.ladders || {}).avgTrades'), 'a ladder on the page still reads the held-back count');
+};
+
+// THE REBUILD PRICES EACH UNIT IN PARTS AND COUNTS SETTINGS (3.132.0, owner
+// report: "zero status updates from hitting the button to completion"). One
+// payload per unit kept one worker on a unit's settings and moved a count of
+// units under the word settings. The unit is cut the way a stage 3 run cuts
+// it, the count moves as parts land, and it counts settings over every unit.
+module.exports.theRebuildPricesEachUnitInPartsAndCountsSettings = function () {
+  // the cut: the arithmetic of runStage3Parts, whole, no setting lost or doubled
+  const slices = stages.partSlices(10, 2);
+  assert.deepStrictEqual(slices, [[0, 2], [2, 4], [4, 6], [6, 8], [8, 10]], 'ten settings on two workers are not cut into parts of two');
+  assert.deepStrictEqual(stages.partSlices(3, 8), [[0, 1], [1, 2], [2, 3]], 'three settings are not one part each');
+  assert.deepStrictEqual(stages.partSlices(100, 1), [[0, 25], [25, 50], [50, 75], [75, 100]], 'one worker still gets four parts, so the count moves');
+  assert.deepStrictEqual(stages.partSlices(0, 8), [[0, 0]], 'a unit with nothing to price still goes once, for its four controls');
+  for (const [n, w] of [[1, 8], [7, 3], [20124, 8], [1000, 0]]) {
+    const cut = stages.partSlices(n, w);
+    assert.strictEqual(cut[0][0], 0); assert.strictEqual(cut[cut.length - 1][1], n);
+    for (let i = 1; i < cut.length; i++) assert.strictEqual(cut[i][0], cut[i - 1][1], `a gap or an overlap at part ${i} of ${n} on ${w}`);
+    assert.ok(n < 2 || cut.length >= 2, `${n} settings on ${w} workers are not cut at all`);
+  }
+  // the rebuild goes through it, part by part, and says how far it has got in settings
+  const s = src('lib/stages.js');
+  const body = s.slice(s.indexOf('async function rebuildRichFor('), s.indexOf('\nfunction s3Payload('));
+  assert.ok(body.includes('for (const [from, to] of partSlices(settingsHere.length, workersN)) {'), 'a unit is not cut into parts');
+  assert.ok(body.includes('payloads.push({ ...whole, settings: settingsHere.slice(from, to) });'), 'a part is not its own payload');
+  assert.ok(body.includes('const whole = s3Payload({ doc, parent, rec, settings: settingsHere, fee, nullN, wantTestControls: true });'), 'the votes are read once per part rather than once per unit');
+  assert.ok(body.includes("const say = () => { if (opts.note) opts.note(done, ofSettings, { units: records.length }); };"), 'the note does not count settings over every unit, or does not say how many units');
+  assert.ok(body.indexOf('  say();') > 0 && body.indexOf('  say();') < body.indexOf("await pool.forEach('s3Unit', payloads"), 'the line is not right before the first part lands');
+  assert.ok(body.includes('    done += part.to - part.from;\n    say();'), 'a landed part does not move the count by its settings');
+  assert.ok(body.includes('} else if (!settled.ok && !failedUnits.has(part.i)) {'), 'a unit that fails is counted once per part rather than once');
+  assert.ok(!body.includes('opts.note(done, payloads.length)'), 'the count is still units under the word settings');
+  // the count reaches the screen with the unit count beside it
+  const st = s.slice(s.indexOf('function richStatus(run) {'), s.indexOf('function funnelRichStart('));
+  assert.ok(st.includes('units: run.units ?? null,'), 'the status does not say how many coins and shapes the count runs over');
+  assert.strictEqual(s.split('run.units = (x || {}).units ?? run.units ?? null;').length - 1, 3, 'not every rebuild takes the unit count from the note');
 };
