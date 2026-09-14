@@ -45,6 +45,9 @@ function record(coin, { read = true, months = 17, n = 300, why = null } = {}) {
       // the module, and a stored link-cut check with seven dealt plateaus
       sum.signal = signal.signalSummary(raw, s.key, LAYOUTS, 50);
       sum.signal.linkCut = signal.linkCutWorth(sum.signal.plateau, { trials: 50, found: 7, strengths: [3.1, 3.4, 4.0, 3.3, 5.2, 3.0, 3.6] });
+      // the band each shape is drawn at (3.128.0): the service says which; one
+      // shape on this fixture is served at its own sweet spot so the wording shows
+      sum.band = s.key === 'daily-3d' && sum.signal.sweetSpot ? { value: sum.signal.sweetSpot.band, source: 'sweet spot' } : { value: 50, source: 'typed' };
       shapes[s.key] = sum;
     }
   }
@@ -83,12 +86,14 @@ function requirePlaywright() {
 
   let runStatus = { running: false, started: null, done: 0, of: 0, wrote: [], couldNotRead: [], note: null, error: null, finishedAt: null, stopped: false, stoppedAt: null, params: null };
   let band = 50;
+  let auto = false;
   let bandPosts = [];
+  let autoPosts = [];
   let stopPresses = 0;
   let started = null;
   let recordsFetches = 0;
   await page.route('**/api/coins/records**', (route) => { recordsFetches++; return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
-    shapes: SHAPES, layouts: LAYOUTS, band: { value: band, default: 50, home: 'data/settings.json' },
+    shapes: SHAPES, layouts: LAYOUTS, band: { value: band, default: 50, home: 'data/settings.json', auto },
     downloaded: 18, records: RECORDS, unreadable, recordVersion: 8,
   }) }); });
   let cleanPresses = 0;
@@ -98,8 +103,10 @@ function requirePlaywright() {
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ removed: ['FFFUSDT.json'], failed: [] }) });
   });
   await page.route('**/api/coins/band', (route) => {
-    const b = JSON.parse(route.request().postData() || '{}'); bandPosts.push(b.band); band = Number(b.band);
-    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ band }) });
+    const b = JSON.parse(route.request().postData() || '{}');
+    if ('band' in b) { bandPosts.push(b.band); band = Number(b.band); }
+    if ('auto' in b) { autoPosts.push(b.auto); auto = b.auto === true; }
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ band, auto }) });
   });
   await page.route('**/api/coins/run', (route) => {
     if (route.request().method() === 'POST') { started = JSON.parse(route.request().postData() || '{}'); return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ started: true, of: 3 }) }); }
@@ -123,9 +130,11 @@ function requirePlaywright() {
   expect(/Coins/.test(await page.locator('#view h3').first().textContent()), 'the screen draws');
   const body = await text();
 
-  // THREE CONTROLS AND NOTHING ELSE.
+  // THREE CONTROLS AND THE TICK, AND NOTHING ELSE.
   const controls = await page.evaluate(() => [...document.querySelectorAll('#view input, #view select, #view button, #view textarea')].map((e) => e.id));
-  expect(controls.sort().join(',') === ['cBand', 'cClean', 'cCoins', 'cRun'].join(','), `three controls, plus the cleanup while there is something to remove, and nothing else: ${controls.join(', ')}`);
+  expect(controls.sort().join(',') === ['cAuto', 'cBand', 'cClean', 'cCoins', 'cRun'].join(','), `three controls and the tick, plus the cleanup while there is something to remove, and nothing else: ${controls.join(', ')}`);
+  expect(/each shape at its own sweet spot/.test(body), 'the tick is labelled');
+  expect(await page.isChecked('#cAuto') === false, 'the tick shows what the service holds: off');
   for (const gone of ['cTarget', 'cFrom', 'cTo', 'cStep', 'cCap', 'cDrift', 'cShuf', 'cLayout', 'cOrder', 'cGeom', 'cWk']) {
     expect(await page.locator(`#${gone}`).count() === 0, `${gone} is gone from the screen`);
   }
@@ -213,12 +222,23 @@ function requirePlaywright() {
   }));
   expect(sigs.length === 2 * SHAPES.length && sigs.every((s) => s.text && /^signal /.test(s.text)), `a signal line under every bar, and it says so first: ${JSON.stringify(sigs[0])}`);
   expect(sigs.every((s) => /× chance at band \d+, \d+% called · plateau \d+–\d+, \d+ bands, mean [\d.]+×/.test(s.text) || /no band beats chance for three steps together/.test(s.text)), `each line names a band, a ratio and the share called, or says no band beats chance: ${sigs[0].text}`);
-  expect(sigs.every((s) => / at band 50: (the colour changes no call|no ratio|[-+]?[\d.]+× chance)/.test(s.text)), `each line reads the band the box is set to: ${sigs[0].text}`);
+  expect(sigs.every((s) => / at band \d+: (the colour changes no call|no ratio|[-+]?[\d.]+× chance)/.test(s.text)), `each line reads the band its shape is drawn at: ${sigs[0].text}`);
+  const sweetCount = RECORDS.filter((r) => r.read).reduce((n, r) => n + Object.values(r.shapes).filter((sh) => sh.band && sh.band.source === 'sweet spot').length, 0);
+  expect(sweetCount >= 1 && sigs.filter((s) => / at band 50: /.test(s.text)).length === sigs.length - sweetCount && sigs.filter((s) => / at band (?!50: )\d+: /.test(s.text)).length === sweetCount, `the ${sweetCount} shape(s) served at their own sweet spot read that band; every other reads the typed 50`);
   expect(sigs.every((s) => / with the link cut, (a plateau in \d+ of 50|one at least this strong in \d+ of 50)/.test(s.text)), `each line carries the instrument's own check: ${sigs[0].text}`);
   expect(sigs.every((s) => s.bars === signal.bandGrid().length), `the sweep is one bar per band, ${signal.bandGrid().length} of them, got ${sigs[0].bars}`);
   expect(sigs.every((s) => s.traits.every((t) => ['reverting', 'trending', 'steady', 'fading', 'mixed', 'often', 'much', 'both'].includes(t))), `every trait is one of the eight words, got ${JSON.stringify(sigs[0].traits)}`);
   expect(sigs.some((s) => /× chance at band \d+, \d+% called · plateau/.test(s.text) && s.traits.length >= 2 && / one at least this strong in \d+ of 50/.test(s.text)), `on this fixture at least one bar finds a plateau, names its traits and weighs it against the deals: ${sigs.map((s) => s.text).join(' | ')}`);
   expect(!/luck/i.test(body), 'the word luck is nowhere on the screen');
+  // THE LINE GOES GREEN when the sweet spot beats chance, and only then
+  const greens = await page.evaluate(() => [...document.querySelectorAll('.cshape .csig')].map((e) => ({ on: e.classList.contains('on'), plateau: /· plateau \d+–\d+/.test(e.textContent), colour: getComputedStyle(e).color })));
+  expect(greens.some((g) => g.on), 'on this fixture at least one line is green');
+  expect(greens.every((g) => g.on === g.plateau), `green exactly where a plateau is named: ${JSON.stringify(greens.map((g) => [g.on, g.plateau]))}`);
+  expect(greens.filter((g) => g.on).every((g) => g.colour === 'rgb(26, 156, 58)'), `the green is the rising green, got ${greens.find((g) => g.on).colour}`);
+  // THE HEADING SAYS WHICH BAND EACH SHAPE IS DRAWN AT, and whether it is the shape's own sweet spot
+  const heads = await page.evaluate(() => [...document.querySelectorAll('.cshape .chead')].map((e) => e.textContent.replace(/\s+/g, ' ')));
+  expect(heads.every((h) => / · band \d+/.test(h)), `every heading names the band in use: ${heads[0]}`);
+  expect(heads.some((h) => /\(its own sweet spot\)/.test(h)) && heads.some((h) => / · band 50(?! \(its own)/.test(h)), 'one shape is drawn at its own sweet spot and says so; the others at the typed band');
   expect(/AAAUSDT.*release 3\.124\.0/.test(body), 'each coin names the release that read it');
   expect(/DDDUSDT.*more month\(s\) cached since/.test(body), 'the coin whose history has grown since reads as behind');
   expect(!/AAAUSDT[^]*?more month\(s\) cached since[^]*?DDDUSDT/.test(body), 'and the one that has not does not');
@@ -248,6 +268,15 @@ function requirePlaywright() {
   expect(bandPosts.length === 1 && String(bandPosts[0]) === '80', `the new band reached the service once, got ${JSON.stringify(bandPosts)}`);
   expect(recordsFetches > fetchesBefore, 'and the bars were asked for again');
   expect(await page.inputValue('#cBand') === '80', 'the box shows what the service now holds');
+
+  // THE TICK IS SET THE MOMENT IT CHANGES, AND THE BARS REDRAW.
+  const fetchesBeforeTick = recordsFetches;
+  await page.locator('#cAuto').check();
+  await page.waitForTimeout(500);
+  expect(autoPosts.length === 1 && autoPosts[0] === true, `the tick reached the service once, as on: ${JSON.stringify(autoPosts)}`);
+  expect(bandPosts.length === 1, 'and the band was not sent again with it');
+  expect(recordsFetches > fetchesBeforeTick, 'and the bars were asked for again');
+  expect(await page.isChecked('#cAuto') === true, 'the tick shows what the service now holds: on');
 
   // WHAT IS TYPED SURVIVES A REDRAW.
   await page.fill('#cCoins', 'LTCUSDT,XRPUSDT');

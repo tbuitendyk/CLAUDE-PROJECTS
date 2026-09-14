@@ -339,3 +339,59 @@ its own.
 older record shape until it is read again, exactly as after 3.124.0. One
 press of `Read these coins` with the box blank reads all 18; the link-cut
 check adds fifty analyses per shape, about a second a coin.
+
+## G. After the loop — owner GO NOW! 2026-09-14 (3.128.0)
+
+The loop ended at 3.127.2. The owner then pressed the read (23:15 to 23:17
+UTC, all 18 coins written), saw `THIS SCREEN IS INCOMPLETE.` with
+`2 read(s) failed`, and ordered three things, plus one rule change, on one
+`GO NOW!`: *"build the tick, the green line and the worker fix -- we want to
+favour bands that still trade"*. Second digit: a new control.
+
+- **B15 — the sweet spot favours bands that still trade.** S5's "middle of the
+  run" is replaced, on the owner's order: the sweet spot is the band inside
+  the plateau with the most edge per decision (edge per called trade times
+  the share called), smoothed three wide, the lower band on a tie. The
+  plateau itself, its strength and the link-cut count are unchanged; the
+  middle is still carried on the reply. With no per-decision edge to read
+  (the tests' bare ratio lists) the middle is still used.
+- **B16 — the read hands control back between deals, rather than moving to a
+  worker thread.** The banner's cause (C-2, below): the read runs inside the
+  service and never yielded — `loadSymbolAll` awaits a synchronous file read,
+  so the whole 118-second run held the event loop, and the front door times
+  a request out at 60 seconds. A worker thread was proposed and is the
+  textbook answer, but the runner's tests fake a coin's prices by replacing
+  `pipeline.loadSymbolAll` in the process, which a worker cannot see; moving
+  the read out of the process meant rewriting those tests around on-disk
+  fixtures, more change and more risk for the same outcome on the screen.
+  Instead the link-cut check yields to the event loop after every deal
+  (about 35 ms), so an ask waits for one deal and not for the read. Measured
+  in the test: the longest gap during a 1500-decision read stays under a
+  quarter of the read. The read is not faster; the service just answers
+  while it runs. If the owner wants the read off the service's thread, that
+  is a separate piece of work.
+- **B17 — the tick has the band's home and door.** `coins_band_auto` beside
+  `coins_sit_out_band` in `data/settings.json`, set through `api/coins/band`
+  like the band, read back inside the records reply. Each served shape says
+  which band it is drawn at and why: `{ value, source: 'sweet spot' | 'typed'
+  }`. The tick changes what Coins draws and nothing else, because nothing in
+  `lib/` reads the band today (below).
+- **B18 — green means the sweet spot's edge is above 1.0× chance**, exactly
+  as the owner said; the link-cut count prints inside the green, so a green
+  line can still read `one at least this strong in 28 of 50`.
+
+**C-2. What the banner was.** Three read-only asks of the box
+(`uts-coins-status.sh`, `uts-svc-answering.sh`, `uts-svc-route.sh`): the read
+ran 23:15:33 to 23:17:31 UTC and wrote all 18 coins, none failed; the
+service was up throughout and answered the status ask in 2 ms afterwards;
+the records reply comes back whole, 3.9 MB in 2.5 s; the front door proxies
+`/uts/` with default timeouts (60 s). So the two failed reads were the
+screen's status poll and its redraw, both waiting behind a read that never
+yielded. Not a crash, not a bad record.
+
+**A sentence on the screen that is not true**, found while wiring the tick
+and left standing (RULE ZERO): the Coins note and the band box's hover say
+Sweep trains with this same number. Nothing in `lib/` reads
+`coins_sit_out_band` (grep, 2026-09-14). That is the parked dual member
+voting mode (E). The owner decides whether the sentence goes or the mode
+gets built.

@@ -283,6 +283,12 @@ module.exports = {
         // 3.127.0: the signal line is read at the band the box holds, not the default
         assert.strictEqual(atHuge.records.find((r) => r.coin === 'ZZZBANDUSDT').shapes['daily-2d'].signal.atCurrent.band, 100000, 'the signal is read at the band the box holds');
         assert.strictEqual(at0.records.find((r) => r.coin === 'ZZZBANDUSDT').shapes['daily-2d'].signal.atCurrent.band, 0);
+        // 3.128.0: with the tick off every shape is drawn at the typed band and says so
+        assert.strictEqual(atHuge.band.auto, false, 'the tick is off unless set');
+        for (const [k, sh] of Object.entries(atHuge.records.find((r) => r.coin === 'ZZZBANDUSDT').shapes)) {
+          if (!(sh.periods > 0)) continue;
+          assert.deepStrictEqual(sh.band, { value: 100000, source: 'typed' }, `${k}: drawn at the typed band, and says so`);
+        }
         // at 0 only a move of exactly nothing sits out, and on these candles that is rare
         assert.ok((r0.match(/[rf]/g) || []).length > r0.length * 0.95, `at 0 nearly everything reads a direction: ${r0.slice(0, 40)}`);
         assert.ok(/^s+$/.test(rHuge), 'at a huge band everything sits out');
@@ -298,6 +304,95 @@ module.exports = {
   },
 
   // A band nobody has set reads as the default, and a damaged one too.
+  // EACH SHAPE AT ITS OWN SWEET SPOT (owner GO NOW! 2026-09-14). The tick has
+  // one home beside the band; on, a shape with a plateau is drawn at the band
+  // inside it that keeps the most edge per decision, its numbers, its bars and
+  // its line's own reading all at that band; a shape with no plateau is drawn
+  // at the typed band and says so.
+  async theTickDrawsEachShapeAtItsOwnSweetSpot() {
+    const f = runner.recordFile('ZZZAUTOUSDT');
+    rm(f);
+    await withBandRestored(async () => {
+      await withPrices({ ZZZAUTOUSDT: { rows: candles(24 * 400), cachedMonthCount: 14 } }, async () => {
+        const rec = await runner.readOneCoin('ZZZAUTOUSDT');
+        fs.mkdirSync(path.dirname(f), { recursive: true });
+        fs.writeFileSync(f, JSON.stringify(rec));
+      });
+      try {
+        assert.strictEqual(runner.bandAuto(), false);
+        assert.throws(() => runner.setBandAuto('yes'), /on or off/);
+        assert.deepStrictEqual(runner.setBandAuto(true), { auto: true });
+        assert.strictEqual(runner.bandAuto(), true);
+        assert.strictEqual(readSettings()[runner.AUTO_KEY], true, 'the tick lives beside the band in the settings file');
+        runner.setSitOutBand(50);
+        const on = runner.coinsRecords();
+        assert.strictEqual(on.band.auto, true);
+        assert.strictEqual(on.band.value, 50, 'the typed band is still served');
+        const shapes = on.records.find((r) => r.coin === 'ZZZAUTOUSDT').shapes;
+        let sweet = 0; let typed = 0;
+        for (const [k, sh] of Object.entries(shapes)) {
+          if (!(sh.periods > 0)) continue;
+          const g = sh.signal;
+          if (g.sweetSpot) {
+            sweet++;
+            assert.deepStrictEqual(sh.band, { value: g.sweetSpot.band, source: 'sweet spot' }, `${k}: drawn at its own sweet spot`);
+            assert.strictEqual(g.atCurrent.band, g.sweetSpot.band, `${k}: the line's own reading is at that band too`);
+            // the bars really are recoloured at that band: same reading as the summary taken there
+            const again = coins.shapeSummary(JSON.parse(fs.readFileSync(f, 'utf8')).shapes[k], g.sweetSpot.band, runner.layouts());
+            assert.strictEqual(sh.reading, again.reading, `${k}: the reading is the one at the sweet spot`);
+            assert.strictEqual(sh.threshold, again.threshold);
+          } else {
+            typed++;
+            assert.deepStrictEqual(sh.band, { value: 50, source: 'typed' }, `${k}: no plateau, so the typed band applies and it says so`);
+            assert.strictEqual(g.atCurrent.band, 50);
+          }
+        }
+        assert.ok(sweet + typed > 0, 'something was drawn');
+        // and off again: everything at the typed band
+        assert.deepStrictEqual(runner.setBandAuto(false), { auto: false });
+        const off = runner.coinsRecords();
+        assert.strictEqual(off.band.auto, false);
+        for (const sh of Object.values(off.records.find((r) => r.coin === 'ZZZAUTOUSDT').shapes)) {
+          if (sh.periods > 0) assert.deepStrictEqual(sh.band, { value: 50, source: 'typed' });
+        }
+      } finally { rm(f); }
+    });
+  },
+
+  // THE READ HANDS CONTROL BACK (B16). A coin's read used to hold the service
+  // for the whole of its fifty deals on five shapes; the screen's own asks
+  // timed out at the front door and it declared itself incomplete. A timer
+  // set to fire every few milliseconds must keep firing while a coin is read:
+  // the longest gap between two firings is how long an ask would wait.
+  async aReadHandsControlBackBetweenDeals() {
+    await withPrices({ ZZZYIELDUSDT: { rows: candles(24 * 1500), cachedMonthCount: 50 } }, async () => {
+      let last = Date.now(); let longest = 0;
+      const tick = setInterval(() => { const now = Date.now(); longest = Math.max(longest, now - last); last = now; }, 2);
+      const t0 = Date.now();
+      const rec = await runner.readOneCoin('ZZZYIELDUSDT');
+      const took = Date.now() - t0;
+      clearInterval(tick);
+      assert.strictEqual(rec.read, true);
+      assert.ok(took > 200, `a read of 1500 decisions on five shapes with fifty deals each cannot be this quick (${took} ms) — is the check still being made?`);
+      assert.ok(longest < Math.max(400, took / 4), `an ask must wait for one deal, not the whole read: longest gap ${longest} ms in a read of ${took} ms`);
+    });
+  },
+
+  // THE SCREEN'S OWN SOURCE: the tick is drawn beside the band, the line goes
+  // green when the sweet spot beats chance, and the heading says which band
+  // a shape is drawn at (guards on public/ name this test; RULE EIGHT).
+  theScreenDrawsTheTickTheGreenLineAndTheBandInUse() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+    assert.ok(/<input id="cAuto" type="checkbox"\$\{band\.auto \? ' checked' : ''\}> each shape at its own sweet spot<\/label>/.test(src), 'the tick, labelled, showing what the service holds');
+    assert.ok(/post\('api\/coins\/band', \{ auto: \$\('#cAuto'\)\.checked \}\)/.test(src), 'the tick is set through the band\'s one door');
+    assert.ok(/const on = sig\.sweetSpot && sig\.sweetSpot\.ratio > 1;/.test(src), 'green means the sweet spot\'s edge is above 1.0× chance');
+    assert.ok(/<div class="csig\$\{on \? ' on' : ''\}">/.test(src), 'and the whole line carries it');
+    assert.ok(/\.cshape \.csig\.on, \.cshape \.csig\.on \.muted, \.cshape \.csig\.on b \{ color:#1a9c3a; \}/.test(css), 'green, the rising green');
+    assert.ok(/· band \$\{esc\(String\(s\.band\.value\)\)\}\$\{s\.band\.source === 'sweet spot' \? `<span> \(its own sweet spot\)<\/span>` : ''\}/.test(src), 'the heading names the band in use and whether it is the shape\'s own sweet spot');
+    assert.ok(/cSignalLine\(s\.signal, s\.band \? s\.band\.value : cBandNow\)/.test(src), 'the line reads at the band the shape is drawn at');
+  },
+
   async anUnsetBandIsTheDefault() {
     await withBandRestored(async () => {
       const settings = readSettings() || {};

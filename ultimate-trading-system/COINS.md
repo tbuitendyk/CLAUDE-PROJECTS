@@ -159,6 +159,16 @@ probably three controls on the coins tab."*
 3. `Read these coins` — kept exactly as it is. *"which could be just one or the
    whole batch, whatever whatever is in the box."*
 
+**And one tick, since 3.128.0** (owner GO NOW! 2026-09-14, after the signal
+reading found a plateau per shape): `each shape at its own sweet spot`, beside
+the band box, its home the same file as the band. Ticked, every coin and shape
+is drawn — bars, numbers, and the signal line's own reading — at the band
+inside its plateau that keeps the most edge per decision; where the line says
+`no band beats chance for three steps together` the typed band applies. The
+bar's heading says which: `band 140 (its own sweet spot)` or `band 50`.
+Unticked, the typed band applies everywhere. Nothing is read again either way.
+Section 9 has the words.
+
 No ordering control, no `window layout` control, no `chunk shape` control: every
 shape and both layouts are always drawn.
 
@@ -437,9 +447,14 @@ as data".
    - *the band sweep*: the sit-out band is tried at every step of ten from 0
      to 300, on the same moves, without touching the band the box is set to.
    - *the plateau*: the widest run of three or more consecutive bands whose
-     edge over chance, smoothed three bands wide, is at least 1. `band B` is
-     the middle of that run — the sweet spot — never its peak. `P bands` is
+     edge over chance, smoothed three bands wide, is at least 1. `P bands` is
      its width and `mean M×` its height.
+   - *the sweet spot* `band B` (3.128.0; owner: *"we want to favour bands that
+     still trade"*): the band inside the plateau that keeps the most edge per
+     decision of the whole stretch — edge per called trade times the share
+     called, smoothed three bands wide, the lower band on a tie. Every band of
+     the plateau beats chance; this is the one that also trades the most. Until
+     3.128.0 it was the plateau's middle.
 3. The traits, one word each, read at the sweet spot (or at the box's band
    when there is no plateau):
    - `reverting` or `trending` — on train, whether a rise is more often
@@ -466,14 +481,35 @@ as data".
    plateau the line says `a plateau in F of 50` instead: how often the
    instrument names one on this shape when there is nothing to find.
 6. The sweep as one bar per band, in the grid's order: height is the smoothed
-   edge over chance, the plateau's bands are marked and its middle stands
+   edge over chance, the plateau's bands are marked and its sweet spot stands
    out. Hovering a bar names its band and reading.
+
+**The whole line is green** (3.128.0; owner: *"put that entire line in green
+so it stands out"*) when the sweet spot's edge is above 1.0× chance — that is,
+whenever a plateau is named. The link-cut count still prints inside the green,
+so a green line with `one at least this strong in 28 of 50` is still a line
+the check has called worthless.
+
+**The tick** (3.128.0): `each shape at its own sweet spot`, section 4. With it
+on, item 4's `at band X` is the sweet spot's band for a shape that has one, and
+the heading above the bar reads `band X (its own sweet spot)`.
+
+**A sentence on this screen that is not yet true.** The note at the top and
+the band box's hover both say Sweep trains with this same number. Nothing in
+`lib/` reads `coins_sit_out_band` today (checked 2026-09-14): Sweep's dual
+member voting mode, which would, is still parked (section 5). Until it is
+built the band, and the tick, change what Coins draws and nothing else. Named
+here, not changed: it is outside the GO NOW! that built the tick.
 
 **What the owner does.** Every reading on the box was taken under record
 shape 7. This release reads shape 8 (the check in item 5 lives on the
 record), so each coin reads as written under an older shape until
 `Read these coins` is pressed again. One press, blank box, reads all of them;
-the check costs fifty analyses per shape and adds about a second a coin.
+the check costs fifty analyses per shape and adds about six seconds a coin on
+the box. Since 3.128.0 the read hands control back between deals, so the
+screen keeps answering while it runs (before that the service answered
+nothing for the two minutes an 18-coin read took, the screen's own asks
+timed out at the front door, and it declared itself incomplete).
 
 **What it does not do.** It refuses no coin and types no cut-off: the only bar
 anywhere is 1, chance's own size. It does not touch Sweep, the members, or

@@ -103,8 +103,18 @@ module.exports = {
     const ratios = bands.map((b) => (b === 20 ? 9 : (b >= 120 && b <= 200 ? 1.3 : 0.2)));
     const r = S.findPlateau(bands, ratios);
     assert.ok(r.plateau, 'a nine-point run at 1.3 is a plateau');
-    assert.strictEqual(r.sweetSpot.band, 160, `the sweet spot is the middle of 120..200, got ${r.sweetSpot.band}`);
+    assert.strictEqual(r.sweetSpot.band, 160, `with no per-decision edge the sweet spot is the middle of 120..200, got ${r.sweetSpot.band}`);
+    assert.strictEqual(r.plateau.middleBand, 160);
     assert.ok(r.sweetSpot.band !== 20, 'the spike at 20 must never be chosen');
+    // B15: the sweet spot favours bands that still trade -- inside the plateau,
+    // the band with the most edge per decision (smoothed three wide), never a
+    // band outside it however much it keeps, the lower band on a tie
+    const perDecision = bands.map((b) => (b === 20 ? 9 : b === 130 ? 0.9 : b === 140 ? 0.9 : b >= 120 && b <= 200 ? 0.5 : 0.1));
+    const f = S.findPlateau(bands, ratios, perDecision);
+    assert.deepStrictEqual([f.plateau.fromBand, f.plateau.toBand], [r.plateau.fromBand, r.plateau.toBand], 'the plateau itself is unchanged');
+    assert.strictEqual(f.sweetSpot.band, 130, `the band inside the plateau with the most edge per decision, the lower on a tie, got ${f.sweetSpot.band}`);
+    assert.ok(f.sweetSpot.perDecision > 0.5, 'and the line carries that edge');
+    assert.strictEqual(f.plateau.middleBand, 160, 'the middle is still named');
     // the spike alone is no plateau: smoothed, one point at 9 between 0.2s is (0.2+9+0.2)/3 = 3.1 at 20 and (0.2+0.2+9)/3 at 10, 30 -> three points reach the bar? check the rule holds it to width
     const spikeOnly = bands.map((b) => (b === 20 ? 9 : 0.2));
     const r2 = S.findPlateau(bands, spikeOnly);
@@ -180,7 +190,7 @@ module.exports = {
   },
 
   // S7: with the link cut, a plateau is rare; and the check is deterministic
-  withTheLinkCutAPlateauIsRareAndTheCheckIsDeterministic() {
+  async withTheLinkCutAPlateauIsRareAndTheCheckIsDeterministic() {
     const rec = series(1800, { pull: -0.35 });
     const a = S.plateauFalseAlarms(rec, 'daily-3d', LAYOUTS, 50, 20);
     const b = S.plateauFalseAlarms(rec, 'daily-3d', LAYOUTS, 50, 20);
@@ -202,6 +212,14 @@ module.exports = {
     assert.strictEqual(S.linkCutWorth({ points: 3, meanRatio: 0.0001 }, a).asStrong, a.found, 'a plateau weaker than every shuffled one is beaten by all of them');
     const fake = { trials: 3, found: 3, strengths: [3, 6, 9] };
     assert.strictEqual(S.linkCutWorth({ points: 5, meanRatio: 1 }, fake).asStrong, 2, 'strength 5 against 3, 6, 9: two are at least as strong');
+    // B16: the same check with control handed back between deals gives the
+    // same numbers, and actually hands control back
+    const busy = { turns: 0 };
+    const tick = setInterval(() => { busy.turns++; }, 1);
+    const y = await S.plateauFalseAlarmsYielding(rec, 'daily-3d', LAYOUTS, 50, 20);
+    clearInterval(tick);
+    assert.deepStrictEqual(y, a, 'yielding changes no number');
+    assert.ok(busy.turns >= 5, `the timer must get turns while the deals run, got ${busy.turns}`);
     // B13: the deal stays inside each part of the three-part layout, and a
     // dealt series has no overlap
     const parts = require('../lib/coins').layoutParts(rec.out.length, S.trainLayoutOf(LAYOUTS)).parts;

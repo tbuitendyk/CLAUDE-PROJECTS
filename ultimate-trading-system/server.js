@@ -212,8 +212,12 @@ app.post('/api/coins/cleanup', (req, res) => {
   catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.post('/api/coins/band', (req, res) => {
-  try { return res.json(coinsrun.setSitOutBand((req.body || {}).band)); }
-  catch (err) { return res.status(400).json({ error: err.message }); }
+  try {
+    const body = req.body || {};
+    if ('auto' in body) coinsrun.setBandAuto(body.auto);
+    if ('band' in body) coinsrun.setSitOutBand(body.band);
+    return res.json({ band: coinsrun.sitOutBand(), auto: coinsrun.bandAuto() });
+  } catch (err) { return res.status(400).json({ error: err.message }); }
 });
 
 

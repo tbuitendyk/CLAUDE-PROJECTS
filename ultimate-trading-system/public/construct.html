@@ -118,6 +118,9 @@
   /* the signal line under each bar's heading: the reading, its one-word traits, and the band sweep as one bar per band */
   .cshape .csig { font-size:.8rem; margin:0 0 .3rem; display:flex; flex-wrap:wrap; align-items:baseline; gap:.15rem .4rem; }
   .cshape .csig .ctrait { display:inline-block; padding:0 .35rem; border:1px solid var(--line); border-radius:4px; font-size:.72rem; text-transform:uppercase; letter-spacing:.04em; }
+  /* the whole line goes green when the sweet spot's edge is above 1.0× chance (owner, 2026-09-14) */
+  .cshape .csig.on, .cshape .csig.on .muted, .cshape .csig.on b { color:#1a9c3a; }
+  .cshape .csig.on .ctrait { border-color:#1a9c3a; }
   .cshape .csig .csweep { display:inline-flex; align-items:flex-end; gap:1px; height:22px; vertical-align:baseline; }
   .cshape .csig .csw { display:inline-block; width:5px; background:var(--line); }
   .cshape .csig .csw.over { background:var(--dim); }

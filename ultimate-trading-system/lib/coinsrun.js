@@ -34,6 +34,11 @@ const defaultCoins = (...a) => require('./dataset').defaultCoins(...a);
 const DIR = path.join(__dirname, '..', 'data', 'coins');
 const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'settings.json');
 const BAND_KEY = 'coins_sit_out_band';
+// THE TICK'S HOME (owner GO NOW! 2026-09-14): true when every shape is drawn
+// at its own sweet spot -- the band inside its plateau that keeps the most
+// edge per decision -- and the typed band applies only where no band beats
+// chance. Same file as the band, one key beside it.
+const AUTO_KEY = 'coins_band_auto';
 
 // THE RECORD SHAPE. It moves whenever what is written changes, so a reading
 // taken under an older shape is NAMED on the screen rather than drawn as
@@ -92,15 +97,28 @@ function sitOutBand() {
   const v = Number(readSettings()[BAND_KEY]);
   return Number.isFinite(v) && v >= 0 ? v : DEFAULTS.band;
 }
+function bandAuto() {
+  return readSettings()[AUTO_KEY] === true;
+}
+function setBandAuto(value) {
+  if (typeof value !== 'boolean') throw new Error(`the tick is on or off — not ${JSON.stringify(value)}`);
+  const settings = readSettings();
+  settings[AUTO_KEY] = value;
+  writeSettings(settings);
+  return { auto: value };
+}
+function writeSettings(settings) {
+  try { fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true }); } catch (_) { /* already there */ }
+  const tmp = `${SETTINGS_FILE}.tmp`;
+  fs.writeFileSync(tmp, JSON.stringify(settings, null, 1));
+  fs.renameSync(tmp, SETTINGS_FILE);
+}
 function setSitOutBand(value) {
   const v = Number(value);
   if (!Number.isFinite(v) || v < 0) throw new Error(`the sit-out band must be a number of zero or more — not ${value}`);
   const settings = readSettings();
   settings[BAND_KEY] = v;
-  try { fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true }); } catch (_) { /* already there */ }
-  const tmp = `${SETTINGS_FILE}.tmp`;
-  fs.writeFileSync(tmp, JSON.stringify(settings, null, 1));
-  fs.renameSync(tmp, SETTINGS_FILE);
+  writeSettings(settings);
   return { band: v };
 }
 
@@ -168,7 +186,9 @@ async function readOneCoin(coin, onNote = () => {}) {
         : { periods: 0, why: `${coin} offers no complete ${s.label} decisions from the prices cached on this box` };
       if (wm.periods) {
         onNote(`${coin}: ${s.label} — checking the signal reading against itself`);
-        rec.shapes[s.key].linkCut = signal.plateauFalseAlarms(rec.shapes[s.key], s.key, layouts(), DEFAULTS.band, LINK_CUT_TRIALS);
+        // control is handed back between deals so the service keeps answering
+        // while a coin is read (B16 of LOOP-2026-09-14-SIGNAL.md)
+        rec.shapes[s.key].linkCut = await signal.plateauFalseAlarmsYielding(rec.shapes[s.key], s.key, layouts(), DEFAULTS.band, LINK_CUT_TRIALS);
       }
     } catch (err) {
       // NOT A REFUSAL OF THE COIN. One shape could not be built -- too few
@@ -357,6 +377,7 @@ function coinsCleanup() {
 
 function coinsRecords() {
   const band = sitOutBand();
+  const auto = bandAuto();
   const lays = layouts();
   const rows = [];
   const { records, unreadable } = scanRecords();
@@ -365,14 +386,21 @@ function coinsRecords() {
     for (const s of coins.shapes()) {
       const sr = rec.shapes && rec.shapes[s.key];
       if (!sr || !(sr.periods > 0)) { shapesOut[s.key] = { periods: 0, why: (sr && sr.why) || `${rec.coin} was not read at ${s.label}` }; continue; }
-      shapesOut[s.key] = coins.shapeSummary(sr, band, lays);
-      // THE SIGNAL READING, on the same press and with no new control (S9):
-      // the band sweep, the plateau, the sweet spot and the traits, worked out
-      // from the record's moves and outcomes at every band of the grid. The
-      // check with the link cut (S7) was made when the coin was read and rides
-      // on the record; it is copied beside the reading here.
-      shapesOut[s.key].signal = signal.signalSummary(sr, s.key, lays, band);
-      shapesOut[s.key].signal.linkCut = signal.linkCutWorth(shapesOut[s.key].signal.plateau, sr.linkCut);
+      // THE SIGNAL READING, on the same press (S9): the band sweep, the
+      // plateau, the sweet spot and the traits, worked out from the record's
+      // moves and outcomes at every band of the grid. The check with the link
+      // cut (S7) was made when the coin was read and rides on the record; it
+      // is copied beside the reading here.
+      const sig = signal.signalSummary(sr, s.key, lays, band);
+      sig.linkCut = signal.linkCutWorth(sig.plateau, sr.linkCut);
+      // EACH SHAPE AT ITS OWN SWEET SPOT when the tick is on: the bars, the
+      // numbers and the line's own reading are all taken at that band; where
+      // no band beats chance the typed band applies, and the shape says which.
+      const useBand = auto && sig.sweetSpot ? sig.sweetSpot.band : band;
+      if (useBand !== band) sig.atCurrent = signal.atBand(sr, s.key, lays, useBand) || sig.atCurrent;
+      shapesOut[s.key] = coins.shapeSummary(sr, useBand, lays);
+      shapesOut[s.key].signal = sig;
+      shapesOut[s.key].band = { value: useBand, source: useBand !== band || (auto && sig.sweetSpot) ? 'sweet spot' : 'typed' };
     }
     rows.push({ coin: rec.coin, read: rec.read, why: rec.why, provenance: rec.provenance, shapes: shapesOut });
   }
@@ -381,7 +409,7 @@ function coinsRecords() {
   return {
     shapes: coins.shapes(),
     layouts: lays,
-    band: { value: band, default: DEFAULTS.band, home: 'data/settings.json' },
+    band: { value: band, default: DEFAULTS.band, home: 'data/settings.json', auto },
     // what a blank coin box means, as a count, so the label can say it without
     // the number being typed anywhere
     downloaded: defaultCoins().length,
@@ -392,8 +420,8 @@ function coinsRecords() {
 }
 
 module.exports = {
-  RECORD_V, DEFAULTS, BAND_KEY, LINK_CUT_TRIALS, layouts, recordFile,
-  sitOutBand, setSitOutBand,
+  RECORD_V, DEFAULTS, BAND_KEY, AUTO_KEY, LINK_CUT_TRIALS, layouts, recordFile,
+  sitOutBand, setSitOutBand, bandAuto, setBandAuto,
   readOneCoin, normalise, busyWhy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
   readRecord, scanRecords, coinsRecords, coinsCleanup,

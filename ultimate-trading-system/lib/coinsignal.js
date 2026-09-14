@@ -154,8 +154,16 @@ function readBand(rec, band, k, layouts, trainLayout) {
 // THE PLATEAU, NOT THE SPIKE (S5). The ratio is smoothed three points wide
 // (the ends use what exists); a plateau is the longest run of at least three
 // consecutive grid points whose smoothed ratio reaches the bar; between runs
-// of equal length, the one with the higher mean. The sweet spot is the middle
-// point of the run, the lower middle when it is even.
+// of equal length, the one with the higher mean.
+//
+// THE SWEET SPOT FAVOURS BANDS THAT STILL TRADE (owner, 2026-09-14: "we want
+// to favour bands that still trade"; B15). Every band of the plateau beats
+// chance per called trade; the one to trade at is the band inside it that
+// keeps the most edge PER DECISION of the whole stretch -- edge per called
+// trade times the share called -- smoothed three wide like the ratio, the
+// lower band on a tie. Without a per-decision edge to read (the tests' bare
+// ratio lists) it is the middle point of the run, the lower middle when the
+// run is even.
 //
 // A band with no reading stays a hole after smoothing (B11): a step that
 // cannot be read cannot be one of three steps that beat chance together. Its
@@ -169,7 +177,7 @@ function smooth3(values) {
     return win.reduce((a, b) => a + b, 0) / win.length;
   });
 }
-function findPlateau(bands, ratios) {
+function findPlateau(bands, ratios, perDecision = null) {
   const sm = smooth3(ratios);
   const runs = [];
   let start = null;
@@ -189,10 +197,20 @@ function findPlateau(bands, ratios) {
   runs.sort((a, b) => b.len - a.len || b.mean - a.mean || a.from - b.from);
   const best = runs[0];
   const mid = best.from + Math.floor((best.len - 1) / 2);
+  let pick = mid;
+  const pd = Array.isArray(perDecision) && perDecision.length === ratios.length ? smooth3(perDecision) : null;
+  if (pd) {
+    pick = -1;
+    for (let i = best.from; i <= best.to; i++) {
+      if (pd[i] == null) continue;
+      if (pick < 0 || pd[i] > pd[pick]) pick = i;
+    }
+    if (pick < 0) pick = mid;
+  }
   return {
     smoothed: sm,
-    plateau: { fromBand: bands[best.from], toBand: bands[best.to], points: best.len, meanRatio: best.mean },
-    sweetSpot: { band: bands[mid], ratio: ratios[mid], smoothedRatio: sm[mid] },
+    plateau: { fromBand: bands[best.from], toBand: bands[best.to], points: best.len, meanRatio: best.mean, middleBand: bands[mid] },
+    sweetSpot: { band: bands[pick], ratio: ratios[pick], smoothedRatio: sm[pick], perDecision: pd ? pd[pick] : null },
   };
 }
 
@@ -264,7 +282,7 @@ function signalSummary(shapeRec, geometryKey, layouts, currentBand, { dealt = fa
   }
   const rec = { move, out };
   const sweep = grid.map((b) => readBand(rec, b, k, lays, trainLayout));
-  const { smoothed, plateau, sweetSpot } = findPlateau(grid, sweep.map((s) => s.ratio));
+  const { smoothed, plateau, sweetSpot } = findPlateau(grid, sweep.map((s) => s.ratio), sweep.map((s) => s.perDecision));
   sweep.forEach((s, i) => { s.smoothed = smoothed[i]; });
   const atBand = sweetSpot ? sweetSpot.band : currentBand;
   const traitRead = grid.includes(atBand) ? sweep[grid.indexOf(atBand)] : readBand(rec, atBand, k, lays, trainLayout);
@@ -283,6 +301,17 @@ function signalSummary(shapeRec, geometryKey, layouts, currentBand, { dealt = fa
     atCurrent: { band: currentBand, ratio: cur.ratio, edge: cur.edge, chance: cur.chance, called: cur.called, lean: cur.lean, same: cur.same },
     why: anyRatio ? null : 'the train part never holds both colours, so no lean can be learned at any band',
   };
+}
+
+// ONE BAND'S READING ON ITS OWN, shaped as `atCurrent`: what a shape drawn at
+// its own sweet spot reports for that band, without a second sweep.
+function atBand(shapeRec, geometryKey, layouts, band) {
+  const move = Array.isArray(shapeRec && shapeRec.move) ? shapeRec.move : [];
+  const out = Array.isArray(shapeRec && shapeRec.out) ? shapeRec.out : [];
+  if (!move.length || out.length !== move.length) return null;
+  const lays = layouts.slice();
+  const cur = readBand({ move, out }, band, overlapFactor(geometryKey), lays, trainLayoutOf(lays));
+  return { band, ratio: cur.ratio, edge: cur.edge, chance: cur.chance, called: cur.called, lean: cur.lean, same: cur.same };
 }
 
 // THE INSTRUMENT CHECKED AGAINST ITSELF (S7): the outcomes dealt into a
@@ -330,19 +359,39 @@ function shuffledWithin(arr, parts, seed) {
   }
   return out;
 }
-function plateauFalseAlarms(shapeRec, geometryKey, layouts, currentBand, trials = 50) {
-  let found = 0;
-  const ratios = [];
-  const strengths = [];
+function* dealtPlateaus(shapeRec, geometryKey, layouts, currentBand, trials) {
   const n = Array.isArray(shapeRec && shapeRec.out) ? shapeRec.out.length : 0;
   const parts = n ? partsOf(n, trainLayoutOf(layouts.slice())) : null;
   const deal = (seed) => (parts ? shuffledWithin(shapeRec.out, parts, seed) : shuffledCopy(shapeRec.out, seed));
   for (let t = 0; t < trials; t++) {
     const cut = { move: shapeRec.move, out: deal(20260914 + t) };
-    const s = signalSummary(cut, geometryKey, layouts, currentBand, { dealt: true });
-    if (s.plateau) { found++; ratios.push(s.plateau.meanRatio); strengths.push(Number(plateauStrength(s.plateau).toFixed(3))); }
+    yield signalSummary(cut, geometryKey, layouts, currentBand, { dealt: true }).plateau;
   }
+}
+function tallyDeals(trials, plateaus) {
+  let found = 0;
+  const ratios = [];
+  const strengths = [];
+  for (const p of plateaus) if (p) { found++; ratios.push(p.meanRatio); strengths.push(Number(plateauStrength(p).toFixed(3))); }
   return { trials, found, meanRatioWhenFound: ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null, strengths };
+}
+function plateauFalseAlarms(shapeRec, geometryKey, layouts, currentBand, trials = 50) {
+  return tallyDeals(trials, [...dealtPlateaus(shapeRec, geometryKey, layouts, currentBand, trials)]);
+}
+// THE SAME CHECK WITH CONTROL HANDED BACK BETWEEN DEALS (B16). A coin's read
+// runs inside the service, and fifty deals on five shapes held it for six
+// seconds a coin -- two minutes across the box -- during which it could
+// answer nothing, so the screen's own asks timed out at the front door and it
+// declared itself incomplete. Between deals the loop now yields to whatever
+// else is waiting, so an ask waits for one deal, not for the whole read. The
+// numbers are exactly those of plateauFalseAlarms: same deals, same seeds.
+async function plateauFalseAlarmsYielding(shapeRec, geometryKey, layouts, currentBand, trials = 50) {
+  const plateaus = [];
+  for (const p of dealtPlateaus(shapeRec, geometryKey, layouts, currentBand, trials)) {
+    plateaus.push(p);
+    await new Promise((resolve) => setImmediate(resolve));
+  }
+  return tallyDeals(trials, plateaus);
 }
 // WHAT THE REAL PLATEAU IS WORTH against the stored shuffles: how many of them
 // produced a plateau at least this strong. Null when there is no real plateau
@@ -357,5 +406,6 @@ function linkCutWorth(plateau, linkCut) {
 module.exports = {
   BAND_GRID, PLATEAU_MIN_POINTS, CHANCE_BAR, TRAIT_WORDS,
   bandGrid, overlapFactor, leansOn, edgeOn, readBand, smooth3, findPlateau,
-  holdingOf, traitsAt, trainLayoutOf, signalSummary, shuffledCopy, shuffledWithin, plateauFalseAlarms, plateauStrength, linkCutWorth,
+  holdingOf, traitsAt, trainLayoutOf, signalSummary, atBand, shuffledCopy, shuffledWithin,
+  plateauFalseAlarms, plateauFalseAlarmsYielding, plateauStrength, linkCutWorth,
 };

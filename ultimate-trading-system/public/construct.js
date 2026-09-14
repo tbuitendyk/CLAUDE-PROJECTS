@@ -7937,7 +7937,7 @@ function cSweepStrip(sig) {
   if (!sw.length) return '';
   const inPlateau = (b) => sig.plateau && b >= sig.plateau.fromBand && b <= sig.plateau.toBand;
   const spot = sig.sweetSpot ? sig.sweetSpot.band : null;
-  return `<span class="csweep" title="one bar per sit-out band from ${sig.grid.from} to ${sig.grid.to}: its height is the edge over chance there (smoothed three bands wide, clipped at ${C_SIG_CAP}×); the plateau is marked, and its middle">${sw.map((p) => {
+  return `<span class="csweep" title="one bar per sit-out band from ${sig.grid.from} to ${sig.grid.to}: its height is the edge over chance there (smoothed three bands wide, clipped at ${C_SIG_CAP}×); the plateau is marked, and its sweet spot -- the band inside it that keeps the most edge per decision">${sw.map((p) => {
     const v = p.smoothed == null ? 0 : Math.max(0, Math.min(C_SIG_CAP, p.smoothed));
     const h = Math.max(1, Math.round((v / C_SIG_CAP) * 22));
     const cls = p.band === spot ? 'spot' : (inPlateau(p.band) ? 'plat' : (p.smoothed != null && p.smoothed >= 1 ? 'over' : 'under'));
@@ -7981,7 +7981,10 @@ function cSignalLine(sig, band) {
   const head = sig.plateau && sig.sweetSpot
     ? `<b>signal</b> edge <b>${cNum(sig.sweetSpot.ratio, 2)}× chance</b> at band ${sig.sweetSpot.band}${spotCalled} <span class="muted">· plateau ${sig.plateau.fromBand}–${sig.plateau.toBand}, ${sig.plateau.points} bands, mean ${cNum(sig.plateau.meanRatio, 2)}×</span>`
     : `<b>signal</b> <span class="muted">no band beats chance for three steps together${sig.why ? ` — ${esc(sig.why)}` : ''}</span>`;
-  return `<div class="csig">${head} ${words}
+  // THE LINE GOES GREEN when the sweet spot's edge is above 1.0× chance
+  // (owner, 2026-09-14: "put that entire line in green so it stands out")
+  const on = sig.sweetSpot && sig.sweetSpot.ratio > 1;
+  return `<div class="csig${on ? ' on' : ''}">${head} ${words}
     <span class="muted">· at band ${esc(String(band))}: ${cRatioWords(cur)}${cCalledWords(cur.called)} ${cLinkCutWords(lc)}</span>
     ${cSweepStrip(sig)}</div>`;
 }
@@ -7998,8 +8001,8 @@ function cShapeBlock(coin, shape, s, layouts) {
   return `<div class="cshape">
     <div class="chead"><b>${esc(shape.label)}</b> <span class="muted">${shape.windowHours}-hour window · one decision a ${esc(shape.every)}, opening ${esc(shape.at)} ·
       ${n} decisions from ${cDay(s.span && s.span.fromTs)} to ${cDay(s.span && s.span.toTs)}${s.skipped ? ` · ${s.skipped} skipped for an unusable first price` : ''} ·
-      window moves from ${cMove(s.range && s.range.largestFall)} to ${cMove(s.range && s.range.largestRise)} · median ${cNum(s.yardstick)}% · sit out under ±${cNum(s.threshold)}%</span></div>
-    ${cSignalLine(s.signal, cBandNow)}
+      window moves from ${cMove(s.range && s.range.largestFall)} to ${cMove(s.range && s.range.largestRise)} · median ${cNum(s.yardstick)}% · sit out under ±${cNum(s.threshold)}%${s.band ? ` · band ${esc(String(s.band.value))}${s.band.source === 'sweet spot' ? `<span> (its own sweet spot)</span>` : ''}` : ''}</span></div>
+    ${cSignalLine(s.signal, s.band ? s.band.value : cBandNow)}
     ${cLayoutStrip(above, s.layouts[above], n, 'above', ts)}
     <canvas class="cbar" data-coin="${esc(coin)}" data-shape="${esc(shape.key)}" title="hover a point on the bar to read that decision"></canvas>
     ${cLayoutStrip(below, s.layouts[below], n, 'below', ts)}
@@ -8077,6 +8080,7 @@ async function drawCoins() {
     <div class="row">
       <label class="f" title="which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep.">coins (blank = all ${d && d.downloaded != null ? d.downloaded : '—'} downloaded)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${esc(cState.coins || '')}" style="width:16rem"${off}></label>
       <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. Change it and every bar recolours at once; nothing is read again. Sweep trains with this same number.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
+      <label class="c" title="ticked, every coin and shape is drawn at its own sweet spot: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. Nothing is read again either way."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own sweet spot</label>
     </div>
     <div class="row">
       <button id="cRun" class="pri"${off}>Read these coins</button>
@@ -8107,6 +8111,16 @@ async function drawCoins() {
   }
   // THE BAND IS SET THE MOMENT IT CHANGES and the bars recolour. It is not part
   // of a reading, so it is never disabled while one runs.
+  // THE TICK IS SET THE MOMENT IT CHANGES, like the band: one door, one home.
+  if ($('#cAuto')) {
+    $('#cAuto').onchange = async () => {
+      try { await post('api/coins/band', { auto: $('#cAuto').checked }); } catch (err) {
+        $('#cOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
+        return;
+      }
+      draw();
+    };
+  }
   const cb = $('#cBand');
   if (cb) {
     cb.onchange = async () => {
