@@ -569,8 +569,9 @@ async function renderStrip() {
     <span class="badge ${b.cls}" id="stripBadge" style="vertical-align:text-bottom" title="${esc(b.tip)}">${esc(b.text.toUpperCase())}</span>`;
   const btn = $('#stripBadge');
   // The marker opens the Setup page on its Version tab, where the check is run
-  // and read.
-  if (btn) btn.onclick = () => { try { localStorage.setItem('setup-tab', 'version'); } catch (_) { /* private window */ } window.location.href = 'setup.html'; };
+  // and read — at the address the always-up program serves it from (3.135.0),
+  // the same one the Setup link goes to, so a reload of it always comes back.
+  if (btn) btn.onclick = () => { try { localStorage.setItem('setup-tab', 'version'); } catch (_) { /* private window */ } window.location.href = 'svc/setup.html'; };
   // While a check is in flight, keep the marker honest without the owner having
   // to reload. One timer only, cleared the moment it lands.
   const going = !!(s.running || s.state === 'RUNNING');

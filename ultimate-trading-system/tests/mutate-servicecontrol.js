@@ -1634,6 +1634,19 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', "a pass over one coin and shape wipes every other unit's numbers under the settings it touches"],
   [path.join(ROOT, 'public', 'construct.js'), "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, all ? {} : { unit: unitNow }, WHERE_FUNNEL);", "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);",
     'theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn', 'the step 6 press names no coin and shape, so it prices every one'],
+  // ---- THE SETUP PAGE CAN ALWAYS BE RELOADED TO START THE ENGINE (3.135.0) ----
+  [SETUP, "const at = (p) => (p.startsWith('svc/') ? CONTROL_DIR + p.slice(4) : ENGINE_DIR + p);", 'const at = (p) => p;',
+    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'every ask goes out relative to the page, so once the address bar has moved the trading service is asked through the wrong program'],
+  [SETUP, "getJson('svc/api/state').then(keepTheWayBack, () => {});", '',
+    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the address bar never moves onto the surviving address, so a reload after the engine is stopped gets nothing back'],
+  [SETUP, "a.setAttribute('href', page === 'setup.html' ? CONTROL_DIR + page : ENGINE_DIR + page);", '',
+    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'from the surviving address the Construct and Trade links open read-only copies that cannot reach their own api'],
+  [path.join(ROOT, 'public', 'construct.html'), '<a class="toptab" href="svc/setup.html">Setup</a>', '<a class="toptab" href="setup.html">Setup</a>',
+    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the Setup link on Construct reaches the page at the address that dies with the engine'],
+  [path.join(ROOT, 'public', 'trade.html'), '<a class="toptab" href="svc/setup.html">Setup</a>', '<a class="toptab" href="setup.html">Setup</a>',
+    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the Setup link on Trade reaches the page at the address that dies with the engine'],
+  [path.join(ROOT, 'public', 'construct.js'), "window.location.href = 'svc/setup.html'; };", "window.location.href = 'setup.html'; };",
+    'theSetupPageCanAlwaysBeReloadedToStartTheEngine', 'the stage-engine marker opens Setup at the address that dies with the engine'],
 ];
 
 const only = process.argv[2] || '';

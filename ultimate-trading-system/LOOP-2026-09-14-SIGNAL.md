@@ -738,3 +738,26 @@ coin and shape at a time as each is walked. The owner allowed the deploy to
 kill their running whole-set rebuild; it finished on its own before the
 deploy went out, and the third-shape file it wrote reads as absent under this
 release, so that whole-set pass bought nothing that survives.
+
+## R. The Setup page can always be reloaded to start the engine — owner GO NOW! 2026-09-14 (3.135.0)
+
+The owner stopped the engine from the `Compute` tab on `Setup` to end a
+whole-set rebuild, left the page, and could not reload it: the page had been
+served by the engine itself at `…/setup.html`, so with the engine stopped
+the reload got nothing back. The small always-up program has served the
+same page at `…/svc/setup.html` since 2026-08-25 for exactly this moment,
+and nothing on any screen sent the owner there (RULE FIVE: a way back that
+only the code knows about is no way back).
+
+Now the page tells its two addresses apart from where it was loaded, asks
+each program at its own absolute address whichever it was loaded from (the
+`Version` tab and the sweep knobs used to fail from the surviving address,
+because they asked the always-up program for the engine's answers), and once
+the always-up program has answered it moves the address bar onto that
+program's copy of itself — no reload, nothing on screen changes, the next
+reload is what changes. The `Setup` link on Construct and Trade and the
+stage-engine marker go straight to that address. Second digit: new
+behaviour. The one-line alternative — the website's own routing serving
+`/uts/setup.html` from the always-up program — lives on the website branch
+and is the owner's to order; it would make the moving unnecessary but it is
+not this branch's to change.

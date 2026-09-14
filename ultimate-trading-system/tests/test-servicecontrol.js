@@ -389,3 +389,62 @@ module.exports = {
     } finally { restore(); }
   },
 };
+
+// THE PAGE CAN ALWAYS BE RELOADED TO START THE ENGINE (3.135.0, owner order
+// 2026-09-14: "so i stopped a time wasting job by killing the engine on the
+// setup tab and after leaving the page i can't refresh it to restart the
+// engine. we need to always be able to reload the cpu page to restart the
+// engine even if it's not running"). The Setup page has two homes: the
+// trading service serves it at …/setup.html and the always-up program at
+// …/svc/setup.html. Loaded from the first, a reload with that service
+// stopped gets nothing back. So the page tells the two addresses apart from
+// where it was loaded, asks each program at its own absolute address, and once
+// the always-up program has answered it moves the address bar onto that
+// program's copy — and the two other pages send the owner there directly.
+module.exports.theSetupPageCanAlwaysBeReloadedToStartTheEngine = async function () {
+  const read = (f) => fs.readFileSync(path.join(__dirname, '..', 'public', f), 'utf8');
+  const page = read('setup.html');
+  // THE RESOLVER, lifted and run from each address it can be loaded at
+  const lift = page.slice(page.indexOf('const HERE = location.pathname'), page.indexOf('// The three pages are the trading service'));
+  assert.ok(lift.includes("const at = (p) => (p.startsWith('svc/') ? CONTROL_DIR + p.slice(4) : ENGINE_DIR + p);"), 'the resolver is not written as read');
+  // eslint-disable-next-line no-new-func
+  const resolve = (pathname) => new Function('location', `${lift}\nreturn { at, AT_SVC, ENGINE_DIR, CONTROL_DIR };`)({ pathname });
+  for (const [from, atSvc] of [['/uts/setup.html', false], ['/uts/', false], ['/uts/svc/setup.html', true]]) {
+    const r = resolve(from);
+    assert.strictEqual(r.AT_SVC, atSvc, `${from}: which program served the page is read wrong`);
+    assert.strictEqual(r.at('svc/api/compute'), '/uts/svc/api/compute', `${from}: the always-up program is asked at the wrong address`);
+    assert.strictEqual(r.at('svc/api/service'), '/uts/svc/api/service', `${from}: the press that starts the engine goes to the wrong address`);
+    assert.strictEqual(r.at('api/compute-config'), '/uts/api/compute-config', `${from}: the trading service is asked at the wrong address`);
+    assert.strictEqual(r.at('api/stage-gate/status'), '/uts/api/stage-gate/status', `${from}: the Version tab asks at the wrong address`);
+    assert.strictEqual(r.ENGINE_DIR, '/uts/', `${from}: the trading service's pages are not at its own address`);
+    assert.strictEqual(r.CONTROL_DIR, '/uts/svc/', `${from}: the always-up program is not at its own address`);
+  }
+  // EVERY ASK GOES THROUGH IT, both kinds, so a relative path never outlives
+  // the move of the address bar
+  assert.strictEqual(page.split('fetch(at(p)').length - 1, 2, 'an ask goes out relative to the page, so it goes to the wrong program after the address moves');
+  assert.ok(!/fetch\(p[,)]/.test(page), 'an ask still goes out relative to the page');
+  // THE THREE LINKS AT THE TOP are made absolute to the program that owns each
+  // page, because the trading service's pages served read-only by the other
+  // program cannot reach their own api
+  assert.ok(page.includes("document.querySelectorAll('nav.toptabs a').forEach((a) => {")
+    && page.includes("a.setAttribute('href', page === 'setup.html' ? CONTROL_DIR + page : ENGINE_DIR + page);"),
+  'the links at the top stay relative, so from the surviving address Construct and Trade open as dead copies');
+  // THE ADDRESS BAR MOVES ONLY AFTER THE ALWAYS-UP PROGRAM HAS ANSWERED FROM
+  // THERE, and moves without a reload
+  assert.ok(page.includes('let theWayBackKept = AT_SVC;'), 'a page already at the surviving address is moved again');
+  assert.ok(page.includes("try { history.replaceState(history.state, '', CONTROL_DIR + 'setup.html' + location.search + location.hash); } catch (_) { theWayBackKept = false; }"),
+    'the address bar is not moved onto the surviving address, or is moved by a reload');
+  assert.ok(page.includes("getJson('svc/api/state').then(keepTheWayBack, () => {});"),
+    'the address bar is moved before the always-up program has answered from there, or never');
+  assert.ok(!/location\.replace\(|location\.href = |location\.assign\(/.test(page), 'the Setup page reloads itself to move, which loses whatever the owner had open');
+  // AND THE OTHER TWO PAGES SEND THE OWNER STRAIGHT THERE — one nav, both
+  // pages (RULE TWO for Trade: one nav above both branches)
+  for (const f of ['construct.html', 'trade.html']) {
+    const p = read(f);
+    assert.ok(p.includes('<a class="toptab" href="svc/setup.html">Setup</a>'), `${f}: the Setup link does not go to the address that survives the engine`);
+    assert.ok(!p.includes('href="setup.html"'), `${f}: a link still reaches Setup at the address that dies with the engine`);
+  }
+  const cjs = read('construct.js');
+  assert.ok(cjs.includes("window.location.href = 'svc/setup.html'; };"), 'the stage-engine marker opens Setup at the address that dies with the engine');
+  assert.ok(!cjs.includes("window.location.href = 'setup.html'"), 'a press on Construct still opens Setup at the address that dies with the engine');
+};
