@@ -1,16 +1,16 @@
 {
  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here — it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
- "commit": "a22fa2097e1a37b1c6444f9449f52b507e92e7dd",
- "subject": "3.130.1: the forecast score says what it is out of -- sum / test chunks (share%), in the one cell",
- "capturedAt": "2026-09-14T05:34:57Z",
+ "commit": "f470d057640be598ce0b91a12032dee38e21f21d",
+ "subject": "3.130.2: the ceiling box and its column name each other exactly",
+ "capturedAt": "2026-09-14T05:41:18Z",
  "files": {
   "public/construct.js": {
-   "sha256": "41396297201015c7599c1263566b9b7e86bd609fa940805e90d874c330f0889c",
-   "bytes": 591416
+   "sha256": "328ea0e3e15943ffbe5f4f4a4d0e905ff447d2168bb348e79017ddc1a4a6185e",
+   "bytes": 591620
   },
   "public/help-content.js": {
-   "sha256": "7dffa83b24417b79e860039d2301b4bcf2d7f68357f65bd5f8a350bbdf1d7435",
-   "bytes": 107628
+   "sha256": "c33f491869ab056cd0c15252249265020d31d251aadfac90d9f191edc8818ede",
+   "bytes": 107870
   },
   "public/setup.html": {
    "sha256": "960408460c2fb531f1a6b45cf1f4bbec8bd8860242c01d55bde0893ebbb57b5e",
