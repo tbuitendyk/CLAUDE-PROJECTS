@@ -4944,6 +4944,36 @@ module.exports = {
     assert.match(msg2, /doubles reads each traded coin against 1 other coin/, 'one coin, not "1 coins"');
   },
 
+  // THE COINS AND SHAPES TICKED ON COINS AS UNITS (owner GO NOW! 2026-09-14).
+  // Each pair builds its own units at its own shape and nothing else is built;
+  // a launch with `passers: true` reads them off Coins and refuses when there
+  // are none; a set relaunched from its own record uses the pairs as written.
+  aLaunchCanTakeTheCoinsAndShapesTickedOnCoins() {
+    const sizes = { singles: true, doubles: false, triples: false };
+    const pairs = [{ coin: 'ltcusdt', geometry: 'daily-3d' }, { coin: 'ATOMUSDT', geometry: 'daily-2d' }, { coin: 'BCHUSDT', geometry: 'weekly-8d' }, { coin: 'BCHUSDT', geometry: 'daily-1d' }];
+    const units = stages.unitsForPassers(pairs, sizes, []);
+    assert.deepStrictEqual(units.map((u) => `${u.trade}@${u.geometry}`), ['LTCUSDT@daily-3d', 'ATOMUSDT@daily-2d', 'BCHUSDT@weekly-8d', 'BCHUSDT@daily-1d'], 'one unit per pair, at its own shape, the coin upper-cased');
+    assert.ok(units.every((u) => u.size === 1 && u.ctx1 === null), 'singles read nothing against');
+    assert.deepStrictEqual(stages.unitsForPassers([{ coin: 'LTCUSDT', geometry: 'no-such-shape' }, { coin: '', geometry: 'daily-1d' }], sizes, []), [], 'a pair with no coin or no such shape builds nothing');
+    // doubles: each pair still at its own shape, read against the compare coins
+    const dbl = stages.unitsForPassers(pairs.slice(0, 1), { singles: false, doubles: true, triples: false }, ['LTCUSDT', 'AAAUSDT', 'BBBUSDT']);
+    assert.deepStrictEqual(dbl.map((u) => `${u.trade}+${u.ctx1}@${u.geometry}`), ['LTCUSDT+AAAUSDT@daily-3d', 'LTCUSDT+BBBUSDT@daily-3d']);
+    // the launch refuses with nothing ticked, before anything is written
+    const coinsrun = require('../lib/coinsrun');
+    const was = coinsrun.passingUnits;
+    coinsrun.passingUnits = () => [];
+    try {
+      assert.throws(() => stages.startStage1({ passers: true, sizes, nullN: 3, fee: 0.00125, name: `p-${Date.now().toString(36)}` }), /no coin and shape is ticked on Coins/);
+    } finally { coinsrun.passingUnits = was; }
+    // and the launch's own source: pairs replace the boxes and are written on the set
+    const st = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stages.js'), 'utf8');
+    const launch = st.slice(st.indexOf('function startStage1(params) {'), st.indexOf('const setName = nameOrRefuse(params.name, 1);'));
+    assert.ok(/const passers = params\.passers === true\n\s+\? require\('\.\/coinsrun'\)\.passingUnits\(\)/.test(launch), 'passers: true reads the ticked pairs off Coins');
+    assert.ok(/const units = passers \? unitsForPassers\(passers, sizes, compare\) : unitsFor\(universe, sizes, geometries, compare\);/.test(launch), 'the pairs build the units');
+    assert.ok(/\? \[\.\.\.new Set\(passers\.map\(\(x\) => x\.coin\)\)\]/.test(launch) && /\? \[\.\.\.new Set\(passers\.map\(\(x\) => x\.geometry\)\)\]/.test(launch), 'the universe and the shapes are read off the pairs');
+    assert.ok(/passers: passers \|\| null, campaign:/.test(st), 'the pairs are written on the set');
+  },
+
   // THE 80/20 LAYOUT IS GONE FROM STAGE 1 (owner order, 2026-09-08). It kept no
   // held-back slice; the Sweep's box no longer offers it, a launch that asks
   // for it is refused by name, and the chunk split always keeps one.

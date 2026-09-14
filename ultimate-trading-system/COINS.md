@@ -169,6 +169,18 @@ bar's heading says which: `band 140 (its own sweet spot)` or `band 50`.
 Unticked, the typed band applies everywhere. Nothing is read again either way.
 Section 9 has the words.
 
+**And the passers, since 3.129.0** (owner GO NOW! 2026-09-14): between the
+controls and the first coin, a table headed `coins and shapes that pass` —
+every coin and shape whose check with the link cut matched its plateau in at
+most N of 50 deals, N being a small box in the sentence (default 2, one home
+beside the band). Per row, read at the shape's own sweet spot: `coin`, `chunk
+shape`, `check`, `sweet spot band`, `called`, `edge per called trade`, `per
+decision`, `edge over chance`, `after rising` and `after falling` (`up`,
+`down`), `traits`, `judged`, `trades a month`; and one tick per row, on until
+un-ticked. The ticked rows are what Sweep runs when its own tick, `only the
+coins and shapes ticked on Coins`, is on. With no passer at the bar the table
+says `no coin and shape passes at this bar`. Section 10.
+
 No ordering control, no `window layout` control, no `chunk shape` control: every
 shape and both layouts are always drawn.
 
@@ -521,6 +533,43 @@ front of them.
 specific traits that differentiate you will make ONE WORD notations ... that
 may feed forward into member voting setups."* They are served per shape on
 the records reply and drawn as marks; nothing reads them yet.
+
+## 10. The passers, and the launch that takes them (3.129.0; owner GO NOW! 2026-09-14)
+
+The owner: *"there should be a summary section at the top of the coins page
+after the controls section and before the first coin that lists the coin/shape
+combos that pass at 0 to 2 null sets confirmations ... then on sweep there
+should also be a check box that selects the custom group of passers ... that
+will only select those specific coins+shapes."*
+
+**What the check is, in one sentence.** Same idea as the scrambled copies on
+the Funnel, not the same runs: when a coin is read, the outcomes of each part
+are dealt into a different order fifty times while the window readings stay,
+the whole reading is run again on each deal, and the number is how many of
+the fifty produced a plateau at least as strong as the real one.
+
+**On Coins.** Section 4 has the table and its words. The bar is the owner's
+number (`coins_pass_bar` in `data/settings.json`, default 2); the rows the
+owner has un-ticked are a list beside it (`coins_passers_off`), so a coin
+and shape that passes tomorrow is ticked until somebody un-ticks it. Both go
+through one door, `api/coins/passers`. The list is sorted by the check, then
+the coin, then the shapes' order. On the day this shipped it held five rows:
+ATOM `Daily 2-day` (0), LTC `Daily 3-day` (0), BCH `Daily 1-day` (1), BCH
+`Weekly 8-day` (1), DOT `Weekly 8-day` (1).
+
+**On Sweep.** One tick beside `trade coins (blank = all N downloaded)`:
+`only the coins and shapes ticked on Coins`. With it on, `trade coins`,
+`chunk shape` and `permute` are greyed, because the run's units are the ticked
+pairs, each at its own shape; the compare coins still apply to `doubles` and
+`triples`. The unit count under the boxes counts the same pairs the launch
+will build.
+
+**In the engine.** A launch used to build its units as every traded coin
+times every shape asked for. With `passers` the launch reads the ticked pairs
+off Coins at the moment it starts, builds each pair's units at its own shape
+and nothing else, and writes the pairs on the set, so the set says what ran
+even if Coins says something else later. Nothing ticked: the launch refuses
+and says so. Stages 2 and 3 inherit their units from the parent as before.
 
 ---
 

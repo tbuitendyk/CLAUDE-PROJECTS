@@ -378,6 +378,75 @@ module.exports = {
     });
   },
 
+  // THE PASSERS (owner GO NOW! 2026-09-14): a coin and shape whose check
+  // matched its plateau in at most `bar` of the deals is listed with its
+  // numbers at its own sweet spot, ticked by default; the bar and the ticks
+  // have one home beside the band; the ticked rows are the units Sweep runs.
+  async thePassersAreListedAtTheBarAndTickedUntilUnticked() {
+    const S = require('../lib/coinsignal');
+    // a shape with a built-in reversion (a plateau) and a stored check: one
+    // record passes at the default bar, the other's check is above it
+    const mk = (coin, asStrongCount) => {
+      let s = 99; const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+      const move = []; const out = []; const ts = [];
+      for (let i = 0; i < 1800; i++) { const m = (rnd() - 0.5) * 6; move.push(Number(m.toFixed(4))); out.push(Number((-0.35 * Math.sign(m) * Math.min(3, Math.abs(m)) + (rnd() - 0.5) * 4).toFixed(4))); ts.push(Date.UTC(2020, 0, 1) + i * 86400000); }
+      const shapes = {};
+      for (const sh of coins.shapes()) shapes[sh.key] = { periods: 0, why: 'not in this fixture' };
+      const real = S.signalSummary({ move, out }, 'daily-3d', runner.layouts(), 50);
+      assert.ok(real.plateau, 'the fixture must carry a plateau');
+      const strength = S.plateauStrength(real.plateau);
+      // `asStrongCount` dealt plateaus at least this strong, the rest weaker
+      const strengths = [...Array(asStrongCount).fill(strength + 1), ...Array(6).fill(strength / 4)];
+      shapes['daily-3d'] = { periods: 1800, span: { fromTs: ts[0], toTs: ts[1799] }, skipped: 0, ts, move, out, linkCut: { trials: 50, found: strengths.length, strengths, meanRatioWhenFound: null } };
+      return { v: runner.RECORD_V, coin, read: true, why: null, provenance: { release: require('../package.json').version, capturedAt: '2026-09-14T00:00:00Z', cachedMonths: 60, candles: 1800 * 24 }, shapes };
+    };
+    const files = { ZZZPASSAUSDT: runner.recordFile('ZZZPASSAUSDT'), ZZZPASSBUSDT: runner.recordFile('ZZZPASSBUSDT') };
+    Object.values(files).forEach(rm);
+    await withBandRestored(async () => {
+      try {
+        fs.mkdirSync(path.dirname(files.ZZZPASSAUSDT), { recursive: true });
+        fs.writeFileSync(files.ZZZPASSAUSDT, JSON.stringify(mk('ZZZPASSAUSDT', 0)));
+        fs.writeFileSync(files.ZZZPASSBUSDT, JSON.stringify(mk('ZZZPASSBUSDT', 4)));
+        assert.strictEqual(runner.passBar(), runner.DEFAULTS.passBar, 'the bar is the default until set');
+        assert.throws(() => runner.setPassBar(-1), /whole number from 0 to 50/);
+        assert.throws(() => runner.setPassBar(2.5), /whole number/);
+        assert.throws(() => runner.setPassBar(51), /whole number/);
+        let served = runner.coinsRecords();
+        assert.deepStrictEqual({ bar: served.passers.bar, trials: served.passers.trials }, { bar: 2, trials: runner.LINK_CUT_TRIALS });
+        const mine = served.passers.rows.filter((r) => r.coin.startsWith('ZZZPASS'));
+        assert.deepStrictEqual(mine.map((r) => [r.coin, r.geometry, r.check.asStrong, r.ticked]), [['ZZZPASSAUSDT', 'daily-3d', 0, true]], `at bar 2 only the 0-of-50 record passes, ticked: ${JSON.stringify(mine)}`);
+        const row = mine[0];
+        const sig = served.records.find((r) => r.coin === 'ZZZPASSAUSDT').shapes['daily-3d'].signal;
+        assert.strictEqual(row.band, sig.sweetSpot.band, 'the row is read at its own sweet spot');
+        assert.strictEqual(row.shape, coins.shapes().find((s) => s.key === 'daily-3d').label, 'the shape is named as the screen names it');
+        assert.ok(row.called > 0 && row.called <= 1 && row.edge != null && row.perDecision != null && row.ratio > 1 && row.judged > 0, `the numbers are there: ${JSON.stringify(row)}`);
+        assert.deepStrictEqual(Object.keys(row.lean).sort(), ['falling', 'rising'], 'the lean after each colour');
+        assert.ok(Math.abs(row.tradesAMonth - (365.25 / 12) * row.called) < 1e-9, 'trades a month is decisions a month times the share called');
+        assert.ok(Array.isArray(row.traits) && row.traits.length >= 1);
+        // the bar moves the list: at 4 both pass, at 0 only the perfect one
+        assert.deepStrictEqual(runner.setPassBar(4), { bar: 4 });
+        assert.strictEqual(readSettings()[runner.PASS_BAR_KEY], 4, 'the bar lives beside the band');
+        served = runner.coinsRecords();
+        assert.deepStrictEqual(served.passers.rows.filter((r) => r.coin.startsWith('ZZZPASS')).map((r) => `${r.coin}:${r.check.asStrong}`), ['ZZZPASSAUSDT:0', 'ZZZPASSBUSDT:4'], 'sorted by the check');
+        runner.setPassBar(0);
+        assert.deepStrictEqual(runner.coinsRecords().passers.rows.filter((r) => r.coin.startsWith('ZZZPASS')).map((r) => r.coin), ['ZZZPASSAUSDT']);
+        // un-ticking a row: it stays listed, un-ticked, and leaves the units
+        runner.setPassBar(4);
+        assert.throws(() => runner.setPasserTicked('ZZZPASSAUSDT', 'no-such-shape', false), /not a chunk shape/);
+        assert.throws(() => runner.setPasserTicked('ZZZPASSAUSDT', 'daily-3d', 'no'), /ticked or not/);
+        assert.deepStrictEqual(runner.setPasserTicked('zzzpassausdt', 'daily-3d', false), { coin: 'ZZZPASSAUSDT', geometry: 'daily-3d', ticked: false });
+        assert.deepStrictEqual(readSettings()[runner.PASS_OFF_KEY], ['ZZZPASSAUSDT|daily-3d'], 'the un-ticked rows live beside the band');
+        served = runner.coinsRecords();
+        assert.deepStrictEqual(served.passers.rows.filter((r) => r.coin.startsWith('ZZZPASS')).map((r) => [r.coin, r.ticked]), [['ZZZPASSAUSDT', false], ['ZZZPASSBUSDT', true]]);
+        const units = runner.passingUnits().filter((u) => u.coin.startsWith('ZZZPASS'));
+        assert.deepStrictEqual(units, [{ coin: 'ZZZPASSBUSDT', geometry: 'daily-3d' }], 'the units Sweep runs are the ticked passers');
+        runner.setPasserTicked('ZZZPASSAUSDT', 'daily-3d', true);
+        assert.deepStrictEqual(readSettings()[runner.PASS_OFF_KEY], []);
+        assert.deepStrictEqual(runner.passingUnits().filter((u) => u.coin.startsWith('ZZZPASS')).map((u) => u.coin), ['ZZZPASSAUSDT', 'ZZZPASSBUSDT']);
+      } finally { Object.values(files).forEach(rm); }
+    });
+  },
+
   // THE SCREEN'S OWN SOURCE: the tick is drawn beside the band, the line goes
   // green when the sweet spot beats chance, and the heading says which band
   // a shape is drawn at (guards on public/ name this test; RULE EIGHT).
@@ -391,6 +460,22 @@ module.exports = {
     assert.ok(/\.cshape \.csig\.on, \.cshape \.csig\.on \.muted, \.cshape \.csig\.on b \{ color:#1a9c3a; \}/.test(css), 'green, the rising green');
     assert.ok(/· band \$\{esc\(String\(s\.band\.value\)\)\}\$\{s\.band\.source === 'sweet spot' \? `<span> \(its own sweet spot\)<\/span>` : ''\}/.test(src), 'the heading names the band in use and whether it is the shape\'s own sweet spot');
     assert.ok(/cSignalLine\(s\.signal, s\.band \? s\.band\.value : cBandNow\)/.test(src), 'the line reads at the band the shape is drawn at');
+  },
+
+  // THE PASSERS ON BOTH SCREENS (3.129.0): the table between the controls and
+  // the first coin with its bar box and row ticks, through the passers' door;
+  // Sweep's tick, greying the three boxes it replaces, in both launch bodies.
+  theScreensDrawThePassersAndSweepsTick() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(/\$\{cPassersPanel\(d && d\.passers\)\}\n  \$\{!recs\.length \?/.test(src), 'the passers panel sits after the controls and before the first coin');
+    assert.ok(/<b>coins and shapes that pass<\/b>/.test(src) && /<input id="cPassBar" type="number" min="0" max="\$\{pass\.trials\}"/.test(src), 'the bar box sits in the sentence');
+    assert.ok(/no coin and shape passes at this bar/.test(src), 'and an empty list says so');
+    assert.ok(/<input type="checkbox" class="cpass" data-coin="\$\{esc\(r\.coin\)\}" data-shape="\$\{esc\(r\.geometry\)\}"\$\{r\.ticked \? ' checked' : ''\}/.test(src), 'one tick per row, showing what the service holds');
+    assert.ok(/post\('api\/coins\/passers', \{ bar: Number\(\$\('#cPassBar'\)\.value\) \}\)/.test(src), 'the bar goes through the passers\' door');
+    assert.ok(/post\('api\/coins\/passers', \{ coin: el\.dataset\.coin, shape: el\.dataset\.shape, ticked: el\.checked \}\)/.test(src), 'and so does a row\'s tick');
+    assert.ok(/<input type="checkbox" id="swPassers"> only the coins and shapes ticked on Coins<\/label>/.test(src), 'Sweep\'s tick, labelled');
+    assert.strictEqual((src.match(/passers: !!\(\$\('#swPassers'\) && \$\('#swPassers'\)\.checked\),/g) || []).length, 2, 'the tick rides both the count and the launch');
+    assert.ok(/for \(const id of \['swUni', 'swGeom', 'swPermGeom'\]\) if \(\$\(`#\$\{id\}`\)\) \$\(`#\$\{id\}`\)\.disabled = on;/.test(src), 'with it on, trade coins, chunk shape and permute are greyed');
   },
 
   async anUnsetBandIsTheDefault() {

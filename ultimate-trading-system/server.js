@@ -219,6 +219,15 @@ app.post('/api/coins/band', (req, res) => {
     return res.json({ band: coinsrun.sitOutBand(), auto: coinsrun.bandAuto() });
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
+// THE PASSERS' ONE DOOR: the bar, and a row's tick. Both live beside the band.
+app.post('/api/coins/passers', (req, res) => {
+  try {
+    const body = req.body || {};
+    if ('bar' in body) coinsrun.setPassBar(body.bar);
+    if ('coin' in body || 'shape' in body || 'ticked' in body) coinsrun.setPasserTicked(body.coin, body.shape, body.ticked);
+    return res.json({ bar: coinsrun.passBar(), off: coinsrun.passersOff() });
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
 
 
 
@@ -880,9 +889,9 @@ app.post('/api/stage1-count', (req, res) => {
     const compare = Array.isArray(b.compare) && b.compare.length ? b.compare.map((s) => String(s).toUpperCase()) : [];
     if (compare.some((p) => !SYMBOL_RE.test(p))) return res.status(400).json({ error: 'compare coins must be symbols like DOTUSDT' });
     const geometries = b.permuteGeometry ? Object.keys(require('./lib/dataset').GEOMETRIES) : [b.geometry || 'daily-4d'];
-    const units = stages.unitsFor(universe, {
-      singles: !!(b.sizes || {}).singles, doubles: !!(b.sizes || {}).doubles, triples: !!(b.sizes || {}).triples,
-    }, geometries, compare);
+    const sizes = { singles: !!(b.sizes || {}).singles, doubles: !!(b.sizes || {}).doubles, triples: !!(b.sizes || {}).triples };
+    // the coins and shapes ticked on Coins, as the launch itself resolves them
+    const units = b.passers ? stages.unitsForPassers(coinsrun.passingUnits(), sizes, compare) : stages.unitsFor(universe, sizes, geometries, compare);
     const { slimViewsFor } = require('./lib/bracketwork');
     const trainings = units.reduce((n, u) => n + slimViewsFor(u.size === 1 ? 1 : 2).length, 0);
     return res.json({ units: units.length, trainings });

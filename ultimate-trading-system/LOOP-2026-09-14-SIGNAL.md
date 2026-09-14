@@ -396,6 +396,30 @@ spot` and `(its own sweet spot)`); every guard on the signal module, the
 runner and the screen deleted in turn and caught. The records on the box are
 untouched: they are shape 8 and read as they are.
 
+## H. The passers — owner GO NOW! 2026-09-14 (3.129.0)
+
+The owner, after reading the five rows at 0 to 1 of 50 (a count I had
+mis-stated as four, having dropped BCH `Weekly 8-day` without saying so):
+*"there should be a summary section at the top of the coins page ... that
+lists the coin/shape combos that pass at 0 to 2 null sets confirmations ...
+then on sweep there should also be a check box that selects the custom group
+of passers."* Built as COINS.md section 10 describes. Decisions:
+
+- **B19 — the bar is a box, not a constant.** "0 to 2" is the owner's
+  number; typed into code it would be a choice taken away invisibly (RULE
+  FIVE). Default 2, one home beside the band.
+- **B20 — a passer is ticked until un-ticked.** The store holds the rows the
+  owner turned OFF, so a coin and shape that passes after the next read is
+  ticked by default and the owner sees it, rather than silently absent from
+  Sweep's runs.
+- **B21 — the pairs are written on the set.** A launch with the tick on reads
+  the ticked pairs off Coins at that moment and records them; a set
+  relaunched from its own record uses the pairs as written, never what Coins
+  says later.
+- **B22 — each pair builds its own units at its own shape.** Five pairs
+  across four shapes is one launch of five units (singles), not five coins
+  times four shapes.
+
 **A sentence on the screen that is not true**, found while wiring the tick
 and left standing (RULE ZERO): the Coins note and the band box's hover say
 Sweep trains with this same number. Nothing in `lib/` reads

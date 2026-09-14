@@ -39,6 +39,14 @@ const BAND_KEY = 'coins_sit_out_band';
 // edge per decision -- and the typed band applies only where no band beats
 // chance. Same file as the band, one key beside it.
 const AUTO_KEY = 'coins_band_auto';
+// THE PASSERS (owner GO NOW! 2026-09-14). A coin and shape passes when the
+// link-cut check found a plateau at least as strong as the real one in at
+// most `bar` of the deals. The bar is the owner's number, one key beside the
+// band; the rows the owner has un-ticked are a list of "COIN|shape" beside
+// it, so a new passer is ticked until somebody un-ticks it. Sweep's own tick
+// reads the ticked passers as the units of a launch.
+const PASS_BAR_KEY = 'coins_pass_bar';
+const PASS_OFF_KEY = 'coins_passers_off';
 
 // THE RECORD SHAPE. It moves whenever what is written changes, so a reading
 // taken under an older shape is NAMED on the screen rather than drawn as
@@ -64,7 +72,7 @@ const LINK_CUT_TRIALS = 50;
 // screen (RULE FIVE); this is only what it reads before the owner sets it. 50
 // means: sit out when the window moved less than half what this coin
 // typically moves over that window.
-const DEFAULTS = Object.freeze({ band: 50 });
+const DEFAULTS = Object.freeze({ band: 50, passBar: 2 });
 
 // THE WINDOW LAYOUTS ARE READ FROM THE SAME LIST THE DROPDOWNS ARE DRAWN FROM,
 // never typed here. Typed, they would be a second copy: add a layout to the
@@ -99,6 +107,35 @@ function sitOutBand() {
 }
 function bandAuto() {
   return readSettings()[AUTO_KEY] === true;
+}
+function passBar() {
+  const v = Number(readSettings()[PASS_BAR_KEY]);
+  return Number.isInteger(v) && v >= 0 && v <= LINK_CUT_TRIALS ? v : DEFAULTS.passBar;
+}
+function setPassBar(value) {
+  const v = Number(value);
+  if (!Number.isInteger(v) || v < 0 || v > LINK_CUT_TRIALS) throw new Error(`the bar is a whole number from 0 to ${LINK_CUT_TRIALS} — not ${JSON.stringify(value)}`);
+  const settings = readSettings();
+  settings[PASS_BAR_KEY] = v;
+  writeSettings(settings);
+  return { bar: v };
+}
+function passersOff() {
+  const a = readSettings()[PASS_OFF_KEY];
+  return Array.isArray(a) ? a.filter((x) => typeof x === 'string') : [];
+}
+const passerKey = (coin, geometry) => `${String(coin).toUpperCase()}|${geometry}`;
+function setPasserTicked(coin, geometry, ticked) {
+  const c = String(coin || '').trim().toUpperCase();
+  if (!c) throw new Error('which coin?');
+  if (!coins.shapes().some((s) => s.key === geometry)) throw new Error(`${JSON.stringify(geometry)} is not a chunk shape`);
+  if (typeof ticked !== 'boolean') throw new Error(`a row is ticked or not — not ${JSON.stringify(ticked)}`);
+  const off = new Set(passersOff());
+  if (ticked) off.delete(passerKey(c, geometry)); else off.add(passerKey(c, geometry));
+  const settings = readSettings();
+  settings[PASS_OFF_KEY] = [...off].sort();
+  writeSettings(settings);
+  return { coin: c, geometry, ticked };
 }
 function setBandAuto(value) {
   if (typeof value !== 'boolean') throw new Error(`the tick is on or off — not ${JSON.stringify(value)}`);
@@ -313,6 +350,11 @@ function coinsRunStop() {
   return { stopping: true };
 }
 
+// THE TICKED PASSERS AS UNITS OF A LAUNCH: what Sweep's own tick runs.
+function passingUnits() {
+  return coinsRecords().passers.rows.filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry }));
+}
+
 // ---- reading the records back -------------------------------------------------
 
 function readRecord(coin) {
@@ -375,11 +417,17 @@ function coinsCleanup() {
   return { removed, failed };
 }
 
+// about how many decisions a month a shape offers: one a day, or one a week
+const DECISIONS_A_MONTH = Object.freeze({ day: 365.25 / 12, week: 365.25 / 12 / 7 });
+
 function coinsRecords() {
   const band = sitOutBand();
   const auto = bandAuto();
+  const bar = passBar();
+  const off = new Set(passersOff());
   const lays = layouts();
   const rows = [];
+  const passers = [];
   const { records, unreadable } = scanRecords();
   for (const rec of records) {
     const shapesOut = {};
@@ -401,15 +449,37 @@ function coinsRecords() {
       shapesOut[s.key] = coins.shapeSummary(sr, useBand, lays);
       shapesOut[s.key].signal = sig;
       shapesOut[s.key].band = { value: useBand, source: useBand !== band || (auto && sig.sweetSpot) ? 'sweet spot' : 'typed' };
+      // A PASSER: a plateau the check matched in at most `bar` of the deals.
+      // Its numbers are read at its own sweet spot whatever the box holds.
+      const lc = sig.linkCut;
+      if (sig.plateau && sig.sweetSpot && lc && lc.asStrong != null && lc.asStrong <= bar) {
+        const spot = sig.sweep.find((p) => p.band === sig.sweetSpot.band) || {};
+        const at = signal.atBand(sr, s.key, lays, sig.sweetSpot.band);
+        passers.push({
+          coin: rec.coin, geometry: s.key, shape: s.label,
+          check: { asStrong: lc.asStrong, trials: lc.trials },
+          band: sig.sweetSpot.band, called: spot.called == null ? null : spot.called,
+          edge: spot.edge == null ? null : spot.edge, perDecision: spot.perDecision == null ? null : spot.perDecision,
+          ratio: spot.ratio == null ? null : spot.ratio, judged: spot.judged == null ? null : spot.judged,
+          lean: at && at.lean ? { rising: at.lean.rising, falling: at.lean.falling } : null,
+          traits: sig.traits ? [sig.traits.direction, sig.traits.holding, sig.traits.carrier].filter(Boolean) : [],
+          tradesAMonth: spot.called == null ? null : DECISIONS_A_MONTH[s.every === 'week' ? 'week' : 'day'] * spot.called,
+          ticked: !off.has(passerKey(rec.coin, s.key)),
+        });
+      }
     }
     rows.push({ coin: rec.coin, read: rec.read, why: rec.why, provenance: rec.provenance, shapes: shapesOut });
   }
   rows.sort((a, b) => String(a.coin).localeCompare(String(b.coin)));
   unreadable.sort((a, b) => String(a.coin).localeCompare(String(b.coin)));
+  // the passers in the order of their check, then their coin, then the shapes' order
+  const shapeOrder = coins.shapes().map((s) => s.key);
+  passers.sort((a, b) => a.check.asStrong - b.check.asStrong || String(a.coin).localeCompare(String(b.coin)) || shapeOrder.indexOf(a.geometry) - shapeOrder.indexOf(b.geometry));
   return {
     shapes: coins.shapes(),
     layouts: lays,
     band: { value: band, default: DEFAULTS.band, home: 'data/settings.json', auto },
+    passers: { bar, default: DEFAULTS.passBar, trials: LINK_CUT_TRIALS, rows: passers },
     // what a blank coin box means, as a count, so the label can say it without
     // the number being typed anywhere
     downloaded: defaultCoins().length,
@@ -420,8 +490,9 @@ function coinsRecords() {
 }
 
 module.exports = {
-  RECORD_V, DEFAULTS, BAND_KEY, AUTO_KEY, LINK_CUT_TRIALS, layouts, recordFile,
+  RECORD_V, DEFAULTS, BAND_KEY, AUTO_KEY, PASS_BAR_KEY, PASS_OFF_KEY, LINK_CUT_TRIALS, layouts, recordFile,
   sitOutBand, setSitOutBand, bandAuto, setBandAuto,
+  passBar, setPassBar, passersOff, setPasserTicked, passingUnits,
   readOneCoin, normalise, busyWhy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
   readRecord, scanRecords, coinsRecords, coinsCleanup,

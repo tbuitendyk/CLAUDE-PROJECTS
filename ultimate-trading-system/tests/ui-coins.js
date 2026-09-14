@@ -62,6 +62,11 @@ const RECORDS = [
   record('DDDUSDT', { months: 12 }),
   record('EEEUSDT', { read: false, months: 4 }),
 ];
+// THE PASSERS AS THE SERVICE SERVES THEM (3.129.0): two rows, one un-ticked
+const passRow = (coin, geometry, asStrong, ticked) => {
+  const sh = SHAPES.find((s) => s.key === geometry);
+  return { coin, geometry, shape: sh.label, check: { asStrong, trials: 50 }, band: 170, called: 0.29, edge: 1.262, perDecision: 0.362, ratio: 1.96, judged: 201, lean: { rising: -1, falling: 1 }, traits: ['reverting', 'steady', 'often'], tradesAMonth: 8.8, ticked };
+};
 const UNREADABLE = [{ coin: 'FFFUSDT', file: 'FFFUSDT.json', why: 'this reading was written under record shape 6 and this release reads shape 8 — read the coin again to replace it', release: '3.124.0' }];
 const DATA_STATE = { symbols: [
   { symbol: 'AAAUSDT', months: 17, from: '2024-01', to: '2026-05' },
@@ -89,18 +94,27 @@ function requirePlaywright() {
   let auto = false;
   let bandPosts = [];
   let autoPosts = [];
+  let passBar = 2;
+  let passPosts = [];
+  const passRows = () => [passRow('AAAUSDT', 'daily-3d', 0, true), passRow('DDDUSDT', 'daily-2d', 1, false)].filter((r) => r.check.asStrong <= passBar);
   let stopPresses = 0;
   let started = null;
   let recordsFetches = 0;
   await page.route('**/api/coins/records**', (route) => { recordsFetches++; return route.fulfill({ contentType: 'application/json', body: JSON.stringify({
     shapes: SHAPES, layouts: LAYOUTS, band: { value: band, default: 50, home: 'data/settings.json', auto },
     downloaded: 18, records: RECORDS, unreadable, recordVersion: 8,
+    passers: { bar: passBar, default: 2, trials: 50, rows: passRows() },
   }) }); });
   let cleanPresses = 0;
   let unreadable = UNREADABLE;
   await page.route('**/api/coins/cleanup', (route) => {
     cleanPresses++; unreadable = [];
     return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ removed: ['FFFUSDT.json'], failed: [] }) });
+  });
+  await page.route('**/api/coins/passers', (route) => {
+    const b = JSON.parse(route.request().postData() || '{}'); passPosts.push(b);
+    if ('bar' in b) passBar = Number(b.bar);
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ bar: passBar, off: [] }) });
   });
   await page.route('**/api/coins/band', (route) => {
     const b = JSON.parse(route.request().postData() || '{}');
@@ -130,9 +144,31 @@ function requirePlaywright() {
   expect(/Coins/.test(await page.locator('#view h3').first().textContent()), 'the screen draws');
   const body = await text();
 
-  // THREE CONTROLS AND THE TICK, AND NOTHING ELSE.
-  const controls = await page.evaluate(() => [...document.querySelectorAll('#view input, #view select, #view button, #view textarea')].map((e) => e.id));
-  expect(controls.sort().join(',') === ['cAuto', 'cBand', 'cClean', 'cCoins', 'cRun'].join(','), `three controls and the tick, plus the cleanup while there is something to remove, and nothing else: ${controls.join(', ')}`);
+  // THREE CONTROLS, THE TICK, THE PASSERS' BAR AND ROW TICKS, AND NOTHING ELSE.
+  const controls = await page.evaluate(() => [...document.querySelectorAll('#view input, #view select, #view button, #view textarea')].map((e) => e.id).filter(Boolean));
+  expect(controls.sort().join(',') === ['cAuto', 'cBand', 'cClean', 'cCoins', 'cPassBar', 'cRun'].join(','), `three controls, the tick and the passers' bar, plus the cleanup while there is something to remove, and nothing else: ${controls.join(', ')}`);
+  const unnamed = await page.evaluate(() => [...document.querySelectorAll('#view input:not([id]), #view select:not([id]), #view button:not([id])')].map((e) => e.className));
+  expect(unnamed.length === 2 && unnamed.every((c) => c === 'cpass'), `the only controls without a name are the passers' row ticks: ${JSON.stringify(unnamed)}`);
+  // THE PASSERS' TABLE sits after the controls and before the first coin, with its numbers
+  const passers = await page.evaluate(() => {
+    const t = document.querySelector('table.cpassers');
+    const panel = t && t.closest('.panel');
+    return {
+      heads: t ? [...t.querySelectorAll('th')].map((e) => e.textContent) : [],
+      rows: t ? [...t.querySelectorAll('tbody tr')].map((r) => [...r.querySelectorAll('td')].map((d) => d.textContent.trim())) : [],
+      ticks: t ? [...t.querySelectorAll('input.cpass')].map((e) => e.checked) : [],
+      sentence: panel ? panel.querySelector('p.note').textContent.replace(/\s+/g, ' ').trim() : null,
+      beforeFirstCoin: panel ? (panel.compareDocumentPosition(document.querySelector('.panel.ccoin')) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : false,
+      afterControls: panel ? (document.querySelector('#cRun').closest('.panel').compareDocumentPosition(panel) & Node.DOCUMENT_POSITION_FOLLOWING) !== 0 : false,
+    };
+  });
+  expect(passers.heads.join('|') === '|coin|chunk shape|check|sweet spot band|called|edge per called trade|per decision|edge over chance|after rising|after falling|traits|judged|trades a month', `the table names every column, got ${passers.heads.join('|')}`);
+  expect(passers.rows.length === 2 && passers.rows[0].slice(1, 9).join('|') === `AAAUSDT|${SHAPES.find((s) => s.key === 'daily-3d').label}|0 of 50|170|29%|+1.26%|+0.362%|1.96×`, `the first row carries the numbers at its sweet spot, got ${passers.rows[0].join('|')}`);
+  expect(passers.rows[0][9] === 'down' && passers.rows[0][10] === 'up' && passers.rows[0][12] === '201' && passers.rows[0][13] === '8.8', `the leans, the judged count and trades a month, got ${passers.rows[0].slice(9).join('|')}`);
+  expect(passers.ticks.join(',') === 'true,false', `the ticks show what the service holds, got ${passers.ticks.join(',')}`);
+  expect(/coins and shapes that pass/.test(passers.sentence) && /of 50 deals/.test(passers.sentence) && /Ticked rows are what Sweep runs when its own tick is on/.test(passers.sentence), `the sentence, got ${passers.sentence}`);
+  expect(passers.beforeFirstCoin && passers.afterControls, 'the table sits after the controls and before the first coin');
+  expect(await page.inputValue('#cPassBar') === '2', 'the bar box shows the number the service holds');
   expect(/each shape at its own sweet spot/.test(body), 'the tick is labelled');
   expect(await page.isChecked('#cAuto') === false, 'the tick shows what the service holds: off');
   for (const gone of ['cTarget', 'cFrom', 'cTo', 'cStep', 'cCap', 'cDrift', 'cShuf', 'cLayout', 'cOrder', 'cGeom', 'cWk']) {
@@ -277,6 +313,16 @@ function requirePlaywright() {
   expect(bandPosts.length === 1, 'and the band was not sent again with it');
   expect(recordsFetches > fetchesBeforeTick, 'and the bars were asked for again');
   expect(await page.isChecked('#cAuto') === true, 'the tick shows what the service now holds: on');
+
+  // THE BAR AND A ROW'S TICK ARE SET THE MOMENT THEY CHANGE, AND THE LIST REDRAWS.
+  await page.fill('#cPassBar', '0');
+  await page.locator('#cPassBar').press('Tab');
+  await page.waitForTimeout(500);
+  expect(passPosts.length === 1 && passPosts[0].bar === 0, `the bar reached the service once, got ${JSON.stringify(passPosts)}`);
+  expect(await page.evaluate(() => document.querySelectorAll('table.cpassers tbody tr').length) === 1, 'at bar 0 only the 0-of-50 row is listed');
+  await page.locator('input.cpass').first().uncheck();
+  await page.waitForTimeout(500);
+  expect(passPosts.length === 2 && passPosts[1].coin === 'AAAUSDT' && passPosts[1].shape === 'daily-3d' && passPosts[1].ticked === false, `the row's tick reached the service with its coin and shape, got ${JSON.stringify(passPosts[1])}`);
 
   // WHAT IS TYPED SURVIVES A REDRAW.
   await page.fill('#cCoins', 'LTCUSDT,XRPUSDT');

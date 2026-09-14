@@ -595,11 +595,37 @@ function feeOrRefuse(raw, where) {
 }
 
 // ---- STAGE 1 --------------------------------------------------------------------
+// THE COINS AND SHAPES TICKED ON COINS, AS UNITS (owner GO NOW! 2026-09-14).
+// A launch used to build its units as every traded coin times every shape
+// asked for. The passers are specific pairs -- five pairs across four shapes
+// on the day this was written -- so each pair builds its own units at its own
+// shape, and nothing else is built.
+function unitsForPassers(pairs, sizes, compare = null) {
+  const units = [];
+  for (const p of pairs || []) {
+    const coin = String(p.coin || '').trim().toUpperCase();
+    if (!coin || !GEOMETRIES[p.geometry]) continue;
+    units.push(...unitsFor([coin], sizes, [p.geometry], compare));
+  }
+  return units;
+}
+
 function startStage1(params) {
   claimOrRefuse(params);
-  const universe = Array.isArray(params.universe) && params.universe.length
-    ? params.universe.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
-    : defaultCoins();
+  // `passers: true` reads the ticked pairs off Coins now; a list of pairs (a
+  // set relaunched from its own record) is used as given, so the record says
+  // what ran and never what Coins happens to say later.
+  const passers = params.passers === true
+    ? require('./coinsrun').passingUnits()
+    : Array.isArray(params.passers)
+      ? params.passers.map((x) => ({ coin: String((x || {}).coin || '').trim().toUpperCase(), geometry: (x || {}).geometry })).filter((x) => x.coin && GEOMETRIES[x.geometry])
+      : null;
+  if (passers && !passers.length) throw new Error('no coin and shape is ticked on Coins — tick some there, or untick "only the coins and shapes ticked on Coins"');
+  const universe = passers
+    ? [...new Set(passers.map((x) => x.coin))]
+    : Array.isArray(params.universe) && params.universe.length
+      ? params.universe.map((s) => String(s).trim().toUpperCase()).filter(Boolean)
+      : defaultCoins();
   // THE COINS EACH TRADED COIN IS READ AGAINST (3.75.0, owner order). Left
   // empty it is the traded coins themselves, which is what every run before
   // this did — so an old set relaunched from its own params comes out
@@ -624,9 +650,11 @@ function startStage1(params) {
     triples: !!(params.sizes || {}).triples,
   };
   if (!sizes.singles && !sizes.doubles && !sizes.triples) throw new Error('tick at least one of singles / doubles / triples');
-  const geometries = params.permuteGeometry
-    ? Object.keys(GEOMETRIES)
-    : [GEOMETRIES[params.geometry] ? params.geometry : 'daily-4d'];
+  const geometries = passers
+    ? [...new Set(passers.map((x) => x.geometry))]
+    : params.permuteGeometry
+      ? Object.keys(GEOMETRIES)
+      : [GEOMETRIES[params.geometry] ? params.geometry : 'daily-4d'];
   // THE 80/20 LAYOUT IS GONE (owner order, 2026-09-08). It kept no held-back
   // slice, so nothing cut from it could be verified; refused by name rather
   // than quietly relaid, so a launch that still asks for it hears why.
@@ -659,7 +687,7 @@ function startStage1(params) {
     trainOn,
     weightCap,
   };
-  const units = unitsFor(universe, sizes, geometries, compare);
+  const units = passers ? unitsForPassers(passers, sizes, compare) : unitsFor(universe, sizes, geometries, compare);
   // WHAT THE RUN ACTUALLY READ, WRITTEN DOWN. A set that recorded an empty box
   // would depend for ever on what empty happened to mean the day it is read
   // back (RULE NINE: a record says what it is, in today's words).
@@ -698,7 +726,7 @@ function startStage1(params) {
     boardNull: { ...BOARD_NULL_NONE },
     // The owner's current campaign name rides on every launch, exactly as it
     // does on the sweeps (owner order, 2026-08-04; carried here 2026-08-27).
-    params: { universe, compare: compareUsed, sizes, geometries, windowLayout, nullN, fee, ...p, campaign: require('./campaign').getCampaign() || null },
+    params: { universe, compare: compareUsed, sizes, geometries, windowLayout, nullN, fee, ...p, passers: passers || null, campaign: require('./campaign').getCampaign() || null },
     seed: seedOf(id),
     plan: { units: units.length, unitList: units },
     perf: {
@@ -8386,7 +8414,7 @@ module.exports = {
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,
-  settingsFor, unitsFor, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
+  settingsFor, unitsFor, unitsForPassers, stage3Declared, countDeclared, shapeCellsFor, blockAxesFor, buildTally, readTally, parseTally, TALLY_V, seedOf, S3_SORTS, deleteSet, childrenOf,
   setSetPicked, pickedOf, unitsChoiceOf, stage3RecordsFor, PICK_CHOICES, PICK_LABELS, stage3UnitsFor,
   setSetNotes, setSetName, nextNames, nextFreeName, nameTaken, setSetSort, setSetFilters, stage2Rows, stage2Ordered, applySort, validateSort, sortLabel, applyFilters, FILTER_DEFS,
   ensureTally, tallyWait, tallyBudgetFor, storeBudgetFor,

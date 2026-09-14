@@ -1279,6 +1279,7 @@ async function swCounts() {
       compare: ($('#swCompare').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
+      passers: !!($('#swPassers') && $('#swPassers').checked),
     };
     if (!body.universe.length) delete body.universe;
     if (!body.compare.length) delete body.compare;
@@ -3112,6 +3113,7 @@ async function drawSweep() {
     <div class="row" style="align-items:flex-end">
       <label class="f" title="the coins this run actually buys and sells. Blank means every coin whose prices are downloaded on this box.">trade coins (blank = all ${swDefaultCoins.length} downloaded)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:16rem"></label>
       <span id="swGrpCompare"><label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means every coin downloaded on this box, the same as the box beside it, so one coin typed into trade coins with nothing here is that coin against everything. Only doubles and triples read this: singles is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing reads it.">compare coins (blank = all ${swDefaultCoins.length} downloaded)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label></span>
+      <label class="c" title="run only the coins and shapes ticked on Coins, in the table of coins and shapes that pass. With it on, trade coins, chunk shape and permute are greyed: the run's units are those pairs, each at its own shape. Compare coins still applies to doubles and triples."><input type="checkbox" id="swPassers"> only the coins and shapes ticked on Coins</label>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
       <label class="c"><input type="checkbox" id="swTriples"> triples</label>
@@ -3264,6 +3266,7 @@ async function drawSweep() {
       compare: ($('#swCompare').value || '').split(',').map((x) => x.trim().toUpperCase()).filter(Boolean),
       sizes: { singles: $('#swSingles').checked, doubles: $('#swDoubles').checked, triples: $('#swTriples').checked },
       geometry: $('#swGeom').value, permuteGeometry: $('#swPermGeom').checked,
+      passers: !!($('#swPassers') && $('#swPassers').checked),
       windowLayout: $('#swLayout').value, allLoaded: $('#swAllData').checked,
       startMonth: $('#swStart').value || undefined, endMonth: $('#swEnd').value || undefined,
       nullN: Number($('#swNull1').value) || 0, fee: Number($('#swFee1').value) / 100, desc: $('#swDesc1').value,
@@ -3379,15 +3382,23 @@ async function drawSweep() {
   // re-asking the counts. Two walks over the same list is two lists again, and
   // the one that fell behind would be the one nobody was looking at.
   restoreSweepForm();
+  // WITH THE PASSERS' TICK ON, the boxes the pairs replace are greyed: the
+  // run's units come from Coins, not from them
+  const swPassersGrey = () => {
+    const on = !!($('#swPassers') && $('#swPassers').checked);
+    for (const id of ['swUni', 'swGeom', 'swPermGeom']) if ($(`#${id}`)) $(`#${id}`).disabled = on;
+  };
   for (const el of sweepControls()) {
     const onChange = () => {
       rememberSweepForm();
       swProvenance();
+      if (el.id === 'swPassers') swPassersGrey();
       if (!NO_COUNT.has(el.id)) swCountsSoon();
     };
     el.addEventListener('change', onChange);
     el.addEventListener('input', onChange);
   }
+  swPassersGrey();
   swProgress();
   swCounts();
   swProvenance();
@@ -7989,6 +8000,52 @@ function cSignalLine(sig, band) {
     ${cSweepStrip(sig)}</div>`;
 }
 
+// THE PASSERS (owner GO NOW! 2026-09-14): every coin and shape whose check
+// matched its plateau in at most `bar` of the deals, with the numbers that say
+// what it is worth, read at its own sweet spot; one tick per row, and the
+// ticked rows are what Sweep runs when its own tick is on. The bar is the
+// owner's number and sits in the sentence. Every sentence carries a tag, for
+// the word list (see cRatioWords).
+function cLeanWord(v) {
+  return v > 0 ? `<span>up</span>` : v < 0 ? `<span>down</span>` : `<span>—</span>`;
+}
+function cPassersPanel(pass) {
+  if (!pass) return '';
+  const rows = pass.rows || [];
+  const head = `<p class="note"><b>coins and shapes that pass</b> — the check with the link cut found a plateau at least this strong in at most
+      <input id="cPassBar" type="number" min="0" max="${pass.trials}" step="1" value="${esc(String(pass.bar))}" style="width:4rem" title="the bar: a coin and shape passes when, of the deals with the link cut, at most this many produced a plateau at least as strong as the real one. 0 is the strictest; the default is ${pass.default}. It has one home, beside the band."> of ${pass.trials} deals.
+      Ticked rows are what Sweep runs when its own tick is on.</p>`;
+  if (!rows.length) return `<div class="panel">${head}<p class="note">no coin and shape passes at this bar</p></div>`;
+  return `<div class="panel">${head}
+    <table class="cgap cpassers"><thead><tr>
+      <th></th>
+      <th title="the coin">coin</th>
+      <th title="the chunk shape whose reading passed">chunk shape</th>
+      <th title="of the deals with the link cut, how many produced a plateau at least as strong as the real one — 0 is as good as it gets">check</th>
+      <th title="the band inside the plateau that keeps the most edge per decision; the numbers on this row are read there">sweet spot band</th>
+      <th title="the share of decisions that band still calls, the rest sitting out">called</th>
+      <th title="what the colour-seeing trader keeps per called trade beyond the blind one, as a percentage of price">edge per called trade</th>
+      <th title="the same edge spread over every decision of the stretch, called or not">per decision</th>
+      <th title="the edge over the usual size of that number when the colours carry nothing">edge over chance</th>
+      <th title="which way the trade leans after a window that rose, learned on train">after rising</th>
+      <th title="which way the trade leans after a window that fell, learned on train">after falling</th>
+      <th title="the one-word traits: direction, holding, carrier">traits</th>
+      <th title="how many called decisions of test and held the edge was judged on">judged</th>
+      <th title="about how many trades a month that share called comes to">trades a month</th>
+    </tr></thead>
+    <tbody>${rows.map((r) => `<tr>
+      <td><input type="checkbox" class="cpass" data-coin="${esc(r.coin)}" data-shape="${esc(r.geometry)}"${r.ticked ? ' checked' : ''} title="ticked: Sweep runs ${esc(r.coin)} at ${esc(r.shape)} when its own tick is on"></td>
+      <td>${esc(r.coin)}</td><td>${esc(r.shape)}</td><td>${r.check.asStrong} of ${r.check.trials}</td><td>${r.band}</td>
+      <td>${r.called == null ? '—' : `${(r.called * 100).toFixed(0)}%`}</td>
+      <td>${cMove(r.edge)}</td><td>${r.perDecision == null ? '—' : `${r.perDecision > 0 ? '+' : ''}${Number(r.perDecision).toFixed(3)}%`}</td>
+      <td>${r.ratio == null ? '—' : `${cNum(r.ratio, 2)}×`}</td>
+      <td>${cLeanWord(r.lean && r.lean.rising)}</td><td>${cLeanWord(r.lean && r.lean.falling)}</td>
+      <td>${(r.traits || []).map((w) => `<span class="ctrait">${esc(w)}</span>`).join(' ')}</td>
+      <td>${r.judged == null ? '—' : r.judged}</td><td>${r.tradesAMonth == null ? '—' : cNum(r.tradesAMonth, 1)}</td>
+    </tr>`).join('')}</tbody></table>
+  </div>`;
+}
+
 // ONE BAR: its heading, the division above, the bar itself, the division below,
 // and the numbers. The bar is a canvas painted after the markup lands.
 function cShapeBlock(coin, shape, s, layouts) {
@@ -8092,6 +8149,7 @@ async function drawCoins() {
     ${unreadable.length ? `<p class="note warn">${unreadable.length} file(s) on disk this release cannot draw: ${unreadable.map((u) => `<b>${esc(u.coin)}</b> — ${esc(u.why)}`).join('; ')}</p>
     <div class="row"><button id="cClean" class="danger"${off}>Remove these files</button><span id="cCleanOut" class="muted">removes exactly the ${unreadable.length} file(s) named above and nothing else</span></div>` : ''}
   </div>
+  ${cPassersPanel(d && d.passers)}
   ${!recs.length ? `<div class="panel"><p class="note">no coin has been read${unreadable.length ? ' that this release can draw' : ''} — press <b>Read these coins</b> above</p></div>` : recs.map((r) => {
     const grew = behind(r);
     const p = r.provenance || {};
@@ -8111,6 +8169,26 @@ async function drawCoins() {
   }
   // THE BAND IS SET THE MOMENT IT CHANGES and the bars recolour. It is not part
   // of a reading, so it is never disabled while one runs.
+  // THE BAR AND THE ROW TICKS ARE SET THE MOMENT THEY CHANGE, through the
+  // passers' one door; the screen redraws from what the service now holds.
+  if ($('#cPassBar')) {
+    $('#cPassBar').onchange = async () => {
+      try { await post('api/coins/passers', { bar: Number($('#cPassBar').value) }); } catch (err) {
+        $('#cOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
+        return;
+      }
+      draw();
+    };
+  }
+  for (const el of document.querySelectorAll('#view input.cpass')) {
+    el.onchange = async () => {
+      try { await post('api/coins/passers', { coin: el.dataset.coin, shape: el.dataset.shape, ticked: el.checked }); } catch (err) {
+        $('#cOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
+        return;
+      }
+      draw();
+    };
+  }
   // THE TICK IS SET THE MOMENT IT CHANGES, like the band: one door, one home.
   if ($('#cAuto')) {
     $('#cAuto').onchange = async () => {
