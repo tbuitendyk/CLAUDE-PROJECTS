@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "0e697e8080baa07fa5ec7f0c24fabd744ece9bf8",
-  "subject": "3.137.0: a page older than the box is refused and reloads itself",
-  "capturedAt": "2026-09-14T22:14:33Z",
+  "commit": "e8a2345f48011933066bff73c80bcbc7db1ad440",
+  "subject": "3.138.0: with all units together showing, the press asks before pricing every coin and shape",
+  "capturedAt": "2026-09-14T22:32:24Z",
   "files": {
     "public/construct.js": {
-      "sha256": "6908b61602cded9ccb3ba32cb2b02b935f05fe9716cbbbdeaeb5f51f96d92a57",
-      "bytes": 606816
+      "sha256": "ec80c620ea86ee85b308d64ceb2cb8cd682273a9a055d6c188a976a791b66a54",
+      "bytes": 607984
     },
     "public/help-content.js": {
-      "sha256": "dd7482acbb65836b7c8965b944d07cfc7d97516904bc59d7ae5310cbb3de8d1a",
-      "bytes": 109770
+      "sha256": "54b44a4a8a65dd4f059a0b63c2b1971e6f69b92ce0f57cd8861a98e288bd1666",
+      "bytes": 109867
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
