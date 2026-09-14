@@ -1,12 +1,12 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. NOT every served file can be fingerprinted this way: the server stamps a cache marker into construct.html as it serves it (server.js, so a returning browser cannot keep a stale script), which makes its served bytes 22 longer than its source by design. Hashing it would be a check that can only ever fail, so it is deliberately not listed here \u2014 it carries no screen labels either, they are all in construct.js. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "5ef215bd7c0f6e704e00e6a0746a4a9cf9fadcbe",
-  "subject": "3.131.1: a one-unit set can be walked from Home; the bar box named for what it is",
-  "capturedAt": "2026-09-14T07:51:15Z",
+  "commit": "ccbcaa016d4ed8b4495f729c26b755e120eecf66",
+  "subject": "3.132.0: a pick on Boards holds its own box still; the rebuild prices each unit in parts and counts settings",
+  "capturedAt": "2026-09-14T08:18:03Z",
   "files": {
     "public/construct.js": {
-      "sha256": "26c9b28421d1608931cda0ec0f3783e5d99ecdb23306d9e2bedcb393a5751a06",
-      "bytes": 601134
+      "sha256": "a829aa0bf5e05563b68e0c79efa923e7658b38e72f80568ca7693afe1214fcca",
+      "bytes": 602711
     },
     "public/help-content.js": {
       "sha256": "44c81dbfc59deb85d4f70f81c9a53c75ed35b57eb0317162d7cdca25219fe21c",
