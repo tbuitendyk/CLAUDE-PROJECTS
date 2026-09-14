@@ -732,7 +732,7 @@ const GUARDS = [
   [path.join(ROOT, 'lib', 'stages.js'), "  if (x && x.v === 3) x = migrateFunnelRichV3(String(id), x);", "",
     'aKilledPrepPicksUpWhereItStoppedAndAThirdShapeFileMovesToTheFourth', "the owner's finished prep reads as absent and twenty minutes are asked for again"],
   [path.join(ROOT, 'lib', 'stages.js'), "  out.unitsDone = t ? richSetOf(String(id), t, out).unitsDone : unitsDoneWithoutTables(out);", "  out.unitsDone = out.unitsTotal;",
-    'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', 'a half-prepared set reads as whole on the blend'],
+    'aUnitBoardRowTakesTheUnitsOwnRebuiltNumbers', 'a half-prepared set reads as whole on the blend'],
   // ---- THE LIST SAYS THE COIN AND SHAPE ONCE (3.110.1) ----
   [path.join(ROOT, 'public', 'construct.js'), "  const say = !c.mine && who && !String(c.name || '').includes(who);",
     "  const say = !c.mine;",
