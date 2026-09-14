@@ -28,6 +28,15 @@ app.use(express.json({ limit: '256kb' }));
 // only symptom was a screen that never arrived. Installed before the routes so
 // it covers every one of them, including the next one somebody writes.
 require('./lib/payload').installPayloadGuard(app);
+// A PAGE OLDER THAN THE BOX IS REFUSED (3.137.0) -- see lib/stalepage.js. Before
+// every route, so it covers the next one somebody writes; the release is read
+// once, because this process IS the release and a deploy restarts it.
+const stalepage = require('./lib/stalepage');
+const RELEASE = require('./package.json').version;
+app.use('/api', (req, res, next) => {
+  const no = stalepage.refusal(req.get(stalepage.HEADER), RELEASE);
+  return no ? res.status(no.code).json(no.body) : next();
+});
 // CACHE MARKER = THE RELEASE. construct.html asked for construct.js?v=1 —
 // a marker fixed at 1 forever. Browsers cache by full URL, so the moment anyone
 // lengthens max-age (it is 0 today, which is the only reason this has not bitten)
@@ -72,7 +81,9 @@ app.get(['/', '/setup.html', '/construct.html', '/trade.html'], (req, res, next)
     // nothing and a cached copy would survive a deploy. Say no-cache outright
     // rather than relying on a mechanism that does not reach them.
     res.set('Cache-Control', 'no-cache');
-    res.type('html').send(html.replace(/([\w.-]+\.js)\?v=[\w.-]+/g, (m0, jsName) => `${jsName}?v=${stamp(jsName)}`));
+    // and the page carries the release it was served under (3.137.0), so an
+    // ask from it after the next deploy is refused and it reloads itself
+    res.type('html').send(stalepage.stamp(html.replace(/([\w.-]+\.js)\?v=[\w.-]+/g, (m0, jsName) => `${jsName}?v=${stamp(jsName)}`), RELEASE));
   });
 });
 app.use(express.static(path.join(__dirname, 'public')));

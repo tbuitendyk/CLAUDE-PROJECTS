@@ -1634,6 +1634,17 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', "a pass over one coin and shape wipes every other unit's numbers under the settings it touches"],
   [path.join(ROOT, 'public', 'construct.js'), "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { unit: unitNow }, WHERE_FUNNEL);", "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);",
     'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'the press names no board, so it prices every coin and shape whatever is chosen under coin'],
+  // ---- A PAGE OLDER THAN THE BOX IS REFUSED (3.137.0) ----
+  [path.join(ROOT, 'lib', 'stalepage.js'), "  if (!seen || String(seen) === String(here)) return null;", '  if (!seen || true) return null;',
+    'aPageStampedWithAnotherReleaseIsRefusedAndOneWithNoStampIsNot', 'a page from the previous release is served, and asks the new engine the old question'],
+  [path.join(ROOT, 'server.js'), '  return no ? res.status(no.code).json(no.body) : next();', '  return next();',
+    'theEngineRefusesBeforeEveryRouteAndStampsEveryPageItServes', 'the refusal is worked out and then ignored'],
+  [path.join(ROOT, 'public', 'construct.js'), "  if (!j || !j.stalePage) return false;\n  window.location.reload();", '  if (!j || !j.stalePage) return false;',
+    'everyAskFromEveryPageCarriesTheStampAndThePageReloadsWhenRefused', 'Construct is refused and sits on the refusal instead of reloading'],
+  [path.join(ROOT, 'public', 'trade.html'), "  if (!j || !j.stalePage) return false;\n  window.location.reload();", '  if (!j || !j.stalePage) return false;',
+    'everyAskFromEveryPageCarriesTheStampAndThePageReloadsWhenRefused', 'Trade is refused and sits on the refusal instead of reloading'],
+  [path.join(ROOT, 'public', 'construct.js'), "  const r = await fetch(p, { headers: releaseHeaders() });", '  const r = await fetch(p);',
+    'everyAskFromEveryPageCarriesTheStampAndThePageReloadsWhenRefused', 'a read from Construct carries no stamp, so an old page reads the new engine unrefused'],
   // ---- ONE PRESS, AND IT FOLLOWS WHAT IS CHOSEN UNDER coin (3.136.0) ----
   [path.join(ROOT, 'public', 'construct.js'), "      const unitNow = blend ? 'all' : d.unit;", "      const unitNow = 'all';",
     'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'the press prices every coin and shape with one chosen under coin -- the fault the owner reported twice'],

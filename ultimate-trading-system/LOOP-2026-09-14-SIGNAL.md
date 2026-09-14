@@ -790,3 +790,25 @@ The website deploy also showed the box's live vhost carried
 dropped them. Put into the branch and deployed again the same minute; the
 box is back to what it had plus the two routes, and the branch now matches
 the box.
+
+## T. A page older than the box is refused and reloads itself — owner GO NOW! 2026-09-14 (3.137.0)
+
+The owner pressed `Work out the test history numbers` again on 3.136.0 and
+got "2,100 of 103,028 settings across 15 coins and shapes". The box was
+asked, not the page: a read-only probe (`uts-rebuild-asked.sh`, vps-access)
+printed the running rebuild's status — `unit: None`, fifteen coins and
+shapes — and its token's stamp, 22:02:28, 88 seconds after the 3.136.0
+engine came back at 22:01:04. The 3.136.0 page always names a board. The
+press came from a page loaded before the deploy, whose copy beside `Worth
+walking?` still sent nothing. Twice before this evening "reload Construct"
+was given as advice; advice is not a mechanism.
+
+Now the engine stamps every page it serves with its release (a meta line in
+the head, put there by the same door that stamps the script markers), every
+ask from Construct and Trade carries the stamp back, an ask stamped with
+another release is refused with one answer before any route, and the page
+reloads itself on that answer. An ask with no stamp — a script, a probe,
+the always-up program's copy of Setup — is never refused. Second digit.
+
+The whole-set rebuild that was running was cut short by the deploy, at the
+owner's word ("just deploy over top already").

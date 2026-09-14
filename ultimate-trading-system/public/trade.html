@@ -172,8 +172,21 @@ const $ = (s,r=document)=>r.querySelector(s);
 // rendered as "No greenlighted configs yet" — telling the operator their configs
 // were gone (found by fault injection, 2026-08-18).
 let fetchFailures=[];
+// THE RELEASE THIS PAGE WAS SERVED UNDER (3.137.0), sent back with every ask,
+// so a page older than the box is refused by the engine and reloads itself
+// rather than asking the new engine the old question -- see lib/stalepage.js.
+const PAGE_RELEASE = (document.querySelector('meta[name="uts-release"]') || {}).content || '';
+const releaseHeaders = () => (PAGE_RELEASE ? { 'X-UTS-Release': PAGE_RELEASE } : {});
+const stalePage = async (r) => {
+  if (r.status !== 409) return false;
+  const j = await r.clone().json().catch(() => null);
+  if (!j || !j.stalePage) return false;
+  window.location.reload();
+  return true;
+};
 const api = async (p)=>{
-  const r = await fetch(p);
+  const r = await fetch(p, { headers: releaseHeaders() });
+  if (await stalePage(r)) throw new Error(`${p}: this page is older than the box and is reloading`);
   if(!r.ok){ let m=`HTTP ${r.status}`; try{const j=await r.json(); if(j&&j.error)m=j.error;}catch(_){}
     throw new Error(`${p}: ${m}`); }
   return r.json();
@@ -186,7 +199,8 @@ const apiOr = async (p, fallback)=>{
 async function post(p, body){
   // control action: a non-2xx MUST surface (QC-115), never a silent no-op.
   try{
-    const r = await fetch(p,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body||{})});
+    const r = await fetch(p,{method:'POST',headers:{'Content-Type':'application/json', ...releaseHeaders()},body:JSON.stringify(body||{})});
+    if (await stalePage(r)) return null;
     if(!r.ok){ let m=`HTTP ${r.status}`; try{const j=await r.json(); if(j&&j.error)m=j.error;}catch(_){}
       alert('Action FAILED — nothing changed.\n\n'+m); return null; }
     return await r.json();

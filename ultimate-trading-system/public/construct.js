@@ -9,8 +9,21 @@ const $ = (s, r = document) => r.querySelector(s);
 // empty list, and an OUTAGE rendered as "nothing here yet". On the Trading tab
 // that read "No greenlighted configs yet" while the service was down — telling
 // the operator their configs were gone (found by fault injection, 2026-08-18).
+// THE RELEASE THIS PAGE WAS SERVED UNDER (3.137.0), sent back with every ask,
+// so a page older than the box is refused by the engine and reloads itself
+// rather than asking the new engine the old question -- see lib/stalepage.js.
+const PAGE_RELEASE = (document.querySelector('meta[name="uts-release"]') || {}).content || '';
+const releaseHeaders = () => (PAGE_RELEASE ? { 'X-UTS-Release': PAGE_RELEASE } : {});
+const stalePage = async (r) => {
+  if (r.status !== 409) return false;
+  const j = await r.clone().json().catch(() => null);
+  if (!j || !j.stalePage) return false;
+  window.location.reload();
+  return true;
+};
 const api = async (p) => {
-  const r = await fetch(p);
+  const r = await fetch(p, { headers: releaseHeaders() });
+  if (await stalePage(r)) throw new Error(`${p}: this page is older than the box and is reloading`);
   if (!r.ok) {
     let m = `HTTP ${r.status}`;
     try { const j = await r.json(); if (j && j.error) m = j.error; } catch (_) { /* no body */ }
@@ -161,7 +174,8 @@ async function loadVocabulary() {
 }
 
 async function post(p, body) {
-  const r = await fetch(p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}) });
+  const r = await fetch(p, { method: 'POST', headers: { 'Content-Type': 'application/json', ...releaseHeaders() }, body: JSON.stringify(body || {}) });
+  if (await stalePage(r)) throw new Error(`${p}: this page is older than the box and is reloading`);
   const j = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(j.error || `HTTP ${r.status}`);
   return j;
