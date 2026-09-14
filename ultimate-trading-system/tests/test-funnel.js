@@ -4464,6 +4464,13 @@ module.exports.theStepSixPressWorksOutOnlyTheCoinAndShapeTheWalkIsOn = function 
   const rich = { unitsTotal: 2, settings: { 'q x': { units: { [kA]: {}, [kB]: {} } }, 'q y': { units: { [kA]: {}, [kB]: {} } }, 'q z': { units: { [kA]: {} } } } };
   assert.deepStrictEqual(stages.richSetOf(null, t, rich), { units: 2, unitsDone: 1 }, 'a coin and shape with one setting short counts as done, or a whole one does not');
   assert.deepStrictEqual(stages.richSetOf(null, t, null), { units: 2, unitsDone: 0 }, 'no file counts as done');
+  // a coin and shape whose board size the tables do not say is never counted as
+  // done, however many entries the file holds for it -- a size it does not know
+  // is not a size of zero
+  const t2 = { coins: [...t.coins, { trade: 'CCC', ctx1: null, ctx2: null, geometry: 'daily-1d' }] };
+  const kC = 'CCC|||daily-1d';
+  assert.deepStrictEqual(stages.richSetOf(null, t2, { unitsTotal: 3, settings: { 'q x': { units: { [kA]: {}, [kB]: {}, [kC]: {} } } } }),
+    { units: 3, unitsDone: 0 }, 'a coin and shape whose board size is not known counts as done');
   assert.deepStrictEqual(stages.richSetOf(null, null, rich), { units: 0, unitsDone: 0 }, 'no tables counts as something');
   const read = s.slice(s.indexOf('async function funnelRead('), s.indexOf('\nfunction sliceRowsFor('));
   assert.ok(read.includes('const richSet = richSetOf(String(id), t, rich);') && read.includes('    richOn,\n    richSet,\n'), 'the read does not carry the every-coin-and-shape count');
