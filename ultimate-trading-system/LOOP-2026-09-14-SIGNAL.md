@@ -514,6 +514,28 @@ see on screen."* Second digit: a new control and new behaviour.
   value; the board rows carry it (`off` on every record from before). Verify,
   History and the rest read the rows as they are.
 
+**Reached the environment**: deployed febac61 → f67a193 (3.130.0),
+`healthz OK`, the box idle before it; `SERVED.json` captured and the word
+lists regenerated from it (the Sweep list gains `Confirmation`, `confirm`,
+`confirmed ×`, `unconfirmed ×` and the choices `confirmed only` and `sized`;
+the Boards list gains `confirm`, `verdict`, `sized` and the four words `adds
+nothing`, `just leverage`, `adds value`, `better signal`; the Funnel's dial
+list gains `confirm`). Eighteen guards on this release: sixteen deleted in
+turn and caught on the first pass; two were aimed at lines that had moved
+after they were written (the passers' lean gained its yardstick; the ticked
+passers read the memoised list) and were re-aimed and caught on the rerun.
+The records on the box are untouched; every stage 3 set's tables rebuild
+once, in the background, when Boards next opens them (I10).
+
+**Two things found beside the work and left standing (RULE ZERO).** Two
+older guards on `theStageThreeCountIsTheLaunchsFoldWithoutTheSettings`
+(3.46.3 and 3.52.0) point at the count's key line as it read before 3.72.0
+put the hold hours into it, so they have been aimed at nothing since then;
+re-aiming them is a two-string edit in `tests/mutate-servicecontrol.js`,
+awaiting a yes. And `tests/ui-funnel.js` fails at its first wait (the step 1
+table never draws in the harness) on the previous commit exactly as on this
+one, so it is not this release's; not touched.
+
 **Hunted on the instrument, before the owner sees a number.** (a) A trade
 at twice the size being exactly twice the money rests on the fee being a
 share of the position — it is (`lib/paper.js`, per leg), and the fixture
