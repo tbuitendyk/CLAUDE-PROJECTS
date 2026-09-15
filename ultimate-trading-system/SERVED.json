@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "b81390cb3377e6352187397365da42dbcee7860b",
-  "subject": "3.147.2: the mover of 3.147.0 is deleted whole -- the box has been through it, measured (RULE TEN)",
-  "capturedAt": "2026-09-15T20:58:34Z",
+  "commit": "cfac4511308dac2e31bfdc34d8952be2913f4e0f",
+  "subject": "3.148.0: the reserve board -- every setting of a unit priced on the reserve window and kept beside the stage 3 set, read by every Reserve reading; the press, the dropped settings, the other units and the ride price nothing",
+  "capturedAt": "2026-09-15T21:33:18Z",
   "files": {
     "public/construct.js": {
-      "sha256": "bb5f3bb21a9c3297a2a8e231fda4c94cb6a749ecd1b79113c1536c5018f0b4ff",
-      "bytes": 625650
+      "sha256": "fde4fbf9b790f9331b2e603249372a5d0d8a7440d82b972c872c1f58855b297e",
+      "bytes": 633144
     },
     "public/help-content.js": {
-      "sha256": "ccd62cfed873cbb299fe38b421f3f6f345e1ca47f98be85052624636632e0188",
-      "bytes": 116528
+      "sha256": "ef90fb64f014ad9e1cd5582c286f8da1e275646c2ea3990beefb2ddb13dfe7e4",
+      "bytes": 118423
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."

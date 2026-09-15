@@ -184,8 +184,10 @@ module.exports = {
       }
       const byMi0 = modelRows.slice().sort((a, b) => a.mi - b.mi);
       assert.strictEqual(board.window.forecastHash, sw.forecastHashOf(byMi0.map((m) => sw.predictMember(m.saved, { model: m.model, view: m.view }, un.chunks, combo, geo))), 'the board was priced on the saved models\' forecasts');
-      const keys = [...new Set(unitBoard.map((r) => `${r.weekdaysOnly ? 'wk' : 'all'}|${Number(r.tHours)}`))];
-      for (const k of keys) assert.ok(board.controls[k] && board.controls[k].alwaysLong != null, `the four comparisons are on the board at hold length ${k}`);
+      // the four comparisons at the survivors' own hold lengths (a hold length the short reserve window cannot price is unknown, and unknown never passes)
+      const survivorKeys = [...new Set(heldSet.survivors.map((sv) => unitBoard.find((r) => r.label === sv.label)).filter(Boolean).map((r) => `${r.weekdaysOnly ? 'wk' : 'all'}|${Number(r.tHours)}`))];
+      assert.ok(survivorKeys.length > 0);
+      for (const k of survivorKeys) assert.ok(board.controls[k] && board.controls[k].alwaysLong != null, `the four comparisons are on the board at the survivors' hold length ${k}`);
       // H2.3: the survivors' money on the board is, to the cent, what the release-1 path prices for the same survivors -- same members, same window, same fee
       const ruleDoc = stages.getSet(c.cut.id);
       const join = await stages.funnelVerifyJoin(ruleDoc);
