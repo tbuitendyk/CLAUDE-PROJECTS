@@ -7801,6 +7801,8 @@ async function stage4GreenlightSource(setId, asked = {}) {
     gate,
     unit: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size, geometry: rec.geometry },
     survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)), halfLife: hl ? hl.halfLife : null },
+    // THE STOP AND THE LADDER AS THE SET FROZE THEM AT ITS PRESS (3.149.0): the survivor's own choice on record, or none
+    stop: ((doc.stopChoices || {})[survivor.label]) ? JSON.parse(JSON.stringify(doc.stopChoices[survivor.label])) : null,
     pick,
     survivors: rows.map((r, i) => { const d = S4.depthOf(r, rule); const h = heldOf(r.label); const x = reserveRowOf(r.label); const y = hlOf(r.label); return { index: i, label: r.label, worst: d.worst, mean: d.mean, held: h ? h.money : null, trades: h ? h.trades : null, reserve: x ? x.money : null, halfLife: y ? y.halfLife : null, retrained: y && y.money ? y.money.judge : null }; }),
     members: (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view })),
@@ -7816,6 +7818,67 @@ async function stage4GreenlightSource(setId, asked = {}) {
   };
 }
 // the screen's dry read: what would be greenlighted, and why it could not be, in words
+// ---- THE PICTURE THROUGH EVERY PERIOD (3.149.0, VERIFY-DESIGN.md Part 9 release 4) ----
+//
+// For a held set or a reserve set: the rule's money on train, test, held and
+// reserve, each beside the four comparisons at the survivors' own hold
+// lengths, and the same lines per survivor. Everything is READ -- off the
+// records the rule stands on (test), the held set (held; the one a reserve
+// set stands on), the reserve set (reserve), the rebuilt numbers beside the
+// stage 3 set (the four on the test window) and the capture on Tune (the
+// training window, where nothing to beat is kept). It prices nothing and it
+// counts as no look. The four stretches are named train, test, held and
+// reserve, the owner's words.
+const STRETCH_NAMES = ['train', 'test', 'held', 'reserve'];
+async function pictureOf(doc) {
+  const V = require('./funnelverify');
+  const rule = isJudgeSet(doc) ? getSet((doc.from || {}).id) : doc;
+  const heldSet = doc.kind === 'held' ? doc : (doc.standsOn ? getSet(doc.standsOn.id) : null);
+  const reserveSet = doc.kind === 'reserve' ? doc : null;
+  const out = { stretches: STRETCH_NAMES.slice(), priced: false, rule: {}, survivors: [], why: null };
+  if (!rule) { out.why = 'the rule this set was read from is gone'; return out; }
+  let join = null;
+  try { join = await funnelVerifyJoin(rule); } catch (err) { out.why = err.message; }
+  const rows = join ? join.rows : [];
+  const labels = (doc.survivors || rule.survivors || []).map((x) => x.label);
+  const readOf = (h) => ({ money: h.real, trades: h.trades, of: h.of, missing: h.missing, comparisons: h.comparisons, clearing: h.own ? h.own.clearing : null, survivors: h.own ? h.own.survivors : null, bar: h.own ? h.own.bar : null });
+  const blockRead = (set) => {
+    const b = set && set.block ? set.block : null;
+    if (!b || !b.read) return null;
+    return { ...readOf(b.read), set: set.name, at: b.at, release: b.release || null, pass: !!(b.verdict && b.verdict.pass), look: b.look ?? null, window: b.window || null };
+  };
+  // TEST: the survivors' test money off the records, the four on the test window off the rebuilt numbers beside the stage 3 set
+  if (join) {
+    const rich = readFunnelRich(join.parent.id);
+    const tc = rich && rich.testControls && doc.unit ? rich.testControls[doc.unit] || null : null;
+    const controls = tc ? controlsOf({ controls: { units: { [doc.unit]: tc } } }, doc.unit, rows.map(controlKeyOf))
+      : { known: false, why: 'the four on the test window are not kept beside this set yet — open the rule on the Funnel and work out the missing numbers' };
+    const testRows = rows.map((r) => ({ ...r, [V.HELD]: r.avgTest, avgTrades: r.testTrades ?? null, avgVsLong: null }));
+    out.rule.test = readOf(V.heldBackRead(testRows, controls, null));
+  } else out.rule.test = { why: out.why };
+  // HELD and RESERVE, off the sets' own blocks
+  out.rule.held = blockRead(heldSet) || { why: doc.kind === 'reserve' ? 'the held set this reserve set stands on is gone' : 'this set carries no read' };
+  const r = reserveOf(rule);
+  out.rule.reserve = blockRead(reserveSet) || { why: !r.keeps ? HELD_ALONE : 'no reserve set here — this is a held set; the reserve window is read on Reserve' };
+  // TRAIN: off the capture's training entries when the rule has one; nothing to beat is kept on the training window
+  const cap = readCapture(rule.id);
+  const trainOf = (label) => {
+    const sv = cap ? (cap.survivors || []).find((x) => x.label === label) : null;
+    if (!sv || !sv.entries || !Array.isArray(sv.entries.train)) return null;
+    return { money: sv.entries.train.reduce((a, e) => a + (Number(e.usd) || 0), 0), trades: sv.entries.train.length };
+  };
+  const trains = labels.map(trainOf).filter(Boolean);
+  out.rule.train = trains.length
+    ? { money: trains.reduce((a, x) => a + x.money, 0) / trains.length, trades: trains.reduce((a, x) => a + x.trades, 0) / trains.length, of: trains.length, missing: labels.length - trains.length, comparisons: { known: false, why: 'nothing to beat is kept on the training window' }, clearing: null, survivors: null, capturedAt: cap.at || null }
+    : { why: cap ? 'the capture on Tune holds no training entries for these survivors' : 'no capture on Tune yet — the training window is read off the capture' };
+  // ONE SURVIVOR AT A TIME: the same lines for each, by the name the board gives it
+  const rowOf = (set, label) => { const b = set && set.block ? set.block : null; const x = b ? ((b.survivors || {}).rows || []).find((y) => y.label === label) : null; const o = b && b.read && b.read.own ? (b.read.own.rows || []).find((y) => y.label === label) : null; return x ? { money: x.money, trades: x.trades, vsLong: x.vsLong ?? null, clears: o ? o.clears : null, four: o ? o.four : null, beats: o ? o.beats : null } : null; };
+  out.survivors = labels.map((L) => {
+    const rr = rows.find((x) => x.label === L) || null;
+    return { label: L, train: trainOf(L), test: rr ? { money: rr.avgTest, trades: rr.testTrades ?? null } : null, held: rowOf(heldSet, L), reserve: rowOf(reserveSet, L) };
+  });
+  return out;
+}
 async function stage4GreenlightDry(setId) {
   const gl = require('./live/greenlight');
   const doc = getSet(setId);
@@ -7835,6 +7898,8 @@ async function stage4GreenlightDry(setId) {
     depthPick: src ? { label: src.pick.label, worst: src.pick.worst, mean: src.pick.mean } : null,
     survivors: src ? src.survivors : [],
     refused,
+    // the picture through every period (3.149.0): read, never priced, and drawn whatever the standing
+    picture: await pictureOf(doc).catch((err) => ({ stretches: STRETCH_NAMES.slice(), priced: false, rule: {}, survivors: [], why: String((err && err.message) || err) })),
   };
 }
 
@@ -9408,7 +9473,7 @@ module.exports = {
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
-  stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
+  stage4GreenlightSource, stage4GreenlightDry, pictureOf, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
   stopChoiceOf, setStopChoice,

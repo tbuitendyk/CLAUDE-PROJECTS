@@ -1292,6 +1292,43 @@ module.exports.theReserveBoardIsReadOntoRowsAndIsOnReserveWithItsPressesAndRoute
   assert.ok(/reserveBoardStart\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'the press takes which');
 };
 
+// THE PICTURE THROUGH EVERY PERIOD (3.149.0, VERIFY-DESIGN.md Part 9 release
+// 4): read off the held set, the reserve set and the records, priced by
+// nothing; the four stretches named train, test, held and reserve; the same
+// lines per survivor; the frozen stop choice rides on the greenlight source.
+module.exports.thePictureIsReadOffTheSetsAndPricesNothing = async function () {
+  const f = await fixture();
+  try {
+    const doc = await cutOn(f);
+    await pressed(doc.id, { barPct: 100 });
+    const held = setsOf(doc.id)[0];
+    rewrite(held.id, (on) => { on.block.verdict.pass = true; on.block.release = require('../package.json').version; });
+    stages.writeReserveBoard(f.id, doc.unit, handBoard(10, 1));
+    await pressed(doc.id, {}, 'reserve');
+    const rs = setsOf(doc.id, 'reserve')[0];
+    const dry = await stages.stage4GreenlightDry(rs.id);
+    const p = dry.picture;
+    assert.deepStrictEqual(p.stretches, ['train', 'test', 'held', 'reserve']);
+    assert.deepStrictEqual({ priced: p.priced, test: p.rule.test.money, held: p.rule.held.money, heldSet: p.rule.held.set, reserve: p.rule.reserve.money, reserveOf: p.rule.reserve.of, train: p.rule.train.why },
+      { priced: false, test: 10, held: 5, heldSet: held.name, reserve: 7, reserveOf: 2, train: 'no capture on Tune yet — the training window is read off the capture' });
+    assert.deepStrictEqual(p.survivors.map((x) => [x.label, x.test.money, x.held.money, x.reserve.money, x.train]), doc.survivors.map((x) => [x.label, 10, 5, 7, null]));
+    assert.ok(p.rule.test.comparisons && 'known' in p.rule.test.comparisons, 'the four on the test window are read, or said to be unknown');
+    // a held set's picture says the reserve is read on Reserve
+    const hd = await stages.stage4GreenlightDry(held.id);
+    assert.ok(/read on Reserve/.test(hd.picture.rule.reserve.why), hd.picture.rule.reserve.why);
+    // the frozen stop rides on the source, off the set (none chosen here)
+    rewrite(rs.id, (on) => { on.block.verdict.pass = true; });
+    const source = await stages.stage4GreenlightSource(rs.id, { pick: 'depth' });
+    assert.ok('stop' in source && source.stop === null, 'the stop choice is carried, none chosen');
+    // the page: the picture under the set, the stretches named, the drill-down drawn from the pick
+    const ui = src('public/construct.js');
+    assert.ok(/^function glPictureHtml\(/m.test(ui) && /^function glOneHtml\(/m.test(ui), 'top-level helpers');
+    assert.ok(ui.includes('${glPictureHtml(d)}'), 'drawn under the chosen set');
+    for (const w of ['<span>train</span>', '<span>test</span>', '<span>held</span>', '<span>reserve</span>', '<span>The picture through every period</span>']) assert.ok(ui.includes(w), `${w} is on the page`);
+    assert.ok(/pk\.addEventListener\('change', drawOne\)/.test(ui), 'the pick draws the one survivor');
+  } finally { f.cleanup(); }
+};
+
 // THE RESERVE IS THE SEALED WINDOW OR NOTHING (3.147.0, VERIFY-DESIGN.md Part
 // 9). A 61/13/13/13 rule keeps a reserve -- the sealed window, readable while
 // the seal is intact on the unit; a 70/15/15 rule keeps none and is held

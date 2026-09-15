@@ -997,6 +997,8 @@ window.HELP = {
   greenlight: {
     title: 'Greenlight',
     how: [
+      ['The picture through every period',
+        'Under the chosen set, the rule\'s money on each of the four stretches of history — train, test, held and reserve — read off the sets this one is built on and the records they stand on: train off the capture on Tune, test off the stage 3 records, held off the held set, reserve off the reserve set. Each stretch is held against the four simpler things at the survivors\' own hold lengths, and the last column counts the survivors that clear all four there. Choosing a survivor above draws the same lines for it alone. Nothing here is priced and nothing counts as a look; a stretch with nothing to read says why.'],
       ['A survivor of a held set or a reserve set, without shopping',
         'The second panel takes one survivor of a Stage 4 record set forward, but only from a reserve set that passed on Reserve, or from a held set that passed on Held on a layout that keeps no reserve, held alone. A rule is never greenlighted: the set a press made on Held or Reserve is, so what was judged and what is frozen are one thing. Which survivor is a choice made without money: by depth, the setting nearest the middle of every range of the rule, the same idea as the widest region\'s centre; or a survivor you name, recorded as your pick. The frozen settings carry the way the members agree exactly as that survivor does, which no single number of votes expresses, and the record names the set, the verdict, the survivor and how it was chosen.'],
       ['Writing down a decision, not starting one',

@@ -3228,6 +3228,56 @@ function glRememberedSet(list) {
   return list.length ? list[0].id : null;
 }
 function glFix(v, n = 2) { return v == null || !Number.isFinite(Number(v)) ? 'none' : Number(v).toFixed(n); }
+// THE PICTURE THROUGH EVERY PERIOD (3.149.0, VERIFY-DESIGN.md Part 9 release
+// 4): the rule's money on train, test, held and reserve beside the four
+// comparisons at the survivors' own hold lengths, read off the sets and the
+// records they stand on, never priced; and the same lines for one survivor.
+function glStretchWord(k) { return k === 'train' ? '<span>train</span>' : k === 'test' ? '<span>test</span>' : k === 'held' ? '<span>held</span>' : '<span>reserve</span>'; }
+function glFourCells(c) {
+  if (!c || !c.known) return `<td colspan="4" class="muted">${esc(String((c || {}).why || 'the four comparisons are not known'))}</td>`;
+  const t = cmpRows(null, c);
+  return t.rows.map((r) => `<td title="${esc(r.word)}, read at the worst of the hold lengths these settings use">${r.made == null ? 'no figure' : money(r.made)}</td>`).join('');
+}
+function glPictureHtml(d) {
+  const p = d.picture;
+  if (!p) return '';
+  const line = (k) => {
+    const x = (p.rule || {})[k] || {};
+    if (x.why) return `<tr><td>${glStretchWord(k)}</td><td colspan="8" class="muted">${esc(x.why)}</td></tr>`;
+    return `<tr><td>${glStretchWord(k)}</td><td class="${(x.money || 0) >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td><td>${x.trades == null ? '—' : Number(x.trades).toFixed(1)}</td><td>${Number(x.of || 0).toLocaleString()}${x.missing ? ` <span class="muted">(${x.missing} no figure)</span>` : ''}</td>${glFourCells(x.comparisons)}<td>${x.clearing == null ? '—' : `${x.clearing} of ${x.survivors}`}</td></tr>`;
+  };
+  return `<div class="panel" style="margin-top:.5rem">
+    <h4 style="margin:0 0 .3rem"><span>The picture through every period</span></h4>
+    <p class="note">The rule's money on each stretch of history, read off the sets this one is built on and the records they stand on:
+      train off the capture on Tune, test off the stage 3 records, held off the held set, reserve off the reserve set. Nothing here
+      is priced and nothing counts as a look. Each stretch is held against the four simpler things at the survivors' own hold lengths.</p>
+    ${p.why ? `<p class="note"><b class="warn">${esc(p.why)}</b></p>` : ''}
+    <div class="scrollx"><table><thead><tr>
+      <th title="one stretch of history: train, test, held or reserve">stretch</th>
+      <th title="the mean money the rule's survivors made on that stretch, one figure a setting">$ a setting</th>
+      <th title="the mean number of trades a setting on that stretch">trades a setting</th>
+      <th title="how many survivors have a figure on that stretch">survivors read</th>
+      <th title="being long every period of that stretch, at the worst of the survivors' hold lengths">always long</th>
+      <th title="being short every period of that stretch">always short</th>
+      <th title="buying the coin at the start of that stretch and going away">buy and hold</th>
+      <th title="shorting the coin at the start of that stretch and going away">short and hold</th>
+      <th title="how many survivors are in the money and ahead of all four at their own hold length on that stretch">clear all four</th>
+    </tr></thead><tbody>${(p.stretches || []).map(line).join('')}</tbody></table></div>
+    <div class="gl-one"></div>
+  </div>`;
+}
+// one survivor's own lines, by the name the board gives it: the pick above chooses it
+function glOneHtml(d, pick) {
+  const p = d.picture;
+  if (!p || !(p.survivors || []).length) return '';
+  const label = pick === 'depth' || !pick ? (d.depthPick ? d.depthPick.label : null) : pick;
+  const sv = p.survivors.find((x) => x.label === label) || null;
+  if (!sv) return '';
+  const cell = (x) => (x ? `<td class="${(x.money || 0) >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td><td>${x.trades == null ? '—' : x.trades}</td><td>${x.clears == null ? '—' : (x.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>')}</td>` : '<td colspan="3" class="muted">no figure</td>');
+  return `<p class="note" style="margin-top:.5rem"><b>One survivor, ${esc(sv.label)}:</b> the same lines for it alone</p>
+    <div class="scrollx"><table><thead><tr><th title="one stretch of history">stretch</th><th title="this survivor's money on that stretch">$</th><th title="its trades on that stretch">trades</th><th title="whether it is in the money and ahead of all four comparisons at its own hold length on that stretch">clears all four</th></tr></thead>
+    <tbody>${(p.stretches || []).map((k) => `<tr><td>${glStretchWord(k)}</td>${cell(sv[k])}</tr>`).join('')}</tbody></table></div>`;
+}
 function glStage4PanelHtml(list, chosen, d) {
   const depth = d && d.depthPick ? d.depthPick : null;
   return `<div class="panel">
@@ -3244,6 +3294,7 @@ function glStage4PanelHtml(list, chosen, d) {
     : '<option value="">no held set or reserve set on this box yet - read a rule on Held first</option>'}</select></label></div>
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors${d.from ? ` · read from <b>${esc(d.from.name)}</b>` : ''}${d.standsOn ? ` · stands on ${esc(d.standsOn.name)}` : ''}
       · verdict ${d.gate ? `<b class="pos">stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">does not stand</b> - ${esc(d.standing || '')}`}${d.heldAlone && d.kind === 'held' ? ` · ${esc(d.heldAlone)}` : ''}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
+      ${glPictureHtml(d)}
       ${d.refused ? '' : `<div class="row" style="align-items:flex-end">
         <label class="f" style="flex:1 1 auto;min-width:0" title="which survivor is taken forward. By depth is the setting nearest the middle of every range of the rule, chosen without looking at money; naming one records it as your pick.">one survivor<select id="gl4Pick">
           <option value="depth">by depth - ${esc(depth ? depth.label : '?')} (worst distance ${glFix(depth ? depth.worst : null)})</option>
@@ -3287,6 +3338,14 @@ async function drawGreenlight() {
     try { localStorage.setItem(GL_SET_KEY, gl4Sel.value); } catch (_) { /* private window */ }
     drawGreenlight();
   };
+  // the drill-down: the survivor the pick names, its own lines under the picture
+  const pk = $('#gl4Pick');
+  const one = document.querySelector('.gl-one');
+  if (one && gl4 && gl4.picture) {
+    const drawOne = () => { one.innerHTML = glOneHtml(gl4, pk ? pk.value : 'depth'); };
+    if (pk) pk.addEventListener('change', drawOne);
+    drawOne();
+  }
   const go4 = $('#gl4Go');
   if (go4 && glChosen && gl4 && !gl4.refused) go4.onclick = async () => {
     const why = $('#gl4Why').value.trim();
