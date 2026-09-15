@@ -306,6 +306,13 @@ module.exports = {
         { pick: 'all', survivor: `all ${cap2.survivors.length} survivors`, survivors: cap2.survivors.length, entries: total(['train', 'test']), priced: total(['train', 'test']), look: null, hold: null, bookId: `${stages.getSet(c.cut.id).name} · all survivors` },
         'the whole table is read, every entry priced at its own hold length, and no one hold length is claimed');
       assert.ok(s4.counts.priced > sv.entries.train.length + sv.entries.test.length || cap2.survivors.length === 1, 'all survivors read no more than one did');
+      // EACH TRADE AT ITS OWN HOLD LENGTH, provably: the pool holds the by-depth
+      // survivor's own entries, so it cannot have fewer winners or fewer losers
+      // than that survivor's own scan had; a pool priced at no hold at all reads
+      // every entry as a fee-only loser and fails this (a guard found the count
+      // of priced entries could not tell)
+      assert.ok(s1.counts.winners > 0, 'the by-depth survivor won nothing on train + test, so this check has no teeth');
+      assert.ok(s4.counts.winners >= s1.counts.winners && s4.counts.losers >= s1.counts.losers, `the pool (${s4.counts.winners} winners, ${s4.counts.losers} losers) holds fewer than the one survivor did (${s1.counts.winners}, ${s1.counts.losers}), so the trades were not priced at their own hold lengths`);
       const s5 = await stages.tuneOnCapture({ setId: c.cut.id, pick: 'all', windows: ['hold'] }, 'conviction');
       assert.deepStrictEqual({ pick: s5.target.pick, entries: s5.entries + s5.unpricedEntries, look: s5.target.look, hold: s5.holdHours }, { pick: 'all', entries: total(['hold']), look: 3, hold: null }, 'the ladder reads the whole table too, and a held-back read is still a look');
       now = stages.getSet(c.cut.id);

@@ -1317,7 +1317,8 @@ const GUARDS = [
     'theCaptureIsTheStageThreeRecordsOwnTradesToTheCent', "a captured entry carries no money, so the capture can no longer be held to the record and a scan's population could drift from the simulator's unseen"],
   [path.join(ROOT, 'lib', 'stagework.js'), "          for (const m of per) if (m[i] === call) agree++;", "          for (const m of per) agree++;",
     'theCaptureIsTheStageThreeRecordsOwnTradesToTheCent', 'every entry reads as unanimous, so the conviction ladder sizes every trade at its top rung and reports an uplift nothing earned'],
-  [path.join(ROOT, 'lib', 'stages.js'), "  const entries = t.windows.flatMap((w) => (sv.entries[w] || []).map((e) => ({ ...e, window: w }))).sort((a, b) => a.ts - b.ts);", "  const entries = CAPTURE_WINDOWS.flatMap((w) => (sv.entries[w] || []).map((e) => ({ ...e, window: w }))).sort((a, b) => a.ts - b.ts);",
+  // re-aimed 3.143.0: the entries are pooled over the survivors read, one or all
+  [path.join(ROOT, 'lib', 'stages.js'), "  const entries = svs.flatMap((s) => t.windows.flatMap((w) => (s.entries[w] || []).map((e) => ({ ...e, window: w, survivor: s.label, holdHours: s.tHours })))).sort((a, b) => a.ts - b.ts);", "  const entries = svs.flatMap((s) => CAPTURE_WINDOWS.flatMap((w) => (s.entries[w] || []).map((e) => ({ ...e, window: w, survivor: s.label, holdHours: s.tHours })))).sort((a, b) => a.ts - b.ts);",
     'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a scan reads every window whatever was ticked, so the held-back entries are read without a look being counted'],
   [path.join(ROOT, 'lib', 'stages.js'), "  const look = isLook ? reads.filter((r) => r && r.look != null).length + 1 : null;", "  const look = null;",
     'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a read of the held-back entries is never counted as a look, on the capture or on Verify'],
