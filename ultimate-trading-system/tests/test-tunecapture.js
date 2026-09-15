@@ -180,7 +180,7 @@ module.exports = {
             assert.ok(Number.isFinite(e.usd), 'money');
           }
         }
-        assert.deepStrictEqual(set.capture.rows.find((r) => r.label === sv.label).entries, { train: sv.entries.train.length, test: test.length, hold: hold.length }, 'the summary counts the file');
+        assert.deepStrictEqual(set.capture.rows.find((r) => r.label === sv.label).entries, { train: sv.entries.train.length, test: test.length, hold: hold.length, reserve: (sv.entries.reserve || []).length }, 'the summary counts the file, the reserve window too (3.150.0)');
       }
       // 4. the agreement count is a recount from the members' own calls through the shared definition
       const committee = require('../lib/committee');
@@ -312,7 +312,7 @@ module.exports = {
       stages.tuneCaptureStart(c.cut.id);
       await settle(() => stages.tuneCaptureStatus(c.cut.id), 'the second capture');
       now = stages.getSet(c.cut.id);
-      assert.strictEqual(now.capture.reads.length, 3, 'the reads stay across a re-capture');
+      assert.strictEqual(now.capture.reads.length, 4, 'the reads stay across a re-capture (three of the held-back window, one of the reserve since 3.150.0)');
       // ALL SURVIVORS AT ONCE (3.143.0, owner order): every captured survivor's
       // trades pooled, each at its own hold length; the whole table in one scan
       const cap2 = stages.readCapture(c.cut.id);
