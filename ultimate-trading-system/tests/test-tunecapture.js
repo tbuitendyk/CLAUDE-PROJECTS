@@ -297,6 +297,22 @@ module.exports = {
       await settle(() => stages.tuneCaptureStatus(c.cut.id), 'the second capture');
       now = stages.getSet(c.cut.id);
       assert.strictEqual(now.capture.reads.length, 3, 'the reads stay across a re-capture');
+      // ALL SURVIVORS AT ONCE (3.143.0, owner order): every captured survivor's
+      // trades pooled, each at its own hold length; the whole table in one scan
+      const cap2 = stages.readCapture(c.cut.id);
+      const total = (w) => cap2.survivors.reduce((a, s) => a + w.reduce((b, k) => b + s.entries[k].length, 0), 0);
+      const s4 = await stages.tuneOnCapture({ setId: c.cut.id, pick: 'all', windows: ['train', 'test'] }, 'stop');
+      assert.deepStrictEqual({ pick: s4.target.pick, survivor: s4.target.survivor, survivors: s4.target.survivors, entries: s4.target.entries, priced: s4.counts.priced, look: s4.target.look, hold: s4.setup.holdHours, bookId: s4.setup.id },
+        { pick: 'all', survivor: `all ${cap2.survivors.length} survivors`, survivors: cap2.survivors.length, entries: total(['train', 'test']), priced: total(['train', 'test']), look: null, hold: null, bookId: `${stages.getSet(c.cut.id).name} · all survivors` },
+        'the whole table is read, every entry priced at its own hold length, and no one hold length is claimed');
+      assert.ok(s4.counts.priced > sv.entries.train.length + sv.entries.test.length || cap2.survivors.length === 1, 'all survivors read no more than one did');
+      const s5 = await stages.tuneOnCapture({ setId: c.cut.id, pick: 'all', windows: ['hold'] }, 'conviction');
+      assert.deepStrictEqual({ pick: s5.target.pick, entries: s5.entries + s5.unpricedEntries, look: s5.target.look, hold: s5.holdHours }, { pick: 'all', entries: total(['hold']), look: 3, hold: null }, 'the ladder reads the whole table too, and a held-back read is still a look');
+      now = stages.getSet(c.cut.id);
+      assert.deepStrictEqual(now.capture.reads.slice(0, 2).map((r) => [r.tool, r.survivor, r.look]), [['conviction', `all ${cap2.survivors.length} survivors`, 3], ['stop', `all ${cap2.survivors.length} survivors`, null]], 'the reads name all survivors');
+      threw = null;
+      try { stages.captureTargetOf({ setId: c.cut.id, pick: 'all', windows: [] }); } catch (e) { threw = e.message; }
+      assert.ok(/tick at least one window/.test(threw), threw);
     } finally { c.cleanup(); }
   },
 
@@ -315,7 +331,7 @@ module.exports = {
     // 'Save the reason' button with the 'your reason for this choice' field"): the row carries
     // align-items:flex-end, as every such row on History and Verify does, so the button sits on the
     // field's own line and not between the caption and the field
-    for (const field of ['your reason for this choice', 'apply a stop you chose yourself', 'what the scans below are aimed at']) {
+    for (const field of ['your reason for this choice', 'apply a stop you chose yourself', 'what the two scans below are aimed at']) {
       const at = ui.indexOf(field);
       const rowStart = ui.lastIndexOf('<div class="row"', at);
       const rowTag = ui.slice(rowStart, ui.indexOf('>', rowStart) + 1);
@@ -335,6 +351,20 @@ module.exports = {
       assert.strictEqual(m[1].trim(), '', `a captioned field carries text after its box, which the column puts on its own line: "${m[1].trim()}"`);
     }
     assert.ok(/\$\{isSet \? tnTargetRowHtml\(chosen, tnPickVal, tnWins\) : ''\}/.test(ui), 'the survivor and the windows are drawn under the scan target');
+    // THE TUNING TARGETS SECTION (3.143.0, owner order): the scan target, the survivor and the
+    // windows apply to both scans, so they sit in a section of their own between the capture
+    // and the two scans; the survivor box is called "survivor" and offers all survivors
+    const drawn2 = ui.slice(ui.indexOf('async function drawTune('));
+    const at = (needle) => { const i = drawn2.indexOf(needle); assert.ok(i >= 0, `not drawn on Tune: ${needle}`); return i; };
+    assert.ok(at('${tnCapturePanelHtml(tnSets, tnChosen, tnd)}') < at('<h3 style="margin-top:0">Tuning targets</h3>') && at('<h3 style="margin-top:0">Tuning targets</h3>') < at('id="tuneTarget"') && at('id="tuneTarget"') < at("${isSet ? tnTargetRowHtml(chosen, tnPickVal, tnWins) : ''}") && at("${isSet ? tnTargetRowHtml(chosen, tnPickVal, tnWins) : ''}") < at('Protective stop tuner — on the captured trades'),
+      'the Tuning targets section is not between the capture and the two scans, or does not hold the target, the survivor and the windows');
+    assert.ok(ui.includes('>survivor<select id="tnPick">') && !ui.includes('one survivor<select id="tnPick">'), 'the survivor box on Tune is not called "survivor"');
+    assert.ok(/<option value="all" \$\{pick === 'all' \? 'selected' : ''\}>all survivors - /.test(ui), 'the survivor box does not offer all survivors');
+    assert.ok(ui.includes("  if (want === 'all' && (cand.rows || []).length) return 'all';"), 'a remembered choice of all survivors is not kept');
+    // THE RETURN ON THE AMOUNT TRADED (3.143.0, owner order): the sweep's headline says it flat
+    // against ladder, in points, and the table has it per level of agreement
+    assert.ok(ui.includes('return on the amount traded: flat ${rate(c.flatReturnPct)} on ${usd(c.deployedFlatUsd)} vs ladder <b>${rate(c.ladderReturnPct)}</b> on ${usd(c.deployedLadderUsd)}') && ui.includes("cth('return % on $ traded','returnPct')"),
+      'the conviction sweep does not say its return on the amount traded');
     for (const id of ['tnSet', 'tnCapture', 'tnPick', 'tnWinTrain', 'tnWinTest', 'tnWinHold']) assert.ok(ui.includes(`id="${id}"`), `${id} is on the screen`);
     assert.ok(/const scanBody = isSet \? \{ setId: chosen\.id, pick: tnPickVal, windows: tnWins \} : null/.test(ui), 'a scan on a set sends the set, the survivor and the windows');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/capture\/status/.test(ui), 'the capture is polled');

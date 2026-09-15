@@ -1643,6 +1643,13 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', "a pass over one coin and shape wipes every other unit's numbers under the settings it touches"],
   [path.join(ROOT, 'public', 'construct.js'), "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { unit: unitNow }, WHERE_FUNNEL);", "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);",
     'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'the press names no board, so it prices every coin and shape whatever is chosen under coin'],
+  // ---- ALL SURVIVORS AT ONCE ON TUNE, EACH TRADE AT ITS OWN HOLD LENGTH (3.143.0) ----
+  [path.join(ROOT, 'lib', 'convictionsweep.js'), "    ladderReturnPct: deployedLadder ? round((ladderUsd / deployedLadder) * 100, 2) : null,", "    ladderReturnPct: deployedFlat ? round((ladderUsd / deployedFlat) * 100, 2) : null,",
+    'ladderDollarsScaleEachBucketByItsMultiplier', 'the ladder\'s return is taken over the flat amount, so trading more reads as a better rate, which is the fault the rate exists to expose'],
+  [path.join(ROOT, 'lib', 'stoptuner.js'), "  const holdOf = (e) => (e.holdHours > 0 ? e.holdHours : holdHours);", "  const holdOf = (e) => holdHours;",
+    'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a scan of all survivors refuses for want of one hold length, or prices every trade at a length that is not its own'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const svs = t.pick === 'all' ? cap.survivors.slice() : cap.survivors.filter((x) => x.label === t.label);", "  const svs = cap.survivors.filter((x) => x.label === t.label);",
+    'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'all survivors reads nobody, and the whole-table scan refuses'],
   // ---- THE TABS READ IN PROCESSING ORDER: History retrains and judges on held, the reserve grade moves to Verify (3.142.0) ----
   [path.join(ROOT, 'lib', 'halflife.js'), "  if (windowLayout === 'reserve61') return { layout: 'reserve61', judge: 'hold', judgeWord: 'Held', train: 61, test: 13, hold: 13, reserve: 13 };", "  if (windowLayout === 'reserve61') return { layout: 'reserve61', judge: 'reserve', judgeWord: 'Reserve', train: 61, test: 13, hold: 13, reserve: 13 };",
     'theRetrainLayoutIsTheSetsOwnAndTheJudgeIsTheHeldWindowOnBothLayouts', 'a 61/13/13/13 set\'s retrain run says it is judged on the Reserve again'],

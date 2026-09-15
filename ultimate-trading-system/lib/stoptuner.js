@@ -86,12 +86,17 @@ function tuneFixedStop(entries, map, opts = {}) {
   const holdHours = opts.holdHours;
   const feePerLeg = opts.feePerLeg || 0;
   const marginFrac = opts.marginFrac || 0;
-  if (!(holdHours > 0)) throw new Error('tuneFixedStop: holdHours required');
+  // AN ENTRY MAY CARRY ITS OWN HOLD LENGTH (3.143.0): the scans on Tune can
+  // read every captured survivor of a Stage 4 record set at once, and each
+  // survivor holds for its own length. One length for all is still the
+  // default when the caller gives one.
+  const holdOf = (e) => (e.holdHours > 0 ? e.holdHours : holdHours);
+  if (!(holdHours > 0) && !entries.every((e) => e.holdHours > 0)) throw new Error('tuneFixedStop: holdHours required, on the call or on every entry');
 
   const per = [];
   let unpriced = 0;
   for (const e of entries) {
-    const o = entryOutcome(e.entryTs, e.side, map, holdHours, feePerLeg);
+    const o = entryOutcome(e.entryTs, e.side, map, holdOf(e), feePerLeg);
     if (!o.priced) { unpriced++; continue; }
     per.push({ entryTs: e.entryTs, side: e.side, ...o, winner: o.netPct > 0 });
   }
@@ -192,7 +197,7 @@ function tuneFixedStop(entries, map, opts = {}) {
   return {
     stopPct,                       // the tightest fixed stop that loses no winner
     marginFrac,
-    holdHours,
+    holdHours: holdHours > 0 ? holdHours : null,   // null when every entry brought its own
     feePerLeg,
     clipUsd,
     curve,

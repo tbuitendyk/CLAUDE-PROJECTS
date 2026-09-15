@@ -1283,3 +1283,25 @@ carried out 2026-08-28 under its own GO — decision 50.
     gate intact; Greenlight keeps its gate. One release, second digit.
     Corrects decision 79's "on History" and the H0 decision that the retrain
     run is judged on the Reserve for a 61/13/13/13 set.
+
+93. **Tuning targets, and the scans on every survivor at once** (3.143.0,
+    owner order 2026-09-15: "the scan target and the one survivor should be
+    in a section of its own called Tuning targets ... they apply to the
+    third section, do they not? ... why can't we just sweep the entire table
+    by selecting 'all survivors' ... which should be called 'survivor' not
+    'one survivor'"). The scan target, the survivor and the windows apply to
+    both scans, so Tune draws them in a section of their own, "Tuning
+    targets", between the capture and the scans. The survivor box is called
+    "survivor" and offers "all survivors": every captured survivor's trades
+    pooled into one list, each trade held for its own survivor's length, so
+    the tuner and the ladder read the whole table in one press; the tuner
+    and the ladder take a hold length per entry for it, and a scan of all
+    survivors claims no single hold length. By depth stays as the default,
+    Greenlight's own pick, so a scan can be aimed without shopping. A
+    held-back read is a look whichever survivor is read. In the same release
+    (owner order: "a return-rate-per-amount-traded factored to a percentage")
+    the conviction sweep prints the return on the amount traded — money made
+    over money put to work, flat against ladder and per level of agreement —
+    because absolute uplift can come from simply trading more and the rate
+    cannot; the chance check's p holds for it, a shuffle keeping the ladder's
+    amount traded. Second digit.

@@ -939,3 +939,23 @@ trades of this set again" stayed ghosted after the marker turned PASS. The
 strip already polled the check while it ran and stopped when it landed; it
 now draws the open tab again at that moment, so every press the check had
 refused is read again from the engine. Third digit.
+
+## AD. Tuning targets, and all survivors at once — owner GO NOW! 2026-09-15 (3.143.0)
+
+"looks like the scan target and the one survivor should be in a section of
+its own called Tuning targets ... (they apply to the third section, do
+they not?) also, what's this \"by depth\" option ... and why can't we just
+sweep the entire table by selecting \"all survivors\" ... (which should be
+called \"survivor\" not \"one survivor\")". A "Tuning targets" section now
+sits between the capture and the two scans, holding the scan target, the
+survivor and the windows; the survivor box offers all survivors, which
+pools every captured survivor's trades into one list, each trade held for
+its own survivor's length (the tuner and the ladder take a hold length per
+entry now); by depth stays, explained in the help as Greenlight's own pick.
+Decision 93. And, in the same release (owner: "to properly measure the real
+effect of tuning the conviction sizing BESIDES the current absolute returns
+you should have a return-rate-per-amount-traded factored to a percentage"):
+the conviction sweep prints the return on the amount traded, flat against
+ladder in points, and per level of agreement; the chance check's p holds
+for it unchanged, since a shuffle keeps the ladder's amount traded. Second
+digit.

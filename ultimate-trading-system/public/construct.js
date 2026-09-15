@@ -2663,6 +2663,7 @@ function tnRememberedSet(list) {
 function tnRememberedPick(cand) {
   let want = null;
   try { want = localStorage.getItem(TN_PICK_KEY); } catch (_) { want = null; }
+  if (want === 'all' && (cand.rows || []).length) return 'all';
   if (want && want !== 'depth' && (cand.rows || []).some((r) => r.label === want)) return want;
   return 'depth';
 }
@@ -2720,8 +2721,9 @@ function tnTargetRowHtml(cand, pick, wins) {
   const depth = cand.pick || {};
   const rows = cand.rows || [];
   return `<div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-    <label class="f" style="flex:1 1 auto;min-width:0" title="which captured survivor the scans read. By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money; naming one records it as your pick.">one survivor<select id="tnPick">
+    <label class="f" style="flex:1 1 auto;min-width:0" title="which captured survivor the scans read, or all of them. By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money; all survivors pools every captured survivor's trades into one list, each at its own hold length; naming one records it as your pick.">survivor<select id="tnPick">
       <option value="depth" ${pick === 'depth' ? 'selected' : ''}>by depth - ${esc(depth.label || '?')} (worst distance ${glFix(depth.worst)})</option>
+      <option value="all" ${pick === 'all' ? 'selected' : ''}>all survivors - ${rows.length} captured - ${rows.reduce((a, r) => a + ((r.entries || {}).train ?? 0) + ((r.entries || {}).test ?? 0) + ((r.entries || {}).hold ?? 0), 0)} entries</option>
       ${rows.map((r) => `<option value="${esc(r.label)}" ${pick === r.label ? 'selected' : ''}>${esc(r.label)} - ${r.tHours}h${r.halfLife == null ? '' : ` - half-life ${r.halfLife} months`} - ${(r.entries || {}).train ?? 0} + ${(r.entries || {}).test ?? 0} + ${(r.entries || {}).hold ?? 0} entries${r.held == null ? '' : ` - held-back ${money(r.held)}`}</option>`).join('')}</select></label>
   </div>
   <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
@@ -2734,7 +2736,7 @@ function tnTargetRowHtml(cand, pick, wins) {
 }
 // the line at the top of a result that came from a capture
 function tnTargetLineHtml(t) {
-  return `<p class="note"><b>Read from the capture:</b> the survivor <b>${esc(t.survivor)}</b> ${t.pick === 'depth' ? '(by depth)' : '(named)'} of ${esc(t.set)}${t.unitName ? ` - ${esc(t.unitName)}` : ''},
+  return `<p class="note"><b>Read from the capture:</b> ${t.pick === 'all' ? `<b>${esc(t.survivor)}</b>` : `the survivor <b>${esc(t.survivor)}</b> ${t.pick === 'depth' ? '(by depth)' : '(named)'}`} of ${esc(t.set)}${t.unitName ? ` - ${esc(t.unitName)}` : ''},
     ${Number(t.entries || 0).toLocaleString()} entries on the ${esc(tnWindowWords(t.windows))} window(s), captured ${esc(String(t.captureAt || '').slice(0, 10))} under release ${esc(t.captureRelease || '?')}
     · ${t.look == null ? 'the held-back entries were not read: not a look' : `<b>this read of the held-back entries was look ${t.look}</b>`} · nothing is applied from a Stage 4 record set</p>`;
 }
@@ -2807,21 +2809,26 @@ async function drawTune() {
   // The prose and the dropdown are computed from the SAME resolved value, so
   // the sentence above the control can no longer describe a different target
   // from the one the launcher will actually use.
-  const target = isSet ? `the survivor <b>${esc(tnPickVal === 'depth' ? `${(chosen.pick || {}).label || '?'} (by depth)` : tnPickVal)}</b> of the Stage 4 record set <b>${esc(chosen.name)}</b>, on its ${tnWins.length ? esc(tnWindowWords(tnWins)) : '<b class="warn">no</b>'} entries`
+  const target = isSet ? `${tnPickVal === 'all' ? `<b>all ${(chosen.rows || []).length} captured survivors</b>` : `the survivor <b>${esc(tnPickVal === 'depth' ? `${(chosen.pick || {}).label || '?'} (by depth)` : tnPickVal)}</b>`} of the Stage 4 record set <b>${esc(chosen.name)}</b>, on its ${tnWins.length ? esc(tnWindowWords(tnWins)) : '<b class="warn">no</b>'} entries`
     : '<b>nothing selectable</b> — no Stage 4 record set on this box has its trades captured';
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}
   <div class="panel">
-    <h3 style="margin-top:0">Protective stop tuner — on the captured trades, loses no winner</h3>
-    <p class="note">Reads the captured trades of one survivor of a Stage 4 record set over the windows ticked and finds the
-      tightest fixed stop that would not have clipped a single winner, plus the sacrifice curve (give up top winners →
-      tighter stop → NET $). Scanning applies nothing. Target: ${target}.</p>
-    <div class="row" style="margin-bottom:.4rem;align-items:flex-end"><label class="f" title="what the scans below are aimed at: a Stage 4 record set whose trades are captured on this tab, one survivor of it, over the windows ticked">scan target<select id="tuneTarget">
+    <h3 style="margin-top:0">Tuning targets</h3>
+    <p class="note">What the two scans below read: a Stage 4 record set whose trades are captured above, one survivor of it
+      or all of them, over the windows ticked. Choosing here reads nothing; each scan says what it will read before it runs.</p>
+    <div class="row" style="margin-bottom:.4rem;align-items:flex-end"><label class="f" title="what the two scans below are aimed at: a Stage 4 record set whose trades are captured above, one survivor of it or all of them, over the windows ticked">scan target<select id="tuneTarget">
       ${stage4.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}>${setNameWords(b)} · ${b.captured} of ${b.survivors} survivors captured</option>`).join('')}
     </select></label>
     <span class="note">${stage4.length} Stage 4 record set(s) with their trades captured</span></div>
     ${isSet ? tnTargetRowHtml(chosen, tnPickVal, tnWins) : ''}
+  </div>
+  <div class="panel">
+    <h3 style="margin-top:0">Protective stop tuner — on the captured trades, loses no winner</h3>
+    <p class="note">Reads the captured trades of one survivor of a Stage 4 record set over the windows ticked and finds the
+      tightest fixed stop that would not have clipped a single winner, plus the sacrifice curve (give up top winners →
+      tighter stop → NET $). Scanning applies nothing. Target: ${target}.</p>
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
       <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is ${floorPc}, which is twice the ${tripPc} it costs to trade in and out at ${feePc} each way — tighter than the round trip and a triggered stop is a guaranteed loss, tighter than the floor and it fires on ordinary hourly noise. This button writes the live engine's own risk parameter, so the floor is the lab rate rather than any one profile's fee.">or apply a custom stop %<input id="stopCustomPct" type="number" step="0.5" min="${floorPct}" max="99" placeholder="e.g. 25" style="width:5.5rem"></label>
       <button id="stopCustomApply">Apply custom</button>
@@ -2867,15 +2874,18 @@ async function drawTune() {
   }
   function renderConvResult(c) {
     const n = c.null || {};
+    const rate = (v) => (v == null ? '—' : `${Number(v).toFixed(2)}%`);
     return `${c.target ? tnTargetLineHtml(c.target) : ''}<p><b>${esc(c.bookId)}</b> over ${c.entries} priced entries: flat ${usd(c.flatUsd)} vs ladder <b>${usd(c.ladderUsd)}</b>
-      — uplift <b class="${(c.upliftUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.upliftUsd)}</b>.</p>
-      <div class="scrollx"><table><thead><tr>${cth('agreement','agreement')}${cth('mult','mult')}${cth('trades','trades')}${cth('wins','wins')}${cth('win %','winPct')}${cth('flat $','flatUsd')}${cth('ladder $','ladderUsd')}</tr></thead><tbody>
+      — uplift <b class="${(c.upliftUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.upliftUsd)}</b>
+      · return on the amount traded: flat ${rate(c.flatReturnPct)} on ${usd(c.deployedFlatUsd)} vs ladder <b>${rate(c.ladderReturnPct)}</b> on ${usd(c.deployedLadderUsd)}
+      — <b class="${(c.upliftReturnPts || 0) >= 0 ? 'pos' : 'neg'}">${c.upliftReturnPts == null ? '—' : `${Number(c.upliftReturnPts).toFixed(2)} points`}</b>.</p>
+      <div class="scrollx"><table><thead><tr>${cth('agreement','agreement')}${cth('mult','mult')}${cth('trades','trades')}${cth('wins','wins')}${cth('win %','winPct')}${cth('flat $','flatUsd')}${cth('ladder $','ladderUsd')}${cth('return % on $ traded','returnPct')}</tr></thead><tbody>
       ${(c.buckets || []).map((b) => `<tr><td>${b.agree} of ${(c.setup && c.setup.members) || '?'}${b.thin ? ' ⚠' : ''}</td>
         <td>${b.multiplier}x</td><td>${b.n}</td><td>${b.winners}</td>
         <td>${b.n ? ((100 * b.winners) / b.n).toFixed(1) + '%' : '—'}</td>
-        <td>${usd(b.flatUsd)}</td><td><b>${usd(b.ladderUsd)}</b></td></tr>`).join('')}
+        <td>${usd(b.flatUsd)}</td><td><b>${usd(b.ladderUsd)}</b></td><td class="${(b.returnPct || 0) >= 0 ? 'pos' : 'neg'}">${rate(b.returnPct)}</td></tr>`).join('')}
       </tbody></table></div>
-      <p class="note"><b>Chance check:</b> ${c.shuffles} shuffled deals, mean uplift ${usd(n.mean)}, p=${n.pNull}.
+      <p class="note"><b>Chance check:</b> ${c.shuffles} shuffled deals, mean uplift ${usd(n.mean)}, p=${n.pNull}; the same p holds for the return on the amount traded, because a shuffle keeps the ladder's amount traded.
       <b>Exposure:</b> per-$ ${c.flatPerDollar} → ${c.ladderPerDollar}; worst trade ${usd(c.worstTradeUsd)};
       drawdown ${usd(c.maxDrawdownUsd)}; peak concurrent ${usd(c.peakConcurrentUsd)} (flat ${usd(c.peakConcurrentFlatUsd)}).
       <b>Verdict:</b> ${esc(c.verdict || '')}</p>`;

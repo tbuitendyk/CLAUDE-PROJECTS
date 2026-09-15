@@ -7576,6 +7576,14 @@ function captureTargetOf(body) {
   if (bad.length) { const e = new Error(`no window called '${bad[0]}' — the windows are ${CAPTURE_WINDOWS.map((w) => CAPTURE_WINDOW_WORDS[w]).join(', ')}`); e.status = 400; throw e; }
   if (!windows.length) { const e = new Error('tick at least one window for the scan to read: training, test or held-back'); e.status = 400; throw e; }
   const asked = b.pick == null || b.pick === '' || b.pick === 'depth' ? 'depth' : String(b.pick);
+  // ALL SURVIVORS AT ONCE (3.143.0, owner order 2026-09-15: "why can't we just
+  // sweep the entire table by selecting 'all survivors'"): every captured
+  // survivor's trades pooled into one list, each trade at its own survivor's
+  // hold length.
+  if (asked === 'all') {
+    if (!(doc.capture.captured > 0)) { const e = new Error(`${doc.name} has no captured survivor to read`); e.status = 400; throw e; }
+    return { doc, label: null, pick: 'all', windows: CAPTURE_WINDOWS.filter((w) => windows.includes(w)), bookId: `${doc.name} · all survivors` };
+  }
   const label = asked === 'depth' ? ((doc.capture.pick || {}).label || null) : asked;
   const row = (doc.capture.rows || []).find((r) => r.label === label) || null;
   if (!row) {
@@ -7585,23 +7593,26 @@ function captureTargetOf(body) {
   return { doc, label, pick: asked === 'depth' ? 'depth' : 'named', windows: CAPTURE_WINDOWS.filter((w) => windows.includes(w)), bookId: `${doc.name} · ${label}` };
 }
 // A SCAN ON TUNE, RUN ON THE CAPTURED ENTRIES (3.92.0): the same tuner and the
-// same ladder the older path runs, on the entries of one survivor over the
-// windows ticked, at the survivor's own hold length and the set's fee, on the
-// prices the chain was launched on. A read of the held-back entries is a look.
+// same ladder the older path runs, on the entries of one survivor -- or of
+// every captured survivor at once (3.143.0), each trade at its own survivor's
+// hold length -- over the windows ticked, at the set's fee, on the prices the
+// chain was launched on. A read of the held-back entries is a look.
 async function tuneOnCapture(body, tool) {
   if (tool !== 'stop' && tool !== 'conviction') throw new Error(`no scan called '${tool}'`);
   const t = captureTargetOf(body);
   const cap = readCapture(t.doc.id);
   if (!cap) throw new Error(`${t.doc.name}: the capture file beside the set is missing or unreadable — capture the trades of this set on Tune again`);
-  const sv = cap.survivors.find((x) => x.label === t.label);
-  if (!sv) throw new Error(`'${t.label}' is not in the capture file beside ${t.doc.name} — capture the trades of this set on Tune again`);
+  const svs = t.pick === 'all' ? cap.survivors.slice() : cap.survivors.filter((x) => x.label === t.label);
+  if (!svs.length) throw new Error(t.pick === 'all' ? `no survivor is in the capture file beside ${t.doc.name} — capture the trades of this set on Tune again` : `'${t.label}' is not in the capture file beside ${t.doc.name} — capture the trades of this set on Tune again`);
+  const sv = svs[0];
   const parent = getSet((t.doc.parent || {}).id);
   if (!parent) throw new Error('the stage 3 set this was cut from is gone, so the prices its trades were captured on cannot be read');
   const sw = require('./stagework');
   const { maps } = await sw.tradeMapFor(cap.combo, cap.geometry, parent.params || {}, pinOf(parent));
-  const entries = t.windows.flatMap((w) => (sv.entries[w] || []).map((e) => ({ ...e, window: w }))).sort((a, b) => a.ts - b.ts);
+  const entries = svs.flatMap((s) => t.windows.flatMap((w) => (s.entries[w] || []).map((e) => ({ ...e, window: w, survivor: s.label, holdHours: s.tHours })))).sort((a, b) => a.ts - b.ts);
   const fee = Number((cap.fee || {}).feePerLeg) || 0;
-  const holdHours = sv.tHours;
+  const holdHours = t.pick === 'all' ? null : sv.tHours;           // one length, or each trade's own
+  const who = t.pick === 'all' ? `all ${svs.length} survivors` : sv.label;
   const isLook = t.windows.includes('hold');
   const fresh = getSet(t.doc.id);
   if (!fresh || !fresh.capture) throw new Error('the set or its capture went away while the scan was being set up');
@@ -7610,26 +7621,26 @@ async function tuneOnCapture(body, tool) {
   let out;
   if (tool === 'stop') {
     const { tuneFixedStop } = require('./stoptuner');
-    const tune = tuneFixedStop(entries.map((e) => ({ entryTs: e.ts, side: e.side })), maps.trade, { holdHours, feePerLeg: fee });
-    out = { setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: sv.gate, tHours: holdHours, trailMult: null, armMult: null }, holdHours }, ...tune };
+    const tune = tuneFixedStop(entries.map((e) => ({ entryTs: e.ts, side: e.side, holdHours: e.holdHours })), maps.trade, { holdHours, feePerLeg: fee });
+    out = { setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: t.pick === 'all' ? null : sv.gate, tHours: holdHours, trailMult: null, armMult: null }, holdHours }, ...tune };
   } else {
     const { entryOutcome } = require('./stoptuner');
     const { evalConviction } = require('./convictionsweep');
     const priced = [];
     let unpriced = 0;
     for (const e of entries) {
-      const o = entryOutcome(e.ts, e.side, maps.trade, holdHours, fee);
-      if (o.priced) priced.push({ entryTs: e.ts, side: e.side, agree: e.agree, netPct: o.netPct }); else unpriced++;
+      const o = entryOutcome(e.ts, e.side, maps.trade, e.holdHours, fee);
+      if (o.priced) priced.push({ entryTs: e.ts, side: e.side, agree: e.agree, netPct: o.netPct, holdHours: e.holdHours }); else unpriced++;
     }
     const members = Math.max(1, Number(cap.members) || 1);
-    const ev = evalConviction(priced, { clipUsd: 10, ladder: Array.from({ length: members }, (_, i) => i + 1), holdHours });
-    out = { setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: sv.gate, tHours: holdHours, trailMult: null, armMult: null }, members }, unpricedEntries: unpriced, ...ev };
+    const ev = evalConviction(priced, { clipUsd: 10, ladder: Array.from({ length: members }, (_, i) => i + 1), holdHours: holdHours || 0 });
+    out = { setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: t.pick === 'all' ? null : sv.gate, tHours: holdHours, trailMult: null, armMult: null }, members }, unpricedEntries: unpriced, ...ev, holdHours };
   }
   const target = {
-    kind: 'stage4', setId: t.doc.id, set: t.doc.name, unitName: t.doc.unitName || null, survivor: sv.label, pick: t.pick,
+    kind: 'stage4', setId: t.doc.id, set: t.doc.name, unitName: t.doc.unitName || null, survivor: who, survivors: svs.length, pick: t.pick,
     windows: t.windows, windowWords: t.windows.map((w) => CAPTURE_WINDOW_WORDS[w]), entries: entries.length, captureAt: cap.at, captureRelease: cap.release, look,
   };
-  fresh.capture.reads = [{ at: new Date().toISOString(), tool, survivor: sv.label, windows: t.windows, look }, ...reads];
+  fresh.capture.reads = [{ at: new Date().toISOString(), tool, survivor: who, windows: t.windows, look }, ...reads];
   saveSet(fresh);
   return {
     ...out, target, trainThrough: null,

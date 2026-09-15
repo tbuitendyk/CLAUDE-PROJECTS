@@ -26,6 +26,11 @@ module.exports.ladderDollarsScaleEachBucketByItsMultiplier = function () {
   assert.strictEqual(b3.ladderUsd, 0.6);
   assert.strictEqual(r.deployedFlatUsd, 20);
   assert.strictEqual(r.deployedLadderUsd, 40, '10*1 + 10*3');
+  // THE RETURN ON THE AMOUNT TRADED (3.143.0, owner order): $0.30 on $20 flat is
+  // 1.50%; $0.70 on $40 on the ladder is 1.75%; 0.25 points between them. Per
+  // level it is one number, because the ladder scales money and amount alike.
+  assert.deepStrictEqual({ flat: r.flatReturnPct, ladder: r.ladderReturnPct, pts: r.upliftReturnPts }, { flat: 1.5, ladder: 1.75, pts: 0.25 });
+  assert.deepStrictEqual({ b1: b1.returnPct, b3: b3.returnPct, empty: r.buckets.find((b) => b.agree === 2).returnPct }, { b1: 1, b3: 2, empty: null });
 };
 
 module.exports.peakConcurrentNotionalRespectsOverlappingHolds = function () {

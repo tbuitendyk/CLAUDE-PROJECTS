@@ -75,6 +75,10 @@ function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours
       agree: a, multiplier: ladder[a - 1], n: idx.length,
       winners: idx.filter((i) => pnl1x[i] > 0).length,
       flatUsd: round(bFlat), ladderUsd: round(bFlat * ladder[a - 1]),
+      // THE RETURN ON THE AMOUNT TRADED AT THIS LEVEL (3.143.0, owner order): the
+      // bucket's money over the money put to work in it, as a percentage. The
+      // ladder scales both by the same multiplier, so the rate is one number.
+      returnPct: idx.length ? round((bFlat / (idx.length * clipUsd)) * 100, 2) : null,
       thin: idx.length > 0 && idx.length < MIN_BUCKET_N,
     });
   }
@@ -97,7 +101,9 @@ function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours
   const events = [];
   for (let i = 0; i < n; i++) {
     const notional = clipUsd * multFor(ladder, agrees[i]);
-    events.push([priced[i].entryTs, notional], [priced[i].entryTs + holdHours * HOUR_MS, -notional]);
+    // an entry may carry its own hold length (3.143.0: every survivor of a table at once)
+    const hold = priced[i].holdHours > 0 ? priced[i].holdHours : holdHours;
+    events.push([priced[i].entryTs, notional], [priced[i].entryTs + hold * HOUR_MS, -notional]);
   }
   events.sort((a, b) => a[0] - b[0] || a[1] - b[1]); // exits (-) before entries (+) at a tie
   let cur = 0, peakConcurrentUsd = 0;
@@ -128,6 +134,18 @@ function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours
     deployedFlatUsd: round(deployedFlat), deployedLadderUsd: round(deployedLadder),
     flatPerDollar: deployedFlat ? round(flatUsd / deployedFlat) : null,
     ladderPerDollar: deployedLadder ? round(ladderUsd / deployedLadder) : null,
+    // THE RETURN ON THE AMOUNT TRADED, AS A PERCENTAGE (3.143.0, owner order:
+    // "to properly measure the real effect of tuning the conviction sizing
+    // BESIDES the current absolute returns you should have a
+    // return-rate-per-amount-traded factored to a percentage"): the money made
+    // over the money put to work, flat and on the ladder, and the difference in
+    // points. Absolute uplift can come from simply trading more; this cannot.
+    // The chance check above applies to it unchanged: a shuffle keeps the
+    // multiset of agreements, so the ladder's deployed money is the same on
+    // every shuffle and the rate's uplift is the money uplift over one constant.
+    flatReturnPct: deployedFlat ? round((flatUsd / deployedFlat) * 100, 2) : null,
+    ladderReturnPct: deployedLadder ? round((ladderUsd / deployedLadder) * 100, 2) : null,
+    upliftReturnPts: deployedFlat && deployedLadder ? round(((ladderUsd / deployedLadder) - (flatUsd / deployedFlat)) * 100, 2) : null,
     worstTradeUsd: worstTradeUsd == null ? null : round(worstTradeUsd),
     maxDrawdownUsd: round(maxDrawdownUsd),
     peakConcurrentUsd: round(peakConcurrentUsd), peakConcurrentFlatUsd: round(peakConcurrentFlatUsd),

@@ -35,7 +35,7 @@ module.exports = {
   theScansTargetAStage4RecordSetFromTheServersList() {
     assert.ok(/api\/pilot\/stop-candidates/.test(UI), 'the targets must come from the server');
     assert.ok(/id="tuneTarget"/.test(UI), 'with a picker');
-    assert.ok(/a Stage 4 record set whose trades are captured on this tab/.test(UI), 'and it must say what can be aimed at');
+    assert.ok(/a Stage 4 record set whose trades are captured above, one survivor of it or all of them, over the windows ticked/.test(UI), 'and it must say what can be aimed at');
     for (const gone of ["'sel'", 'savedBooks', 'runId: doc.id', 'setupId: chosen.id']) assert.ok(!UI.includes(gone), `the older target is still offered: ${gone}`);
   },
 

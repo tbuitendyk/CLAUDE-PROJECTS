@@ -839,7 +839,7 @@ window.HELP = {
     title: 'Tune',
     how: [
       ['First, the trades of a Stage 4 record set',
-        'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The first panel writes those down — every hour the rule of a survivor spoke, on the training, test and held-back windows, with the side and how many members called it — for every survivor that enters at market with no trailing stop. Once captured, the set can be chosen as the target below, with one survivor and the windows to read beside it.\n\nReading the held-back entries is a counted look at the held-back window, the same count Verify keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
+        'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The first panel writes those down — every hour the rule of a survivor spoke, on the training, test and held-back windows, with the side and how many members called it — for every survivor that enters at market with no trailing stop. Once captured, the set can be chosen under "Tuning targets" below, with one survivor of it or all of them, and the windows to read.\n\nReading the held-back entries is a counted look at the held-back window, the same count Verify keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
       ['One variable at a time, on one survivor\'s trades',
         'The Sweep tab is wide and shallow: many settings, each scored once. This is the opposite — one setting, taken apart carefully.\n\nThe two scans work across every value of one thing, over the captured trades of one survivor on the windows ticked, and report the whole shape rather than a winner: which protective stops would have cost nothing, and how much requiring more agreement is worth. Both take minutes and cannot be stopped part-way.'],
     ],
@@ -851,10 +851,10 @@ window.HELP = {
         what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows.',
         more: 'Tune comes before Verify and asks nothing of it. A second press replaces the capture on record; the looks already counted stay.',
       },
-      tuneTarget: { what: 'Which Stage 4 record set the scans below work on, from those whose trades were captured, one survivor of it.' },
+      tuneTarget: { what: 'Which Stage 4 record set the two scans below work on, from those whose trades were captured.' },
       tnPick: {
-        what: 'Which captured survivor of the Stage 4 record set the scans read.',
-        more: 'By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money. Naming one records it as your pick.',
+        what: 'Which captured survivor of the Stage 4 record set the scans read, or all of them.',
+        more: 'By depth is the setting nearest the middle of every range of the rule, among the captured survivors, chosen without looking at money: the same pick Greenlight makes, so a scan can be aimed without shopping the survivors. All survivors pools every captured survivor\'s trades into one list, each trade held for its own survivor\'s length, so the scan reads the whole table at once. Naming one records it as your pick.',
       },
       tnWinTrain: { what: 'Whether the scans read the entries of the training window. Not a look: this window was read to choose the rule.' },
       tnWinTest: { what: 'Whether the scans read the entries of the test window. Not a look: this window was read to choose the rule.' },
@@ -874,8 +874,8 @@ window.HELP = {
         more: 'Takes minutes and cannot be stopped part-way.',
       },
       convRun: {
-        what: 'Tries every level of agreement across the whole history, to see how much conviction is worth requiring.',
-        more: 'Takes minutes and cannot be stopped part-way.',
+        what: 'Tries every level of agreement across the captured trades, to see how much conviction is worth requiring: as money, and as a return on the amount traded.',
+        more: 'The money line can rise simply because the ladder trades more; the return on the amount traded, flat against ladder and per level of agreement, cannot. Takes minutes and cannot be stopped part-way.',
       },
     },
   },
