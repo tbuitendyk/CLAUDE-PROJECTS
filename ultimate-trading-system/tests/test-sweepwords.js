@@ -311,10 +311,15 @@ module.exports = {
     // prevent, wearing the fix.
     assert.ok(/const screens = new Set\(\['draw', \.\.\.tabs\(S\)\.map\(\(t\) => t\.fn\)\]\);/.test(screens),
       'the renderers are not dead ends any more, so one screen can drag another screen\'s words onto its list');
-    const verify = drawBody('drawVerify');
-    for (const w of ['every coin of every setting', 'copy settings into the form']) {
-      assert.ok(!verify.includes(w), `Verify's list has picked up "${w}", which is on Boards`);
+    for (const fn of ['drawHeld', 'drawReserve']) {
+      const judge = drawBody(fn);
+      for (const w of ['every coin of every setting', 'copy settings into the form']) {
+        assert.ok(!judge.includes(w), `${fn}'s list has picked up "${w}", which is on Boards`);
+      }
     }
+    // AND THE TWO JUDGING TABS ARE ONE SCREEN (3.147.0, VERIFY-DESIGN.md Part 9):
+    // one renderer handed the stretch, so the two lists differ in nothing
+    assert.deepStrictEqual(collect('drawHeld').words, collect('drawReserve').words, 'Held and Reserve are drawn by one renderer, so their word lists are one list');
   },
 
   // AND IT MUST NOT BLEED BETWEEN SCREENS. Each of these is shown on exactly
@@ -335,10 +340,12 @@ module.exports = {
     // RE-AIMED 2026-09-02: fee % each way is on Boards too now, on the fill-in
     // for the tuning-slice money (3.46.0), so it is no longer a Sweep-only probe.
     // RE-AIMED 2026-09-08: the planted check's press moved to Setup, under
-    // Version (3.96.0), and Setup has no list; the held-back ride's press is
-    // a phrase Verify owns outright.
+    // Version (3.96.0), and Setup has no list. RE-AIMED 3.147.0: Verify became
+    // Held and Reserve, one renderer, so a phrase of theirs is on BOTH of them
+    // and on nothing else; the leak check below allows exactly that pair.
+    const JUDGE_PAIR = new Set(['held', 'reserve']);
     const onlyOn = { sweep: ['start stage 1', 'carry forward (0 = all)', 'null set size'],
-      verify: ['work out the held-back ride'],
+      held: ['work out the held-back ride', 'work out the reserve ride'],
       boards: ['every coin of every setting', 'copy settings into the form'],
       greenlight: ['greenlight this survivor'] };
     for (const [home, words] of Object.entries(onlyOn)) {
@@ -346,6 +353,8 @@ module.exports = {
         assert.ok((byTabWords[home] || '').includes(w), `"${w}" is missing from its own screen (${home})`);
         for (const [other, blob] of Object.entries(byTabWords)) {
           if (other === home) continue;
+          // Held and Reserve are one screen drawn twice (3.147.0), so a phrase of one is on the other by design
+          if (JUDGE_PAIR.has(home) && JUDGE_PAIR.has(other)) continue;
           assert.ok(!blob.includes(w),
             `"${w}" is on ${home} only, but the reader put it on ${other} as well — the list would say the `
             + 'owner can see a control there that is not there');

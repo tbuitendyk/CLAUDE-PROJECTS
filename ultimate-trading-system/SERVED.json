@@ -1,16 +1,16 @@
 {
-  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html \u2014 so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "2cbb1144e50c04f73a8496d91d725899f726f8f2",
-  "subject": "3.146.1: the survivor table's own-hold cell is a helper the word list can read",
-  "capturedAt": "2026-09-15T06:54:18Z",
+  "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
+  "commit": "df0edb1f823fac1e5b5e54419644f06288265c2b",
+  "subject": "3.147.0: Held and Reserve, one screen over two stretches; each press writes a held set or a reserve set of the rule; a half-life set judged as its own rule; the box's stamps moved into sets once",
+  "capturedAt": "2026-09-15T20:47:20Z",
   "files": {
     "public/construct.js": {
-      "sha256": "382f3a37bebe4f394de884cf80f88c9aaf5660f6de937d6269ab2e15c602278f",
-      "bytes": 622209
+      "sha256": "bb5f3bb21a9c3297a2a8e231fda4c94cb6a749ecd1b79113c1536c5018f0b4ff",
+      "bytes": 625650
     },
     "public/help-content.js": {
-      "sha256": "8d058b7268e8139e716fe78a0020ab6ae854326434f35857c47182d89e08787b",
-      "bytes": 113610
+      "sha256": "ccd62cfed873cbb299fe38b421f3f6f345e1ca47f98be85052624636632e0188",
+      "bytes": 116528
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
