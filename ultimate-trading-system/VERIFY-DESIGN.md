@@ -1390,6 +1390,25 @@ first. Anything else is news and goes in the loop record.
 
 ### Release 2 — the reserve board (second digit)
 
+> **BUILT AND DEPLOYED, 3.148.0 (2026-09-15, the same LOOP NOW!).** One
+> gzipped file per unit beside the stage 3 set, priced through the one stage
+> 3 unit task with the reserve window in the held-back window's place and
+> proved against the stored test money to the cent before it is written; a
+> second rule on the same unit reads it without pricing (H2.1, on the page
+> fixture). On the fabricated chain the board holds every setting of the
+> unit with every kept copy and the four comparisons at the survivors' hold
+> lengths (H2.2), and its survivors' money agrees to the cent, copy for
+> copy, with the survivors-only pricing of release 1 (H2.3, on the chain).
+> The dropped settings, the other units and the ride read the board on
+> Reserve; a unit not yet priced is named and counted apart, and the other
+> units' press prices it and skips it next time (H2.4). A half-life rule
+> prices its own and reads no board (H2.5). On the box nothing is priced
+> yet: the 98-setting rule's unit board is one press on Reserve ("Price the
+> reserve board", minutes), the owner's to press, and the comparison with
+> its release-1 reserve set is read on the screen once it lands; the earlier
+> set's window may be shorter than today's if the box's data has grown, and
+> the block prints both windows.
+
 Success rules:
 
 - **H2.1 — the board is the unit's.** The reserve board is priced once per
