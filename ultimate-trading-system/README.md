@@ -42,8 +42,8 @@ which may run at the same time.
 - **Setup** &mdash; the front door. Account and system settings; deliberately
   empty for now.
 - **Construct** &mdash; the guided narrowing flow, in the order the work is
-  actually done: **Data**, **Sweep**, **Boards**, **Verify**, **History**,
-  **Tune**, **Greenlight**.
+  actually done: **Data**, **Coins**, **Sweep**, **Boards**, **Funnel**,
+  **History**, **Tune**, **Held**, **Reserve**, **Greenlight**.
 - **Trade** &mdash; every greenlighted configuration on two design-identical
   sides, **Paper Books** and **Live Trading**, each carrying **Dashboard**,
   **Greenlights**, **Setups**, **Setup detail** and **LIVE**.
