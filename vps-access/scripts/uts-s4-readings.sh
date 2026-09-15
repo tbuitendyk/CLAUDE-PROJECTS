@@ -25,6 +25,15 @@ for f in files:
     d = doc.get('derived')
     print(f"== {doc.get('id')} | {doc.get('name')} | kind {doc.get('kind')} | release {doc.get('release')} | unit {doc.get('unit')} | survivors {(doc.get('counts') or {}).get('survivors')} | exam {bool(doc.get('exam'))}")
     print(f"   parent {(doc.get('parent') or {}).get('id')} layout {layout} | derived {json.dumps({k: d.get(k) for k in ('kind','from','run','judge','layout')}) if d else None}")
+    # a held set or a reserve set (3.147.0): what it was read from, its number, what it stands on, its one block
+    if doc.get('kind') in ('held', 'reserve'):
+        b = doc.get('block') or {}
+        so = doc.get('standsOn')
+        print(f"   from {(doc.get('from') or {}).get('id')} ({(doc.get('from') or {}).get('kind')}) number {doc.get('number')} createdAt {str(doc.get('createdAt'))[:16]} | standsOn {so.get('id') if so else None}")
+        print(f"   block {b.get('id')} look {b.get('look')} at {str(b.get('at'))[:16]} rel {b.get('release')} {'PASS' if (b.get('verdict') or {}).get('pass') else 'FAIL'} stretch {b.get('stretch')} read={'yes' if b.get('read') else 'no'} own={'yes' if (b.get('read') or {}).get('own') else 'no'} priced={len(b.get('priced') or []) if b.get('priced') is not None else None} heldBack-left={'heldBack' in b} rows-left={'rows' in b} gate-left={'gate' in b} | stopChoices {len(doc.get('stopChoices') or {})}")
+    rd = doc.get('readings') or {}
+    if rd:
+        print("   readings: " + ' | '.join(f"{st}: others {len((rd.get(st) or {}).get('others') or [])}, dropped {len((rd.get(st) or {}).get('dropped') or [])}, ride {len((rd.get(st) or {}).get('ride') or [])}" for st in ('held', 'reserve')))
     v = doc.get('verify') or []
     print(f"   verify blocks {len(v)}: " + '; '.join(f"{b.get('id')} look {b.get('look')} at {str(b.get('at'))[:16]} rel {b.get('release')} {'PASS' if (b.get('verdict') or {}).get('pass') else 'FAIL'} own={'yes' if (b.get('heldBack') or {}).get('own') else 'no'}" for b in v))
     u = doc.get('unread') or []
