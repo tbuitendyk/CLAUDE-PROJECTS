@@ -16,10 +16,15 @@ def load(p):
     except Exception as e: return None
 files = sorted(glob.glob(os.path.join(D, 's4-*.json')))
 print(f'{len(files)} Stage 4 file(s) in {D}')
+# RULE TEN's measurement for the mover of 3.147.0/3.147.1: how many sets it would still act on
+OLD = ('verify', 'unread', 'others', 'dropped', 'ride'); DEAD = ('gate', 'controls', 'failures')
+still = []
 for f in files:
     doc = load(f)
     if not doc: print(f'{os.path.basename(f)}: unreadable'); continue
     if doc.get('stage') != 4: continue
+    if doc.get('kind') == 'funnel' and any(k in doc for k in OLD): still.append((doc.get('id'), 'rule keeps ' + ','.join(k for k in OLD if k in doc)))
+    if doc.get('kind') in ('held', 'reserve') and any(k in (doc.get('block') or {}) for k in DEAD): still.append((doc.get('id'), 'block keeps ' + ','.join(k for k in DEAD if k in (doc.get('block') or {}))))
     par = load(os.path.join(D, str((doc.get('parent') or {}).get('id')) + '.json'))
     layout = ((par or {}).get('params') or {}).get('windowLayout')
     d = doc.get('derived')
@@ -55,4 +60,5 @@ for f in files:
         print(f"   {k} {len(lst)}: " + '; '.join(f"{str(x.get('at') or x.get('ts') or '')[:16]} rel {x.get('release')}" for x in lst if isinstance(x, dict)))
     cap = doc.get('capture')
     print(f"   capture: {json.dumps({k: cap.get(k) for k in ('at','release','captured','survivors')}) if cap else None} | stopChoices {len(doc.get('stopChoices') or {})} | heldBackReadAt {doc.get('heldBackReadAt')} | sealed {'yes' if doc.get('sealed') else 'no'} | rich {'yes' if doc.get('rich') else 'no'}")
+print(f"== sets the mover would still act on: {len(still)}" + (' -- ' + '; '.join(f'{i} ({w})' for i, w in still) if still else ' (nothing left to move or strip)'))
 PY
