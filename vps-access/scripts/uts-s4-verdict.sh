@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# uts-s4-verdict.sh <set-id>[:full] -- READ-ONLY. Brief by default (the header and one line per block); :full prints every figure. Verify's own dry read of one Stage 4
+# uts-s4-verdict.sh <set-id>[.full] -- READ-ONLY. Brief by default (the header and one line per block); .full prints every figure. Verify's own dry read of one Stage 4
 # record set, printed in full where the verdict is decided: the footing, the
 # held-back read against the four comparisons, the survivors against their
 # scrambled copies (the bar, the beats, the spread of the copies' means), the
@@ -7,8 +7,8 @@
 # oldest (the verdict) first. Changes nothing; the same GET the page makes.
 set -uo pipefail
 B=http://127.0.0.1:8094
-arg="${1:?set id, or set id:full for every figure}"
-id="${arg%:full}"
+arg="${1:?set id, or set id.full for every figure}"
+id="${arg%.full}"
 brief=1; [ "$arg" != "$id" ] && brief=""
 curl -sf --max-time 60 "$B/api/funnel/set/$id/verify" | BRIEF="$brief" python3 -c '
 import json,sys,statistics,os
