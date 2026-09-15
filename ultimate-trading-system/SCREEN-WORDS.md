@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **578ea340af52 — what the box is serving**, not from the working tree.
+Generated from **a4bbf34c6e9a — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1225,15 +1225,15 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # History
 
-## What the controls are called (83)
+## What the controls are called (84)
 
 - `- INCOMPLETE, never a pass`
 - `, the bar being`
 - `: retrains on the first`
 - `· built from this table:`
 - `· retrained on the first`
-- `· sealed window`
 - `· verdict`
+- `· window layout`
 - `% of history, tested on the next`
 - `%, judged on the`
 - `%, tests on the next`
@@ -1267,8 +1267,8 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `no figure`
 - `none stood`
 - `none were priced`
-- `not intact`
 - `not known`
+- `not readable`
 - `of`
 - `of the time · lead`
 - `PASS`
@@ -1305,6 +1305,7 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `trades a setting`
 - `under release`
 - `unread $`
+- `unread window`
 - `vs always long $`
 - `whole chunks`
 - `window`
@@ -1315,11 +1316,13 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 _none_
 
-## Sentences the page prints (31)
+## Sentences the page prints (33)
 
 - The reserve grade on a Stage 4 record set
-- The unread window is the sealed 13% no part of the search touched: it was cut away before anything
-- trained, and it runs from where the seal began to whatever the box holds today. This prices the set's survivors
+- The unread window is the stretch of history no part of the search touched, from where it begins
+- to whatever the box holds today. Where it begins is read off the record set's own record: on a 61/13/13/13 (sealed exam)
+- record set it is the sealed reserve, cut away before anything trained; on a 70/15/15 record set it is everything
+- after the held-back window. This prices the set's survivors
 - on it, on the set's own coin and shape, with the members forecasting it from the models they were trained as,
 - and reads the result by the same four rules as the verdict on Verify: money, the two comparisons a rule has to
 - beat, the scrambled copies at the set's own bar, and noise losing. It refuses without a verdict that passed
@@ -1349,10 +1352,10 @@ _none_
 - not known - one of the four has no figure
 - different hold lengths, so each comparison is read at the worst of them.
 
-## Every word, flat (236)
+## Every word, flat (240)
 
 ```
-about above again Against against ahead already always and anything are as at average away bar beat beaten beats been before began behind being beside best block both box Build built by cent chance choice chosen chunks clear clears coin column comparison comparisons copies counted cut data different do drawdown each Every every exactly FAIL FAILS figure figures figures. first forecast-free forecasting forecasts four from gate goes grade graded Green half-life half-lives has Held held-back history hold holds improved in INCOMPLETE intact is IS it It its judged keeping kept kinds known largest lead least lengths line. lines long look look. lose losing. made members models money months more name never next no No noise NOISE none not nothing of on once one only order. other out over own part PASS pass passed per press priced prices PROFITING reached read reads real recent record records refused refuses release reserve Reserve result Retrain retrained retraining retrains row rows rule rules Run run runs same sanity scrambled seal sealed search seen. set setting settings shape side. so sort Stage stage stamped STANDS stood stopped stretch survivor survivors table taken tested tests that The the them. Then There These they This this threshold ticked tie time to today. touched trade trades trained training two under unit unread unweighted use verdict Verify vs was weighted were whatever where whole window window. wins with with. without won worst would yet yet.
+about above after again Against against ahead already always and anything are as at average away bar beat beaten beats been before begins behind being beside best block both box Build built by cent chance choice chosen chunks clear clears coin column comparison comparisons copies counted cut data different do drawdown each Every every everything exactly exam FAIL FAILS figure figures figures. first forecast-free forecasting forecasts four from gate goes grade graded Green half-life half-lives has Held held-back history hold holds improved in INCOMPLETE is IS it It its judged keeping kept kinds known largest layout lead least lengths line. lines long look look. lose losing. made members models money months more name never next no No noise NOISE none not nothing of off on once one only order. other out over own part PASS pass passed per press priced prices PROFITING reached read readable reads real recent record records refused refuses release reserve Reserve result Retrain retrained retraining retrains row rows rule rules Run run same sanity scrambled sealed search seen. set setting settings shape side. so sort Stage stage stamped STANDS stood stopped stretch survivor survivors table taken tested tests that The the them. Then There These they This this threshold ticked tie time to today. touched trade trades trained training two under unit unread unweighted use verdict Verify vs was weighted were whatever where Where whole window window. wins with with. without won worst would yet yet.
 ```
 
 ---
