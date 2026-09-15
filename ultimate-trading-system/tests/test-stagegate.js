@@ -16,7 +16,7 @@ const src = (f) => fs.readFileSync(path.join(ROOT, f), 'utf8');
 // a verdict block the way lib/stages.js stamps one, trimmed to what the grade reads
 function block({ real = 5, positive = true, known = true, beatsBuy = true, buyHold = 2, beats = 20, copies = 20, bar = 20, pass = true, survivors = 3, kept = 20 } = {}) {
   return {
-    heldBack: { real, of: survivors, positive, comparisons: { known, beatsBuyHold: known ? beatsBuy : null, buyHold: known ? { lo: buyHold, hi: buyHold } : null } },
+    read: { real, of: survivors, positive, comparisons: { known, beatsBuyHold: known ? beatsBuy : null, buyHold: known ? { lo: buyHold, hi: buyHold } : null } },
     copies: { copies, beats, bar, pass },
     survivors: { survivors, rows: Array.from({ length: survivors }, (_, i) => ({ label: `s${i}`, copiesKept: kept })) },
   };
@@ -42,7 +42,7 @@ module.exports = {
     assert.strictEqual(G.STAGE1.windowLayout, 'reserve61', 'a sealed window, so the cut records one');
     const s = src('lib/stages.js');
     const run = s.slice(s.indexOf('async function runStageGate('), s.indexOf('function stageGateStatus('));
-    const order = ['generateFabricated(', 'startStage1(', 'startStage2(', 'startStage3(', 'cutFunnelSet(', 'funnelVerifyRun(', 'G.grade(', 'G.writeRecord('];
+    const order = ['generateFabricated(', 'startStage1(', 'startStage2(', 'startStage3(', 'cutFunnelSet(', 'judgeRunOn(', 'G.grade(', 'G.writeRecord('];
     let at = -1;
     for (const step of order) { const i = run.indexOf(step); assert.ok(i > at, `${step} comes after what precedes it`); at = i; }
     assert.ok(/rule: G\.RULE/.test(run), 'the cut takes the declared rule, never one worked out from the numbers');
@@ -162,13 +162,13 @@ module.exports = {
     assert.strictEqual(s.split('    exam: !!params.exam,').length - 1, 3, 'every stage birth stamps whether the set is the exam\'s');
     assert.ok(/doc\.exam = !!state\.exam;/.test(s), 'and the cut stamps it on a Stage 4 set');
     assert.ok(/exam: !!d\.exam,/.test(s), 'the list row carries it');
-    // the same filter leaves out a half-life set (3.95.0), which stands on its source and is not offered to cut again
+    // the same filter leaves out a half-life set (3.95.0) and a held set or a reserve set (3.147.0): none of them is a cut, and none is offered to cut again
     // 3.104.1: the picker no longer narrows to the board on screen -- every
     // Stage 4 set of the stage 3 record set is offered -- so this checks the
     // one filter that is this test's subject, and checks it inside the function
     // that builds the list rather than anywhere in the file.
     const cutsFor = s.slice(s.indexOf('function funnelCutsFor('), s.indexOf('// THE ROWS OF ONE STAGE 4 SET'));
-    assert.ok(cutsFor.includes('.filter((d) => !d.exam && !d.derived)'), 'the Funnel\'s own picker leaves them out');
+    assert.ok(cutsFor.includes(".filter((d) => !d.exam && !d.derived && d.kind === 'funnel')"), 'the Funnel\'s own picker leaves them out');
     const server = src('server.js');
     assert.ok(server.includes("sets: stages.listSets().filter((s) => !s.exam)"), 'Boards\' list leaves them out');
     assert.ok(server.includes("sets: stages.listFunnelSets(parent).filter((d) => !d.exam).map((d) => ({"), 'and the Stage 4 list leaves them out');
@@ -191,7 +191,7 @@ module.exports = {
     const claim = s.slice(s.indexOf('function claimOrRefuse('), s.indexOf('function cancelStage('));
     assert.ok(/if \(examBusy\(\) && !\(params && params\.exam\)\) throw new Error/.test(claim), 'a launch that is not the exam\'s refuses while it runs');
     for (const fn of ['startStage1', 'startStage2', 'startStage3']) assert.ok(s.includes(`function ${fn}(params) {\n  claimOrRefuse(params);`), `${fn} hands its params to the claim`);
-    assert.ok(/funnelVerifyRun\(getSet\(cuts\[which\]\.id\), \{ barPct: 100 \}\)/.test(s), 'the exam presses the verdict directly, holding the box');
+    assert.ok(/const made = await judgeRunOn\(getSet\(cuts\[which\]\.id\), 'held', \{ barPct: 100 \}\);\n    run\.sets\.push\(made\.id\);\n    blocks\[which\] = getSet\(made\.id\)\.block;/.test(s), 'the exam presses the held read directly, holding the box, and grades the held set it makes, which is deleted with the rest');
   },
 
   // A STAGE 4 VERDICT RECORDS WHICH STAGE GATE STOOD.
@@ -201,7 +201,7 @@ module.exports = {
     assert.ok(/const \{ stageGate, \.\.\.rest \} = footing;/.test(s) && /rules, stageGate, footing: rest,/.test(s), 'and it rides on the block');
     const V = require('../lib/funnelverify');
     const rules = V.declareRules({ kind: 'scrambles', k: 10, barPct: 80 });
-    const base = { rules, footing: { ok: true, had: 1 }, looks: { unstamped: 1 }, heldBack: { real: 1, of: 1, positive: true, pass: true, comparisons: { known: true, beatsBuyHold: true, beatsShortHold: true } }, copies: { copies: 10, beats: 10, bar: 8, barPct: 80, chance: 0.27, pass: true }, survivors: { survivors: 1, passing: 1, byChance: 0.27 }, sanity: { known: true, ok: true, board: { losing: 0.6 }, threshold: 50 } };
+    const base = { rules, footing: { ok: true, had: 1 }, looks: { unstamped: 1 }, read: { real: 1, of: 1, positive: true, pass: true, comparisons: { known: true, beatsBuyHold: true, beatsShortHold: true } }, copies: { copies: 10, beats: 10, bar: 8, barPct: 80, chance: 0.27, pass: true }, survivors: { survivors: 1, passing: 1, byChance: 0.27 }, sanity: { known: true, ok: true, board: { losing: 0.6 }, threshold: 50 } };
     const stood = V.buildBlock({ ...base, stageGate: { state: 'PASS', release: '3.87.0' } });
     assert.ok(/the stage-engine check stood \(release 3\.87\.0\)/.test(stood.verdict.sentence), stood.verdict.sentence);
     const none = V.buildBlock({ ...base, stageGate: { state: 'NOT CHECKED', release: null } });

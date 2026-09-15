@@ -104,11 +104,12 @@ const RULE = { allowed: { gate: ['active'] } };
 async function cutOn(f, extra = {}) {
   return stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: f.keys[0], steps: [{ n: 1, what: 'kept gate active' }], backSteps: [{ from: 2, to: 1, why: 'a look back' }], marks: [{ key: 'spike', step: 2, detail: 'tHours' }], barPct: 80, ...extra });
 }
-// the press, started and polled until it lands
-async function pressed(id, asked = {}) {
-  stages.funnelVerifyStart(id, asked);
+// the press on a stretch, started and polled until it lands; it writes a held
+// set or a reserve set of the rule (3.147.0), and the answer names it
+async function pressed(id, asked = {}, stretch = 'held') {
+  stages.judgeStart(id, stretch, asked);
   for (let i = 0; i < 400; i++) {
-    const st = stages.funnelVerifyStatus(id);
+    const st = stages.judgeStatus(id, stretch);
     if (st.error) throw new Error(st.error);
     if (st.result) return st.result;
     // eslint-disable-next-line no-await-in-loop
@@ -116,6 +117,10 @@ async function pressed(id, asked = {}) {
   }
   throw new Error('the read did not land');
 }
+// the sets read from a rule on a stretch, newest first, and the block of the n-th newest
+const setsOf = (id, stretch = 'held') => stages.judgeSetsOf(id, stretch);
+const blockOf = (id, n = 0, stretch = 'held') => ((setsOf(id, stretch)[n] || {}).block);
+const rewrite = (id, fn) => { const file = path.join(SETS_DIR, `${id}.json`); const d = JSON.parse(fs.readFileSync(file, 'utf8')); fn(d); fs.writeFileSync(file, JSON.stringify(d)); return d; };
 // the read of the other units, started and polled until it lands
 async function othersPressed(id, asked = {}) {
   stages.funnelOthersStart(id, asked);
@@ -147,7 +152,7 @@ module.exports = {
   // its own.
   async theRulesBlockIsWrittenBeforeTheNumbers() {
     const s = src('lib/stages.js');
-    const run = s.slice(s.indexOf('async function funnelVerifyRun('));
+    const run = s.slice(s.indexOf('async function judgeRunOn('));
     assert.ok(run.indexOf('V.declareRules(') < run.indexOf('funnelVerifyJoin('), 'the rules must be declared before the board is read');
     assert.ok(run.indexOf('V.declareRules(') < run.indexOf('V.copiesRead('), 'and before the copies are read');
     const lib = src('lib/funnelverify.js');
@@ -158,7 +163,7 @@ module.exports = {
     try {
       const doc = await cutOn(f);
       await pressed(doc.id, { barPct: 70, sanityPct: 40 });
-      const block = stages.getSet(doc.id).verify[0];
+      const block = blockOf(doc.id);
       assert.deepStrictEqual(block.rules, V.declareRules(doc.check, { barPct: 70, sanityPct: 40 }), 'the block carries exactly the declared rules');
       assert.strictEqual(block.copies.bar, block.rules.bar);
       assert.strictEqual(block.sanity.threshold, 40);
@@ -207,7 +212,7 @@ module.exports = {
       const doc = await cutOn(f);
       await pressed(doc.id, {});
       await pressed(doc.id, { barPct: 50 });
-      const [later, first] = stages.getSet(doc.id).verify;
+      const [later, first] = setsOf(doc.id).map((x) => x.block);
       assert.strictEqual(first.rules.barChanged, false);
       assert.strictEqual(first.rules.barPct, 80);
       assert.deepStrictEqual({ barPct: later.rules.barPct, changed: later.rules.barChanged, tag: later.rules.tags.bar }, { barPct: 50, changed: true, tag: 'GUESSED' });
@@ -222,13 +227,13 @@ module.exports = {
       d.survivors = d.survivors.slice(1);           // one survivor struck off the record
       d.counts.survivors = d.survivors.length;
       fs.writeFileSync(path.join(SETS_DIR, `${d.id}.json`), JSON.stringify(d));
-      const dry = await stages.funnelVerifyDry(doc.id);
+      const dry = await stages.judgeDry(doc.id, 'held');
       assert.ok(/does not give back its own survivors/.test(dry.refused || ''), `the dry read says why: ${dry.refused}`);
       assert.strictEqual(dry.footing.ok, false);
       let threw = null;
       try { await pressed(doc.id); } catch (e) { threw = e.message; }
       assert.ok(/does not give back its own survivors/.test(threw || ''), 'and the press refuses in the same words');
-      assert.strictEqual((stages.getSet(doc.id).verify || []).length, 0, 'nothing was stamped');
+      assert.strictEqual(setsOf(doc.id).length, 0, 'nothing was written');
     } finally { f.cleanup(); }
   },
 
@@ -243,7 +248,7 @@ module.exports = {
       const d = stages.getSet(doc.id);
       d.rule.floors = { avgHold: { min: -100 } };     // still replays; not a dial nor a limit
       fs.writeFileSync(path.join(SETS_DIR, `${d.id}.json`), JSON.stringify(d));
-      const dry = await stages.funnelVerifyDry(doc.id);
+      const dry = await stages.judgeDry(doc.id, 'held');
       assert.ok(/not dials or the two limits \(floors\.avgHold\)/.test(dry.refused || ''), `says which key: ${dry.refused}`);
       let threw = null;
       try { await pressed(doc.id); } catch (e) { threw = e.message; }
@@ -255,12 +260,14 @@ module.exports = {
   // press all refuse it through the same two readers every other launch uses.
   verifyRefusesWhileAStageRuns() {
     const s = src('lib/stages.js');
-    const start = s.slice(s.indexOf('function funnelVerifyStart('), s.indexOf('function verifySummaryOf('));
-    assert.ok(/const busy = verifyBusy\(\);\s*\n\s*if \(busy\) throw new Error/.test(start), 'the press must ask what is busy and refuse on it');
+    const refusal = s.slice(s.indexOf('function judgeRefusalOf('), s.indexOf('async function priceSurvivorsOn('));
+    assert.ok(/const busy = verifyBusy\(\);\s*\n\s*if \(busy\) return `\$\{busy\}/.test(refusal), 'the press must ask what is busy and refuse on it');
+    const start = s.slice(s.indexOf('function judgeStart('), s.indexOf('function judgeStatus('));
+    assert.ok(/const why = judgeRefusalOf\(doc, stretch, null\);\s*\n\s*if \(why\) throw new Error\(why\);/.test(start), 'and the press throws the refusal');
     const busy = s.slice(s.indexOf('const verifyBusy ='), s.indexOf('const verifyBusy =') + 200);
     assert.ok(/stageBusy\(\)/.test(busy), 'busy means a stage run, a totalling or a rebuild');
-    const dry = s.slice(s.indexOf('async function funnelVerifyDry('), s.indexOf('async function funnelVerifyRun('));
-    assert.ok(/const busy = verifyBusy\(\);/.test(dry) && /out\.refused = `\$\{busy\}/.test(dry), 'and the dry read says so before the button is pressed');
+    const dry = s.slice(s.indexOf('async function judgeDry('), s.indexOf('function judgeSummaryOf('));
+    assert.ok(/out\.refused = judgeRefusalOf\(doc, stretch, out\.footing\);/.test(dry), 'and the dry read says so before the button is pressed');
   },
 
   async theSurvivorsAreReadInFullNeverAPage() {
@@ -272,9 +279,9 @@ module.exports = {
     try {
       const doc = await cutOn(f);
       const r = await pressed(doc.id);
-      const block = stages.getSet(doc.id).verify[0];
+      const block = blockOf(doc.id);
       assert.strictEqual(doc.counts.survivors, 2);
-      assert.strictEqual(block.heldBack.of, 2);
+      assert.strictEqual(block.read.of, 2);
       assert.strictEqual(block.survivors.rows.length, 2);
       assert.deepStrictEqual(block.survivors.rows.map((x) => x.label), doc.survivors.map((x) => x.label), 'in the record\'s own order');
       assert.strictEqual(r.look, 1);
@@ -286,7 +293,7 @@ module.exports = {
     try {
       const doc = await cutOn(f);
       assert.strictEqual(stages.getSet(doc.id).heldBackReadAt, null, 'the cut is not the stamped look');
-      const dry = await stages.funnelVerifyDry(doc.id);
+      const dry = await stages.judgeDry(doc.id, 'held');
       assert.strictEqual(stages.getSet(doc.id).heldBackReadAt, null, 'nor is the dry read');
       assert.ok(dry.looks.unstamped >= 3, `the walk's looks are counted before any stamp: ${dry.looks.unstamped}`);
       await pressed(doc.id);
@@ -295,26 +302,44 @@ module.exports = {
       await new Promise((resolve) => { setTimeout(resolve, 5); });
       await pressed(doc.id);
       assert.strictEqual(stages.getSet(doc.id).heldBackReadAt, first, 'a later press leaves it exactly as it was');
-      assert.strictEqual(stages.getSet(doc.id).verify[1].at, first, 'and it is the first block\'s own time');
+      assert.strictEqual(blockOf(doc.id, 1).at, first, 'and it is the first held set\'s own time');
     } finally { f.cleanup(); }
   },
 
+  // EVERY PRESS WRITES A SET (3.147.0): a held set of the rule, named after it,
+  // numbered from the second, each with its one block; the first is untouched
+  // by the second, and the rule carries no block of its own.
   async everyPressAppendsABlockAndOverwritesNone() {
     const f = await fixture();
     try {
       const doc = await cutOn(f);
-      await pressed(doc.id);
-      const one = JSON.parse(JSON.stringify(stages.getSet(doc.id).verify[0]));
+      const r1 = await pressed(doc.id);
+      const first = setsOf(doc.id)[0];
+      assert.deepStrictEqual({ kind: first.kind, stretch: first.stretch, from: first.from.id, number: first.number, name: first.name, id: r1.id }, { kind: 'held', stretch: 'held', from: doc.id, number: 1, name: `held set of ${doc.name}`, id: first.id });
+      const one = JSON.parse(JSON.stringify(first.block));
       await pressed(doc.id, { barPct: 60 });
-      const list = stages.getSet(doc.id).verify;
+      const list = setsOf(doc.id);
       assert.strictEqual(list.length, 2);
-      assert.deepStrictEqual(list[1], one, 'the first block is untouched');
-      assert.deepStrictEqual(list.map((b) => b.look), [2, 1], 'newest first, numbered');
-      assert.deepStrictEqual(list.map((b) => b.id), [`${doc.id}-v2`, `${doc.id}-v1`]);
-      assert.strictEqual(list[0].looks.stamped, 1, 'the second press knows one stamped look came before it');
-      const dry = await stages.funnelVerifyDry(doc.id);
-      assert.strictEqual(dry.blocks.length, 2, 'the dry read hands every block back');
-      assert.deepStrictEqual(stages.verifySummaryOf(stages.getSet(doc.id)), { blocks: 2, at: one.at, pass: one.verdict.pass, release: one.release }, 'the list summary is the first block, the verdict');
+      assert.deepStrictEqual(list[1].block, one, 'the first set is untouched');
+      assert.deepStrictEqual(list.map((x) => x.block.look), [2, 1], 'newest first, numbered');
+      assert.deepStrictEqual(list.map((x) => x.name), [`held set of ${doc.name} #2`, `held set of ${doc.name}`]);
+      assert.deepStrictEqual(list.map((x) => x.block.id), [`${list[0].id}-v1`, `${list[1].id}-v1`], 'one block a set');
+      assert.strictEqual(list[0].block.looks.stamped, 1, 'the second press knows one stamped look came before it');
+      assert.ok(!('verify' in stages.getSet(doc.id)), 'the rule carries no block');
+      // the frozen copy: the rule, the survivors and the stop choices as they stood
+      assert.deepStrictEqual({ rule: list[0].rule, survivors: list[0].survivors.map((x) => x.label), unit: list[0].unit, parent: list[0].parent.id, stops: list[0].stopChoices }, { rule: stages.getSet(doc.id).rule, survivors: doc.survivors.map((x) => x.label), unit: doc.unit, parent: f.id, stops: {} });
+      const dry = await stages.judgeDry(doc.id, 'held');
+      assert.strictEqual(dry.sets.length, 2, 'the dry read hands every set back');
+      assert.deepStrictEqual(dry.sets.map((x) => x.number), [2, 1]);
+      const sum = stages.judgeSummaryOf(stages.getSet(doc.id));
+      assert.deepStrictEqual({ sets: sum.held.sets, newest: sum.held.newest.name, pass: sum.held.newest.pass, stands: sum.held.stands, reserve: sum.reserve.sets, keeps: sum.keepsReserve }, { sets: 2, newest: list[0].name, pass: one.verdict.pass, stands: one.verdict.pass, reserve: 0, keeps: true }, 'the list summary is the newest set');
+      // a frozen set takes no stop choice, and is not read again as a rule
+      let threw = null;
+      try { stages.setStopChoice(list[0].id, { pick: 'depth', stopPct: 0.1 }); } catch (e) { threw = e.message; }
+      assert.ok(/frozen at the press/.test(threw), threw);
+      threw = null;
+      try { stages.judgeStart(list[0].id, 'held', {}); } catch (e) { threw = e.message; }
+      assert.ok(/already read and frozen/.test(threw), threw);
     } finally { f.cleanup(); }
   },
 
@@ -328,10 +353,10 @@ module.exports = {
     const copies = V.copiesRead(list, rules);
     assert.strictEqual(copies.pass, true, 'the copies pass on this table');
     const sane = V.sanity(rows(3, 10).map((r) => ({ ...r, noiseHold: r.noiseHold.map((v) => -v) })), list, rules);
-    const block = V.buildBlock({ rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, heldBack: unknown, copies, survivors: V.perSurvivor(list, rules), sanity: sane, lineA: V.lineA(list, rules), lineB: V.lineB(list, 3, rules) });
+    const block = V.buildBlock({ rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, read: unknown, copies, survivors: V.perSurvivor(list, rules), sanity: sane, lineA: V.lineA(list, rules), lineB: V.lineB(list, 3, rules) });
     assert.strictEqual(block.verdict.pass, false, 'unknown never passes');
     assert.ok(/the four comparisons are not known/.test(block.verdict.sentence));
-    const withKnown = V.buildBlock({ ...block, heldBack: known });
+    const withKnown = V.buildBlock({ ...block, read: known });
     assert.strictEqual(withKnown.verdict.pass, true, 'and the same block passes once they are known and beaten');
   },
 
@@ -345,7 +370,7 @@ module.exports = {
     try {
       const doc = await cutOn(f);
       await pressed(doc.id);
-      const b = stages.getSet(doc.id).verify[0];
+      const b = blockOf(doc.id);
       assert.deepStrictEqual({ deals: b.survivors.dealsOver, kept: b.survivors.kept }, { deals: 12, kept: 10 });
       assert.ok(/the finest claim 10 copies allow is 1 in 11/.test(b.verdict.sentence), 'the claim is over the copies kept');
     } finally { f.cleanup(); }
@@ -357,7 +382,7 @@ module.exports = {
     assert.ok(/raw dollars/.test(per.definitions.storedBeat) && /cents/.test(per.definitions.beats), 'and both beat definitions');
     for (const r of per.rows) {
       assert.strictEqual(r.storedLead, 1.2, 'the stored lead is read as stored');
-      assert.strictEqual(r.lead, F.leadOf(r.held, r.noiseHold || rows(1, 10)[0].noiseHold.map((v) => v)), 'the lead read here uses the sample spread');
+      assert.strictEqual(r.lead, F.leadOf(r.money, r.noiseHold || rows(1, 10)[0].noiseHold.map((v) => v)), 'the lead read here uses the sample spread');
     }
     assert.ok(per.medianStoredLead !== per.medianLead, 'the two medians are two numbers');
     const ui = src('public/construct.js');
@@ -388,7 +413,7 @@ module.exports = {
     try {
       const doc = await cutOn(f);
       await pressed(doc.id);
-      const b = stages.getSet(doc.id).verify[0];
+      const b = blockOf(doc.id);
       assert.deepStrictEqual(b.fee, { feePerLeg: 0.00125, feeUnits: 'fraction' }, 'under the name every downstream reader looks for');
       assert.deepStrictEqual({ sealed: b.windows.sealed.intact, from: b.windows.sealed.fromTs, chunks: b.windows.sealed.chunks }, { sealed: true, from: 1735689600000, chunks: 5 });
       assert.deepStrictEqual(b.windows.unread, { fromTs: 1735689600000, chunks: 5, seenToTs: 1736121600000 }, 'the unread window rides with its start and no end');
@@ -398,12 +423,16 @@ module.exports = {
     } finally { f.cleanup(); }
   },
 
-  drawVerifyPicksTheSetFromTheServersListNeverTyped() {
+  drawJudgePicksTheRuleFromTheServersListNeverTyped() {
     const ui = src('public/construct.js');
-    const draw = ui.slice(ui.indexOf('async function drawVerify()'), ui.indexOf('async function vFollow('));
+    const draw = ui.slice(ui.indexOf('async function drawJudge(stretch)'), ui.indexOf('async function vFollow('));
     assert.ok(/api\/funnel\/sets/.test(draw), 'the list comes from the server');
     assert.ok(/<select id="vSet"/.test(ui) && !/<input id="vSet"/.test(ui), 'and is a box to pick from, never to type in');
-    assert.ok(/vRememberedSet\(sets\)/.test(draw), 'the choice is remembered the way every page remembers its state');
+    assert.ok(/vRememberedSet\(sets, stretch\)/.test(draw), 'the choice is remembered the way every page remembers its state, per tab');
+    assert.ok(/^async function drawHeld\(\) \{ return drawJudge\('held'\); \}$/m.test(ui) && /^async function drawReserve\(\) \{ return drawJudge\('reserve'\); \}$/m.test(ui), 'the two tabs are one renderer handed the stretch');
+    // WHAT EACH BOX LISTS (VERIFY-DESIGN.md Part 9): Held every rule, Reserve only a rule whose layout keeps a reserve and whose newest held set passed, Greenlight the sets a press made
+    assert.ok(ui.includes("  const rules = (sets || []).filter((x) => (x.kind || 'funnel') === 'funnel');\n  if (stretch === 'held') return rules;\n  return rules.filter((x) => x.judge && x.judge.keepsReserve && x.judge.held && x.judge.held.stands);"), 'Held lists every rule and Reserve only the rules that stand with a reserve to read');
+    assert.ok(ui.includes(".filter((x) => x.kind === 'held' || x.kind === 'reserve');\n  const glChosen = glRememberedSet(glSets);"), 'Greenlight lists held sets and reserve sets, never a rule');
     assert.ok(/list\.length \? list\[0\]\.id : null/.test(ui), 'with nothing remembered it opens on the newest');
   },
 
@@ -412,9 +441,11 @@ module.exports = {
     const table = ui.slice(ui.indexOf('function vSurvivorsTableHtml('), ui.indexOf('function vBlockHtml('));
     assert.ok(!/fcSort\(|bSortBtn\(|bRankSortBtn\(|data-sort|onclick/.test(table), 'no sorter on the table: a sort is a look');
     assert.ok(/There is no sort on this table: a sort is a look\./.test(table), 'and it says so');
-    for (const word of ['avg held-back $', 'beat its own null set', 'null copies', 'lead', 'trades', 'vs always long $']) {
+    for (const word of ['beat its own null set', 'null copies', 'lead', 'trades', 'vs always long $']) {
       assert.ok(table.includes(`>${word}</th>`), `the column is called ${word}, the Funnel's own word`);
     }
+    // the money column is named after the stretch, as two whole phrases the word list reads whole on both tabs (3.147.0)
+    assert.ok(table.includes(">${stretch === 'reserve' ? '<span>avg reserve $</span>' : '<span>avg held-back $</span>'}</th>"), 'the money column is called avg held-back $ on Held and avg reserve $ on Reserve');
   },
 
   async noVerdictSentenceNamesASourceFile() {
@@ -446,7 +477,7 @@ module.exports = {
     const heldBack = V.heldBackRead(list, CONTROLS);
     const copies = V.copiesRead(list, rules);
     const sane = { threshold: 50, board: { figures: 10, losing: 0.6 }, survivors: { figures: 30, losing: 0 }, known: true, ok: true };
-    const base = { rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, heldBack, copies, survivors: per, sanity: sane, lineA: V.lineA(list, rules), lineB: V.lineB(list, 3, rules) };
+    const base = { rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, read: heldBack, copies, survivors: per, sanity: sane, lineA: V.lineA(list, rules), lineB: V.lineB(list, 3, rules) };
     const a = V.buildBlock(base);
     const b = V.buildBlock({ ...base, survivors: { ...per, passing: 0, rows: per.rows.map((r) => ({ ...r, pass: false })) } });
     assert.strictEqual(a.verdict.pass, b.verdict.pass, 'the set verdict does not read the survivors\' own verdicts');
@@ -468,7 +499,7 @@ module.exports = {
     assert.strictEqual(b.n, 2);
     assert.strictEqual(b.real, (10 + 9) / 2, 'the best two by test money');
     const sane = { threshold: 50, board: { figures: 10, losing: 0.6 }, survivors: { figures: 30, losing: 0 }, known: true, ok: true };
-    const base = { rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, heldBack: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: sane, lineA: a, lineB: b };
+    const base = { rules, footing: { ok: true, had: 3 }, looks: { unstamped: 3 }, read: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: sane, lineA: a, lineB: b };
     const x = V.buildBlock(base);
     const y = V.buildBlock({ ...base, lineA: { ...a, beats: 0, clears: false }, lineB: { ...b, beats: 0, clears: false } });
     assert.strictEqual(x.verdict.pass, y.verdict.pass, 'the verdict never reads them');
@@ -483,10 +514,10 @@ module.exports = {
     try {
       const blend = await stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: 'all' });
       assert.strictEqual(blend.unit, null);
-      const dry = await stages.funnelVerifyDry(blend.id);
+      const dry = await stages.judgeDry(blend.id, 'held');
       assert.ok(/cut on all units together/.test(dry.refused) && /cut the rule on one unit on the Funnel/.test(dry.refused), dry.refused);
       let threw = null;
-      try { stages.funnelVerifyStart(blend.id); } catch (e) { threw = e.message; }
+      try { stages.judgeStart(blend.id, 'held'); } catch (e) { threw = e.message; }
       assert.strictEqual(threw, dry.refused, 'the press refuses in the same words');
     } finally { f.cleanup(); }
   },
@@ -505,8 +536,8 @@ module.exports = {
       assert.ok(ui.includes(kept), `gone from the page: ${kept}`);
     }
     const server = src('server.js');
-    assert.ok(server.includes("app.get('/api/funnel/set/:id/verify'") && server.includes("app.post('/api/funnel/set/:id/verify'") && server.includes("app.get('/api/funnel/set/:id/verify/status'"), 'the three new doors exist');
-    assert.ok(server.includes('verify: stages.verifySummaryOf(d),'), 'and the set list says whether a verdict is stamped');
+    assert.ok(server.includes("app.get('/api/funnel/set/:id/judge/:stretch'") && server.includes("app.post('/api/funnel/set/:id/judge/:stretch'") && server.includes("app.get('/api/funnel/set/:id/judge/:stretch/status'"), 'the three doors exist, one for both stretches');
+    assert.ok(server.includes('judge: stages.judgeSummaryOf(d, all),'), 'and the set list says what was read from each rule');
   },
 
   // A SET WITHOUT SCRAMBLED COPIES stamps an INCOMPLETE block that says so,
@@ -518,14 +549,14 @@ module.exports = {
       const doc = await cutOn(f);
       assert.strictEqual(doc.check.kind, 'halves');
       const r = await pressed(doc.id);
-      const b = stages.getSet(doc.id).verify[0];
+      const b = blockOf(doc.id);
       assert.strictEqual(b.rules.copies, 0);
       assert.strictEqual(b.copies.incomplete, true);
       assert.strictEqual(b.copies.pass, false);
       assert.strictEqual(b.sanity.known, false);
       assert.strictEqual(r.pass, false);
-      assert.ok(/kept no scrambled copies, so nothing was read against nothing/.test(r.sentence), r.sentence);
-      assert.strictEqual(b.heldBack.pass, true, 'the held-back read still stands on its own');
+      assert.ok(/no scrambled copies of the held-back window were kept, so nothing was read against nothing/.test(r.sentence), r.sentence);
+      assert.strictEqual(b.read.pass, true, 'the held-back read still stands on its own');
     } finally { f.cleanup(); }
   },
 
@@ -535,23 +566,25 @@ module.exports = {
     const f = await fixture();
     try {
       const doc = await cutOn(f);
-      const dry = await stages.funnelVerifyDry(doc.id);
+      const dry = await stages.judgeDry(doc.id, 'held');
       assert.strictEqual(dry.refused, null, `nothing refuses: ${dry.refused}`);
       assert.deepStrictEqual({ same: dry.footing.same, had: dry.footing.had, gone: dry.footing.gone, keys: dry.footing.keys.ok, sealed: dry.footing.sealed.sealed, marks: dry.footing.marks }, { same: true, had: 2, gone: 0, keys: true, sealed: true, marks: 1 });
-      assert.ok(!('heldBack' in dry) && !('copies' in dry), 'the dry read hands back no held-back figure');
+      assert.ok(!('read' in dry) && !('copies' in dry), 'the dry read hands back no held-back figure');
+      assert.deepStrictEqual({ prices: dry.prices, heldAlone: dry.heldAlone, keeps: dry.reserve.keeps }, { prices: false, heldAlone: null, keeps: true }, 'a plain rule on a layout that keeps a reserve: held reads the records, and is not held alone');
       const r = await pressed(doc.id);
-      const b = stages.getSet(doc.id).verify[0];
+      const b = blockOf(doc.id);
+      assert.deepStrictEqual({ stretch: b.stretch, forecasts: b.forecasts, window: b.window, priced: b.priced }, { stretch: 'held', forecasts: 'the stage 3 records as priced', window: null, priced: null }, 'a held read of a plain rule prices nothing');
       // unit 0's two active settings: held-back 5 each; copies 4, 3.9, ... 3.1 -- all beaten
-      assert.strictEqual(b.heldBack.real, 5);
+      assert.strictEqual(b.read.real, 5);
       assert.deepStrictEqual({ beats: b.copies.beats, bar: b.copies.bar, pass: b.copies.pass }, { beats: 10, bar: 8, pass: true });
-      assert.deepStrictEqual({ buy: b.heldBack.comparisons.beatsBuyHold, short: b.heldBack.comparisons.beatsShortHold, pass: b.heldBack.pass }, { buy: true, short: true, pass: true });
+      assert.deepStrictEqual({ buy: b.read.comparisons.beatsBuyHold, short: b.read.comparisons.beatsShortHold, pass: b.read.pass }, { buy: true, short: true, pass: true });
       // the board: 20 winning figures, 30 losing -- noise mostly loses
       assert.deepStrictEqual({ figures: b.sanity.board.figures, losing: b.sanity.board.losing, ok: b.sanity.ok }, { figures: 50, losing: 0.6, ok: true });
       assert.deepStrictEqual({ passing: b.survivors.passing, positive: b.survivors.positive, of: b.survivors.survivors }, { passing: 2, positive: 2, of: 2 });
       assert.strictEqual(b.lineB.n, 2);
       assert.strictEqual(r.pass, true);
       assert.strictEqual(b.looks.unstamped, 3, 'one step, one step back, and the cut view');
-      // 3.131.0: Boards keeps the held-back columns behind a tick, and Verify says whether it has shown them
+      // 3.131.0: Boards keeps the held-back columns behind a tick, and Held says whether it has shown them
       assert.ok(b.looks.what.some((w) => /^Boards (showed|has not shown) the held-back columns of /.test(w)), b.looks.what.join(' | '));
     } finally { f.cleanup(); }
   },
@@ -585,10 +618,10 @@ module.exports = {
       fs.writeFileSync(stages.funnelRichFile(f.id), JSON.stringify({ v: stages.FUNNEL_RICH_V, savedAt: new Date().toISOString(), release: 'test', settings }));
       const doc = await cutOn(f, { rule: { allowed: { gate: ['active'] }, floors: { maxDrawdown: { max: 100 } } } });
       assert.strictEqual(doc.counts.survivors, 2);
-      assert.deepStrictEqual(stages.getSet(doc.id).verify, [], 'a new set starts with an empty verify list');
+      assert.deepStrictEqual(setsOf(doc.id), [], 'a new rule has no held set');
       assert.strictEqual(doc.rich[doc.survivors[0].label].maxDrawdown, 50, 'the set keeps its own copy of the number the rule reads');
       fs.rmSync(stages.funnelRichFile(f.id), { force: true });      // the parent's file goes: a re-total, a deletion
-      const dry = await stages.funnelVerifyDry(doc.id);
+      const dry = await stages.judgeDry(doc.id, 'held');
       assert.strictEqual(dry.refused, null, `the set's own copy still replays: ${dry.refused}`);
       assert.deepStrictEqual({ same: dry.footing.same, onParent: dry.footing.sameOnParent, nowOnParent: dry.footing.nowOnParent }, { same: true, onParent: false, nowOnParent: 0 });
       assert.ok(/the parent's shared file gives 0 today/.test(dry.footing.parentFileDiffers), dry.footing.parentFileDiffers);
@@ -610,7 +643,7 @@ module.exports = {
   theSentencePrintsNegativeMoneyTheWayThePageDoes() {
     const rules = V.declareRules({ kind: 'scrambles', k: 10, barPct: 80 });
     const list = rows(2, 10).map((r) => ({ ...r, avgHold: -2 }));
-    const b = V.buildBlock({ rules, footing: { ok: true, had: 2 }, looks: { unstamped: 1 }, heldBack: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: V.sanity(list, list, rules), lineA: V.lineA(list, rules), lineB: V.lineB(list, 2, rules) });
+    const b = V.buildBlock({ rules, footing: { ok: true, had: 2 }, looks: { unstamped: 1 }, read: V.heldBackRead(list, CONTROLS), copies: V.copiesRead(list, rules), survivors: V.perSurvivor(list, rules), sanity: V.sanity(list, list, rules), lineA: V.lineA(list, rules), lineB: V.lineB(list, 2, rules) });
     assert.ok(/made -\$2\.00 a setting/.test(b.verdict.sentence), b.verdict.sentence);
     assert.ok(!/\$-/.test(b.verdict.sentence), 'never a sign after the dollar sign');
     assert.strictEqual(b.verdict.pass, false);
@@ -627,17 +660,18 @@ module.exports = {
     const f = await fixture();
     try {
       const doc = await cutOn(f);
-      assert.deepStrictEqual(doc.others, [], 'a new set starts with no reading of the other units');
-      assert.deepStrictEqual(doc.ride, [], 'and no ride');
+      assert.deepStrictEqual(stages.readingsIn(doc, 'held').others, [], 'a new rule starts with no reading of the other units');
+      assert.deepStrictEqual(stages.readingsIn(doc, 'held').ride, [], 'and no ride');
       await pressed(doc.id);
-      const before = stages.getSet(doc.id).verify[0];
+      const before = blockOf(doc.id);
       assert.strictEqual(before.others, null, 'nothing read yet, so the block says so');
       assert.ok(/the other units not read when this was stamped/.test(before.verdict.sentence), before.verdict.sentence);
       const got = await othersPressed(doc.id, {});
       assert.deepStrictEqual({ positive: got.positive, of: got.of, clearBar: got.clearBar, keepsNothing: got.keepsNothing, mark: got.mark, look: got.look },
         { positive: 1, of: 1, clearBar: 1, keepsNothing: 0, mark: null, look: 1 });
-      const r1 = stages.getSet(doc.id).others[0];
+      const r1 = stages.readingsIn(stages.getSet(doc.id), 'held').others[0];
       assert.strictEqual(r1.units.length, 1, 'the one other unit');
+      assert.strictEqual(r1.stretch, 'held', 'the reading says which stretch it read');
       const u = r1.units[0];
       assert.strictEqual(u.unit, f.keys[1]);
       assert.deepStrictEqual({ survivors: u.survivors, of: u.of, copies: u.copies, beats: u.beats, clears: u.clears, keepsNothing: u.keepsNothing }, { survivors: 2, of: 5, copies: 10, beats: 10, clears: true, keepsNothing: false });
@@ -647,22 +681,26 @@ module.exports = {
       assert.strictEqual(r1.release, require('../package.json').version);
       // a second press, under a typed bar, is a second reading and the first stays
       await othersPressed(doc.id, { barPct: 50 });
-      const list = stages.getSet(doc.id).others;
+      const list = stages.readingsIn(stages.getSet(doc.id), 'held').others;
       assert.strictEqual(list.length, 2, 'every press appends');
       assert.strictEqual(list[1].id, r1.id, 'and the first reading is still first');
       assert.deepStrictEqual({ pct: list[0].rules.barPct, tag: list[0].rules.tags.bar, look: list[0].look }, { pct: 50, tag: 'GUESSED', look: 2 });
       // the verdict stamped after it carries the newest reading and is not gated by it
       await pressed(doc.id);
-      const after = stages.getSet(doc.id).verify[0];
+      const after = blockOf(doc.id);
       assert.deepStrictEqual({ positive: after.others.positive, of: after.others.of, clearBar: after.others.clearBar, look: after.others.look }, { positive: 1, of: 1, clearBar: 1, look: 2 });
       assert.ok(/1 of 1 other units positive on the held-back window, 1 clear the bar/.test(after.verdict.sentence), after.verdict.sentence);
       assert.ok(/information only/.test(after.verdict.sentence), 'and says it is information');
       assert.strictEqual(after.verdict.pass, before.verdict.pass, 'the reading never moves the verdict');
-      // the dry read hands the list back, newest first
-      const dry = await stages.funnelVerifyDry(doc.id);
-      assert.strictEqual(dry.others.length, 2);
-      assert.strictEqual(dry.others[0].look, 2);
+      // the dry read hands the list back, newest first; and on Reserve the same press refuses in words until the reserve is priced for the other units
+      const dry = await stages.judgeDry(doc.id, 'held');
+      assert.strictEqual(dry.readings.others.length, 2);
+      assert.strictEqual(dry.readings.others[0].look, 2);
       assert.strictEqual(dry.othersRefused, null);
+      const dryR = await stages.judgeDry(doc.id, 'reserve');
+      assert.deepStrictEqual(dryR.readings.others, [], 'the readings are kept per stretch');
+      assert.ok(/not priced on the reserve window yet/.test(dryR.othersRefused), dryR.othersRefused);
+      assert.ok(/not priced on the reserve window yet/.test(dryR.droppedRefused), dryR.droppedRefused);
     } finally { f.cleanup(); }
   },
 
@@ -703,25 +741,25 @@ module.exports = {
       let threw = null;
       try { stages.funnelOthersStart(doc.id, {}); } catch (e) { threw = e.message; }
       assert.ok(threw && /the Funnel is reading the other units/.test(threw), threw);
-      const dry = await stages.funnelVerifyDry(doc.id);
+      const dry = await stages.judgeDry(doc.id, 'held');
       assert.ok(/the Funnel is reading the other units/.test(dry.othersRefused), dry.othersRefused);
       await settle(() => stages.funnelAcrossStatus(f.id));
-      // then Verify's read: the Funnel's refuses, and so does the verdict press
+      // then Held's read: the Funnel's refuses, and so does the verdict press
       stages.funnelOthersStart(doc.id, {});
       threw = null;
       try { stages.funnelAcrossStart(f.id, { rule: { allowed: { gate: ['directional'] } }, unit: f.keys[0], barPct: 80 }); } catch (e) { threw = e.message; }
-      assert.ok(threw && /are being read on Verify/.test(threw), threw);
+      assert.ok(threw && /are being read on Held/.test(threw), threw);
       threw = null;
-      try { stages.funnelVerifyStart(doc.id, {}); } catch (e) { threw = e.message; }
-      assert.ok(threw && /are being read on Verify/.test(threw), threw);
+      try { stages.judgeStart(doc.id, 'held', {}); } catch (e) { threw = e.message; }
+      assert.ok(threw && /are being read on Held/.test(threw), threw);
       threw = null;
-      try { stages.funnelRideStart(doc.id); } catch (e) { threw = e.message; }
-      assert.ok(threw && /are being read on Verify/.test(threw), threw);
+      try { stages.funnelRideStart(doc.id, {}); } catch (e) { threw = e.message; }
+      assert.ok(threw && /are being read on Held/.test(threw), threw);
       // pressing again for the same set while it reads is the same reading, not a second
       const again = stages.funnelOthersStart(doc.id, {});
       assert.strictEqual(again.running, true);
       await settle(() => stages.funnelOthersStatus(doc.id));
-      assert.strictEqual(stages.getSet(doc.id).others.length, 1, 'one reading, not two');
+      assert.strictEqual(stages.readingsIn(stages.getSet(doc.id), 'held').others.length, 1, 'one reading, not two');
     } finally { f.cleanup(); }
   },
 
@@ -748,18 +786,18 @@ module.exports = {
     assert.strictEqual(ride.rows.length, 1);
     const r = ride.rows[0];
     assert.strictEqual(r.label, 's0');
-    assert.deepStrictEqual(r.hold, { money: -3, trades: 4, ...holdR }, "the held-back half is the worker's held-back half and the held-back money");
+    assert.deepStrictEqual(r.read, { money: -3, trades: 4, ...holdR }, "the stretch's half is the worker's held-back half and the held-back money");
     assert.deepStrictEqual(r.test, { money: 10, trades: 6, ...testR }, 'beside the test half');
     // a unit with no held-back half keeps the shape with nothing in it
     const bare = V.rideOf(new Map([['s0', { label: 's0', units: [{ ...A, pnl: 1, trades: 1, holdout: null, rich: { test: testR, hold: null } }] }]]), { unitKey: keyOf(A), keyOf, labels: ['s0'] });
-    assert.deepStrictEqual(bare.rows[0].hold, { money: null, trades: null, maxDrawdown: null, worstTrade: null, bestTrade: null, wins: null, stops: null, grossPerTrade: null, pnlThirds: null });
+    assert.deepStrictEqual(bare.rows[0].read, { money: null, trades: null, maxDrawdown: null, worstTrade: null, bestTrade: null, wins: null, stops: null, grossPerTrade: null, pnlThirds: null });
     // the press, read from the source
     const lib = src('lib/stages.js');
-    const start = lib.slice(lib.indexOf('function funnelRideStart(id) {'), lib.indexOf('function funnelRideStatus(id) {'));
+    const start = lib.slice(lib.indexOf('function funnelRideStart(id, asked = {}) {'), lib.indexOf('function funnelRideStatus(id) {'));
     assert.ok(/rebuildRichFor\(parent, labels, \{ unit: doc\.unit,/.test(start), 'the ride prices this unit only');
     assert.ok(!/saveFunnelRich\(/.test(start), "the ride never writes the parent's shared file");
     assert.ok(!/fresh\.rich\s*=/.test(start), "and never the set's copy of the test numbers");
-    assert.ok(/fresh\.ride = \[rec, \.\.\.had\];/.test(start), 'every press appends');
+    assert.ok(/mine\.ride = \[rec, \.\.\.had\];/.test(start), 'every press appends, under the stretch it read');
     assert.ok(/release: ENGINE_VERSION/.test(start), 'stamped with the release that computed it');
     const rebuild = lib.slice(lib.indexOf('async function rebuildRichFor('), lib.indexOf('function s3Payload('));
     assert.ok(/if \(opts\.unit\) \{[\s\S]{0,400}unitKeyOf\(records\[i\]\) === String\(opts\.unit\)/.test(rebuild), 'the rebuild keeps only the unit asked for');
@@ -773,105 +811,109 @@ module.exports = {
     const f = await fixture();
     try {
       const doc = await cutOn(f);
-      const dry0 = await stages.funnelVerifyDry(doc.id);
+      const dry0 = await stages.judgeDry(doc.id, 'held');
       assert.strictEqual(dry0.rideRefused, null, dry0.rideRefused);
       assert.strictEqual(dry0.looks.rides, 0);
-      // a ride, as the press would write it, placed on the set
-      const file = path.join(SETS_DIR, `${doc.id}.json`);
-      const on = JSON.parse(fs.readFileSync(file, 'utf8'));
-      on.ride = [{ id: `${doc.id}-r1`, at: new Date().toISOString(), release: '3.88.0', look: 1, unit: doc.unit, settings: 2, missing: [], failures: [], fields: V.RIDE_FIELDS, rows: [] }];
-      fs.writeFileSync(file, JSON.stringify(on));
-      const dry = await stages.funnelVerifyDry(doc.id);
-      assert.strictEqual(dry.ride.length, 1);
+      // a ride, as the press would write it, placed on the rule under the held stretch
+      rewrite(doc.id, (on) => { on.readings = { held: { others: [], dropped: [], ride: [{ id: `${doc.id}-held-r1`, at: new Date().toISOString(), release: '3.88.0', look: 1, stretch: 'held', unit: doc.unit, settings: 2, missing: [], failures: [], fields: V.RIDE_FIELDS, rows: [] }] } }; });
+      const dry = await stages.judgeDry(doc.id, 'held');
+      assert.strictEqual(dry.readings.ride.length, 1);
       assert.strictEqual(dry.looks.rides, 1, 'the ride is a look');
       assert.ok(dry.looks.what.some((w) => /held-back ride was worked out 1 time\(s\)/.test(w)), dry.looks.what.join(' | '));
       await pressed(doc.id);
-      const b = stages.getSet(doc.id).verify[0];
+      const b = blockOf(doc.id);
       assert.strictEqual(b.looks.rides, 1, 'and the block stamped after it counts it');
+      // a ride on the reserve window needs the rule to stand on the held-back window first, like the press
+      const dryR = await stages.judgeDry(doc.id, 'reserve');
+      assert.strictEqual(dryR.readings.ride.length, 0, 'the held ride is not a reserve ride');
+      assert.strictEqual(dryR.rideRefused, b.verdict.pass ? null : stages.NO_HELD_PASS);
       // refusals in words
       const blend = await stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: 'all' });
       let threw = null;
-      try { stages.funnelRideStart(blend.id); } catch (e) { threw = e.message; }
+      try { stages.funnelRideStart(blend.id, {}); } catch (e) { threw = e.message; }
       assert.ok(/cut on all units together/.test(threw), threw);
-      const dryB = await stages.funnelVerifyDry(blend.id);
+      const dryB = await stages.judgeDry(blend.id, 'held');
       assert.strictEqual(dryB.rideRefused, threw, 'the dry read says the same');
       assert.strictEqual(dryB.othersRefused, threw);
       const empty = await stages.cutFunnelSet(f.id, { rule: { allowed: { gate: ['nothing-of-the-kind'] } }, closing: { key: 'rule' }, unit: f.keys[0] });
       threw = null;
-      try { stages.funnelRideStart(empty.id); } catch (e) { threw = e.message; }
+      try { stages.funnelRideStart(empty.id, {}); } catch (e) { threw = e.message; }
       assert.ok(/wrote down no settings/.test(threw), threw);
     } finally { f.cleanup(); }
   },
 
   // THE SCREEN: the two presses are drawn by top-level helpers the word list
   // can walk, the ride's table has no sort, and both routes are served.
-  theTwoNewPressesAreOnVerifyWithTheirRoutes() {
+  theTwoNewPressesAreOnHeldAndReserveWithTheirRoutes() {
     const ui = src('public/construct.js');
     for (const fn of ['vOthersHtml', 'vRideHtml', 'vOthersFollow', 'vRideFollow']) assert.ok(new RegExp(`^(async )?function ${fn}\\(`, 'm').test(ui), `${fn} must be a top-level helper`);
     // RE-AIMED 3.100.0: the dropped-settings panel (V8) was added between them.
-    // The property is unchanged -- every panel is drawn under the blocks -- so
-    // the check is now per panel rather than on the two being adjacent.
+    // The property is unchanged -- every panel is drawn under the sets -- so
+    // the check is now per panel rather than on the two being adjacent; and
+    // each is handed the stretch (3.147.0), so one helper draws it on both tabs.
     for (const fn of ['vOthersHtml', 'vDroppedHtml', 'vRideHtml']) {
-      assert.ok(new RegExp(`\\$\\{${fn}\\(d\\)\\}`).test(ui), `${fn} is drawn under the blocks`);
+      assert.ok(new RegExp(`\\$\\{${fn}\\(d, stretch\\)\\}`).test(ui), `${fn} is drawn under the sets, on both tabs`);
     }
     assert.ok(/id="vOthers"/.test(ui) && /id="vRide"/.test(ui), 'the two presses');
-    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\)\}\/others`, \{ barPct: vTyped\('#vBarPct'\) \}/.test(ui), 'the read of the other units is sent under the same bar box as the verdict');
+    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\)\}\/others`, \{ stretch, barPct: vTyped\('#vBarPct'\) \}/.test(ui), 'the read of the other units is sent under the same bar box as the verdict, on the stretch shown');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/others\/status/.test(ui) && /api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/ride\/status/.test(ui), 'both are polled');
-    const ride = ui.slice(ui.indexOf('function vRideHtml('), ui.indexOf('async function drawVerify('));
+    const ride = ui.slice(ui.indexOf('function vRideHtml('), ui.indexOf('async function drawHeld('));
     assert.ok(!/data-sort|bRankSortBtn|sortBtn/.test(ride), "the ride's table has no sort: a sort is a look");
     assert.ok(/The other units:/.test(ui), 'the block prints the other units when read');
     const srv = src('server.js');
     for (const r of ['/api/funnel/set/:id/others', '/api/funnel/set/:id/others/status', '/api/funnel/set/:id/ride', '/api/funnel/set/:id/ride/status']) assert.ok(srv.includes(`'${r}'`), `${r} is served`);
     assert.ok(/funnelOthersStart\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'the read takes the typed bar');
   },
-  // ---- the reserve grade on a Stage 4 record set (3.89.0): the refusals, in words ----
-  // A later door refuses without a verdict block that PASSED under this release
-  // line, on a set cut on all units together, and with the seal not intact; the
-  // dry read says the same words the press throws. The pricing itself is
-  // tests/test-unreadgrade.js's, on the fabricated coins.
-  async theReserveGradeRefusesInWordsBeforeAnythingPrices() {
+  // ---- the press on Reserve (3.89.0 as the reserve grade; one door with Held since 3.147.0): the refusals, in words ----
+  // The reserve is read only for a rule that stands on the held-back window:
+  // its NEWEST held set passed under this release line. A FAIL, a PASS under
+  // another first digit, a seal not intact and a set cut on all units together
+  // are each refused in words, and the dry read says the same words the press
+  // throws. The pricing itself is tests/test-unreadgrade.js's, on the
+  // fabricated coins.
+  async theReservePressRefusesInWordsBeforeAnythingPrices() {
     const f = await fixture();
     try {
       const doc = await cutOn(f);
-      assert.deepStrictEqual(doc.unread, [], 'a new set starts with no grade');
-      // no verdict yet: refused, and the dry read agrees
+      assert.deepStrictEqual(setsOf(doc.id, 'reserve'), [], 'a new rule has no reserve set');
+      // no held set yet: refused, and the dry read agrees
       let threw = null;
-      try { stages.unreadGradeStart(doc.id, {}); } catch (e) { threw = e.message; }
-      assert.strictEqual(threw, stages.UNREAD_NO_PASS);
-      assert.ok(/read the rule against nothing on Verify first/.test(threw), 'and it says what to do');
-      let dry = await stages.unreadGradeDry(doc.id);
-      assert.deepStrictEqual({ refused: dry.refused, gate: dry.gate, looks: dry.looks, intact: dry.sealed.intact }, { refused: stages.UNREAD_NO_PASS, gate: null, looks: 0, intact: true });
-      // a verdict that FAILED is no gate either
+      try { stages.judgeStart(doc.id, 'reserve', {}); } catch (e) { threw = e.message; }
+      assert.strictEqual(threw, stages.NO_HELD_PASS);
+      assert.ok(/read the rule on Held first/.test(threw), 'and it says what to do');
+      let dry = await stages.judgeDry(doc.id, 'reserve');
+      assert.deepStrictEqual({ refused: dry.refused, standsOn: dry.standsOn, sets: dry.sets.length, keeps: dry.reserve.keeps, intact: dry.reserve.intact, prices: dry.prices }, { refused: stages.NO_HELD_PASS, standsOn: null, sets: 0, keeps: true, intact: true, prices: true });
+      // a held set that FAILED is no standing
       await pressed(doc.id, { barPct: 100 });
-      const file = path.join(SETS_DIR, `${doc.id}.json`);
-      let on = JSON.parse(fs.readFileSync(file, 'utf8'));
-      on.verify[0].verdict.pass = false;
-      fs.writeFileSync(file, JSON.stringify(on));
-      assert.strictEqual(stages.unreadGateOf(stages.getSet(doc.id)), null, 'a FAIL is not a gate');
-      // a PASS under another first digit is no gate; under this one it is
-      on = JSON.parse(fs.readFileSync(file, 'utf8'));
-      on.verify[0].verdict.pass = true;
-      on.verify[0].release = '2.99.0';
-      fs.writeFileSync(file, JSON.stringify(on));
-      assert.strictEqual(stages.unreadGateOf(stages.getSet(doc.id)), null, 'a PASS under another first digit is not a gate');
-      on.verify[0].release = require('../package.json').version;
-      fs.writeFileSync(file, JSON.stringify(on));
-      const gate = stages.unreadGateOf(stages.getSet(doc.id));
-      assert.deepStrictEqual({ id: gate.id, look: gate.look }, { id: on.verify[0].id, look: 1 });
-      dry = await stages.unreadGradeDry(doc.id);
+      const held = setsOf(doc.id)[0];
+      rewrite(held.id, (on) => { on.block.verdict.pass = false; });
+      assert.strictEqual(stages.heldStandingOf(stages.getSet(doc.id)), null, 'a FAIL is no standing');
+      // a PASS under another first digit is no standing; under this one it is
+      rewrite(held.id, (on) => { on.block.verdict.pass = true; on.block.release = '2.99.0'; });
+      assert.strictEqual(stages.heldStandingOf(stages.getSet(doc.id)), null, 'a PASS under another first digit is no standing');
+      rewrite(held.id, (on) => { on.block.release = require('../package.json').version; });
+      const standing = stages.heldStandingOf(stages.getSet(doc.id));
+      assert.deepStrictEqual({ id: standing.id, name: standing.name, number: standing.number }, { id: held.id, name: held.name, number: 1 });
+      dry = await stages.judgeDry(doc.id, 'reserve');
       assert.strictEqual(dry.refused, null, dry.refused);
+      assert.deepStrictEqual({ id: dry.standsOn.id, name: dry.standsOn.name }, { id: held.id, name: held.name }, 'the dry read names the held set a reserve set would stand on');
+      // an older PASS behind a newer FAIL is a rule that was read again and did not stand
+      await pressed(doc.id, { barPct: 100 });
+      const newer = setsOf(doc.id)[0];
+      rewrite(newer.id, (on) => { on.block.verdict.pass = false; });
+      assert.strictEqual(stages.heldStandingOf(stages.getSet(doc.id)), null, 'the newest held set decides');
+      rewrite(newer.id, (on) => { on.block.verdict.pass = true; });
       // the seal not intact: refused in words that name it
-      on.sealed = { units: [], why: 'a unit has no reserved window' };
-      fs.writeFileSync(file, JSON.stringify(on));
-      dry = await stages.unreadGradeDry(doc.id);
+      rewrite(doc.id, (on) => { on.sealed = { units: [], why: 'a unit has no reserved window' }; });
+      dry = await stages.judgeDry(doc.id, 'reserve');
       assert.ok(/sealed window is not intact/.test(dry.refused), dry.refused);
       threw = null;
-      try { stages.unreadGradeStart(doc.id, {}); } catch (e) { threw = e.message; }
+      try { stages.judgeStart(doc.id, 'reserve', {}); } catch (e) { threw = e.message; }
       assert.strictEqual(threw, dry.refused);
       // a blend set: refused in the same words as the verdict
       const blend = await stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: 'all' });
       threw = null;
-      try { stages.unreadGradeStart(blend.id, {}); } catch (e) { threw = e.message; }
+      try { stages.judgeStart(blend.id, 'reserve', {}); } catch (e) { threw = e.message; }
       assert.ok(/cut on all units together/.test(threw), threw);
     } finally { f.cleanup(); }
   },
@@ -886,19 +928,26 @@ module.exports = {
     const f = await fixture();
     try {
       const doc = await cutOn(f);
+      // A RULE IS NEVER GREENLIGHTED (3.147.0): the set a press made is
       let threw = null;
       try { await stages.stage4GreenlightSource(doc.id, {}); } catch (e) { threw = e.message; }
-      assert.strictEqual(threw, stages.UNREAD_NO_PASS);
+      assert.ok(/a greenlight comes from a held set or a reserve set/.test(threw), threw);
       let dry = await stages.stage4GreenlightDry(doc.id);
-      assert.deepStrictEqual({ gate: dry.gate, refused: dry.refused, survivors: dry.survivors.length }, { gate: null, refused: stages.UNREAD_NO_PASS, survivors: 0 });
-      // the gate opened by hand, as the reserve grade's tests open it
+      assert.deepStrictEqual({ gate: dry.gate, refused: dry.refused, survivors: dry.survivors.length }, { gate: null, refused: threw, survivors: 0 });
+      // a held set that passed on a layout that keeps a reserve is read on Reserve, not greenlighted
       await pressed(doc.id, { barPct: 100 });
-      const file = path.join(SETS_DIR, `${doc.id}.json`);
-      const on = JSON.parse(fs.readFileSync(file, 'utf8'));
-      on.verify[0].verdict.pass = true;
-      fs.writeFileSync(file, JSON.stringify(on));
-      const src = await stages.stage4GreenlightSource(doc.id, {});
-      assert.deepStrictEqual({ set: src.set.id, stage: src.set.stage, gate: src.gate.id, parent: src.set.parent.id, stage2: src.set.stage2.id }, { set: doc.id, stage: 4, gate: on.verify[0].id, parent: f.id, stage2: f.parentId });
+      const held = setsOf(doc.id)[0];
+      rewrite(held.id, (on) => { on.block.verdict.pass = true; });
+      threw = null;
+      try { await stages.stage4GreenlightSource(held.id, {}); } catch (e) { threw = e.message; }
+      assert.ok(/layout keeps a reserve — read it on Reserve/.test(threw), threw);
+      assert.strictEqual(stages.gateOfSet(stages.getSet(held.id)), null);
+      // held alone: the same set on a layout that keeps no reserve stands, and the source is read off it
+      rewrite(f.id, (on) => { on.params.windowLayout = 'split70'; });
+      const gate = stages.gateOfSet(stages.getSet(held.id));
+      assert.deepStrictEqual({ id: gate.id, set: gate.set, kind: gate.kind, look: gate.look }, { id: held.block.id, set: held.id, kind: 'held', look: 1 });
+      const src = await stages.stage4GreenlightSource(held.id, {});
+      assert.deepStrictEqual({ set: src.set.id, kind: src.set.kind, from: src.set.from.id, stage: src.set.stage, gate: src.gate.id, parent: src.set.parent.id, stage2: src.set.stage2.id }, { set: held.id, kind: 'held', from: doc.id, stage: 4, gate: held.block.id, parent: f.id, stage2: f.parentId });
       assert.deepStrictEqual(src.unit, { trade: 'AAA', ctx1: null, ctx2: null, size: 1, geometry: 'daily-1d' });
       assert.strictEqual(src.survivors.length, 2, 'every survivor, with its depth');
       assert.ok(src.survivors.every((x) => x.worst === 0), 'a rule of word dials puts every survivor at the middle');
@@ -907,19 +956,24 @@ module.exports = {
       assert.deepStrictEqual({ entry: src.survivor.entry, gate: src.survivor.gate, tHours: src.survivor.tHours, rule: src.survivor.agreeRule, pct: src.survivor.agreePct }, { entry: 'market', gate: 'active', tHours: 41, rule: 'share', pct: null });
       assert.strictEqual(src.survivor.bandPct, 2, 'an auto band resolves to the band the unit was priced at');
       assert.strictEqual(src.fee, 0.00125);
-      assert.deepStrictEqual(src.readings.heldBack, { money: on.verify[0].survivors.rows[0].held, trades: on.verify[0].survivors.rows[0].trades }, 'the survivor\'s own held-back reading rides along');
-      assert.strictEqual(src.readings.unread, null, 'no grade yet, no unread reading');
+      assert.deepStrictEqual(src.readings.held, { money: held.block.survivors.rows[0].money, trades: held.block.survivors.rows[0].trades }, 'the survivor\'s own held-back reading rides along, off the held set');
+      assert.strictEqual(src.readings.reserve, null, 'no reserve set, no reserve reading');
       assert.deepStrictEqual(src.training.windowLayout, 'reserve61');
       // a named pick, and an unknown name refused
-      const named = await stages.stage4GreenlightSource(doc.id, { pick: src.survivors[1].label });
+      const named = await stages.stage4GreenlightSource(held.id, { pick: src.survivors[1].label });
       assert.deepStrictEqual({ by: named.pick.by, index: named.pick.index, label: named.pick.label }, { by: 'named', index: 1, label: src.survivors[1].label });
       threw = null;
-      try { await stages.stage4GreenlightSource(doc.id, { pick: 'no such setting' }); } catch (e) { threw = e.message; }
+      try { await stages.stage4GreenlightSource(held.id, { pick: 'no such setting' }); } catch (e) { threw = e.message; }
       assert.ok(/is not one of this set's 2 survivors/.test(threw), threw);
       // the dry read: this fixture's coin is read on its own, and the words say so
-      dry = await stages.stage4GreenlightDry(doc.id);
+      dry = await stages.stage4GreenlightDry(held.id);
       assert.ok(/a coin read on its own/.test(dry.refused), dry.refused);
-      assert.deepStrictEqual({ size: dry.unitSize, depth: dry.depthPick.label, survivors: dry.survivors.length }, { size: 1, depth: src.pick.label, survivors: 2 });
+      assert.deepStrictEqual({ size: dry.unitSize, depth: dry.depthPick.label, survivors: dry.survivors.length, kind: dry.kind, heldAlone: dry.heldAlone }, { size: 1, depth: src.pick.label, survivors: 2, kind: 'held', heldAlone: stages.HELD_ALONE });
+      // a FAIL is refused in words, and so is a PASS under another release line
+      rewrite(held.id, (on) => { on.block.verdict.pass = false; });
+      assert.ok(/verdict is FAIL/.test(stages.gateRefusalOf(stages.getSet(held.id))));
+      rewrite(held.id, (on) => { on.block.verdict.pass = true; on.block.release = '2.99.0'; });
+      assert.ok(/another release line/.test(stages.gateRefusalOf(stages.getSet(held.id))));
       // and the blend set is refused in the same words as the verdict
       const blend = await stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: 'all' });
       threw = null;
@@ -1009,7 +1063,7 @@ module.exports = {
     const st = src('lib/stages.js');
     assert.ok(st.includes("const controlKeyOf = (r) => `${r && r.weekdaysOnly ? 'wk' : 'all'}|${Number(r && r.tHours)}`;") && st.includes('out.byKey[k] = one;'), 'the set keeps the four by the same key the verdict reads them under');
     // the sentence leads with the gate and prints the average as hindsight
-    const b = V.buildBlock({ rules, footing: { ok: true, had: 4 }, looks: { unstamped: 1 }, heldBack: all, copies: { copies: 80, beats: 80, bar: 64, barPct: 80, chance: 0.21, pass: true }, survivors: { survivors: 4, passing: 4, byChance: 0.8 }, sanity: { known: true, ok: true, board: { losing: 0.47 }, threshold: 45 } });
+    const b = V.buildBlock({ rules, footing: { ok: true, had: 4 }, looks: { unstamped: 1 }, read: all, copies: { copies: 80, beats: 80, bar: 64, barPct: 80, chance: 0.21, pass: true }, survivors: { survivors: 4, passing: 4, byChance: 0.8 }, sanity: { known: true, ok: true, board: { losing: 0.47 }, threshold: 45 } });
     assert.strictEqual(b.verdict.pass, true);
     assert.ok(/on the held-back window 4 of 4 survivors made money and beat each of the four comparisons at their own hold length, the bar being 4 \(80%\); averaged, the 4 survivors made \$258\.50 a setting, not beating the best of the four, which was being long every period at \$340\.00 at the worst hold length in use, a hindsight reading and never a gate/.test(b.verdict.sentence), b.verdict.sentence);
   },
@@ -1028,7 +1082,7 @@ module.exports = {
     assert.strictEqual(r.comparisons.beatsBest, null);
     assert.strictEqual(r.pass, false, 'unknown never passes');
     assert.deepStrictEqual({ known: r.own.rows[0].known, clears: r.own.rows[0].clears, unknown: r.own.unknown }, { known: false, clears: false, unknown: 1 }, 'at its own hold length too, three of four is unknown');
-    assert.ok(/best of them is unknown/.test(V.verdict({ heldBack: r, footing: {}, copies: {}, survivors: {}, sanity: {} }).sentence),
+    assert.ok(/best of them is unknown/.test(V.verdict({ read: r, footing: {}, copies: {}, survivors: {}, sanity: {} }).sentence),
       'and the sentence says so rather than printing three of four as though they were all of them');
   },
 
@@ -1054,12 +1108,12 @@ module.exports = {
   theFourComparisonsAreATableDerivedFromTheFiguresNotFromStoredFlags() {
     const ui = fs.readFileSync(path.join(ROOT, 'public', 'construct.js'), 'utf8');
     assert.ok(/^function cmpRows\(real, c\)/m.test(ui), 'one place derives the four');
-    assert.ok(/^function heldBackPanel\(title, h, c\)/m.test(ui), 'one panel builder draws them');
-    const uses = (ui.match(/heldBackPanel\('/g) || []).length;
-    assert.strictEqual(uses, 2, 'the verdict and the reserve grade both use it, and nothing else writes its own');
+    assert.ok(/^function readPanel\(title, h, c, stretch\)/m.test(ui), 'one panel builder draws them');
+    const uses = (ui.match(/readPanel\(`/g) || []).length;
+    assert.strictEqual(uses, 1, 'the one block draws it, for both stretches, and nothing else writes its own');
     // 3.143.3 (owner: "do the same on verify" as the break between Tune's two tables): the panel's
     // second and third tables each sit a clear gap below the table above, never on its next line
-    const hb = ui.slice(ui.indexOf('function heldBackPanel(title, h, c) {'), ui.indexOf('\n}\n', ui.indexOf('function heldBackPanel(title, h, c) {')));
+    const hb = ui.slice(ui.indexOf('function readPanel(title, h, c, stretch) {'), ui.indexOf('\n}\n', ui.indexOf('function readPanel(title, h, c, stretch) {')));
     assert.strictEqual((hb.match(/<div class="scrollx"/g) || []).length, 4, 'the panel no longer draws four tables: the survivors, the four, the hindsight best of them, and each survivor at its own hold length (3.146.0)');
     assert.strictEqual((hb.match(/<div class="scrollx" style="margin-top:\.8rem"><table>/g) || []).length, 3, 'a table on the panel runs straight on from the one above it again, with no break between them');
     // THE GATE IS THE OWN-HOLD TABLE, the best of the four a hindsight reading (3.146.0)
@@ -1072,7 +1126,9 @@ module.exports = {
     assert.ok(!/beatsBuyHold \? 'beaten'/.test(ui), 'no screen marks a comparison from a stored flag');
     assert.ok(!/does not stand<\/b>'\}<\/p>/.test(ui), 'the stands / does not stand tail is gone with the sentence');
     // every column carries its subject in the heading
-    for (const h of ['survivors', 'held-back \\$ a setting', 'trades a setting', 'no figure',
+    // the money column is named after the stretch, as two whole phrases the word list reads whole on both tabs (3.147.0)
+    assert.ok(ui.includes("'<span>reserve $ a setting</span>' : '<span>held-back $ a setting</span>'"), 'the table needs a "held-back $ a setting" heading on Held and a "reserve $ a setting" one on Reserve');
+    for (const h of ['survivors', 'trades a setting', 'no figure',
       'comparison', 'it made', 'rule ahead by', 'beaten by rule',
       'best of the four', 'rule ahead by it', 'hindsight reading',
       'survivors beating all four at their own hold length', 'the bar', 'hold lengths in use', 'this read', 'all four at its own hold']) {
@@ -1118,7 +1174,7 @@ module.exports = {
   },
 
   // THE PRESS IS ON VERIFY WITH ITS ROUTE, its box, and its refusal in words.
-  theDroppedPressIsOnVerifyWithItsRouteAndItsBox() {
+  theDroppedPressIsOnHeldAndReserveWithItsRouteAndItsBox() {
     const ui = src('public/construct.js');
     assert.ok(/^function vDroppedHtml\(/m.test(ui), 'a top-level helper draws it');
     assert.ok(/id="vDropped"/.test(ui) && /id="vDroppedN"/.test(ui), 'the press and the how-many box');
@@ -1126,19 +1182,120 @@ module.exports = {
     const block = ui.slice(ui.indexOf('function vDroppedHtml('), ui.indexOf('function vOthersHtml('));
     assert.ok(/class="row" style="align-items:center"/.test(block), 'the box and the button share a baseline');
     assert.ok(!/data-sort|sortBtn/.test(block), 'no sort on it');
-    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\)\}\/dropped`, \{ sample: vTyped\('#vDroppedN'\) \}/.test(ui), 'the typed count is sent');
+    assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\)\}\/dropped`, \{ stretch, sample: vTyped\('#vDroppedN'\) \}/.test(ui), 'the typed count is sent, on the stretch shown');
     const srv = src('server.js');
     assert.ok(srv.includes("'/api/funnel/set/:id/dropped'"), 'the route is served');
     assert.ok(/funnelDroppedStart\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'and it takes the typed count');
   },
 };
 
-// HISTORY READS THE UNREAD WINDOW OFF THE SET'S OWN RECORD, WHATEVER THE LAYOUT
-// (3.141.0, owner order 2026-09-15: "that ASSUMES that a 61/13/13/13 window
-// layout was used ... History tab is supposed to be completely agnostic on the
-// Reserve window"). The screen had "the sealed 13%" typed into it and the
-// grade refused every 70/15/15 set for want of a seal it never had.
-module.exports.theReserveGradeReadsTheUnreadWindowOffTheRecordWhateverTheLayout = function () {
+// THE STAMPS ON A RULE MOVE INTO SETS, ONCE (3.147.0; RULE NINE, written to be
+// deleted under RULE TEN). A rule written before this release carried its
+// verdicts as blocks (verify), its reserve grades as blocks (unread) and its
+// three readings under their own names. The mover writes one held set per
+// verdict block in stamp order, one reserve set per grade standing on the
+// held set made from the block that gated it, re-keys the readings under the
+// held stretch, renames the block's fields to the one shape and leaves the
+// stamped sentence exactly as it was; a second run moves nothing, and a rule
+// with only the empty fields of 3.146.x loses them without counting as moved.
+module.exports.theStampsOnARuleMoveIntoSetsOnceAndNeverTwice = function () {
+  const SETS = path.join(__dirname, '..', 'data', 'stagesets');
+  fs.mkdirSync(SETS, { recursive: true });
+  const tag = Date.now().toString(36);
+  const KEY = 'AAAUSDT|||daily-1d';
+  const write = (id, doc) => fs.writeFileSync(path.join(SETS, `${id}.json`), JSON.stringify(doc));
+  const p = `s3-mv-${tag}`;
+  const r = `s4-mv-${tag}-r`;
+  const e = `s4-mv-${tag}-e`;
+  const made = [p, r, e];
+  const rowsOld = [{ label: 'a', held: 5, trades: 4, beats: 10, copiesKept: 10, pass: true }, { label: 'b', held: -1, trades: 3, beats: 2, copiesKept: 10, pass: false }];
+  const oldBlock = (id, look, at, pass, release) => ({
+    id, at, release, look, rules: { copies: 10, bar: 8, barPct: 80 }, footing: { ok: true, had: 2 }, looks: { unstamped: 3, stamped: look - 1 },
+    heldBack: { real: 2, of: 2, positive: true, pass, comparisons: { known: true } }, copies: { copies: 10, beats: 9, bar: 8, pass: true },
+    survivors: { survivors: 2, passing: 1, rows: rowsOld }, sanity: { known: true, ok: true, threshold: 50, board: { losing: 0.6 } },
+    verdict: { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: stamped under ${release}, and this sentence must survive the move as it was written` },
+  });
+  const oldGrade = (id, look, at, gateId) => ({
+    id, at, release: '3.146.1', look, rules: { copies: 10, bar: 8, barPct: 80 }, gate: { id: gateId, at: 'x', release: '3.146.1', look: 1 }, footing: { ok: true, had: 2 },
+    window: { fromTs: 7000, toTs: 9000, chunks: 3, seenToTs: 9500 }, read: { real: 1, of: 2, pass: false, comparisons: { known: true } }, copies: { copies: 10, beats: 3, bar: 8, pass: false },
+    survivors: { survivors: 2, passing: 0, rows: rowsOld }, sanity: { known: true, ok: true, threshold: 50, board: { losing: 0.7 } },
+    rows: [{ label: 'a', money: 1.5, trades: 2, stops: 0, vsLong: 1, ride: { maxDrawdown: -1 } }, { label: 'b', money: -0.5, trades: 1, stops: 1, vsLong: -2, ride: { maxDrawdown: -2 } }],
+    missing: [], failures: [],
+    verdict: { pass: false, sentence: 'FAIL: the grade as it was stamped' },
+  });
+  try {
+    write(p, { id: p, stage: 3, name: `S3 mv ${tag}`, status: 'done', createdAt: '2026-09-01T00:00:00.000Z', params: { windowLayout: 'reserve61', fee: 0.00125 } });
+    write(r, {
+      id: r, stage: 4, kind: 'funnel', seq: 999990, name: `mv rule ${tag}`, status: 'done', createdAt: '2026-09-02T00:00:00.000Z', release: '3.110.1',
+      parent: { id: p, name: `S3 mv ${tag}` }, unit: KEY, unitName: 'AAAUSDT daily-1d', target: 2, seed: r, check: { kind: 'scrambles', k: 10, barPct: 80, bar: 8 },
+      rule: { allowed: { gate: ['active'] } }, userRule: null, survivors: [{ si: 0, label: 'a' }, { si: 1, label: 'b' }], counts: { survivors: 2, target: 2 },
+      closing: { key: 'rule' }, warnings: [], marks: [], ruleSentence: 'gate is active', rich: { a: { maxDrawdown: 1 } }, steps: [{ n: 1 }], backSteps: [],
+      stopChoices: { a: { stopPct: 0.11, why: 'forced', at: 'x', by: 'owner' } }, heldBackReadAt: '2026-09-08T03:47:00.000Z',
+      // newest first, as the rule kept them
+      verify: [oldBlock(`${r}-v2`, 2, '2026-09-15T06:57:00.000Z', true, '3.146.1'), oldBlock(`${r}-v1`, 1, '2026-09-08T03:47:00.000Z', true, '3.92.1')],
+      unread: [oldGrade(`${r}-u1`, 1, '2026-09-15T07:01:00.000Z', `${r}-v2`)],
+      others: [{ id: `${r}-o1`, at: '2026-09-11T08:52:00.000Z', release: '3.110.1', look: 1, units: [], positive: 0, of: 0 }],
+      dropped: [{ id: `${r}-d2`, at: '2026-09-15T06:10:00.000Z', release: '3.145.0', look: 2 }, { id: `${r}-d1`, at: '2026-09-11T08:54:00.000Z', release: '3.110.1', look: 1 }],
+      ride: [{ id: `${r}-r1`, at: '2026-09-11T08:56:00.000Z', release: '3.110.1', look: 1, rows: [{ label: 'a', hold: { money: 5, trades: 4 }, test: { money: 10, trades: 6 } }] }],
+    });
+    // a rule cut under 3.146.x carries the empty fields and nothing in them
+    write(e, { id: e, stage: 4, kind: 'funnel', seq: 999991, name: `mv empty ${tag}`, status: 'done', createdAt: '2026-09-03T00:00:00.000Z', release: '3.146.1', parent: { id: p, name: `S3 mv ${tag}` }, unit: KEY, rule: {}, survivors: [], counts: { survivors: 0 }, verify: [], others: [], ride: [], unread: [], heldBackReadAt: null });
+    const moved = stages.moveStampsIntoSets();
+    assert.deepStrictEqual(moved, { rules: 1, held: 2, reserve: 1, readings: 4 }, JSON.stringify(moved));
+    const held = stages.judgeSetsOf(r, 'held');
+    const reserve = stages.judgeSetsOf(r, 'reserve');
+    made.push(...held.map((x) => x.id), ...reserve.map((x) => x.id));
+    // two held sets, in stamp order, created when their blocks were stamped, named after the rule
+    assert.deepStrictEqual(held.map((x) => [x.name, x.number, x.createdAt, x.block.look, x.block.release, x.block.stretch]),
+      [[`held set of mv rule ${tag} #2`, 2, '2026-09-15T06:57:00.000Z', 2, '3.146.1', 'held'], [`held set of mv rule ${tag}`, 1, '2026-09-08T03:47:00.000Z', 1, '3.92.1', 'held']]);
+    const first = held[1];
+    assert.deepStrictEqual({ kind: first.kind, from: first.from, unit: first.unit, parent: first.parent.id, rule: first.rule, survivors: first.survivors.map((x) => x.label), stops: first.stopChoices, steps: first.steps.length, release: first.release },
+      { kind: 'held', from: { id: r, name: `mv rule ${tag}`, kind: 'funnel' }, unit: KEY, parent: p, rule: { allowed: { gate: ['active'] } }, survivors: ['a', 'b'], stops: { a: { stopPct: 0.11, why: 'forced', at: 'x', by: 'owner' } }, steps: 1, release: require('../package.json').version },
+      'the frozen copy carries the rule, its survivors and the stop choices as they stand');
+    // the block's fields carry the one shape, and its sentence is untouched
+    assert.ok(!('heldBack' in first.block), 'the old name is gone');
+    assert.deepStrictEqual({ real: first.block.read.real, pass: first.block.read.pass, rows: first.block.survivors.rows.map((x) => [x.label, x.money, 'held' in x]), sentence: first.block.verdict.sentence, forecasts: first.block.forecasts, standsOn: first.block.standsOn },
+      { real: 2, pass: true, rows: [['a', 5, false], ['b', -1, false]], sentence: 'PASS: stamped under 3.92.1, and this sentence must survive the move as it was written', forecasts: 'the stage 3 records as priced', standsOn: null });
+    // one reserve set, standing on the held set made from the block that gated it, its priced rows under the one name
+    assert.strictEqual(reserve.length, 1);
+    const rs = reserve[0];
+    assert.deepStrictEqual({ name: rs.name, number: rs.number, createdAt: rs.createdAt, standsOn: rs.standsOn.id, standsOnName: rs.standsOn.name, stretch: rs.block.stretch, priced: rs.block.priced.map((x) => x.money), rows: rs.block.survivors.rows.map((x) => x.money), gateGone: 'gate' in rs.block, rowsGone: 'rows' in rs.block, sentence: rs.block.verdict.sentence, from: rs.block.window.fromTs },
+      { name: `reserve set of mv rule ${tag}`, number: 1, createdAt: '2026-09-15T07:01:00.000Z', standsOn: held[0].id, standsOnName: held[0].name, stretch: 'reserve', priced: [1.5, -0.5], rows: [5, -1], gateGone: false, rowsGone: false, sentence: 'FAIL: the grade as it was stamped', from: 7000 });
+    // the readings are re-keyed under the held stretch, the ride's half renamed, and the old fields are gone
+    const rule = stages.getSet(r);
+    for (const k of ['verify', 'unread', 'others', 'dropped', 'ride']) assert.ok(!(k in rule), `${k} is still on the rule`);
+    const rd = stages.readingsIn(rule, 'held');
+    assert.deepStrictEqual({ others: rd.others.map((x) => x.id), dropped: rd.dropped.map((x) => x.id), ride: rd.ride.map((x) => x.id), rideRow: rd.ride[0].rows[0], stretch: rd.ride[0].stretch },
+      { others: [`${r}-o1`], dropped: [`${r}-d2`, `${r}-d1`], ride: [`${r}-r1`], rideRow: { label: 'a', read: { money: 5, trades: 4 }, test: { money: 10, trades: 6 } }, stretch: 'held' });
+    assert.deepStrictEqual(stages.readingsIn(rule, 'reserve'), { others: [], dropped: [], ride: [] });
+    assert.strictEqual(rule.heldBackReadAt, '2026-09-08T03:47:00.000Z', 'the first-look date stays');
+    assert.ok(stages.heldStandingOf(rule), 'the rule stands on its newest held set, which passed under this release line');
+    // the empty rule lost its empty fields and was not counted
+    const empty = stages.getSet(e);
+    for (const k of ['verify', 'unread', 'others', 'ride']) assert.ok(!(k in empty), `${k} is still on the empty rule`);
+    assert.deepStrictEqual(stages.judgeSetsOf(e, 'held'), []);
+    // and a second run moves nothing
+    assert.deepStrictEqual(stages.moveStampsIntoSets(), { rules: 0, held: 0, reserve: 0, readings: 0 });
+    assert.strictEqual(stages.judgeSetsOf(r, 'held').length, 2);
+    // the mover is one block under its own heading, calling nothing only it calls (RULE TEN)
+    const s = src('lib/stages.js');
+    const mover = s.slice(s.indexOf('// ---- MOVING THE STAMPS INTO SETS (3.147.0) -- WRITTEN TO BE DELETED (RULE TEN) ----'), s.indexOf('\n}\n', s.indexOf('function moveStampsIntoSets() {')));
+    assert.ok(mover.length > 500 && /function moveStampsIntoSets\(\) \{/.test(mover), 'the mover has its own heading');
+    assert.strictEqual((s.match(/moveStampsIntoSets/g) || []).length, 2, 'it is defined and exported, and called from nowhere else in the engine');
+    assert.ok(/stages\.moveStampsIntoSets\(\)/.test(src('server.js')), 'the service runs it once at start');
+  } finally {
+    for (const id of made) { try { fs.rmSync(path.join(SETS, `${id}.json`), { force: true }); } catch (_) { /* fixture */ } }
+  }
+};
+
+// THE RESERVE IS THE SEALED WINDOW OR NOTHING (3.147.0, VERIFY-DESIGN.md Part
+// 9). A 61/13/13/13 rule keeps a reserve -- the sealed window, readable while
+// the seal is intact on the unit; a 70/15/15 rule keeps none and is held
+// alone; a layout nobody recorded keeps none. The "everything after the
+// held-back window" reading of 3.141.0 went with the release: a reserve nobody
+// sealed is not a reserve. The press, the ride and the screen all read the one
+// reader.
+module.exports.theReserveIsTheSealedWindowOrNothing = function () {
   const SETS = path.join(__dirname, '..', 'data', 'stagesets');
   fs.mkdirSync(SETS, { recursive: true });
   const tag = Date.now().toString(36);
@@ -1149,108 +1306,101 @@ module.exports.theReserveGradeReadsTheUnreadWindowOffTheRecordWhateverTheLayout 
   const mk = (suffix, parent, doc) => {
     const p = `s3-hw-${tag}-${suffix}`; const c = `s4-hw-${tag}-${suffix}`;
     write(p, { id: p, stage: 3, params: parent.params || {}, windows: parent.windows || null });
-    write(c, { id: c, stage: 4, unit: KEY, parent: { id: p }, ...doc });
+    write(c, { id: c, stage: 4, kind: 'funnel', unit: KEY, parent: { id: p }, ...doc });
     ids.push(p, c);
     return stages.getSet(c);
   };
   try {
-    // 70/15/15: the unread window begins where the last held-back chunk reaches
+    // 70/15/15: no reserve, held alone, and said so
     const split = mk('split', { params: { windowLayout: 'split70' }, windows: { units: { [KEY]: { hold: { fromTs: 1000, toTs: 5000, chunks: 4 } } } } }, {});
-    const w1 = stages.unreadWindowOf(split);
-    assert.deepStrictEqual(w1, { layout: 'split70', kind: 'after', intact: true, fromTs: 5000, chunks: null, why: null }, `a 70/15/15 set's unread window is not everything after the held-back window: ${JSON.stringify(w1)}`);
-    // 70/15/15 with no held-back window on record: not readable, and said why
-    const bare = mk('bare', { params: { windowLayout: 'split70' }, windows: { units: {} } }, {});
-    const w2 = stages.unreadWindowOf(bare);
-    assert.strictEqual(w2.intact, false);
-    assert.ok(/name no held-back window on this unit/.test(w2.why), w2.why);
+    const w1 = stages.reserveOf(split);
+    assert.deepStrictEqual(w1, { keeps: false, layout: 'split70', intact: false, fromTs: null, chunks: null, why: stages.HELD_ALONE }, `a 70/15/15 rule keeps a reserve: ${JSON.stringify(w1)}`);
+    assert.strictEqual(stages.HELD_ALONE, 'held alone: this layout keeps no reserve');
     // 61/13/13/13: the sealed reserve, readable while the seal is intact
     const sealed = mk('sealed', { params: { windowLayout: 'reserve61' } }, { sealed: { units: [{ ...unit, reserve: { fromTs: 7000, chunks: 9 } }] } });
-    const w3 = stages.unreadWindowOf(sealed);
-    assert.deepStrictEqual(w3, { layout: 'reserve61', kind: 'reserve', intact: true, fromTs: 7000, chunks: 9, why: null }, JSON.stringify(w3));
+    const w3 = stages.reserveOf(sealed);
+    assert.deepStrictEqual(w3, { keeps: true, layout: 'reserve61', intact: true, fromTs: 7000, chunks: 9, why: null }, JSON.stringify(w3));
     const broken = mk('broken', { params: { windowLayout: 'reserve61' } }, { sealed: { units: [{ ...unit, reserve: null }], why: 'the reserve was never cut' } });
-    const w4 = stages.unreadWindowOf(broken);
+    const w4 = stages.reserveOf(broken);
     assert.strictEqual(w4.intact, false);
     assert.ok(/sealed window is not intact on this unit/.test(w4.why), w4.why);
-    // a layout nobody recorded
+    // a layout nobody recorded keeps none
     const odd = mk('odd', { params: {} }, {});
-    assert.ok(!stages.unreadWindowOf(odd).intact && /window layout is unrecorded/.test(stages.unreadWindowOf(odd).why));
+    assert.deepStrictEqual({ keeps: stages.reserveOf(odd).keeps, why: stages.reserveOf(odd).why }, { keeps: false, why: stages.HELD_ALONE });
+    // the listing says it on the rule, and Greenlight's gate reads it on a held set
+    assert.deepStrictEqual({ alone: stages.judgeSummaryOf(split).heldAlone, keeps: stages.judgeSummaryOf(split).keepsReserve }, { alone: stages.HELD_ALONE, keeps: false });
+    assert.deepStrictEqual({ alone: stages.judgeSummaryOf(sealed).heldAlone, keeps: stages.judgeSummaryOf(sealed).keepsReserve }, { alone: null, keeps: true });
   } finally { for (const id of ids) { try { fs.rmSync(path.join(SETS, `${id}.json`), { force: true }); } catch (_) { /* fixture */ } } }
-  // THE GRADE reads the window it prices from the same reader, whatever the
-  // layout, and refuses in the reader's words; the dry read hands the window
-  // to the screen
+  // THE PRESS and THE RIDE price a window they read off the one reader, and refuse in its words
   const s = src('lib/stages.js');
-  const run = s.slice(s.indexOf('async function unreadGradeRun(doc, asked, note = null) {'), s.indexOf('\n}\n', s.indexOf('async function unreadGradeRun(doc, asked, note = null) {')));
-  assert.ok(run.includes('const window = unreadWindowOf(doc);') && run.includes('if (!window.intact) throw new Error(window.why);') && run.includes('payload.unread = { fromTs: window.fromTs };'),
-    'the grade prices a window it did not read off the record, or still asks for a seal');
-  assert.ok(!/sealedOnUnitOf/.test(run), 'the grade still reads the seal itself, which only one layout has');
-  const refusal = s.slice(s.indexOf('function unreadRefusalOf(doc) {'), s.indexOf('\n}\n', s.indexOf('function unreadRefusalOf(doc) {')));
-  assert.ok(refusal.includes('const window = unreadWindowOf(doc);') && refusal.includes('if (!window.intact) return window.why;') && !/sealedOnUnitOf/.test(refusal),
-    'the grade refuses a 70/15/15 set for want of a seal it never had');
-  assert.ok(s.includes('    window: unreadWindowOf(doc),'), 'the dry read does not hand the window to the screen');
-  // THE SCREEN (the panel is on Verify since 3.142.0): no share of the history
-  // typed into it; the set's own layout and window, in the Sweep screen's
-  // words for the layouts
+  const price = s.slice(s.indexOf('async function priceSurvivorsOn('), s.indexOf('function reserveLooksOf('));
+  assert.ok(price.includes("if (stretch === 'reserve') {\n    const r = reserveOf(doc);\n    if (!r.keeps) throw new Error(HELD_ALONE);\n    if (!r.intact) throw new Error(r.why);\n    base.unread = { fromTs: r.fromTs };\n  }"),
+    'the pricing reads a window it did not read off the record, or still asks for a seal');
+  assert.ok(!/sealedOnUnitOf/.test(price), 'the pricing still reads the seal itself');
+  for (const fn of ['judgeRefusalOf', 'rideRefusalOf']) {
+    const body = s.slice(s.indexOf(`function ${fn}(`), s.indexOf('\n}\n', s.indexOf(`function ${fn}(`)));
+    assert.ok(body.includes("if (stretch === 'reserve') {\n    const r = reserveOf(doc);\n    if (!r.keeps) return HELD_ALONE;\n    if (!r.intact) return r.why;\n    if (!heldStandingOf(doc)) return NO_HELD_PASS;\n  }"), `${fn} does not refuse the reserve through the one reader`);
+  }
+  assert.ok(!/kind: 'after'|everything after the held-back window/.test(s), 'the "everything after the held-back window" reading is still in the engine');
+  // THE SCREEN: no share of the history typed into it; the layouts in the Sweep
+  // screen's words; the reserve window said in its record's own terms
   const page = src('public/construct.js');
-  const grade = page.slice(page.indexOf('// ---- THE RESERVE GRADE ON A STAGE 4 RECORD SET, on Verify'), page.indexOf('async function drawVerify() {'));
-  assert.ok(grade.length > 3000, 'the reserve grade panel is not drawn by Verify\'s own helpers');
-  assert.ok(!/13%/.test(grade), 'a share of the history is still typed onto the reserve grade panel');
-  assert.ok(!/sealed 13/.test(grade) && !/the sealed \d/.test(grade), 'the screen still calls the unread window the sealed something');
-  assert.ok(grade.includes("return layout === 'reserve61' ? '61/13/13/13 (sealed exam)' : layout === 'split70' ? '70/15/15' : 'unrecorded';"),
+  const judge = page.slice(page.indexOf('const JUDGE_SET_KEY = {'), page.indexOf('async function drawHeld() {'));
+  assert.ok(judge.length > 3000, 'the judge panel is not drawn by its own helpers');
+  assert.ok(!/13%/.test(judge), 'a share of the history is still typed onto the panel');
+  assert.ok(!/sealed 13/.test(judge) && !/the sealed \d/.test(judge), 'the screen still calls the reserve window the sealed something');
+  assert.ok(judge.includes("return layout === 'reserve61' ? '61/13/13/13 (sealed exam)' : layout === 'split70' ? '70/15/15' : 'unrecorded';"),
     'the layouts are not named by the words the Sweep screen offers them under');
-  assert.ok(grade.includes('· window layout ${esc(layoutWords(w && w.layout))} · ${vWindowWords(w)}'), 'the set line does not say its layout and its unread window');
-  assert.ok(grade.includes("if (w.kind === 'reserve') return `unread window ${from}: the sealed reserve, cut away before anything trained")
-    && grade.includes('return `unread window ${from}: everything after the held-back window`;'), 'the window is not said in its own record\'s terms');
-  assert.ok(!grade.includes('sealed window ${sealed.intact'), 'the old seal line is still drawn');
-  const help = src('public/help-content.js');
-  assert.ok(!/13%/.test(help.slice(help.indexOf('vGrade: {'), help.indexOf('\n      },\n', help.indexOf('vGrade: {')))), 'the help still types a share of the history');
+  assert.ok(judge.includes('return `reserve window from ${vDay(w.fromTs)} onward: the sealed reserve, cut away before anything trained') && judge.includes("if (!w.keeps) return `<span class=\"muted\">${esc(String(w.why || ''))}</span>`;"),
+    'the window is not said in its own record\'s terms, or a rule with no reserve is not told so');
+  assert.ok(!judge.includes('everything after the held-back window'), 'the screen still offers the reading that went');
 };
 
 // THE TABS READ IN PROCESSING ORDER (3.142.0, owner order 2026-09-15: "your
 // whole order of processing is screwed up ... The history tab comes after the
-// funnel tab. The verify tab is until the very end. The reserve grade has no
-// business being tested on the history tab, that moves to the verify"). So:
-// History and Tune ask for no verdict, read none and print none; the reserve
-// grade and Greenlight, after Verify, still need the verdict that stood.
-module.exports.theTabsReadInProcessingOrderAndNoScreenBeforeVerifyAsksForAVerdict = async function () {
+// funnel tab. The verify tab is until the very end."; Held and Reserve in
+// Verify's place since 3.147.0). So: History and Tune ask for no verdict, read
+// none and print none; Reserve and Greenlight, after Held, still need the held
+// set that stood.
+module.exports.theTabsReadInProcessingOrderAndNoScreenBeforeHeldAsksForAVerdict = async function () {
   const f = await fixture();
   try {
     const doc = await cutOn(f);
-    assert.deepStrictEqual(doc.verify || [], [], 'nothing on Verify has been pressed');
-    // the doors before Verify open without one
+    assert.deepStrictEqual(setsOf(doc.id), [], 'nothing on Held has been pressed');
+    // the doors before Held open without one
     const hl = await stages.halfLifeDry(doc.id);
     assert.deepStrictEqual({ refused: hl.refused, judge: hl.layout.judge, verdictWords: 'gate' in hl || 'verdicts' in hl }, { refused: null, judge: 'test', verdictWords: false }, 'History asks for a verdict');
     const cap = await stages.tuneCaptureDry(doc.id);
     assert.deepStrictEqual({ refused: cap.refused, verdictWords: 'gate' in cap || 'verdicts' in cap }, { refused: null, verdictWords: false }, 'Tune asks for a verdict');
-    // the doors after Verify still wait for the verdict that stood
-    assert.strictEqual((await stages.unreadGradeDry(doc.id)).refused, stages.UNREAD_NO_PASS, 'the reserve grade no longer needs the verdict');
+    // the doors after Held still wait for the held set that stood
+    assert.strictEqual((await stages.judgeDry(doc.id, 'reserve')).refused, stages.NO_HELD_PASS, 'Reserve no longer needs the held set');
     let threw = null;
     try { await stages.stage4GreenlightSource(doc.id, { pick: 'depth' }); } catch (e) { threw = e.message; }
-    assert.strictEqual(threw, stages.UNREAD_NO_PASS, 'Greenlight no longer needs the verdict');
+    assert.strictEqual(threw, stages.gateRefusalOf(stages.getSet(doc.id)), 'Greenlight no longer needs a set that passed');
     // the tab strip says the same order
     const page = src('public/construct.js');
     const tabs = /const TABS = \[([\s\S]*?)\];/.exec(page)[1].match(/\['([a-z]+)'/g).map((x) => x.slice(2, -1));
-    assert.ok(tabs.indexOf('funnel') < tabs.indexOf('history') && tabs.indexOf('history') < tabs.indexOf('tune') && tabs.indexOf('tune') < tabs.indexOf('verify') && tabs.indexOf('verify') === tabs.indexOf('greenlight') - 1, `the tabs do not read Funnel, History, Tune, Verify, Greenlight: ${tabs.join(' ')}`);
-    // the code behind them: no verdict gate before Verify, and the gates after it intact
+    assert.ok(tabs.indexOf('funnel') < tabs.indexOf('history') && tabs.indexOf('history') < tabs.indexOf('tune') && tabs.indexOf('tune') < tabs.indexOf('held') && tabs.indexOf('held') === tabs.indexOf('reserve') - 1 && tabs.indexOf('reserve') === tabs.indexOf('greenlight') - 1, `the tabs do not read Funnel, History, Tune, Held, Reserve, Greenlight: ${tabs.join(' ')}`);
+    // the code behind them: no verdict gate before Held, and the gates after it intact
     const eng = src('lib/stages.js');
     const body = (name) => eng.slice(eng.indexOf(`function ${name}(`), eng.indexOf('\n}\n', eng.indexOf(`function ${name}(`)));
     for (const fn of ['halfLifeRefusalOf', 'halfLifeRunOn', 'buildHalfLifeSet', 'halfLifeDry', 'captureRefusalOf', 'tuneCaptureRun', 'tuneCaptureDry']) {
-      assert.ok(!/unreadGateOf|gateOfSet|UNREAD_NO_PASS/.test(body(fn)), `${fn} asks for a verdict, and its screen comes before Verify`);
+      assert.ok(!/heldStandingOf|gateOfSet|NO_HELD_PASS/.test(body(fn)), `${fn} asks for a verdict, and its screen comes before Held`);
     }
-    for (const fn of ['unreadRefusalOf', 'unreadGradeRun', 'stage4GreenlightSource', 'captureTargetOf']) {
-      if (fn === 'captureTargetOf') continue;
-      assert.ok(/unreadGateOf|gateOfSet/.test(body(fn)), `${fn} no longer asks for the verdict that stood`);
+    for (const fn of ['judgeRefusalOf', 'judgeRunOn', 'stage4GreenlightSource']) {
+      assert.ok(/heldStandingOf|gateOfSet|gateRefusalOf/.test(body(fn)), `${fn} no longer asks for the set that stood`);
     }
-    // the screens: History draws the retrain panel and nothing else, Tune's capture names no verdict, Verify draws the grade under the verdict
+    // the screens: History draws the retrain panel and nothing else, Tune's capture names no verdict, Reserve is the same renderer as Held
     const history = page.slice(page.indexOf('// ---- History (the retrain run)'), page.indexOf('// ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET, on Tune'));
-    assert.ok(history.includes("  $('#view').innerHTML = hHalfLifePanelHtml(hSets, hChosen, hl);") && !/verdict|hGrade|unread|reserve grade/.test(history.replace(/\/\/[^\n]*/g, '')), 'History draws or names something of Verify\'s');
+    assert.ok(history.includes("  $('#view').innerHTML = hHalfLifePanelHtml(hSets, hChosen, hl);") && !/verdict|hGrade|unread|reserve grade/.test(history.replace(/\/\/[^\n]*/g, '')), 'History draws or names something of Held\'s');
     const tune = page.slice(page.indexOf('// ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET, on Tune'), page.indexOf('function tnTargetRowHtml('));
     assert.ok(tune.length > 1000 && !/verdict|gate/.test(tune.replace(/\/\/[^\n]*/g, '')), 'Tune\'s capture panel still names a verdict');
-    assert.ok(page.includes('  ${vGradePanelHtml(g)}`;') && page.includes("const g = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/unread`, null) : null;"), 'Verify does not draw the reserve grade under the verdict');
+    assert.ok(page.includes("  $('#view').innerHTML = `<div class=\"judge\" data-stretch=\"${stretch}\">${vSetPanelHtml(sets, chosen, d, stretch)}</div>`;") && page.includes("const d = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/judge/${stretch}`, null) : null;"), 'the two tabs do not draw one panel off one door');
     // and the help says so
     const help = src('public/help-content.js');
     const section = (key, next) => help.slice(help.indexOf(`\n  ${key}: {`), help.indexOf(`\n  ${next}: {`));
     assert.ok(!/reserve grade|unread window|verdict|hGrade/.test(section('history', 'tune')), 'History\'s help still describes the reserve grade or a verdict');
-    assert.ok(/vGrade: \{/.test(section('verify', 'history')), 'Verify\'s help does not describe the reserve grade');
+    assert.ok(help.includes('  held: JUDGE_HELP.held,\n  reserve: JUDGE_HELP.reserve,') && /vRead: \{/.test(help.slice(help.indexOf('const JUDGE_HELP ='), help.indexOf('window.HELP = {'))), 'Held and Reserve do not share one help');
     assert.ok(!/verdict/.test(section('tune', 'coins').slice(section('tune', 'coins').indexOf('tnSet: {'), section('tune', 'coins').indexOf('stopCustomPct: {'))), 'Tune\'s capture help still names a verdict');
   } finally { f.cleanup(); }
 };

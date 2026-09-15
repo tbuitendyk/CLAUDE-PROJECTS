@@ -82,6 +82,83 @@ const RUN_NOTES_CONTROLS = (() => {
   }
   return out;
 })();
+// HELD AND RESERVE SHARE ONE SCREEN, SO THEY SHARE ONE HELP. The two tabs are
+// one renderer handed the stretch, and their help is written once here with
+// the stretch's own words filled in, so the two explanations cannot drift any
+// more than the two screens can.
+const JUDGE_HELP = (() => {
+  const one = (stretch) => {
+    const w = stretch === 'reserve' ? 'reserve' : 'held-back';
+    const tab = stretch === 'reserve' ? 'Reserve' : 'Held';
+    const kind = stretch === 'reserve' ? 'reserve set' : 'held set';
+    return {
+      title: tab,
+      how: [
+        ['One result judged here; the check on Setup',
+          'Everything on this tab assumes the machinery works. The check that establishes that lives on the Setup page, under Version: the stage-engine check builds two made-up coins where the right answer is known in advance, one with a rule deliberately hidden in it that the system must find, one with nothing in it on which it must stay quiet, and runs the real three stages on them, all the way through to a verdict read the way this tab reads one. A miss on the first means the engine is blind; a hit on the second means it invents things. The marker beside "stage-engine check:" at the top of every Construct screen says whether the check stands for this release, and opens that tab.\n\nHere, one result is judged: a rule, read as a whole. A rule can be checked against scrambled data and a single row cannot, which is why the Funnel writes a rule and why nothing here judges one row.'],
+        ['One screen, two windows',
+          `Held and Reserve are the same screen over two different stretches of history. Held reads a rule on the held-back window, the days the search never touched while it chose. Reserve reads the same rule, the same way, on the reserve window: the stretch sealed away before anything trained, opened only after the rule stood on the held-back window. Everything on one tab is on the other; only the window differs.${stretch === 'reserve'
+            ? ' A rule is listed here only when its layout keeps a reserve and its newest held set passed.'
+            : ' A rule whose layout keeps no reserve is marked held alone: a held set of it that passed is the whole verdict, and Greenlight takes it as such.'}\n\nA rule is a Stage 4 record set: one cut on the Funnel, or a half-life set built on History, which is judged here as its own rule while the set it was built from keeps its own verdict.`],
+        ['A press writes a set',
+          `Reading a rule on the ${w} window writes a ${kind} of that rule: the rule and its survivors as they stand, the stop choices on record frozen in, and one verdict. It is named after the rule, and a second press writes a second set, numbered, never a second verdict on the first. What Greenlight takes forward is that set, so what was judged and what is frozen are one thing. A ${kind} takes no stop choice of its own: set the stop on the rule and read it again.`],
+        ['What the verdict reads, and what it does not',
+          `The press reads what each of the rule's survivors made on the ${w} window and holds every one of them against four simpler things priced at that survivor's own hold length: buying the coin and going away, shorting it and going away, being long every period and being short every period. A survivor clears when it is in the money and ahead of all four by at least a cent, and the set passes when the bar share of its survivors clear, the same share as the bar on the scrambled copies. The average survivor and the best of the four at the worst hold length in use are printed beside that as a hindsight reading, because knowing which of the four to be on is itself a forecast, and being long every period grows with the hold length; neither of them gates. Then it reads the same settings' money on every scrambled copy and counts how many of those copies the real figure beats, against the bar the rule was cut under. Each survivor gets the same reading on its own copies, printed beside how many would pass by chance, and that never picks a survivor and never gates the set. A sanity line says whether noise loses money, as fees demand; when it does not, the readings above it cannot be trusted.\n\nIt does not price the choosing of the survivors. The walk chose its ranges on the test window over its recorded steps; pricing that search itself would need the whole walk replayed on each scrambled board, which nothing here does.`],
+        ['What is priced, and what is read',
+          stretch === 'reserve'
+            ? 'The reserve window is priced for nothing until it is read here. The press prices the rule\'s survivors on it, with the members forecasting it from the models they were trained as, and reads the result by the rules above; on a half-life set it prices them with the members retrained at each survivor\'s own half-life. The first press on a rule is the only look at data nothing in this system has seen; every later one is counted and says so. The other units and the settings the rule dropped refuse in words until they are priced on the reserve window.'
+            : 'On a rule cut on the Funnel the held-back window is already priced, copies and comparisons included, and the press reads those records and prices nothing. On a half-life set the retrained forecasts have never been priced on it, so the press prices its survivors with the members retrained at each survivor\'s own half-life first, and says so on the set it writes; that pricing is a counted look, and the other units and the dropped settings cannot be read with those forecasts.'],
+        ['Every look is counted',
+          `Opening this tab reads no ${w} figure. The press is the stamped look. ${stretch === 'held'
+            ? 'Before any stamp, the held-back number was already on a screen at every step and step back of the walk, at the cut, and wherever Boards sorts or filters on it; the record says at least how many times.'
+            : 'Every reserve set already read from the rule is a look at the reserve window, and the set a press writes says which look it is.'} Every press writes a set and none is overwritten. What a pass buys is this window only; the forward paper test after freezing is the real judge.`],
+        ['The three readings under the sets',
+          `Three more readings sit under the sets, each taken on the rule itself and each information only, never a pass or fail. The first asks whether the same rule holds on the other coin-and-shape units of the same stage 3 set, each on its own ${w} window against its own scrambled copies, and prints two counts: how many of them are positive and how many clear the bar, with a mark when fewer than half are positive. The second reads the settings the rule did NOT keep on the same window, beside the survivors, so a count of survivors that clear a bar can be read against what did not survive. The third works out what the ${w} window looked like from inside for each survivor: the largest drawdown, the worst and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers on the test window. Each is appended to the rule on every press, and each is a counted look.`],
+      ],
+      intro: `The verdict on one rule, read on the ${w} window: what its survivors made there, each against the simpler `
+        + 'things a rule has to beat at its own hold length and against the same settings on scrambled copies, with '
+        + `every rule declared before its number and every look counted. Each press writes a ${kind} of the rule, `
+        + 'which is what Greenlight reads.',
+      controls: {
+        vSet: {
+          what: `Which rule to read on the ${w} window, from every rule on this box, newest first, each with its coin and shape, its survivors of its target, and the newest ${kind} read from it.${stretch === 'reserve' ? ' Only a rule whose layout keeps a reserve and whose newest held set passed is offered.' : ' A rule whose layout keeps no reserve says held alone.'}`,
+          more: `Choosing a rule reads its footing only: whether it still gives back its own survivors, what it was checked against, its marks, and how many looks the ${w} window has already had. No ${w} figure is read until the button is pressed.`,
+        },
+        vBarPct: {
+          what: `The share of the scrambled copies the survivors' ${w} money has to beat, and the share of survivors that must beat all four comparisons at their own hold length, for the verdict to pass.`,
+          more: 'It opens on the share the rule was cut under, which is the honest bar. A change is written onto the verdict as a guessed threshold, so a verdict read under a softer bar says so.',
+        },
+        vSanityPct: {
+          what: `The share of the scrambled ${w} figures read that must be losing money for the copies to count as noise.`,
+          more: 'A guessed threshold, written onto the verdict. On a window that paid one direction the copies are paid too, so this can fail honestly; when it fails, the readings above it are not to be read.',
+        },
+        vRead: {
+          what: `Reads the rule on the ${w} window and writes a ${kind} of it, with the verdict stamped on that set. This is the one press that opens the ${w} window on this screen.`,
+          more: `It refuses while a run, a totalling or a rebuild is going, when the rule no longer gives back its own survivors, when the rule carries anything but dials and the two limits, and on a rule cut on all units together.${stretch === 'reserve'
+            ? ' It also refuses a rule whose layout keeps no reserve, whose sealed window is not intact, or whose newest held set did not pass, and it prices the survivors first, which takes minutes.'
+            : ' On a half-life set it prices the survivors with their retrained members first, which takes minutes.'} Every press writes a new set, numbered from the second; none is overwritten.`,
+        },
+        vOthers: {
+          what: `Reads the same rule on every other coin-and-shape unit of the stage 3 set this was cut from, each on its own ${w} window against its own scrambled copies at the bar declared above, and prints two counts: how many are positive and how many clear the bar.`,
+          more: `Information only, never a pass or fail on the set; a mark when fewer than half are positive, and a unit where the rule keeps nothing is printed as such and left out of the count. About five seconds a unit, read one at a time and appended to the rule on every press. It refuses while a run, a totalling, a rebuild, the Funnel's own read of the other units or another read on this tab is going${stretch === 'reserve' ? ', and until the other units are priced on the reserve window' : ''}. A verdict stamped after a reading carries its counts.`,
+        },
+        vDropped: {
+          what: `Reads the settings the rule did NOT keep on the same ${w} window as the survivors, and prints both sides side by side: how many there are, how many made money, how many beat the best of the four comparisons, and the average and middle figure of each.`,
+          more: `A count of survivors that clear a bar cannot be read without it. If nearly every setting on the board was positive on this window, then all the survivors being positive says the window rose and says nothing about the picking. Each side is read against the four at its OWN hold lengths, because a setting the rule dropped may hold for a length no survivor uses. Nothing is priced: every figure is already on the board, so it answers at once. It is still a read of the ${w} window, so it is a counted look, and it is information only, never a pass or fail on the set. Appended on every press, never replaced.${stretch === 'reserve' ? ' It refuses until the settings the rule dropped are priced on the reserve window.' : ''}`,
+        },
+        vDroppedN: {
+          what: 'How many of the settings the rule dropped to read. Blank or 0 reads all of them, and the count beside the box says how many that is.',
+          more: 'Fewer than all are taken with an even stride through the board\'s own order. Never the first N, which would read one region of the board, and never the top N by any figure, which would be the very shopping this reading exists to detect.',
+        },
+        vRide: {
+          what: `Works out what the ${w} window looked like from inside for each survivor: the largest drawdown, the worst and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers on the test window.`,
+          more: `The same pass as the missing numbers on the Funnel, on this unit only; minutes. Written onto the rule with the release that computed it, appended on every press, and counted as a stamped look at the ${w} window on every later verdict. Never a gate. It refuses while any other heavy job is going and on a rule cut on all units together.`,
+        },
+      },
+    };
+  };
+  return { held: one('held'), reserve: one('reserve') };
+})();
 window.HELP = {
   data: {
     title: 'Data',
@@ -421,8 +498,8 @@ window.HELP = {
     ],
     controls: {
       bHeldBack: {
-        what: 'Shows the held-back window on the stage 3 tables: the held-back columns of Table 3.A and Table 3.B and of the records under a row. Off every time this tab is opened. Ticking it on is written on this record set as one dated look, which Verify counts the way it counts a scan on Tune.',
-        more: 'Off, a sort saved on a held-back column is set aside and the table reads in its own order, and a floor on a held-back column is not applied \u2014 a table ordered or cut by hidden held-back money would still be a look. The held-back window is priced at stage 3 and kept for Verify; nothing on the Funnel reads it, and the trade floor on the Funnel\u2019s step 6 reads test trades.',
+        what: 'Shows the held-back window on the stage 3 tables: the held-back columns of Table 3.A and Table 3.B and of the records under a row. Off every time this tab is opened. Ticking it on is written on this record set as one dated look, which Held counts the way it counts a scan on Tune.',
+        more: 'Off, a sort saved on a held-back column is set aside and the table reads in its own order, and a floor on a held-back column is not applied \u2014 a table ordered or cut by hidden held-back money would still be a look. The held-back window is priced at stage 3 and kept for Held; nothing on the Funnel reads it, and the trade floor on the Funnel\u2019s step 6 reads test trades.',
       },
       bPin3b: {
         what: 'Shows, in Table 3.B below, only the coins this setting was priced on — and picks this exact setting out of them.',
@@ -574,7 +651,7 @@ window.HELP = {
         more: 'It is here because this is the only screen a Stage 4 record set appears on, and because without it whole chains could not be cleared: a record set that another set was cut from refuses to be deleted while that set is still here, so one Stage 4 set left behind made its stage 3 parent undeletable, and the stage 2 and stage 1 sets above that with it. Deleting the Stage 4 sets first is what clears the way. The screen drops back to new rule afterwards, because the set it was showing is gone.',
       },
       fHeldBack: {
-        what: 'Shows the held-back window on the Stage 4 record set\'s table: the held-back row under each setting and the sorts on it. Off every time the Funnel is opened and every time the record set showing changes. Ticking it on is written on this Stage 4 record set as one dated look, which Verify counts the way it counts a look on Boards.',
+        what: 'Shows the held-back window on the Stage 4 record set\'s table: the held-back row under each setting and the sorts on it. Off every time the Funnel is opened and every time the record set showing changes. Ticking it on is written on this Stage 4 record set as one dated look, which Held counts the way it counts a look on Boards.',
         more: 'Off, the held-back numbers are not sent to the screen at all, a sort saved on one of them is set aside and the table reads in its own order. The held-back window is the once-only look at days no part of the search touched; every look at it is counted so the verdict can say how many there were.',
       },
       fCutRename: {
@@ -743,69 +820,14 @@ window.HELP = {
       },
     },
   },
-  verify: {
-    title: 'Verify',
-    how: [
-      ['One result judged here; the check on Setup',
-        'Everything on this tab assumes the machinery works. The check that establishes that lives on the Setup page, under Version: the stage-engine check builds two made-up coins where the right answer is known in advance — one with a rule deliberately hidden in it that the system must find, one with nothing in it on which it must stay quiet — and runs the real three stages on them, all the way through to a verdict read the way this tab reads one. A miss on the first means the engine is blind; a hit on the second means it invents things. The marker beside "stage-engine check:" at the top of every Construct screen says whether the check stands for this release, and opens that tab.\n\nHere, one result is judged: a Stage 4 record set, read as a whole. A rule can be checked against scrambled data and a single row cannot, which is why the Funnel writes a rule and why nothing here judges one row.'],
-      ['What the verdict reads, and what it does not',
-        'The press reads what each of the set\'s survivors made on the held-back window, the days no part of the search touched, and holds every one of them against four simpler things priced at that survivor\'s own hold length: buying the coin and going away, shorting it and going away, being long every period and being short every period. A survivor clears when it is in the money and ahead of all four by at least a cent, and the set passes when the bar share of its survivors clear, the same share as the bar on the scrambled copies. The average survivor and the best of the four at the worst hold length in use are printed beside that as a hindsight reading, because knowing which of the four to be on is itself a forecast, and being long every period grows with the hold length; neither of them gates. Then it reads the same settings\' money on every scrambled copy of their table and counts how many of those copies the real figure beats, against the bar the set was cut under. Each survivor gets the same reading on its own copies, printed beside how many would pass by chance, and that never picks a survivor and never gates the set. A sanity line says whether noise loses money, as fees demand; when it does not, the readings above it cannot be trusted.\n\nIt does not price the choosing of the survivors. The walk chose its ranges on the test window over its recorded steps; pricing that search itself would need the whole walk replayed on each scrambled board, which nothing here does. Two more lines are printed for information and never pass or fail: the rule on the test window against its own copies, which always looks good because it was chosen against them, and what shopping alone would have found.'],
-      ['Every look is counted',
-        'Opening this tab reads no held-back number. The press is the stamped look. Before any stamp, the held-back number was already on a screen at every step and step back of the walk, at the cut, and wherever Boards sorts or filters on it; the record says at least how many times. Every press appends a block and none is overwritten: the first block is the verdict, later ones are printed as later looks. What a pass buys is this window only; the forward paper test after freezing is the real judge.'],
-      ['Elsewhere, and from inside',
-        'Two more readings sit under the verdict, both information and never a pass or fail. The first asks whether the same rule holds on the other coin-and-shape units of the same stage 3 set, each on its own held-back window against its own scrambled copies, and prints two counts: how many of them are positive and how many clear the bar, with a mark when fewer than half are positive. The second works out what the held-back window looked like from inside for each survivor: the largest drawdown, the worst and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers on the test window. Both are appended to the set on every press, and the ride is counted as a stamped look.'],
-      ['The reserve grade, the last look',
-        'Under the verdict sits the one look at the unread window: the stretch of history no part of the search touched, from where it begins to whatever the box holds today. On a 61/13/13/13 (sealed exam) set it is the sealed reserve, cut away before anything trained; on a 70/15/15 set it is everything after the held-back window. The reserve grade prices the set\'s survivors on that stretch, with the members forecasting it from the models they were trained as, and reads the result by the verdict\'s own four rules. It needs a verdict that passed, which is why it lives here and nowhere earlier; the first grade is the only look at data nothing has seen, and every later one is counted and says so.'],
-    ],
-    intro: 'The verdict on one Stage 4 record set: what its survivors made on the days no part of the search '
-      + 'touched, against the simpler things a rule has to beat and against the same settings on scrambled copies '
-      + 'of their table, with every rule declared before its number and every look counted. The machinery '
-      + 'check it rests on, the stage-engine check, lives on the Setup page, under Version.',
-    controls: {
-      vSet: {
-        what: 'Which Stage 4 record set to read, from every set on this box, newest first, each with its coin and shape, its survivors of its target, and whether a verdict is stamped on it.',
-        more: 'Choosing a set reads its footing only: whether its rule still gives back its own survivors, what it was checked against, its marks, and how many looks the held-back window has already had. No held-back number is read until the button is pressed.',
-      },
-      vBarPct: {
-        what: 'The share of the scrambled copies the survivors\' held-back money has to beat for the verdict to pass.',
-        more: 'It opens on the share the set was cut under, which is the honest bar. A change is written onto the verdict as a guessed threshold, so a verdict read under a softer bar says so.',
-      },
-      vSanityPct: {
-        what: 'The share of scrambled held-back figures on the whole board that must be losing money for the copies to count as noise.',
-        more: 'A guessed threshold, written onto the verdict. On a window that paid one direction the copies are paid too, so this can fail honestly; when it fails, the readings above it are not to be read.',
-      },
-      vRead: {
-        what: 'Reads the set against nothing on the held-back window and stamps the reading on the set. This is the one press that opens the held-back window on this screen.',
-        more: 'It refuses while a run, a totalling or a rebuild is going, when the rule no longer gives back its own survivors, when the rule carries anything but dials and the two limits, and on a set cut on all units together. The first press writes the verdict; every later press appends a later look and never replaces it.',
-      },
-      vOthers: {
-        what: 'Reads the same rule on every other coin-and-shape unit of the stage 3 set this was cut from, each on its own held-back window against its own scrambled copies at the bar declared above, and prints two counts: how many are positive and how many clear the bar.',
-        more: 'Information only, never a pass or fail on the set; a mark when fewer than half are positive, and a unit where the rule keeps nothing is printed as such and left out of the count. About five seconds a unit, read one at a time and appended to the set on every press. It refuses while a run, a totalling, a rebuild, the Funnel\'s own read of the other units or another read on this tab is going. A verdict stamped after a reading carries its counts.',
-      },
-      vDropped: {
-        what: 'Reads the settings the rule did NOT keep on the same held-back window as the survivors, and prints both sides side by side: how many there are, how many made money, how many beat the best of the four comparisons, and the average and middle figure of each.',
-        more: 'A count of survivors that clear a bar cannot be read without it. If nearly every setting on the board was positive on this window, then all the survivors being positive says the window rose and says nothing about the picking. Each side is read against the four at its OWN hold lengths, because a setting the rule dropped may hold for a length no survivor uses. Nothing is priced: every figure is already on the board, so it answers at once. It is still a read of the held-back window, so it is a counted look, and it is information only, never a pass or fail on the set. Appended on every press, never replaced.',
-      },
-      vDroppedN: {
-        what: 'How many of the settings the rule dropped to read. Blank or 0 reads all of them, and the count beside the box says how many that is.',
-        more: 'Fewer than all are taken with an even stride through the board\'s own order. Never the first N, which would read one region of the board, and never the top N by any figure, which would be the very shopping this reading exists to detect.',
-      },
-      vRide: {
-        what: 'Works out what the held-back window looked like from inside for each survivor: the largest drawdown, the worst and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers on the test window.',
-        more: 'The same pass as the missing numbers on the Funnel, on this unit only; minutes. Written onto the set with the release that computed it, appended on every press, and counted as a stamped look at the held-back window on every later verdict. Never a gate. It refuses while any other heavy job is going and on a set cut on all units together.',
-      },
-      vGrade: {
-        what: 'Prices the set\'s survivors on the unread window, the stretch of history no part of the search touched, and stamps the grade on the set. The last look, under the verdict it needs.',
-        more: 'Where the window begins is read off the set\'s own record: the sealed reserve on a 61/13/13/13 (sealed exam) set, everything after the held-back window on a 70/15/15 set. The members forecast it from the models they were trained as; nothing is retrained. The result is read by the same four rules as the verdict above. It refuses without a verdict that passed under this release line, without a readable unread window, and while anything heavy is running. Every press is counted as a look, and only the first is at data nothing has seen.',
-      },
-    },
-  },
+  held: JUDGE_HELP.held,
+  reserve: JUDGE_HELP.reserve,
 
   history: {
     title: 'History',
     how: [
-      ['After the Funnel, before Tune and Verify',
-        'History takes a Stage 4 record set straight from the Funnel and asks nothing of Verify, which comes at the very end, after Tune, and judges what leaves here.'],
+      ['After the Funnel, before Tune, Held and Reserve',
+        'History takes a Stage 4 record set straight from the Funnel and asks nothing of Held or Reserve, which come at the very end, after Tune, and judge what leaves here. A half-life set built here is judged there as its own rule.'],
       ['Is it still true, or was it true in 2018',
         'A setting that worked for two years and then stopped will still look good averaged across the whole history, because the good years carry the bad ones. That is the single easiest way to be fooled by a long backtest.\n\nThis re-scores the same setting while counting recent evidence more heavily than old evidence, at the rate half-life sets, and shows it beside the same run with everything weighted equally. If the two disagree, the effect is not where you think it is.'],
     ],
@@ -825,7 +847,7 @@ window.HELP = {
       hHl48: { what: 'Whether to retrain at a 48-month half-life: a training day four years old counts half as much as today.' },
       hHalfLife: {
         what: 'Retrains the forecasts behind every setting of the chosen set, once per ticked half-life, and prices the same settings again beside the unweighted figures on the Test window, which the retraining never touched.',
-        more: 'The set\'s own layout, judged on the Test window either way: a set built 61/13/13/13 (sealed exam) retrains on its 61% and is judged on its 13% test window, with its held-back 13% not read and its last 13% sealed; a set built 70/15/15 retrains on its 70% and is judged on its 15% test window, with its held-back 15% not read. Both kinds of forecast are retrained; every other training choice stays as the set was made. The best of each row is green, and a half-life wins only by at least a cent. History comes before Verify and asks nothing of it, and it never reads the held-back window: that stays secret until Verify, or until a scan on Tune is told to read it. Every press appends a table; none is overwritten.',
+        more: 'The set\'s own layout, judged on the Test window either way: a set built 61/13/13/13 (sealed exam) retrains on its 61% and is judged on its 13% test window, with its held-back 13% not read and its last 13% sealed; a set built 70/15/15 retrains on its 70% and is judged on its 15% test window, with its held-back 15% not read. Both kinds of forecast are retrained; every other training choice stays as the set was made. The best of each row is green, and a half-life wins only by at least a cent. History comes before Held and asks nothing of it, and it never reads the held-back window: that stays secret until Held, or until a scan on Tune is told to read it. Every press appends a table; none is overwritten.',
       },
       hHlName: { what: 'The name of the half-life set built from the newest table, as it will read on Tune and Greenlight.' },
       hHlBuild: {
@@ -839,7 +861,7 @@ window.HELP = {
     title: 'Tune',
     how: [
       ['First, the trades of a Stage 4 record set',
-        'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The first panel writes those down — every hour the rule of a survivor spoke, on the training, test and held-back windows, with the side and how many members called it — for every survivor that enters at market with no trailing stop. Once captured, the set can be chosen under "Tuning targets" below, with one survivor of it or all of them, and the windows to read.\n\nReading the held-back entries is a counted look at the held-back window, the same count Verify keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
+        'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The first panel writes those down — every hour the rule of a survivor spoke, on the training, test and held-back windows, with the side and how many members called it — for every survivor that enters at market with no trailing stop. Once captured, the set can be chosen under "Tuning targets" below, with one survivor of it or all of them, and the windows to read.\n\nReading the held-back entries is a counted look at the held-back window, the same count Held keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
       ['One variable at a time, on one survivor\'s trades',
         'The Sweep tab is wide and shallow: many settings, each scored once. This is the opposite — one setting, taken apart carefully.\n\nThe two scans work across every value of one thing, over the captured trades of one survivor on the windows ticked, and report the whole shape rather than a winner: which protective stops would have cost nothing, and how much requiring more agreement is worth. Both take minutes and cannot be stopped part-way.'],
     ],
@@ -849,7 +871,7 @@ window.HELP = {
       tnSet: { what: 'Which Stage 4 record set to capture the trades of, from every set on this box, newest first.' },
       tnCapture: {
         what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows.',
-        more: 'Tune comes before Verify and asks nothing of it. A second press replaces the capture on record; the looks already counted stay.',
+        more: 'Tune comes before Held and asks nothing of it. A second press replaces the capture on record; the looks already counted stay.',
       },
       tuneTarget: { what: 'Which Stage 4 record set the two scans below work on, from those whose trades were captured.' },
       tnPick: {
@@ -860,7 +882,7 @@ window.HELP = {
       tnWinTest: { what: 'Whether the scans read the entries of the test window. Not a look: this window was read to choose the rule.' },
       tnWinHold: {
         what: 'Whether the scans read the entries of the held-back window.',
-        more: 'Every scan that reads them is a counted look at the held-back window, stamped on the capture and counted on Verify.',
+        more: 'Every scan that reads them is a counted look at the held-back window, stamped on the capture and counted on Held.',
       },
       stopCustomPct: {
         what: 'A protective stop of your own choosing for the survivor picked under Tuning targets, as a percentage of the opening price.',
@@ -963,8 +985,8 @@ window.HELP = {
   greenlight: {
     title: 'Greenlight',
     how: [
-      ['A survivor of a Stage 4 record set, without shopping',
-        'The second panel takes one survivor of a Stage 4 record set forward, but only from a set whose verdict stood on Verify. Which survivor is a choice made without money: by depth, the setting nearest the middle of every range of the rule, the same idea as the widest region\'s centre; or a survivor you name, recorded as your pick. The frozen settings carry the way the members agree exactly as that survivor does, which no single number of votes expresses, and the record names the set, the verdict, the survivor and how it was chosen.'],
+      ['A survivor of a held set or a reserve set, without shopping',
+        'The second panel takes one survivor of a Stage 4 record set forward, but only from a reserve set that passed on Reserve, or from a held set that passed on Held on a layout that keeps no reserve, held alone. A rule is never greenlighted: the set a press made on Held or Reserve is, so what was judged and what is frozen are one thing. Which survivor is a choice made without money: by depth, the setting nearest the middle of every range of the rule, the same idea as the widest region\'s centre; or a survivor you name, recorded as your pick. The frozen settings carry the way the members agree exactly as that survivor does, which no single number of votes expresses, and the record names the set, the verdict, the survivor and how it was chosen.'],
       ['Writing down a decision, not starting one',
         'Nothing here trades. It records that you decided to take one setting forward: who, when, why, and the exact settings frozen at that moment, together with the whole chain of runs that led to it.\n\nThe reason it exists: months later, when something is running on the Trade tab, the question is always "what was this based on, and did we check it?" — and the honest answer has to have been written at the time, not reconstructed afterwards. That is why the reason is required rather than optional.'],
     ],
@@ -973,8 +995,8 @@ window.HELP = {
       + 'so that later, when a setup is running on the Trade tab, there is a record of what it was based on.',
     controls: {
       gl4Set: {
-        what: 'Which Stage 4 record set to take a survivor from, from every set on this box, newest first, with whether its verdict passed.',
-        more: 'Choosing a set reads its footing only: which verdict stood, how many members its coin and shape were priced with, and every survivor with its distance from the middle of the rule. A set whose verdict has not stood on Verify is refused in words.',
+        what: 'Which held set or reserve set to take a survivor from, from every one on this box, newest first, with the verdict it carries and, on a held set, whether its rule is held alone.',
+        more: 'Choosing a set reads its footing only: whether its verdict stands, how many members its coin and shape were priced with, and every survivor with its distance from the middle of the rule. A set whose verdict is FAIL, a held set whose layout keeps a reserve, and a set that passed under another release line are each refused in words.',
       },
       gl4Pick: {
         what: 'Which survivor is taken forward. By depth is the setting nearest the middle of every range of the rule, chosen without looking at any money; naming one records it as your own pick.',

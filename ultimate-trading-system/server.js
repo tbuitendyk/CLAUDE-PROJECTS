@@ -652,6 +652,7 @@ app.get('/api/funnel/set/:id/rebuild', (req, res) => res.json(stages.rebuildSetR
 
 app.get('/api/funnel/sets', (req, res) => {
   const parent = req.query.parent ? String(req.query.parent) : null;
+  const all = stages.listFunnelSets();
   return res.json({
     sets: stages.listFunnelSets(parent).filter((d) => !d.exam).map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
@@ -661,9 +662,13 @@ app.get('/api/funnel/sets', (req, res) => {
       steps: (d.steps || []).length, backSteps: (d.backSteps || []).length,
       // the marks ride with the set wherever it is listed (§16.5)
       marks: d.marks || [],
-      // and whether a verdict is stamped on it (3.86.0)
-      verify: stages.verifySummaryOf(d),
-      // a half-life set says what it was built from (3.95.0); its standing is that set's
+      // WHAT KIND OF SET (3.147.0): a rule (funnel, plain or half-life), or a
+      // held set or a reserve set read from one -- which rule, its number, and
+      // the held set a reserve set stands on
+      kind: d.kind || 'funnel', from: d.from || null, number: d.number ?? null, standsOn: d.standsOn || null,
+      // on a rule: the sets read from it on each stretch and whether it stands; on a held or reserve set: its one block
+      judge: stages.judgeSummaryOf(d, all),
+      // a half-life set says what it was built from (3.95.0), and a set read from one carries that forward
       derived: d.derived || null,
     })),
   });
@@ -689,19 +694,22 @@ app.get('/api/funnel/set/:id/rows', async (req, res) => {
   return res.json(out);
 });
 
-// VERIFY: THE VERDICT ON A STAGE 4 RECORD SET (3.86.0). The GET is the dry read:
-// the record's footing, its marks and the blocks already stamped, and no
-// held-back figure. The POST is the stamped look, started and polled; the read
-// itself is the only thing that opens the held-back window on Verify.
-app.get('/api/funnel/set/:id/verify', async (req, res) => {
-  try { return res.json(await stages.funnelVerifyDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
+// HELD AND RESERVE: THE VERDICT ON A STAGE 4 RECORD SET, ON ONE STRETCH (3.86.0;
+// one door for both stretches since 3.147.0). The GET is the dry read: the
+// rule's footing, its marks, the sets already read from it on this stretch and
+// the readings on it, and no figure of the stretch. The POST is the stamped
+// look, started and polled; it writes a held set or a reserve set of the rule,
+// and is the only thing that opens that window on its tab.
+app.get('/api/funnel/set/:id/judge/:stretch', async (req, res) => {
+  try { return res.json(await stages.judgeDry(req.params.id, req.params.stretch)); } catch (err) { return res.status(400).json({ error: err.message }); }
 });
-app.post('/api/funnel/set/:id/verify', (req, res) => {
-  try { return res.json(stages.funnelVerifyStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
+app.post('/api/funnel/set/:id/judge/:stretch', (req, res) => {
+  try { return res.json(stages.judgeStart(req.params.id, req.params.stretch, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
-app.get('/api/funnel/set/:id/verify/status', (req, res) => res.json(stages.funnelVerifyStatus(req.params.id)));
-// the rule on the other units' held-back windows (V6) and the held-back ride
-// (V7), 3.88.0: each started and polled, each appended to the set, neither a gate
+app.get('/api/funnel/set/:id/judge/:stretch/status', (req, res) => res.json(stages.judgeStatus(req.params.id, req.params.stretch)));
+// the rule on the other units (V6) and the ride (V7), 3.88.0, on the stretch
+// the body names: each started and polled, each appended to the rule's
+// readings for that stretch, neither a gate
 app.post('/api/funnel/set/:id/others', (req, res) => {
   try { return res.json(stages.funnelOthersStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
@@ -715,20 +723,9 @@ app.post('/api/funnel/set/:id/dropped', async (req, res) => {
   try { return res.json(await stages.funnelDroppedStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.post('/api/funnel/set/:id/ride', (req, res) => {
-  try { return res.json(stages.funnelRideStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
+  try { return res.json(stages.funnelRideStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/ride/status', (req, res) => res.json(stages.funnelRideStatus(req.params.id)));
-// THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0; on Verify since 3.142.0,
-// under the verdict it needs): the GET is the dry read (the gate, the window,
-// the looks so far, the grades stamped), the POST prices the unread window,
-// started and polled; every grade is a counted look
-app.get('/api/funnel/set/:id/unread', async (req, res) => {
-  try { return res.json(await stages.unreadGradeDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
-});
-app.post('/api/funnel/set/:id/unread', (req, res) => {
-  try { return res.json(stages.unreadGradeStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
-});
-app.get('/api/funnel/set/:id/unread/status', (req, res) => res.json(stages.unreadGradeStatus(req.params.id)));
 // THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET (3.92.0), on Tune: the GET is
 // the dry read (the capture on record and its looks), the POST captures the
 // survivors' trades, started and polled. Tune comes before Verify, so no
@@ -1536,6 +1533,14 @@ app.use((err, req, res, next) => {
   req.on('error', () => mark(null));
 })();
 
+// THE STAMPS ON EVERY RULE MOVE INTO SETS ONCE, AT START (3.147.0; RULE NINE,
+// and written to be deleted under RULE TEN once a probe finds nothing left to
+// move on the box). Said out loud, never silent, so the record of the move is
+// the service's own log.
+try {
+  const moved = stages.moveStampsIntoSets();
+  if (moved.rules) console.log(`[start] moved the stamps of ${moved.rules} rule(s) into sets: ${moved.held} held set(s), ${moved.reserve} reserve set(s), ${moved.readings} reading(s) re-keyed`);
+} catch (err) { console.error(`[start] the stamps could not be moved into sets: ${err && err.message ? err.message : err}`); }
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`ultimate-trading-system listening on 127.0.0.1:${PORT}`);
 });

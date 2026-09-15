@@ -5202,7 +5202,7 @@ const acrossBusy = () => (acrossRun && !acrossRun.result && !acrossRun.error ? '
 // and Verify's own read of the other units (3.88.0): the same boards, so
 // neither reads while the other does
 let othersRun = null;   // { id, token, done, of, result, error, promise }
-const othersBusy = () => (othersRun && !othersRun.result && !othersRun.error ? `the other units of ${othersRun.id} are being read on Verify` : null);
+const othersBusy = () => (othersRun && !othersRun.result && !othersRun.error ? `the other units of ${othersRun.id} are being read on ${othersRun.stretch === 'reserve' ? 'Reserve' : 'Held'}` : null);
 function acrossKeyOf(id, state) {
   const S4 = require('./funnelset');
   // the bar is part of what was read: the same rule under another share of
@@ -6449,9 +6449,8 @@ function richStatus(run) {
 // unit, so it is named here and every refusal built on richBusy() covers it
 let rideRun = null;   // { id, token, done, of, result, error, promise }
 const rideBusy = () => (rideRun && !rideRun.result && !rideRun.error ? `the held-back ride of ${rideRun.id} is being worked out` : null);
-// and the reserve grade on a Stage 4 set's unread window (3.89.0), the same pricing pass
-let unreadRun = null;   // { id, token, done, of, result, error, promise }
-const unreadBusy = () => (unreadRun && !unreadRun.result && !unreadRun.error ? `the reserve grade of ${unreadRun.id} is being priced` : null);
+// and a read on Held or Reserve that PRICES (3.147.0: the reserve window, or a half-life rule's retrained members), the same pricing pass
+const judgeBusy = () => (judgeRun && judgeRun.prices && !judgeRun.result && !judgeRun.error ? `${judgeRun.id} is being priced on ${judgeRun.stretch === 'reserve' ? 'the reserve window' : 'the held-back window'}` : null);
 // What is stopping another load, in words fit for a refusal, or null.
 // and the per-trade capture of a Stage 4 set for Tune (3.92.0), the same pricing pass again
 let captureRun = null;   // { id, token, done, of, result, error, promise }
@@ -6460,7 +6459,7 @@ const captureBusy = () => (captureRun && !captureRun.result && !captureRun.error
 let halfLifeRun = null;   // { id, token, done, of, result, error, promise }
 const halfLifeBusy = () => (halfLifeRun && !halfLifeRun.result && !halfLifeRun.error ? `the half-life run of ${halfLifeRun.id} is being worked out` : null);
 const richBusy = () => (richRun && !richRun.result && !richRun.error
-  ? `the missing numbers of ${richRun.id} are being worked out` : (rideBusy() || unreadBusy() || captureBusy() || halfLifeBusy()));
+  ? `the missing numbers of ${richRun.id} are being worked out` : (rideBusy() || judgeBusy() || captureBusy() || halfLifeBusy()));
 function funnelRichStart(id, state = {}) {
   if (richRun && !richRun.result && !richRun.error) {
     if (richRun.id === String(id)) return richStatus(richRun);
@@ -6626,15 +6625,16 @@ function rebuildSetRichStatus(setId) {
   return setRichStatus(setRichRun);
 }
 
-// ---- VERIFY: THE VERDICT ON A STAGE 4 RECORD SET (3.86.0, VERIFY-DESIGN.md) ----
+// ---- THE VERDICT ON A STAGE 4 RECORD SET (3.86.0, VERIFY-DESIGN.md; Held and Reserve since 3.147.0) ----
 //
 // The set is read as a whole, never one row (owner decision 1, 2026-09-07). A
-// dry read (funnelVerifyDry) draws the record's footing and hands back no
-// held-back figure. The press (funnelVerifyStart) is the stamped look: it
-// declares its rules BEFORE any number exists, reads every survivor joined to
-// its parent's board -- never a page of them -- computes the readings in
-// lib/funnelverify.js, appends one block to the set (newest first, nothing
-// overwritten) and writes heldBackReadAt on the first press only. Started and
+// dry read (judgeDry) draws the record's footing and hands back no figure of
+// the stretch. The press (judgeStart) is the stamped look: it declares its
+// rules BEFORE any number exists, reads every survivor joined to its parent's
+// board -- never a page of them -- computes the readings in
+// lib/funnelverify.js, writes them as a held set or a reserve set of the rule
+// (never a block on the rule) and writes the first-look date on the rule on
+// the first press only. Started and
 // polled, like every other press on the Funnel.
 
 // every survivor of the set, joined to the board it was cut from
@@ -6686,34 +6686,21 @@ function sealedOnUnitOf(doc) {
   };
 }
 // the date ranges the parent priced this unit on (3.85.0), beside the seal
-// THE UNREAD WINDOW OF A STAGE 4 RECORD SET, READ OFF ITS OWN RECORD (3.141.0,
-// owner order 2026-09-15: "History tab is supposed to be completely agnostic on
-// the Reserve window"). Nothing here assumes a layout. On a 61/13/13/13 run the
-// unread window is the sealed reserve, cut away before anything trained, and
-// it is readable only while that seal is intact on the unit; on a 70/15/15 run
-// it is everything after the held-back window, which begins where the last
-// held-back chunk reaches. Either way it runs from where it begins to whatever
-// the box holds today, and the pricing path is handed that beginning alone.
-function unreadWindowOf(doc) {
-  const parent = getSet((doc.parent || {}).id);
-  const layout = parent ? ((parent.params || {}).windowLayout || null) : null;
-  const per = doc.unit && parent ? (((parent.windows || {}).units || {})[doc.unit] || null) : null;
-  if (layout === 'reserve61') {
-    const sealed = sealedOnUnitOf(doc);
-    return { layout, kind: 'reserve', intact: sealed.sealed, fromTs: sealed.fromTs, chunks: sealed.chunks,
-      why: sealed.sealed ? null : `the sealed window is not intact on this unit — ${sealed.why}` };
-  }
-  if (layout === 'split70') {
-    const hold = per && per.hold ? per.hold : null;
-    const at = hold ? Number(hold.toTs) : NaN;
-    if (!Number.isFinite(at)) {
-      return { layout, kind: 'after', intact: false, fromTs: null, chunks: null,
-        why: "this set's records name no held-back window on this unit, so where the unread window begins is not known" };
-    }
-    return { layout, kind: 'after', intact: true, fromTs: at, chunks: null, why: null };
-  }
-  return { layout, kind: null, intact: false, fromTs: null, chunks: null,
-    why: `this set's window layout is ${layout || 'unrecorded'}, so where its unread window begins is not known` };
+// THE RESERVE OF A STAGE 4 RECORD SET, READ OFF ITS OWN RECORD (3.147.0,
+// VERIFY-DESIGN.md Part 9). A rule's layout keeps a reserve or it does not:
+// on a 61/13/13/13 run the reserve is the sealed window, cut away before
+// anything trained, readable while that seal is intact on the unit and
+// running from where it begins to whatever the box holds today; on a 70/15/15
+// run there is no reserve, the rule is "held alone", and its held set that
+// passed is the whole verdict. The reading of 3.141.0 that took the stretch
+// after the held-back window as a reserve went with this release: a reserve
+// nobody sealed is not a reserve.
+const HELD_ALONE = 'held alone: this layout keeps no reserve';
+function reserveOf(doc) {
+  const layout = layoutOfSet(doc);
+  if (layout !== 'reserve61') return { keeps: false, layout, intact: false, fromTs: null, chunks: null, why: HELD_ALONE };
+  const sealed = sealedOnUnitOf(doc);
+  return { keeps: true, layout, intact: sealed.sealed, fromTs: sealed.fromTs, chunks: sealed.chunks, why: sealed.sealed ? null : `the sealed window is not intact on this unit — ${sealed.why}` };
 }
 function windowsForVerify(doc, parent) {
   const sealed = sealedOnUnitOf(doc);
@@ -6744,8 +6731,8 @@ function verifyLooksOf(doc, keys, stamped) {
   ];
   if (keys && keys.readsHeldBackTrades) what.push('one floor of the rule read the held-back trade count');
   // the held-back ride (3.88.0) prints held-back numbers per survivor: a look, stamped
-  const rides = (doc.ride || []).length;
-  if (rides) what.push(`the held-back ride was worked out ${rides} time(s) on Verify, each a stamped look`);
+  const rides = readingsIn(doc, 'held').ride.length;
+  if (rides) what.push(`the held-back ride was worked out ${rides} time(s) on Held, each a stamped look`);
   // a tool run on Tune that read the captured held-back entries (3.92.0): a look, stamped on the capture
   const tuneReads = (((doc.capture || {}).reads) || []).filter((r) => r && r.look != null).length;
   if (tuneReads) what.push(`a scan on Tune read the captured held-back trades ${tuneReads} time(s), each a stamped look`);
@@ -6790,116 +6777,440 @@ function verifyFooting(doc, join) {
     stageGate,
   };
 }
-const BLEND_REFUSAL = 'this set was cut on all units together; a verdict is read on one coin and shape — cut the rule on one unit on the Funnel and verify that set';
-let verifyRun = null;   // { id, token, result, error, promise }
-const verifyBusy = () => stageBusy();
-async function funnelVerifyDry(id) {
-  const doc = getSet(id);
-  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
-  const S4 = require('./funnelset');
-  const V = require('./funnelverify');
-  const out = {
-    id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
-    parent: doc.parent || null,
-    ruleSentence: doc.ruleSentence || S4.ruleSentence(doc.rule),
-    userSentence: doc.userRule ? S4.ruleSentence(S4.normaliseRule(doc.userRule)) : null,
-    counts: doc.counts || null, closing: doc.closing || null, warnings: doc.warnings || [],
-    marks: doc.marks || [], check: doc.check || null,
-    heldBackReadAt: doc.heldBackReadAt || null,
-    // every block already stamped, newest first; the OLDEST is the verdict
-    blocks: doc.verify || [],
-    rules: V.declareRules(doc.check, {}),
-    refused: null, footing: null, looks: null,
-    // the rule on the other units and the held-back ride (3.88.0), newest first
-    others: doc.others || [], ride: doc.ride || [],
-    // what the rule DROPPED, on the same window (V8, 3.100.0), newest first
-    dropped: doc.dropped || [],
-    othersRefused: null, rideRefused: null, droppedRefused: null,
-    othersRunning: othersRun && othersRun.id === doc.id && !othersRun.result && !othersRun.error ? { token: othersRun.token, done: othersRun.done, of: othersRun.of } : null,
-    rideRunning: rideRun && rideRun.id === doc.id && !rideRun.result && !rideRun.error ? { token: rideRun.token, done: rideRun.done, of: rideRun.of } : null,
-  };
-  if (!doc.unit) { out.refused = BLEND_REFUSAL; out.othersRefused = BLEND_REFUSAL; out.rideRefused = BLEND_REFUSAL; out.droppedRefused = BLEND_REFUSAL; return out; }
-  if (doc.derived) { const why = derivedRefusalOf(doc); out.refused = why; out.othersRefused = why; out.rideRefused = why; out.droppedRefused = why; out.derived = doc.derived; return out; }
-  let join;
-  try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; out.othersRefused = err.message; out.rideRefused = err.message; out.droppedRefused = err.message; return out; }
-  out.footing = verifyFooting(doc, join);
-  out.looks = verifyLooksOf(doc, out.footing.keys, (doc.verify || []).length);
-  const busy = verifyBusy();
-  if (busy) out.refused = `${busy} — the read waits for the box to be free`;
-  else if (verifyRun && !verifyRun.result && !verifyRun.error) out.refused = 'a Stage 4 record set is being read right now — one at a time';
-  else if (othersBusy()) out.refused = `${othersBusy()} — one reading at a time`;
-  else if (!out.footing.ok) out.refused = out.footing.why;
-  out.othersRefused = othersRefusalOf(doc, out.footing);
-  out.rideRefused = rideRefusalOf(doc);
-  out.droppedRefused = droppedRefusalOf(doc);
-  // HOW MANY THE RULE DROPPED, so the box on screen can say what "all of them"
-  // means before anything is pressed. Counted off the board already in hand.
-  try {
-    const S4d = require('./funnelset');
-    out.droppedOf = Math.max(0, join.mine.length - S4d.applyRule(join.mine, join.rule).length);
-  } catch { out.droppedOf = null; }
-  return out;
+const BLEND_REFUSAL = 'this set was cut on all units together; a verdict is read on one coin and shape — cut the rule on one unit on the Funnel and read that set';
+
+// ---- HELD AND RESERVE: ONE JUDGEMENT OVER TWO STRETCHES (3.147.0, VERIFY-DESIGN.md Part 9) ----
+//
+// The Verify tab became two tabs, Held and Reserve, drawn by one path with the
+// stretch as its only parameter, and the engine answers them through one door
+// the same way: judgeDry, judgeStart and judgeStatus take the stretch. Reading
+// a rule on a stretch stamps no block on the rule: it writes a NEW Stage 4
+// record set -- "held set of X", "reserve set of X", numbered from the second
+// press -- carrying the rule and its survivors as they stand, the stop choices
+// on record (frozen), and one verdict block. The rule keeps only the date each
+// window was first opened. What goes forward to Greenlight is that set, never
+// a search over blocks on the rule.
+//
+// WHAT EACH STRETCH READS. Held on a plain rule reads the stage 3 records, as
+// it always did, and prices nothing. Held on a half-life rule PRICES: its
+// survivors with the members retrained at each survivor's own half-life, the
+// scrambled copies dealt from those forecasts, the four comparisons at each
+// survivor's hold length -- the first pricing of those forecasts on that
+// window, a counted look. Reserve prices the survivors on the reserve window
+// with the members' saved models (the reserve grade's own path since 3.89.0),
+// or with the retrained ones on a half-life rule. The three readings under the
+// verdict -- the other units, the dropped settings, the ride -- stay on the
+// rule, keyed by stretch (readingsOf), appended and never overwritten.
+const STRETCHES = ['held', 'reserve'];
+const NO_HELD_PASS = 'no held set of this rule passed under this release line — read the rule on Held first; a rule that has not stood on the held-back window is read on nothing else';
+const RESERVE_NOT_PRICED = {
+  others: 'the other units are not priced on the reserve window yet',
+  dropped: 'the settings the rule dropped are not priced on the reserve window yet',
+};
+const HL_MEMBERS_MISSING = 'the retrained members this half-life set was built from are missing beside its source — press Retrain at the ticked half-lives on History again and build it again';
+const HL_OWN_UNIT_ONLY = 'a half-life rule\'s retrained forecasts exist for its own survivors on its own unit only';
+const firstDigitOfRelease = (v) => String(v || '').split('.')[0] || null;
+function stretchOrRefuse(st) {
+  if (!STRETCHES.includes(String(st))) throw new Error(`no stretch called '${st}' — held or reserve`);
+  return String(st);
 }
-async function funnelVerifyRun(doc, asked) {
+const isJudgeSet = (d) => !!d && (d.kind === 'held' || d.kind === 'reserve');
+const isRule = (d) => !!d && d.stage === 4 && d.kind === 'funnel';
+// the held sets or the reserve sets read from one rule, newest first; `all` is a list already in hand
+function judgeSetsOf(ruleId, stretch, all = null) {
+  return (all || listFunnelSets()).filter((d) => d.kind === stretch && d.from && d.from.id === ruleId);
+}
+// A RULE STANDS ON THE HELD-BACK WINDOW exactly when its NEWEST held set passed
+// under the reader's first digit. An older PASS behind a newer FAIL is a rule
+// that was read again and did not stand.
+function heldStandingOf(rule, all = null) {
+  const newest = judgeSetsOf(rule.id, 'held', all)[0] || null;
+  const b = newest && newest.block;
+  if (!b || !b.verdict || !b.verdict.pass || firstDigitOfRelease(b.release) !== firstDigitOfRelease(ENGINE_VERSION)) return null;
+  return { id: newest.id, name: newest.name, number: newest.number || 1, at: b.at, release: b.release };
+}
+// the three readings of a rule on a stretch: readingsIn reads and never writes, readingsOf creates them empty on first use
+const readingsIn = (doc, stretch) => {
+  const r = (((doc || {}).readings || {})[stretch]) || {};
+  return { others: Array.isArray(r.others) ? r.others : [], dropped: Array.isArray(r.dropped) ? r.dropped : [], ride: Array.isArray(r.ride) ? r.ride : [] };
+};
+function readingsOf(doc, stretch) {
+  if (!doc.readings) doc.readings = {};
+  if (!doc.readings[stretch]) doc.readings[stretch] = { others: [], dropped: [], ride: [] };
+  const r = doc.readings[stretch];
+  for (const k of ['others', 'dropped', 'ride']) if (!Array.isArray(r[k])) r[k] = [];
+  return r;
+}
+let judgeRun = null;   // { id, stretch, token, done, of, result, error, promise }
+const verifyBusy = () => stageBusy();
+// A HALF-LIFE RULE IS NOT A RULE'S OUTPUT, so the rule is not asked to give it
+// back: its footing is that every one of its records is still on the board
+// and that its rule carries only dials and the two limits.
+function judgeFooting(doc, join) {
+  const footing = verifyFooting(doc, join);
+  if (!doc.derived) return footing;
+  let why = null;
+  if (!doc.rich) why = 'this set keeps no copy of its rebuilt numbers';
+  else if (join.gone) why = `${join.gone} of this half-life set's ${join.had} records are no longer on the board`;
+  else if (!footing.keys.ok) why = `the rule carries keys that are not dials or the two limits (${footing.keys.bad.join(', ')}), so a scrambled copy might not keep the same survivors`;
+  return { ...footing, ok: !why, why, same: null, halfLife: true };
+}
+// why the press would refuse, in words, or null
+function judgeRefusalOf(doc, stretch, footing = null) {
+  if (!doc.unit) return BLEND_REFUSAL;
+  if (!isRule(doc)) return `this is a ${doc.kind} set, already read and frozen — read the rule it came from`;
+  if (stretch === 'reserve') {
+    const r = reserveOf(doc);
+    if (!r.keeps) return HELD_ALONE;
+    if (!r.intact) return r.why;
+    if (!heldStandingOf(doc)) return NO_HELD_PASS;
+  }
+  if (doc.derived) {
+    if (!getSet(doc.derived.from)) return 'the set this half-life set was built from is gone, so its retrained members cannot be found';
+    if (!readHalfLifeRun(doc.derived.from, doc.derived.run)) return HL_MEMBERS_MISSING;
+  }
+  const prices = stretch === 'reserve' || !!doc.derived;
+  if (prices) {
+    const parent = getSet((doc.parent || {}).id);
+    if (!parent) return 'the stage 3 set this was cut from is gone, so its survivors cannot be priced';
+    if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast';
+  }
+  const busy = verifyBusy();
+  if (busy) return `${busy} — the read waits for the box to be free`;
+  if (judgeRun && !judgeRun.result && !judgeRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  if (othersBusy()) return `${othersBusy()} — one reading at a time`;
+  if (prices) {
+    if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
+    if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+    if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
+    if (rideRun && !rideRun.result && !rideRun.error) return 'a ride is being worked out right now — one heavy job at a time';
+  }
+  if (footing && !footing.ok) return footing.why;
+  return null;
+}
+// THE SURVIVORS PRICED ON A STRETCH through the stage 3 pricing path
+// (lib/stagework.js, s3UnitTask): the reserve window in the held-back window's
+// place with the members' saved models, or the held-back window itself with
+// the members retrained per half-life on a half-life rule (the capture's own
+// payloads, 3.95.0, with every copy kept so the verdict reads them all). Rows
+// come back in the reader's shape -- the stretch's figures under the held-back
+// column's names -- so every reader reads them as it reads stage 3 records.
+async function priceSurvivorsOn(doc, stretch, join, rules, note = null) {
+  const V = require('./funnelverify');
+  const parent = join.parent;
+  const shape = relaunchShapeOf(parent);                        // refuses when the stage 2 set is gone
+  const idx = shape.records.findIndex((r) => unitKeyOf(r) === doc.unit);
+  if (idx < 0) throw new Error(`the stage 3 set holds no unit called '${doc.unit}'`);
+  const rec = shape.records[idx];
+  const want = new Set(join.rows.map((r) => r.label));
+  const held = new Set(shape.heldOn[idx]);
+  const settings = shape.settings.filter((st) => want.has(st.label) && held.has(st.si));
+  const missing = [...want].filter((L) => !settings.some((st) => st.label === L));
+  if (!settings.length) throw new Error("none of this set's survivors is in the stage 3 set's block on this unit, so nothing can be priced");
+  const K = Math.max(0, Math.floor(Number(rules.copies) || 0));
+  const fee = Number((parent.params || {}).fee) || 0;
+  const base = s3Payload({ doc: parent, parent: shape.parent, rec, settings, fee, nullN: K });
+  base.keepN = K;                                               // every copy kept: the verdict reads them all
+  const models = unitRows(shape.parent.id, 'models', rec.blocks.models, rec.u);
+  base.unit.members = base.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
+  if (stretch === 'reserve') {
+    const r = reserveOf(doc);
+    if (!r.keeps) throw new Error(HELD_ALONE);
+    if (!r.intact) throw new Error(r.why);
+    base.unread = { fromTs: r.fromTs };
+  }
+  let payloads = [base];
+  let forecasts = "the members' saved models";
+  if (doc.derived) {
+    const hlFile = readHalfLifeRun(doc.derived.from, doc.derived.run);
+    if (!hlFile) throw new Error(HL_MEMBERS_MISSING);
+    const hlOf = new Map((doc.survivors || []).map((sv) => [sv.label, sv.halfLife]));
+    const groups = new Map();
+    for (const st of settings) {
+      const h = hlOf.get(st.label);
+      if (!Number.isFinite(h)) throw new Error(`'${st.label}' carries no half-life on this set`);
+      if (!groups.has(h)) groups.set(h, []);
+      groups.get(h).push(st);
+    }
+    payloads = [...groups.entries()].map(([h, list]) => {
+      const members = hlFile.halfLives.find((x) => x.halfLifeMonths === h);
+      if (!members) throw new Error(`the run file holds no members retrained at ${h} months`);
+      return {
+        ...base, settings: list,
+        params: { ...(parent.params || {}), windowLayout: hlFile.layout },
+        unit: { bandPct: hlFile.originalBandPct, probs: members.members.map((m) => m.probs), ts: members.ts, members: members.members.map((m) => ({ spec: m.spec, tauProbs: m.tauProbs, saved: m.saved })) },
+      };
+    });
+    forecasts = `the members retrained at each survivor's own half-life (${[...groups.keys()].sort((a, b) => a - b).join(', ')} months)`;
+  }
+  if (note) note(0, payloads.length);
+  const pool = createPool();
+  activePool = pool;
+  const settledAll = [];
+  try {
+    await pool.forEach('s3Unit', payloads, (settled, i) => { settledAll[i] = settled; if (note) note(settledAll.filter(Boolean).length, payloads.length); });
+  } finally { activePool = null; pool.abort(); }
+  const failed = settledAll.find((x) => !x || !x.ok);
+  if (failed || settledAll.length !== payloads.length) throw new Error(`the unit could not be priced on ${V.STRETCH_WORDS[stretch]}: ${String((failed && failed.error) || 'no answer')}`);
+  const res = { rows: settledAll.flatMap((x) => x.value.rows || []), controls: settledAll[0].value.controls, unread: settledAll[0].value.unread || null };
+  // the stretch's figures in the held-back column's place, in the reader's shape
+  const rows = (res.rows || []).map((r) => ({
+    si: r.si, label: r.label, tHours: r.tHours, weekdaysOnly: r.weekdaysOnly,
+    avgHold: r.holdout ? r.holdout.pnl : null, avgTrades: r.holdout ? r.holdout.trades : null, avgVsLong: r.holdout ? r.holdout.vsAlwaysLong : null,
+    noiseHold: r.noiseHold, beat: r.beat, pairs: r.pairs, avgLead: r.lead,
+    pnlThirds: r.rich && r.rich.hold ? r.rich.hold.pnlThirds : null,
+    stops: r.holdout ? r.holdout.stops : null,
+    ride: r.rich && r.rich.hold ? { ...r.rich.hold } : null,
+    test: { money: r.pnl ?? null, trades: r.trades ?? null, ...(r.rich && r.rich.test ? r.rich.test : {}) },
+  }));
+  // in the set's own order, whatever order the payloads answered in
+  const order = new Map(join.rows.map((r, i) => [r.label, i]));
+  rows.sort((a, b) => (order.get(a.label) ?? 1e9) - (order.get(b.label) ?? 1e9));
+  const controls = unreadControlsOf(res.controls, doc.unit, rows);
+  return {
+    rows, controls, window: res.unread, missing, forecasts, fee,
+    priced: rows.map((r) => ({ label: r.label, money: r.avgHold, trades: r.avgTrades, stops: r.stops, vsLong: r.avgVsLong, ride: r.ride, test: r.test })),
+  };
+}
+// the looks a reserve set counts: the reserve sets already made from this rule, and the rides worked out on it
+function reserveLooksOf(doc, stamped) {
+  const rides = readingsIn(doc, 'reserve').ride.length;
+  const what = [];
+  if (rides) what.push(`the reserve ride was worked out ${rides} time(s) on Reserve, each a stamped look`);
+  // nothing before a press opens the reserve window: no walk printed it, no tick shows it
+  return { unstamped: 0, stamped: stamped || 0, rides, what };
+}
+// THE SET A PRESS MAKES: the rule and its survivors as they stand, the stop
+// choices on record frozen in, one block, and the rule it came from by name.
+// Named after the rule; a second press on the same rule is "#2", never a second
+// block on the first. `at` is the block's own stamp time, so a set moved from an
+// older stamp lists where that stamp did.
+function makeJudgeSet(rule, stretch, { id, seq, number, block, standsOn, at }) {
+  const base = `${stretch} set of ${rule.name}`;
+  let name = number > 1 ? `${base} #${number}` : base;
+  for (let k = number; nameTaken(name); k++) name = `${base} #${k + 1}`;
+  const copy = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
+  return {
+    id, seq, name, kind: stretch, stage: 4, status: 'done', createdAt: at || block.at, release: ENGINE_VERSION,
+    from: { id: rule.id, name: rule.name, kind: rule.derived ? 'halflife' : 'funnel' }, number, stretch,
+    standsOn: standsOn ? { id: standsOn.id, name: standsOn.name, at: standsOn.at, release: standsOn.release } : null,
+    parent: copy(rule.parent) || null, target: rule.target ?? null, seed: rule.seed || id,
+    boardNull: copy(rule.boardNull) || null, sealed: copy(rule.sealed) || null,
+    unit: rule.unit || null, unitName: rule.unitName || null, check: copy(rule.check) || null,
+    rule: copy(rule.rule), userRule: copy(rule.userRule) || null, survivors: copy(rule.survivors) || [], counts: copy(rule.counts) || null,
+    closing: copy(rule.closing) || null, warnings: copy(rule.warnings) || [], marks: copy(rule.marks) || [], ruleSentence: rule.ruleSentence || null,
+    rich: copy(rule.rich) || {}, derived: copy(rule.derived) || null, stopChoices: copy(rule.stopChoices) || {},
+    steps: copy(rule.steps) || [], backSteps: copy(rule.backSteps) || [], exam: !!rule.exam,
+    block,
+  };
+}
+async function judgeRunOn(doc, stretch, asked, note = null) {
   const V = require('./funnelverify');
   const S4 = require('./funnelset');
   // THE RULES FIRST, before any number exists
-  const rules = V.declareRules(doc.check, asked);
+  const rules = V.declareRules(doc.check, asked || {});
   const join = await funnelVerifyJoin(doc);
-  const footing = verifyFooting(doc, join);
+  const footing = judgeFooting(doc, join);
   if (!footing.ok) throw new Error(footing.why);
-  const rows = join.rows;
-  const got = controlsOf(join.parent, doc.unit, rows.map(controlKeyOf));
-  const heldBack = V.heldBackRead(rows, got, rules);
-  // a rule with a top-N cut lets each copy take its own top N by its own scrambled money
-  const copyRowsAt = join.rule.cut ? (d) => S4.nullCopy(join.mine, join.rule, d) : null;
-  const copies = V.copiesRead(rows, rules, copyRowsAt);
-  const survivors = V.perSurvivor(rows, rules);
-  const sanity = V.sanity(join.mine, rows, rules);
-  const lineA = V.lineA(rows, rules, copyRowsAt);
-  const lineB = V.lineB(join.mine, rows.length, rules);
-  // the stamp goes onto what is on disk NOW, so two presses in a row append two blocks
+  const standsOn = stretch === 'reserve' ? heldStandingOf(doc) : null;
+  if (stretch === 'reserve' && !standsOn) throw new Error(NO_HELD_PASS);
+  const had = judgeSetsOf(doc.id, stretch);
+  let read; let copies; let survivors; let sanity; let lineA = null; let lineB = null;
+  let window = null; let priced = null; let missing = []; let forecasts = null;
+  let fee = (join.parent.params || {}).fee ?? null;
+  if (stretch === 'held' && !doc.derived) {
+    const rows = join.rows;
+    const got = controlsOf(join.parent, doc.unit, rows.map(controlKeyOf));
+    read = V.heldBackRead(rows, got, rules);
+    // a rule with a top-N cut lets each copy take its own top N by its own scrambled money
+    const copyRowsAt = join.rule.cut ? (d) => S4.nullCopy(join.mine, join.rule, d) : null;
+    copies = V.copiesRead(rows, rules, copyRowsAt);
+    survivors = V.perSurvivor(rows, rules);
+    sanity = V.sanity(join.mine, rows, rules, 'board');
+    lineA = V.lineA(rows, rules, copyRowsAt);
+    lineB = V.lineB(join.mine, rows.length, rules);
+    forecasts = 'the stage 3 records as priced';
+  } else {
+    const p = await priceSurvivorsOn(doc, stretch, join, rules, note);
+    read = V.heldBackRead(p.rows, p.controls, rules);
+    copies = V.copiesRead(p.rows, rules);
+    survivors = V.perSurvivor(p.rows, rules);
+    sanity = V.sanity(p.rows, p.rows, rules, 'survivors');
+    window = p.window; priced = p.priced; missing = p.missing; forecasts = p.forecasts; fee = p.fee;
+  }
+  // the stamp goes onto what is on disk NOW, and the set it makes is numbered by what is on disk now
   const fresh = getSet(doc.id);
   if (!fresh) throw new Error('the set went away while it was being read');
-  const blocks = fresh.verify || [];
+  const number = had.length + 1;
   const { stageGate, ...rest } = footing;
+  const at = new Date().toISOString();
+  const seq = seqFor(4);
+  const id = `s4-${Date.now().toString(36)}-${seq}`;
   const block = V.buildBlock({
-    id: `${doc.id}-v${blocks.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: blocks.length + 1,
+    id: `${id}-v1`, at, release: ENGINE_VERSION, look: number, stretch,
     rules, stageGate, footing: rest,
-    looks: verifyLooksOf(fresh, footing.keys, blocks.length),
-    heldBack, copies, survivors, sanity, lineA, lineB,
-    // the newest reading of the rule on the other units, when one exists (3.88.0)
-    others: othersSummaryOf(fresh),
-    fee: { feePerLeg: (join.parent.params || {}).fee ?? null, feeUnits: 'fraction' },
+    looks: stretch === 'held' ? verifyLooksOf(fresh, footing.keys, had.length) : reserveLooksOf(fresh, had.length),
+    read, copies, survivors, sanity, lineA, lineB,
+    // the newest reading of the rule on the other units on this stretch, when one exists (3.88.0)
+    others: othersSummaryOf(fresh, stretch),
+    fee: { feePerLeg: fee, feeUnits: 'fraction' },
     windows: windowsForVerify(doc, join.parent),
     marks: (doc.marks || []).map((m) => ({ key: m.key, what: m.what, step: m.step ?? null, detail: m.detail ?? null })),
+    standsOn, window, priced, missing, forecasts,
   });
-  fresh.verify = [block, ...blocks];
-  if (!fresh.heldBackReadAt) fresh.heldBackReadAt = block.at;
-  saveSet(fresh);
-  return { id: block.id, look: block.look, pass: block.verdict.pass, sentence: block.verdict.sentence };
+  const set = makeJudgeSet(fresh, stretch, { id, seq, number, block, standsOn, at });
+  saveSet(set);
+  const stamp = stretch === 'held' ? 'heldBackReadAt' : 'reserveReadAt';
+  if (!fresh[stamp]) { fresh[stamp] = block.at; saveSet(fresh); }
+  return { id: set.id, name: set.name, look: number, pass: block.verdict.pass, sentence: block.verdict.sentence };
 }
-function funnelVerifyStatus(id) {
-  if (!verifyRun || verifyRun.id !== id) return { running: false, none: true, token: null, error: null, result: null };
-  return { running: !verifyRun.result && !verifyRun.error, token: verifyRun.token, error: verifyRun.error, result: verifyRun.result };
-}
-function funnelVerifyStart(id, asked = {}) {
+const judgeStatusOf = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, cpu: cpuLoad(), error: run.error, result: run.result });
+function judgeStart(id, stretch, asked = {}) {
+  stretchOrRefuse(stretch);
   const doc = getSet(id);
   if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
-  if (verifyRun && !verifyRun.result && !verifyRun.error) {
-    throw new Error(verifyRun.id === id ? 'this set is being read right now' : 'another Stage 4 record set is being read right now — one at a time');
-  }
-  if (!doc.unit) throw new Error(BLEND_REFUSAL);
-  if (doc.derived) throw new Error(derivedRefusalOf(doc));
-  const busy = verifyBusy();
-  if (busy) throw new Error(`${busy} — the read waits for the box to be free`);
-  if (othersBusy()) throw new Error(`${othersBusy()} — one reading at a time`);
-  const run = { id, token: `${id}:${Date.now()}`, result: null, error: null, promise: null };
-  verifyRun = run;
-  run.promise = funnelVerifyRun(doc, asked || {})
-    .then((result) => { run.result = result; })
+  if (judgeRun && judgeRun.id === id && judgeRun.stretch === stretch && !judgeRun.result && !judgeRun.error) return judgeStatusOf(judgeRun);
+  const why = judgeRefusalOf(doc, stretch, null);
+  if (why) throw new Error(why);
+  const prices = stretch === 'reserve' || !!doc.derived;
+  // `of` is the pricing's count of parts and stays 0 on a read that prices nothing, so the screen never says "pricing" on it
+  const run = { id, stretch, prices, token: `${id}:${stretch}:${Date.now()}`, done: 0, of: prices ? 1 : 0, result: null, error: null, promise: null };
+  judgeRun = run;
+  run.promise = judgeRunOn(doc, stretch, asked || {}, (done, of) => { run.done = done; run.of = of; })
+    .then((result) => { run.result = result; run.done = run.of; })
     .catch((err) => { run.error = String((err && err.message) || err); });
-  return funnelVerifyStatus(id);
+  return judgeStatusOf(run);
+}
+function judgeStatus(id, stretch) {
+  if (!judgeRun || judgeRun.id !== id || judgeRun.stretch !== stretch) return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
+  return judgeStatusOf(judgeRun);
+}
+// THE DRY READ of a rule on a stretch: its footing, its marks, the sets already
+// read from it on this stretch with their one block each, the readings on the
+// rule for this stretch, and why each press would refuse -- and no figure of
+// the stretch itself, which only the press opens.
+async function judgeDry(id, stretch) {
+  stretchOrRefuse(stretch);
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  const S4 = require('./funnelset');
+  const V = require('./funnelverify');
+  const reserve = reserveOf(doc);
+  const out = {
+    id: doc.id, name: doc.name, kind: doc.kind, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
+    parent: doc.parent || null, stretch,
+    ruleSentence: doc.ruleSentence || S4.ruleSentence(doc.rule),
+    userSentence: doc.userRule ? S4.ruleSentence(S4.normaliseRule(doc.userRule)) : null,
+    counts: doc.counts || null, closing: doc.closing || null, warnings: doc.warnings || [],
+    marks: doc.marks || [], check: doc.check || null, derived: doc.derived || null,
+    heldAlone: reserve.keeps ? null : HELD_ALONE,
+    reserve: { keeps: reserve.keeps, layout: reserve.layout, intact: reserve.intact, fromTs: reserve.fromTs, chunks: reserve.chunks, why: reserve.why },
+    standsOn: stretch === 'reserve' ? heldStandingOf(doc) : null,
+    readAt: stretch === 'held' ? doc.heldBackReadAt || null : doc.reserveReadAt || null,
+    // the sets already read from this rule on this stretch, newest first, each with its one block
+    sets: judgeSetsOf(doc.id, stretch).map((d) => ({ id: d.id, name: d.name, number: d.number || 1, createdAt: d.createdAt, release: d.release, standsOn: d.standsOn || null, block: d.block })),
+    readings: readingsIn(doc, stretch),
+    rules: V.declareRules(doc.check, {}),
+    prices: stretch === 'reserve' || !!doc.derived,
+    refused: null, footing: null, looks: null,
+    othersRefused: null, rideRefused: null, droppedRefused: null,
+    running: judgeRun && judgeRun.id === doc.id && judgeRun.stretch === stretch && !judgeRun.result && !judgeRun.error ? { token: judgeRun.token, done: judgeRun.done, of: judgeRun.of } : null,
+    othersRunning: othersRun && othersRun.id === doc.id && !othersRun.result && !othersRun.error ? { token: othersRun.token, done: othersRun.done, of: othersRun.of } : null,
+    rideRunning: rideRun && rideRun.id === doc.id && !rideRun.result && !rideRun.error ? { token: rideRun.token, done: rideRun.done, of: rideRun.of } : null,
+  };
+  if (!doc.unit || !isRule(doc)) {
+    const why = judgeRefusalOf(doc, stretch, null);
+    out.refused = why; out.othersRefused = why; out.rideRefused = why; out.droppedRefused = why;
+    return out;
+  }
+  let join;
+  try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; out.othersRefused = err.message; out.rideRefused = err.message; out.droppedRefused = err.message; return out; }
+  out.footing = judgeFooting(doc, join);
+  out.looks = stretch === 'held' ? verifyLooksOf(doc, out.footing.keys, out.sets.length) : reserveLooksOf(doc, out.sets.length);
+  out.refused = judgeRefusalOf(doc, stretch, out.footing);
+  out.othersRefused = othersRefusalOf(doc, stretch, out.footing);
+  out.rideRefused = rideRefusalOf(doc, stretch);
+  out.droppedRefused = droppedRefusalOf(doc, stretch);
+  // HOW MANY THE RULE DROPPED, so the box on screen can say what "all of them"
+  // means before anything is pressed. Counted off the board already in hand.
+  try { out.droppedOf = Math.max(0, join.mine.length - S4.applyRule(join.mine, join.rule).length); } catch { out.droppedOf = null; }
+  return out;
+}
+// one line per set for the set list: on a rule, the sets read from it on each
+// stretch and whether it stands; on a held or reserve set, its one block
+function judgeSummaryOf(doc, all = null) {
+  if (isJudgeSet(doc)) {
+    const b = doc.block || null;
+    const r = reserveOf(doc);
+    return { block: b ? { id: b.id, pass: !!(b.verdict && b.verdict.pass), at: b.at, release: b.release || null, look: b.look ?? null } : null, heldAlone: r.keeps ? null : HELD_ALONE, keepsReserve: r.keeps, layout: r.layout };
+  }
+  const one = (stretch) => {
+    const sets = judgeSetsOf(doc.id, stretch, all);
+    const n = sets[0] || null;
+    const b = n && n.block;
+    return { sets: sets.length, newest: n ? { id: n.id, name: n.name, number: n.number || 1, pass: !!(b && b.verdict && b.verdict.pass), at: b ? b.at : null, release: b ? b.release : null } : null };
+  };
+  const held = one('held');
+  held.stands = !!heldStandingOf(doc, all);
+  const r = reserveOf(doc);
+  return { held, reserve: one('reserve'), heldAlone: r.keeps ? null : HELD_ALONE, keepsReserve: r.keeps, layout: r.layout };
+}
+
+// ---- MOVING THE STAMPS INTO SETS (3.147.0) -- WRITTEN TO BE DELETED (RULE TEN) ----
+//
+// Until 3.147.0 a verdict was a block on the rule (verify), a reserve grade a
+// block on the rule (unread), and the three readings sat on the rule under
+// their own names for the held-back window only. This moves each rule's
+// stamps once: every verdict block becomes a held set of the rule, numbered in
+// stamp order and created at the block's own stamp time; every reserve grade a
+// reserve set standing on the held set made from the block that gated it; and
+// the readings are re-keyed under the held stretch. A block's fields are
+// renamed to the one shape (read, money, priced, standsOn) and its sentence is
+// left exactly as it was stamped. It runs once at start, says what it moved,
+// and is deleted the release after a probe finds nothing left to move on the
+// box. Nothing here calls anything only it calls, so it lifts out in one cut.
+function moveStampsIntoSets() {
+  const moved = { rules: 0, held: 0, reserve: 0, readings: 0 };
+  const renameRows = (sv) => (sv && Array.isArray(sv.rows) ? { ...sv, rows: sv.rows.map(({ held, ...r }) => ({ money: held, ...r })) } : sv);
+  const mint = () => { const seq = seqFor(4); return { seq, id: `s4-${Date.now().toString(36)}-${seq}` }; };
+  for (const x of listSets()) {
+    if (!String(x.id).startsWith('s4-')) continue;
+    const doc = getSet(x.id);
+    if (!doc || doc.kind !== 'funnel') continue;
+    const OLD = ['verify', 'unread', 'others', 'dropped', 'ride'];
+    if (!OLD.some((k) => k in doc)) continue;
+    if (OLD.some((k) => Array.isArray(doc[k]) && doc[k].length)) moved.rules++;
+    const heldOf = new Map();          // the old block's id -> the held set made from it
+    const blocks = (doc.verify || []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    blocks.forEach((b, i) => {
+      const { heldBack, ...rest } = b;
+      const block = { ...rest, stretch: 'held', read: heldBack || rest.read || null, survivors: renameRows(rest.survivors), standsOn: null, window: null, priced: null, missing: [], forecasts: 'the stage 3 records as priced' };
+      const { seq, id } = mint();
+      const set = makeJudgeSet(doc, 'held', { id, seq, number: i + 1, block, standsOn: null, at: b.at });
+      saveSet(set);
+      heldOf.set(b.id, { id: set.id, name: set.name, at: b.at, release: b.release });
+      moved.held++;
+    });
+    const grades = (doc.unread || []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
+    grades.forEach((g, i) => {
+      const { gate, rows, ...rest } = g;
+      const standsOn = gate && heldOf.get(gate.id) ? heldOf.get(gate.id) : null;
+      const block = { ...rest, stretch: 'reserve', survivors: renameRows(rest.survivors), standsOn, priced: (rows || []).map((r) => ({ ...r })), forecasts: "the members' saved models" };
+      const { seq, id } = mint();
+      const set = makeJudgeSet(doc, 'reserve', { id, seq, number: i + 1, block, standsOn, at: g.at });
+      saveSet(set);
+      moved.reserve++;
+    });
+    const held = readingsOf(doc, 'held');
+    held.others = [...(doc.others || []), ...held.others];
+    held.dropped = [...(doc.dropped || []), ...held.dropped];
+    held.ride = [...(doc.ride || []).map((r) => ({ ...r, stretch: 'held', rows: (r.rows || []).map(({ hold, ...row }) => ({ read: hold, ...row })) })), ...held.ride];
+    readingsOf(doc, 'reserve');
+    moved.readings += (doc.others || []).length + (doc.dropped || []).length + (doc.ride || []).length;
+    delete doc.verify; delete doc.unread; delete doc.others; delete doc.dropped; delete doc.ride;
+    saveSet(doc);
+  }
+  return moved;
 }
 // one line per set for the set list: how many blocks, and what the verdict said
 // ---- V8: what the settings the rule DROPPED did on the same window (3.100.0) ----
@@ -6939,47 +7250,45 @@ async function funnelDropped(doc, asked = {}) {
   const droppedControls = controlsOf(join.parent, doc.unit, keysOf(dropped));
   return V.keptVsDropped(kept, dropped, keptControls, droppedControls, { read: dropped.length, of: droppedAll.length });
 }
-function droppedRefusalOf(doc) {
+function droppedRefusalOf(doc, stretch = 'held') {
   if (!doc.unit) return BLEND_REFUSAL;
-  if (doc.derived) return derivedRefusalOf(doc);
+  if (!isRule(doc)) return 'the readings are taken on the rule, not on a set already read — pick the rule';
+  if (doc.derived) return `${HL_OWN_UNIT_ONLY}, so the settings it dropped cannot be read with them`;
+  if (stretch === 'reserve') return RESERVE_NOT_PRICED.dropped;
   const busy = verifyBusy();
   if (busy) return `${busy} — the read waits for the box to be free`;
   if (acrossBusy()) return `${acrossBusy()} — the same boards, one reading at a time`;
   if (holdBusy()) return `${holdBusy()} — the same boards, one reading at a time`;
-  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  if (judgeRun && !judgeRun.result && !judgeRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   if (othersRun && !othersRun.result && !othersRun.error) return `${othersBusy()} — one at a time`;
   return null;
 }
 async function funnelDroppedStart(id, asked = {}) {
   const doc = getSet(id);
   if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
-  const why = droppedRefusalOf(doc);
+  const stretch = stretchOrRefuse((asked || {}).stretch || 'held');
+  const why = droppedRefusalOf(doc, stretch);
   if (why) throw new Error(why);
   const got = await funnelDropped(doc, asked || {});
   const fresh = getSet(id);
   if (!fresh) throw new Error('the set went away while the settings it dropped were being read');
-  const had = fresh.dropped || [];
+  const mine = readingsOf(fresh, stretch);
+  const had = mine.dropped;
   const reading = {
-    id: `${id}-d${had.length + 1}`,
+    id: `${id}-${stretch}-d${had.length + 1}`,
     at: new Date().toISOString(),
     release: ENGINE_VERSION,
     look: had.length + 1,
+    stretch,
     unit: doc.unit,
     unitName: doc.unitName || null,
     ...got,
   };
   // appended, never overwritten: a later reading over a different sample is
   // another reading, and both stay on the record
-  fresh.dropped = [reading, ...had];
+  mine.dropped = [reading, ...had];
   saveSet(fresh);
   return reading;
-}
-
-function verifySummaryOf(doc) {
-  const blocks = (doc && doc.verify) || [];
-  if (!blocks.length) return null;
-  const first = blocks[blocks.length - 1];
-  return { blocks: blocks.length, at: first.at, pass: !!(first.verdict && first.verdict.pass), release: first.release || null };
 }
 
 // ---- V6: THE RULE ON THE OTHER UNITS, HELD-BACK WINDOW (3.88.0, VERIFY-DESIGN.md) ----
@@ -7013,17 +7322,19 @@ async function funnelOthers(doc, rules, note = null) {
   }
   // the set's own board comes back into hand for the next read
   await loadUnitBoard(parent.id, t, doc.unit);
-  return { units, ...V.othersSummary(units), rule: join.rule };
+  return { units, ...V.othersSummary(units, 'held'), rule: join.rule };
 }
 // why the press would refuse, in words, or null
-function othersRefusalOf(doc, footing) {
+function othersRefusalOf(doc, stretch = 'held', footing = null) {
   if (!doc.unit) return BLEND_REFUSAL;
-  if (doc.derived) return derivedRefusalOf(doc);
+  if (!isRule(doc)) return 'the readings are taken on the rule, not on a set already read — pick the rule';
+  if (doc.derived) return `${HL_OWN_UNIT_ONLY}, so the other units cannot be read with them`;
+  if (stretch === 'reserve') return RESERVE_NOT_PRICED.others;
   const busy = verifyBusy();
   if (busy) return `${busy} — the read waits for the box to be free`;
   if (acrossBusy()) return `${acrossBusy()} — the same boards, one reading at a time`;
   if (holdBusy()) return `${holdBusy()} — the same boards, one reading at a time`;
-  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  if (judgeRun && !judgeRun.result && !judgeRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   if (othersRun && !othersRun.result && !othersRun.error) return othersRun.id === doc.id ? 'the other units are being read for this set right now' : `${othersBusy()} — one at a time`;
   if (footing && !footing.ok) return footing.why;
   return null;
@@ -7033,26 +7344,28 @@ function funnelOthersStart(id, asked = {}) {
   const doc = getSet(id);
   if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
   if (othersRun && othersRun.id === id && !othersRun.result && !othersRun.error) return othersStatus(othersRun);
-  const why = othersRefusalOf(doc, null);
+  const stretch = stretchOrRefuse((asked || {}).stretch || 'held');
+  const why = othersRefusalOf(doc, stretch, null);
   if (why) throw new Error(why);
   const V = require('./funnelverify');
   // THE RULES FIRST: the verdict's own declared bar, the set's share or the typed one
   const rules = V.declareRules(doc.check, asked || {});
-  const run = { id, token: `${id}:${Date.now()}`, done: 0, of: 0, result: null, error: null, promise: null };
+  const run = { id, stretch, token: `${id}:${Date.now()}`, done: 0, of: 0, result: null, error: null, promise: null };
   othersRun = run;
   run.promise = funnelOthers(doc, rules, (done, of) => { run.done = done; run.of = of; })
     .then((got) => {
       const fresh = getSet(id);
       if (!fresh) throw new Error('the set went away while the other units were being read');
-      const had = fresh.others || [];
+      const mine = readingsOf(fresh, stretch);
+      const had = mine.others;
       const reading = {
-        id: `${id}-o${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1,
+        id: `${id}-${stretch}-o${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1, stretch,
         rules: { copies: rules.copies, bar: rules.bar, barPct: rules.barPct, ownBarPct: rules.ownBarPct, barChanged: rules.barChanged, chance: rules.chance, tags: { bar: rules.tags.bar } },
         unit: doc.unit, unitName: doc.unitName || null, ruleSentence: doc.ruleSentence || null,
         units: got.units, positive: got.positive, of: got.of, clearBar: got.clearBar, keepsNothing: got.keepsNothing, mark: got.mark,
       };
       // appended, never overwritten: a later reading under another bar is another reading
-      fresh.others = [reading, ...had];
+      mine.others = [reading, ...had];
       saveSet(fresh);
       run.result = { id: reading.id, look: reading.look, positive: reading.positive, of: reading.of, clearBar: reading.clearBar, keepsNothing: reading.keepsNothing, mark: reading.mark };
       run.done = run.of;
@@ -7064,9 +7377,9 @@ function funnelOthersStatus(id) {
   if (!othersRun || othersRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, error: null, result: null };
   return othersStatus(othersRun);
 }
-// the newest reading's counts, for the verdict block stamped after it
-function othersSummaryOf(doc) {
-  const o = ((doc && doc.others) || [])[0] || null;
+// the newest reading's counts on a stretch, for the verdict block stamped after it
+function othersSummaryOf(doc, stretch = 'held') {
+  const o = readingsIn(doc, stretch).others[0] || null;
   return o ? { id: o.id, at: o.at, look: o.look, positive: o.positive, of: o.of, clearBar: o.clearBar, keepsNothing: o.keepsNothing, mark: o.mark } : null;
 }
 
@@ -7080,45 +7393,73 @@ function othersSummaryOf(doc) {
 // parent's shared file, where a one-unit rebuild would replace the other units'
 // numbers. Every press appends; it is a look at the held-back window and the
 // next verdict counts it. Never a gate.
-function rideRefusalOf(doc) {
+function rideRefusalOf(doc, stretch = 'held') {
   if (!doc.unit) return BLEND_REFUSAL;
-  if (doc.derived) return derivedRefusalOf(doc);
+  if (!isRule(doc)) return 'the readings are taken on the rule, not on a set already read — pick the rule';
   if (!(doc.survivors || []).length) return 'this set wrote down no settings, so there is no ride to work out';
+  if (stretch === 'reserve') {
+    const r = reserveOf(doc);
+    if (!r.keeps) return HELD_ALONE;
+    if (!r.intact) return r.why;
+    if (!heldStandingOf(doc)) return NO_HELD_PASS;
+  }
+  if (doc.derived) {
+    if (!getSet(doc.derived.from)) return 'the set this half-life set was built from is gone, so its retrained members cannot be found';
+    if (!readHalfLifeRun(doc.derived.from, doc.derived.run)) return HL_MEMBERS_MISSING;
+  }
   const busy = verifyBusy();               // a sweep, a stage run, a totalling, a rebuild, the exam, another ride
   if (busy) return `${busy} — the ride waits for the box to be free`;
   if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
   if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
   if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
   if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
-  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
-  if (!getSet((doc.parent || {}).id)) return 'the stage 3 set this was cut from is gone, so its ride cannot be worked out';
+  if (judgeRun && !judgeRun.result && !judgeRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  const parent = getSet((doc.parent || {}).id);
+  if (!parent) return 'the stage 3 set this was cut from is gone, so its ride cannot be worked out';
+  if ((stretch === 'reserve' || doc.derived) && !getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast';
   return null;
 }
 const rideStatus = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, cpu: cpuLoad(), error: run.error, result: run.result });
-function funnelRideStart(id) {
+// THE RIDE ON A STRETCH: on the held-back window of a plain rule it is the
+// rebuild's own pass (the missing numbers on the Funnel), on this unit only;
+// on the reserve window, or on a half-life rule, it is the survivors priced on
+// that stretch through the same path the verdict prices them (priceSurvivorsOn,
+// no copies), which works the ride out as it goes.
+function funnelRideStart(id, asked = {}) {
   const doc = getSet(id);
   if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
   if (rideRun && rideRun.id === id && !rideRun.result && !rideRun.error) return rideStatus(rideRun);
-  const why = rideRefusalOf(doc);
+  const stretch = stretchOrRefuse((asked || {}).stretch || 'held');
+  const why = rideRefusalOf(doc, stretch);
   if (why) throw new Error(why);
   const parent = getSet((doc.parent || {}).id);
   const labels = (doc.survivors || []).map((x) => x.label);
-  const run = { id, token: `${id}:${Date.now()}`, done: 0, of: labels.length, result: null, error: null, promise: null };
+  const run = { id, stretch, token: `${id}:${Date.now()}`, done: 0, of: labels.length, result: null, error: null, promise: null };
   rideRun = run;
-  run.promise = rebuildRichFor(parent, labels, { unit: doc.unit, note: (done, of, x) => { run.done = done; run.of = of; run.units = (x || {}).units ?? run.units ?? null; } })
-    .then((got) => {
-      const V = require('./funnelverify');
-      const ride = V.rideOf(got.perSetting, { unitKey: doc.unit, keyOf: unitKeyOf, labels });
+  const V = require('./funnelverify');
+  const plainHeld = stretch === 'held' && !doc.derived;
+  const worked = plainHeld
+    ? rebuildRichFor(parent, labels, { unit: doc.unit, note: (done, of, x) => { run.done = done; run.of = of; run.units = (x || {}).units ?? run.units ?? null; } })
+      .then((got) => ({ ...V.rideOf(got.perSetting, { unitKey: doc.unit, keyOf: unitKeyOf, labels }), failures: got.failures || [], window: null }))
+    : funnelVerifyJoin(doc).then((join) => priceSurvivorsOn(doc, stretch, join, { copies: 0 }, (done, of) => { run.done = done; run.of = of; }))
+      .then((p) => {
+        const half = (o, money, trades) => { const out = { money: money ?? null, trades: trades ?? null }; for (const f of V.RIDE_FIELDS) out[f] = o ? (o[f] ?? null) : null; out.pnlThirds = o && Array.isArray(o.pnlThirds) ? o.pnlThirds.slice() : null; return out; };
+        return { rows: p.rows.map((r) => ({ label: r.label, read: half(r.ride, r.avgHold, r.avgTrades), test: half(r.test, r.test.money, r.test.trades) })), missing: p.missing, failures: [], window: p.window, forecasts: p.forecasts };
+      });
+  run.promise = worked
+    .then((ride) => {
       const fresh = getSet(id);
       if (!fresh) throw new Error('the set went away while its ride was being worked out');
-      const had = fresh.ride || [];
+      const mine = readingsOf(fresh, stretch);
+      const had = mine.ride;
       const rec = {
-        id: `${id}-r${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1,
+        id: `${id}-${stretch}-r${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1, stretch,
         unit: doc.unit, unitName: doc.unitName || null, settings: labels.length,
-        missing: ride.missing, failures: got.failures || [], fields: V.RIDE_FIELDS.slice(),
+        missing: ride.missing, failures: ride.failures || [], fields: V.RIDE_FIELDS.slice(),
+        window: ride.window || null, forecasts: ride.forecasts || null,
         rows: ride.rows,
       };
-      fresh.ride = [rec, ...had];
+      mine.ride = [rec, ...had];
       saveSet(fresh);
       run.result = { id: rec.id, look: rec.look, rows: rec.rows.length, missing: rec.missing.length, failures: rec.failures.length };
       run.done = run.of;
@@ -7131,160 +7472,34 @@ function funnelRideStatus(id) {
   return rideStatus(rideRun);
 }
 
-// ---- THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0, VERIFY-DESIGN.md section 6) ----
+// ---- WHAT STANDS FOR GREENLIGHT (3.147.0): a reserve set that passed, or a held set that passed on a layout with no reserve ----
 //
-// The unread window -- the stretch of history no part of the search touched,
-// read off the set's own record whatever its window layout (unreadWindowOf),
-// running from where it begins to whatever the box holds on the day -- priced
-// for the set's survivors on the set's own unit, through the stage 3
-// pricing path with the unread window in the held-back window's place
-// (lib/stagework.js, s3UnitTask with task.unread), the members forecasting it
-// from their saved models. Read by the verdict's four rules on that window;
-// every grade is a counted look, appended and never overwritten; it refuses in
-// words without a verdict that PASSED under this release line, without an
-// intact seal, and while anything heavy is going.
-const UNREAD_NO_PASS = 'no verdict on this set is PASS under this release line — read the rule against nothing on Verify first; a set whose verdict has not stood is neither graded nor greenlighted';
-const firstDigitOfRelease = (v) => String(v || '').split('.')[0] || null;
-// the newest verdict block that PASSED under the reader's first digit, or null
-function unreadGateOf(doc) {
-  const b = ((doc && doc.verify) || []).find((x) => x.verdict && x.verdict.pass && firstDigitOfRelease(x.release) === firstDigitOfRelease(ENGINE_VERSION)) || null;
-  return b ? { id: b.id, at: b.at, release: b.release, look: b.look } : null;
-}
-// A HALF-LIFE SET (3.95.0) stands on the set it was built from: its gate is that
-// set's PASS, and the readings that would show its own numbers under the
-// source's name -- the verdict, the other units, the ride, the reserve grade,
-// another half-life run -- refuse it in words and point at the source.
-const derivedRefusalOf = (doc) => (doc && doc.derived
-  ? `this is a half-life set built from ${doc.derived.fromName || doc.derived.from}; it stands on that set's verdict, and its own figures are the retrained ones on its table there — read the set it came from here`
-  : null);
+// A rule is never greenlighted; the set a press made is. A held set that
+// passed on a layout that keeps a reserve is refused in words -- read it on
+// Reserve -- because the reserve is what the layout was built to keep, and
+// a rule read on held alone when a reserve is there has skipped its second
+// look. The first digit of the block's release must be the reader's: a set
+// that passed under another release line is read again, never carried.
 function gateOfSet(doc) {
-  if (!doc) return null;
-  if (doc.derived) { const src = getSet(doc.derived.from); return src ? unreadGateOf(src) : null; }
-  return unreadGateOf(doc);
+  if (!isJudgeSet(doc)) return null;
+  const b = doc.block || null;
+  if (!b || !b.verdict || !b.verdict.pass) return null;
+  if (firstDigitOfRelease(b.release) !== firstDigitOfRelease(ENGINE_VERSION)) return null;
+  if (doc.kind === 'held' && reserveOf(doc).keeps) return null;
+  return { id: b.id, at: b.at, release: b.release, look: b.look ?? null, set: doc.id, kind: doc.kind };
 }
-function unreadRefusalOf(doc) {
-  if (!doc.unit) return BLEND_REFUSAL;
-  if (doc.derived) return derivedRefusalOf(doc);
-  if (!unreadGateOf(doc)) return UNREAD_NO_PASS;
-  const window = unreadWindowOf(doc);
-  if (!window.intact) return window.why;
-  const parent = getSet((doc.parent || {}).id);
-  if (!parent) return 'the stage 3 set this was cut from is gone, so its unread window cannot be priced';
-  if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast the unread window';
-  const busy = stageBusy();                // a stage run, the exam, a totalling, a rebuild, a ride, another grade
-  if (busy) return `${busy} — the grade waits for the box to be free`;
-  if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
-  if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
-  if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
-  if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
-  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+function gateRefusalOf(doc) {
+  if (!isJudgeSet(doc)) return 'a greenlight comes from a held set or a reserve set — read the rule on Held, and on Reserve when its layout keeps one, and greenlight the set that passed';
+  const b = doc.block || null;
+  if (!b || !b.verdict) return 'this set carries no verdict block';
+  if (!b.verdict.pass) return `this ${doc.kind} set's verdict is FAIL`;
+  if (firstDigitOfRelease(b.release) !== firstDigitOfRelease(ENGINE_VERSION)) return `this ${doc.kind} set passed under release ${b.release}, another release line — read the rule again`;
+  if (doc.kind === 'held' && reserveOf(doc).keeps) return "this rule's layout keeps a reserve — read it on Reserve and greenlight the reserve set";
   return null;
 }
-// the four comparisons the task priced on the unread window, in the shape the reader wants
+// the four comparisons a pricing task priced on a stretch, in the shape the reader wants
 function unreadControlsOf(taskControls, unitKey, rows) {
   return controlsOf({ controls: { units: { [unitKey]: taskControls || {} } } }, unitKey, (rows || []).map(controlKeyOf));
-}
-async function unreadGradeRun(doc, asked, note = null) {
-  const V = require('./funnelverify');
-  // THE RULES FIRST, before any number exists: the verdict's own declaration on this window
-  const rules = V.declareRules(doc.check, asked || {});
-  const gate = unreadGateOf(doc);
-  if (!gate) throw new Error(UNREAD_NO_PASS);
-  const window = unreadWindowOf(doc);
-  if (!window.intact) throw new Error(window.why);
-  const join = await funnelVerifyJoin(doc);
-  const footing = verifyFooting(doc, join);
-  if (!footing.ok) throw new Error(footing.why);
-  const parent = join.parent;                                   // the stage 3 set
-  const shape = relaunchShapeOf(parent);                        // refuses when the stage 2 set is gone
-  const idx = shape.records.findIndex((r) => unitKeyOf(r) === doc.unit);
-  if (idx < 0) throw new Error(`the stage 3 set holds no unit called '${doc.unit}'`);
-  const rec = shape.records[idx];
-  const want = new Set(join.rows.map((r) => r.label));
-  const held = new Set(shape.heldOn[idx]);
-  const settings = shape.settings.filter((st) => want.has(st.label) && held.has(st.si));
-  const missing = [...want].filter((L) => !settings.some((st) => st.label === L));
-  const K = rules.copies;
-  const fee = Number((parent.params || {}).fee) || 0;
-  const payload = s3Payload({ doc: parent, parent: shape.parent, rec, settings, fee, nullN: K });
-  payload.keepN = K;                                            // every copy kept: the verdict reads them all
-  const models = unitRows(shape.parent.id, 'models', rec.blocks.models, rec.u);
-  payload.unit.members = payload.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
-  payload.unread = { fromTs: window.fromTs };
-  if (note) note(0, 1);
-  const pool = createPool();
-  activePool = pool;
-  let res = null;
-  let error = null;
-  try {
-    await pool.forEach('s3Unit', [payload], (settled) => { if (settled.ok) res = settled.value; else error = settled.error; if (note) note(1, 1); });
-  } finally { activePool = null; pool.abort(); }
-  if (!res) throw new Error(`the unit could not be priced on the unread window: ${String(error || 'no answer')}`);
-  // the unread window in the held-back window's place, in the reader's shape
-  const rows = (res.rows || []).map((r) => ({
-    si: r.si, label: r.label, tHours: r.tHours, weekdaysOnly: r.weekdaysOnly,
-    avgHold: r.holdout ? r.holdout.pnl : null, avgTrades: r.holdout ? r.holdout.trades : null, avgVsLong: r.holdout ? r.holdout.vsAlwaysLong : null,
-    noiseHold: r.noiseHold, beat: r.beat, pairs: r.pairs, avgLead: r.lead,
-    pnlThirds: r.rich && r.rich.hold ? r.rich.hold.pnlThirds : null,
-    stops: r.holdout ? r.holdout.stops : null,
-    ride: r.rich && r.rich.hold ? { ...r.rich.hold } : null,
-  }));
-  const controls = unreadControlsOf(res.controls, doc.unit, rows);
-  const read = V.heldBackRead(rows, controls, rules);
-  const copies = V.copiesRead(rows, rules);
-  const survivors = V.perSurvivor(rows, rules);
-  const sanity = V.sanity(rows, rows, rules);
-  const fresh = getSet(doc.id);
-  if (!fresh) throw new Error('the set went away while its unread window was being priced');
-  const had = fresh.unread || [];
-  const { stageGate: _sg, ...rest } = footing;
-  const block = V.buildUnreadBlock({
-    id: `${doc.id}-u${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1,
-    rules, gate, footing: rest,
-    window: res.unread, read, copies, survivors, sanity,
-    controls: { keys: controls.keys || null, alwaysLong: controls.alwaysLong || null, alwaysShort: controls.alwaysShort || null, buyHold: controls.buyHold || null, shortHold: controls.shortHold || null },
-    fee: { feePerLeg: fee, feeUnits: 'fraction' },
-    missing, failures: [],
-    rows: rows.map((r) => ({ label: r.label, money: r.avgHold, trades: r.avgTrades, stops: r.stops, vsLong: r.avgVsLong, ride: r.ride })),
-  });
-  fresh.unread = [block, ...had];
-  saveSet(fresh);
-  return { id: block.id, look: block.look, pass: block.verdict.pass, sentence: block.verdict.sentence };
-}
-async function unreadGradeDry(id) {
-  const doc = getSet(id);
-  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
-  const sealed = sealedOnUnitOf(doc);
-  const grades = doc.unread || [];
-  return {
-    id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
-    ruleSentence: doc.ruleSentence || null, survivors: ((doc.counts || {}).survivors) ?? (doc.survivors || []).length,
-    gate: unreadGateOf(doc), verdicts: (doc.verify || []).length,
-    sealed: { intact: sealed.sealed, fromTs: sealed.fromTs, chunks: sealed.chunks, why: sealed.why },
-    window: unreadWindowOf(doc),
-    rules: require('./funnelverify').declareRules(doc.check, {}),
-    looks: grades.length, grades,
-    refused: unreadRefusalOf(doc),
-    running: unreadRun && unreadRun.id === doc.id && !unreadRun.result && !unreadRun.error ? { token: unreadRun.token } : null,
-  };
-}
-const unreadStatus = (run) => ({ running: !run.result && !run.error, token: run.token, done: run.done, of: run.of, cpu: cpuLoad(), error: run.error, result: run.result });
-function unreadGradeStart(id, asked = {}) {
-  const doc = getSet(id);
-  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
-  if (unreadRun && unreadRun.id === id && !unreadRun.result && !unreadRun.error) return unreadStatus(unreadRun);
-  const why = unreadRefusalOf(doc);
-  if (why) throw new Error(why);
-  const run = { id, token: `${id}:${Date.now()}`, done: 0, of: 1, result: null, error: null, promise: null };
-  unreadRun = run;
-  run.promise = unreadGradeRun(doc, asked || {}, (done, of) => { run.done = done; run.of = of; })
-    .then((result) => { run.result = result; run.done = run.of; })
-    .catch((err) => { run.error = String((err && err.message) || err); });
-  return unreadStatus(run);
-}
-function unreadGradeStatus(id) {
-  if (!unreadRun || unreadRun.id !== id) return { running: false, none: true, token: null, done: 0, of: 0, cpu: cpuLoad(), error: null, result: null };
-  return unreadStatus(unreadRun);
 }
 
 // ---- THE GREENLIGHT SOURCE OF A STAGE 4 RECORD SET (3.90.0, VERIFY-DESIGN.md section 6) ----
@@ -7302,11 +7517,10 @@ async function stage4GreenlightSource(setId, asked = {}) {
   const doc = getSet(setId);
   if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${setId}'`);
   if (!doc.unit) throw new Error(BLEND_REFUSAL);
-  // A HALF-LIFE SET STANDS ON ITS SOURCE'S PASS (3.95.0), and each of its records carries its half-life forward
-  const source = doc.derived ? getSet(doc.derived.from) : null;
-  if (doc.derived && !source) throw new Error('the set this half-life set was built from is gone, so its standing cannot be read');
+  const why = gateRefusalOf(doc);
+  if (why) throw new Error(why);
   const gate = gateOfSet(doc);
-  if (!gate) throw new Error(UNREAD_NO_PASS);
+  // a set read from a half-life rule carries each record's half-life forward (3.95.0)
   const HL = require('./halflife');
   const hlOf = (label) => (doc.derived ? ((doc.survivors || []).find((x) => x.label === label) || null) : null);
   const join = await funnelVerifyJoin(doc);
@@ -7328,18 +7542,22 @@ async function stage4GreenlightSource(setId, asked = {}) {
     pick = { by: 'named', index: i, si: rows[i].si, label: rows[i].label, worst: d.worst, mean: d.mean, per: d.per, of: rows.length };
   }
   const survivor = rows[pick.index];
-  const gateBlock = (doc.verify || []).find((b) => b.id === gate.id) || null;
-  const heldOf = (label) => ((((gateBlock || {}).survivors || {}).rows) || []).find((r) => r.label === label) || null;
-  const unreadRec = (doc.unread || [])[0] || null;
-  const unreadOf = (label) => (unreadRec ? (unreadRec.rows || []).find((r) => r.label === label) || null : null);
+  // each survivor's own figures: on the held-back window from the held set (this
+  // set, or the one a reserve set stands on), on the reserve window from the reserve set
+  const heldSet = doc.kind === 'held' ? doc : (doc.standsOn ? getSet(doc.standsOn.id) : null);
+  const heldRows = (((heldSet || {}).block || {}).survivors || {}).rows || [];
+  const heldOf = (label) => heldRows.find((r) => r.label === label) || null;
+  const reserveRows = doc.kind === 'reserve' ? (((doc.block || {}).survivors || {}).rows || []) : [];
+  const reserveRowOf = (label) => reserveRows.find((r) => r.label === label) || null;
   const held = heldOf(survivor.label);
-  const un = unreadOf(survivor.label);
+  const un = reserveRowOf(survivor.label);
   const hl = hlOf(survivor.label);
   const p1 = stage2.params || {};
   const size = rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1);
   return {
     set: {
       id: doc.id, stage: 4, name: doc.name, release: doc.release || null, unit: doc.unit, unitName: doc.unitName || null,
+      kind: doc.kind, from: doc.from || null, standsOn: doc.standsOn || null,
       ruleSentence: doc.ruleSentence || S4.ruleSentence(rule), counts: doc.counts || null,
       parent: { id: parent.id, name: parent.name }, stage2: { id: stage2.id, name: stage2.name },
       campaign: (parent.params || {}).campaign || null,
@@ -7349,16 +7567,16 @@ async function stage4GreenlightSource(setId, asked = {}) {
     unit: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size, geometry: rec.geometry },
     survivor: { ...survivor, bandPct: survivor.bandMode === 'auto' || survivor.bandMode == null ? rec.bandPct : Math.abs(Number(survivor.bandMode)), halfLife: hl ? hl.halfLife : null },
     pick,
-    survivors: rows.map((r, i) => { const d = S4.depthOf(r, rule); const h = heldOf(r.label); const x = unreadOf(r.label); const y = hlOf(r.label); return { index: i, label: r.label, worst: d.worst, mean: d.mean, held: h ? h.held : null, trades: h ? h.trades : null, unread: x ? x.money : null, halfLife: y ? y.halfLife : null, retrained: y && y.money ? y.money.judge : null }; }),
+    survivors: rows.map((r, i) => { const d = S4.depthOf(r, rule); const h = heldOf(r.label); const x = reserveRowOf(r.label); const y = hlOf(r.label); return { index: i, label: r.label, worst: d.worst, mean: d.mean, held: h ? h.money : null, trades: h ? h.trades : null, reserve: x ? x.money : null, halfLife: y ? y.halfLife : null, retrained: y && y.money ? y.money.judge : null }; }),
     members: (rec.specs || []).map((sp) => ({ model: sp.model, view: sp.view })),
     // how the members were trained, so the live path can train the same way -- with the record's half-life when it carries one
     training: { trainOn: p1.trainOn ?? null, weightCap: p1.weightCap ?? null, windowLayout: p1.windowLayout ?? null, startMonth: p1.startMonth ?? null, endMonth: p1.endMonth ?? null, allLoaded: !!p1.allLoaded, nullN: p1.nullN ?? null,
       halfLife: hl ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl ? hl.halfLife : null },
     fee: Number.isFinite(Number((parent.params || {}).fee)) ? Number((parent.params || {}).fee) : null,
     readings: {
-      heldBack: held ? { money: held.held, trades: held.trades } : null,
-      unread: un ? { money: un.money, trades: un.trades, look: unreadRec.look } : null,
-      halfLife: hl ? { months: hl.halfLife, judge: doc.derived.judgeWord || null, money: hl.money ? hl.money.judge : null, unweighted: hl.money ? hl.money.unweighted : null } : null,
+      held: held ? { money: held.money, trades: held.trades } : null,
+      reserve: un ? { money: un.money, trades: un.trades, look: (doc.block || {}).look ?? null } : null,
+      halfLife: hl ? { months: hl.halfLife, judge: (doc.derived || {}).judgeWord || null, money: hl.money ? hl.money.judge : null, unweighted: hl.money ? hl.money.unweighted : null } : null,
     },
   };
 }
@@ -7371,9 +7589,13 @@ async function stage4GreenlightDry(setId) {
   let refused = null;
   try { src = await stage4GreenlightSource(setId, { pick: 'depth' }); } catch (err) { refused = err.message; }
   if (src && !refused) refused = gl.stage4Refusal(src);
+  const b = isJudgeSet(doc) ? doc.block || null : null;
+  const r = reserveOf(doc);
   return {
-    id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null,
-    ruleSentence: doc.ruleSentence || null, gate: gateOfSet(doc), verdicts: (doc.verify || []).length, derived: doc.derived || null,
+    id: doc.id, name: doc.name, kind: doc.kind, from: doc.from || null, standsOn: doc.standsOn || null, unit: doc.unit || null, unitName: doc.unitName || null,
+    ruleSentence: doc.ruleSentence || null, gate: gateOfSet(doc), standing: gateRefusalOf(doc),
+    block: b ? { id: b.id, pass: !!(b.verdict && b.verdict.pass), at: b.at, release: b.release || null, look: b.look ?? null } : null,
+    heldAlone: r.keeps ? null : HELD_ALONE, derived: doc.derived || null,
     unitSize: src ? src.unit.size : null, members: src ? src.members.length : null,
     depthPick: src ? { label: src.pick.label, worst: src.pick.worst, mean: src.pick.mean } : null,
     survivors: src ? src.survivors : [],
@@ -7422,7 +7644,7 @@ const CAPTURE_NOT_YET = 'this set carries no per-trade capture yet — press "Ca
 function captureRefusalOf(doc) {
   if (!doc.unit) return BLEND_REFUSAL;
   if (doc.derived && !getSet(doc.derived.from)) return 'the set this half-life set was built from is gone, so its standing cannot be read';
-  if (doc.derived && !readHalfLifeRun(doc.derived.from, doc.derived.run)) return 'the retrained members this half-life set was built from are missing beside its source — press Retrain at the ticked half-lives on History again and build it again';
+  if (doc.derived && !readHalfLifeRun(doc.derived.from, doc.derived.run)) return HL_MEMBERS_MISSING;
   const parent = getSet((doc.parent || {}).id);
   if (!parent) return 'the stage 3 set this was cut from is gone, so its trades cannot be captured';
   if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast their training window';
@@ -7433,7 +7655,7 @@ function captureRefusalOf(doc) {
   if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
   if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
   if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
-  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  if (judgeRun && !judgeRun.result && !judgeRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   return null;
 }
 async function tuneCaptureRun(doc, note = null) {
@@ -7448,7 +7670,7 @@ async function tuneCaptureRun(doc, note = null) {
   // the run file beside the source, one member set per half-life, and each
   // record's own half-life from the set
   const hlFile = doc.derived ? readHalfLifeRun(doc.derived.from, doc.derived.run) : null;
-  if (doc.derived && !hlFile) throw new Error('the retrained members this half-life set was built from are missing beside its source — press Retrain at the ticked half-lives on History again and build it again');
+  if (doc.derived && !hlFile) throw new Error(HL_MEMBERS_MISSING);
   const hlOf = new Map((doc.derived ? (doc.survivors || []) : []).map((sv) => [sv.label, sv.halfLife]));
   const parent = join.parent;                                   // the stage 3 set
   const shape = relaunchShapeOf(parent);                        // refuses when the stage 2 set is gone
@@ -7605,6 +7827,8 @@ function setStopChoice(setId, asked = {}) {
   const paper = require('./paper');
   const doc = getSet(String(setId || ''));
   if (!doc || doc.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${setId}'`); e.status = 404; throw e; }
+  // A HELD SET OR A RESERVE SET IS FROZEN AT ITS PRESS (3.147.0): its stop choices are what the rule carried then
+  if (isJudgeSet(doc)) { const e = new Error(`${doc.name} is a ${doc.kind} set and its stop choices were frozen at the press — set the stop on the rule it was read from and read the rule again`); e.status = 400; throw e; }
   if (!doc.capture) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
   const pick = asked.pick == null || asked.pick === '' || asked.pick === 'depth' ? 'depth' : String(asked.pick);
   if (pick === 'all') { const e = new Error('a stop is forced onto one survivor — pick one under Tuning targets, not all survivors'); e.status = 400; throw e; }
@@ -7787,7 +8011,8 @@ function halfLifeMonthsOf(asked) {
 function halfLifeRefusalOf(doc) {
   const HL = require('./halflife');
   if (!doc.unit) return BLEND_REFUSAL;
-  if (doc.derived) return derivedRefusalOf(doc);
+  if (isJudgeSet(doc)) return `this is a ${doc.kind} set, frozen at its press — the retraining is run on the rule it was read from`;
+  if (doc.derived) return 'this is a half-life set — the retraining is run on the set it was built from, where its table is';
   const parent = getSet((doc.parent || {}).id);
   if (!parent) return 'the stage 3 set this was cut from is gone, so its records cannot be retrained';
   if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot be named';
@@ -7799,7 +8024,7 @@ function halfLifeRefusalOf(doc) {
   if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
   if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
   if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
-  if (verifyRun && !verifyRun.result && !verifyRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  if (judgeRun && !judgeRun.result && !judgeRun.error) return 'a Stage 4 record set is being read right now — one at a time';
   return null;
 }
 async function halfLifeRunOn(doc, months, note = null) {
@@ -7938,6 +8163,7 @@ function buildHalfLifeSet(setId, asked = {}) {
   const S4 = require('./funnelset');
   const src = getSet(setId);
   if (!src || src.stage !== 4) throw new Error(`unknown Stage 4 record set '${setId}'`);
+  if (isJudgeSet(src)) throw new Error(`a half-life set is built from a rule, not from a ${src.kind} set`);
   if (src.derived) throw new Error('a half-life set is built from the set it came from, not from another half-life set');
   const run = (src.halflife || []).find((r) => r.id === String(asked.runId || ''));
   if (!run) throw new Error('name which half-life table to build from');
@@ -7988,7 +8214,7 @@ async function halfLifeDry(id) {
     halfLives: HL.HALF_LIVES_MONTHS.slice(),
     runs: doc.halflife || [], looks: (doc.halflife || []).length,
     // the half-life sets already built from this set, newest first
-    built: listFunnelSets().filter((d) => d.derived && d.derived.from === doc.id).map((d) => ({ id: d.id, name: d.name, run: d.derived.run, at: d.derived.at, survivors: (d.counts || {}).survivors ?? (d.survivors || []).length, of: (d.counts || {}).of ?? null })),
+    built: listFunnelSets().filter((d) => d.kind === 'funnel' && d.derived && d.derived.from === doc.id).map((d) => ({ id: d.id, name: d.name, run: d.derived.run, at: d.derived.at, survivors: (d.counts || {}).survivors ?? (d.survivors || []).length, of: (d.counts || {}).of ?? null })),
     refused: halfLifeRefusalOf(doc),
     running: halfLifeRun && halfLifeRun.id === doc.id && !halfLifeRun.result && !halfLifeRun.error ? { token: halfLifeRun.token, done: halfLifeRun.done, of: halfLifeRun.of } : null,
   };
@@ -8092,10 +8318,13 @@ async function runStageGate(run) {
   run.step = 'the verdict on each coin';
   const blocks = {};
   for (const which of ['planted', 'fair']) {
-    // the exam holds the box, so it presses the read directly rather than through the one-at-a-time door
+    // the exam holds the box, so it presses the read directly rather than through
+    // the one-at-a-time door; the held set the press makes is the exam's own, and
+    // is deleted with the rest when it lands
     // eslint-disable-next-line no-await-in-loop
-    await funnelVerifyRun(getSet(cuts[which].id), { barPct: 100 });
-    blocks[which] = getSet(cuts[which].id).verify[0];
+    const made = await judgeRunOn(getSet(cuts[which].id), 'held', { barPct: 100 });
+    run.sets.push(made.id);
+    blocks[which] = getSet(made.id).block;
   }
   // for scale: a trader who follows the plant's label, through the same
   // simulator at the chunk's own hold and the exam's fee, on the same windows
@@ -8111,11 +8340,11 @@ async function runStageGate(run) {
   } catch (err) { reference = { error: String((err && err.message) || err) }; }
   const g = G.grade({ planted: blocks.planted, fair: blocks.fair, s3: d3, stage1, reference });
   const summary = (b) => ({
-    survivors: (b.heldBack || {}).of ?? 0, real: (b.heldBack || {}).real ?? null,
-    buyHold: (((b.heldBack || {}).comparisons || {}).buyHold || {}).hi ?? null,
+    survivors: (b.read || {}).of ?? 0, real: (b.read || {}).real ?? null,
+    buyHold: (((b.read || {}).comparisons || {}).buyHold || {}).hi ?? null,
     beats: (b.copies || {}).beats ?? 0, copies: (b.copies || {}).copies ?? 0, pass: !!(b.copies || {}).pass,
     // each survivor's own reading, so a FAIL names the setting and the money
-    rows: (((b.survivors || {}).rows) || []).map((r) => ({ label: r.label, held: r.held, trades: r.trades, beats: r.beats, copiesKept: r.copiesKept })),
+    rows: (((b.survivors || {}).rows) || []).map((r) => ({ label: r.label, held: r.money, trades: r.trades, beats: r.beats, copiesKept: r.copiesKept })),
   });
   return G.writeRecord({
     id: run.id, at: new Date().toISOString(), release: ENGINE_VERSION, pass: g.pass,
@@ -8188,7 +8417,7 @@ function listFunnelSets(parentId = null) {
 function funnelCutsFor(parentId, unitKey) {
   const want = unitKey == null || String(unitKey) === 'all' ? null : String(unitKey);
   return listFunnelSets(parentId)
-    .filter((d) => !d.exam && !d.derived)
+    .filter((d) => !d.exam && !d.derived && d.kind === 'funnel')
     .map((d) => ({
       id: d.id, seq: d.seq, name: d.name, createdAt: d.createdAt,
       unit: d.unit || null,
@@ -8937,14 +9166,14 @@ module.exports = {
   funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   windowsOfSet, newestDataOf,
-  funnelVerifyDry, funnelVerifyStart, funnelVerifyStatus, verifySummaryOf, sealedOnUnitOf,
+  judgeDry, judgeStart, judgeStatus, judgeRunOn, judgeSummaryOf, judgeSetsOf, heldStandingOf, reserveOf, readingsIn, makeJudgeSet, moveStampsIntoSets,
+  gateRefusalOf, STRETCHES, HELD_ALONE, NO_HELD_PASS, sealedOnUnitOf,
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
-  unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS, unreadWindowOf,
   stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
-  halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet, derivedRefusalOf,
+  halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
   stopChoiceOf, setStopChoice,
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,

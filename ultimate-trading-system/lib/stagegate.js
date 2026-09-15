@@ -79,7 +79,7 @@ function grade({ planted, fair, s3, copies = COPIES, stage1 = null, reference = 
   const money = (v) => (v == null ? 'no figure' : `${Number(v) < 0 ? '-' : ''}$${Math.abs(Number(v)).toFixed(2)}`);
   const p = planted || {};
   const f = fair || {};
-  const ph = p.heldBack || {};
+  const ph = p.read || {};
   const pc = p.copies || {};
   const fc = f.copies || {};
   const checks = [];

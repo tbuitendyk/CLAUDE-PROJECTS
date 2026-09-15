@@ -62,7 +62,7 @@ function stage4Src(over = {}) {
     members: [{ model: 'logreg', view: 'full' }, { model: 'logreg', view: 'prices' }, { model: 'logreg', view: 'volume' }, { model: 'logreg', view: 'pricevol' }, { model: 'boost', view: 'full' }, { model: 'boost', view: 'prices' }, { model: 'boost', view: 'volume' }, { model: 'boost', view: 'pricevol' }],
     training: { trainOn: 'direction', weightCap: null, windowLayout: 'reserve61', startMonth: '2023-01', endMonth: '2026-06', allLoaded: false, nullN: 9 },
     fee: 0.00125,
-    readings: { heldBack: { money: 4.2, trades: 12 }, unread: { money: 1.1, trades: 6, look: 1 } },
+    readings: { held: { money: 4.2, trades: 12 }, reserve: { money: 1.1, trades: 6, look: 1 } },
     ...over,
   };
 }

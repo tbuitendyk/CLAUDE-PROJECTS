@@ -1086,3 +1086,49 @@ Decisions inside the loop, so far:
 - One block shape for both stretches: the stretch reading is `read`, the
   survivors' money is `money`, and the stage-engine check reads the same
   field the screen does.
+
+## AM. Release 1 of Part 9 built — Held and Reserve (3.147.0)
+
+Built inside the loop, tests first at every rung of RULE EIGHT's ladder and
+the suite green before the deploy. The Verify tab is gone; Held and Reserve
+sit in its place, drawn by one renderer handed the stretch; a press writes
+"held set of X" or "reserve set of X" carrying the rule, its survivors and
+the stop choices on record, with one verdict; the three readings stay on the
+rule per stretch; a half-life set is read on Held and on Reserve as its own
+rule, priced with its retrained members, and its source keeps its own; a
+70/15/15 rule is held alone and says so; Greenlight offers held sets and
+reserve sets and refuses in words the ones that do not stand. The box's two
+verdict blocks, three reserve grades and seven readings move into sets once
+at the first start, said in the service's log (decision 98).
+
+Hunting the instrument before the deploy, what was found and fixed: the word
+list's reader could not see either new tab at all, because a one-line tab
+function calling a renderer with no markup of its own is followed by nothing
+— the shared renderer now draws the screen's frame; the migration had no
+test, and RULE NINE says a move is verified before it is swapped, so it has
+one, on a rule shaped like the box's own; a new rule was still born with the
+retired fields (verify, others, ride, unread) — it is born with the readings
+keyed by stretch instead, and the mover strips the empty ones. Guards aimed
+at lines the rewrite moved were re-aimed at the lines that hold the same
+property now; nothing was left pointing at text that no longer exists.
+
+Decisions inside the loop, continued (release 1):
+
+- A rule stands on the held-back window when its NEWEST held set passed
+  under this release line; an older PASS behind a newer FAIL is a rule that
+  was read again and did not stand.
+- A held set or a reserve set is frozen: no stop choice is set on it, and it
+  is not read as a rule. Set the stop on the rule, read the rule again.
+- The block is one shape on both stretches: `read`, `money`, `priced`; the
+  ride's half in the held-back column's place is `read`. The stage-engine
+  check reads `read`.
+- On Reserve, the other units and the dropped settings refuse in words until
+  release 2 prices them; on a half-life rule they refuse on both stretches,
+  because its retrained forecasts exist for its own survivors only. The ride
+  prices through the press's own path with no copies.
+- The exam presses the held read directly, grades the held set it makes, and
+  deletes it with the rest of its sets.
+- The three fabricated-chain test files delete the held and reserve sets
+  their presses cut BEFORE the chain, because those sets name the stage 3
+  set as their parent and were not on the chain's own list: a full suite run
+  had left three chains behind, and the next run's names clashed with them.

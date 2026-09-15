@@ -19,7 +19,16 @@
 
 const F = require('./funnel');
 
-const HELD = 'avgHold';                          // held-back money on a board row
+// ONE BLOCK, TWO STRETCHES (3.147.0, VERIFY-DESIGN.md Part 9). The same
+// judgement is read on the held-back window and on the reserve window, and the
+// block it stamps has one shape on both: the stretch reading is `read`, the
+// survivors' money is `money`, and what only a pricing produces (the window,
+// the rows priced, the survivors not priced) is present when there was one.
+// `stretch` on the block says which window it is about, and that is the only
+// thing the sentence changes on.
+const STRETCH_WORDS = { held: 'the held-back window', reserve: 'the reserve window' };
+
+const HELD = 'avgHold';                          // the stretch's money on a row, in the held-back column's place
 const LIMITS = ['maxDrawdown', 'avgTrades', 'testTrades'];      // the rebuilt-number limits step 6 can write; avgTrades is the held-back count older rules read, testTrades the test count (3.131.0)
 const DEFAULT_SANITY_PCT = 50;
 // ALL FOUR GATE (3.100.0, owner order 2026-09-09). Until then the two
@@ -246,7 +255,7 @@ function perSurvivor(rows, rules) {
     const kept = copies.filter((v) => v != null).length;
     const beats = copies.filter((v) => F.beats(held, v)).length;
     return {
-      si: r.si, label: r.label, held, trades: num(r.avgTrades), vsLong: num(r.avgVsLong),
+      si: r.si, label: r.label, money: held, trades: num(r.avgTrades), vsLong: num(r.avgVsLong),
       storedBeat: num(r.beat), storedPairs: num(r.pairs), storedLead: num(r.avgLead),
       copiesKept: kept, beats, lead: F.leadOf(held, copies),
       pass: K > 0 && kept > 0 && held != null && held > 0 && beats >= bar,
@@ -264,7 +273,7 @@ function perSurvivor(rows, rules) {
     passing: list.filter((x) => x.pass).length,
     byChance: rules.chance == null ? null : n * rules.chance,
     chanceEach: rules.chance,
-    positive: list.filter((x) => x.held != null && x.held > 0).length,
+    positive: list.filter((x) => x.money != null && x.money > 0).length,
     beatsAlwaysLong: list.filter((x) => x.vsLong != null && x.vsLong > 0).length,
     headToHeadsWon: sumPairs ? sumBeat / sumPairs : null,
     dealsOver: deals.length ? Math.max(...deals) : null,
@@ -284,7 +293,9 @@ function perSurvivor(rows, rules) {
 }
 
 // ---- V5: sanity -- noise must lose ---------------------------------------------------
-function sanity(boardRows, survivorRows, rules) {
+// `over` says what the board share was read over: the whole board's copies on
+// a held read, or the survivors' own copies when only those were priced.
+function sanity(boardRows, survivorRows, rules, over = 'board') {
   const share = (rows) => {
     let n = 0;
     let neg = 0;
@@ -302,7 +313,7 @@ function sanity(boardRows, survivorRows, rules) {
   const survivors = share(survivorRows);
   return {
     threshold: rules.sanityPct,
-    board, survivors,
+    board, survivors, over,
     known: board.losing != null,
     ok: board.losing != null && board.losing * 100 > rules.sanityPct,
   };
@@ -366,20 +377,22 @@ function othersUnitRead(kept, rules, copyRowsAt = null) {
 }
 // the two counts, beside the walk's own test-window mark; a mark when fewer
 // than half of the units that keep something are positive
-function othersSummary(units) {
+function othersSummary(units, stretch = 'held') {
   const usable = (units || []).filter((u) => !u.keepsNothing);
   const of = usable.length;
   const positive = usable.filter((u) => u.positive).length;
   const clearBar = usable.filter((u) => u.clears).length;
   const keepsNothing = (units || []).length - of;
-  const mark = of > 0 && positive < of / 2 ? `fewer than half of the ${of} other units are positive on the held-back window` : null;
+  const mark = of > 0 && positive < of / 2 ? `fewer than half of the ${of} other units are positive on ${STRETCH_WORDS[stretch] || STRETCH_WORDS.held}` : null;
   return { positive, of, clearBar, keepsNothing, mark };
 }
 
-// ---- V7: the ride, the held-back half kept beside the test half ----------------------
+// ---- V7: the ride, the stretch's half kept beside the test half ----------------------
 // `perSetting` is what the rebuild hands back (label -> { units: [{ trade, ctx1,
 // ctx2, geometry, pnl, trades, holdout, rich: { test, hold } }] }); `keyOf`
 // names a unit the way the board does, and only the set's own unit is kept.
+// The half priced in the held-back column's place is `read`: the held-back
+// window on a held ride, the reserve window on a reserve one (3.147.0).
 const RIDE_FIELDS = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 'grossPerTrade'];
 function rideOf(perSetting, { unitKey, keyOf, labels }) {
   const rows = [];
@@ -396,7 +409,7 @@ function rideOf(perSetting, { unitKey, keyOf, labels }) {
     if (!u) { missing.push(label); continue; }
     rows.push({
       label,
-      hold: half(u.rich && u.rich.hold, (u.holdout || {}).pnl, (u.holdout || {}).trades),
+      read: half(u.rich && u.rich.hold, (u.holdout || {}).pnl, (u.holdout || {}).trades),
       test: half(u.rich && u.rich.test, u.pnl, u.trades),
     });
   }
@@ -507,72 +520,60 @@ function ownPhrase(where, h, c) {
 }
 function verdict(block) {
   const b = block;
+  const stretch = b.stretch === 'reserve' ? 'reserve' : 'held';
+  const where = STRETCH_WORDS[stretch];
   const parts = [];
   // the instrument first: the stage-engine check, the release's one check (the
   // planted check that opened this sentence went with the older engine, 3.97.0)
   const sg = b.stageGate || null;
   if (sg) parts.push(sg.state === 'PASS' ? `the stage-engine check stood (release ${sg.release || 'unrecorded'})` : `no stage-engine check stood (${sg.state || 'NOT CHECKED'})`);
-  const f = b.footing || {};
-  parts.push(f.ok ? `the rule gives back its own ${f.had} survivors today` : `the footing did not stand (${f.why || 'unstated'})`);
-  const h = b.heldBack || {};
-  const c = h.comparisons || {};
-  parts.push(ownPhrase('the held-back window', h, c) + `, after at least ${(b.looks || {}).unstamped ?? 0} unstamped looks`);
-  const cp = b.copies || {};
-  if (cp.incomplete) parts.push('the set kept no scrambled copies, so nothing was read against nothing');
-  else parts.push(`against its own ${cp.copies} scrambled copies it beats ${cp.beats}, the bar being ${cp.bar} (${cp.barPct}%); a forecast-free rule clears that about ${pct(cp.chance)} of the time, and the finest claim ${cp.copies} copies allow is 1 in ${cp.copies + 1}, a floor, never a measure of strength`);
-  const s = b.survivors || {};
-  parts.push(`${s.passing ?? 0} of ${s.survivors ?? 0} survivors clear the same bar on their own copies, about ${s.byChance == null ? '?' : s.byChance.toFixed(1)} would by chance`);
-  const sn = b.sanity || {};
-  parts.push(sn.known ? `sanity: ${pct(sn.board.losing)} of the board's scrambled held-back figures lose money, the threshold being ${sn.threshold}%, ${sn.ok ? 'PASS' : 'FAIL'}` : 'sanity: not known');
-  // the other units (V6), when read: two counts, information, never a gate
-  const o = b.others || null;
-  parts.push(o
-    ? `on the other units, read ${String(o.at || '').slice(0, 16)}: ${o.positive} of ${o.of} other units positive on the held-back window, ${o.clearBar} clear the bar${o.keepsNothing ? `, ${o.keepsNothing} keep nothing` : ''}${o.mark ? ` (${o.mark})` : ''}, information only`
-    : 'the other units not read when this was stamped');
-  const pass = !!(f.ok && h.pass && cp.pass && sn.ok);
-  return { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: ${parts.join('; ')}. What a pass buys: this window only.` };
-}
-
-// ---- the reserve grade on the unread window (3.89.0): the verdict's four, on that window ----
-const day = (ts) => (ts == null ? '?' : new Date(Number(ts)).toISOString().slice(0, 10));
-function unreadVerdict(block) {
-  const b = block;
-  const parts = [];
-  const g = b.gate || {};
-  parts.push(g.id ? `the verdict ${g.id} stood (PASS under release ${g.release || '?'})` : 'no verdict stood');
-  const w = b.window || {};
-  parts.push(`the unread window from ${day(w.fromTs)} holds ${w.chunks ?? 0} whole chunks, the box's data reaching ${day(w.seenToTs)}`);
+  // A RESERVE SET STANDS ON A HELD SET THAT PASSED, and says which
+  if (stretch === 'reserve') {
+    const so = b.standsOn || null;
+    parts.push(so ? `it stands on ${so.name || so.id}, which passed on the held-back window under release ${so.release || '?'}` : 'it stands on no held set that passed');
+  }
+  // a pricing says what it priced: the window, and which forecasts
+  const w = b.window || null;
+  if (w) parts.push(`${where} from ${day(w.fromTs)} holds ${w.chunks ?? 0} whole chunks, the box's data reaching ${day(w.seenToTs)}`);
+  if (b.forecasts) parts.push(`priced with ${b.forecasts}`);
   const look = Number(b.look) || 1;
-  parts.push(look > 1
-    ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`
-    : 'look 1: the first look at data nothing in the system has seen');
+  if (stretch === 'reserve') {
+    parts.push(look > 1
+      ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`
+      : 'look 1: the first look at data nothing in the system has seen');
+  }
   const f = b.footing || {};
   parts.push(f.ok ? `the rule gives back its own ${f.had} survivors today` : `the footing did not stand (${f.why || 'unstated'})`);
   const h = b.read || {};
   const c = h.comparisons || {};
-  parts.push(ownPhrase('the unread window', h, c));
+  parts.push(ownPhrase(where, h, c) + (stretch === 'held' ? `, after at least ${(b.looks || {}).unstamped ?? 0} unstamped looks` : ''));
   const cp = b.copies || {};
-  if (cp.incomplete) parts.push('no scrambled copies were priced, so nothing was read against nothing');
-  else parts.push(`against ${cp.copies} scrambled copies of that window it beats ${cp.beats}, the bar being ${cp.bar} (${cp.barPct}%); a forecast-free rule clears that about ${pct(cp.chance)} of the time, and the finest claim ${cp.copies} copies allow is 1 in ${cp.copies + 1}, a floor, never a measure of strength`);
-  const sv = b.survivors || {};
-  parts.push(`${sv.passing ?? 0} of ${sv.survivors ?? 0} survivors clear the same bar on their own copies, about ${sv.byChance == null ? '?' : sv.byChance.toFixed(1)} would by chance`);
+  if (cp.incomplete) parts.push(`no scrambled copies of ${where} were kept, so nothing was read against nothing`);
+  else parts.push(`against ${cp.copies} scrambled copies of ${where} it beats ${cp.beats}, the bar being ${cp.bar} (${cp.barPct}%); a forecast-free rule clears that about ${pct(cp.chance)} of the time, and the finest claim ${cp.copies} copies allow is 1 in ${cp.copies + 1}, a floor, never a measure of strength`);
+  const s = b.survivors || {};
+  parts.push(`${s.passing ?? 0} of ${s.survivors ?? 0} survivors clear the same bar on their own copies, about ${s.byChance == null ? '?' : s.byChance.toFixed(1)} would by chance`);
   const sn = b.sanity || {};
-  parts.push(sn.known ? `sanity, over the survivors' copies only: ${pct(sn.board.losing)} of the scrambled unread figures lose money, the threshold being ${sn.threshold}%, ${sn.ok ? 'PASS' : 'FAIL'}` : 'sanity: not known');
+  parts.push(sn.known
+    ? `sanity${sn.over === 'survivors' ? ", over the survivors' copies only" : ''}: ${pct(sn.board.losing)} of the scrambled figures on ${where} lose money, the threshold being ${sn.threshold}%, ${sn.ok ? 'PASS' : 'FAIL'}`
+    : 'sanity: not known');
+  // the other units (V6), when read: two counts, information, never a gate
+  const o = b.others || null;
+  parts.push(o
+    ? `on the other units, read ${String(o.at || '').slice(0, 16)}: ${o.positive} of ${o.of} other units positive on ${where}, ${o.clearBar} clear the bar${o.keepsNothing ? `, ${o.keepsNothing} keep nothing` : ''}${o.mark ? ` (${o.mark})` : ''}, information only`
+    : 'the other units not read when this was stamped');
   const pass = !!(f.ok && h.pass && cp.pass && sn.ok);
-  return { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: ${parts.join('; ')}. What a pass buys: this window, and only the first look at it was unseen.` };
+  const buys = stretch === 'held' ? 'this window only' : 'this window, and only the first look at it was unseen';
+  return { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: ${parts.join('; ')}. What a pass buys: ${buys}.` };
 }
-// input: { id, at, release, look, rules, gate, footing, window, read, copies, survivors, sanity, controls, fee, missing, failures }
-function buildUnreadBlock(input) {
-  const b = { ...input };
-  b.verdict = unreadVerdict(b);
-  return b;
-}
+const day = (ts) => (ts == null ? '?' : new Date(Number(ts)).toISOString().slice(0, 10));
 
 // ---- the block, assembled -------------------------------------------------------------
-// input: { id, at, release, look, rules, stageGate, footing, looks, heldBack,
-//          copies, survivors, sanity, lineA, lineB, others, fee, windows, marks }
+// input: { id, at, release, look, stretch, rules, stageGate, footing, looks, read,
+//          copies, survivors, sanity, lineA, lineB, others, fee, windows, marks,
+//          standsOn, window, priced, missing, forecasts }
 function buildBlock(input) {
   const b = { ...input };
+  b.stretch = b.stretch === 'reserve' ? 'reserve' : 'held';
   b.verdict = verdict(b);
   return b;
 }
@@ -582,6 +583,6 @@ module.exports = {
   declareRules, ruleKeys, heldBackRead, copiesRead, perSurvivor, sanity, lineA, lineB, verdict, buildBlock,
   othersUnitRead, othersSummary, RIDE_FIELDS, rideOf,
   sideRead, keptVsDropped, keptVsDroppedSentence,
-  unreadVerdict, buildUnreadBlock,
+  STRETCH_WORDS,
   mean, median,
 };

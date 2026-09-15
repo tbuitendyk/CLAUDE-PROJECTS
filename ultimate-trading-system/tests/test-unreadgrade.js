@@ -55,6 +55,13 @@ async function chain(tag) {
   // WHAT A FAILED LAUNCH MADE IS REMOVED BEFORE THE THROW: a set left behind
   // collides on its name with the next run of this very test.
   const cleanup = () => {
+    // a held or reserve set pressed from this chain names the STAGE 3 set as
+    // its parent, not the rule, and it is not in `made`: children first, or
+    // the stage 3 set refuses to go and the whole chain is left behind
+    for (const d of stages.listFunnelSets()) {
+      const of = (x) => made.includes((d[x] || {}).id);
+      if ((d.kind || 'funnel') !== 'funnel' && (of('from') || of('parent'))) { try { stages.deleteSet(d.id, d.id); } catch (_) { /* never written */ } }
+    }
     for (const id of made.slice().reverse()) {
       try { stages.deleteSet(id, id); } catch (_) { /* never written */ }
       try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* none */ }
@@ -136,30 +143,32 @@ module.exports = {
       // 3. refused until a verdict PASSED, for real
       const set = stages.getSet(c.cut.id);
       assert.strictEqual(set.unit, c.plant);
-      stages.funnelVerifyStart(c.cut.id, { barPct: 100 });
-      await settle(() => stages.funnelVerifyStatus(c.cut.id), 'the verdict');
-      const withVerdict = stages.getSet(c.cut.id);
-      assert.strictEqual(withVerdict.verify.length, 1);
-      const dry0 = await stages.unreadGradeDry(c.cut.id);
-      if (!withVerdict.verify[0].verdict.pass) {
-        assert.strictEqual(dry0.refused, stages.UNREAD_NO_PASS, 'a FAIL verdict is no gate');
-        // the gate opened by hand: the engine's own verdict on the plant fails today (decision 76)
-        const file = path.join(SETS_DIR, `${c.cut.id}.json`);
+      stages.judgeStart(c.cut.id, 'held', { barPct: 100 });
+      await settle(() => stages.judgeStatus(c.cut.id, 'held'), 'the verdict');
+      const heldSets = stages.judgeSetsOf(c.cut.id, 'held');
+      assert.strictEqual(heldSets.length, 1, 'the press wrote one held set');
+      const heldSet = heldSets[0];
+      const dry0 = await stages.judgeDry(c.cut.id, 'reserve');
+      if (!heldSet.block.verdict.pass) {
+        assert.strictEqual(dry0.refused, stages.NO_HELD_PASS, 'a FAIL held set is no standing');
+        // the standing opened by hand: the engine's own verdict on the plant fails today (decision 76)
+        const file = path.join(SETS_DIR, `${heldSet.id}.json`);
         const on = JSON.parse(fs.readFileSync(file, 'utf8'));
-        on.verify[0].verdict.pass = true;
+        on.block.verdict.pass = true;
         fs.writeFileSync(file, JSON.stringify(on));
       }
-      const dry1 = await stages.unreadGradeDry(c.cut.id);
+      const dry1 = await stages.judgeDry(c.cut.id, 'reserve');
       assert.strictEqual(dry1.refused, null, dry1.refused);
-      assert.deepStrictEqual({ looks: dry1.looks, intact: dry1.sealed.intact, from: dry1.sealed.fromTs }, { looks: 0, intact: true, from: reserve.fromTs });
-      // 4. the first look
-      stages.unreadGradeStart(c.cut.id, {});
-      const r1 = await settle(() => stages.unreadGradeStatus(c.cut.id), 'the grade');
+      assert.deepStrictEqual({ looks: dry1.sets.length, intact: dry1.reserve.intact, from: dry1.reserve.fromTs, standsOn: dry1.standsOn.id, prices: dry1.prices }, { looks: 0, intact: true, from: reserve.fromTs, standsOn: heldSet.id, prices: true });
+      // 4. the first look: a reserve set of the rule, standing on the held set
+      stages.judgeStart(c.cut.id, 'reserve', {});
+      const r1 = await settle(() => stages.judgeStatus(c.cut.id, 'reserve'), 'the grade');
       assert.strictEqual(r1.look, 1);
-      const g1 = stages.getSet(c.cut.id).unread[0];
+      const rs1 = stages.judgeSetsOf(c.cut.id, 'reserve')[0];
+      const g1 = rs1.block;
       const K = G.STAGE3.keepN;
-      assert.deepStrictEqual({ from: g1.window.fromTs, chunks: g1.window.chunks, look: g1.look, gateId: g1.gate.id, release: g1.release },
-        { from: reserve.fromTs, chunks: un.chunks.length, look: 1, gateId: withVerdict.verify[0].id, release: require('../package.json').version });
+      assert.deepStrictEqual({ from: g1.window.fromTs, chunks: g1.window.chunks, look: g1.look, standsOn: g1.standsOn.id, release: g1.release, kind: rs1.kind, stretch: g1.stretch, name: rs1.name, forecasts: g1.forecasts },
+        { from: reserve.fromTs, chunks: un.chunks.length, look: 1, standsOn: heldSet.id, release: require('../package.json').version, kind: 'reserve', stretch: 'reserve', name: `reserve set of ${stages.getSet(c.cut.id).name}`, forecasts: "the members' saved models" });
       // THE FORECASTS IT WAS PRICED ON ARE THE SAVED MODELS' OWN, provably: the
       // grade carries a hash of the members' forecasts on the unread slice, and
       // the same models applied to the same chunks here give the same hash.
@@ -169,37 +178,48 @@ module.exports = {
       assert.strictEqual(byMi.length, rec.specs.length, 'a saved model per member');
       const again = byMi.map((m) => sw.predictMember(m.saved, { model: m.model, view: m.view }, un.chunks, combo, geo));
       assert.strictEqual(g1.window.forecastHash, sw.forecastHashOf(again), 'the unread window was priced on the saved models\' forecasts, not on votes from another window');
-      assert.strictEqual(g1.rows.length, withVerdict.survivors.length, 'every survivor, never a page');
+      assert.strictEqual(g1.priced.length, heldSet.survivors.length, 'every survivor, never a page');
       assert.deepStrictEqual(g1.missing, [], 'every survivor was priced');
-      for (const r of g1.rows) {
+      for (const r of g1.priced) {
         assert.ok(r.money != null && Number.isFinite(r.money), `${r.label} has unread money`);
         assert.ok(r.trades != null, `${r.label} has a trade count`);
       }
       assert.deepStrictEqual({ copies: g1.copies.copies, bar: g1.copies.bar, short: g1.copies.copiesShortOfSurvivors, noFigure: g1.copies.survivorsWithNoFigure }, { copies: K, bar: K, short: 0, noFigure: 0 }, 'every copy priced for every survivor, at the bar of all of them');
       assert.strictEqual(g1.read.comparisons.known, true, 'the four comparisons are known on the unread window');
-      assert.strictEqual(g1.read.of, g1.rows.length);
+      assert.strictEqual(g1.read.of, g1.priced.length);
       assert.ok(g1.survivors.rows.every((x) => x.copiesKept === K), 'each survivor carries every copy');
       assert.strictEqual(g1.sanity.known, true);
       assert.ok(/look 1: the first look at data nothing in the system has seen/.test(g1.verdict.sentence), g1.verdict.sentence);
-      assert.ok(/the unread window from \d{4}-\d{2}-\d{2} holds \d+ whole chunks/.test(g1.verdict.sentence), g1.verdict.sentence);
+      assert.ok(/the reserve window from \d{4}-\d{2}-\d{2} holds \d+ whole chunks/.test(g1.verdict.sentence), g1.verdict.sentence);
+      assert.ok(/it stands on reserve set of|it stands on held set of/.test(g1.verdict.sentence) && g1.verdict.sentence.includes(`it stands on ${heldSet.name}, which passed on the held-back window`), g1.verdict.sentence);
       assert.strictEqual(g1.verdict.pass, !!(g1.footing.ok && g1.read.pass && g1.copies.pass && g1.sanity.ok), 'PASS is exactly the four rules');
       assert.deepStrictEqual(g1.rules.tags, { footing: 'DERIVED', comparisons: 'DERIVED', bar: 'DERIVED', sanity: 'GUESSED' });
       // the unread money is not the held-back money wearing another name
-      const held = withVerdict.verify[0].survivors.rows.map((x) => x.held);
-      const unreadMoney = g1.rows.map((x) => x.money);
-      assert.ok(held.some((v, i) => Math.abs(v - unreadMoney[i]) > 0.005), 'the unread window is a different window from the held-back one');
-      // 5. the second look, appended, and it says so
-      stages.unreadGradeStart(c.cut.id, { barPct: 50 });
-      const r2 = await settle(() => stages.unreadGradeStatus(c.cut.id), 'the second grade');
+      const held = heldSet.block.survivors.rows.map((x) => x.money);
+      const unreadMoney = g1.priced.map((x) => x.money);
+      assert.ok(held.some((v, i) => Math.abs(v - unreadMoney[i]) > 0.005), 'the reserve window is a different window from the held-back one');
+      assert.deepStrictEqual(g1.survivors.rows.map((x) => x.money), unreadMoney, 'the survivors table on the block carries the reserve money under the one name');
+      // 5. the second look, a second reserve set, and it says so
+      stages.judgeStart(c.cut.id, 'reserve', { barPct: 50 });
+      const r2 = await settle(() => stages.judgeStatus(c.cut.id, 'reserve'), 'the second grade');
       assert.strictEqual(r2.look, 2);
-      const list = stages.getSet(c.cut.id).unread;
-      assert.strictEqual(list.length, 2, 'every press appends');
-      assert.strictEqual(list[1].id, g1.id, 'and the first look is still first');
-      assert.ok(/look 2: this window had been read 1 time\(s\) before/.test(list[0].verdict.sentence), list[0].verdict.sentence);
-      assert.deepStrictEqual({ pct: list[0].rules.barPct, tag: list[0].rules.tags.bar }, { pct: 50, tag: 'GUESSED' });
-      assert.deepStrictEqual(list[0].rows.map((x) => x.money), unreadMoney, 'the same window prices the same, look after look');
-      const dry2 = await stages.unreadGradeDry(c.cut.id);
-      assert.strictEqual(dry2.looks, 2);
+      const list = stages.judgeSetsOf(c.cut.id, 'reserve');
+      assert.strictEqual(list.length, 2, 'every press writes a set');
+      assert.strictEqual(list[1].block.id, g1.id, 'and the first look is still first');
+      assert.strictEqual(list[0].name, `reserve set of ${stages.getSet(c.cut.id).name} #2`);
+      assert.ok(/look 2: this window had been read 1 time\(s\) before/.test(list[0].block.verdict.sentence), list[0].block.verdict.sentence);
+      assert.deepStrictEqual({ pct: list[0].block.rules.barPct, tag: list[0].block.rules.tags.bar }, { pct: 50, tag: 'GUESSED' });
+      assert.deepStrictEqual(list[0].block.priced.map((x) => x.money), unreadMoney, 'the same window prices the same, look after look');
+      const dry2 = await stages.judgeDry(c.cut.id, 'reserve');
+      assert.strictEqual(dry2.sets.length, 2);
+      // THE RIDE ON THE RESERVE prices the same survivors through the same path and keeps the reserve half beside the test half
+      stages.funnelRideStart(c.cut.id, { stretch: 'reserve' });
+      await settle(() => stages.funnelRideStatus(c.cut.id), 'the reserve ride');
+      const ride = stages.readingsIn(stages.getSet(c.cut.id), 'reserve').ride[0];
+      assert.ok(ride && ride.stretch === 'reserve' && ride.rows.length === unreadMoney.length, 'the ride is kept under the reserve stretch');
+      assert.deepStrictEqual(ride.rows.map((x) => Math.round(x.read.money * 100)), unreadMoney.map((v) => Math.round(v * 100)), 'the ride prices the reserve window to the cent as the press did');
+      assert.ok(ride.rows.every((x) => x.test && x.test.money != null), 'beside the test half');
+      assert.deepStrictEqual(stages.readingsIn(stages.getSet(c.cut.id), 'held').ride, [], 'and not under the held stretch');
     } finally { c.cleanup(); }
   },
 

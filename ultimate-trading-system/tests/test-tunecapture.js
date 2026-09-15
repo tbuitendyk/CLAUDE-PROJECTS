@@ -56,6 +56,13 @@ async function chain(tag) {
   // WHAT A FAILED LAUNCH MADE IS REMOVED BEFORE THE THROW: a set left behind
   // collides on its name with the next run of this very test.
   const cleanup = () => {
+    // a held or reserve set pressed from this chain names the STAGE 3 set as
+    // its parent, not the rule, and it is not in `made`: children first, or
+    // the stage 3 set refuses to go and the whole chain is left behind
+    for (const d of stages.listFunnelSets()) {
+      const of = (x) => made.includes((d[x] || {}).id);
+      if ((d.kind || 'funnel') !== 'funnel' && (of('from') || of('parent'))) { try { stages.deleteSet(d.id, d.id); } catch (_) { /* never written */ } }
+    }
     for (const id of made.slice().reverse()) {
       try { stages.deleteSet(id, id); } catch (_) { /* never written */ }
       try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* none */ }
@@ -102,13 +109,13 @@ async function chain(tag) {
 // the verdict pressed, and the gate opened by hand when the engine's own verdict
 // on the plant fails (decision 76): the refusal is the real one, the capture is what is under test
 async function gated(c) {
-  stages.funnelVerifyStart(c.cut.id, { barPct: 100 });
-  await settle(() => stages.funnelVerifyStatus(c.cut.id), 'the verdict');
-  const withVerdict = stages.getSet(c.cut.id);
-  if (!withVerdict.verify[0].verdict.pass) {
-    const file = path.join(SETS_DIR, `${c.cut.id}.json`);
+  stages.judgeStart(c.cut.id, 'held', { barPct: 100 });
+  await settle(() => stages.judgeStatus(c.cut.id, 'held'), 'the verdict');
+  const held = stages.judgeSetsOf(c.cut.id, 'held')[0];
+  if (!held.block.verdict.pass) {
+    const file = path.join(SETS_DIR, `${held.id}.json`);
     const on = JSON.parse(fs.readFileSync(file, 'utf8'));
-    on.verify[0].verdict.pass = true;
+    on.block.verdict.pass = true;
     fs.writeFileSync(file, JSON.stringify(on));
   }
   return stages.getSet(c.cut.id);
@@ -126,8 +133,8 @@ module.exports = {
   async theCaptureIsTheStageThreeRecordsOwnTradesToTheCent() {
     const c = await chain('tune capture test');
     try {
-      // 1. nothing on Verify has been pressed, and the capture is not refused for it
-      assert.deepStrictEqual(stages.getSet(c.cut.id).verify || [], []);
+      // 1. nothing on Held has been pressed, and the capture is not refused for it
+      assert.deepStrictEqual(stages.judgeSetsOf(c.cut.id, 'held'), []);
       let dry = await stages.tuneCaptureDry(c.cut.id);
       assert.deepStrictEqual({ refused: dry.refused, capture: dry.capture, looks: dry.looks, verdictOnTheScreen: 'gate' in dry || 'verdicts' in dry }, { refused: null, capture: null, looks: 0, verdictOnTheScreen: false });
       // a scan aimed at a set without a capture refuses and says what to press
@@ -274,9 +281,9 @@ module.exports = {
       assert.deepStrictEqual(now.capture.reads.map((r) => [r.tool, r.look]), [['conviction', 2], ['stop', 1], ['stop', null]], 'newest first, looks counted only for held-back reads');
       const dry = await stages.tuneCaptureDry(c.cut.id);
       assert.strictEqual(dry.looks, 2);
-      // Verify counts those looks too
-      const vdry = await stages.funnelVerifyDry(c.cut.id);
-      assert.strictEqual(vdry.looks.tuneReads, 2, 'the looks line on Verify counts the held-back reads on Tune');
+      // Held counts those looks too
+      const vdry = await stages.judgeDry(c.cut.id, 'held');
+      assert.strictEqual(vdry.looks.tuneReads, 2, 'the looks line on Held counts the held-back reads on Tune');
       assert.ok(vdry.looks.what.some((w) => /a scan on Tune read the captured held-back trades 2 time\(s\)/.test(w)), vdry.looks.what.join(' | '));
       // the scan target list never offers an exam set (this chain is one), and the
       // summary it would offer carries what the picker needs

@@ -1399,3 +1399,34 @@ carried out 2026-08-28 under its own GO — decision 50.
     blocks into held sets, three reserve grades into reserve sets, readings
     re-keyed — by a mover written to be deleted (RULE TEN). Success rules per
     release are in Part 9, written before any number.
+98. **Release 1 of Part 9 is built: Held and Reserve, the held set and the
+    reserve set, the half-life set judged as its own rule** (3.147.0, inside
+    the owner's LOOP NOW! of 2026-09-15; decision 97, VERIFY-DESIGN.md Part
+    9). What was decided while building, none of it changing the design: a
+    rule stands on the held-back window exactly when its NEWEST held set
+    passed under the reader's first digit, so a rule read again and found
+    wanting no longer stands; a held set or a reserve set is frozen — it
+    takes no stop choice and cannot be read as a rule; the block's stretch
+    reading is `read`, the survivors' money is `money`, a pricing's rows are
+    `priced`, and the ride's half priced in the held-back column's place is
+    `read`; the reserve set's look number counts the reserve sets already
+    read from the rule (the reserve board of release 2 will count too); the
+    other units and the dropped settings refuse in words on Reserve until
+    release 2 prices them, and on a half-life rule always, because its
+    retrained forecasts exist for its own survivors on its own unit only; the
+    ride on Reserve, and on a half-life rule, prices the survivors through
+    the same path the press does, with no copies; History lists rules that
+    are not half-life sets, Tune lists everything, the Funnel's cuts list is
+    cuts only, Greenlight lists held sets and reserve sets and never a rule;
+    the stage-engine check presses the held read directly and grades the
+    held set it makes, which is deleted with the rest of the exam's sets.
+    Two choices for the word list's sake: the shared renderer draws the
+    screen's own frame, because the reader that lists a screen's controls
+    follows a helper only when its body carries markup, and the stretch's
+    word is drawn through a helper that returns markup, so both words land
+    on both tabs' lists — and both are on both screens, since Reserve names
+    the held set it stands on and Held says when a layout keeps no reserve.
+    The mover that carries the box's stamps into sets counts only rules with
+    something to move, strips the empty fields a rule cut under 3.146.x
+    carried, and has its own test; it goes the release after a probe finds
+    nothing left to move. Second digit.

@@ -55,7 +55,7 @@ const EXECUTOR_SHAPE = (cell) => {
 };
 // why this source could not be greenlighted, in words, or null
 function stage4Refusal(src) {
-  if (!src || !src.gate) return 'no verdict on this set is PASS under this release line — read the rule against nothing on Verify first';
+  if (!src || !src.gate) return 'no verdict on this set is PASS under this release line — read the rule on Held, and on Reserve when its layout keeps one, and greenlight the set that passed';
   const u = src.unit || {};
   if (u.size !== 3) {
     return `this set's unit is ${u.size === 1 ? 'a coin read on its own' : `a coin read alongside ${u.size - 1} other`}, and the live vocabulary carries only a coin read alongside two others — a single-coin unit cannot be greenlighted until the executor takes one`;
@@ -132,8 +132,8 @@ function greenlightFromStage4(src, { by = 'owner', why, name } = {}) {
     pick: { by: src.pick.by, label: src.pick.label, si: src.pick.si ?? null, worst: src.pick.worst, mean: src.pick.mean, per: src.pick.per || null, of: src.pick.of },
     rowSummary: {
       pnl: src.survivor.avgTest ?? null, trades: null,
-      holdout: rd.heldBack ? { pnl: rd.heldBack.money ?? null, trades: rd.heldBack.trades ?? null } : null,
-      unread: rd.unread ? { pnl: rd.unread.money ?? null, trades: rd.unread.trades ?? null, look: rd.unread.look ?? null } : null,
+      holdout: rd.held ? { pnl: rd.held.money ?? null, trades: rd.held.trades ?? null } : null,
+      unread: rd.reserve ? { pnl: rd.reserve.money ?? null, trades: rd.reserve.trades ?? null, look: rd.reserve.look ?? null } : null,
     },
     configSnapshot: cfg,
     shuttledSetupIds: [],

@@ -500,15 +500,15 @@ function newFunnelSet({ id, seq, name, parent, release, target, seed, boardNull,
     warnings: [],
     // observations the walk was carried past (§16.5); never cleared
     marks: [],
+    // when each window was first opened by a press on Held or on Reserve, written once (3.86.0; 3.147.0)
     heldBackReadAt: null,
-    // the blocks the read on Verify stamps, newest first (3.86.0)
-    verify: [],
-    // the readings of the rule on the other units and the held-back ride,
-    // each newest first, each appended and never overwritten (3.88.0)
-    others: [],
-    ride: [],
-    // the reserve grades on the unread window, newest first, each a counted look (3.89.0)
-    unread: [],
+    reserveReadAt: null,
+    // THE THREE READINGS OF THE RULE, PER STRETCH (3.88.0; keyed by stretch since
+    // 3.147.0): the other units, the settings the rule dropped and the ride, each
+    // newest first, each appended and never overwritten. A verdict is never a
+    // block on the rule: a press on Held or Reserve writes a held set or a
+    // reserve set of the rule instead.
+    readings: { held: { others: [], dropped: [], ride: [] }, reserve: { others: [], dropped: [], ride: [] } },
   };
 }
 

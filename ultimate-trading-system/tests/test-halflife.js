@@ -50,6 +50,13 @@ async function chain(tag, windowLayout = 'reserve61') {
   // WHAT A FAILED LAUNCH MADE IS REMOVED BEFORE THE THROW: a set left behind
   // collides on its name with the next run of this very test.
   const cleanup = () => {
+    // a held or reserve set pressed from this chain names the STAGE 3 set as
+    // its parent, not the rule, and it is not in `made`: children first, or
+    // the stage 3 set refuses to go and the whole chain is left behind
+    for (const d of stages.listFunnelSets()) {
+      const of = (x) => made.includes((d[x] || {}).id);
+      if ((d.kind || 'funnel') !== 'funnel' && (of('from') || of('parent'))) { try { stages.deleteSet(d.id, d.id); } catch (_) { /* never written */ } }
+    }
     for (const id of made.slice().reverse()) {
       try { stages.deleteSet(id, id); } catch (_) { /* never written */ }
       try { fs.rmSync(stages.funnelRichFile(id), { force: true }); } catch (_) { /* none */ }
@@ -95,16 +102,18 @@ async function chain(tag, windowLayout = 'reserve61') {
 }
 // the verdict pressed and the gate opened by hand when the engine's own verdict on the plant fails (decision 76)
 async function gated(c) {
-  stages.funnelVerifyStart(c.cut.id, { barPct: 100 });
-  await settle(() => stages.funnelVerifyStatus(c.cut.id), 'the verdict');
-  const withVerdict = stages.getSet(c.cut.id);
-  if (!withVerdict.verify[0].verdict.pass) {
-    const file = path.join(SETS_DIR, `${c.cut.id}.json`);
-    const on = JSON.parse(fs.readFileSync(file, 'utf8'));
-    on.verify[0].verdict.pass = true;
-    fs.writeFileSync(file, JSON.stringify(on));
-  }
+  stages.judgeStart(c.cut.id, 'held', { barPct: 100 });
+  await settle(() => stages.judgeStatus(c.cut.id, 'held'), 'the verdict');
+  const held = stages.judgeSetsOf(c.cut.id, 'held')[0];
+  if (!held.block.verdict.pass) passByHand(held.id);
   return stages.getSet(c.cut.id);
+}
+// the standing opened by hand on a held set or a reserve set: the engine's own verdict on the plant fails today (decision 76)
+function passByHand(setId) {
+  const file = path.join(SETS_DIR, `${setId}.json`);
+  const on = JSON.parse(fs.readFileSync(file, 'utf8'));
+  on.block.verdict.pass = true;
+  fs.writeFileSync(file, JSON.stringify(on));
 }
 async function ran(c, months) {
   stages.halfLifeStart(c.cut.id, { months });
@@ -188,7 +197,7 @@ module.exports = {
     const c = await chain('half-life test');
     try {
       const withVerdict = stages.getSet(c.cut.id);
-      assert.deepStrictEqual(withVerdict.verify || [], [], 'nothing on Verify has been pressed');
+      assert.deepStrictEqual(stages.judgeSetsOf(c.cut.id, 'held'), [], 'nothing on Held has been pressed');
       let dry = await stages.halfLifeDry(c.cut.id);
       assert.deepStrictEqual({ refused: dry.refused, judge: dry.layout.judge, layout: dry.layout.layout, months: dry.halfLives, runs: dry.runs.length, verdictOnTheScreen: 'gate' in dry || 'verdicts' in dry },
         { refused: null, judge: 'test', layout: 'reserve61', months: [12, 18, 24, 30, 36, 48], runs: 0, verdictOnTheScreen: false });
@@ -320,15 +329,30 @@ module.exports = {
       }
       assert.deepStrictEqual({ kind: d.derived.kind, from: d.derived.from, run: d.derived.run, judge: d.derived.judge, layout: d.derived.layout, unit: d.unit, parent: d.parent.id }, { kind: 'halflife', from: c.cut.id, run: block.id, judge: 'test', layout: 'reserve61', unit: c.plant, parent: c.s3 });
       assert.deepStrictEqual(d.rule, stages.getSet(c.cut.id).rule, 'the source\'s rule rides on it');
-      // its standing is its source's; the readings that would mislead refuse it
-      assert.deepStrictEqual(stages.gateOfSet(d), stages.unreadGateOf(stages.getSet(c.cut.id)), 'the gate is the source\'s PASS');
-      const vd = await stages.funnelVerifyDry(built.id);
-      assert.ok(/half-life set built from/.test(vd.refused) && /half-life set built from/.test(vd.rideRefused), vd.refused);
-      threw = null;
-      try { stages.funnelVerifyStart(built.id, {}); } catch (e) { threw = e.message; }
-      assert.ok(/half-life set built from/.test(threw), threw);
-      assert.ok(/half-life set built from/.test((await stages.unreadGradeDry(built.id)).refused));
-      assert.ok(/half-life set built from/.test((await stages.halfLifeDry(built.id)).refused));
+      // IT IS JUDGED AS ITS OWN RULE (3.147.0, VERIFY-DESIGN.md Part 9), priced with
+      // its retrained members; the source keeps its own verdict; a rule is never
+      // greenlighted, and the readings its retrained forecasts cannot give refuse
+      assert.strictEqual(stages.gateOfSet(d), null, 'a rule has no gate of its own; a set read from it does');
+      const vd = await stages.judgeDry(built.id, 'held');
+      assert.deepStrictEqual({ refused: vd.refused, prices: vd.prices, footing: vd.footing.ok, halfLife: vd.footing.halfLife, derived: vd.derived.from }, { refused: null, prices: true, footing: true, halfLife: true, derived: c.cut.id }, `a half-life set is read on Held as its own rule: ${vd.refused}`);
+      assert.ok(/retrained forecasts exist for its own survivors/.test(vd.othersRefused) && /retrained forecasts exist for its own survivors/.test(vd.droppedRefused), `${vd.othersRefused} | ${vd.droppedRefused}`);
+      assert.strictEqual(vd.rideRefused, null, 'the ride prices with them');
+      assert.ok(/retraining is run on the set it was built from/.test((await stages.halfLifeDry(built.id)).refused));
+      // THE HELD PRESS PRICES IT WITH ITS RETRAINED MEMBERS (Part 9, H1.4): a held set of the half-life set, every record priced, and the set says which forecasts
+      const sourceHeldBefore = stages.judgeSetsOf(c.cut.id, 'held').length;
+      stages.judgeStart(built.id, 'held', { barPct: 100 });
+      await settle(() => stages.judgeStatus(built.id, 'held'), 'the held read of the half-life set');
+      const hs = stages.judgeSetsOf(built.id, 'held')[0];
+      assert.ok(hs, 'a held set of the half-life set was written');
+      c.made.push(hs.id);
+      assert.deepStrictEqual({ from: hs.from.id, kind: hs.from.kind, derived: hs.derived.from, stretch: hs.block.stretch, name: hs.name, missing: hs.block.missing }, { from: built.id, kind: 'halflife', derived: c.cut.id, stretch: 'held', name: `held set of ${d.name}`, missing: [] });
+      assert.ok(/retrained at each survivor's own half-life \(/.test(hs.block.forecasts), hs.block.forecasts);
+      assert.strictEqual(hs.block.priced.length, d.survivors.length, 'every record priced');
+      assert.ok(hs.block.priced.every((r) => r.money != null && r.trades != null), 'each has held-back money and trades');
+      assert.deepStrictEqual(hs.survivors.map((s) => [s.label, s.halfLife]), d.survivors.map((s) => [s.label, s.halfLife]), 'the frozen copy carries each record\'s half-life');
+      assert.ok(hs.block.survivors.rows.every((r) => r.copiesKept === G.STAGE3.keepN), 'every copy priced from the retrained forecasts, so the verdict reads them all');
+      assert.strictEqual(hs.block.read.comparisons.known, true, 'the four comparisons are known on the held-back window');
+      assert.strictEqual(stages.judgeSetsOf(c.cut.id, 'held').length, sourceHeldBefore, 'the source keeps its own standing: nothing was written on it');
       assert.ok(!stages.funnelCutsFor(c.s3, c.plant).some((x) => x.id === built.id), 'the Funnel\'s own list leaves it out');
       assert.ok(stages.listFunnelSets().some((x) => x.id === built.id && x.derived), 'the server\'s list carries it, marked');
       assert.ok((await stages.halfLifeDry(c.cut.id)).built.some((b) => b.id === built.id && b.run === block.id), 'the source says what was built from it');
@@ -345,12 +369,29 @@ module.exports = {
         assert.ok(sv.entries.hold.length > 0, 'held-back entries on the set\'s own layout: Tune\'s capture reads the votes History cast and never priced');
         const r = block.rows.find((x) => x.label === sv.label);
         assert.strictEqual(cents(sv.entries.test.reduce((a, e) => a + e.usd, 0)), cents(r.money[r.best]), `${sv.label}: the captured test entries reprice the table's own money at that half-life`);
+        // and the held-back entries, cast by the same retrained members, reprice the held set's own money to the cent
+        const priced = hs.block.priced.find((x) => x.label === sv.label);
+        assert.strictEqual(cents(sv.entries.hold.reduce((a, e) => a + e.usd, 0)), cents(priced.money), `${sv.label}: the held press priced the held-back window as the capture's retrained entries do`);
         assert.ok(sv.entries.train.length > 0, 'the members forecast the retrain training window');
       }
       assert.strictEqual(stages.getSet(built.id).capture.rows[0].halfLife, d.survivors[0].halfLife, 'the summary carries it too');
-      // the greenlight source carries the half-life forward
-      const src = await stages.stage4GreenlightSource(built.id, { pick: 'depth' });
-      assert.deepStrictEqual({ gate: src.gate.id, derived: src.set.derived.from }, { gate: stages.unreadGateOf(stages.getSet(c.cut.id)).id, derived: c.cut.id });
+      // THE GREENLIGHT SOURCE CARRIES THE HALF-LIFE FORWARD, from the reserve set read of it
+      // (its layout keeps a reserve, so a held set alone is not greenlighted); the reserve
+      // press prices the reserve window with the retrained members too
+      passByHand(hs.id);
+      stages.judgeStart(built.id, 'reserve', {});
+      await settle(() => stages.judgeStatus(built.id, 'reserve'), 'the reserve read of the half-life set');
+      const rs = stages.judgeSetsOf(built.id, 'reserve')[0];
+      assert.ok(rs, 'a reserve set of the half-life set was written');
+      c.made.push(rs.id);
+      assert.deepStrictEqual({ standsOn: rs.standsOn.id, priced: rs.block.priced.length, forecasts: /retrained at each survivor's own half-life/.test(rs.block.forecasts), window: rs.block.window != null }, { standsOn: hs.id, priced: d.survivors.length, forecasts: true, window: true });
+      let heldOnly = null;
+      try { await stages.stage4GreenlightSource(hs.id, { pick: 'depth' }); } catch (e) { heldOnly = e.message; }
+      assert.ok(/read it on Reserve/.test(heldOnly), heldOnly);
+      passByHand(rs.id);
+      const src = await stages.stage4GreenlightSource(rs.id, { pick: 'depth' });
+      assert.deepStrictEqual({ gate: src.gate.id, set: src.set.id, kind: src.set.kind, from: src.set.from.id, derived: src.set.derived.from }, { gate: rs.block.id, set: rs.id, kind: 'reserve', from: built.id, derived: c.cut.id });
+      assert.ok(src.readings.held && src.readings.reserve, 'the held reading off the held set it stands on, the reserve reading off itself');
       const HLm = src.survivor.halfLife;
       assert.ok([12, 48].includes(HLm), `the survivor carries its half-life (${HLm})`);
       assert.strictEqual(src.training.halfLife, HL.daysOfMonths(HLm), 'in days, for the live path');
@@ -409,7 +450,7 @@ module.exports = {
       pick: { by: 'depth', index: 0, si: 4, label: 'count 50% market t65h · argmax auto 24/7', worst: 0, mean: 0, per: {}, of: 1 },
       survivors: [], members: [{ model: 'logreg', view: 'full' }, { model: 'boost', view: 'full' }],
       training: { ...base.training }, fee: 0.00125,
-      readings: { heldBack: null, unread: null, halfLife: { months: 12, judge: 'Reserve', money: 3.2, unweighted: 1.1 } },
+      readings: { held: null, reserve: null, halfLife: { months: 12, judge: 'Reserve', money: 3.2, unweighted: 1.1 } },
     };
     const cfg = gl.configFromStage4(src);
     assert.deepStrictEqual({ h: cfg.training.halfLife, m: cfg.training.halfLifeMonths }, { h: 365, m: 12 }, 'the frozen configuration carries the half-life');
@@ -431,7 +472,7 @@ module.exports = {
     const ui = src2('public/construct.js');
     assert.ok(/id="hHlBuild"/.test(ui) && /id="hHlName"/.test(ui), 'the build row is on History');
     assert.ok(/half-life set from \$\{esc\(x\.derived\.fromName \|\| x\.derived\.from\)\}/.test(ui), 'Tune and Greenlight name a half-life set by its source');
-    assert.ok(/\.filter\(\(x\) => !x\.derived\);\n  const chosen = vRememberedSet\(sets\);/.test(ui) && /\.filter\(\(x\) => !x\.derived\);\n  const hChosen = hRememberedSet\(hSets\);/.test(ui), 'Verify and History leave half-life sets out');
+    assert.ok(/const rules = \(sets \|\| \[\]\)\.filter\(\(x\) => \(x\.kind \|\| 'funnel'\) === 'funnel'\);/.test(ui) && /\.filter\(\(x\) => \(x\.kind \|\| 'funnel'\) === 'funnel' && !x\.derived\);\n  const hChosen = hRememberedSet\(hSets\);/.test(ui), 'Held lists a half-life set as a rule of its own and History leaves it out');
     assert.ok(src2('server.js').includes("'/api/funnel/set/:id/halflife/build'"), 'the build is served');
   },
 
@@ -450,8 +491,8 @@ module.exports = {
     const historyText = history.replace(/\/\/[^\n]*/g, '');
     assert.ok(!/on the Held window|judged on the second|counted look|\blook \$\{/.test(historyText), 'History still says the held-back window is read');
     assert.ok(historyText.includes('Nothing on this\n      screen reads the held-back window') && historyText.includes('The held-back window is not read.'), 'History does not say the held-back window is not read');
-    const verify = ui.slice(ui.indexOf('// ---- THE RESERVE GRADE ON A STAGE 4 RECORD SET, on Verify'), ui.indexOf('async function drawVerify() {'));
-    assert.ok(verify.includes('id="vGrade"') && /Run the reserve grade on this set/.test(verify), 'the reserve grade is not on Verify');
+    const judge = ui.slice(ui.indexOf('const JUDGE_SET_KEY = {'), ui.indexOf('async function drawHeld() {'));
+    assert.ok(judge.includes('id="vRead"') && judge.includes("'<span>Read the rule on the reserve window</span>' : '<span>Read the rule on the held-back window</span>'"), 'the press is not on Held and Reserve');
     for (const id of ['hHl12', 'hHl18', 'hHl24', 'hHl30', 'hHl36', 'hHl48', 'hHalfLife']) assert.ok(ui.includes(`id="${id}"`), `${id} is on the screen`);
     assert.ok(!ui.includes('id="hGrade"'), 'the reserve grade is still drawn on History');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/halflife\/status/.test(ui), 'the run is polled');
