@@ -8,9 +8,11 @@
 set -uo pipefail
 B=http://127.0.0.1:8094
 id="${1:?set id}"
-curl -sf --max-time 60 "$B/api/funnel/set/$id/verify" | python3 -c '
-import json,sys,statistics
+brief="${2:-}"
+curl -sf --max-time 60 "$B/api/funnel/set/$id/verify" | BRIEF="$brief" python3 -c '
+import json,sys,statistics,os
 d=json.load(sys.stdin)
+brief=bool(os.environ.get("BRIEF"))
 def m(v):
     return "none" if v is None else ("%.2f" % v)
 print("SET", d.get("id"), "|", d.get("name"), "|", d.get("unitName"), "| release", d.get("release"))
@@ -25,6 +27,11 @@ print("  looks now:", json.dumps(d.get("looks")))
 blocks=list(reversed(d.get("blocks") or []))
 print("  blocks:", len(blocks))
 for b in blocks:
+    if brief:
+        v=b.get("verdict") or {}; h=b.get("heldBack") or {}; c=h.get("comparisons") or {}; cp=b.get("copies") or {}; sn=b.get("sanity") or {}; r=b.get("rules") or {}
+        print("== block", b.get("id"), "look", b.get("look"), "at", b.get("at"), "release", b.get("release"), "| PASS" if v.get("pass") else "| FAIL")
+        print("   held real", m(h.get("real")), "vsLong", m(h.get("vsLong")), "trades", m(h.get("trades")), "| best", json.dumps(c.get("best")), "beatsBest", c.get("beatsBest"), "| alwaysLong", json.dumps(c.get("alwaysLong")), "| copies beats", cp.get("beats"), "of", cp.get("copies"), "bar", cp.get("bar"), "| sanity", sn.get("ok"), "losing", json.dumps((sn.get("board") or {}).get("losing")), "threshold", sn.get("threshold"), "| barPct", r.get("barPct"))
+        continue
     print("== block", b.get("id"), "look", b.get("look"), "at", b.get("at"), "release", b.get("release"))
     v=b.get("verdict") or {}
     print("  VERDICT pass", v.get("pass"))
