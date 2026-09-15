@@ -298,7 +298,16 @@ module.exports = {
       assert.ok(/'no such survivor' is not one of the \d+ captured survivors/.test(threw), threw);
       threw = null;
       try { stages.captureTargetOf({ setId: c.cut.id, pick: 'depth', windows: ['unread'] }); } catch (e) { threw = e.message; }
-      assert.ok(/no window called 'unread'/.test(threw), threw);
+      assert.ok(/no window called 'unread'/.test(threw) && /reserve/.test(threw), threw);
+      // THE RESERVE WINDOW (3.150.0, H3.2): the chain's layout keeps one, so the capture wrote its trades down, and a scan that reads them is a look on the reserve
+      const capR = stages.readCapture(c.cut.id);
+      assert.ok(capR.reserve && capR.reserve.captured && capR.reserve.window && capR.reserve.window.chunks >= 2, JSON.stringify(capR.reserve));
+      assert.ok(capR.survivors.every((x) => Array.isArray(x.entries.reserve)), 'every captured survivor carries its reserve entries');
+      assert.strictEqual(stages.getSet(c.cut.id).capture.entries.reserve, capR.survivors.reduce((a, x) => a + x.entries.reserve.length, 0));
+      const sR = await stages.tuneOnCapture({ setId: c.cut.id, pick: 'all', windows: ['reserve'] }, 'stop');
+      assert.deepStrictEqual({ reserveLook: sR.target.reserveLook, look: sR.target.look, words: sR.target.windowWords }, { reserveLook: 1, look: null, words: ['reserve'] });
+      const dryR = await stages.judgeDry(c.cut.id, 'reserve');
+      assert.strictEqual((dryR.looks || {}).tuneReads, 1, 'the reserve read on Tune is a look the reserve counts');
       // a re-capture keeps the looks already counted
       stages.tuneCaptureStart(c.cut.id);
       await settle(() => stages.tuneCaptureStatus(c.cut.id), 'the second capture');

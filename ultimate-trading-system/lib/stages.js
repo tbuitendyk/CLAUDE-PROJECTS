@@ -7200,11 +7200,14 @@ function reserveBoardStop(id) {
 function reserveLooksOf(doc, stamped, board = null) {
   const rides = readingsIn(doc, 'reserve').ride.length;
   const pricings = board && board.priced ? board.pricings : 0;
+  // a scan on Tune that read the captured reserve entries (3.150.0): a look on the reserve, stamped on the capture
+  const tuneReads = (((doc.capture || {}).reads) || []).filter((r) => r && r.reserveLook != null).length;
   const what = [];
   if (pricings) what.push(`the reserve board of this unit was priced ${pricings} time(s), first on ${String(board.firstAt || '').slice(0, 10)} — that pricing was the one look at data nothing in the system had seen`);
   if (rides) what.push(`the reserve ride was worked out ${rides} time(s) on Reserve, each a stamped look`);
+  if (tuneReads) what.push(`a scan on Tune read the captured reserve trades ${tuneReads} time(s), each a stamped look`);
   // nothing before a pricing opens the reserve window: no walk printed it, no tick shows it
-  return { unstamped: 0, stamped: (stamped || 0) + pricings, rides, boardPricings: pricings, what };
+  return { unstamped: 0, stamped: (stamped || 0) + pricings + tuneReads, rides, tuneReads, boardPricings: pricings, what };
 }
 // THE SET A PRESS MAKES: the rule and its survivors as they stand, the stop
 // choices on record frozen in, one block, and the rule it came from by name.
@@ -7918,8 +7921,9 @@ async function stage4GreenlightDry(setId) {
 // Verify in the order the tabs read (3.142.0), and a half-life set's standing
 // is read where it matters, on Greenlight.
 const CAPTURE_V = 1;
-const CAPTURE_WINDOWS = ['train', 'test', 'hold'];
-const CAPTURE_WINDOW_WORDS = { train: 'training', test: 'test', hold: 'held-back' };
+// 3.150.0: the capture gains the reserve window for a set whose layout keeps one (H3.2)
+const CAPTURE_WINDOWS = ['train', 'test', 'hold', 'reserve'];
+const CAPTURE_WINDOW_WORDS = { train: 'training', test: 'test', hold: 'held-back', reserve: 'reserve' };
 const captureFile = (id) => path.join(SETS_DIR, `${id}-capture.json.gz`);
 function readCapture(id) {
   try {
@@ -8015,6 +8019,14 @@ async function tuneCaptureRun(doc, note = null) {
       };
     });
   }
+  // THE RESERVE WINDOW TOO (3.150.0, H3.2): on a plain rule whose layout keeps a
+  // reserve, one more payload with the reserve window in the held-back window's
+  // place, the members forecasting it from their saved models; its held-back
+  // entries are the reserve window's trades. A half-life rule keeps its three.
+  const rsv = doc.derived ? { keeps: false } : reserveOf(doc);
+  const reserveWhy = doc.derived ? 'a half-life set captures its three windows with its retrained members; the reserve is not read for it' : (!rsv.keeps ? HELD_ALONE : (!rsv.intact ? rsv.why : null));
+  const n = payloads.length;
+  if (!reserveWhy) payloads = [...payloads, { ...base, unread: { fromTs: rsv.fromTs } }];
   if (note) note(0, payloads.length);
   const pool = createPool();
   activePool = pool;
@@ -8024,7 +8036,10 @@ async function tuneCaptureRun(doc, note = null) {
   } finally { activePool = null; pool.abort(); }
   const failed = settledAll.find((x) => !x || !x.ok);
   if (failed || settledAll.length !== payloads.length) throw new Error(`the unit's trades could not be captured: ${String((failed && failed.error) || 'no answer')}`);
-  const res = { rows: settledAll.flatMap((x) => x.value.rows || []), windows: settledAll[0].value.windows };
+  const res = { rows: settledAll.slice(0, n).flatMap((x) => x.value.rows || []), windows: settledAll[0].value.windows };
+  const reserveRows = reserveWhy ? [] : (settledAll[n].value.rows || []);
+  const reserveWindow = reserveWhy ? null : (settledAll[n].value.unread || null);
+  const reserveEntriesOf = (label) => { const rr = reserveRows.find((x) => x.label === label); return rr && rr.rich && rr.rich.capture ? (rr.rich.capture.hold || []) : []; };
   // one survivor without shopping: by depth inside the rule, among the CAPTURED survivors
   const capturedLabels = new Set(settings.map((st) => st.label));
   const pickRows = join.rows.filter((r) => capturedLabels.has(r.label));
@@ -8033,9 +8048,9 @@ async function tuneCaptureRun(doc, note = null) {
     label: r.label, si: r.si, tHours: r.tHours, weekdaysOnly: !!r.weekdaysOnly, entry: r.entry, gate: r.gate, decision: r.decision, bandPct: r.bandPct,
     members: r.members, rung: r.rung ?? null, halfLife: doc.derived ? (hlOf.get(r.label) ?? null) : null,
     money: { test: r.pnl, hold: r.holdout ? r.holdout.pnl : null }, trades: { test: r.trades, hold: r.holdout ? r.holdout.trades : null },
-    entries: (r.rich && r.rich.capture) || { train: [], test: [], hold: [] },
+    entries: { ...((r.rich && r.rich.capture) || { train: [], test: [], hold: [] }), reserve: reserveEntriesOf(r.label) },
   }));
-  const totals = { train: 0, test: 0, hold: 0 };
+  const totals = { train: 0, test: 0, hold: 0, reserve: 0 };
   for (const sv of survivors) for (const w of CAPTURE_WINDOWS) totals[w] += (sv.entries[w] || []).length;
   const at = new Date().toISOString();
   const fresh = getSet(doc.id);
@@ -8046,14 +8061,15 @@ async function tuneCaptureRun(doc, note = null) {
     v: CAPTURE_V, id: doc.id, at, release: ENGINE_VERSION, times, unit: doc.unit, unitName: doc.unitName || null,
     combo: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size: rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1) }, geometry: rec.geometry,
     members: (rec.specs || []).length, fee: { feePerLeg: fee, feeUnits: 'fraction' }, windows: res.windows || null,
+    reserve: reserveWhy ? { captured: false, why: reserveWhy } : { captured: true, window: reserveWindow },
     pick: pick ? { by: 'depth', among: 'the captured survivors', label: pick.label, worst: pick.worst, mean: pick.mean } : null,
     survivors, notCaptured, missing,
   };
   writeCapture(doc.id, file);
   fresh.capture = {
     id: `${doc.id}-c${times}`, at, release: ENGINE_VERSION, times, unit: doc.unit, members: file.members, fee: file.fee, windows: file.windows,
-    survivors: join.rows.length, captured: survivors.length, notCaptured, missing, entries: totals, pick: file.pick,
-    rows: survivors.map((sv) => ({ label: sv.label, tHours: sv.tHours, halfLife: sv.halfLife ?? null, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length }, test: sv.money.test, held: sv.money.hold })),
+    survivors: join.rows.length, captured: survivors.length, notCaptured, missing, entries: totals, pick: file.pick, reserve: file.reserve,
+    rows: survivors.map((sv) => ({ label: sv.label, tHours: sv.tHours, halfLife: sv.halfLife ?? null, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length, reserve: (sv.entries.reserve || []).length }, test: sv.money.test, held: sv.money.hold })),
     derived: doc.derived || null,
     // every scan on Tune that read this capture, newest first; a read of the held-back entries carries its look number
     reads: had && Array.isArray(had.reads) ? had.reads : [],
@@ -8173,7 +8189,9 @@ function captureTargetOf(body) {
   const windows = Array.isArray(b.windows) ? b.windows.map(String) : [];
   const bad = windows.filter((w) => !CAPTURE_WINDOWS.includes(w));
   if (bad.length) { const e = new Error(`no window called '${bad[0]}' — the windows are ${CAPTURE_WINDOWS.map((w) => CAPTURE_WINDOW_WORDS[w]).join(', ')}`); e.status = 400; throw e; }
-  if (!windows.length) { const e = new Error('tick at least one window for the scan to read: training, test or held-back'); e.status = 400; throw e; }
+  if (!windows.length) { const e = new Error('tick at least one window for the scan to read: training, test, held-back or reserve'); e.status = 400; throw e; }
+  // the reserve window's entries exist only on a capture that read it (3.150.0)
+  if (windows.includes('reserve') && !(doc.capture.reserve && doc.capture.reserve.captured)) { const e = new Error(`${doc.name}: the capture holds no reserve entries — ${(doc.capture.reserve || {}).why || 'capture the trades of this set on Tune again'}`); e.status = 400; throw e; }
   const asked = b.pick == null || b.pick === '' || b.pick === 'depth' ? 'depth' : String(b.pick);
   // ALL SURVIVORS AT ONCE (3.143.0, owner order 2026-09-15: "why can't we just
   // sweep the entire table by selecting 'all survivors'"): every captured
@@ -8213,10 +8231,12 @@ async function tuneOnCapture(body, tool) {
   const holdHours = t.pick === 'all' ? null : sv.tHours;           // one length, or each trade's own
   const who = t.pick === 'all' ? `all ${svs.length} survivors` : sv.label;
   const isLook = t.windows.includes('hold');
+  const isReserveLook = t.windows.includes('reserve');         // a read of the reserve entries is a look on the reserve (3.150.0)
   const fresh = getSet(t.doc.id);
   if (!fresh || !fresh.capture) throw new Error('the set or its capture went away while the scan was being set up');
   const reads = Array.isArray(fresh.capture.reads) ? fresh.capture.reads : [];
   const look = isLook ? reads.filter((r) => r && r.look != null).length + 1 : null;
+  const reserveLook = isReserveLook ? reads.filter((r) => r && r.reserveLook != null).length + 1 : null;
   let out;
   if (tool === 'stop') {
     const { tuneFixedStop } = require('./stoptuner');
@@ -8245,9 +8265,9 @@ async function tuneOnCapture(body, tool) {
   }
   const target = {
     kind: 'stage4', setId: t.doc.id, set: t.doc.name, unitName: t.doc.unitName || null, survivor: who, survivors: svs.length, pick: t.pick,
-    windows: t.windows, windowWords: t.windows.map((w) => CAPTURE_WINDOW_WORDS[w]), entries: entries.length, captureAt: cap.at, captureRelease: cap.release, look,
+    windows: t.windows, windowWords: t.windows.map((w) => CAPTURE_WINDOW_WORDS[w]), entries: entries.length, captureAt: cap.at, captureRelease: cap.release, look, reserveLook,
   };
-  fresh.capture.reads = [{ at: new Date().toISOString(), tool, survivor: who, windows: t.windows, look }, ...reads];
+  fresh.capture.reads = [{ at: new Date().toISOString(), tool, survivor: who, windows: t.windows, look, reserveLook }, ...reads];
   saveSet(fresh);
   return {
     ...out, target, trainThrough: null,

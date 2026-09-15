@@ -882,7 +882,7 @@ window.HELP = {
     controls: {
       tnSet: { what: 'Which Stage 4 record set to capture the trades of, from every set on this box, newest first.' },
       tnCapture: {
-        what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows.',
+        what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows, and on the reserve window when the set\'s layout keeps one and its seal is intact.',
         more: 'Tune comes before Held and asks nothing of it. A second press replaces the capture on record; the looks already counted stay.',
       },
       tuneTarget: { what: 'Which Stage 4 record set the two scans below work on, from those whose trades were captured.' },
@@ -892,6 +892,10 @@ window.HELP = {
       },
       tnWinTrain: { what: 'Whether the scans read the entries of the training window. Not a look: this window was read to choose the rule.' },
       tnWinTest: { what: 'Whether the scans read the entries of the test window. Not a look: this window was read to choose the rule.' },
+      tnWinReserve: {
+        what: 'Whether the scans read the reserve window\'s captured trades: the stretch sealed away before anything trained, written down by the capture when the set\'s layout keeps a reserve.',
+        more: 'A scan that reads them is a counted look on the reserve, stamped on the capture and said on every reserve set read from the rule. A capture taken before this existed holds no reserve entries and says so; capture the trades again.',
+      },
       tnWinHold: {
         what: 'Whether the scans read the entries of the held-back window.',
         more: 'Every scan that reads them is a counted look at the held-back window, stamped on the capture and counted on Held.',

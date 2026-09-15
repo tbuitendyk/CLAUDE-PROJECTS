@@ -2736,7 +2736,7 @@ async function drawHistory() {
 const TN_SET_KEY = 'cx-tune-set';
 const TN_PICK_KEY = 'cx-tune-pick';
 const TN_WINDOWS_KEY = 'cx-tune-windows';
-const TN_WINDOWS = [['train', 'tnWinTrain', 'training'], ['test', 'tnWinTest', 'test'], ['hold', 'tnWinHold', 'held-back']];
+const TN_WINDOWS = [['train', 'tnWinTrain', 'training'], ['test', 'tnWinTest', 'test'], ['hold', 'tnWinHold', 'held-back'], ['reserve', 'tnWinReserve', 'reserve']];
 function tnDay(ts) { return ts == null ? '?' : new Date(Number(ts)).toISOString().slice(0, 10); }
 function tnWindowWords(list) { return (list || []).map((w) => (TN_WINDOWS.find(([k]) => k === w) || [])[2] || w).join(' + '); }
 function tnRememberedSet(list) {
@@ -2772,12 +2772,12 @@ function tnCaptureBlockHtml(c) {
   const span = (x) => (x ? `${tnDay(x.fromTs)} to ${tnDay(x.toTs)}, ${x.chunks ?? '?'} chunks` : 'not recorded');
   return `<div class="panel" style="margin-top:.5rem">
     <h4 style="margin:0 0 .3rem">the capture on record <span class="muted">taken ${esc(String(c.at || '').slice(0, 16))} under release ${esc(c.release || '?')}${Number(c.times) > 1 ? ` · taken ${c.times} times, this is the latest` : ''}</span></h4>
-    <p class="note"><b>${c.captured} of ${c.survivors} survivors captured</b> · ${Number(e.train || 0).toLocaleString()} training entries, ${Number(e.test || 0).toLocaleString()} test entries, ${Number(e.hold || 0).toLocaleString()} held-back entries
+    <p class="note"><b>${c.captured} of ${c.survivors} survivors captured</b> · ${Number(e.train || 0).toLocaleString()} training entries, ${Number(e.test || 0).toLocaleString()} test entries, ${Number(e.hold || 0).toLocaleString()} held-back entries${c.reserve && c.reserve.captured ? `, ${Number(e.reserve || 0).toLocaleString()} reserve entries` : ` · <span class="muted">no reserve entries: ${esc(String((c.reserve || {}).why || 'captured before the reserve window was written down'))}</span>`}
       · by depth among the captured: <b>${esc((c.pick || {}).label || 'none')}</b></p>
     <p class="note">training ${span(w.train)} · test ${span(w.test)} · held-back ${span(w.hold)}</p>
     ${(c.notCaptured || []).length ? `<p class="note"><b class="warn">${c.notCaptured.length} survivor(s) not captured:</b> ${c.notCaptured.slice(0, 3).map((x) => `${esc(x.label)} - ${esc(x.why)}`).join(' · ')}${c.notCaptured.length > 3 ? ` · and ${c.notCaptured.length - 3} more` : ''}</p>` : ''}
     ${(c.missing || []).length ? `<p class="note"><b class="warn">${c.missing.length} survivor(s) are not in the stage 3 set's block on this unit</b></p>` : ''}
-    <p class="note">${reads.length ? `scans run on this capture: ${reads.length} · <b>the held-back entries have been read ${reads.filter((r) => r && r.look != null).length} time(s)</b>, each a counted look` : 'no scan has read this capture yet'}</p>
+    <p class="note">${reads.length ? `scans run on this capture: ${reads.length} · <b>the held-back entries have been read ${reads.filter((r) => r && r.look != null).length} time(s)</b>${reads.some((r) => r && r.reserveLook != null) ? ` · <b>the reserve entries have been read ${reads.filter((r) => r && r.reserveLook != null).length} time(s)</b>` : ''}, each a counted look` : 'no scan has read this capture yet'}</p>
     ${reads.length ? `<details><summary>the scans, newest first</summary><div class="scrollx" style="max-height:12rem;overflow-y:auto"><table><thead><tr>
       <th title="when the scan ran">when</th><th title="which scan">scan</th><th title="the survivor it read">survivor</th><th title="the windows it read">windows</th><th title="the look number when the held-back entries were read">look</th>
     </tr></thead><tbody>${reads.map((r) => `<tr><td>${esc(String(r.at || '').slice(0, 16))}</td><td>${r.tool === 'stop' ? 'protective stop' : 'conviction'}</td><td>${esc(r.survivor)}</td><td>${esc(tnWindowWords(r.windows))}</td><td>${r.look == null ? '—' : r.look}</td></tr>`).join('')}</tbody></table></div></details>` : ''}
@@ -2816,6 +2816,7 @@ function tnTargetRowHtml(cand, pick, wins) {
     <label class="f" style="flex:none"><input type="checkbox" id="tnWinTrain" ${wins.includes('train') ? 'checked' : ''}> training</label>
     <label class="f" style="flex:none"><input type="checkbox" id="tnWinTest" ${wins.includes('test') ? 'checked' : ''}> test</label>
     <label class="f" style="flex:none"><input type="checkbox" id="tnWinHold" ${wins.includes('hold') ? 'checked' : ''}> held-back</label>
+    <label class="f" style="flex:none" title="the reserve window's trades, written down by the capture when the set's layout keeps a reserve and its seal is intact. A scan that reads them is a counted look on the reserve."><input type="checkbox" id="tnWinReserve" ${wins.includes('reserve') ? 'checked' : ''}> reserve</label>
     <span class="note">${wins.includes('hold') ? `<b class="warn">reading the held-back entries is look ${(cand.looks || 0) + 1}</b>` : 'the held-back entries are not read'}</span>
   </div>`;
 }

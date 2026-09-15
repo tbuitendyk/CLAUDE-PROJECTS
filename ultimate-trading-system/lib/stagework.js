@@ -895,7 +895,9 @@ async function s3UnitTask(task) {
     if (task.unread || task.capture) throw new Error('a pricing of the test window alone holds no held-back window, so it can neither grade the unread window nor capture trades');
     holdChunks = [];
   }
-  if (task.unread && task.capture) throw new Error('the per-trade capture never reads the unread window: that window is the reserve grade\'s alone');
+  // 3.150.0 (VERIFY-DESIGN.md Part 9 release 3, H3.2): the capture may be handed the
+  // unread window too -- the hold slice below is then the reserve window, and the
+  // entries it writes down are the reserve window's trades
   if (task.unread) {
     const got = await unreadChunksFor(combo, geometry, task.unread.fromTs);
     if (got.chunks.length < 2) {
