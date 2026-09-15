@@ -7876,10 +7876,20 @@ async function pictureOf(doc) {
     : { why: cap ? 'the capture on Tune holds no training entries for these survivors' : 'no capture on Tune yet — the training window is read off the capture' };
   // ONE SURVIVOR AT A TIME: the same lines for each, by the name the board gives it
   const rowOf = (set, label) => { const b = set && set.block ? set.block : null; const x = b ? ((b.survivors || {}).rows || []).find((y) => y.label === label) : null; const o = b && b.read && b.read.own ? (b.read.own.rows || []).find((y) => y.label === label) : null; return x ? { money: x.money, trades: x.trades, vsLong: x.vsLong ?? null, clears: o ? o.clears : null, four: o ? o.four : null, beats: o ? o.beats : null } : null; };
+  // THE TUNINGS APPLIED ON TUNE (3.151.0): the stop and the sizing the set froze for each survivor, and its money with and without them, off its captured trades
+  const frozen = (doc.stopChoices && typeof doc.stopChoices === 'object') ? doc.stopChoices : (rule.stopChoices || {});
+  let tuned = {};
+  try { tuned = await tunedOfRule({ ...rule, stopChoices: frozen }, labels); } catch (err) { out.tunedWhy = String((err && err.message) || err); }
   out.survivors = labels.map((L) => {
     const rr = rows.find((x) => x.label === L) || null;
-    return { label: L, train: trainOf(L), test: rr ? { money: rr.avgTest, trades: rr.testTrades ?? null } : null, held: rowOf(heldSet, L), reserve: rowOf(reserveSet, L) };
+    const c = frozen[L] || null;
+    return {
+      label: L, train: trainOf(L), test: rr ? { money: rr.avgTest, trades: rr.testTrades ?? null } : null, held: rowOf(heldSet, L), reserve: rowOf(reserveSet, L),
+      tunings: c ? { stop: c.stopPct != null ? Number(c.stopPct) : null, stopSaid: Object.prototype.hasOwnProperty.call(c, 'stopPct'), sizing: !!(c.sizing && c.sizing.on) } : null,
+      tuned: tuned[L] || null,
+    };
   });
+  out.rule.tunings = { survivorsWithATuning: out.survivors.filter((x) => x.tuned).length, of: labels.length, capture: !!cap };
   return out;
 }
 async function stage4GreenlightDry(setId) {
@@ -8178,6 +8188,87 @@ function setStopChoice(setId, asked = {}) {
   fresh.stopChoices = choices;
   saveSet(fresh);
   return { setId: fresh.id, set: fresh.name, survivor: label, ...choices[label] };
+}
+// ---- THE SIZING APPLIED TO A SURVIVOR (3.151.0, owner order 2026-09-15) ----
+//
+// "we need all of the potential options under History and Tune to be
+// potentially applied to the sets going forward to Held, Reserve, and
+// Greenlight ... choose to APPLY those tunings OR NOT". The conviction scan
+// sizes each trade by how many members agreed (the ladder: one clip per
+// agreeing member). Applying it is a choice on the survivor's own record,
+// beside the stop, with the owner's reason; taking it off is the same door.
+// A held set or a reserve set freezes the choices at its press, a greenlight
+// carries them, and the picture on Greenlight shows the survivor's money with
+// and without them, worked out from its captured trades by the scans' own
+// arithmetic. Nothing here prices a record again.
+function setSizingChoice(setId, asked = {}) {
+  const doc = getSet(String(setId || ''));
+  if (!doc || doc.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${setId}'`); e.status = 404; throw e; }
+  if (isJudgeSet(doc)) { const e = new Error(`${doc.name} is a ${doc.kind} set and its choices were frozen at the press — set the sizing on the rule it was read from and read the rule again`); e.status = 400; throw e; }
+  if (!doc.capture) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
+  const pick = asked.pick == null || asked.pick === '' || asked.pick === 'depth' ? 'depth' : String(asked.pick);
+  if (pick === 'all') { const e = new Error('the sizing is applied to one survivor — pick one under Tuning targets, not all survivors'); e.status = 400; throw e; }
+  const label = pick === 'depth' ? ((doc.capture.pick || {}).label || null) : pick;
+  const row = (doc.capture.rows || []).find((r) => r.label === label) || null;
+  if (!row) { const e = new Error(pick === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${pick}' is not one of the ${doc.capture.captured} captured survivors of ${doc.name}`); e.status = 400; throw e; }
+  const on = !!asked.on;
+  const why = typeof asked.why === 'string' ? asked.why.trim().slice(0, 300) : '';
+  const fresh = getSet(doc.id);
+  const choices = fresh.stopChoices && typeof fresh.stopChoices === 'object' ? fresh.stopChoices : {};
+  const members = Math.max(1, Number(doc.capture.members) || 1);
+  const mine = { ...(choices[label] || {}) };
+  if (on) mine.sizing = { on: true, ladder: Array.from({ length: members }, (_, i) => i + 1), clipUsd: 10, why, at: new Date().toISOString(), by: 'owner' };
+  else delete mine.sizing;
+  choices[label] = mine;
+  fresh.stopChoices = choices;
+  saveSet(fresh);
+  return { setId: fresh.id, set: fresh.name, survivor: label, sizing: mine.sizing || null };
+}
+// THE SURVIVOR'S MONEY WITH AND WITHOUT ITS TUNINGS, per window, off its captured
+// trades (3.151.0): the scans' own arithmetic -- a trade stopped when its
+// adverse move passes the stop, sized by the ladder at its agreement -- in the
+// scans' dollars (one clip a trade). Read, never priced; a survivor with no
+// tuning on record is not worked out.
+async function tunedOfRule(rule, labels) {
+  const out = {};
+  const cap = readCapture(rule.id);
+  const choices = (rule && rule.stopChoices) || {};
+  const wanted = (labels || []).filter((L) => choices[L] && (choices[L].stopPct != null || (choices[L].sizing && choices[L].sizing.on)));
+  if (!cap || !wanted.length) return out;
+  const parent = getSet((rule.parent || {}).id);
+  if (!parent) return out;
+  const sw = require('./stagework');
+  const { multFor } = require('./convictionsweep');
+  const { entryOutcome } = require('./stoptuner');
+  const { maps } = await sw.tradeMapFor(cap.combo, cap.geometry, parent.params || {}, pinOf(parent));
+  const fee = Number((cap.fee || {}).feePerLeg) || 0;
+  for (const L of wanted) {
+    const sv = (cap.survivors || []).find((x) => x.label === L);
+    if (!sv) continue;
+    const c = choices[L];
+    const S = c.stopPct != null ? Number(c.stopPct) : null;
+    const sz = c.sizing && c.sizing.on ? c.sizing : null;
+    const clip = sz ? Number(sz.clipUsd) || 10 : 10;
+    const windows = {};
+    for (const [w, key] of [['train', 'train'], ['test', 'test'], ['held', 'hold'], ['reserve', 'reserve']]) {
+      const entries = sv.entries[key] || [];
+      let flat = 0; let tuned = 0; let priced = 0; let stopped = 0;
+      for (const e of entries) {
+        const o = entryOutcome(e.ts, e.side, maps.trade, sv.tHours, fee);
+        if (!o.priced) continue;
+        priced++;
+        const hit = S != null && o.mae > S;
+        if (hit) stopped++;
+        const net = hit ? -S - 2 * fee : o.netPct;
+        const mult = sz ? multFor(sz.ladder, e.agree) : 1;
+        flat += o.netPct * clip;
+        tuned += net * clip * mult;
+      }
+      windows[w] = { trades: entries.length, priced, unpriced: entries.length - priced, stopped, flatUsd: Math.round(flat * 100) / 100, tunedUsd: Math.round(tuned * 100) / 100 };
+    }
+    out[L] = { stop: S, sizing: sz ? { on: true, ladder: sz.ladder, clipUsd: clip } : null, clipUsd: clip, windows };
+  }
+  return out;
 }
 // WHAT A SCAN ON A CAPTURE IS AIMED AT, resolved before anything loads: the set, the
 // survivor (by depth among the captured, or named) and the windows ticked.
@@ -9493,7 +9584,7 @@ module.exports = {
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
-  stage4GreenlightSource, stage4GreenlightDry, pictureOf, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
+  stage4GreenlightSource, stage4GreenlightDry, pictureOf, setSizingChoice, tunedOfRule, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
   stopChoiceOf, setStopChoice,

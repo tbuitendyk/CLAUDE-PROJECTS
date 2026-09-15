@@ -754,6 +754,10 @@ app.get('/api/funnel/set/:id/capture/status', (req, res) => res.json(stages.tune
 // sent, so the table below the press carries the choice as one row. The scan
 // is the same heavy one the Tune button runs, one at a time; when one is
 // already running nothing is recorded, so the page's "nothing changed" is true.
+// THE SIZING APPLIED TO A SURVIVOR (3.151.0): on or off, with the owner's reason, on the survivor's own record beside its stop
+app.post('/api/funnel/set/:id/sizing-choice', (req, res) => {
+  try { return res.json({ ok: true, choice: stages.setSizingChoice(req.params.id, req.body || {}) }); } catch (err) { return res.status(err.status || 400).json({ error: err.message }); }
+});
 app.post('/api/funnel/set/:id/stop-choice', (req, res) => {
   try {
     const b = req.body || {};

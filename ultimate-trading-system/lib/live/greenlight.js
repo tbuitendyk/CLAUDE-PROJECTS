@@ -137,7 +137,7 @@ function greenlightFromStage4(src, { by = 'owner', why, name } = {}) {
     },
     configSnapshot: cfg,
     // the stop and the ladder as the set froze them at its press, and the half-life the survivor carries (3.149.0), read off the set
-    frozen: { stop: src.stop || null, halfLifeMonths: src.survivor && src.survivor.halfLife != null ? src.survivor.halfLife : null },
+    frozen: { stop: src.stop || null, sizing: src.stop && src.stop.sizing ? src.stop.sizing : null, halfLifeMonths: src.survivor && src.survivor.halfLife != null ? src.survivor.halfLife : null },
     shuttledSetupIds: [],
   };
   atomicWrite(fileFor(id), record);

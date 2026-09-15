@@ -2938,7 +2938,13 @@ async function drawTune() {
       <label class="f" title="why you chose this stop, or no stop, for the survivor picked under Tuning targets. Saved with the choice on that survivor. Yours to write and to change at any time.">your reason for this choice<input id="stopWhy" type="text" maxlength="300" placeholder="why this stop, or why none" value="${esc(onRecord ? onRecord.why || '' : '')}" style="width:32rem" ${stopHeld ? 'disabled' : ''}></label>
       <button id="stopWhySave" ${stopHeld || !onRecord ? `disabled title="${esc(stopHeldWhy || 'no choice about the stop is on record for this survivor yet — apply one, or clear it, first')}"` : 'title="saves the reason on its own, leaving the stop on record exactly as it is; no scan runs"'}>Save the reason</button>
     </div>
-    ${stopLabel ? (onRecord ? `<div class="note" style="margin-bottom:.4rem">on record for <b>${esc(stopLabel)}</b>: ${onRecord.stopPct != null ? pct(onRecord.stopPct) : 'no stop'}${onRecord.why ? ` — ${esc(onRecord.why)}` : ' — no reason recorded'}${onRecord.at ? ` (${esc(String(onRecord.at).slice(0, 10))}${onRecord.by ? ', ' + esc(onRecord.by) : ''})` : ''}</div>` : `<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded for <b>${esc(stopLabel)}</b> yet</div>`) : ''}
+    ${stopLabel ? (onRecord ? `<div class="note" style="margin-bottom:.4rem">on record for <b>${esc(stopLabel)}</b>: ${onRecord.stopPct != null ? pct(onRecord.stopPct) : (Object.prototype.hasOwnProperty.call(onRecord, 'stopPct') ? 'no stop' : 'no stop chosen yet')}${onRecord.why ? ` — ${esc(onRecord.why)}` : ' — no reason recorded'}${onRecord.at ? ` (${esc(String(onRecord.at).slice(0, 10))}${onRecord.by ? ', ' + esc(onRecord.by) : ''})` : ''}</div>` : `<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded for <b>${esc(stopLabel)}</b> yet</div>`) : ''}
+    <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
+      <label class="f" title="why you applied the conviction sizing to the survivor picked under Tuning targets, or took it off. Saved with the choice on that survivor.">your reason for the sizing<input id="sizingWhy" type="text" maxlength="300" placeholder="why size by conviction, or why not" value="${esc(onRecord && onRecord.sizing ? onRecord.sizing.why || '' : '')}"></label>
+      <button id="sizingApply" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"` : 'title="records on the survivor picked under Tuning targets that its trades are sized by conviction: one clip for each member that agreed, the ladder the conviction scan below reads. A held set or a reserve set read after this freezes the choice, and a greenlight carries it. Nothing is applied to any trading machine."'}>Apply the conviction sizing</button>
+      <button id="sizingOff" ${stopHeld || !(onRecord && onRecord.sizing) ? `disabled title="${esc(stopHeldWhy || 'no sizing is on record for this survivor')}"` : 'title="records that the survivor picked under Tuning targets is NOT sized by conviction: every trade at one clip"'}>Take the sizing off</button>
+    </div>
+    ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b>, one clip a member that agreed${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — every trade at one clip'}</div>` : ''}
     <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop</button></div>
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : ''}</div>
   </div>
@@ -3059,6 +3065,19 @@ async function drawTune() {
     // the box is in PERCENT, the record keeps a FRACTION
     applyStop(v / 100);
   };
+  // the sizing applied or taken off (3.151.0): a record on the survivor, no scan
+  const sizeWhy = () => { const el = $('#sizingWhy'); return el ? el.value.trim() : ''; };
+  const sizing = async (on) => {
+    if (!confirm(on
+      ? `Apply the conviction sizing to the survivor ${stopLabel} of ${chosen.name}?\n\nThis records that its trades are sized by how many members agreed, one clip a member. The next held set or reserve set read from the rule freezes it, and a greenlight carries it. Nothing is applied to any trading machine.`
+      : `Take the conviction sizing off the survivor ${stopLabel} of ${chosen.name}?\n\nThis records that every trade is taken at one clip.`)) return;
+    const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/sizing-choice`, { pick: tnPickVal, on, why: sizeWhy() }, 'The Stage 4 record set under Tuning targets lists what is captured.');
+    if (out) drawTune();
+  };
+  const szOn = $('#sizingApply');
+  if (szOn) szOn.onclick = () => sizing(true);
+  const szOff = $('#sizingOff');
+  if (szOff) szOff.onclick = () => sizing(false);
   const clr = $('#stopClear');
   if (clr) clr.onclick = () => {
     if (!confirm(`Clear the protective stop from the survivor ${stopLabel} of ${chosen.name}?\n\n`
@@ -3275,9 +3294,14 @@ function glOneHtml(d, pick) {
   const sv = p.survivors.find((x) => x.label === label) || null;
   if (!sv) return '';
   const cell = (x) => (x ? `<td class="${(x.money || 0) >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td><td>${x.trades == null ? '—' : x.trades}</td><td>${x.clears == null ? '—' : (x.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>')}</td>` : '<td colspan="3" class="muted">no figure</td>');
-  return `<p class="note" style="margin-top:.5rem"><b>One survivor, ${esc(sv.label)}:</b> the same lines for it alone</p>
-    <div class="scrollx"><table><thead><tr><th title="one stretch of history">stretch</th><th title="this survivor's money on that stretch">$</th><th title="its trades on that stretch">trades</th><th title="whether it is in the money and ahead of all four comparisons at its own hold length on that stretch">clears all four</th></tr></thead>
-    <tbody>${(p.stretches || []).map((k) => `<tr><td>${glStretchWord(k)}</td>${cell(sv[k])}</tr>`).join('')}</tbody></table></div>`;
+  // the tunings applied on Tune (3.151.0): the survivor's money with and without them, off its captured trades, in the scans' dollars
+  const t = sv.tuned || null;
+  const tcell = (k) => { const w = t && t.windows ? t.windows[k] : null; return w ? `<td>${money(w.flatUsd)}</td><td class="${(w.tunedUsd || 0) >= 0 ? 'pos' : 'neg'}">${money(w.tunedUsd)}</td><td>${w.stopped ? `${w.stopped} of ${w.priced}` : '—'}</td>` : '<td colspan="3" class="muted">no tuning</td>'; };
+  const tn = sv.tunings || null;
+  return `<p class="note" style="margin-top:.5rem"><b>One survivor, ${esc(sv.label)}:</b> the same lines for it alone${tn ? ` · <b>tunings frozen on this set:</b> ${tn.stop != null ? `protective stop ${(100 * tn.stop).toFixed(2)}%` : (tn.stopSaid ? 'no stop' : 'no stop chosen')}, ${tn.sizing ? 'sized by conviction' : 'every trade at one clip'}` : ' · no tuning on record'}</p>
+    <div class="scrollx"><table><thead><tr><th title="one stretch of history">stretch</th><th title="this survivor's money on that stretch, as the set priced it">$</th><th title="its trades on that stretch">trades</th><th title="whether it is in the money and ahead of all four comparisons at its own hold length on that stretch">clears all four</th>
+      <th title="its captured trades on that stretch with no tuning, in the scans' dollars: one clip a trade">no tuning $ (a clip a trade)</th><th title="the same trades with the frozen stop and sizing applied, by the scans' own arithmetic">tuned $ (a clip a trade)</th><th title="trades the frozen stop closed early, of those priced">stopped</th></tr></thead>
+    <tbody>${(p.stretches || []).map((k) => `<tr><td>${glStretchWord(k)}</td>${cell(sv[k])}${tcell(k)}</tr>`).join('')}</tbody></table></div>`;
 }
 function glStage4PanelHtml(list, chosen, d) {
   const depth = d && d.depthPick ? d.depthPick : null;

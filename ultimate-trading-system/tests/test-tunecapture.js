@@ -308,6 +308,19 @@ module.exports = {
       assert.deepStrictEqual({ reserveLook: sR.target.reserveLook, look: sR.target.look, words: sR.target.windowWords }, { reserveLook: 1, look: null, words: ['reserve'] });
       const dryR = await stages.judgeDry(c.cut.id, 'reserve');
       assert.strictEqual((dryR.looks || {}).tuneReads, 1, 'the reserve read on Tune is a look the reserve counts');
+      // THE SIZING APPLIED (3.151.0): a choice on the survivor beside its stop; the picture works its money out with and without it, off the capture
+      const depthLabel = stages.getSet(c.cut.id).capture.pick.label;
+      const sz = stages.setSizingChoice(c.cut.id, { pick: 'depth', on: true, why: 'size by conviction' });
+      assert.deepStrictEqual({ survivor: sz.survivor, on: sz.sizing.on, ladder: sz.sizing.ladder.length, clip: sz.sizing.clipUsd }, { survivor: depthLabel, on: true, ladder: stages.getSet(c.cut.id).capture.members, clip: 10 });
+      const tuned = await stages.tunedOfRule(stages.getSet(c.cut.id), [depthLabel]);
+      const tw = tuned[depthLabel].windows;
+      assert.ok(['train', 'test', 'held', 'reserve'].every((w) => tw[w] && Number.isFinite(tw[w].flatUsd) && Number.isFinite(tw[w].tunedUsd)), JSON.stringify(tw));
+      assert.strictEqual(tw.reserve.trades, capR.survivors.find((x) => x.label === depthLabel).entries.reserve.length, 'the reserve window is read off the capture too');
+      const pic = await stages.pictureOf(stages.getSet(c.cut.id));
+      const mine = pic.survivors.find((x) => x.label === depthLabel);
+      assert.deepStrictEqual({ sizing: mine.tunings.sizing, stopSaid: mine.tunings.stopSaid, tunedOn: !!mine.tuned, n: pic.rule.tunings.survivorsWithATuning }, { sizing: true, stopSaid: false, tunedOn: true, n: 1 });
+      assert.strictEqual(stages.setSizingChoice(c.cut.id, { pick: 'depth', on: false, why: '' }).sizing, null, 'taken off again');
+      assert.deepStrictEqual(await stages.tunedOfRule(stages.getSet(c.cut.id), [depthLabel]), {}, 'a survivor with no tuning on record is not worked out');
       // a re-capture keeps the looks already counted
       stages.tuneCaptureStart(c.cut.id);
       await settle(() => stages.tuneCaptureStatus(c.cut.id), 'the second capture');

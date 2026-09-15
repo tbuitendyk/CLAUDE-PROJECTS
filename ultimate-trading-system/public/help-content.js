@@ -904,6 +904,17 @@ window.HELP = {
         what: 'A protective stop of your own choosing for the survivor picked under Tuning targets, as a percentage of the opening price.',
         more: 'The floor is twice the round trip at the fee this set\'s trades were priced at: tighter than the round trip and a triggered stop is a guaranteed loss; tighter than the floor and it fires on ordinary hourly noise.',
       },
+      sizingWhy: {
+        what: 'Your reason for applying the conviction sizing to the survivor picked under Tuning targets, or for taking it off. Saved with the choice on that survivor.',
+      },
+      sizingApply: {
+        what: 'Records on the survivor picked under Tuning targets that its trades are sized by conviction: one clip for each member that agreed, the ladder the conviction scan reads.',
+        more: 'A tuning you can apply or not. The next held set or reserve set read from the rule freezes the choice, a greenlight carries it, and the picture on Greenlight shows the survivor\'s money with and without it, worked out from its captured trades by the scan\'s own arithmetic. Nothing is applied to any trading machine.',
+      },
+      sizingOff: {
+        what: 'Records that the survivor picked under Tuning targets is not sized by conviction: every trade at one clip.',
+        more: 'The same record, switched off; the reason box goes with it.',
+      },
       stopCustomApply: {
         what: 'Records the percentage typed beside it as the stop forced onto the survivor picked under Tuning targets, and scans that survivor\'s captured entries over the windows ticked, so the table below carries the stop as one row.',
         more: 'It is a record on the Stage 4 record set and a row of the table; it is applied to no trading machine. A read of the held-back entries is a counted look, as for any scan.',
@@ -1002,7 +1013,7 @@ window.HELP = {
     title: 'Greenlight',
     how: [
       ['The picture through every period',
-        'Under the chosen set, the rule\'s money on each of the four stretches of history — train, test, held and reserve — read off the sets this one is built on and the records they stand on: train off the capture on Tune, test off the stage 3 records, held off the held set, reserve off the reserve set. Each stretch is held against the four simpler things at the survivors\' own hold lengths, and the last column counts the survivors that clear all four there. Choosing a survivor above draws the same lines for it alone. Nothing here is priced and nothing counts as a look; a stretch with nothing to read says why.'],
+        'Under the chosen set, the rule\'s money on each of the four stretches of history — train, test, held and reserve — read off the sets this one is built on and the records they stand on: train off the capture on Tune, test off the stage 3 records, held off the held set, reserve off the reserve set. Each stretch is held against the four simpler things at the survivors\' own hold lengths, and the last column counts the survivors that clear all four there. Choosing a survivor above draws the same lines for it alone, with the tunings frozen on the set beside them: the survivor\'s captured trades on each stretch with no tuning and with the stop and sizing applied, in the scans\' dollars. Nothing here is priced and nothing counts as a look; a stretch with nothing to read says why.'],
       ['A survivor of a held set or a reserve set, without shopping',
         'The second panel takes one survivor of a Stage 4 record set forward, but only from a reserve set that passed on Reserve, or from a held set that passed on Held on a layout that keeps no reserve, held alone. A rule is never greenlighted: the set a press made on Held or Reserve is, so what was judged and what is frozen are one thing. Which survivor is a choice made without money: by depth, the setting nearest the middle of every range of the rule, the same idea as the widest region\'s centre; or a survivor you name, recorded as your pick. The frozen settings carry the way the members agree exactly as that survivor does, which no single number of votes expresses, and the record names the set, the verdict, the survivor and how it was chosen.'],
       ['Writing down a decision, not starting one',
