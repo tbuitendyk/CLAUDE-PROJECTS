@@ -1002,6 +1002,11 @@ module.exports = {
     assert.ok(/^function heldBackPanel\(title, h, c\)/m.test(ui), 'one panel builder draws them');
     const uses = (ui.match(/heldBackPanel\('/g) || []).length;
     assert.strictEqual(uses, 2, 'the verdict and the reserve grade both use it, and nothing else writes its own');
+    // 3.143.3 (owner: "do the same on verify" as the break between Tune's two tables): the panel's
+    // second and third tables each sit a clear gap below the table above, never on its next line
+    const hb = ui.slice(ui.indexOf('function heldBackPanel(title, h, c) {'), ui.indexOf('\n}\n', ui.indexOf('function heldBackPanel(title, h, c) {')));
+    assert.strictEqual((hb.match(/<div class="scrollx"/g) || []).length, 3, 'the panel no longer draws three tables');
+    assert.strictEqual((hb.match(/<div class="scrollx" style="margin-top:\.8rem"><table>/g) || []).length, 2, 'a table on the panel runs straight on from the one above it again, with no break between them');
     // the prose line and every part of it that flipped subject are gone
     assert.ok(!/against always long`/.test(ui), 'the against-always-long figure is off this line (owner, 2026-09-10)');
     assert.ok(!/beatsBuyHold \? 'beaten'/.test(ui), 'no screen marks a comparison from a stored flag');

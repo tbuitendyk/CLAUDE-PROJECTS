@@ -118,7 +118,7 @@ function heldBackPanel(title, h, c) {
       <td>${h.trades == null || !Number.isFinite(Number(h.trades)) ? '&mdash;' : Number(h.trades).toFixed(1)}</td>
       <td>${h.missing ? Number(h.missing).toLocaleString() : '&mdash;'}</td>
     </tr></tbody></table></div>
-    <div class="scrollx"><table><thead><tr>
+    <div class="scrollx" style="margin-top:.8rem"><table><thead><tr>
       <th title="one of the four simpler things the rule has to beat, priced on the same window, the same settings and the same fees">comparison</th>
       <th title="what that comparison itself made, read at the worst of the hold lengths these settings use">it made</th>
       <th title="the rule's money minus that comparison's. A negative figure means the rule made less than it.">rule ahead by</th>
@@ -128,7 +128,7 @@ function heldBackPanel(title, h, c) {
       <td class="${r.made == null ? 'muted' : (r.made >= 0 ? '' : 'neg')}">${r.made == null ? 'no figure' : money(r.made)}</td>
       <td>${sgn(r.gap)}</td>
       <td>${yn(r.beaten)}</td></tr>`).join('')}</tbody></table></div>
-    <div class="scrollx"><table><thead><tr>
+    <div class="scrollx" style="margin-top:.8rem"><table><thead><tr>
       <th title="the highest of the four. It is the one the rule has to beat, because a rule that leans one way matches the window about half the time by chance.">best of the four</th>
       <th title="the rule's money minus the best of the four. A negative figure means the rule made less than the best simple thing available.">rule ahead by it</th>
       <th title="whether this read stands: in the money, and ahead of the best of the four">this read</th>

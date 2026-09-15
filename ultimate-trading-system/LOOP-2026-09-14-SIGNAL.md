@@ -975,3 +975,10 @@ the agreement table". The per-level table now sits a clear gap (.8rem) below
 the summary table. Not touched, and noted for the owner: `heldBackPanel` on
 Verify draws its three tables back to back the same way (RULE ZERO). Third
 digit.
+
+## AG. The same break on Verify — owner GO NOW! 2026-09-15 (3.143.3)
+
+"OBVIOUSLY do the same on verify". The three tables under "Held-back read"
+and under "The read" each sat on the line after the one before; the second
+and third now sit the same clear gap (.8rem) below the table above them.
+Third digit.
