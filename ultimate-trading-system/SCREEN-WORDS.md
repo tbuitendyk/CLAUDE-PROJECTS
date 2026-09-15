@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **67b54832b91e — what the box is serving**, not from the working tree.
+Generated from **800861222441 — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1290,9 +1290,8 @@ again and are as at average behind beside best block both box Build built by cen
 
 # Tune
 
-## What the controls are called (79)
+## What the controls are called (83)
 
-- `— uplift`
 - `, each a counted look`
 - `, on its`
 - `, p=`
@@ -1307,6 +1306,7 @@ again and are as at average behind beside best block both box Build built by cen
 - `A heavy scan is running (`
 - `all`
 - `all survivors -`
+- `amount traded $`
 - `Apply custom`
 - `Apply to the live rule`
 - `by depth -`
@@ -1318,25 +1318,28 @@ again and are as at average behind beside best block both box Build built by cen
 - `entries`
 - `entries on the`
 - `Exposure:`
+- `flat`
 - `h`
 - `held-back`
 - `held-back entries`
+- `ladder`
+- `ladder over flat`
 - `last scan failed:`
 - `last sweep failed:`
 - `look`
 - `losers over`
+- `money $`
 - `no`
 - `No stop (clear)`
 - `of`
 - `of the Stage 4 record set`
-- `on`
 - `on record:`
 - `or apply a custom stop %`
 - `over`
 - `per-$`
-- `priced entries: flat`
 - `Read from the capture:`
 - `refused:`
+- `return on the amount traded`
 - `Run conviction sweep`
 - `running…`
 - `Save the reason`
@@ -1344,6 +1347,7 @@ again and are as at average behind beside best block both box Build built by cen
 - `scan target`
 - `scans run on this capture:`
 - `shuffled deals, mean uplift`
+- `sizing`
 - `Stage 4 record set`
 - `survivor`
 - `survivor(s) not captured:`
@@ -1362,8 +1366,8 @@ again and are as at average behind beside best block both box Build built by cen
 - `Tune protective stop`
 - `Tuning targets`
 - `under release`
+- `uplift`
 - `Verdict:`
-- `vs ladder`
 - `when`
 - `window(s), captured`
 - `windows`
@@ -1394,7 +1398,7 @@ _none_
 - entries.
 - NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. Apply buttons exist
 - only for the running engine; for a lab row the number informs the greenlight instead.
-- · return on the amount traded: flat
+- priced entries.
 - ; the same p holds for the return on the amount traded, because a shuffle keeps the ladder's amount traded.
 - Per-trade capture of a Stage 4 record set
 - The two scans below take a list of trades and price them themselves; a Stage 4 record set holds money per
