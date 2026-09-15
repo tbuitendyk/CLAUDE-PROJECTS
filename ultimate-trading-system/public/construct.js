@@ -2097,6 +2097,15 @@ function vLinesHtml(b) {
   const l = b.lineB || {};
   return `<p class="note"><b>Information only, never a pass or fail.</b> Line A, the rule on the test window against its own copies: real ${money(a.real)} beats ${a.beats} of ${a.copies} (${esc(a.why || '')}). Line B, the bound on shopping: the best ${l.n} of ${Number(l.of || 0).toLocaleString()} by test money made ${money(l.real)} and beats ${l.beats} of ${l.copies} scrambled boards' own best ${l.n} (${esc(l.why || '')}).</p>`;
 }
+// one survivor's reading at its own hold length, as a cell (3.146.0). A helper
+// with braces, not an expression inside the table's template: the word list's
+// walk reads the text between tags, and a branch written inline there put
+// "x.known" and "x.clears" on the Verify list as though the owner could see them.
+function vOwnCell(x) {
+  if (!x) return '<span class="muted">not read</span>';
+  if (!x.known) return `<span class="warn">no figure at ${esc(x.key)}</span>`;
+  return x.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>';
+}
 function vSurvivorsTableHtml(b) {
   const rows = ((b.survivors || {}).rows) || [];
   if (!rows.length) return '';
@@ -2113,7 +2122,7 @@ function vSurvivorsTableHtml(b) {
     <th title="as stored on the record: how far its held-back money sits above the typical copy, over the population spread">lead</th>
     <th title="read here: of the copies kept, how many its held-back money beats by at least a cent, against the same bar as the set">beats N of K</th>
     <th title="this survivor's own reading against its own copies at the same bar. It never picks a survivor and never gates the set.">own verdict</th>
-  </tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.label)}</td><td class="${(r.held || 0) >= 0 ? 'pos' : 'neg'}">${money(r.held)}</td><td>${r.trades == null ? '—' : r.trades}</td><td>${money(r.vsLong)}</td><td>${(() => { const x = ownBy.get(r.label); return !x ? '<span class="muted">not read</span>' : !x.known ? '<span class="warn">no figure at ${esc(x.key)}</span>' : x.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>'; })()}</td><td>${r.storedBeat == null ? '—' : r.storedBeat}</td><td>${r.storedPairs == null ? '—' : r.storedPairs}</td><td>${vFix(r.storedLead)}</td><td>${r.beats} of ${r.copiesKept}</td><td class="${r.pass ? 'pos' : 'neg'}">${r.pass ? 'PASS' : 'FAIL'}</td></tr>`).join('')}</tbody></table></div>
+  </tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.label)}</td><td class="${(r.held || 0) >= 0 ? 'pos' : 'neg'}">${money(r.held)}</td><td>${r.trades == null ? '—' : r.trades}</td><td>${money(r.vsLong)}</td><td>${vOwnCell(ownBy.get(r.label))}</td><td>${r.storedBeat == null ? '—' : r.storedBeat}</td><td>${r.storedPairs == null ? '—' : r.storedPairs}</td><td>${vFix(r.storedLead)}</td><td>${r.beats} of ${r.copiesKept}</td><td class="${r.pass ? 'pos' : 'neg'}">${r.pass ? 'PASS' : 'FAIL'}</td></tr>`).join('')}</tbody></table></div>
   <p class="note muted">${rows.length} survivors, every one of them, in the set's own order. There is no sort on this table: a sort is a look.</p>`;
 }
 function vBlockHtml(b, isVerdict) {

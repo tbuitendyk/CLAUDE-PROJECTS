@@ -1030,3 +1030,21 @@ Decision 96; VERIFY-DESIGN.md Part 8 marked built. Second digit. The owner
 then ordered every stored FAIL verdict blown away for a re-run under the
 fair comparison; done after the deploy, through a box-side script, and
 recorded in section AK.
+
+## AK. The stored FAIL verdicts blown away — owner command 2026-09-15 (after 3.146.0)
+
+"when you're done i want you to blow away *permanently* all of those fake
+'Fail' verdicts that are stored and i'm going to re-run them with the fair
+comparison. this is not a request -- it's a command." Done after 3.146.0 was
+serving, through a box-side script (vps-access/scripts/
+uts-s4-forget-fail-verdicts.sh) that removes every verdict block stamped
+FAIL from a Stage 4 record set and keeps a PASS; no backup, by the word
+"permanently". Six blocks went: one each on the 199-setting rule (look 1,
+3.92.1; its PASS block stays), the 14-setting rule (3.106.0) and the
+48-setting rule (3.110.2), and all three on the 98-setting rule (looks 1
+and 2 of 2026-09-11 under 3.110.1, look 3 of 2026-09-15 under 3.143.3). The
+38-setting rule and S4-Pasers#3c had no block. The walks, the rules, the
+looks already counted and the other readings were not touched. 3.146.1 in
+the same sitting: the survivor table's own-hold cell moved into a helper
+with braces, because the word list's walk had read the inline branch's
+"x.known" and "x.clears" as words on the Verify screen. Third digit.
