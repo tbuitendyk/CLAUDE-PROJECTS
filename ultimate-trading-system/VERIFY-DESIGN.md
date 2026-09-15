@@ -1153,3 +1153,303 @@ sentence is built from — reporting, not arithmetic.
 
 ---
 
+
+# Part 9 — Held and Reserve: one screen, two stretches, and the set each press makes
+
+> **Owner order, 2026-09-15 (LOOP NOW! including deploy):** "the held and
+> reserved tabs is fine, but what we need to do is have essentially identical
+> functionality between the two ... One is just bringing it up to a second
+> look at history that has never been seen before. So the reserve tab is about
+> improving the assurance essentially. So build the design along that idea,
+> that verify is really the same thing on both, just split onto two different
+> datasets." And: "Go ahead with the two decisions as written ... price the
+> reserve board first ... Make the two tabs identical. And then the names are
+> fine."
+>
+> Earlier the same day: "take the two sections of verify ... make that the
+> held back verdict, and then the next section underneath that ... judging the
+> rule not individuals under held and if available reserve"; "One's gonna make
+> a four dot held, and one's gonna make a four dot reserve"; "the verdict on
+> held alone when a set has no reserve is fine, but ... it needs to be
+> indicated"; the half-life set "judged as its own rule ... does its source set
+> keep its own verdict? I would say yes. Both stand."
+>
+> Written BEFORE release 1, success rules first (RULE SIX). Every number in
+> the expected-outcome lists below was read off the box on 2026-09-15 with
+> `vps-access/scripts/uts-s4-readings.sh` before a line of the build existed.
+
+## The problem
+
+Verify today is two panels that are the same idea drawn twice, differently.
+The first reads the rule on the held-back window off the stage 3 records: the
+survivors against the four comparisons at their own hold length, against their
+scrambled copies, a sanity line, and three readings under it (the other units,
+what the rule dropped, the ride). The second prices the survivors on the unread
+window and reads the result by "the same four rules" — but it has no other
+units, no dropped settings, no ride of its own, its block is a different shape
+(`read` where the verdict says `heldBack`, `rows` beside `survivors`), its
+sentence is a different sentence, and the page draws it with different helpers.
+Two screens for one judgement, with two vocabularies, is the drift RULE TWO
+exists to stop, and it is why the owner asked for identical functionality.
+
+Three more things are wrong with what is there:
+
+- **A verdict is a block on the rule, and a rule can carry many.** What goes
+  forward to Greenlight is "the newest block that passed under this release
+  line", found by search. Nothing on disk IS the thing that passed: the rule
+  with its Tune choices at the moment of the press. The owner's words were "a
+  four dot held" and "a four dot reserve" — a set, like the half-life set is a
+  set.
+- **A half-life set cannot be judged.** Every reading refuses it and points at
+  its source, so a set of retrained forecasts goes to Greenlight on a verdict
+  stamped on forecasts it does not use. The owner: judge it as its own rule,
+  and the source keeps its own verdict. Both stand.
+- **Nothing says when there is no reserve.** A rule built 70/15/15 has three
+  stretches, not four; its "unread window" today is everything after the
+  held-back window, which the owner has not called a reserve. Its verdict on
+  held is the whole verdict, and the screen has to say so.
+
+## The change
+
+**One screen, drawn by one path, with the stretch as its only parameter.** The
+Verify tab becomes two tabs, Held and Reserve, in Verify's place in the strip.
+Both are drawn by one renderer that is handed the stretch; the tab's own
+function is one line each. The same set box, the same declared rules, the same
+press, the same readings in the same order, the same tables, the same help
+written once and spread into both sections. Nothing exists on one that does
+not exist on the other, and a change to one is a change to both because there
+is only one. (This is the Paper Books and Live Trading pattern, and the same
+check applies: every place the code asks which stretch it is on is a place the
+two can differ, and each has to be a difference that is deliberate.)
+
+**Each press makes a set.** Reading a rule on a stretch writes a new Stage 4
+record set: the rule and its survivors copied as they stand, the Tune choices
+on record at that moment (the stop forced onto each survivor, 3.145.0) frozen
+in, and the verdict stamped on it as its one block. It is named after the rule
+— **"held set of X"**, **"reserve set of X"** — and a second press on the same
+rule makes **"held set of X #2"**, never a second block on the first. Its
+`kind` is `held` or `reserve`; `from` names the rule it was read from, plain or
+half-life; a reserve set also names the held set it stands on. It is frozen: a
+stop choice cannot be set on it (set it on the rule and read the rule again),
+and no rule is walked from it.
+
+**The three readings under the verdict belong to the rule, per stretch.** The
+rule on the other units, what the rule dropped, and the ride are readings of
+the rule on a stretch, not of one press; they stay on the rule, keyed by the
+stretch they read, appended on every press and never overwritten, exactly as
+today. A verdict stamped after a reading carries its counts, as today.
+
+**What each tab lists**, and what its press does:
+
+- **Held** lists every rule: plain (4) and half-life (4.h). A rule built
+  70/15/15 is marked **"held alone: this layout keeps no reserve"**, and a held
+  set of it that passes is the whole verdict. On a plain rule the press reads
+  the stage 3 records, as today, and prices nothing. On a half-life rule the
+  press PRICES: the survivors on the held-back window with the members
+  retrained at each survivor's own half-life, the scrambled copies dealt from
+  those forecasts, the four comparisons at each survivor's hold length — the
+  first pricing of those forecasts on that window, a counted look, minutes.
+  The other units and the dropped settings refuse in words on a half-life rule
+  (its retrained forecasts exist for its own survivors on its own unit only);
+  the ride comes out of the same pricing.
+- **Reserve** lists only rules whose layout keeps a reserve (61/13/13/13) and
+  whose newest held set passed: the assurance is built on a rule that already
+  stood once. The 70/15/15 rule is not on it. In release 1 the press prices
+  the survivors on the reserve, as the reserve grade does today; in release 2
+  it reads the reserve board instead (below). Every reserve set names the held
+  set it stands on.
+- **Greenlight** lists held sets and reserve sets, each with its standing, and
+  greenlights two kinds: a reserve set that passed, and a held set that passed
+  on a layout with no reserve, marked held alone. A held set that passed on a
+  layout that keeps a reserve is refused in words ("read it on Reserve"). Plain
+  and half-life rules are no longer offered there: their standing is their
+  sets'. The half-life a survivor carries rides on the held set and the
+  reserve set made from a half-life rule, so what is frozen carries it.
+- **Tune** lists the new kinds beside the rules, for the capture and the two
+  scans. **History** lists rules only (it retrains a rule; a frozen set is not
+  retrained). **The Funnel**'s list of a stage 3 set's cuts stays cuts only.
+
+**The one real difference between the tabs is data, not screen.** Held is
+already priced: stage 3 priced every setting of every unit on it, copies and
+comparisons included, which is what the other units and the dropped settings
+read. Reserve is priced for nothing. So release 2 prices **the reserve board**:
+the whole board of the rule's unit on the reserve — every setting, its copies,
+the four comparisons — with the members forecasting it from the models they
+were trained as, and keeps it beside the **stage 3 set, per unit**, because it
+is a property of the unit and two rules cut on one unit read one board. From
+then on every Reserve reading reads that board exactly as the held readings
+read the stage 3 records; the other units are priced when their press is
+pressed, one unit at a time, and kept the same way. Each unit's first pricing
+is the one look at data nothing has seen, counted on the stage 3 set's unit and
+said on every rule read from it.
+
+**One block shape.** The two builders become one, with the stretch reading
+under one name (`read`), the survivors' money under one name (`money`), and
+what only a pricing produces (the window, the rows priced, the survivors not
+priced) present when there was one and absent when there was not. The stage-
+engine check reads the same field the screen does.
+
+**The records move with the process (RULE NINE), once, and the mover is
+deleted (RULE TEN).** Read off the box on 2026-09-15: two verdict blocks (the
+199-setting rule's look 2 under 3.92.1, PASS; the 98-setting rule's look 1
+under 3.146.1, PASS), three reserve grades (the 199-setting rule's looks 1 and
+2 under 3.98.0 and 3.99.0, the 98-setting rule's look 1 under 3.146.1, all
+FAIL), and readings on three rules (the 199-setting rule: other units, dropped,
+ride; the 98-setting rule: other units, dropped twice, ride; the 48-setting
+rule: dropped). On the first start under release 1, every verdict block becomes
+a held set of its rule (numbered in look order, created at the block's own
+stamp time, carrying the block with its fields renamed), every reserve grade a
+reserve set of its rule standing on the held set that gated it, and every
+reading is re-keyed under the held stretch. The rule's old fields are removed.
+The mover is one block under its own heading, it prints what it moved, and it
+is deleted in the release after the box has been through it, measured by a
+probe that finds nothing left to move. Blocks stamped before 3.146.0 carry no
+own-hold reading and draw as they were written, as today.
+
+## The releases, with the rule for each written before its numbers
+
+### Release 1 — the two tabs, the two kinds, the half-life rule judged (second digit)
+
+Success rules:
+
+- **H1.1 — one path.** `drawHeld` and `drawReserve` are one line each and call
+  one renderer with the stretch; the word list of Held and the word list of
+  Reserve differ in nothing but the stretch's own words, and a test proves it.
+- **H1.2 — a press makes a set.** Reading a rule on a stretch creates a Stage 4
+  record set of kind `held` or `reserve`, named "held set of X" / "reserve set
+  of X", numbered from the second press, carrying the rule, the survivors, the
+  stop choices on record, and one verdict block; the rule gains no block. A
+  stop choice on such a set is refused in words.
+- **H1.3 — the numbers do not move.** A held set made by a press on a plain
+  rule carries, field for field, the reading the verdict stamped under 3.146.1
+  on the same rule: the same clearing count, the same bar, the same copies
+  beaten, the same sanity share. Nothing about the reading changed; only where
+  it is written did.
+- **H1.4 — the half-life rule is judged as its own rule.** The held press on a
+  4.h set prices its survivors with their own retrained members on the held-
+  back window and stamps a held set; the source rule's own held sets stand
+  untouched. A survivor's retrained held-back money is a different number from
+  its source's, and the held set says which forecasts it was priced with.
+- **H1.5 — held alone is said.** A 70/15/15 rule reads "held alone: this
+  layout keeps no reserve" on Held, is absent from Reserve, and its held set
+  that passed is offered on Greenlight, marked held alone.
+- **H1.6 — Reserve lists what stood.** A rule is on Reserve exactly when its
+  layout keeps a reserve and its newest held set passed under this release
+  line; a reserve set names the held set it stands on.
+- **H1.7 — the records moved.** After the first start, the probe finds no
+  `verify`, `unread`, `others`, `dropped` or `ride` field on any rule, and
+  finds two held sets, three reserve sets, and the three rules' readings under
+  the held stretch, with the same stamp times they had.
+- **H1.8 — nothing else moved.** History's box, the Funnel's cuts list, the
+  capture, the scans and the stage-engine check read as before; the suite is
+  green; the word lists are regenerated from the served box and `luck` appears
+  nowhere.
+
+Expected outcome on the box, written before it is built: the Held tab lists six
+rules, S4-Pasers#3c marked held alone; the 199-setting rule shows one held set
+(PASS, 3.92.1, no own-hold reading, drawn as written) and the 98-setting rule
+one held set (PASS, 3.146.1, with the own-hold reading); the Reserve tab
+lists exactly those two rules; the 199-setting rule shows two reserve sets
+(FAIL, FAIL) and the 98-setting rule one (FAIL); Greenlight offers three
+reserve sets and refuses each in words as FAIL, and offers no held set, since
+neither passing held set is on a layout without a reserve. A fresh held press
+on the 98-setting rule makes "held set of ... #2" with the same figures as the
+first. Anything else is news and goes in the loop record.
+
+### Release 2 — the reserve board (second digit)
+
+Success rules:
+
+- **H2.1 — the board is the unit's.** The reserve board is priced once per
+  unit of a stage 3 set and kept beside that set; a second rule cut on the same
+  unit reads it without pricing; the pricing is a counted look on the unit and
+  every rule read from it says the count.
+- **H2.2 — every setting, every copy, all four.** The board holds, for every
+  setting of the unit, its reserve money and trades, its scrambled copies
+  (as many as the stage 3 set kept), and the four comparisons per hold length
+  in use — the same fields the stage 3 records hold for held, under the same
+  names, so the same readers read it.
+- **H2.3 — the survivors agree with release 1.** For the 98-setting rule, the
+  survivors' reserve money on the board equals, to the cent, the money the
+  release-1 reserve set priced for the same survivors: same members, same
+  window, same fee. A difference is a fault in one of the two and stops the
+  release until it is explained.
+- **H2.4 — the three readings exist on Reserve.** The other units, what the
+  rule dropped and the ride read the reserve boards and refuse in words only
+  for a unit not yet priced, saying which press prices it.
+- **H2.5 — the half-life rule still prices its own.** A 4.h rule's reserve
+  press prices its survivors with their retrained members; the board is not
+  read for it, and the set says so.
+
+Expected outcome: the 98-setting rule's unit (LTCUSDT alongside DOGEUSDT and
+LINKUSDT, daily 4-day) priced on the reserve in minutes to an hour; its reserve
+set under release 2 reads the same survivors' figures as its release-1 set,
+now with a dropped reading and the copies of every setting; whether it passes
+is not predicted here.
+
+### Release 3 — Tune's stop and ladder inside the stage 3 pricing (first digit as written)
+
+RULE ONE-C first: before the first digit moves, read what is on disk with
+`uts-sets-and-versions.sh` and tell the owner what it costs — a stage refuses a
+parent written under a different first digit, and a greenlight gate reads only
+sets under the reader's first digit, so every chain and every held and reserve
+set on the box stops gating. If that cost has not been put to the owner and
+answered, this release is PARKED at that step and release 4 is taken first;
+nothing in the loop moves the first digit on a session's own reading.
+
+Success rules:
+
+- **H3.1 — one pricing, both stretches.** Survivors, copies and the four
+  comparisons are priced under the same stop and the same sizing on held and
+  on reserve; a record says which stop and which ladder it was priced under.
+- **H3.2 — the capture gains the reserve window** for a set whose layout keeps
+  one, and a scan on Tune that reads it is a counted look on the reserve.
+- **H3.3 — no stop means today's numbers.** A record priced with no stop and
+  size 1 reproduces its stage 3 figures to the cent; the change is a widening,
+  not a re-reading.
+
+### Release 4 — the picture through every period, and the drill-down (second digit)
+
+Success rules:
+
+- **H4.1 — fed, never priced.** Everything on the picture is read off held
+  sets, reserve sets and the records they stand on; the picture prices nothing
+  and counts as no look.
+- **H4.2 — every stretch, at its own hold length.** For a chosen set: the
+  rule's money on train, test, held and reserve (where the layout keeps one),
+  each beside the four comparisons at the survivors' own hold lengths, and the
+  four stretches named train, test, held and reserve.
+- **H4.3 — from the rule to one setting.** The drill-down goes from the set's
+  survivors to one survivor and shows the same lines for it alone; the frozen
+  configuration a greenlight writes carries its stop, its ladder and its
+  half-life, read off the set.
+
+## What I am assuming
+
+- **That "identical functionality" means identical screens over different
+  data, with the refusals honest.** In release 1 the other units and the
+  dropped settings refuse in words on Reserve (nothing is priced there yet);
+  release 2 is what makes them read. The screen is identical from release 1;
+  the data catches up in release 2.
+- **That a rule's readings belong to the rule.** The alternative — hanging the
+  three readings on each held set — leaves the 48-setting rule's dropped
+  reading with no set to hang on, and reads the rule three times for three
+  presses. Per rule, per stretch, appended, is what the owner has today.
+- **That the reserve of a 70/15/15 rule is nothing.** Today's "everything after
+  the held-back window" on that layout goes; the owner named three stretches
+  for it, and a reserve nobody sealed is not a reserve. If that is wrong, it
+  is one line in the list rule and the window reader.
+- **That the numbering is by press.** "held set of X", then "#2", "#3".
+  Renaming the rule later does not rename its sets; a set is frozen.
+
+## What it costs
+
+Release 1 is mostly moving: the readings exist and the two builders become
+one. What is new is the half-life rule's pricing on held (the capture's own
+per-half-life payloads with copies kept), the two kinds, the migration, and
+the page drawn once. Release 2 is a pricing pass per unit — the reserve grade's
+pass widened from the survivors to the board — and a store beside the stage 3
+set for it. Release 3 is the expensive one, and it is the owner's call on the
+first digit. Release 4 is reporting.
+
+---

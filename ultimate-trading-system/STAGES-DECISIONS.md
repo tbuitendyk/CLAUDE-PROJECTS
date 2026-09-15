@@ -1375,3 +1375,27 @@ carried out 2026-08-28 under its own GO — decision 50.
     grade reads the same way; the stage-engine check's five gates read their
     own fields and are untouched. Verdict blocks stamped before this carry no
     own-hold reading and draw as they were written. Second digit.
+97. **Held and Reserve are one screen over two stretches, and each press makes
+    a set** (VERIFY-DESIGN.md Part 9, owner LOOP NOW! 2026-09-15: "verify is
+    really the same thing on both, just split onto two different datasets ...
+    Make the two tabs identical"). The Verify tab becomes Held and Reserve,
+    drawn by one renderer handed the stretch, so the two cannot drift. Reading
+    a rule on a stretch writes a new Stage 4 record set — "held set of X",
+    "reserve set of X", numbered from the second press — carrying the rule,
+    its survivors, the stop choices on record and one verdict block; the rule
+    gains no block, and a frozen set takes no stop choice. The three readings
+    under the verdict (the other units, the dropped settings, the ride) stay
+    on the rule, keyed by stretch. Held lists every rule, a 70/15/15 rule
+    marked "held alone: this layout keeps no reserve"; Reserve lists only
+    rules whose layout keeps a reserve and whose newest held set passed;
+    Greenlight offers reserve sets that passed and held-alone sets that
+    passed, and no longer offers rules. A half-life set is judged as its own
+    rule, priced with its own retrained members, and its source keeps its own
+    verdict — both stand. The reserve of a 70/15/15 rule is nothing; the
+    "everything after the held-back window" reading goes. Release 2 prices the
+    reserve board once per unit of a stage 3 set and keeps it beside that set,
+    because two rules on one unit read one board. The two block builders
+    become one (`read`, `money`), and the box's stamps move once — two verdict
+    blocks into held sets, three reserve grades into reserve sets, readings
+    re-keyed — by a mover written to be deleted (RULE TEN). Success rules per
+    release are in Part 9, written before any number.

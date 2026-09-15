@@ -1048,3 +1048,41 @@ looks already counted and the other readings were not touched. 3.146.1 in
 the same sitting: the survivor table's own-hold cell moved into a helper
 with braces, because the word list's walk had read the inline branch's
 "x.known" and "x.clears" as words on the Verify screen. Third digit.
+
+## AL. Held and Reserve — owner LOOP NOW! including deploy, 2026-09-15
+
+"Go ahead with the two decisions as written. It's fine. ... price the reserve
+board first. That's fine. Make the two tabs identical. And then the names are
+fine. Just go ahead and do it. LOOP NOW! including deploy." The named work is
+VERIFY-DESIGN.md Part 9, written first with a success rule and an expected
+outcome per release, before any number: release 1 the two tabs off one
+renderer, the held set and the reserve set as kinds, the half-life rule judged
+as its own, held alone marked, the box's stamps moved once (second digit);
+release 2 the reserve board, per unit of the stage 3 set (second digit);
+release 3 Tune's stop and ladder inside the stage 3 pricing (first digit as
+written — PARKED at RULE ONE-C's read-the-box-and-tell-the-owner step unless
+answered; release 4 taken first if so); release 4 the picture through every
+period and the drill-down on Greenlight (second digit). Decision 97. Read off
+the box before the design was finished (`uts-s4-readings.sh`, added to the
+vps-access branch): the 98-setting rule already carries a held verdict under
+3.146.1 (PASS, own-hold reading) and a reserve grade under 3.146.1 (FAIL) —
+the owner re-ran it under the fair comparison after section AK — beside the
+199-setting rule's PASS block of 3.92.1 and its two reserve grades of 3.98.0
+and 3.99.0 (FAIL); readings on the 199, 98 and 48-setting rules; S4-Pasers#3c
+on 70/15/15 with a half-life table and a capture and nothing else. Decisions
+taken inside the loop are recorded here as they are taken.
+
+Decisions inside the loop, so far:
+
+- The three readings belong to the rule, per stretch, not to each held set:
+  the 48-setting rule's dropped reading has no held set to hang on, and one
+  rule read three times for three presses is the record the owner has today.
+- The reserve board lives beside the stage 3 set, per unit, not beside the
+  rule: two rules cut on one unit read one board, and the first pricing is
+  counted once, on the unit.
+- The reserve of a 70/15/15 rule is nothing: the "everything after the
+  held-back window" reading is removed with its list entry, not kept as a
+  branch.
+- One block shape for both stretches: the stretch reading is `read`, the
+  survivors' money is `money`, and the stage-engine check reads the same
+  field the screen does.
