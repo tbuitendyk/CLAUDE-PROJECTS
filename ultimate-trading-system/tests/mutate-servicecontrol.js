@@ -1671,7 +1671,7 @@ const GUARDS = [
     'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a stop is recorded under the name of no survivor at all when all survivors is picked'],
   [path.join(ROOT, 'lib', 'stages.js'), "    if (v < floor) {\n      const pc = (x) => `${(100 * x).toFixed(3)}%`;", "    if (false) {\n      const pc = (x) => `${(100 * x).toFixed(3)}%`;",
     'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a stop tighter than the round trip is recorded on a survivor, and a triggered one is a guaranteed loss'],
-  [path.join(ROOT, 'lib', 'stages.js'), "    if (!Object.prototype.hasOwnProperty.call(asked, 'stopPct')) { const e = new Error('stopPct must be given explicitly", "    if (false) { const e = new Error('stopPct must be given explicitly",
+  [path.join(ROOT, 'lib', 'stages.js'), "  if (!Object.prototype.hasOwnProperty.call(asked, 'stopPct')) { const e = new Error('stopPct must be given explicitly", "  if (false) { const e = new Error('stopPct must be given explicitly",
     'theTwoScansRunOnTheCapturedEntriesAndOnlyAHeldBackReadIsALook', 'a request that says nothing about the stop is recorded as the owner choosing no stop on purpose'],
   // ---- HISTORY NEVER PRICES THE HELD-BACK WINDOW (3.144.0, owner order: "not work with the held set") ----
   [path.join(ROOT, 'lib', 'stagework.js'), "    holdChunks = [];\n  }\n  if (task.unread && task.capture) throw", "    holdChunks = holdChunks.slice();\n  }\n  if (task.unread && task.capture) throw",
