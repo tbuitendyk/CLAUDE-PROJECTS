@@ -6737,7 +6737,9 @@ function verifyLooksOf(doc, keys, stamped) {
   // a tool run on Tune that read the captured held-back entries (3.92.0): a look, stamped on the capture
   const tuneReads = (((doc.capture || {}).reads) || []).filter((r) => r && r.look != null).length;
   if (tuneReads) what.push(`a scan on Tune read the captured held-back trades ${tuneReads} time(s), each a stamped look`);
-  // the retrain run on History is judged on the Held window on both layouts (3.142.0) and read it once per press
+  // a retrain run on History that was judged on the Held window (3.142.0 to 3.143.x) read it once per press; since
+  // 3.144.0 the run is judged on the Test window and prices no held-back figure, so it is not a look -- the block says
+  // which window it priced, and only a held-priced one is counted here
   const halfLifeReads = (doc.halflife || []).filter((r) => r && r.judge === 'hold').length;
   if (halfLifeReads) what.push(`the half-life run on History priced the held-back window ${halfLifeReads} time(s), each a stamped look`);
   return { unstamped: steps + back + 1, stamped: stamped || 0, rides, tuneReads, halfLifeReads, boardLooks, what };
@@ -7660,15 +7662,20 @@ async function tuneOnCapture(body, tool) {
 // half-life the owner ticked, with each training chunk's weight halving every
 // H days of age multiplied into the set's own training weights; then the same
 // records are priced again on the stretch the retraining never touched (the
-// Held window on both layouts since 3.142.0, the set's own layout), in ONE
-// pass beside the unweighted column, through the stage 3 task. The arithmetic
-// is lib/halflife.js's; the doors, the record on the set and the file beside it
-// are here. Every press is a counted look; the count is information.
-// 2 since 3.142.0: a run judged on the Held window on the set's own layout. A v1
-// file was judged on the Reserve through a 72% layout that no longer exists, so
-// it reads as absent and its doors say to press the run again (RULE NINE: no
-// reader translates it; a reserve reading cannot become a held one).
-const HALFLIFE_V = 2;
+// Test window on both layouts since 3.144.0, the set's own layout; the
+// held-back window is never priced here -- owner order 2026-09-15, "not work
+// with the held set. We'll keep it secret until verify or tune"), in ONE
+// pass beside the unweighted column, through the stage 3 task told to hold
+// no held-back chunks. The arithmetic is lib/halflife.js's; the doors, the
+// record on the set and the file beside it are here. Every press appends a
+// table and is counted as a run; it is not a look at the held-back window.
+// 3 since 3.144.0: a run judged on the Test window. A v2 file was judged on
+// the Held window, so a set built from its table would be a choice made on
+// held -- the one thing this screen no longer does; it reads as absent and
+// the build says to press the run again (RULE NINE: no reader translates it;
+// a held reading cannot become a test one). A v1 file (3.94.0-3.141.x) was
+// judged on the Reserve through a 72% layout that no longer exists.
+const HALFLIFE_V = 3;
 const halfLifeFile = (setId, runId) => path.join(SETS_DIR, `${setId}-halflife-${runId}.json.gz`);
 function readHalfLifeRun(setId, runId) {
   try {
@@ -7756,6 +7763,9 @@ async function halfLifeRunOn(doc, months, note = null) {
     // 2. the pricing, in one pass: the unweighted column from the set's own votes and models, then each half-life
     const base = s3Payload({ doc: parent, parent: stage2, rec, settings, fee, nullN: 0 });
     base.keepN = 0;
+    // THE TEST WINDOW ALONE (3.144.0): the task holds no held-back chunks, so
+    // no held-back figure is ever priced on this screen's behalf
+    base.testOnly = true;
     const models = unitRows(stage2.id, 'models', rec.blocks.models, rec.u);
     base.unit.members = base.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
     const payloads = [{ key: HL.NONE, payload: base }];
@@ -7775,6 +7785,11 @@ async function halfLifeRunOn(doc, months, note = null) {
   } finally { activePool = null; pool.abort(); }
   const none = priced.find((x) => x.key === HL.NONE);
   if (!none || !none.ok) throw new Error(`the unweighted column could not be priced: ${String((none && none.error) || 'no answer')}`);
+  // HISTORY NEVER PRICES THE HELD-BACK WINDOW (3.144.0): the task was told to
+  // hold no held-back chunks, and no table is written unless every pass obeyed
+  for (const x of priced) {
+    if (x.ok && x.value && ((x.value.counts || {}).hold || (x.value.rows || []).some((r) => r && r.holdout))) throw new Error('the pricing read the held-back window, which History never does — no table written');
+  }
   const noneRes = none.value;
   // 3. the table
   const columns = [];
@@ -7793,21 +7808,20 @@ async function halfLifeRunOn(doc, months, note = null) {
   const rows = settings.map((st) => {
     const money = {};
     const trades = {};
-    const test = {};
     for (const c of columns) {
+      // the Test window's money and trades, the record's own on the unweighted column (3.144.0)
       const r = rowOf(byKey[c.key], st.label);
-      money[c.key] = r && r.holdout ? r.holdout.pnl : null;
-      trades[c.key] = r && r.holdout ? r.holdout.trades : null;
-      test[c.key] = r ? r.pnl : null;
+      money[c.key] = r ? r.pnl : null;
+      trades[c.key] = r ? r.trades : null;
     }
     const r0 = rowOf(noneRes, st.label);
-    return { si: st.si, label: st.label, tHours: r0 ? r0.tHours : null, money, trades, test };
+    return { si: st.si, label: st.label, tHours: r0 ? r0.tHours : null, money, trades };
   });
   const read = HL.readTable(rows, columns);
   const t0 = trained.find((t) => t && !t.refused) || null;
-  // THE HELD WINDOW THE TABLE WAS JUDGED ON, as the stage 3 set recorded it for this unit (3.85.0)
-  const heldWindow = ((((parent.windows || {}).units) || {})[doc.unit] || {}).hold || null;
-  const window = heldWindow ? { fromTs: heldWindow.fromTs, toTs: heldWindow.toTs, chunks: heldWindow.chunks } : { chunks: noneRes.counts ? noneRes.counts.hold : null };
+  // THE TEST WINDOW THE TABLE WAS JUDGED ON, as the stage 3 set recorded it for this unit (3.85.0; the Test window since 3.144.0)
+  const testWindow = ((((parent.windows || {}).units) || {})[doc.unit] || {}).test || null;
+  const window = testWindow ? { fromTs: testWindow.fromTs, toTs: testWindow.toTs, chunks: testWindow.chunks } : { chunks: noneRes.counts ? noneRes.counts.test : null };
   const at = new Date().toISOString();
   const fresh = getSet(doc.id);
   if (!fresh) throw new Error('the set went away while its records were being retrained');

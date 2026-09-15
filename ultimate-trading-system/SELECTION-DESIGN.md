@@ -121,12 +121,12 @@ Read out of the code, not remembered. For a 61/13/13/13 set:
 |---|---|
 | **train**, first 75% | fits the models. Nothing is chosen here. |
 | **train**, last 25% | the money that RANKS AND KEEPS units at stage 1 and stage 2 |
-| **test** | stage 1 and 2 forecast score; stage 3 prices every setting; EVERY dial the Funnel keeps |
-| **held** | stage 3 prices every setting; **it orders the stage 3 table**; Verify's verdict; History's retrain run on both layouts (3.142.0, owner decision 2026-09-15) |
+| **test** | stage 1 and 2 forecast score; stage 3 prices every setting; EVERY dial the Funnel keeps; History's retrain run on both layouts (3.144.0, owner decision 2026-09-15) |
+| **held** | stage 3 prices every setting; **it orders the stage 3 table**; Verify's verdict; before Verify only where the owner ticks it — Boards, the Funnel's table, a scan on Tune — each tick a counted look |
 | **reserve** | the reserve grade, on Verify under the verdict since 3.142.0 |
 
-Four stretches, and only **reserve** arrives at the end unspent — and History
-spends that.
+Four stretches, and only **reserve** arrives at the end unspent — and the
+reserve grade on Verify spends that, once.
 
 ## The rule
 
@@ -343,6 +343,15 @@ layouts — the owner's decision, which names the stretch: "that's always just
 gonna be against the held slice, of course, the second thirteen or the second
 fifteen". The reserve grade moved to Verify, under the verdict. History's read
 of held before Verify is counted on Verify's looks strip, as it was.
+
+**3.144.0 (2026-09-15, owner order; decision 94).** History's retrain run is
+judged on **test** on both layouts and prices no held-back figure: "Change the
+history tab functionality to not work with the held set. We'll keep it secret
+until verify or tune, assuming we leave it unchecked there." Judging on held
+was a choice made on held before Verify. Held is read before Verify only where
+the owner ticks it — Boards, the Funnel's table, a scan on Tune — and each tick
+is a counted look. The runs made under 3.142.0 to 3.143.3 say on their blocks
+that they priced held, and Verify's looks strip still counts them.
 
 **Cost:** the tab list is one array, and every screen is dispatched from it. The
 word lists regenerate per tab from the code, so a new tab gets its own list

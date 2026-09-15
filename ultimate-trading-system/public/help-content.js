@@ -815,7 +815,7 @@ window.HELP = {
     controls: {
       hSet: {
         what: 'Which Stage 4 record set to retrain, from every set on this box, newest first, each with its coin and shape and its survivors.',
-        more: 'Choosing a set reads nothing on the held-back window: it shows the set\'s window layout, which stretches the retraining trains, tests and is judged on, and how many times the run has been pressed.',
+        more: 'Choosing a set reads nothing on the held-back window: it shows the set\'s window layout, which stretch the retraining trains on and which it is judged on, and how many times the run has been pressed.',
       },
       hHl12: { what: 'Whether to retrain at a 12-month half-life: a training day a year old counts half as much as today.' },
       hHl18: { what: 'Whether to retrain at an 18-month half-life.' },
@@ -824,8 +824,8 @@ window.HELP = {
       hHl36: { what: 'Whether to retrain at a 36-month half-life: a training day three years old counts half as much as today.' },
       hHl48: { what: 'Whether to retrain at a 48-month half-life: a training day four years old counts half as much as today.' },
       hHalfLife: {
-        what: 'Retrains the forecasts behind every setting of the chosen set, once per ticked half-life, and prices the same settings again beside the unweighted figures on the window the retraining never touched.',
-        more: 'The set\'s own layout, judged on the Held window either way: a set built 61/13/13/13 (sealed exam) retrains on its 61%, tests on its 13% and is judged on the second 13%, with the last 13% left sealed; a set built 70/15/15 retrains on its 70%, tests on its 15% and is judged on the second 15%. Both kinds of forecast are retrained; every other training choice stays as the set was made. The best of each row is green, and a half-life wins only by at least a cent. History comes before Verify and asks nothing of it. Every press is a counted look.',
+        what: 'Retrains the forecasts behind every setting of the chosen set, once per ticked half-life, and prices the same settings again beside the unweighted figures on the Test window, which the retraining never touched.',
+        more: 'The set\'s own layout, judged on the Test window either way: a set built 61/13/13/13 (sealed exam) retrains on its 61% and is judged on its 13% test window, with its held-back 13% not read and its last 13% sealed; a set built 70/15/15 retrains on its 70% and is judged on its 15% test window, with its held-back 15% not read. Both kinds of forecast are retrained; every other training choice stays as the set was made. The best of each row is green, and a half-life wins only by at least a cent. History comes before Verify and asks nothing of it, and it never reads the held-back window: that stays secret until Verify, or until a scan on Tune is told to read it. Every press appends a table; none is overwritten.',
       },
       hHlName: { what: 'The name of the half-life set built from the newest table, as it will read on Tune and Greenlight.' },
       hHlBuild: {

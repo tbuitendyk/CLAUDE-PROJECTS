@@ -1157,7 +1157,7 @@ module.exports.theTabsReadInProcessingOrderAndNoScreenBeforeVerifyAsksForAVerdic
     assert.deepStrictEqual(doc.verify || [], [], 'nothing on Verify has been pressed');
     // the doors before Verify open without one
     const hl = await stages.halfLifeDry(doc.id);
-    assert.deepStrictEqual({ refused: hl.refused, judge: hl.layout.judge, verdictWords: 'gate' in hl || 'verdicts' in hl }, { refused: null, judge: 'hold', verdictWords: false }, 'History asks for a verdict');
+    assert.deepStrictEqual({ refused: hl.refused, judge: hl.layout.judge, verdictWords: 'gate' in hl || 'verdicts' in hl }, { refused: null, judge: 'test', verdictWords: false }, 'History asks for a verdict');
     const cap = await stages.tuneCaptureDry(doc.id);
     assert.deepStrictEqual({ refused: cap.refused, verdictWords: 'gate' in cap || 'verdicts' in cap }, { refused: null, verdictWords: false }, 'Tune asks for a verdict');
     // the doors after Verify still wait for the verdict that stood

@@ -493,8 +493,9 @@ async function unitChunks(combo, geometry, p) {
   }
   // (The 72% retrain layout of 3.94.0, which reached through the held-back
   // slice and judged on the Reserve, went in 3.142.0: the History retrain run
-  // uses the set's own layout and is judged on the Held window, so no layout
-  // without a held-back slice exists any more.)
+  // uses the set's own layout, and since 3.144.0 is judged on the Test window
+  // with the held-back slice never priced, so no layout without a held-back
+  // slice exists any more and none is needed.)
   // ONE PASS OF THE FIVE (3.111.0, VERIFY-DESIGN.md Part 1). The sealed
   // reserve comes off exactly as reserve61 seals it, and appears in no pass.
   //
@@ -881,6 +882,19 @@ async function s3UnitTask(task) {
   let holdMaps = maps;
   let dealSlice = 's3-hold';
   let unread = null;
+  // THE TEST WINDOW ALONE (3.144.0, the retrain run on History; owner order
+  // 2026-09-15: "not work with the held set. We'll keep it secret until
+  // verify or tune"). With this flag the task holds no held-back chunks at
+  // all, so every held-back figure below -- the money, the four comparisons,
+  // the deals, the beat, the lead, the noise twins, the rich block -- is never
+  // priced, not priced and dropped. The members' votes on the held-back slice
+  // ride in unit.probs untouched and nothing here reads past the test slice.
+  // It cannot be asked together with the unread window or the capture: both
+  // of those ARE the held-back window's place.
+  if (task.testOnly) {
+    if (task.unread || task.capture) throw new Error('a pricing of the test window alone holds no held-back window, so it can neither grade the unread window nor capture trades');
+    holdChunks = [];
+  }
   if (task.unread && task.capture) throw new Error('the per-trade capture never reads the unread window: that window is the reserve grade\'s alone');
   if (task.unread) {
     const got = await unreadChunksFor(combo, geometry, task.unread.fromTs);

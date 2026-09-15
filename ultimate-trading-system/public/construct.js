@@ -2478,9 +2478,11 @@ async function vRideFollow(id, token) {
 // order 2026-09-15: "The history tab comes after the funnel tab. The verify tab
 // is until the very end. The reserve grade has no business being tested on the
 // history tab, that moves to the verify"). One panel: the same records
-// retrained with recent history weighted, judged on the Held window on both
-// layouts. Nothing on this screen reads, prints or asks for a verdict; the
-// reserve grade is drawn on Verify, under the verdict it needs.
+// retrained with recent history weighted, judged on the Test window on both
+// layouts, the held-back window never priced (3.144.0, owner order: "not
+// work with the held set. We'll keep it secret until verify or tune").
+// Nothing on this screen reads, prints or asks for a verdict; the reserve
+// grade is drawn on Verify, under the verdict it needs.
 const H_SET_KEY = 'cx-history-set';
 // TWO SMALL FORMATTERS OF THIS SCREEN'S OWN, written with braces on purpose:
 // the word list's walk brace-matches a helper's body from where it is defined,
@@ -2503,10 +2505,10 @@ function hSetBoxHtml(list, chosen) {
 // ---- THE RETRAIN RUN ON HISTORY (3.94.0, AGEDIAL-DESIGN.md; the one panel since 3.142.0) ----
 //
 // The same records retrained with recent history weighted more, once per
-// ticked half-life, priced beside the unweighted column on the Held window,
-// the stretch the retraining never touched, on the set's own layout. Its own
-// set box; no verdict is read or asked for. Helpers written with braces on
-// purpose (see above).
+// ticked half-life, priced beside the unweighted column on the Test window,
+// the stretch the retraining never touched, on the set's own layout; the
+// held-back window is never priced (3.144.0). Its own set box; no verdict is
+// read or asked for. Helpers written with braces on purpose (see above).
 const H_HL_KEY = 'cx-history-halflives';
 const H_HALF_LIVES = [12, 18, 24, 30, 36, 48];
 function hRememberedHalfLives() {
@@ -2524,8 +2526,8 @@ function hHalfLifeBlockHtml(b, isFirst) {
   const green = 'background:rgba(40,170,80,.28)';
   const colHead = cols.map((c) => `<th title="${c.key === 'none' ? `the set's own forecasts, unweighted and not retrained, on the ${esc(b.judgeWord)} window` : `the records priced again with forecasts retrained on the set's own ${b.shares.train}% with a ${c.months}-month half-life, on the ${esc(b.judgeWord)} window`}">${esc(hMonthsWord(c.key))} $</th>`).join('');
   return `<div class="panel" style="margin-top:.5rem">
-    <h4 style="margin:0 0 .3rem">look ${b.look}${isFirst ? ' - the first' : ''} <span class="muted">taken ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')}</span></h4>
-    <p class="note">judged on the <b>${esc(b.judgeWord)}</b> window${w.fromTs != null ? ` from ${hDay(w.fromTs)} to ${hDay(w.toTs)}` : ''}, ${w.chunks ?? '?'} whole chunks · retrained on the set's own ${b.shares.train}%, tested on its ${b.shares.test}% · ${b.members} members, both kinds</p>
+    <h4 style="margin:0 0 .3rem">run ${b.look}${isFirst ? ' - the first' : ''} <span class="muted">taken ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')}</span></h4>
+    <p class="note">judged on the <b>${esc(b.judgeWord)}</b> window (${(b.shares || {})[b.judge] ?? '?'}%)${w.fromTs != null ? ` from ${hDay(w.fromTs)} to ${hDay(w.toTs)}` : ''}, ${w.chunks ?? '?'} whole chunks · retrained on the set's own ${b.shares.train}% · ${b.members} members, both kinds</p>
     <p class="note">${cols.filter((c) => c.key !== 'none').map((c) => `<b>${esc(hMonthsWord(c.key))}</b>: ${c.refused ? `<b class="warn">refused</b> - ${esc(c.refused)}` : `${hFix(c.effectiveDays, 0)} effective training days of ${b.counts.train ?? '?'}${c.weighedByMoney ? ', weighed by money' : ''}`}`).join(' · ')}</p>
     ${(b.missing || []).length ? `<p class="note"><b class="warn">${b.missing.length} survivor(s) are not in the stage 3 set's block on this unit</b></p>` : ''}
     <div class="scrollx" style="max-height:28rem;overflow-y:auto"><table><thead><tr><th title="the setting, by the name the board gives it">setting</th>${colHead}</tr></thead><tbody>
@@ -2556,13 +2558,15 @@ function hHalfLifePanelHtml(list, chosen, d) {
     <h3 style="margin-top:0">Retrain with recent history weighted</h3>
     <p class="note">The same records, retrained: every setting of the chosen set is kept exactly as it is, and only the
       forecasts behind it are trained again with recent history weighted more, once per half-life ticked, keeping every other
-      training choice the set was made with. Then the same records are priced again on the Held window, the stretch the
+      training choice the set was made with. Then the same records are priced again on the Test window, the stretch the
       retraining never touched, in one pass beside the set's own unweighted figures. A set built 61/13/13/13 (sealed exam)
-      retrains on its 61% and tests on its 13%, and is judged on the second 13%, with the last 13% left sealed; a set built
-      70/15/15 retrains on its 70% and tests on its 15%, and is judged on the second 15%. Every press is a counted look.</p>
+      retrains on its 61% and is judged on its 13% test window, with its held-back 13% not read and its last 13% sealed; a set
+      built 70/15/15 retrains on its 70% and is judged on its 15% test window, with its held-back 15% not read. Nothing on this
+      screen reads the held-back window: it stays secret until Verify, or until a scan on Tune is told to read it. Every press
+      appends a table; none is overwritten.</p>
     ${hSetBoxHtml(list, chosen)}
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${Number(d.survivors || 0).toLocaleString()} survivors
-      · ${lay ? `window layout ${esc(layoutWords(lay.layout))}: retrains on its ${lay.train}%, tests on its ${lay.test}%, judged on the <b>${esc(lay.judgeWord)}</b> window (${lay.hold}%)${lay.reserve ? `, the last ${lay.reserve}% left sealed` : ''}` : `<b class="warn">${esc(d.layoutWhy || 'no layout')}</b>`}
+      · ${lay ? `window layout ${esc(layoutWords(lay.layout))}: retrains on its ${lay.train}%, judged on the <b>${esc(lay.judgeWord)}</b> window (${lay.test}%); the held-back ${lay.hold}% is not read here${lay.reserve ? `, and the last ${lay.reserve}% stays sealed` : ''}` : `<b class="warn">${esc(d.layoutWhy || 'no layout')}</b>`}
       · ${d.looks ? `run ${d.looks} time(s) so far` : 'not run yet'}</p>
       <div class="row" style="align-items:flex-end">
         <span class="note" title="which half-lives to retrain at. A half-life is how long ago a training day must be to count half as much as today's; each ticked value is a full retraining of both kinds of forecast and one column of the table.">half-lives</span>
@@ -2574,7 +2578,7 @@ function hHalfLifePanelHtml(list, chosen, d) {
         <label class="f" style="flex:none"><input type="checkbox" id="hHl48" ${ticked.includes(48) ? 'checked' : ''}> 48 months</label>
       </div>
       <div class="row" style="margin-top:.4rem;align-items:flex-end">
-        <button id="hHalfLife" class="pri" ${d.refused ? 'disabled' : ''} title="retrains the set's forecasts once per ticked half-life and prices the same records again beside the unweighted figures, on the Held window the retraining never touched. Minutes. Every press is a counted look and appends a table; none is overwritten.">Retrain at the ticked half-lives${d.looks ? ` - look ${d.looks + 1}` : ''}</button>
+        <button id="hHalfLife" class="pri" ${d.refused ? 'disabled' : ''} title="retrains the set's forecasts once per ticked half-life and prices the same records again beside the unweighted figures, on the Test window the retraining never touched. The held-back window is not read. Minutes. Every press appends a table; none is overwritten.">Retrain at the ticked half-lives${d.looks ? ` - run ${d.looks + 1}` : ''}</button>
         <span id="hHalfLifeMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
       ${runs.length ? runs.map((b, i) => `${hHalfLifeBlockHtml(b, i === 0)}${i === runs.length - 1 ? hHlBuildRowHtml(b, d.built) : ''}`).join('') : '<p class="note">No half-life run on this set yet.</p>'}` : ''}
   </div>`;
@@ -2619,7 +2623,7 @@ async function drawHistory() {
     const months = H_HALF_LIVES.filter((k) => { const el = $(`#hHl${k}`); return el && el.checked; });
     if (!months.length) { alert('tick at least one half-life: 12, 18, 24, 30, 36 or 48 months'); return; }
     const look = (hl.looks || 0) + 1;
-    if (!confirm(`Retrain ${hl.name} at ${months.join(', ')} month(s)?\n\nEvery ticked half-life is a full retraining of both kinds of forecast, then the same records priced again on the Held window beside the unweighted figures. Minutes. This is look ${look}.`)) return;
+    if (!confirm(`Retrain ${hl.name} at ${months.join(', ')} month(s)?\n\nEvery ticked half-life is a full retraining of both kinds of forecast, then the same records priced again on the Test window beside the unweighted figures. The held-back window is not read. Minutes. This is run ${look}.`)) return;
     hlb.disabled = true;
     $('#hHalfLifeMsg').textContent = 'starting…';
     const started = await tryPost(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife`, { months }, 'The Stage 4 record set box on History lists what was retrained - pick the set there.');

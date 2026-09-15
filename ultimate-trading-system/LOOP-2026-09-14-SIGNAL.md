@@ -982,3 +982,18 @@ digit.
 and under "The read" each sat on the line after the one before; the second
 and third now sit the same clear gap (.8rem) below the table above them.
 Third digit.
+
+## AH. History never works with the held-back window — owner GO NOW! 2026-09-15 (3.144.0)
+
+"Change the history tab functionality to not work with the held set. We'll
+keep it secret until verify or tune, assuming we leave it unchecked there."
+The retrain run is judged on the Test window on both layouts: the stage 3
+task takes a flag that holds no held-back chunks, History refuses to write a
+table if any pass priced one, the rows carry the test money and trades, the
+block's window is the stage 3 set's test window, and the unweighted column
+is the record's own test money to the cent. The members' held-back votes are
+still cast at the retrain for Tune's capture, never priced here. The run
+file's version moves to 3; the one held-judged table on the box
+(S4-Pasers#3c) stays on the screen as the record of that look and cannot be
+built into a set — deleting it is the owner's call. A press is a "run" on
+the screen now, not a "look". Decision 94. Second digit.

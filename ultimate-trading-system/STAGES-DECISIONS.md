@@ -1305,3 +1305,27 @@ carried out 2026-08-28 under its own GO — decision 50.
     because absolute uplift can come from simply trading more and the rate
     cannot; the chance check's p holds for it, a shuffle keeping the ladder's
     amount traded. Second digit.
+
+94. **History never works with the held-back window: the retrain run is
+    judged on the Test window** (3.144.0, owner order 2026-09-15: "Change the
+    history tab functionality to not work with the held set. We'll keep it
+    secret until verify or tune, assuming we leave it unchecked there").
+    Decision 92 had the retrain judged on the Held window. That was a look AND
+    a choice on held before Verify: the table's green cells pick a half-life
+    per record by held money, and the set built from the table carries those
+    picks forward. So the run now prices the Test window only, on the set's
+    own layout — the 13% test slice of a 61/13/13/13 set, the 15% of a
+    70/15/15 set — and the unweighted column equals the stage 3 record's own
+    test money to the cent. The stage 3 task takes a flag that holds no
+    held-back chunks at all, so no held-back figure is priced and dropped, and
+    History refuses to write a table if any pass priced one. The members'
+    votes on the held-back slice are still cast at the retrain and kept in the
+    run file, as stage 2 casts its own, for Tune's capture of a half-life set
+    to read when the owner ticks held-back there. A press is a run on the
+    screen, not a look; a run that WAS judged on held (3.142.0 to 3.143.3)
+    still counts as a look on Verify's strip, because its block says which
+    window it priced. The run file's version moves to 3, so a table judged on
+    held cannot be built into a set: the one such table on the box
+    (S4-Pasers#3c, one run) stays on the screen as the record of that look and
+    its build refuses; deleting it is the owner's call. Second digit.
+    Corrects decision 92's judge.

@@ -1,9 +1,10 @@
 // THE HISTORY RETRAIN RUN (3.94.0, AGEDIAL-DESIGN.md; 3.142.0: the set's own
-// layout, judged on the Held window on both, no verdict asked for): the same
-// records retrained with recent history weighted more, priced beside the
-// unweighted column on the held-back window the retraining never touched. Run
-// for real on the fabricated chain the stage-engine check uses (one year here:
-// the plumbing, not the calibration), on both layouts.
+// layout, no verdict asked for; 3.144.0: judged on the Test window on both,
+// the held-back window never priced): the same records retrained with recent
+// history weighted more, priced beside the unweighted column on the test
+// window the retraining never touched. Run for real on the fabricated chain
+// the stage-engine check uses (one year here: the plumbing, not the
+// calibration), on both layouts.
 const fs = require('fs');
 const path = require('path');
 const { assert } = require('./helpers');
@@ -113,12 +114,13 @@ async function ran(c, months) {
 }
 
 module.exports = {
-  // THE RETRAIN LAYOUT IS THE SET'S OWN, AND THE JUDGE IS THE HELD WINDOW ON
-  // BOTH (3.142.0, owner order 2026-09-15): a 61/13/13/13 set retrains on its
-  // 61%, tests on its 13% and is judged on the second 13%, the last 13% left
-  // sealed; a 70/15/15 set on its 70%, its 15% and the second 15%. No layout
-  // without a held-back slice exists any more, and nothing names one.
-  async theRetrainLayoutIsTheSetsOwnAndTheJudgeIsTheHeldWindowOnBothLayouts() {
+  // THE RETRAIN LAYOUT IS THE SET'S OWN, AND THE JUDGE IS THE TEST WINDOW ON
+  // BOTH (3.144.0, owner order 2026-09-15: "not work with the held set"): a
+  // 61/13/13/13 set retrains on its 61% and is judged on its 13% test slice,
+  // its held-back 13% never priced and the last 13% left sealed; a 70/15/15
+  // set on its 70% and its 15%. The held-back slice is still cut (the votes
+  // on it are cast for Tune's capture), and no layout without one exists.
+  async theRetrainLayoutIsTheSetsOwnAndTheJudgeIsTheTestWindowOnBothLayouts() {
     Pl.generateFabricated(SPAN, G.PLANT, G.SEEDS[G.PLANT], 0);
     try {
       const combo = { trade: G.PLANT, ctx1: null, ctx2: null, size: 1 };
@@ -129,8 +131,8 @@ module.exports = {
       const lastHold = sealed.split.holdChunks[sealed.split.holdChunks.length - 1];
       assert.ok(lastHold.startTs < sealed.reserve.fromTs, 'every held-back chunk starts before the seal');
       assert.ok(sealed.windows.hold && sealed.windows.hold.fromTs === sealed.split.holdChunks[0].startTs, 'the windows say where the held-back slice begins');
-      assert.deepStrictEqual(HL.retrainLayoutOf('reserve61'), { layout: 'reserve61', judge: 'hold', judgeWord: 'Held', train: 61, test: 13, hold: 13, reserve: 13 });
-      assert.deepStrictEqual(HL.retrainLayoutOf('split70'), { layout: 'split70', judge: 'hold', judgeWord: 'Held', train: 70, test: 15, hold: 15, reserve: 0 });
+      assert.deepStrictEqual(HL.retrainLayoutOf('reserve61'), { layout: 'reserve61', judge: 'test', judgeWord: 'Test', train: 61, test: 13, hold: 13, reserve: 13 });
+      assert.deepStrictEqual(HL.retrainLayoutOf('split70'), { layout: 'split70', judge: 'test', judgeWord: 'Test', train: 70, test: 15, hold: 15, reserve: 0 });
       assert.throws(() => HL.retrainLayoutOf('legacy80'), /no half-life run for a set built on the 'legacy80' layout/);
       assert.throws(() => HL.retrainLayoutOf('retrain72'), /no half-life run for a set built on the 'retrain72' layout/);
       for (const f of ['lib/stagework.js', 'lib/bracketwork.js', 'lib/halflife.js', 'lib/stages.js']) {
@@ -177,10 +179,11 @@ module.exports = {
 
   // THE RUN, FOR REAL, ON A 61/13/13/13 SET: no verdict asked for (History
   // comes before Verify); every survivor a row; the unweighted column is the
-  // stage 3 record's own held-back money to the cent on the same chunks; the
-  // retrained columns are priced on those chunks too; best per row by the
-  // declared rules; the retrained members are kept beside the set; a second
-  // press is look 2.
+  // stage 3 record's own TEST money to the cent on the same chunks; the
+  // retrained columns are priced on those chunks too; no pass priced a
+  // held-back chunk and no row carries a held-back figure (3.144.0); best per
+  // row by the declared rules; the retrained members are kept beside the set;
+  // a second press is run 2.
   async theRunPricesEveryColumnOnOneStretchAndTheUnweightedColumnIsTheRecordsOwn() {
     const c = await chain('half-life test');
     try {
@@ -188,7 +191,7 @@ module.exports = {
       assert.deepStrictEqual(withVerdict.verify || [], [], 'nothing on Verify has been pressed');
       let dry = await stages.halfLifeDry(c.cut.id);
       assert.deepStrictEqual({ refused: dry.refused, judge: dry.layout.judge, layout: dry.layout.layout, months: dry.halfLives, runs: dry.runs.length, verdictOnTheScreen: 'gate' in dry || 'verdicts' in dry },
-        { refused: null, judge: 'hold', layout: 'reserve61', months: [12, 18, 24, 30, 36, 48], runs: 0, verdictOnTheScreen: false });
+        { refused: null, judge: 'test', layout: 'reserve61', months: [12, 18, 24, 30, 36, 48], runs: 0, verdictOnTheScreen: false });
       let threw = null;
       try { stages.halfLifeStart(c.cut.id, { months: [] }); } catch (e) { threw = e.message; }
       assert.ok(/tick at least one half-life/.test(threw), threw);
@@ -197,11 +200,16 @@ module.exports = {
       assert.ok(/7 is not one of the half-lives offered/.test(threw), threw);
       const { result, block, file } = await ran(c, [48, 12]);
       assert.deepStrictEqual({ look: result.look, columns: block.columns.map((x) => x.key), judge: block.judge, judgeWord: block.judgeWord, layout: block.layout, shares: block.shares, v: file.v, gate: 'gate' in block },
-        { look: 1, columns: ['h12', 'h48', 'none'], judge: 'hold', judgeWord: 'Held', layout: 'reserve61', shares: { train: 61, test: 13, hold: 13, reserve: 13 }, v: 2, gate: false }, 'shortest to longest, the unweighted last, judged on the Held window, no verdict on the record');
+        { look: 1, columns: ['h12', 'h48', 'none'], judge: 'test', judgeWord: 'Test', layout: 'reserve61', shares: { train: 61, test: 13, hold: 13, reserve: 13 }, v: 3, gate: false }, 'shortest to longest, the unweighted last, judged on the Test window, no verdict on the record');
       assert.strictEqual(block.rows.length, withVerdict.survivors.length, 'every survivor a row');
       assert.deepStrictEqual(block.missing, []);
-      const heldWindow = stages.getSet(c.s3).windows.units[c.plant].hold;
-      assert.deepStrictEqual({ fromTs: block.window.fromTs, toTs: block.window.toTs, chunks: block.window.chunks }, { fromTs: heldWindow.fromTs, toTs: heldWindow.toTs, chunks: heldWindow.chunks }, 'the held-back window the stage 3 set recorded for this unit');
+      const testWindow = stages.getSet(c.s3).windows.units[c.plant].test;
+      assert.deepStrictEqual({ fromTs: block.window.fromTs, toTs: block.window.toTs, chunks: block.window.chunks }, { fromTs: testWindow.fromTs, toTs: testWindow.toTs, chunks: testWindow.chunks }, 'the test window the stage 3 set recorded for this unit');
+      // NOTHING HELD-BACK WAS PRICED (3.144.0): the pass on the set's own votes
+      // held no held-back chunk, and no row carries a held-back figure or a
+      // second money column
+      assert.deepStrictEqual({ hold: block.counts.original.hold, test: block.counts.original.test > 0 }, { hold: 0, test: true }, 'the pricing held held-back chunks');
+      assert.ok(block.rows.every((r) => !('test' in r) && !('holdout' in r)), 'a row carries a second money column or a held-back figure');
       const s3rows = rowstore.readAll(c.s3, 'records').filter((r) => r.trade === G.PLANT);
       for (const col of block.columns) {
         if (col.key === 'none') continue;
@@ -212,8 +220,8 @@ module.exports = {
       for (const r of block.rows) {
         const row = s3rows.find((x) => x.label === r.label);
         assert.ok(row, `${r.label} is on the stage 3 record`);
-        assert.strictEqual(cents(r.money.none), cents(row.holdout.pnl), `${r.label}: the unweighted column is the record's own held-back money`);
-        assert.strictEqual(r.trades.none, row.holdout.trades, 'and its trades');
+        assert.strictEqual(cents(r.money.none), cents(row.pnl), `${r.label}: the unweighted column is the record's own test money`);
+        assert.strictEqual(r.trades.none, row.trades, 'and its trades');
         for (const k of ['h12', 'h48']) assert.ok(Number.isFinite(r.money[k]), `${r.label}: ${k} has a figure`);
         assert.strictEqual(r.best, HL.bestOf(r.money, block.columns), `${r.label}: best by the declared rule`);
       }
@@ -232,7 +240,7 @@ module.exports = {
       for (const h of file.halfLives) {
         assert.ok(h.members.length >= 2 && h.members.every((m) => m.saved && m.saved.kind && Array.isArray(m.probs) && Array.isArray(m.tauProbs)), `${h.halfLifeMonths}: members with saved models and votes`);
         assert.ok(h.members.some((m) => m.spec.model === 'logreg') && h.members.some((m) => m.spec.model === 'boost'), 'both kinds retrained');
-        assert.ok(h.ts.hold.length > 0, 'the held-back votes ride on the retrain, on the set\'s own layout');
+        assert.ok(h.ts.hold.length > 0, 'the held-back votes are cast on the retrain for Tune\'s capture, on the set\'s own layout');
       }
       // the retrained forecasts are not the originals wearing new names
       const rec2 = rowstore.readAll(c.s2, 'records').find((r) => r.trade === G.PLANT);
@@ -250,25 +258,28 @@ module.exports = {
     } finally { c.cleanup(); }
   },
 
-  // ON A 70/15/15 SET the judge is the Held window, and the unweighted column
-  // must be the stage 3 record's own held-back money to the cent: the same
-  // pass, the same chunks, the same votes.
-  async onASeventyFifteenSetTheUnweightedColumnIsTheRecordsHeldBackMoneyToTheCent() {
+  // ON A 70/15/15 SET the judge is the Test window, and the unweighted column
+  // must be the stage 3 record's own test money to the cent: the same pass,
+  // the same chunks, the same votes; nothing held-back priced.
+  async onASeventyFifteenSetTheUnweightedColumnIsTheRecordsTestMoneyToTheCent() {
     const c = await chain('half-life split70 test', 'split70');
     try {
       const dry = await stages.halfLifeDry(c.cut.id);
-      assert.deepStrictEqual({ judge: dry.layout.judge, layout: dry.layout.layout, refused: dry.refused }, { judge: 'hold', layout: 'split70', refused: null }, 'no verdict asked for');
+      assert.deepStrictEqual({ judge: dry.layout.judge, layout: dry.layout.layout, refused: dry.refused }, { judge: 'test', layout: 'split70', refused: null }, 'no verdict asked for');
       const { block, file } = await ran(c, [24]);
       assert.deepStrictEqual(block.columns.map((x) => x.key), ['h24', 'none']);
+      assert.strictEqual(block.counts.original.hold, 0, 'the pricing held held-back chunks');
+      const testWindow = stages.getSet(c.s3).windows.units[c.plant].test;
+      assert.deepStrictEqual({ fromTs: block.window.fromTs, chunks: block.window.chunks }, { fromTs: testWindow.fromTs, chunks: testWindow.chunks }, 'the test window the stage 3 set recorded');
       const s3rows = rowstore.readAll(c.s3, 'records').filter((r) => r.trade === G.PLANT);
       for (const r of block.rows) {
         const row = s3rows.find((x) => x.label === r.label);
         assert.ok(row, `${r.label} is on the stage 3 record`);
-        assert.strictEqual(cents(r.money.none), cents(row.holdout.pnl), `${r.label}: the unweighted column is the record's held-back money`);
-        assert.strictEqual(r.trades.none, row.holdout.trades);
+        assert.strictEqual(cents(r.money.none), cents(row.pnl), `${r.label}: the unweighted column is the record's test money`);
+        assert.strictEqual(r.trades.none, row.trades);
         assert.ok(Number.isFinite(r.money.h24), 'the retrained column has a figure');
       }
-      assert.ok(file.halfLives[0].ts.hold.length > 0, 'the held-back votes ride on the retrain');
+      assert.ok(file.halfLives[0].ts.hold.length > 0, 'the held-back votes are cast on the retrain for Tune\'s capture');
     } finally { c.cleanup(); }
   },
 
@@ -307,7 +318,7 @@ module.exports = {
         assert.strictEqual(s.money.judge, r.money[r.best]);
         assert.strictEqual(s.money.unweighted, r.money.none);
       }
-      assert.deepStrictEqual({ kind: d.derived.kind, from: d.derived.from, run: d.derived.run, judge: d.derived.judge, layout: d.derived.layout, unit: d.unit, parent: d.parent.id }, { kind: 'halflife', from: c.cut.id, run: block.id, judge: 'hold', layout: 'reserve61', unit: c.plant, parent: c.s3 });
+      assert.deepStrictEqual({ kind: d.derived.kind, from: d.derived.from, run: d.derived.run, judge: d.derived.judge, layout: d.derived.layout, unit: d.unit, parent: d.parent.id }, { kind: 'halflife', from: c.cut.id, run: block.id, judge: 'test', layout: 'reserve61', unit: c.plant, parent: c.s3 });
       assert.deepStrictEqual(d.rule, stages.getSet(c.cut.id).rule, 'the source\'s rule rides on it');
       // its standing is its source's; the readings that would mislead refuse it
       assert.deepStrictEqual(stages.gateOfSet(d), stages.unreadGateOf(stages.getSet(c.cut.id)), 'the gate is the source\'s PASS');
@@ -331,9 +342,9 @@ module.exports = {
       for (const sv of cap.survivors) {
         const s = d.survivors.find((x) => x.label === sv.label);
         assert.strictEqual(sv.halfLife, s.halfLife, `${sv.label}: the capture carries the half-life`);
-        assert.ok(sv.entries.hold.length > 0, 'held-back entries on the set\'s own layout');
+        assert.ok(sv.entries.hold.length > 0, 'held-back entries on the set\'s own layout: Tune\'s capture reads the votes History cast and never priced');
         const r = block.rows.find((x) => x.label === sv.label);
-        assert.strictEqual(cents(sv.entries.test.reduce((a, e) => a + e.usd, 0)), cents(r.test[r.best]), `${sv.label}: the captured test entries reprice the table's own test money at that half-life`);
+        assert.strictEqual(cents(sv.entries.test.reduce((a, e) => a + e.usd, 0)), cents(r.money[r.best]), `${sv.label}: the captured test entries reprice the table's own money at that half-life`);
         assert.ok(sv.entries.train.length > 0, 'the members forecast the retrain training window');
       }
       assert.strictEqual(stages.getSet(built.id).capture.rows[0].halfLife, d.survivors[0].halfLife, 'the summary carries it too');
@@ -435,6 +446,10 @@ module.exports = {
     const history = ui.slice(ui.indexOf('// ---- History (the retrain run)'), ui.indexOf('// ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET, on Tune'));
     assert.ok(history.length > 2000 && history.includes('${hSetBoxHtml(list, chosen)}'), 'the set box is not inside the retrain panel');
     assert.ok(!/verdict|reserve grade|hGrade|unread/.test(history.replace(/\/\/[^\n]*/g, '')), 'History still talks about a verdict or the reserve grade');
+    // and nothing on it is judged on, priced on or a look at the held-back window (3.144.0)
+    const historyText = history.replace(/\/\/[^\n]*/g, '');
+    assert.ok(!/on the Held window|judged on the second|counted look|\blook \$\{/.test(historyText), 'History still says the held-back window is read');
+    assert.ok(historyText.includes('Nothing on this\n      screen reads the held-back window') && historyText.includes('The held-back window is not read.'), 'History does not say the held-back window is not read');
     const verify = ui.slice(ui.indexOf('// ---- THE RESERVE GRADE ON A STAGE 4 RECORD SET, on Verify'), ui.indexOf('async function drawVerify() {'));
     assert.ok(verify.includes('id="vGrade"') && /Run the reserve grade on this set/.test(verify), 'the reserve grade is not on Verify');
     for (const id of ['hHl12', 'hHl18', 'hHl24', 'hHl30', 'hHl36', 'hHl48', 'hHalfLife']) assert.ok(ui.includes(`id="${id}"`), `${id} is on the screen`);

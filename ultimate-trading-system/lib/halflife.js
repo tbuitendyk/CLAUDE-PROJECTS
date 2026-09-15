@@ -6,13 +6,15 @@
 // forecasts behind them are retrained, once per half-life the owner ticked,
 // with each training chunk's weight halving every H days of age, multiplied
 // into whatever weighing the set was trained under. Then the same records
-// are priced again on the Held window, the stretch the retraining never
-// touched, on the set's own layout: the second 13% of a 61/13/13/13 set (its
-// reserve stays sealed), the second 15% of a 70/15/15 set (3.142.0, owner
-// order 2026-09-15: "retraining with recent history ... that's always just
-// gonna be against the held slice, of course, the second thirteen or the
-// second fifteen"). History comes after the Funnel and before Verify, so
-// nothing here asks for a verdict.
+// are priced again on the Test window, the stretch the retraining never
+// touched, on the set's own layout: the 13% test slice of a 61/13/13/13 set,
+// the 15% test slice of a 70/15/15 set (3.144.0, owner order 2026-09-15:
+// "Change the history tab functionality to not work with the held set. We'll
+// keep it secret until verify or tune, assuming we leave it unchecked
+// there"). History comes after the Funnel and before Verify, so nothing here
+// asks for a verdict; and nothing here prices the held-back window. The
+// members' votes on it are cast and kept, as stage 2 casts and keeps them,
+// for Tune's capture of a half-life set to read when the owner ticks it.
 //
 // WHAT IS HERE is the arithmetic and the one worker task: the retrain layout
 // by the set's layout, the age weight, the members retrained, and the reading
@@ -32,16 +34,19 @@ const daysOfMonths = (months) => Math.round(Number(months) * DAYS_PER_MONTH);
 const keyOf = (months) => `h${months}`;
 const NONE = 'none';   // the unweighted, not-retrained column, always last
 
-// THE RETRAIN LAYOUT IS THE SET'S OWN, AND THE JUDGE IS THE HELD WINDOW ON
-// BOTH (3.142.0, owner order): a 61/13/13/13 set retrains on its 61%, tests
-// on its 13% and is judged on the second 13%, the last 13% left sealed; a
-// 70/15/15 set retrains on its 70%, tests on its 15% and is judged on the
-// second 15%. The layout names are the engine's (unitChunks); the screen says
-// the shares. Nothing else names a retrain layout: the 72% layout that judged
-// on the Reserve went with this, splitter and all.
+// THE RETRAIN LAYOUT IS THE SET'S OWN, AND THE JUDGE IS THE TEST WINDOW ON
+// BOTH (3.144.0, owner order; 3.142.0 had judged on the Held window): a
+// 61/13/13/13 set retrains on its 61% and is judged on its 13% test slice,
+// its held-back 13% never priced and its last 13% left sealed; a 70/15/15
+// set retrains on its 70% and is judged on its 15% test slice, its held-back
+// 15% never priced. The held-back and reserve shares are carried so the
+// screen can say what is NOT read. The layout names are the engine's
+// (unitChunks); the screen says the shares. Nothing else names a retrain
+// layout: the 72% layout that judged on the Reserve went with 3.142.0,
+// splitter and all.
 function retrainLayoutOf(windowLayout) {
-  if (windowLayout === 'reserve61') return { layout: 'reserve61', judge: 'hold', judgeWord: 'Held', train: 61, test: 13, hold: 13, reserve: 13 };
-  if (windowLayout === 'split70') return { layout: 'split70', judge: 'hold', judgeWord: 'Held', train: 70, test: 15, hold: 15, reserve: 0 };
+  if (windowLayout === 'reserve61') return { layout: 'reserve61', judge: 'test', judgeWord: 'Test', train: 61, test: 13, hold: 13, reserve: 13 };
+  if (windowLayout === 'split70') return { layout: 'split70', judge: 'test', judgeWord: 'Test', train: 70, test: 15, hold: 15, reserve: 0 };
   throw new Error(`no half-life run for a set built on the '${windowLayout || 'unknown'}' layout — it needs 61/13/13/13 or 70/15/15`);
 }
 
@@ -61,7 +66,10 @@ function halfLifeWeights(p, trainChunks, fee, halfLifeDays) {
 // members and their views are the stage 2 record's specs; the chunks are the
 // set's own layout's; the votes on the test slice and the held-back slice
 // come back with each member's saved model and probe votes, in the shape the
-// stage 3 task reads.
+// stage 3 task reads. The held-back votes are CAST here and never PRICED by
+// History (3.144.0): they ride in the run file for Tune's capture of a
+// half-life set, which reads them only when the owner ticks the held-back
+// window there -- exactly as stage 2 casts its held-back votes for stage 3.
 async function hlTrainTask(task) {
   const { combo, geometry, specs, fee, halfLifeMonths } = task;
   const halfLifeDays = daysOfMonths(halfLifeMonths);

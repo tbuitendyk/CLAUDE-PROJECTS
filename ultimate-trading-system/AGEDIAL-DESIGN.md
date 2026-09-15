@@ -54,6 +54,13 @@ S3 #1c on the box and said to hold the deploy.
   set — on the set's own layout, with no 72% layout and no verdict asked
   for, because History comes before Verify. The lines above and section 2
   stand as the record of what was built first.
+- **Corrected again 2026-09-15 (3.144.0, owner order; decision 94).** The
+  retrain run is judged on the Test window on both layouts and prices no
+  held-back figure at all: the held-back 13% or 15% stays secret until
+  Verify, or until a scan on Tune is told to read it. Judging on held was a
+  choice made on held before Verify. The members' votes on the held-back
+  slice are still cast at the retrain and kept for Tune's capture; nothing on
+  History prices them.
 - **The 80/20 window layout goes** from stage 1, with its code. "There are no
   sets with 80/20."
 - **The two fabricated-coin exams of the older instrument are not required**
