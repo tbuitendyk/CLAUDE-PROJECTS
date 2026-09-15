@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "e05897e6ad2f827d49608fb543f645266c62be75",
-  "subject": "3.139.0: the finished prep is read again; a prep picks up where it stopped; the blend is whole only when every coin and shape is",
-  "capturedAt": "2026-09-14T22:54:44Z",
+  "commit": "578ea340af52c54dc8500a04755bba80fe04cd5b",
+  "subject": "3.140.0: the Stage 4 record set keeps its held-back row behind a tick, as Boards does",
+  "capturedAt": "2026-09-15T00:15:53Z",
   "files": {
     "public/construct.js": {
-      "sha256": "ec80c620ea86ee85b308d64ceb2cb8cd682273a9a055d6c188a976a791b66a54",
-      "bytes": 607984
+      "sha256": "721ea67dbb6307ac34d85a4603c8d79255b0ce8ee9ca8f37c0b25637094ce1c0",
+      "bytes": 610991
     },
     "public/help-content.js": {
-      "sha256": "54b44a4a8a65dd4f059a0b63c2b1971e6f69b92ce0f57cd8861a98e288bd1666",
-      "bytes": 109867
+      "sha256": "9afc3a59959ef66f16e161d4dbd6099fa424141cf78d5b41615e5969d57d7b7d",
+      "bytes": 110555
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
