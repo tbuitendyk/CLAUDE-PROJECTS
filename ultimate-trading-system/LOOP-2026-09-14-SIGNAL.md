@@ -1155,3 +1155,20 @@ stay absent: nothing is invented into a record stamped under another
 release, and the page treats an absent optional reading as not read. The
 owner's alternative, theirs to choose (RULE NINE): delete those four sets and
 press again on Held and Reserve.
+
+Deployed 3.147.1 at 20:51 UTC; the log says it stripped 4 moved blocks and
+listened 5 seconds after the start. The probe on the box then counts 0 sets
+the mover would still act on, with nothing running: RULE TEN's measurement,
+so 3.147.2 deletes the mover whole -- the function, its export, the start-up
+call and its log lines, its test and its three guards. The guard on the
+frozen stop choices is re-aimed at the press test, which now puts a stop
+choice on the rule before its second press and reads it frozen into that set
+and absent from the first.
+
+Found and PARKED, not this loop's work: the deploy's health check in
+`deploy/install.sh` asks the service once, the moment the unit is started,
+and waits for nothing. A start that takes longer than that one ask reads
+FAILED although the service comes up -- both of today's deploys did, at 32
+and 5 seconds, because the mover parsed every record set on the box twice
+at every start. With the mover gone the start is what it was before 3.147.0
+and the check passes again; the check's wait is the owner's call.

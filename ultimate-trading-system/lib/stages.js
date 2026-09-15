@@ -7156,83 +7156,6 @@ function judgeSummaryOf(doc, all = null) {
   return { held, reserve: one('reserve'), heldAlone: r.keeps ? null : HELD_ALONE, keepsReserve: r.keeps, layout: r.layout };
 }
 
-// ---- MOVING THE STAMPS INTO SETS (3.147.0) -- WRITTEN TO BE DELETED (RULE TEN) ----
-//
-// Until 3.147.0 a verdict was a block on the rule (verify), a reserve grade a
-// block on the rule (unread), and the three readings sat on the rule under
-// their own names for the held-back window only. This moves each rule's
-// stamps once: every verdict block becomes a held set of the rule, numbered in
-// stamp order and created at the block's own stamp time; every reserve grade a
-// reserve set standing on the held set made from the block that gated it; and
-// the readings are re-keyed under the held stretch. A block's fields are
-// renamed to the one shape (read, money, priced, standsOn) and its sentence is
-// left exactly as it was stamped. It runs once at start, says what it moved,
-// and is deleted the release after a probe finds nothing left to move on the
-// box. Nothing here calls anything only it calls, so it lifts out in one cut.
-//
-// 3.147.1: a block stamped under an older release carried fields no block
-// written today has -- a 3.92-era verdict's planted-check state (`gate`,
-// retired 3.96.0 when the check moved to Setup), and a grade's pricing
-// leftovers (`controls`, `failures`). Read by nothing, seen by the probe on
-// the box after the first move. They go as a block moves, and once off the
-// sets the first move had already made on the box. The fields today's press
-// writes that an older stamp never had stay absent: nothing is invented into
-// a record stamped under another release.
-function moveStampsIntoSets() {
-  const moved = { rules: 0, held: 0, reserve: 0, readings: 0, stripped: 0 };
-  const DEAD = ['gate', 'controls', 'failures'];
-  const strip = (block) => { let n = 0; for (const k of DEAD) if (block && k in block) { delete block[k]; n++; } return n; };
-  const renameRows = (sv) => (sv && Array.isArray(sv.rows) ? { ...sv, rows: sv.rows.map(({ held, ...r }) => ({ money: held, ...r })) } : sv);
-  const mint = () => { const seq = seqFor(4); return { seq, id: `s4-${Date.now().toString(36)}-${seq}` }; };
-  for (const x of listSets()) {
-    if (!String(x.id).startsWith('s4-')) continue;
-    const doc = getSet(x.id);
-    if (!doc || doc.kind !== 'funnel') continue;
-    const OLD = ['verify', 'unread', 'others', 'dropped', 'ride'];
-    if (!OLD.some((k) => k in doc)) continue;
-    if (OLD.some((k) => Array.isArray(doc[k]) && doc[k].length)) moved.rules++;
-    const heldOf = new Map();          // the old block's id -> the held set made from it
-    const blocks = (doc.verify || []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
-    blocks.forEach((b, i) => {
-      const { heldBack, ...rest } = b;
-      const block = { ...rest, stretch: 'held', read: heldBack || rest.read || null, survivors: renameRows(rest.survivors), standsOn: null, window: null, priced: null, missing: [], forecasts: 'the stage 3 records as priced' };
-      strip(block);
-      const { seq, id } = mint();
-      const set = makeJudgeSet(doc, 'held', { id, seq, number: i + 1, block, standsOn: null, at: b.at });
-      saveSet(set);
-      heldOf.set(b.id, { id: set.id, name: set.name, at: b.at, release: b.release });
-      moved.held++;
-    });
-    const grades = (doc.unread || []).slice().sort((a, b) => String(a.at || '').localeCompare(String(b.at || '')));
-    grades.forEach((g, i) => {
-      const { gate, rows, ...rest } = g;
-      const standsOn = gate && heldOf.get(gate.id) ? heldOf.get(gate.id) : null;
-      const block = { ...rest, stretch: 'reserve', survivors: renameRows(rest.survivors), standsOn, priced: (rows || []).map((r) => ({ ...r })), forecasts: "the members' saved models" };
-      strip(block);
-      const { seq, id } = mint();
-      const set = makeJudgeSet(doc, 'reserve', { id, seq, number: i + 1, block, standsOn, at: g.at });
-      saveSet(set);
-      moved.reserve++;
-    });
-    const held = readingsOf(doc, 'held');
-    held.others = [...(doc.others || []), ...held.others];
-    held.dropped = [...(doc.dropped || []), ...held.dropped];
-    held.ride = [...(doc.ride || []).map((r) => ({ ...r, stretch: 'held', rows: (r.rows || []).map(({ hold, ...row }) => ({ read: hold, ...row })) })), ...held.ride];
-    readingsOf(doc, 'reserve');
-    moved.readings += (doc.others || []).length + (doc.dropped || []).length + (doc.ride || []).length;
-    delete doc.verify; delete doc.unread; delete doc.others; delete doc.dropped; delete doc.ride;
-    saveSet(doc);
-  }
-  // the sets the first move made before it stripped anything (3.147.1): each
-  // stripped once, counted, and nothing else on it touched
-  for (const x of listSets()) {
-    if (!String(x.id).startsWith('s4-')) continue;
-    const doc = getSet(x.id);
-    if (!isJudgeSet(doc) || !doc.block) continue;
-    if (strip(doc.block)) { saveSet(doc); moved.stripped++; }
-  }
-  return moved;
-}
 // one line per set for the set list: how many blocks, and what the verdict said
 // ---- V8: what the settings the rule DROPPED did on the same window (3.100.0) ----
 //
@@ -9187,7 +9110,7 @@ module.exports = {
   funnelRichStart, funnelRichStatus, cpuLoad, funnelKeeps,
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   windowsOfSet, newestDataOf,
-  judgeDry, judgeStart, judgeStatus, judgeRunOn, judgeSummaryOf, judgeSetsOf, heldStandingOf, reserveOf, readingsIn, makeJudgeSet, moveStampsIntoSets,
+  judgeDry, judgeStart, judgeStatus, judgeRunOn, judgeSummaryOf, judgeSetsOf, heldStandingOf, reserveOf, readingsIn, makeJudgeSet,
   gateRefusalOf, STRETCHES, HELD_ALONE, NO_HELD_PASS, sealedOnUnitOf,
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
