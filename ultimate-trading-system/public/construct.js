@@ -589,11 +589,16 @@ async function renderStrip() {
   if (btn) btn.onclick = () => { try { localStorage.setItem('setup-tab', 'version'); } catch (_) { /* private window */ } window.location.href = 'setup.html'; };
   // While a check is in flight, keep the marker honest without the owner having
   // to reload. One timer only, cleared the moment it lands.
+  // AND WHEN IT LANDS, THE OPEN TAB IS DRAWN AGAIN (3.142.4, owner order
+  // 2026-09-15): every press the check had refused ("one heavy job at a time")
+  // was ghosted when the tab was drawn, and the marker turning PASS did not
+  // un-ghost it. The tab is read again from the engine, so its buttons say
+  // what is true now.
   const going = !!(s.running || s.state === 'RUNNING');
   if (going && !gatePoll) {
     gatePoll = setInterval(async () => {
       const now = await renderStrip();
-      if (!now || !(now.running || now.state === 'RUNNING')) { clearInterval(gatePoll); gatePoll = null; }
+      if (!now || !(now.running || now.state === 'RUNNING')) { clearInterval(gatePoll); gatePoll = null; draw(); }
     }, 5000);
   }
   return s;

@@ -247,6 +247,9 @@ module.exports = {
     // from the always-up program, so it comes back with the engine stopped
     assert.ok(/localStorage\.setItem\('setup-tab', 'version'\)/.test(strip) && /window\.location\.href = 'setup\.html'/.test(strip), 'the marker beside "stage-engine check:" does not open Setup on Version');
     assert.ok(!/tab = 'verify'/.test(strip), 'the marker still opens Verify');
+    // 3.142.4: when the check lands, the open tab is drawn again, so every press the
+    // check had refused ("one heavy job at a time") comes back without a reload
+    assert.ok(/if \(!now \|\| !\(now\.running \|\| now\.state === 'RUNNING'\)\) \{ clearInterval\(gatePoll\); gatePoll = null; draw\(\); \}/.test(strip), 'the open tab is not drawn again when the stage-engine check lands');
     const help = src('public/help-content.js');
     for (const id of ['pgRun', 'sgRun']) assert.ok(!new RegExp(`\\b${id}: \\{`).test(help), `the help still describes ${id} on Verify`);
     assert.ok(/lives on the Setup page, under Version/.test(help), 'the Verify help does not say where the check went');

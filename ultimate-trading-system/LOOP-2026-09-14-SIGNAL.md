@@ -930,3 +930,12 @@ every other box uses dots, and the count beside it floated mid-height. One
 helper now prints a set's name in all five set boxes, adding the unit only
 when the name lacks it; the row lines up at the bottom. Owner: "just do
 things like that right in the future." Third digit.
+
+## AC. The open tab is drawn again when the stage-engine check lands — owner GO NOW! 2026-09-15 (3.142.4)
+
+"after a engine check completes and PASS is indicated the currently opened
+tab ... should update to no longer block on the buttons" — "Capture the
+trades of this set again" stayed ghosted after the marker turned PASS. The
+strip already polled the check while it ran and stopped when it landed; it
+now draws the open tab again at that moment, so every press the check had
+refused is read again from the engine. Third digit.
