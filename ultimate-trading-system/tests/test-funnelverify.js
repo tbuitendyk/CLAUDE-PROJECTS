@@ -1024,7 +1024,8 @@ module.exports = {
       assert.deepStrictEqual({ entry: src.survivor.entry, gate: src.survivor.gate, tHours: src.survivor.tHours, rule: src.survivor.agreeRule, pct: src.survivor.agreePct }, { entry: 'market', gate: 'active', tHours: 41, rule: 'share', pct: null });
       assert.strictEqual(src.survivor.bandPct, 2, 'an auto band resolves to the band the unit was priced at');
       assert.strictEqual(src.fee, 0.00125);
-      assert.deepStrictEqual(src.readings.held, { money: held.block.survivors.rows[0].money, trades: held.block.survivors.rows[0].trades }, 'the survivor\'s own held-back reading rides along, off the held set');
+      // no stop or sizing on record on this fixture, so the tuned figures ride along as none (3.153.0)
+      assert.deepStrictEqual(src.readings.held, { money: held.block.survivors.rows[0].money, trades: held.block.survivors.rows[0].trades, tuned: null }, 'the survivor\'s own held-back reading rides along, off the held set');
       assert.strictEqual(src.readings.reserve, null, 'no reserve set, no reserve reading');
       assert.deepStrictEqual(src.training.windowLayout, 'reserve61');
       // a named pick, and an unknown name refused

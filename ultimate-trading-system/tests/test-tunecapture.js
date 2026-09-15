@@ -340,7 +340,7 @@ module.exports = {
       assert.strictEqual(cents(hrow.tunedUsd), cents(pw.tunedUsd), 'tuned is what the picture works out for the same window');
       assert.strictEqual(hrow.trades, pw.trades, 'over the same captured trades');
       assert.strictEqual(hrow.differs, 0, "the capture's plain re-pricing is the reading to the cent");
-      assert.ok(/reads the plain money/.test(ht.reads), ht.reads);
+      assert.ok(/reads a tuned survivor at its money under its tunings/.test(ht.reads) && /copies are priced plain/.test(ht.reads), ht.reads);
       assert.strictEqual(stages.setSizingChoice(c.cut.id, { pick: 'depth', on: false, why: '' }).sizing, null, 'taken off again');
       assert.deepStrictEqual(await stages.tunedOfRule(stages.getSet(c.cut.id), [depthLabel]), {}, 'a survivor with no tuning on record is not worked out');
       // and a press with nothing on record prices nothing again, and says so
