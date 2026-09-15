@@ -2983,11 +2983,20 @@ async function drawTune() {
     <p class="note">Prices the DECLARED clip ladder (multiplier = winning-side vote count) as a pure $ overlay on the
       same captured trades, against a shuffled-assignment chance check and exposure-honest metrics.
       Target: ${target}.</p>
+    ${tnSizingChoiceHtml(onRecord)}
     <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep</button></div>
     <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : ''}</div>
   </div>
 `;
-  function renderStopResult(s) {
+  // THE SIZING ON RECORD, AS A GREEN LINE at the top of the conviction panel (3.154.0,
+// owner order): the same green as the stop tuner's "your choice" row, drawn only
+// when the sizing is applied to the survivor picked under Tuning targets
+function tnSizingChoiceHtml(onRecord) {
+  const sz = onRecord && onRecord.sizing ? onRecord.sizing : null;
+  if (!sz) return '';
+  return `<p class="note" style="background:rgba(40,170,80,.18);padding:.3rem .5rem;border-radius:4px" title="the sizing on record for the survivor picked under Tuning targets: one clip a member that agreed, frozen by the next held set or reserve set and carried by a greenlight"><b>your choice</b> - by conviction - ${sz.why ? esc(sz.why) : 'reason not set'} (${esc(String(sz.at || '').slice(0, 10))})</p>`;
+}
+function renderStopResult(s) {
     const cc = s.counts || {};
     // ONE ROW PER STOP, the same six figures whichever way the stop was chosen
     // (3.145.0): the curve's rows by how many top winners are given up, and
@@ -2997,7 +3006,7 @@ async function drawTune() {
         <td class="${(c.loserPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.loserPnlDeltaUsd)}</td>
         <td class="${(c.netPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${usd(c.netPnlDeltaUsd)}</b></td>`;
     const mine = s.chosenStop || null;
-    const mineRow = mine && mine.row ? `<tr style="background:rgba(40,170,80,.18)" title="the stop on record for this survivor, priced on the same entries by the same arithmetic as the rows below it"><td><b>your choice</b> - ${mine.stopPct == null ? 'no stop' : 'stop'}${mine.why ? ` - ${esc(mine.why)}` : ''}</td>${rowCells({ ...mine.row, stopPct: mine.stopPct })}</tr>` : '';
+    const mineRow = mine && mine.row ? `<tr style="background:rgba(40,170,80,.18)" title="the stop on record for this survivor, priced on the same entries by the same arithmetic as the rows below it"><td><b>your choice</b> - ${mine.stopPct == null ? 'no stop' : 'stop'} - ${mine.why ? esc(mine.why) : 'reason not set'}</td>${rowCells({ ...mine.row, stopPct: mine.stopPct })}</tr>` : '';
     return `${s.target ? tnTargetLineHtml(s.target) : ''}<p><b>${esc(s.bookId)}</b>: tightest no-winner-lost stop <span class="pos">${pct(s.stopPct)}</span> —
       ${cc.winners || 0} winners / ${cc.losers || 0} losers over ${cc.priced || 0} entries · money with no stop <span class="${(s.noStopUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(s.noStopUsd)}</span> at the $${s.clipUsd ?? 10} clip.</p>
       <div class="scrollx"><table><thead><tr>${cth('give up top winners','giveUp')}${cth('stop','stopPct')}${cth('winners cut','winnersCut')}${cth('winner $ given up','winnerGiven')}${cth('losers cut','losersCut')}${cth('loss-side $','lossSide')}${cth('NET $','netUsd')}</tr></thead><tbody>
