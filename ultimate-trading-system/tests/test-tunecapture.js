@@ -311,7 +311,7 @@ module.exports = {
       // THE SIZING APPLIED (3.151.0): a choice on the survivor beside its stop; the picture works its money out with and without it, off the capture
       const depthLabel = stages.getSet(c.cut.id).capture.pick.label;
       const sz = stages.setSizingChoice(c.cut.id, { pick: 'depth', on: true, why: 'size by conviction' });
-      assert.deepStrictEqual({ survivor: sz.survivor, on: sz.sizing.on, ladder: sz.sizing.ladder.length, clip: sz.sizing.clipUsd }, { survivor: depthLabel, on: true, ladder: stages.getSet(c.cut.id).capture.members, clip: 10 });
+      assert.deepStrictEqual({ survivor: sz.survivor, on: sz.sizing.on, ladder: sz.sizing.ladder.length, clip: sz.sizing.clipUsd }, { survivor: depthLabel, on: true, ladder: stages.getSet(c.cut.id).capture.members, clip: 100 });
       const tuned = await stages.tunedOfRule(stages.getSet(c.cut.id), [depthLabel]);
       const tw = tuned[depthLabel].windows;
       assert.ok(['train', 'test', 'held', 'reserve'].every((w) => tw[w] && Number.isFinite(tw[w].flatUsd) && Number.isFinite(tw[w].tunedUsd)), JSON.stringify(tw));
@@ -319,9 +319,9 @@ module.exports = {
       const pic = await stages.pictureOf(stages.getSet(c.cut.id));
       const mine = pic.survivors.find((x) => x.label === depthLabel);
       assert.deepStrictEqual({ sizing: mine.tunings.sizing, stopSaid: mine.tunings.stopSaid, tunedOn: !!mine.tuned, n: pic.rule.tunings.survivorsWithATuning }, { sizing: true, stopSaid: false, tunedOn: true, n: 1 });
-      // THE READING PRICES THEM TOO (3.152.0, owner order 2026-09-15): a held press with
-      // the sizing on record writes the survivor's money plain and tuned side by side on
-      // its block, off the capture, and the verdict still reads the plain money
+      // THE READING APPLIES THEM (3.153.0, owner order 2026-09-15): a held press with the
+      // sizing on record reads the survivor at its money under the sizing, off the
+      // capture in the record's own dollars, and keeps its money without it beside
       const newest = (id, stretch) => stages.judgeSetsOf(id, stretch).reduce((a, x) => (!a || x.number > a.number ? x : a), null);
       stages.judgeStart(c.cut.id, 'held', { barPct: 100 });
       await settle(() => stages.judgeStatus(c.cut.id, 'held'), 'the held read with a tuning');
@@ -330,7 +330,10 @@ module.exports = {
       const hrow = (ht.rows || []).find((x) => x.label === depthLabel) || null;
       assert.deepStrictEqual({ window: ht.window, of: ht.of, withATuning: ht.withATuning, priced: ht.priced, why: ht.why, captured: !!(ht.capture && ht.capture.at), sizing: !!(hrow && hrow.sizing && hrow.sizing.on), stop: hrow ? hrow.stop : undefined, frozen: hs.stopChoices[depthLabel].sizing.on },
         { window: 'held', of: hs.block.survivors.rows.length, withATuning: 1, priced: 1, why: null, captured: true, sizing: true, stop: null, frozen: true });
-      assert.strictEqual(cents(hrow.money), cents(hs.block.survivors.rows.find((x) => x.label === depthLabel).money), "plain is the reading's own money");
+      const readAt = hs.block.survivors.rows.find((x) => x.label === depthLabel);
+      assert.strictEqual(cents(readAt.money), cents(hrow.tunedUsd), 'the reading reads the survivor at its money under the sizing');
+      assert.strictEqual(cents(hrow.plainUsd), cents(capR.survivors.find((x) => x.label === depthLabel).money.hold), "its money without the sizing is the record's own");
+      assert.ok(hrow.tunedUsd !== hrow.plainUsd, 'and the sizing changed the money, so the two are not one number');
       // the reading and the picture price at the record's own dollars (lib/paper.js NOTIONAL), not the scans' $10 clip
       const pw = mine.tuned.windows.held;
       assert.deepStrictEqual({ clip: ht.clipUsd, pictureClip: pic.rule.tunings.clipUsd, rowClip: hrow.clipUsd, scans: tw.held.trades }, { clip: 100, pictureClip: 100, rowClip: 100, scans: pw.trades }, 'one currency on the reading and the picture');
