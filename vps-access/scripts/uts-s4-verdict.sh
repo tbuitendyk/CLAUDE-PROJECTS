@@ -64,6 +64,12 @@ for b in blocks:
     if held:
         hs=sorted(held)
         print("    held per survivor: n", len(hs), "min", m(hs[0]), "median", m(statistics.median(hs)), "mean", m(statistics.mean(hs)), "max", m(hs[-1]), "positive", sum(1 for x in hs if x>0))
+        besthi=((c.get("best") or {}).get("hi"))
+        if besthi is not None:
+            print("    survivors above the worst-hold best of the four (", m(besthi), "):", sum(1 for x in hs if x > besthi + 0.01), "of", len(hs))
+        vsl=[x.get("vsLong") for x in rows if x.get("vsLong") is not None]
+        if vsl:
+            print("    survivors beating being long every period at their OWN hold length:", sum(1 for x in vsl if x > 0.01), "of", len(vsl), "| margin min", m(min(vsl)), "median", m(statistics.median(vsl)), "mean", m(statistics.mean(vsl)))
         beats=[x.get("beats") for x in rows if x.get("beats") is not None]
         print("    beats per survivor: min", min(beats), "median", statistics.median(beats), "max", max(beats), "| bar", sv.get("kept"))
         tr=[x.get("trades") for x in rows if x.get("trades") is not None]
