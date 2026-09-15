@@ -726,6 +726,16 @@ app.post('/api/funnel/set/:id/ride', (req, res) => {
   try { return res.json(stages.funnelRideStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/ride/status', (req, res) => res.json(stages.funnelRideStatus(req.params.id)));
+// THE RESERVE BOARD OF THE RULE'S UNIT (3.148.0, VERIFY-DESIGN.md Part 9
+// release 2): the whole board of the unit priced on the reserve window and
+// kept beside the stage 3 set, which every Reserve reading on a plain rule
+// then reads. Started and polled; `which` is the rule's own unit or every
+// other unit not yet priced, one at a time; the stop lets the unit in hand land.
+app.post('/api/funnel/set/:id/reserve-board', (req, res) => {
+  try { return res.json(stages.reserveBoardStart(req.params.id, req.body || {})); } catch (err) { return res.status(409).json({ error: err.message }); }
+});
+app.get('/api/funnel/set/:id/reserve-board/status', (req, res) => res.json(stages.reserveBoardStatus(req.params.id)));
+app.post('/api/funnel/set/:id/reserve-board/stop', (req, res) => res.json(stages.reserveBoardStop(req.params.id)));
 // THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET (3.92.0), on Tune: the GET is
 // the dry read (the capture on record and its looks), the POST captures the
 // survivors' trades, started and polled. Tune comes before Verify, so no

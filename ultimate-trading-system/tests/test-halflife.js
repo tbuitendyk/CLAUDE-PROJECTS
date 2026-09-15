@@ -385,6 +385,9 @@ module.exports = {
       assert.ok(rs, 'a reserve set of the half-life set was written');
       c.made.push(rs.id);
       assert.deepStrictEqual({ standsOn: rs.standsOn.id, priced: rs.block.priced.length, forecasts: /retrained at each survivor's own half-life/.test(rs.block.forecasts), window: rs.block.window != null }, { standsOn: hs.id, priced: d.survivors.length, forecasts: true, window: true });
+      // H2.5 (3.148.0): a half-life rule prices its own; no reserve board was needed, none was read, and the set says which forecasts it was priced with
+      assert.strictEqual(stages.readReserveBoard(c.s3, built.unit), null, 'no reserve board of the unit exists, and the half-life press did not need one');
+      assert.deepStrictEqual({ board: rs.block.board || null, offBoard: /read off the reserve board/.test(rs.block.forecasts) }, { board: null, offBoard: false });
       let heldOnly = null;
       try { await stages.stage4GreenlightSource(hs.id, { pick: 'depth' }); } catch (e) { heldOnly = e.message; }
       assert.ok(/read it on Reserve/.test(heldOnly), heldOnly);

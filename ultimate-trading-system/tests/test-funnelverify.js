@@ -101,6 +101,25 @@ async function fixture(opts = {}) {
   return { id, parentId, doc, t, units, keys, stamp, cleanup };
 }
 const RULE = { allowed: { gate: ['active'] } };
+// A RESERVE BOARD WRITTEN BY HAND for the fixture's five settings (3.148.0): the
+// active ones make money on the reserve, the directional ones lose it, in
+// figures that are not the held-back ones, so a reading off the board can be
+// told from a reading off the records
+function handBoard(K, scale = 1) {
+  const rows = [];
+  for (const [g, t] of [['active', 41], ['active', 65], ['directional', 41], ['directional', 65], ['directional', 89]]) {
+    const winner = g === 'active';
+    const money = (winner ? 7 : -3) * scale;
+    rows.push({ si: rows.length, label: `q1 ${g} t${t} · argmax auto 24/7`, tHours: t, weekdaysOnly: false,
+      avgHold: money, avgTrades: 4, avgVsLong: money - 1, noiseHold: Array.from({ length: K }, (_, d) => (winner ? 6 - d * 0.1 : -2 - d * 0.1) * scale),
+      beat: winner ? 9 : 0, pairs: K, avgLead: winner ? 1.2 : -0.7, pnlThirds: [money / 3, money / 3, money / 3], stops: 1,
+      ride: { maxDrawdown: -1, worstTrade: -2, bestTrade: 3, wins: 2, stops: 1, grossPerTrade: 1, pnlThirds: [money / 3, money / 3, money / 3] },
+      test: { money: (winner ? 10 : -4) * scale, trades: 10 } });
+  }
+  const four = { alwaysLong: 3, alwaysShort: -4, buyHold: 2, shortHold: -3 };
+  return { rows, controls: { 'all|41': { ...four }, 'all|65': { ...four }, 'all|89': { ...four } }, window: { fromTs: 1735689600000, toTs: 1736121600000, chunks: 5, seenToTs: 1736121600000, forecastHash: 'hand' },
+    fee: 0.00125, nullN: K, keepN: K, forecasts: "the members' saved models", settings: 5, missing: [], failures: [], unitName: 'AAA daily-1d', proof: { checked: 5, of: 5 } };
+}
 async function cutOn(f, extra = {}) {
   return stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: f.keys[0], steps: [{ n: 1, what: 'kept gate active' }], backSteps: [{ from: 2, to: 1, why: 'a look back' }], marks: [{ key: 'spike', step: 2, detail: 'tHours' }], barPct: 80, ...extra });
 }
@@ -703,8 +722,9 @@ module.exports = {
       assert.strictEqual(dry.othersRefused, null);
       const dryR = await stages.judgeDry(doc.id, 'reserve');
       assert.deepStrictEqual(dryR.readings.others, [], 'the readings are kept per stretch');
-      assert.ok(/not priced on the reserve window yet/.test(dryR.othersRefused), dryR.othersRefused);
-      assert.ok(/not priced on the reserve window yet/.test(dryR.droppedRefused), dryR.droppedRefused);
+      // 3.148.0: the other units are read off their own reserve boards, a unit not yet priced named in the reading; the dropped settings need this unit's board first
+      assert.strictEqual(dryR.othersRefused, null, dryR.othersRefused);
+      assert.ok(/reserve board of this unit is not priced yet — press Price the reserve board on Reserve first/.test(dryR.droppedRefused), dryR.droppedRefused);
     } finally { f.cleanup(); }
   },
 
@@ -722,7 +742,7 @@ module.exports = {
     assert.deepStrictEqual({ copies: few.copies, bar: few.bar, positive: few.positive, clears: few.clears }, { copies: 5, bar: F.barOf({ k: 5, barPct: 80 }), positive: true, clears: true });
     const unit = (positive, clears, keepsNothing = false) => ({ positive, clears, keepsNothing });
     const s1 = V.othersSummary([unit(true, true), unit(false, false), unit(false, false), unit(false, false, true)]);
-    assert.deepStrictEqual(s1, { positive: 1, of: 3, clearBar: 1, keepsNothing: 1, mark: 'fewer than half of the 3 other units are positive on the held-back window' });
+    assert.deepStrictEqual(s1, { positive: 1, of: 3, clearBar: 1, keepsNothing: 1, notPriced: 0, mark: 'fewer than half of the 3 other units are positive on the held-back window' });
     const s2 = V.othersSummary([unit(true, true), unit(true, false), unit(false, false)]);
     assert.deepStrictEqual({ positive: s2.positive, of: s2.of, clearBar: s2.clearBar, mark: s2.mark }, { positive: 2, of: 3, clearBar: 1, mark: null });
     // exactly half is not fewer than half
@@ -730,7 +750,10 @@ module.exports = {
     assert.strictEqual(s3.mark, null);
     // nothing usable: no mark, and the counts say why
     const s4 = V.othersSummary([unit(false, false, true)]);
-    assert.deepStrictEqual(s4, { positive: 0, of: 0, clearBar: 0, keepsNothing: 1, mark: null });
+    assert.deepStrictEqual(s4, { positive: 0, of: 0, clearBar: 0, keepsNothing: 1, notPriced: 0, mark: null });
+    // a unit not yet priced on the reserve (3.148.0) is counted apart, never as keeping nothing, and never in the denominator
+    const s5 = V.othersSummary([unit(true, true), { positive: false, clears: false, keepsNothing: true, notPriced: true }], 'reserve');
+    assert.deepStrictEqual(s5, { positive: 1, of: 1, clearBar: 1, keepsNothing: 0, notPriced: 1, mark: null });
   },
 
   // THE SAME BOARDS, ONE READING AT A TIME. The Funnel's read of the other units
@@ -830,7 +853,8 @@ module.exports = {
       // a ride on the reserve window needs the rule to stand on the held-back window first, like the press
       const dryR = await stages.judgeDry(doc.id, 'reserve');
       assert.strictEqual(dryR.readings.ride.length, 0, 'the held ride is not a reserve ride');
-      assert.strictEqual(dryR.rideRefused, b.verdict.pass ? null : stages.NO_HELD_PASS);
+      // with the standing, a plain rule's reserve ride still waits for the unit's reserve board (3.148.0)
+      assert.strictEqual(dryR.rideRefused, b.verdict.pass ? stages.reserveBoardOf(stages.getSet(doc.id)).why : stages.NO_HELD_PASS);
       // refusals in words
       const blend = await stages.cutFunnelSet(f.id, { rule: RULE, closing: { key: 'rule' }, unit: 'all' });
       let threw = null;
@@ -886,7 +910,7 @@ module.exports = {
       assert.strictEqual(threw, stages.NO_HELD_PASS);
       assert.ok(/read the rule on Held first/.test(threw), 'and it says what to do');
       let dry = await stages.judgeDry(doc.id, 'reserve');
-      assert.deepStrictEqual({ refused: dry.refused, standsOn: dry.standsOn, sets: dry.sets.length, keeps: dry.reserve.keeps, intact: dry.reserve.intact, prices: dry.prices }, { refused: stages.NO_HELD_PASS, standsOn: null, sets: 0, keeps: true, intact: true, prices: true });
+      assert.deepStrictEqual({ refused: dry.refused, standsOn: dry.standsOn, sets: dry.sets.length, keeps: dry.reserve.keeps, intact: dry.reserve.intact, prices: dry.prices }, { refused: stages.NO_HELD_PASS, standsOn: null, sets: 0, keeps: true, intact: true, prices: false });
       // a held set that FAILED is no standing
       await pressed(doc.id, { barPct: 100 });
       const held = setsOf(doc.id)[0];
@@ -899,8 +923,48 @@ module.exports = {
       const standing = stages.heldStandingOf(stages.getSet(doc.id));
       assert.deepStrictEqual({ id: standing.id, name: standing.name, number: standing.number }, { id: held.id, name: held.name, number: 1 });
       dry = await stages.judgeDry(doc.id, 'reserve');
-      assert.strictEqual(dry.refused, null, dry.refused);
+      // 3.148.0: with the standing, a plain rule waits for the unit's reserve board, and says which press prices it
+      assert.strictEqual(dry.refused, stages.reserveBoardOf(stages.getSet(doc.id)).why, dry.refused);
+      assert.ok(/reserve board of this unit is not priced yet — press Price the reserve board on Reserve first/.test(dry.refused), dry.refused);
+      assert.deepStrictEqual({ priced: dry.board.priced, press: dry.board.press, boardRefused: dry.boardRefused, prices: dry.prices }, { priced: false, press: stages.BOARD_PRESS, boardRefused: null, prices: false });
       assert.deepStrictEqual({ id: dry.standsOn.id, name: dry.standsOn.name }, { id: held.id, name: held.name }, 'the dry read names the held set a reserve set would stand on');
+      // the board written by hand beside the stage 3 set: the press reads it and prices nothing; sanity is over the whole board
+      const K = 10;
+      stages.writeReserveBoard(f.id, doc.unit, handBoard(K, 1));
+      dry = await stages.judgeDry(doc.id, 'reserve');
+      assert.deepStrictEqual({ refused: dry.refused, priced: dry.board.priced, pricings: dry.board.pricings, rows: dry.board.pricedRows, settings: dry.board.settings, boardLooks: dry.looks.boardPricings }, { refused: null, priced: true, pricings: 1, rows: 5, settings: 5, boardLooks: 1 });
+      const started = stages.judgeStart(doc.id, 'reserve', {});
+      assert.strictEqual(started.of, 0, 'a read off the board counts no pricing');
+      for (let i = 0; i < 400 && !stages.judgeStatus(doc.id, 'reserve').result && !stages.judgeStatus(doc.id, 'reserve').error; i++) await new Promise((resolve) => { setTimeout(resolve, 25); });
+      assert.strictEqual(stages.judgeStatus(doc.id, 'reserve').error, null);
+      const rb = blockOf(doc.id, 0, 'reserve');
+      assert.deepStrictEqual({ pricing: rb.board.pricing, real: rb.read.real, money: rb.priced.map((x) => x.money), over: rb.sanity.over, figures: rb.sanity.board.figures, copies: rb.copies.copies, chunks: rb.window.chunks, forecasts: rb.forecasts },
+        { pricing: 1, real: 7, money: [7, 7], over: 'board', figures: 5 * K, copies: K, chunks: 5, forecasts: "the members' saved models, read off the reserve board of this unit" });
+      assert.ok(/read off the reserve board of this unit, priced \d{4}-\d{2}-\d{2} \(pricing 1, 5 of 5 settings\)/.test(rb.verdict.sentence) && /this is reserve set 1 of the rule/.test(rb.verdict.sentence), rb.verdict.sentence);
+      // H2.1: a second rule cut on the same unit reads the same board without pricing
+      const doc2 = await cutOn(f, { name: `second rule ${f.stamp}` });
+      await pressed(doc2.id, { barPct: 100 });
+      rewrite(setsOf(doc2.id)[0].id, (on) => { on.block.verdict.pass = true; on.block.release = require('../package.json').version; });
+      assert.strictEqual(stages.judgeStart(doc2.id, 'reserve', {}).of, 0);
+      for (let i = 0; i < 400 && !stages.judgeStatus(doc2.id, 'reserve').result && !stages.judgeStatus(doc2.id, 'reserve').error; i++) await new Promise((resolve) => { setTimeout(resolve, 25); });
+      assert.deepStrictEqual({ pricing: blockOf(doc2.id, 0, 'reserve').board.pricing, boards: fs.readdirSync(SETS_DIR).filter((x) => x.startsWith(`${f.id}-reserve-`)).length }, { pricing: 1, boards: 1 }, 'one board per unit, read by both rules');
+      // a second pricing stamps a further pricing on the same file and keeps the first stamp
+      stages.writeReserveBoard(f.id, doc.unit, handBoard(K, 1));
+      assert.strictEqual(stages.readReserveBoard(f.id, doc.unit).pricings.length, 2);
+      // H2.4: the dropped settings and the ride off the board; the other unit not yet priced is named, then read once its board lands
+      const dropped = await stages.funnelDroppedStart(doc.id, { stretch: 'reserve' });
+      assert.deepStrictEqual({ kept: dropped.kept.of, dropped: dropped.dropped.of, keptMean: dropped.kept.mean, droppedMean: dropped.dropped.mean, pricing: dropped.board.pricing }, { kept: 2, dropped: 3, keptMean: 7, droppedMean: -3, pricing: 2 });
+      stages.funnelRideStart(doc.id, { stretch: 'reserve' });
+      for (let i = 0; i < 400 && !stages.funnelRideStatus(doc.id).result && !stages.funnelRideStatus(doc.id).error; i++) await new Promise((resolve) => { setTimeout(resolve, 25); });
+      const ride = stages.readingsIn(stages.getSet(doc.id), 'reserve').ride[0];
+      assert.deepStrictEqual({ money: ride.rows.map((x) => x.read.money), drawdown: ride.rows[0].read.maxDrawdown, test: ride.rows[0].test.money, pricing: ride.board.pricing }, { money: [7, 7], drawdown: -1, test: 10, pricing: 2 });
+      await othersPressed(doc.id, { stretch: 'reserve' });
+      const o1 = stages.readingsIn(stages.getSet(doc.id), 'reserve').others[0];
+      assert.deepStrictEqual({ of: o1.of, notPriced: o1.notPriced, named: o1.units[0].notPriced, why: o1.units[0].why }, { of: 0, notPriced: 1, named: true, why: `not priced on the reserve window yet — ${stages.BOARD_PRESS} prices it` });
+      stages.writeReserveBoard(f.id, f.keys[1], handBoard(K, 0.5));
+      await othersPressed(doc.id, { stretch: 'reserve' });
+      const o2 = stages.readingsIn(stages.getSet(doc.id), 'reserve').others[0];
+      assert.deepStrictEqual({ of: o2.of, positive: o2.positive, notPriced: o2.notPriced, real: o2.units[0].real }, { of: 1, positive: 1, notPriced: 0, real: 3.5 });
       // an older PASS behind a newer FAIL is a rule that was read again and did not stand
       await pressed(doc.id, { barPct: 100 });
       const newer = setsOf(doc.id)[0];
@@ -1193,6 +1257,41 @@ module.exports = {
   },
 };
 
+// THE RESERVE BOARD (3.148.0, VERIFY-DESIGN.md Part 9 release 2): the board
+// read onto rows takes the board's figures and nothing else; a file of another
+// shape reads as absent; the panel, its three presses and their routes are on
+// the page, and the press is named on the page exactly as the engine names it.
+module.exports.theReserveBoardIsReadOntoRowsAndIsOnReserveWithItsPressesAndRoutes = function () {
+  const SETS = path.join(__dirname, '..', 'data', 'stagesets');
+  fs.mkdirSync(SETS, { recursive: true });
+  const rows = [{ label: 'a', avgTest: 10, avgHold: 5, noiseHold: [1, 2], beat: 3, pairs: 2, avgLead: 1, avgTrades: 4, avgVsLong: 4, pnlThirds: [1, 1, 1] }, { label: 'b', avgTest: -4, avgHold: -2, noiseHold: [1, 2], beat: 1, pairs: 2, avgLead: -1, avgTrades: 3, avgVsLong: -3, pnlThirds: [1, 1, 1] }];
+  const board = { rows: { a: { avgHold: 7, avgTrades: 6, avgVsLong: 6, noiseHold: [3, 4, 5], beat: 2, pairs: 3, avgLead: 0.5, pnlThirds: [2, 2, 3], stops: 1, ride: { maxDrawdown: -1 }, test: { money: 10, trades: 4 } } } };
+  const on = stages.withReserveBoard(rows, board);
+  assert.deepStrictEqual({ a: [on[0].avgHold, on[0].noiseHold, on[0].beat, on[0].pairs, on[0].avgLead, on[0].avgTrades, on[0].avgVsLong, on[0].pnlThirds, on[0].stops, on[0].onReserveBoard, on[0].avgTest], b: [on[1].avgHold, on[1].noiseHold, on[1].beat, on[1].onReserveBoard, on[1].avgTest] },
+    { a: [7, [3, 4, 5], 2, 3, 0.5, 6, 6, [2, 2, 3], 1, true, 10], b: [null, null, null, false, -4] }, 'a row the board holds takes the board\'s reserve figures; a row it lacks reads as no figure, never as its held-back one; the test side is untouched');
+  // a file of another shape reads as absent (RULE NINE)
+  const tag = Date.now().toString(36);
+  const pid = `s3-rb-${tag}`;
+  try {
+    fs.writeFileSync(stages.reserveBoardFile(pid, 'X|||daily-1d'), require('zlib').gzipSync(Buffer.from(JSON.stringify({ v: 99, rows: {}, pricings: [{ at: 'x' }] }))));
+    assert.strictEqual(stages.readReserveBoard(pid, 'X|||daily-1d'), null);
+    assert.strictEqual(stages.readReserveBoard(pid, 'Y|||daily-1d'), null, 'no file is no board');
+  } finally { try { fs.rmSync(stages.reserveBoardFile(pid, 'X|||daily-1d'), { force: true }); } catch (_) { /* fixture */ } }
+  // the page: the panel between the looks line and the press, on Reserve only; the three presses; the press named as the engine names it; the routes
+  const ui = src('public/construct.js');
+  assert.ok(/^function vBoardHtml\(/m.test(ui) && /^async function vBoardFollow\(/m.test(ui), 'top-level helpers');
+  assert.ok(ui.includes("${vFootingHtml(d)}${vLooksHtml(d, stretch)}${vBoardHtml(d, stretch)}${vPressHtml(d, stretch)}"), 'the board panel sits under the looks line and above the press');
+  assert.ok(ui.includes("if (stretch !== 'reserve' || !d.board) return '';"), 'Held draws no board: stage 3 priced its window');
+  for (const id of ['vBoard', 'vBoardOthers', 'vBoardStop', 'vBoardMsg']) assert.ok(ui.includes(`id="${id}"`), `${id} is on the page`);
+  assert.ok(ui.includes(`>${stages.BOARD_PRESS}</button>`), 'the press is named on the page exactly as the engine names it in its refusals');
+  assert.strictEqual(stages.BOARD_PRESS, 'Price the reserve board');
+  assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(chosen\)\}\/reserve-board`, \{ which: 'unit' \}/.test(ui) && /\/reserve-board`, \{ which: 'others' \}/.test(ui) && /\/reserve-board\/stop`/.test(ui) && /\/reserve-board\/status`/.test(ui), 'the three presses and the poll');
+  assert.ok(/Read off the reserve board of this unit:/.test(ui), 'a set says which board it was read off');
+  const srv = src('server.js');
+  for (const r of ['/api/funnel/set/:id/reserve-board', '/api/funnel/set/:id/reserve-board/status', '/api/funnel/set/:id/reserve-board/stop']) assert.ok(srv.includes(`'${r}'`), `${r} is served`);
+  assert.ok(/reserveBoardStart\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'the press takes which');
+};
+
 // THE RESERVE IS THE SEALED WINDOW OR NOTHING (3.147.0, VERIFY-DESIGN.md Part
 // 9). A 61/13/13/13 rule keeps a reserve -- the sealed window, readable while
 // the seal is intact on the unit; a 70/15/15 rule keeps none and is held
@@ -1244,7 +1343,7 @@ module.exports.theReserveIsTheSealedWindowOrNothing = function () {
   assert.ok(!/sealedOnUnitOf/.test(price), 'the pricing still reads the seal itself');
   for (const fn of ['judgeRefusalOf', 'rideRefusalOf']) {
     const body = s.slice(s.indexOf(`function ${fn}(`), s.indexOf('\n}\n', s.indexOf(`function ${fn}(`)));
-    assert.ok(body.includes("if (stretch === 'reserve') {\n    const r = reserveOf(doc);\n    if (!r.keeps) return HELD_ALONE;\n    if (!r.intact) return r.why;\n    if (!heldStandingOf(doc)) return NO_HELD_PASS;\n  }"), `${fn} does not refuse the reserve through the one reader`);
+    assert.ok(body.includes("if (stretch === 'reserve') {\n    const r = reserveOf(doc);\n    if (!r.keeps) return HELD_ALONE;\n    if (!r.intact) return r.why;\n    if (!heldStandingOf(doc)) return NO_HELD_PASS;\n"), `${fn} does not refuse the reserve through the one reader`);
   }
   assert.ok(!/kind: 'after'|everything after the held-back window/.test(s), 'the "everything after the held-back window" reading is still in the engine');
   // THE SCREEN: no share of the history typed into it; the layouts in the Sweep

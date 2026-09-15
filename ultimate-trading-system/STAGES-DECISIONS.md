@@ -1456,3 +1456,20 @@ carried out 2026-08-28 under its own GO — decision 50.
     ask reads FAILED with the service fine, as both of the first two deploys
     did while the mover parsed every record set twice at start. Third digit,
     twice.
+
+100. **Release 2 of Part 9 is built: the reserve board** (3.148.0, inside
+    the same LOOP NOW!). One gzipped file per unit beside the stage 3 set,
+    priced through the one stage 3 unit task with the reserve window in the
+    held-back window's place — every setting the unit holds, the set's own
+    deals and kept copies, the four comparisons per hold length — and proved
+    against the stored test money to the cent before it is written. Every
+    Reserve reading on a plain rule reads it and nothing prices; a row the
+    board does not hold reads as no figure on the reserve, never as its
+    held-back one; a unit not yet priced is named in the other-units reading
+    and counted apart. A half-life rule prices its own and reads no board.
+    Two presses and a stop on Reserve, the cost said before each starts; the
+    unit's first pricing is the one look at data nothing had seen, stamped
+    on the file and said on every reserve set read off it. The board's panel
+    and presses are drawn inside the one renderer and shown on Reserve only,
+    so their words land on Held's list too — the same over-authorisation
+    release 1 accepted, recorded. Second digit.

@@ -1172,3 +1172,78 @@ FAILED although the service comes up -- both of today's deploys did, at 32
 and 5 seconds, because the mover parsed every record set on the box twice
 at every start. With the mover gone the start is what it was before 3.147.0
 and the check passes again; the check's wait is the owner's call.
+
+## AN. Release 2 of Part 9 — the reserve board (3.148.0), decisions before the build
+
+Read before building (RULE SIX): the stage 3 unit task already prices the
+reserve window in the held-back window's place when handed `unread`
+(3.89.0), for whatever settings it is handed, with the set's own deals and
+kept copies; the release-1 press hands it the survivors only. The board is
+that pricing handed every setting the unit holds, kept beside the stage 3
+set per unit, read by every Reserve reading. On the box: S3 #1b holds 300
+units of 2,752 settings, 80 deals and 80 kept copies; the newest run priced
+20.7 million pricings in 0.49 hours on 4 workers, so one unit's board is
+about 443,000 pricings — a few minutes; all 300 would be about twelve hours.
+
+Decisions inside the loop, written before any number:
+
+- **The board is one file per unit beside the stage 3 set**, gzipped JSON,
+  named for the set and the unit, read through one reader; a file of another
+  shape reads as absent and is priced again (RULE NINE), and none exists yet.
+  It carries the release and time of its pricing, how many times the unit
+  has been priced, the window it priced (start, end, whole chunks, how far
+  the box's data reached, the hash of the forecasts it was priced on), the
+  forecasts' name, the fee, the deals and copies, the four comparisons per
+  hold length, one row per setting under the reader's names, the settings
+  it could not price, and the proof.
+- **The pricing is the stage 3 unit task, unchanged**: every setting the
+  unit holds, the set's own null-set size and kept-copy count, cut into
+  parts across the workers as the rebuild cuts them, the count moving as
+  parts land. Every row's test money is proved against the stored record's
+  before the file is written; a mismatch refuses the whole board with "not
+  the same run", never writes.
+- **Reading the board onto rows**: a board row's reserve figures take the
+  place of the held-side fields of the unit's board row (money, trades, vs
+  always long, the copies, beat, pairs, lead, money by third); a row the
+  board does not hold reads as no figure on the reserve, never as its
+  held-back figure. The rule itself reads test money and dials, which are
+  the same on both stretches, so kept and dropped are the same rows.
+- **Every Reserve reading on a plain rule reads the board and nothing else
+  prices**: the press (the survivors off the board, the copies off the
+  board, sanity over the whole board, both information lines), what the rule
+  dropped, the rule on the other units (each other unit off its own board;
+  a unit not yet priced is listed by name, left out of the denominator and
+  counted), and the ride (the per-row ride the pricing worked out, beside
+  the test half). Each refuses in words when the board is not priced and
+  names the press that prices it.
+- **A half-life rule keeps pricing its own** (H2.5): its retrained forecasts
+  exist for its own survivors only; the board is not read for it and its set
+  says which forecasts it was priced with, as today.
+- **Two presses on Reserve, said before they start**: one prices the rule's
+  own unit (minutes); one prices the other units of the stage 3 set, one at
+  a time, each written as it lands, skipping units already priced, with a
+  stop that lets the current unit land (hours; the count and the cost are
+  said in the confirmation). One heavy job at a time, both ways: the board
+  refuses while anything else prices, and everything else refuses while it
+  does.
+- **Looks**: the unit's first board pricing is the one look at data nothing
+  in the system had seen, counted on the stage 3 set's unit and said on
+  every reserve set read from it; reserve sets stay numbered by their own
+  count on the rule, and the sentence says which pricing they were read off.
+- **The word list**: the board's panel and presses are drawn inside the one
+  renderer and shown on Reserve only, so their words land on Held's list too
+  — the same over-authorisation release 1 accepted for the stretch phrases,
+  and the alternative is the second renderer the owner forbade. Recorded,
+  not hidden.
+- **On the box after the deploy**: price the 98-setting rule's unit board
+  (the one press; minutes, with the box free) and compare its survivors'
+  reserve money with the release-1 reserve set's, like for like on the
+  window it priced (H2.3). The reserve read that writes a set is the
+  owner's to press. Second digit.
+
+Built as written above; the judge page, help, release and guard-naming
+files green; the fabricated chains (the board priced for real, H2.2, H2.3,
+H2.4, H2.5) run in the background while the release is committed and
+deployed at the owner's word ("YOUR PRIORITY IS TO GET YOUR WORK COMMITTED
+AND DEPLOYED"); anything they find is a follow-up release, and said.
+

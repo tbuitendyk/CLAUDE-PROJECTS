@@ -382,9 +382,11 @@ function othersSummary(units, stretch = 'held') {
   const of = usable.length;
   const positive = usable.filter((u) => u.positive).length;
   const clearBar = usable.filter((u) => u.clears).length;
-  const keepsNothing = (units || []).length - of;
+  // a unit not yet priced on the reserve (3.148.0) is named and counted apart from one where the rule keeps nothing
+  const notPriced = (units || []).filter((u) => u.notPriced).length;
+  const keepsNothing = (units || []).length - of - notPriced;
   const mark = of > 0 && positive < of / 2 ? `fewer than half of the ${of} other units are positive on ${STRETCH_WORDS[stretch] || STRETCH_WORDS.held}` : null;
-  return { positive, of, clearBar, keepsNothing, mark };
+  return { positive, of, clearBar, keepsNothing, notPriced, mark };
 }
 
 // ---- V7: the ride, the stretch's half kept beside the test half ----------------------
@@ -538,9 +540,18 @@ function verdict(block) {
   if (b.forecasts) parts.push(`priced with ${b.forecasts}`);
   const look = Number(b.look) || 1;
   if (stretch === 'reserve') {
-    parts.push(look > 1
-      ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`
-      : 'look 1: the first look at data nothing in the system has seen');
+    // A SET READ OFF THE UNIT'S RESERVE BOARD (3.148.0): the board's first
+    // pricing was the one look at data nothing had seen, and this set says
+    // which pricing it read; a set that priced its own survivors counts its
+    // own looks, as before
+    const bd = b.board || null;
+    if (bd) {
+      parts.push(`read off the reserve board of this unit, priced ${day(Date.parse(bd.at))} (pricing ${bd.pricing}, ${bd.pricedRows} of ${bd.settings} settings); that board's first pricing on ${day(Date.parse(bd.firstAt))} was the one look at data nothing in the system had seen, and this is reserve set ${look} of the rule`);
+    } else {
+      parts.push(look > 1
+        ? `look ${look}: this window had been read ${look - 1} time(s) before, so it is no longer data nothing has seen and the floor below is the best case, not the strength`
+        : 'look 1: the first look at data nothing in the system has seen');
+    }
   }
   const f = b.footing || {};
   parts.push(f.ok ? `the rule gives back its own ${f.had} survivors today` : `the footing did not stand (${f.why || 'unstated'})`);
@@ -559,7 +570,7 @@ function verdict(block) {
   // the other units (V6), when read: two counts, information, never a gate
   const o = b.others || null;
   parts.push(o
-    ? `on the other units, read ${String(o.at || '').slice(0, 16)}: ${o.positive} of ${o.of} other units positive on ${where}, ${o.clearBar} clear the bar${o.keepsNothing ? `, ${o.keepsNothing} keep nothing` : ''}${o.mark ? ` (${o.mark})` : ''}, information only`
+    ? `on the other units, read ${String(o.at || '').slice(0, 16)}: ${o.positive} of ${o.of} other units positive on ${where}, ${o.clearBar} clear the bar${o.keepsNothing ? `, ${o.keepsNothing} keep nothing` : ''}${o.notPriced ? `, ${o.notPriced} not priced on the reserve yet` : ''}${o.mark ? ` (${o.mark})` : ''}, information only`
     : 'the other units not read when this was stamped');
   const pass = !!(f.ok && h.pass && cp.pass && sn.ok);
   const buys = stretch === 'held' ? 'this window only' : 'this window, and only the first look at it was unseen';

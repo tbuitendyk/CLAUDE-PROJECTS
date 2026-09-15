@@ -106,7 +106,7 @@ const JUDGE_HELP = (() => {
           `The press reads what each of the rule's survivors made on the ${w} window and holds every one of them against four simpler things priced at that survivor's own hold length: buying the coin and going away, shorting it and going away, being long every period and being short every period. A survivor clears when it is in the money and ahead of all four by at least a cent, and the set passes when the bar share of its survivors clear, the same share as the bar on the scrambled copies. The average survivor and the best of the four at the worst hold length in use are printed beside that as a hindsight reading, because knowing which of the four to be on is itself a forecast, and being long every period grows with the hold length; neither of them gates. Then it reads the same settings' money on every scrambled copy and counts how many of those copies the real figure beats, against the bar the rule was cut under. Each survivor gets the same reading on its own copies, printed beside how many would pass by chance, and that never picks a survivor and never gates the set. A sanity line says whether noise loses money, as fees demand; when it does not, the readings above it cannot be trusted.\n\nIt does not price the choosing of the survivors. The walk chose its ranges on the test window over its recorded steps; pricing that search itself would need the whole walk replayed on each scrambled board, which nothing here does.`],
         ['What is priced, and what is read',
           stretch === 'reserve'
-            ? 'The reserve window is priced for nothing until it is read here. The press prices the rule\'s survivors on it, with the members forecasting it from the models they were trained as, and reads the result by the rules above; on a half-life set it prices them with the members retrained at each survivor\'s own half-life. The first press on a rule is the only look at data nothing in this system has seen; every later one is counted and says so. The other units and the settings the rule dropped refuse in words until they are priced on the reserve window.'
+            ? 'The reserve window is priced for nothing until the reserve board of the unit is priced here: every setting of the coin and shape, its scrambled copies and the four comparisons, priced on the reserve window with the members forecasting it from the models they were trained as, and kept beside the stage 3 set so a second rule cut on the same unit reads the same board. That first pricing is the one look at data nothing in this system has seen. The press then reads the rule\'s survivors off that board and prices nothing, exactly as Held reads the stage 3 records; on a half-life set it prices them with the members retrained at each survivor\'s own half-life. The first press on a rule is the only look at data nothing in this system has seen; every later one is counted and says so. The other units and the settings the rule dropped refuse in words until they are priced on the reserve window.'
             : 'On a rule cut on the Funnel the held-back window is already priced, copies and comparisons included, and the press reads those records and prices nothing. On a half-life set the retrained forecasts have never been priced on it, so the press prices its survivors with the members retrained at each survivor\'s own half-life first, and says so on the set it writes; that pricing is a counted look, and the other units and the dropped settings cannot be read with those forecasts.'],
         ['Every look is counted',
           `Opening this tab reads no ${w} figure. The press is the stamped look. ${stretch === 'held'
@@ -135,7 +135,7 @@ const JUDGE_HELP = (() => {
         vRead: {
           what: `Reads the rule on the ${w} window and writes a ${kind} of it, with the verdict stamped on that set. This is the one press that opens the ${w} window on this screen.`,
           more: `It refuses while a run, a totalling or a rebuild is going, when the rule no longer gives back its own survivors, when the rule carries anything but dials and the two limits, and on a rule cut on all units together.${stretch === 'reserve'
-            ? ' It also refuses a rule whose layout keeps no reserve, whose sealed window is not intact, or whose newest held set did not pass, and it prices the survivors first, which takes minutes.'
+            ? ' It also refuses a rule whose layout keeps no reserve, whose sealed window is not intact, or whose newest held set did not pass, and a plain rule whose unit has no reserve board priced yet, naming the press that prices it; on a half-life set it prices the survivors first, which takes minutes.'
             : ' On a half-life set it prices the survivors with their retrained members first, which takes minutes.'} Every press writes a new set, numbered from the second; none is overwritten.`,
         },
         vOthers: {
@@ -149,6 +149,18 @@ const JUDGE_HELP = (() => {
         vDroppedN: {
           what: 'How many of the settings the rule dropped to read. Blank or 0 reads all of them, and the count beside the box says how many that is.',
           more: 'Fewer than all are taken with an even stride through the board\'s own order. Never the first N, which would read one region of the board, and never the top N by any figure, which would be the very shopping this reading exists to detect.',
+        },
+        vBoard: {
+          what: `Prices the reserve board of this rule's coin and shape: every setting of the unit on the reserve window, its scrambled copies and the four comparisons at each hold length, with the members forecasting it from the models they were trained as, kept beside the stage 3 set.`,
+          more: 'Minutes for one unit. The first pricing is the one look at data nothing in this system has seen, counted on the unit and said on every reserve set read from it; a later pricing reprices the window as the box\'s data stands today and is stamped on the board as a further pricing. It refuses while any other heavy job is going, on a rule whose newest held set did not pass, and on a half-life set, which prices its own survivors.',
+        },
+        vBoardOthers: {
+          what: 'Prices the reserve board of every other coin and shape of the stage 3 set not yet priced, one at a time, each kept beside the set as it lands.',
+          more: 'Minutes a unit and hours for a set of hundreds; units already priced are skipped, so a stopped or interrupted run carries on from where it was. The read of the rule on the other units reads whatever is priced and names the units that are not.',
+        },
+        vBoardStop: {
+          what: 'Lets the unit being priced land and prices no further unit.',
+          more: 'What has landed is kept beside the stage 3 set; the next press carries on from there.',
         },
         vRide: {
           what: `Works out what the ${w} window looked like from inside for each survivor: the largest drawdown, the worst and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers on the test window.`,

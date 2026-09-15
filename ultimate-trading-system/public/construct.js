@@ -2124,6 +2124,32 @@ function vLooksHtml(d, stretch) {
   if (!l) return '';
   return `<p class="note">${stretch === 'reserve' ? '<b>Looks at the reserve window before any stamp:</b>' : '<b>Looks at the held-back window before any stamp:</b>'} at least ${Number(l.unstamped).toLocaleString()} unstamped${(l.what || []).length ? ` (${l.what.map(esc).join('; ')})` : ''}${l.stamped ? ` · ${l.stamped} ${stretch === 'reserve' ? '<span>reserve set(s) below, each a stamped look</span>' : '<span>held set(s) below, each a stamped look</span>'}` : ' · none stamped yet'}${l.rides ? ` · ${l.rides} ride(s) worked out below, each a stamped look` : ''}${d.readAt ? ` · first stamped look ${esc(String(d.readAt).slice(0, 16))}` : ''}</p>`;
 }
+// THE RESERVE BOARD OF THE RULE'S UNIT (3.148.0, VERIFY-DESIGN.md Part 9
+// release 2), on Reserve only: every setting of the coin and shape priced on
+// the reserve window and kept beside the stage 3 set, which every reading on
+// this tab then reads. Held has no board of its own to price: stage 3 priced
+// its window when the set was run.
+function vBoardHtml(d, stretch) {
+  if (stretch !== 'reserve' || !d.board) return '';
+  const b = d.board;
+  const w = b.window || {};
+  const running = d.boardRunning;
+  return `<div class="panel" style="margin-top:.5rem">
+    <h4 style="margin:0 0 .3rem"><span>The reserve board of this unit</span></h4>
+    <p class="note">Every setting of this coin and shape priced on the reserve window, with the members forecasting it from the
+      models they were trained as: its money and trades, its scrambled copies, and the four comparisons at each hold length,
+      kept beside the stage 3 set so a second rule cut on this unit reads the same board. Its first pricing is the one look at
+      data nothing in this system has seen. The press above reads this board and prices nothing; so do the three readings below.</p>
+    <p class="note">${b.priced
+    ? `<b>Priced</b> ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')} · pricing ${b.pricings} of this unit${b.pricings > 1 ? ` (first ${esc(String(b.firstAt || '').slice(0, 10))})` : ''} · ${Number(b.pricedRows || 0).toLocaleString()} of ${Number(b.settings || 0).toLocaleString()} settings${b.missing ? ` · <b class="warn">${b.missing} not priced</b>` : ''} · window from ${vDay(w.fromTs)} to ${vDay(w.toTs)}, ${w.chunks ?? 0} whole chunks, the box's data reaching ${vDay(w.seenToTs)} · ${b.keepN} copies kept of ${b.nullN} deals · fee ${b.fee != null ? `${(100 * Number(b.fee)).toFixed(3)}% a leg` : 'not recorded'}`
+    : '<b class="warn">Not priced yet.</b> The press below prices it; until then the read, the settings the rule dropped and the ride refuse on this tab.'}</p>
+    <div class="row" style="align-items:flex-end">
+      <button id="vBoard" class="pri" ${d.boardRefused || running ? 'disabled' : ''} title="prices every setting of this coin and shape on the reserve window and keeps the board beside the stage 3 set. Minutes. The first pricing is the one look at data nothing in this system has seen; a later pricing reprices the window as the box's data stands today and is stamped on the board as a further pricing.">Price the reserve board</button>
+      <button id="vBoardOthers" class="pri" ${d.boardRefused || running ? 'disabled' : ''} title="prices the reserve board of every other coin and shape of the stage 3 set not yet priced, one at a time, each kept beside the set as it lands. Minutes a unit, hours for a set of hundreds; units already priced are skipped, and the read of the rule on the other units reads whatever is priced.">Price the reserve boards of the other units</button>
+      <button id="vBoardStop" ${running ? '' : 'disabled'} title="lets the unit being priced land and prices no further unit. What has landed is kept; the next press carries on from there.">Stop after this unit</button>
+      <span id="vBoardMsg" class="note">${d.boardRefused ? `<b class="warn">refused:</b> ${esc(d.boardRefused)}` : ''}</span></div>
+  </div>`;
+}
 function vPressHtml(d, stretch) {
   const r = d.rules || {};
   return `<div class="row" style="margin-top:.4rem;align-items:flex-end">
@@ -2188,6 +2214,7 @@ function vBlockHtml(set, isNewest, stretch) {
   const w = b.window || null;
   const body = `<p class="note">${esc(v.sentence || '')}</p>
     ${b.standsOn ? `<p class="note"><b>Stands on:</b> ${esc(b.standsOn.name || b.standsOn.id)}, which passed on the held-back window under release ${esc(b.standsOn.release || '?')}</p>` : ''}
+    ${b.board ? `<p class="note"><b>Read off the reserve board of this unit:</b> priced ${esc(String(b.board.at || '').slice(0, 16))} under release ${esc(b.board.release || '?')} · pricing ${b.board.pricing} of this unit · ${Number(b.board.pricedRows || 0).toLocaleString()} of ${Number(b.board.settings || 0).toLocaleString()} settings</p>` : ''}
     ${w ? `<p class="note">${stretch === 'reserve' ? '<b>The reserve window priced:</b>' : '<b>The held-back window priced:</b>'} from ${vDay(w.fromTs)} to ${vDay(w.toTs)}, ${w.chunks ?? 0} whole chunks · the box's data reached ${vDay(w.seenToTs)}${b.forecasts ? ` · priced with ${esc(b.forecasts)}` : ''}</p>` : (b.forecasts ? `<p class="note"><b>Read from:</b> ${esc(b.forecasts)}</p>` : '')}
     <p class="note"><b>Rules declared before the numbers:</b> bar ${r.bar} of ${r.copies} copies (${r.barPct}%, ${esc(tags.bar || '')}${r.barChanged ? `, changed from the set's own ${r.ownBarPct}%` : ''}); noise must lose at least ${r.sanityPct}% (${esc(tags.sanity || '')}); comparisons gated: each survivor against all four at its own hold length, and the same ${r.barPct}% share of survivors must be in the money and ahead of all four (${esc(tags.comparisons || '')}); the best of the four at the worst hold length is printed as the hindsight reading it is.</p>
     ${readPanel(`The ${stretchPlain(stretch)} read`, h, c, stretch)}
@@ -2227,7 +2254,7 @@ function vSetPanelHtml(list, chosen, d, stretch) {
     : ' A rule whose layout keeps no reserve is held alone: a held set of it that passed is the whole verdict, and it says so.'}</p>
     ${vSetBoxHtml(list, chosen, stretch)}
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · <b>Final Rule:</b> ${esc(d.ruleSentence || '')}${d.userSentence ? ` · <b>User Rule:</b> ${esc(d.userSentence)}` : ''} · ${Number((d.counts || {}).survivors ?? 0).toLocaleString()} survivors${d.derived ? ` · a half-life set built from ${esc(d.derived.fromName || d.derived.from)}, judged as its own rule with its retrained members` : ''}${d.heldAlone ? ` · <b>${esc(d.heldAlone)}</b>` : ''}${stretch === 'reserve' ? ` · ${d.standsOn ? `stands on <b>${esc(d.standsOn.name)}</b> (PASS, release ${esc(d.standsOn.release || '?')})` : '<b class="neg">no held set of this rule stands</b>'} · ${vWindowWords(d.reserve)}` : ''}${(d.warnings || []).length ? ` · <b class="warn">${d.warnings.map(esc).join('; ')}</b>` : ''}</p>
-      ${vFootingHtml(d)}${vLooksHtml(d, stretch)}${vPressHtml(d, stretch)}
+      ${vFootingHtml(d)}${vLooksHtml(d, stretch)}${vBoardHtml(d, stretch)}${vPressHtml(d, stretch)}
       ${sets.length ? sets.map((x, i) => vBlockHtml(x, i === 0, stretch)).join('') : (stretch === 'reserve' ? '<p class="note">No reserve set read from this rule yet. The first press writes one; later presses write later ones, numbered, and never replace it.</p>' : '<p class="note">No held set read from this rule yet. The first press writes one; later presses write later ones, numbered, and never replace it.</p>')}
       ${vOthersHtml(d, stretch)}${vDroppedHtml(d, stretch)}${vRideHtml(d, stretch)}` : ''}
   </div>`;
@@ -2300,7 +2327,7 @@ function vOthersHtml(d, stretch) {
     <div class="row" style="align-items:flex-end">
       <button id="vOthers" class="pri" ${d.othersRefused ? 'disabled' : ''} title="reads the rule on each other unit's ${stretchPlain(stretch)} window, one unit at a time, and appends the reading to the rule. Never a pass or fail on the set.">${stretch === 'reserve' ? "<span>Read the rule on the other units' reserve windows</span>" : "<span>Read the rule on the other units' held-back windows</span>"}</button>
       <span id="vOthersMsg" class="note">${d.othersRefused ? `<b class="warn">refused:</b> ${esc(d.othersRefused)}` : ''}</span></div>
-    ${o ? `<p class="note"><b>${o.positive} of ${o.of} other units positive; ${o.clearBar} clear the bar</b>${o.keepsNothing ? ` · ${o.keepsNothing} keep nothing` : ''}${o.mark ? ` · <b class="warn">${esc(o.mark)}</b>` : ''} <span class="muted">read ${esc(String(o.at || '').slice(0, 16))} under release ${esc(o.release || '?')} · bar ${(o.rules || {}).barPct}% (${esc(((o.rules || {}).tags || {}).bar || '')})</span></p>
+    ${o ? `<p class="note"><b>${o.positive} of ${o.of} other units positive; ${o.clearBar} clear the bar</b>${o.keepsNothing ? ` · ${o.keepsNothing} keep nothing` : ''}${o.notPriced ? ` · <b class="warn">${o.notPriced} not priced on the reserve window yet</b>` : ''}${o.mark ? ` · <b class="warn">${esc(o.mark)}</b>` : ''} <span class="muted">read ${esc(String(o.at || '').slice(0, 16))} under release ${esc(o.release || '?')} · bar ${(o.rules || {}).barPct}% (${esc(((o.rules || {}).tags || {}).bar || '')})</span></p>
       <div class="scrollx" style="max-height:20rem;overflow-y:auto"><table><thead><tr>
         <th title="one of the other coin-and-shape units of the stage 3 set. The set's rule was applied to that unit's own board.">unit</th>
         <th title="how many of that unit's settings the rule keeps, out of all it has">survivors</th>
@@ -2308,7 +2335,7 @@ function vOthersHtml(d, stretch) {
         <th title="of that unit's scrambled copies, how many the real figure beats by at least a cent, against the bar declared above resolved for that unit's copy count">beats N of K</th>
         <th title="positive and beating at least the bar of its copies; never a gate on the set">clears the bar</th>
         <th title="the real figure minus the copies' mean, over the copies' sample spread">lead</th>
-      </tr></thead><tbody>${(o.units || []).map((u) => `<tr><td>${esc(u.name || u.unit)}</td><td>${u.survivors} of ${Number(u.of || 0).toLocaleString()}</td><td class="${u.keepsNothing ? '' : ((u.real || 0) >= 0 ? 'pos' : 'neg')}">${u.keepsNothing ? 'keeps nothing' : money(u.real)}</td><td>${u.keepsNothing ? '—' : (u.copies ? `${u.beats} of ${u.copies} (bar ${u.bar})` : 'no copies')}</td><td class="${u.keepsNothing || !u.copies ? '' : (u.clears ? 'pos' : 'neg')}">${u.keepsNothing ? '—' : (u.copies ? (u.clears ? 'yes' : 'no') : 'no copies to read against')}</td><td>${u.keepsNothing ? '—' : vFix(u.lead)}</td></tr>`).join('')}</tbody></table></div>
+      </tr></thead><tbody>${(o.units || []).map((u) => (u.notPriced ? `<tr><td>${esc(u.name || u.unit)}</td><td colspan="5" class="muted">${esc(u.why || 'not priced on the reserve window yet')}</td></tr>` : `<tr><td>${esc(u.name || u.unit)}</td><td>${u.survivors} of ${Number(u.of || 0).toLocaleString()}</td><td class="${u.keepsNothing ? '' : ((u.real || 0) >= 0 ? 'pos' : 'neg')}">${u.keepsNothing ? 'keeps nothing' : money(u.real)}</td><td>${u.keepsNothing ? '—' : (u.copies ? `${u.beats} of ${u.copies} (bar ${u.bar})` : 'no copies')}</td><td class="${u.keepsNothing || !u.copies ? '' : (u.clears ? 'pos' : 'neg')}">${u.keepsNothing ? '—' : (u.copies ? (u.clears ? 'yes' : 'no') : 'no copies to read against')}</td><td>${u.keepsNothing ? '—' : vFix(u.lead)}</td></tr>`)).join('')}</tbody></table></div>
       ${earlier.length ? `<p class="note muted">earlier readings: ${earlier.map((e) => `${esc(String(e.at || '').slice(0, 16))} at bar ${(e.rules || {}).barPct}%: ${e.positive} of ${e.of} positive, ${e.clearBar} clear the bar`).join('; ')}</p>` : ''}`
     : '<p class="note">Not read on this rule yet.</p>'}
   </div>`;
@@ -2420,8 +2447,37 @@ async function drawJudge(stretch) {
     if (!started) { rb.disabled = false; $('#vRideMsg').textContent = ''; return; }
     vRideFollow(chosen, started.token, stretch);
   };
+  // the reserve board of the unit (3.148.0): said before it starts, because its first pricing is the one look at data nothing has seen
+  const bb = $('#vBoard');
+  if (bb && chosen && d && !d.boardRefused) bb.onclick = async () => {
+    const b = d.board || {};
+    const msg = b.priced
+      ? `Price the reserve board of this unit again?\n\nIt has been priced ${b.pricings} time(s) already; the first pricing was the one look at data nothing had seen. Pricing it again reprices every setting on the reserve window as the box's data stands today and stamps a further pricing on the board. Minutes.`
+      : 'Price the reserve board of this unit?\n\nThis prices every setting of this coin and shape on the reserve window, with the members forecasting it from the models they were trained as, and keeps it beside the stage 3 set. It is the ONE look at data nothing in this system has seen; after it, that is no longer true. Minutes.';
+    if (!confirm(msg)) return;
+    bb.disabled = true;
+    $('#vBoardMsg').textContent = 'starting…';
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/reserve-board`, { which: 'unit' }, where);
+    if (!started) { bb.disabled = false; $('#vBoardMsg').textContent = ''; return; }
+    vBoardFollow(chosen, started.token, stretch);
+  };
+  const bo = $('#vBoardOthers');
+  if (bo && chosen && d && !d.boardRefused) bo.onclick = async () => {
+    if (!confirm('Price the reserve boards of the other units?\n\nEvery other coin and shape of the stage 3 set not yet priced, one at a time, each kept beside the set as it lands; units already priced are skipped. Minutes a unit, and hours for a set of hundreds. Stop after this unit lets the unit in hand land and prices no further.')) return;
+    bo.disabled = true;
+    $('#vBoardMsg').textContent = 'starting…';
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/reserve-board`, { which: 'others' }, where);
+    if (!started) { bo.disabled = false; $('#vBoardMsg').textContent = ''; return; }
+    vBoardFollow(chosen, started.token, stretch);
+  };
+  const bs = $('#vBoardStop');
+  if (bs && chosen) bs.onclick = async () => {
+    bs.disabled = true;
+    await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/reserve-board/stop`, {}, where);
+  };
   // a read, a reading or a ride already going for this rule is followed, so a reload mid-way keeps saying so
   if (d && d.running && btn) { btn.disabled = true; vFollow(chosen, d.running.token, stretch); }
+  if (d && d.boardRunning && bb) { bb.disabled = true; if (bo) bo.disabled = true; vBoardFollow(chosen, d.boardRunning.token, stretch); }
   if (d && d.othersRunning && ob) { ob.disabled = true; vOthersFollow(chosen, d.othersRunning.token, stretch); }
   if (d && d.rideRunning && rb) { rb.disabled = true; vRideFollow(chosen, d.rideRunning.token, stretch); }
 }
@@ -2456,6 +2512,25 @@ async function vOthersFollow(id, token, stretch) {
     }
     if (s.result) { drawJudge(stretch); return; }
     const m = $('#vOthersMsg'); if (m) m.textContent = `read ${s.done} of ${s.of}`;
+    await new Promise((resolve) => { setTimeout(resolve, 2000); });
+    if (tab !== stretch) return;
+  }
+}
+// the reserve board prices a whole unit, so the count is said per setting and per unit with the box's load beside it
+async function vBoardFollow(id, token, stretch) {
+  for (;;) {
+    let s = null;
+    try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/reserve-board/status`); } catch (_) { s = null; }
+    if (!s || s.none || s.token !== token) { drawJudge(stretch); return; }
+    if (s.error) {
+      const m = $('#vBoardMsg'); if (m) m.textContent = s.error;
+      for (const b of [$('#vBoard'), $('#vBoardOthers')]) if (b) b.disabled = false;
+      const st = $('#vBoardStop'); if (st) st.disabled = true;
+      return;
+    }
+    if (s.result) { drawJudge(stretch); return; }
+    const m = $('#vBoardMsg');
+    if (m) m.textContent = `pricing ${s.current || ''} · ${s.done} of ${s.of} settings${s.unitsOf > 1 ? ` · unit ${Math.min(s.unitsDone + 1, s.unitsOf)} of ${s.unitsOf}` : ''}${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}${s.stopping ? ' · stopping after this unit' : ''}`;
     await new Promise((resolve) => { setTimeout(resolve, 2000); });
     if (tab !== stretch) return;
   }

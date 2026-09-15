@@ -6459,7 +6459,7 @@ const captureBusy = () => (captureRun && !captureRun.result && !captureRun.error
 let halfLifeRun = null;   // { id, token, done, of, result, error, promise }
 const halfLifeBusy = () => (halfLifeRun && !halfLifeRun.result && !halfLifeRun.error ? `the half-life run of ${halfLifeRun.id} is being worked out` : null);
 const richBusy = () => (richRun && !richRun.result && !richRun.error
-  ? `the missing numbers of ${richRun.id} are being worked out` : (rideBusy() || judgeBusy() || captureBusy() || halfLifeBusy()));
+  ? `the missing numbers of ${richRun.id} are being worked out` : (rideBusy() || judgeBusy() || captureBusy() || halfLifeBusy() || boardBusy()));
 function funnelRichStart(id, state = {}) {
   if (richRun && !richRun.result && !richRun.error) {
     if (richRun.id === String(id)) return richStatus(richRun);
@@ -6803,10 +6803,6 @@ const BLEND_REFUSAL = 'this set was cut on all units together; a verdict is read
 // rule, keyed by stretch (readingsOf), appended and never overwritten.
 const STRETCHES = ['held', 'reserve'];
 const NO_HELD_PASS = 'no held set of this rule passed under this release line — read the rule on Held first; a rule that has not stood on the held-back window is read on nothing else';
-const RESERVE_NOT_PRICED = {
-  others: 'the other units are not priced on the reserve window yet',
-  dropped: 'the settings the rule dropped are not priced on the reserve window yet',
-};
 const HL_MEMBERS_MISSING = 'the retrained members this half-life set was built from are missing beside its source — press Retrain at the ticked half-lives on History again and build it again';
 const HL_OWN_UNIT_ONLY = 'a half-life rule\'s retrained forecasts exist for its own survivors on its own unit only';
 const firstDigitOfRelease = (v) => String(v || '').split('.')[0] || null;
@@ -6868,8 +6864,12 @@ function judgeRefusalOf(doc, stretch, footing = null) {
   if (doc.derived) {
     if (!getSet(doc.derived.from)) return 'the set this half-life set was built from is gone, so its retrained members cannot be found';
     if (!readHalfLifeRun(doc.derived.from, doc.derived.run)) return HL_MEMBERS_MISSING;
+  } else if (stretch === 'reserve') {
+    // a plain rule reads the unit's reserve board (3.148.0), and says which press prices it
+    const b = reserveBoardOf(doc);
+    if (!b.priced) return b.why;
   }
-  const prices = stretch === 'reserve' || !!doc.derived;
+  const prices = !!doc.derived;
   if (prices) {
     const parent = getSet((doc.parent || {}).id);
     if (!parent) return 'the stage 3 set this was cut from is gone, so its survivors cannot be priced';
@@ -6888,6 +6888,21 @@ function judgeRefusalOf(doc, stretch, footing = null) {
   if (footing && !footing.ok) return footing.why;
   return null;
 }
+// A PRICED ROW IN THE READER'S SHAPE: the stretch's figures under the held-back
+// column's names, so every reader reads a pricing as it reads stage 3 records.
+// One mapping for the press on a half-life rule and for the reserve board
+// (3.148.0), or the two could name the same figure two ways.
+function readerRowsOf(rows) {
+  return (rows || []).map((r) => ({
+    si: r.si, label: r.label, tHours: r.tHours, weekdaysOnly: r.weekdaysOnly,
+    avgHold: r.holdout ? r.holdout.pnl : null, avgTrades: r.holdout ? r.holdout.trades : null, avgVsLong: r.holdout ? r.holdout.vsAlwaysLong : null,
+    noiseHold: r.noiseHold, beat: r.beat, pairs: r.pairs, avgLead: r.lead,
+    pnlThirds: r.rich && r.rich.hold ? r.rich.hold.pnlThirds : null,
+    stops: r.holdout ? r.holdout.stops : null,
+    ride: r.rich && r.rich.hold ? { ...r.rich.hold } : null,
+    test: { money: r.pnl ?? null, trades: r.trades ?? null, ...(r.rich && r.rich.test ? r.rich.test : {}) },
+  }));
+}
 // THE SURVIVORS PRICED ON A STRETCH through the stage 3 pricing path
 // (lib/stagework.js, s3UnitTask): the reserve window in the held-back window's
 // place with the members' saved models, or the held-back window itself with
@@ -6895,6 +6910,8 @@ function judgeRefusalOf(doc, stretch, footing = null) {
 // payloads, 3.95.0, with every copy kept so the verdict reads them all). Rows
 // come back in the reader's shape -- the stretch's figures under the held-back
 // column's names -- so every reader reads them as it reads stage 3 records.
+// Since 3.148.0 a plain rule's reserve press reads the unit's reserve board
+// instead (below); this prices a half-life rule's survivors on either stretch.
 async function priceSurvivorsOn(doc, stretch, join, rules, note = null) {
   const V = require('./funnelverify');
   const parent = join.parent;
@@ -6954,15 +6971,7 @@ async function priceSurvivorsOn(doc, stretch, join, rules, note = null) {
   if (failed || settledAll.length !== payloads.length) throw new Error(`the unit could not be priced on ${V.STRETCH_WORDS[stretch]}: ${String((failed && failed.error) || 'no answer')}`);
   const res = { rows: settledAll.flatMap((x) => x.value.rows || []), controls: settledAll[0].value.controls, unread: settledAll[0].value.unread || null };
   // the stretch's figures in the held-back column's place, in the reader's shape
-  const rows = (res.rows || []).map((r) => ({
-    si: r.si, label: r.label, tHours: r.tHours, weekdaysOnly: r.weekdaysOnly,
-    avgHold: r.holdout ? r.holdout.pnl : null, avgTrades: r.holdout ? r.holdout.trades : null, avgVsLong: r.holdout ? r.holdout.vsAlwaysLong : null,
-    noiseHold: r.noiseHold, beat: r.beat, pairs: r.pairs, avgLead: r.lead,
-    pnlThirds: r.rich && r.rich.hold ? r.rich.hold.pnlThirds : null,
-    stops: r.holdout ? r.holdout.stops : null,
-    ride: r.rich && r.rich.hold ? { ...r.rich.hold } : null,
-    test: { money: r.pnl ?? null, trades: r.trades ?? null, ...(r.rich && r.rich.test ? r.rich.test : {}) },
-  }));
+  const rows = readerRowsOf(res.rows);
   // in the set's own order, whatever order the payloads answered in
   const order = new Map(join.rows.map((r, i) => [r.label, i]));
   rows.sort((a, b) => (order.get(a.label) ?? 1e9) - (order.get(b.label) ?? 1e9));
@@ -6972,13 +6981,230 @@ async function priceSurvivorsOn(doc, stretch, join, rules, note = null) {
     priced: rows.map((r) => ({ label: r.label, money: r.avgHold, trades: r.avgTrades, stops: r.stops, vsLong: r.avgVsLong, ride: r.ride, test: r.test })),
   };
 }
-// the looks a reserve set counts: the reserve sets already made from this rule, and the rides worked out on it
-function reserveLooksOf(doc, stamped) {
+// ---- THE RESERVE BOARD OF A UNIT (3.148.0, VERIFY-DESIGN.md Part 9, release 2) ----
+//
+// Held is already priced: stage 3 priced every setting of every unit on the
+// held-back window, copies and comparisons included, which is what every held
+// reading reads. Reserve was priced for nothing but a rule's survivors. The
+// reserve board is the whole board of one unit priced on the reserve window --
+// every setting the unit holds, the set's own deals and kept copies, the four
+// comparisons at each hold length -- with the members forecasting it from the
+// models they were trained as, through the one stage 3 pricing path. It is a
+// property of the UNIT, so it is kept beside the stage 3 set, one file per
+// unit, and two rules cut on one unit read one board. From then on every
+// Reserve reading on a plain rule reads the board and nothing prices: the
+// press, what the rule dropped, the rule on the other units, the ride. A
+// half-life rule keeps pricing its own survivors with its retrained members,
+// which exist for them alone, and no board is read for it.
+//
+// The unit's first pricing is the one look at data nothing in the system had
+// seen; every pricing is stamped on the file and said on every reserve set
+// read from it. A file of another shape reads as absent and is priced again
+// (RULE NINE); nothing translates.
+const RESERVE_BOARD_V = 1;
+const BOARD_PRESS = 'Price the reserve board';
+const reserveBoardFile = (parentId, unitKey) => path.join(SETS_DIR, `${String(parentId).replace(/[^A-Za-z0-9._-]+/g, '_')}-reserve-${String(unitKey).replace(/[^A-Za-z0-9._-]+/g, '_')}.json.gz`);
+function readReserveBoard(parentId, unitKey) {
+  try {
+    const raw = JSON.parse(zlib.gunzipSync(fs.readFileSync(reserveBoardFile(parentId, unitKey))).toString('utf8'));
+    return raw && raw.v === RESERVE_BOARD_V && raw.rows && Array.isArray(raw.pricings) && raw.pricings.length ? raw : null;
+  } catch (_) { return null; }
+}
+// written beside, then swapped: an earlier board's pricings stay on the file as its history
+function writeReserveBoard(parentId, unitKey, got) {
+  const before = readReserveBoard(parentId, unitKey);
+  const at = new Date().toISOString();
+  const w = got.window || {};
+  const stamp = { at, release: ENGINE_VERSION, fromTs: w.fromTs ?? null, toTs: w.toTs ?? null, chunks: w.chunks ?? null, seenToTs: w.seenToTs ?? null, forecastHash: w.forecastHash || null, settings: got.settings, priced: got.rows.length };
+  const rows = {};
+  for (const r of got.rows) rows[r.label] = r;
+  const board = {
+    v: RESERVE_BOARD_V, at, release: ENGINE_VERSION, parent: String(parentId), unit: String(unitKey), unitName: got.unitName || null,
+    pricings: [...((before && before.pricings) || []), stamp],
+    window: { fromTs: w.fromTs ?? null, toTs: w.toTs ?? null, chunks: w.chunks ?? null, seenToTs: w.seenToTs ?? null, forecastHash: w.forecastHash || null },
+    forecasts: got.forecasts, fee: got.fee, nullN: got.nullN, keepN: got.keepN, settings: got.settings,
+    controls: got.controls || {}, rows, missing: got.missing || [], failures: got.failures || [], proof: got.proof || null,
+  };
+  const file = reserveBoardFile(parentId, unitKey);
+  const tmp = `${file}.tmp${process.pid}-${++tmpSeq}`;
+  fs.writeFileSync(tmp, zlib.gzipSync(Buffer.from(JSON.stringify(board))));
+  fs.renameSync(tmp, file);
+  return board;
+}
+// the reserve window of one unit of a stage 3 set, off the set's own record:
+// the same seal the rule's cut recorded, so a rule and its unit's board price
+// one window
+function reserveWindowOfUnit(parent, unitKey) {
+  const sealed = sealedWindowOf(parent);
+  if (sealed.layout !== 'reserve61') return { fromTs: null, why: HELD_ALONE };
+  const u = (sealed.units || []).find((x) => unitKeyOf(x) === unitKey) || null;
+  if (!u) return { fromTs: null, why: `${parent.name} holds no unit called '${unitKey}'` };
+  if (!u.reserve || !Number.isFinite(Number(u.reserve.fromTs))) return { fromTs: null, why: `the sealed window is not intact on ${unitKeyOf(u)} — it carries no reserved window` };
+  return { fromTs: Number(u.reserve.fromTs), why: null };
+}
+// THE PRICING: every setting the unit holds through the stage 3 unit task with
+// the reserve window in the held-back window's place, the set's own null-set
+// size and kept copies, cut into parts across the workers as the rebuild cuts
+// them. Every row's test money is proved against the stored record's before
+// anything is written: a mismatch is not the same run, and refuses whole.
+async function priceReserveBoard(parent, unitKey, note = null) {
+  const V = require('./funnelverify');
+  const shape = relaunchShapeOf(parent);                        // refuses when the stage 2 set is gone
+  const idx = shape.records.findIndex((r) => unitKeyOf(r) === unitKey);
+  if (idx < 0) throw new Error(`the stage 3 set holds no unit called '${unitKey}'`);
+  const rec = shape.records[idx];
+  const settings = (shape.heldOn[idx] || []).map((si) => shape.settings[si]).filter(Boolean);
+  if (!settings.length) throw new Error(`${parent.name} holds no settings on ${unitKey}, so there is nothing to price`);
+  const win = reserveWindowOfUnit(parent, unitKey);
+  if (win.fromTs == null) throw new Error(win.why);
+  const t = readTally(parent.id);
+  if (!t) throw new Error(`${parent.name} has no totalled tables yet — open this set on the Funnel first, which starts the totalling`);
+  const stored = new Map((await loadUnitBoard(parent.id, t, unitKey)).map((r) => [r.label, r.avgTest]));
+  const nullN = Math.max(0, Math.floor(num((parent.params || {}).nullN, 19)));
+  const keepN = Math.max(0, Math.floor(num((parent.params || {}).keepN, 0)));
+  const fee = Number((parent.params || {}).fee) || 0;
+  const base = s3Payload({ doc: parent, parent: shape.parent, rec, settings, fee, nullN });
+  base.keepN = keepN;
+  const models = unitRows(shape.parent.id, 'models', rec.blocks.models, rec.u);
+  base.unit.members = base.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
+  base.unread = { fromTs: win.fromTs };
+  const pool = createPool();
+  activePool = pool;
+  const workersN = pool.parallel ? pool.workers.length : 1;
+  const payloads = [];
+  const parts = [];
+  for (const [from, to] of partSlices(settings.length, workersN)) { payloads.push({ ...base, settings: settings.slice(from, to) }); parts.push([from, to]); }
+  const settledAll = [];
+  let done = 0;
+  if (note) note(0, settings.length);
+  try {
+    await pool.forEach('s3Unit', payloads, (settled, i) => { settledAll[i] = settled; done += parts[i][1] - parts[i][0]; if (note) note(done, settings.length); });
+  } finally { activePool = null; pool.abort(); }
+  const failed = settledAll.find((x) => !x || !x.ok);
+  if (failed || settledAll.length !== payloads.length) throw new Error(`the unit could not be priced on ${V.STRETCH_WORDS.reserve}: ${String((failed && failed.error) || 'no answer')}`);
+  const rows = readerRowsOf(settledAll.flatMap((x) => x.value.rows || []));
+  // THE PROOF, like for like on this unit: the pricing's test money is the stored record's to the cent, or this is not the same run
+  const off = rows.filter((r) => stored.has(r.label) && (r.test.money == null || Math.abs(Number(r.test.money) - Number(stored.get(r.label))) > 0.005));
+  if (off.length) throw new Error(`${off.length} setting(s) came back with test money different from what the stage 3 set stored (first: ${off[0].label}) — this is not the same run any more, so the board was not written`);
+  const missing = settings.filter((st) => !rows.some((r) => r.label === st.label)).map((st) => st.label);
+  return {
+    rows, controls: settledAll[0].value.controls || {}, window: settledAll[0].value.unread || null, fee, nullN, keepN,
+    forecasts: "the members' saved models", settings: settings.length, missing, failures: [],
+    unitName: unitNameOf(rec), proof: { checked: rows.filter((r) => stored.has(r.label)).length, of: settings.length },
+  };
+}
+// THE BOARD READ ONTO ROWS: a board row's reserve figures take the place of the
+// held-side fields of the unit's board row; a row the board does not hold reads
+// as no figure on the reserve, never as its held-back figure. The rule reads
+// test money and dials, the same on both stretches, so kept and dropped are the
+// same rows on both.
+const RESERVE_SIDE = ['avgHold', 'avgTrades', 'avgVsLong', 'noiseHold', 'beat', 'pairs', 'avgLead', 'pnlThirds'];
+function withReserveBoard(rows, board) {
+  const by = (board && board.rows) || {};
+  return (rows || []).map((r) => {
+    const b = by[r.label] || null;
+    const o = { ...r, onReserveBoard: !!b };
+    for (const f of RESERVE_SIDE) o[f] = b ? (b[f] ?? null) : null;
+    o.stops = b ? (b.stops ?? null) : null;
+    o.ride = b ? (b.ride || null) : null;
+    o.test = b ? (b.test || null) : null;
+    return o;
+  });
+}
+const boardControlsOf = (board, unitKey, rows) => unreadControlsOf((board && board.controls) || {}, unitKey, rows);
+const boardNotPriced = () => `the reserve board of this unit is not priced yet — press ${BOARD_PRESS} on Reserve first`;
+// what a rule's unit board is, for the screen and the refusals: priced, when, how many times, what it holds
+function reserveBoardOf(doc) {
+  if (!doc || !doc.unit) return { priced: false, why: BLEND_REFUSAL, press: BOARD_PRESS };
+  const parentId = (doc.parent || {}).id || null;
+  const b = parentId ? readReserveBoard(parentId, doc.unit) : null;
+  if (!b) return { priced: false, why: boardNotPriced(), unit: doc.unit, press: BOARD_PRESS };
+  return {
+    priced: true, why: null, press: BOARD_PRESS, unit: b.unit, unitName: b.unitName, at: b.at, release: b.release,
+    pricings: b.pricings.length, firstAt: b.pricings[0].at, settings: b.settings, pricedRows: Object.keys(b.rows).length,
+    missing: (b.missing || []).length, window: b.window, fee: b.fee, nullN: b.nullN, keepN: b.keepN, forecasts: b.forecasts,
+  };
+}
+// the stamp a reserve set carries of the board it was read off
+const boardStampOf = (b) => ({ at: b.at, release: b.release, pricing: b.pricings.length, firstAt: b.pricings[0].at, chunks: (b.window || {}).chunks ?? null, toTs: (b.window || {}).toTs ?? null, settings: b.settings, pricedRows: Object.keys(b.rows).length });
+// ONE HEAVY JOB AT A TIME, both ways: the pricing joins richBusy, so everything
+// else refuses while it runs, and it refuses while anything else prices.
+let boardRun = null;   // { id, parent, unit, which, token, done, of, unitsDone, unitsOf, current, stop, result, error, promise }
+const boardBusy = () => (boardRun && !boardRun.result && !boardRun.error ? `the reserve board of ${boardRun.current || boardRun.unit} is being priced` : null);
+function boardRefusalOf(doc) {
+  if (!doc.unit) return BLEND_REFUSAL;
+  if (!isRule(doc)) return 'the board is priced from the rule, not from a set already read — pick the rule';
+  if (doc.derived) return `${HL_OWN_UNIT_ONLY}, so its press prices them itself and no board is read for it`;
+  const r = reserveOf(doc);
+  if (!r.keeps) return HELD_ALONE;
+  if (!r.intact) return r.why;
+  if (!heldStandingOf(doc)) return NO_HELD_PASS;
+  const parent = getSet((doc.parent || {}).id);
+  if (!parent) return 'the stage 3 set this was cut from is gone, so its reserve board cannot be priced';
+  if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast';
+  const busy = verifyBusy();
+  if (busy) return `${busy} — the pricing waits for the box to be free`;
+  if (judgeRun && !judgeRun.result && !judgeRun.error) return 'a Stage 4 record set is being read right now — one at a time';
+  if (othersBusy()) return `${othersBusy()} — one heavy job at a time`;
+  if (setRichRun && !setRichRun.result && !setRichRun.error) return 'a Stage 4 record set is having its numbers worked out right now — one at a time';
+  if (acrossBusy()) return `${acrossBusy()} — one heavy job at a time`;
+  if (holdBusy()) return `${holdBusy()} — one heavy job at a time`;
+  if (rideRun && !rideRun.result && !rideRun.error) return 'a ride is being worked out right now — one heavy job at a time';
+  return null;
+}
+const boardStatusOf = (run) => ({ running: !run.result && !run.error, token: run.token, which: run.which, done: run.done, of: run.of, unitsDone: run.unitsDone, unitsOf: run.unitsOf, current: run.current, stopping: !!run.stop, cpu: cpuLoad(), error: run.error, result: run.result });
+// THE PRESS: the rule's own unit (`unit`), or every other unit of the stage 3
+// set not yet priced (`others`), one at a time, each written as it lands, so a
+// stop or a restart loses at most the unit in hand and the next press carries on.
+function reserveBoardStart(id, asked = {}) {
+  const doc = getSet(id);
+  if (!doc || doc.stage !== 4) throw new Error(`unknown Stage 4 record set '${id}'`);
+  if (boardRun && boardRun.id === id && !boardRun.result && !boardRun.error) return boardStatusOf(boardRun);
+  const which = String((asked || {}).which || 'unit') === 'others' ? 'others' : 'unit';
+  const why = boardRefusalOf(doc);
+  if (why) throw new Error(why);
+  const parent = getSet(doc.parent.id);
+  const t = readTally(parent.id);
+  if (!t) throw new Error(`${parent.name} has no totalled tables yet — open this set on the Funnel first, which starts the totalling`);
+  const all = unitsOfSet(t, parent.id).map((u) => u.key);
+  const units = which === 'unit' ? [doc.unit] : all.filter((k) => k !== doc.unit && !readReserveBoard(parent.id, k));
+  const skipped = which === 'others' ? all.length - 1 - units.length : 0;
+  const run = { id, parent: parent.id, unit: doc.unit, which, token: `${id}:board:${Date.now()}`, done: 0, of: 0, unitsDone: 0, unitsOf: units.length, skipped, current: null, stop: false, result: null, error: null, promise: null };
+  boardRun = run;
+  run.promise = (async () => {
+    const landed = [];
+    for (const key of units) {
+      if (run.stop) break;
+      run.current = key; run.done = 0; run.of = 0;
+      // eslint-disable-next-line no-await-in-loop
+      const got = await priceReserveBoard(parent, key, (done, of) => { run.done = done; run.of = of; });
+      writeReserveBoard(parent.id, key, got);
+      landed.push(key);
+      run.unitsDone = landed.length;
+    }
+    run.result = { units: landed.length, of: units.length, stopped: !!run.stop, skipped };
+  })().catch((err) => { run.error = String((err && err.message) || err); });
+  return boardStatusOf(run);
+}
+function reserveBoardStatus(id) {
+  if (!boardRun || boardRun.id !== id) return { running: false, none: true, token: null, which: null, done: 0, of: 0, unitsDone: 0, unitsOf: 0, current: null, stopping: false, cpu: cpuLoad(), error: null, result: null };
+  return boardStatusOf(boardRun);
+}
+// the stop lets the unit in hand land and prices no further unit
+function reserveBoardStop(id) {
+  if (!boardRun || boardRun.id !== id || boardRun.result || boardRun.error) return { stopping: false, why: 'no reserve board is being priced for this rule' };
+  boardRun.stop = true;
+  return { stopping: true };
+}
+// the looks a reserve set counts: the unit's board pricings (the first was the one look at data nothing had seen), the reserve sets already made from this rule, and the rides worked out on it
+function reserveLooksOf(doc, stamped, board = null) {
   const rides = readingsIn(doc, 'reserve').ride.length;
+  const pricings = board && board.priced ? board.pricings : 0;
   const what = [];
+  if (pricings) what.push(`the reserve board of this unit was priced ${pricings} time(s), first on ${String(board.firstAt || '').slice(0, 10)} — that pricing was the one look at data nothing in the system had seen`);
   if (rides) what.push(`the reserve ride was worked out ${rides} time(s) on Reserve, each a stamped look`);
-  // nothing before a press opens the reserve window: no walk printed it, no tick shows it
-  return { unstamped: 0, stamped: stamped || 0, rides, what };
+  // nothing before a pricing opens the reserve window: no walk printed it, no tick shows it
+  return { unstamped: 0, stamped: (stamped || 0) + pricings, rides, boardPricings: pricings, what };
 }
 // THE SET A PRESS MAKES: the rule and its survivors as they stand, the stop
 // choices on record frozen in, one block, and the rule it came from by name.
@@ -7016,7 +7242,7 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
   if (stretch === 'reserve' && !standsOn) throw new Error(NO_HELD_PASS);
   const had = judgeSetsOf(doc.id, stretch);
   let read; let copies; let survivors; let sanity; let lineA = null; let lineB = null;
-  let window = null; let priced = null; let missing = []; let forecasts = null;
+  let window = null; let priced = null; let missing = []; let forecasts = null; let boardStamp = null;
   let fee = (join.parent.params || {}).fee ?? null;
   if (stretch === 'held' && !doc.derived) {
     const rows = join.rows;
@@ -7030,6 +7256,28 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
     lineA = V.lineA(rows, rules, copyRowsAt);
     lineB = V.lineB(join.mine, rows.length, rules);
     forecasts = 'the stage 3 records as priced';
+  } else if (stretch === 'reserve' && !doc.derived) {
+    // THE BOARD, NOT A PRICING (3.148.0): the survivors and the copies off the
+    // unit's reserve board, sanity over the whole board, both information
+    // lines -- exactly as the held read reads the stage 3 records
+    const board = readReserveBoard(join.parent.id, doc.unit);
+    if (!board) throw new Error(boardNotPriced());
+    const mine = withReserveBoard(join.mine, board);
+    const byLabel = new Map(mine.map((r) => [r.label, r]));
+    const rows = join.rows.map((r) => byLabel.get(r.label)).filter(Boolean);
+    const got = boardControlsOf(board, doc.unit, rows);
+    read = V.heldBackRead(rows, got, rules);
+    const copyRowsAt = join.rule.cut ? (d) => S4.nullCopy(mine, join.rule, d) : null;
+    copies = V.copiesRead(rows, rules, copyRowsAt);
+    survivors = V.perSurvivor(rows, rules);
+    sanity = V.sanity(mine, rows, rules, 'board');
+    lineA = V.lineA(rows, rules, copyRowsAt);
+    lineB = V.lineB(mine, rows.length, rules);
+    window = board.window; fee = board.fee;
+    forecasts = `${board.forecasts}, read off the reserve board of this unit`;
+    missing = rows.filter((r) => !r.onReserveBoard).map((r) => r.label);
+    priced = rows.map((r) => ({ label: r.label, money: r.avgHold, trades: r.avgTrades, stops: r.stops, vsLong: r.avgVsLong, ride: r.ride, test: r.test }));
+    boardStamp = boardStampOf(board);
   } else {
     const p = await priceSurvivorsOn(doc, stretch, join, rules, note);
     read = V.heldBackRead(p.rows, p.controls, rules);
@@ -7049,8 +7297,9 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
   const block = V.buildBlock({
     id: `${id}-v1`, at, release: ENGINE_VERSION, look: number, stretch,
     rules, stageGate, footing: rest,
-    looks: stretch === 'held' ? verifyLooksOf(fresh, footing.keys, had.length) : reserveLooksOf(fresh, had.length),
+    looks: stretch === 'held' ? verifyLooksOf(fresh, footing.keys, had.length) : reserveLooksOf(fresh, had.length, boardStamp ? reserveBoardOf(fresh) : null),
     read, copies, survivors, sanity, lineA, lineB,
+    board: boardStamp,
     // the newest reading of the rule on the other units on this stretch, when one exists (3.88.0)
     others: othersSummaryOf(fresh, stretch),
     fee: { feePerLeg: fee, feeUnits: 'fraction' },
@@ -7072,7 +7321,8 @@ function judgeStart(id, stretch, asked = {}) {
   if (judgeRun && judgeRun.id === id && judgeRun.stretch === stretch && !judgeRun.result && !judgeRun.error) return judgeStatusOf(judgeRun);
   const why = judgeRefusalOf(doc, stretch, null);
   if (why) throw new Error(why);
-  const prices = stretch === 'reserve' || !!doc.derived;
+  // a half-life rule prices its survivors on either stretch; a plain rule reads records on Held and the board on Reserve (3.148.0)
+  const prices = !!doc.derived;
   // `of` is the pricing's count of parts and stays 0 on a read that prices nothing, so the screen never says "pricing" on it
   const run = { id, stretch, prices, token: `${id}:${stretch}:${Date.now()}`, done: 0, of: prices ? 1 : 0, result: null, error: null, promise: null };
   judgeRun = run;
@@ -7111,7 +7361,11 @@ async function judgeDry(id, stretch) {
     sets: judgeSetsOf(doc.id, stretch).map((d) => ({ id: d.id, name: d.name, number: d.number || 1, createdAt: d.createdAt, release: d.release, standsOn: d.standsOn || null, block: d.block })),
     readings: readingsIn(doc, stretch),
     rules: V.declareRules(doc.check, {}),
-    prices: stretch === 'reserve' || !!doc.derived,
+    prices: !!doc.derived,
+    // the unit's reserve board (3.148.0): priced or not, and the press that prices it; a half-life rule reads none
+    board: stretch === 'reserve' && doc.unit && isRule(doc) && !doc.derived ? reserveBoardOf(doc) : null,
+    boardRefused: null,
+    boardRunning: boardRun && boardRun.id === doc.id && !boardRun.result && !boardRun.error ? { token: boardRun.token, which: boardRun.which, done: boardRun.done, of: boardRun.of, unitsDone: boardRun.unitsDone, unitsOf: boardRun.unitsOf, current: boardRun.current } : null,
     refused: null, footing: null, looks: null,
     othersRefused: null, rideRefused: null, droppedRefused: null,
     running: judgeRun && judgeRun.id === doc.id && judgeRun.stretch === stretch && !judgeRun.result && !judgeRun.error ? { token: judgeRun.token, done: judgeRun.done, of: judgeRun.of } : null,
@@ -7126,8 +7380,9 @@ async function judgeDry(id, stretch) {
   let join;
   try { join = await funnelVerifyJoin(doc); } catch (err) { out.refused = err.message; out.othersRefused = err.message; out.rideRefused = err.message; out.droppedRefused = err.message; return out; }
   out.footing = judgeFooting(doc, join);
-  out.looks = stretch === 'held' ? verifyLooksOf(doc, out.footing.keys, out.sets.length) : reserveLooksOf(doc, out.sets.length);
+  out.looks = stretch === 'held' ? verifyLooksOf(doc, out.footing.keys, out.sets.length) : reserveLooksOf(doc, out.sets.length, out.board);
   out.refused = judgeRefusalOf(doc, stretch, out.footing);
+  out.boardRefused = stretch === 'reserve' ? boardRefusalOf(doc) : null;
   out.othersRefused = othersRefusalOf(doc, stretch, out.footing);
   out.rideRefused = rideRefusalOf(doc, stretch);
   out.droppedRefused = droppedRefusalOf(doc, stretch);
@@ -7167,15 +7422,23 @@ function judgeSummaryOf(doc, all = null) {
 // It prices NOTHING. Every figure it reads is already on the board. But it IS a
 // read of the held-back window, so it is a counted look like any other, and it
 // is information only -- it never gates a set.
-async function funnelDropped(doc, asked = {}) {
+async function funnelDropped(doc, asked = {}, stretch = 'held') {
   const V = require('./funnelverify');
   const S4 = require('./funnelset');
   const join = await funnelVerifyJoin(doc);
   const footing = verifyFooting(doc, join);
   if (!footing.ok) throw new Error(footing.why);
-  const kept = S4.applyRule(join.mine, join.rule);
+  // ON RESERVE, THE UNIT'S RESERVE BOARD IN THE RECORDS' PLACE (3.148.0)
+  let board = null;
+  let mine = join.mine;
+  if (stretch === 'reserve') {
+    board = readReserveBoard(join.parent.id, doc.unit);
+    if (!board) throw new Error(boardNotPriced());
+    mine = withReserveBoard(join.mine, board);
+  }
+  const kept = S4.applyRule(mine, join.rule);
   const keptLabels = new Set(kept.map((r) => r.label));
-  const droppedAll = join.mine.filter((r) => !keptLabels.has(r.label));
+  const droppedAll = mine.filter((r) => !keptLabels.has(r.label));
   // HOW MANY OF THE DROPPED TO READ, the owner's box. Blank, zero, or anything
   // at or above the count means all of them. The sample is taken with an even
   // stride through the board's own order -- never the first N, which reads one
@@ -7190,15 +7453,17 @@ async function funnelDropped(doc, asked = {}) {
   // hold for a length no survivor uses, and beating a bar priced for somebody
   // else's hold length is not beating anything.
   const keysOf = (rows) => [...new Set(rows.map((r) => controlKeyOf(r)))];
-  const keptControls = controlsOf(join.parent, doc.unit, keysOf(kept));
-  const droppedControls = controlsOf(join.parent, doc.unit, keysOf(dropped));
-  return V.keptVsDropped(kept, dropped, keptControls, droppedControls, { read: dropped.length, of: droppedAll.length });
+  const keptControls = board ? boardControlsOf(board, doc.unit, kept) : controlsOf(join.parent, doc.unit, keysOf(kept));
+  const droppedControls = board ? boardControlsOf(board, doc.unit, dropped) : controlsOf(join.parent, doc.unit, keysOf(dropped));
+  const out = V.keptVsDropped(kept, dropped, keptControls, droppedControls, { read: dropped.length, of: droppedAll.length });
+  if (board) out.board = boardStampOf(board);
+  return out;
 }
 function droppedRefusalOf(doc, stretch = 'held') {
   if (!doc.unit) return BLEND_REFUSAL;
   if (!isRule(doc)) return 'the readings are taken on the rule, not on a set already read — pick the rule';
   if (doc.derived) return `${HL_OWN_UNIT_ONLY}, so the settings it dropped cannot be read with them`;
-  if (stretch === 'reserve') return RESERVE_NOT_PRICED.dropped;
+  if (stretch === 'reserve') { const b = reserveBoardOf(doc); if (!b.priced) return b.why; }
   const busy = verifyBusy();
   if (busy) return `${busy} — the read waits for the box to be free`;
   if (acrossBusy()) return `${acrossBusy()} — the same boards, one reading at a time`;
@@ -7213,7 +7478,7 @@ async function funnelDroppedStart(id, asked = {}) {
   const stretch = stretchOrRefuse((asked || {}).stretch || 'held');
   const why = droppedRefusalOf(doc, stretch);
   if (why) throw new Error(why);
-  const got = await funnelDropped(doc, asked || {});
+  const got = await funnelDropped(doc, asked || {}, stretch);
   const fresh = getSet(id);
   if (!fresh) throw new Error('the set went away while the settings it dropped were being read');
   const mine = readingsOf(fresh, stretch);
@@ -7243,7 +7508,7 @@ async function funnelDroppedStart(id, asked = {}) {
 // of the test window; this is the same walk over the same boards with the
 // held-back fields, one board at a time and let go, started and polled.
 // Two counts, information only, never a gate; every press appends a reading.
-async function funnelOthers(doc, rules, note = null) {
+async function funnelOthers(doc, rules, note = null, stretch = 'held') {
   const V = require('./funnelverify');
   const S4 = require('./funnelset');
   const join = await funnelVerifyJoin(doc);
@@ -7256,8 +7521,17 @@ async function funnelOthers(doc, rules, note = null) {
   const units = [];
   if (note) note(0, others.length);
   for (const u of others) {
+    // ON RESERVE, EACH OTHER UNIT OFF ITS OWN RESERVE BOARD (3.148.0); a unit
+    // not yet priced is named, left out of the denominator and counted
+    const reserveBoard = stretch === 'reserve' ? readReserveBoard(parent.id, u.key) : null;
+    if (stretch === 'reserve' && !reserveBoard) {
+      units.push({ unit: u.key, name: u.name, of: null, survivors: null, real: null, positive: false, copies: 0, bar: 0, beats: 0, clears: false, lead: null, keepsNothing: true, notPriced: true, why: `not priced on the reserve window yet — ${BOARD_PRESS} prices it` });
+      if (note) note(units.length, others.length);
+      continue;
+    }
     // eslint-disable-next-line no-await-in-loop
-    const board = withFunnelRich(await loadUnitBoard(parent.id, t, u.key), rich);
+    const unitBoard = withFunnelRich(await loadUnitBoard(parent.id, t, u.key), rich);
+    const board = reserveBoard ? withReserveBoard(unitBoard, reserveBoard) : unitBoard;
     const kept = S4.applyRule(board, join.rule);
     // a rule with a top-N cut lets each copy take its own top N on that unit, as the verdict does
     const copyRowsAt = join.rule.cut ? (d) => S4.nullCopy(board, join.rule, d) : null;
@@ -7266,14 +7540,14 @@ async function funnelOthers(doc, rules, note = null) {
   }
   // the set's own board comes back into hand for the next read
   await loadUnitBoard(parent.id, t, doc.unit);
-  return { units, ...V.othersSummary(units, 'held'), rule: join.rule };
+  return { units, ...V.othersSummary(units, stretch), rule: join.rule };
 }
 // why the press would refuse, in words, or null
 function othersRefusalOf(doc, stretch = 'held', footing = null) {
   if (!doc.unit) return BLEND_REFUSAL;
   if (!isRule(doc)) return 'the readings are taken on the rule, not on a set already read — pick the rule';
   if (doc.derived) return `${HL_OWN_UNIT_ONLY}, so the other units cannot be read with them`;
-  if (stretch === 'reserve') return RESERVE_NOT_PRICED.others;
+  // on Reserve the other units are read off their own boards (3.148.0); a unit not yet priced is named in the reading, so nothing refuses here
   const busy = verifyBusy();
   if (busy) return `${busy} — the read waits for the box to be free`;
   if (acrossBusy()) return `${acrossBusy()} — the same boards, one reading at a time`;
@@ -7296,7 +7570,7 @@ function funnelOthersStart(id, asked = {}) {
   const rules = V.declareRules(doc.check, asked || {});
   const run = { id, stretch, token: `${id}:${Date.now()}`, done: 0, of: 0, result: null, error: null, promise: null };
   othersRun = run;
-  run.promise = funnelOthers(doc, rules, (done, of) => { run.done = done; run.of = of; })
+  run.promise = funnelOthers(doc, rules, (done, of) => { run.done = done; run.of = of; }, stretch)
     .then((got) => {
       const fresh = getSet(id);
       if (!fresh) throw new Error('the set went away while the other units were being read');
@@ -7306,7 +7580,7 @@ function funnelOthersStart(id, asked = {}) {
         id: `${id}-${stretch}-o${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1, stretch,
         rules: { copies: rules.copies, bar: rules.bar, barPct: rules.barPct, ownBarPct: rules.ownBarPct, barChanged: rules.barChanged, chance: rules.chance, tags: { bar: rules.tags.bar } },
         unit: doc.unit, unitName: doc.unitName || null, ruleSentence: doc.ruleSentence || null,
-        units: got.units, positive: got.positive, of: got.of, clearBar: got.clearBar, keepsNothing: got.keepsNothing, mark: got.mark,
+        units: got.units, positive: got.positive, of: got.of, clearBar: got.clearBar, keepsNothing: got.keepsNothing, notPriced: got.notPriced || 0, mark: got.mark,
       };
       // appended, never overwritten: a later reading under another bar is another reading
       mine.others = [reading, ...had];
@@ -7324,7 +7598,7 @@ function funnelOthersStatus(id) {
 // the newest reading's counts on a stretch, for the verdict block stamped after it
 function othersSummaryOf(doc, stretch = 'held') {
   const o = readingsIn(doc, stretch).others[0] || null;
-  return o ? { id: o.id, at: o.at, look: o.look, positive: o.positive, of: o.of, clearBar: o.clearBar, keepsNothing: o.keepsNothing, mark: o.mark } : null;
+  return o ? { id: o.id, at: o.at, look: o.look, positive: o.positive, of: o.of, clearBar: o.clearBar, keepsNothing: o.keepsNothing, notPriced: o.notPriced || 0, mark: o.mark } : null;
 }
 
 // ---- V7: THE RIDE ON THE HELD-BACK WINDOW (3.88.0, VERIFY-DESIGN.md) ----------------
@@ -7346,6 +7620,8 @@ function rideRefusalOf(doc, stretch = 'held') {
     if (!r.keeps) return HELD_ALONE;
     if (!r.intact) return r.why;
     if (!heldStandingOf(doc)) return NO_HELD_PASS;
+    // a plain rule's reserve ride comes off the unit's reserve board (3.148.0)
+    if (!doc.derived) { const b = reserveBoardOf(doc); if (!b.priced) return b.why; }
   }
   if (doc.derived) {
     if (!getSet(doc.derived.from)) return 'the set this half-life set was built from is gone, so its retrained members cannot be found';
@@ -7382,9 +7658,24 @@ function funnelRideStart(id, asked = {}) {
   rideRun = run;
   const V = require('./funnelverify');
   const plainHeld = stretch === 'held' && !doc.derived;
+  const plainReserve = stretch === 'reserve' && !doc.derived;
+  // THE PLAIN RULE'S RESERVE RIDE COMES OFF THE BOARD (3.148.0): the per-row ride
+  // the pricing worked out, beside the test half, and nothing prices
+  const half = (o, money, trades) => { const out = { money: money ?? null, trades: trades ?? null }; for (const f of V.RIDE_FIELDS) out[f] = o ? (o[f] ?? null) : null; out.pnlThirds = o && Array.isArray(o.pnlThirds) ? o.pnlThirds : null; return out; };
+  const offBoard = async () => {
+    const board = readReserveBoard(parent.id, doc.unit);
+    if (!board) throw new Error(boardNotPriced());
+    const rows = labels.map((L) => board.rows[L] || null);
+    run.done = labels.length; run.of = labels.length;
+    return {
+      rows: rows.filter(Boolean).map((r) => ({ label: r.label, read: half(r.ride, r.avgHold, r.avgTrades), test: half(r.test, (r.test || {}).money, (r.test || {}).trades) })),
+      missing: labels.filter((L) => !board.rows[L]), failures: [], window: board.window, forecasts: `${board.forecasts}, read off the reserve board of this unit`, board: boardStampOf(board),
+    };
+  };
   const worked = plainHeld
     ? rebuildRichFor(parent, labels, { unit: doc.unit, note: (done, of, x) => { run.done = done; run.of = of; run.units = (x || {}).units ?? run.units ?? null; } })
       .then((got) => ({ ...V.rideOf(got.perSetting, { unitKey: doc.unit, keyOf: unitKeyOf, labels }), failures: got.failures || [], window: null }))
+    : plainReserve ? offBoard()
     : funnelVerifyJoin(doc).then((join) => priceSurvivorsOn(doc, stretch, join, { copies: 0 }, (done, of) => { run.done = done; run.of = of; }))
       .then((p) => {
         const half = (o, money, trades) => { const out = { money: money ?? null, trades: trades ?? null }; for (const f of V.RIDE_FIELDS) out[f] = o ? (o[f] ?? null) : null; out.pnlThirds = o && Array.isArray(o.pnlThirds) ? o.pnlThirds.slice() : null; return out; };
@@ -7400,7 +7691,7 @@ function funnelRideStart(id, asked = {}) {
         id: `${id}-${stretch}-r${had.length + 1}`, at: new Date().toISOString(), release: ENGINE_VERSION, look: had.length + 1, stretch,
         unit: doc.unit, unitName: doc.unitName || null, settings: labels.length,
         missing: ride.missing, failures: ride.failures || [], fields: V.RIDE_FIELDS.slice(),
-        window: ride.window || null, forecasts: ride.forecasts || null,
+        window: ride.window || null, forecasts: ride.forecasts || null, board: ride.board || null,
         rows: ride.rows,
       };
       mine.ride = [rec, ...had];
@@ -9111,6 +9402,8 @@ module.exports = {
   continueStage3, readCheckpoint, hasCheckpoint, checkpointFile, writeCheckpoint, CHECKPOINT_V,
   windowsOfSet, newestDataOf,
   judgeDry, judgeStart, judgeStatus, judgeRunOn, judgeSummaryOf, judgeSetsOf, heldStandingOf, reserveOf, readingsIn, makeJudgeSet,
+  reserveBoardStart, reserveBoardStatus, reserveBoardStop, reserveBoardOf, readReserveBoard, writeReserveBoard, reserveBoardFile, priceReserveBoard, withReserveBoard, readerRowsOf, BOARD_PRESS,
+  priceSurvivorsOn, funnelVerifyJoin,
   gateRefusalOf, STRETCHES, HELD_ALONE, NO_HELD_PASS, sealedOnUnitOf,
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
