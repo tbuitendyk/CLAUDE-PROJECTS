@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **82aeca38cdd7 — what the box is serving**, not from the working tree.
+Generated from **e43ecc0501fb — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1327,7 +1327,7 @@ again and are as at average behind beside best block both box Build built by cen
 - `of the Stage 4 record set`
 - `on record:`
 - `one survivor`
-- `or apply a custom stop`
+- `or apply a custom stop %`
 - `over`
 - `per-$`
 - `priced entries: flat`
