@@ -1132,3 +1132,26 @@ Decisions inside the loop, continued (release 1):
   their presses cut BEFORE the chain, because those sets name the stage 3
   set as their parent and were not on the chain's own list: a full suite run
   had left three chains behind, and the next run's names clashed with them.
+
+Deployed 3.147.0 at 20:42 UTC. The deploy's own health check reported FAILED:
+the first start spent 32 seconds moving the box's stamps into sets before it
+listened, longer than the check waits; the journal shows the move and the
+listen, and the served files were fetched from the running service. What the
+box moved: 2 held sets, 3 reserve sets, 8 readings re-keyed on 3 rules. The
+release message said 7 readings, a count typed from an earlier read; the log
+and the probe agree on 8, and 8 is the fact.
+
+Hunting the instrument after the move, read off the box with the probe
+extended to print every key a moved block carries: one held set (moved from
+a 3.92.1 verdict) still carried `gate`, the planted-check state retired in
+3.96.0; the three reserve sets (moved from grades) still carried `controls`
+and `failures`. No reader reads any of the three; H1.7 said no old fields and
+the mover had kept three. 3.147.1: the mover strips them as a block moves,
+and once off the sets it had already made, counted and said in the log; the
+strip is under the same RULE TEN heading and goes with the mover. The fields
+today's press writes that an older stamp never had (looks, others, windows,
+marks, lineA, lineB, stageGate on a moved grade; `own` in a 3.92-era read)
+stay absent: nothing is invented into a record stamped under another
+release, and the page treats an absent optional reading as not read. The
+owner's alternative, theirs to choose (RULE NINE): delete those four sets and
+press again on Held and Reserve.

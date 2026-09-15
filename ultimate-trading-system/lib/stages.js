@@ -7169,8 +7169,19 @@ function judgeSummaryOf(doc, all = null) {
 // left exactly as it was stamped. It runs once at start, says what it moved,
 // and is deleted the release after a probe finds nothing left to move on the
 // box. Nothing here calls anything only it calls, so it lifts out in one cut.
+//
+// 3.147.1: a block stamped under an older release carried fields no block
+// written today has -- a 3.92-era verdict's planted-check state (`gate`,
+// retired 3.96.0 when the check moved to Setup), and a grade's pricing
+// leftovers (`controls`, `failures`). Read by nothing, seen by the probe on
+// the box after the first move. They go as a block moves, and once off the
+// sets the first move had already made on the box. The fields today's press
+// writes that an older stamp never had stay absent: nothing is invented into
+// a record stamped under another release.
 function moveStampsIntoSets() {
-  const moved = { rules: 0, held: 0, reserve: 0, readings: 0 };
+  const moved = { rules: 0, held: 0, reserve: 0, readings: 0, stripped: 0 };
+  const DEAD = ['gate', 'controls', 'failures'];
+  const strip = (block) => { let n = 0; for (const k of DEAD) if (block && k in block) { delete block[k]; n++; } return n; };
   const renameRows = (sv) => (sv && Array.isArray(sv.rows) ? { ...sv, rows: sv.rows.map(({ held, ...r }) => ({ money: held, ...r })) } : sv);
   const mint = () => { const seq = seqFor(4); return { seq, id: `s4-${Date.now().toString(36)}-${seq}` }; };
   for (const x of listSets()) {
@@ -7185,6 +7196,7 @@ function moveStampsIntoSets() {
     blocks.forEach((b, i) => {
       const { heldBack, ...rest } = b;
       const block = { ...rest, stretch: 'held', read: heldBack || rest.read || null, survivors: renameRows(rest.survivors), standsOn: null, window: null, priced: null, missing: [], forecasts: 'the stage 3 records as priced' };
+      strip(block);
       const { seq, id } = mint();
       const set = makeJudgeSet(doc, 'held', { id, seq, number: i + 1, block, standsOn: null, at: b.at });
       saveSet(set);
@@ -7196,6 +7208,7 @@ function moveStampsIntoSets() {
       const { gate, rows, ...rest } = g;
       const standsOn = gate && heldOf.get(gate.id) ? heldOf.get(gate.id) : null;
       const block = { ...rest, stretch: 'reserve', survivors: renameRows(rest.survivors), standsOn, priced: (rows || []).map((r) => ({ ...r })), forecasts: "the members' saved models" };
+      strip(block);
       const { seq, id } = mint();
       const set = makeJudgeSet(doc, 'reserve', { id, seq, number: i + 1, block, standsOn, at: g.at });
       saveSet(set);
@@ -7209,6 +7222,14 @@ function moveStampsIntoSets() {
     moved.readings += (doc.others || []).length + (doc.dropped || []).length + (doc.ride || []).length;
     delete doc.verify; delete doc.unread; delete doc.others; delete doc.dropped; delete doc.ride;
     saveSet(doc);
+  }
+  // the sets the first move made before it stripped anything (3.147.1): each
+  // stripped once, counted, and nothing else on it touched
+  for (const x of listSets()) {
+    if (!String(x.id).startsWith('s4-')) continue;
+    const doc = getSet(x.id);
+    if (!isJudgeSet(doc) || !doc.block) continue;
+    if (strip(doc.block)) { saveSet(doc); moved.stripped++; }
   }
   return moved;
 }

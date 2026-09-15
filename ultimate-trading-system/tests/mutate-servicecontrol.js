@@ -1713,6 +1713,8 @@ const GUARDS = [
     'theStampsOnARuleMoveIntoSetsOnceAndNeverTwice', 'the mover leaves the stamps on the rule and writes the sets again on every start'],
   [path.join(ROOT, 'lib', 'stages.js'), "      const standsOn = gate && heldOf.get(gate.id) ? heldOf.get(gate.id) : null;", "      const standsOn = null;",
     'theStampsOnARuleMoveIntoSetsOnceAndNeverTwice', 'a moved reserve set stands on no held set, and the record no longer says which verdict gated the grade'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  const strip = (block) => { let n = 0; for (const k of DEAD) if (block && k in block) { delete block[k]; n++; } return n; };", "  const strip = (block) => { let n = 0; for (const k of DEAD) if (block && k in block) { n++; } return n; };",
+    'theStampsOnARuleMoveIntoSetsOnceAndNeverTwice', 'a moved block keeps the fields no block written today carries, and the second pass counts them stripped on every start (3.147.1)'],
   [path.join(ROOT, 'lib', 'stages.js'), "    rich: copy(rule.rich) || {}, derived: copy(rule.derived) || null, stopChoices: copy(rule.stopChoices) || {},", "    rich: copy(rule.rich) || {}, derived: copy(rule.derived) || null, stopChoices: {},",
     'theStampsOnARuleMoveIntoSetsOnceAndNeverTwice', 'the stop choices on record are not frozen into the set a press makes'],
   [path.join(ROOT, 'lib', 'stages.js'), "    run.sets.push(made.id);\n    blocks[which] = getSet(made.id).block;", "    blocks[which] = getSet(made.id).block;",

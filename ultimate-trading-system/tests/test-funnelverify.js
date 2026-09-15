@@ -1213,6 +1213,8 @@ module.exports.theStampsOnARuleMoveIntoSetsOnceAndNeverTwice = function () {
     id, at, release, look, rules: { copies: 10, bar: 8, barPct: 80 }, footing: { ok: true, had: 2 }, looks: { unstamped: 3, stamped: look - 1 },
     heldBack: { real: 2, of: 2, positive: true, pass, comparisons: { known: true } }, copies: { copies: 10, beats: 9, bar: 8, pass: true },
     survivors: { survivors: 2, passing: 1, rows: rowsOld }, sanity: { known: true, ok: true, threshold: 50, board: { losing: 0.6 } },
+    // the planted-check state a 3.92-era block carried (retired 3.96.0): no block written today has it
+    gate: { state: 'PASS', engineVersion: release },
     verdict: { pass, sentence: `${pass ? 'PASS' : 'FAIL'}: stamped under ${release}, and this sentence must survive the move as it was written` },
   });
   const oldGrade = (id, look, at, gateId) => ({
@@ -1220,7 +1222,7 @@ module.exports.theStampsOnARuleMoveIntoSetsOnceAndNeverTwice = function () {
     window: { fromTs: 7000, toTs: 9000, chunks: 3, seenToTs: 9500 }, read: { real: 1, of: 2, pass: false, comparisons: { known: true } }, copies: { copies: 10, beats: 3, bar: 8, pass: false },
     survivors: { survivors: 2, passing: 0, rows: rowsOld }, sanity: { known: true, ok: true, threshold: 50, board: { losing: 0.7 } },
     rows: [{ label: 'a', money: 1.5, trades: 2, stops: 0, vsLong: 1, ride: { maxDrawdown: -1 } }, { label: 'b', money: -0.5, trades: 1, stops: 1, vsLong: -2, ride: { maxDrawdown: -2 } }],
-    missing: [], failures: [],
+    missing: [], failures: [], controls: { units: {} },
     verdict: { pass: false, sentence: 'FAIL: the grade as it was stamped' },
   });
   try {
@@ -1241,7 +1243,7 @@ module.exports.theStampsOnARuleMoveIntoSetsOnceAndNeverTwice = function () {
     // a rule cut under 3.146.x carries the empty fields and nothing in them
     write(e, { id: e, stage: 4, kind: 'funnel', seq: 999991, name: `mv empty ${tag}`, status: 'done', createdAt: '2026-09-03T00:00:00.000Z', release: '3.146.1', parent: { id: p, name: `S3 mv ${tag}` }, unit: KEY, rule: {}, survivors: [], counts: { survivors: 0 }, verify: [], others: [], ride: [], unread: [], heldBackReadAt: null });
     const moved = stages.moveStampsIntoSets();
-    assert.deepStrictEqual(moved, { rules: 1, held: 2, reserve: 1, readings: 4 }, JSON.stringify(moved));
+    assert.deepStrictEqual(moved, { rules: 1, held: 2, reserve: 1, readings: 4, stripped: 0 }, JSON.stringify(moved));
     const held = stages.judgeSetsOf(r, 'held');
     const reserve = stages.judgeSetsOf(r, 'reserve');
     made.push(...held.map((x) => x.id), ...reserve.map((x) => x.id));
@@ -1254,13 +1256,14 @@ module.exports.theStampsOnARuleMoveIntoSetsOnceAndNeverTwice = function () {
       'the frozen copy carries the rule, its survivors and the stop choices as they stand');
     // the block's fields carry the one shape, and its sentence is untouched
     assert.ok(!('heldBack' in first.block), 'the old name is gone');
+    assert.ok(!('gate' in first.block) && !('gate' in held[0].block), 'the planted-check state a 3.92-era block carried is gone with the move (3.147.1)');
     assert.deepStrictEqual({ real: first.block.read.real, pass: first.block.read.pass, rows: first.block.survivors.rows.map((x) => [x.label, x.money, 'held' in x]), sentence: first.block.verdict.sentence, forecasts: first.block.forecasts, standsOn: first.block.standsOn },
       { real: 2, pass: true, rows: [['a', 5, false], ['b', -1, false]], sentence: 'PASS: stamped under 3.92.1, and this sentence must survive the move as it was written', forecasts: 'the stage 3 records as priced', standsOn: null });
     // one reserve set, standing on the held set made from the block that gated it, its priced rows under the one name
     assert.strictEqual(reserve.length, 1);
     const rs = reserve[0];
-    assert.deepStrictEqual({ name: rs.name, number: rs.number, createdAt: rs.createdAt, standsOn: rs.standsOn.id, standsOnName: rs.standsOn.name, stretch: rs.block.stretch, priced: rs.block.priced.map((x) => x.money), rows: rs.block.survivors.rows.map((x) => x.money), gateGone: 'gate' in rs.block, rowsGone: 'rows' in rs.block, sentence: rs.block.verdict.sentence, from: rs.block.window.fromTs },
-      { name: `reserve set of mv rule ${tag}`, number: 1, createdAt: '2026-09-15T07:01:00.000Z', standsOn: held[0].id, standsOnName: held[0].name, stretch: 'reserve', priced: [1.5, -0.5], rows: [5, -1], gateGone: false, rowsGone: false, sentence: 'FAIL: the grade as it was stamped', from: 7000 });
+    assert.deepStrictEqual({ name: rs.name, number: rs.number, createdAt: rs.createdAt, standsOn: rs.standsOn.id, standsOnName: rs.standsOn.name, stretch: rs.block.stretch, priced: rs.block.priced.map((x) => x.money), rows: rs.block.survivors.rows.map((x) => x.money), gateGone: 'gate' in rs.block, rowsGone: 'rows' in rs.block, controlsLeft: 'controls' in rs.block, failuresLeft: 'failures' in rs.block, sentence: rs.block.verdict.sentence, from: rs.block.window.fromTs },
+      { name: `reserve set of mv rule ${tag}`, number: 1, createdAt: '2026-09-15T07:01:00.000Z', standsOn: held[0].id, standsOnName: held[0].name, stretch: 'reserve', priced: [1.5, -0.5], rows: [5, -1], gateGone: false, rowsGone: false, controlsLeft: false, failuresLeft: false, sentence: 'FAIL: the grade as it was stamped', from: 7000 });
     // the readings are re-keyed under the held stretch, the ride's half renamed, and the old fields are gone
     const rule = stages.getSet(r);
     for (const k of ['verify', 'unread', 'others', 'dropped', 'ride']) assert.ok(!(k in rule), `${k} is still on the rule`);
@@ -1275,8 +1278,18 @@ module.exports.theStampsOnARuleMoveIntoSetsOnceAndNeverTwice = function () {
     for (const k of ['verify', 'unread', 'others', 'ride']) assert.ok(!(k in empty), `${k} is still on the empty rule`);
     assert.deepStrictEqual(stages.judgeSetsOf(e, 'held'), []);
     // and a second run moves nothing
-    assert.deepStrictEqual(stages.moveStampsIntoSets(), { rules: 0, held: 0, reserve: 0, readings: 0 });
+    assert.deepStrictEqual(stages.moveStampsIntoSets(), { rules: 0, held: 0, reserve: 0, readings: 0, stripped: 0 });
     assert.strictEqual(stages.judgeSetsOf(r, 'held').length, 2);
+    // A SET THE FIRST MOVE MADE BEFORE IT STRIPPED ANYTHING (3.147.1), as the box
+    // had: the dead fields go once, counted and said; nothing else on it moves
+    const h = `s4-mv-${tag}-h`;
+    made.push(h);
+    write(h, { ...held[1], id: h, seq: 999992, name: `held set of mv rule ${tag} #9`, number: 9, block: { ...held[1].block, id: `${r}-v9`, gate: { state: 'PASS', engineVersion: '3.92.1' }, controls: { units: {} }, failures: [] } });
+    assert.deepStrictEqual(stages.moveStampsIntoSets(), { rules: 0, held: 0, reserve: 0, readings: 0, stripped: 1 });
+    const stripped = stages.getSet(h);
+    assert.deepStrictEqual([('gate' in stripped.block), ('controls' in stripped.block), ('failures' in stripped.block), stripped.block.verdict.sentence, stripped.block.read.real, stripped.name],
+      [false, false, false, held[1].block.verdict.sentence, 2, `held set of mv rule ${tag} #9`]);
+    assert.deepStrictEqual(stages.moveStampsIntoSets(), { rules: 0, held: 0, reserve: 0, readings: 0, stripped: 0 }, 'stripped once and never twice');
     // the mover is one block under its own heading, calling nothing only it calls (RULE TEN)
     const s = src('lib/stages.js');
     const mover = s.slice(s.indexOf('// ---- MOVING THE STAMPS INTO SETS (3.147.0) -- WRITTEN TO BE DELETED (RULE TEN) ----'), s.indexOf('\n}\n', s.indexOf('function moveStampsIntoSets() {')));

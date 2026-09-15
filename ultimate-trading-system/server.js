@@ -1540,6 +1540,7 @@ app.use((err, req, res, next) => {
 try {
   const moved = stages.moveStampsIntoSets();
   if (moved.rules) console.log(`[start] moved the stamps of ${moved.rules} rule(s) into sets: ${moved.held} held set(s), ${moved.reserve} reserve set(s), ${moved.readings} reading(s) re-keyed`);
+  if (moved.stripped) console.log(`[start] stripped ${moved.stripped} moved block(s) of a field no block written today carries (gate, controls, failures)`);
 } catch (err) { console.error(`[start] the stamps could not be moved into sets: ${err && err.message ? err.message : err}`); }
 app.listen(PORT, '127.0.0.1', () => {
   console.log(`ultimate-trading-system listening on 127.0.0.1:${PORT}`);
