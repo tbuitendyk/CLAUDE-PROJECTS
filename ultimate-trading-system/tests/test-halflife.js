@@ -217,6 +217,13 @@ module.exports = {
         for (const k of ['h12', 'h48']) assert.ok(Number.isFinite(r.money[k]), `${r.label}: ${k} has a figure`);
         assert.strictEqual(r.best, HL.bestOf(r.money, block.columns), `${r.label}: best by the declared rule`);
       }
+      // THE RETRAINED COLUMNS ARE PRICED FROM THE RETRAINED VOTES, not the set's
+      // own under a new name: on the set's own layout the two vote sets have the
+      // same shape, so a payload handed the original votes prices without a
+      // murmur and every retrained column comes out equal to the unweighted one
+      // to the cent (a guard found the test could not tell, 3.142.0)
+      assert.ok(block.rows.some((r) => ['h12', 'h48'].some((k) => cents(r.money[k]) !== cents(r.money.none))),
+        'every retrained column is the unweighted money under a new name');
       const wins = Object.values(block.wins).reduce((a, b) => a + b, 0);
       assert.strictEqual(wins, block.rows.length, 'every row has one winner');
       assert.ok(Math.abs(block.averages.none - block.rows.reduce((a, r) => a + r.money.none, 0) / block.rows.length) < 1e-9, 'the unweighted average');
