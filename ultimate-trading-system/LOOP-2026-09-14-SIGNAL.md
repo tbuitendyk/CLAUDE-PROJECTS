@@ -959,3 +959,10 @@ the conviction sweep prints the return on the amount traded, flat against
 ladder in points, and per level of agreement; the chance check's p holds
 for it unchanged, since a shuffle keeps the ladder's amount traded. Second
 digit.
+
+## AE. The conviction sweep's summary as a table — owner GO NOW! 2026-09-15 (3.143.1)
+
+"don't crunch this into a sentence ... put it properly into a little table
+at the top of the row set". The sweep's headline is a table now: flat,
+ladder and ladder over flat as rows; money, amount traded and the return on
+the amount traded as columns; the entry count above it. Third digit.

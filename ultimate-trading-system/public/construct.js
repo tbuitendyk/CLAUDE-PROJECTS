@@ -2875,10 +2875,22 @@ async function drawTune() {
   function renderConvResult(c) {
     const n = c.null || {};
     const rate = (v) => (v == null ? '—' : `${Number(v).toFixed(2)}%`);
-    return `${c.target ? tnTargetLineHtml(c.target) : ''}<p><b>${esc(c.bookId)}</b> over ${c.entries} priced entries: flat ${usd(c.flatUsd)} vs ladder <b>${usd(c.ladderUsd)}</b>
-      — uplift <b class="${(c.upliftUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.upliftUsd)}</b>
-      · return on the amount traded: flat ${rate(c.flatReturnPct)} on ${usd(c.deployedFlatUsd)} vs ladder <b>${rate(c.ladderReturnPct)}</b> on ${usd(c.deployedLadderUsd)}
-      — <b class="${(c.upliftReturnPts || 0) >= 0 ? 'pos' : 'neg'}">${c.upliftReturnPts == null ? '—' : `${Number(c.upliftReturnPts).toFixed(2)} points`}</b>.</p>
+    const signed = (v, unit) => (v == null ? '—' : `${v >= 0 ? '+' : ''}${unit === '$' ? usd(v) : `${Number(v).toFixed(2)} points`}`);
+    // THE SUMMARY AS A SMALL TABLE (3.143.1, owner order 2026-09-15: "don't crunch
+    // this into a sentence ... put it properly into a little table at the top of
+    // the row set"): flat, ladder and the difference as rows; money, amount
+    // traded and the return on the amount traded as columns.
+    return `${c.target ? tnTargetLineHtml(c.target) : ''}<p><b>${esc(c.bookId)}</b> over ${Number(c.entries || 0).toLocaleString()} priced entries.</p>
+      <div class="scrollx"><table><thead><tr>
+        <th title="every trade the same size (flat), each trade sized by how many members agreed (ladder), and the ladder against flat">sizing</th>
+        <th title="the money the captured trades made at this sizing">money $</th>
+        <th title="the money put to work at this sizing: the sum of every trade's size">amount traded $</th>
+        <th title="money made over the amount traded, as a percentage; a rate the ladder cannot raise just by trading more">return on the amount traded</th>
+      </tr></thead><tbody>
+        <tr><td>flat</td><td class="${(c.flatUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.flatUsd)}</td><td>${usd(c.deployedFlatUsd)}</td><td class="${(c.flatReturnPct || 0) >= 0 ? 'pos' : 'neg'}">${rate(c.flatReturnPct)}</td></tr>
+        <tr><td>ladder</td><td class="${(c.ladderUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${usd(c.ladderUsd)}</b></td><td>${usd(c.deployedLadderUsd)}</td><td class="${(c.ladderReturnPct || 0) >= 0 ? 'pos' : 'neg'}"><b>${rate(c.ladderReturnPct)}</b></td></tr>
+        <tr><td>ladder over flat</td><td class="${(c.upliftUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${signed(c.upliftUsd, '$')}</b> uplift</td><td>${c.deployedLadderUsd != null && c.deployedFlatUsd != null ? `${(c.deployedLadderUsd / (c.deployedFlatUsd || 1)).toFixed(2)}x as much` : '—'}</td><td class="${(c.upliftReturnPts || 0) >= 0 ? 'pos' : 'neg'}"><b>${signed(c.upliftReturnPts, 'points')}</b></td></tr>
+      </tbody></table></div>
       <div class="scrollx"><table><thead><tr>${cth('agreement','agreement')}${cth('mult','mult')}${cth('trades','trades')}${cth('wins','wins')}${cth('win %','winPct')}${cth('flat $','flatUsd')}${cth('ladder $','ladderUsd')}${cth('return % on $ traded','returnPct')}</tr></thead><tbody>
       ${(c.buckets || []).map((b) => `<tr><td>${b.agree} of ${(c.setup && c.setup.members) || '?'}${b.thin ? ' ⚠' : ''}</td>
         <td>${b.multiplier}x</td><td>${b.n}</td><td>${b.winners}</td>

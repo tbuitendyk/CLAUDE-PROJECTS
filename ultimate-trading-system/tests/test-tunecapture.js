@@ -370,8 +370,14 @@ module.exports = {
     assert.ok(ui.includes("  if (want === 'all' && (cand.rows || []).length) return 'all';"), 'a remembered choice of all survivors is not kept');
     // THE RETURN ON THE AMOUNT TRADED (3.143.0, owner order): the sweep's headline says it flat
     // against ladder, in points, and the table has it per level of agreement
-    assert.ok(ui.includes('return on the amount traded: flat ${rate(c.flatReturnPct)} on ${usd(c.deployedFlatUsd)} vs ladder <b>${rate(c.ladderReturnPct)}</b> on ${usd(c.deployedLadderUsd)}') && ui.includes("cth('return % on $ traded','returnPct')"),
-      'the conviction sweep does not say its return on the amount traded');
+    // 3.143.1: as a small table at the top, flat / ladder / ladder over flat by money, amount traded and return
+    const conv = ui.slice(ui.indexOf('function renderConvResult(c) {'), ui.indexOf('\n  }\n', ui.indexOf('function renderConvResult(c) {')));
+    for (const cell of ['<th title="the money the captured trades made at this sizing">money $</th>', 'amount traded $</th>', 'return on the amount traded</th>', '<tr><td>flat</td>', '<tr><td>ladder</td>', '<tr><td>ladder over flat</td>', '${rate(c.flatReturnPct)}', '${rate(c.ladderReturnPct)}', "${signed(c.upliftReturnPts, 'points')}", "${signed(c.upliftUsd, '$')}"]) {
+      assert.ok(conv.includes(cell), `the conviction sweep's summary table lacks: ${cell}`);
+    }
+    assert.ok(conv.indexOf('<tr><td>flat</td>') < conv.indexOf("cth('agreement','agreement')"), 'the summary table is not at the top of the row set');
+    assert.ok(!/return on the amount traded: flat \$\{/.test(conv), 'the summary is still crunched into a sentence');
+    assert.ok(ui.includes("cth('return % on $ traded','returnPct')"), 'the per-level return column is gone');
     for (const id of ['tnSet', 'tnCapture', 'tnPick', 'tnWinTrain', 'tnWinTest', 'tnWinHold']) assert.ok(ui.includes(`id="${id}"`), `${id} is on the screen`);
     assert.ok(/const scanBody = isSet \? \{ setId: chosen\.id, pick: tnPickVal, windows: tnWins \} : null/.test(ui), 'a scan on a set sends the set, the survivor and the windows');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(id\)\}\/capture\/status/.test(ui), 'the capture is polled');
