@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **efc973187de7 — what the box is serving**, not from the working tree.
+Generated from **2cbb1144e50c — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1430,7 +1430,7 @@ aborted about above against agree aimed all among amount and any anywhere. appea
 
 # Verify
 
-## What the controls are called (147)
+## What the controls are called (145)
 
 - `- INCOMPLETE, never a pass`
 - `, information only)`
@@ -1501,15 +1501,14 @@ aborted about above against agree aimed all among amount and any anywhere. appea
 - `Marks the walk was carried past:`
 - `median held-back $`
 - `money by third`
-- `no`
 - `no figure`
+- `no figure at`
 - `noise must lose at least %`
 - `none stood`
 - `none were priced`
 - `not intact`
 - `not known`
 - `not priced`
-- `not read`
 - `not read on this block`
 - `not readable`
 - `now,`
@@ -1578,13 +1577,12 @@ aborted about above against agree aimed all among amount and any anywhere. appea
 - `worked out`
 - `worst trade $`
 - `would by chance ·`
-- `yes`
 
 ## What the dropdowns offer (0)
 
 _none_
 
-## Sentences the page prints (73)
+## Sentences the page prints (72)
 
 - The verdict on a Stage 4 record set
 - A rule can be checked against scrambled data and a single row cannot, so this reads the set as a
@@ -1657,13 +1655,12 @@ _none_
 - Information only, never a pass or fail.
 - Line A, the rule on the test window against its own copies: real
 - ). Line B, the bound on shopping: the best
-- no figure at ${esc(x.key)}
 - survivors, every one of them, in the set's own order. There is no sort on this table: a sort is a look.
 
-## Every word, flat (373)
+## Every word, flat (370)
 
 ```
-about About above above. after against Against ahead all allow already always among an and any anything are as at average avg away back bar be beat beaten beating beats been before begins behind being below beside best blank block board boards bound box broken buys by can cannot carried chance check checked chunks claim clear clears coin coin-and-shape comparison comparisons copies copy count counted counted. counts cut data deal declared demand. did differ digits direction do does drawdown dropped each Each earlier esc even every Every everything exam existed FAIL fail fail. FAILS failure fee fees fewer figure figures Final finest first five floor Footing forecast-free forecasting forward four freezing from frozen Funnel gate gate. gated give gone grade graded gross half has head-to-heads held-back here hindsight history hold holds honestly. how if in include INCOMPLETE information Information inside intact is IS is. it It it. its judge. keep kept keys known largest later layout lead least length lengths lengths. like line Line lines long look look. looked looks Looks lose loses losing. made many mark marks Marks measure median members minutes. missing models money mostly must nearly never no No noise NOISE noise. none not Not NOT nothing Nothing now null number numbers obvious of off on On one only only. Opening or order. other out over own paid panel paper parent part PASS pass passed passes past past. pays per picking. positive positive. press presses priced prices printed prints PROFITING reached read Read readable reader reading readings reads real record refused refuses release releases replace reserve result results ride rides rose row rule Rule rules Rules Run same sanity says scrambled sealed search seconds seen. set setting settings shape share shopping side simpler simulation single so sort Stage stage stamp stamped STANDS step stood stopped stops stored strength stretch stride survivor survivors survivors. table taken test tests than that The the their them then There they things third this This threshold through time time. to today today. too touched trade trades trained two Two under unit units unread unstamped use User verdict vs walk was were what What whatever when where Where which whole window window. windows with without won Work Worked worked worst would writes x.key yes yet yet.
+about About above above. after against Against ahead all allow already always among an and any anything are as at average avg away back bar be beat beaten beating beats been before begins behind being below beside best blank block board boards bound box broken buys by can cannot carried chance check checked chunks claim clear clears coin coin-and-shape comparison comparisons copies copy count counted counted. counts cut data deal declared demand. did differ digits direction do does drawdown dropped each Each earlier even every Every everything exam existed FAIL fail fail. FAILS failure fee fees fewer figure figures Final finest first five floor Footing forecast-free forecasting forward four freezing from frozen Funnel gate gate. gated give gone grade graded gross half has head-to-heads held-back here hindsight history hold holds honestly. how if in include INCOMPLETE information Information inside intact is IS is. it It it. its judge. keep kept keys known largest later layout lead least length lengths lengths. like line Line lines long look look. looked looks Looks lose loses losing. made many mark marks Marks measure median members minutes. missing models money mostly must nearly never no No noise NOISE noise. none not Not NOT nothing Nothing now null number numbers obvious of off on On one only only. Opening or order. other out over own paid panel paper parent part PASS pass passed passes past past. pays per picking. positive positive. press presses priced prices printed prints PROFITING reached read Read readable reader reading readings reads real record refused refuses release releases replace reserve result results ride rides rose row rule Rule rules Rules Run same sanity says scrambled sealed search seconds seen. set setting settings shape share shopping side simpler simulation single so sort Stage stage stamp stamped STANDS step stood stopped stops stored strength stretch stride survivor survivors survivors. table taken test tests than that The the their them then There they things third this This threshold through time time. to today today. too touched trade trades trained two Two under unit units unread unstamped use User verdict vs walk was were what What whatever when where Where which whole window window. windows with without won Work Worked worked worst would writes yet yet.
 ```
 
 ---
