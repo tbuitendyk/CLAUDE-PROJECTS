@@ -2080,10 +2080,12 @@ function setNameWords(x) {
   return String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`;
 }
 // one set's standing on a stretch, for a set box: the newest set read from it, or none yet
+// short on purpose (3.153.1, owner order): the set is always the rule's own,
+// so its name is not repeated after the rule's; its number, verdict and date say which one
 function vNewestWords(j, stretch) {
   const n = j && j[stretch] && j[stretch].newest;
   if (!n) return `no ${stretch} set yet`;
-  return `${esc(n.name)} ${n.pass ? 'PASS' : 'FAIL'} stamped ${esc(String(n.at || '').slice(0, 10))}`;
+  return `${stretch} set${Number(n.number) > 1 ? ` #${n.number}` : ''} ${n.pass ? 'PASS' : 'FAIL'} ${esc(String(n.at || '').slice(0, 10))}`;
 }
 // THE RULES A TAB LISTS (VERIFY-DESIGN.md Part 9): Held lists every rule, plain
 // or half-life; Reserve lists only rules whose layout keeps a reserve and whose
@@ -2100,7 +2102,7 @@ function vSetBoxHtml(list, chosen, stretch) {
     ? '<option value="">- no rule stands on the held-back window yet with a layout that keeps a reserve - read a rule on Held first -</option>'
     : '<option value="">- no Stage 4 record set on this box yet - cut one on the Funnel -</option>';
   return `<div class="row"><label class="f" title="every rule on this box that can be read on the ${stretchPlain(stretch)} window, newest first, with its coin and shape, its survivors of its target, and the newest ${stretchPlain(stretch)} set read from it. A rule is a Stage 4 record set cut on the Funnel or built on History.">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} of ${x.target == null ? 'no target' : Number(x.target).toLocaleString()}${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''} · ${vNewestWords(x.judge, stretch)}${stretch === 'held' && x.judge && x.judge.heldAlone ? ` · ${esc(x.judge.heldAlone)}` : ''}${stretch === 'reserve' && x.judge && x.judge.held && x.judge.held.newest ? ` · stands on ${esc(x.judge.held.newest.name)}` : ''}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} of ${x.target == null ? 'no target' : Number(x.target).toLocaleString()}${x.derived ? ' · half-life set' : ''} · ${vNewestWords(x.judge, stretch)}${stretch === 'reserve' && x.judge && x.judge.held && x.judge.held.newest ? ` · stands on its ${vNewestWords(x.judge, 'held')}` : ''}</option>`).join('')
     : empty}</select></label></div>`;
 }
 function vFootingHtml(d) {
@@ -2790,7 +2792,7 @@ function tnRememberedWindows() {
 function tnSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to capture the trades of, from every set on this box, newest first">Stage 4 record set<select id="tnSet">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ' · half-life set' : ''}</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
 }
 function tnCaptureBlockHtml(c) {
@@ -3343,7 +3345,7 @@ function glStage4PanelHtml(list, chosen, d) {
       work until the live path speaks that agreement.</p>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="which held set or reserve set to take a survivor from, from every one on this box, newest first, with the verdict it carries. A rule is never greenlighted: the set a press made on Held or Reserve is.">Stage 4 record set<select id="gl4Set">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors · ${x.judge && x.judge.block ? `${x.judge.block.pass ? 'PASS' : 'FAIL'} stamped ${esc(String(x.judge.block.at || '').slice(0, 10))}` : 'no verdict'}${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}${x.kind === 'held' && x.judge && x.judge.heldAlone ? ` · ${esc(x.judge.heldAlone)}` : ''}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors · ${x.judge && x.judge.block ? `${x.judge.block.pass ? 'PASS' : 'FAIL'} ${esc(String(x.judge.block.at || '').slice(0, 10))}` : 'no verdict'}${x.derived ? ' · half-life set' : ''}</option>`).join('')
     : '<option value="">no held set or reserve set on this box yet - read a rule on Held first</option>'}</select></label></div>
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors${d.from ? ` · read from <b>${esc(d.from.name)}</b>` : ''}${d.standsOn ? ` · stands on ${esc(d.standsOn.name)}` : ''}
       · verdict ${d.gate ? `<b class="pos">stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">does not stand</b> - ${esc(d.standing || '')}`}${d.heldAlone && d.kind === 'held' ? ` · ${esc(d.heldAlone)}` : ''}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>
