@@ -1430,3 +1430,29 @@ carried out 2026-08-28 under its own GO — decision 50.
     something to move, strips the empty fields a rule cut under 3.146.x
     carried, and has its own test; it goes the release after a probe finds
     nothing left to move. Second digit.
+
+99. **A moved record carries no field today's records do not write, and
+    nothing is invented into it; the mover went the evening it had served
+    every set** (3.147.1 and 3.147.2, inside the same LOOP NOW!; RULE NINE,
+    RULE TEN). Read off the box after the first move, with the probe printing
+    every key a moved block carries: one held set moved from a 3.92.1 verdict
+    still carried `gate` (the planted-check state, retired 3.96.0), the three
+    reserve sets moved from grades still carried `controls` and `failures`.
+    Nothing reads them; H1.7 says no old fields. 3.147.1 strips the three as
+    a block moves and once off the sets already made, counted and said in the
+    log. The fields today's press writes that an older stamp never had —
+    looks, others, windows, marks, lineA, lineB, stageGate on a moved grade,
+    `own` inside a 3.92-era read — stay absent: a value computed tonight is
+    not what was stamped then, and an absent optional reading is drawn as not
+    read. The owner's alternative, theirs alone (RULE NINE): delete those
+    four sets and press again on Held and Reserve. 3.147.2: the probe counted
+    0 sets the mover would still act on, with nothing running, so it went
+    whole — function, export, start-up call, log lines, test, three guards —
+    and the guard on the frozen stop choices moved to the press test, which
+    now freezes a stop choice put on the rule before its second press. The
+    box moved 8 readings, not the 7 the release message said; 8 is the fact.
+    Found and parked: the deploy's health check asks the service once, the
+    moment the unit starts, and waits for nothing — a start slower than that
+    ask reads FAILED with the service fine, as both of the first two deploys
+    did while the mover parsed every record set twice at start. Third digit,
+    twice.

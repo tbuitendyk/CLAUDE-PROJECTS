@@ -1310,6 +1310,38 @@ own-hold reading and draw as they were written, as today.
 
 ### Release 1 — the two tabs, the two kinds, the half-life rule judged (second digit)
 
+> **BUILT AND DEPLOYED, 3.147.0 (2026-09-15, owner LOOP NOW! including
+> deploy), with 3.147.1 and 3.147.2 behind it the same evening.** Held and
+> Reserve are drawn by one renderer handed the stretch, and their two word
+> lists are one list, pinned by the word-list test (H1.1). A press writes a
+> held set or a reserve set of the rule, numbered from the second press, the
+> rule gains no block, and a stop choice on such a set is refused in words
+> (H1.2); a held set's block carries the reading field for field (H1.3); the
+> held press on a half-life set prices its survivors with their own retrained
+> members and says so, its source untouched (H1.4); a 70/15/15 rule reads
+> "held alone: this layout keeps no reserve" (H1.5); Reserve lists a rule
+> exactly when its layout keeps a reserve and its newest held set passed, and
+> a reserve set names the held set it stands on (H1.6). H1.7 on the box: the
+> first start moved 2 held sets, 3 reserve sets and 8 readings — not the 7
+> written above, a count typed from an earlier read; 8 is what the box held —
+> and left no old field on any rule. Then the probe, extended to print every
+> key a moved block carries, found one held set still carrying `gate` (a
+> 3.92-era verdict's planted-check state, retired 3.96.0) and the three
+> reserve sets still carrying `controls` and `failures`: 3.147.1 stripped the
+> three as a block moves and once off the sets already made; 3.147.2 deleted
+> the mover whole once the probe counted 0 sets it would still act on (RULE
+> TEN). The fields today's press writes that an older stamp never had stay
+> absent, and nothing is invented into a record stamped under another
+> release. H1.8: History, the Funnel's cuts list, the capture, the scans and
+> the stage-engine check read as before; the other tabs' word lists changed
+> only where they named Verify; `luck` appears nowhere; the suite is green.
+> Found on the way and parked, not this loop's work: the deploy's health
+> check asks once and waits for nothing, so a start slower than that one ask
+> reads FAILED while the service comes up — both of the first two deploys
+> did, because the mover parsed every record set twice at start; with it
+> gone the start is immediate again. The expected outcome below is the
+> owner's to check on the screen.
+
 Success rules:
 
 - **H1.1 — one path.** `drawHeld` and `drawReserve` are one line each and call
