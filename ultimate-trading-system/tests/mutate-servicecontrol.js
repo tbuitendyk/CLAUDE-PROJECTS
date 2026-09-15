@@ -1643,6 +1643,17 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', "a pass over one coin and shape wipes every other unit's numbers under the settings it touches"],
   [path.join(ROOT, 'public', 'construct.js'), "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { unit: unitNow }, WHERE_FUNNEL);", "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);",
     'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'the press names no board, so it prices every coin and shape whatever is chosen under coin'],
+  // ---- THE STAGE 4 TABLE KEEPS THE HELD-BACK WINDOW BEHIND A TICK (3.140.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), '  const shown = heldBack ? rows : rows.map((r) => withoutKeys(r, HELD_BACK_FIELDS_4));', '  const shown = rows;',
+    'aDialTheRuleFixedIsSaidOnceAboveTheStageFourTable', 'the held-back money travels to the screen with the tick off'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    if (opts.sort && HELD_BACK_FIELDS_4.includes(String(opts.sort))) sortSetAside = String(opts.sort);", '',
+    'aDialTheRuleFixedIsSaidOnceAboveTheStageFourTable', 'a sort saved on a held-back column orders the table while the window is hidden'],
+  [path.join(ROOT, 'public', 'construct.js'), "  const hb = !!fHeldBack;                                  // the held-back row and its sorts, only while the tick is on (3.140.0)", '  const hb = true;',
+    'theStageFourTableKeepsTheHeldBackWindowBehindATick', 'the held-back row is drawn with the tick off'],
+  [path.join(ROOT, 'public', 'construct.js'), '        if (!r) { fHeldBack = false; hb.checked = false; return; }\n', '',
+    'theStageFourTableKeepsTheHeldBackWindowBehindATick', 'a refused look leaves the window on, so it is shown without being counted'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    cutLooks ? `the Stage 4 record set showed its held-back row on the Funnel ${cutLooks} time(s), each a counted look`", "    cutLooks ? 'the cut view printed it once more'",
+    'theStageFourTableKeepsTheHeldBackWindowBehindATick', 'Verify stops counting the ticks on'],
   // ---- ALL UNITS TOGETHER ASKS FIRST (3.138.0) ----
   [path.join(ROOT, 'public', 'construct.js'), '      if (blend && !confirm(fAllUnitsAsk(d))) return;', '',
     'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'with all units together showing the press prices every coin and shape without asking -- the long job, started by one press'],

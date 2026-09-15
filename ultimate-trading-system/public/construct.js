@@ -541,6 +541,7 @@ function renderTabs() {
       rememberScroll(tab);                    // where we were on the one we are leaving
       tab = t.dataset.k;
       bHeldBack = false;                      // the held-back window is hidden again on every visit to Boards (3.131.0)
+      fHeldBack = false;                      // and on every visit to the Funnel (3.140.0)
       localStorage.setItem('cx-tab', tab);
       draw().then(() => restoreScroll(tab));  // and back to where we were on this one
     };
@@ -1563,6 +1564,9 @@ let swPassersNow = [];     // the coins and shapes ticked on Coins now, off the 
 // deliberate press and each press is written on the set as a look. Kept only
 // across the redraws of one visit (a sort, a page, a floor).
 let bHeldBack = false;
+// and the same tick on the Funnel's Stage 4 record set (3.140.0): off on every
+// visit to the Funnel and on every change of the set showing
+let fHeldBack = false;
 
 // A run's stored settings, written back into the boxes. ONE mapping, used by
 // "copy settings into the form" on the Boards section and by the running-job
@@ -6651,7 +6655,7 @@ async function fDrawCut(d, st, cutId) {
   waitStart();
   let cd = null;
   let bad = null;
-  const q = `sort=${encodeURIComponent(st.cutSort || '')}&dir=${encodeURIComponent(st.cutDir || '')}`;
+  const q = `sort=${encodeURIComponent(st.cutSort || '')}&dir=${encodeURIComponent(st.cutDir || '')}&heldBack=${fHeldBack ? '1' : ''}`;
   try { cd = await api(`api/funnel/set/${encodeURIComponent(cutId)}/rows?${q}`); }
   catch (e) { bad = e.message; }
   finally { waitEnd(); }
@@ -6936,7 +6940,11 @@ const fcThirds = (v) => (Array.isArray(v) && v.length ? v.map((x) => fFix(x, 2))
 // The dials the rule pinned are the same on every row and are said once above
 // the table; the dials that still vary are on each setting's own line, because
 // a column each is what forced the table sideways.
+// the held-back sorts by the names the table gives them, for the set-aside line
+const FC_HELD_BACK_WORDS = { avgHold: 'avg held-back $', avgTrades: 'trades', avgVsLong: 'vs always long $', beat: 'beat its own null set', pairs: 'null copies', avgLead: 'lead' };
+const fcSortWords = (key) => FC_HELD_BACK_WORDS[key] || String(key);
 function fCutTable(cd, st) {
+  const hb = !!fHeldBack;                                  // the held-back row and its sorts, only while the tick is on (3.140.0)
   const has = (k) => !!(cd.has || {})[k];
   const dials = cd.varying || [];
   const blend = !cd.set.unit;
@@ -6966,19 +6974,23 @@ function fCutTable(cd, st) {
       answer here, for good.</p>` : ''}
     <p class="note"><b>Order the whole set by</b> setting${fcSort('label', cd)}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))}${fcSort(k, cd)}`).join('')}${has('members') ? ` &middot; members${fcSort('members', cd)}` : ''}${has('avgRung') ? ` &middot; rung${fcSort('avgRung', cd)}` : ''}${has('avgVoices') ? ` &middot; voices${fcSort('avgVoices', cd)}` : ''}
       - or press any heading in the table below.</p>
+    <div class="row">
+      <label class="c" title="the held-back window is priced at stage 3 and kept for Verify. Off, which is how this screen always opens, the held-back row under each setting and the sorts on it are not drawn, and a saved sort on one of them is set aside. On, they are drawn — and that is written on this Stage 4 record set as one dated look, which Verify counts the way it counts a look on Boards."><input type="checkbox" id="fHeldBack" ${hb ? 'checked' : ''}> show the held-back window</label>
+      ${cd.sortSetAside ? `<span class="note warn">the sort saved on this set reads the held-back window (${esc(fcSortWords(cd.sortSetAside))}); it is set aside while the window is hidden, and the table reads in its own order</span>` : ''}
+    </div>
     <p class="note">All <b>${Number(cd.total).toLocaleString()}</b> of them are in the box below, in whatever order
       you set - scroll it. ${cd.clipped ? `<b class="neg">${Number(cd.clipped).toLocaleString()} are not shown</b>: this screen draws at most ${Number(cd.per).toLocaleString()} settings at once.` : ''}</p>
     <div class="s4box" id="fCutRows"><table class="s4"><thead>
       <tr>
-        <th style="width:5rem" title="which of the two rows under each setting you are reading: its test window first, its held-back window under it."><span class="t">test</span><span class="h">hold</span></th>
-        <th title="top: average test-window dollars for this setting, the money every one of the steps was read on. Bottom: dollars on the held-back window - the once-only look at days no part of the search touched."><span class="t">avg test $${fcSort('avgTest', cd)}</span><span class="h">avg held-back $${fcSort('avgHold', cd)}</span></th>
-        ${c2 ? `<th title="top: on the test window, the deepest the running total ever sat below its own best point, in dollars per coin. Bottom: how many positions this setting took on the held-back window."><span class="t">worst losing streak $${fcSort('maxDrawdown', cd)}</span><span class="h">trades${fcSort('avgTrades', cd)}</span></th>` : ''}
-        ${c3 ? `<th title="top: on the test window, the single worst trade in dollars. Bottom: its held-back dollars against simply holding the coin over the same days - positive means it beat holding."><span class="t">biggest single loss $${fcSort('worstTrade', cd)}</span><span class="h">vs always long $${fcSort('avgVsLong', cd)}</span></th>` : ''}
-        ${c4 ? `<th title="top: on the test window, the single best trade in dollars - a result resting on one of these is one trade wide. Bottom: of its own null copies, the same votes with the calendar shuffled away, how many its held-back money beat."><span class="t">best single trade $${fcSort('bestTrade', cd)}</span><span class="h">beat its own null set${fcSort('beat', cd)}</span></th>` : ''}
-        ${c5 ? `<th title="top: on the test window, how many of its trades ended in profit. Bottom: how many null copies it was measured against - N copies is at best a 1-in-(N+1) claim."><span class="t">trades won${fcSort('wins', cd)}</span><span class="h">null copies${fcSort('pairs', cd)}</span></th>` : ''}
-        ${c6 ? `<th title="top: on the test window, how many trades were closed by the stop rather than at the end of the hold. Bottom: how far its held-back money sits above the typical null copy, measured in how far apart those copies are."><span class="t">stopped out${fcSort('stops', cd)}</span><span class="h">lead${fcSort('avgLead', cd)}</span></th>` : ''}
-        ${c7 ? `<th title="on the test window, average dollars a trade made before fees. There is no held-back figure for this one."><span class="t">gross per trade $${fcSort('grossPerTrade', cd)}</span><span class="h">-</span></th>` : ''}
-        ${c8 ? '<th title="the test window cut into three by time, the dollars of each third in order. A number that is all one third is a number about one stretch of history. There is no held-back figure for this one."><span class="t">money by third</span><span class="h">-</span></th>' : ''}
+        <th style="width:5rem" title="${hb ? 'which of the two rows under each setting you are reading: its test window first, its held-back window under it.' : 'the row under each setting is its test window, the money every one of the steps was read on.'}"><span class="t">test</span>${hb ? '<span class="h">hold</span>' : ''}</th>
+        <th title="${hb ? 'top: average test-window dollars for this setting, the money every one of the steps was read on. Bottom: dollars on the held-back window - the once-only look at days no part of the search touched.' : 'average test-window dollars for this setting, the money every one of the steps was read on.'}"><span class="t">avg test $${fcSort('avgTest', cd)}</span>${hb ? `<span class="h">avg held-back $${fcSort('avgHold', cd)}</span>` : ''}</th>
+        ${c2 ? `<th title="${hb ? 'top: on the test window, the deepest the running total ever sat below its own best point, in dollars per coin. Bottom: how many positions this setting took on the held-back window.' : 'on the test window, the deepest the running total ever sat below its own best point, in dollars per coin.'}"><span class="t">worst losing streak $${fcSort('maxDrawdown', cd)}</span>${hb ? `<span class="h">trades${fcSort('avgTrades', cd)}</span>` : ''}</th>` : ''}
+        ${c3 ? `<th title="${hb ? 'top: on the test window, the single worst trade in dollars. Bottom: its held-back dollars against simply holding the coin over the same days - positive means it beat holding.' : 'on the test window, the single worst trade in dollars.'}"><span class="t">biggest single loss $${fcSort('worstTrade', cd)}</span>${hb ? `<span class="h">vs always long $${fcSort('avgVsLong', cd)}</span>` : ''}</th>` : ''}
+        ${c4 ? `<th title="${hb ? 'top: on the test window, the single best trade in dollars - a result resting on one of these is one trade wide. Bottom: of its own null copies, the same votes with the calendar shuffled away, how many its held-back money beat.' : 'on the test window, the single best trade in dollars - a result resting on one of these is one trade wide.'}"><span class="t">best single trade $${fcSort('bestTrade', cd)}</span>${hb ? `<span class="h">beat its own null set${fcSort('beat', cd)}</span>` : ''}</th>` : ''}
+        ${c5 ? `<th title="${hb ? 'top: on the test window, how many of its trades ended in profit. Bottom: how many null copies it was measured against - N copies is at best a 1-in-(N+1) claim.' : 'on the test window, how many of its trades ended in profit.'}"><span class="t">trades won${fcSort('wins', cd)}</span>${hb ? `<span class="h">null copies${fcSort('pairs', cd)}</span>` : ''}</th>` : ''}
+        ${c6 ? `<th title="${hb ? 'top: on the test window, how many trades were closed by the stop rather than at the end of the hold. Bottom: how far its held-back money sits above the typical null copy, measured in how far apart those copies are.' : 'on the test window, how many trades were closed by the stop rather than at the end of the hold.'}"><span class="t">stopped out${fcSort('stops', cd)}</span>${hb ? `<span class="h">lead${fcSort('avgLead', cd)}</span>` : ''}</th>` : ''}
+        ${c7 ? `<th title="on the test window, average dollars a trade made before fees. There is no held-back figure for this one."><span class="t">gross per trade $${fcSort('grossPerTrade', cd)}</span>${hb ? '<span class="h">-</span>' : ''}</th>` : ''}
+        ${c8 ? `<th title="the test window cut into three by time, the dollars of each third in order. A number that is all one third is a number about one stretch of history. There is no held-back figure for this one."><span class="t">money by third</span>${hb ? '<span class="h">-</span>' : ''}</th>` : ''}
       </tr>
     </thead><tbody>${(cd.rows || []).map((r) => `<tr class="${r.gone ? 'muted' : ''}">
         <td class="s4what" colspan="${cols}"><b>${esc(r.label)}</b>${r.gone ? ' <b class="neg">no longer on the board</b>' : ''}${dials.map((k) => ` &middot; ${esc(fDialLabel(k))} ${esc(r[k] == null ? '-' : r[k])}`).join('')}${has('members') ? ` &middot; ${fFix(r.members, 0)} members` : ''}${has('avgRung') ? ` &middot; rung ${fFix(r.avgRung, 2)}` : ''}${has('avgVoices') ? ` &middot; ${fFix(r.avgVoices, 2)} voices` : ''}${blend && has('coins') ? ` &middot; ${fFix(r.coins, 0)} coins, ${fFix(r.coinsInMoney, 0)} in the money` : ''}</td>
@@ -6994,7 +7006,7 @@ function fCutTable(cd, st) {
         ${c7 ? `<td>${fFix(r.grossPerTrade, 3)}</td>` : ''}
         ${c8 ? `<td>${fcThirds(r.pnlThirds)}</td>` : ''}
       </tr>
-      <tr class="s4hold ${r.gone ? 'muted' : ''}">
+      ${hb ? `<tr class="s4hold ${r.gone ? 'muted' : ''}">
         <td class="s4tag">hold</td>
         <td>${fFix(r.avgHold, 2)}</td>
         ${c2 ? `<td>${fFix(r.avgTrades, 1)}</td>` : ''}
@@ -7004,7 +7016,7 @@ function fCutTable(cd, st) {
         ${c6 ? `<td>${fFix(r.avgLead, 2)}</td>` : ''}
         ${c7 ? '<td></td>' : ''}
         ${c8 ? '<td></td>' : ''}
-      </tr>`).join('')}</tbody>
+      </tr>` : ''}`).join('')}</tbody>
     </table></div>`;
 }
 
@@ -7130,7 +7142,7 @@ function fWireCutPick(st, d) {
   if (cs) {
     cs.onchange = () => {
       if (cs.value === F_NEW) { fOpenNewRule(st, d); return; }
-      st.cut = cs.value; st.setRebuiltSaid = null; fSave(); drawFunnel();
+      st.cut = cs.value; st.setRebuiltSaid = null; fHeldBack = false; fSave(); drawFunnel();
     };
   }
   // WIRED HERE, with the box it shares a path with -- and like the delete
@@ -7288,6 +7300,20 @@ function fWireCut(d, st, cd) {
       await new Promise((r) => setTimeout(r, 1500));
     }
   };
+  // THE HELD-BACK TICK (3.140.0): the look is written on this Stage 4 record
+  // set before anything held-back is read or drawn; a refused write leaves the
+  // window hidden and says why in the dialog tryPost already raised
+  const hb = $('#fHeldBack');
+  if (hb) {
+    hb.onchange = async () => {
+      fHeldBack = !!hb.checked;
+      if (fHeldBack) {
+        const r = await tryPost(`api/stageset/${encodeURIComponent(cd.set.id)}/held-back-look`, { tables: ['Stage 4 record set'] }, WHERE_FUNNEL);
+        if (!r) { fHeldBack = false; hb.checked = false; return; }
+      }
+      drawFunnel();
+    };
+  }
   document.querySelectorAll('[data-fcsort]').forEach((b) => {
     b.onclick = () => {
       const k = b.dataset.fcsort;

@@ -2572,8 +2572,20 @@ module.exports = {
         assert.equal(out.fixed.gate, 'active', 'the pinned dial is not named with the value every row carries');
         assert.ok(out.varying.includes('tHours'), 'a dial that still varies among the survivors has no column');
         assert.ok(!('tHours' in out.fixed), 'a dial that varies is also reported as fixed, so the line above the table would lie');
-        // and what the table can show at all is read off the rows, never assumed
-        assert.ok(out.has.avgTest && out.has.avgHold, 'the money columns are not reported as available');
+        // and what the table can show at all is read off the rows, never assumed.
+        // 3.140.0: the held-back window stays behind a tick -- off, its fields
+        // leave every row before it is sent and are not reported as available;
+        // on, they travel and the tick was a counted look
+        assert.ok(out.has.avgTest && !out.has.avgHold && out.heldBack === false, 'the held-back money column travels with the tick off');
+        for (const r of out.rows) for (const k of ['avgHold', 'avgTrades', 'avgVsLong', 'beat', 'pairs', 'avgLead']) assert.ok(!(k in r), `${k} left with the tick off`);
+        const on = await stages.funnelSetRows(cut.id, { n: 500, heldBack: '1' });
+        assert.ok(on.has.avgTest && on.has.avgHold && on.heldBack === true, 'the money columns are not reported as available with the tick on');
+        assert.ok(on.rows.every((r) => 'avgHold' in r), 'the held-back money does not travel with the tick on');
+        // a sort on a held-back column is set aside while the window is hidden
+        const aside = await stages.funnelSetRows(cut.id, { n: 500, sort: 'avgHold', dir: 'desc' });
+        assert.strictEqual(aside.sortSetAside, 'avgHold', 'a sort on a hidden held-back column is not set aside');
+        assert.notStrictEqual(aside.sort, 'avgHold', 'the table is ordered by a column it does not show');
+        assert.strictEqual((await stages.funnelSetRows(cut.id, { n: 500, sort: 'avgHold', heldBack: '1' })).sort, 'avgHold', 'with the tick on the held-back sort is refused');
         assert.ok(!out.has.maxDrawdown, 'a set with nothing rebuilt reports the rebuilt columns as available, so the table draws dashes');
       } finally { try { fs.rmSync(file, { force: true }); } catch (_) { /* fixture */ } }
     } finally { f.cleanup(); }
@@ -2670,7 +2682,9 @@ module.exports = {
     const flowAt = page.indexOf('async function deleteSetFlow(id) {');
     const flowSrc = page.slice(flowAt, page.indexOf('\n}\n', flowAt));
     const posts = [...(wire.match(/tryPost\(/g) || []), ...(flowSrc.match(/tryPost\(/g) || [])];
-    assert.equal(posts.length, 4, `the Stage 4 view and its delete flow make ${posts.length} writes; they may make exactly four — the rename, working out its numbers, and the delete's preview and confirm`);
+    // 3.140.0: and the fifth is the held-back look, written when the tick goes on
+    assert.equal(posts.length, 5, `the Stage 4 view and its delete flow make ${posts.length} writes; they may make exactly five — the rename, working out its numbers, the held-back look, and the delete's preview and confirm`);
+    assert.ok(wire.includes("const r = await tryPost(`api/stageset/${encodeURIComponent(cd.set.id)}/held-back-look`, { tables: ['Stage 4 record set'] }, WHERE_FUNNEL);"), 'the fifth write is not the held-back look');
     assert.ok(wire.includes('deleteSetFlow(st.cut)'), 'the delete is not one of them');
     assert.ok(/api\/stageset\/\$\{encodeURIComponent\(cd\.set\.id\)\}\/name/.test(wire), 'the rename is not one of them');
     assert.ok(/api\/funnel\/set\/\$\{encodeURIComponent\(cd\.set\.id\)\}\/rebuild/.test(wire), 'working out this set\'s own numbers is not one of them');
@@ -4612,4 +4626,50 @@ module.exports.aKilledPrepPicksUpWhereItStoppedAndAThirdShapeFileMovesToTheFourt
   assert.ok(s.includes('if (x && x.v === 3) x = migrateFunnelRichV3(String(id), x);'), 'the reader does not move a third-shape file');
   assert.strictEqual(s.split('migrateFunnelRichV3(').length - 1, 2, 'the move is called from somewhere other than the reader');
   assert.ok(/TEMPORARY: THE THIRD-SHAPE FILE MOVES TO THE FOURTH[\s\S]*DELETE THIS BLOCK/.test(s), 'the move is not marked as the temporary block it is');
+};
+
+// THE STAGE 4 RECORD SET KEEPS ITS HELD-BACK ROW BEHIND A TICK (3.140.0, owner
+// order 2026-09-15: "why is hold/held back still displayed on the stage 4
+// funnel record set. hide that behind a check box as per stage 3"). Off every
+// time the Funnel is opened and every time the set showing changes; off, the
+// engine strips the held-back fields before the rows are sent and sets a
+// held-back sort aside; on, the tick was written on the Stage 4 set as a
+// counted look, which Verify reports instead of counting the table as one.
+module.exports.theStageFourTableKeepsTheHeldBackWindowBehindATick = function () {
+  const page = src('public/construct.js');
+  const table = page.slice(page.indexOf('function fCutTable('), page.indexOf('function fSizeCutBox('));
+  assert.ok(table.includes('<input type="checkbox" id="fHeldBack" ${hb ? \'checked\' : \'\'}> show the held-back window</label>'), 'the tick is not drawn with the same words as on Boards');
+  assert.ok(table.includes('const hb = !!fHeldBack;'), 'the table does not read the tick');
+  assert.ok(table.includes("${hb ? `<tr class=\"s4hold ${r.gone ? 'muted' : ''}\">"), 'the held-back row is drawn with the tick off');
+  assert.ok(table.includes("${hb ? '<span class=\"h\">hold</span>' : ''}") && table.includes("${hb ? `<span class=\"h\">avg held-back $${fcSort('avgHold', cd)}</span>` : ''}"),
+    'the held-back heading and its sort are drawn with the tick off');
+  assert.ok(!/<span class="h">[^$]*\$\{fcSort\('(avgTrades|avgVsLong|beat|pairs|avgLead)'/.test(table.replace(/\$\{hb \? `[^`]*`/g, '')), 'a held-back sort is offered with the tick off');
+  assert.ok(table.includes("${cd.sortSetAside ? `<span class=\"note warn\">the sort saved on this set reads the held-back window ("), 'a set-aside sort is not said on the screen');
+  // off on every visit and on every change of the set showing
+  assert.ok(page.includes('let fHeldBack = false;') && page.includes('fHeldBack = false;                      // and on every visit to the Funnel (3.140.0)'), 'the tick is not off on every visit to the Funnel');
+  assert.ok(page.includes('st.cut = cs.value; st.setRebuiltSaid = null; fHeldBack = false; fSave(); drawFunnel();'), 'the tick survives a change of the set showing');
+  // the rows are asked for with the tick, and a tick on writes the look first
+  assert.ok(page.includes("&heldBack=${fHeldBack ? '1' : ''}`;"), 'the rows are asked for without the tick, so the engine cannot strip the window');
+  const wire = page.slice(page.indexOf('function fWireCut('), page.indexOf('function fRuleBox('));
+  const lookAt = wire.indexOf("const r = await tryPost(`api/stageset/${encodeURIComponent(cd.set.id)}/held-back-look`");
+  assert.ok(lookAt > 0 && wire.indexOf('if (!r) { fHeldBack = false; hb.checked = false; return; }') > lookAt && wire.slice(lookAt).indexOf('drawFunnel();') > 0,
+    'a tick on draws the window before the look is written, or a refused look leaves the window on');
+  // the engine: the fields it strips, the sort it sets aside, and the look it takes on a Stage 4 set
+  const s = src('lib/stages.js');
+  assert.ok(s.includes("const HELD_BACK_FIELDS_4 = ['avgHold', 'avgTrades', 'avgVsLong', 'beat', 'pairs', 'avgLead', 'share', 'noiseHold'];"), 'the held-back fields of a Stage 4 row are not named in one place');
+  const rowsFn = s.slice(s.indexOf('async function funnelSetRows(id, opts = {}) {'), s.indexOf('\n}\n', s.indexOf('async function funnelSetRows(id, opts = {}) {')));
+  assert.ok(rowsFn.includes('const shown = heldBack ? rows : rows.map((r) => withoutKeys(r, HELD_BACK_FIELDS_4));') && rowsFn.includes('for (const k of HELD_BACK_FIELDS_4) delete has[k];'),
+    'the held-back fields travel to the screen with the tick off, or are stripped off the board\'s own rows rather than copies');
+  assert.ok(rowsFn.includes("if (opts.sort && HELD_BACK_FIELDS_4.includes(String(opts.sort))) sortSetAside = String(opts.sort);"), 'a held-back sort is not set aside with the tick off');
+  assert.ok(src('server.js').includes('sort: req.query.sort, dir: req.query.dir, heldBack: req.query.heldBack,'), 'the door does not hand the tick to the engine');
+  const look = s.slice(s.indexOf('function recordHeldBackLook(id, tables) {'), s.indexOf('\n}\n', s.indexOf('function recordHeldBackLook(id, tables) {')));
+  assert.ok(look.includes('if (doc.stage !== 3 && doc.stage !== 4) throw new Error(') && look.includes("on: doc.stage === 4 ? 'Funnel' : 'Boards'"), 'a look on a Stage 4 record set is refused, or not said to be on the Funnel');
+  // Verify counts the Stage 4 set's own looks instead of counting the table as one
+  const looks = stages.verifyLooksOf({ steps: [{}, {}], backSteps: [], heldBackLooks: [{ on: 'Funnel' }, { on: 'Funnel' }], parent: null }, {}, 0);
+  assert.ok(looks.what.some((w) => w === 'the Stage 4 record set showed its held-back row on the Funnel 2 time(s), each a counted look'), `Verify does not count the ticks on: ${JSON.stringify(looks.what)}`);
+  const none = stages.verifyLooksOf({ steps: [], backSteps: [], parent: null }, {}, 0);
+  assert.ok(none.what.some((w) => w === 'the Stage 4 record set has not shown its held-back row on the Funnel since it went behind a tick'), 'Verify still counts the table as a look');
+  assert.ok(!none.what.includes('the cut view printed it once more'), 'Verify counts a look the screen no longer takes');
+  // the help describes the tick
+  assert.ok(src('public/help-content.js').includes('fHeldBack: {'), 'the tick is not described on the Help tab');
 };

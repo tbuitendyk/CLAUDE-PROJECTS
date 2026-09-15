@@ -4997,9 +4997,11 @@ function stage3Coins(id, query) {
 function recordHeldBackLook(id, tables) {
   const doc = getSet(String(id || ''));
   if (!doc) throw new Error('unknown record set');
-  if (doc.stage !== 3) throw new Error('only a stage 3 record set shows the held-back window on Boards');
+  // 3.140.0 (owner order 2026-09-15): a Stage 4 record set keeps its held-back
+  // row behind the same tick on the Funnel, and each tick on is a look on it
+  if (doc.stage !== 3 && doc.stage !== 4) throw new Error('only a stage 3 record set on Boards or a Stage 4 record set on the Funnel shows the held-back window');
   if (doc.status === 'running') throw new Error('the record set is still being written — its tables are not there to look at yet');
-  const look = { at: new Date().toISOString(), on: 'Boards', tables: Array.isArray(tables) ? tables.map(String).slice(0, 8) : [] };
+  const look = { at: new Date().toISOString(), on: doc.stage === 4 ? 'Funnel' : 'Boards', tables: Array.isArray(tables) ? tables.map(String).slice(0, 8) : [] };
   doc.heldBackLooks = [...(doc.heldBackLooks || []), look];
   saveSet(doc);
   return { looks: doc.heldBackLooks.length, look };
@@ -5868,6 +5870,10 @@ const RICH_FIELDS = ['maxDrawdown', 'worstTrade', 'bestTrade', 'wins', 'stops', 
 // average is worked out over every unit the file holds. A v3 file reads as
 // absent and is rebuilt, a coin and shape at a time as each is walked.
 const FUNNEL_RICH_V = 4;
+// WHAT A STAGE 4 RECORD SET'S ROW SAYS ABOUT THE HELD-BACK WINDOW (3.140.0):
+// the held-back row under each setting on the Funnel and the sorts on it.
+// Stripped from every row the Funnel is sent while the tick is off.
+const HELD_BACK_FIELDS_4 = ['avgHold', 'avgTrades', 'avgVsLong', 'beat', 'pairs', 'avgLead', 'share', 'noiseHold'];
 // IT ADDS TO WHAT IS ALREADY THERE. IT NEVER REPLACES IT (3.68.0, owner order
 // 2026-09-05: "if we support multiple passes through the same stage 3 data,
 // saving stage 4 data sets to look for alternate rules, and then your design
@@ -6684,9 +6690,13 @@ function verifyLooksOf(doc, keys, stamped) {
   const back = (doc.backSteps || []).length;
   const s3 = doc && doc.parent && doc.parent.id ? getSet(doc.parent.id) : null;
   const boardLooks = ((s3 && s3.heldBackLooks) || []).length;
+  // 3.140.0: the Stage 4 record set keeps its held-back row behind a tick on
+  // the Funnel, off every time, and each tick on is a counted look on it
+  const cutLooks = ((doc && doc.heldBackLooks) || []).length;
   const what = [
     `every step and step back of the walk printed the held-back line (${steps} step(s), ${back} step(s) back)`,
-    'the cut view printed it once more',
+    cutLooks ? `the Stage 4 record set showed its held-back row on the Funnel ${cutLooks} time(s), each a counted look`
+      : 'the Stage 4 record set has not shown its held-back row on the Funnel since it went behind a tick',
     // 3.131.0: Boards keeps the held-back columns behind a tick, off by default, and each tick on is a counted look on the stage 3 set
     boardLooks ? `Boards showed the held-back columns of ${s3.name} ${boardLooks} time(s), each a counted look`
       : `Boards has not shown the held-back columns of ${s3 ? s3.name : 'the stage 3 set'} since they went behind a tick`,
@@ -8172,15 +8182,30 @@ async function funnelSetRows(id, opts = {}) {
       if (v != null) has[k] = true;
     }
   }
+  // THE HELD-BACK WINDOW STAYS BEHIND A TICK HERE TOO (3.140.0, owner order
+  // 2026-09-15: "hide that behind a check box as per stage 3"). Off, which is
+  // how the Funnel always opens, the held-back fields leave every row before
+  // it is sent, a sort on one of them is set aside, and the page has nothing
+  // held-back to draw; on, they travel, and the tick on was a counted look.
+  const heldBack = !!opts.heldBack && String(opts.heldBack) !== '0' && String(opts.heldBack) !== '';
+  let sortSetAside = null;
+  if (!heldBack) {
+    for (const k of HELD_BACK_FIELDS_4) delete has[k];
+    if (opts.sort && HELD_BACK_FIELDS_4.includes(String(opts.sort))) sortSetAside = String(opts.sort);
+  }
+  // stripped from COPIES: the rows are the board's own objects, held in hand
+  // between reads, and a field deleted off them would be gone for the next
+  // read with the tick on
+  const shown = heldBack ? rows : rows.map((r) => withoutKeys(r, HELD_BACK_FIELDS_4));
   const keys = new Set();
-  for (const r of rows) for (const k of Object.keys(r)) if (!Array.isArray(r[k])) keys.add(k);
-  const sort = opts.sort && keys.has(String(opts.sort)) ? String(opts.sort)
+  for (const r of shown) for (const k of Object.keys(r)) if (!Array.isArray(r[k])) keys.add(k);
+  const sort = opts.sort && !sortSetAside && keys.has(String(opts.sort)) ? String(opts.sort)
     : (keys.has('avgTest') ? 'avgTest' : 'label');
   const dir = String(opts.dir || 'desc') === 'asc' ? 1 : -1;
   // A ROW WITH NOTHING IN THE SORTED COLUMN SITS AT THE BOTTOM EITHER WAY, and
   // ties break on the setting's own name, so the same sort always gives the same
   // order -- a page boundary that moves under a reload loses rows off the list.
-  rows.sort((x, y) => {
+  shown.sort((x, y) => {
     const a = x[sort]; const b = y[sort];
     const an = a == null; const bn = b == null;
     if (an !== bn) return an ? 1 : -1;
@@ -8196,7 +8221,7 @@ async function funnelSetRows(id, opts = {}) {
   // box that scrolls is "a COMPLETE WASTE OF SPACE"). The cap is a guard against
   // a set nobody meant to cut, and when it bites the screen says so rather than
   // quietly showing part of a decision.
-  const total = rows.length;
+  const total = shown.length;
   const per = 2000;
   const from = 0;
   // THE SEALED WINDOW ON THIS UNIT, not across the parent's ten. A set cut on one
@@ -8282,7 +8307,8 @@ async function funnelSetRows(id, opts = {}) {
     },
     varying, fixed, has,
     total, from, per, clipped: Math.max(0, total - per), sort, dir: dir === 1 ? 'asc' : 'desc',
-    rows: rows.slice(from, from + per),
+    heldBack, sortSetAside,
+    rows: shown.slice(from, from + per),
   };
 }
 

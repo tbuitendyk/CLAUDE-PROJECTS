@@ -226,7 +226,9 @@ function requirePlaywright() {
     }
     return route.fulfill({ contentType: 'application/json', body: '{}' });
   });
-  await page.addInitScript(({ set }) => { localStorage.setItem('cx-tab', 'funnel'); localStorage.setItem('cx-boards-view', JSON.stringify({ s3: set })); }, { set: SET });
+  // the walk is Open, not Home (3.108.0): a set that has been walked before is
+  // remembered as open for the set, so the seven steps are what is drawn
+  await page.addInitScript(({ set }) => { localStorage.setItem('cx-tab', 'funnel'); localStorage.setItem('cx-boards-view', JSON.stringify({ s3: set })); localStorage.setItem(`cx-funnel-set-${set}`, JSON.stringify({ open: true })); }, { set: SET });
   await page.goto(`http://127.0.0.1:${PORT}/construct.html`, { waitUntil: 'domcontentloaded' });
   const fails = [];
   const expect = (ok, what) => { console.log(`${ok ? 'ok  ' : 'FAIL'} ${what}`); if (!ok) fails.push(what); };
@@ -530,10 +532,25 @@ function requirePlaywright() {
     'the bold name at the top is the Stage 4 record set showing');
   expect(await page.locator('#fUnit').count() === 1 && await page.locator('#fCutPick').count() === 1,
     'the two selectors are drawn once each, in the title section');
-  // the table: three rows a setting, the two stacked rows named on the row
+  // the table: the held-back row stays behind a tick, off on every visit
+  // (3.140.0) -- so two rows a setting until the tick goes on, and three after,
+  // the two stacked rows named on the row
+  const tagsOff = await page.locator('#view td.s4tag').allTextContents();
+  expect(tagsOff.length === 40 && tagsOff.every((t) => t.trim() === 'test'),
+    `with the tick off each of the forty settings is a what-it-is row plus a test row and nothing held-back: ${tagsOff.length} tag(s)`);
+  expect(await page.locator('#fHeldBack').count() === 1 && !(await page.locator('#fHeldBack').isChecked()), 'the tick is not drawn, or is not off on arrival');
+  let looked = null;
+  await page.route('**/api/stageset/*/held-back-look', async (route) => {
+    looked = { url: route.request().url(), body: JSON.parse(route.request().postData() || '{}') };
+    return route.fulfill({ contentType: 'application/json', body: JSON.stringify({ looks: 1, look: { at: '2026-09-15T00:00:00Z', on: 'Funnel', tables: looked.body.tables } }) });
+  });
+  await page.locator('#fHeldBack').check();
+  await page.waitForFunction(() => document.querySelectorAll('#view td.s4tag').length === 80, null, { timeout: 15000 }).catch(() => {});
   const tags = await page.locator('#view td.s4tag').allTextContents();
   expect(tags.length === 80 && tags[0].trim() === 'test' && tags[1].trim() === 'hold',
-    `each of the forty settings is a what-it-is row plus a test row and a hold row: ${tags.length} tag(s)`);
+    `with the tick on each setting has a test row and a hold row: ${tags.length} tag(s)`);
+  expect(looked && /\/held-back-look$/.test(looked.url) && looked.body.tables[0] === 'Stage 4 record set',
+    `the tick on was not written on the Stage 4 record set as a look: ${JSON.stringify(looked)}`);
   expect(/gate \(gate\) directional; decision \(decision\) argmax/.test(cutText) || /gate directional; decision argmax/.test(cutText),
     `a dial the rule pinned is said once above the table: ${cutText.slice(cutText.indexOf('Every one of these'), cutText.indexOf('Every one of these') + 200)}`);
   expect(await page.locator('#view [data-bpage]').count() === 0 && await page.locator('#view [data-bpageto]').count() === 0,

@@ -854,3 +854,17 @@ Three things, one release:
   prep never read as finished on the blend.
 
 Second digit. The deploy killed nothing: no prep was running at 22:42.
+
+## W. The Stage 4 record set keeps its held-back row behind a tick — owner GO NOW! 2026-09-15 (3.140.0)
+
+"why is hold/held back still displayed on the stage 4 funnel record set.
+hide that behind a check box as per stage 3". Boards has kept the held-back
+columns behind `show the held-back window` since 3.131.0, off on every
+visit, each tick on a counted look on the stage 3 set; the Stage 4 record
+set's table on the Funnel still drew a held-back row under every setting.
+Now the same tick, with the same words, sits above that table: off on every
+visit to the Funnel and on every change of the set showing; off, the engine
+strips the held-back fields before the rows are sent and sets a held-back
+sort aside (said on the screen); on, the tick is written on the Stage 4
+record set as a dated look, and Verify reports those looks in place of
+counting the table as one. Second digit.
