@@ -320,6 +320,66 @@ module.exports = {
       threw = null;
       try { stages.captureTargetOf({ setId: c.cut.id, pick: 'all', windows: [] }); } catch (e) { threw = e.message; }
       assert.ok(/tick at least one window/.test(threw), threw);
+      // THE STOP FORCED ONTO A SURVIVOR AS ONE ROW OF THE TABLE (3.145.0, owner
+      // order 2026-09-15): recorded on the set per survivor with the reason,
+      // priced by the tuner's own arithmetic at that number on the same
+      // entries, the no-stop choice the baseline row; applied nowhere.
+      const { NOTIONAL } = require('../lib/paper');
+      assert.strictEqual(s1.chosenStop, null, 'no stop was on record, yet the scan carried a chosen row');
+      assert.strictEqual(s4.chosenStop, null, 'all survivors is not a survivor, yet the scan carried a chosen row');
+      const entriesUsd = [...sv.entries.train, ...sv.entries.test].reduce((a, e) => a + e.usd, 0);
+      assert.ok(Math.abs(s1.noStopUsd * (NOTIONAL / s1.clipUsd) - entriesUsd) < 0.1, `the money with no stop (${s1.noStopUsd} at the $${s1.clipUsd} clip) is not the captured entries' own money (${entriesUsd} at $${NOTIONAL})`);
+      // the curve's own tightest stop, forced by depth: recorded with the reason, carried on the
+      // scan with its row, and the curve itself untouched. (The row is not held to the curve's
+      // first row: the curve prices its stop unrounded, the record keeps six decimals, and a
+      // winner sitting exactly on the tightest stop can fall either side of that rounding.)
+      const k0 = s1.curve[0];
+      const rec = stages.setStopChoice(c.cut.id, { pick: 'depth', stopPct: k0.stopPct, why: 'the curve\'s own top row, forced' });
+      assert.deepStrictEqual({ survivor: rec.survivor, stopPct: rec.stopPct, why: rec.why, by: rec.by }, { survivor: depth, stopPct: k0.stopPct, why: 'the curve\'s own top row, forced', by: 'owner' });
+      const s6 = await stages.tuneOnCapture({ setId: c.cut.id, pick: 'depth', windows: ['train', 'test'] }, 'stop');
+      assert.deepStrictEqual({ survivor: s6.chosenStop.survivor, stopPct: s6.chosenStop.stopPct, why: s6.chosenStop.why, by: s6.chosenStop.by, rowStop: s6.chosenStop.row.stopPct, rowKeys: Object.keys(s6.chosenStop.row).sort() },
+        { survivor: depth, stopPct: k0.stopPct, why: 'the curve\'s own top row, forced', by: 'owner', rowStop: k0.stopPct, rowKeys: Object.keys(k0).filter((k) => k !== 'sacrificeTopWinners').sort() }, 'the forced stop is not carried on the scan as a row of the table\'s own shape');
+      assert.ok(s6.chosenStop.row.winnersForfeited <= 1 && s6.chosenStop.row.losersCut >= k0.losersCut, 'at the curve\'s own tightest stop the row cuts more than the winner on the boundary');
+      assert.deepStrictEqual(s6.curve, s1.curve, 'a stop on record changes the curve');
+      // a stop of the owner's own between the curve's points, named survivor: the row is a
+      // recount from the per-entry table, strict at the boundary, and it cuts the deepest winner
+      const S = k0.stopPct / 2;
+      stages.setStopChoice(c.cut.id, { pick: depth, stopPct: S, why: 'half the tightest' });
+      const s7 = await stages.tuneOnCapture({ setId: c.cut.id, pick: depth, windows: ['train', 'test'] }, 'stop');
+      const cutAt = s7.perEntry.filter((p) => p.maePct > S);
+      const wcut = cutAt.filter((p) => p.winner);
+      const lcut = cutAt.filter((p) => !p.winner);
+      assert.ok(wcut.length >= 1, 'half the tightest stop cuts the deepest winner, or this check has no teeth');
+      const stoppedNet = -S - 2 * s7.feePerLeg;
+      const near = (a, b, what) => assert.ok(Math.abs(a - b) <= 0.011, `${what}: ${a} vs ${b}`);
+      assert.deepStrictEqual({ stopPct: s7.chosenStop.row.stopPct, winnersForfeited: s7.chosenStop.row.winnersForfeited, losersCut: s7.chosenStop.row.losersCut }, { stopPct: Math.round(S * 1e6) / 1e6, winnersForfeited: wcut.length, losersCut: lcut.length }, 'the counts at the owner\'s stop are not a strict recount of the per-entry table');
+      near(s7.chosenStop.row.winnerProfitForfeitedUsd, wcut.reduce((a, p) => a + p.netPct * s7.clipUsd, 0), 'winner $ given up');
+      near(s7.chosenStop.row.loserPnlDeltaUsd, lcut.reduce((a, p) => a + (stoppedNet - p.netPct) * s7.clipUsd, 0), 'loss-side $');
+      near(s7.chosenStop.row.netPnlDeltaUsd, cutAt.reduce((a, p) => a + (stoppedNet - p.netPct) * s7.clipUsd, 0), 'NET $');
+      // cleared on purpose: the baseline row, and the record says it was chosen
+      const cleared = stages.setStopChoice(c.cut.id, { pick: 'depth', stopPct: null, why: 'none, on purpose' });
+      assert.deepStrictEqual({ stopPct: cleared.stopPct, why: cleared.why }, { stopPct: null, why: 'none, on purpose' });
+      const s8 = await stages.tuneOnCapture({ setId: c.cut.id, pick: 'depth', windows: ['train', 'test'] }, 'stop');
+      assert.deepStrictEqual(s8.chosenStop.row, { stopPct: null, winnersForfeited: 0, winnerProfitForfeitedUsd: 0, losersCut: 0, loserPnlDeltaUsd: 0, netPnlDeltaUsd: 0 }, 'no stop is not the baseline row');
+      assert.deepStrictEqual({ stopPct: s8.chosenStop.stopPct, why: s8.chosenStop.why }, { stopPct: null, why: 'none, on purpose' });
+      // refused in words: all survivors, a stop under the floor, nothing said, a zero, an unknown survivor
+      for (const [asked, re] of [
+        [{ pick: 'all', stopPct: 0.2 }, /a stop is forced onto one survivor/],
+        [{ pick: 'depth', stopPct: 0.0001 }, /below the .* floor/],
+        [{ pick: 'depth' }, /must be given explicitly/],
+        [{ pick: 'depth', stopPct: 0 }, /positive fraction/],
+        [{ pick: 'depth', stopPct: 1.5 }, /refusing a value >= 1/],
+        [{ pick: 'no such survivor', stopPct: 0.2 }, /is not one of the \d+ captured survivors/],
+      ]) {
+        threw = null;
+        try { stages.setStopChoice(c.cut.id, asked); } catch (e) { threw = e.message; }
+        assert.ok(re.test(threw), `${JSON.stringify(asked)}: ${threw}`);
+      }
+      assert.strictEqual(stages.stopChoiceOf(stages.getSet(c.cut.id), depth).why, 'none, on purpose', 'a refused request moved the record');
+      // the record lives on the set, not in the capture: a re-capture keeps it
+      stages.tuneCaptureStart(c.cut.id);
+      await settle(() => stages.tuneCaptureStatus(c.cut.id), 'the third capture');
+      assert.deepStrictEqual({ stopPct: stages.stopChoiceOf(stages.getSet(c.cut.id), depth).stopPct, why: stages.stopChoiceOf(stages.getSet(c.cut.id), depth).why }, { stopPct: null, why: 'none, on purpose' }, 'the choice on record did not survive a re-capture');
     } finally { c.cleanup(); }
   },
 
@@ -391,5 +451,22 @@ module.exports = {
     assert.ok(/for \(const c of stages\.captureCandidates\(\)\) candidates\.push\(c\)/.test(srv), 'the scan target list offers the sets');
     const st = src('lib/stages.js');
     assert.ok(/appliesToLiveRule: false,\n  \};\n\}/.test(st), 'nothing from a Stage 4 record set is ever applied');
+    // THE STOP FORCED ONTO A SURVIVOR (3.145.0, owner order: "a pop-up message when setting a custom stop % about
+    // applying to the 'live' system which is obviously not true"): the presses record the stop on the survivor
+    // picked and scan it as one row; nothing on the panel claims to write a live engine or a trading machine
+    const tunePanel = ui.slice(ui.indexOf('Protective stop tuner — on the captured trades'), ui.indexOf('Conviction sizing — bet more when more members agree?'));
+    assert.ok(!/LIVE engine|live rule|live engine|risk parameter|F1's|lab rate/.test(tunePanel), 'the stop panel still claims to write a live engine');
+    assert.ok(!/stop-apply|fixed-stop|data-stop|LIVE engine|currently applied on the trading machine|Apply to the live rule/.test(ui), 'the page still writes, reads or names the older pilot stop');
+    assert.ok(/Force a \$\{v\.toFixed\(2\)\}% protective stop onto the survivor \$\{stopLabel\} of \$\{chosen\.name\}\?/.test(ui), 'the apply prompt does not name the survivor');
+    assert.ok(/Clear the protective stop from the survivor \$\{stopLabel\} of \$\{chosen\.name\}\?/.test(ui), 'the clear prompt does not name the survivor');
+    assert.ok(ui.includes('/stop-choice`, { pick: tnPickVal, stopPct, why: stopWhy(), scan, windows: tnWins }'), 'the choice is not sent with the survivor, the reason, the scan and the windows');
+    assert.ok(/applyStop\(v \/ 100\)/.test(ui) && /applyStop\(null\)/.test(ui), 'the apply and the clear no longer send a fraction and an explicit null');
+    assert.ok(ui.includes('const mineRow = mine && mine.row ?') && ui.includes('${mineRow}${(s.curve || []).map((c) => `<tr><td>${c.sacrificeTopWinners}</td>${rowCells(c)}</tr>`).join(\'\')}'), 'the stop on record is not drawn as the first row of the table');
+    assert.ok(ui.includes("tnPickVal === 'all' ? 'a stop is forced onto one survivor — pick one under Tuning targets, not all survivors'"), 'all survivors is not refused for a forced stop on the page');
+    assert.ok(ui.includes('const floorPct = isSet && chosen.floorPct != null ? chosen.floorPct : 0.005;'), 'the floor is not the chosen set\'s own');
+    assert.ok(srv.includes("app.post('/api/funnel/set/:id/stop-choice'") && srv.includes("if (scan && heavyScanRunning) return res.status(409)"), 'the stop choice is not served, or is recorded while a scan runs');
+    assert.ok(/chosenStop: chosen \? \{ survivor: t\.label, stopPct: chosen\.stopPct/.test(st), 'the scan does not carry the survivor\'s stop as a row');
+    // the panel's presses are held, in words, when nothing can be forced onto
+    assert.ok(ui.includes('<button id="stopCustomApply" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"`') && ui.includes('<button id="stopClear" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"`'), 'the presses are not held when no survivor is picked');
   },
 };

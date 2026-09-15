@@ -7560,11 +7560,72 @@ function tuneCaptureStatus(id) {
 }
 // the Stage 4 sets a scan on Tune can be aimed at: those carrying a capture, with what the picker needs and nothing heavy
 function captureCandidates() {
-  return listFunnelSets().filter((d) => !d.exam && d.capture && d.capture.captured > 0).map((d) => ({
-    kind: 'stage4', id: d.id, name: d.name, unitName: d.unitName || null, at: d.capture.at, release: d.capture.release,
-    survivors: d.capture.survivors, captured: d.capture.captured, members: d.capture.members, pick: d.capture.pick,
-    rows: d.capture.rows || [], entries: d.capture.entries, looks: (d.capture.reads || []).filter((r) => r && r.look != null).length,
-  }));
+  const paper = require('./paper');
+  return listFunnelSets().filter((d) => !d.exam && d.capture && d.capture.captured > 0).map((d) => {
+    const fee = Number((d.capture.fee || {}).feePerLeg) || 0;
+    return {
+      kind: 'stage4', id: d.id, name: d.name, unitName: d.unitName || null, at: d.capture.at, release: d.capture.release,
+      survivors: d.capture.survivors, captured: d.capture.captured, members: d.capture.members, pick: d.capture.pick,
+      // each captured survivor with the stop the owner forced onto it, when one is on record (3.145.0)
+      rows: (d.capture.rows || []).map((r) => ({ ...r, stop: stopChoiceOf(d, r.label) })), entries: d.capture.entries, looks: (d.capture.reads || []).filter((r) => r && r.look != null).length,
+      // THE FLOOR TRAVELS WITH THE SET (3.145.0): a stop forced onto a survivor is
+      // checked against twice the round trip at the fee its trades were priced at
+      feePerLeg: fee, roundTripPct: paper.roundTripPct(fee), floorPct: paper.minStopPct(fee),
+    };
+  });
+}
+// ---- THE STOP FORCED ONTO A SURVIVOR (3.145.0, owner order 2026-09-15) ----
+//
+// "when a stop is forced onto (and cleared from) a given survivor the results
+// need to be scanned of using that stop in the history windows and tabulated
+// properly as a single row into the protective stop tuner table". The choice is
+// a record on the Stage 4 record set, per survivor: the stop as a fraction of
+// the opening price, or null for NO stop chosen on purpose, with the owner's
+// reason beside it. It applies nothing anywhere -- no trading machine reads it;
+// the stop scan reads it and prices it as one row of its table. It lives on
+// the set and not in the capture, so a re-capture keeps it.
+function stopChoiceOf(doc, label) {
+  const all = (doc && doc.stopChoices) || {};
+  const c = label != null ? all[label] : null;
+  return c && typeof c === 'object' ? { ...c } : null;
+}
+function setStopChoice(setId, asked = {}) {
+  const paper = require('./paper');
+  const doc = getSet(String(setId || ''));
+  if (!doc || doc.stage !== 4) { const e = new Error(`unknown Stage 4 record set '${setId}'`); e.status = 404; throw e; }
+  if (!doc.capture) { const e = new Error(`${doc.name}: ${CAPTURE_NOT_YET}`); e.status = 400; throw e; }
+  const pick = asked.pick == null || asked.pick === '' || asked.pick === 'depth' ? 'depth' : String(asked.pick);
+  if (pick === 'all') { const e = new Error('a stop is forced onto one survivor — pick one under Tuning targets, not all survivors'); e.status = 400; throw e; }
+  const label = pick === 'depth' ? ((doc.capture.pick || {}).label || null) : pick;
+  const row = (doc.capture.rows || []).find((r) => r.label === label) || null;
+  if (!row) { const e = new Error(pick === 'depth' ? `${doc.name} has no survivor by depth among the captured` : `'${pick}' is not one of the ${doc.capture.captured} captured survivors of ${doc.name}`); e.status = 400; throw e; }
+  // "NO STOP" AND "YOU DID NOT SAY" ARE DIFFERENT ANSWERS: the key must be present
+  if (!Object.prototype.hasOwnProperty.call(asked, 'stopPct')) { const e = new Error('stopPct must be given explicitly — a fraction to force a stop, or null to clear it. A request that says nothing is refused.'); e.status = 400; throw e; }
+  const raw = asked.stopPct;
+  let v = null;
+  if (raw != null && raw !== '') {
+    v = Number(raw);
+    if (!Number.isFinite(v) || v <= 0) { const e = new Error('stopPct must be a positive fraction (e.g. 0.11 for 11%), or null to clear'); e.status = 400; throw e; }
+    if (v >= 1) { const e = new Error('stopPct is a fraction of the opening price; refusing a value >= 1'); e.status = 400; throw e; }
+    // THE FLOOR IS TWICE THE ROUND TRIP AT THE FEE THE TRADES WERE PRICED AT: tighter
+    // than the round trip and a triggered stop is a guaranteed net loss; tighter
+    // than the floor and it fires on ordinary hourly noise
+    const fee = Number((doc.capture.fee || {}).feePerLeg) || 0;
+    const floor = paper.minStopPct(fee);
+    if (v < floor) {
+      const pc = (x) => `${(100 * x).toFixed(3)}%`;
+      const e = new Error(`a stop of ${pc(v)} is below the ${pc(floor)} floor — twice the ${pc(paper.roundTripPct(fee))} round trip at this set's fee of ${pc(fee)} each way. A tighter stop triggers on noise, not on real moves. Choose a wider stop or clear it.`);
+      e.status = 400; throw e;
+    }
+  }
+  const why = typeof asked.why === 'string' ? asked.why.trim().slice(0, 300) : '';
+  const fresh = getSet(doc.id);
+  if (!fresh) throw new Error('the set went away while the stop was being recorded');
+  const choices = fresh.stopChoices && typeof fresh.stopChoices === 'object' ? fresh.stopChoices : {};
+  choices[label] = { stopPct: v, why, at: new Date().toISOString(), by: 'owner' };
+  fresh.stopChoices = choices;
+  saveSet(fresh);
+  return { setId: fresh.id, set: fresh.name, survivor: label, ...choices[label] };
 }
 // WHAT A SCAN ON A CAPTURE IS AIMED AT, resolved before anything loads: the set, the
 // survivor (by depth among the captured, or named) and the windows ticked.
@@ -7623,8 +7684,16 @@ async function tuneOnCapture(body, tool) {
   let out;
   if (tool === 'stop') {
     const { tuneFixedStop } = require('./stoptuner');
-    const tune = tuneFixedStop(entries.map((e) => ({ entryTs: e.ts, side: e.side, holdHours: e.holdHours })), maps.trade, { holdHours, feePerLeg: fee });
-    out = { setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: t.pick === 'all' ? null : sv.gate, tHours: holdHours, trailMult: null, armMult: null }, holdHours }, ...tune };
+    // THE STOP FORCED ONTO THIS SURVIVOR RIDES ALONG AS ONE ROW (3.145.0): read
+    // off the set, priced by the tuner's own arithmetic at that number (or as
+    // the no-stop baseline row when the choice is none), never applied anywhere
+    const chosen = t.pick === 'all' ? null : stopChoiceOf(fresh, t.label);
+    const { atStop, ...tune } = tuneFixedStop(entries.map((e) => ({ entryTs: e.ts, side: e.side, holdHours: e.holdHours })), maps.trade, { holdHours, feePerLeg: fee, ...(chosen ? { atStop: chosen.stopPct } : {}) });
+    out = {
+      setup: { id: t.bookId, combo: cap.combo, cell: { entry: 'market', gate: t.pick === 'all' ? null : sv.gate, tHours: holdHours, trailMult: null, armMult: null }, holdHours },
+      ...tune,
+      chosenStop: chosen ? { survivor: t.label, stopPct: chosen.stopPct, why: chosen.why || '', at: chosen.at, by: chosen.by || null, row: atStop } : null,
+    };
   } else {
     const { entryOutcome } = require('./stoptuner');
     const { evalConviction } = require('./convictionsweep');
@@ -8864,6 +8933,7 @@ module.exports = {
   stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet, derivedRefusalOf,
+  stopChoiceOf, setStopChoice,
   CAPTURE_WINDOWS, CAPTURE_NONE, CAPTURE_NOT_YET,
   cutFunnelSet, cutFunnelSetStart, cutFunnelSetStatus, richForSurvivors, withOwnRich,
   controlsOf, againstControls, controlKeyOf, CONTROL_KEYS,

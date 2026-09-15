@@ -862,16 +862,23 @@ window.HELP = {
         what: 'Whether the scans read the entries of the held-back window.',
         more: 'Every scan that reads them is a counted look at the held-back window, stamped on the capture and counted on Verify.',
       },
-      stopCustomPct: { what: 'A protective stop of your own choosing, as a percentage of the opening price.' },
-      stopCustomApply: { what: 'Applies the percentage typed beside it.' },
-      stopClear: {
-        what: 'Runs with no fixed protective stop at all. The position then rests only on its scheduled closing time.',
+      stopCustomPct: {
+        what: 'A protective stop of your own choosing for the survivor picked under Tuning targets, as a percentage of the opening price.',
+        more: 'The floor is twice the round trip at the fee this set\'s trades were priced at: tighter than the round trip and a triggered stop is a guaranteed loss; tighter than the floor and it fires on ordinary hourly noise.',
       },
-      stopWhy: { what: 'Why you chose this stop. Kept with the choice.' },
-      stopWhySave: { what: 'Saves the reason on its own, leaving the stop exactly as it is.' },
+      stopCustomApply: {
+        what: 'Records the percentage typed beside it as the stop forced onto the survivor picked under Tuning targets, and scans that survivor\'s captured entries over the windows ticked, so the table below carries the stop as one row.',
+        more: 'It is a record on the Stage 4 record set and a row of the table; it is applied to no trading machine. A read of the held-back entries is a counted look, as for any scan.',
+      },
+      stopClear: {
+        what: 'Records NO fixed protective stop on the survivor picked under Tuning targets — its positions then rest only on their scheduled closing time — and scans its captured entries the same way: the no-stop row of the table below.',
+        more: 'A cleared stop is a choice made on purpose and the record says so; it is not the same as no choice ever recorded. Applied to no trading machine.',
+      },
+      stopWhy: { what: 'Why you chose this stop, or no stop, for the survivor picked under Tuning targets. Kept with the choice on that survivor.' },
+      stopWhySave: { what: 'Saves the reason on its own, leaving the stop on record exactly as it is. No scan runs.' },
       stopRun: {
         what: 'Tries every protective stop across the whole history and reports which ones would have cost you nothing.',
-        more: 'Takes minutes and cannot be stopped part-way.',
+        more: 'Takes minutes and cannot be stopped part-way. When a stop is on record for the survivor picked, the table carries it as its first row, priced on the same entries by the same arithmetic.',
       },
       convRun: {
         what: 'Tries every level of agreement across the captured trades, to see how much conviction is worth requiring: as money, and as a return on the amount traded.',

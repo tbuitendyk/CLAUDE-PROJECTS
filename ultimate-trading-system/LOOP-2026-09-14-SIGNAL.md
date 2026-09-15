@@ -997,3 +997,19 @@ file's version moves to 3; the one held-judged table on the box
 (S4-Pasers#3c) stays on the screen as the record of that look and cannot be
 built into a set — deleting it is the owner's call. A press is a "run" on
 the screen now, not a "look". Decision 94. Second digit.
+
+## AI. A stop forced onto a survivor is one row of the tuner's table — owner GO NOW! 2026-09-15 (3.145.0)
+
+"a pop-up message when setting a custom stop % about applying to the 'live'
+system which is obviously not true. also, when a stop is forced onto (and
+cleared from) a given survivor the results need to be scanned of using that
+stop in the history windows and tabulated properly as a single row into the
+protective stop tuner table". Found: the two presses wrote the older pilot
+engine's global stop file, which the three-stage live path never reads, and
+called it the LIVE engine; a dead "Apply to the live rule" button and its
+handler said the same. Now the stop is recorded per survivor on the Stage 4
+record set with the reason, the floor is the set's own fee's, the stop scan
+runs on that survivor over the windows ticked and prices the choice as one
+row (the no-stop choice as the baseline row), drawn first and green; the
+prompts name the survivor and the windows and say nothing is applied to any
+trading machine. Decision 95. Second digit.

@@ -2763,23 +2763,13 @@ async function tnCaptureFollow(id, token) {
 // ---- Tune (stop tuner · conviction sizing · compare) ----------------------------
 async function drawTune() {
   clearTimeout(tunePoll); tunePoll = null;
-  const [scan, stop, conv, applied] = await Promise.all([
+  const [scan, stop, conv] = await Promise.all([
     apiOr('api/pilot/heavyscan', ({ running: false })),
     apiOr('api/pilot/stopsweep', ({ status: 'idle' })),
     apiOr('api/pilot/convictionsweep', ({ status: 'idle' })),
-    apiOr('api/pilot/fixed-stop', ({ stopPct: null, chosen: false, why: null })),
   ]);
   const busy = scan.running;
-  // THE FLOOR IS SERVED, NOT RESTATED (owner order, 2026-08-23). This section
-  // used to carry 0.5% in three places — an input's min=, a tooltip and an
-  // alert — kept in step with the server by a test. The server derives it from
-  // the fee now, so a copy here would go stale the moment the fee moves.
-  // Falling back to the served default only if the read failed.
-  const floorPct = applied.floorPct == null ? 0.005 : applied.floorPct;
   const pcOf = (v) => `${(100 * v).toFixed(3)}%`;
-  const floorPc = pcOf(floorPct);
-  const tripPc = pcOf(applied.roundTripPct == null ? 0.0025 : applied.roundTripPct);
-  const feePc = pcOf(applied.feePerLeg == null ? 0.00125 : applied.feePerLeg);
   const pct = (v) => (v == null ? '—' : (v * 100).toFixed(2) + '%');
   const usd = (v) => money(v);
   // WHAT THE SCANS ARE AIMED AT: the Stage 4 record sets whose trades are
@@ -2815,6 +2805,23 @@ async function drawTune() {
   // from the one the launcher will actually use.
   const target = isSet ? `${tnPickVal === 'all' ? `<b>all ${(chosen.rows || []).length} captured survivors</b>` : `the survivor <b>${esc(tnPickVal === 'depth' ? `${(chosen.pick || {}).label || '?'} (by depth)` : tnPickVal)}</b>`} of the Stage 4 record set <b>${esc(chosen.name)}</b>, on its ${tnWins.length ? esc(tnWindowWords(tnWins)) : '<b class="warn">no</b>'} entries`
     : '<b>nothing selectable</b> — no Stage 4 record set on this box has its trades captured';
+  // THE FLOOR IS THE CHOSEN SET'S OWN (3.145.0): twice the round trip at the fee
+  // its trades were priced at, served with the set and never restated here.
+  // Before a set is chosen there is nothing to force a stop onto, and the
+  // three presses below are held.
+  const floorPct = isSet && chosen.floorPct != null ? chosen.floorPct : 0.005;
+  const floorPc = pcOf(floorPct);
+  const tripPc = pcOf(isSet && chosen.roundTripPct != null ? chosen.roundTripPct : 0.0025);
+  const feePc = pcOf(isSet && chosen.feePerLeg != null ? chosen.feePerLeg : 0.00125);
+  // THE SURVIVOR A STOP IS FORCED ONTO (3.145.0, owner order: "when a stop is
+  // forced onto (and cleared from) a given survivor ..."): the one picked under
+  // Tuning targets. All survivors is not a survivor, so nothing can be forced
+  // onto it; by depth resolves to the set's own pick.
+  const stopLabel = isSet && tnPickVal !== 'all' ? (tnPickVal === 'depth' ? ((chosen.pick || {}).label || null) : tnPickVal) : null;
+  const stopRow = stopLabel ? ((chosen.rows || []).find((r) => r.label === stopLabel) || null) : null;
+  const onRecord = stopRow && stopRow.stop ? stopRow.stop : null;
+  const stopHeld = busy || !stopLabel;
+  const stopHeldWhy = !isSet ? 'no Stage 4 record set with its trades captured is chosen under Tuning targets' : tnPickVal === 'all' ? 'a stop is forced onto one survivor — pick one under Tuning targets, not all survivors' : busy ? 'a heavy scan is running' : '';
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
   ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}
@@ -2832,11 +2839,12 @@ async function drawTune() {
     <h3 style="margin-top:0">Protective stop tuner — on the captured trades, loses no winner</h3>
     <p class="note">Reads the captured trades of one survivor of a Stage 4 record set over the windows ticked and finds the
       tightest fixed stop that would not have clipped a single winner, plus the sacrifice curve (give up top winners →
-      tighter stop → NET $). Scanning applies nothing. Target: ${target}.</p>
+      tighter stop → NET $). A stop you force onto the survivor yourself, or clear from it, is recorded on that survivor
+      and scanned the same way, as one row of the same table. Nothing here is applied to any trading machine. Target: ${target}.</p>
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-      <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is ${floorPc}, which is twice the ${tripPc} it costs to trade in and out at ${feePc} each way — tighter than the round trip and a triggered stop is a guaranteed loss, tighter than the floor and it fires on ordinary hourly noise. This button writes the live engine's own risk parameter, so the floor is the lab rate rather than any one profile's fee.">or apply a custom stop %<input id="stopCustomPct" type="number" step="0.5" min="${floorPct}" max="99" placeholder="e.g. 25" style="width:5.5rem"></label>
-      <button id="stopCustomApply">Apply custom</button>
-      <button id="stopClear" title="run with NO fixed stop. The position then rests on its scheduled exit alone.">No stop (clear)</button>
+      <label class="f" title="apply a stop you chose yourself rather than one off the curve, to the survivor picked under Tuning targets. The box is in percent; the record keeps a fraction. The floor is ${floorPc}, which is twice the ${tripPc} it costs to trade in and out at this set's fee of ${feePc} each way — tighter than the round trip and a triggered stop is a guaranteed loss, tighter than the floor and it fires on ordinary hourly noise. Applying records the stop on that survivor and scans its captured entries over the windows ticked; nothing is applied to any trading machine.">or apply a custom stop %<input id="stopCustomPct" type="number" step="0.5" min="${floorPct}" max="99" placeholder="e.g. 25" style="width:5.5rem" ${stopHeld ? 'disabled' : ''}></label>
+      <button id="stopCustomApply" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"` : 'title="records this stop on the survivor picked under Tuning targets and scans its captured entries over the windows ticked: one row of the table below. Nothing is applied to any trading machine."'}>Apply custom</button>
+      <button id="stopClear" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"` : 'title="records NO fixed stop on the survivor picked under Tuning targets — its positions then rest on their scheduled exit alone — and scans its captured entries the same way: the no-stop row of the table below. Nothing is applied to any trading machine."'}>No stop (clear)</button>
     </div>
     <!-- YOUR REASON, WRITTEN BY YOU. The record carries a reason beside the
          number so a chosen "none" is not mistaken for one nobody set. For one
@@ -2845,12 +2853,11 @@ async function drawTune() {
          It is a box on this page now, sent with every apply and every clear,
          and editable on its own afterwards. -->
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
-      <label class="f" title="why you chose this. Saved with the number and shown on the Trade screen beside it. Yours to write and to change at any time.">your reason for this choice<input id="stopWhy" type="text" maxlength="300" placeholder="why this stop, or why none" value="${esc(applied.why || '')}" style="width:32rem"></label>
-      <button id="stopWhySave" title="save the reason on its own, leaving the stop exactly as it is">Save the reason</button>
+      <label class="f" title="why you chose this stop, or no stop, for the survivor picked under Tuning targets. Saved with the choice on that survivor. Yours to write and to change at any time.">your reason for this choice<input id="stopWhy" type="text" maxlength="300" placeholder="why this stop, or why none" value="${esc(onRecord ? onRecord.why || '' : '')}" style="width:32rem" ${stopHeld ? 'disabled' : ''}></label>
+      <button id="stopWhySave" ${stopHeld || !onRecord ? `disabled title="${esc(stopHeldWhy || 'no choice about the stop is on record for this survivor yet — apply one, or clear it, first')}"` : 'title="saves the reason on its own, leaving the stop on record exactly as it is; no scan runs"'}>Save the reason</button>
     </div>
-    ${applied.chosen ? `<div class="note" style="margin-bottom:.4rem">on record: ${applied.stopPct != null ? pct(applied.stopPct) : 'no stop'}${applied.why ? ` — ${esc(applied.why)}` : ' — no reason recorded'}${applied.utc ? ` (${esc(String(applied.utc).slice(0, 10))}${applied.by ? ', ' + esc(applied.by) : ''})` : ''}</div>` : '<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded yet</div>'}
-    <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop</button>
-      <span class="note">currently applied on the trading machine: ${applied.stopPct != null ? `<span class="pos">${pct(applied.stopPct)}</span>` : 'none'}</span></div>
+    ${stopLabel ? (onRecord ? `<div class="note" style="margin-bottom:.4rem">on record for <b>${esc(stopLabel)}</b>: ${onRecord.stopPct != null ? pct(onRecord.stopPct) : 'no stop'}${onRecord.why ? ` — ${esc(onRecord.why)}` : ' — no reason recorded'}${onRecord.at ? ` (${esc(String(onRecord.at).slice(0, 10))}${onRecord.by ? ', ' + esc(onRecord.by) : ''})` : ''}</div>` : `<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded for <b>${esc(stopLabel)}</b> yet</div>`) : ''}
+    <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop</button></div>
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : ''}</div>
   </div>
   <div class="panel">
@@ -2864,17 +2871,23 @@ async function drawTune() {
 `;
   function renderStopResult(s) {
     const cc = s.counts || {};
-    return `${s.target ? tnTargetLineHtml(s.target) : ''}<p><b>${esc(s.bookId)}</b>: tightest no-winner-lost stop <span class="pos">${pct(s.stopPct)}</span> —
-      ${cc.winners || 0} winners / ${cc.losers || 0} losers over ${cc.priced || 0} entries.</p>
-      <div class="scrollx"><table><thead><tr>${cth('give up top winners','giveUp')}${cth('stop','stopPct')}${cth('winners cut','winnersCut')}${cth('winner $ given up','winnerGiven')}${cth('losers cut','losersCut')}${cth('loss-side $','lossSide')}${cth('NET $','netUsd')}<th></th></tr></thead><tbody>
-      ${(s.curve || []).map((c) => `<tr><td>${c.sacrificeTopWinners}</td><td>${pct(c.stopPct)}</td><td>${c.winnersForfeited}</td>
+    // ONE ROW PER STOP, the same six figures whichever way the stop was chosen
+    // (3.145.0): the curve's rows by how many top winners are given up, and
+    // the stop the owner forced onto the survivor first, marked as theirs
+    const rowCells = (c) => `<td>${pct(c.stopPct)}</td><td>${c.winnersForfeited}</td>
         <td class="neg">${usd(-Math.abs(c.winnerProfitForfeitedUsd || 0))}</td><td>${c.losersCut}</td>
         <td class="${(c.loserPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(c.loserPnlDeltaUsd)}</td>
-        <td class="${(c.netPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${usd(c.netPnlDeltaUsd)}</b></td>
-        <td>${s.appliesToLiveRule ? `<button data-stop="${c.stopPct}">Apply to the live rule</button>` : ''}</td></tr>`).join('')}
+        <td class="${(c.netPnlDeltaUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${usd(c.netPnlDeltaUsd)}</b></td>`;
+    const mine = s.chosenStop || null;
+    const mineRow = mine && mine.row ? `<tr style="background:rgba(40,170,80,.18)" title="the stop on record for this survivor, priced on the same entries by the same arithmetic as the rows below it"><td><b>your choice</b> - ${mine.stopPct == null ? 'no stop' : 'stop'}${mine.why ? ` - ${esc(mine.why)}` : ''}</td>${rowCells({ ...mine.row, stopPct: mine.stopPct })}</tr>` : '';
+    return `${s.target ? tnTargetLineHtml(s.target) : ''}<p><b>${esc(s.bookId)}</b>: tightest no-winner-lost stop <span class="pos">${pct(s.stopPct)}</span> —
+      ${cc.winners || 0} winners / ${cc.losers || 0} losers over ${cc.priced || 0} entries · money with no stop <span class="${(s.noStopUsd || 0) >= 0 ? 'pos' : 'neg'}">${usd(s.noStopUsd)}</span> at the $${s.clipUsd ?? 10} clip.</p>
+      <div class="scrollx"><table><thead><tr>${cth('give up top winners','giveUp')}${cth('stop','stopPct')}${cth('winners cut','winnersCut')}${cth('winner $ given up','winnerGiven')}${cth('losers cut','losersCut')}${cth('loss-side $','lossSide')}${cth('NET $','netUsd')}</tr></thead><tbody>
+      ${mineRow}${(s.curve || []).map((c) => `<tr><td>${c.sacrificeTopWinners}</td>${rowCells(c)}</tr>`).join('')}
       </tbody></table></div>
-      <p class="note">NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. Apply buttons exist
-        only for the running engine; for a lab row the number informs the greenlight instead.</p>`;
+      <p class="note">NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. The green row, when there
+        is one, is the stop on record for this survivor; a no-stop choice is the baseline and changes nothing. Nothing on this
+        table is applied anywhere.</p>`;
   }
   function renderConvResult(c) {
     const n = c.null || {};
@@ -2911,18 +2924,27 @@ async function drawTune() {
   // EVERY path that writes the stop carries the reason from the box on the page.
   // Nothing here may post without it — that is what made the field reachable
   // only from a script.
+  //
+  // THE STOP IS FORCED ONTO THE SURVIVOR PICKED UNDER TUNING TARGETS (3.145.0,
+  // owner order 2026-09-15): recorded on that survivor of the Stage 4 record
+  // set, then scanned on its captured entries over the windows ticked, so the
+  // table below carries it as one row. It is applied to no trading machine --
+  // the press that said it wrote the live engine was not telling the truth,
+  // and it does not say it any more.
   const stopWhy = () => { const el = $('#stopWhy'); return el ? el.value.trim() : ''; };
-  const applyStop = async (stopPct) => {
-    const out = await tryPost('api/pilot/stop-apply', { stopPct, why: stopWhy() });
-    if (out) drawTune();
+  const applyStop = async (stopPct, scan = true) => {
+    if (!stopLabel) { alert(stopHeldWhy); return; }
+    if (scan && !tnWins.length) { alert('tick at least one window for the scan to read: training, test or held-back'); return; }
+    const out = await tryPost(`api/funnel/set/${encodeURIComponent(chosen.id)}/stop-choice`, { pick: tnPickVal, stopPct, why: stopWhy(), scan, windows: tnWins }, 'The Stage 4 record set under Tuning targets is the one the stop was recorded on.');
+    if (out) { clearTimeout(tunePoll); tunePoll = setTimeout(drawTune, scan ? 1500 : 0); }
   };
   const wsv = $('#stopWhySave');
   if (wsv) wsv.onclick = async () => {
-    // Re-sends the stop UNCHANGED with the new wording, so editing the reason
-    // can never move the number by accident.
-    const out = await tryPost('api/pilot/stop-apply', { stopPct: applied.stopPct ?? null, why: stopWhy() });
-    if (out) drawTune();
+    // Re-sends the stop on record UNCHANGED with the new wording, so editing the
+    // reason can never move the number by accident, and runs no scan.
+    applyStop(onRecord ? onRecord.stopPct ?? null : null, false);
   };
+  const stopLook = () => (tnWins.includes('hold') ? `\n\nThe scan reads the captured held-back entries: a counted look at the held-back window (look ${(chosen.looks || 0) + 1}).` : '\n\nThe held-back entries are not read: not a look.');
   const cust = $('#stopCustomApply');
   if (cust) cust.onclick = () => {
     const v = Number($('#stopCustomPct').value);
@@ -2944,26 +2966,26 @@ async function drawTune() {
         + `Choose ${floorPc} or wider, or use "No stop (clear)".`);
       return;
     }
-    // BOTH of these write the LIVE engine's risk parameter, whatever the scan
-    // target above says — that picker chooses which record set's captured trades
-    // are SCANNED, and applying never touches a record set. Applying went through with no
-    // confirmation at all, so a stray click changed a live-money setting silently
-    // (audit 2026-08-17). The scan target is named in the prompt so the gap
-    // between "what I was looking at" and "what I just changed" cannot pass
-    // unnoticed.
-    if (!confirm(`Apply a ${v.toFixed(2)}% protective stop to the LIVE engine?\n\n`
-      + 'This writes F1\'s own risk parameter. The scan target above chooses what is SCANNED — '
-      + 'it does not change what this button applies to.')) return;
-    // the box is in PERCENT, the engine wants a FRACTION
+    // THE SURVIVOR IS NAMED IN THE PROMPT, so the gap between "what I was
+    // looking at" and "what I just recorded" cannot pass unnoticed; the windows
+    // the scan will read are named too, with the look it costs when held-back
+    // is among them.
+    if (!confirm(`Force a ${v.toFixed(2)}% protective stop onto the survivor ${stopLabel} of ${chosen.name}?\n\n`
+      + `This records the stop on that survivor and scans its captured entries on the ${tnWindowWords(tnWins)} window(s): `
+      + 'the result is one row of the protective stop tuner table below. Nothing is applied to any trading machine.'
+      + stopLook())) return;
+    // the box is in PERCENT, the record keeps a FRACTION
     applyStop(v / 100);
   };
   const clr = $('#stopClear');
   if (clr) clr.onclick = () => {
-    if (!confirm('Clear the LIVE engine\'s protective stop?\n\nthe live rule will run with NO fixed stop until one is applied again — a position then rests on its scheduled exit alone.')) return;
-    // NULL, not 0. The endpoint's guard is `if (raw != null && raw !== '')` and
-    // then refuses `v <= 0`, so a 0 took the positive-value path and came back
-    // 400 every time: the stop could not be cleared from this tab at all. The
-    // clearing sends null and always has (audit 2026-08-17).
+    if (!confirm(`Clear the protective stop from the survivor ${stopLabel} of ${chosen.name}?\n\n`
+      + 'This records NO fixed stop on that survivor — its positions then rest on their scheduled exit alone — and scans '
+      + `its captured entries on the ${tnWindowWords(tnWins)} window(s) the same way: the no-stop row of the table below. `
+      + 'Nothing is applied to any trading machine.' + stopLook())) return;
+    // NULL, not 0. The record tells "no stop, chosen" from "nothing said": the
+    // key has to be present and a 0 is refused as a parse slip, so clearing
+    // sends an explicit null.
     applyStop(null);
   };
   // scanBody is null when the picker has nothing selectable (every setup and
@@ -3016,12 +3038,6 @@ async function drawTune() {
     tnCaptureFollow(tnChosen, started.token);
   };
   if (tnd && tnd.running && tnb) { tnb.disabled = true; tnCaptureFollow(tnChosen, tnd.running.token); }
-  $('#view').querySelectorAll('button[data-stop]').forEach((b) => {
-    b.onclick = async () => {
-      if (!confirm(`Apply a ${(Number(b.dataset.stop) * 100).toFixed(2)}% protective stop to the LIVE engine?`)) return;
-      const out = await tryPost('api/pilot/stop-apply', { stopPct: Number(b.dataset.stop), why: stopWhy() }); if (out) drawTune();
-    };
-  });
   // A running scan used to say "running…" and then never change: the result
   // only appeared if the operator happened to reload. It refreshes itself now,
   // ONE cancellable chain, at 30s — these scans take minutes, and checking a

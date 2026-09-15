@@ -740,6 +740,28 @@ app.post('/api/funnel/set/:id/capture', (req, res) => {
   try { return res.json(stages.tuneCaptureStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/capture/status', (req, res) => res.json(stages.tuneCaptureStatus(req.params.id)));
+// THE STOP FORCED ONTO A SURVIVOR (3.145.0, owner order 2026-09-15): records the
+// owner's stop -- a fraction, or null for no stop chosen on purpose -- with
+// their reason, on one captured survivor of the set, and applies it nowhere.
+// With scan: true it then runs the stop scan on that survivor over the windows
+// sent, so the table below the press carries the choice as one row. The scan
+// is the same heavy one the Tune button runs, one at a time; when one is
+// already running nothing is recorded, so the page's "nothing changed" is true.
+app.post('/api/funnel/set/:id/stop-choice', (req, res) => {
+  try {
+    const b = req.body || {};
+    const scan = !!b.scan;
+    if (scan && heavyScanRunning) return res.status(409).json({ error: `a heavy scan is already running (${heavyScanRunning}) — one at a time; the stop was not recorded` });
+    const target = { setId: req.params.id, pick: b.pick, windows: b.windows };
+    if (scan) stages.captureTargetOf(target);                 // the windows and the survivor, refused in words before anything is written
+    const choice = stages.setStopChoice(req.params.id, { pick: b.pick, stopPct: b.stopPct, why: b.why });
+    if (!scan) return res.json({ ok: true, choice });
+    req.body = target;
+    return captureScan(req, res, 'stop', writeStopSweep);
+  } catch (err) {
+    return res.status(err.status || 500).json({ error: err.message });
+  }
+});
 // THE HISTORY RETRAIN RUN (3.94.0): the GET is the dry read (the set's layout,
 // the runs so far), the POST retrains the set's records at the ticked
 // half-lives and prices them on the Held window, started and polled. History

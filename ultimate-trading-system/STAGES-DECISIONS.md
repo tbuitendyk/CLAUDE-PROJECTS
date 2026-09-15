@@ -1329,3 +1329,25 @@ carried out 2026-08-28 under its own GO — decision 50.
     (S4-Pasers#3c, one run) stays on the screen as the record of that look and
     its build refuses; deleting it is the owner's call. Second digit.
     Corrects decision 92's judge.
+
+95. **A stop forced onto a survivor is a record on that survivor and one row
+    of the protective stop tuner's table; nothing on Tune writes a trading
+    machine** (3.145.0, owner order 2026-09-15: "a pop-up message when
+    setting a custom stop % about applying to the 'live' system which is
+    obviously not true. also, when a stop is forced onto (and cleared from) a
+    given survivor the results need to be scanned of using that stop in the
+    history windows and tabulated properly as a single row into the
+    protective stop tuner table"). "Apply custom" and "No stop (clear)" used
+    to write the older pilot engine's global stop file and say so as "the
+    LIVE engine"; the three-stage live path reads a stop per greenlighted
+    setup and never that file, so the claim was false. Now the stop — a
+    fraction of the opening price, or null for no stop chosen on purpose —
+    is recorded with the owner's reason on the survivor picked under Tuning
+    targets, on the Stage 4 record set (so a re-capture keeps it), checked
+    against twice the round trip at the fee the set's trades were priced at,
+    and the stop scan runs on that survivor's captured entries over the
+    windows ticked with the choice priced by the tuner's own arithmetic as
+    one row, drawn first and green; a cleared stop is the baseline row. All
+    survivors is not a survivor, so nothing can be forced onto it. The
+    older pilot route and file and the Trade screens' reading of them are
+    untouched, and no screen writes them now. Second digit.

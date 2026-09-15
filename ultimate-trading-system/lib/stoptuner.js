@@ -174,25 +174,21 @@ function tuneFixedStop(entries, map, opts = {}) {
     // stopPct, so the curve must widen by the same margin or the two loser tallies
     // in one report disagree whenever marginFrac>0 (they coincide at the deployed 0).
     const S = winnerMaes[k] * (1 + marginFrac);
-    const stoppedNet = -S - 2 * feePerLeg;
-    let wCount = 0; let wProfit = 0; let wDelta = 0; let lCount = 0; let lDelta = 0;
-    for (const p of per) {
-      if (p.mae > S) { // strict: the stop sits just above S, sparing the winner at S
-        const delta = (stoppedNet - p.netPct) * clipUsd;
-        if (p.winner) { wCount++; wProfit += p.netPct * clipUsd; wDelta += delta; }
-        else { lCount++; lDelta += delta; }
-      }
-    }
-    curve.push({
-      sacrificeTopWinners: k,
-      stopPct: round(S, 6),
-      winnersForfeited: wCount,
-      winnerProfitForfeitedUsd: round(wProfit, 2), // the winning $ we give up
-      losersCut: lCount,
-      loserPnlDeltaUsd: round(lDelta, 2),          // + = saved on the losers
-      netPnlDeltaUsd: round(wDelta + lDelta, 2),   // total change vs no stop
-    });
+    curve.push({ sacrificeTopWinners: k, ...stopRowAt(per, S, feePerLeg, clipUsd) });
   }
+  // THE STOP THE OWNER FORCED ONTO THIS SURVIVOR, AS ONE ROW OF THE SAME TABLE
+  // (3.145.0, owner order 2026-09-15: "when a stop is forced onto (and cleared
+  // from) a given survivor the results need to be scanned of using that stop in
+  // the history windows and tabulated properly as a single row into the
+  // protective stop tuner table"). A number is priced by the one arithmetic the
+  // curve uses; null -- no stop -- is the baseline row: nothing forfeited,
+  // nothing cut, nothing changed. Only when the caller asks (the key present).
+  const atStop = Object.prototype.hasOwnProperty.call(opts, 'atStop')
+    ? (opts.atStop == null ? noStopRow() : stopRowAt(per, Number(opts.atStop), feePerLeg, clipUsd))
+    : undefined;
+  // the money the priced entries make with NO stop at the same clip: what
+  // every NET $ on the table is a change against
+  const noStopUsd = round(per.reduce((a, p) => a + p.netPct * clipUsd, 0), 2);
 
   return {
     stopPct,                       // the tightest fixed stop that loses no winner
@@ -210,6 +206,8 @@ function tuneFixedStop(entries, map, opts = {}) {
       losersCutByStop: cut,
     },
     binding: binding ? { entryTs: binding.entryTs, side: binding.side, mae: binding.mae } : null,
+    noStopUsd,
+    ...(atStop === undefined ? {} : { atStop }),
     // net pct change ACROSS the whole book from adding the stop (losers only; the
     // stop touches no winner by construction). Positive = the stop saved money.
     loserPnlDeltaPct: round(deltaOnLosers, 6),
@@ -224,10 +222,39 @@ function tuneFixedStop(entries, map, opts = {}) {
   };
 }
 
+// ONE ROW OF THE TABLE AT A GIVEN STOP: what stopping at S does to the priced
+// entries against no stop at all, the strict boundary throughout (an entry
+// whose adverse extreme EQUALS S is spared, as the engine spares it). The
+// sacrifice curve is this at each of the deepest winners' extremes; the
+// owner's own stop is this at the number they typed.
+function stopRowAt(per, S, feePerLeg, clipUsd) {
+  const stoppedNet = -S - 2 * feePerLeg;
+  let wCount = 0; let wProfit = 0; let wDelta = 0; let lCount = 0; let lDelta = 0;
+  for (const p of per) {
+    if (p.mae > S) { // strict: the stop sits just above S, sparing the entry at S
+      const delta = (stoppedNet - p.netPct) * clipUsd;
+      if (p.winner) { wCount++; wProfit += p.netPct * clipUsd; wDelta += delta; }
+      else { lCount++; lDelta += delta; }
+    }
+  }
+  return {
+    stopPct: round(S, 6),
+    winnersForfeited: wCount,
+    winnerProfitForfeitedUsd: round(wProfit, 2), // the winning $ we give up
+    losersCut: lCount,
+    loserPnlDeltaUsd: round(lDelta, 2),          // + = saved on the losers
+    netPnlDeltaUsd: round(wDelta + lDelta, 2),   // total change vs no stop
+  };
+}
+// no stop at all: the baseline every other row is measured against
+function noStopRow() {
+  return { stopPct: null, winnersForfeited: 0, winnerProfitForfeitedUsd: 0, losersCut: 0, loserPnlDeltaUsd: 0, netPnlDeltaUsd: 0 };
+}
+
 function round(v, n = 6) {
   if (v == null || !Number.isFinite(v)) return null;
   const f = 10 ** n;
   return Math.round(v * f) / f;
 }
 
-module.exports = { entryOutcome, tuneFixedStop };
+module.exports = { entryOutcome, tuneFixedStop, stopRowAt, noStopRow };
