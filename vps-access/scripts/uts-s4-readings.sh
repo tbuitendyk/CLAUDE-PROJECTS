@@ -31,9 +31,21 @@ for f in files:
         so = doc.get('standsOn')
         print(f"   from {(doc.get('from') or {}).get('id')} ({(doc.get('from') or {}).get('kind')}) number {doc.get('number')} createdAt {str(doc.get('createdAt'))[:16]} | standsOn {so.get('id') if so else None}")
         print(f"   block {b.get('id')} look {b.get('look')} at {str(b.get('at'))[:16]} rel {b.get('release')} {'PASS' if (b.get('verdict') or {}).get('pass') else 'FAIL'} stretch {b.get('stretch')} read={'yes' if b.get('read') else 'no'} own={'yes' if (b.get('read') or {}).get('own') else 'no'} priced={len(b.get('priced') or []) if b.get('priced') is not None else None} heldBack-left={'heldBack' in b} rows-left={'rows' in b} gate-left={'gate' in b} | stopChoices {len(doc.get('stopChoices') or {})}")
+        # every key the block carries, so a field today's blocks do not write is seen by name, not guessed
+        print(f"   block keys: {sorted(b.keys())}")
+        sv = (b.get('survivors') or {}).get('rows') or []
+        print(f"   survivors rows {len(sv)}; first row keys: {sorted(sv[0].keys()) if sv else None}")
+        print(f"   read keys: {sorted((b.get('read') or {}).keys())}")
     rd = doc.get('readings') or {}
     if rd:
         print("   readings: " + ' | '.join(f"{st}: others {len((rd.get(st) or {}).get('others') or [])}, dropped {len((rd.get(st) or {}).get('dropped') or [])}, ride {len((rd.get(st) or {}).get('ride') or [])}" for st in ('held', 'reserve')))
+        for st in ('held', 'reserve'):
+            for k in ('others', 'dropped', 'ride'):
+                for x in ((rd.get(st) or {}).get(k) or []):
+                    if not isinstance(x, dict): continue
+                    rows = x.get('rows') or x.get('units') or []
+                    r0 = rows[0] if rows and isinstance(rows[0], dict) else None
+                    print(f"   reading {st}/{k} at {str(x.get('at'))[:16]} rel {x.get('release')} keys {sorted(x.keys())} | first row keys {sorted(r0.keys()) if r0 else None}")
     v = doc.get('verify') or []
     print(f"   verify blocks {len(v)}: " + '; '.join(f"{b.get('id')} look {b.get('look')} at {str(b.get('at'))[:16]} rel {b.get('release')} {'PASS' if (b.get('verdict') or {}).get('pass') else 'FAIL'} own={'yes' if (b.get('heldBack') or {}).get('own') else 'no'}" for b in v))
     u = doc.get('unread') or []
