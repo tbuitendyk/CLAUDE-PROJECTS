@@ -120,19 +120,18 @@ async function captured(c) {
 }
 
 module.exports = {
-  // REFUSED UNTIL A VERDICT PASSED, then captured: every survivor of the right
-  // shape, on three windows, held to the record to the cent.
+  // NO VERDICT ASKED FOR (3.142.0: Tune comes before Verify), then captured:
+  // every survivor of the right shape, on three windows, held to the record
+  // to the cent.
   async theCaptureIsTheStageThreeRecordsOwnTradesToTheCent() {
     const c = await chain('tune capture test');
     try {
-      // 1. refused in words before the verdict, and the dry read says the same
-      let threw = null;
-      try { stages.tuneCaptureStart(c.cut.id); } catch (e) { threw = e.message; }
-      assert.strictEqual(threw, stages.UNREAD_NO_PASS, 'no verdict, no capture');
+      // 1. nothing on Verify has been pressed, and the capture is not refused for it
+      assert.deepStrictEqual(stages.getSet(c.cut.id).verify || [], []);
       let dry = await stages.tuneCaptureDry(c.cut.id);
-      assert.deepStrictEqual({ refused: dry.refused, capture: dry.capture, looks: dry.looks }, { refused: stages.UNREAD_NO_PASS, capture: null, looks: 0 });
+      assert.deepStrictEqual({ refused: dry.refused, capture: dry.capture, looks: dry.looks, verdictOnTheScreen: 'gate' in dry || 'verdicts' in dry }, { refused: null, capture: null, looks: 0, verdictOnTheScreen: false });
       // a scan aimed at a set without a capture refuses and says what to press
-      threw = null;
+      let threw = null;
       try { stages.captureTargetOf({ setId: c.cut.id, windows: ['test'] }); } catch (e) { threw = e.message; }
       assert.ok(threw && threw.includes(stages.CAPTURE_NOT_YET), threw);
       // a blend set refuses in the verdict's words
@@ -140,7 +139,7 @@ module.exports = {
       c.made.push(blend.id);
       dry = await stages.tuneCaptureDry(blend.id);
       assert.ok(/cut on all units together/.test(dry.refused), dry.refused);
-      const withVerdict = await gated(c);
+      const withVerdict = stages.getSet(c.cut.id);   // no verdict pressed: the name is kept for the parity lines below
       dry = await stages.tuneCaptureDry(c.cut.id);
       assert.strictEqual(dry.refused, null, dry.refused);
       // 2. the capture
@@ -149,7 +148,7 @@ module.exports = {
       assert.deepStrictEqual({ captured: result.captured, times: result.times, notCaptured: result.notCaptured, missing: result.missing }, { captured: withVerdict.survivors.length, times: 1, notCaptured: 0, missing: 0 }, 'every survivor enters at market here, so every one is captured');
       assert.strictEqual(set.capture.id, `${c.cut.id}-c1`);
       assert.strictEqual(set.capture.release, require('../package.json').version);
-      assert.strictEqual(set.capture.gate.id, withVerdict.verify[0].id, 'the verdict that stood is on the capture');
+      assert.ok(!('gate' in set.capture) && !('gate' in file), 'no verdict rides on the capture');
       assert.deepStrictEqual(set.capture.reads, [], 'no scan has read it yet');
       assert.ok(set.capture.pick && set.capture.pick.by === 'depth' && file.survivors.some((s) => s.label === set.capture.pick.label), 'a survivor by depth among the captured');
       // 3. PARITY: the stage 3 record, to the cent, on both windows

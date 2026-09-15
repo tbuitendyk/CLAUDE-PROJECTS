@@ -25,7 +25,7 @@
 // worlds' numbers quietly disagree.
 const bracketLib = require('./bracket');
 const {
-  buildCombo, splitAndLabel, splitAndLabelAt, splitAndLabelPass, splitBounds, quorumCall, declaredQuorumFor,
+  buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, quorumCall, declaredQuorumFor,
   reserveChunks,
 } = require('./bracketwork');
 const agreement = require('./agreement');
@@ -491,20 +491,10 @@ async function unitChunks(combo, geometry, p) {
     reserve = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
     workChunks = workChunks.slice(0, workChunks.length - nReserve);
   }
-  // THE RETRAIN LAYOUT (3.94.0, the History half-life run, AGEDIAL-DESIGN.md):
-  // the final 13% sealed exactly as the sealed layout seals it, then the first
-  // 72% of ALL history as training and the rest before the seal as the test
-  // slice, with no held-back slice -- the retraining reaches through it on
-  // purpose, and the Reserve is the judge. Never offered on Sweep.
-  let retrainTrain = null;
-  if (p.windowLayout === 'retrain72') {
-    const nAll = workChunks.length;
-    const nReserve = reserveChunks(nAll);
-    const sealed = workChunks.slice(nAll - nReserve);
-    reserve = { chunks: nReserve, fromTs: sealed[0].startTs, toTs: reachOf(sealed[sealed.length - 1]) };
-    workChunks = workChunks.slice(0, nAll - nReserve);
-    retrainTrain = Math.round(nAll * 0.72);
-  }
+  // (The 72% retrain layout of 3.94.0, which reached through the held-back
+  // slice and judged on the Reserve, went in 3.142.0: the History retrain run
+  // uses the set's own layout and is judged on the Held window, so no layout
+  // without a held-back slice exists any more.)
   // ONE PASS OF THE FIVE (3.111.0, VERIFY-DESIGN.md Part 1). The sealed
   // reserve comes off exactly as reserve61 seals it, and appears in no pass.
   //
@@ -538,8 +528,7 @@ async function unitChunks(combo, geometry, p) {
   }
   // every layout keeps a held-back slice (the 80/20 layout, which kept none, went 2026-09-08),
   // except the retrain layout, whose judge is the Reserve
-  const split = passCut ? splitAndLabelPass(workChunks, branch, passCut.nTrain, passCut.judge)
-    : retrainTrain != null ? splitAndLabelAt(workChunks, branch, retrainTrain) : splitAndLabel(workChunks, branch, true);
+  const split = passCut ? splitAndLabelPass(workChunks, branch, passCut.nTrain, passCut.judge) : splitAndLabel(workChunks, branch, true);
   // THE ACTUAL DATE RANGES EVERY RUN USED (3.85.0, owner order 2026-09-07: "on
   // all s1/2/3 sweep runs the three actual date ranges for 70/15/15 and
   // 61/13/13 should be stored"). Written on every stage 1 and 2 record and,

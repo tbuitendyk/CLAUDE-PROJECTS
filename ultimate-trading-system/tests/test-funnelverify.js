@@ -1072,7 +1072,7 @@ module.exports = {
 // layout was used ... History tab is supposed to be completely agnostic on the
 // Reserve window"). The screen had "the sealed 13%" typed into it and the
 // grade refused every 70/15/15 set for want of a seal it never had.
-module.exports.historyReadsTheUnreadWindowOffTheRecordWhateverTheLayout = function () {
+module.exports.theReserveGradeReadsTheUnreadWindowOffTheRecordWhateverTheLayout = function () {
   const SETS = path.join(__dirname, '..', 'data', 'stagesets');
   fs.mkdirSync(SETS, { recursive: true });
   const tag = Date.now().toString(36);
@@ -1121,17 +1121,70 @@ module.exports.historyReadsTheUnreadWindowOffTheRecordWhateverTheLayout = functi
   assert.ok(refusal.includes('const window = unreadWindowOf(doc);') && refusal.includes('if (!window.intact) return window.why;') && !/sealedOnUnitOf/.test(refusal),
     'the grade refuses a 70/15/15 set for want of a seal it never had');
   assert.ok(s.includes('    window: unreadWindowOf(doc),'), 'the dry read does not hand the window to the screen');
-  // THE SCREEN: no share of the history typed into it; the set's own layout
-  // and window, in the Sweep screen's words for the layouts
+  // THE SCREEN (the panel is on Verify since 3.142.0): no share of the history
+  // typed into it; the set's own layout and window, in the Sweep screen's
+  // words for the layouts
   const page = src('public/construct.js');
-  const history = page.slice(page.indexOf('// ---- History (the reserve grade and the half-life run)'), page.indexOf('async function hGradeFollow('));
-  assert.ok(!/13%/.test(history), 'a share of the history is still typed onto the History screen');
-  assert.ok(!/sealed 13/.test(history) && !/the sealed \d/.test(history), 'the screen still calls the unread window the sealed something');
-  assert.ok(history.includes("return layout === 'reserve61' ? '61/13/13/13 (sealed exam)' : layout === 'split70' ? '70/15/15' : 'unrecorded';"),
+  const grade = page.slice(page.indexOf('// ---- THE RESERVE GRADE ON A STAGE 4 RECORD SET, on Verify'), page.indexOf('async function drawVerify() {'));
+  assert.ok(grade.length > 3000, 'the reserve grade panel is not drawn by Verify\'s own helpers');
+  assert.ok(!/13%/.test(grade), 'a share of the history is still typed onto the reserve grade panel');
+  assert.ok(!/sealed 13/.test(grade) && !/the sealed \d/.test(grade), 'the screen still calls the unread window the sealed something');
+  assert.ok(grade.includes("return layout === 'reserve61' ? '61/13/13/13 (sealed exam)' : layout === 'split70' ? '70/15/15' : 'unrecorded';"),
     'the layouts are not named by the words the Sweep screen offers them under');
-  assert.ok(history.includes('· window layout ${esc(hLayoutWords(w && w.layout))} · ${hWindowWords(w)}'), 'the set line does not say its layout and its unread window');
-  assert.ok(history.includes("if (w.kind === 'reserve') return `unread window ${from}: the sealed reserve, cut away before anything trained")
-    && history.includes('return `unread window ${from}: everything after the held-back window`;'), 'the window is not said in its own record\'s terms');
-  assert.ok(!history.includes('sealed window ${sealed.intact'), 'the old seal line is still drawn');
-  assert.ok(!/13%/.test(src('public/help-content.js').slice(src('public/help-content.js').indexOf('hSet: {'), src('public/help-content.js').indexOf('hHl12: {'))), 'the help still types a share of the history');
+  assert.ok(grade.includes('· window layout ${esc(layoutWords(w && w.layout))} · ${vWindowWords(w)}'), 'the set line does not say its layout and its unread window');
+  assert.ok(grade.includes("if (w.kind === 'reserve') return `unread window ${from}: the sealed reserve, cut away before anything trained")
+    && grade.includes('return `unread window ${from}: everything after the held-back window`;'), 'the window is not said in its own record\'s terms');
+  assert.ok(!grade.includes('sealed window ${sealed.intact'), 'the old seal line is still drawn');
+  const help = src('public/help-content.js');
+  assert.ok(!/13%/.test(help.slice(help.indexOf('vGrade: {'), help.indexOf('\n      },\n', help.indexOf('vGrade: {')))), 'the help still types a share of the history');
+};
+
+// THE TABS READ IN PROCESSING ORDER (3.142.0, owner order 2026-09-15: "your
+// whole order of processing is screwed up ... The history tab comes after the
+// funnel tab. The verify tab is until the very end. The reserve grade has no
+// business being tested on the history tab, that moves to the verify"). So:
+// History and Tune ask for no verdict, read none and print none; the reserve
+// grade and Greenlight, after Verify, still need the verdict that stood.
+module.exports.theTabsReadInProcessingOrderAndNoScreenBeforeVerifyAsksForAVerdict = async function () {
+  const f = await fixture();
+  try {
+    const doc = await cutOn(f);
+    assert.deepStrictEqual(doc.verify || [], [], 'nothing on Verify has been pressed');
+    // the doors before Verify open without one
+    const hl = await stages.halfLifeDry(doc.id);
+    assert.deepStrictEqual({ refused: hl.refused, judge: hl.layout.judge, verdictWords: 'gate' in hl || 'verdicts' in hl }, { refused: null, judge: 'hold', verdictWords: false }, 'History asks for a verdict');
+    const cap = await stages.tuneCaptureDry(doc.id);
+    assert.deepStrictEqual({ refused: cap.refused, verdictWords: 'gate' in cap || 'verdicts' in cap }, { refused: null, verdictWords: false }, 'Tune asks for a verdict');
+    // the doors after Verify still wait for the verdict that stood
+    assert.strictEqual((await stages.unreadGradeDry(doc.id)).refused, stages.UNREAD_NO_PASS, 'the reserve grade no longer needs the verdict');
+    let threw = null;
+    try { await stages.stage4GreenlightSource(doc.id, { pick: 'depth' }); } catch (e) { threw = e.message; }
+    assert.strictEqual(threw, stages.UNREAD_NO_PASS, 'Greenlight no longer needs the verdict');
+    // the tab strip says the same order
+    const page = src('public/construct.js');
+    const tabs = /const TABS = \[([\s\S]*?)\];/.exec(page)[1].match(/\['([a-z]+)'/g).map((x) => x.slice(2, -1));
+    assert.ok(tabs.indexOf('funnel') < tabs.indexOf('history') && tabs.indexOf('history') < tabs.indexOf('tune') && tabs.indexOf('tune') < tabs.indexOf('verify') && tabs.indexOf('verify') === tabs.indexOf('greenlight') - 1, `the tabs do not read Funnel, History, Tune, Verify, Greenlight: ${tabs.join(' ')}`);
+    // the code behind them: no verdict gate before Verify, and the gates after it intact
+    const eng = src('lib/stages.js');
+    const body = (name) => eng.slice(eng.indexOf(`function ${name}(`), eng.indexOf('\n}\n', eng.indexOf(`function ${name}(`)));
+    for (const fn of ['halfLifeRefusalOf', 'halfLifeRunOn', 'buildHalfLifeSet', 'halfLifeDry', 'captureRefusalOf', 'tuneCaptureRun', 'tuneCaptureDry']) {
+      assert.ok(!/unreadGateOf|gateOfSet|UNREAD_NO_PASS/.test(body(fn)), `${fn} asks for a verdict, and its screen comes before Verify`);
+    }
+    for (const fn of ['unreadRefusalOf', 'unreadGradeRun', 'stage4GreenlightSource', 'captureTargetOf']) {
+      if (fn === 'captureTargetOf') continue;
+      assert.ok(/unreadGateOf|gateOfSet/.test(body(fn)), `${fn} no longer asks for the verdict that stood`);
+    }
+    // the screens: History draws the retrain panel and nothing else, Tune's capture names no verdict, Verify draws the grade under the verdict
+    const history = page.slice(page.indexOf('// ---- History (the retrain run)'), page.indexOf('// ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET, on Tune'));
+    assert.ok(history.includes("  $('#view').innerHTML = hHalfLifePanelHtml(hSets, hChosen, hl);") && !/verdict|hGrade|unread|reserve grade/.test(history.replace(/\/\/[^\n]*/g, '')), 'History draws or names something of Verify\'s');
+    const tune = page.slice(page.indexOf('// ---- THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET, on Tune'), page.indexOf('function tnTargetRowHtml('));
+    assert.ok(tune.length > 1000 && !/verdict|gate/.test(tune.replace(/\/\/[^\n]*/g, '')), 'Tune\'s capture panel still names a verdict');
+    assert.ok(page.includes('  ${vGradePanelHtml(g)}`;') && page.includes("const g = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/unread`, null) : null;"), 'Verify does not draw the reserve grade under the verdict');
+    // and the help says so
+    const help = src('public/help-content.js');
+    const section = (key, next) => help.slice(help.indexOf(`\n  ${key}: {`), help.indexOf(`\n  ${next}: {`));
+    assert.ok(!/reserve grade|unread window|verdict|hGrade/.test(section('history', 'tune')), 'History\'s help still describes the reserve grade or a verdict');
+    assert.ok(/vGrade: \{/.test(section('verify', 'history')), 'Verify\'s help does not describe the reserve grade');
+    assert.ok(!/verdict/.test(section('tune', 'coins').slice(section('tune', 'coins').indexOf('tnSet: {'), section('tune', 'coins').indexOf('stopCustomPct: {'))), 'Tune\'s capture help still names a verdict');
+  } finally { f.cleanup(); }
 };

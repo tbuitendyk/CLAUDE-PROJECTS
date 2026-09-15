@@ -201,32 +201,17 @@ function splitAndLabel(chunks, branch, holdout) {
   return { trainChunks, testChunks, holdChunks, bandPct };
 }
 
-// THE SAME LABELLING AT A TRAINING LENGTH THE CALLER STATES (3.94.0, the
-// History half-life run): the first nTrain chunks train, the rest test, no
-// held-back slice. The band is the training slice's own balanced band, as it
-// always is; the caller decides what the settings are PRICED at.
-function splitAndLabelAt(chunks, branch, nTrain) {
-  const n = chunks.length;
-  const keep = Math.max(0, Math.min(n - 2, Math.floor(Number(nTrain) || 0)));
-  const trainChunks = chunks.slice(0, keep);
-  const testChunks = chunks.slice(keep);
-  if (trainChunks.length < MIN_CHUNKS) throw new Error(`only ${trainChunks.length} training chunks after the split`);
-  const bandPct = branch.band === 'auto' ? balancedBandPct(trainChunks.map((c) => c.diffPct)) : Math.abs(branch.band);
-  for (const c of chunks) c.label = scoreDiff(c.diffPct / 100, bandPct / 100);
-  return { trainChunks, testChunks, holdChunks: [], bandPct };
-}
-
 // THE SAME LABELLING AGAIN, WITH A JUDGE STRETCH THE CALLER SIZES (3.111.0,
-// VERIFY-DESIGN.md Part 1). splitAndLabelAt above gives train and test at a
-// stated boundary and no third stretch; the five passes need a third, because a
-// pass is judged on the stretch immediately after its own test slice.
+// VERIFY-DESIGN.md Part 1): the five passes need a third stretch at a stated
+// boundary, because a pass is judged on the stretch immediately after its own
+// test slice. (A splitter with no held-back slice at all, splitAndLabelAt, sat
+// here for the 72% retrain layout from 3.94.0 to 3.142.0; both went together.)
 //
 // THE BAND COMES FROM THE TRAINING SLICE AND NEVER FROM THE JUDGE. That is not
 // a nicety: the band decides what counts as a move worth trading, so a band
 // fitted with the judging stretch in hand has read the answer before the
-// question. splitAndLabel and splitAndLabelAt both take it from train; so does
-// this, and the judging chunks are labelled with it afterwards like every
-// other chunk.
+// question. splitAndLabel takes it from train; so does this, and the judging
+// chunks are labelled with it afterwards like every other chunk.
 //
 // `chunks` is everything up to and including the judge -- the caller has already
 // cut the sealed reserve off the end, so nothing here can reach it.
@@ -249,4 +234,4 @@ function splitAndLabelPass(chunks, branch, nTrain, nJudge) {
 // test. Nothing can run them; lib/rng.js keeps the one function that outlived
 // their module.)
 
-module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelAt, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };
+module.exports = { quorumCall, declaredQuorumFor, slimViewsFor, buildCombo, splitAndLabel, splitAndLabelPass, splitBounds, reserveChunks, RESERVE_SHARE };

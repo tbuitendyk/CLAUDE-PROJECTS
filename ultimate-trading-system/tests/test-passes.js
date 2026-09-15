@@ -253,9 +253,11 @@ module.exports = {
       assert.strictEqual(bw.reserveChunks(n), Math.max(2, Math.round(n * bw.RESERVE_SHARE)),
         `the helper and the share disagree at ${n} periods`);
     }
+    // re-aimed 3.142.0: the retrain layout went (the History retrain run uses
+    // the set's own layout), so exactly one layout seals, through the one helper
     const work = fs.readFileSync(path.join(dir, 'stagework.js'), 'utf8');
-    assert.strictEqual((work.match(/reserveChunks\(/g) || []).length, 2,
-      'both the sealed layout and the retrain layout must seal through the one helper');
+    assert.strictEqual((work.match(/reserveChunks\(/g) || []).length, 1,
+      'the sealed layout must seal through the one helper, and nothing else may seal at all');
     const coins = require('../lib/coins');
     for (const n of [200, 725]) {
       const parts = coins.partsFor(n, 'reserve61');

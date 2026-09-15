@@ -883,3 +883,21 @@ window, from where its last chunk reaches. The refusal, the dry read and
 the grade all read it; the screen says the set's layout in the Sweep
 screen's words and its window in its record's terms, and no share of the
 history is typed anywhere on it. Second digit.
+
+## Y. The tabs read in processing order — owner GO NOW! 2026-09-15 (3.142.0)
+
+"your whole order of processing is screwed up ... The history tab comes
+after the funnel tab. The verify tab is until the very end. The reserve
+grade has no business being tested on the history tab, that moves to the
+verify. And as far as retraining with recent history, that's always just
+gonna be against the held slice, of course, the second thirteen or the
+second fifteen. Write it properly. Design it properly. Deploy it properly.
+I don't wanna see another ten releases just to make this thing work."
+Section X had made the reserve grade layout-aware on History; the order was
+to take it off History. One release: History draws the retrain run alone,
+on its own set box, judged on the Held window on both layouts on the set's
+own layout (the 72% layout and its splitter deleted; a run file written
+under it reads as absent by its stamp — the box holds none); History and
+Tune lose the verdict gate, the verdict words and the verdict fields; the
+reserve grade panel moves under the verdict on Verify, on Verify's own set
+box, gate intact; Greenlight keeps its gate. Decision 92. Second digit.

@@ -122,8 +122,8 @@ Read out of the code, not remembered. For a 61/13/13/13 set:
 | **train**, first 75% | fits the models. Nothing is chosen here. |
 | **train**, last 25% | the money that RANKS AND KEEPS units at stage 1 and stage 2 |
 | **test** | stage 1 and 2 forecast score; stage 3 prices every setting; EVERY dial the Funnel keeps |
-| **held** | stage 3 prices every setting; **it orders the stage 3 table**; Verify's verdict; History's judge on a 70/15/15 set |
-| **reserve** | the reserve grade; History's judge on a 61/13/13/13 set |
+| **held** | stage 3 prices every setting; **it orders the stage 3 table**; Verify's verdict; History's retrain run on both layouts (3.142.0, owner decision 2026-09-15) |
+| **reserve** | the reserve grade, on Verify under the verdict since 3.142.0 |
 
 Four stretches, and only **reserve** arrives at the end unspent — and History
 spends that.
@@ -336,6 +336,13 @@ still read the judging stretch until their reads are moved to the choosing
 stretch, and until then the screen will be stating an order the code does not
 keep. That gap should be short, and it should be named on the screen if it is
 going to be long.
+
+**3.142.0 (2026-09-15, owner order; decision 92).** History and Tune no longer
+ask for a verdict, and History's retrain run is judged on **held** on both
+layouts — the owner's decision, which names the stretch: "that's always just
+gonna be against the held slice, of course, the second thirteen or the second
+fifteen". The reserve grade moved to Verify, under the verdict. History's read
+of held before Verify is counted on Verify's looks strip, as it was.
 
 **Cost:** the tab list is one array, and every screen is dispatched from it. The
 word lists regenerate per tab from the code, so a new tab gets its own list

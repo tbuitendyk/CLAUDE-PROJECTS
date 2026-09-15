@@ -47,6 +47,13 @@ S3 #1c on the box and said to hold the deploy.
 - **"Run the reserve grade on this set" stays exactly as it is** for
   61/13/13/13 sets, beside the new run: the whole set, unweighted and not
   retrained, against the Reserve.
+- **Corrected 2026-09-15 (3.142.0, owner order; decision 92).** The reserve
+  grade left History for Verify, under the verdict it needs. The retrain run
+  is judged on the Held window on both layouts — the second 13% of a
+  61/13/13/13 set, its last 13% left sealed; the second 15% of a 70/15/15
+  set — on the set's own layout, with no 72% layout and no verdict asked
+  for, because History comes before Verify. The lines above and section 2
+  stand as the record of what was built first.
 - **The 80/20 window layout goes** from stage 1, with its code. "There are no
   sets with 80/20."
 - **The two fabricated-coin exams of the older instrument are not required**

@@ -6,8 +6,13 @@
 // forecasts behind them are retrained, once per half-life the owner ticked,
 // with each training chunk's weight halving every H days of age, multiplied
 // into whatever weighing the set was trained under. Then the same records
-// are priced again on the stretch the retraining never touched: the Reserve
-// for a 61/13/13/13 set, the Held window for a 70/15/15 set.
+// are priced again on the Held window, the stretch the retraining never
+// touched, on the set's own layout: the second 13% of a 61/13/13/13 set (its
+// reserve stays sealed), the second 15% of a 70/15/15 set (3.142.0, owner
+// order 2026-09-15: "retraining with recent history ... that's always just
+// gonna be against the held slice, of course, the second thirteen or the
+// second fifteen"). History comes after the Funnel and before Verify, so
+// nothing here asks for a verdict.
 //
 // WHAT IS HERE is the arithmetic and the one worker task: the retrain layout
 // by the set's layout, the age weight, the members retrained, and the reading
@@ -27,14 +32,16 @@ const daysOfMonths = (months) => Math.round(Number(months) * DAYS_PER_MONTH);
 const keyOf = (months) => `h${months}`;
 const NONE = 'none';   // the unweighted, not-retrained column, always last
 
-// THE RETRAIN LAYOUT BY THE SET'S OWN (owner design): a 61/13/13/13 set
-// retrains on the first 72% and tests on the next 15%, the Reserve untouched;
-// a 70/15/15 set retrains on the same 70% and tests on the same 15%, the Held
-// window untouched. The layout names are the engine's (unitChunks); the
-// screen says the shares.
+// THE RETRAIN LAYOUT IS THE SET'S OWN, AND THE JUDGE IS THE HELD WINDOW ON
+// BOTH (3.142.0, owner order): a 61/13/13/13 set retrains on its 61%, tests
+// on its 13% and is judged on the second 13%, the last 13% left sealed; a
+// 70/15/15 set retrains on its 70%, tests on its 15% and is judged on the
+// second 15%. The layout names are the engine's (unitChunks); the screen says
+// the shares. Nothing else names a retrain layout: the 72% layout that judged
+// on the Reserve went with this, splitter and all.
 function retrainLayoutOf(windowLayout) {
-  if (windowLayout === 'reserve61') return { layout: 'retrain72', judge: 'reserve', judgeWord: 'Reserve', train: 72, test: 15, untouched: 13 };
-  if (windowLayout === 'split70') return { layout: 'split70', judge: 'hold', judgeWord: 'Held', train: 70, test: 15, untouched: 15 };
+  if (windowLayout === 'reserve61') return { layout: 'reserve61', judge: 'hold', judgeWord: 'Held', train: 61, test: 13, hold: 13, reserve: 13 };
+  if (windowLayout === 'split70') return { layout: 'split70', judge: 'hold', judgeWord: 'Held', train: 70, test: 15, hold: 15, reserve: 0 };
   throw new Error(`no half-life run for a set built on the '${windowLayout || 'unknown'}' layout — it needs 61/13/13/13 or 70/15/15`);
 }
 
@@ -52,9 +59,9 @@ function halfLifeWeights(p, trainChunks, fee, halfLifeDays) {
 
 // TASK: one unit's members retrained at one half-life (worker-safe). The
 // members and their views are the stage 2 record's specs; the chunks are the
-// retrain layout's; the votes on the test slice (and the held-back slice for
-// 70/15/15) come back with each member's saved model and probe votes, in the
-// shape the stage 3 task reads.
+// set's own layout's; the votes on the test slice and the held-back slice
+// come back with each member's saved model and probe votes, in the shape the
+// stage 3 task reads.
 async function hlTrainTask(task) {
   const { combo, geometry, specs, fee, halfLifeMonths } = task;
   const halfLifeDays = daysOfMonths(halfLifeMonths);
@@ -68,7 +75,7 @@ async function hlTrainTask(task) {
   const floor = H.floorRefusal(effectiveDays, `half-life ${halfLifeMonths} months`);
   if (floor) return { halfLifeMonths, halfLifeDays, effectiveDays, refused: floor };
   const views = bracketLib.comboViews(combo.size, geo.featureHours / 24).views;
-  const predictChunks = holdChunks.length ? [...testChunks, ...holdChunks] : testChunks;
+  const predictChunks = [...testChunks, ...holdChunks];
   const members = [];
   for (const spec of specs) {
     const viewIdx = views[spec.view];

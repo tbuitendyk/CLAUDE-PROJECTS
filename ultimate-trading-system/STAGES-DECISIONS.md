@@ -1259,3 +1259,27 @@ carried out 2026-08-28 under its own GO — decision 50.
     and found the gaps this paragraph closes (six launches by another road,
     the check's press, the word "role" and an id in the refusal). Driven tests
     and three guards. Second digit.
+
+92. **The tabs read in processing order: History retrains and judges on held,
+    the reserve grade moves to Verify, and no screen before Verify asks for a
+    verdict** (3.142.0, owner order 2026-09-15: "your whole order of
+    processing is screwed up ... The history tab comes after the funnel tab.
+    The verify tab is until the very end. The reserve grade has no business
+    being tested on the history tab, that moves to the verify. And as far as
+    retraining with recent history, that's always just gonna be against the
+    held slice, of course, the second thirteen or the second fifteen. Write it
+    properly. Design it properly. Deploy it properly. I don't wanna see
+    another ten releases just to make this thing work."). History draws one
+    panel, "Retrain with recent history weighted", with its own set box. The
+    retrain run uses the set's own layout on both kinds of set and is judged
+    on the Held window — the second 13% of a 61/13/13/13 set, its last 13%
+    left sealed; the second 15% of a 70/15/15 set — so the unweighted column
+    equals the stage 3 record's own held-back money to the cent on both; the
+    72% layout that judged on the Reserve went with its splitter, and a run
+    file written under it reads as absent by its version stamp (the box holds
+    none). History and Tune read, print and ask for no verdict: their doors
+    and dry reads lost the gate, their screens and help the words. The reserve
+    grade sits on Verify under the verdict it needs, on Verify's own set box,
+    gate intact; Greenlight keeps its gate. One release, second digit.
+    Corrects decision 79's "on History" and the H0 decision that the retrain
+    run is judged on the Reserve for a 61/13/13/13 set.

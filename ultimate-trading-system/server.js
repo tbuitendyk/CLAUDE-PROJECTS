@@ -718,9 +718,10 @@ app.post('/api/funnel/set/:id/ride', (req, res) => {
   try { return res.json(stages.funnelRideStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/ride/status', (req, res) => res.json(stages.funnelRideStatus(req.params.id)));
-// THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0), on History: the GET is
-// the dry read (the gate, the seal, the looks so far, the grades stamped), the
-// POST prices the unread window, started and polled; every grade is a counted look
+// THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0; on Verify since 3.142.0,
+// under the verdict it needs): the GET is the dry read (the gate, the window,
+// the looks so far, the grades stamped), the POST prices the unread window,
+// started and polled; every grade is a counted look
 app.get('/api/funnel/set/:id/unread', async (req, res) => {
   try { return res.json(await stages.unreadGradeDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
 });
@@ -729,8 +730,9 @@ app.post('/api/funnel/set/:id/unread', (req, res) => {
 });
 app.get('/api/funnel/set/:id/unread/status', (req, res) => res.json(stages.unreadGradeStatus(req.params.id)));
 // THE PER-TRADE CAPTURE OF A STAGE 4 RECORD SET (3.92.0), on Tune: the GET is
-// the dry read (the gate, the capture on record and its looks), the POST
-// captures the survivors' trades, started and polled
+// the dry read (the capture on record and its looks), the POST captures the
+// survivors' trades, started and polled. Tune comes before Verify, so no
+// verdict is asked for (3.142.0)
 app.get('/api/funnel/set/:id/capture', async (req, res) => {
   try { return res.json(await stages.tuneCaptureDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
 });
@@ -738,9 +740,10 @@ app.post('/api/funnel/set/:id/capture', (req, res) => {
   try { return res.json(stages.tuneCaptureStart(req.params.id)); } catch (err) { return res.status(409).json({ error: err.message }); }
 });
 app.get('/api/funnel/set/:id/capture/status', (req, res) => res.json(stages.tuneCaptureStatus(req.params.id)));
-// THE HISTORY HALF-LIFE RUN (3.94.0): the GET is the dry read (the gate, the
-// set's layout and its judge, the runs so far), the POST retrains the set's
-// records at the ticked half-lives and prices them, started and polled
+// THE HISTORY RETRAIN RUN (3.94.0): the GET is the dry read (the set's layout,
+// the runs so far), the POST retrains the set's records at the ticked
+// half-lives and prices them on the Held window, started and polled. History
+// comes before Verify, so no verdict is asked for (3.142.0)
 app.get('/api/funnel/set/:id/halflife', async (req, res) => {
   try { return res.json(await stages.halfLifeDry(req.params.id)); } catch (err) { return res.status(400).json({ error: err.message }); }
 });

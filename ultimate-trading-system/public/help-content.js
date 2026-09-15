@@ -754,6 +754,8 @@ window.HELP = {
         'Opening this tab reads no held-back number. The press is the stamped look. Before any stamp, the held-back number was already on a screen at every step and step back of the walk, at the cut, and wherever Boards sorts or filters on it; the record says at least how many times. Every press appends a block and none is overwritten: the first block is the verdict, later ones are printed as later looks. What a pass buys is this window only; the forward paper test after freezing is the real judge.'],
       ['Elsewhere, and from inside',
         'Two more readings sit under the verdict, both information and never a pass or fail. The first asks whether the same rule holds on the other coin-and-shape units of the same stage 3 set, each on its own held-back window against its own scrambled copies, and prints two counts: how many of them are positive and how many clear the bar, with a mark when fewer than half are positive. The second works out what the held-back window looked like from inside for each survivor: the largest drawdown, the worst and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers on the test window. Both are appended to the set on every press, and the ride is counted as a stamped look.'],
+      ['The reserve grade, the last look',
+        'Under the verdict sits the one look at the unread window: the stretch of history no part of the search touched, from where it begins to whatever the box holds today. On a 61/13/13/13 (sealed exam) set it is the sealed reserve, cut away before anything trained; on a 70/15/15 set it is everything after the held-back window. The reserve grade prices the set\'s survivors on that stretch, with the members forecasting it from the models they were trained as, and reads the result by the verdict\'s own four rules. It needs a verdict that passed, which is why it lives here and nowhere earlier; the first grade is the only look at data nothing has seen, and every later one is counted and says so.'],
     ],
     intro: 'The verdict on one Stage 4 record set: what its survivors made on the days no part of the search '
       + 'touched, against the simpler things a rule has to beat and against the same settings on scrambled copies '
@@ -792,14 +794,18 @@ window.HELP = {
         what: 'Works out what the held-back window looked like from inside for each survivor: the largest drawdown, the worst and best single trade, trades won, stopped out, gross per trade and money by third, beside the same numbers on the test window.',
         more: 'The same pass as the missing numbers on the Funnel, on this unit only; minutes. Written onto the set with the release that computed it, appended on every press, and counted as a stamped look at the held-back window on every later verdict. Never a gate. It refuses while any other heavy job is going and on a set cut on all units together.',
       },
+      vGrade: {
+        what: 'Prices the set\'s survivors on the unread window, the stretch of history no part of the search touched, and stamps the grade on the set. The last look, under the verdict it needs.',
+        more: 'Where the window begins is read off the set\'s own record: the sealed reserve on a 61/13/13/13 (sealed exam) set, everything after the held-back window on a 70/15/15 set. The members forecast it from the models they were trained as; nothing is retrained. The result is read by the same four rules as the verdict above. It refuses without a verdict that passed under this release line, without a readable unread window, and while anything heavy is running. Every press is counted as a look, and only the first is at data nothing has seen.',
+      },
     },
   },
 
   history: {
     title: 'History',
     how: [
-      ['The one look at the unread window',
-        'A Stage 4 record set was written from a search that never touched the sealed part of the history. The reserve grade prices the set\'s survivors on exactly that part, from where the seal began to whatever the box holds today, with the members forecasting it from the models they were trained as, and reads the result by the verdict\'s own rules. The first grade is the only look at data nothing has seen; every later one is counted and says so.'],
+      ['After the Funnel, before Tune and Verify',
+        'History takes a Stage 4 record set straight from the Funnel and asks nothing of Verify, which comes at the very end, after Tune, and judges what leaves here.'],
       ['Is it still true, or was it true in 2018',
         'A setting that worked for two years and then stopped will still look good averaged across the whole history, because the good years carry the bad ones. That is the single easiest way to be fooled by a long backtest.\n\nThis re-scores the same setting while counting recent evidence more heavily than old evidence, at the rate half-life sets, and shows it beside the same run with everything weighted equally. If the two disagree, the effect is not where you think it is.'],
     ],
@@ -808,12 +814,8 @@ window.HELP = {
       + 'history — this is what separates the two.',
     controls: {
       hSet: {
-        what: 'Which Stage 4 record set to grade on its unread window, from every set on this box, newest first, each with its coin and shape, its survivors and whether its verdict passed.',
-        more: 'Choosing a set reads nothing on the unread window: it shows which verdict stood, the set\'s window layout and where its unread window begins - the sealed reserve on a 61/13/13/13 (sealed exam) set, everything after the held-back window on a 70/15/15 set - and how many times the window has already been read.',
-      },
-      hGrade: {
-        what: 'Prices the set\'s survivors on the unread window, the stretch of history no part of the search touched, and stamps the grade on the set.',
-        more: 'The members forecast that window from the models they were trained as; nothing is retrained. The result is read by the same four rules as the verdict on Verify. It refuses without a verdict that passed under this release line, without a readable unread window, and while anything heavy is running. Every press is counted as a look, and only the first is at data nothing has seen.',
+        what: 'Which Stage 4 record set to retrain, from every set on this box, newest first, each with its coin and shape and its survivors.',
+        more: 'Choosing a set reads nothing on the held-back window: it shows the set\'s window layout, which stretches the retraining trains, tests and is judged on, and how many times the run has been pressed.',
       },
       hHl12: { what: 'Whether to retrain at a 12-month half-life: a training day a year old counts half as much as today.' },
       hHl18: { what: 'Whether to retrain at an 18-month half-life.' },
@@ -823,12 +825,12 @@ window.HELP = {
       hHl48: { what: 'Whether to retrain at a 48-month half-life: a training day four years old counts half as much as today.' },
       hHalfLife: {
         what: 'Retrains the forecasts behind every setting of the chosen set, once per ticked half-life, and prices the same settings again beside the unweighted figures on the window the retraining never touched.',
-        more: 'A set built 61/13/13/13 retrains on the first 72% of history, tests on the next 15% and is judged on the Reserve; a set built 70/15/15 retrains on its 70%, tests on its 15% and is judged on the Held window. Both kinds of forecast are retrained; every other training choice stays as the set was made. The best of each row is green, and a half-life wins only by at least a cent. Every press is a counted look.',
+        more: 'The set\'s own layout, judged on the Held window either way: a set built 61/13/13/13 (sealed exam) retrains on its 61%, tests on its 13% and is judged on the second 13%, with the last 13% left sealed; a set built 70/15/15 retrains on its 70%, tests on its 15% and is judged on the second 15%. Both kinds of forecast are retrained; every other training choice stays as the set was made. The best of each row is green, and a half-life wins only by at least a cent. History comes before Verify and asks nothing of it. Every press is a counted look.',
       },
       hHlName: { what: 'The name of the half-life set built from the newest table, as it will read on Tune and Greenlight.' },
       hHlBuild: {
         what: 'Builds a record set from every row a half-life won on the newest table, each record carrying the half-life that won on it. Rows the unweighted column won are left out.',
-        more: 'The set stands on this set\'s verdict and appears in the Stage 4 record set boxes on Tune and Greenlight, named with the set it was built from. A greenlight from one of its records carries the half-life, and the live path trains that setup the same way.',
+        more: 'It appears in the Stage 4 record set boxes on Tune and Greenlight, named with the set it was built from, and goes forward under that set\'s name. A greenlight from one of its records carries the half-life, and the live path trains that setup the same way.',
       },
     },
   },
@@ -858,7 +860,7 @@ window.HELP = {
       tnSet: { what: 'Which Stage 4 record set to capture the trades of, from every set on this box, newest first.' },
       tnCapture: {
         what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows.',
-        more: 'Refuses without a verdict that passed under this release line. A second press replaces the capture on record; the looks already counted stay.',
+        more: 'Tune comes before Verify and asks nothing of it. A second press replaces the capture on record; the looks already counted stay.',
       },
       stopCustomPct: { what: 'A protective stop of your own choosing, as a percentage of the opening price.' },
       stopCustomApply: { what: 'Applies the percentage typed beside it.' },

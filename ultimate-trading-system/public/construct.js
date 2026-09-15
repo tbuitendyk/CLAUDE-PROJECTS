@@ -2247,12 +2247,106 @@ function vRideHtml(d) {
     : '<p class="note">Not worked out on this set yet.</p>'}
   </div>`;
 }
+// ---- THE RESERVE GRADE ON A STAGE 4 RECORD SET, on Verify (3.89.0; moved here 3.142.0) ----
+// The unread window -- the stretch of history nothing trained or searched on,
+// from where it begins to whatever the box holds today -- priced for the set's
+// survivors on the set's own unit, forecast by the members' saved models, and
+// read by the verdict's four rules on that window. Every grade is a counted
+// look; the first look is at data nothing has seen and every later one says so.
+// WHERE IT BEGINS IS READ OFF THE SET'S OWN RECORD, whatever its window layout
+// (3.141.0). It needs the verdict, so it sits under it (3.142.0, owner order:
+// "The reserve grade has no business being tested on the history tab, that
+// moves to the verify"), on the set chosen in Verify's own box.
+function vGradeBlockHtml(g, isFirst) {
+  const v = g.verdict || {};
+  const r = g.read || {};
+  const c = r.comparisons || {};
+  const cp = g.copies || {};
+  const sv = g.survivors || {};
+  const sn = g.sanity || {};
+  const w = g.window || {};
+  const rows = g.rows || [];
+  return `<div class="panel" style="margin-top:.5rem">
+    <h4 style="margin:0 0 .3rem">look ${g.look}${isFirst ? ' - the first look' : ''} - <b class="${v.pass ? 'pos' : 'neg'}">${v.pass ? 'PASS' : 'FAIL'}</b> <span class="muted">graded ${esc(String(g.at || '').slice(0, 16))} under release ${esc(g.release || '?')}</span></h4>
+    <p class="note">${esc(v.sentence || '')}</p>
+    <p class="note"><b>The unread window:</b> from ${vDay(w.fromTs)} to ${vDay(w.toTs)}, ${w.chunks ?? 0} whole chunks · the box's data reached ${vDay(w.seenToTs)} · verdict ${esc((g.gate || {}).id || '?')} stood</p>
+    ${heldBackPanel('The read', r, c)}
+    <p class="note"><b>Against scrambled copies of that window:</b> ${cp.incomplete ? '<b class="warn">none were priced</b>' : `real ${money(cp.real)} beats ${cp.beats} of ${cp.copies}, the bar being ${cp.bar} - <b class="${cp.pass ? 'pos' : 'neg'}">${cp.pass ? 'PASS' : 'FAIL'}</b> · a forecast-free rule clears this about ${vPct(cp.chance)} of the time · lead ${vFix(cp.lead)}`}</p>
+    <p class="note"><b>Every survivor against its own copies:</b> ${sv.passing} of ${sv.survivors} clear the same bar, about ${sv.byChance == null ? '?' : Number(sv.byChance).toFixed(1)} would by chance · ${sv.positive} made money · never a gate</p>
+    <p class="note">sanity, over the survivors' copies only: ${sn.known ? `${vPct((sn.board || {}).losing)} of ${Number((sn.board || {}).figures || 0).toLocaleString()} scrambled unread figures lose money, threshold ${sn.threshold}% - ${sn.ok ? '<b class="pos">PASS</b>' : '<b class="neg">FAIL - NOISE IS PROFITING: do not read the lines above</b>'}` : '<b class="warn">not known</b>'}</p>
+    ${(g.missing || []).length ? `<p class="note"><b class="warn">${g.missing.length} survivor(s) were not priced</b> - they are not in the stage 3 set's block on this unit</p>` : ''}
+    ${rows.length ? `<details><summary>the survivors on this look</summary><div class="scrollx" style="max-height:24rem;overflow-y:auto"><table><thead><tr>
+      <th title="the setting, by the name the board gives it">setting</th>
+      <th title="dollars on the unread window">unread $</th>
+      <th title="positions taken on the unread window">trades</th>
+      <th title="trades closed by the stop on the unread window">stopped out</th>
+      <th title="its unread dollars against simply holding the coin over the same days">vs always long $</th>
+      <th title="the deepest fall from a high point of the running money on the unread window">largest drawdown $</th>
+      <th title="the single worst trade on the unread window">worst trade $</th>
+    </tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(x.label)}</td><td class="${(x.money || 0) >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td><td>${x.trades == null ? '—' : x.trades}</td><td>${x.stops == null ? '—' : x.stops}</td><td>${money(x.vsLong)}</td><td>${money((x.ride || {}).maxDrawdown)}</td><td>${money((x.ride || {}).worstTrade)}</td></tr>`).join('')}</tbody></table></div>
+      <p class="note muted">${rows.length} survivors, in the set's own order. There is no sort on this table: a sort is a look.</p></details>` : ''}
+  </div>`;
+}
+// the window layout by the words the Sweep screen offers it under; History says it too
+function layoutWords(layout) {
+  return layout === 'reserve61' ? '61/13/13/13 (sealed exam)' : layout === 'split70' ? '70/15/15' : 'unrecorded';
+}
+// where this set's unread window begins, in its record's own terms
+function vWindowWords(w) {
+  if (!w) return '';
+  if (!w.intact) return `unread window <b class="neg">not readable</b> - ${esc(String(w.why || ''))}`;
+  const from = `from ${vDay(w.fromTs)} onward`;
+  if (w.kind === 'reserve') return `unread window ${from}: the sealed reserve, cut away before anything trained${w.chunks != null ? `, ${w.chunks} chunks at the seal` : ''}`;
+  return `unread window ${from}: everything after the held-back window`;
+}
+function vGradePanelHtml(d) {
+  const grades = d ? (d.grades || []).slice().reverse() : [];       // oldest first: the first look, then later ones
+  const w = d ? d.window || null : null;
+  return `<div class="panel">
+    <h3 style="margin-top:0">The reserve grade on a Stage 4 record set</h3>
+    <p class="note">The unread window is the stretch of history no part of the search touched, from where it begins
+      to whatever the box holds today. Where it begins is read off the record set's own record: on a 61/13/13/13 (sealed exam)
+      record set it is the sealed reserve, cut away before anything trained; on a 70/15/15 record set it is everything
+      after the held-back window. This prices the set's survivors
+      on it, on the set's own coin and shape, with the members forecasting it from the models they were trained as,
+      and reads the result by the same four rules as the verdict above: money, the two comparisons a rule has to
+      beat, the scrambled copies at the set's own bar, and noise losing. It refuses without a verdict that passed
+      under this release line, stamped above. Every grade is a counted look, and only the first is at data nothing has seen.</p>
+    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${Number(d.survivors || 0).toLocaleString()} survivors
+      · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}
+      · window layout ${esc(layoutWords(w && w.layout))} · ${vWindowWords(w)}
+      · ${d.looks ? `<b>this window has been read ${d.looks} time(s) already</b>` : 'this window has never been read'}</p>
+      <div class="row" style="align-items:flex-end">
+        <button id="vGrade" class="pri" ${d.refused ? 'disabled' : ''} title="prices the set's survivors on the unread window and stamps the grade on the set. The first press is the only look at data nothing has seen; every press is counted.">Run the reserve grade on this set${d.looks ? ` - look ${d.looks + 1}` : ''}</button>
+        <span id="vGradeMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
+      ${grades.length ? grades.map((g, i) => vGradeBlockHtml(g, i === 0)).join('') : '<p class="note">No grade on this set yet. The first press is the first look at the unread window.</p>'}` : ''}
+  </div>`;
+}
+// the grade prices on the box, so the count is said with the box's load beside it
+async function vGradeFollow(id, token) {
+  for (;;) {
+    let s = null;
+    try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/unread/status`); } catch (_) { s = null; }
+    if (!s || s.none || s.token !== token) { drawVerify(); return; }
+    if (s.error) {
+      const m = $('#vGradeMsg'); if (m) m.textContent = s.error;
+      const b = $('#vGrade'); if (b) b.disabled = false;
+      return;
+    }
+    if (s.result) { drawVerify(); return; }
+    const m = $('#vGradeMsg'); if (m) m.textContent = `pricing the unread window${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}`;
+    await new Promise((resolve) => { setTimeout(resolve, 2000); });
+    if (tab !== 'verify') return;
+  }
+}
 async function drawVerify() {
   // a half-life set stands on its source's verdict and is read there, so it is not offered here (3.95.0)
   const sets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => !x.derived);
   const chosen = vRememberedSet(sets);
   const d = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/verify`, null) : null;
-  $('#view').innerHTML = vSetPanelHtml(sets, chosen, d);
+  const g = chosen ? await apiOr(`api/funnel/set/${encodeURIComponent(chosen)}/unread`, null) : null;
+  $('#view').innerHTML = `${vSetPanelHtml(sets, chosen, d)}
+  ${vGradePanelHtml(g)}`;
   const sel = $('#vSet');
   if (sel) sel.onchange = () => {
     try { localStorage.setItem(V_SET_KEY, sel.value); } catch (_) { /* private window */ }
@@ -2294,9 +2388,24 @@ async function drawVerify() {
     if (!started) { rb.disabled = false; $('#vRideMsg').textContent = ''; return; }
     vRideFollow(chosen, started.token);
   };
-  // a read or a ride already going for this set is followed, so a reload mid-way keeps saying so
+  // the reserve grade, under the verdict: the first press is the only look at data nothing has seen
+  const gb = $('#vGrade');
+  if (gb && chosen && g && !g.refused) gb.onclick = async () => {
+    const look = (g.looks || 0) + 1;
+    const msg = look === 1
+      ? 'Run the reserve grade on this set?\n\nThis is the FIRST look at the unread window — data nothing in this system has seen. After it, that is no longer true.'
+      : `Run the reserve grade on this set — look ${look}?\n\nThis window has already been read ${look - 1} time(s). The grade will be recorded as look ${look} and its verdict will say so: the floor it prints is the best case, and the real strength is weaker by an amount nothing here can measure.`;
+    if (!confirm(msg)) return;
+    gb.disabled = true;
+    $('#vGradeMsg').textContent = 'starting…';
+    const started = await tryPost(`api/funnel/set/${encodeURIComponent(chosen)}/unread`, {}, WHERE_VERIFY);
+    if (!started) { gb.disabled = false; $('#vGradeMsg').textContent = ''; return; }
+    vGradeFollow(chosen, started.token);
+  };
+  // a read, a ride or a grade already going for this set is followed, so a reload mid-way keeps saying so
   if (d && d.othersRunning && ob) { ob.disabled = true; vOthersFollow(chosen, d.othersRunning.token); }
   if (d && d.rideRunning && rb) { rb.disabled = true; vRideFollow(chosen, d.rideRunning.token); }
+  if (g && g.running && gb) { gb.disabled = true; vGradeFollow(chosen, g.running.token); }
 }
 // THE READ IS STARTED AND POLLED, the shape every press on the Funnel has, so no
 // one request is held open; the page redraws from the record when it lands.
@@ -2351,24 +2460,21 @@ async function vRideFollow(id, token) {
   }
 }
 
-// ---- History (the reserve grade and the half-life run) -------------------------
-// THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0): the unread window -- the
-// stretch of history nothing trained or searched on, from where it begins to
-// whatever the box holds today -- priced for the set's survivors on the set's
-// own unit, forecast by the members' saved models, and read by the verdict's
-// four rules on that window. Every grade is a counted look; the first look is
-// at data nothing has seen and every later one says so.
-// WHERE IT BEGINS IS READ OFF THE SET'S OWN RECORD, whatever its window layout
-// (3.141.0, owner order: "History tab is supposed to be completely agnostic on
-// the Reserve window"). Nothing on this screen names a share of the history.
+// ---- History (the retrain run) ---------------------------------------------------
+// HISTORY COMES AFTER THE FUNNEL AND BEFORE TUNE AND VERIFY (3.142.0, owner
+// order 2026-09-15: "The history tab comes after the funnel tab. The verify tab
+// is until the very end. The reserve grade has no business being tested on the
+// history tab, that moves to the verify"). One panel: the same records
+// retrained with recent history weighted, judged on the Held window on both
+// layouts. Nothing on this screen reads, prints or asks for a verdict; the
+// reserve grade is drawn on Verify, under the verdict it needs.
 const H_SET_KEY = 'cx-history-set';
-// THREE SMALL FORMATTERS OF THIS SCREEN'S OWN, written with braces on purpose:
+// TWO SMALL FORMATTERS OF THIS SCREEN'S OWN, written with braces on purpose:
 // the word list's walk brace-matches a helper's body from where it is defined,
 // and a brace-less one-liner defined just above another screen's renderer reads
 // as that renderer's body, dragging that screen's controls onto this list.
 function hDay(ts) { return ts == null ? '?' : new Date(Number(ts)).toISOString().slice(0, 10); }
 function hFix(v, n = 2) { return v == null || !Number.isFinite(Number(v)) ? 'none' : Number(v).toFixed(n); }
-function hPct(v) { return v == null || !Number.isFinite(Number(v)) ? '?' : `${Math.round(100 * Number(v))}%`; }
 function hRememberedSet(list) {
   let want = null;
   try { want = localStorage.getItem(H_SET_KEY); } catch (_) { want = null; }
@@ -2377,99 +2483,17 @@ function hRememberedSet(list) {
 }
 function hSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
-    <label class="f" title="which Stage 4 record set to grade, from every set on this box, newest first">Stage 4 record set<select id="hSet">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict'}</option>`).join('')
+    <label class="f" title="which Stage 4 record set to retrain, from every set on this box, newest first">Stage 4 record set<select id="hSet">${list.length
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
 }
-function hGradeBlockHtml(g, isFirst) {
-  const v = g.verdict || {};
-  const r = g.read || {};
-  const c = r.comparisons || {};
-  const cp = g.copies || {};
-  const sv = g.survivors || {};
-  const sn = g.sanity || {};
-  const w = g.window || {};
-  const rows = g.rows || [];
-  return `<div class="panel" style="margin-top:.5rem">
-    <h4 style="margin:0 0 .3rem">look ${g.look}${isFirst ? ' - the first look' : ''} - <b class="${v.pass ? 'pos' : 'neg'}">${v.pass ? 'PASS' : 'FAIL'}</b> <span class="muted">graded ${esc(String(g.at || '').slice(0, 16))} under release ${esc(g.release || '?')}</span></h4>
-    <p class="note">${esc(v.sentence || '')}</p>
-    <p class="note"><b>The unread window:</b> from ${hDay(w.fromTs)} to ${hDay(w.toTs)}, ${w.chunks ?? 0} whole chunks · the box's data reached ${hDay(w.seenToTs)} · verdict ${esc((g.gate || {}).id || '?')} stood</p>
-    ${heldBackPanel('The read', r, c)}
-    <p class="note"><b>Against scrambled copies of that window:</b> ${cp.incomplete ? '<b class="warn">none were priced</b>' : `real ${money(cp.real)} beats ${cp.beats} of ${cp.copies}, the bar being ${cp.bar} - <b class="${cp.pass ? 'pos' : 'neg'}">${cp.pass ? 'PASS' : 'FAIL'}</b> · a forecast-free rule clears this about ${hPct(cp.chance)} of the time · lead ${hFix(cp.lead)}`}</p>
-    <p class="note"><b>Every survivor against its own copies:</b> ${sv.passing} of ${sv.survivors} clear the same bar, about ${sv.byChance == null ? '?' : Number(sv.byChance).toFixed(1)} would by chance · ${sv.positive} made money · never a gate</p>
-    <p class="note">sanity, over the survivors' copies only: ${sn.known ? `${hPct((sn.board || {}).losing)} of ${Number((sn.board || {}).figures || 0).toLocaleString()} scrambled unread figures lose money, threshold ${sn.threshold}% - ${sn.ok ? '<b class="pos">PASS</b>' : '<b class="neg">FAIL - NOISE IS PROFITING: do not read the lines above</b>'}` : '<b class="warn">not known</b>'}</p>
-    ${(g.missing || []).length ? `<p class="note"><b class="warn">${g.missing.length} survivor(s) were not priced</b> - they are not in the stage 3 set's block on this unit</p>` : ''}
-    ${rows.length ? `<details><summary>the survivors on this look</summary><div class="scrollx" style="max-height:24rem;overflow-y:auto"><table><thead><tr>
-      <th title="the setting, by the name the board gives it">setting</th>
-      <th title="dollars on the unread window">unread $</th>
-      <th title="positions taken on the unread window">trades</th>
-      <th title="trades closed by the stop on the unread window">stopped out</th>
-      <th title="its unread dollars against simply holding the coin over the same days">vs always long $</th>
-      <th title="the deepest fall from a high point of the running money on the unread window">largest drawdown $</th>
-      <th title="the single worst trade on the unread window">worst trade $</th>
-    </tr></thead><tbody>${rows.map((x) => `<tr><td>${esc(x.label)}</td><td class="${(x.money || 0) >= 0 ? 'pos' : 'neg'}">${money(x.money)}</td><td>${x.trades == null ? '—' : x.trades}</td><td>${x.stops == null ? '—' : x.stops}</td><td>${money(x.vsLong)}</td><td>${money((x.ride || {}).maxDrawdown)}</td><td>${money((x.ride || {}).worstTrade)}</td></tr>`).join('')}</tbody></table></div>
-      <p class="note muted">${rows.length} survivors, in the set's own order. There is no sort on this table: a sort is a look.</p></details>` : ''}
-  </div>`;
-}
-// the window layout by the words the Sweep screen offers it under
-function hLayoutWords(layout) {
-  return layout === 'reserve61' ? '61/13/13/13 (sealed exam)' : layout === 'split70' ? '70/15/15' : 'unrecorded';
-}
-// where this set's unread window begins, in its record's own terms
-function hWindowWords(w) {
-  if (!w) return '';
-  if (!w.intact) return `unread window <b class="neg">not readable</b> - ${esc(String(w.why || ''))}`;
-  const from = `from ${hDay(w.fromTs)} onward`;
-  if (w.kind === 'reserve') return `unread window ${from}: the sealed reserve, cut away before anything trained${w.chunks != null ? `, ${w.chunks} chunks at the seal` : ''}`;
-  return `unread window ${from}: everything after the held-back window`;
-}
-function hGradePanelHtml(list, chosen, d) {
-  const grades = d ? (d.grades || []).slice().reverse() : [];       // oldest first: the first look, then later ones
-  const w = d ? d.window || null : null;
-  return `<div class="panel">
-    <h3 style="margin-top:0">The reserve grade on a Stage 4 record set</h3>
-    <p class="note">The unread window is the stretch of history no part of the search touched, from where it begins
-      to whatever the box holds today. Where it begins is read off the record set's own record: on a 61/13/13/13 (sealed exam)
-      record set it is the sealed reserve, cut away before anything trained; on a 70/15/15 record set it is everything
-      after the held-back window. This prices the set's survivors
-      on it, on the set's own coin and shape, with the members forecasting it from the models they were trained as,
-      and reads the result by the same four rules as the verdict on Verify: money, the two comparisons a rule has to
-      beat, the scrambled copies at the set's own bar, and noise losing. It refuses without a verdict that passed
-      under this release line. Every grade is a counted look, and only the first is at data nothing has seen.</p>
-    ${hSetBoxHtml(list, chosen)}
-    ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${Number(d.survivors || 0).toLocaleString()} survivors
-      · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}
-      · window layout ${esc(hLayoutWords(w && w.layout))} · ${hWindowWords(w)}
-      · ${d.looks ? `<b>this window has been read ${d.looks} time(s) already</b>` : 'this window has never been read'}</p>
-      <div class="row" style="align-items:flex-end">
-        <button id="hGrade" class="pri" ${d.refused ? 'disabled' : ''} title="prices the set's survivors on the unread window and stamps the grade on the set. The first press is the only look at data nothing has seen; every press is counted.">Run the reserve grade on this set${d.looks ? ` - look ${d.looks + 1}` : ''}</button>
-        <span id="hGradeMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
-      ${grades.length ? grades.map((g, i) => hGradeBlockHtml(g, i === 0)).join('') : '<p class="note">No grade on this set yet. The first press is the first look at the unread window.</p>'}` : ''}
-  </div>`;
-}
-// the grade prices on the box, so the count is said with the box's load beside it
-async function hGradeFollow(id, token) {
-  for (;;) {
-    let s = null;
-    try { s = await api(`api/funnel/set/${encodeURIComponent(id)}/unread/status`); } catch (_) { s = null; }
-    if (!s || s.none || s.token !== token) { drawHistory(); return; }
-    if (s.error) {
-      const m = $('#hGradeMsg'); if (m) m.textContent = s.error;
-      const b = $('#hGrade'); if (b) b.disabled = false;
-      return;
-    }
-    if (s.result) { drawHistory(); return; }
-    const m = $('#hGradeMsg'); if (m) m.textContent = `pricing the unread window${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}`;
-    await new Promise((resolve) => { setTimeout(resolve, 2000); });
-    if (tab !== 'history') return;
-  }
-}
-// ---- THE HALF-LIFE RUN ON HISTORY (3.94.0, AGEDIAL-DESIGN.md) -------------------
+// ---- THE RETRAIN RUN ON HISTORY (3.94.0, AGEDIAL-DESIGN.md; the one panel since 3.142.0) ----
 //
 // The same records retrained with recent history weighted more, once per
-// ticked half-life, priced beside the unweighted column on the stretch the
-// retraining never touched. Drawn under the reserve grade, for the set chosen
-// in its box. Helpers written with braces on purpose (see above).
+// ticked half-life, priced beside the unweighted column on the Held window,
+// the stretch the retraining never touched, on the set's own layout. Its own
+// set box; no verdict is read or asked for. Helpers written with braces on
+// purpose (see above).
 const H_HL_KEY = 'cx-history-halflives';
 const H_HALF_LIVES = [12, 18, 24, 30, 36, 48];
 function hRememberedHalfLives() {
@@ -2485,10 +2509,10 @@ function hHalfLifeBlockHtml(b, isFirst) {
   const w = b.window || {};
   const rows = b.rows || [];
   const green = 'background:rgba(40,170,80,.28)';
-  const colHead = cols.map((c) => `<th title="${c.key === 'none' ? `the set's own forecasts, unweighted and not retrained, on the ${esc(b.judgeWord)} window` : `the records priced again with forecasts retrained on the first ${b.shares.train}% of history with a ${c.months}-month half-life, on the ${esc(b.judgeWord)} window`}">${esc(hMonthsWord(c.key))} $</th>`).join('');
+  const colHead = cols.map((c) => `<th title="${c.key === 'none' ? `the set's own forecasts, unweighted and not retrained, on the ${esc(b.judgeWord)} window` : `the records priced again with forecasts retrained on the set's own ${b.shares.train}% with a ${c.months}-month half-life, on the ${esc(b.judgeWord)} window`}">${esc(hMonthsWord(c.key))} $</th>`).join('');
   return `<div class="panel" style="margin-top:.5rem">
     <h4 style="margin:0 0 .3rem">look ${b.look}${isFirst ? ' - the first' : ''} <span class="muted">taken ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')}</span></h4>
-    <p class="note">judged on the <b>${esc(b.judgeWord)}</b> window${w.fromTs != null ? ` from ${hDay(w.fromTs)} to ${hDay(w.toTs)}` : ''}, ${w.chunks ?? '?'} whole chunks${w.seenToTs != null ? ` · the box's data reached ${hDay(w.seenToTs)}` : ''} · retrained on the first ${b.shares.train}% of history, tested on the next ${b.shares.test}% · ${b.members} members, both kinds · verdict ${esc((b.gate || {}).id || '?')} stood</p>
+    <p class="note">judged on the <b>${esc(b.judgeWord)}</b> window${w.fromTs != null ? ` from ${hDay(w.fromTs)} to ${hDay(w.toTs)}` : ''}, ${w.chunks ?? '?'} whole chunks · retrained on the set's own ${b.shares.train}%, tested on its ${b.shares.test}% · ${b.members} members, both kinds</p>
     <p class="note">${cols.filter((c) => c.key !== 'none').map((c) => `<b>${esc(hMonthsWord(c.key))}</b>: ${c.refused ? `<b class="warn">refused</b> - ${esc(c.refused)}` : `${hFix(c.effectiveDays, 0)} effective training days of ${b.counts.train ?? '?'}${c.weighedByMoney ? ', weighed by money' : ''}`}`).join(' · ')}</p>
     ${(b.missing || []).length ? `<p class="note"><b class="warn">${b.missing.length} survivor(s) are not in the stage 3 set's block on this unit</b></p>` : ''}
     <div class="scrollx" style="max-height:28rem;overflow-y:auto"><table><thead><tr><th title="the setting, by the name the board gives it">setting</th>${colHead}</tr></thead><tbody>
@@ -2507,25 +2531,25 @@ function hHlBuildRowHtml(run, built) {
   const mine = (built || []).filter((b) => b.run === run.id);
   return `<div class="row" style="margin-top:.4rem;align-items:flex-end">
     <label class="f" style="flex:1" title="what you want to see on Tune and Greenlight for the set built from this table">name<input id="hHlName" style="width:100%" placeholder="e.g. XRP daily, half-life set"></label>
-    <button id="hHlBuild" class="pri" ${improved ? '' : 'disabled title="no record improved with any half-life on this table"'} title="builds a record set from every row a half-life won on this table, each record carrying the half-life that won on it; rows the unweighted column won are left out. It stands on this set's verdict and appears on Tune and Greenlight.">Build the half-life set from this table</button>
+    <button id="hHlBuild" class="pri" ${improved ? '' : 'disabled title="no record improved with any half-life on this table"'} title="builds a record set from every row a half-life won on this table, each record carrying the half-life that won on it; rows the unweighted column won are left out. It appears on Tune and Greenlight, named with the set it was built from.">Build the half-life set from this table</button>
     <span class="note">${improved} of ${(run.rows || []).length} records improved with a half-life${mine.length ? ` · built from this table: ${mine.map((b) => `<b>${esc(b.name)}</b> (${b.survivors} records)`).join(', ')}` : ''}</span>
   </div>`;
 }
-function hHalfLifePanelHtml(chosen, d) {
+function hHalfLifePanelHtml(list, chosen, d) {
   const runs = d ? (d.runs || []).slice().reverse() : [];
   const ticked = hRememberedHalfLives();
   const lay = d && d.layout ? d.layout : null;
   return `<div class="panel">
     <h3 style="margin-top:0">Retrain with recent history weighted</h3>
-    <p class="note">The same records, retrained: every setting of the set chosen above is kept exactly as it is, and only the
+    <p class="note">The same records, retrained: every setting of the chosen set is kept exactly as it is, and only the
       forecasts behind it are trained again with recent history weighted more, once per half-life ticked, keeping every other
-      training choice the set was made with. Then the same records are priced again on the stretch the retraining never
-      touched, in one pass beside the set's own unweighted figures. A set built 61/13/13/13 retrains on the first 72% of
-      history and tests on the next 15%, and is judged on the Reserve; a set built 70/15/15 retrains on its 70% and tests on
-      its 15%, and is judged on the Held window. Every press is a counted look.</p>
+      training choice the set was made with. Then the same records are priced again on the Held window, the stretch the
+      retraining never touched, in one pass beside the set's own unweighted figures. A set built 61/13/13/13 (sealed exam)
+      retrains on its 61% and tests on its 13%, and is judged on the second 13%, with the last 13% left sealed; a set built
+      70/15/15 retrains on its 70% and tests on its 15%, and is judged on the second 15%. Every press is a counted look.</p>
+    ${hSetBoxHtml(list, chosen)}
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${Number(d.survivors || 0).toLocaleString()} survivors
-      · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}
-      · ${lay ? `built ${lay.judge === 'reserve' ? '61/13/13/13' : '70/15/15'}: retrains on the first ${lay.train}%, tests on the next ${lay.test}%, judged on the <b>${esc(lay.judgeWord)}</b> (${lay.untouched}%)` : `<b class="warn">${esc(d.layoutWhy || 'no layout')}</b>`}
+      · ${lay ? `window layout ${esc(layoutWords(lay.layout))}: retrains on its ${lay.train}%, tests on its ${lay.test}%, judged on the <b>${esc(lay.judgeWord)}</b> window (${lay.hold}%)${lay.reserve ? `, the last ${lay.reserve}% left sealed` : ''}` : `<b class="warn">${esc(d.layoutWhy || 'no layout')}</b>`}
       · ${d.looks ? `run ${d.looks} time(s) so far` : 'not run yet'}</p>
       <div class="row" style="align-items:flex-end">
         <span class="note" title="which half-lives to retrain at. A half-life is how long ago a training day must be to count half as much as today's; each ticked value is a full retraining of both kinds of forecast and one column of the table.">half-lives</span>
@@ -2537,7 +2561,7 @@ function hHalfLifePanelHtml(chosen, d) {
         <label class="f" style="flex:none"><input type="checkbox" id="hHl48" ${ticked.includes(48) ? 'checked' : ''}> 48 months</label>
       </div>
       <div class="row" style="margin-top:.4rem;align-items:flex-end">
-        <button id="hHalfLife" class="pri" ${d.refused ? 'disabled' : ''} title="retrains the set's forecasts once per ticked half-life and prices the same records again beside the unweighted figures, on the window the retraining never touched. Minutes. Every press is a counted look and appends a table; none is overwritten.">Retrain at the ticked half-lives${d.looks ? ` - look ${d.looks + 1}` : ''}</button>
+        <button id="hHalfLife" class="pri" ${d.refused ? 'disabled' : ''} title="retrains the set's forecasts once per ticked half-life and prices the same records again beside the unweighted figures, on the Held window the retraining never touched. Minutes. Every press is a counted look and appends a table; none is overwritten.">Retrain at the ticked half-lives${d.looks ? ` - look ${d.looks + 1}` : ''}</button>
         <span id="hHalfLifeMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
       ${runs.length ? runs.map((b, i) => `${hHalfLifeBlockHtml(b, i === 0)}${i === runs.length - 1 ? hHlBuildRowHtml(b, d.built) : ''}`).join('') : '<p class="note">No half-life run on this set yet.</p>'}` : ''}
   </div>`;
@@ -2562,29 +2586,13 @@ async function drawHistory() {
   // a half-life set is graded and retrained through its source, so it is not offered here (3.95.0)
   const hSets = ((await apiOr('api/funnel/sets', ({ sets: [] }))).sets || []).filter((x) => !x.derived);
   const hChosen = hRememberedSet(hSets);
-  const hd = hChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(hChosen)}/unread`, null) : null;
   const hl = hChosen ? await apiOr(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife`, null) : null;
-  $('#view').innerHTML = `  ${hGradePanelHtml(hSets, hChosen, hd)}
-  ${hHalfLifePanelHtml(hChosen, hl)}`;
+  $('#view').innerHTML = hHalfLifePanelHtml(hSets, hChosen, hl);
   const hSel = $('#hSet');
   if (hSel) hSel.onchange = () => {
     try { localStorage.setItem(H_SET_KEY, hSel.value); } catch (_) { /* private window */ }
     drawHistory();
   };
-  const hb = $('#hGrade');
-  if (hb && hChosen && hd && !hd.refused) hb.onclick = async () => {
-    const look = (hd.looks || 0) + 1;
-    const msg = look === 1
-      ? 'Run the reserve grade on this set?\n\nThis is the FIRST look at the unread window — data nothing in this system has seen. After it, that is no longer true.'
-      : `Run the reserve grade on this set — look ${look}?\n\nThis window has already been read ${look - 1} time(s). The grade will be recorded as look ${look} and its verdict will say so: the floor it prints is the best case, and the real strength is weaker by an amount nothing here can measure.`;
-    if (!confirm(msg)) return;
-    hb.disabled = true;
-    $('#hGradeMsg').textContent = 'starting…';
-    const started = await tryPost(`api/funnel/set/${encodeURIComponent(hChosen)}/unread`, {}, 'The Stage 4 record set box on History lists what was graded - pick the set there.');
-    if (!started) { hb.disabled = false; $('#hGradeMsg').textContent = ''; return; }
-    hGradeFollow(hChosen, started.token);
-  };
-  if (hd && hd.running && hb) { hb.disabled = true; hGradeFollow(hChosen, hd.running.token); }
   // the half-life run: the ticks are remembered, the press sends them, started and polled
   for (const m of H_HALF_LIVES) {
     const box = $(`#hHl${m}`);
@@ -2598,7 +2606,7 @@ async function drawHistory() {
     const months = H_HALF_LIVES.filter((k) => { const el = $(`#hHl${k}`); return el && el.checked; });
     if (!months.length) { alert('tick at least one half-life: 12, 18, 24, 30, 36 or 48 months'); return; }
     const look = (hl.looks || 0) + 1;
-    if (!confirm(`Retrain ${hl.name} at ${months.join(', ')} month(s)?\n\nEvery ticked half-life is a full retraining of both kinds of forecast, then the same records priced again on the ${hl.layout ? hl.layout.judgeWord : 'untouched'} window beside the unweighted figures. Minutes. This is look ${look}.`)) return;
+    if (!confirm(`Retrain ${hl.name} at ${months.join(', ')} month(s)?\n\nEvery ticked half-life is a full retraining of both kinds of forecast, then the same records priced again on the Held window beside the unweighted figures. Minutes. This is look ${look}.`)) return;
     hlb.disabled = true;
     $('#hHalfLifeMsg').textContent = 'starting…';
     const started = await tryPost(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife`, { months }, 'The Stage 4 record set box on History lists what was retrained - pick the set there.');
@@ -2611,7 +2619,7 @@ async function drawHistory() {
     const name = $('#hHlName').value.trim();
     if (!name) { alert('name the half-life set - something you will recognise on Tune and Greenlight.'); return; }
     const run = hl.runs[0];
-    if (!confirm(`Build the half-life set "${name}" from the newest table of ${hl.name}?\n\nEvery row a half-life won, each record carrying its half-life; rows the unweighted column won are left out. It stands on this set's verdict and appears on Tune and Greenlight.`)) return;
+    if (!confirm(`Build the half-life set "${name}" from the newest table of ${hl.name}?\n\nEvery row a half-life won, each record carrying its half-life; rows the unweighted column won are left out. It appears on Tune and Greenlight, named with this set.`)) return;
     const out = await tryPost(`api/funnel/set/${encodeURIComponent(hChosen)}/halflife/build`, { runId: run.id, name }, 'The Stage 4 record set box on History lists the source set - pick it there.');
     if (out) { alert(`Built: ${out.set.name} - ${out.set.survivors} of ${out.set.of} records, each with its half-life.\n\nIt is on Tune and Greenlight now.`); drawHistory(); }
   };
@@ -2654,7 +2662,7 @@ function tnRememberedWindows() {
 function tnSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to capture the trades of, from every set on this box, newest first">Stage 4 record set<select id="tnSet">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : (x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict')}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
 }
 function tnCaptureBlockHtml(c) {
@@ -2664,7 +2672,7 @@ function tnCaptureBlockHtml(c) {
   const span = (x) => (x ? `${tnDay(x.fromTs)} to ${tnDay(x.toTs)}, ${x.chunks ?? '?'} chunks` : 'not recorded');
   return `<div class="panel" style="margin-top:.5rem">
     <h4 style="margin:0 0 .3rem">the capture on record <span class="muted">taken ${esc(String(c.at || '').slice(0, 16))} under release ${esc(c.release || '?')}${Number(c.times) > 1 ? ` · taken ${c.times} times, this is the latest` : ''}</span></h4>
-    <p class="note"><b>${c.captured} of ${c.survivors} survivors captured</b> · verdict ${esc((c.gate || {}).id || '?')} stood · ${Number(e.train || 0).toLocaleString()} training entries, ${Number(e.test || 0).toLocaleString()} test entries, ${Number(e.hold || 0).toLocaleString()} held-back entries
+    <p class="note"><b>${c.captured} of ${c.survivors} survivors captured</b> · ${Number(e.train || 0).toLocaleString()} training entries, ${Number(e.test || 0).toLocaleString()} test entries, ${Number(e.hold || 0).toLocaleString()} held-back entries
       · by depth among the captured: <b>${esc((c.pick || {}).label || 'none')}</b></p>
     <p class="note">training ${span(w.train)} · test ${span(w.test)} · held-back ${span(w.hold)}</p>
     ${(c.notCaptured || []).length ? `<p class="note"><b class="warn">${c.notCaptured.length} survivor(s) not captured:</b> ${c.notCaptured.slice(0, 3).map((x) => `${esc(x.label)} - ${esc(x.why)}`).join(' · ')}${c.notCaptured.length > 3 ? ` · and ${c.notCaptured.length - 3} more` : ''}</p>` : ''}
@@ -2681,12 +2689,11 @@ function tnCapturePanelHtml(list, chosen, d) {
     <p class="note">The two scans above take a list of trades and price them themselves; a Stage 4 record set holds money per
       window and never the trades. This writes them down: for every survivor that enters at market with no trailing stop,
       every hour the rule spoke on the training, test and held-back windows, with the side, how many members called that
-      side, and the money the simulator made on that one trade. It refuses without a verdict that passed under this release
-      line. Once captured, the set appears in the scan target box above, and a scan that reads the held-back entries is a
+      side, and the money the simulator made on that one trade. Tune comes before Verify and asks nothing of it.
+      Once captured, the set appears in the scan target box above, and a scan that reads the held-back entries is a
       counted look at the held-back window.</p>
     ${tnSetBoxHtml(list, chosen)}
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${Number(d.survivors || 0).toLocaleString()} survivors
-      · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}
       · ${d.capture ? `captured ${esc(String(d.capture.at || '').slice(0, 10))}` : 'no capture yet'}${d.looks ? ` · <b>the held-back entries have been read ${d.looks} time(s)</b>` : ''}</p>
       <div class="row" style="align-items:flex-end">
         <button id="tnCapture" class="pri" ${d.refused ? 'disabled' : ''} title="writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows. A second press replaces the first; the looks already counted stay.">Capture the trades of this set${d.capture ? ' again' : ''}</button>

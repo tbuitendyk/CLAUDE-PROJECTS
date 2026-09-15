@@ -6737,7 +6737,7 @@ function verifyLooksOf(doc, keys, stamped) {
   // a tool run on Tune that read the captured held-back entries (3.92.0): a look, stamped on the capture
   const tuneReads = (((doc.capture || {}).reads) || []).filter((r) => r && r.look != null).length;
   if (tuneReads) what.push(`a scan on Tune read the captured held-back trades ${tuneReads} time(s), each a stamped look`);
-  // a half-life run judged on the Held window (a 70/15/15 set) read it once per press (3.94.0)
+  // the retrain run on History is judged on the Held window on both layouts (3.142.0) and read it once per press
   const halfLifeReads = (doc.halflife || []).filter((r) => r && r.judge === 'hold').length;
   if (halfLifeReads) what.push(`the half-life run on History priced the held-back window ${halfLifeReads} time(s), each a stamped look`);
   return { unstamped: steps + back + 1, stamped: stamped || 0, rides, tuneReads, halfLifeReads, boardLooks, what };
@@ -7376,10 +7376,11 @@ async function stage4GreenlightDry(setId) {
 // task.capture), every survivor that enters at market with no trailing stop,
 // on the training, test and held-back slices. The entries live in a file
 // beside the set; the set holds the summary. A tool run that reads the
-// held-back entries is a look, stamped on the capture. Refuses in words
-// without a verdict that PASSED under this release line, on a blend set,
-// without the parents, without a survivor of the right shape, and while
-// anything heavy is going.
+// held-back entries is a look, stamped on the capture. Refuses in words on a
+// blend set, without the parents, without a survivor of the right shape, and
+// while anything heavy is going. It asks for no verdict: Tune comes before
+// Verify in the order the tabs read (3.142.0), and a half-life set's standing
+// is read where it matters, on Greenlight.
 const CAPTURE_V = 1;
 const CAPTURE_WINDOWS = ['train', 'test', 'hold'];
 const CAPTURE_WINDOW_WORDS = { train: 'training', test: 'test', hold: 'held-back' };
@@ -7407,8 +7408,7 @@ const CAPTURE_NOT_YET = 'this set carries no per-trade capture yet — press "Ca
 function captureRefusalOf(doc) {
   if (!doc.unit) return BLEND_REFUSAL;
   if (doc.derived && !getSet(doc.derived.from)) return 'the set this half-life set was built from is gone, so its standing cannot be read';
-  if (doc.derived && !readHalfLifeRun(doc.derived.from, doc.derived.run)) return 'the retrained members this half-life set was built from are missing beside its source — press the half-life run on History again and build it again';
-  if (!gateOfSet(doc)) return UNREAD_NO_PASS;
+  if (doc.derived && !readHalfLifeRun(doc.derived.from, doc.derived.run)) return 'the retrained members this half-life set was built from are missing beside its source — press Retrain at the ticked half-lives on History again and build it again';
   const parent = getSet((doc.parent || {}).id);
   if (!parent) return 'the stage 3 set this was cut from is gone, so its trades cannot be captured';
   if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast their training window';
@@ -7424,8 +7424,6 @@ function captureRefusalOf(doc) {
 }
 async function tuneCaptureRun(doc, note = null) {
   const S4 = require('./funnelset');
-  const gate = gateOfSet(doc);
-  if (!gate) throw new Error(UNREAD_NO_PASS);
   const join = await funnelVerifyJoin(doc);
   // a half-life set is not a rule's output, so the rule is not asked to give it back
   if (!doc.derived) {
@@ -7436,7 +7434,7 @@ async function tuneCaptureRun(doc, note = null) {
   // the run file beside the source, one member set per half-life, and each
   // record's own half-life from the set
   const hlFile = doc.derived ? readHalfLifeRun(doc.derived.from, doc.derived.run) : null;
-  if (doc.derived && !hlFile) throw new Error('the retrained members this half-life set was built from are missing beside its source — press the half-life run on History again and build it again');
+  if (doc.derived && !hlFile) throw new Error('the retrained members this half-life set was built from are missing beside its source — press Retrain at the ticked half-lives on History again and build it again');
   const hlOf = new Map((doc.derived ? (doc.survivors || []) : []).map((sv) => [sv.label, sv.halfLife]));
   const parent = join.parent;                                   // the stage 3 set
   const shape = relaunchShapeOf(parent);                        // refuses when the stage 2 set is gone
@@ -7509,7 +7507,7 @@ async function tuneCaptureRun(doc, note = null) {
   const had = fresh.capture || null;
   const times = (had ? Number(had.times) || 0 : 0) + 1;
   const file = {
-    v: CAPTURE_V, id: doc.id, at, release: ENGINE_VERSION, times, gate, unit: doc.unit, unitName: doc.unitName || null,
+    v: CAPTURE_V, id: doc.id, at, release: ENGINE_VERSION, times, unit: doc.unit, unitName: doc.unitName || null,
     combo: { trade: rec.trade, ctx1: rec.ctx1 || null, ctx2: rec.ctx2 || null, size: rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1) }, geometry: rec.geometry,
     members: (rec.specs || []).length, fee: { feePerLeg: fee, feeUnits: 'fraction' }, windows: res.windows || null,
     pick: pick ? { by: 'depth', among: 'the captured survivors', label: pick.label, worst: pick.worst, mean: pick.mean } : null,
@@ -7517,7 +7515,7 @@ async function tuneCaptureRun(doc, note = null) {
   };
   writeCapture(doc.id, file);
   fresh.capture = {
-    id: `${doc.id}-c${times}`, at, release: ENGINE_VERSION, times, gate, unit: doc.unit, members: file.members, fee: file.fee, windows: file.windows,
+    id: `${doc.id}-c${times}`, at, release: ENGINE_VERSION, times, unit: doc.unit, members: file.members, fee: file.fee, windows: file.windows,
     survivors: join.rows.length, captured: survivors.length, notCaptured, missing, entries: totals, pick: file.pick,
     rows: survivors.map((sv) => ({ label: sv.label, tHours: sv.tHours, halfLife: sv.halfLife ?? null, entries: { train: sv.entries.train.length, test: sv.entries.test.length, hold: sv.entries.hold.length }, test: sv.money.test, held: sv.money.hold })),
     derived: doc.derived || null,
@@ -7534,7 +7532,6 @@ async function tuneCaptureDry(id) {
   return {
     id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
     ruleSentence: doc.ruleSentence || null, survivors: ((doc.counts || {}).survivors) ?? (doc.survivors || []).length,
-    gate: unreadGateOf(doc), verdicts: (doc.verify || []).length,
     capture: cap,
     looks: cap ? (cap.reads || []).filter((r) => r && r.look != null).length : 0,
     refused: captureRefusalOf(doc),
@@ -7652,11 +7649,15 @@ async function tuneOnCapture(body, tool) {
 // half-life the owner ticked, with each training chunk's weight halving every
 // H days of age multiplied into the set's own training weights; then the same
 // records are priced again on the stretch the retraining never touched (the
-// Reserve for a 61/13/13/13 set, the Held window for a 70/15/15 set), in ONE
+// Held window on both layouts since 3.142.0, the set's own layout), in ONE
 // pass beside the unweighted column, through the stage 3 task. The arithmetic
 // is lib/halflife.js's; the doors, the record on the set and the file beside it
 // are here. Every press is a counted look; the count is information.
-const HALFLIFE_V = 1;
+// 2 since 3.142.0: a run judged on the Held window on the set's own layout. A v1
+// file was judged on the Reserve through a 72% layout that no longer exists, so
+// it reads as absent and its doors say to press the run again (RULE NINE: no
+// reader translates it; a reserve reading cannot become a held one).
+const HALFLIFE_V = 2;
 const halfLifeFile = (setId, runId) => path.join(SETS_DIR, `${setId}-halflife-${runId}.json.gz`);
 function readHalfLifeRun(setId, runId) {
   try {
@@ -7688,15 +7689,10 @@ function halfLifeRefusalOf(doc) {
   const HL = require('./halflife');
   if (!doc.unit) return BLEND_REFUSAL;
   if (doc.derived) return derivedRefusalOf(doc);
-  if (!unreadGateOf(doc)) return UNREAD_NO_PASS;
   const parent = getSet((doc.parent || {}).id);
   if (!parent) return 'the stage 3 set this was cut from is gone, so its records cannot be retrained';
   if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot be named';
   try { HL.retrainLayoutOf(layoutOfSet(doc)); } catch (err) { return err.message; }
-  if (layoutOfSet(doc) === 'reserve61') {
-    const sealed = sealedOnUnitOf(doc);
-    if (!sealed.sealed) return `the sealed window is not intact on this unit — ${sealed.why}`;
-  }
   if (!(doc.survivors || []).length) return 'this set wrote down no settings, so there is nothing to retrain';
   const busy = stageBusy();
   if (busy) return `${busy} — the half-life run waits for the box to be free`;
@@ -7709,8 +7705,6 @@ function halfLifeRefusalOf(doc) {
 }
 async function halfLifeRunOn(doc, months, note = null) {
   const HL = require('./halflife');
-  const gate = unreadGateOf(doc);
-  if (!gate) throw new Error(UNREAD_NO_PASS);
   const join = await funnelVerifyJoin(doc);
   const footing = verifyFooting(doc, join);
   if (!footing.ok) throw new Error(footing.why);
@@ -7721,11 +7715,6 @@ async function halfLifeRunOn(doc, months, note = null) {
   if (idx < 0) throw new Error(`the stage 3 set holds no unit called '${doc.unit}'`);
   const rec = shape.records[idx];
   const layout = HL.retrainLayoutOf((parent.params || {}).windowLayout);
-  let sealed = null;
-  if (layout.judge === 'reserve') {
-    sealed = sealedOnUnitOf(doc);
-    if (!sealed.sealed) throw new Error(`the sealed window is not intact on this unit — ${sealed.why}`);
-  }
   const want = new Set(join.rows.map((r) => r.label));
   const held = new Set(shape.heldOn[idx]);
   const settings = shape.settings.filter((st) => want.has(st.label) && held.has(st.si));
@@ -7758,7 +7747,6 @@ async function halfLifeRunOn(doc, months, note = null) {
     base.keepN = 0;
     const models = unitRows(stage2.id, 'models', rec.blocks.models, rec.u);
     base.unit.members = base.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
-    if (layout.judge === 'reserve') base.unread = { fromTs: sealed.fromTs };
     const payloads = [{ key: HL.NONE, payload: base }];
     for (const t of trained) {
       if (!t || t.refused) continue;
@@ -7785,10 +7773,6 @@ async function halfLifeRunOn(doc, months, note = null) {
     const pr = priced.find((x) => x.key === key) || null;
     let refused = t.refused || null;
     if (!refused && (!pr || !pr.ok)) refused = `the pricing failed: ${String((pr && pr.error) || 'no answer')}`;
-    // ONE STRETCH FOR EVERY COLUMN: on the Reserve the box's data is read on the day, and two readings that reached different ends are not one table
-    if (!refused && layout.judge === 'reserve' && pr.value.unread && noneRes.unread && pr.value.unread.seenToTs !== noneRes.unread.seenToTs) {
-      refused = 'the box\'s data grew between this column and the unweighted one; press again so every column reads one stretch';
-    }
     columns.push({ key, months: t.halfLifeMonths, days: t.halfLifeDays, effectiveDays: t.effectiveDays ?? null, weighedByMoney: t.weighedByMoney ?? null, trainedBandPct: t.trainedBandPct ?? null, refused });
     byKey[key] = refused ? null : pr.value;
   }
@@ -7810,16 +7794,16 @@ async function halfLifeRunOn(doc, months, note = null) {
   });
   const read = HL.readTable(rows, columns);
   const t0 = trained.find((t) => t && !t.refused) || null;
-  const window = layout.judge === 'reserve'
-    ? { ...noneRes.unread }
-    : (() => { const w = ((((parent.windows || {}).units) || {})[doc.unit] || {}).hold || null; return w ? { fromTs: w.fromTs, toTs: w.toTs, chunks: w.chunks } : { chunks: noneRes.counts ? noneRes.counts.hold : null }; })();
+  // THE HELD WINDOW THE TABLE WAS JUDGED ON, as the stage 3 set recorded it for this unit (3.85.0)
+  const heldWindow = ((((parent.windows || {}).units) || {})[doc.unit] || {}).hold || null;
+  const window = heldWindow ? { fromTs: heldWindow.fromTs, toTs: heldWindow.toTs, chunks: heldWindow.chunks } : { chunks: noneRes.counts ? noneRes.counts.hold : null };
   const at = new Date().toISOString();
   const fresh = getSet(doc.id);
   if (!fresh) throw new Error('the set went away while its records were being retrained');
   const had = fresh.halflife || [];
   const block = {
     id: `${doc.id}-h${had.length + 1}`, at, release: ENGINE_VERSION, look: had.length + 1,
-    gate, judge: layout.judge, judgeWord: layout.judgeWord, layout: layout.layout, shares: { train: layout.train, test: layout.test, untouched: layout.untouched },
+    judge: layout.judge, judgeWord: layout.judgeWord, layout: layout.layout, shares: { train: layout.train, test: layout.test, hold: layout.hold, reserve: layout.reserve },
     months, columns, window,
     counts: { train: t0 ? t0.counts.train : null, test: t0 ? t0.counts.test : null, hold: t0 ? t0.counts.hold : null, original: noneRes.counts || null },
     unit: doc.unit, unitName: doc.unitName || null, members: specs.length, fee: { feePerLeg: fee, feeUnits: 'fraction' },
@@ -7840,7 +7824,9 @@ async function halfLifeRunOn(doc, months, note = null) {
 // half-life that won on it; rows the unweighted column won are left out. A
 // Stage 4 record set document like any cut, marked as built from its source
 // and its run, on the same unit and parent, with the source's rule and check;
-// named by the owner. It stands on the source's PASS.
+// named by the owner. Its standing on Greenlight is its source's PASS, read
+// there (gateOfSet); nothing here asks for a verdict, because History comes
+// before Verify (3.142.0).
 function buildHalfLifeSet(setId, asked = {}) {
   const HL = require('./halflife');
   const S4 = require('./funnelset');
@@ -7849,7 +7835,7 @@ function buildHalfLifeSet(setId, asked = {}) {
   if (src.derived) throw new Error('a half-life set is built from the set it came from, not from another half-life set');
   const run = (src.halflife || []).find((r) => r.id === String(asked.runId || ''));
   if (!run) throw new Error('name which half-life table to build from');
-  if (!readHalfLifeRun(src.id, run.id)) throw new Error('the retrained members for that table are missing beside the set — press the half-life run again');
+  if (!readHalfLifeRun(src.id, run.id)) throw new Error('the retrained members for that table are missing beside the set — press Retrain at the ticked half-lives again');
   const kept = (run.rows || []).filter((r) => r.best && r.best !== HL.NONE);
   if (!kept.length) throw new Error('no record improved with any half-life on this table, so there is nothing to build');
   const name = String(asked.name ?? '').trim().slice(0, 80);
@@ -7892,7 +7878,6 @@ async function halfLifeDry(id) {
   return {
     id: doc.id, name: doc.name, unit: doc.unit || null, unitName: doc.unitName || null, release: doc.release || null,
     ruleSentence: doc.ruleSentence || null, survivors: ((doc.counts || {}).survivors) ?? (doc.survivors || []).length,
-    gate: unreadGateOf(doc), verdicts: (doc.verify || []).length,
     windowLayout: layoutOfSet(doc), layout, layoutWhy,
     halfLives: HL.HALF_LIVES_MONTHS.slice(),
     runs: doc.halflife || [], looks: (doc.halflife || []).length,
