@@ -1247,3 +1247,37 @@ H2.4, H2.5) run in the background while the release is committed and
 deployed at the owner's word ("YOUR PRIORITY IS TO GET YOUR WORK COMMITTED
 AND DEPLOYED"); anything they find is a follow-up release, and said.
 
+## AO. Where the loop stands (2026-09-15, after 3.148.0)
+
+Done and on the box: release 1 (3.147.0, 3.147.1, 3.147.2) and release 2
+(3.148.0), each deployed, served and recorded; the fabricated chains green
+on both; 36 guards caught for release 1, the release-2 guards run after the
+deploy and reported below.
+
+PARKED, not stopped, both at the owner's word that tokens are short and the
+priority is what is committed and deployed:
+
+- **Release 3 (Tune's stop and ladder inside the stage 3 pricing, first
+  digit as written).** RULE ONE-C says the first digit moves only after the
+  box is read and the owner is told what it costs: every chain on the box
+  refuses a parent written under another first digit. Read today with
+  `uts-s3-shape.sh`: S3 #1a (600 units), S3 #1b (300 units, the parent of
+  every rule the owner has cut), S3 #1c (paused), S3-Pasers #1a and #1b, and
+  every Stage 4 set cut from them. Moving the first digit strands all of
+  them: no new cut, read, capture or half-life on any of them until they are
+  run again. That is the owner's call and it has not been asked yet, so
+  release 3 is parked until it is. The alternative worth putting to the
+  owner: build the stop and the ladder as a NEW measurement beside the old
+  (second digit), read by the pricing only when a set carries it, so
+  yesterday's sets keep reading and only new runs carry the new figures.
+- **Release 4 (the picture through every period and the drill-down on
+  Greenlight).** Its success rules are written (H4.x); nothing is built. It
+  does not depend on release 3 and is the next thing to build when the loop
+  resumes.
+
+What the owner has on Reserve now, one press each, minutes: "Price the
+reserve board" on the 98-setting rule prices its unit's board; the reserve
+read then reads the survivors off it, and the set's block prints the window
+it read beside the release-1 set's, which is the H2.3 comparison on the
+box. Nothing on the box has been priced by a session.
+
