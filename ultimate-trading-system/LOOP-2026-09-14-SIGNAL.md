@@ -1013,3 +1013,20 @@ runs on that survivor over the windows ticked and prices the choice as one
 row (the no-stop choice as the baseline row), drawn first and green; the
 prompts name the survivor and the windows and say nothing is applied to any
 trading machine. Decision 95. Second digit.
+
+## AJ. Each survivor against the four at its own hold length — owner GO NOW! 2026-09-15 (3.146.0)
+
+"So those fail verdicts on the verified tab are far too pessimistic ... give
+some constructive ideas about how to fix that incorrect verdict, and it is
+incorrect. Trust me." Read off the box: the 98-setting rule on LTCUSDT
+alongside DOGEUSDT and LINKUSDT daily-4d failed all three of its verdicts on
+one line, the average survivor ($214.03) not beating being long every period
+at $340.21 — the figure at the longest of seven hold lengths in the plateau,
+held by 6 of 98 survivors; at their own hold length 98 of 98 beat it. The
+owner chose option 1: "apples to apples". Each survivor is now read against
+the four at its own hold length, the bar share of survivors is the gate, the
+average and the hindsight best of the four are printed and never gate.
+Decision 96; VERIFY-DESIGN.md Part 8 marked built. Second digit. The owner
+then ordered every stored FAIL verdict blown away for a re-run under the
+fair comparison; done after the deploy, through a box-side script, and
+recorded in section AK.

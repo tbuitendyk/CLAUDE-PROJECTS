@@ -1660,6 +1660,15 @@ const GUARDS = [
     'theTabsReadInProcessingOrderAndNoScreenBeforeVerifyAsksForAVerdict', 'Tune refuses to capture until Verify, which comes after it, has stamped a verdict'],
   [path.join(ROOT, 'lib', 'stages.js'), "  const testWindow = ((((parent.windows || {}).units) || {})[doc.unit] || {}).test || null;", "  const testWindow = ((((parent.windows || {}).units) || {})[doc.unit] || {}).hold || null;",
     'theRunPricesEveryColumnOnOneStretchAndTheUnweightedColumnIsTheRecordsOwn', 'the table says it was judged on the held-back window\'s dates while its money is the test window\'s'],
+  // ---- EACH SURVIVOR AGAINST THE FOUR AT ITS OWN HOLD LENGTH, THE BAR SHARE OF THEM THE GATE (3.146.0, owner order 2026-09-15: "apples to apples") ----
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "    const four = byKey ? byKey[key] || null : null;", "    const four = byKey ? { alwaysLong: c.alwaysLong && c.alwaysLong.hi, alwaysShort: c.alwaysShort && c.alwaysShort.hi, buyHold: c.buyHold && c.buyHold.hi, shortHold: c.shortHold && c.shortHold.hi } : null;",
+    'eachSurvivorIsReadAgainstTheFourAtItsOwnHoldLengthAndTheBarShareOfThemIsTheGate', 'every survivor is held to the four at the worst hold length in use again, and a rule whose plateau spans short and long holds fails on the longest one\'s figure'],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "    pass: comparisons.known && n > 0 && knownN === n && clearing >= ownBar,", "    pass: comparisons.known && n > 0 && knownN === n && clearing >= 1,",
+    'eachSurvivorIsReadAgainstTheFourAtItsOwnHoldLengthAndTheBarShareOfThemIsTheGate', 'one survivor clearing passes the whole set, whatever share was declared'],
+  [path.join(ROOT, 'lib', 'funnelverify.js'), "    const clears = known && inMoney && GATED.every((k) => beats[k] === true);", "    const clears = known && GATED.every((k) => beats[k] === true);",
+    'eachSurvivorIsReadAgainstTheFourAtItsOwnHoldLengthAndTheBarShareOfThemIsTheGate', 'a survivor that lost money clears because the four lost more'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    out.byKey[k] = one;", "    out.byKey[k] = null;",
+    'theVerdictOnTheFixtureIsWhatTheRowsSay', 'the set hands the verdict no figures by hold length, so no survivor is ever known at its own and nothing passes'],
   // ---- THE STOP FORCED ONTO A SURVIVOR AS ONE ROW OF THE TUNER'S TABLE (3.145.0, owner order 2026-09-15) ----
   [path.join(ROOT, 'lib', 'stoptuner.js'), "    if (p.mae > S) { // strict: the stop sits just above S, sparing the entry at S", "    if (p.mae >= S) { // strict: the stop sits just above S, sparing the entry at S",
     'sacrificeCurveShowsBothSidesPerStopLevel', 'the one arithmetic every row of the table is priced by counts the entry sitting exactly on the stop as cut, so the tightest stop forfeits the very winner it was chosen to spare'],

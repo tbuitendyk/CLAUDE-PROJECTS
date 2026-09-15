@@ -1351,3 +1351,27 @@ carried out 2026-08-28 under its own GO — decision 50.
     survivors is not a survivor, so nothing can be forced onto it. The
     older pilot route and file and the Trade screens' reading of them are
     untouched, and no screen writes them now. Second digit.
+
+96. **Each survivor is judged against the four comparisons at its own hold
+    length, and the bar share of survivors is the gate** (3.146.0, owner
+    order 2026-09-15: "go with option 1 ... it's apples to apples instead of
+    letting 'against nothing' rule actually be 'against something', namely an
+    hindsight selection of the best of its set"; VERIFY-DESIGN.md Part 8).
+    Since 3.100.0 the verdict held the AVERAGE of every survivor to the best
+    of the four comparisons read at the WORST hold length any survivor used.
+    Being long every period grows with the hold length, because a decision
+    every day with a 161-hour hold keeps nearly seven positions open at once:
+    on the owner's 98-setting rule it is -$7.23 at 41 hours and $340.21 at
+    161, only 6 of the 98 hold for 161 hours, and every one of the 98 beats
+    it at its own hold length, by $44 to $384 — yet the set read FAIL three
+    times, on that one line, with every other gate passing. Now the four are
+    kept per hold length beside the set and each survivor is read against
+    them at its own: in the money, and ahead of every one of the four by at
+    least a cent. The set passes when the bar share of its survivors do, the
+    same share the copies bar is declared at, resolved on the survivor count;
+    a survivor whose hold length has no figure is counted and never passes.
+    The average and the best of the four at the worst hold length stay
+    printed as the hindsight reading they are, and gate nothing; the reserve
+    grade reads the same way; the stage-engine check's five gates read their
+    own fields and are untouched. Verdict blocks stamped before this carry no
+    own-hold reading and draw as they were written. Second digit.

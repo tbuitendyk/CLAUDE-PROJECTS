@@ -134,10 +134,11 @@ const settle = (statusOf) => new Promise((resolve) => {
 });
 // the rows a copies read is made of, in the shape lib/stages.js hands them in
 const rows = (n = 3, K = 10) => Array.from({ length: n }, (_, i) => ({
-  si: i, label: `s${i}`, avgTest: 10 - i, avgHold: 5 - i * 0.5, avgTrades: 4, avgVsLong: 1, beat: 8, pairs: 12, avgLead: 1.2,
+  si: i, label: `s${i}`, tHours: 41, weekdaysOnly: false, avgTest: 10 - i, avgHold: 5 - i * 0.5, avgTrades: 4, avgVsLong: 1, beat: 8, pairs: 12, avgLead: 1.2,
   noiseTest: Array.from({ length: K }, (_, d) => 8 - d * 0.1), noiseHold: Array.from({ length: K }, (_, d) => 4 - d * 0.1),
 }));
-const CONTROLS = { known: true, keys: ['all|41'], of: 1, missing: 0, alwaysLong: { lo: 3, hi: 3 }, alwaysShort: { lo: -4, hi: -4 }, buyHold: { lo: 2, hi: 2 }, shortHold: { lo: -3, hi: -3 } };
+// the four at the one hold length these rows use, as lib/stages.js controlsOf hands them in: the span, and the figures by key (3.146.0)
+const CONTROLS = { known: true, keys: ['all|41'], of: 1, missing: 0, alwaysLong: { lo: 3, hi: 3 }, alwaysShort: { lo: -4, hi: -4 }, buyHold: { lo: 2, hi: 2 }, shortHold: { lo: -3, hi: -3 }, byKey: { 'all|41': { alwaysLong: 3, alwaysShort: -4, buyHold: 2, shortHold: -3 } } };
 
 module.exports = {
   // THE RULES BLOCK IS WRITTEN BEFORE THE NUMBERS. In the press, the rules are
@@ -940,11 +941,12 @@ module.exports = {
   // where the rule beats both one-trade comparisons and loses to being short
   // every period.
   theRuleMustBeatTheBestOfTheFourNotOnePairOfThem() {
-    const rows = [{ avgHold: 10, avgTrades: 5, avgVsLong: 1 }];
+    const rows = [{ si: 0, label: 'one', tHours: 65, weekdaysOnly: false, avgHold: 10, avgTrades: 5, avgVsLong: 1 }];
     const four = (al, as, bh, sh) => ({
       known: true, keys: ['all|65'], of: 1, missing: 0,
       alwaysLong: { lo: al, hi: al }, alwaysShort: { lo: as, hi: as },
       buyHold: { lo: bh, hi: bh }, shortHold: { lo: sh, hi: sh },
+      byKey: { 'all|65': { alwaysLong: al, alwaysShort: as, buyHold: bh, shortHold: sh } },
     });
     // beats all four: the best of them is buying and going away at 4
     const win = V.heldBackRead(rows, four(1, 2, 4, 3));
@@ -952,27 +954,80 @@ module.exports = {
     assert.strictEqual(win.comparisons.beatsBest, true);
     assert.strictEqual(win.pass, true, 'beating every one of the four stands');
     // THE CASE THE OLD GATE MISSED: both one-trade comparisons beaten, and
-    // being short every period made more than the rule did.
+    // being short every period made more than the rule did. On one hold
+    // length the survivor's own four ARE the set's four, so this reads the
+    // same under the own-hold gate (3.146.0): all four, not one pair.
     const miss = V.heldBackRead(rows, four(1, 20, 4, 3));
     assert.strictEqual(miss.comparisons.beatsBuyHold, true, 'the old gate would have passed this');
     assert.strictEqual(miss.comparisons.beatsShortHold, true, 'and this');
     assert.strictEqual(miss.comparisons.beatsAlwaysShort, false, 'but being short every period made more');
     assert.strictEqual(miss.comparisons.best.key, 'alwaysShort');
-    assert.strictEqual(miss.pass, false, 'the best of the four is what decides');
+    assert.deepStrictEqual({ pass: miss.pass, clearing: miss.own.clearing, beatsAlwaysShort: miss.own.rows[0].beats.alwaysShort }, { pass: false, clearing: 0, beatsAlwaysShort: false }, 'every one of the four decides, at the survivor\'s own hold length');
+  },
+
+  // EACH SURVIVOR AT ITS OWN HOLD LENGTH, AND THE BAR SHARE OF THEM IS THE
+  // GATE (3.146.0, owner order 2026-09-15: "apples to apples instead of
+  // letting 'against nothing' rule actually be 'against something', namely an
+  // hindsight selection of the best of its set"; VERIFY-DESIGN.md Part 8).
+  // The owner's 98-setting rule in miniature: being long every period is -$7
+  // at a 41-hour hold and $340 at 161 hours, because a decision every day
+  // with a 161-hour hold keeps nearly seven positions open at once. Held to
+  // the $340 figure, an average of mostly short holds read FAIL while every
+  // survivor beat the comparison priced at its own hold length.
+  //
+  // Watched failing: read every survivor against the worst-hold figures and
+  // the two 41-hour survivors stop clearing; gate on at least one survivor
+  // instead of the bar share and the three-of-four table passes.
+  eachSurvivorIsReadAgainstTheFourAtItsOwnHoldLengthAndTheBarShareOfThemIsTheGate() {
+    const rules = V.declareRules({ kind: 'scrambles', k: 80, barPct: 80 });
+    const byKey = {
+      'all|41': { alwaysLong: -7, alwaysShort: -162, buyHold: 51, shortHold: -51 },
+      'all|161': { alwaysLong: 340, alwaysShort: -510, buyHold: 72, shortHold: -73 },
+    };
+    const controls = { known: true, keys: ['all|41', 'all|161'], of: 2, missing: 0, alwaysLong: { lo: -7, hi: 340 }, alwaysShort: { lo: -510, hi: -162 }, buyHold: { lo: 51, hi: 72 }, shortHold: { lo: -73, hi: -51 }, byKey };
+    const row = (si, label, t, held) => ({ si, label, tHours: t, weekdaysOnly: false, avgHold: held, avgTrades: 200, avgVsLong: held - byKey[`all|${t}`].alwaysLong });
+    // every survivor ahead of its own four: the old gate said FAIL (average 220 against the hindsight 340), this one PASS
+    const all = V.heldBackRead([row(0, 'a', 41, 180), row(1, 'b', 41, 120), row(2, 'c', 161, 384), row(3, 'd', 161, 350)], controls, rules);
+    assert.deepStrictEqual({ key: all.comparisons.best.key, hi: all.comparisons.best.hi, beatsBest: all.comparisons.beatsBest, real: all.real }, { key: 'alwaysLong', hi: 340, beatsBest: false, real: 258.5 }, 'the hindsight reading is still printed: the average behind the best of the four at the worst hold length');
+    assert.deepStrictEqual({ pass: all.pass, clearing: all.own.clearing, bar: all.own.bar, barPct: all.own.barPct, keys: all.own.holdLengths, each: all.own.beatingEach }, { pass: true, clearing: 4, bar: 4, barPct: 80, keys: ['all|161', 'all|41'], each: { alwaysLong: 4, alwaysShort: 4, buyHold: 4, shortHold: 4 } }, 'four of four clear at their own hold length, and that is the gate');
+    assert.deepStrictEqual(all.own.rows.map((r) => [r.label, r.key, r.clears]), [['a', 'all|41', true], ['b', 'all|41', true], ['c', 'all|161', true], ['d', 'all|161', true]]);
+    // one 161-hour survivor behind its OWN being long every period: it does not clear, three of four is under the bar of four, FAIL
+    const three = V.heldBackRead([row(0, 'a', 41, 180), row(1, 'b', 41, 120), row(2, 'c', 161, 384), row(3, 'd', 161, 300)], controls, rules);
+    assert.deepStrictEqual({ pass: three.pass, clearing: three.own.clearing, bar: three.own.bar, d: three.own.rows[3].clears, dBeatsLong: three.own.rows[3].beats.alwaysLong }, { pass: false, clearing: 3, bar: 4, d: false, dBeatsLong: false }, 'a survivor is held to its own hold length, not to a shorter one');
+    // the bar is a share: at 50% three of four clears
+    const half = V.heldBackRead([row(0, 'a', 41, 180), row(1, 'b', 41, 120), row(2, 'c', 161, 384), row(3, 'd', 161, 300)], controls, V.declareRules({ kind: 'scrambles', k: 80, barPct: 50 }));
+    assert.deepStrictEqual({ pass: half.pass, bar: half.own.bar }, { pass: true, bar: 2 });
+    // a survivor whose hold length has no figure is counted, and never passes
+    const gap = V.heldBackRead([row(0, 'a', 41, 180), { si: 1, label: 'e', tHours: 89, weekdaysOnly: false, avgHold: 500, avgTrades: 200, avgVsLong: 1 }], controls, rules);
+    assert.deepStrictEqual({ pass: gap.pass, unknown: gap.own.unknown, incomplete: gap.incomplete, e: gap.own.rows[1].known }, { pass: false, unknown: 1, incomplete: true, e: false });
+    // in the money is part of clearing: four negative comparisons are beaten by a loss, and that is not a pass
+    const under = V.heldBackRead([{ si: 0, label: 'f', tHours: 41, weekdaysOnly: false, avgHold: -1, avgTrades: 5, avgVsLong: 6 }], { ...controls, keys: ['all|41'], byKey: { 'all|41': { alwaysLong: -7, alwaysShort: -9, buyHold: -2, shortHold: -3 } } }, rules);
+    assert.deepStrictEqual({ pass: under.pass, clears: under.own.rows[0].clears, beatsAll: Object.values(under.own.rows[0].beats).every(Boolean) }, { pass: false, clears: false, beatsAll: true });
+    // the key a survivor is read under is the one the four are kept under beside the set
+    assert.strictEqual(V.ownKeyOf({ tHours: 41, weekdaysOnly: true }), 'wk|41');
+    assert.strictEqual(V.ownKeyOf({ tHours: 161, weekdaysOnly: false }), 'all|161');
+    const st = src('lib/stages.js');
+    assert.ok(st.includes("const controlKeyOf = (r) => `${r && r.weekdaysOnly ? 'wk' : 'all'}|${Number(r && r.tHours)}`;") && st.includes('out.byKey[k] = one;'), 'the set keeps the four by the same key the verdict reads them under');
+    // the sentence leads with the gate and prints the average as hindsight
+    const b = V.buildBlock({ rules, footing: { ok: true, had: 4 }, looks: { unstamped: 1 }, heldBack: all, copies: { copies: 80, beats: 80, bar: 64, barPct: 80, chance: 0.21, pass: true }, survivors: { survivors: 4, passing: 4, byChance: 0.8 }, sanity: { known: true, ok: true, board: { losing: 0.47 }, threshold: 45 } });
+    assert.strictEqual(b.verdict.pass, true);
+    assert.ok(/on the held-back window 4 of 4 survivors made money and beat each of the four comparisons at their own hold length, the bar being 4 \(80%\); averaged, the 4 survivors made \$258\.50 a setting, not beating the best of the four, which was being long every period at \$340\.00 at the worst hold length in use, a hindsight reading and never a gate/.test(b.verdict.sentence), b.verdict.sentence);
   },
 
   // A MISSING ONE OF THE FOUR IS UNKNOWN, AND UNKNOWN NEVER PASSES. Beating
   // three of four says nothing at all about the one nobody priced, so the best
   // of them cannot be named and there is no bar to clear.
   aMissingOneOfTheFourLeavesNoBestAndNothingPasses() {
-    const rows = [{ avgHold: 10, avgTrades: 5, avgVsLong: 1 }];
+    const rows = [{ si: 0, label: 'one', tHours: 65, weekdaysOnly: false, avgHold: 10, avgTrades: 5, avgVsLong: 1 }];
     const r = V.heldBackRead(rows, {
       known: true, keys: ['all|65'], of: 1, missing: 0,
       alwaysLong: { lo: 1, hi: 1 }, buyHold: { lo: 1, hi: 1 }, shortHold: { lo: 1, hi: 1 },
+      byKey: { 'all|65': { alwaysLong: 1, alwaysShort: null, buyHold: 1, shortHold: 1 } },
     });
     assert.strictEqual(r.comparisons.best, null, 'three of four names no best');
     assert.strictEqual(r.comparisons.beatsBest, null);
     assert.strictEqual(r.pass, false, 'unknown never passes');
+    assert.deepStrictEqual({ known: r.own.rows[0].known, clears: r.own.rows[0].clears, unknown: r.own.unknown }, { known: false, clears: false, unknown: 1 }, 'at its own hold length too, three of four is unknown');
     assert.ok(/best of them is unknown/.test(V.verdict({ heldBack: r, footing: {}, copies: {}, survivors: {}, sanity: {} }).sentence),
       'and the sentence says so rather than printing three of four as though they were all of them');
   },
@@ -1005,8 +1060,13 @@ module.exports = {
     // 3.143.3 (owner: "do the same on verify" as the break between Tune's two tables): the panel's
     // second and third tables each sit a clear gap below the table above, never on its next line
     const hb = ui.slice(ui.indexOf('function heldBackPanel(title, h, c) {'), ui.indexOf('\n}\n', ui.indexOf('function heldBackPanel(title, h, c) {')));
-    assert.strictEqual((hb.match(/<div class="scrollx"/g) || []).length, 3, 'the panel no longer draws three tables');
-    assert.strictEqual((hb.match(/<div class="scrollx" style="margin-top:\.8rem"><table>/g) || []).length, 2, 'a table on the panel runs straight on from the one above it again, with no break between them');
+    assert.strictEqual((hb.match(/<div class="scrollx"/g) || []).length, 4, 'the panel no longer draws four tables: the survivors, the four, the hindsight best of them, and each survivor at its own hold length (3.146.0)');
+    assert.strictEqual((hb.match(/<div class="scrollx" style="margin-top:\.8rem"><table>/g) || []).length, 3, 'a table on the panel runs straight on from the one above it again, with no break between them');
+    // THE GATE IS THE OWN-HOLD TABLE, the best of the four a hindsight reading (3.146.0)
+    assert.ok(hb.indexOf('>best of the four<') < hb.indexOf('>survivors beating all four at their own hold length<'), 'the own-hold reading is not drawn under the hindsight one');
+    assert.ok(/this read<\/th>[\s\S]*?\$\{o \? \(o\.pass \? '<b class="pos">STANDS<\/b>' : '<b class="neg">FAILS<\/b>'\)/.test(hb), 'STANDS or FAILS is not read off each survivor at its own hold length');
+    assert.ok(!/t\.best\.beaten && h\.real > 0 \? '<b class="pos">STANDS<\/b>'/.test(hb), 'the hindsight best of the four still says STANDS');
+    assert.ok(/information only, never a gate/.test(hb), 'the hindsight reading does not say it is information only');
     // the prose line and every part of it that flipped subject are gone
     assert.ok(!/against always long`/.test(ui), 'the against-always-long figure is off this line (owner, 2026-09-10)');
     assert.ok(!/beatsBuyHold \? 'beaten'/.test(ui), 'no screen marks a comparison from a stored flag');
@@ -1014,7 +1074,8 @@ module.exports = {
     // every column carries its subject in the heading
     for (const h of ['survivors', 'held-back \\$ a setting', 'trades a setting', 'no figure',
       'comparison', 'it made', 'rule ahead by', 'beaten by rule',
-      'best of the four', 'rule ahead by it', 'this read']) {
+      'best of the four', 'rule ahead by it', 'hindsight reading',
+      'survivors beating all four at their own hold length', 'the bar', 'hold lengths in use', 'this read', 'all four at its own hold']) {
       assert.ok(new RegExp(`>${h}<`).test(ui), `the table needs a "${h}" heading`);
     }
     // and the three states are all reachable

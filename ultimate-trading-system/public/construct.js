@@ -106,6 +106,7 @@ function heldBackPanel(title, h, c) {
   }
   const t = cmpRows(h.real, c);
   const many = (c.keys || []).length > 1;
+  const o = h.own || null;    // each survivor at its own hold length (3.146.0); absent on a block stamped before it existed
   return `<p class="note"><b>${esc(title)}</b></p>
     <div class="scrollx"><table><thead><tr>
       <th title="how many settings the rule keeps on this unit">survivors</th>
@@ -129,16 +130,26 @@ function heldBackPanel(title, h, c) {
       <td>${sgn(r.gap)}</td>
       <td>${yn(r.beaten)}</td></tr>`).join('')}</tbody></table></div>
     <div class="scrollx" style="margin-top:.8rem"><table><thead><tr>
-      <th title="the highest of the four. It is the one the rule has to beat, because a rule that leans one way matches the window about half the time by chance.">best of the four</th>
-      <th title="the rule's money minus the best of the four. A negative figure means the rule made less than the best simple thing available.">rule ahead by it</th>
-      <th title="whether this read stands: in the money, and ahead of the best of the four">this read</th>
+      <th title="the highest of the four, read at the worst of the hold lengths these settings use. Knowing which of the four to be on is itself a forecast, so this is a hindsight reading and never a gate.">best of the four</th>
+      <th title="the average survivor's money minus the best of the four. A negative figure means the average made less than the best simple thing available at the worst hold length.">rule ahead by it</th>
+      <th title="the hindsight reading, information only: whether the average survivor is in the money and ahead of the best of the four at the worst hold length">hindsight reading</th>
     </tr></thead><tbody><tr>
       <td>${t.best ? `${t.best.word} at ${money(t.best.made)}` : '<b class="warn">not known - one of the four has no figure</b>'}</td>
       <td>${sgn(t.best ? t.best.gap : null)}</td>
-      <td>${t.best == null ? '<b class="warn">INCOMPLETE, never a pass</b>'
-    : (t.best.beaten && h.real > 0 ? '<b class="pos">STANDS</b>' : '<b class="neg">FAILS</b>')}</td>
+      <td>${t.best == null ? '<span class="warn">not known</span>'
+    : (t.best.beaten && h.real > 0 ? '<span class="pos">the average is ahead</span>' : '<span class="neg">the average is behind</span>')} <span class="muted">· information only, never a gate</span></td>
     </tr></tbody></table></div>
-    ${many ? `<p class="note muted">These settings use ${(c.keys || []).length} different hold lengths, so each comparison is read at the worst of them.</p>` : ''}`;
+    <div class="scrollx" style="margin-top:.8rem"><table><thead><tr>
+      <th title="each survivor read against the four at its own hold length: in the money, and ahead of every one of them by at least a cent">survivors beating all four at their own hold length</th>
+      <th title="how many of them must, the same share as the bar on the scrambled copies, declared before the numbers and resolved on the survivor count">the bar</th>
+      <th title="the hold lengths these settings use: all is 24/7, wk is 24/5, then the hours">hold lengths in use</th>
+      <th title="whether this read stands: the bar share of survivors in the money and ahead of all four at their own hold length. This is the gate.">this read</th>
+    </tr></thead><tbody><tr>
+      <td>${o ? `<b>${o.clearing}</b> of ${o.survivors}${o.unknown ? ` <span class="warn">(${o.unknown} with no figure at their hold length, which never passes)</span>` : ''}` : '<span class="muted">not read on this block</span>'}</td>
+      <td>${o ? `${o.bar} (${o.barPct}%)` : '&mdash;'}</td>
+      <td>${o ? esc((o.holdLengths || []).join(', ')) : (many ? esc((c.keys || []).join(', ')) : '&mdash;')}</td>
+      <td>${o ? (o.pass ? '<b class="pos">STANDS</b>' : '<b class="neg">FAILS</b>') : '<span class="muted">stamped before this reading existed; the hindsight reading above was the gate then</span>'}</td>
+    </tr></tbody></table></div>`;
 }
 
 const money = (v) => {
@@ -2089,17 +2100,20 @@ function vLinesHtml(b) {
 function vSurvivorsTableHtml(b) {
   const rows = ((b.survivors || {}).rows) || [];
   if (!rows.length) return '';
+  // each survivor at its own hold length (3.146.0), by the setting's name; a block stamped before it existed has none
+  const ownBy = new Map((((b.heldBack || b.read || {}).own || {}).rows || []).map((x) => [x.label, x]));
   return `<div class="scrollx" style="max-height:24rem;overflow-y:auto"><table><thead><tr>
     <th title="the setting, by the name the board gives it">setting</th>
     <th title="dollars on the held-back window, the once-only look">avg held-back $</th>
     <th title="positions taken on the held-back window">trades</th>
     <th title="its held-back dollars against simply holding the coin over the same days">vs always long $</th>
+    <th title="whether this survivor, at its own hold length, is in the money and ahead of all four comparisons by at least a cent. The set's gate counts these.">all four at its own hold</th>
     <th title="as stored on the record: of its own null copies, raw dollars over every deal, how many its held-back money beat">beat its own null set</th>
     <th title="how many deals the stored figure is over, which may be more than the copies kept">null copies</th>
     <th title="as stored on the record: how far its held-back money sits above the typical copy, over the population spread">lead</th>
     <th title="read here: of the copies kept, how many its held-back money beats by at least a cent, against the same bar as the set">beats N of K</th>
     <th title="this survivor's own reading against its own copies at the same bar. It never picks a survivor and never gates the set.">own verdict</th>
-  </tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.label)}</td><td class="${(r.held || 0) >= 0 ? 'pos' : 'neg'}">${money(r.held)}</td><td>${r.trades == null ? '—' : r.trades}</td><td>${money(r.vsLong)}</td><td>${r.storedBeat == null ? '—' : r.storedBeat}</td><td>${r.storedPairs == null ? '—' : r.storedPairs}</td><td>${vFix(r.storedLead)}</td><td>${r.beats} of ${r.copiesKept}</td><td class="${r.pass ? 'pos' : 'neg'}">${r.pass ? 'PASS' : 'FAIL'}</td></tr>`).join('')}</tbody></table></div>
+  </tr></thead><tbody>${rows.map((r) => `<tr><td>${esc(r.label)}</td><td class="${(r.held || 0) >= 0 ? 'pos' : 'neg'}">${money(r.held)}</td><td>${r.trades == null ? '—' : r.trades}</td><td>${money(r.vsLong)}</td><td>${(() => { const x = ownBy.get(r.label); return !x ? '<span class="muted">not read</span>' : !x.known ? '<span class="warn">no figure at ${esc(x.key)}</span>' : x.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>'; })()}</td><td>${r.storedBeat == null ? '—' : r.storedBeat}</td><td>${r.storedPairs == null ? '—' : r.storedPairs}</td><td>${vFix(r.storedLead)}</td><td>${r.beats} of ${r.copiesKept}</td><td class="${r.pass ? 'pos' : 'neg'}">${r.pass ? 'PASS' : 'FAIL'}</td></tr>`).join('')}</tbody></table></div>
   <p class="note muted">${rows.length} survivors, every one of them, in the set's own order. There is no sort on this table: a sort is a look.</p>`;
 }
 function vBlockHtml(b, isVerdict) {
@@ -2114,7 +2128,7 @@ function vBlockHtml(b, isVerdict) {
   return `<div class="panel" style="margin-top:.5rem">
     <h4 style="margin:0 0 .3rem">${isVerdict ? 'The verdict' : `look ${b.look}`} - <b class="${v.pass ? 'pos' : 'neg'}">${v.pass ? 'PASS' : 'FAIL'}</b> <span class="muted">stamped ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')}</span></h4>
     <p class="note">${esc(v.sentence || '')}</p>
-    <p class="note"><b>Rules declared before the numbers:</b> bar ${r.bar} of ${r.copies} copies (${r.barPct}%, ${esc(tags.bar || '')}${r.barChanged ? `, changed from the set's own ${r.ownBarPct}%` : ''}); noise must lose at least ${r.sanityPct}% (${esc(tags.sanity || '')}); comparisons gated: all four, and the rule must beat the best of them (${esc(tags.comparisons || '')}).</p>
+    <p class="note"><b>Rules declared before the numbers:</b> bar ${r.bar} of ${r.copies} copies (${r.barPct}%, ${esc(tags.bar || '')}${r.barChanged ? `, changed from the set's own ${r.ownBarPct}%` : ''}); noise must lose at least ${r.sanityPct}% (${esc(tags.sanity || '')}); comparisons gated: each survivor against all four at its own hold length, and the same ${r.barPct}% share of survivors must be in the money and ahead of all four (${esc(tags.comparisons || '')}); the best of the four at the worst hold length is printed as the hindsight reading it is.</p>
     ${heldBackPanel('Held-back read', h, c)}
     <p class="note"><b>The rule on a noise board, held-back window:</b> ${cp.incomplete
     ? '<b class="warn">this set kept no scrambled copies, so nothing was read against nothing</b>'

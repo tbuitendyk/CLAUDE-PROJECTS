@@ -1034,6 +1034,23 @@ owner's to weigh.
 
 # Part 8 — judge the thing you would trade, not the average of everything kept
 
+> **BUILT, 3.146.0 (2026-09-15, owner order: "go with option 1 ... it's apples
+> to apples instead of letting 'against nothing' rule actually be 'against
+> something', namely an hindsight selection of the best of its set"; decision
+> 96).** Each survivor is read against the four comparisons at ITS OWN hold
+> length — in the money, and ahead of every one of them by at least a cent —
+> and the set passes when the bar share of its survivors do, the same share
+> the copies bar is declared at (the owner chose the share over this part's
+> "at least one"). The average survivor and the best of the four at the worst
+> hold length in use stay printed as the hindsight reading they are, and gate
+> nothing. The reserve grade reads the same way. What it caught: on the
+> owner's 98-setting rule the plateau spans hold lengths of 41 to 161 hours,
+> being long every period is -$7 at 41 hours and $340 at 161 (nearly seven
+> positions open at once), and the average of mostly short holds was being
+> held to the $340 figure — 98 of 98 survivors beat being long every period
+> at their own hold length, 18 of 98 beat the $340, and the set read FAIL
+> three times. Part 6 (naming the claimed setting or group) is still to come.
+
 > **Owner, 2026-09-11, on reading a FAIL:** "when 18 actual settings selections
 > within a rule pass ALL 5 and then you mark it FAIL?!? — get real! we need to
 > keep that code and make the pass/fail rational."

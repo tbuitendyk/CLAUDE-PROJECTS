@@ -33,7 +33,27 @@ const DEFAULT_SANITY_PCT = 50;
 // chose that. Gating on the BEST of the four does not: a rule with a fixed
 // direction lean matches the window about half the time by luck, and beating
 // the best of the four is beating that luck.
+//
+// EACH SURVIVOR AGAINST THE FOUR AT ITS OWN HOLD LENGTH (3.146.0, owner order
+// 2026-09-15: "apples to apples instead of letting 'against nothing' rule
+// actually be 'against something', namely an hindsight selection of the best
+// of its set"; VERIFY-DESIGN.md Part 8). Until then the AVERAGE of every
+// survivor was held to the best of the four read at the WORST hold length any
+// survivor used. Being long every period grows with the hold length, because
+// a decision every day with a 161-hour hold keeps nearly seven positions open
+// at once, so on a rule whose plateau spans 41 to 161 hours a basket of
+// mostly short holds was being measured against the one comparison priced at
+// seven times their exposure: 98 of 98 survivors beat being long every period
+// at their own hold length and the set read FAIL. Now each survivor is read
+// against the four at its own hold length -- in the money, and ahead of every
+// one of them by at least a cent -- and the set passes when the bar share of
+// its survivors do, the same share the copies bar is declared at. The best of
+// the four at the worst hold length is still printed, as the hindsight
+// reading it is, and never gates.
 const GATED = ['alwaysLong', 'alwaysShort', 'buyHold', 'shortHold'];
+// which hold length a survivor was priced at, said the way the four are kept
+// beside the set (lib/stages.js controlKeyOf): 24/7 or 24/5, and the hours
+const ownKeyOf = (r) => `${r && r.weekdaysOnly ? 'wk' : 'all'}|${Number(r && r.tHours)}`;
 // the name of each comparison's own "was it beaten" key, said once
 const BEATS_KEY = { alwaysLong: 'beatsAlwaysLong', alwaysShort: 'beatsAlwaysShort', buyHold: 'beatsBuyHold', shortHold: 'beatsShortHold' };
 // what each one is called ON THE SCREEN, so a sentence written here and a line
@@ -111,7 +131,7 @@ function ruleKeys(rule) {
 // survivors' own hold lengths: { known, why, keys, of, missing, alwaysLong:
 // {lo,hi}, alwaysShort, buyHold, shortHold }. Beaten means beaten at the worst
 // of the hold lengths in use, by at least a cent, like the Funnel's own line.
-function heldBackRead(rows, controls) {
+function heldBackRead(rows, controls, rules = null) {
   const held = (rows || []).map((r) => num(r[HELD]));
   const of = held.filter((v) => v != null).length;
   const real = mean(held);
@@ -135,15 +155,51 @@ function heldBackRead(rows, controls) {
   // three of four says nothing about the one nobody priced
   comparisons.beatsBest = comparisons.best != null && real != null ? F.beats(real, comparisons.best.hi) : null;
   const positive = real != null && real > 0;
+  // EACH SURVIVOR AGAINST THE FOUR AT ITS OWN HOLD LENGTH (3.146.0): the four
+  // are kept per hold length beside the set (controls.byKey); a survivor whose
+  // hold length has no figure is counted and never passes. The bar is the same
+  // share the copies bar was declared at, resolved on the survivor count.
+  const barPct = rules && rules.barPct != null && Number.isFinite(Number(rules.barPct)) ? Number(rules.barPct) : F.barPctOf({});
+  const byKey = c.known && c.byKey ? c.byKey : null;
+  const ownRows = (rows || []).map((r) => {
+    const held = num(r[HELD]);
+    const key = ownKeyOf(r);
+    const four = byKey ? byKey[key] || null : null;
+    const beats = {};
+    let known = !!four;
+    for (const k of GATED) {
+      const v = four ? num(four[k]) : null;
+      if (v == null) { known = false; beats[k] = null; } else beats[k] = F.beats(held, v);
+    }
+    const inMoney = held != null && held > 0;
+    const clears = known && inMoney && GATED.every((k) => beats[k] === true);
+    return { si: r.si, label: r.label, key, held, positive: inMoney, four: four ? { ...four } : null, beats, known, clears };
+  });
+  const n = ownRows.length;
+  const knownN = ownRows.filter((x) => x.known).length;
+  const clearing = ownRows.filter((x) => x.clears).length;
+  const ownBar = n ? Math.max(1, Math.min(n, Math.ceil((n * barPct) / 100))) : 0;
+  const own = {
+    survivors: n, known: knownN, unknown: n - knownN, clearing, bar: ownBar, barPct,
+    holdLengths: [...new Set(ownRows.map((x) => x.key))].sort(),
+    beatingEach: Object.fromEntries(GATED.map((k) => [k, ownRows.filter((x) => x.beats[k] === true).length])),
+    positive: ownRows.filter((x) => x.positive).length,
+    rows: ownRows,
+    pass: comparisons.known && n > 0 && knownN === n && clearing >= ownBar,
+    definition: 'each survivor against the four at its own hold length: in the money and ahead of every one of them by at least a cent; the set passes when the bar share of its survivors do',
+  };
   return {
     real, of, missing: (rows || []).length - of,
     trades: mean((rows || []).map((r) => num(r.avgTrades))),
     vsLong: mean((rows || []).map((r) => num(r.avgVsLong))),
     positive,
+    // the span across hold lengths and the best of the four at the worst of
+    // them: printed, a hindsight reading, never a gate since 3.146.0
     comparisons,
+    own,
     // unknown never passes: a gate on a number nobody has is not a gate
-    pass: comparisons.known && positive && comparisons.beatsBest === true,
-    incomplete: !comparisons.known,
+    pass: own.pass,
+    incomplete: !comparisons.known || n === 0 || knownN < n,
   };
 }
 
@@ -436,6 +492,19 @@ function bestPhrase(c) {
   const word = COMPARISON_WORDS[c.best.key] || c.best.key;
   return `${c.beatsBest ? 'beating' : 'not beating'} the best of the four, which was ${word} at ${money(c.best.hi)}`;
 }
+// THE HELD-BACK CLAUSE: each survivor at its own hold length is the gate
+// (3.146.0); the average and the hindsight best of the four are printed after
+// it. A block stamped before the own-hold reading existed carries no `own`
+// and reads as it was written.
+function ownPhrase(where, h, c) {
+  const o = h.own || null;
+  const avg = `the ${h.of ?? 0} survivors made ${money(h.real)} a setting`
+    + (c.known ? `, ${bestPhrase(c)} at the worst hold length in use` : `, and the four comparisons are not known (${c.why || 'unstated'})`);
+  if (!o) return `on ${where} ${avg}`;
+  return `on ${where} ${o.clearing} of ${o.survivors} survivors made money and beat each of the four comparisons at their own hold length, the bar being ${o.bar} (${o.barPct}%)`
+    + (o.unknown ? `, ${o.unknown} with no figure at their hold length, which never passes` : '')
+    + `; averaged, ${avg}${c.known ? ', a hindsight reading and never a gate' : ''}`;
+}
 function verdict(block) {
   const b = block;
   const parts = [];
@@ -447,9 +516,7 @@ function verdict(block) {
   parts.push(f.ok ? `the rule gives back its own ${f.had} survivors today` : `the footing did not stand (${f.why || 'unstated'})`);
   const h = b.heldBack || {};
   const c = h.comparisons || {};
-  parts.push(`on the held-back window the ${h.of ?? 0} survivors made ${money(h.real)} a setting`
-    + (c.known ? `, ${bestPhrase(c)}` : `, and the four comparisons are not known (${c.why || 'unstated'})`)
-    + `, after at least ${(b.looks || {}).unstamped ?? 0} unstamped looks`);
+  parts.push(ownPhrase('the held-back window', h, c) + `, after at least ${(b.looks || {}).unstamped ?? 0} unstamped looks`);
   const cp = b.copies || {};
   if (cp.incomplete) parts.push('the set kept no scrambled copies, so nothing was read against nothing');
   else parts.push(`against its own ${cp.copies} scrambled copies it beats ${cp.beats}, the bar being ${cp.bar} (${cp.barPct}%); a forecast-free rule clears that about ${pct(cp.chance)} of the time, and the finest claim ${cp.copies} copies allow is 1 in ${cp.copies + 1}, a floor, never a measure of strength`);
@@ -483,8 +550,7 @@ function unreadVerdict(block) {
   parts.push(f.ok ? `the rule gives back its own ${f.had} survivors today` : `the footing did not stand (${f.why || 'unstated'})`);
   const h = b.read || {};
   const c = h.comparisons || {};
-  parts.push(`on the unread window the ${h.of ?? 0} survivors made ${money(h.real)} a setting`
-    + (c.known ? `, ${bestPhrase(c)}` : `, and the four comparisons are not known (${c.why || 'unstated'})`));
+  parts.push(ownPhrase('the unread window', h, c));
   const cp = b.copies || {};
   if (cp.incomplete) parts.push('no scrambled copies were priced, so nothing was read against nothing');
   else parts.push(`against ${cp.copies} scrambled copies of that window it beats ${cp.beats}, the bar being ${cp.bar} (${cp.barPct}%); a forecast-free rule clears that about ${pct(cp.chance)} of the time, and the finest claim ${cp.copies} copies allow is 1 in ${cp.copies + 1}, a floor, never a measure of strength`);
@@ -512,7 +578,7 @@ function buildBlock(input) {
 }
 
 module.exports = {
-  HELD, LIMITS, GATED, BEATS_KEY, DEFAULT_SANITY_PCT,
+  HELD, LIMITS, GATED, BEATS_KEY, DEFAULT_SANITY_PCT, ownKeyOf,
   declareRules, ruleKeys, heldBackRead, copiesRead, perSurvivor, sanity, lineA, lineB, verdict, buildBlock,
   othersUnitRead, othersSummary, RIDE_FIELDS, rideOf,
   sideRead, keptVsDropped, keptVsDroppedSentence,

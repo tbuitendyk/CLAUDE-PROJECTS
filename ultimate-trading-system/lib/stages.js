@@ -6197,6 +6197,18 @@ function controlsOf(doc, unitKey, keys) {
     const vals = rows.map((r) => r[k]).filter((v) => v != null && Number.isFinite(Number(v))).map(Number);
     out[k] = vals.length ? { lo: Math.min(...vals), hi: Math.max(...vals) } : null;
   }
+  // THE FOUR AT EACH HOLD LENGTH, BY KEY (3.146.0, owner order 2026-09-15:
+  // "apples to apples"). The lo/hi span above is what the screen prints and
+  // what the hindsight best-of-four is read from; the verdict reads each
+  // survivor against the four at ITS OWN hold length, which is these.
+  out.byKey = {};
+  for (const k of want) {
+    const r = mine[k];
+    if (!r) continue;
+    const one = {};
+    for (const c of CONTROL_KEYS) one[c] = r[c] != null && Number.isFinite(Number(r[c])) ? Number(r[c]) : null;
+    out.byKey[k] = one;
+  }
   return out;
 }
 // THE SAME FOUR, ON TEST MONEY (3.107.0, owner order 2026-09-10). The Funnel
@@ -6838,7 +6850,7 @@ async function funnelVerifyRun(doc, asked) {
   if (!footing.ok) throw new Error(footing.why);
   const rows = join.rows;
   const got = controlsOf(join.parent, doc.unit, rows.map(controlKeyOf));
-  const heldBack = V.heldBackRead(rows, got);
+  const heldBack = V.heldBackRead(rows, got, rules);
   // a rule with a top-N cut lets each copy take its own top N by its own scrambled money
   const copyRowsAt = join.rule.cut ? (d) => S4.nullCopy(join.mine, join.rule, d) : null;
   const copies = V.copiesRead(rows, rules, copyRowsAt);
@@ -7218,7 +7230,7 @@ async function unreadGradeRun(doc, asked, note = null) {
     ride: r.rich && r.rich.hold ? { ...r.rich.hold } : null,
   }));
   const controls = unreadControlsOf(res.controls, doc.unit, rows);
-  const read = V.heldBackRead(rows, controls);
+  const read = V.heldBackRead(rows, controls, rules);
   const copies = V.copiesRead(rows, rules);
   const survivors = V.perSurvivor(rows, rules);
   const sanity = V.sanity(rows, rows, rules);
