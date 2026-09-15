@@ -966,3 +966,12 @@ digit.
 at the top of the row set". The sweep's headline is a table now: flat,
 ladder and ladder over flat as rows; money, amount traded and the return on
 the amount traded as columns; the entry count above it. Third digit.
+
+## AF. A break between the conviction sweep's two tables — owner GO NOW! 2026-09-15 (3.143.2)
+
+"don't run the two tables into each other on the 'conviction sizing' section
+under tune ... there should be a bit of a break between the sizing table and
+the agreement table". The per-level table now sits a clear gap (.8rem) below
+the summary table. Not touched, and noted for the owner: `heldBackPanel` on
+Verify draws its three tables back to back the same way (RULE ZERO). Third
+digit.

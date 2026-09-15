@@ -2891,7 +2891,7 @@ async function drawTune() {
         <tr><td>ladder</td><td class="${(c.ladderUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${usd(c.ladderUsd)}</b></td><td>${usd(c.deployedLadderUsd)}</td><td class="${(c.ladderReturnPct || 0) >= 0 ? 'pos' : 'neg'}"><b>${rate(c.ladderReturnPct)}</b></td></tr>
         <tr><td>ladder over flat</td><td class="${(c.upliftUsd || 0) >= 0 ? 'pos' : 'neg'}"><b>${signed(c.upliftUsd, '$')}</b> uplift</td><td>${c.deployedLadderUsd != null && c.deployedFlatUsd != null ? `${(c.deployedLadderUsd / (c.deployedFlatUsd || 1)).toFixed(2)}x as much` : '—'}</td><td class="${(c.upliftReturnPts || 0) >= 0 ? 'pos' : 'neg'}"><b>${signed(c.upliftReturnPts, 'points')}</b></td></tr>
       </tbody></table></div>
-      <div class="scrollx"><table><thead><tr>${cth('agreement','agreement')}${cth('mult','mult')}${cth('trades','trades')}${cth('wins','wins')}${cth('win %','winPct')}${cth('flat $','flatUsd')}${cth('ladder $','ladderUsd')}${cth('return % on $ traded','returnPct')}</tr></thead><tbody>
+      <div class="scrollx" style="margin-top:.8rem"><table><thead><tr>${cth('agreement','agreement')}${cth('mult','mult')}${cth('trades','trades')}${cth('wins','wins')}${cth('win %','winPct')}${cth('flat $','flatUsd')}${cth('ladder $','ladderUsd')}${cth('return % on $ traded','returnPct')}</tr></thead><tbody>
       ${(c.buckets || []).map((b) => `<tr><td>${b.agree} of ${(c.setup && c.setup.members) || '?'}${b.thin ? ' ⚠' : ''}</td>
         <td>${b.multiplier}x</td><td>${b.n}</td><td>${b.winners}</td>
         <td>${b.n ? ((100 * b.winners) / b.n).toFixed(1) + '%' : '—'}</td>

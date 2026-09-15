@@ -376,6 +376,9 @@ module.exports = {
       assert.ok(conv.includes(cell), `the conviction sweep's summary table lacks: ${cell}`);
     }
     assert.ok(conv.indexOf('<tr><td>flat</td>') < conv.indexOf("cth('agreement','agreement')"), 'the summary table is not at the top of the row set');
+    // 3.143.2 (owner: "there should be a bit of a break between the sizing table and the agreement table"):
+    // the per-level table sits a clear gap below the summary table instead of running straight on from it
+    assert.ok(conv.includes('</tbody></table></div>\n      <div class="scrollx" style="margin-top:.8rem"><table><thead><tr>${cth(\'agreement\',\'agreement\')}'), 'the agreement table runs straight on from the summary table again, with no break between them');
     assert.ok(!/return on the amount traded: flat \$\{/.test(conv), 'the summary is still crunched into a sentence');
     assert.ok(ui.includes("cth('return % on $ traded','returnPct')"), 'the per-level return column is gone');
     for (const id of ['tnSet', 'tnCapture', 'tnPick', 'tnWinTrain', 'tnWinTest', 'tnWinHold']) assert.ok(ui.includes(`id="${id}"`), `${id} is on the screen`);
