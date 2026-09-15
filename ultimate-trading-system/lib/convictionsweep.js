@@ -164,4 +164,4 @@ function evalConviction(priced, { clipUsd = 10, ladder = [1, 2, 3, 4], holdHours
 function avg(a) { return a.length ? a.reduce((x, y) => x + y, 0) / a.length : null; }
 function round(v, n = 4) { return v == null ? null : Math.round(v * 10 ** n) / 10 ** n; }
 
-module.exports = { evalConviction, MIN_BUCKET_N };
+module.exports = { evalConviction, MIN_BUCKET_N, multFor };
