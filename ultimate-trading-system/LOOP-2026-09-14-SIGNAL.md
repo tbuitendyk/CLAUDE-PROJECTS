@@ -912,3 +912,11 @@ order. And the same release lines up "Save the reason" with "your reason
 for this choice" and "Apply custom" with its field (owner: "that's just
 ugly"): the two rows take align-items:flex-end, the shape every captioned
 field beside a button already has on History and Verify. Third digit.
+
+## AA. The custom stop's unit in its caption — owner GO NOW! 2026-09-15 (3.142.2)
+
+"why is the alignment of this stuff so ugly?" The captioned field is a
+column, and a trailing "%" after the box sat on a line of its own under
+it. The unit is in the caption now, "or apply a custom stop %", as Verify
+writes "bar share %"; a test scans every captioned field for text after
+its box. Third digit.

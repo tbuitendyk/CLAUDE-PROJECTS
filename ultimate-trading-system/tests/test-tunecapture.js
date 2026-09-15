@@ -321,6 +321,14 @@ module.exports = {
       const rowTag = ui.slice(rowStart, ui.indexOf('>', rowStart) + 1);
       assert.ok(/align-items:flex-end/.test(rowTag), `the row holding "${field}" does not line its button up with the field: ${rowTag}`);
     }
+    // THE UNIT LIVES IN THE CAPTION (3.142.2, owner: "why is the alignment of this stuff so ugly?"): a captioned
+    // field is a column, so text after its box lands on a line of its own. The page's pattern is Verify's
+    // "bar share %": the unit in the caption, nothing after the box.
+    assert.ok(ui.includes('or apply a custom stop %<input id="stopCustomPct"') && !/<input id="stopCustomPct"[^>]*>\s*%/.test(ui), 'the custom stop\'s % sits after its box again, on a line of its own');
+    // (a tick box with its words after it is a different shape and is left alone here)
+    for (const m of ui.matchAll(/<label class="f"[^>]*>[^<]*<input(?![^>]*type="checkbox")[^>]*>([^<]*)<\/label>/g)) {
+      assert.strictEqual(m[1].trim(), '', `a captioned field carries text after its box, which the column puts on its own line: "${m[1].trim()}"`);
+    }
     assert.ok(/\$\{isSet \? tnTargetRowHtml\(chosen, tnPickVal, tnWins\) : ''\}/.test(ui), 'the survivor and the windows are drawn under the scan target');
     for (const id of ['tnSet', 'tnCapture', 'tnPick', 'tnWinTrain', 'tnWinTest', 'tnWinHold']) assert.ok(ui.includes(`id="${id}"`), `${id} is on the screen`);
     assert.ok(/const scanBody = isSet \? \{ setId: chosen\.id, pick: tnPickVal, windows: tnWins \} : null/.test(ui), 'a scan on a set sends the set, the survivor and the windows');
