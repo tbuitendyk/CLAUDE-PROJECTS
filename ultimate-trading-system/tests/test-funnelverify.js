@@ -1066,3 +1066,72 @@ module.exports = {
     assert.ok(/funnelDroppedStart\(req\.params\.id, req\.body \|\| \{\}\)/.test(srv), 'and it takes the typed count');
   },
 };
+
+// HISTORY READS THE UNREAD WINDOW OFF THE SET'S OWN RECORD, WHATEVER THE LAYOUT
+// (3.141.0, owner order 2026-09-15: "that ASSUMES that a 61/13/13/13 window
+// layout was used ... History tab is supposed to be completely agnostic on the
+// Reserve window"). The screen had "the sealed 13%" typed into it and the
+// grade refused every 70/15/15 set for want of a seal it never had.
+module.exports.historyReadsTheUnreadWindowOffTheRecordWhateverTheLayout = function () {
+  const SETS = path.join(__dirname, '..', 'data', 'stagesets');
+  fs.mkdirSync(SETS, { recursive: true });
+  const tag = Date.now().toString(36);
+  const KEY = 'AAAUSDT|||daily-1d';
+  const unit = { trade: 'AAAUSDT', ctx1: null, ctx2: null, geometry: 'daily-1d' };
+  const write = (id, doc) => fs.writeFileSync(path.join(SETS, `${id}.json`), JSON.stringify(doc));
+  const ids = [];
+  const mk = (suffix, parent, doc) => {
+    const p = `s3-hw-${tag}-${suffix}`; const c = `s4-hw-${tag}-${suffix}`;
+    write(p, { id: p, stage: 3, params: parent.params || {}, windows: parent.windows || null });
+    write(c, { id: c, stage: 4, unit: KEY, parent: { id: p }, ...doc });
+    ids.push(p, c);
+    return stages.getSet(c);
+  };
+  try {
+    // 70/15/15: the unread window begins where the last held-back chunk reaches
+    const split = mk('split', { params: { windowLayout: 'split70' }, windows: { units: { [KEY]: { hold: { fromTs: 1000, toTs: 5000, chunks: 4 } } } } }, {});
+    const w1 = stages.unreadWindowOf(split);
+    assert.deepStrictEqual(w1, { layout: 'split70', kind: 'after', intact: true, fromTs: 5000, chunks: null, why: null }, `a 70/15/15 set's unread window is not everything after the held-back window: ${JSON.stringify(w1)}`);
+    // 70/15/15 with no held-back window on record: not readable, and said why
+    const bare = mk('bare', { params: { windowLayout: 'split70' }, windows: { units: {} } }, {});
+    const w2 = stages.unreadWindowOf(bare);
+    assert.strictEqual(w2.intact, false);
+    assert.ok(/name no held-back window on this unit/.test(w2.why), w2.why);
+    // 61/13/13/13: the sealed reserve, readable while the seal is intact
+    const sealed = mk('sealed', { params: { windowLayout: 'reserve61' } }, { sealed: { units: [{ ...unit, reserve: { fromTs: 7000, chunks: 9 } }] } });
+    const w3 = stages.unreadWindowOf(sealed);
+    assert.deepStrictEqual(w3, { layout: 'reserve61', kind: 'reserve', intact: true, fromTs: 7000, chunks: 9, why: null }, JSON.stringify(w3));
+    const broken = mk('broken', { params: { windowLayout: 'reserve61' } }, { sealed: { units: [{ ...unit, reserve: null }], why: 'the reserve was never cut' } });
+    const w4 = stages.unreadWindowOf(broken);
+    assert.strictEqual(w4.intact, false);
+    assert.ok(/sealed window is not intact on this unit/.test(w4.why), w4.why);
+    // a layout nobody recorded
+    const odd = mk('odd', { params: {} }, {});
+    assert.ok(!stages.unreadWindowOf(odd).intact && /window layout is unrecorded/.test(stages.unreadWindowOf(odd).why));
+  } finally { for (const id of ids) { try { fs.rmSync(path.join(SETS, `${id}.json`), { force: true }); } catch (_) { /* fixture */ } } }
+  // THE GRADE reads the window it prices from the same reader, whatever the
+  // layout, and refuses in the reader's words; the dry read hands the window
+  // to the screen
+  const s = src('lib/stages.js');
+  const run = s.slice(s.indexOf('async function unreadGradeRun(doc, asked, note = null) {'), s.indexOf('\n}\n', s.indexOf('async function unreadGradeRun(doc, asked, note = null) {')));
+  assert.ok(run.includes('const window = unreadWindowOf(doc);') && run.includes('if (!window.intact) throw new Error(window.why);') && run.includes('payload.unread = { fromTs: window.fromTs };'),
+    'the grade prices a window it did not read off the record, or still asks for a seal');
+  assert.ok(!/sealedOnUnitOf/.test(run), 'the grade still reads the seal itself, which only one layout has');
+  const refusal = s.slice(s.indexOf('function unreadRefusalOf(doc) {'), s.indexOf('\n}\n', s.indexOf('function unreadRefusalOf(doc) {')));
+  assert.ok(refusal.includes('const window = unreadWindowOf(doc);') && refusal.includes('if (!window.intact) return window.why;') && !/sealedOnUnitOf/.test(refusal),
+    'the grade refuses a 70/15/15 set for want of a seal it never had');
+  assert.ok(s.includes('    window: unreadWindowOf(doc),'), 'the dry read does not hand the window to the screen');
+  // THE SCREEN: no share of the history typed into it; the set's own layout
+  // and window, in the Sweep screen's words for the layouts
+  const page = src('public/construct.js');
+  const history = page.slice(page.indexOf('// ---- History (the reserve grade and the half-life run)'), page.indexOf('async function hGradeFollow('));
+  assert.ok(!/13%/.test(history), 'a share of the history is still typed onto the History screen');
+  assert.ok(!/sealed 13/.test(history) && !/the sealed \d/.test(history), 'the screen still calls the unread window the sealed something');
+  assert.ok(history.includes("return layout === 'reserve61' ? '61/13/13/13 (sealed exam)' : layout === 'split70' ? '70/15/15' : 'unrecorded';"),
+    'the layouts are not named by the words the Sweep screen offers them under');
+  assert.ok(history.includes('· window layout ${esc(hLayoutWords(w && w.layout))} · ${hWindowWords(w)}'), 'the set line does not say its layout and its unread window');
+  assert.ok(history.includes("if (w.kind === 'reserve') return `unread window ${from}: the sealed reserve, cut away before anything trained")
+    && history.includes('return `unread window ${from}: everything after the held-back window`;'), 'the window is not said in its own record\'s terms');
+  assert.ok(!history.includes('sealed window ${sealed.intact'), 'the old seal line is still drawn');
+  assert.ok(!/13%/.test(src('public/help-content.js').slice(src('public/help-content.js').indexOf('hSet: {'), src('public/help-content.js').indexOf('hHl12: {'))), 'the help still types a share of the history');
+};

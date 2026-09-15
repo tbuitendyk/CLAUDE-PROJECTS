@@ -6674,6 +6674,35 @@ function sealedOnUnitOf(doc) {
   };
 }
 // the date ranges the parent priced this unit on (3.85.0), beside the seal
+// THE UNREAD WINDOW OF A STAGE 4 RECORD SET, READ OFF ITS OWN RECORD (3.141.0,
+// owner order 2026-09-15: "History tab is supposed to be completely agnostic on
+// the Reserve window"). Nothing here assumes a layout. On a 61/13/13/13 run the
+// unread window is the sealed reserve, cut away before anything trained, and
+// it is readable only while that seal is intact on the unit; on a 70/15/15 run
+// it is everything after the held-back window, which begins where the last
+// held-back chunk reaches. Either way it runs from where it begins to whatever
+// the box holds today, and the pricing path is handed that beginning alone.
+function unreadWindowOf(doc) {
+  const parent = getSet((doc.parent || {}).id);
+  const layout = parent ? ((parent.params || {}).windowLayout || null) : null;
+  const per = doc.unit && parent ? (((parent.windows || {}).units || {})[doc.unit] || null) : null;
+  if (layout === 'reserve61') {
+    const sealed = sealedOnUnitOf(doc);
+    return { layout, kind: 'reserve', intact: sealed.sealed, fromTs: sealed.fromTs, chunks: sealed.chunks,
+      why: sealed.sealed ? null : `the sealed window is not intact on this unit — ${sealed.why}` };
+  }
+  if (layout === 'split70') {
+    const hold = per && per.hold ? per.hold : null;
+    const at = hold ? Number(hold.toTs) : NaN;
+    if (!Number.isFinite(at)) {
+      return { layout, kind: 'after', intact: false, fromTs: null, chunks: null,
+        why: "this set's records name no held-back window on this unit, so where the unread window begins is not known" };
+    }
+    return { layout, kind: 'after', intact: true, fromTs: at, chunks: null, why: null };
+  }
+  return { layout, kind: null, intact: false, fromTs: null, chunks: null,
+    why: `this set's window layout is ${layout || 'unrecorded'}, so where its unread window begins is not known` };
+}
 function windowsForVerify(doc, parent) {
   const sealed = sealedOnUnitOf(doc);
   const per = doc.unit ? (((parent || {}).windows || {}).units || {})[doc.unit] || null : null;
@@ -7090,9 +7119,10 @@ function funnelRideStatus(id) {
 
 // ---- THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0, VERIFY-DESIGN.md section 6) ----
 //
-// The unread window -- the sealed 13% that was cut away before anything
-// trained, running from the seal's start to whatever the box holds on the day
-// -- priced for the set's survivors on the set's own unit, through the stage 3
+// The unread window -- the stretch of history no part of the search touched,
+// read off the set's own record whatever its window layout (unreadWindowOf),
+// running from where it begins to whatever the box holds on the day -- priced
+// for the set's survivors on the set's own unit, through the stage 3
 // pricing path with the unread window in the held-back window's place
 // (lib/stagework.js, s3UnitTask with task.unread), the members forecasting it
 // from their saved models. Read by the verdict's four rules on that window;
@@ -7122,8 +7152,8 @@ function unreadRefusalOf(doc) {
   if (!doc.unit) return BLEND_REFUSAL;
   if (doc.derived) return derivedRefusalOf(doc);
   if (!unreadGateOf(doc)) return UNREAD_NO_PASS;
-  const sealed = sealedOnUnitOf(doc);
-  if (!sealed.sealed) return `the sealed window is not intact on this unit — ${sealed.why}`;
+  const window = unreadWindowOf(doc);
+  if (!window.intact) return window.why;
   const parent = getSet((doc.parent || {}).id);
   if (!parent) return 'the stage 3 set this was cut from is gone, so its unread window cannot be priced';
   if (!getSet((parent.parent || {}).id)) return 'the stage 2 set the stage 3 set was priced from is gone, so the members cannot forecast the unread window';
@@ -7146,8 +7176,8 @@ async function unreadGradeRun(doc, asked, note = null) {
   const rules = V.declareRules(doc.check, asked || {});
   const gate = unreadGateOf(doc);
   if (!gate) throw new Error(UNREAD_NO_PASS);
-  const sealed = sealedOnUnitOf(doc);
-  if (!sealed.sealed) throw new Error(`the sealed window is not intact on this unit — ${sealed.why}`);
+  const window = unreadWindowOf(doc);
+  if (!window.intact) throw new Error(window.why);
   const join = await funnelVerifyJoin(doc);
   const footing = verifyFooting(doc, join);
   if (!footing.ok) throw new Error(footing.why);
@@ -7166,7 +7196,7 @@ async function unreadGradeRun(doc, asked, note = null) {
   payload.keepN = K;                                            // every copy kept: the verdict reads them all
   const models = unitRows(shape.parent.id, 'models', rec.blocks.models, rec.u);
   payload.unit.members = payload.unit.members.map((m, mi) => ({ ...m, saved: (models.find((x) => x.mi === mi) || {}).saved || null }));
-  payload.unread = { fromTs: sealed.fromTs };
+  payload.unread = { fromTs: window.fromTs };
   if (note) note(0, 1);
   const pool = createPool();
   activePool = pool;
@@ -7217,6 +7247,7 @@ async function unreadGradeDry(id) {
     ruleSentence: doc.ruleSentence || null, survivors: ((doc.counts || {}).survivors) ?? (doc.survivors || []).length,
     gate: unreadGateOf(doc), verdicts: (doc.verify || []).length,
     sealed: { intact: sealed.sealed, fromTs: sealed.fromTs, chunks: sealed.chunks, why: sealed.why },
+    window: unreadWindowOf(doc),
     rules: require('./funnelverify').declareRules(doc.check, {}),
     looks: grades.length, grades,
     refused: unreadRefusalOf(doc),
@@ -8819,7 +8850,7 @@ module.exports = {
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
-  unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS,
+  unreadGradeDry, unreadGradeStart, unreadGradeStatus, unreadGateOf, UNREAD_NO_PASS, unreadWindowOf,
   stage4GreenlightSource, stage4GreenlightDry, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet, derivedRefusalOf,

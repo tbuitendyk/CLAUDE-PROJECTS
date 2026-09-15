@@ -2353,11 +2353,14 @@ async function vRideFollow(id, token) {
 
 // ---- History (the reserve grade and the half-life run) -------------------------
 // THE RESERVE GRADE ON A STAGE 4 RECORD SET (3.89.0): the unread window -- the
-// sealed 13% nothing trained or searched on, from where the seal began to
+// stretch of history nothing trained or searched on, from where it begins to
 // whatever the box holds today -- priced for the set's survivors on the set's
 // own unit, forecast by the members' saved models, and read by the verdict's
 // four rules on that window. Every grade is a counted look; the first look is
 // at data nothing has seen and every later one says so.
+// WHERE IT BEGINS IS READ OFF THE SET'S OWN RECORD, whatever its window layout
+// (3.141.0, owner order: "History tab is supposed to be completely agnostic on
+// the Reserve window"). Nothing on this screen names a share of the history.
 const H_SET_KEY = 'cx-history-set';
 // THREE SMALL FORMATTERS OF THIS SCREEN'S OWN, written with braces on purpose:
 // the word list's walk brace-matches a helper's body from where it is defined,
@@ -2408,13 +2411,27 @@ function hGradeBlockHtml(g, isFirst) {
       <p class="note muted">${rows.length} survivors, in the set's own order. There is no sort on this table: a sort is a look.</p></details>` : ''}
   </div>`;
 }
+// the window layout by the words the Sweep screen offers it under
+function hLayoutWords(layout) {
+  return layout === 'reserve61' ? '61/13/13/13 (sealed exam)' : layout === 'split70' ? '70/15/15' : 'unrecorded';
+}
+// where this set's unread window begins, in its record's own terms
+function hWindowWords(w) {
+  if (!w) return '';
+  if (!w.intact) return `unread window <b class="neg">not readable</b> - ${esc(String(w.why || ''))}`;
+  const from = `from ${hDay(w.fromTs)} onward`;
+  if (w.kind === 'reserve') return `unread window ${from}: the sealed reserve, cut away before anything trained${w.chunks != null ? `, ${w.chunks} chunks at the seal` : ''}`;
+  return `unread window ${from}: everything after the held-back window`;
+}
 function hGradePanelHtml(list, chosen, d) {
   const grades = d ? (d.grades || []).slice().reverse() : [];       // oldest first: the first look, then later ones
-  const sealed = d ? d.sealed || {} : {};
+  const w = d ? d.window || null : null;
   return `<div class="panel">
     <h3 style="margin-top:0">The reserve grade on a Stage 4 record set</h3>
-    <p class="note">The unread window is the sealed 13% no part of the search touched: it was cut away before anything
-      trained, and it runs from where the seal began to whatever the box holds today. This prices the set's survivors
+    <p class="note">The unread window is the stretch of history no part of the search touched, from where it begins
+      to whatever the box holds today. Where it begins is read off the record set's own record: on a 61/13/13/13 (sealed exam)
+      record set it is the sealed reserve, cut away before anything trained; on a 70/15/15 record set it is everything
+      after the held-back window. This prices the set's survivors
       on it, on the set's own coin and shape, with the members forecasting it from the models they were trained as,
       and reads the result by the same four rules as the verdict on Verify: money, the two comparisons a rule has to
       beat, the scrambled copies at the set's own bar, and noise losing. It refuses without a verdict that passed
@@ -2422,7 +2439,7 @@ function hGradePanelHtml(list, chosen, d) {
     ${hSetBoxHtml(list, chosen)}
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${Number(d.survivors || 0).toLocaleString()} survivors
       · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}
-      · sealed window ${sealed.intact ? `intact on this unit from ${hDay(sealed.fromTs)} onward, ${sealed.chunks ?? '?'} chunks at the seal` : `<b class="neg">not intact</b> - ${esc(String(sealed.why || ''))}`}
+      · window layout ${esc(hLayoutWords(w && w.layout))} · ${hWindowWords(w)}
       · ${d.looks ? `<b>this window has been read ${d.looks} time(s) already</b>` : 'this window has never been read'}</p>
       <div class="row" style="align-items:flex-end">
         <button id="hGrade" class="pri" ${d.refused ? 'disabled' : ''} title="prices the set's survivors on the unread window and stamps the grade on the set. The first press is the only look at data nothing has seen; every press is counted.">Run the reserve grade on this set${d.looks ? ` - look ${d.looks + 1}` : ''}</button>

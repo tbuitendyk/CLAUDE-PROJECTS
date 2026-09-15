@@ -809,11 +809,11 @@ window.HELP = {
     controls: {
       hSet: {
         what: 'Which Stage 4 record set to grade on its unread window, from every set on this box, newest first, each with its coin and shape, its survivors and whether its verdict passed.',
-        more: 'Choosing a set reads nothing on the unread window: it shows which verdict stood, whether the sealed window is intact on the unit, and how many times the window has already been read.',
+        more: 'Choosing a set reads nothing on the unread window: it shows which verdict stood, the set\'s window layout and where its unread window begins - the sealed reserve on a 61/13/13/13 (sealed exam) set, everything after the held-back window on a 70/15/15 set - and how many times the window has already been read.',
       },
       hGrade: {
-        what: 'Prices the set\'s survivors on the unread window, the sealed part of the history no part of the search touched, and stamps the grade on the set.',
-        more: 'The members forecast that window from the models they were trained as; nothing is retrained. The result is read by the same four rules as the verdict on Verify. It refuses without a verdict that passed under this release line, without an intact seal, and while anything heavy is running. Every press is counted as a look, and only the first is at data nothing has seen.',
+        what: 'Prices the set\'s survivors on the unread window, the stretch of history no part of the search touched, and stamps the grade on the set.',
+        more: 'The members forecast that window from the models they were trained as; nothing is retrained. The result is read by the same four rules as the verdict on Verify. It refuses without a verdict that passed under this release line, without a readable unread window, and while anything heavy is running. Every press is counted as a look, and only the first is at data nothing has seen.',
       },
       hHl12: { what: 'Whether to retrain at a 12-month half-life: a training day a year old counts half as much as today.' },
       hHl18: { what: 'Whether to retrain at an 18-month half-life.' },

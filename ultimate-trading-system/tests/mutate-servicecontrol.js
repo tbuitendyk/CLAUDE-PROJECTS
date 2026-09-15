@@ -1643,6 +1643,13 @@ const GUARDS = [
     'theRebuiltNumbersAreKeptBesideTheSetAndLaidOntoTheRows', "a pass over one coin and shape wipes every other unit's numbers under the settings it touches"],
   [path.join(ROOT, 'public', 'construct.js'), "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, { unit: unitNow }, WHERE_FUNNEL);", "      const started = await tryPost(`api/funnel/${encodeURIComponent(st.set)}/rebuild`, {}, WHERE_FUNNEL);",
     'everyCopyOfThePressWorksOutWhatIsChosenUnderCoin', 'the press names no board, so it prices every coin and shape whatever is chosen under coin'],
+  // ---- HISTORY READS THE UNREAD WINDOW OFF THE RECORD, WHATEVER THE LAYOUT (3.141.0) ----
+  [path.join(ROOT, 'lib', 'stages.js'), "    return { layout, kind: 'after', intact: true, fromTs: at, chunks: null, why: null };", "    return { layout, kind: 'after', intact: false, fromTs: null, chunks: null, why: 'no' };",
+    'historyReadsTheUnreadWindowOffTheRecordWhateverTheLayout', 'a 70/15/15 set can never be graded on its unread window'],
+  [path.join(ROOT, 'lib', 'stages.js'), "    return { layout, kind: 'after', intact: true, fromTs: at, chunks: null, why: null };", "    return { layout, kind: 'after', intact: true, fromTs: Number(hold.fromTs), chunks: null, why: null };",
+    'historyReadsTheUnreadWindowOffTheRecordWhateverTheLayout', 'the unread window of a 70/15/15 set begins where the held-back window begins, so the grade reads data the search touched'],
+  [path.join(ROOT, 'lib', 'stages.js'), "  payload.unread = { fromTs: window.fromTs };", "  payload.unread = { fromTs: sealedOnUnitOf(doc).fromTs };",
+    'historyReadsTheUnreadWindowOffTheRecordWhateverTheLayout', 'the grade prices from the seal again, which a 70/15/15 set does not have'],
   // ---- THE STAGE 4 TABLE KEEPS THE HELD-BACK WINDOW BEHIND A TICK (3.140.0) ----
   [path.join(ROOT, 'lib', 'stages.js'), '  const shown = heldBack ? rows : rows.map((r) => withoutKeys(r, HELD_BACK_FIELDS_4));', '  const shown = rows;',
     'aDialTheRuleFixedIsSaidOnceAboveTheStageFourTable', 'the held-back money travels to the screen with the tick off'],

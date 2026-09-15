@@ -868,3 +868,18 @@ strips the held-back fields before the rows are sent and sets a held-back
 sort aside (said on the screen); on, the tick is written on the Stage 4
 record set as a dated look, and Verify reports those looks in place of
 counting the table as one. Second digit.
+
+## X. History reads the unread window off the record, whatever the layout — owner GO NOW! 2026-09-15 (3.141.0)
+
+"that ASSUMES that a 61/13/13/13 window layout was used. Why would you
+write code that makes ASSUMPTIONS about user settings ... History tab is
+supposed to be completely agnostic on the Reserve window." The screen had
+"the sealed 13% no part of the search touched" typed into it, and the grade
+itself refused every 70/15/15 set for want of a seal it never had. Now one
+reader (`unreadWindowOf`) says where a set's unread window begins off its
+own record: on a 61/13/13/13 (sealed exam) set the sealed reserve, readable
+while the seal is intact; on a 70/15/15 set everything after the held-back
+window, from where its last chunk reaches. The refusal, the dry read and
+the grade all read it; the screen says the set's layout in the Sweep
+screen's words and its window in its record's terms, and no share of the
+history is typed anywhere on it. Second digit.
