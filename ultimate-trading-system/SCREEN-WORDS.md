@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **1172acfc0aa3 — what the box is serving**, not from the working tree.
+Generated from **2f1f46a15a5b — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1225,13 +1225,13 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 # History
 
-## What the controls are called (32)
+## What the controls are called (31)
 
 - `: retrains on its`
 - `· built from this table:`
+- `% is not read here`
 - `%, judged on the`
-- `%, tested on its`
-- `%, tests on its`
+- `%); the held-back`
 - `12 months`
 - `18 months`
 - `24 months`
@@ -1241,7 +1241,6 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `average $`
 - `half-lives`
 - `judged on the`
-- `look`
 - `members, both kinds`
 - `name`
 - `of`
@@ -1251,12 +1250,12 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 - `refused:`
 - `Retrain at the ticked half-lives`
 - `rows won`
+- `run`
 - `setting`
 - `Stage 4 record set`
 - `survivors`
 - `taken`
 - `under release`
-- `window`
 - `window (`
 - `window layout`
 
@@ -1264,15 +1263,17 @@ again. and asset. back been below board cache cached coin comma-sep current Data
 
 _none_
 
-## Sentences the page prints (13)
+## Sentences the page prints (15)
 
 - Retrain with recent history weighted
 - The same records, retrained: every setting of the chosen set is kept exactly as it is, and only the
 - forecasts behind it are trained again with recent history weighted more, once per half-life ticked, keeping every other
-- training choice the set was made with. Then the same records are priced again on the Held window, the stretch the
+- training choice the set was made with. Then the same records are priced again on the Test window, the stretch the
 - retraining never touched, in one pass beside the set's own unweighted figures. A set built 61/13/13/13 (sealed exam)
-- retrains on its 61% and tests on its 13%, and is judged on the second 13%, with the last 13% left sealed; a set built
-- 70/15/15 retrains on its 70% and tests on its 15%, and is judged on the second 15%. Every press is a counted look.
+- retrains on its 61% and is judged on its 13% test window, with its held-back 13% not read and its last 13% sealed; a set
+- built 70/15/15 retrains on its 70% and is judged on its 15% test window, with its held-back 15% not read. Nothing on this
+- screen reads the held-back window: it stays secret until Verify, or until a scan on Tune is told to read it. Every press
+- appends a table; none is overwritten.
 - No half-life run on this set yet.
 - no Stage 4 record set on this box yet
 - whole chunks · retrained on the set's own
@@ -1280,10 +1281,10 @@ _none_
 - records, in the set's own order. Green is the best of the row: a half-life wins only by at least a cent over the unweighted column; a tie goes to the unweighted side.
 - Build the half-life set from this table
 
-## Every word, flat (121)
+## Every word, flat (134)
 
 ```
-again and are as at average behind beside best block both box Build built by cent choice chosen chunks column counted every Every exactly exam figures. forecasts from goes Green half-life half-lives Held history improved in is it its judged keeping kept kinds last layout least left look look. made members months more name never No no not of on once one only order. other over own pass per press priced recent record records refused release Retrain retrained retraining retrains row rows run same sealed second set setting side. Stage stage stretch survivor survivors table taken tested tests The the Then this ticked tie to touched trained training under unit unweighted was weighted whole window wins with with. won yet yet.
+again and appends are as at average behind beside best block both box Build built by cent choice chosen chunks column every Every exactly exam figures. forecasts from goes Green half-life half-lives held-back here history improved in is it it. its judged keeping kept kinds last layout least made members months more name never No no none not Nothing of on once one only or order. other over overwritten. own pass per press priced read read. reads recent record records refused release Retrain retrained retraining retrains row rows run same scan screen sealed secret set setting side. Stage stage stays stretch survivor survivors table taken Test test The the Then this ticked tie to told touched trained training Tune under unit until unweighted Verify was weighted whole window wins with with. won yet yet.
 ```
 
 ---
