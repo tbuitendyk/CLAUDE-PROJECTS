@@ -920,3 +920,13 @@ column, and a trailing "%" after the box sat on a line of its own under
 it. The unit is in the caption now, "or apply a custom stop %", as Verify
 writes "bar share %"; a test scans every captioned field for text after
 its box. Third digit.
+
+## AB. The scan target says a set's coin and shape once — owner GO NOW! 2026-09-15 (3.142.3)
+
+"is there a good reason this one's so ugly" — no. The "scan target" box
+printed the set's name, then its coin and shape again (a set named after
+them, as the Funnel suggests, carries them already), with dashes where
+every other box uses dots, and the count beside it floated mid-height. One
+helper now prints a set's name in all five set boxes, adding the unit only
+when the name lacks it; the row lines up at the bottom. Owner: "just do
+things like that right in the future." Third digit.

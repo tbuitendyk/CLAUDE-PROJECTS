@@ -2035,10 +2035,18 @@ const vDay = (ts) => (ts != null && Number.isFinite(Number(ts)) ? new Date(Numbe
 const vPct = (v) => (v == null ? '?' : `${Math.round(100 * v)}%`);
 const vFix = (v, n = 2) => (v == null || !Number.isFinite(Number(v)) ? 'none' : Number(v).toFixed(n));
 
+// A SET'S NAME WITH ITS COIN AND SHAPE, SAID ONCE (3.142.3, owner: "is there a
+// good reason this one's so ugly"): a set named after its coin and shape was
+// printed with them twice in every set box. The unit is added only when the
+// name does not already carry it. Braces on purpose (see the History note).
+function setNameWords(x) {
+  const unit = x.unitName || 'all units together';
+  return String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`;
+}
 // the set is picked from the server's own list, newest first, never typed
 function vSetBoxHtml(list, chosen) {
   return `<div class="row"><label class="f" title="every Stage 4 record set on this box, newest first, with its coin and shape, its survivors of its target, and whether a verdict is stamped on it">Stage 4 record set<select id="vSet" style="min-width:28rem">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} of ${x.target == null ? 'no target' : Number(x.target).toLocaleString()} · ${x.verify ? `${x.verify.pass ? 'PASS' : 'FAIL'} stamped ${esc(String(x.verify.at).slice(0, 10))}` : 'no verdict yet'}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} of ${x.target == null ? 'no target' : Number(x.target).toLocaleString()} · ${x.verify ? `${x.verify.pass ? 'PASS' : 'FAIL'} stamped ${esc(String(x.verify.at).slice(0, 10))}` : 'no verdict yet'}</option>`).join('')
     : '<option value="">- no Stage 4 record set on this box yet - cut one on the Funnel -</option>'}</select></label></div>`;
 }
 function vFootingHtml(d) {
@@ -2484,7 +2492,7 @@ function hRememberedSet(list) {
 function hSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to retrain, from every set on this box, newest first">Stage 4 record set<select id="hSet">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
 }
 // ---- THE RETRAIN RUN ON HISTORY (3.94.0, AGEDIAL-DESIGN.md; the one panel since 3.142.0) ----
@@ -2663,7 +2671,7 @@ function tnRememberedWindows() {
 function tnSetBoxHtml(list, chosen) {
   return `<div class="row" style="align-items:flex-end">
     <label class="f" title="which Stage 4 record set to capture the trades of, from every set on this box, newest first">Stage 4 record set<select id="tnSet">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : ''}</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>`;
 }
 function tnCaptureBlockHtml(c) {
@@ -2804,8 +2812,8 @@ async function drawTune() {
     <p class="note">Reads the captured trades of one survivor of a Stage 4 record set over the windows ticked and finds the
       tightest fixed stop that would not have clipped a single winner, plus the sacrifice curve (give up top winners →
       tighter stop → NET $). Scanning applies nothing. Target: ${target}.</p>
-    <div class="row" style="margin-bottom:.4rem"><label class="f" title="what the scans below are aimed at: a Stage 4 record set whose trades are captured on this tab, one survivor of it, over the windows ticked">scan target<select id="tuneTarget">
-      ${stage4.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}>${esc(b.name)} — ${esc(b.unitName || 'all units together')} — ${b.captured} of ${b.survivors} survivors captured</option>`).join('')}
+    <div class="row" style="margin-bottom:.4rem;align-items:flex-end"><label class="f" title="what the scans below are aimed at: a Stage 4 record set whose trades are captured on this tab, one survivor of it, over the windows ticked">scan target<select id="tuneTarget">
+      ${stage4.map((b) => `<option value="${esc(optId(b))}" ${tgt === optId(b) ? 'selected' : ''}>${setNameWords(b)} · ${b.captured} of ${b.survivors} survivors captured</option>`).join('')}
     </select></label>
     <span class="note">${stage4.length} Stage 4 record set(s) with their trades captured</span></div>
     ${isSet ? tnTargetRowHtml(chosen, tnPickVal, tnWins) : ''}
@@ -3103,7 +3111,7 @@ function glStage4PanelHtml(list, chosen, d) {
       work until the live path speaks that agreement.</p>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="which Stage 4 record set to take a survivor from, from every set on this box, newest first; a half-life set stands on the verdict of the set it was built from">Stage 4 record set<select id="gl4Set">${list.length
-    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${esc(x.name)} · ${esc(x.unitName || 'all units together')} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : (x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict')}</option>`).join('')
+    ? list.map((x) => `<option value="${esc(x.id)}" ${x.id === chosen ? 'selected' : ''}>${setNameWords(x)} · ${Number((x.counts || {}).survivors ?? 0).toLocaleString()} survivors${x.derived ? ` · half-life set from ${esc(x.derived.fromName || x.derived.from)}` : (x.verify ? ` · verdict ${x.verify.pass ? 'PASS' : 'FAIL'}` : ' · no verdict')}</option>`).join('')
     : '<option value="">no Stage 4 record set on this box yet</option>'}</select></label></div>
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${(d.survivors || []).length} survivors
       · verdict ${d.gate ? `<b class="pos">${esc(d.gate.id)} stood (PASS, release ${esc(d.gate.release || '?')})</b>` : `<b class="neg">none stood</b> (${d.verdicts} stamped)`}${d.members ? ` · ${d.members} members as the stage 2 set trained them` : ''}${d.refused ? ` · <b class="warn">refused:</b> ${esc(d.refused)}` : ''}</p>

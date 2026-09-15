@@ -315,12 +315,17 @@ module.exports = {
     // 'Save the reason' button with the 'your reason for this choice' field"): the row carries
     // align-items:flex-end, as every such row on History and Verify does, so the button sits on the
     // field's own line and not between the caption and the field
-    for (const field of ['your reason for this choice', 'apply a stop you chose yourself']) {
+    for (const field of ['your reason for this choice', 'apply a stop you chose yourself', 'what the scans below are aimed at']) {
       const at = ui.indexOf(field);
       const rowStart = ui.lastIndexOf('<div class="row"', at);
       const rowTag = ui.slice(rowStart, ui.indexOf('>', rowStart) + 1);
       assert.ok(/align-items:flex-end/.test(rowTag), `the row holding "${field}" does not line its button up with the field: ${rowTag}`);
     }
+    // THE SET'S COIN AND SHAPE ARE SAID ONCE (3.142.3): every set box prints the name through the one
+    // helper, which adds the unit only when the name does not already carry it, with one separator
+    assert.ok(/function setNameWords\(x\) \{/.test(ui) && ui.includes("return String(x.name || '').includes(unit) ? esc(x.name) : `${esc(x.name)} · ${esc(unit)}`;"), 'the set boxes no longer say a set\'s coin and shape once');
+    assert.strictEqual((ui.match(/\$\{setNameWords\((x|b)\)\}/g) || []).length, 5, 'a set box prints the name and unit its own way again');
+    assert.ok(!/\$\{esc\(x\.name\)\} · \$\{esc\(x\.unitName/.test(ui) && !/\$\{esc\(b\.name\)\} — /.test(ui), 'a set box still prints the unit beside the name itself');
     // THE UNIT LIVES IN THE CAPTION (3.142.2, owner: "why is the alignment of this stuff so ugly?"): a captioned
     // field is a column, so text after its box lands on a line of its own. The page's pattern is Verify's
     // "bar share %": the unit in the caption, nothing after the box.
