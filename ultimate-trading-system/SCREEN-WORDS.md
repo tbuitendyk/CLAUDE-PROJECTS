@@ -18,7 +18,7 @@ is the same fault wearing a disguise.
 
 ## Which screen this describes
 
-Generated from **0556264eb162 — what the box is serving**, not from the working tree.
+Generated from **67b54832b91e — what the box is serving**, not from the working tree.
 
 That distinction is the whole point. Between a commit and its deploy the
 two describe different screens, and on 2026-08-22 exactly that happened: a
@@ -1290,7 +1290,7 @@ again and are as at average behind beside best block both box Build built by cen
 
 # Tune
 
-## What the controls are called (74)
+## What the controls are called (79)
 
 - `— uplift`
 - `, each a counted look`
@@ -1305,10 +1305,14 @@ again and are as at average behind beside best block both box Build built by cen
 - `(flat`
 - `(worst distance`
 - `A heavy scan is running (`
+- `all`
+- `all survivors -`
 - `Apply custom`
 - `Apply to the live rule`
 - `by depth -`
 - `Capture the trades of this set`
+- `captured -`
+- `captured survivors`
 - `Chance check:`
 - `drawdown`
 - `entries`
@@ -1325,8 +1329,8 @@ again and are as at average behind beside best block both box Build built by cen
 - `No stop (clear)`
 - `of`
 - `of the Stage 4 record set`
+- `on`
 - `on record:`
-- `one survivor`
 - `or apply a custom stop %`
 - `over`
 - `per-$`
@@ -1356,6 +1360,7 @@ again and are as at average behind beside best block both box Build built by cen
 - `training`
 - `training entries,`
 - `Tune protective stop`
+- `Tuning targets`
 - `under release`
 - `Verdict:`
 - `vs ladder`
@@ -1371,14 +1376,16 @@ again and are as at average behind beside best block both box Build built by cen
 
 _none_
 
-## Sentences the page prints (28)
+## Sentences the page prints (32)
 
 - ) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).
+- What the two scans below read: a Stage 4 record set whose trades are captured above, one survivor of it
+- or all of them, over the windows ticked. Choosing here reads nothing; each scan says what it will read before it runs.
+- Stage 4 record set(s) with their trades captured
 - Protective stop tuner — on the captured trades, loses no winner
 - Reads the captured trades of one survivor of a Stage 4 record set over the windows ticked and finds the
 - tightest fixed stop that would not have clipped a single winner, plus the sacrifice curve (give up top winners →
 - tighter stop → NET $). Scanning applies nothing. Target:
-- Stage 4 record set(s) with their trades captured
 - no choice about the stop has been recorded yet
 - currently applied on the trading machine:
 - Conviction sizing — bet more when more members agree?
@@ -1387,6 +1394,8 @@ _none_
 - entries.
 - NET = winner $ given up + loss-side $ vs no stop; positive means the stop helps. Apply buttons exist
 - only for the running engine; for a lab row the number informs the greenlight instead.
+- · return on the amount traded: flat
+- ; the same p holds for the return on the amount traded, because a shuffle keeps the ladder's amount traded.
 - Per-trade capture of a Stage 4 record set
 - The two scans below take a list of trades and price them themselves; a Stage 4 record set holds money per
 - window and never the trades. This writes them down: for every survivor that enters at market with no trailing stop,
@@ -1402,10 +1411,10 @@ _none_
 - no Stage 4 record set on this box yet
 - survivor(s) are not in the stage 3 set's block on this unit
 
-## Every word, flat (232)
+## Every word, flat (252)
 
 ```
-aborted about against agree aimed among and appears applied applies apply Apply are as asks at be been before below bet block both box buttons by called cannot capture Capture captured chance Chance check choice clear clip clipped comes concurrent Conviction conviction count counted currently curve custom deals DECLARED depth disabled distance down drawdown each engine enters entries entries. every exist Exposure exposure-honest failed finds first fixed flat for from give given greenlight has have heavy held-back helps. holds hour how in informs instead. is it it. its lab ladder lands last launchers list live look losers loses loss-side machine made many market mean means members metrics. mid-flight minutes money more multiplier NET never newest no No no-winner-lost not nothing nothing. number of on Once one one. only or over overlay peak per per- Per-trade plus positive price priced Prices Protective protective pure read Read reading Reads reads reason record recorded refused release row rule run Run running sacrifice same Save scan Scanning scans set shuffled shuffled-assignment side simulator single sizing spoke Stage stage stop survivor survivors sweep take taken Target target test that the The their them themselves there this This ticked tighter tightest time to top trade trade. trades trades. trading trailing training Tune tuner two under unit until up uplift Verdict Verify vote vs was when window window. windows winner winners winning-side with worst would writes yet yet. your
+aborted about above against agree aimed all among amount and appears applied applies apply Apply are as asks at be because been before below bet block both box buttons by called cannot capture Capture captured chance Chance check choice Choosing clear clip clipped comes concurrent Conviction conviction count counted currently curve custom deals DECLARED depth disabled distance down drawdown each engine enters entries entries. every exist Exposure exposure-honest failed finds first fixed flat for from give given greenlight has have heavy held-back helps. here holds hour how in informs instead. is it it. its keeps lab ladder lands last launchers list live look losers loses loss-side machine made many market mean means members metrics. mid-flight minutes money more multiplier NET never newest no No no-winner-lost not nothing nothing. number of on Once one one. only or over overlay peak per per- Per-trade plus positive price priced Prices Protective protective pure read Read reading reads Reads reason record recorded refused release return row rule run Run running runs. sacrifice same Save says scan Scanning scans set shuffle shuffled shuffled-assignment side simulator single sizing spoke Stage stage stop survivor survivors sweep take taken target Target targets test that the The their them themselves there this This ticked ticked. tighter tightest time to top trade trade. traded traded. trades trades. trading trailing training Tune tuner Tuning two under unit until up uplift Verdict Verify vote vs was What what when whose will window window. windows winner winners winning-side with worst would writes yet yet. your
 ```
 
 ---
