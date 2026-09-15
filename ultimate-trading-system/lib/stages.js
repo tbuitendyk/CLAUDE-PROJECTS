@@ -7297,6 +7297,13 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
   const at = new Date().toISOString();
   const seq = seqFor(4);
   const id = `s4-${Date.now().toString(36)}-${seq}`;
+  // THE TUNINGS APPLIED ON TUNE (3.152.0, owner order 2026-09-15): every survivor
+  // read here is priced again under the stop and the sizing frozen on it, off
+  // its captured trades on this stretch, and both numbers go on the block side
+  // by side. The verdict above reads the plain money: the copies are priced
+  // plain, and a tuned survivor against plain copies would be two different
+  // things compared.
+  const tuned = await tunedOnStretch(fresh, stretch, (survivors || {}).rows || []);
   const block = V.buildBlock({
     id: `${id}-v1`, at, release: ENGINE_VERSION, look: number, stretch,
     rules, stageGate, footing: rest,
@@ -7309,6 +7316,7 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
     windows: windowsForVerify(doc, join.parent),
     marks: (doc.marks || []).map((m) => ({ key: m.key, what: m.what, step: m.step ?? null, detail: m.detail ?? null })),
     standsOn, window, priced, missing, forecasts,
+    tuned,
   });
   const set = makeJudgeSet(fresh, stretch, { id, seq, number, block, standsOn, at });
   saveSet(set);
@@ -7790,6 +7798,8 @@ async function stage4GreenlightSource(setId, asked = {}) {
   const held = heldOf(survivor.label);
   const un = reserveRowOf(survivor.label);
   const hl = hlOf(survivor.label);
+  // the survivor's money under its frozen stop and sizing, as the reading priced it off the capture (3.152.0)
+  const tunedOf = (set, label) => { const t = set && set.block && set.block.tuned ? set.block.tuned : null; const x = t ? (t.rows || []).find((y) => y.label === label) : null; return x ? { stop: x.stop, sizing: x.sizing, clipUsd: x.clipUsd, flatUsd: x.flatUsd, tunedUsd: x.tunedUsd, stopped: x.stopped, priced: x.priced } : null; };
   const p1 = stage2.params || {};
   const size = rec.size || (rec.ctx1 ? (rec.ctx2 ? 3 : 2) : 1);
   return {
@@ -7814,8 +7824,8 @@ async function stage4GreenlightSource(setId, asked = {}) {
       halfLife: hl ? HL.daysOfMonths(hl.halfLife) : null, halfLifeMonths: hl ? hl.halfLife : null },
     fee: Number.isFinite(Number((parent.params || {}).fee)) ? Number((parent.params || {}).fee) : null,
     readings: {
-      held: held ? { money: held.money, trades: held.trades } : null,
-      reserve: un ? { money: un.money, trades: un.trades, look: (doc.block || {}).look ?? null } : null,
+      held: held ? { money: held.money, trades: held.trades, tuned: tunedOf(heldSet, survivor.label) } : null,
+      reserve: un ? { money: un.money, trades: un.trades, look: (doc.block || {}).look ?? null, tuned: tunedOf(doc, survivor.label) } : null,
       halfLife: hl ? { months: hl.halfLife, judge: (doc.derived || {}).judgeWord || null, money: hl.money ? hl.money.judge : null, unweighted: hl.money ? hl.money.unweighted : null } : null,
     },
   };
@@ -7878,8 +7888,9 @@ async function pictureOf(doc) {
   const rowOf = (set, label) => { const b = set && set.block ? set.block : null; const x = b ? ((b.survivors || {}).rows || []).find((y) => y.label === label) : null; const o = b && b.read && b.read.own ? (b.read.own.rows || []).find((y) => y.label === label) : null; return x ? { money: x.money, trades: x.trades, vsLong: x.vsLong ?? null, clears: o ? o.clears : null, four: o ? o.four : null, beats: o ? o.beats : null } : null; };
   // THE TUNINGS APPLIED ON TUNE (3.151.0): the stop and the sizing the set froze for each survivor, and its money with and without them, off its captured trades
   const frozen = (doc.stopChoices && typeof doc.stopChoices === 'object') ? doc.stopChoices : (rule.stopChoices || {});
+  const { NOTIONAL } = require('./paper');
   let tuned = {};
-  try { tuned = await tunedOfRule({ ...rule, stopChoices: frozen }, labels); } catch (err) { out.tunedWhy = String((err && err.message) || err); }
+  try { tuned = await tunedOfRule({ ...rule, stopChoices: frozen }, labels, NOTIONAL); } catch (err) { out.tunedWhy = String((err && err.message) || err); }
   out.survivors = labels.map((L) => {
     const rr = rows.find((x) => x.label === L) || null;
     const c = frozen[L] || null;
@@ -7889,7 +7900,7 @@ async function pictureOf(doc) {
       tuned: tuned[L] || null,
     };
   });
-  out.rule.tunings = { survivorsWithATuning: out.survivors.filter((x) => x.tuned).length, of: labels.length, capture: !!cap };
+  out.rule.tunings = { survivorsWithATuning: out.survivors.filter((x) => x.tuned).length, of: labels.length, capture: !!cap, clipUsd: NOTIONAL };
   return out;
 }
 async function stage4GreenlightDry(setId) {
@@ -8229,7 +8240,11 @@ function setSizingChoice(setId, asked = {}) {
 // adverse move passes the stop, sized by the ladder at its agreement -- in the
 // scans' dollars (one clip a trade). Read, never priced; a survivor with no
 // tuning on record is not worked out.
-async function tunedOfRule(rule, labels) {
+// `atClip` prices every survivor at those dollars a trade instead of the
+// sizing's own clip: the readings and the picture hand it the record's own
+// notional (lib/paper.js NOTIONAL, $100 a trade) so the tuned money sits
+// beside the record's money in one currency; Tune's scans keep their $10 clip.
+async function tunedOfRule(rule, labels, atClip = null) {
   const out = {};
   const cap = readCapture(rule.id);
   const choices = (rule && rule.stopChoices) || {};
@@ -8248,7 +8263,7 @@ async function tunedOfRule(rule, labels) {
     const c = choices[L];
     const S = c.stopPct != null ? Number(c.stopPct) : null;
     const sz = c.sizing && c.sizing.on ? c.sizing : null;
-    const clip = sz ? Number(sz.clipUsd) || 10 : 10;
+    const clip = atClip != null && Number.isFinite(Number(atClip)) ? Number(atClip) : (sz ? Number(sz.clipUsd) || 10 : 10);
     const windows = {};
     for (const [w, key] of [['train', 'train'], ['test', 'test'], ['held', 'hold'], ['reserve', 'reserve']]) {
       const entries = sv.entries[key] || [];
@@ -8268,6 +8283,46 @@ async function tunedOfRule(rule, labels) {
     }
     out[L] = { stop: S, sizing: sz ? { on: true, ladder: sz.ladder, clipUsd: clip } : null, clipUsd: clip, windows };
   }
+  return out;
+}
+// THE TUNINGS ON ONE STRETCH FOR A READING (3.152.0, owner order 2026-09-15:
+// "choose to APPLY those tunings OR NOT ... However they are applied then we
+// can run the Held and Reserve"): for the survivors a press read on a stretch,
+// the stop and the sizing frozen on each, and its money on that stretch with
+// and without them, off its captured trades. Read off the capture, priced by
+// nothing new. A survivor with no tuning on record is not worked out; a rule
+// without a capture, or a reserve read on a capture that holds no reserve
+// entries, says so in words and prices nothing. The reading's own money is
+// written beside the capture's plain re-pricing, and a gap between the two is
+// said to the cent, never hidden.
+const TUNED_READS_PLAIN = 'the verdict reads the plain money: the copies are priced plain, and a survivor tuned against copies that are not would be two different things compared';
+const TUNED_NONE = 'no survivor of this rule carries a stop or a sizing on Tune, so nothing is priced again';
+async function tunedOnStretch(rule, stretch, rows) {
+  const labels = (rows || []).map((r) => r.label);
+  const moneyOf = new Map((rows || []).map((r) => [r.label, r.money ?? null]));
+  const choices = (rule && rule.stopChoices) || {};
+  const withATuning = labels.filter((L) => choices[L] && (choices[L].stopPct != null || (choices[L].sizing && choices[L].sizing.on)));
+  const { NOTIONAL } = require('./paper');
+  const out = { window: stretch, of: labels.length, withATuning: withATuning.length, priced: 0, clipUsd: NOTIONAL, capture: null, rows: [], notCaptured: [], why: null, reads: TUNED_READS_PLAIN };
+  if (!withATuning.length) { out.why = TUNED_NONE; return out; }
+  const cap = readCapture(rule.id);
+  if (!cap) { out.why = CAPTURE_NOT_YET; return out; }
+  out.capture = { at: cap.at || null, release: cap.release || null, times: cap.times ?? null };
+  if (stretch === 'reserve' && !(cap.reserve && cap.reserve.captured)) { out.why = `the capture holds no reserve entries — ${(cap.reserve || {}).why || 'capture the trades of this set on Tune again'}`; return out; }
+  let tuned = {};
+  try { tuned = await tunedOfRule(rule, withATuning, out.clipUsd); } catch (err) { out.why = String((err && err.message) || err); return out; }
+  for (const L of withATuning) {
+    const t = tuned[L];
+    const w = t && t.windows ? t.windows[stretch] : null;
+    if (!w) { out.notCaptured.push(L); continue; }
+    const money = moneyOf.get(L);
+    out.rows.push({
+      label: L, stop: t.stop, sizing: t.sizing, clipUsd: t.clipUsd, money,
+      trades: w.trades, priced: w.priced, unpriced: w.unpriced, stopped: w.stopped, flatUsd: w.flatUsd, tunedUsd: w.tunedUsd,
+      differs: money != null && Number.isFinite(w.flatUsd) ? Math.round((w.flatUsd - money) * 100) / 100 : null,
+    });
+  }
+  out.priced = out.rows.length;
   return out;
 }
 // WHAT A SCAN ON A CAPTURE IS AIMED AT, resolved before anything loads: the set, the
@@ -9584,7 +9639,7 @@ module.exports = {
   funnelDropped, funnelDroppedStart, droppedRefusalOf,
   stageGateStart, stageGateStatus, examBusy,
   funnelOthersStart, funnelOthersStatus, othersSummaryOf, funnelRideStart, funnelRideStatus, RICH_FIELDS,
-  stage4GreenlightSource, stage4GreenlightDry, pictureOf, setSizingChoice, tunedOfRule, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
+  stage4GreenlightSource, stage4GreenlightDry, pictureOf, setSizingChoice, tunedOfRule, tunedOnStretch, TUNED_NONE, verifyLooksOf, partSlices, richSetOf, richMissingFor, mergeProofs, richAllIn, unitsDoneWithoutTables,
   tuneCaptureDry, tuneCaptureStart, tuneCaptureStatus, tuneOnCapture, captureCandidates, captureTargetOf, readCapture, captureFile,
   halfLifeDry, halfLifeStart, halfLifeStatus, readHalfLifeRun, halfLifeFile, layoutOfSet, buildHalfLifeSet, gateOfSet,
   stopChoiceOf, setStopChoice,

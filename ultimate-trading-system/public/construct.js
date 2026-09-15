@@ -2173,9 +2173,33 @@ function vOwnCell(x) {
   if (!x.known) return `<span class="warn">no figure at ${esc(x.key)}</span>`;
   return x.clears ? '<b class="pos">yes</b>' : '<b class="neg">no</b>';
 }
+// the stop and the sizing frozen on one survivor, in words (3.152.0)
+function vTuningsWords(x) {
+  const stop = x.stop != null ? `stop ${(100 * Number(x.stop)).toFixed(2)}%` : 'no stop';
+  const size = x.sizing && x.sizing.on ? 'by conviction' : 'one clip';
+  return `${stop}, ${size}`;
+}
+// the capture's plain re-pricing against the reading's own money: a gap of a cent or more is said, never hidden
+function vDiffersWords(t) {
+  const off = ((t && t.rows) || []).filter((x) => x.differs != null && Math.abs(x.differs) >= 0.01);
+  if (!off.length) return '';
+  const worst = off.reduce((a, x) => (Math.abs(x.differs) > Math.abs(a) ? x.differs : a), 0);
+  return ` · <b class="warn">on ${off.length} survivor(s) the capture's plain re-pricing is off the reading by a cent or more (the largest gap ${money(worst)})</b>`;
+}
+function vTunedNoteHtml(t) {
+  if (!t) return '';
+  const cap = t.capture ? ` (captured ${esc(String(t.capture.at || '').slice(0, 10))})` : '';
+  const body = t.why
+    ? `<b class="warn">${esc(t.why)}</b>`
+    : `each priced again under them off its captured trades${cap}, plain and tuned side by side in the table below${(t.notCaptured || []).length ? ` · ${t.notCaptured.length} with a tuning but no captured trades on this window` : ''}`;
+  return `<p class="note"><b>The tunings applied on Tune:</b> ${t.withATuning} of ${t.of} survivors carry a stop or a sizing · ${body} · ${esc(t.reads || '')}${vDiffersWords(t)}</p>`;
+}
 function vSurvivorsTableHtml(b, stretch) {
   const rows = ((b.survivors || {}).rows) || [];
   if (!rows.length) return '';
+  // the tunings applied on Tune (3.152.0): each survivor's stop and sizing as this set froze them, and its money on this window with and without them, off its captured trades
+  const tunedBy = new Map((((b.tuned || {}).rows) || []).map((x) => [x.label, x]));
+  const tunedOn = tunedBy.size > 0;
   // each survivor at its own hold length (3.146.0), by the setting's name; a block stamped before it existed has none
   const ownBy = new Map((((b.read || {}).own || {}).rows || []).map((x) => [x.label, x]));
   // what only a pricing works out per survivor, when this block came from one
@@ -2192,10 +2216,14 @@ function vSurvivorsTableHtml(b, stretch) {
     <th title="as stored on the record: how far its ${stretchPlain(stretch)} money sits above the typical copy, over the population spread">lead</th>
     <th title="read here: of the copies kept, how many its ${stretchPlain(stretch)} money beats by at least a cent, against the same bar as the set">beats N of K</th>
     <th title="this survivor's own reading against its own copies at the same bar. It never picks a survivor and never gates the set.">own verdict</th>
+    ${tunedOn ? `<th title="the stop and the sizing frozen on this survivor when this set was written">tunings</th>
+    <th title="its captured trades on the ${stretchPlain(stretch)} window with no tuning, priced again by the scans' own arithmetic in the same dollars as the money column: $${Number((b.tuned || {}).clipUsd) || 0} a trade, the record's own. The scans on Tune print one clip of $10.">no tuning $</th>
+    <th title="the same trades with the frozen stop and sizing applied, in the same dollars">tuned $</th>
+    <th title="trades the frozen stop closed early, of those priced">stopped</th>` : ''}
     ${priced ? `<th title="trades closed by the stop on the ${stretchPlain(stretch)} window, from the pricing this block came from">stopped out</th>
     <th title="the deepest fall from a high point of the running money on the ${stretchPlain(stretch)} window">largest drawdown $</th>
     <th title="the single worst trade on the ${stretchPlain(stretch)} window">worst trade $</th>` : ''}
-  </tr></thead><tbody>${rows.map((r) => { const p = pricedBy.get(r.label) || null; return `<tr><td>${esc(r.label)}</td><td class="${(r.money || 0) >= 0 ? 'pos' : 'neg'}">${money(r.money)}</td><td>${r.trades == null ? '—' : r.trades}</td><td>${money(r.vsLong)}</td><td>${vOwnCell(ownBy.get(r.label))}</td><td>${r.storedBeat == null ? '—' : r.storedBeat}</td><td>${r.storedPairs == null ? '—' : r.storedPairs}</td><td>${vFix(r.storedLead)}</td><td>${r.beats} of ${r.copiesKept}</td><td class="${r.pass ? 'pos' : 'neg'}">${r.pass ? 'PASS' : 'FAIL'}</td>${priced ? `<td>${p && p.stops != null ? p.stops : '—'}</td><td>${money(p && p.ride ? p.ride.maxDrawdown : null)}</td><td>${money(p && p.ride ? p.ride.worstTrade : null)}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>
+  </tr></thead><tbody>${rows.map((r) => { const p = pricedBy.get(r.label) || null; const x = tunedBy.get(r.label) || null; return `<tr><td>${esc(r.label)}</td><td class="${(r.money || 0) >= 0 ? 'pos' : 'neg'}">${money(r.money)}</td><td>${r.trades == null ? '—' : r.trades}</td><td>${money(r.vsLong)}</td><td>${vOwnCell(ownBy.get(r.label))}</td><td>${r.storedBeat == null ? '—' : r.storedBeat}</td><td>${r.storedPairs == null ? '—' : r.storedPairs}</td><td>${vFix(r.storedLead)}</td><td>${r.beats} of ${r.copiesKept}</td><td class="${r.pass ? 'pos' : 'neg'}">${r.pass ? 'PASS' : 'FAIL'}</td>${tunedOn ? (x ? `<td>${vTuningsWords(x)}</td><td>${money(x.flatUsd)}</td><td class="${(x.tunedUsd || 0) >= 0 ? 'pos' : 'neg'}">${money(x.tunedUsd)}</td><td>${x.stopped ? `${x.stopped} of ${x.priced}` : '—'}</td>` : '<td class="muted">none</td><td>—</td><td>—</td><td>—</td>') : ''}${priced ? `<td>${p && p.stops != null ? p.stops : '—'}</td><td>${money(p && p.ride ? p.ride.maxDrawdown : null)}</td><td>${money(p && p.ride ? p.ride.worstTrade : null)}</td>` : ''}</tr>`; }).join('')}</tbody></table></div>
   <p class="note muted">${rows.length} survivors, every one of them, in the set's own order. There is no sort on this table: a sort is a look.</p>`;
 }
 // ONE HELD SET OR RESERVE SET, drawn whole: its one block, the same markup on
@@ -2234,6 +2262,7 @@ function vBlockHtml(set, isNewest, stretch) {
       forward paper test after freezing is the real judge.</p>
     ${(b.marks || []).length ? `<p class="note"><b>Marks the walk was carried past:</b> ${b.marks.map((m) => esc(m.what || m.key)).join('; ')}</p>` : ''}
     <p class="note muted">fee ${b.fee && b.fee.feePerLeg != null ? `${(100 * Number(b.fee.feePerLeg)).toFixed(3)}% a leg` : 'not recorded'} · sealed window ${b.windows && b.windows.sealed && b.windows.sealed.intact ? `from ${vDay(b.windows.sealed.fromTs)} onward` : 'not intact'}${b.windows && b.windows.hold ? ` · held-back ${vDay(b.windows.hold.fromTs)} → ${vDay(b.windows.hold.toTs)}` : ''}</p>
+    ${vTunedNoteHtml(b.tuned || null)}
     ${vSurvivorsTableHtml(b, stretch)}`;
   return `<div class="panel" style="margin-top:.5rem">
     <h4 style="margin:0 0 .3rem">${esc(set.name)} - <b class="${v.pass ? 'pos' : 'neg'}">${v.pass ? 'PASS' : 'FAIL'}</b> <span class="muted">stamped ${esc(String(b.at || '').slice(0, 16))} under release ${esc(b.release || '?')}</span></h4>
@@ -3300,7 +3329,7 @@ function glOneHtml(d, pick) {
   const tn = sv.tunings || null;
   return `<p class="note" style="margin-top:.5rem"><b>One survivor, ${esc(sv.label)}:</b> the same lines for it alone${tn ? ` · <b>tunings frozen on this set:</b> ${tn.stop != null ? `protective stop ${(100 * tn.stop).toFixed(2)}%` : (tn.stopSaid ? 'no stop' : 'no stop chosen')}, ${tn.sizing ? 'sized by conviction' : 'every trade at one clip'}` : ' · no tuning on record'}</p>
     <div class="scrollx"><table><thead><tr><th title="one stretch of history">stretch</th><th title="this survivor's money on that stretch, as the set priced it">$</th><th title="its trades on that stretch">trades</th><th title="whether it is in the money and ahead of all four comparisons at its own hold length on that stretch">clears all four</th>
-      <th title="its captured trades on that stretch with no tuning, in the scans' dollars: one clip a trade">no tuning $ (a clip a trade)</th><th title="the same trades with the frozen stop and sizing applied, by the scans' own arithmetic">tuned $ (a clip a trade)</th><th title="trades the frozen stop closed early, of those priced">stopped</th></tr></thead>
+      <th title="its captured trades on that stretch with no tuning, priced again by the scans' own arithmetic in the same dollars as the $ column: $${Number(((p.rule || {}).tunings || {}).clipUsd) || 0} a trade, the record's own. The scans on Tune print one clip of $10.">no tuning $</th><th title="the same trades with the frozen stop and sizing applied, in the same dollars">tuned $</th><th title="trades the frozen stop closed early, of those priced">stopped</th></tr></thead>
     <tbody>${(p.stretches || []).map((k) => `<tr><td>${glStretchWord(k)}</td>${cell(sv[k])}${tcell(k)}</tr>`).join('')}</tbody></table></div>`;
 }
 function glStage4PanelHtml(list, chosen, d) {

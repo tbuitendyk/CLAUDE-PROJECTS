@@ -208,6 +208,8 @@ module.exports = {
       const g1 = rs1.block;
       assert.deepStrictEqual({ pricing: g1.board.pricing, rows: g1.board.pricedRows, settings: g1.board.settings, over: g1.sanity.over, chunks: g1.window.chunks }, { pricing: 1, rows: unitBoard.length, settings: unitBoard.length, over: 'board', chunks: board.window.chunks });
       assert.ok(/read off the reserve board of this unit/.test(g1.forecasts), g1.forecasts);
+      // the tunings on this stretch (3.152.0): nothing on record here, so nothing is priced again and the block says so
+      assert.deepStrictEqual({ window: g1.tuned.window, of: g1.tuned.of, withATuning: g1.tuned.withATuning, rows: g1.tuned.rows.length, why: g1.tuned.why }, { window: 'reserve', of: g1.survivors.rows.length, withATuning: 0, rows: 0, why: stages.TUNED_NONE });
       assert.deepStrictEqual(g1.priced.map((x) => Math.round(x.money * 100)), g1.priced.map((x) => Math.round(board.rows[x.label].avgHold * 100)), 'the set reads the survivors off the board');
       assert.deepStrictEqual({ from: g1.window.fromTs, chunks: g1.window.chunks, look: g1.look, standsOn: g1.standsOn.id, release: g1.release, kind: rs1.kind, stretch: g1.stretch, name: rs1.name, forecasts: g1.forecasts },
         { from: reserve.fromTs, chunks: un.chunks.length, look: 1, standsOn: heldSet.id, release: require('../package.json').version, kind: 'reserve', stretch: 'reserve', name: `reserve set of ${stages.getSet(c.cut.id).name}`, forecasts: "the members' saved models, read off the reserve board of this unit" });
