@@ -2629,7 +2629,8 @@ async function drawHistory() {
 //
 // The two scans on this screen take a list of entries and price them
 // themselves; a Stage 4 record set holds money per window and never the
-// trades. The panel below writes them down for every survivor that enters at
+// trades. This panel, drawn first since 3.142.1 (owner order 2026-09-15:
+// the capture feeds the scans, so it reads before them), writes them down for every survivor that enters at
 // market with no trailing stop, and the scan target box then offers the set,
 // with one survivor and the windows the scan reads beside it. A scan that
 // reads the held-back entries is a counted look. Helpers written with braces
@@ -2686,11 +2687,11 @@ function tnCaptureBlockHtml(c) {
 function tnCapturePanelHtml(list, chosen, d) {
   return `<div class="panel">
     <h3 style="margin-top:0">Per-trade capture of a Stage 4 record set</h3>
-    <p class="note">The two scans above take a list of trades and price them themselves; a Stage 4 record set holds money per
+    <p class="note">The two scans below take a list of trades and price them themselves; a Stage 4 record set holds money per
       window and never the trades. This writes them down: for every survivor that enters at market with no trailing stop,
       every hour the rule spoke on the training, test and held-back windows, with the side, how many members called that
       side, and the money the simulator made on that one trade. Tune comes before Verify and asks nothing of it.
-      Once captured, the set appears in the scan target box above, and a scan that reads the held-back entries is a
+      Once captured, the set appears in the scan target box below, and a scan that reads the held-back entries is a
       counted look at the held-back window.</p>
     ${tnSetBoxHtml(list, chosen)}
     ${d ? `<p class="note"><b>${esc(d.name)}</b> - ${esc(d.unitName || 'all units together')} · ${esc(d.ruleSentence || '')} · ${Number(d.survivors || 0).toLocaleString()} survivors
@@ -2698,7 +2699,7 @@ function tnCapturePanelHtml(list, chosen, d) {
       <div class="row" style="align-items:flex-end">
         <button id="tnCapture" class="pri" ${d.refused ? 'disabled' : ''} title="writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows. A second press replaces the first; the looks already counted stay.">Capture the trades of this set${d.capture ? ' again' : ''}</button>
         <span id="tnCaptureMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>
-      ${d.capture ? tnCaptureBlockHtml(d.capture) : '<p class="note">No capture on this set yet. The scans above cannot be aimed at it until there is one.</p>'}` : ''}
+      ${d.capture ? tnCaptureBlockHtml(d.capture) : '<p class="note">No capture on this set yet. The scans below cannot be aimed at it until there is one.</p>'}` : ''}
   </div>`;
 }
 // the survivor and the windows, drawn under the scan target when a Stage 4 record set is the target
@@ -2797,6 +2798,7 @@ async function drawTune() {
     : '<b>nothing selectable</b> — no Stage 4 record set on this box has its trades captured';
   $('#view').innerHTML = `
   ${busy ? `<div class="panel warn">A heavy scan is running (${esc(String(busy))}) — one at a time; both launchers are disabled until it lands (scans run minutes and cannot be aborted mid-flight).</div>` : ''}
+  ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}
   <div class="panel">
     <h3 style="margin-top:0">Protective stop tuner — on the captured trades, loses no winner</h3>
     <p class="note">Reads the captured trades of one survivor of a Stage 4 record set over the windows ticked and finds the
@@ -2807,7 +2809,7 @@ async function drawTune() {
     </select></label>
     <span class="note">${stage4.length} Stage 4 record set(s) with their trades captured</span></div>
     ${isSet ? tnTargetRowHtml(chosen, tnPickVal, tnWins) : ''}
-    <div class="row" style="margin-bottom:.4rem">
+    <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
       <label class="f" title="apply a stop you chose yourself rather than one off the curve. The box is in percent; the engine stores a fraction. The floor is ${floorPc}, which is twice the ${tripPc} it costs to trade in and out at ${feePc} each way — tighter than the round trip and a triggered stop is a guaranteed loss, tighter than the floor and it fires on ordinary hourly noise. This button writes the live engine's own risk parameter, so the floor is the lab rate rather than any one profile's fee.">or apply a custom stop<input id="stopCustomPct" type="number" step="0.5" min="${floorPct}" max="99" placeholder="e.g. 25" style="width:5.5rem"> %</label>
       <button id="stopCustomApply">Apply custom</button>
       <button id="stopClear" title="run with NO fixed stop. The position then rests on its scheduled exit alone.">No stop (clear)</button>
@@ -2818,7 +2820,7 @@ async function drawTune() {
          a control that belongs to the operator somewhere they could not reach.
          It is a box on this page now, sent with every apply and every clear,
          and editable on its own afterwards. -->
-    <div class="row" style="margin-bottom:.4rem">
+    <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
       <label class="f" title="why you chose this. Saved with the number and shown on the Trade screen beside it. Yours to write and to change at any time.">your reason for this choice<input id="stopWhy" type="text" maxlength="300" placeholder="why this stop, or why none" value="${esc(applied.why || '')}" style="width:32rem"></label>
       <button id="stopWhySave" title="save the reason on its own, leaving the stop exactly as it is">Save the reason</button>
     </div>
@@ -2835,7 +2837,7 @@ async function drawTune() {
     <div class="row"><button id="convRun" class="pri" ${busy ? 'disabled' : ''}>Run conviction sweep</button></div>
     <div id="convOut">${conv.status === 'done' ? renderConvResult(conv) : conv.status === 'running' ? '<p class="note">running…</p>' : conv.status === 'error' ? `<p class="warn">last sweep failed: ${esc(conv.error || '')}</p>` : ''}</div>
   </div>
-  ${tnCapturePanelHtml(tnSets, tnChosen, tnd)}`;
+`;
   function renderStopResult(s) {
     const cc = s.counts || {};
     return `${s.target ? tnTargetLineHtml(s.target) : ''}<p><b>${esc(s.bookId)}</b>: tightest no-winner-lost stop <span class="pos">${pct(s.stopPct)}</span> —

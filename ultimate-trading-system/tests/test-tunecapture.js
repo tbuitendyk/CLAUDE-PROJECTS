@@ -307,6 +307,20 @@ module.exports = {
     const ui = src('public/construct.js');
     for (const fn of ['tnCapturePanelHtml', 'tnCaptureBlockHtml', 'tnTargetRowHtml', 'tnTargetLineHtml', 'tnSetBoxHtml', 'tnCaptureFollow']) assert.ok(new RegExp(`^(async )?function ${fn}\\(`, 'm').test(ui), `${fn} must be a top-level helper`);
     assert.ok(/\$\{tnCapturePanelHtml\(tnSets, tnChosen, tnd\)\}/.test(ui), 'the panel is drawn on Tune');
+    // FIRST ON THE SCREEN (3.142.1, owner order): the capture feeds the scans, so it is drawn before them
+    const drawn = ui.slice(ui.indexOf('async function drawTune('));
+    assert.ok(drawn.indexOf('${tnCapturePanelHtml(tnSets, tnChosen, tnd)}') < drawn.indexOf('Protective stop tuner — on the captured trades'), 'the capture panel is not the first panel on Tune');
+    assert.ok(!/scans above|scan target box above/.test(ui) && /The two scans below/.test(ui), 'the capture panel still says the scans are above it');
+    // A CAPTIONED FIELD BESIDE A BUTTON LINES UP AT THE BOTTOM (3.142.1, owner order: "line-up the
+    // 'Save the reason' button with the 'your reason for this choice' field"): the row carries
+    // align-items:flex-end, as every such row on History and Verify does, so the button sits on the
+    // field's own line and not between the caption and the field
+    for (const field of ['your reason for this choice', 'apply a stop you chose yourself']) {
+      const at = ui.indexOf(field);
+      const rowStart = ui.lastIndexOf('<div class="row"', at);
+      const rowTag = ui.slice(rowStart, ui.indexOf('>', rowStart) + 1);
+      assert.ok(/align-items:flex-end/.test(rowTag), `the row holding "${field}" does not line its button up with the field: ${rowTag}`);
+    }
     assert.ok(/\$\{isSet \? tnTargetRowHtml\(chosen, tnPickVal, tnWins\) : ''\}/.test(ui), 'the survivor and the windows are drawn under the scan target');
     for (const id of ['tnSet', 'tnCapture', 'tnPick', 'tnWinTrain', 'tnWinTest', 'tnWinHold']) assert.ok(ui.includes(`id="${id}"`), `${id} is on the screen`);
     assert.ok(/const scanBody = isSet \? \{ setId: chosen\.id, pick: tnPickVal, windows: tnWins \} : null/.test(ui), 'a scan on a set sends the set, the survivor and the windows');

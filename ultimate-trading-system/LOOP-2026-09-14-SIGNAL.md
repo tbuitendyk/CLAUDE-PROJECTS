@@ -901,3 +901,14 @@ under it reads as absent by its stamp — the box holds none); History and
 Tune lose the verdict gate, the verdict words and the verdict fields; the
 reserve grade panel moves under the verdict on Verify, on Verify's own set
 box, gate intact; Greenlight keeps its gate. Decision 92. Second digit.
+
+## Z. The capture panel first on Tune — owner GO NOW! 2026-09-15 (3.142.1)
+
+"wouldn't make more sense to put the ... capture of a stage four record set
+at the top. Is there a reason that's at the bottom?" None recorded beyond
+"a panel of its own under the existing ones" (step 8). It is drawn first
+now, its note says the scans are below it, and the help reads in the same
+order. And the same release lines up "Save the reason" with "your reason
+for this choice" and "Apply custom" with its field (owner: "that's just
+ugly"): the two rows take align-items:flex-end, the shape every captioned
+field beside a button already has on History and Verify. Third digit.

@@ -838,14 +838,19 @@ window.HELP = {
   tune: {
     title: 'Tune',
     how: [
+      ['First, the trades of a Stage 4 record set',
+        'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The first panel writes those down — every hour the rule of a survivor spoke, on the training, test and held-back windows, with the side and how many members called it — for every survivor that enters at market with no trailing stop. Once captured, the set can be chosen as the target below, with one survivor and the windows to read beside it.\n\nReading the held-back entries is a counted look at the held-back window, the same count Verify keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
       ['One variable at a time, on one survivor\'s trades',
         'The Sweep tab is wide and shallow: many settings, each scored once. This is the opposite — one setting, taken apart carefully.\n\nThe two scans work across every value of one thing, over the captured trades of one survivor on the windows ticked, and report the whole shape rather than a winner: which protective stops would have cost nothing, and how much requiring more agreement is worth. Both take minutes and cannot be stopped part-way.'],
-      ['A Stage 4 record set as the target',
-        'A Stage 4 record set holds money per window and never the trades, and the two scans need the trades. The panel under them writes those down — every hour the rule of a survivor spoke, on the training, test and held-back windows, with the side and how many members called it — for every survivor that enters at market with no trailing stop. Once captured, the set can be chosen as the target, with one survivor and the windows to read beside it.\\n\\nReading the held-back entries is a counted look at the held-back window, the same count Verify keeps. Reading the training and test entries is not: those windows were read to choose the rule. Nothing from a Stage 4 record set is ever applied to the trading machine.'],
     ],
     intro: 'Adjusting one chosen setting rather than searching for new ones. Everything here works '
       + 'on one survivor of a Stage 4 record set whose trades were captured, over the windows ticked.',
     controls: {
+      tnSet: { what: 'Which Stage 4 record set to capture the trades of, from every set on this box, newest first.' },
+      tnCapture: {
+        what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows.',
+        more: 'Tune comes before Verify and asks nothing of it. A second press replaces the capture on record; the looks already counted stay.',
+      },
       tuneTarget: { what: 'Which Stage 4 record set the scans below work on, from those whose trades were captured, one survivor of it.' },
       tnPick: {
         what: 'Which captured survivor of the Stage 4 record set the scans read.',
@@ -856,11 +861,6 @@ window.HELP = {
       tnWinHold: {
         what: 'Whether the scans read the entries of the held-back window.',
         more: 'Every scan that reads them is a counted look at the held-back window, stamped on the capture and counted on Verify.',
-      },
-      tnSet: { what: 'Which Stage 4 record set to capture the trades of, from every set on this box, newest first.' },
-      tnCapture: {
-        what: 'Writes down every trade of every survivor that enters at market with no trailing stop, on the training, test and held-back windows.',
-        more: 'Tune comes before Verify and asks nothing of it. A second press replaces the capture on record; the looks already counted stay.',
       },
       stopCustomPct: { what: 'A protective stop of your own choosing, as a percentage of the opening price.' },
       stopCustomApply: { what: 'Applies the percentage typed beside it.' },
