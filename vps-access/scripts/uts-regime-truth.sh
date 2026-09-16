@@ -28,8 +28,9 @@ for (const shapeKey of ['daily-1d', 'daily-4d', 'weekly-8d']) {
       const x = rec.shapes[shapeKey];
       if (!x || !x.periods || !x.move || !x.out) continue;
       const n = x.periods;
-      const parts = coins.layoutParts(n, 'reserve61');
-      if (parts.why) continue;
+      const lp = coins.layoutParts(n, 'reserve61');
+      if (lp.why || !lp.parts) continue;
+      const parts = lp.parts;
       // the strictly backward price path and its running peak
       const px = new Array(n).fill(0);
       let run = 0;
