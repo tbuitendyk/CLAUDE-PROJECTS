@@ -6969,7 +6969,8 @@ async function priceSurvivorsOn(doc, stretch, join, rules, note = null) {
   } finally { activePool = null; pool.abort(); }
   const failed = settledAll.find((x) => !x || !x.ok);
   if (failed || settledAll.length !== payloads.length) throw new Error(`the unit could not be priced on ${V.STRETCH_WORDS[stretch]}: ${String((failed && failed.error) || 'no answer')}`);
-  const res = { rows: settledAll.flatMap((x) => x.value.rows || []), controls: settledAll[0].value.controls, unread: settledAll[0].value.unread || null };
+  // the four comparisons of EVERY group, merged (3.154.1): each group prices them for its own hold lengths only
+  const res = { rows: settledAll.flatMap((x) => x.value.rows || []), controls: Object.assign({}, ...settledAll.map((x) => x.value.controls || {})), unread: settledAll[0].value.unread || null };
   // the stretch's figures in the held-back column's place, in the reader's shape
   const rows = readerRowsOf(res.rows);
   // in the set's own order, whatever order the payloads answered in
@@ -7088,7 +7089,7 @@ async function priceReserveBoard(parent, unitKey, note = null) {
   if (off.length) throw new Error(`${off.length} setting(s) came back with test money different from what the stage 3 set stored (first: ${off[0].label}) — this is not the same run any more, so the board was not written`);
   const missing = settings.filter((st) => !rows.some((r) => r.label === st.label)).map((st) => st.label);
   return {
-    rows, controls: settledAll[0].value.controls || {}, window: settledAll[0].value.unread || null, fee, nullN, keepN,
+    rows, controls: Object.assign({}, ...settledAll.map((x) => x.value.controls || {})), window: settledAll[0].value.unread || null, fee, nullN, keepN,
     forecasts: "the members' saved models", settings: settings.length, missing, failures: [],
     unitName: unitNameOf(rec), proof: { checked: rows.filter((r) => stored.has(r.label)).length, of: settings.length },
   };
