@@ -14,7 +14,7 @@ Four kinds of thing are in here and they are kept apart on purpose:
   wrote this. These are findings, not decisions.
 - **What I propose.** Parts A, B and C. The owner asked for these to be fleshed
   out; fleshing out is not agreeing, and not one of them is decided.
-- **Defects found while writing this.** Section 6. Reported, not fixed. The owner
+- **Defects found while writing this.** Reported, not fixed. The owner
   decides if and when any of them is touched (RULE ZERO).
 
 ## Read the words first
@@ -305,14 +305,54 @@ typical move rather than whether it is positive. A call then means "better than
 drift". Everything downstream keeps working, because a call is still long or
 short, but the quantity being predicted is a different one.
 
-### Both are configuration, and this is the most important cost finding here
+### The cost, corrected. My first draft had this backwards and it is the most important paragraph in the document.
 
-A set already records how its members were trained: the greenlight source
-carries `training: { trainOn, weightCap, windowLayout, ... }` out of the stage 2
-parameters. Another entry there means a set trained the old way and a set trained
-the new way are both fully readable, side by side, forever. **Neither A2a nor A2b
-moves the first digit and nothing on the box refuses.** Checked deliberately,
-because a first-digit move throws away every chain on the box.
+I wrote, from my own reading, that a set already records how its members were
+trained and that therefore "neither A2a nor A2b moves the first digit and nothing
+on the box refuses". **The second half is true and it is the problem, not the
+reassurance.**
+
+**Nothing on disk carries a version for what the members were trained to predict.**
+The measurement block has its own version and it covers the FEATURES only; a
+change to the target does not move it. So there is no reader anywhere that would
+refuse a record trained under one target when it meets one trained under another.
+What each artefact does on a first-digit move, and what it does on a target change
+with no first-digit move:
+
+| artefact | refuses on a first-digit move | refuses on a target change alone |
+|---|---|---|
+| stage 1 set, stage 2 set | yes | **no** |
+| stage 3 set | only a rebuild and a kept-copies fill | **no** |
+| stage 3 totals | no, they are re-totalled | **no** |
+| Stage 4 record set | it prints a warning and carries on | **no** |
+| held set, reserve set | yes | **no** |
+| reserve board, capture, half-life run | no | **no** |
+| greenlight | minting yes, one already written no | **no** |
+
+So the honest conclusion is the opposite of my draft's:
+
+- **A2b, changing what a member is trained to want, has to move the first
+  digit** — not because a reader refuses it, but because **nothing does**, and the
+  first digit is the only mechanism in the system that would make yesterday's
+  chains refuse. Without it a paused stage 3 run continued after the change would
+  hold old rows and new rows in one store, and a stage 2 set whose missing units
+  were filled in later would be **half a committee on each target**. The stage 2
+  alignment guard compares timestamps only, so a relabelled parent lines up
+  perfectly and is accepted. The engine's own comment forbids exactly this: "half
+  a committee trained on direction and half on money would be two different
+  committees wearing one name".
+- **And moving the first digit throws away every chain on the box** (RULE ONE-C).
+  So before release 6 is started, what is on disk is read and the cost is put to
+  the owner in writing. **It is their call and not a session's.**
+- **The clean alternative, and it is more work:** make the target a recorded
+  choice AND add the comparison that is missing, so a set says which target it was
+  trained on and every reader refuses a mismatch in words. That is the RULE NINE
+  answer — a record says what it is in today's words, and no reader translates.
+  It is roughly eleven places and it is the right thing. **This is a decision for
+  the owner and it is added to the list below.**
+- **A2a, the class weighting, does not change the target**, so it does not raise
+  this. It does raise a smaller version of it, and that hole is already open for
+  the training choice that exists today: see defect 6.
 
 ### Where it goes
 
@@ -820,9 +860,19 @@ replacing what is there.
 come out within a few per cent while the dormant share stays near a third, and
 release 1's lean falls, with the held money reported whatever it does.
 
-### Release 6 — the drift-relative target (A2b). Second digit, and the biggest.
+### Release 6 — the drift-relative target (A2b). First digit, or the refusals written first.
 
-What a member is trained to want, as a choice, so nothing on disk refuses.
+What a member is trained to want. **This is the one release in the document whose
+digit is not mine to choose**, for the reason set out under A2: nothing on disk
+would refuse a record trained under a different target, so either the first digit
+moves and every chain on the box is thrown away, or the missing comparison is
+written into about eleven readers first and the target becomes a recorded choice
+that refuses a mismatch in words.
+
+**Before this release starts, what is on disk is read and the cost is put to the
+owner in writing** (RULE ONE-C). If they choose the first digit, the loop stops
+here and waits. If they choose the refusals, that is its own release ahead of
+this one.
 
 **Pass:** one stamped look at the reserve, on a rule trained this way at the unit
 of section 1, losing less than the rule of section 1 did. One look, and the rule
@@ -850,6 +900,11 @@ loop runs out of night, it should stop after 4.**
 6. **Whether release 6 is in the loop at all**, given it needs a fresh chain.
 7. **Whether the floor and the cap ever move into the pricing path**, which is a
    stage 3 re-run, or stay as readings over the capture.
+8. **For release 6, the first digit or the refusals.** Move the first digit and
+   throw away every chain on the box, or write the missing comparison into every
+   reader so a record says which target trained it and a mismatch refuses. The
+   second is more work and is the RULE NINE answer. **Neither is a session's call
+   and the loop stops at this release until it is made.**
 
 Nothing else here needs the owner mid-loop. Every other choice is naming, file
 layout, test structure and ordering, which are the session's to make and to record
@@ -864,16 +919,19 @@ layout, test structure and ordering, which are the session's to make and to reco
 - **That one unit's reserve is one observation.** Section 1 is a single coin at a
   single shape over one falling window. Every conclusion here is drawn from it and
   would be stronger from more.
-- **That nothing here needs the first digit.** Checked deliberately. If any release
-  turns out to need it, it stops and the cost goes to the owner first (RULE
-  ONE-C).
+- **That releases 1 to 5 do not need the first digit, and that release 6 does.**
+  The first part is checked. The second is argued under A2 from the fact that
+  nothing on disk would refuse a target change, and it is the single claim in this
+  document I would most want a second pair of eyes on before anything is built.
 
 # What it costs
 
 - Releases 1, 2 and 3: an evening each at most, no compute on the owner's data.
 - Release 4: a day, and a re-press of **History** to get a second-pass table.
 - Release 5: a day to build, then a fresh stage 1, 2 and 3 run to see anything.
-- Release 6: the same, and the reserve spent once on the answer.
+- Release 6: the same, plus either the cost of a first-digit move, which is
+  every chain on the box, or a release of its own to write the refusals. And the
+  reserve spent once on the answer.
 
 **Not one of these has been measured.** They are estimates and they are mine.
 
@@ -1034,7 +1092,17 @@ if and when any is worth a release.
    the unit's own band — **but any new measurement that read a chunk's label on
    the reserve would read the wrong thing**, which is a trap directly in the way
    of Part A. `lib/stagework.js:820-828`.
-5. **A stale comment points at a layout that is gone.** A line in the chunk
+5. **Half a committee can be trained one way and half another, which the engine's
+   own comment forbids.** A stage 2 set whose missing units are filled in later
+   inherits the training choices from the parent rather than comparing them, and
+   the guard that lines a filled unit up against the parent's stored votes
+   **compares timestamps only**, so a set trained under a changed choice lines up
+   perfectly and is accepted. The comment beside it says what that would be: "half
+   a committee trained on direction and half on money would be two different
+   committees wearing one name". **This hole is open today for the training choice
+   that already exists, not only for the one Part A proposes.**
+   `lib/stagework.js:684-694`, `lib/stages.js:1525`.
+6. **A stale comment points at a layout that is gone.** A line in the chunk
    builder still says the retrain layout's judge is the reserve; it has judged on
    the test window since 3.144.0. Worth correcting because Part B reads exactly
    there. `lib/stagework.js`.
