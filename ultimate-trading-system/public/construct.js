@@ -2524,7 +2524,7 @@ async function vFollow(id, token, stretch) {
       return;
     }
     if (s.result) { drawJudge(stretch); return; }
-    const m = $('#vReadMsg'); if (m && s.of > 0 && s.cpu != null) m.textContent = `pricing · ${s.done} of ${s.of} · box ${Math.round(Number(s.cpu))}% busy`;
+    const m = $('#vReadMsg'); if (m && s.of > 0 && s.cpu != null) m.textContent = `pricing · ${s.done} of ${s.of}${fCpuWords(s.cpu)}`;
     await new Promise((resolve) => { setTimeout(resolve, 1000); });
     if (tab !== stretch) return;
   }
@@ -2560,7 +2560,7 @@ async function vBoardFollow(id, token, stretch) {
     }
     if (s.result) { drawJudge(stretch); return; }
     const m = $('#vBoardMsg');
-    if (m) m.textContent = `pricing ${s.current || ''} · ${s.done} of ${s.of} settings${s.unitsOf > 1 ? ` · unit ${Math.min(s.unitsDone + 1, s.unitsOf)} of ${s.unitsOf}` : ''}${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}${s.stopping ? ' · stopping after this unit' : ''}`;
+    if (m) m.textContent = `pricing ${s.current || ''} · ${s.done} of ${s.of} settings${s.unitsOf > 1 ? ` · unit ${Math.min(s.unitsDone + 1, s.unitsOf)} of ${s.unitsOf}` : ''}${fCpuWords(s.cpu)}${s.stopping ? ' · stopping after this unit' : ''}`;
     await new Promise((resolve) => { setTimeout(resolve, 2000); });
     if (tab !== stretch) return;
   }
@@ -2577,7 +2577,7 @@ async function vRideFollow(id, token, stretch) {
       return;
     }
     if (s.result) { drawJudge(stretch); return; }
-    const m = $('#vRideMsg'); if (m) m.textContent = `worked out ${s.done} of ${s.of}${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}`;
+    const m = $('#vRideMsg'); if (m) m.textContent = `worked out ${s.done} of ${s.of}${fCpuWords(s.cpu)}`;
     await new Promise((resolve) => { setTimeout(resolve, 2000); });
     if (tab !== stretch) return;
   }
@@ -2704,7 +2704,7 @@ async function hHalfLifeFollow(id, token) {
       return;
     }
     if (s.result) { drawHistory(); return; }
-    const m = $('#hHalfLifeMsg'); if (m) m.textContent = `retraining and pricing · ${s.done} of ${s.of} step(s)${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}`;
+    const m = $('#hHalfLifeMsg'); if (m) m.textContent = `retraining and pricing · ${s.done} of ${s.of} step(s)${fCpuWords(s.cpu)}`;
     await new Promise((resolve) => { setTimeout(resolve, 3000); });
     if (tab !== 'history') return;
   }
@@ -2867,7 +2867,7 @@ async function tnCaptureFollow(id, token) {
       return;
     }
     if (s.result) { drawTune(); return; }
-    const m = $('#tnCaptureMsg'); if (m) m.textContent = `capturing the trades${s.cpu != null ? ` · box ${Math.round(Number(s.cpu))}% busy` : ''}`;
+    const m = $('#tnCaptureMsg'); if (m) m.textContent = `capturing the trades${fCpuWords(s.cpu)}`;
     await new Promise((resolve) => { setTimeout(resolve, 2000); });
     if (tab !== 'tune') return;
   }
