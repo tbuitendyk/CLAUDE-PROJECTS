@@ -331,16 +331,21 @@ module.exports = {
       assert.deepStrictEqual({ window: ht.window, of: ht.of, withATuning: ht.withATuning, priced: ht.priced, why: ht.why, captured: !!(ht.capture && ht.capture.at), sizing: !!(hrow && hrow.sizing && hrow.sizing.on), stop: hrow ? hrow.stop : undefined, frozen: hs.stopChoices[depthLabel].sizing.on },
         { window: 'held', of: hs.block.survivors.rows.length, withATuning: 1, priced: 1, why: null, captured: true, sizing: true, stop: null, frozen: true });
       const readAt = hs.block.survivors.rows.find((x) => x.label === depthLabel);
-      assert.strictEqual(cents(readAt.money), cents(hrow.tunedUsd), 'the reading reads the survivor at its money under the sizing');
-      assert.strictEqual(cents(hrow.plainUsd), cents(capR.survivors.find((x) => x.label === depthLabel).money.hold), "its money without the sizing is the record's own");
-      assert.ok(hrow.tunedUsd !== hrow.plainUsd, 'and the sizing changed the money, so the two are not one number');
+      // 3.156.0: a sizing and no stop leaves the reading PLAIN -- the sizing bets up to one
+      // clip a member and everything it would be compared with bets one, so it is recorded,
+      // never substituted
+      assert.deepStrictEqual({ readInto: hrow.readInto, stops: ht.withAStop, into: ht.readInto }, { readInto: false, stops: 0, into: 0 }, 'a sizing is read into nothing');
+      assert.strictEqual(cents(readAt.money), cents(hrow.plainUsd), 'the reading reads the survivor at its own money');
+      assert.strictEqual(cents(hrow.plainUsd), cents(capR.survivors.find((x) => x.label === depthLabel).money.hold), "which is the record's own");
+      assert.strictEqual(cents(hrow.stopUsd), cents(hrow.flatUsd), 'with no stop on record the stop money is the plain money');
+      assert.ok(hrow.tunedUsd !== hrow.plainUsd && hrow.clipsPerTrade > 1, 'and the sizing is worked out beside it, at more than one clip a trade');
       // the reading and the picture price at the record's own dollars (lib/paper.js NOTIONAL), not the scans' $10 clip
       const pw = mine.tuned.windows.held;
       assert.deepStrictEqual({ clip: ht.clipUsd, pictureClip: pic.rule.tunings.clipUsd, rowClip: hrow.clipUsd, scans: tw.held.trades }, { clip: 100, pictureClip: 100, rowClip: 100, scans: pw.trades }, 'one currency on the reading and the picture');
       assert.strictEqual(cents(hrow.tunedUsd), cents(pw.tunedUsd), 'tuned is what the picture works out for the same window');
       assert.strictEqual(hrow.trades, pw.trades, 'over the same captured trades');
       assert.strictEqual(hrow.differs, 0, "the capture's plain re-pricing is the reading to the cent");
-      assert.ok(/reads a tuned survivor at its money under its tunings/.test(ht.reads) && /copies are priced plain/.test(ht.reads), ht.reads);
+      assert.ok(/read at its money under that stop/.test(ht.reads) && /the sizing is never in the money column/.test(ht.reads), ht.reads);
       assert.strictEqual(stages.setSizingChoice(c.cut.id, { pick: 'depth', on: false, why: '' }).sizing, null, 'taken off again');
       assert.deepStrictEqual(await stages.tunedOfRule(stages.getSet(c.cut.id), [depthLabel]), {}, 'a survivor with no tuning on record is not worked out');
       // and a press with nothing on record prices nothing again, and says so

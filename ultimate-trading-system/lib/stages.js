@@ -7251,20 +7251,21 @@ async function judgeRunOn(doc, stretch, asked, note = null) {
   // THE TUNINGS APPLIED ON TUNE (3.153.0, owner order 2026-09-15: "choose to APPLY
   // those tunings OR NOT ... However they are applied then we can run the Held
   // and Reserve"): before anything is read, every survivor carrying a stop or a
-  // sizing is priced again under them off its captured trades on this stretch,
-  // in the record's own dollars, and THAT money is what every reading below
-  // reads for it. Its money without them stays on the block beside it. The
-  // scrambled copies are priced plain -- a stop or a sizing on a survivor is not
-  // on its copies -- and the block says so.
+  // sizing is priced again under them off its captured trades on this stretch.
+  // AT ONE CLIP A TRADE (3.156.0, owner order 2026-09-16): the money every
+  // reading below reads for a survivor is its money under its STOP, and the
+  // sizing's dollars are written down beside it and substituted nowhere -- see
+  // TUNED_READS for why mixing the two scales made the mean and the gate
+  // meaningless. The scrambled copies are priced plain, and the block says so.
   let tuned = null;
   const withTunings = async (rows) => {
     tuned = await tunedOnStretch(doc, stretch, rows.map((r) => ({ label: r.label, money: r.avgHold })));
     const by = new Map(tuned.rows.map((x) => [x.label, x]));
     return rows.map((r) => {
       const x = by.get(r.label);
-      if (!x || !Number.isFinite(x.tunedUsd)) return r;
-      const shift = x.tunedUsd - (Number(r.avgHold) || 0);
-      return { ...r, avgHold: x.tunedUsd, avgVsLong: r.avgVsLong == null ? r.avgVsLong : r.avgVsLong + shift };
+      if (!x || !x.readInto || !Number.isFinite(x.stopUsd)) return r;
+      const shift = x.stopUsd - (Number(r.avgHold) || 0);
+      return { ...r, avgHold: x.stopUsd, avgVsLong: r.avgVsLong == null ? r.avgVsLong : r.avgVsLong + shift };
     });
   };
   const pricedOf = (rows) => rows.map((r) => ({ label: r.label, money: r.avgHold, trades: r.avgTrades, stops: r.stops, vsLong: r.avgVsLong, ride: r.ride, test: r.test }));
@@ -8281,7 +8282,7 @@ async function tunedOfRule(rule, labels) {
     const windows = {};
     for (const [w, key] of [['train', 'train'], ['test', 'test'], ['held', 'hold'], ['reserve', 'reserve']]) {
       const entries = sv.entries[key] || [];
-      let flat = 0; let tuned = 0; let priced = 0; let stopped = 0;
+      let flat = 0; let stop = 0; let tuned = 0; let clips = 0; let priced = 0; let stopped = 0;
       for (const e of entries) {
         const o = entryOutcome(e.ts, e.side, maps.trade, sv.tHours, fee);
         if (!o.priced) continue;
@@ -8290,10 +8291,18 @@ async function tunedOfRule(rule, labels) {
         if (hit) stopped++;
         const net = hit ? -S - 2 * fee : o.netPct;
         const mult = sz ? multFor(sz.ladder, e.agree) : 1;
-        flat += o.netPct * clip;
-        tuned += net * clip * mult;
+        clips += mult;
+        flat += o.netPct * clip;                       // no tuning at all: one clip a trade
+        stop += net * clip;                            // the stop applied, STILL one clip a trade
+        tuned += net * clip * mult;                    // and the sizing on top: up to one clip a member
       }
-      windows[w] = { trades: entries.length, priced, unpriced: entries.length - priced, stopped, flatUsd: Math.round(flat * 100) / 100, tunedUsd: Math.round(tuned * 100) / 100 };
+      windows[w] = {
+        trades: entries.length, priced, unpriced: entries.length - priced, stopped,
+        flatUsd: Math.round(flat * 100) / 100,
+        stopUsd: Math.round(stop * 100) / 100,
+        tunedUsd: Math.round(tuned * 100) / 100,
+        clipsPerTrade: priced ? Math.round((clips / priced) * 100) / 100 : null,
+      };
     }
     out[L] = { stop: S, sizing: sz ? { on: true, ladder: sz.ladder, clipUsd: clip } : null, clipUsd: clip, windows };
   }
@@ -8309,7 +8318,19 @@ async function tunedOfRule(rule, labels) {
 // entries, says so in words and prices nothing. The reading's own money is
 // written beside the capture's plain re-pricing, and a gap between the two is
 // said to the cent, never hidden.
-const TUNED_READS = 'every reading on this set reads a tuned survivor at its money under its tunings; the scrambled copies are priced plain, because a stop or a sizing on a survivor is not on its copies';
+// THE STOP GOES INTO THE READING, THE SIZING NEVER DOES (3.156.0, owner order
+// 2026-09-16: "FIX THE SIZING MIXING SCALES"). A stop changes WHICH trades
+// happen and at what price, one clip a trade throughout, so a survivor read
+// under its stop is the same size of bet as the scrambled copies, as the four
+// comparisons and as every other survivor -- substituting it is sound. The
+// sizing changes HOW MUCH is bet, up to one clip a member that agreed, so its
+// dollars are a different quantity: on the owner's own set one survivor at ten
+// clips read 2,557.73 where one clip read 321.02, and putting that into a mean
+// of sixty-seven one-clip figures lifted the whole rule by 33 a setting while
+// the copies it was judged against stayed at one clip. The sizing's money is
+// worked out, written down per survivor, frozen, carried to a greenlight and
+// drawn on the screen -- and it enters no average and no comparison.
+const TUNED_READS = 'a survivor with a stop on record is read at its money under that stop, one clip a trade like everything it is compared with; the sizing is never in the money column, in the average or in any comparison, because it bets up to one clip a member while the copies and the four bet one';
 const TUNED_NONE = 'no survivor of this rule carries a stop or a sizing on Tune, so nothing is priced again';
 async function tunedOnStretch(rule, stretch, rows) {
   const labels = (rows || []).map((r) => r.label);
@@ -8317,7 +8338,8 @@ async function tunedOnStretch(rule, stretch, rows) {
   const choices = (rule && rule.stopChoices) || {};
   const withATuning = labels.filter((L) => choices[L] && (choices[L].stopPct != null || (choices[L].sizing && choices[L].sizing.on)));
   const { NOTIONAL } = require('./paper');
-  const out = { window: stretch, of: labels.length, withATuning: withATuning.length, priced: 0, clipUsd: NOTIONAL, capture: null, rows: [], notCaptured: [], why: null, reads: TUNED_READS };
+  const withAStop = labels.filter((L) => choices[L] && choices[L].stopPct != null);
+  const out = { window: stretch, of: labels.length, withATuning: withATuning.length, withAStop: withAStop.length, priced: 0, readInto: 0, clipUsd: NOTIONAL, capture: null, rows: [], notCaptured: [], why: null, reads: TUNED_READS };
   if (!withATuning.length) { out.why = TUNED_NONE; return out; }
   const cap = readCapture(rule.id);
   if (!cap) { out.why = CAPTURE_NOT_YET; return out; }
@@ -8330,13 +8352,17 @@ async function tunedOnStretch(rule, stretch, rows) {
     const w = t && t.windows ? t.windows[stretch] : null;
     if (!w) { out.notCaptured.push(L); continue; }
     const plainUsd = moneyOf.get(L);
+    // only a stop is read into the reading; a survivor with a sizing and no stop is read plain
+    const readInto = t.stop != null;
     out.rows.push({
-      label: L, stop: t.stop, sizing: t.sizing, clipUsd: t.clipUsd, plainUsd,
-      trades: w.trades, priced: w.priced, unpriced: w.unpriced, stopped: w.stopped, flatUsd: w.flatUsd, tunedUsd: w.tunedUsd,
+      label: L, stop: t.stop, sizing: t.sizing, clipUsd: t.clipUsd, plainUsd, readInto,
+      trades: w.trades, priced: w.priced, unpriced: w.unpriced, stopped: w.stopped,
+      flatUsd: w.flatUsd, stopUsd: w.stopUsd, tunedUsd: w.tunedUsd, clipsPerTrade: w.clipsPerTrade,
       differs: plainUsd != null && Number.isFinite(w.flatUsd) ? Math.round((w.flatUsd - plainUsd) * 100) / 100 : null,
     });
   }
   out.priced = out.rows.length;
+  out.readInto = out.rows.filter((r) => r.readInto).length;
   return out;
 }
 // WHAT A SCAN ON A CAPTURE IS AIMED AT, resolved before anything loads: the set, the
