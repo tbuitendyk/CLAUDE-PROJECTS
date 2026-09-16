@@ -396,14 +396,32 @@ function holdControls(periods, tradeMap, geo, tHours, feePerLeg) {
 
   // Single position across the whole window: enter at the first period's
   // entry open, exit at the last period's exit open.
+  //
+  // THE LAST EXIT THE DATA HAS, NOT THE LAST PERIOD'S (3.155.0, owner order
+  // 2026-09-16). A window that runs to the edge of the box's candles -- which
+  // the reserve window always does, by design, since it has a start and no end
+  // -- has no bar one hold length past its LAST period's entry, so this used
+  // to hand back null for both hold comparisons at every hold length but the
+  // shortest. A missing one of the four counts as no figure, and no figure
+  // never passes (lib/funnelverify.js), so on the reserve window most
+  // survivors could never clear whatever they made: 61 of 98 and 39 of 68 on
+  // the owner's own sets. It now walks back from the end to the last period
+  // whose exit the data can price, which shortens the held position by at most
+  // the hold length and is the only honest reading of "buy it and go away"
+  // over a window that ends where the data ends. On any window with data after
+  // it -- train, test, held -- the first step finds the last period's own exit
+  // and the figure is byte-identical to before.
   let buyHold = null;
   let shortHold = null;
   if (periods.length) {
     const firstTs = periods[0].startTs + geo.entryOffsetH * HOUR_MS;
-    const lastTs = periods[periods.length - 1].startTs + geo.entryOffsetH * HOUR_MS;
     const inBar = tradeMap.get(firstTs);
     let outBar = null;
-    for (let h = 0; h <= 3 && !outBar; h++) outBar = tradeMap.get(lastTs + (tHours + h) * HOUR_MS);
+    for (let i = periods.length - 1; i >= 0 && !outBar; i--) {
+      const lastTs = periods[i].startTs + geo.entryOffsetH * HOUR_MS;
+      if (lastTs < firstTs) break;                 // never exit before the entry
+      for (let h = 0; h <= 3 && !outBar; h++) outBar = tradeMap.get(lastTs + (tHours + h) * HOUR_MS);
+    }
     if (inBar && outBar) {
       // Both sides priced through the same helper. shortHold is NOT -buyHold:
       // the fee is paid on both, so the two sum to -4 x feePerLeg x NOTIONAL,
