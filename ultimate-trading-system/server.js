@@ -535,6 +535,12 @@ app.post('/api/stage-gate', (req, res) => {
 // would put every coin's ticker on Sweep's closed word list.
 app.get('/api/stagesets', (req, res) => res.json({
   running: stages.stageRunning(), sets: stages.listSets().filter((s) => !s.exam), nextNames: stages.nextNames(),
+  // WHAT ELSE IS HOLDING THE BOX (3.163.0, owner order). The three start
+  // buttons ghosted on a stage RUN and on nothing else, so a walk, a coin
+  // reading, the exam, a totalling, the step 6 press and the ranking read all
+  // left them live. One string off the one predicate, and the poll that
+  // already ghosts them reads it.
+  busy: (() => { try { return stages.stageBusy(); } catch (_) { return null; } })(),
   coinsDownloaded: require('./lib/dataset').defaultCoins(),
   // THE PAIRS TICKED ON COINS NOW (3.130.3): the stage headings hold a set
   // launched with "only the coins and shapes ticked on Coins" up to these,

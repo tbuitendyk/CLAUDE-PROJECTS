@@ -531,4 +531,97 @@ module.exports = {
       assert.throws(() => runner.normalise({ coins: '' }), /no coins are downloaded/);
     } finally { binance.cacheState = was; }
   },
+
+  // ONE HEAVY JOB AT A TIME MEANS ANY HEAVY JOB (3.163.0, owner order:
+  // "making sure ALL of the long-run process buttons are blocked with the Walk
+  // it forward process is active").
+  //
+  // Every heavy press on this box is gated on ONE predicate, stages.stageBusy().
+  // It did not know that Coins had two jobs of its own, so while Walk it
+  // forward had four workers flat out, Start stage 1, Start stage 2, Start
+  // stage 3, the half-life run, the capture and the rest all stayed live -- and
+  // a stage pressed there would have STARTED, putting a second pool on the same
+  // cores and quietly wrecking its own timing.
+  //
+  // This drives the real functions: the one predicate is stood in for, and
+  // stageBusy has to pass it through.
+  theOnePredicateNamesTheWalkAndTheCoinReading() {
+    const stages = require('../lib/stages');
+    const cr = require('../lib/coinsrun');
+    assert.strictEqual(cr.coinsOwnBusy(), null, 'with nothing going, Coins holds nothing');
+    const was = cr.coinsOwnBusy;
+    try {
+      cr.coinsOwnBusy = () => 'Walk it forward is going';
+      assert.strictEqual(stages.stageBusy(), 'Walk it forward is going',
+        'the one predicate every other refusal is built on has to name the walk');
+      cr.coinsOwnBusy = () => 'a Coins reading is going';
+      assert.strictEqual(stages.stageBusy(), 'a Coins reading is going',
+        'and the coin reading');
+      cr.coinsOwnBusy = () => null;
+      assert.strictEqual(stages.stageBusy(), null, 'and nothing when Coins holds nothing');
+    } finally { cr.coinsOwnBusy = was; }
+    // and it survives the predicate throwing rather than taking the box down
+    const was2 = cr.coinsOwnBusy;
+    try {
+      cr.coinsOwnBusy = () => { throw new Error('nope'); };
+      assert.strictEqual(stages.stageBusy(), null, 'a predicate that throws is not a busy box');
+    } finally { cr.coinsOwnBusy = was2; }
+  },
+
+  // AND THE SAME HOLE POINTING THE OTHER WAY. Blocking the stage presses during
+  // a walk while leaving the walk free to start on top of a stage run would
+  // leave exactly the situation the block is for.
+  theWalkRefusesWhenSomethingElseHoldsTheBox() {
+    const stages = require('../lib/stages');
+    const cr = require('../lib/coinsrun');
+    const was = stages.stageBusy;
+    try {
+      stages.stageBusy = () => 'stage run S3-1';
+      const got = cr.coinsWalkStart({ windowMonths: 6 });
+      assert.strictEqual(got.started, false, 'a walk does not start on top of a stage run');
+      assert.ok(/stage run S3-1/.test(String(got.why)), `and it says what is holding the box, got ${got.why}`);
+    } finally { stages.stageBusy = was; }
+  },
+
+  // AND THE SCREEN SAYS IT BEFORE THE PRESS, never by a refusal after it.
+  everyLongRunPressSleepsWhileTheBoxIsHeld() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+    const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
+    assert.ok(/busy: \(\(\) => \{ try \{ return stages\.stageBusy\(\); \} catch \(_\) \{ return null; \} \}\)\(\),/.test(srv),
+      'the record-set answer carries what holds the box');
+    assert.ok(/busy: \(\(\) => \{ try \{ return require\('\.\/stages'\)\.stageBusy\(\); \} catch \(_\) \{ return null; \} \}\)\(\),/.test(run),
+      'and so does the Coins answer');
+    assert.ok(/const held = st\.busy \? String\(st\.busy\) : \(going \? 'a stage run' : null\);/.test(src),
+      'the sweep poll reads it');
+    assert.ok(/for \(const bid of \['swGo1', 'swGo2', 'swGo3'\]\) \{\s*const b = \$\(`#\$\{bid\}`\);\s*if \(b\) \{ b\.disabled = !!held;/.test(src),
+      'and all three stage starts sleep on it, not on a stage run alone');
+    assert.ok(/if \(held\) \{ if \(!swPoll\) swPoll = setInterval\(swProgress, 4000\); return; \}/.test(src),
+      'and the poll keeps watch while something holds the box, or the buttons would never wake');
+    assert.ok(/cBusyNow = \(d && d\.busy\) \|\| null;/.test(src), 'the Coins screen keeps it too');
+    assert.ok(/id="cRun" class="pri"\$\{off \|\| \(cBusyNow \? ' disabled' : ''\)\}/.test(src),
+      'Read these coins sleeps on it');
+    assert.ok(/const off = walking \|\| heldBy \? ' disabled' : '';/.test(src),
+      'and so does Walk it forward');
+  },
+
+  // THE PROGRESS LINE THAT WENT STALE IS GONE (3.163.0, owner report: it "does
+  // not update the text underneath the button ... while running (only updates
+  // randomly when leaving and revisiting the Coins tab)").
+  //
+  // There were two counts of the same thing. The poll rewrote the one beside
+  // the button every second and left the paragraph below it frozen at whatever
+  // the last full repaint had drawn, so the number the owner was reading was
+  // minutes old. Two copies is how one of them ends up lying, so the paragraph
+  // is deleted rather than taught to update: the line beside the button says
+  // strictly more -- how far through, across how many workers, and how busy the
+  // box is -- and the poll writes it every second.
+  theWalkHasOneProgressLineAndThePollWritesIt() {
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(!/walking — the table appears when it lands/.test(src),
+      'the second count of the same thing is gone, not left to go stale');
+    assert.ok(/walking · \$\{st\.done\} of \$\{st\.of\}/.test(src), 'the one line counts the walks off');
+    assert.ok(/out\.textContent = cWalkLine\(\)/.test(src), 'and the poll writes that line');
+    assert.ok(/cWalkPoll = setTimeout\(cWalkTick, 1000\)/.test(src), 'once a second while it runs');
+  },
 };

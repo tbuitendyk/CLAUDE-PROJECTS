@@ -4329,7 +4329,9 @@ module.exports.theStepSixPressFinishesOnItsOwnAndIsDeadWhenThereIsNothingLeft = 
 
   // OTHER LOADS ARE NOT ALLOWED while it runs -- said once, in stageBusy, so
   // every refusal already built on it covers this without being told twice.
-  assert.ok(/function stageBusy\(\)[\s\S]{0,900}const rich = richBusy\(\);\s*if \(rich\) return rich;/.test(svc),
+  // the window is wide enough for what stageBusy names now: 3.163.0 put the
+  // coin reading and Walk it forward at the top of it
+  assert.ok(/function stageBusy\(\)[\s\S]{0,2000}const rich = richBusy\(\);\s*if \(rich\) return rich;/.test(svc),
     'stageBusy no longer names the step 6 press, so a stage launch can start on top of it');
   assert.ok(/function funnelRichStart\([\s\S]{0,900}claimOrRefuse\(\);/.test(svc),
     'and it can start on top of a sweep, a stage run or a totalling');

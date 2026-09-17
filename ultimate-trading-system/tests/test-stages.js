@@ -2014,7 +2014,7 @@ module.exports = {
       assert.ok(!/paint\('#swH2'/.test(s3), 'the stage 3 block paints the section above it');
       const swBody = screens.drawBody('drawSweep');
       assert.ok(swBody.includes('swProvenance()'), 'the colors are wired on the page');
-      assert.ok(swBody.includes("b.disabled = going"), 'the start buttons sleep while a run is going');
+      assert.ok(swBody.includes("b.disabled = !!held"), 'the start buttons sleep while ANY heavy job is going, not a stage run alone (3.163.0)');
     }
   // The stage 3 tables' newest owner orders (2026-08-27): Apply pegs the
     // coins heading line where the eye left it; the ranked table sorts by one
@@ -2186,7 +2186,7 @@ module.exports = {
     assert.ok(!src.includes("$('#bSort')") && !src.includes("$('#bGo')"),
       'the every-coin table orders by its columns now — the ordering box and its Apply must be gone');
     // the start buttons still sleep while a run is going (demand 12)
-    assert.ok(screens.drawBody('drawSweep').includes('b.disabled = going'), 'the start buttons must sleep while a run is going');
+    assert.ok(screens.drawBody('drawSweep').includes('b.disabled = !!held'), 'the start buttons must sleep while ANY heavy job is going (3.163.0)');
     assert.ok(body.includes('bWireFilters(mount)') || src.includes('bWireFilters(mount)'), 'the filters must be wired, not merely drawn');
   },
 

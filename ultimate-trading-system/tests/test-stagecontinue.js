@@ -939,10 +939,13 @@ module.exports = {
     assert.ok(sp.includes('starting… the box has not answered yet — this line follows it'), 'and the line says the box has not answered yet');
     assert.ok(sp.indexOf('alert(') > sp.indexOf('return { pending: true };'), 'the dialog is for a real refusal only, after the gateway case');
     // the poll does not wake the buttons under a press the box has not answered
-    const prog = src.slice(src.indexOf('async function swProgress('), src.indexOf("el.innerHTML = 'nothing is running';"));
+    // ends at the line that says nothing is running -- which since 3.163.0 is
+    // one arm of a ternary, because something OTHER than a stage run may hold
+    // the box, so the marker is the string itself and not the assignment
+    const prog = src.slice(src.indexOf('async function swProgress('), src.indexOf("'nothing is running'", src.indexOf('async function swProgress(')));
     assert.ok(prog.includes('if (going) swPressed = null;') && prog.includes('if (!going && swPressed) {') && prog.includes('< 120000'),
       'a press in flight keeps the buttons asleep for up to two minutes, and a run that appears ends the wait');
-    assert.ok(prog.indexOf('if (!going && swPressed) {') < prog.indexOf('b.disabled = going;'), 'checked before the buttons are set from the box');
+    assert.ok(prog.indexOf('if (!going && swPressed) {') < prog.indexOf('b.disabled = !!held;'), 'checked before the buttons are set from the box');
     // and every press hands its answer to the one place that wakes the buttons
     assert.strictEqual((src.match(/swAfterStart\((got|again)\);/g) || []).length, 4, 'each of the four starts ends through swAfterStart');
     // the service side answers before it reads: the record of what it kept is

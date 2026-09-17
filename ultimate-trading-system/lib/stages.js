@@ -315,6 +315,17 @@ function stageRunning() { return activeSet ? activeSet.id : null; }
 // Returns what is busy, in words fit to put in a refusal, or null.
 function stageBusy() {
   if (activeSet) return `stage run ${activeSet.id}`;
+  // AND WHAT COINS HAS GOING (3.163.0, owner order). The coin reading and
+  // Walk it forward are heavy jobs on this same box and they were named to
+  // nothing, so every refusal built on this predicate -- the stage launches,
+  // the half-life run, the capture, the purge, the scramble fill, the
+  // box-busy readout -- let them through. Named HERE and nowhere else, so all
+  // of them cover it at once without being told twice. Required lazily
+  // because lib/coinsrun.js requires this file.
+  {
+    const c = (() => { try { return require('./coinsrun').coinsOwnBusy(); } catch (_) { return null; } })();
+    if (c) return c;
+  }
   if (examBusy()) return examBusy();
   if (tallyRun && !tallyRun.error) return `the totalling of ${tallyRun.id}`;
   // 3.81.0, owner order: "other loads are not allowed" while step 6's press is

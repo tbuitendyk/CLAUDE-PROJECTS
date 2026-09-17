@@ -941,12 +941,25 @@ async function swProgress() {
     if (Date.now() - swPressedAt < 120000) { if (!swPoll) swPoll = setInterval(swProgress, 4000); return; }
     swPressed = null;
   }
+  // ONE HEAVY JOB AT A TIME MEANS ANY HEAVY JOB (3.163.0, owner order). These
+  // three slept on a stage RUN and on nothing else, so Walk it forward, a coin
+  // reading, the exam, a totalling, the step 6 press and the ranking read all
+  // left them live -- and the box would have started a stage on top of one.
+  // st.busy is the one predicate every refusal is already built on, so the
+  // button now says what the press would have said, before it is pressed.
+  const held = st.busy ? String(st.busy) : (going ? 'a stage run' : null);
   for (const bid of ['swGo1', 'swGo2', 'swGo3']) {
     const b = $(`#${bid}`);
-    if (b) { b.disabled = going; b.title = going ? 'a stage run is going — one heavy job at a time. The button wakes when it lands.' : ''; }
+    if (b) { b.disabled = !!held; b.title = held ? `${held} — one heavy job at a time. The button wakes when it lands.` : ''; }
   }
   if (!st.running) {
-    el.innerHTML = 'nothing is running';
+    // SOMETHING ELSE MAY STILL HOLD THE BOX (3.163.0). This line was read off
+    // the stage runs alone, so a walk or a coin reading showed as "nothing is
+    // running" AND the poll was cleared -- which is the second half of why the
+    // three buttons never woke or slept while one was going. Now the line says
+    // what is holding it and the poll keeps watch until it lands.
+    el.innerHTML = held ? `<span>${esc(held)} — the stage starts wake when it lands</span>` : 'nothing is running';
+    if (held) { if (!swPoll) swPoll = setInterval(swProgress, 4000); return; }
     if (swPoll) { clearInterval(swPoll); swPoll = null; }
     return;
   }
@@ -8407,6 +8420,7 @@ let cBandNow = '';      // the band the box is set to, for the signal line under
 let cBacksNow = { value: [], default: [], inRecords: [] };  // the look-backs set, against the ones the records actually carry
 let cCollapse = [];    // which shape a fixed look-back walks per forward time, and which stand down
 let cShapesNow = [];   // the chunk shapes and their screen labels, off the same answer, so a label is never rebuilt here
+let cBusyNow = null;   // what else is holding the box, so this screen's own presses sleep rather than refuse after the press
 // THE COLOURS ARE THE OWNER'S: "red, green, and black for sit out". The bar is
 // drawn on a light track so black reads on the dark theme as well as the light
 // one -- black on this page's dark ground is invisible.
@@ -8850,7 +8864,11 @@ function cCollapseLine() {
 function cWalkPanel() {
   const st = cWalkSt;
   const walking = !!(st && st.running);
-  const off = walking ? ' disabled' : '';
+  // AND IT SLEEPS WHEN SOMETHING ELSE HOLDS THE BOX (3.163.0). A live button
+  // whose press comes back refused is a button that lied; the box refuses a
+  // walk on top of a stage run, so the button says so before it is pressed.
+  const heldBy = !walking && cBusyNow ? String(cBusyNow) : null;
+  const off = walking || heldBy ? ' disabled' : '';
   const rows = (cWalkRows && cWalkRows.rows) || null;
   const shapes = (cWalkRows && cWalkRows.shapes) || [];
   return `<div class="panel">
@@ -8882,11 +8900,10 @@ function cWalkPanel() {
       <label class="f" title="which coins to walk, comma separated. Blank walks every coin that has been read.">coins to walk (blank = all)<input id="wCoins" value="${esc(String(cState.wCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:14rem"${off}></label>
     </div>
     <div class="row">
-      <button id="wRun" class="pri"${off}>Walk it forward</button>
+      <button id="wRun" class="pri"${off}${heldBy ? ` title="${esc(heldBy)} — one heavy job at a time. The button wakes when it lands."` : ''}>Walk it forward</button>
       ${walking ? '<button id="wStop">Stop</button>' : ''}
-      <span id="wOut" class="muted">${cWalkLine()}</span>
+      <span id="wOut" class="muted">${heldBy ? esc(`${heldBy} — Walk it forward wakes when it lands`) : cWalkLine()}</span>
     </div>
-    ${walking ? `<p class="note">walking — the table appears when it lands. ${st.done} of ${st.of} done.</p>` : ''}
     ${(st && st.error) ? `<p class="note warn">the walk stopped: ${esc(st.error)}</p>` : ''}
     ${!rows ? (walking ? '' : '<p class="note">nothing walked yet — press <b>Walk it forward</b></p>') : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
     <div class="cwbox"><table class="cgap cpassers"><thead><tr>
@@ -9159,6 +9176,7 @@ async function drawCoins() {
   cBacksNow = (d && d.lookbacks) || { value: [], default: [], inRecords: [] };
   if (d && Array.isArray(d.collapse)) cCollapse = d.collapse;
   if (d && Array.isArray(d.shapes)) cShapesNow = d.shapes;
+  cBusyNow = (d && d.busy) || null;
   const running = !!(st && st.running);
   cLastDone = running ? st.done : null;
   const off = running ? ' disabled' : '';
@@ -9187,7 +9205,7 @@ async function drawCoins() {
       <label class="c" title="ticked, every coin and shape is drawn at its own sweet spot: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. Nothing is read again either way."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own sweet spot</label>
     </div>
     <div class="row">
-      <button id="cRun" class="pri"${off}>Read these coins</button>
+      <button id="cRun" class="pri"${off || (cBusyNow ? ' disabled' : '')}${cBusyNow && !running ? ` title="${esc(String(cBusyNow))} — one heavy job at a time. The button wakes when it lands."` : ''}>Read these coins</button>
       ${running ? '<button id="cStop">Stop</button>' : ''}
       <span id="cOut" class="muted">${cStatusLine(st, recs.length || unreadable.length)}</span>
     </div>

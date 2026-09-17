@@ -161,7 +161,10 @@ function enablingAControlDoesNotEraseItsDescription() {
   const i = CX.indexOf('for (const bid of [\'swGo1\', \'swGo2\', \'swGo3\'])', poll);
   assert(poll >= 0 && i >= 0, 'the start buttons no longer sleep while a run is going');
   const body = CX.slice(i, i + 400);
-  assert(/b\.disabled = going;/.test(body), 'a start button stays live while a heavy job is already going');
+  // 3.163.0: `going` was a stage RUN and nothing else, so a walk or a coin
+  // reading left these three live. `held` is the one predicate every refusal is
+  // already built on, which now names both.
+  assert(/b\.disabled = !!held;/.test(body), 'a start button stays live while a heavy job is already going');
   assert(/one heavy job at a time/.test(body),
     'a control that is asleep must say why on the control itself, not by refusing after the press');
   assert(/function hoverFromHelp\(key\)/.test(CX), 'nothing wires the authored descriptions onto the controls');

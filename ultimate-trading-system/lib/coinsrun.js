@@ -282,10 +282,33 @@ function normalise(body = {}) {
   return p;
 }
 
+// WHAT COINS ITSELF HAS GOING (3.163.0, owner order: "making sure ALL of the
+// long-run process buttons are blocked with the Walk it forward process is
+// active"). Two jobs live on this screen and neither was ever named to the
+// rest of the box: the coin reading, and the walk.
+//
+// The walk was the one that bit. Every other heavy job is gated on ONE
+// predicate, stages.stageBusy(), and that predicate did not know the walk
+// existed -- so Start stage 1, Start stage 2, Start stage 3 and the half-life
+// press all stayed live while four workers were already flat out, and a stage
+// pressed there would ACTUALLY START. Each job builds its own pool at the
+// configured worker count, so that is two pools on the same cores and a stage
+// run whose own timing is quietly wrong.
+//
+// THIS FUNCTION NAMES NO OTHER JOB, on purpose. stageBusy() calls it, so if it
+// called stageBusy() back the two would sit in each other's laps. busyWhy()
+// below is the one that puts both halves together.
+function coinsOwnBusy() {
+  if (run && !run.finishedAt && !run.error) return 'a Coins reading is going';
+  if (walkRun && walkRun.running) return 'Walk it forward is going';
+  return null;
+}
+
 function busyWhy() {
   const stages = require('./stages');
   if (run && !run.finishedAt && !run.error) return 'a Coins reading is already running — one at a time';
   if (typeof stages.stageBusy === 'function') {
+    // stageBusy() now names the walk too, so this one call covers both halves
     const b = stages.stageBusy();
     if (b) return `${b} — the reading waits for the box to be free`;
   }
@@ -568,6 +591,10 @@ function coinsRecords() {
     // GEOMETRIES so a shape added or changed tomorrow reads correctly with
     // nobody remembering to update a list (RULE FIVE: the screen says it).
     collapse: require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
+    // WHAT HOLDS THE BOX, so this screen's own two presses sleep when
+    // something else is going instead of refusing after they are pressed
+    // (3.163.0). The one predicate, which now names the walk and the reading.
+    busy: (() => { try { return require('./stages').stageBusy(); } catch (_) { return null; } })(),
     passers: { bar, default: DEFAULTS.passBar, trials: LINK_CUT_TRIALS, rows: passers },
     // what a blank coin box means, as a count, so the label can say it without
     // the number being typed anywhere
@@ -653,6 +680,13 @@ function coinsWalkStop() {
 
 function coinsWalkStart(opts = {}) {
   if (walkRun && walkRun.running) return { started: false, why: 'a walk is already running -- stop it or wait for it' };
+  // THE SAME HOLE POINTING THE OTHER WAY. Blocking the stage presses during a
+  // walk and leaving the walk free to start on top of a stage run would leave
+  // exactly the situation the block is for: two pools on the same cores.
+  {
+    const b = require('./stages').stageBusy();
+    if (b) return { started: false, why: `${b} — the walk waits for the box to be free` };
+  }
   const scan = require('./coinscan');
   const { GEOMETRIES } = require('./dataset');
   const { createPool, configuredSize } = require('./pool');
@@ -702,7 +736,7 @@ module.exports = {
   sitOutBand, setSitOutBand, bandAuto, setBandAuto,
   passBar, setPassBar, passersOff, setPasserTicked, passingUnits, passersCached, passerLeans,
   LOOKBACKS_KEY, lookbacks, setLookbacks,
-  readOneCoin, normalise, busyWhy, removeOlderFilesFor,
+  readOneCoin, normalise, busyWhy, coinsOwnBusy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
   readRecord, scanRecords, coinsRecords, coinsCleanup,
   coinsWalkStart, coinsWalkStatus, coinsWalkStop, coinsWalkSplit,
