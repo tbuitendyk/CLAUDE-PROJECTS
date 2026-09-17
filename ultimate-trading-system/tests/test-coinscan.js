@@ -708,6 +708,56 @@ function theWholeHistoryTuningRidesBesideTheConfirmation() {
   assert(thin.pairs[0].wholeLookback === 'own', 'a whole-history row under the trade floor is not chosen');
 }
 
+// EVERY HEADING SITS OVER ITS OWN FIGURES (3.162.1). The cells were drawn
+// look-back then band and the headings said band then look-back, so from
+// 3.159.0 until the owner spotted it the figure under "band" was the look-back,
+// the figure under "look-back" was the band, and each sorter sat over the
+// column beside the one it sorted. Nothing checked, which is why it stood for
+// two days and shaped a reading that was reported to the owner twice.
+//
+// This walks both sides and holds them to ONE order. Reorder either the
+// headings or the cells and it fails; add a column to one and not the other and
+// it fails. The needle for each cell is a piece of what that cell actually
+// draws, so a cell rewritten to draw something else fails too.
+function theWalkTableHeadingsSitOverTheirOwnFigures() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const panel = /function cWalkPanel\(\) \{[\s\S]*?\n\}/.exec(src);
+  assert(panel, 'the walk panel is there to read');
+  const head = [...panel[0].matchAll(/cWalkSortBtn\('(\w+)'/g)].map((m) => m[1]);
+  const rowFn = /function cWalkRow\(r, shapes\) \{[\s\S]*?\n\}/.exec(src);
+  assert(rowFn, 'and so is the row');
+  const cells = rowFn[0].slice(rowFn[0].indexOf('return `<tr>'));
+  const seq = [
+    ['coin', 'esc(r.coin)'],
+    ['geometry', 'esc(shape)'],
+    ['lookback', "r.lookback === 'own' ? 'own'"],
+    ['band', '${r.band}${r.searched'],
+    ['trades', '<td>${r.trades}</td>'],
+    ['perTrade', '${pt}'],
+    ['windows', '<td>${r.windows}</td>'],
+    ['windowsUp', '${r.windowsUp} of'],
+    ['best', 'r.best == null'],
+    ['worst', 'r.worst == null'],
+    ['asGood', '${scr}'],
+    ['asGoodSlid', '${sld}'],
+  ];
+  assert(head.join(',') === seq.map(([k]) => k).join(','),
+    `the headings must name these columns in this order: ${seq.map(([k]) => k).join(',')} -- they name ${head.join(',')}`);
+  let last = -1;
+  let lastKey = 'the start of the row';
+  for (const [key, needle] of seq) {
+    const i = cells.indexOf(needle);
+    assert(i >= 0, `the row has to draw ${key}, and nothing in it matches ${JSON.stringify(needle)}`);
+    assert(i > last, `the ${key} cell is drawn BEFORE ${lastKey}, but its heading comes after -- the headings and the figures are out of step`);
+    last = i; lastKey = key;
+  }
+  // and the two that were actually swapped, named, so a failure reads plainly
+  assert(cells.indexOf("r.lookback === 'own' ? 'own'") < cells.indexOf('${r.band}${r.searched'),
+    'the look-back cell comes before the band cell');
+  assert(panel[0].indexOf("cWalkSortBtn('lookback'") < panel[0].indexOf("cWalkSortBtn('band'"),
+    'and so does the look-back heading -- this is the pair that was swapped from 3.159.0 to 3.162.1');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -733,6 +783,7 @@ module.exports = {
   aPlantedRelationshipBeatsItsSlidCopiesToo,
   theDealtCopiesAreUnfairOnADriftingCoinAndTheSlidOnesAreNot,
   bothCopyCountsAreOnTheTableSideBySide,
+  theWalkTableHeadingsSitOverTheirOwnFigures,
   theTwoShapesThatCollapseREALLYAreTheSameTrade,
   aFixedLookBackWalksOneShapePerForwardTimeAndOwnWalksThemAll,
   theWholeHistoryTuningRidesBesideTheConfirmation,

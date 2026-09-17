@@ -8893,8 +8893,8 @@ function cWalkPanel() {
       <th></th>
       <th title="the coin">coin${cWalkSortBtn('coin', 'asc')}</th>
       <th title="the chunk shape">chunk shape${cWalkSortBtn('geometry', 'asc')}</th>
-      <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band${cWalkSortBtn('band', 'asc')}</th>
       <th title="how far back the move was measured from, ending at the decision. own is the chunk shape&#39;s own span, which is what every reading did before look-backs existed.">look-back${cWalkSortBtn('lookback', 'asc')}</th>
+      <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band${cWalkSortBtn('band', 'asc')}</th>
       <th title="how many trades the walk placed in total, across every window that met the floor">trades${cWalkSortBtn('trades', 'desc')}</th>
       <th title="what it made on each trade it placed, averaged over the whole walk. Before the round trip.">per trade${cWalkSortBtn('perTrade', 'desc')}</th>
       <th title="how many windows met the floor and were counted. NOT how many windows the coin has: a wide band leaves whole half-years with too few trades, and those are left out of this count and of windows up. Open the row to see the total and which ones were empty.">windows${cWalkSortBtn('windows', 'desc')}</th>
