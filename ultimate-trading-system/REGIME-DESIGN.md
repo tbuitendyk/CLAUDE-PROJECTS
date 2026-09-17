@@ -499,6 +499,9 @@ Otherwise the block is reverted before any further set is built on it.
 
 # Part 5 — What only the owner can decide
 
+**Status of these nine, and three more, is in Part 8.1 and 8.6.** D6 below is
+closed: the owner fixed the Weekly 8-day reading in 3.159.0.
+
 1. **R2's six sets: migrate or delete?** About 65,000 rows carry the dial.
    Re-running is about an hour; migrating is a day and carries its own risk.
 2. **Is R1 wanted, or does R2 make it moot?** R1 is minutes and stops a wasted
@@ -508,9 +511,12 @@ Otherwise the block is reverted before any further set is built on it.
    this document exists to make.
 4. **The floor on decisions per state**, and the default number of bands.
 5. **Which unit R5's third rule is judged on.** Named before the run.
-6. **Whether Weekly 8-day is fixed or excluded.** Its window move reads three
+6. ~~**Whether Weekly 8-day is fixed or excluded.** Its window move reads three
    hours past the entry (1.6). Until that is fixed, no measurement on that shape
-   means anything — including any in this document.
+   means anything — including any in this document.~~ **CLOSED: fixed in
+   3.159.0.** The reading now ends where the decision is taken. Measurements on
+   that shape taken BEFORE 3.159.0 — including every one in Part 1 of this
+   document — still read three hours past the entry and still mean nothing.
 7. **R6's margin** above the round trip.
 8. **R8's bill**, in full, and only when R5 and R7 have earned the question.
 9. **Whether `LEAN-DESIGN.md` Parts B and C proceed in parallel.** They are
@@ -657,3 +663,203 @@ half chose a different look-back for each twin.
 - **It is not one coin.** The best picks are XLM, ZEC, XRP and ATOM; LTC is
   fifth and seventh. The earlier every-window-up filter put LTC in ten of its
   eleven rows, which was a different question and a different answer.
+
+---
+
+# Part 8 — The look-back: a new axis, and what it has and has not shown
+
+**This part exists because most of a day's work turned out not to be on the
+map.** Part 4 lists R1 to R8 and Part 5 lists nine decisions; the seven
+releases shipped on 2026-09-17 are none of them. They were logged in
+conversation as `D1.5`, `D1.6.1` … `D1.6.15`, as though they were sub-decisions
+of Part 5's first item — *the six sets carrying `confirm`: migrate or delete?* —
+and they are nothing of the kind. That numbering was wrong from about the
+fourth entry and it is corrected here rather than left to be untangled later.
+
+## 8.1 — Where Part 5's nine actually stand
+
+| # | Decision | Status on 2026-09-17 |
+|---|---|---|
+| D1 | The six sets carrying `confirm`: migrate or delete? | untouched |
+| D2 | Is R1 wanted, or does R2 make it moot? | untouched |
+| D3 | Which readings ship in R3 | untouched, **and partly overtaken** — the look-back is a reading that did not exist when 3.1's five were written |
+| D4 | The floor on decisions per state, and the default bands | **informed by accident**: the owner has been running floor 3 and bands 200/250/300/350. Those are the walk's, not a state's. The decision is open |
+| D5 | Which unit R5's third rule is judged on | untouched |
+| D6 | **Weekly 8-day: fixed or excluded?** | **CLOSED by the owner.** 3.159.0 fixed the reading; see 8.3 |
+| D7 | R6's margin above the round trip | untouched. The 0.25% round trip is the bar in every figure below; the margin above it is still the owner's |
+| D8 | R8's bill | untouched, correctly — it was gated on R5 and R7 earning the question, and neither has |
+| D9 | `LEAN-DESIGN.md` Parts B and C in parallel? | untouched |
+
+One of nine closed. Seven not started.
+
+## 8.2 — What the work actually is, and why it sits upstream of R1 to R8
+
+R1 to R8 all take one thing for granted: that there is something worth gating,
+training on, or sizing by. **Nothing in Parts 1 to 4 established that.** Part 1
+measured five readings and found none of them predicted; 2.3 recorded that
+`LEAN-DESIGN.md` Part A's premise was falsified; 2.4 recorded that this
+document's own first draft was built on a reading that landed at exactly
+chance.
+
+The look-back is a different kind of answer to the same question. A chunk shape
+used to decide two things at once: how far back the reading looked, and when
+the trade opened and closed. **Nobody had ever varied the first of those.** Every
+reading in Part 1 looked back exactly as far as its shape's own span, because
+that was the only thing the code could do.
+
+So this is not a design for a state, a gate or a sizing. It is **an instrument
+for asking whether there is any signal at all, on an axis that had never been
+looked at**, with a yardstick that can be argued with and an out-of-sample check
+that was written down before it ran.
+
+## 8.3 — The seven releases
+
+| Release | What it did |
+|---|---|
+| 3.159.0 | The look-back as its own axis: a reading stores a move per look-back beside its shape's own. **And the Weekly 8-day reading fixed** — it ends at the decision instead of three hours past the entry. That closes D6, and the cost of a first digit was read off the box and reported before the release rather than after (13 sets on measurement block 3, 15 Stage 4 sets standing on them, S3 #1c paused at 180.6 hours — so the first digit was NOT moved, and why is on the commit) |
+| 3.160.0 | The sliding copy beside the dealt one, both counts on the table. My stated reason for it was wrong and three probes said so before it shipped; see 8.5 |
+| 3.161.0 | Choose early, read late — the choice put out of sample, with its pass mark fixed first (Part 7) |
+| 3.162.0 | Five chunk shapes collapse to three at a fixed look-back, proved from the offsets in `lib/dataset.js`. And the whole-history tuning carried beside the confirmation, at the owner's correction: the early/late reading is a confirmation, never the setting |
+| 3.162.1 | The walk's table had its `band` and `look-back` headings over each other's figures, from 3.159.0 until the owner spotted it. The fix is the guard as much as the swap |
+| 3.163.0 | One progress line instead of two, one of which was stale. And **every long-run press now sleeps while any heavy job is going** — `stageBusy()` did not know Coins had two jobs of its own, so a stage pressed during a walk would have started, on a second pool, on the same cores |
+| 3.164.0 | The walk writes a set to disk — named, listed, openable, deletable. Filter boxes and multi-column sorts on its table; sorts on Choose early, read late's |
+
+## 8.4 — What the instrument has shown
+
+Two runs, both the owner's own parameters: window 6 months, 12 months behind
+the first window, bands 200/250/300/350, trailing usual move, leaning learned
+before each window, 100 copies each way, floor 3, look-backs 24h to 504h in
+24s. The second ran after the shape collapse, so it is the honest count.
+
+| | 7,920 rows (before the collapse) | 4,989 rows (after) |
+|---|---|---|
+| priced | 7,850 | 4,919 |
+| beat all 100 by luck | ~78 | ~49 |
+| beat all **dealt** | 1,165 | 647 |
+| beat all **slid** | 669 | 392 |
+| beat **both** | 548 | 312 |
+| average copies as good | dealt 35.6, slid 35.8 | dealt 38.1, slid 38.2 |
+| rows where the two nulls differ by a fifth or more | 13 of 7,850 | 8 of 4,919 |
+
+**The strongest single figure is the average, not the winners.** Across every
+row, the real reading beats about 62 to 64 of its 100 copies where 50 is fair.
+Looking at thousands of rows inflates the extremes; it cannot shift the mean.
+And two differently-built nulls agree on it to a tenth of a copy.
+
+**A within-coin plateau.** LTC, Daily 1-day, band 200, every look-back: from its
+own span through 216h it reads −0.33% to +0.26% a trade on 3 to 10 of 15 windows
+with 5 to 91 copies as good — nothing. From **240h through 504h** it reads +0.36%
+to +0.88% on 9 to 15 windows with **0 or 1 of 100** as good on nearly every one.
+Twelve consecutive look-backs. A fluke lives in one cell.
+
+**Choose early, read late, on the honest count: INCONCLUSIVE.** 75 pairs
+readable, picks beat picking blind on **47 of 75** against a bar of 50 (chance
+37.5), pooled late money **+0.633%** a trade and **+0.383%** after the round
+trip, 49 of 75 picks pay after it, average percentile **59.8** where 50 is no
+skill, and only 16 of 75 picks chose a look-back of 240 hours or more. The
+earlier 7,920-row run read PASS at 56 of 76 — and the collapse removed the
+duplicate shapes, so **part of that pass was the twins voting twice**. The
+inconclusive reading is the one to believe.
+
+**And picking blind already paid.** Median blind late money was +0.382% a trade,
+above the round trip on its own. So of the pooled +0.633%, only about a quarter
+of a point is the *choosing*; the rest is the whole family of rows being
+positive on this history. The lead column is all this test earned.
+
+## 8.5 — Faults in this instrument, found before anybody asked
+
+Continuing 1.6's list, and in the same spirit.
+
+- **I told the owner the dealt copies were flattering the real rows** — bunched
+  moves spread evenly by the shuffle — and that this was the likely cause of 883
+  of 4,628 rows beating all fifty copies against a chance figure of 90.7. Three
+  probes were run before the sliding copy shipped and **none supports it**:
+  bunched magnitudes give 22.7 against 22.9 of 50; one price path gives
+  24.8/24.8, 22.4/22.7, 22.5/22.5; and the one case where the two nulls do
+  differ — a coin that simply drifts, with the reading disconnected from the
+  outcome — has the dealt copies at 41 to 45 of 50 where 25 is fair, which is
+  unfair **against** the real row and the wrong direction to explain an excess.
+  Sliding is kept because it was never worse and is clearly fairer in one case,
+  not because it collapsed anything.
+- **Five chunk shapes were two units seen twice.** Once a look-back is given in
+  hours, all that is left of a shape is when the trade opens and closes, and
+  those coincide in pairs: Daily 2-day's chunk at S buys and sells exactly where
+  Daily 1-day's chunk at S+24h does. Every figure taken across shapes before
+  3.162.0 counted those twice, including the PASS in Part 7.
+- **The counts of rows beating all their copies are not independent draws.**
+  Adjacent look-backs and adjacent bands of one coin and shape read almost the
+  same thing. A count of pairs with "at least one" row beating all copies is
+  near-uninformative: 60 of 90 was observed and about 52 is what chance predicts
+  at 88 tries per pair. The shifted **mean** is the figure that survives this;
+  the tail counts largely do not.
+- **The late half is thin.** 377 late windows across 40 units, about nine each,
+  and some far fewer — one unit read the 96th percentile on **two** late windows.
+- **One coin's settings are not a rule.** Daily 1-day at 312h and band 200,
+  across all 18 coins, averages **+0.159%** a trade — below the 0.25% round
+  trip. Five coins pay, seven lose. LTC is the best of eighteen, not a
+  representative one.
+- **One epoch, cut once.** Early is roughly 2019–2022, late 2022–2026.
+- **Parts 7 and 8 sit after the Appendix**, because both were appended. The
+  document should be reordered; it has not been, because reordering was not
+  asked for and a botched reorder loses content.
+
+## 8.6 — What only the owner can decide
+
+These three are new. They are not among Part 5's nine and they are not implied
+by any of them.
+
+**D10 — Does the look-back reach the stages at all?**
+
+Right now it does not. A picked walk row hands Sweep its **coin and shape** and
+nothing else: the 336 hours that made the row worth picking do not follow it
+into training, because the stage engine builds its features from the chunk
+shape's own `featureHours` and has no look-back to read. So the walk can say
+"look here" and the stages will then look somewhere else.
+
+Three ways out, and they are not close in cost:
+
+- **Leave it.** The walk is a scout. It tells the owner which coins and shapes
+  to sweep, and the sweep trains the way it always has. Nothing to build; the
+  strongest finding in Part 8 never reaches a trade.
+- **Carry the look-back into stage 3 as a setting**, beside `entry`, `gate`,
+  `d`, `t`, `trail` and `arm`. Second digit, and it multiplies the block by
+  however many look-backs are declared.
+- **Carry it into the measurement block**, so a record's features are built at a
+  chosen look-back. **FIRST DIGIT.** This is R8's question arriving from a
+  different direction, and it carries R8's bill: every set on the box refuses.
+  Not to be asked until D11 is answered.
+
+**D11 — Is the walk evidence, or a scout?**
+
+Two readings of the same table:
+
+- **A scout.** It narrows where to look and claims nothing. Nothing is gated on
+  it, no set records it, and a row that looks extraordinary is a hint. This is
+  what it is today, and it is honest as it stands.
+- **Evidence.** A walk set's picks gate what the stages may run, and a
+  greenlight records which walk set its unit came from. That makes the walk part
+  of the chain, which means it needs what every other link has: a pass mark
+  declared before the run, a null it is graded against, and a refusal when the
+  set was walked under a different release. Most of that exists. The declaring
+  is what does not.
+
+**D12 — Is "inconclusive" enough to stop on?**
+
+The out-of-sample reading is 47 of 75 against a bar of 50, with the bar and the
+verdict both fixed before the numbers existed. It is not a pass and it is not a
+fail. Four things could be done with that, and the choice is the owner's:
+
+- **Stop.** The axis was worth looking at, it did not clear the bar, and it goes
+  no further. Cheapest, and defensible.
+- **More windows.** A shorter window gives more of them: 3 months instead of 6
+  roughly doubles the late half, which is the thinnest part of the reading.
+  Costs one walk.
+- **A different cut.** The reading takes `windows to choose on` as a control,
+  so the split can be moved. **This one needs care**: trying cuts until one
+  passes is exactly the multiplicity this document was written about, so a
+  second cut has to be declared as a second look and reported as one.
+- **Another epoch.** Nothing here has been measured on data outside 2019–2026,
+  and nothing can be until there is more of it.
+
+**Not this**: reading the 312h/200 row as a result because it is the best of
+4,919. It is the best of 4,919.
