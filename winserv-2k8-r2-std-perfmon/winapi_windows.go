@@ -148,6 +148,15 @@ func (t *procTable) sample(now time.Time) []procSample {
 		if !seen || gapSec <= 0 {
 			continue // first sighting: baseline only
 		}
+		// Windows reuses PIDs. When it does, the new process's cumulative
+		// counters are lower than the dead one's, and an unsigned subtraction
+		// wraps to something astronomical — this produced a real log line
+		// reading "LogonUI.exe 13659454 faults/s, 55949241134.9MB/s" on
+		// 2026-09-07. Treat any counter that went backwards as a new process
+		// and re-baseline instead of reporting the wrap.
+		if cpu < p.cpu100ns || io < p.ioBytes || mem.pageFaultCount < p.faults {
+			continue
+		}
 		out = append(out, procSample{
 			pid:       pid,
 			name:      name,

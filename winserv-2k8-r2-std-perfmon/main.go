@@ -50,6 +50,11 @@ var (
 	probePath   = flag.String("probe", "", "time file access to this directory or file every sample — point it at the app's data directory to measure what users actually wait on")
 	probeMs     = flag.Float64("probe-ms", 250, "file-probe threshold in ms")
 	probeSample = flag.Int("probe-samples", 1, "consecutive bad samples before a file-probe event fires")
+	// The log records threshold crossings and 6-hourly heartbeats, which makes
+	// hours of user-visible slowness show up as a handful of 5-minute events
+	// and leaves the rest of the day unmeasured. This writes every sample, so
+	// the full profile is recoverable afterwards.
+	csvPath = flag.String("csv", "", "also append every sample to this CSV (recommended: it is the only continuous record)")
 )
 
 // condition is a simple hysteresis state machine: `need` consecutive bad
@@ -144,6 +149,17 @@ func run() error {
 		}
 	}
 
+	var samplesCSV *sampleWriter
+	if *csvPath != "" {
+		samplesCSV, err = newSampleWriter(*csvPath)
+		if err != nil {
+			lg.Printf("WARN cannot open CSV %s (%v) — continuing without it", *csvPath, err)
+		} else {
+			defer samplesCSV.Close()
+			lg.Printf("appending every sample to %s", *csvPath)
+		}
+	}
+
 	condCPU := &condition{name: "cpu", need: *cpuSamples}
 	condCore := &condition{name: "core", need: *coreSamples}
 	condMem := &condition{name: "mem", need: *memSamples}
@@ -232,6 +248,9 @@ func run() error {
 			return fmt.Sprintf("%dMB avail, load %d%% (floor %dMB, ceiling %d%%) | top working-set: %s",
 				availMB, mem.MemoryLoad, *memAvailMB, *memLoadPct, topByWS(samples, *topN))
 		})
+
+		samplesCSV.add(now, gap, busy, pdhS, mem.MemoryLoad, availMB, probeMsVal,
+			len(samples), topByCPU(samples, *topN), topByIO(samples, *topN))
 
 		// One pegged core: invisible in the all-core average, which divides it
 		// by the core count (100% of one core reads as 12.5% on eight).

@@ -80,6 +80,11 @@ func (t *procTable) sample(now time.Time) []procSample {
 		if !seen || gap <= 0 {
 			continue
 		}
+		// PID reuse makes the cumulative counter go backwards; an unsigned
+		// subtraction would wrap to a nonsense rate. Re-baseline instead.
+		if cpu < p.cpu100ns {
+			continue
+		}
 		out = append(out, procSample{
 			pid:    pid,
 			name:   name,
