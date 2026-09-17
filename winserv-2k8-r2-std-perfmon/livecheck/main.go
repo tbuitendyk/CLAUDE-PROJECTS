@@ -231,7 +231,13 @@ func takeSample(now, prev time.Time, n int, pdh *query, procs *procTable, cal ca
 	s.vmSwapped = pdh.val("vm_swapped")
 	s.vmEffMHz = pdh.val("vm_eff_mhz")
 	s.vmHostMHz = pdh.val("vm_host_mhz")
-	s.maxCore, s.maxCoreIdx = pdh.maxCore()
+	// Skip the canary's own core: it burns real cycles there every sample, so
+	// including it would let this tool flag its own load as a pegged core.
+	canaryCore := -1
+	if !*noCanary && cal.baseline > 0 {
+		canaryCore = cal.pinnedCore
+	}
+	s.maxCore, s.maxCoreIdx = pdh.maxCore(canaryCore)
 
 	if !*noCanary && cal.baseline > 0 {
 		t0 = time.Now()

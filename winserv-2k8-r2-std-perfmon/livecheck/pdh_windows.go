@@ -130,9 +130,16 @@ func (q *query) have(key string) bool {
 	return ok && c.ok
 }
 
-func (q *query) maxCore() (float64, int) {
+// maxCore returns the busiest core, skipping `except` (use -1 for none). The
+// canary pins itself to one core and burns real cycles there, so including
+// that core would let this tool flag its own load as a pegged core — which it
+// did on the 2026-09-17 host capture.
+func (q *query) maxCore(except int) (float64, int) {
 	best, idx := 0.0, -1
 	for i, c := range q.cores {
+		if i == except {
+			continue
+		}
 		if c.val > best {
 			best, idx = c.val, i
 		}
