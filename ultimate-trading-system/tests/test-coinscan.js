@@ -19,6 +19,7 @@ const { assert } = require('./helpers');
 const {
   windowsOf, usualMoveAt, signsBefore, walk, scrambled, slidOffsets, periodsForMonths,
   walkTask, walkTasksFor, rowOf, chooseThenRead, moneyOver,
+  forwardHoursOf, oneShapePerForwardTime,
 } = require('../lib/coinscan');
 const fs = require('fs');
 const path = require('path');
@@ -582,6 +583,129 @@ function theChooseEarlyPanelIsOnScreenWithItsDoorAndItsWords() {
   assert(/<div class="row">\s*<button id="sRun"/.test(src), 'the button has its own row, like every other button here');
   const mine = /<div class="cwbox"><table class="cgap"><thead><tr>\s*<th title="the coin">coin<\/th>/.test(src);
   assert(mine, 'the new table styles against cgap, which the stylesheet defines');
+  // 3.162.0: the whole-history tuning rides beside the confirmation, and the
+  // page says which of the two to tune with rather than leaving it to be guessed
+  assert(/>whole look-back<\/th>/.test(src) && /># *whole band<\/th>|>whole band<\/th>/.test(src)
+    && /># *whole per trade<\/th>|>whole per trade<\/th>/.test(src) && />same pick<\/th>/.test(src),
+    'all four whole-history columns are on the table');
+  assert(/What to tune with is the whole history, not this reading/.test(src),
+    'and the page SAYS the whole history is the tuning and this reading is only the confirmation');
+  // and the page says which shapes a fixed look-back stands down
+  assert(/At a fixed look-back a chunk shape is only how long the trade is held/.test(src),
+    'the collapse is said on the page, not done quietly');
+  assert(/function cCollapseLine\(\)/.test(src) && /cCollapse\.map/.test(src),
+    'and the line is built from what the box sent, never typed');
+  const run2 = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
+  assert(/collapse: require\('\.\/coinscan'\)\.oneShapePerForwardTime/.test(run2),
+    'the box works it out from GEOMETRIES and sends it');
+}
+
+// THE CLAIM THE COLLAPSE RESTS ON, PROVED FROM THE GEOMETRIES THEMSELVES
+// rather than asserted (owner order, 2026-09-17). Two daily shapes that hold a
+// trade for the same length of time buy and sell at the same instants, one
+// chunk apart: daily-2d's chunk at S opens at S+49h and closes at S+66h, and
+// daily-1d's chunk at S+24h opens at S+24+25=S+49h and closes at S+24+42=S+66h.
+// Every daily shape sits on the SAME grid of chunk starts, because dailyStarts()
+// reads the first and last timestamp and nothing about the geometry. So the two
+// are one trade series indexed a day apart, and walking both is walking one
+// twice. If anybody retimes a shape in lib/dataset.js, this fails.
+function theTwoShapesThatCollapseREALLYAreTheSameTrade() {
+  const { GEOMETRIES } = require('../lib/dataset');
+  const groups = new Map();
+  for (const [key, g] of Object.entries(GEOMETRIES)) {
+    const fwd = forwardHoursOf(g);
+    assert(fwd != null && fwd > 0, `${key} must state how long it holds, got ${fwd}`);
+    if (!groups.has(fwd)) groups.set(fwd, []);
+    groups.get(fwd).push(key);
+  }
+  for (const [fwd, keys] of groups) {
+    for (const a of keys) for (const b of keys) {
+      if (a === b) continue;
+      const A = GEOMETRIES[a]; const B = GEOMETRIES[b];
+      assert(A.anchor === B.anchor, `${a} and ${b} hold for the same ${fwd}h but are anchored differently, so they are NOT the same trade`);
+      assert(A.stepHours === B.stepHours, `${a} and ${b} step differently, so they are not one grid`);
+      const gap = Number(B.entryOffsetH) - Number(A.entryOffsetH);
+      assert(gap % Number(A.stepHours) === 0,
+        `${a} and ${b} hold for the same ${fwd}h but their entries are ${gap}h apart, which is not a whole number of ${A.stepHours}h steps -- they are different trades and must not be collapsed`);
+      assert(Number(B.exitOffsetH) - Number(A.exitOffsetH) === gap,
+        `${a} and ${b} must be shifted by the same amount at both ends, or they are different trades`);
+    }
+  }
+  // and the reading at 'own' really is different per shape, which is why 'own'
+  // keeps every one of them: it spans the shape's own distance to its entry
+  const owns = Object.values(GEOMETRIES).map((g) => Number(g.entryOffsetH));
+  assert(new Set(owns).size === owns.length, 'every shape reaches its entry from a different distance, so at own no two are the same');
+}
+
+// SO ONE SHAPE PER FORWARD TIME IS WALKED, and the one that is walked is the
+// one that demands the fewest unbroken hours from its chunk start, because
+// that is the one a price gap costs least.
+function aFixedLookBackWalksOneShapePerForwardTimeAndOwnWalksThemAll() {
+  const { GEOMETRIES } = require('../lib/dataset');
+  const groups = oneShapePerForwardTime(GEOMETRIES);
+  assert(groups.length === 3, `five shapes, three forward times, got ${groups.length}`);
+  assert(groups.map((g) => g.forwardHours).join(',') === '17,41,60', `shortest hold first, got ${groups.map((g) => g.forwardHours).join(',')}`);
+  for (const g of groups) {
+    for (const stood of g.standsFor) {
+      assert(Number(GEOMETRIES[g.walks].featureHours) < Number(GEOMETRIES[stood].featureHours),
+        `${g.walks} is walked instead of ${stood}, so it must be the one asking for fewer unbroken hours`);
+    }
+  }
+  // a shape with no offsets to compare is never stood down -- guessing is worse
+  const odd = oneShapePerForwardTime({ 'a': { featureHours: 24 }, 'b': { featureHours: 24 } });
+  assert(odd.length === 2 && odd.every((g) => !g.standsFor.length), 'two shapes that state no entry or exit are both walked');
+
+  // and the task list obeys it
+  const { move, out } = madeUpCoin(900, 0);
+  const moves = { 72: move.map((m) => m * 0.5), 336: move.map((m) => m * 0.4) };
+  const shapes = {};
+  for (const k of Object.keys(GEOMETRIES)) shapes[k] = { move, out, periods: 900, ts: move.map((_, i) => i), moves };
+  const records = [{ coin: 'AAAUSDT', read: true, shapes }];
+  const base = { bands: [200, 250], sweetSpots: null, windowMonths: 6, warmUpMonths: 12 };
+  const own = walkTasksFor(records, GEOMETRIES, base);
+  assert(own.length === 5 * 2, `at own every shape is walked: five shapes, two bands, got ${own.length}`);
+  const fixed = walkTasksFor(records, GEOMETRIES, { ...base, lookbacks: [72, 336] });
+  // own on all five, plus two look-backs on three shapes only
+  assert(fixed.length === (5 + 3 * 2) * 2, `five at own plus three per look-back, two look-backs, two bands = ${(5 + 3 * 2) * 2}, got ${fixed.length}`);
+  const stoodDown = new Set(oneShapePerForwardTime(GEOMETRIES).flatMap((g) => g.standsFor));
+  for (const t of fixed) {
+    if (t.lookback === 'own') continue;
+    assert(!stoodDown.has(t.geometry), `${t.geometry} stands down at a fixed look-back and must not be walked, ${t.lookback}h was`);
+  }
+  assert(fixed.some((t) => t.lookback === 'own' && stoodDown.has(t.geometry)), 'and it IS still walked at its own span');
+  // the saving is the point: nearly half the fixed-look-back rows go
+  const before = 5 * 2 * 2; const after = 3 * 2 * 2;
+  assert(after < before, `the collapse has to actually save work: ${after} against ${before}`);
+}
+
+// THE CONFIRMATION AND THE TUNING ARE TWO DIFFERENT ANSWERS, CARRIED TOGETHER
+// (owner order, 2026-09-17: "choose early, read late should just be a
+// confirmation, but we need to be able to do the actual tuning or retain the
+// tuning on the entire history swath"). The early pick is what the first half
+// liked; the whole-history pick is what to trade. They need not agree, and when
+// they do not the reading says so rather than quietly reporting one of them.
+function theWholeHistoryTuningRidesBesideTheConfirmation() {
+  const win = (perTrade, n = 50) => ({ n, perTrade, thin: false });
+  // row A wins the early half and loses the late; row B is steadier and wins
+  // over the whole swath. The early pick must be A, the whole pick must be B.
+  const rowA = { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: 'own', band: 100,
+    scan: [win(9), win(9), win(9), win(9), win(-6), win(-6), win(-6), win(-6)], trades: 400, perTrade: 1.5, windows: 8, windowsUp: 4, asGood: 40, asGoodSlid: 44 };
+  const rowB = { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: '336', band: 250,
+    scan: [win(2), win(2), win(2), win(2), win(3), win(3), win(3), win(3)], trades: 400, perTrade: 2.5, windows: 8, windowsUp: 8, asGood: 0, asGoodSlid: 1 };
+  const got = chooseThenRead([rowA, rowB], { minTrades: 10 });
+  const p = got.pairs[0];
+  assert(p.lookback === 'own' && p.band === 100, `the early half liked A, got ${p.lookback}/${p.band}`);
+  assert(p.wholeLookback === '336' && p.wholeBand === 250, `the whole history picks B, got ${p.wholeLookback}/${p.wholeBand}`);
+  assert(Math.abs(p.wholePerTrade - 2.5) < 1e-9, `and carries B's own whole-history money, got ${p.wholePerTrade}`);
+  assert(p.sameAsEarly === false, 'and says plainly that the two disagree');
+  assert(got.sameChoice === 0, `nought of one agreed, got ${got.sameChoice}`);
+  assert(p.wholeAsGood === 0 && p.wholeAsGoodSlid === 1, 'the whole-history row brings its own copy counts with it');
+  // when they agree it says so
+  const agree = chooseThenRead([{ ...rowB }, { ...rowA, scan: [win(-1), win(-1), win(-1), win(-1), win(-1), win(-1), win(-1), win(-1)], perTrade: -1 }], { minTrades: 10 });
+  assert(agree.pairs[0].sameAsEarly === true && agree.sameChoice === 1, 'when both halves and the whole swath pick the same row, that is reported too');
+  // a row too thin over the whole swath is not the tuning answer
+  const thin = chooseThenRead([rowA, { ...rowB, trades: 4 }], { minTrades: 10 });
+  assert(thin.pairs[0].wholeLookback === 'own', 'a whole-history row under the trade floor is not chosen');
 }
 
 module.exports = {
@@ -609,6 +733,9 @@ module.exports = {
   aPlantedRelationshipBeatsItsSlidCopiesToo,
   theDealtCopiesAreUnfairOnADriftingCoinAndTheSlidOnesAreNot,
   bothCopyCountsAreOnTheTableSideBySide,
+  theTwoShapesThatCollapseREALLYAreTheSameTrade,
+  aFixedLookBackWalksOneShapePerForwardTimeAndOwnWalksThemAll,
+  theWholeHistoryTuningRidesBesideTheConfirmation,
   theEarlyHalfChoosesAndOnlyTheLateHalfIsRead,
   aChoiceThatCarriesNothingLandsAtThePackAverage,
   aChoiceThatCarriesSomethingRisesAboveIt,

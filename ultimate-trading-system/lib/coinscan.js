@@ -272,6 +272,73 @@ function walkTask({ move, out, opts, copies, seedText }) {
   };
 }
 
+// ONCE THE LOOK-BACK IS IN HOURS, A CHUNK SHAPE IS ONLY ITS FORWARD TIME
+// (owner order, 2026-09-17: "we're not going to have five chunk shapes when we
+// are doing fixed lookbacks. We're gonna have only the three chunk shapes").
+//
+// A shape used to decide two things at once: how far back the reading looked,
+// and when the trade opened and closed. A look-back in hours takes the first
+// job away from it, and what is left coincides in pairs. Read straight off
+// GEOMETRIES in lib/dataset.js:
+//
+//   daily-1d  opens 25h into its chunk, closes at 42h   -> holds 17h
+//   daily-2d  opens 49h,                 closes at 66h  -> holds 17h
+//   daily-3d  opens 73h,                 closes at 114h -> holds 41h
+//   daily-4d  opens 97h,                 closes at 138h -> holds 41h
+//   weekly-8d opens 195h,                closes at 255h -> holds 60h
+//
+// Every daily shape is built on the SAME grid of chunk starts (dailyStarts()
+// takes the minimum and maximum timestamp and nothing else, so the geometry
+// never enters it), and a chunk's entry and exit candles are looked up at
+// start + entryOffsetH and start + exitOffsetH. So daily-2d's chunk at S buys
+// and sells at S+49h and S+66h -- which is exactly where daily-1d's chunk at
+// S+24h buys and sells, because S+24h is on the same grid. Its look-back reads
+// back from the same instant too. THE TWO ARE ONE TRADE SERIES INDEXED A DAY
+// APART, and so are daily-3d and daily-4d.
+//
+// Measured on the box before this was built: of 36 coin-and-hold units where
+// both twins were readable, 12 agreed to within 0.02% a trade. They differ at
+// all only because featureHours gates whether a chunk survives -- daily-2d
+// demands 48 unbroken hours from its start where daily-1d demands 24 -- so a
+// price gap can drop a chunk from one and not the other.
+//
+// SO ONE SHAPE PER FORWARD TIME IS WALKED at a fixed look-back, and it is the
+// one that demands the fewest unbroken hours, because that one keeps the most
+// chunks. 'own' still walks EVERY shape: there the reading spans the shape's
+// own distance to its entry -- 25h, 49h, 73h, 97h -- and those are all
+// different, so no two shapes are the same trade at 'own'.
+//
+// A geometry with no entry or exit offset to compare is left in a group of its
+// own and never stood down. Guessing is worse than walking it twice.
+function forwardHoursOf(geo) {
+  const f = Number(geo && geo.exitOffsetH) - Number(geo && geo.entryOffsetH);
+  return Number.isFinite(f) ? f : null;
+}
+function oneShapePerForwardTime(geometries) {
+  const groups = new Map();
+  for (const [key, geo] of Object.entries(geometries || {})) {
+    const fwd = forwardHoursOf(geo);
+    const g = fwd == null ? `alone:${key}` : `fwd:${fwd}`;
+    if (!groups.has(g)) groups.set(g, []);
+    groups.get(g).push(key);
+  }
+  const out = [];
+  for (const [g, keys] of groups) {
+    const sorted = keys.slice().sort((a, b) => {
+      const fa = Number(geometries[a].featureHours); const fb = Number(geometries[b].featureHours);
+      if (Number.isFinite(fa) && Number.isFinite(fb) && fa !== fb) return fa - fb;
+      return a < b ? -1 : 1;
+    });
+    out.push({
+      forwardHours: g.startsWith('fwd:') ? Number(g.slice(4)) : null,
+      walks: sorted[0],
+      standsFor: sorted.slice(1),
+    });
+  }
+  out.sort((a, b) => (a.forwardHours == null ? 1e9 : a.forwardHours) - (b.forwardHours == null ? 1e9 : b.forwardHours));
+  return out;
+}
+
 // EVERY WALK THIS RUN WILL DO, listed before any of it starts, so the screen
 // can say "N of M" from the first second rather than counting as it goes.
 function walkTasksFor(records, geometries, opts) {
@@ -281,6 +348,8 @@ function walkTasksFor(records, geometries, opts) {
     floor = 5, only = null, fixedUpTo = null, lookbacks = null,
   } = opts || {};
   const want = only && only.length ? new Set(only.map((c) => String(c).toUpperCase())) : null;
+  // one shape per forward time at a fixed look-back; every shape at 'own'
+  const walksFixed = new Set(oneShapePerForwardTime(geometries).map((c) => c.walks));
   const tasks = [];
   for (const rec of records || []) {
     if (!rec || !rec.read) continue;
@@ -304,7 +373,9 @@ function walkTasksFor(records, geometries, opts) {
         const arr = sr.moves && sr.moves[String(h)];
         if (Array.isArray(arr) && arr.length === sr.move.length) backs.push({ key: String(h), arr });
       }
-      for (const back of backs) for (const band of list) {
+      for (const back of backs) {
+        if (back.key !== 'own' && !walksFixed.has(key)) continue;
+        for (const band of list) {
         tasks.push({
           coin: rec.coin, geometry: key, band, lookback: back.key,
           searched: spot != null && band === spot, span, warmUp,
@@ -318,6 +389,7 @@ function walkTasksFor(records, geometries, opts) {
             },
           },
         });
+        }
       }
     }
   }
@@ -406,6 +478,25 @@ function chooseThenRead(rows, opts = {}) {
     const blind = lates.reduce((a, b) => a + b, 0) / lates.length;
     const sorted = lates.slice().sort((a, b) => a - b);
     const below = sorted.filter((v) => v < pick.late.perTrade).length;
+    // AND THE TUNING ITSELF IS DONE ON THE WHOLE SWATH (owner order,
+    // 2026-09-17: "when a unit is picked by that metric, we need to turn around
+    // and actually use the entire history for determination of the look back
+    // window, the band, etcetera. So choose early, read late should just be a
+    // confirmation").
+    //
+    // Two different jobs, and they must not be confused. The early/late reading
+    // answers "is this unit's choosing worth anything at all" -- it spends half
+    // the history to find out, which is the price of an honest answer. It is
+    // NOT the setting to trade. Once a unit has passed, the look-back and band
+    // are taken from EVERYTHING there is, because throwing away half a coin's
+    // history to keep a test clean leaves a worse setting than the one the
+    // whole history knows about.
+    //
+    // So both are carried, side by side, and whether they agree is reported
+    // rather than assumed.
+    const whole = group
+      .filter((r) => r.perTrade != null && (r.trades || 0) >= minTrades)
+      .reduce((a, b) => (a == null || b.perTrade > a.perTrade ? b : a), null);
     const cut2 = k.indexOf('|');
     pairs.push({
       coin: k.slice(0, cut2), geometry: k.slice(cut2 + 1), cut, of: scored.length,
@@ -416,6 +507,16 @@ function chooseThenRead(rows, opts = {}) {
       blind, lead: pick.late.perTrade - blind,
       bestPossible: sorted[sorted.length - 1],
       percentile: scored.length > 1 ? (below / (scored.length - 1)) * 100 : 50,
+      wholeLookback: whole ? whole.lookback : null,
+      wholeBand: whole ? whole.band : null,
+      wholePerTrade: whole ? whole.perTrade : null,
+      wholeTrades: whole ? whole.trades : null,
+      wholeWindows: whole ? whole.windows : null,
+      wholeWindowsUp: whole ? whole.windowsUp : null,
+      wholeAsGood: whole ? whole.asGood : null,
+      wholeAsGoodSlid: whole ? whole.asGoodSlid : null,
+      wholeOf: group.length,
+      sameAsEarly: !!(whole && String(whole.lookback) === String(pick.row.lookback) && Number(whole.band) === Number(pick.row.band)),
     });
   }
   pairs.sort((a, b) => b.latePerTrade - a.latePerTrade);
@@ -433,6 +534,8 @@ function chooseThenRead(rows, opts = {}) {
     pairs, cost, minTrades, firstWindows,
     of: n, beat, paid, pooled, netPooled: pooled == null ? null : pooled - cost,
     chance: n / 2, meanPercentile: n ? pct / n : null,
+    sameChoice: pairs.filter((p) => p.sameAsEarly).length,
+    wholePooled: (() => { let t = 0; let s2 = 0; for (const p of pairs) { if (p.wholePerTrade == null) continue; t += p.wholeTrades; s2 += p.wholePerTrade * p.wholeTrades; } return t ? s2 / t : null; })(),
     longChoices: pairs.filter((p) => p.lookback !== 'own' && Number(p.lookback) >= 240).length,
     verdict,
   };
@@ -440,6 +543,7 @@ function chooseThenRead(rows, opts = {}) {
 
 module.exports = {
   BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID, chooseThenRead, moneyOver,
+  forwardHoursOf, oneShapePerForwardTime,
   windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, slidOffsets, periodsForMonths, HOURS_A_MONTH,
   walkTask, walkTasksFor, rowOf,
 };

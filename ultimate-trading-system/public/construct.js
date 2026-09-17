@@ -8405,6 +8405,8 @@ let cLastDone = null;
 let cLastRecs = [];
 let cBandNow = '';      // the band the box is set to, for the signal line under each bar
 let cBacksNow = { value: [], default: [], inRecords: [] };  // the look-backs set, against the ones the records actually carry
+let cCollapse = [];    // which shape a fixed look-back walks per forward time, and which stand down
+let cShapesNow = [];   // the chunk shapes and their screen labels, off the same answer, so a label is never rebuilt here
 // THE COLOURS ARE THE OWNER'S: "red, green, and black for sit out". The bar is
 // drawn on a light track so black reads on the dark theme as well as the light
 // one -- black on this page's dark ground is invisible.
@@ -8770,6 +8772,13 @@ function cSplitPanel() {
       &middot; ${s.paid} of ${s.of} pick(s) pay after that round trip
       &middot; the average pick landed at the <b>${s.meanPercentile == null ? '&mdash;' : s.meanPercentile.toFixed(0)}th</b> percentile of its own rows on the late windows (50 is no skill)
       &middot; ${s.longChoices} of ${s.of} pick(s) chose a look-back of 240 hours or more</p>
+    <p class="note"><b>What to tune with is the whole history, not this reading.</b> The four columns on the
+      right carry the look-back and band that the <b>entire</b> swath chooses for each coin and shape, which is
+      what a unit that has passed above should actually be set to &mdash; the early/late columns spend half the
+      history to answer whether the choosing is worth anything at all, and that is all they are for.
+      The whole history chose the same look-back and band as the early windows on
+      <b>${s.sameChoice} of ${s.of}</b>, and its pooled money is <span class="${cls(s.wholePooled)}">${pc(s.wholePooled)}</span> a trade
+      &mdash; higher than the late figure because it is the best of everything, chosen with everything in view.</p>
     <div class="cwbox"><table class="cgap"><thead><tr>
       <th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
       <th title="the look-back the early windows chose">look-back</th>
@@ -8780,6 +8789,10 @@ function cSplitPanel() {
       <th title="late money less picking blind. Above nought means the choosing carried something.">lead</th>
       <th title="the late windows this pick made money on">late windows up</th>
       <th title="where the pick ranked among its own coin and shape's rows on the late windows. 50 is the middle, which is where no skill lands.">percentile</th>
+      <th title="the look-back the WHOLE history chooses for this coin and shape &mdash; which is the one to tune with. The early/late columns to the left only say whether the choosing is worth anything; they are not the setting to trade, because they throw away half the history to stay honest.">whole look-back</th>
+      <th title="the band the whole history chooses">whole band</th>
+      <th title="what that whole-history row made a trade over all of its windows">whole per trade</th>
+      <th title="whether the whole history picked the same look-back and band as the early windows did. They need not agree: the early half has less to go on.">same pick</th>
     </tr></thead><tbody>
     ${s.pairs.map((p) => `<tr>
       <td>${esc(p.coin)}</td><td>${esc(shapeOf(p.geometry))}</td>
@@ -8790,6 +8803,10 @@ function cSplitPanel() {
       <td class="${cls(p.lead)}">${pc(p.lead)}</td>
       <td>${p.lateWindowsUp} of ${p.lateWindows}</td>
       <td>${p.percentile.toFixed(0)}</td>
+      <td>${p.wholeLookback == null ? '&mdash;' : (p.wholeLookback === 'own' ? 'own' : `${esc(String(p.wholeLookback))}h`)}</td>
+      <td>${p.wholeBand == null ? '&mdash;' : p.wholeBand}</td>
+      <td class="${cls(p.wholePerTrade)}">${pc(p.wholePerTrade)}</td>
+      <td>${p.sameAsEarly ? 'yes' : 'no'}</td>
     </tr>`).join('')}
     </tbody></table></div>
     <p class="note">${s.pairs.length} pair(s), each picked on its first ${esc(String(s.pairs[0] ? s.pairs[0].cut : '?'))} window(s) or thereabouts &mdash; a coin with fewer windows is cut in its own half.</p>`}
@@ -8809,6 +8826,27 @@ async function cSplitAsk() {
   }
   cWalkRepaint();
 }
+// WHICH SHAPES A FIXED LOOK-BACK WALKS, said on the page rather than done
+// quietly (3.162.0, owner's order). Built from what the box sent, so a shape
+// added or changed tomorrow reads correctly with nobody editing this line.
+function cCollapseLine() {
+  if (!cCollapse || !cCollapse.length) return '';
+  const shapes = ((cWalkRows && cWalkRows.shapes) || []).concat(cShapesNow || []);
+  const label = (k) => (shapes.find((x) => x.key === k) || {}).label || k;
+  const parts = cCollapse.map((c) => {
+    const held = c.forwardHours == null ? '' : ` (held ${c.forwardHours}h)`;
+    return c.standsFor && c.standsFor.length
+      ? `<b>${esc(label(c.walks))}</b>${held} stands for ${c.standsFor.map((k) => esc(label(k))).join(' and ')}`
+      : `<b>${esc(label(c.walks))}</b>${held} stands alone`;
+  });
+  const down = cCollapse.reduce((a, c) => a + ((c.standsFor || []).length), 0);
+  if (!down) return '';
+  return `<p class="note"><b>At a fixed look-back a chunk shape is only how long the trade is held.</b>
+    A look-back in hours decides what is looked at, so what is left of a shape is when the trade opens
+    and closes &mdash; and two shapes that hold for the same time are the same trade a day apart. So one
+    shape is walked for each: ${parts.join('; ')}. Every shape is still walked at its <b>own</b> span,
+    where the readings really do differ. This is why the table is smaller than it was.</p>`;
+}
 function cWalkPanel() {
   const st = cWalkSt;
   const walking = !!(st && st.running);
@@ -8822,6 +8860,7 @@ function cWalkPanel() {
       behind that window and then held still while the window is priced</b>, so no number here knew anything it
       could not have known at the time. Read the windows across: steady is a property of the coin, off-then-on is a
       phase, up and down is noise. <b>Nothing here trades, refuses or chooses.</b></p>
+    ${cCollapseLine()}
     <div class="row">
       <label class="f" title="how long one window is. Six months is a reasonable place to start: long enough to hold trades, short enough that a phase shows as a phase. Each chunk shape converts it to its own number of decisions.">window, months<input${off} id="wWindow" type="number" min="1" step="1" value="${esc(String(cState.wWindow))}" style="width:5rem"></label>
       <label class="f" title="how much history has to sit behind the first window before anything is priced. The signs are learned from it, so too little and the first windows are guesses.">history before the first window, months<input${off} id="wWarm" type="number" min="1" step="1" value="${esc(String(cState.wWarm))}" style="width:5rem"></label>
@@ -9000,6 +9039,7 @@ async function cWalkTick() {
   if (!st) { cWalkPoll = setTimeout(cWalkTick, 2000); return; }
   const wasRunning = !!(cWalkSt && cWalkSt.running);
   cWalkSt = st;
+  if (st && Array.isArray(st.collapse)) cCollapse = st.collapse;
   if (!st.running && st.rows) cWalkRows = { rows: st.rows, shapes: st.shapes || [] };
   if (st.running) {
     // while it runs only the one line moves, so an open row stays open and the
@@ -9117,6 +9157,8 @@ async function drawCoins() {
   const band = d && d.band ? d.band : { value: '', default: '' };
   cBandNow = band.value;
   cBacksNow = (d && d.lookbacks) || { value: [], default: [], inRecords: [] };
+  if (d && Array.isArray(d.collapse)) cCollapse = d.collapse;
+  if (d && Array.isArray(d.shapes)) cShapesNow = d.shapes;
   const running = !!(st && st.running);
   cLastDone = running ? st.done : null;
   const off = running ? ' disabled' : '';

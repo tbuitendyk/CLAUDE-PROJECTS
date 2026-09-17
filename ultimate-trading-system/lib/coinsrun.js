@@ -563,6 +563,11 @@ function coinsRecords() {
     // since the last read is in `value` and not in `inRecords`, and the screen
     // says so rather than offering a walk that would silently find nothing.
     lookbacks: { value: lookbacks(), default: DEFAULTS.lookbacks, inRecords: lookbacksInRecords(records) },
+    // WHICH SHAPES A FIXED LOOK-BACK ACTUALLY WALKS, and which ones stand down
+    // because they are the same trade held for the same time. Read off
+    // GEOMETRIES so a shape added or changed tomorrow reads correctly with
+    // nobody remembering to update a list (RULE FIVE: the screen says it).
+    collapse: require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
     passers: { bar, default: DEFAULTS.passBar, trials: LINK_CUT_TRIALS, rows: passers },
     // what a blank coin box means, as a count, so the label can say it without
     // the number being typed anywhere
@@ -623,6 +628,7 @@ function coinsWalkStatus() {
     error: r.error, rows: r.running ? null : r.rows, asked: r.asked,
     startedAt: r.startedAt, finishedAt: r.finishedAt, stopping: !!r.stop,
     shapes: r.shapes, workers: r.workers,
+    collapse: require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
   };
 }
 
