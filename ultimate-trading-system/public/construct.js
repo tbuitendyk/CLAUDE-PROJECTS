@@ -8374,7 +8374,7 @@ const cState = (() => {
   const d = {
     coins: '',
     wWindow: 6, wWarm: 12, wBands: '50,100,150,200', wSpot: true,
-    wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '',
+    wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '', wBacks: '',
     wSort: 'asGood', wDir: 'asc',
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
@@ -8402,6 +8402,7 @@ const cWalkOpen = new Set();
 let cLastDone = null;
 let cLastRecs = [];
 let cBandNow = '';      // the band the box is set to, for the signal line under each bar
+let cBacksNow = { value: [], default: [], inRecords: [] };  // the look-backs set, against the ones the records actually carry
 // THE COLOURS ARE THE OWNER'S: "red, green, and black for sit out". The bar is
 // drawn on a light track so black reads on the dark theme as well as the light
 // one -- black on this page's dark ground is invisible.
@@ -8623,7 +8624,7 @@ function cLeanWord(v) {
 // never searched for, and says so, because side by side in one table they would
 // otherwise read as a fair race.
 function cWalkRow(r, shapes) {
-  const key = `${r.coin}|${r.geometry}|${r.band}`;
+  const key = `${r.coin}|${r.geometry}|${r.lookback}|${r.band}`;
   const open = cWalkOpen.has(key);
   const shape = (shapes.find((s) => s.key === r.geometry) || {}).label || r.geometry;
   const pt = r.perTrade == null ? '—' : `${r.perTrade > 0 ? '+' : ''}${Number(r.perTrade).toFixed(3)}%`;
@@ -8638,7 +8639,7 @@ function cWalkRow(r, shapes) {
   const blanks = all.filter((w) => w.thin || w.n === 0 || w.perTrade == null).length;
   const says = `${all.length} window(s) in this coin's history · ${all.length - blanks} counted`
     + `${blanks ? ` · ${blanks} had too few trades to count and show as a dash` : ''}`;
-  const strip = !open ? '' : `<tr class="cwscan"><td colspan="11">
+  const strip = !open ? '' : `<tr class="cwscan"><td colspan="12">
     <p class="cwsays">${esc(says)}</p>
     <div class="cwstrip">${all.map((w) => {
     const v = w.perTrade;
@@ -8649,6 +8650,7 @@ function cWalkRow(r, shapes) {
   return `<tr>
     <td><button class="cwopen" data-key="${esc(key)}" title="show or hide this row's windows, one after another in time">${open ? '▾' : '▸'}</button></td>
     <td>${esc(r.coin)}</td><td>${esc(shape)}</td>
+    <td>${r.lookback === 'own' ? 'own' : `${r.lookback}h`}</td>
     <td>${r.band}${r.searched ? ' <span class="warn" title="this band was SEARCHED FOR across the whole history, so it is not comparable with the bands beside it, which were not">searched</span>' : ''}</td>
     <td>${r.trades}</td><td>${pt}</td>
     <td>${r.windows}</td><td>${r.windowsUp} of ${r.windows}</td>
@@ -8673,6 +8675,7 @@ function cWalkSorted(rows, how) {
     coin: (r) => `${r.coin} ${r.geometry}`,
     geometry: (r) => `${r.geometry} ${r.coin}`,
     band: (r) => r.band,
+    lookback: (r) => (r.lookback === 'own' ? 0 : Number(r.lookback)),
     trades: (r) => r.trades,
     perTrade: (r) => r.perTrade,
     windows: (r) => r.windows,
@@ -8703,7 +8706,7 @@ function cWalkSorted(rows, how) {
     if (typeof a === 'string' || typeof b === 'string') return dir * String(a).localeCompare(String(b));
     if (a !== b) return dir * (a - b);
     if (second) { const d = second(y) - second(x); if (d) return d; }
-    return String(`${x.coin}${x.geometry}${x.band}`).localeCompare(`${y.coin}${y.geometry}${y.band}`);
+    return String(`${x.coin}${x.geometry}${x.lookback}${x.band}`).localeCompare(`${y.coin}${y.geometry}${y.lookback}${y.band}`);
   });
 }
 // WHAT THE WALK IS DOING, IN ONE LINE. While it runs: how many of how many,
@@ -8743,6 +8746,7 @@ function cWalkPanel() {
       <label class="f" title="how long one window is. Six months is a reasonable place to start: long enough to hold trades, short enough that a phase shows as a phase. Each chunk shape converts it to its own number of decisions.">window, months<input${off} id="wWindow" type="number" min="1" step="1" value="${esc(String(cState.wWindow))}" style="width:5rem"></label>
       <label class="f" title="how much history has to sit behind the first window before anything is priced. The signs are learned from it, so too little and the first windows are guesses.">history before the first window, months<input${off} id="wWarm" type="number" min="1" step="1" value="${esc(String(cState.wWarm))}" style="width:5rem"></label>
       <label class="f" title="how big a move has to be before it counts, as a percentage of the coin's usual move. Comma separated; every one of them is walked and every one is reported, never only the best.">bands to try<input${off} id="wBands" value="${esc(String(cState.wBands))}" style="width:11rem"></label>
+      <label class="f" title="which look-backs to walk, in hours, comma separated. Blank walks only each shape&#39;s own span, which is what every reading did before this. A look-back the records do not carry is left out rather than guessed &mdash; read the coins again with it in the box above to add one.">look-backs to try, hours (blank = each shape&#39;s own)<input${off} id="wBacks" value="${esc(String(cState.wBacks || ''))}" placeholder="${esc((cBacksNow.inRecords || []).join(','))}" style="width:13rem"></label>
       <label class="c" title="also walk the band the reading above searched out for each unit. It is marked searched in the table because it was chosen across the whole history and the others were not."><input${off} id="wSpot" type="checkbox"${cState.wSpot ? ' checked' : ''}> also each unit's sweet spot band</label>
     </div>
     <div class="row">
@@ -8771,6 +8775,7 @@ function cWalkPanel() {
       <th title="the coin">coin${cWalkSortBtn('coin', 'asc')}</th>
       <th title="the chunk shape">chunk shape${cWalkSortBtn('geometry', 'asc')}</th>
       <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band${cWalkSortBtn('band', 'asc')}</th>
+      <th title="how far back the move was measured from, ending at the decision. own is the chunk shape&#39;s own span, which is what every reading did before look-backs existed.">look-back${cWalkSortBtn('lookback', 'asc')}</th>
       <th title="how many trades the walk placed in total, across every window that met the floor">trades${cWalkSortBtn('trades', 'desc')}</th>
       <th title="what it made on each trade it placed, averaged over the whole walk. Before the round trip.">per trade${cWalkSortBtn('perTrade', 'desc')}</th>
       <th title="how many windows met the floor and were counted. NOT how many windows the coin has: a wide band leaves whole half-years with too few trades, and those are left out of this count and of windows up. Open the row to see the total and which ones were empty.">windows${cWalkSortBtn('windows', 'desc')}</th>
@@ -8831,6 +8836,7 @@ function cWalkBind() {
   keep('#wWindow', 'wWindow', true);
   keep('#wWarm', 'wWarm', true);
   keep('#wBands', 'wBands', false);
+  keep('#wBacks', 'wBacks', false);
   keep('#wSpot', 'wSpot', false);
   keep('#wUsual', 'wUsual', false);
   keep('#wSigns', 'wSigns', false);
@@ -8875,6 +8881,7 @@ function cWalkBind() {
         usual: cState.wUsual, signsMode: cState.wSigns,
         scrambles: cState.wScrambles, floor: cState.wFloor,
         only: String(cState.wCoins || '').trim() || null,
+        lookbacks: String(cState.wBacks || '').split(',').map((x) => Number(x.trim())).filter((h) => Number.isFinite(h) && h > 0),
       });
     } catch (err) {
       run.disabled = false;
@@ -9024,6 +9031,7 @@ async function drawCoins() {
   const unreadable = (d && d.unreadable) || [];
   const band = d && d.band ? d.band : { value: '', default: '' };
   cBandNow = band.value;
+  cBacksNow = (d && d.lookbacks) || { value: [], default: [], inRecords: [] };
   const running = !!(st && st.running);
   cLastDone = running ? st.done : null;
   const off = running ? ' disabled' : '';
@@ -9048,6 +9056,7 @@ async function drawCoins() {
     <div class="row">
       <label class="f" title="which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep.">coins (blank = all ${d && d.downloaded != null ? d.downloaded : '—'} downloaded)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${esc(cState.coins || '')}" style="width:16rem"${off}></label>
       <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. Change it and every bar recolours at once; nothing is read again. Sweep trains with this same number.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
+      <label class="f" title="the look-backs a reading stores, in hours, comma separated. The chunk shape decides the TRADE; a look-back decides what is LOOKED AT, and there is no reason they should be the same length. Measured from candles at read time, so a change only reaches the records when the coins are read again &mdash; which is why it lives here and not on Walk it forward.">look-backs to store, hours<input id="cBacks" value="${esc(((d && d.lookbacks && d.lookbacks.value) || []).join(','))}" style="width:13rem"${off}></label>
       <label class="c" title="ticked, every coin and shape is drawn at its own sweet spot: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. Nothing is read again either way."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own sweet spot</label>
     </div>
     <div class="row">
@@ -9102,6 +9111,16 @@ async function drawCoins() {
     };
   }
   // THE TICK IS SET THE MOMENT IT CHANGES, like the band: one door, one home.
+  if ($('#cBacks')) {
+    $('#cBacks').onchange = async () => {
+      try {
+        const ans = await post('api/coins/lookbacks', { lookbacks: $('#cBacks').value });
+        $('#cOut').innerHTML = esc(`look-backs set to ${ans.lookbacks.join(', ')} hours — ${ans.note}`);
+      } catch (err) {
+        $('#cOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
+      }
+    };
+  }
   if ($('#cAuto')) {
     $('#cAuto').onchange = async () => {
       try { await post('api/coins/band', { auto: $('#cAuto').checked }); } catch (err) {

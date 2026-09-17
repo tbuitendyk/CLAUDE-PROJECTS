@@ -85,11 +85,16 @@ function usualMoveAt(move, upTo, mode) {
 // WHICH WAY IT LEANED, from the periods before a point, read at one threshold.
 // Zero means the periods before it said nothing either way, and a window whose
 // sign is zero places no trades on that side rather than guessing one.
+// A NULL MOVE IS A DECISION THIS LOOK-BACK CANNOT READ, not a move of zero
+// (3.159.0). Number(null) is 0 and 0 is finite, so the old guard let it
+// through as "the coin did not move", which is a claim and not a silence.
+const noMove = (m) => (m == null || !Number.isFinite(Number(m)));
 function signsBefore(move, out, upTo, threshold) {
   let sr = 0; let sf = 0; let nr = 0; let nf = 0;
   for (let i = 0; i < upTo; i++) {
+    if (noMove(move[i])) continue;
     const m = Number(move[i]); const o = Number(out[i]);
-    if (!Number.isFinite(m) || !Number.isFinite(o)) continue;
+    if (!Number.isFinite(o)) continue;
     if (m > threshold) { sr += o; nr++; } else if (m < -threshold) { sf += o; nf++; }
   }
   return { r: sr > 0 ? 1 : (sr < 0 ? -1 : 0), f: sf > 0 ? 1 : (sf < 0 ? -1 : 0), nr, nf };
@@ -99,8 +104,9 @@ function signsBefore(move, out, upTo, threshold) {
 function priceWindow(move, out, from, to, threshold, signs) {
   let n = 0; let sum = 0; let nr = 0; let nf = 0;
   for (let i = from; i <= to; i++) {
+    if (noMove(move[i])) continue;
     const m = Number(move[i]); const o = Number(out[i]);
-    if (!Number.isFinite(m) || !Number.isFinite(o)) continue;
+    if (!Number.isFinite(o)) continue;
     if (m > threshold) { if (signs.r) { n++; sum += signs.r * o; nr++; } } else if (m < -threshold) { if (signs.f) { n++; sum += signs.f * o; nf++; } }
   }
   return { n, sum, nr, nf, perTrade: n ? sum / n : null };
@@ -214,7 +220,7 @@ function walkTasksFor(records, geometries, opts) {
   const {
     windowMonths = 6, warmUpMonths = 12, bands = BANDS_WHEN_UNSAID, sweetSpots = null,
     usual = 'trailing', signsMode = 'rolled', scrambles = SCRAMBLES_WHEN_UNSAID,
-    floor = 5, only = null, fixedUpTo = null,
+    floor = 5, only = null, fixedUpTo = null, lookbacks = null,
   } = opts || {};
   const want = only && only.length ? new Set(only.map((c) => String(c).toUpperCase())) : null;
   const tasks = [];
@@ -229,13 +235,25 @@ function walkTasksFor(records, geometries, opts) {
       const spot = sweetSpots ? sweetSpots[`${rec.coin}|${key}`] : null;
       const list = bands.slice();
       if (spot != null && !list.includes(spot)) list.push(spot);
-      for (const band of list) {
+      // THE SHAPE DECIDES THE TRADE; THE LOOK-BACK DECIDES WHAT IS LOOKED AT
+      // (owner, 2026-09-17). 'own' is the shape's own span, which is what
+      // every reading used before this; a number of hours measures from that
+      // far before the decision instead. A look-back the record does not carry
+      // is left out rather than guessed -- it is only there if the coins were
+      // read with it.
+      const backs = [{ key: 'own', arr: sr.move }];
+      for (const h of (lookbacks || [])) {
+        const arr = sr.moves && sr.moves[String(h)];
+        if (Array.isArray(arr) && arr.length === sr.move.length) backs.push({ key: String(h), arr });
+      }
+      for (const back of backs) for (const band of list) {
         tasks.push({
-          coin: rec.coin, geometry: key, band, searched: spot != null && band === spot, span, warmUp,
+          coin: rec.coin, geometry: key, band, lookback: back.key,
+          searched: spot != null && band === spot, span, warmUp,
           ts: Array.isArray(sr.ts) ? sr.ts : null,
           payload: {
-            move: sr.move, out: sr.out, copies: scrambles,
-            seedText: `${rec.coin}|${key}|${band}|${usual}|${signsMode}|${span}`,
+            move: back.arr, out: sr.out, copies: scrambles,
+            seedText: `${rec.coin}|${key}|${band}|${back.key}|${usual}|${signsMode}|${span}`,
             opts: {
               band, span, warmUp, usual, signsMode, floor,
               fixedUpTo: fixedUpTo && fixedUpTo[`${rec.coin}|${key}`] != null ? fixedUpTo[`${rec.coin}|${key}`] : warmUp,
@@ -252,7 +270,7 @@ function walkTasksFor(records, geometries, opts) {
 // inline path build the same row and neither can drift.
 function rowOf(task, got) {
   return {
-    coin: task.coin, geometry: task.geometry, band: task.band, searched: task.searched,
+    coin: task.coin, geometry: task.geometry, band: task.band, lookback: task.lookback || 'own', searched: task.searched,
     span: task.span, warmUp: task.warmUp,
     trades: got.trades, perTrade: got.perTrade,
     windows: got.windows, windowsUp: got.windowsUp, windowsDown: got.windowsDown,
@@ -261,52 +279,8 @@ function rowOf(task, got) {
   };
 }
 
-async function walkEverything(records, geometries, opts, yieldNow) {
-  const {
-    windowMonths = 6, warmUpMonths = 12, bands = BANDS_WHEN_UNSAID, sweetSpots = null,
-    usual = 'trailing', signsMode = 'rolled', scrambles = SCRAMBLES_WHEN_UNSAID,
-    floor = 5, only = null, fixedUpTo = null,
-  } = opts || {};
-  const want = only && only.length ? new Set(only.map((c) => String(c).toUpperCase())) : null;
-  const rows = [];
-  for (const rec of records || []) {
-    if (!rec || !rec.read) continue;
-    if (want && !want.has(String(rec.coin).toUpperCase())) continue;
-    for (const [key, geo] of Object.entries(geometries || {})) {
-      const sr = rec.shapes && rec.shapes[key];
-      if (!sr || !Array.isArray(sr.move) || !Array.isArray(sr.out) || !sr.move.length) continue;
-      const span = periodsForMonths(windowMonths, geo.stepHours);
-      const warmUp = periodsForMonths(warmUpMonths, geo.stepHours);
-      const spot = sweetSpots ? sweetSpots[`${rec.coin}|${key}`] : null;
-      const list = bands.slice();
-      if (sweetSpots && spot != null && !list.includes(spot)) list.push(spot);
-      for (const band of list) {
-        const o = {
-          band, span, warmUp, usual, signsMode, floor,
-          fixedUpTo: fixedUpTo && fixedUpTo[`${rec.coin}|${key}`] != null ? fixedUpTo[`${rec.coin}|${key}`] : warmUp,
-        };
-        const got = scrambled(sr.move, sr.out, o, scrambles, `${rec.coin}|${key}|${band}|${usual}|${signsMode}|${span}`);
-        rows.push({
-          coin: rec.coin, geometry: key, band, searched: spot != null && band === spot,
-          span, warmUp,
-          trades: got.real.trades, perTrade: got.real.perTrade,
-          windows: got.real.windows, windowsUp: got.real.windowsUp, windowsDown: got.real.windowsDown,
-          best: got.real.best, worst: got.real.worst,
-          copies: got.copies, asGood: got.asGood,
-          scan: got.real.rows.map((r) => ({
-            from: r.from, to: r.to, n: r.n, perTrade: r.perTrade, thin: !!r.thin,
-            ts: Array.isArray(sr.ts) ? sr.ts[r.from] : null,
-          })),
-        });
-      }
-      if (yieldNow) await yieldNow();
-    }
-  }
-  return rows;
-}
-
 module.exports = {
   BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID,
-  windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, periodsForMonths, walkEverything, HOURS_A_MONTH,
+  windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, periodsForMonths, HOURS_A_MONTH,
   walkTask, walkTasksFor, rowOf,
 };

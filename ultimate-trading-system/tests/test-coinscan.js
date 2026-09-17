@@ -12,7 +12,7 @@
 const { assert } = require('./helpers');
 const {
   windowsOf, usualMoveAt, signsBefore, walk, scrambled, periodsForMonths,
-  walkTask, walkTasksFor, rowOf, walkEverything,
+  walkTask, walkTasksFor, rowOf,
 } = require('../lib/coinscan');
 const fs = require('fs');
 const path = require('path');
@@ -186,20 +186,32 @@ function everyWalkIsListedUpFrontOnePerCoinShapeAndBand() {
   assert(dup.length === 4, `a sweet spot already in the typed bands is not walked twice, got ${dup.length}`);
 }
 
-// THE WORKER PATH AND THE ONE-THREAD PATH MUST AGREE TO THE DIGIT. Four
-// hundred walks moved onto the pool in 3.158.0; if the two ever differ, a
-// number on the screen depends on how many cores the box has.
-async function theWorkerPathAndTheOneThreadPathGiveTheSameRows() {
+// THE TASK WRAPPER CHANGES NOTHING ABOUT THE ARITHMETIC. A walk is split into
+// a task per coin, shape, look-back and band and sent to a worker, so the row
+// that comes back has been through walkTask and rowOf rather than through
+// scrambled() directly. If those two ever disagreed, a figure on the screen
+// would depend on how the work was divided up.
+//
+// 3.159.0: this used to compare against walkEverything, a whole second
+// implementation kept alive only to be compared with -- which is a second copy
+// however it is justified. It is deleted; this checks the wrapper against the
+// arithmetic it wraps, which is the thing that can actually drift.
+async function theTaskWrapperGivesExactlyWhatTheArithmeticGives() {
   const { move, out } = madeUpCoin(1200, 0);
   const records = [{ coin: 'AAAUSDT', read: true, shapes: { 'daily-1d': { move, out, periods: 1200, ts: move.map((_, i) => 1000 + i) } } }];
   const geos = { 'daily-1d': { stepHours: 24 } };
   const opts = { bands: [100, 150], sweetSpots: null, windowMonths: 6, warmUpMonths: 12, scrambles: 4, floor: 5 };
-  const oneThread = await walkEverything(records, geos, opts, null);
-  const viaTasks = walkTasksFor(records, geos, opts).map((t) => rowOf(t, walkTask(t.payload)));
-  assert(oneThread.length === viaTasks.length, `the same number of rows, ${oneThread.length} against ${viaTasks.length}`);
-  for (let i = 0; i < oneThread.length; i++) {
-    assert(JSON.stringify(oneThread[i]) === JSON.stringify(viaTasks[i]),
-      `row ${i} differs between the two paths:\n  one thread: ${JSON.stringify(oneThread[i]).slice(0, 220)}\n  tasks:      ${JSON.stringify(viaTasks[i]).slice(0, 220)}`);
+  const tasks = walkTasksFor(records, geos, opts);
+  assert(tasks.length === 2, `two bands, two tasks, got ${tasks.length}`);
+  for (const t of tasks) {
+    const viaTask = rowOf(t, walkTask(t.payload));
+    const direct = scrambled(t.payload.move, t.payload.out, t.payload.opts, t.payload.copies, t.payload.seedText);
+    assert(viaTask.trades === direct.real.trades, `band ${t.band}: trades differ`);
+    assert(Math.abs(viaTask.perTrade - direct.real.perTrade) < 1e-12, `band ${t.band}: money differs`);
+    assert(viaTask.windows === direct.real.windows && viaTask.windowsUp === direct.real.windowsUp, `band ${t.band}: the window counts differ`);
+    assert(viaTask.asGood === direct.asGood, `band ${t.band}: the scrambled count differs`);
+    assert(viaTask.scan.length === direct.real.rows.length, `band ${t.band}: the strip differs`);
+    assert(viaTask.lookback === 'own', `band ${t.band}: a walk with no look-back asked for reads the shape's own`);
   }
 }
 
@@ -323,6 +335,50 @@ function theWindowStripIsReadableAndSaysWhatIsMissing() {
   assert(/NOT how many windows the coin has/.test(src), 'the windows column says what it does not count');
 }
 
+// THE LOOK-BACK IS ITS OWN AXIS (owner, 2026-09-17). The shape decides the
+// trade; the look-back decides what is looked at. A look-back the record does
+// not carry is left out rather than guessed at.
+function theLookBackIsItsOwnAxisAndOnlyWhatTheRecordCarries() {
+  const { move, out } = madeUpCoin(900, 0);
+  const back = move.map((m, i) => (i < 40 ? null : m * 0.5));
+  const records = [{ coin: 'AAAUSDT', read: true, shapes: { 'daily-1d': { move, out, periods: 900, ts: move.map((_, i) => i), moves: { 72: back } } } }];
+  const geos = { 'daily-1d': { stepHours: 24 } };
+  const base = { bands: [100], sweetSpots: null, windowMonths: 6, warmUpMonths: 12 };
+  const none = walkTasksFor(records, geos, base);
+  assert(none.length === 1 && none[0].lookback === 'own', 'with none asked for, only the shape\'s own');
+  const one = walkTasksFor(records, geos, { ...base, lookbacks: [72] });
+  assert(one.length === 2, `the shape's own and the one look-back, got ${one.length}`);
+  assert(one.map((t) => t.lookback).join(',') === 'own,72', `both axes, got ${one.map((t) => t.lookback).join(',')}`);
+  assert(one[1].payload.move === back, 'the look-back task carries the look-back array, not the shape\'s own');
+  // a look-back the record does not hold is not invented
+  const missing = walkTasksFor(records, geos, { ...base, lookbacks: [72, 336] });
+  assert(missing.length === 2, `336 is not in the record so it is not walked, got ${missing.length} tasks`);
+  // the seed differs per look-back, or two axes would share one set of copies
+  assert(one[0].payload.seedText !== one[1].payload.seedText, 'each look-back gets its own scrambled copies');
+}
+
+// BOTH LOOK-BACK BOXES ARE ON SCREEN, AND THEY ARE IN THE RIGHT PLACES. The
+// one that decides what gets STORED sits on Coins beside the band, because it
+// is measured when the coins are read and a change to it means nothing until
+// they are read again. The one that decides what gets WALKED sits on Walk it
+// forward, because it costs nothing and can be changed between walks.
+function bothLookBackBoxesAreOnScreenWhereTheyBelong() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+  const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert(/id="cBacks"/.test(src), 'the store box is on Coins');
+  assert(/id="wBacks"/.test(src), 'the walk box is on Walk it forward');
+  assert(/look-backs to store, hours/.test(src), 'and it says what it does');
+  assert(/look-backs to try, hours/.test(src), 'and so does the other');
+  assert(/cBacks: /.test(help) && /wBacks: /.test(help), 'both are described on Help');
+  assert(/app\.post\('\/api\/coins\/lookbacks'/.test(srv), 'the store box has a door');
+  assert(/read the coins again for this to reach the records/.test(run),
+    'and setting them SAYS a read is needed, rather than looking as though it took effect');
+  assert(/const RECORD_V = 9;/.test(run), 'the record shape moved, so a record written under the old reading is refused rather than mixed in');
+  assert(/look-back\$\{cWalkSortBtn\('lookback', 'asc'\)\}/.test(src), 'the table has a look-back column and it sorts');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -334,7 +390,7 @@ module.exports = {
   anythingButTheTwoValuesEachBoxOffersFallsToItsSafeOne,
   monthsBecomeDecisionsOnEachShapesOwnClock,
   everyWalkIsListedUpFrontOnePerCoinShapeAndBand,
-  theWorkerPathAndTheOneThreadPathGiveTheSameRows,
+  theTaskWrapperGivesExactlyWhatTheArithmeticGives,
   thePoolKnowsTheWalkOnBothItsPaths,
   theWalkSaysWhatItIsDoingAndSurvivesLeavingTheTab,
   everyColumnOfTheWalkTableSorts,
@@ -342,4 +398,6 @@ module.exports = {
   windowsUpOrdersByShareAndMoreWindowsWinsATie,
   openingARowLeavesBothScrollBarsWhereTheyWere,
   theWindowStripIsReadableAndSaysWhatIsMissing,
+  theLookBackIsItsOwnAxisAndOnlyWhatTheRecordCarries,
+  bothLookBackBoxesAreOnScreenWhereTheyBelong,
 };

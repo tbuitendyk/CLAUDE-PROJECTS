@@ -222,6 +222,12 @@ app.post('/api/coins/cleanup', (req, res) => {
   try { return res.json(coinsrun.coinsCleanup()); }
   catch (err) { return res.status(409).json({ error: err.message }); }
 });
+// THE LOOK-BACKS' ONE DOOR. They are measured from candles at read time, so
+// changing them says so rather than pretending a walk will pick them up.
+app.post('/api/coins/lookbacks', (req, res) => {
+  try { return res.json(coinsrun.setLookbacks((req.body || {}).lookbacks)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.post('/api/coins/band', (req, res) => {
   try {
     const body = req.body || {};
@@ -247,6 +253,7 @@ app.post('/api/coins/walk', (req, res) => {
       scrambles: Number.isFinite(Number(b.scrambles)) ? Math.max(0, Math.min(200, Number(b.scrambles))) : undefined,
       floor: Number.isFinite(Number(b.floor)) ? Math.max(0, Number(b.floor)) : 5,
       only: Array.isArray(b.only) ? b.only : (b.only ? String(b.only).split(',').map((x) => x.trim()).filter(Boolean) : null),
+      lookbacks: Array.isArray(b.lookbacks) ? b.lookbacks.map(Number).filter((h) => Number.isFinite(h) && h > 0) : [],
     }));
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });

@@ -47,6 +47,13 @@ const AUTO_KEY = 'coins_band_auto';
 // reads the ticked passers as the units of a launch.
 const PASS_BAR_KEY = 'coins_pass_bar';
 const PASS_OFF_KEY = 'coins_passers_off';
+// THE LOOK-BACKS A READING STORES, in hours, the owner's to change (RULE
+// FIVE). Stored at read time because they are measured from candles, so
+// changing them means reading the coins again -- which is why they live beside
+// the band rather than on Walk it forward, where a change would silently mean
+// nothing until the next read. One day, two, three, four, a week, two weeks,
+// three weeks.
+const LOOKBACKS_KEY = 'coins_lookbacks';
 
 // THE RECORD SHAPE. It moves whenever what is written changes, so a reading
 // taken under an older shape is NAMED on the screen rather than drawn as
@@ -64,7 +71,13 @@ const PASS_OFF_KEY = 'coins_passers_off';
 // LOOP-2026-09-14-SIGNAL.md). It is worked out once, when the coin is read,
 // because it costs fifty analyses per shape and would not survive a draw; it
 // depends on no band. A shape-7 record has no such check and is read again.
-const RECORD_V = 8;
+// 9 (3.159.0): the reading now ends at the OPEN OF THE FIRST CANDLE OF THE
+// FILL, not at the fill price itself, and every record carries a move per
+// look-back beside the shape's own. Both change what is stored, so a record
+// written under 8 is refused by name and read again -- two minutes for the
+// whole box, and RULE NINE rather than a reader that asks which era a file
+// is from.
+const RECORD_V = 9;
 // how many deals the check makes per shape; one home
 const LINK_CUT_TRIALS = 50;
 
@@ -72,7 +85,7 @@ const LINK_CUT_TRIALS = 50;
 // screen (RULE FIVE); this is only what it reads before the owner sets it. 50
 // means: sit out when the window moved less than half what this coin
 // typically moves over that window.
-const DEFAULTS = Object.freeze({ band: 50, passBar: 2 });
+const DEFAULTS = Object.freeze({ band: 50, passBar: 2, lookbacks: [24, 48, 72, 96, 168, 336, 504] });
 
 // THE WINDOW LAYOUTS ARE READ FROM THE SAME LIST THE DROPDOWNS ARE DRAWN FROM,
 // never typed here. Typed, they would be a second copy: add a layout to the
@@ -119,6 +132,23 @@ function setPassBar(value) {
   settings[PASS_BAR_KEY] = v;
   writeSettings(settings);
   return { bar: v };
+}
+function lookbacks() {
+  const a = readSettings()[LOOKBACKS_KEY];
+  const list = Array.isArray(a) ? a.map(Number).filter((h) => Number.isFinite(h) && h > 0 && h <= 8760) : null;
+  return list && list.length ? [...new Set(list)].sort((x, y) => x - y) : DEFAULTS.lookbacks.slice();
+}
+function setLookbacks(value) {
+  const list = (Array.isArray(value) ? value : String(value == null ? '' : value).split(','))
+    .map((x) => Number(String(x).trim())).filter((h) => Number.isFinite(h));
+  if (!list.length) throw new Error('give at least one look-back, in hours');
+  for (const h of list) {
+    if (!Number.isInteger(h) || h <= 0 || h > 8760) throw new Error(`a look-back is a whole number of hours from 1 to 8760 — not ${JSON.stringify(h)}`);
+  }
+  const settings = readSettings();
+  settings[LOOKBACKS_KEY] = [...new Set(list)].sort((x, y) => x - y);
+  writeSettings(settings);
+  return { lookbacks: settings[LOOKBACKS_KEY], note: 'read the coins again for this to reach the records' };
 }
 function passersOff() {
   const a = readSettings()[PASS_OFF_KEY];
@@ -217,9 +247,9 @@ async function readOneCoin(coin, onNote = () => {}) {
   for (const s of coins.shapes()) {
     onNote(`${coin}: ${s.label}`);
     try {
-      const wm = coins.windowMoves(map, s.key);
+      const wm = coins.windowMoves(map, s.key, lookbacks());
       rec.shapes[s.key] = wm.periods
-        ? { periods: wm.periods, span: wm.span, skipped: wm.skipped, ts: wm.ts, move: wm.move, out: wm.out }
+        ? { periods: wm.periods, span: wm.span, skipped: wm.skipped, ts: wm.ts, move: wm.move, out: wm.out, moves: wm.moves }
         : { periods: 0, why: `${coin} offers no complete ${s.label} decisions from the prices cached on this box` };
       if (wm.periods) {
         onNote(`${coin}: ${s.label} — checking the signal reading against itself`);
@@ -455,6 +485,18 @@ function coinsCleanup() {
 // about how many decisions a month a shape offers: one a day, or one a week
 const DECISIONS_A_MONTH = Object.freeze({ day: 365.25 / 12, week: 365.25 / 12 / 7 });
 
+// EVERY LOOK-BACK EVERY READ RECORD CARRIES, so the screen offers what exists
+// rather than what is set.
+function lookbacksInRecords(records) {
+  const seen = new Set();
+  for (const rec of records || []) {
+    if (!rec || !rec.read || !rec.shapes) continue;
+    for (const sr of Object.values(rec.shapes)) {
+      for (const k of Object.keys((sr && sr.moves) || {})) { const h = Number(k); if (Number.isFinite(h)) seen.add(h); }
+    }
+  }
+  return [...seen].sort((a, b) => a - b);
+}
 function coinsRecords() {
   const band = sitOutBand();
   const auto = bandAuto();
@@ -517,6 +559,10 @@ function coinsRecords() {
     shapes: coins.shapes(),
     layouts: lays,
     band: { value: band, default: DEFAULTS.band, home: 'data/settings.json', auto },
+    // WHAT IS SET AGAINST WHAT THE RECORDS ACTUALLY CARRY. A look-back changed
+    // since the last read is in `value` and not in `inRecords`, and the screen
+    // says so rather than offering a walk that would silently find nothing.
+    lookbacks: { value: lookbacks(), default: DEFAULTS.lookbacks, inRecords: lookbacksInRecords(records) },
     passers: { bar, default: DEFAULTS.passBar, trials: LINK_CUT_TRIALS, rows: passers },
     // what a blank coin box means, as a count, so the label can say it without
     // the number being typed anywhere
@@ -637,6 +683,7 @@ module.exports = {
   RECORD_V, DEFAULTS, BAND_KEY, AUTO_KEY, PASS_BAR_KEY, PASS_OFF_KEY, LINK_CUT_TRIALS, layouts, recordFile,
   sitOutBand, setSitOutBand, bandAuto, setBandAuto,
   passBar, setPassBar, passersOff, setPasserTicked, passingUnits, passersCached, passerLeans,
+  LOOKBACKS_KEY, lookbacks, setLookbacks,
   readOneCoin, normalise, busyWhy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
   readRecord, scanRecords, coinsRecords, coinsCleanup,

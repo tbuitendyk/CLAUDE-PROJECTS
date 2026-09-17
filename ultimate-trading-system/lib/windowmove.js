@@ -26,28 +26,81 @@
 // from. It is what the gap below is read against: how differently a trade
 // turns out after a rising window than after a falling one. The window ends
 // at the open and the outcome starts there, so the two never overlap.
-function windowMoves(map, geometry) {
+// WHERE THE DECISION IS TAKEN, AND AT WHAT PRICE (owner, 2026-09-17).
+//
+// The move used to end at `c1`, which is the price the TRADE FILLS AT. On the
+// daily shapes those are the same instant -- c1 is one candle's open at the
+// entry hour -- so nothing there changes. On the weekly shape c1 is the mean
+// of six candles, Tuesday 00:00 to 05:59, and the nominal entry sits in the
+// MIDDLE of it at 195h. Averaging is right for a fill: it stands in for
+// entering across a morning instead of at one jumpy print, and the owner is
+// right that it is not a fault.
+//
+// It is wrong for the READING, which is the number that decides whether to
+// trade at all, because half of that average had not happened yet. And the
+// direction it pushes is unhelpfully exact: a morning that falls drags c1
+// down, so the window reads MORE fallen and the outcome measured from that
+// lower c1 reads BETTER -- manufacturing "a big fall is followed by a rise"
+// out of the two sharing one number.
+//
+// So the decision is taken at the FIRST CANDLE OF THE FILL WINDOW, at its open
+// (owner's choice, 2026-09-17), and the fill stays exactly as it was. On the
+// daily shapes that is the same candle and the same open as before.
+function decisionAt(map, startTs, geo) {
+  const { TUE_OFFSET_H } = require('./dataset');
+  const hours = geo.labelMode === 'windows' ? TUE_OFFSET_H : geo.entryOffsetH;
+  const ts = startTs + hours * 3600000;
+  const c = map.get(ts);
+  return { ts, price: c && c.open > 0 ? c.open : null };
+}
+
+// A MOVE OVER ANY LOOK-BACK, not only the one the chunk shape happens to use
+// (owner, 2026-09-17: "the daily two day doesn't just look at two days of
+// history to the decision point ... but also could look back, say, three days,
+// four days, five days a week, two weeks").
+//
+// The shape decides the TRADE -- when it opens and how long it is held. There
+// is no reason it should also decide what is LOOKED AT. `own` keeps the
+// shape's own span, from the start of its window to the decision; a number of
+// hours measures from that many hours before the decision instead. Everything
+// still ends at the decision, so no look-back can see past it.
+function windowMoves(map, geometry, lookbacks = []) {
   const bracket = require('./bracket');
+  const { GEOMETRIES } = require('./dataset');
+  const geo = GEOMETRIES[geometry];
   const built = bracket.buildComboChunks({ trade: map }, geometry, false);
   const ts = [];
   const move = [];
   const out = [];
+  const moves = {};
+  const wanted = [...new Set((lookbacks || []).map(Number).filter((h) => Number.isFinite(h) && h > 0))].sort((a, b) => a - b);
+  for (const h of wanted) moves[String(h)] = [];
   let skipped = 0;
   for (const c of built.chunks) {
     if (c.c1 == null || c.diffPct == null) continue;
     const first = map.get(c.startTs);
+    const at = decisionAt(map, c.startTs, geo);
     // A PRICE OF ZERO OR BELOW IS NOT A BASE A RETURN CAN BE MEASURED FROM.
     // That decision is skipped and counted, never invented.
-    if (!first || !(first.open > 0)) { skipped++; continue; }
+    if (!first || !(first.open > 0) || at.price == null) { skipped++; continue; }
     ts.push(c.startTs);
-    move.push(Number((((c.c1 - first.open) / first.open) * 100).toFixed(4)));
+    move.push(Number((((at.price - first.open) / first.open) * 100).toFixed(4)));
     out.push(Number(Number(c.diffPct).toFixed(4)));
+    for (const h of wanted) {
+      const back = map.get(at.ts - h * 3600000);
+      // A LOOK-BACK WITH NO CANDLE BEHIND IT IS NOT MEASURED AND NOT GUESSED.
+      // The early decisions of a coin's life have nothing two weeks back, and
+      // a null there is read as "this decision is not in this look-back's
+      // reading" rather than being filled in from somewhere.
+      moves[String(h)].push(back && back.open > 0 ? Number((((at.price - back.open) / back.open) * 100).toFixed(4)) : null);
+    }
   }
   return {
     periods: ts.length,
     ts,
     move,
     out,
+    moves,
     skipped,
     span: ts.length ? { fromTs: ts[0], toTs: ts[ts.length - 1] } : null,
   };
@@ -55,8 +108,14 @@ function windowMoves(map, geometry) {
 
 // THE YARDSTICK the band is read against: the coin's median window move for
 // this shape, ignoring direction. The one place it is defined.
+// A DECISION WITH NO PRICE THAT FAR BACK IS LEFT OUT, NOT COUNTED AS NOTHING
+// (3.159.0). A look-back array carries nulls at the start of a coin's life --
+// there is no candle two weeks before its first week -- and reading those as a
+// 0% move dragged the median down and made the band too tight for every
+// decision after them.
 function medianAbsMove(move) {
-  const abs = move.map((m) => Math.abs(Number(m) || 0)).sort((a, b) => a - b);
+  const abs = move.filter((m) => m != null && Number.isFinite(Number(m)))
+    .map((m) => Math.abs(Number(m))).sort((a, b) => a - b);
   const n = abs.length;
   if (!n) return null;
   return n % 2 ? abs[(n - 1) / 2] : (abs[n / 2 - 1] + abs[n / 2]) / 2;
@@ -80,4 +139,4 @@ function readingsUnderBand(move, band, yardstickGiven = null) {
   return { yardstick, threshold, reading };
 }
 
-module.exports = { windowMoves, medianAbsMove, readingsUnderBand };
+module.exports = { windowMoves, medianAbsMove, readingsUnderBand, decisionAt };
