@@ -527,11 +527,49 @@ function coinsRecords() {
   };
 }
 
+// WALKING EVERY COIN AND SHAPE FORWARD (3.157.0). The screen asks; this hands
+// the walker the records off disk, the shapes' own step rates, each unit's
+// sweet spot so the searched band can be put beside bands that were not
+// searched for, and where train ends on the sealed layout so "learned once"
+// means learned on train. It filters nothing: the passing test answers a
+// different question and is not consulted here.
+async function coinsWalk(opts = {}) {
+  const scan = require('./coinscan');
+  const signal = require('./coinsignal');
+  const { GEOMETRIES } = require('./dataset');
+  const { records } = scanRecords();
+  const lays = layouts();
+  const band = sitOutBand();
+  const sweetSpots = {};
+  const fixedUpTo = {};
+  for (const rec of records) {
+    if (!rec || !rec.read) continue;
+    for (const s of coins.shapes()) {
+      const sr = rec.shapes && rec.shapes[s.key];
+      if (!sr || !sr.periods) continue;
+      const key = `${rec.coin}|${s.key}`;
+      const lp = coins.layoutParts(sr.periods, 'reserve61');
+      if (lp.parts) { const tr = lp.parts.find((q) => q.name === 'train'); if (tr) fixedUpTo[key] = tr.to + 1; }
+      if (opts.sweetSpot === false) continue;
+      try {
+        const sig = signal.signalSummary(sr, s.key, lays, band);
+        if (sig && sig.sweetSpot && sig.sweetSpot.band != null) sweetSpots[key] = sig.sweetSpot.band;
+      } catch (_) { /* a shape with nothing to read carries no sweet spot */ }
+    }
+  }
+  const rows = await scan.walkEverything(records, GEOMETRIES, {
+    ...opts,
+    sweetSpots: opts.sweetSpot === false ? null : sweetSpots,
+    fixedUpTo,
+  }, () => new Promise((resolve) => setImmediate(resolve)));
+  return { rows, asked: opts, shapes: coins.shapes().map((s) => ({ key: s.key, label: s.label })) };
+}
+
 module.exports = {
   RECORD_V, DEFAULTS, BAND_KEY, AUTO_KEY, PASS_BAR_KEY, PASS_OFF_KEY, LINK_CUT_TRIALS, layouts, recordFile,
   sitOutBand, setSitOutBand, bandAuto, setBandAuto,
   passBar, setPassBar, passersOff, setPasserTicked, passingUnits, passersCached, passerLeans,
   readOneCoin, normalise, busyWhy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
-  readRecord, scanRecords, coinsRecords, coinsCleanup,
+  readRecord, scanRecords, coinsRecords, coinsCleanup, coinsWalk,
 };

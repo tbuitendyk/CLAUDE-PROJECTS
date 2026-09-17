@@ -8371,7 +8371,11 @@ drawHelp = waitWrap(drawHelp);
 // box lost whatever was being typed into it.
 const C_KEY = 'cx-coins';
 const cState = (() => {
-  const d = { coins: '' };
+  const d = {
+    coins: '',
+    wWindow: 6, wWarm: 12, wBands: '50,100,150,200', wSpot: true,
+    wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '', wSort: 'scrambles',
+  };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
 })();
 const cRemember = () => { try { localStorage.setItem(C_KEY, JSON.stringify(cState)); } catch (_) { /* private window */ } };
@@ -8390,6 +8394,9 @@ const cRemember = () => { try { localStorage.setItem(C_KEY, JSON.stringify(cStat
 // eligibility, no coin dropped -- which coins a sweep runs on is the owner's
 // choice, made here by looking, never made in code.
 let coinsPoll = null;
+let cWalkRows = null;     // the last walk's rows, kept so a sort or an open row does not walk again
+let cWalkNote = '';
+const cWalkOpen = new Set();
 let cLastDone = null;
 let cLastRecs = [];
 let cBandNow = '';      // the band the box is set to, for the signal line under each bar
@@ -8601,6 +8608,174 @@ function cSignalLine(sig, band) {
 function cLeanWord(v) {
   return v > 0 ? `<span>up</span>` : v < 0 ? `<span>down</span>` : `<span>—</span>`;
 }
+
+// WALK IT FORWARD (3.157.0, owner's design 2026-09-17). The Coins reading above
+// answers "is there structure here at all", over the whole span, which is the
+// right span for that question. This answers the two it cannot: could the band
+// have been found without seeing the answer, and is a finding a property of the
+// coin or one episode.
+//
+// Every coin and shape is walked, not only the ones that pass -- the passing
+// test is a different question and filtering by it here would hide the
+// comparison the owner asked for. The searched band sits beside bands that were
+// never searched for, and says so, because side by side in one table they would
+// otherwise read as a fair race.
+function cWalkRow(r, shapes) {
+  const key = `${r.coin}|${r.geometry}|${r.band}`;
+  const open = cWalkOpen.has(key);
+  const shape = (shapes.find((s) => s.key === r.geometry) || {}).label || r.geometry;
+  const pt = r.perTrade == null ? '—' : `${r.perTrade > 0 ? '+' : ''}${Number(r.perTrade).toFixed(3)}%`;
+  const scr = r.asGood == null ? '—' : `${r.asGood} of ${r.copies}`;
+  const strip = !open ? '' : `<tr class="cwscan"><td colspan="11"><div class="cwstrip">${(r.scan || []).map((w) => {
+    const v = w.perTrade;
+    const col = w.thin || v == null ? 'muted' : (v > 0 ? 'cr' : 'cf');
+    return `<span class="cwwin" title="${esc(cDay(w.ts))} onward · ${w.n} trade(s)${w.thin ? ' · too few to count' : ''}"><b class="${col}">${w.thin || v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}`}</b><i>${esc(cDay(w.ts)).slice(0, 7)}</i></span>`;
+  }).join('')}</div></td></tr>`;
+  return `<tr>
+    <td><button class="cwopen" data-key="${esc(key)}" title="show or hide this row's windows, one after another in time">${open ? '▾' : '▸'}</button></td>
+    <td>${esc(r.coin)}</td><td>${esc(shape)}</td>
+    <td>${r.band}${r.searched ? ' <span class="warn" title="this band was SEARCHED FOR across the whole history, so it is not comparable with the bands beside it, which were not">searched</span>' : ''}</td>
+    <td>${r.trades}</td><td>${pt}</td>
+    <td>${r.windows}</td><td>${r.windowsUp} of ${r.windows}</td>
+    <td>${r.best == null ? '—' : `${r.best > 0 ? '+' : ''}${Number(r.best).toFixed(2)}%`}</td>
+    <td>${r.worst == null ? '—' : `${r.worst > 0 ? '+' : ''}${Number(r.worst).toFixed(2)}%`}</td>
+    <td>${scr}</td>
+  </tr>${strip}`;
+}
+function cWalkSorted(rows, how) {
+  const a = rows.slice();
+  const num = (v, d) => (v == null ? d : v);
+  if (how === 'perTrade') a.sort((x, y) => num(y.perTrade, -1e9) - num(x.perTrade, -1e9));
+  else if (how === 'windowsUp') a.sort((x, y) => (y.windowsUp / Math.max(1, y.windows)) - (x.windowsUp / Math.max(1, x.windows)));
+  else if (how === 'trades') a.sort((x, y) => y.trades - x.trades);
+  else if (how === 'coin') a.sort((x, y) => `${x.coin}${x.geometry}${x.band}`.localeCompare(`${y.coin}${y.geometry}${y.band}`));
+  else a.sort((x, y) => (num(x.asGood, 999) - num(y.asGood, 999)) || (num(y.perTrade, -1e9) - num(x.perTrade, -1e9)));
+  return a;
+}
+function cWalkPanel() {
+  const rows = (cWalkRows && cWalkRows.rows) || null;
+  const shapes = (cWalkRows && cWalkRows.shapes) || [];
+  return `<div class="panel">
+    <h3 style="margin-top:0">Walk it forward</h3>
+    <p class="note">Every coin and shape, priced one window at a time from the start of its history to the end.
+      <b>At the start of each window the coin's usual move and which way it leans are worked out from everything
+      behind that window and then held still while the window is priced</b>, so no number here knew anything it
+      could not have known at the time. Read the windows across: steady is a property of the coin, off-then-on is a
+      phase, up and down is noise. <b>Nothing here trades, refuses or chooses.</b></p>
+    <div class="row">
+      <label class="f" title="how long one window is. Six months is a reasonable place to start: long enough to hold trades, short enough that a phase shows as a phase. Each chunk shape converts it to its own number of decisions.">window, months<input id="wWindow" type="number" min="1" step="1" value="${esc(String(cState.wWindow))}" style="width:5rem"></label>
+      <label class="f" title="how much history has to sit behind the first window before anything is priced. The signs are learned from it, so too little and the first windows are guesses.">history before the first window, months<input id="wWarm" type="number" min="1" step="1" value="${esc(String(cState.wWarm))}" style="width:5rem"></label>
+      <label class="f" title="how big a move has to be before it counts, as a percentage of the coin's usual move. Comma separated; every one of them is walked and every one is reported, never only the best.">bands to try<input id="wBands" value="${esc(String(cState.wBands))}" style="width:11rem"></label>
+      <label class="c" title="also walk the band the reading above searched out for each unit. It is marked searched in the table because it was chosen across the whole history and the others were not."><input id="wSpot" type="checkbox"${cState.wSpot ? ' checked' : ''}> also each unit's sweet spot band</label>
+    </div>
+    <div class="row">
+      <label class="f" title="trailing: worked out from everything before each window, which is what a run would have had in hand. whole history: one figure over the whole span, which is what the reading above uses.">the coin's usual move<select id="wUsual">
+        <option value="trailing"${cState.wUsual === 'trailing' ? ' selected' : ''}>trailing</option>
+        <option value="whole"${cState.wUsual === 'whole' ? ' selected' : ''}>whole history</option></select></label>
+      <label class="f" title="learned before each window: what the walk would actually have made. learned once on train: whether the relationship itself holds still. They answer different questions.">which way it leans<select id="wSigns">
+        <option value="rolled"${cState.wSigns === 'rolled' ? ' selected' : ''}>learned before each window</option>
+        <option value="fixed"${cState.wSigns === 'fixed' ? ' selected' : ''}>learned once on train</option></select></label>
+      <label class="f" title="how many copies of the same coin to walk with its outcomes dealt into a new order. A row that beats its own copies is saying something; a row that is merely positive is not. Zero skips them and the walk is much faster.">scrambled copies<input id="wScrambles" type="number" min="0" max="200" step="1" value="${esc(String(cState.wScrambles))}" style="width:5rem"></label>
+      <label class="f" title="a window with fewer trades than this is shown as a dash and left out of the totals, because a window of two trades is not a reading.">fewest trades a window must have<input id="wFloor" type="number" min="0" step="1" value="${esc(String(cState.wFloor))}" style="width:5rem"></label>
+    </div>
+    <div class="row">
+      <label class="f" title="which coins to walk, comma separated. Blank walks every coin that has been read.">coins to walk (blank = all)<input id="wCoins" value="${esc(String(cState.wCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:14rem"></label>
+      <label class="f" title="which way to order the table">sort by<select id="wSort">
+        <option value="scrambles"${cState.wSort === 'scrambles' ? ' selected' : ''}>fewest scrambles as good</option>
+        <option value="perTrade"${cState.wSort === 'perTrade' ? ' selected' : ''}>most per trade</option>
+        <option value="windowsUp"${cState.wSort === 'windowsUp' ? ' selected' : ''}>most windows up</option>
+        <option value="trades"${cState.wSort === 'trades' ? ' selected' : ''}>most trades</option>
+        <option value="coin"${cState.wSort === 'coin' ? ' selected' : ''}>coin and shape</option></select></label>
+      <button id="wRun" class="pri">Walk it forward</button>
+      <span id="wOut" class="muted">${esc(cWalkNote)}</span>
+    </div>
+    ${!rows ? '<p class="note">nothing walked yet — press <b>Walk it forward</b></p>' : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
+    <table class="cgap cpassers"><thead><tr>
+      <th></th>
+      <th title="the coin">coin</th>
+      <th title="the chunk shape">chunk shape</th>
+      <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band</th>
+      <th title="how many trades the walk placed in total, across every window that met the floor">trades</th>
+      <th title="what it made on each trade it placed, averaged over the whole walk. Before the round trip.">per trade</th>
+      <th title="how many windows met the floor and were counted">windows</th>
+      <th title="how many of those windows made money. Half is what a coin with nothing in it looks like.">windows up</th>
+      <th title="the best single window">best window</th>
+      <th title="the worst single window">worst window</th>
+      <th title="how many scrambled copies of this same coin did AT LEAST AS WELL. Low is the result; with hundreds of rows on this table, merely positive is not.">scrambles as good</th>
+    </tr></thead>
+    <tbody>${cWalkSorted(rows, cState.wSort).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table>`)}
+  </div>`;
+}
+
+
+// THE WALK'S CONTROLS. Repainting only this panel, never the whole screen: a
+// redraw re-asks for every record, which is four megabytes, and the walk's own
+// answer is held here anyway so a sort or an opened row costs nothing.
+function cWalkRepaint() {
+  const wrap = $('#cWalkWrap');
+  if (!wrap) return;
+  wrap.innerHTML = cWalkPanel();
+  cWalkBind();
+}
+function cWalkBind() {
+  const keep = (id, field, num) => {
+    const el = $(id);
+    if (!el) return;
+    const take = () => {
+      cState[field] = num ? Number(el.value) : (el.type === 'checkbox' ? el.checked : el.value);
+      cRemember();
+    };
+    el.onchange = take;
+    if (el.tagName === 'INPUT' && el.type !== 'checkbox') el.oninput = take;
+  };
+  keep('#wWindow', 'wWindow', true);
+  keep('#wWarm', 'wWarm', true);
+  keep('#wBands', 'wBands', false);
+  keep('#wSpot', 'wSpot', false);
+  keep('#wUsual', 'wUsual', false);
+  keep('#wSigns', 'wSigns', false);
+  keep('#wScrambles', 'wScrambles', true);
+  keep('#wFloor', 'wFloor', true);
+  keep('#wCoins', 'wCoins', false);
+  const sort = $('#wSort');
+  if (sort) sort.onchange = () => { cState.wSort = sort.value; cRemember(); cWalkRepaint(); };
+  for (const b of document.querySelectorAll('.cwopen')) {
+    b.onclick = () => {
+      const k = b.getAttribute('data-key');
+      if (cWalkOpen.has(k)) cWalkOpen.delete(k); else cWalkOpen.add(k);
+      cWalkRepaint();
+    };
+  }
+  const run = $('#wRun');
+  if (!run) return;
+  run.onclick = async () => {
+    run.disabled = true;
+    cWalkNote = 'walking…';
+    if ($('#wOut')) $('#wOut').textContent = cWalkNote;
+    const bands = String(cState.wBands || '').split(',').map((x) => Number(x.trim())).filter((x) => Number.isFinite(x) && x >= 0);
+    let ans = null;
+    try {
+      ans = await post('api/coins/walk', {
+        windowMonths: cState.wWindow, warmUpMonths: cState.wWarm,
+        bands: bands.length ? bands : undefined, sweetSpot: !!cState.wSpot,
+        usual: cState.wUsual, signsMode: cState.wSigns,
+        scrambles: cState.wScrambles, floor: cState.wFloor,
+        only: String(cState.wCoins || '').trim() || null,
+      });
+    } catch (err) {
+      cWalkNote = '';
+      run.disabled = false;
+      if ($('#wOut')) $('#wOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
+      return;
+    }
+    cWalkRows = ans;
+    const n = (ans.rows || []).length;
+    cWalkNote = `${n} row(s) · window ${cState.wWindow} month(s) · ${cState.wUsual === 'whole' ? 'usual move over the whole history' : 'usual move trailing'} · ${cState.wSigns === 'fixed' ? 'leaning learned once on train' : 'leaning learned before each window'} · ${cState.wScrambles} scrambled copies`;
+    cWalkOpen.clear();
+    cWalkRepaint();
+  };
+}
+
 function cPassersPanel(pass) {
   if (!pass) return '';
   const rows = pass.rows || [];
@@ -8742,6 +8917,7 @@ async function drawCoins() {
     <div class="row"><button id="cClean" class="danger"${off}>Remove these files</button><span id="cCleanOut" class="muted">removes exactly the ${unreadable.length} file(s) named above and nothing else</span></div>` : ''}
   </div>
   ${cPassersPanel(d && d.passers)}
+  <div id="cWalkWrap">${cWalkPanel()}</div>
   ${!recs.length ? `<div class="panel"><p class="note">no coin has been read${unreadable.length ? ' that this release can draw' : ''} — press <b>Read these coins</b> above</p></div>` : recs.map((r) => {
     const grew = behind(r);
     const p = r.provenance || {};
@@ -8829,6 +9005,7 @@ async function drawCoins() {
       draw();
     };
   }
+  cWalkBind();
   // THE STOP ANSWERS, and its answer is shown. The route replies with a reason
   // when there is nothing to stop; thrown away, pressing it did and said nothing.
   if ($('#cStop')) {

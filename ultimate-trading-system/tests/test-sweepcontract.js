@@ -316,7 +316,15 @@ module.exports = {
       // an id that is not a Stage 4 set at all -- test-funnel.js
       // (aStageFourSetThatWillNotOpenStillDrawsThePicker and
       // theFunnelOffersTheStageFourSetsCutFromTheCoinAndShape) hold both.
-      'fCutPick']);
+      'fCutPick',
+      // WALK IT FORWARD's three boxes (3.157.0). wSort never leaves the page --
+      // it orders the table in hand and is sent nowhere. wUsual and wSigns do
+      // go to the box, and lib/coinscan.js is their allow-list: anything that
+      // is not 'whole' reads trailing and anything that is not 'fixed' rolls,
+      // so an unknown value cannot make the walk do something it does not
+      // offer. test-coinscan.js (anythingButTheTwoValuesEachBoxOffersFallsToItsSafeOne)
+      // holds the library to exactly that.
+      'wUsual', 'wSigns', 'wSort']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));
