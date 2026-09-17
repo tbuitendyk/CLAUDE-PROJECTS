@@ -254,6 +254,7 @@ app.post('/api/coins/walk', (req, res) => {
       floor: Number.isFinite(Number(b.floor)) ? Math.max(0, Number(b.floor)) : 5,
       only: Array.isArray(b.only) ? b.only : (b.only ? String(b.only).split(',').map((x) => x.trim()).filter(Boolean) : null),
       lookbacks: Array.isArray(b.lookbacks) ? b.lookbacks.map(Number).filter((h) => Number.isFinite(h) && h > 0) : [],
+      name: b.name == null ? '' : String(b.name).slice(0, 80),
     }));
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
@@ -276,8 +277,35 @@ app.post('/api/coins/walk/split', (req, res) => {
     return res.json(coinsrun.coinsWalkSplit({
       firstWindows: Number.isFinite(Number(b.firstWindows)) && Number(b.firstWindows) > 0 ? Number(b.firstWindows) : null,
       minTrades: Number.isFinite(Number(b.minTrades)) ? Math.max(0, Number(b.minTrades)) : 30,
+      setId: b.setId ? String(b.setId) : null,
     }));
   } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+// WALK IT FORWARD'S SETS ON DISK (3.164.0). The list is cheap -- headers only,
+// never the rows -- so the screen can offer them beside the button.
+app.get('/api/coins/walks', (req, res) => {
+  try { return res.json({ walks: require('./lib/walkset').listWalks(), nextName: require('./lib/walkset').nextName() }); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+// opening one puts it where a fresh walk would be, so every control on the
+// table reads it through the one path
+app.post('/api/coins/walks/:id/open', (req, res) => {
+  try { return res.json(coinsrun.coinsWalkOpen(req.params.id)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/walks/:id/name', (req, res) => {
+  try { return res.json(require('./lib/walkset').renameWalk(req.params.id, (req.body || {}).name)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/walks/:id/pick', (req, res) => {
+  try {
+    const b = req.body || {};
+    return res.json(require('./lib/walkset').setPicked(req.params.id, b.key, b.picked === true));
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/walks/:id/delete', (req, res) => {
+  try { return res.json(require('./lib/walkset').deleteWalk(req.params.id, (req.body || {}).confirm)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
 });
 app.post('/api/coins/walk/stop', (req, res) => {
   try { return res.json(coinsrun.coinsWalkStop()); }

@@ -649,13 +649,26 @@ function coinsWalkStatus() {
   let cpu = { busy: null, cores: null };
   try { cpu = require('./stages').cpuLoad(); } catch (_) { /* the reading is a nicety, never a reason to fail */ }
   const r = walkRun;
-  if (!r) return { running: false, none: true, done: 0, of: 0, cpu, error: null, rows: null, asked: null, finishedAt: null, stopping: false, shapes: null, workers: null };
+  if (!r) {
+    return {
+      running: false, none: true, done: 0, of: 0, cpu, error: null, rows: null, asked: null,
+      finishedAt: null, stopping: false, shapes: null, workers: null,
+      collapse: require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
+      saved: null, saveError: null,
+      walks: (() => { try { return require('./walkset').listWalks(); } catch (_) { return []; } })(),
+      nextName: (() => { try { return require('./walkset').nextName(); } catch (_) { return ''; } })(),
+    };
+  }
   return {
     running: !!r.running, none: false, done: r.done, of: r.of, cpu,
     error: r.error, rows: r.running ? null : r.rows, asked: r.asked,
     startedAt: r.startedAt, finishedAt: r.finishedAt, stopping: !!r.stop,
     shapes: r.shapes, workers: r.workers,
-    collapse: require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
+    collapse: r.collapse || require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
+    // what this run wrote down, why it could not, and every set on the box
+    saved: r.saved || null, saveError: r.saveError || null,
+    walks: (() => { try { return require('./walkset').listWalks(); } catch (_) { return []; } })(),
+    nextName: (() => { try { return require('./walkset').nextName(); } catch (_) { return ''; } })(),
   };
 }
 
@@ -663,12 +676,38 @@ function coinsWalkStatus() {
 // already in hand and re-prices nothing, so it costs a fraction of a second on
 // eight thousand rows and can be asked again with a different cut.
 function coinsWalkSplit(opts = {}) {
+  // A SAVED SET READS EXACTLY AS THE ONE IN HAND DOES (3.164.0). Without this
+  // the early/late reading could only ever be taken on the walk this life of
+  // the service happened to run, which is the fault the saved set exists to
+  // end.
+  if (opts && opts.setId) {
+    const doc = require('./walkset').readWalk(opts.setId);
+    if (!doc) return { none: true, why: `there is no walk ${JSON.stringify(String(opts.setId))} on this box` };
+    const scan = require('./coinscan');
+    return { none: false, ...scan.chooseThenRead(doc.rows || [], opts), asked: doc.asked, shapes: doc.shapes, setId: doc.id, setName: doc.name };
+  }
   const r = walkRun;
   if (!r || r.running || !Array.isArray(r.rows) || !r.rows.length) {
-    return { none: true, why: 'no finished walk is in hand -- press Walk it forward first' };
+    return { none: true, why: 'no finished walk is in hand -- open a saved walk below, or press Walk it forward' };
   }
   const scan = require('./coinscan');
   return { none: false, ...scan.chooseThenRead(r.rows, opts), asked: r.asked, shapes: r.shapes };
+}
+
+// OPENING ONE PUTS IT WHERE A FRESH WALK WOULD BE, so every control on the
+// table -- the filters, the sorters, the strips, the early/late reading --
+// reads it through the one path rather than a second one built for saved sets.
+function coinsWalkOpen(id) {
+  const ws = require('./walkset');
+  const doc = ws.readWalk(id);
+  if (!doc) throw new Error(`there is no walk ${JSON.stringify(String(id))} on this box`);
+  walkRun = {
+    running: false, done: (doc.rows || []).length, of: (doc.rows || []).length,
+    rows: doc.rows || [], error: null, asked: doc.asked, startedAt: doc.startedAt,
+    finishedAt: doc.finishedAt, stop: false, shapes: doc.shapes, workers: 0, pool: null,
+    collapse: doc.collapse, saved: { id: doc.id, name: doc.name, rows: (doc.rows || []).length, opened: true },
+  };
+  return { id: doc.id, name: doc.name, rows: (doc.rows || []).length };
 }
 
 function coinsWalkStop() {
@@ -693,13 +732,14 @@ function coinsWalkStart(opts = {}) {
   const { records, sweetSpots, fixedUpTo } = walkPieces(opts);
   const tasks = scan.walkTasksFor(records, GEOMETRIES, { ...opts, sweetSpots, fixedUpTo });
   const shapes = coins.shapes().map((s) => ({ key: s.key, label: s.label }));
+  const collapse = scan.oneShapePerForwardTime(GEOMETRIES);
   if (!tasks.length) {
-    walkRun = { running: false, done: 0, of: 0, rows: [], error: null, asked: opts, startedAt: Date.now(), finishedAt: Date.now(), stop: false, shapes, workers: 0, pool: null };
+    walkRun = { running: false, done: 0, of: 0, rows: [], error: null, asked: opts, startedAt: Date.now(), finishedAt: Date.now(), stop: false, shapes, collapse, workers: 0, pool: null };
     return { started: true, of: 0 };
   }
   const size = configuredSize();
   const pool = createPool();
-  walkRun = { running: true, done: 0, of: tasks.length, rows: [], error: null, asked: opts, startedAt: Date.now(), finishedAt: null, stop: false, shapes, workers: size, pool };
+  walkRun = { running: true, done: 0, of: tasks.length, rows: [], error: null, asked: opts, startedAt: Date.now(), finishedAt: null, stop: false, shapes, collapse, workers: size, pool };
   const run = walkRun;
   (async () => {
     try {
@@ -726,6 +766,20 @@ function coinsWalkStart(opts = {}) {
       run.pool = null;
       run.running = false;
       run.finishedAt = Date.now();
+      // AND IT WRITES ITSELF DOWN (3.164.0, owner order: "build the saved walk
+      // set"). A STOPPED walk is not saved, which is the behaviour Stop always
+      // had and the reason it had it: a table missing the coins it never got to
+      // would read as a comparison and is not one. A disk that says no is said
+      // on the screen, never thrown -- the table in hand is still good.
+      if (!run.stop && !run.error && run.rows.length) {
+        try {
+          run.saved = require('./walkset').saveWalk({
+            asked: run.asked, shapes: run.shapes, collapse: run.collapse,
+            rows: run.rows, startedAt: run.startedAt, finishedAt: run.finishedAt,
+            name: run.asked && run.asked.name,
+          });
+        } catch (err) { run.saveError = String(err && err.message ? err.message : err); }
+      }
     }
   })();
   return { started: true, of: tasks.length, workers: size };
@@ -739,5 +793,5 @@ module.exports = {
   readOneCoin, normalise, busyWhy, coinsOwnBusy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
   readRecord, scanRecords, coinsRecords, coinsCleanup,
-  coinsWalkStart, coinsWalkStatus, coinsWalkStop, coinsWalkSplit,
+  coinsWalkStart, coinsWalkStatus, coinsWalkStop, coinsWalkSplit, coinsWalkOpen,
 };

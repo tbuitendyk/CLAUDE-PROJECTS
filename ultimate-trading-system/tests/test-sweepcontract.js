@@ -324,7 +324,14 @@ module.exports = {
       // value cannot make the walk do something it does not offer.
       // test-coinscan.js (anythingButTheTwoValuesEachBoxOffersFallsToItsSafeOne)
       // holds the library to exactly that.
-      'wUsual', 'wSigns']);
+      'wUsual', 'wSigns',
+      // WALK IT FORWARD'S SAVED SETS (3.164.0). Its values are the ids of the
+      // files in data/walks, put there by the box itself -- so lib/walkset.js
+      // IS the allow-list: readWalk() returns nothing for an id it does not
+      // hold and every door refuses by name. tests/test-walkset.js
+      // (aSetIsOpenedRenamedPickedAndDeletedOnlyByAnIdTheBoxHolds) holds it
+      // to exactly that.
+      'wSet']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));

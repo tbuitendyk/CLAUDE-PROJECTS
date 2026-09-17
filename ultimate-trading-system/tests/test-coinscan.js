@@ -266,9 +266,16 @@ function everyColumnOfTheWalkTableSorts() {
   for (const key of ['coin', 'geometry', 'band', 'lookback', 'trades', 'perTrade', 'windows', 'windowsUp', 'best', 'worst', 'asGood', 'asGoodSlid']) {
     assert(new RegExp(`cWalkSortBtn\\('${key}'`).test(src), `the ${key} column has a sorter`);
   }
-  assert(/data-wsort="\$\{key\}"/.test(src), 'each sorter names its column');
-  assert(/cState\.wDir = cState\.wDir === 'asc' \? 'desc' : 'asc';/.test(src), 'a second click flips it');
-  assert(/if \(cState\.wSort !== key\) \{ cState\.wSort = key; cState\.wDir = first; \}/.test(src), 'a different column starts at its own first direction');
+  // 3.164.0: one sorting mechanism, two tables -- the walk's own button is a
+  // thin call onto cSortBtn, which names the column through data-<attr>
+  assert(/return ` <button data-\$\{attr\}="\$\{key\}"/.test(src), 'each sorter names its column');
+  assert(/function cWalkSortBtn\(key, firstDir\) \{ return cSortBtn\('wSorts', 'wsort', key, firstDir\); \}/.test(src),
+    'and the walk\'s table sorts through the one mechanism, not a second copy of it');
+  // 3.164.0: a click CYCLES -- off, this way, the other way, off -- and more
+  // than one column can be in the sort at once, in the order they were clicked.
+  assert(/else if \(list\[at\]\.dir === first\) list\[at\] = \{ key, dir: other \};/.test(src), 'a second click flips it');
+  assert(/if \(at < 0\) list\.push\(\{ key, dir: first \}\);/.test(src), 'a different column starts at its own first direction, at the end of the order');
+  assert(/else list\.splice\(at, 1\);/.test(src), 'and a third click drops it out of the sort, leaving the rest alone');
   assert(/if \(a == null\) return 1;\s*\n\s*if \(b == null\) return -1;/.test(src),
     'a row with nothing in the sorted column goes last whichever way the arrow points -- sorting a missing figure as a very small one would put unreadable rows at the top of an ascending sort and read as a result');
 }
@@ -296,9 +303,11 @@ function theWalkTableKeepsItsHeadingsWhileTheRowsScroll() {
 // on three windows or fewer.
 function windowsUpOrdersByShareAndMoreWindowsWinsATie() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-  assert(/const second = how === 'windowsUp' \? \(r\) => r\.windows : null;/.test(src),
+  // 3.164.0: the sort takes a LIST of columns, so the share's second key moved
+  // inside the loop that walks it. Same rule, same both-directions guarantee.
+  assert(/windowsUp: \(r\) => \(r\.windows \? r\.windowsUp \/ r\.windows : null\),/.test(src),
     'the share carries a second key, the count of windows');
-  assert(/if \(second\) \{ const d = second\(y\) - second\(x\); if \(d\) return d; \}/.test(src),
+  assert(/if \(s\.key === 'windowsUp'\) \{ const d = y\.windows - x\.windows; if \(d\) return d; \}/.test(src),
     'and more windows ranks above fewer at the same share, in BOTH directions -- more evidence beats less whichever way the arrow points');
   assert(/if \(a !== b\) return dir \* \(a - b\);/.test(src), 'the share is still the first key');
 }
@@ -581,13 +590,15 @@ function theChooseEarlyPanelIsOnScreenWithItsDoorAndItsWords() {
   // RULE FOUR: the button sits in a row of its own, and the table styles
   // against a class the stylesheet actually defines
   assert(/<div class="row">\s*<button id="sRun"/.test(src), 'the button has its own row, like every other button here');
-  const mine = /<div class="cwbox"><table class="cgap"><thead><tr>\s*<th title="the coin">coin<\/th>/.test(src);
+  const mine = /<div class="cwbox"><table class="cgap"><thead><tr>\s*<th title="the coin">coin\$\{cSortBtn\('sSorts', 'ssort', 'coin', 'asc'\)\}<\/th>/.test(src);
   assert(mine, 'the new table styles against cgap, which the stylesheet defines');
   // 3.162.0: the whole-history tuning rides beside the confirmation, and the
   // page says which of the two to tune with rather than leaving it to be guessed
-  assert(/>whole look-back<\/th>/.test(src) && /># *whole band<\/th>|>whole band<\/th>/.test(src)
-    && /># *whole per trade<\/th>|>whole per trade<\/th>/.test(src) && />same pick<\/th>/.test(src),
-    'all four whole-history columns are on the table');
+  for (const [head, key] of [['whole look-back', 'wholeLookback'], ['whole band', 'wholeBand'],
+    ['whole per trade', 'wholePerTrade'], ['same pick', 'sameAsEarly']]) {
+    assert(new RegExp(`>${head}\\$\\{cSortBtn\\('sSorts', 'ssort', '${key}'`).test(src),
+      `the ${head} column is on the table and it sorts`);
+  }
   assert(/What to tune with is the whole history, not this reading/.test(src),
     'and the page SAYS the whole history is the tuning and this reading is only the confirmation');
   // and the page says which shapes a fixed look-back stands down

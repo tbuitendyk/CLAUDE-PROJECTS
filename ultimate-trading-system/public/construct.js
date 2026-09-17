@@ -8389,7 +8389,8 @@ const cState = (() => {
     wWindow: 6, wWarm: 12, wBands: '50,100,150,200', wSpot: true,
     wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '', wBacks: '',
     wSort: 'asGood', wDir: 'asc',
-    sCut: '', sMin: 30,
+    wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wName: '',
+    sCut: '', sMin: 30, sSorts: [{ key: 'latePerTrade', dir: 'desc' }],
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
 })();
@@ -8421,6 +8422,8 @@ let cBacksNow = { value: [], default: [], inRecords: [] };  // the look-backs se
 let cCollapse = [];    // which shape a fixed look-back walks per forward time, and which stand down
 let cShapesNow = [];   // the chunk shapes and their screen labels, off the same answer, so a label is never rebuilt here
 let cBusyNow = null;   // what else is holding the box, so this screen's own presses sleep rather than refuse after the press
+let cWalksNow = [];    // the walk sets on disk, headers only
+let cWalkNextName = '';
 // THE COLOURS ARE THE OWNER'S: "red, green, and black for sit out". The bar is
 // drawn on a light track so black reads on the dark theme as well as the light
 // one -- black on this page's dark ground is invisible.
@@ -8682,52 +8685,237 @@ function cWalkRow(r, shapes) {
 // beside the table was a second way of doing a thing this screen already does
 // one way (owner, 2026-09-17). Click to sort, click again to flip it. One
 // column at a time, and it is remembered.
-function cWalkSortBtn(key, firstDir) {
-  const on = cState.wSort === key;
-  const state = !on ? '·' : (cState.wDir === 'desc' ? '↓' : '↑');
-  return ` <button data-wsort="${key}" data-wdir="${firstDir}" style="min-width:1.6rem;padding:0 .25rem"
-    title="click to sort the table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (low to high first)'}; click again to flip it. One column at a time.">${state}</button>`;
-}
-function cWalkSorted(rows, how) {
-  const dir = cState.wDir === 'desc' ? -1 : 1;
-  const OF = {
-    coin: (r) => `${r.coin} ${r.geometry}`,
-    geometry: (r) => `${r.geometry} ${r.coin}`,
-    band: (r) => r.band,
-    lookback: (r) => (r.lookback === 'own' ? 0 : Number(r.lookback)),
-    trades: (r) => r.trades,
-    perTrade: (r) => r.perTrade,
-    windows: (r) => r.windows,
-    // WINDOWS UP IS A SHARE, AND MORE WINDOWS BEATS FEWER AT THE SAME SHARE
-    // (owner, 2026-09-17). A plain share put ADA Weekly 8-day's ONE window --
-    // six trades -- above LINK Daily 2-day's eight of eight, because both are
-    // 1.0 and the tie fell to the coin's name. Sixteen rows had every window
-    // up and fourteen of them sat on three windows or fewer, so the top of
-    // that column was the rows with almost nothing behind them.
-    windowsUp: (r) => (r.windows ? r.windowsUp / r.windows : null),
-    best: (r) => r.best,
-    worst: (r) => r.worst,
-    asGood: (r) => r.asGood,
-    asGoodSlid: (r) => r.asGoodSlid,
-  };
-  const of = OF[how] || OF.asGood;
-  // the second key for the share, always more windows first whichever way the
-  // arrow points: more evidence ranks above less in both directions
-  const second = how === 'windowsUp' ? (r) => r.windows : null;
-  // A ROW WITH NOTHING IN THAT COLUMN GOES LAST WHICHEVER WAY THE ARROW POINTS.
-  // Sorting a missing figure as though it were a very small one puts the rows
-  // that could not be read at the top of an ascending sort, which reads as a
-  // result and is not one.
+// MORE THAN ONE COLUMN AT A TIME (3.164.0, owner order: "i want filter boxes
+// and multi column sorts on the walk it forward table").
+//
+// A click CYCLES: not sorted, then this way, then the other way, then off
+// again. No modifier keys anywhere -- a gesture nobody can see on the screen
+// is a gesture nobody finds, and the owner drives this with a mouse. The
+// number beside the arrow is where that column sits in the order, so three
+// columns deep is readable at a glance instead of being remembered.
+function cWalkSortBtn(key, firstDir) { return cSortBtn('wSorts', 'wsort', key, firstDir); }
+// WHAT EACH COLUMN SORTS BY. One place, read by the sorter and by nothing else.
+const C_WALK_OF = {
+  coin: (r) => `${r.coin} ${r.geometry}`,
+  geometry: (r) => `${r.geometry} ${r.coin}`,
+  band: (r) => r.band,
+  lookback: (r) => (r.lookback === 'own' ? 0 : Number(r.lookback)),
+  trades: (r) => r.trades,
+  perTrade: (r) => r.perTrade,
+  windows: (r) => r.windows,
+  // WINDOWS UP IS A SHARE, AND MORE WINDOWS BEATS FEWER AT THE SAME SHARE
+  // (owner, 2026-09-17). A plain share put ADA Weekly 8-day's ONE window --
+  // six trades -- above LINK Daily 2-day's eight of eight, because both are
+  // 1.0 and the tie fell to the coin's name. Sixteen rows had every window
+  // up and fourteen of them sat on three windows or fewer, so the top of
+  // that column was the rows with almost nothing behind them.
+  windowsUp: (r) => (r.windows ? r.windowsUp / r.windows : null),
+  best: (r) => r.best,
+  worst: (r) => r.worst,
+  asGood: (r) => r.asGood,
+  asGoodSlid: (r) => r.asGoodSlid,
+};
+// ONE SORTING MECHANISM, TWO TABLES (3.164.0). The walk's table and Choose
+// early, read late both sort through this; a second implementation beside it is
+// how the two end up disagreeing about where a missing figure goes.
+function cSortRows(rows, list, OF, tie) {
+  const sorts = (list || []).filter((s) => OF[s.key]);
+  if (!sorts.length) return rows.slice();
   return rows.slice().sort((x, y) => {
-    const a = of(x); const b = of(y);
-    if (a == null && b == null) return 0;
-    if (a == null) return 1;
-    if (b == null) return -1;
-    if (typeof a === 'string' || typeof b === 'string') return dir * String(a).localeCompare(String(b));
-    if (a !== b) return dir * (a - b);
-    if (second) { const d = second(y) - second(x); if (d) return d; }
-    return String(`${x.coin}${x.geometry}${x.lookback}${x.band}`).localeCompare(`${y.coin}${y.geometry}${y.lookback}${y.band}`);
+    for (const s of sorts) {
+      const of = OF[s.key];
+      const dir = s.dir === 'desc' ? -1 : 1;
+      const a = of(x); const b = of(y);
+      // A ROW WITH NOTHING IN THAT COLUMN GOES LAST WHICHEVER WAY THE ARROW
+      // POINTS. Sorting a missing figure as though it were a very small one
+      // puts the rows that could not be read at the top of an ascending sort,
+      // which reads as a result and is not one.
+      if (a == null && b == null) continue;
+      if (a == null) return 1;
+      if (b == null) return -1;
+      if (typeof a === 'string' || typeof b === 'string') {
+        const d = String(a).localeCompare(String(b));
+        if (d) return dir * d;
+        continue;
+      }
+      if (a !== b) return dir * (a - b);
+      // the second key for the share, always more windows first whichever way
+      // the arrow points: more evidence ranks above less in both directions
+      if (s.key === 'windowsUp') { const d = y.windows - x.windows; if (d) return d; }
+    }
+    return tie(x, y);
   });
+}
+const cWalkTie = (x, y) => String(`${x.coin}${x.geometry}${x.lookback}${x.band}`).localeCompare(`${y.coin}${y.geometry}${y.lookback}${y.band}`);
+function cWalkSorted(rows) { return cSortRows(rows, cState.wSorts, C_WALK_OF, cWalkTie); }
+// AND THE SAME CYCLE, for whichever list of sorts a table keeps.
+function cCycleSort(field, key, first) {
+  const other = first === 'desc' ? 'asc' : 'desc';
+  const list = (cState[field] || []).slice();
+  const at = list.findIndex((x) => x.key === key);
+  if (at < 0) list.push({ key, dir: first });
+  else if (list[at].dir === first) list[at] = { key, dir: other };
+  else list.splice(at, 1);
+  cState[field] = list;
+  cRemember();
+}
+function cSortBtn(field, attr, key, firstDir) {
+  const list = cState[field] || [];
+  const at = list.findIndex((x) => x.key === key);
+  const state = at < 0 ? '·' : (list[at].dir === 'desc' ? '↓' : '↑');
+  const rank = at < 0 || list.length < 2 ? '' : `<sub>${at + 1}</sub>`;
+  return ` <button data-${attr}="${key}" data-sdir="${firstDir}" style="min-width:1.6rem;padding:0 .25rem"
+    title="click to add this column to the sort${firstDir === 'desc' ? ' (high to low first)' : ' (low to high first)'}; click again to flip it, and once more to drop it. Columns sort in the order you click them, and the small number says where each one sits.">${state}${rank}</button>`;
+}
+// WHAT EACH COLUMN OF CHOOSE EARLY, READ LATE SORTS BY.
+const C_SPLIT_OF = {
+  coin: (p) => `${p.coin} ${p.geometry}`,
+  geometry: (p) => `${p.geometry} ${p.coin}`,
+  lookback: (p) => (p.lookback === 'own' ? 0 : Number(p.lookback)),
+  band: (p) => p.band,
+  earlyPerTrade: (p) => p.earlyPerTrade,
+  latePerTrade: (p) => p.latePerTrade,
+  blind: (p) => p.blind,
+  lead: (p) => p.lead,
+  lateWindowsUp: (p) => (p.lateWindows ? p.lateWindowsUp / p.lateWindows : null),
+  percentile: (p) => p.percentile,
+  wholeLookback: (p) => (p.wholeLookback == null ? null : (p.wholeLookback === 'own' ? 0 : Number(p.wholeLookback))),
+  wholeBand: (p) => p.wholeBand,
+  wholePerTrade: (p) => p.wholePerTrade,
+  sameAsEarly: (p) => (p.sameAsEarly ? 1 : 0),
+};
+const cSplitTie = (x, y) => String(`${x.coin}${x.geometry}`).localeCompare(`${y.coin}${y.geometry}`);
+function cSplitSorted(pairs) { return cSortRows(pairs, cState.sSorts, C_SPLIT_OF, cSplitTie); }
+// THE FILTER BOXES (3.164.0, owner order). Every one of them is "blank means
+// everything", so an empty row of boxes hides nothing and the table the owner
+// first sees is the whole table. The counts line below says what is hidden,
+// because a filtered table that does not say so is a table that lies about
+// how much evidence is behind it.
+function cWalkList(matches) {
+  const f = cState.wF || {};
+  const words = (v) => String(v || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
+  const nums = (v) => String(v || '').split(',').map((x) => Number(x.trim())).filter((n) => Number.isFinite(n));
+  const coins = words(f.coin);
+  const shapes = words(f.shape);
+  const backs = words(f.back);
+  const bands = nums(f.band);
+  const atLeast = (v, min) => (min === '' || min == null || !Number.isFinite(Number(min)) ? true : (v != null && Number(v) >= Number(min)));
+  const atMost = (v, max) => (max === '' || max == null || !Number.isFinite(Number(max)) ? true : (v != null && Number(v) <= Number(max)));
+  const label = (k) => String((matches.shapes.find((x) => x.key === k) || {}).label || k).toLowerCase();
+  return matches.rows.filter((r) => {
+    if (coins.length && !coins.some((c) => String(r.coin).toLowerCase().includes(c))) return false;
+    if (shapes.length && !shapes.some((g) => label(r.geometry).includes(g) || String(r.geometry).toLowerCase().includes(g))) return false;
+    if (backs.length && !backs.includes(String(r.lookback).toLowerCase())) return false;
+    if (bands.length && !bands.includes(Number(r.band))) return false;
+    if (!atLeast(r.trades, f.minTrades)) return false;
+    if (!atLeast(r.perTrade, f.minPer)) return false;
+    if (!atLeast(r.windows, f.minWindows)) return false;
+    if (!atLeast(r.windows ? (r.windowsUp / r.windows) * 100 : null, f.minUp)) return false;
+    if (!atMost(r.asGood, f.maxGood)) return false;
+    if (!atMost(r.asGoodSlid, f.maxSlid)) return false;
+    return true;
+  });
+}
+// THE SETS ON DISK (3.164.0). Until this release Walk it forward wrote nothing
+// and a restart lost the lot; this is the row that opens one back up. Opening a
+// set puts it exactly where a fresh walk would be, so the filters, the sorters,
+// the window strips and the early/late reading all read it through the one path
+// and there is no second way for a saved set to be drawn.
+function cWalkSetsRow() {
+  const ws = cWalksNow || [];
+  const open = (cWalkSt && cWalkSt.saved) || null;
+  const mb = (b) => `${(Number(b || 0) / 1048576).toFixed(1)} MB`;
+  const when = (t) => (t ? cWhen(new Date(t).toISOString()) : '?');
+  if (!ws.length) {
+    return '<p class="note">no walk set is on this box yet — every finished walk writes one, and it appears here to open again.</p>';
+  }
+  return `<div class="row">
+      <label class="f" title="every finished walk on this box. Opening one puts its table on this screen exactly as a fresh walk would be, with the parameters it was run under.">walk sets on this box<select id="wSet" style="width:26rem">
+        ${ws.map((w) => `<option value="${esc(w.id)}"${open && open.id === w.id ? ' selected' : ''}>${esc(w.id)} · ${esc(String(w.name || ''))} · ${Number(w.rows || 0).toLocaleString()} rows · ${w.picked ? `${w.picked} picked · ` : ''}${mb(w.bytes)} · ${esc(when(w.finishedAt))} UTC · release ${esc(String(w.release || '?'))}</option>`).join('')}
+      </select></label>
+      <button id="wSetOpen">Open this set</button>
+      <button id="wSetName">Rename it</button>
+      <button id="wSetDel" class="danger">Delete it</button>
+      <span id="wSetMsg" class="muted">${open ? esc(`${open.opened ? 'open' : 'written'}: ${open.id} · ${open.name}`) : ''}</span>
+    </div>
+    ${(cWalkSt && cWalkSt.saveError) ? `<p class="note warn">the last walk finished but could not be written down: ${esc(String(cWalkSt.saveError))} — the table above is still good, and it goes when the service restarts.</p>` : ''}`;
+}
+// OPEN, RENAME, DELETE (3.164.0). Delete follows the same two steps a record
+// set does -- the first press answers with what would go, and only the set's
+// own id typed back does it. Hours of compute cannot be got back from a
+// mis-click.
+function cWalkSetsBind() {
+  const pick = () => { const el = $('#wSet'); return el ? el.value : ''; };
+  const say = (t, warn) => { const el = $('#wSetMsg'); if (el) el.innerHTML = warn ? `<b class="warn">${esc(t)}</b>` : esc(t); };
+  const ob = $('#wSetOpen');
+  if (ob) ob.onclick = async () => {
+    const id = pick();
+    if (!id) return;
+    ob.disabled = true; say('opening…');
+    try {
+      const got = await post(`api/coins/walks/${encodeURIComponent(id)}/open`, {});
+      say(`open: ${got.id} · ${got.name} · ${Number(got.rows).toLocaleString()} rows`);
+      cSplit = null;
+      await cWalkTick();
+    } catch (err) { say(String(err && err.message ? err.message : err), true); ob.disabled = false; }
+  };
+  const nb = $('#wSetName');
+  if (nb) nb.onclick = async () => {
+    const id = pick();
+    if (!id) return;
+    const was = (cWalksNow.find((w) => w.id === id) || {}).name || '';
+    const typed = prompt(`A new name for ${id}:`, was);
+    if (typed === null) return;
+    try {
+      const got = await post(`api/coins/walks/${encodeURIComponent(id)}/name`, { name: typed });
+      say(`renamed ${got.id} to ${got.name}`);
+      await cWalkTick();
+    } catch (err) { say(String(err && err.message ? err.message : err), true); }
+  };
+  const db = $('#wSetDel');
+  if (db) db.onclick = async () => {
+    const id = pick();
+    if (!id) return;
+    let look = null;
+    try { look = await post(`api/coins/walks/${encodeURIComponent(id)}/delete`, {}); }
+    catch (err) { say(String(err && err.message ? err.message : err), true); return; }
+    if (!(look && look.preview)) { say('nothing was deleted — the box answered strangely', true); return; }
+    const typed = prompt(`Permanently delete ${look.name}?\n\n`
+      + `${Number(look.rows).toLocaleString()} walked row(s), ${(look.bytes / 1048576).toFixed(1)} MB on disk`
+      + `${look.picked ? `, ${look.picked} picked` : ''}\n\nThis cannot be undone and the walk would have to be run again.\n\nType the set's id back to confirm:\n${look.confirmWith}`, '');
+    if (typed === null) return;
+    if (String(typed).trim() !== look.confirmWith) { say('that is not the set’s id — nothing was deleted', true); return; }
+    try {
+      const done = await post(`api/coins/walks/${encodeURIComponent(id)}/delete`, { confirm: String(typed).trim() });
+      say(`deleted ${done.name} — ${(done.bytes / 1048576).toFixed(1)} MB freed`);
+      await cWalkTick();
+    } catch (err) { say(String(err && err.message ? err.message : err), true); }
+  };
+}
+function cWalkFilterRow() {
+  const f = cState.wF || {};
+  // EVERY ID IS WRITTEN OUT, not built in a loop. The Help tab's own check
+  // reads this file for `id="..."` and a control whose id is assembled from a
+  // variable is a control it cannot see -- so it would be described on Help and
+  // found nowhere, which is the opposite fault to the one it guards.
+  return `<div class="row">
+      <label class="f" title="show only rows whose coin contains one of these, comma separated. Blank shows every coin.">coins<input id="wf_coin" value="${esc(String(f.coin || ''))}" style="width:11rem"></label>
+      <label class="f" title="show only rows whose chunk shape contains one of these, comma separated &mdash; daily, weekly, 3-day all work. Blank shows every shape.">chunk shapes<input id="wf_shape" value="${esc(String(f.shape || ''))}" style="width:11rem"></label>
+      <label class="f" title="show only these look-backs, comma separated, in hours &mdash; or own. Blank shows every one.">look-backs<input id="wf_back" value="${esc(String(f.back || ''))}" style="width:11rem"></label>
+      <label class="f" title="show only these bands, comma separated. Blank shows every band.">bands<input id="wf_band" value="${esc(String(f.band || ''))}" style="width:9rem"></label>
+    </div>
+    <div class="row">
+      <label class="f" title="hide rows that placed fewer trades than this in total.">fewest trades<input id="wf_minTrades" type="number" step="any" value="${esc(String(f.minTrades == null ? '' : f.minTrades))}" style="width:6rem"></label>
+      <label class="f" title="hide rows that made less than this a trade. Before the round trip.">least per trade, %<input id="wf_minPer" type="number" step="any" value="${esc(String(f.minPer == null ? '' : f.minPer))}" style="width:7rem"></label>
+      <label class="f" title="hide rows with fewer counted windows than this. A wide band leaves whole half-years with too few trades to count.">fewest windows<input id="wf_minWindows" type="number" step="any" value="${esc(String(f.minWindows == null ? '' : f.minWindows))}" style="width:6rem"></label>
+      <label class="f" title="hide rows where fewer than this share of their counted windows made money.">least windows up, %<input id="wf_minUp" type="number" step="any" value="${esc(String(f.minUp == null ? '' : f.minUp))}" style="width:7rem"></label>
+      <label class="f" title="hide rows that more than this many scrambled copies matched.">most scrambles as good<input id="wf_maxGood" type="number" step="any" value="${esc(String(f.maxGood == null ? '' : f.maxGood))}" style="width:7rem"></label>
+      <label class="f" title="hide rows that more than this many sliding copies matched.">most slides as good<input id="wf_maxSlid" type="number" step="any" value="${esc(String(f.maxSlid == null ? '' : f.maxSlid))}" style="width:7rem"></label>
+    </div>
+    <div class="row">
+      <button id="wfClear">Clear the filters</button>
+      <button id="wsClear">Clear the sort</button>
+    </div>`;
 }
 // WHAT THE WALK IS DOING, IN ONE LINE. While it runs: how many of how many,
 // across how many workers, and how busy the box is -- the owner went to look at
@@ -8794,21 +8982,21 @@ function cSplitPanel() {
       <b>${s.sameChoice} of ${s.of}</b>, and its pooled money is <span class="${cls(s.wholePooled)}">${pc(s.wholePooled)}</span> a trade
       &mdash; higher than the late figure because it is the best of everything, chosen with everything in view.</p>
     <div class="cwbox"><table class="cgap"><thead><tr>
-      <th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
-      <th title="the look-back the early windows chose">look-back</th>
-      <th title="the band the early windows chose">band</th>
-      <th title="what the pick made on the early windows, which is what it was picked for">early</th>
-      <th title="what that same row made on the late windows, which the choosing never saw">late</th>
-      <th title="what a row taken at random from this coin and shape would have paid on the same late windows">picking blind</th>
-      <th title="late money less picking blind. Above nought means the choosing carried something.">lead</th>
-      <th title="the late windows this pick made money on">late windows up</th>
-      <th title="where the pick ranked among its own coin and shape's rows on the late windows. 50 is the middle, which is where no skill lands.">percentile</th>
-      <th title="the look-back the WHOLE history chooses for this coin and shape &mdash; which is the one to tune with. The early/late columns to the left only say whether the choosing is worth anything; they are not the setting to trade, because they throw away half the history to stay honest.">whole look-back</th>
-      <th title="the band the whole history chooses">whole band</th>
-      <th title="what that whole-history row made a trade over all of its windows">whole per trade</th>
-      <th title="whether the whole history picked the same look-back and band as the early windows did. They need not agree: the early half has less to go on.">same pick</th>
+      <th title="the coin">coin${cSortBtn('sSorts', 'ssort', 'coin', 'asc')}</th><th title="the chunk shape">chunk shape${cSortBtn('sSorts', 'ssort', 'geometry', 'asc')}</th>
+      <th title="the look-back the early windows chose">look-back${cSortBtn('sSorts', 'ssort', 'lookback', 'asc')}</th>
+      <th title="the band the early windows chose">band${cSortBtn('sSorts', 'ssort', 'band', 'asc')}</th>
+      <th title="what the pick made on the early windows, which is what it was picked for">early${cSortBtn('sSorts', 'ssort', 'earlyPerTrade', 'desc')}</th>
+      <th title="what that same row made on the late windows, which the choosing never saw">late${cSortBtn('sSorts', 'ssort', 'latePerTrade', 'desc')}</th>
+      <th title="what a row taken at random from this coin and shape would have paid on the same late windows">picking blind${cSortBtn('sSorts', 'ssort', 'blind', 'desc')}</th>
+      <th title="late money less picking blind. Above nought means the choosing carried something.">lead${cSortBtn('sSorts', 'ssort', 'lead', 'desc')}</th>
+      <th title="the late windows this pick made money on">late windows up${cSortBtn('sSorts', 'ssort', 'lateWindowsUp', 'desc')}</th>
+      <th title="where the pick ranked among its own coin and shape's rows on the late windows. 50 is the middle, which is where no skill lands.">percentile${cSortBtn('sSorts', 'ssort', 'percentile', 'desc')}</th>
+      <th title="the look-back the WHOLE history chooses for this coin and shape &mdash; which is the one to tune with. The early/late columns to the left only say whether the choosing is worth anything; they are not the setting to trade, because they throw away half the history to stay honest.">whole look-back${cSortBtn('sSorts', 'ssort', 'wholeLookback', 'asc')}</th>
+      <th title="the band the whole history chooses">whole band${cSortBtn('sSorts', 'ssort', 'wholeBand', 'asc')}</th>
+      <th title="what that whole-history row made a trade over all of its windows">whole per trade${cSortBtn('sSorts', 'ssort', 'wholePerTrade', 'desc')}</th>
+      <th title="whether the whole history picked the same look-back and band as the early windows did. They need not agree: the early half has less to go on.">same pick${cSortBtn('sSorts', 'ssort', 'sameAsEarly', 'desc')}</th>
     </tr></thead><tbody>
-    ${s.pairs.map((p) => `<tr>
+    ${cSplitSorted(s.pairs).map((p) => `<tr>
       <td>${esc(p.coin)}</td><td>${esc(shapeOf(p.geometry))}</td>
       <td>${p.lookback === 'own' ? 'own' : `${esc(String(p.lookback))}h`}</td><td>${p.band}</td>
       <td class="${cls(p.earlyPerTrade)}">${pc(p.earlyPerTrade)}</td>
@@ -8823,7 +9011,10 @@ function cSplitPanel() {
       <td>${p.sameAsEarly ? 'yes' : 'no'}</td>
     </tr>`).join('')}
     </tbody></table></div>
-    <p class="note">${s.pairs.length} pair(s), each picked on its first ${esc(String(s.pairs[0] ? s.pairs[0].cut : '?'))} window(s) or thereabouts &mdash; a coin with fewer windows is cut in its own half.</p>`}
+    <p class="note">${s.pairs.length} pair(s), each picked on its first ${esc(String(s.pairs[0] ? s.pairs[0].cut : '?'))} window(s) or thereabouts &mdash; a coin with fewer windows is cut in its own half.
+      ${(cState.sSorts || []).length ? `Sorted by ${(cState.sSorts || []).map((x) => `${esc(x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ')}.` : 'Unsorted.'}
+      Every heading sorts: click to add it, again to flip it, once more to drop it.
+      <button id="ssClear">Clear the sort</button></p>`}
   </div>`;
 }
 async function cSplitAsk() {
@@ -8900,12 +9091,17 @@ function cWalkPanel() {
       <label class="f" title="which coins to walk, comma separated. Blank walks every coin that has been read.">coins to walk (blank = all)<input id="wCoins" value="${esc(String(cState.wCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:14rem"${off}></label>
     </div>
     <div class="row">
+      <label class="f" title="the name the set this walk writes will carry. Blank takes the greyed name beside it. Every finished walk writes a set to disk; a walk you Stop does not, because a table missing the coins it never reached would read as a comparison and is not one.">name for the set this walk writes<input${off} id="wName" value="${esc(String(cState.wName || ''))}" placeholder="${esc(cWalkNextName)}" maxlength="80" style="width:14rem"></label>
+    </div>
+    ${cWalkSetsRow()}
+    <div class="row">
       <button id="wRun" class="pri"${off}${heldBy ? ` title="${esc(heldBy)} — one heavy job at a time. The button wakes when it lands."` : ''}>Walk it forward</button>
       ${walking ? '<button id="wStop">Stop</button>' : ''}
       <span id="wOut" class="muted">${heldBy ? esc(`${heldBy} — Walk it forward wakes when it lands`) : cWalkLine()}</span>
     </div>
     ${(st && st.error) ? `<p class="note warn">the walk stopped: ${esc(st.error)}</p>` : ''}
-    ${!rows ? (walking ? '' : '<p class="note">nothing walked yet — press <b>Walk it forward</b></p>') : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
+    ${!rows ? (walking ? '' : '<p class="note">nothing walked yet — press <b>Walk it forward</b>, or open a set above</p>') : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
+    ${cWalkFilterRow()}
     <div class="cwbox"><table class="cgap cpassers"><thead><tr>
       <th></th>
       <th title="the coin">coin${cWalkSortBtn('coin', 'asc')}</th>
@@ -8921,8 +9117,12 @@ function cWalkPanel() {
       <th title="how many scrambled copies of this same coin did AT LEAST AS WELL. Low is the result; with hundreds of rows on this table, merely positive is not. Read it beside the column to its right, not on its own.">scrambles as good${cWalkSortBtn('asGood', 'asc')}</th>
       <th title="the same count against SLIDING copies. A sliding copy moves every outcome along by the same amount and wraps the tail round to the front, so each outcome keeps the outcomes it actually happened next to and the only thing cut is which reading it sat under. The column to the left deals them into a new order instead, which also destroys the run of the outcomes themselves &mdash; the stretches where a coin simply drifts one way. On a made-up coin that drifts, that makes the dealt copies far harder to beat than they should be, while the slid ones come out fair. Where the two disagree, trust this one.">slides as good${cWalkSortBtn('asGoodSlid', 'asc')}</th>
     </tr></thead>
-    <tbody>${cWalkSorted(rows, cState.wSort).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
-    <p class="note">${rows.length} row(s). The headings stay put while the rows scroll under them; every one of them sorts.</p>`)}
+    <tbody>${cWalkSorted(cWalkList({ rows, shapes })).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
+    <p class="note">${(() => { const n = cWalkList({ rows, shapes }).length; return n === rows.length
+      ? `${rows.length} row(s), all of them shown`
+      : `<b>${n} of ${rows.length} row(s) shown</b> — ${rows.length - n} hidden by the filter boxes above`; })()}
+      ${(cState.wSorts || []).length ? ` · sorted by ${(cState.wSorts || []).map((x) => `${esc(x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ')}` : ' · unsorted'}.
+      The headings stay put while the rows scroll under them; every one of them sorts.</p>`)}
   </div>
   ${rows && rows.length ? cSplitPanel() : ''}`;
 }
@@ -8983,14 +9183,29 @@ function cWalkBind() {
   keep('#wCoins', 'wCoins', false);
   keep('#sCut', 'sCut', false);
   keep('#sMin', 'sMin', true);
+  keep('#wName', 'wName', false);
   if ($('#sRun')) $('#sRun').onclick = cSplitAsk;
+  // THE FILTER BOXES (3.164.0). Typed into, remembered, and redrawn at once --
+  // a filter that waits for a button press is a filter nobody uses twice.
+  for (const el of document.querySelectorAll('[id^="wf_"]')) {
+    const key = el.id.slice(3);
+    el.oninput = () => { cState.wF = { ...(cState.wF || {}), [key]: el.value }; cRemember(); cWalkRepaint(); };
+  }
+  if ($('#wfClear')) $('#wfClear').onclick = () => { cState.wF = {}; cRemember(); cWalkRepaint(); };
+  if ($('#wsClear')) $('#wsClear').onclick = () => { cState.wSorts = []; cRemember(); cWalkRepaint(); };
+  cWalkSetsBind();
+  for (const b of document.querySelectorAll('[data-ssort]')) {
+    b.onclick = () => {
+      cCycleSort('sSorts', b.dataset.ssort, b.dataset.sdir === 'desc' ? 'desc' : 'asc');
+      cWalkRepaint();
+    };
+  }
+  if ($('#ssClear')) $('#ssClear').onclick = () => { cState.sSorts = []; cRemember(); cWalkRepaint(); };
+  // A CLICK CYCLES: off, this way, the other way, off (3.164.0). Columns sort
+  // in the order they were clicked, and dropping one leaves the rest alone.
   for (const b of document.querySelectorAll('[data-wsort]')) {
     b.onclick = () => {
-      const key = b.dataset.wsort;
-      const first = b.dataset.wdir === 'desc' ? 'desc' : 'asc';
-      if (cState.wSort !== key) { cState.wSort = key; cState.wDir = first; }
-      else cState.wDir = cState.wDir === 'asc' ? 'desc' : 'asc';
-      cRemember();
+      cCycleSort('wSorts', b.dataset.wsort, b.dataset.sdir === 'desc' ? 'desc' : 'asc');
       cWalkRepaint();
     };
   }
@@ -9020,7 +9235,7 @@ function cWalkBind() {
         windowMonths: cState.wWindow, warmUpMonths: cState.wWarm,
         bands: bands.length ? bands : undefined, sweetSpot: !!cState.wSpot,
         usual: cState.wUsual, signsMode: cState.wSigns,
-        scrambles: cState.wScrambles, floor: cState.wFloor,
+        scrambles: cState.wScrambles, floor: cState.wFloor, name: String(cState.wName || '').trim(),
         only: String(cState.wCoins || '').trim() || null,
         lookbacks: String(cState.wBacks || '').split(',').map((x) => Number(x.trim())).filter((h) => Number.isFinite(h) && h > 0),
       });
@@ -9057,6 +9272,8 @@ async function cWalkTick() {
   const wasRunning = !!(cWalkSt && cWalkSt.running);
   cWalkSt = st;
   if (st && Array.isArray(st.collapse)) cCollapse = st.collapse;
+  if (st && Array.isArray(st.walks)) cWalksNow = st.walks;
+  if (st && st.nextName) cWalkNextName = st.nextName;
   if (!st.running && st.rows) cWalkRows = { rows: st.rows, shapes: st.shapes || [] };
   if (st.running) {
     // while it runs only the one line moves, so an open row stays open and the
