@@ -487,7 +487,7 @@ function bothCopyCountsAreOnTheTableSideBySide() {
   assert(/>slides as good\$\{cWalkSortBtn\('asGoodSlid', 'asc'\)\}/.test(src), 'and the slid count has one beside it');
   assert(/<td>\$\{scr\}<\/td><td>\$\{sld\}<\/td>/.test(src), 'both are drawn on every row');
   assert(/const sld = r\.asGoodSlid == null \? '—'/.test(src), 'a row with no slid count shows a dash, not a nought');
-  assert(/<tr class="cwscan"><td colspan="13">/.test(src), 'the opened strip spans the table, which is one column wider than it was');
+  assert(/<tr class="cwscan"><td colspan="15">/.test(src), 'the opened strip spans the table, which is as wide as the table is');
   assert(/scrambled and \$\{a\.scrambles == null \? 10 : a\.scrambles\} sliding copies/.test(src), 'the finished line says both kinds were built');
   assert(/Each copy is built two ways and BOTH are reported/.test(help), 'and Help says the one box builds both');
 }
@@ -749,6 +749,8 @@ function theWalkTableHeadingsSitOverTheirOwnFigures() {
     ['windowsUp', '${r.windowsUp} of'],
     ['best', 'r.best == null'],
     ['worst', 'r.worst == null'],
+    ['spread', "cSpread(r) == null ? '—'"],
+    ['perSpread', "cPerSpread(r) == null ? '—'"],
     ['asGood', '${scr}'],
     ['asGoodSlid', '${sld}'],
   ];
@@ -786,19 +788,28 @@ function theRealWalkFilter(wF) {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   const m = /function cWalkList\(matches\) \{[\s\S]*?\n\}/.exec(src);
   assert(m, 'cWalkList is on the page to be read');
+  // and the two derived figures it filters on, which are defined once and read
+  // by the cells, the sorters and the filters alike
+  const sp = /const cSpread = [^\n]*\n/.exec(src);
+  const ps = /const cPerSpread = \(r\) => \{[\s\S]*?\n\};/.exec(src);
+  assert(sp && ps, 'the spread and the ratio are defined once, where the filter can see them');
   // eslint-disable-next-line no-new-func
-  return new Function('cState', `${m[0]}; return cWalkList;`)({ wF });
+  return new Function('cState', `${sp[0]}${ps[0]}\n${m[0]}; return cWalkList;`)({ wF });
 }
 function anEmptyFilterBoxHidesNothingAtAll() {
   const shapes = [{ key: 'daily-1d', label: 'Daily 1-day' }, { key: 'daily-3d', label: 'Daily 3-day' }];
+  // best and worst are on every row on purpose: the four range boxes read them,
+  // and a fixture without them made every one of those filters hide everything
+  // -- which the guard caught, which is the point of running the real function.
   const rows = [
-    { coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '312', band: 200, trades: 370, perTrade: 0.879, windows: 15, windowsUp: 15, asGood: 0, asGoodSlid: 0 },
-    { coin: 'XLMUSDT', geometry: 'daily-3d', lookback: 'own', band: 350, trades: 40, perTrade: -0.2, windows: 6, windowsUp: 2, asGood: 90, asGoodSlid: 88 },
-    { coin: 'BTCUSDT', geometry: 'daily-1d', lookback: '48', band: 250, trades: 500, perTrade: 0.1, windows: 12, windowsUp: 7, asGood: 44, asGoodSlid: 46 },
+    { coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '312', band: 200, trades: 370, perTrade: 0.879, windows: 15, windowsUp: 15, best: 3.96, worst: 0.15, asGood: 0, asGoodSlid: 0 },
+    { coin: 'XLMUSDT', geometry: 'daily-3d', lookback: 'own', band: 350, trades: 40, perTrade: -0.2, windows: 6, windowsUp: 2, best: 2, worst: -3, asGood: 90, asGoodSlid: 88 },
+    { coin: 'BTCUSDT', geometry: 'daily-1d', lookback: '48', band: 250, trades: 500, perTrade: 0.1, windows: 12, windowsUp: 7, best: 1, worst: 0, asGood: 44, asGoodSlid: 46 },
   ];
   // EVERY BOX EMPTY, THE WAY THE SCREEN OPENS. Nothing may be hidden.
   for (const wF of [{}, { coin: '', shape: '', back: '', band: '', minTrades: '', minPer: '', minWindows: '', minUp: '', maxGood: '', maxSlid: '' },
-    { band: '' }, { band: '   ' }, { band: ' , ' }, { minTrades: '' }, { maxGood: '' }]) {
+    { band: '' }, { band: '   ' }, { band: ' , ' }, { minTrades: '' }, { maxGood: '' },
+    { minBest: '' }, { minWorst: '' }, { maxSpread: '' }, { minPerSpread: '' }]) {
     const got = theRealWalkFilter(wF)({ rows, shapes });
     assert(got.length === rows.length,
       `with ${JSON.stringify(wF)} nothing may be hidden, and ${rows.length - got.length} of ${rows.length} row(s) were`);
@@ -818,6 +829,11 @@ function anEmptyFilterBoxHidesNothingAtAll() {
   assert.deepStrictEqual(f({ minUp: '90' }), ['LTCUSDT'], 'least windows up filters, as a share');
   assert.deepStrictEqual(f({ maxGood: '0' }), ['LTCUSDT'], 'most scrambles as good filters, and nought is a real answer');
   assert.deepStrictEqual(f({ maxSlid: '50' }), ['LTCUSDT', 'BTCUSDT'], 'most slides as good filters');
+  // and the four that answer the range question
+  assert.deepStrictEqual(f({ minBest: '3' }), ['LTCUSDT'], 'least best window filters');
+  assert.deepStrictEqual(f({ minWorst: '0' }), ['LTCUSDT', 'BTCUSDT'], 'least worst window filters, and nought keeps the rows that never had a losing half-year');
+  assert.deepStrictEqual(f({ maxSpread: '3' }), ['BTCUSDT'], 'most spread keeps the TIGHT rows');
+  assert.deepStrictEqual(f({ minPerSpread: '0.2' }), ['LTCUSDT'], 'least per trade per spread filters');
   // a zero typed into a "fewest" box is a number, not a blank
   assert(f({ minTrades: '0' }).length === 3, 'a typed nought keeps everything, because every row has at least nought trades');
   // and the screen never leaves an empty table unexplained
@@ -881,6 +897,56 @@ function everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow() {
     'the pattern is used across the file, not invented here');
 }
 
+// HIGH MONEY AND TIGHT WINDOWS IN ONE NUMBER (3.164.2, owner: "we need a column
+// that helps us find the BEST RANGE -- which is high numbers PER TRADE combined
+// with tightest possible BEST WINDOW to WORST WINDOW range").
+//
+// spread is the best window less the worst, in the same units as per trade, and
+// the ratio is per trade divided by it. The trap is the row with ONE counted
+// window: its best and its worst are the same window, so its spread is nought
+// and dividing by nought would hand the top of the table to the rows with the
+// least behind them -- which is exactly the fault windows up had and had fixed.
+// That is what this guards.
+function theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const sp = /const cSpread = [^\n]*\n/.exec(src);
+  const ps = /const cPerSpread = \(r\) => \{[\s\S]*?\n\};/.exec(src);
+  assert(sp && ps, 'both figures are defined');
+  // eslint-disable-next-line no-new-func
+  const { cSpread, cPerSpread } = new Function(`${sp[0]}${ps[0]}\nreturn { cSpread, cPerSpread };`)();
+
+  const row = (over) => ({ best: 3, worst: 1, perTrade: 1, windows: 10, ...over });
+  assert(cSpread(row({})) === 2, `three less one is two, got ${cSpread(row({}))}`);
+  assert(Math.abs(cPerSpread(row({})) - 0.5) < 1e-12, `one over two is a half, got ${cPerSpread(row({}))}`);
+  // TIGHT PAYS MORE FOR THE SAME MONEY
+  const tight = cPerSpread(row({ best: 1.2, worst: 0.8 }));
+  const wide = cPerSpread(row({ best: 6, worst: -4 }));
+  assert(tight > wide, `the same money over tighter windows must read higher: ${tight} against ${wide}`);
+  // ONE WINDOW HAS NEITHER, whichever way it is dressed up
+  for (const over of [{ windows: 1 }, { windows: 1, best: 9, worst: 9 }, { windows: 0 }]) {
+    assert(cSpread(row(over)) === null, `a row with ${over.windows} counted window(s) has no spread`);
+    assert(cPerSpread(row(over)) === null, 'and no ratio, so it cannot sit at the top of the table on nothing');
+  }
+  // and an unreadable window is not a spread of nought either
+  assert(cSpread(row({ best: null })) === null && cSpread(row({ worst: null })) === null,
+    'a window that could not be read leaves no spread');
+  assert(cPerSpread(row({ perTrade: null })) === null, 'and no money means no ratio');
+  assert(cPerSpread(row({ best: 1, worst: 1, windows: 9 })) === null,
+    'a spread of exactly nought is refused rather than divided by');
+
+  // both are on the table, both sort, and the sorters point the useful way:
+  // small spread first, big ratio first
+  assert(/>spread\$\{cWalkSortBtn\('spread', 'asc'\)\}/.test(src), 'spread is a column and sorts tight-first');
+  assert(/>per trade per spread\$\{cWalkSortBtn\('perSpread', 'desc'\)\}/.test(src), 'the ratio is a column and sorts high-first');
+  assert(/spread: \(r\) => cSpread\(r\),/.test(src) && /perSpread: \(r\) => cPerSpread\(r\),/.test(src),
+    'and the sorter reads the SAME two functions the cells and the filters do, not a second copy');
+  assert(/<tr class="cwscan"><td colspan="15">/.test(src), 'the opened strip spans the table, which is two columns wider than it was');
+  // the four boxes that answer the question, and the two the owner asked for
+  for (const id of ['wf_minBest', 'wf_minWorst', 'wf_maxSpread', 'wf_minPerSpread']) {
+    assert(new RegExp(`id="${id}"`).test(src), `${id} is on the screen`);
+  }
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -907,6 +973,7 @@ module.exports = {
   theDealtCopiesAreUnfairOnADriftingCoinAndTheSlidOnesAreNot,
   bothCopyCountsAreOnTheTableSideBySide,
   anEmptyFilterBoxHidesNothingAtAll,
+  theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow,
   everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow,
   theWalkTableHeadingsSitOverTheirOwnFigures,
   theTwoShapesThatCollapseREALLYAreTheSameTrade,

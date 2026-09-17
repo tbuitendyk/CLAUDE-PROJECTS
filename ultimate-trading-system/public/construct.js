@@ -654,6 +654,8 @@ async function drawData() {
       <label class="f">download new coin(s), comma-sep<input id="dlPairs" placeholder="LTCUSDT,XRPUSDT" style="width:16rem"></label>
       <label class="f">from<input id="dlStart" type="month"></label>
       <label class="f">to<input id="dlEnd" type="month"></label>
+    </div>
+    <div class="row">
       <button id="dlBtn" class="pri">Download</button>
       <!-- THE STATUS SITS BESIDE THE BUTTON, NOT AT THE FOOT OF THE PAGE (owner,
            2026-08-21). While a Global Refresh runs, "working…" used to appear
@@ -669,7 +671,8 @@ async function drawData() {
         <button id="dlRefreshAll" title="Every cached coin: fetch from its newest cached month through the current month">Global Refresh</button>
         <!-- Wraps to a second line inside the group rather than pushing the
              group onto one of its own, which would put it back underneath. -->
-        <div id="dlOut" class="note" style="min-width:0"></div>
+        <div id="dlOut" class="note" style="min-width:0">
+</div>
       </div>
     </div></div>`;
   const dsStatus = (m) => { const e = $('#dlOut'); if (e) e.textContent = m; };
@@ -1628,12 +1631,14 @@ function campaignPanelHtml(camp, names) {
         ${(names.names || []).map((n) => `<option value="${esc(n)}" ${n === camp.name ? 'selected' : ''}>${esc(n)}</option>`).join('')}
       </select></label>
       <label class="f" title="name a NEW campaign. Runs launched from now on attach to whatever is set here.">or a new name<input id="cxCamp" value="${esc(camp.name || '')}" maxlength="60" style="width:26rem"></label>
+    </div>
+    <div class="row">
       <button id="campSet">Set</button>
       <button id="campTree" title="shows the record sets and greenlights belonging to the campaign named in the box. Press it again to put them away.">View tree</button>
       <!-- Same row, same shape as its neighbours: the row is bottom-aligned
            because the controls to the left are a label above a box. -->
       <button id="campDelete" class="danger">Delete campaign…</button>
-    </div>
+</div>
     <p class="note">Currently set: <b>${esc(camp.name || 'none')}</b>${(names.names || []).length ? ` · ${(names.names || []).length} campaign(s) on this box` : ''}</p>
     <div id="campOut"></div></div>`;
 }
@@ -1826,9 +1831,11 @@ function namePanel1(doc) {
   return `<div class="panel">
         <div class="row" style="align-items:flex-end">
           <label class="f">name<input id="bName1" value="${esc(doc.name || '')}" maxlength="80" style="width:14rem" ${off ? 'disabled' : ''}></label>
+        </div>
+        <div class="row">
           <button id="bRename1" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>Rename</button>
           <span id="bNameMsg1" class="note">${doc.nameEditedAt ? `renamed ${esc(String(doc.nameEditedAt).slice(0, 16))}` : ''}</span>
-        </div>
+</div>
       </div>`;
 }
 function namePanel2(doc) {
@@ -1836,9 +1843,11 @@ function namePanel2(doc) {
   return `<div class="panel">
         <div class="row" style="align-items:flex-end">
           <label class="f">name<input id="bName2" value="${esc(doc.name || '')}" maxlength="80" style="width:14rem" ${off ? 'disabled' : ''}></label>
+        </div>
+        <div class="row">
           <button id="bRename2" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>Rename</button>
           <span id="bNameMsg2" class="note">${doc.nameEditedAt ? `renamed ${esc(String(doc.nameEditedAt).slice(0, 16))}` : ''}</span>
-        </div>
+</div>
       </div>`;
 }
 function namePanel3(doc) {
@@ -1846,9 +1855,11 @@ function namePanel3(doc) {
   return `<div class="panel">
         <div class="row" style="align-items:flex-end">
           <label class="f">name<input id="bName3" value="${esc(doc.name || '')}" maxlength="80" style="width:14rem" ${off ? 'disabled' : ''}></label>
+        </div>
+        <div class="row">
           <button id="bRename3" ${off ? 'disabled title="the name changes after the run finishes — the engine refuses writes while it computes"' : ''}>Rename</button>
           <span id="bNameMsg3" class="note">${doc.nameEditedAt ? `renamed ${esc(String(doc.nameEditedAt).slice(0, 16))}` : ''}</span>
-        </div>
+</div>
       </div>`;
 }
 function notesPanel1(doc) {
@@ -1911,10 +1922,12 @@ function bKeptFillPanel(doc) {
   return `<div class="panel">
       <h3 style="margin-top:0">Filling in the kept null money</h3>
       <div class="row" style="align-items:flex-end">
-      <label class="f" title="how many of this set's null-set deals should have their money written down, so the Funnel has a whole second copy of Table 3.A and Table 3.B made of scrambled money to measure against. It re-prices only what is missing, never the whole run, and it proves itself against the money already stored before anything is swapped.">null set money kept<input id="bKeptN" type="number" value="${want}" min="0" max="${nullN}" data-have="${have}" data-rows="${rows}" style="width:4.5rem" ${off ? 'disabled' : ''}></label>
-      <button id="bKeptGo" ${off ? 'disabled title="the set is still working — a fill waits until it has landed"' : ''}>Fill in the kept null money</button>
-      <span id="bKeptMsg" class="note">${have ? `this set keeps ${have} of its ${nullN}. Pressing at ${have} does nothing; a higher number adds only the missing scrambles and asks first.` : `this set keeps none of its ${nullN}.`}${nullN && rows && !have ? ` Keeping ${want} re-prices ${cost(want).toLocaleString()} times, across ${rows.toLocaleString()} rows.` : ''}</span>
+        <label class="f" title="how many of this set's null-set deals should have their money written down, so the Funnel has a whole second copy of Table 3.A and Table 3.B made of scrambled money to measure against. It re-prices only what is missing, never the whole run, and it proves itself against the money already stored before anything is swapped.">null set money kept<input id="bKeptN" type="number" value="${want}" min="0" max="${nullN}" data-have="${have}" data-rows="${rows}" style="width:4.5rem" ${off ? 'disabled' : ''}></label>
       </div>
+      <div class="row">
+        <button id="bKeptGo" ${off ? 'disabled title="the set is still working — a fill waits until it has landed"' : ''}>Fill in the kept null money</button>
+      <span id="bKeptMsg" class="note">${have ? `this set keeps ${have} of its ${nullN}. Pressing at ${have} does nothing; a higher number adds only the missing scrambles and asks first.` : `this set keeps none of its ${nullN}.`}${nullN && rows && !have ? ` Keeping ${want} re-prices ${cost(want).toLocaleString()} times, across ${rows.toLocaleString()} rows.` : ''}</span>
+</div>
     </div>`;
 }
 // THE DATE RANGES A RUN USED, ON ITS HEADER (3.85.0, owner order 2026-09-07).
@@ -2170,7 +2183,7 @@ function vPressHtml(d, stretch) {
   return `<div class="row" style="margin-top:.4rem;align-items:flex-end">
     <label class="f" title="the share of the scrambled copies the survivors' ${stretchPlain(stretch)} money has to beat, and the share of survivors that must beat all four comparisons at their own hold length. Opens on the share this set was cut under; a change is written onto the verdict as a guessed threshold.">bar share %<input id="vBarPct" type="number" min="1" max="100" value="${Number(r.barPct) || 80}" style="width:5rem"></label>
     <label class="f" title="the share of every scrambled ${stretchPlain(stretch)} figure read that must be losing money for the copies to count as noise. A guessed threshold, written onto the verdict.">noise must lose at least %<input id="vSanityPct" type="number" min="0" max="100" value="${Number(r.sanityPct) || 50}" style="width:5rem"></label>
-    <button id="vRead" class="pri" ${d.refused ? 'disabled' : ''} title="the one press that opens the ${stretchPlain(stretch)} window on this screen. It writes a ${stretchPlain(stretch) === 'reserve' ? 'reserve' : 'held'} set of this rule: the rule and its survivors as they stand, the stop choices on record frozen in, and one verdict. A second press writes a second set, numbered; nothing is overwritten.${d.prices ? ` It prices the survivors on the ${stretchPlain(stretch)} window first: minutes.` : ''}">${stretch === 'reserve' ? '<span>Read the rule on the reserve window</span>' : '<span>Read the rule on the held-back window</span>'}</button>
+    </div><div class="row"><button id="vRead" class="pri" ${d.refused ? 'disabled' : ''} title="the one press that opens the ${stretchPlain(stretch)} window on this screen. It writes a ${stretchPlain(stretch) === 'reserve' ? 'reserve' : 'held'} set of this rule: the rule and its survivors as they stand, the stop choices on record frozen in, and one verdict. A second press writes a second set, numbered; nothing is overwritten.${d.prices ? ` It prices the survivors on the ${stretchPlain(stretch)} window first: minutes.` : ''}">${stretch === 'reserve' ? '<span>Read the rule on the reserve window</span>' : '<span>Read the rule on the held-back window</span>'}</button>
     <span id="vReadMsg" class="note">${d.refused ? `<b class="warn">refused:</b> ${esc(d.refused)}` : ''}</span></div>`;
 }
 function vLinesHtml(b) {
@@ -2671,7 +2684,7 @@ function hHlBuildRowHtml(run, built) {
   const mine = (built || []).filter((b) => b.run === run.id);
   return `<div class="row" style="margin-top:.4rem;align-items:flex-end">
     <label class="f" style="flex:1" title="what you want to see on Tune and Greenlight for the set built from this table">name<input id="hHlName" style="width:100%" placeholder="e.g. XRP daily, half-life set"></label>
-    <button id="hHlBuild" class="pri" ${improved ? '' : 'disabled title="no record improved with any half-life on this table"'} title="builds a record set from every row a half-life won on this table, each record carrying the half-life that won on it; rows the unweighted column won are left out. It appears on Tune and Greenlight, named with the set it was built from.">Build the half-life set from this table</button>
+    </div><div class="row"><button id="hHlBuild" class="pri" ${improved ? '' : 'disabled title="no record improved with any half-life on this table"'} title="builds a record set from every row a half-life won on this table, each record carrying the half-life that won on it; rows the unweighted column won are left out. It appears on Tune and Greenlight, named with the set it was built from.">Build the half-life set from this table</button>
     <span class="note">${improved} of ${(run.rows || []).length} records improved with a half-life${mine.length ? ` · built from this table: ${mine.map((b) => `<b>${esc(b.name)}</b> (${b.survivors} records)`).join(', ')}` : ''}</span>
   </div>`;
 }
@@ -2970,9 +2983,11 @@ async function drawTune() {
       and scanned the same way, as one row of the same table. Nothing here is applied to any trading machine. Target: ${target}.</p>
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
       <label class="f" title="apply a stop you chose yourself rather than one off the curve, to the survivor picked under Tuning targets. The box is in percent; the record keeps a fraction. The floor is ${floorPc}, which is twice the ${tripPc} it costs to trade in and out at this set's fee of ${feePc} each way — tighter than the round trip and a triggered stop is a guaranteed loss, tighter than the floor and it fires on ordinary hourly noise. Applying records the stop on that survivor and scans its captured entries over the windows ticked; nothing is applied to any trading machine.">or apply a custom stop %<input id="stopCustomPct" type="number" step="0.5" min="${floorPct}" max="99" placeholder="e.g. 25" style="width:5.5rem" ${stopHeld ? 'disabled' : ''}></label>
+    </div>
+    <div class="row">
       <button id="stopCustomApply" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"` : 'title="records this stop on the survivor picked under Tuning targets and scans its captured entries over the windows ticked: one row of the table below. Nothing is applied to any trading machine."'}>Apply custom</button>
       <button id="stopClear" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"` : 'title="records NO fixed stop on the survivor picked under Tuning targets — its positions then rest on their scheduled exit alone — and scans its captured entries the same way: the no-stop row of the table below. Nothing is applied to any trading machine."'}>No stop (clear)</button>
-    </div>
+</div>
     <!-- YOUR REASON, WRITTEN BY YOU. The record carries a reason beside the
          number so a chosen "none" is not mistaken for one nobody set. For one
          release that field could only be filled by running a script, which put
@@ -2981,14 +2996,18 @@ async function drawTune() {
          and editable on its own afterwards. -->
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
       <label class="f" title="why you chose this stop, or no stop, for the survivor picked under Tuning targets. Saved with the choice on that survivor. Yours to write and to change at any time.">your reason for this choice<input id="stopWhy" type="text" maxlength="300" placeholder="why this stop, or why none" value="${esc(onRecord ? onRecord.why || '' : '')}" style="width:48rem" ${stopHeld ? 'disabled' : ''}></label>
-      <button id="stopWhySave" ${stopHeld || !onRecord ? `disabled title="${esc(stopHeldWhy || 'no choice about the stop is on record for this survivor yet — apply one, or clear it, first')}"` : 'title="saves the reason on its own, leaving the stop on record exactly as it is; no scan runs"'}>Save the reason</button>
     </div>
+    <div class="row">
+      <button id="stopWhySave" ${stopHeld || !onRecord ? `disabled title="${esc(stopHeldWhy || 'no choice about the stop is on record for this survivor yet — apply one, or clear it, first')}"` : 'title="saves the reason on its own, leaving the stop on record exactly as it is; no scan runs"'}>Save the reason</button>
+</div>
     ${stopLabel ? (onRecord ? `<div class="note" style="margin-bottom:.4rem">on record for <b>${esc(stopLabel)}</b>: ${onRecord.stopPct != null ? pct(onRecord.stopPct) : (Object.prototype.hasOwnProperty.call(onRecord, 'stopPct') ? 'no stop' : 'no stop chosen yet')}${onRecord.why ? ` — ${esc(onRecord.why)}` : ' — no reason recorded'}${onRecord.at ? ` (${esc(String(onRecord.at).slice(0, 10))}${onRecord.by ? ', ' + esc(onRecord.by) : ''})` : ''}</div>` : `<div class="note warn" style="margin-bottom:.4rem">no choice about the stop has been recorded for <b>${esc(stopLabel)}</b> yet</div>`) : ''}
     <div class="row" style="margin-bottom:.4rem;align-items:flex-end">
       <label class="f" title="why you applied the conviction sizing to the survivor picked under Tuning targets, or took it off. Saved with the choice on that survivor.">your reason for the sizing<input id="sizingWhy" type="text" maxlength="300" placeholder="why size by conviction, or why not" value="${esc(onRecord && onRecord.sizing ? onRecord.sizing.why || '' : '')}" style="width:48rem"></label>
+    </div>
+    <div class="row">
       <button id="sizingApply" ${stopHeld ? `disabled title="${esc(stopHeldWhy)}"` : 'title="records on the survivor picked under Tuning targets that its trades are sized by conviction: one clip for each member that agreed, the ladder the conviction scan below reads. A held set or a reserve set read after this freezes the choice, and a greenlight carries it. Nothing is applied to any trading machine."'}>Apply the conviction sizing</button>
       <button id="sizingOff" ${stopHeld || !(onRecord && onRecord.sizing) ? `disabled title="${esc(stopHeldWhy || 'no sizing is on record for this survivor')}"` : 'title="records that the survivor picked under Tuning targets is NOT sized by conviction: every trade at one clip"'}>Take the sizing off</button>
-    </div>
+</div>
     ${stopLabel ? `<div class="note" style="margin-bottom:.4rem">sizing on record for <b>${esc(stopLabel)}</b>: ${onRecord && onRecord.sizing ? `<b>by conviction</b>, one clip ($${Number(onRecord.sizing.clipUsd) || 0}, the record's own dollars) a member that agreed${onRecord.sizing.why ? ` — ${esc(onRecord.sizing.why)}` : ''} (${esc(String(onRecord.sizing.at || '').slice(0, 10))})` : 'none — every trade at one clip'}</div>` : ''}
     <div class="row"><button id="stopRun" class="pri" ${busy ? 'disabled' : ''}>Tune protective stop</button></div>
     <div id="stopOut">${stop.status === 'done' ? renderStopResult(stop) : stop.status === 'running' ? '<p class="note">running…</p>' : stop.status === 'error' ? `<p class="warn">last scan failed: ${esc(stop.error || '')}</p>` : ''}</div>
@@ -3382,7 +3401,10 @@ function glStage4PanelHtml(list, chosen, d) {
       <div class="row" style="margin-top:.4rem;align-items:flex-end">
         <label class="f" style="flex:1" title="what you want to see on screen for this configuration">name<input id="gl4Name" style="width:100%" placeholder="e.g. XRP weekly, depth pick"></label>
         <label class="f" style="flex:2" title="the reasoning that cleared it. Required, kept forever with the record.">why — the decision record (required)<input id="gl4Why" style="width:100%" placeholder="e.g. held set PASS; reserve set PASS on the first look; other units 8 of 9 positive"></label>
-        <button id="gl4Go" class="pri">Greenlight this survivor</button></div>`}` : ''}
+      </div>
+      <div class="row">
+        <button id="gl4Go" class="pri">Greenlight this survivor</button>
+</div>`}` : ''}
   </div>`;
 }
 async function drawGreenlight() {
@@ -3513,8 +3535,10 @@ async function drawSweep() {
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName1" placeholder="${esc(nextNames[1] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc1" style="width:100%"></label>
-      <button id="swGo1" class="pri">Start stage 1</button>
     </div>
+    <div class="row">
+      <button id="swGo1" class="pri">Start stage 1</button>
+</div>
     <p class="note" style="margin:.4rem 0 0" id="swCost1">…</p>
     <div id="swOut1"></div>
   </div>
@@ -3529,8 +3553,10 @@ async function drawSweep() {
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName2" placeholder="${esc(nextNames[2] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc2" style="width:100%"></label>
-      <button id="swGo2" class="pri">Start stage 2</button>
     </div>
+    <div class="row">
+      <button id="swGo2" class="pri">Start stage 2</button>
+</div>
     <p class="note" style="margin:.4rem 0 0">BOOST is the second kind of member — a different way of working out a forecast from the same prices.
       The LOGREG members are reused, never retrained; only the BOOST members train (4 per coin on its own, 5 alongside others),
       so a carried unit ends up with both kinds voting side by side.</p>
@@ -3621,9 +3647,11 @@ async function drawSweep() {
     <div class="row" style="margin-top:.5rem;align-items:flex-end">
       <label class="f">name<input id="swName3" placeholder="${esc(nextNames[3] || '')}" maxlength="80" style="width:10rem"></label>
       <label class="f" style="flex:1">description<input id="swDesc3" style="width:100%"></label>
+    </div>
+    <div class="row">
       <button id="swGo3" class="pri">Start stage 3</button>
       <button id="swDelete3" class="danger" disabled title="deletes the paused run chosen in from stage 2 record set, after asking you to type its record set id back. Everything it had priced goes with it. Live only while a paused run is chosen there; a finished record set is deleted on Boards.">Delete record set…</button>
-    </div>
+</div>
     <div id="swOut3"></div>
   </div>`;
 
@@ -3951,10 +3979,12 @@ async function drawBoards() {
       ${foldBtn(1)}
       <h3 style="margin:0">Stage 1</h3>
       <label class="f">record set<select id="bPick1" style="min-width:26rem">${bOptions(1, s1sel)}</select></label>
+    </div>
+    <div class="row">
       <button id="bDelete1" class="danger" ${s1sel ? '' : 'disabled'}>Delete record set…</button>
       <button id="bCopySettings1" ${s1sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">Copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s1sel))}
-    </div>
+</div>
     <div id="bS1"></div>
   </div>
   <div class="panel">
@@ -3962,10 +3992,12 @@ async function drawBoards() {
       ${foldBtn(2)}
       <h3 style="margin:0">Stage 2</h3>
       <label class="f">record set<select id="bPick2" style="min-width:26rem">${bOptions(2, s2sel, s1sel)}</select></label>
+    </div>
+    <div class="row">
       <button id="bDelete2" class="danger" ${s2sel ? '' : 'disabled'}>Delete record set…</button>
       <button id="bCopySettings2" ${s2sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">Copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s2sel))}
-    </div>
+</div>
     <div id="bS2"></div>
   </div>
   <div class="panel">
@@ -3973,10 +4005,12 @@ async function drawBoards() {
       ${foldBtn(3)}
       <h3 style="margin:0">Stage 3</h3>
       <label class="f">record set<select id="bPick3" style="min-width:26rem">${bOptions(3, s3sel, s2sel)}</select></label>
+    </div>
+    <div class="row">
       <button id="bDelete3" class="danger" ${s3sel ? '' : 'disabled'}>Delete record set…</button>
       <button id="bCopySettings3" ${s3sel ? '' : 'disabled'} title="fill this record set's own stage box on Sweep with its stored settings and description — its parent picked where it has one. The other boxes are left exactly as they are; nothing launches.">Copy settings into the form</button>
       ${campaignNoteHtml(rowOf(s3sel))}
-    </div>
+</div>
     <div id="bS3"></div>
   </div>`;
 
@@ -6116,7 +6150,7 @@ function fStep2(r, st) {
         <label class="f">keep from<input id="fMin" style="width:7rem" value="${esc(String(lo))}"></label>
         <label class="f">to<input id="fMax" style="width:7rem" value="${esc(String(hi))}"></label>
         ${hasNone ? `<label class="c"><input type="checkbox" id="fAlsoNone" ${alsoNone ? 'checked' : ''}> also keep none</label>` : ''}
-        <button id="fAddRange" class="pri">Add this range to the rule</button>
+        </div><div class="row"><button id="fAddRange" class="pri">Add this range to the rule</button>
         <span class="note" id="fKeepCount">keeps ${Number(keptByRange).toLocaleString()} of ${Number(total).toLocaleString()}${st.target ? ` - target ${Number(st.target).toLocaleString()}` : ''}</span>
         <span class="note">a RANGE, never a value - picking the peak is the shopping this walk exists to avoid</span></div>
       ${hasNone ? `<p class="note"><b>To keep none and nothing else:</b> clear both boxes, tick <b>also keep none</b>, and press
@@ -6182,7 +6216,7 @@ function fStep3(r, st) {
       <label class="f">first dial<select id="fA">${fDialOptions(a0)}</select></label>
       <label class="f">second dial<select id="fB">${fDialOptions(b0)}</select></label>
       <label class="f">thin below<input id="fFloor" type="number" min="0" style="width:6rem" value="${st.floor || 0}"></label>
-      <button id="fGrid" class="pri">Read the grid</button></div>`;
+      </div><div class="row"><button id="fGrid" class="pri">Read the grid</button></div>`;
   // HOW TO WALK THIS STEP, ON THE SCREEN (owner order, 2026-09-04: "you need
   // to have plain steps to walk this step 3"). Every control is named as it
   // is drawn below, and every sentence says what pressing it does.
@@ -6355,7 +6389,7 @@ function fStep5(r, d, st) {
         style="width:7rem" value="${esc(String(at))}"></label>
       <label class="f">join settings up to this many apart<input id="fRegionReach" type="number" min="1" step="1"
         style="width:6rem" value="${esc(String(reach))}"></label>
-      <button id="fRegionRead">Read the region again</button>
+      </div><div class="row"><button id="fRegionRead">Read the region again</button>
       <span class="note">dollars, per setting, and a setting has to beat this number, not match it - at <b>0</b> a
         setting that broke even to the cent is left out. <b>0</b> is "it made money", which is how this step has always read.
         A number below 0 papers over settings that lost that much or less, so one weak setting cannot split a wide
@@ -6757,7 +6791,6 @@ function fHoldPanel(d, st) {
       ${fRebuildPress(d, true)}</div>
     ${st.rebuiltSaid ? `<p class="note">${esc(st.rebuiltSaid)}</p>` : ''}
     <div class="row" style="align-items:flex-end">
-      <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
       <label class="f" title="The settings are put in order by the money they made on one part of the test window, then put in order again by their money on another part. This number is how far the two orders agree, from -1 to 1: 1.00 is the same order on both parts, 0.00 no relation at all, below zero the order comes out backwards. A coin and shape clears the bar when its number reaches this on as many of the four boundaries as on how many of the four asks for. Leave it blank and no row can clear the bar, because nothing has been asked of it.">order must agree by at least<input
         id="fHoldAtLeast" type="number" step="0.05" min="-1" max="1" style="width:6rem"
         value="${bar.atLeast == null ? '' : esc(String(bar.atLeast))}"></label>
@@ -6850,8 +6883,14 @@ function fStep6(d, st, r) {
         value="${esc(String(dd.max == null ? '' : dd.max))}"></label>
       <label class="f">fewest test trades<input id="fTrades" type="number" style="width:8rem"
         value="${esc(String(tr.min == null ? '' : tr.min))}"></label>
+    </div>
+    <div class="row">
+      <button id="fHoldRead"${ready ? '' : ' disabled'}>Read the ranking</button>
+    </div>
+    <div class="row">
       <button id="fAddFloors">Add these limits to the rule</button>
-      <span class="note">${w ? `a trade count here is over ${Math.round(w.weeks)} weeks${tr.min ? fPerYear(tr.min, ex) : ''}` : 'the window these trades were counted over is not known for this set'}</span></div>
+      <span class="note">${w ? `a trade count here is over ${Math.round(w.weeks)} weeks${tr.min ? fPerYear(tr.min, ex) : ''}` : 'the window these trades were counted over is not known for this set'}</span>
+</div>
     <p class="note" id="fFloorsKeeps">${esc(fKeepsWords(d.survivors, d.of, d.target))}</p>`;
 }
 
@@ -6876,7 +6915,10 @@ function fStep7(d, st) {
         placeholder="left blank, it is numbered"></label>
       <label class="f">how to reach the target<select id="fClose">${vocabOptions('funnelClosing', cl.key)}</select></label>
       ${top}
-      <button id="fCut" class="pri">Write the Stage 4 set</button><span id="fCutMsg" class="note"></span></div>
+    </div>
+    <div class="row">
+      <button id="fCut" class="pri">Write the Stage 4 set</button><span id="fCutMsg" class="note"></span>
+</div>
     <p class="note"><b>Taking the top N is shopping</b>, on the board this walk exists to stop you shopping. It is
       offered because the choice is yours, and whichever you use is recorded on the set so the final check knows what
       it is judging. Only columns a scrambled copy of the table really has are offered, so the same rule takes the
@@ -7167,7 +7209,7 @@ function fCutHead(cd, st, d) {
   const beatPress = s.unit ? `<div class="row" style="align-items:flex-end">${fRebuildPress(d, false)}</div>` : '';
   return `<div class="row" style="align-items:flex-end">
       <label class="f">name<input id="fCutName" value="${esc(s.name || '')}" maxlength="80" style="width:26rem"></label>
-      <button id="fCutRename">Rename</button>
+      </div><div class="row"><button id="fCutRename">Rename</button>
       <span id="fCutNameMsg" class="note">${s.nameEditedAt ? `renamed ${esc(String(s.nameEditedAt).slice(0, 16))}` : `cut ${esc(String(s.createdAt || '').slice(0, 16))}`}${s.release ? ` by release ${esc(s.release)}` : ''}</span>
     </div>
     <p class="note"><b>The rules below were built on test money</b> - the steps read the test window and nothing
@@ -8389,7 +8431,7 @@ const cState = (() => {
     wWindow: 6, wWarm: 12, wBands: '50,100,150,200', wSpot: true,
     wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '', wBacks: '',
     wSort: 'asGood', wDir: 'asc',
-    wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wName: '', wSetPick: '',
+    wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wAuto: false, wName: '', wSetPick: '',
     sCut: '', sMin: 30, sSorts: [{ key: 'latePerTrade', dir: 'desc' }],
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
@@ -8661,7 +8703,7 @@ function cWalkRow(r, shapes) {
   const blanks = all.filter((w) => w.thin || w.n === 0 || w.perTrade == null).length;
   const says = `${all.length} window(s) in this coin's history · ${all.length - blanks} counted`
     + `${blanks ? ` · ${blanks} had too few trades to count and show as a dash` : ''}`;
-  const strip = !open ? '' : `<tr class="cwscan"><td colspan="13">
+  const strip = !open ? '' : `<tr class="cwscan"><td colspan="15">
     <p class="cwsays">${esc(says)}</p>
     <div class="cwstrip">${all.map((w) => {
     const v = w.perTrade;
@@ -8678,6 +8720,8 @@ function cWalkRow(r, shapes) {
     <td>${r.windows}</td><td>${r.windowsUp} of ${r.windows}</td>
     <td>${r.best == null ? '—' : `${r.best > 0 ? '+' : ''}${Number(r.best).toFixed(2)}%`}</td>
     <td>${r.worst == null ? '—' : `${r.worst > 0 ? '+' : ''}${Number(r.worst).toFixed(2)}%`}</td>
+    <td>${cSpread(r) == null ? '—' : `${Number(cSpread(r)).toFixed(2)}%`}</td>
+    <td>${cPerSpread(r) == null ? '—' : Number(cPerSpread(r)).toFixed(3)}</td>
     <td>${scr}</td><td>${sld}</td>
   </tr>${strip}`;
 }
@@ -8712,6 +8756,8 @@ const C_WALK_OF = {
   windowsUp: (r) => (r.windows ? r.windowsUp / r.windows : null),
   best: (r) => r.best,
   worst: (r) => r.worst,
+  spread: (r) => cSpread(r),
+  perSpread: (r) => cPerSpread(r),
   asGood: (r) => r.asGood,
   asGoodSlid: (r) => r.asGoodSlid,
 };
@@ -8817,6 +8863,10 @@ function cWalkList(matches) {
     if (!atLeast(r.perTrade, f.minPer)) return false;
     if (!atLeast(r.windows, f.minWindows)) return false;
     if (!atLeast(r.windows ? (r.windowsUp / r.windows) * 100 : null, f.minUp)) return false;
+    if (!atLeast(r.best, f.minBest)) return false;
+    if (!atLeast(r.worst, f.minWorst)) return false;
+    if (!atMost(cSpread(r), f.maxSpread)) return false;
+    if (!atLeast(cPerSpread(r), f.minPerSpread)) return false;
     if (!atMost(r.asGood, f.maxGood)) return false;
     if (!atMost(r.asGoodSlid, f.maxSlid)) return false;
     return true;
@@ -8928,6 +8978,28 @@ function cWalkSetsBind() {
     } catch (err) { say(String(err && err.message ? err.message : err), true); }
   };
 }
+// HOW WIDE A ROW'S WINDOWS ARE, AND WHAT IT PAYS FOR THAT WIDTH (3.164.2,
+// owner: "we need a column that helps us find the BEST RANGE -- which is high
+// numbers PER TRADE combined with tightest possible BEST WINDOW to WORST
+// WINDOW range").
+//
+// spread is the best window less the worst, in the same units as per trade --
+// both are money a trade -- so per trade divided by it is a plain number:
+// how much a row pays for every point of scatter between its best half-year
+// and its worst. High per trade with tight windows is a big number; the same
+// money earned by one spectacular window and several bad ones is a small one.
+//
+// A ROW WITH ONE COUNTED WINDOW HAS NO SPREAD AND NO RATIO. Its best and its
+// worst are the same window, so the spread is nought and dividing by it would
+// hand the top of the table to the rows with the least behind them -- the same
+// fault windows up had. Those read as a dash and sort last, whichever way the
+// arrow points.
+const cSpread = (r) => (r.best == null || r.worst == null || !(r.windows > 1) ? null : r.best - r.worst);
+const cPerSpread = (r) => {
+  const sp = cSpread(r);
+  if (sp == null || r.perTrade == null || !(sp > 1e-9)) return null;
+  return r.perTrade / sp;
+};
 // ONE FILTER PASS PER DRAW. The count line, the empty-table notice and the
 // tbody all need the same answer, and walking 4,896 rows three times for it is
 // three times the work for one number.
@@ -8940,12 +9012,47 @@ function cWalkShown(rows, shapes) {
   cShownFor = key;
   return cShownWas;
 }
+// THE FILTER BOXES. Every one of them is "blank means everything", so an empty
+// row of boxes hides nothing and the table the owner first sees is the whole
+// table. The counts line below says what is hidden, because a filtered table
+// that does not say so is a table that lies about how much evidence is behind
+// it.
+//
+// TYPING INTO ONE DOES NOT REDRAW THE TABLE (3.164.2, owner: "try typing '200'
+// into the fewest trades box -- it's impossible"). It used to repaint on every
+// keystroke, which replaced the box being typed into and threw the cursor out
+// of it -- so the first character was the only one that could ever be entered.
+//
+// The pattern is the one the owner pointed at on Boards: what is TYPED and what
+// is APPLIED are two different things. cState.wF is what the table is showing;
+// the boxes hold whatever has been typed. Apply reads the boxes into cState.wF
+// and redraws once. The tick makes each box go on as you leave it, for when a
+// table is small enough that waiting is pointless.
+//
+// EVERY ID IS WRITTEN OUT, not built in a loop. The Help tab's own check reads
+// this file for `id="..."` and a control whose id is assembled from a variable
+// is one it cannot see -- so it would be described on Help and found nowhere,
+// which is the opposite fault to the one it guards.
+const C_WALK_F_KEYS = ['coin', 'shape', 'back', 'band', 'minTrades', 'minPer', 'minWindows', 'minUp',
+  'minBest', 'minWorst', 'maxSpread', 'minPerSpread', 'maxGood', 'maxSlid'];
+function cFilterBoxesNow() {
+  const out = {};
+  for (const k of C_WALK_F_KEYS) { const el = $(`#wf_${k}`); if (el) out[k] = el.value; }
+  return out;
+}
+const cFilterSame = (a, b) => C_WALK_F_KEYS.every((k) => String((a || {})[k] || '').trim() === String((b || {})[k] || '').trim());
+function cFilterBtnState() {
+  const btn = $('#wfApply');
+  if (btn) btn.disabled = cFilterSame(cFilterBoxesNow(), cState.wF);
+}
+function cApplyFilters() {
+  cState.wF = cFilterBoxesNow();
+  cShownFor = null;
+  cRemember();
+  cWalkRepaint();
+}
 function cWalkFilterRow() {
   const f = cState.wF || {};
-  // EVERY ID IS WRITTEN OUT, not built in a loop. The Help tab's own check
-  // reads this file for `id="..."` and a control whose id is assembled from a
-  // variable is a control it cannot see -- so it would be described on Help and
-  // found nowhere, which is the opposite fault to the one it guards.
   return `<div class="row">
       <label class="f" title="show only rows whose coin contains one of these, comma separated. Blank shows every coin.">coins<input id="wf_coin" value="${esc(String(f.coin || ''))}" style="width:11rem"></label>
       <label class="f" title="show only rows whose chunk shape contains one of these, comma separated &mdash; daily, weekly, 3-day all work. Blank shows every shape.">chunk shapes<input id="wf_shape" value="${esc(String(f.shape || ''))}" style="width:11rem"></label>
@@ -8957,12 +9064,22 @@ function cWalkFilterRow() {
       <label class="f" title="hide rows that made less than this a trade. Before the round trip.">least per trade, %<input id="wf_minPer" type="number" step="any" value="${esc(String(f.minPer == null ? '' : f.minPer))}" style="width:7rem"></label>
       <label class="f" title="hide rows with fewer counted windows than this. A wide band leaves whole half-years with too few trades to count.">fewest windows<input id="wf_minWindows" type="number" step="any" value="${esc(String(f.minWindows == null ? '' : f.minWindows))}" style="width:6rem"></label>
       <label class="f" title="hide rows where fewer than this share of their counted windows made money.">least windows up, %<input id="wf_minUp" type="number" step="any" value="${esc(String(f.minUp == null ? '' : f.minUp))}" style="width:7rem"></label>
+      <label class="f" title="hide rows whose best single window made less than this.">least best window, %<input id="wf_minBest" type="number" step="any" value="${esc(String(f.minBest == null ? '' : f.minBest))}" style="width:7rem"></label>
+      <label class="f" title="hide rows whose worst single window made less than this. Set it at nought to keep only the rows that never had a losing half-year.">least worst window, %<input id="wf_minWorst" type="number" step="any" value="${esc(String(f.minWorst == null ? '' : f.minWorst))}" style="width:7rem"></label>
+    </div>
+    <div class="row">
+      <label class="f" title="hide rows whose best window is further than this above their worst one. Small keeps the tight rows &mdash; the ones whose half-years all paid about the same.">most spread, %<input id="wf_maxSpread" type="number" step="any" value="${esc(String(f.maxSpread == null ? '' : f.maxSpread))}" style="width:7rem"></label>
+      <label class="f" title="hide rows that pay less than this for every point of scatter between their best half-year and their worst. This is the one box that asks for high money AND tight windows at once.">least per trade per spread<input id="wf_minPerSpread" type="number" step="any" value="${esc(String(f.minPerSpread == null ? '' : f.minPerSpread))}" style="width:7rem"></label>
       <label class="f" title="hide rows that more than this many scrambled copies matched.">most scrambles as good<input id="wf_maxGood" type="number" step="any" value="${esc(String(f.maxGood == null ? '' : f.maxGood))}" style="width:7rem"></label>
       <label class="f" title="hide rows that more than this many sliding copies matched.">most slides as good<input id="wf_maxSlid" type="number" step="any" value="${esc(String(f.maxSlid == null ? '' : f.maxSlid))}" style="width:7rem"></label>
     </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply the filters &mdash; one wait for the whole set of boxes rather than one wait per box."><input type="checkbox" id="wfAuto"${cState.wAuto ? ' checked' : ''}> apply each box as you leave it</label>
+    </div>
     <div class="row">
-      <button id="wfClear">Clear the filters</button>
-      <button id="wsClear">Clear the sort</button>
+      <button id="wfApply" class="pri" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type the old value back.">Apply the filters</button>
+      <button id="wfClear" title="empties every filter box and shows the whole table again">Clear the filters</button>
+      <button id="wsClear" title="drops every column out of the sort">Clear the sort</button>
     </div>`;
 }
 // WHAT THE WALK IS DOING, IN ONE LINE. While it runs: how many of how many,
@@ -9166,6 +9283,8 @@ function cWalkPanel() {
       <th title="how many of those windows made money. Half is what a coin with nothing in it looks like.">windows up${cWalkSortBtn('windowsUp', 'desc')}</th>
       <th title="the best single window">best window${cWalkSortBtn('best', 'desc')}</th>
       <th title="the worst single window">worst window${cWalkSortBtn('worst', 'desc')}</th>
+      <th title="the best single window less the worst one, in the same units as per trade. TIGHT IS SMALL: a row whose half-years all paid about the same has a small spread, and one carried by a single spectacular window has a large one. A row with only one counted window has no spread and reads as a dash.">spread${cWalkSortBtn('spread', 'asc')}</th>
+      <th title="per trade divided by the spread &mdash; how much this row pays for every point of scatter between its best half-year and its worst. HIGH IS GOOD, and it is the one column that answers high money AND tight windows in a single number. A row with one counted window has none and reads as a dash.">per trade per spread${cWalkSortBtn('perSpread', 'desc')}</th>
       <th title="how many scrambled copies of this same coin did AT LEAST AS WELL. Low is the result; with hundreds of rows on this table, merely positive is not. Read it beside the column to its right, not on its own.">scrambles as good${cWalkSortBtn('asGood', 'asc')}</th>
       <th title="the same count against SLIDING copies. A sliding copy moves every outcome along by the same amount and wraps the tail round to the front, so each outcome keeps the outcomes it actually happened next to and the only thing cut is which reading it sat under. The column to the left deals them into a new order instead, which also destroys the run of the outcomes themselves &mdash; the stretches where a coin simply drifts one way. On a made-up coin that drifts, that makes the dealt copies far harder to beat than they should be, while the slid ones come out fair. Where the two disagree, trust this one.">slides as good${cWalkSortBtn('asGoodSlid', 'asc')}</th>
     </tr></thead>
@@ -9174,7 +9293,7 @@ function cWalkPanel() {
       ? `${rows.length.toLocaleString()} row(s), all of them shown`
       : `<b>${n.toLocaleString()} of ${rows.length.toLocaleString()} row(s) shown</b> — ${(rows.length - n).toLocaleString()} hidden by the filter boxes above`; })()}
       ${(cState.wSorts || []).length ? ` · sorted by ${(cState.wSorts || []).map((x) => `${esc(x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ')}` : ' · unsorted'}.
-      The headings stay put while the rows scroll under them; every one of them sorts.</p>`})`)}
+      The headings stay put while the rows scroll under them; every one of them sorts.</p>`}`)}
   </div>
   ${rows && rows.length ? cSplitPanel() : ''}`;
 }
@@ -9239,10 +9358,24 @@ function cWalkBind() {
   if ($('#sRun')) $('#sRun').onclick = cSplitAsk;
   // THE FILTER BOXES (3.164.0). Typed into, remembered, and redrawn at once --
   // a filter that waits for a button press is a filter nobody uses twice.
-  for (const el of document.querySelectorAll('[id^="wf_"]')) {
-    const key = el.id.slice(3);
-    el.oninput = () => { cState.wF = { ...(cState.wF || {}), [key]: el.value }; cShownFor = null; cRemember(); cWalkRepaint(); };
+  for (const k of C_WALK_F_KEYS) {
+    const el = $(`#wf_${k}`);
+    if (!el) continue;
+    // ON INPUT, not on change: the button has to wake on the first keystroke
+    // and go back to sleep the moment the old value is typed back. It must NOT
+    // redraw, or it replaces the box being typed into.
+    el.oninput = cFilterBtnState;
+    el.onchange = () => { if (cState.wAuto) cApplyFilters(); else cFilterBtnState(); };
   }
+  if ($('#wfApply')) $('#wfApply').onclick = () => { if (!$('#wfApply').disabled) cApplyFilters(); };
+  if ($('#wfAuto')) $('#wfAuto').onchange = () => {
+    cState.wAuto = $('#wfAuto').checked;
+    cRemember();
+    // ticking it means "keep it applied", so anything typed and not yet put on
+    // goes on now -- otherwise it sits in a box whose button has just been
+    // greyed out, looking applied and not being it
+    if (cState.wAuto && !cFilterSame(cFilterBoxesNow(), cState.wF)) cApplyFilters(); else cFilterBtnState();
+  };
   const clearF = () => { cState.wF = {}; cShownFor = null; cRemember(); cWalkRepaint(); };
   if ($('#wfClear')) $('#wfClear').onclick = clearF;
   if ($('#wfClear2')) $('#wfClear2').onclick = clearF;
