@@ -268,6 +268,17 @@ app.get('/api/coins/walk', (req, res) => {
     return res.send(body);
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
+// THE CHOICE PUT TO THE TEST: the look-back and band are chosen on the early
+// windows alone and read on the late ones. Nothing is re-walked.
+app.post('/api/coins/walk/split', (req, res) => {
+  try {
+    const b = req.body || {};
+    return res.json(coinsrun.coinsWalkSplit({
+      firstWindows: Number.isFinite(Number(b.firstWindows)) && Number(b.firstWindows) > 0 ? Number(b.firstWindows) : null,
+      minTrades: Number.isFinite(Number(b.minTrades)) ? Math.max(0, Number(b.minTrades)) : 30,
+    }));
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.post('/api/coins/walk/stop', (req, res) => {
   try { return res.json(coinsrun.coinsWalkStop()); }
   catch (err) { return res.status(400).json({ error: err.message }); }

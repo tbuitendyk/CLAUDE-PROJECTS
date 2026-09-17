@@ -626,6 +626,18 @@ function coinsWalkStatus() {
   };
 }
 
+// THE CHOICE, PUT TO THE TEST (3.161.0). Read only -- it re-reads the walk
+// already in hand and re-prices nothing, so it costs a fraction of a second on
+// eight thousand rows and can be asked again with a different cut.
+function coinsWalkSplit(opts = {}) {
+  const r = walkRun;
+  if (!r || r.running || !Array.isArray(r.rows) || !r.rows.length) {
+    return { none: true, why: 'no finished walk is in hand -- press Walk it forward first' };
+  }
+  const scan = require('./coinscan');
+  return { none: false, ...scan.chooseThenRead(r.rows, opts), asked: r.asked, shapes: r.shapes };
+}
+
 function coinsWalkStop() {
   if (!walkRun || !walkRun.running) return { stopping: false, why: 'nothing is walking' };
   walkRun.stop = true;
@@ -687,5 +699,5 @@ module.exports = {
   readOneCoin, normalise, busyWhy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
   readRecord, scanRecords, coinsRecords, coinsCleanup,
-  coinsWalkStart, coinsWalkStatus, coinsWalkStop,
+  coinsWalkStart, coinsWalkStatus, coinsWalkStop, coinsWalkSplit,
 };

@@ -337,8 +337,109 @@ function rowOf(task, got) {
   };
 }
 
+// CHOOSE ON THE EARLY WINDOWS, READ THE LATE ONES (owner, 2026-09-17: "you
+// keep saying one test would settle it and every time you want more").
+//
+// Every figure the walk prints was priced knowing only what sat behind it, so
+// the MONEY was never in doubt. What was in doubt is the CHOICE: the look-back
+// and the band that produced the best-looking rows were picked by reading the
+// whole table, all 7,850 rows of it, and a choice made with the answer in view
+// is not a choice anybody could have made at the time.
+//
+// So: for each coin and shape, cut its windows in two. Rank its rows on the
+// EARLY windows alone, take the best one, and read what that one row did on
+// the LATE windows, which the choosing never saw. Nothing is re-walked and no
+// window is re-priced -- the per-window strip the walk already keeps carries
+// everything, and the split is arithmetic on top of it.
+//
+// THE NULL IS PICKING BLIND. A pick has to beat what the same pair would have
+// paid on its late windows if a row had been taken at random, because a pair
+// whose every row pays will look like a good choice however the choice was
+// made. The pick's RANK among its own rows on the late windows says the same
+// thing more finely: with no skill in the choosing the pick lands in the
+// middle of the pack, so the average percentile sits at about 50.
+//
+// WRITTEN DOWN BEFORE THE NUMBERS EXISTED (RULE SIX):
+//   PASS  -- picks beat their pair's blind average on at least 60 of 90 pairs
+//            (45 is chance), AND the picks' pooled late money clears the
+//            0.25% round trip the system charges itself.
+//   FAIL  -- 50 of 90 or fewer, or pooled late money at or under 0.25%.
+//   Anything between 51 and 59 is inconclusive and is to be reported as such,
+//   not argued either way.
+function halfOf(rows) {
+  let most = 0;
+  for (const r of rows) most = Math.max(most, (r.scan || []).length);
+  return Math.floor(most / 2);
+}
+function moneyOver(scan, from, to) {
+  let n = 0; let s = 0; let up = 0; let counted = 0;
+  for (let i = from; i < to && i < scan.length; i++) {
+    const w = scan[i];
+    if (!w || w.thin || !w.n || w.perTrade == null) continue;
+    n += w.n; s += w.perTrade * w.n; counted++; if (w.perTrade > 0) up++;
+  }
+  return { trades: n, perTrade: n ? s / n : null, windows: counted, windowsUp: up };
+}
+function chooseThenRead(rows, opts = {}) {
+  const { firstWindows = null, minTrades = 30, cost = 0.25 } = opts || {};
+  const byPair = new Map();
+  for (const r of rows || []) {
+    if (!r || !Array.isArray(r.scan) || !r.scan.length) continue;
+    const k = r.coin + '|' + r.geometry;
+    if (!byPair.has(k)) byPair.set(k, []);
+    byPair.get(k).push(r);
+  }
+  const pairs = [];
+  for (const [k, group] of byPair) {
+    const cut = firstWindows != null && firstWindows > 0 ? Math.floor(firstWindows) : halfOf(group);
+    if (!(cut > 0)) continue;
+    const scored = [];
+    for (const r of group) {
+      const early = moneyOver(r.scan, 0, cut);
+      const late = moneyOver(r.scan, cut, r.scan.length);
+      if (early.trades < minTrades || late.trades < minTrades) continue;
+      scored.push({ row: r, early, late });
+    }
+    if (scored.length < 2) continue;
+    const pick = scored.reduce((a, b) => (b.early.perTrade > a.early.perTrade ? b : a));
+    const lates = scored.map((s) => s.late.perTrade);
+    const blind = lates.reduce((a, b) => a + b, 0) / lates.length;
+    const sorted = lates.slice().sort((a, b) => a - b);
+    const below = sorted.filter((v) => v < pick.late.perTrade).length;
+    const cut2 = k.indexOf('|');
+    pairs.push({
+      coin: k.slice(0, cut2), geometry: k.slice(cut2 + 1), cut, of: scored.length,
+      lookback: pick.row.lookback, band: pick.row.band,
+      earlyPerTrade: pick.early.perTrade, earlyTrades: pick.early.trades,
+      latePerTrade: pick.late.perTrade, lateTrades: pick.late.trades,
+      lateWindows: pick.late.windows, lateWindowsUp: pick.late.windowsUp,
+      blind, lead: pick.late.perTrade - blind,
+      bestPossible: sorted[sorted.length - 1],
+      percentile: scored.length > 1 ? (below / (scored.length - 1)) * 100 : 50,
+    });
+  }
+  pairs.sort((a, b) => b.latePerTrade - a.latePerTrade);
+  const n = pairs.length;
+  let t = 0; let s = 0; let pct = 0;
+  for (const p of pairs) { t += p.lateTrades; s += p.latePerTrade * p.lateTrades; pct += p.percentile; }
+  const beat = pairs.filter((p) => p.lead > 0).length;
+  const paid = pairs.filter((p) => p.latePerTrade - cost > 0).length;
+  const pooled = t ? s / t : null;
+  // the verdict is READ OFF the rule written above, never argued from the rows
+  const verdict = !n ? 'nothing to read'
+    : (beat >= Math.ceil(n * (60 / 90)) && pooled != null && pooled > cost) ? 'PASS'
+      : (beat <= Math.floor(n * (50 / 90)) || pooled == null || pooled <= cost) ? 'FAIL' : 'inconclusive';
+  return {
+    pairs, cost, minTrades, firstWindows,
+    of: n, beat, paid, pooled, netPooled: pooled == null ? null : pooled - cost,
+    chance: n / 2, meanPercentile: n ? pct / n : null,
+    longChoices: pairs.filter((p) => p.lookback !== 'own' && Number(p.lookback) >= 240).length,
+    verdict,
+  };
+}
+
 module.exports = {
-  BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID,
+  BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID, chooseThenRead, moneyOver,
   windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, slidOffsets, periodsForMonths, HOURS_A_MONTH,
   walkTask, walkTasksFor, rowOf,
 };

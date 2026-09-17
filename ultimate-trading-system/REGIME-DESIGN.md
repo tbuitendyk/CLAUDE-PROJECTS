@@ -571,3 +571,41 @@ of the sandbox this session runs in rather than
 `/opt/ultimate-trading-system/data/` on the box, and every part of it was false.
 And the first version of this document, written hours earlier, built its whole
 design on direction. The owner caught both.
+
+---
+
+## Part 7 — Choose early, read late (3.161.0, written before the numbers)
+
+Every figure the walk prints was priced knowing only what sat behind it, so the
+money was never the doubt. **The choice was.** The look-back and the band that
+produce the best-looking rows were picked by reading the whole table — 7,850
+rows of it on 2026-09-17 — and a choice made with the answer in view is not a
+choice anybody could have made at the time.
+
+**The reading.** For each coin and shape, cut its windows in two. Rank its rows
+on the **early** windows alone, take the best one, and report what that one row
+did on the **late** windows, which the choosing never saw. Nothing is re-walked
+and no window is re-priced: the per-window strip the walk already keeps carries
+everything.
+
+**The null is picking blind.** A pick must beat what a row taken at random from
+the same coin and shape would have paid on those same late windows — because a
+coin whose every row pays looks like a good choice however the choice was made.
+The pick's percentile among its own rows on the late windows says it more
+finely: with no skill in the choosing, a pick lands at about 50.
+
+**The pass mark, fixed before the run (RULE SIX):**
+
+- **PASS** — the picks beat picking blind on **at least 60 of 90** pairs (45 is
+  chance), **and** the picks' pooled late money clears the **0.25% round trip**
+  the system charges itself (0.125% a leg, `lib/paper.js`).
+- **FAIL** — 50 of 90 or fewer, **or** pooled late money at or under 0.25%.
+- **51 to 59** — inconclusive, and to be reported as inconclusive rather than
+  argued either way.
+
+**What it cannot settle.** One market epoch, 2019–2026, measured once. A pass
+says the choosing carried something across that stretch; it does not say the
+same look-backs will be the right ones in five years.
+
+**What was measured.** Recorded below the pass mark once the run landed, never
+above it.

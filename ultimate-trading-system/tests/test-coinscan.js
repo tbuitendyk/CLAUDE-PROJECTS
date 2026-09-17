@@ -18,7 +18,7 @@
 const { assert } = require('./helpers');
 const {
   windowsOf, usualMoveAt, signsBefore, walk, scrambled, slidOffsets, periodsForMonths,
-  walkTask, walkTasksFor, rowOf,
+  walkTask, walkTasksFor, rowOf, chooseThenRead, moneyOver,
 } = require('../lib/coinscan');
 const fs = require('fs');
 const path = require('path');
@@ -482,6 +482,108 @@ function bothCopyCountsAreOnTheTableSideBySide() {
   assert(/Each copy is built two ways and BOTH are reported/.test(help), 'and Help says the one box builds both');
 }
 
+// THE LATE HALF IS NEVER LOOKED AT WHILE CHOOSING, AND THE EARLY HALF IS NEVER
+// COUNTED IN THE ANSWER. Two rows, hand-built: one is the best thing on the
+// early windows and worthless afterwards, the other the reverse. The early one
+// has to be the pick and the late figure reported for it has to be its OWN
+// late figure -- if either half leaked into the other, this comes out wrong.
+function theEarlyHalfChoosesAndOnlyTheLateHalfIsRead() {
+  const win = (perTrade, n = 50) => ({ n, perTrade, thin: false });
+  const rows = [
+    { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: 'own', band: 100,
+      scan: [win(9), win(9), win(9), win(9), win(-4), win(-4), win(-4), win(-4)] },
+    { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: '336', band: 200,
+      scan: [win(-4), win(-4), win(-4), win(-4), win(9), win(9), win(9), win(9)] },
+  ];
+  const got = chooseThenRead(rows, { minTrades: 10 });
+  assert(got.pairs.length === 1, `one coin and shape, one row of answer, got ${got.pairs.length}`);
+  const p = got.pairs[0];
+  assert(p.cut === 4, `eight windows cut in half is four, got ${p.cut}`);
+  assert(p.lookback === 'own', `the early winner is picked, not the late one, got ${p.lookback}`);
+  assert(Math.abs(p.earlyPerTrade - 9) < 1e-9, `its early money is its own, got ${p.earlyPerTrade}`);
+  assert(Math.abs(p.latePerTrade + 4) < 1e-9, `and the figure reported is its LATE money, got ${p.latePerTrade}`);
+  assert(Math.abs(p.blind - 2.5) < 1e-9, `picking blind is the average of both rows' late money, got ${p.blind}`);
+  assert(p.lead < 0, 'a pick that fell apart afterwards must read as a loss against picking blind');
+  assert(p.percentile === 0, `it was the worst of the two on the late windows, so the bottom of the pack, got ${p.percentile}`);
+  // and the money is trade-weighted, not window-averaged
+  const uneven = moneyOver([{ n: 100, perTrade: 1, thin: false }, { n: 1, perTrade: 100, thin: false }], 0, 2);
+  assert(Math.abs(uneven.perTrade - (100 * 1 + 1 * 100) / 101) < 1e-9, `a window of one trade cannot weigh the same as a window of a hundred, got ${uneven.perTrade}`);
+  // a thin window is not counted at either end
+  const thin = moneyOver([{ n: 4, perTrade: 50, thin: true }, { n: 10, perTrade: 2, thin: false }], 0, 2);
+  assert(thin.trades === 10 && Math.abs(thin.perTrade - 2) < 1e-9, 'a window under the floor is left out of the totals');
+}
+
+// A CHOICE THAT CARRIES NOTHING LANDS IN THE MIDDLE OF THE PACK. Twelve rows
+// per coin whose early and late halves are unrelated to each other: the pick
+// should sit at about the 50th percentile and win about half the time. This is
+// the guard that says the reading is not rigged to look positive -- without it
+// a bug that reported the BEST late row instead of the chosen one would pass
+// every other test in this file.
+function aChoiceThatCarriesNothingLandsAtThePackAverage() {
+  let s = 20260917;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const rows = [];
+  for (let c = 0; c < 40; c++) {
+    for (let i = 0; i < 12; i++) {
+      const scan = [];
+      for (let w = 0; w < 10; w++) scan.push({ n: 40, perTrade: (rnd() - 0.5) * 6, thin: false });
+      rows.push({ coin: `C${c}USDT`, geometry: 'daily-1d', lookback: String(i), band: 100, scan });
+    }
+  }
+  const got = chooseThenRead(rows, { minTrades: 10 });
+  assert(got.of === 40, `forty coins to read, got ${got.of}`);
+  assert(got.meanPercentile > 33 && got.meanPercentile < 67,
+    `with nothing carried the picks land mid-pack, and ${got.meanPercentile.toFixed(0)} is not mid-pack`);
+  assert(got.beat >= 12 && got.beat <= 28,
+    `and they beat picking blind about half the time, not ${got.beat} of 40`);
+  assert(got.verdict !== 'PASS', 'a table with nothing in it must never read PASS');
+}
+
+// AND ONE THAT CARRIES SOMETHING RISES ABOVE IT. The same shape, except each
+// coin has one row that is genuinely better in BOTH halves. It must be picked
+// and it must read near the top of the pack.
+function aChoiceThatCarriesSomethingRisesAboveIt() {
+  let s = 777;
+  const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+  const rows = [];
+  for (let c = 0; c < 40; c++) {
+    for (let i = 0; i < 12; i++) {
+      const edge = i === 7 ? 2.4 : 0;
+      const scan = [];
+      for (let w = 0; w < 10; w++) scan.push({ n: 40, perTrade: edge + (rnd() - 0.5) * 2, thin: false });
+      rows.push({ coin: `C${c}USDT`, geometry: 'daily-1d', lookback: String(i), band: 100, scan });
+    }
+  }
+  const got = chooseThenRead(rows, { minTrades: 10 });
+  assert(got.meanPercentile > 80, `a real edge is found and holds, so the picks sit near the top, got ${got.meanPercentile.toFixed(0)}`);
+  assert(got.beat >= 34, `and beat picking blind nearly every time, got ${got.beat} of ${got.of}`);
+  assert(got.verdict === 'PASS', `this is what a pass looks like, got ${got.verdict}`);
+  const wrong = got.pairs.filter((p) => p.lookback !== '7').length;
+  assert(wrong <= 4, `the planted row is the one chosen, and ${wrong} of ${got.of} chose something else`);
+}
+
+// THE SCREEN CARRIES IT, with its door, its two boxes and the pass mark said
+// out loud on the page rather than kept in a commit message.
+function theChooseEarlyPanelIsOnScreenWithItsDoorAndItsWords() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+  const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
+  assert(/app\.post\('\/api\/coins\/walk\/split'/.test(srv), 'the reading has a door');
+  assert(/coinsWalkSplit/.test(run) && /coinsWalkSplit,/.test(run), 'and the runner answers it and is exported');
+  assert(/<button id="sRun" class="pri">Choose early, read late<\/button>/.test(src), 'the button is on screen');
+  assert(/id="sCut"/.test(src) && /id="sMin"/.test(src), 'and both of its boxes');
+  assert(/windows to choose on \(blank = half\)/.test(src), 'the cut box says what it does');
+  assert(/fewest trades each half must have/.test(src), 'and so does the floor box');
+  assert(/at least 60 of 90/.test(src), 'the pass mark is ON THE PAGE, not only in a commit message');
+  assert(/sCut: /.test(help) && /sMin: /.test(help) && /sRun: /.test(help), 'all three are described on Help');
+  // RULE FOUR: the button sits in a row of its own, and the table styles
+  // against a class the stylesheet actually defines
+  assert(/<div class="row">\s*<button id="sRun"/.test(src), 'the button has its own row, like every other button here');
+  const mine = /<div class="cwbox"><table class="cgap"><thead><tr>\s*<th title="the coin">coin<\/th>/.test(src);
+  assert(mine, 'the new table styles against cgap, which the stylesheet defines');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -507,4 +609,8 @@ module.exports = {
   aPlantedRelationshipBeatsItsSlidCopiesToo,
   theDealtCopiesAreUnfairOnADriftingCoinAndTheSlidOnesAreNot,
   bothCopyCountsAreOnTheTableSideBySide,
+  theEarlyHalfChoosesAndOnlyTheLateHalfIsRead,
+  aChoiceThatCarriesNothingLandsAtThePackAverage,
+  aChoiceThatCarriesSomethingRisesAboveIt,
+  theChooseEarlyPanelIsOnScreenWithItsDoorAndItsWords,
 };

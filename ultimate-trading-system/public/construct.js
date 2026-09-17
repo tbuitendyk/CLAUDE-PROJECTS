@@ -8376,6 +8376,7 @@ const cState = (() => {
     wWindow: 6, wWarm: 12, wBands: '50,100,150,200', wSpot: true,
     wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '', wBacks: '',
     wSort: 'asGood', wDir: 'asc',
+    sCut: '', sMin: 30,
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
 })();
@@ -8399,6 +8400,7 @@ let cWalkRows = null;     // the last walk's rows, kept so a sort or an open row
 let cWalkSt = null;       // what the box says the walk is doing, so leaving the tab and coming back finds it
 let cWalkPoll = null;
 const cWalkOpen = new Set();
+let cSplit = null;   // the answer to choosing on the early windows, kept here so a repaint costs nothing
 let cLastDone = null;
 let cLastRecs = [];
 let cBandNow = '';      // the band the box is set to, for the signal line under each bar
@@ -8731,6 +8733,82 @@ function cWalkLine() {
     + ` · leaning ${a.signsMode === 'fixed' ? 'learned once on train' : 'learned before each window'}`
     + ` · ${a.scrambles == null ? 10 : a.scrambles} scrambled and ${a.scrambles == null ? 10 : a.scrambles} sliding copies`;
 }
+// CHOOSE ON THE EARLY WINDOWS, READ THE LATE ONES (3.161.0, owner's order).
+// Every figure in the table above was priced knowing only what sat behind it,
+// so the money was never the doubt -- the CHOICE was. The look-back and band
+// that look best were picked by reading all eight thousand rows, and nobody
+// could have made that choice at the time. This cuts each coin and shape's
+// windows in two, picks its best row on the early half alone, and reads what
+// that one row did on the late half. Nothing is re-walked.
+function cSplitPanel() {
+  const s = cSplit;
+  const shapes = (cWalkRows && cWalkRows.shapes) || [];
+  const shapeOf = (k) => (shapes.find((x) => x.key === k) || {}).label || k;
+  const pc = (v, d = 3) => (v == null ? '&mdash;' : `${v > 0 ? '+' : ''}${Number(v).toFixed(d)}%`);
+  const cls = (v) => (v == null ? 'muted' : (v > 0 ? 'pos' : 'neg'));
+  return `<div class="panel" id="cSplitWrap">
+    <h3 style="margin-top:0">Choose early, read late</h3>
+    <p class="note">Each coin and shape's windows are cut in two. Its best row is picked on the
+      <b>early</b> windows alone, and what that one row did on the <b>late</b> windows &mdash; which the
+      choosing never saw &mdash; is what is reported. The test is whether the pick beats what taking a row
+      at random from the same coin and shape would have paid on those same late windows.
+      <b>Written down before the numbers: a pass needs the picks ahead on at least 60 of 90, and the
+      pooled late money above the 0.25% round trip.</b></p>
+    <div class="row">
+      <label class="f" title="how many of the earliest windows the choosing may see. Blank cuts each coin and shape in half. A bigger number leaves fewer windows to read the answer on.">windows to choose on (blank = half)<input id="sCut" value="${esc(String(cState.sCut || ''))}" placeholder="half" style="width:7rem"></label>
+      <label class="f" title="a coin and shape whose row placed fewer trades than this in either half is left out, because a handful of trades is not a choice and not a reading either.">fewest trades each half must have<input id="sMin" type="number" min="0" step="1" value="${esc(String(cState.sMin))}" style="width:6rem"></label>
+    </div>
+    <div class="row">
+      <button id="sRun" class="pri">Choose early, read late</button>
+      <span id="sOut" class="muted">${s && s.none ? esc(String(s.why || '')) : ''}</span>
+    </div>
+    ${!s || s.none || !s.pairs ? '' : `
+    <p class="note"><b class="${s.verdict === 'PASS' ? 'pos' : (s.verdict === 'FAIL' ? 'neg' : 'warn')}">${esc(s.verdict)}</b>
+      &middot; ${s.of} coin-and-shape pair(s) had enough trades in both halves
+      &middot; the pick beat picking at random on <b>${s.beat} of ${s.of}</b> (chance is ${s.chance.toFixed(0)})
+      &middot; pooled late money <span class="${cls(s.pooled)}">${pc(s.pooled)}</span>, after the ${s.cost}% round trip <span class="${cls(s.netPooled)}">${pc(s.netPooled)}</span>
+      &middot; ${s.paid} of ${s.of} pick(s) pay after that round trip
+      &middot; the average pick landed at the <b>${s.meanPercentile == null ? '&mdash;' : s.meanPercentile.toFixed(0)}th</b> percentile of its own rows on the late windows (50 is no skill)
+      &middot; ${s.longChoices} of ${s.of} pick(s) chose a look-back of 240 hours or more</p>
+    <div class="cwbox"><table class="cgap"><thead><tr>
+      <th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
+      <th title="the look-back the early windows chose">look-back</th>
+      <th title="the band the early windows chose">band</th>
+      <th title="what the pick made on the early windows, which is what it was picked for">early</th>
+      <th title="what that same row made on the late windows, which the choosing never saw">late</th>
+      <th title="what a row taken at random from this coin and shape would have paid on the same late windows">picking blind</th>
+      <th title="late money less picking blind. Above nought means the choosing carried something.">lead</th>
+      <th title="the late windows this pick made money on">late windows up</th>
+      <th title="where the pick ranked among its own coin and shape's rows on the late windows. 50 is the middle, which is where no skill lands.">percentile</th>
+    </tr></thead><tbody>
+    ${s.pairs.map((p) => `<tr>
+      <td>${esc(p.coin)}</td><td>${esc(shapeOf(p.geometry))}</td>
+      <td>${p.lookback === 'own' ? 'own' : `${esc(String(p.lookback))}h`}</td><td>${p.band}</td>
+      <td class="${cls(p.earlyPerTrade)}">${pc(p.earlyPerTrade)}</td>
+      <td class="${cls(p.latePerTrade)}">${pc(p.latePerTrade)}</td>
+      <td class="${cls(p.blind)}">${pc(p.blind)}</td>
+      <td class="${cls(p.lead)}">${pc(p.lead)}</td>
+      <td>${p.lateWindowsUp} of ${p.lateWindows}</td>
+      <td>${p.percentile.toFixed(0)}</td>
+    </tr>`).join('')}
+    </tbody></table></div>
+    <p class="note">${s.pairs.length} pair(s), each picked on its first ${esc(String(s.pairs[0] ? s.pairs[0].cut : '?'))} window(s) or thereabouts &mdash; a coin with fewer windows is cut in its own half.</p>`}
+  </div>`;
+}
+async function cSplitAsk() {
+  const b = $('#sRun'); const out = $('#sOut');
+  if (b) b.disabled = true;
+  if (out) out.textContent = 'reading…';
+  try {
+    cSplit = await post('api/coins/walk/split', {
+      firstWindows: String(cState.sCut || '').trim() === '' ? null : Number(cState.sCut),
+      minTrades: Number(cState.sMin),
+    });
+  } catch (err) {
+    cSplit = { none: true, why: String(err && err.message ? err.message : err) };
+  }
+  cWalkRepaint();
+}
 function cWalkPanel() {
   const st = cWalkSt;
   const walking = !!(st && st.running);
@@ -8789,7 +8867,8 @@ function cWalkPanel() {
     </tr></thead>
     <tbody>${cWalkSorted(rows, cState.wSort).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
     <p class="note">${rows.length} row(s). The headings stay put while the rows scroll under them; every one of them sorts.</p>`)}
-  </div>`;
+  </div>
+  ${rows && rows.length ? cSplitPanel() : ''}`;
 }
 
 
@@ -8846,6 +8925,9 @@ function cWalkBind() {
   keep('#wScrambles', 'wScrambles', true);
   keep('#wFloor', 'wFloor', true);
   keep('#wCoins', 'wCoins', false);
+  keep('#sCut', 'sCut', false);
+  keep('#sMin', 'sMin', true);
+  if ($('#sRun')) $('#sRun').onclick = cSplitAsk;
   for (const b of document.querySelectorAll('[data-wsort]')) {
     b.onclick = () => {
       const key = b.dataset.wsort;
