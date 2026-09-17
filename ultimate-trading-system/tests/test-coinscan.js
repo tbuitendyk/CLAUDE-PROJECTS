@@ -769,6 +769,118 @@ function theWalkTableHeadingsSitOverTheirOwnFigures() {
     'and so does the look-back heading -- this is the pair that was swapped from 3.159.0 to 3.162.1');
 }
 
+// AN EMPTY BOX HIDES NOTHING AT ALL (3.164.1, owner: "don't make a record set
+// with 4896 rows and then not show it on the screen").
+//
+// A blank `bands` box hid every row of a 4,896-row walk. Number('') is 0, and 0
+// is finite, so a helper that converted before it filtered turned an untyped
+// box into "show only band 0" -- and no row has band 0. The whole table
+// vanished and a note underneath narrated it.
+//
+// THIS RUNS THE REAL FUNCTION, not a copy of its logic and not a scan of its
+// source. cWalkList lives on the page and cannot be required, so it is lifted
+// out of public/construct.js and given a cState of its own. A source scan would
+// not have caught this and neither would a re-implementation; only running it
+// does.
+function theRealWalkFilter(wF) {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const m = /function cWalkList\(matches\) \{[\s\S]*?\n\}/.exec(src);
+  assert(m, 'cWalkList is on the page to be read');
+  // eslint-disable-next-line no-new-func
+  return new Function('cState', `${m[0]}; return cWalkList;`)({ wF });
+}
+function anEmptyFilterBoxHidesNothingAtAll() {
+  const shapes = [{ key: 'daily-1d', label: 'Daily 1-day' }, { key: 'daily-3d', label: 'Daily 3-day' }];
+  const rows = [
+    { coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '312', band: 200, trades: 370, perTrade: 0.879, windows: 15, windowsUp: 15, asGood: 0, asGoodSlid: 0 },
+    { coin: 'XLMUSDT', geometry: 'daily-3d', lookback: 'own', band: 350, trades: 40, perTrade: -0.2, windows: 6, windowsUp: 2, asGood: 90, asGoodSlid: 88 },
+    { coin: 'BTCUSDT', geometry: 'daily-1d', lookback: '48', band: 250, trades: 500, perTrade: 0.1, windows: 12, windowsUp: 7, asGood: 44, asGoodSlid: 46 },
+  ];
+  // EVERY BOX EMPTY, THE WAY THE SCREEN OPENS. Nothing may be hidden.
+  for (const wF of [{}, { coin: '', shape: '', back: '', band: '', minTrades: '', minPer: '', minWindows: '', minUp: '', maxGood: '', maxSlid: '' },
+    { band: '' }, { band: '   ' }, { band: ' , ' }, { minTrades: '' }, { maxGood: '' }]) {
+    const got = theRealWalkFilter(wF)({ rows, shapes });
+    assert(got.length === rows.length,
+      `with ${JSON.stringify(wF)} nothing may be hidden, and ${rows.length - got.length} of ${rows.length} row(s) were`);
+  }
+  // and every box still filters when it IS typed in, or the fix would be to
+  // stop filtering at all
+  const f = (wF) => theRealWalkFilter(wF)({ rows, shapes }).map((r) => r.coin);
+  assert.deepStrictEqual(f({ band: '200' }), ['LTCUSDT'], 'the bands box filters');
+  assert.deepStrictEqual(f({ band: '200,350' }), ['LTCUSDT', 'XLMUSDT'], 'and takes a list');
+  assert.deepStrictEqual(f({ coin: 'ltc' }), ['LTCUSDT'], 'the coins box filters, and does not mind the case');
+  assert.deepStrictEqual(f({ shape: '3-day' }), ['XLMUSDT'], 'the shapes box filters on the label the screen shows');
+  assert.deepStrictEqual(f({ back: 'own' }), ['XLMUSDT'], 'the look-backs box takes own');
+  assert.deepStrictEqual(f({ back: '312' }), ['LTCUSDT'], 'and a number');
+  assert.deepStrictEqual(f({ minTrades: '400' }), ['BTCUSDT'], 'fewest trades filters');
+  assert.deepStrictEqual(f({ minPer: '0.5' }), ['LTCUSDT'], 'least per trade filters');
+  assert.deepStrictEqual(f({ minWindows: '13' }), ['LTCUSDT'], 'fewest windows filters');
+  assert.deepStrictEqual(f({ minUp: '90' }), ['LTCUSDT'], 'least windows up filters, as a share');
+  assert.deepStrictEqual(f({ maxGood: '0' }), ['LTCUSDT'], 'most scrambles as good filters, and nought is a real answer');
+  assert.deepStrictEqual(f({ maxSlid: '50' }), ['LTCUSDT', 'BTCUSDT'], 'most slides as good filters');
+  // a zero typed into a "fewest" box is a number, not a blank
+  assert(f({ minTrades: '0' }).length === 3, 'a typed nought keeps everything, because every row has at least nought trades');
+  // and the screen never leaves an empty table unexplained
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  assert(/All \$\{rows\.length\.toLocaleString\(\)\} row\(s\) of this walk are hidden by the filter boxes above/.test(src),
+    'an empty table says so WHERE THE TABLE WOULD BE, not in a note under a blank space');
+  assert(/<button id="wfClear2" class="pri">Clear the filters<\/button>/.test(src),
+    'and the way back is right there');
+  // a set opened, or a walk landing, starts with nothing hidden -- the boxes are
+  // remembered in the browser, so filters typed for one set would otherwise
+  // carry onto the next and hide a fresh table for reasons set up hours before
+  assert(/cState\.wF = \{\}; cShownFor = null; cRemember\(\);\s*\n\s*cSplit = null;/.test(src),
+    'opening a saved set clears the filters');
+  assert(/if \(wasRunning && st && !st\.running\) \{ cState\.wF = \{\}; cShownFor = null; cRemember\(\); \}/.test(src),
+    'and so does a walk landing');
+}
+
+// RULE FOUR-A: A TICK BOTTOM-ALIGNS TO THE FIELDS BESIDE IT, ALWAYS -- and a
+// BUTTON never shares their row (owner, 2026-09-17: "on the coins page it's
+// like you were trying to misalign everything to win an ugly award", and
+// "you're sticking buttons onto the bottom of text entry fields as if that's
+// good design ... trust me, it isn't").
+//
+// `.row` centres what is in it; a `label.f` is a caption over its box, two
+// lines tall, and a tick is one. Centred, the tick floats against the middle of
+// the pair. Five rows on Sweep already carried align-items:flex-end and every
+// row on Coins carried nothing, which makes it a mistake rather than a choice.
+// Counted rather than eyeballed, so a row added tomorrow cannot be wrong
+// quietly.
+function everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  // the Coins screen is its own renderer plus the walk's panels it draws with
+  const marks = ['function drawCoins(', 'function cWalkPanel(', 'function cSplitPanel(', 'function cWalkSetsRow(', 'function cWalkFilterRow('];
+  let looked = 0;
+  for (const mark of marks) {
+    const at = src.indexOf(mark);
+    if (at < 0) continue;
+    looked++;
+    const end = src.indexOf('\n}\n', at);
+    const body = src.slice(at, end < 0 ? src.length : end);
+    for (const m of body.matchAll(/<div class="row"[^>]*>/g)) {
+      const from = m.index;
+      const next = body.indexOf('<div class="row"', from + 1);
+      const seg = body.slice(from, next < 0 ? body.length : next);
+      const cut = seg.indexOf('</div>');
+      const row = cut >= 0 ? seg.slice(0, cut) : seg;
+      if (!/label class="f"/.test(row)) continue;
+      const line = src.slice(0, at + from).split('\n').length;
+      if (/label class="c"/.test(row)) {
+        assert(/align-items:\s*flex-end/.test(m[0]),
+          `the row at line ${line} holds a tick beside a field and does not bottom-align it — RULE FOUR-A`);
+      }
+      assert(!/<button/.test(row),
+        `the row at line ${line} puts a button in with a field — a button goes in a row of its own on this screen`);
+    }
+  }
+  assert(looked >= 4, `every panel of this screen was read, got ${looked}`);
+  // and Sweep's five rows are where the pattern was copied FROM, so if they go
+  // this rule has lost its precedent and somebody should know
+  assert((src.match(/<div class="row"[^>]*align-items:\s*flex-end[^>]*>/g) || []).length >= 6,
+    'the pattern is used across the file, not invented here');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -794,6 +906,8 @@ module.exports = {
   aPlantedRelationshipBeatsItsSlidCopiesToo,
   theDealtCopiesAreUnfairOnADriftingCoinAndTheSlidOnesAreNot,
   bothCopyCountsAreOnTheTableSideBySide,
+  anEmptyFilterBoxHidesNothingAtAll,
+  everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow,
   theWalkTableHeadingsSitOverTheirOwnFigures,
   theTwoShapesThatCollapseREALLYAreTheSameTrade,
   aFixedLookBackWalksOneShapePerForwardTimeAndOwnWalksThemAll,

@@ -8389,7 +8389,7 @@ const cState = (() => {
     wWindow: 6, wWarm: 12, wBands: '50,100,150,200', wSpot: true,
     wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '', wBacks: '',
     wSort: 'asGood', wDir: 'asc',
-    wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wName: '',
+    wSorts: [{ key: 'asGood', dir: 'asc' }], wF: {}, wName: '', wSetPick: '',
     sCut: '', sMin: 30, sSorts: [{ key: 'latePerTrade', dir: 'desc' }],
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
@@ -8794,7 +8794,13 @@ function cSplitSorted(pairs) { return cSortRows(pairs, cState.sSorts, C_SPLIT_OF
 function cWalkList(matches) {
   const f = cState.wF || {};
   const words = (v) => String(v || '').split(',').map((x) => x.trim().toLowerCase()).filter(Boolean);
-  const nums = (v) => String(v || '').split(',').map((x) => Number(x.trim())).filter((n) => Number.isFinite(n));
+  // THE BLANKS GO BEFORE ANYTHING IS CONVERTED (3.164.1, owner: "don't make a
+  // record set with 4896 rows and then not show it on the screen"). Number('')
+  // is 0 and 0 is finite, so converting first and filtering after turned an
+  // EMPTY box into "show only band 0" -- and nothing has band 0, so every row
+  // of a 4,896-row set was hidden by a box nobody had typed in.
+  const nums = (v) => String(v || '').split(',').map((x) => x.trim()).filter(Boolean)
+    .map(Number).filter((n) => Number.isFinite(n));
   const coins = words(f.coin);
   const shapes = words(f.shape);
   const backs = words(f.back);
@@ -8816,36 +8822,61 @@ function cWalkList(matches) {
     return true;
   });
 }
-// THE SETS ON DISK (3.164.0). Until this release Walk it forward wrote nothing
-// and a restart lost the lot; this is the row that opens one back up. Opening a
-// set puts it exactly where a fresh walk would be, so the filters, the sorters,
-// the window strips and the early/late reading all read it through the one path
-// and there is no second way for a saved set to be drawn.
+// THE SETS ON DISK. A walk writes one, and this is the row that opens one back
+// up. Opening a set puts it exactly where a fresh walk would be, so the
+// filters, the sorters, the window strips and the early/late reading all read
+// it through the one path and there is no second way for a saved set to be
+// drawn.
+//
+// THE DROPDOWN CARRIES THE NAME AND NOTHING ELSE (3.164.1, owner: "this stuff
+// is formatted UGLY"). It used to carry six facts in one string -- id, name,
+// rows, megabytes, timestamp, release -- which is unreadable in a dropdown and
+// made it wide enough to push the buttons beside it out of line. The rest is a
+// line underneath, about whichever set is chosen.
+//
+// AND THE BUTTONS ARE IN A ROW OF THEIR OWN (RULE FOUR). A `.row` centres what
+// is in it, and a `label.f` is a caption stacked over its box -- two lines tall
+// -- so a one-line button beside it centres against the middle of the pair and
+// floats. Mixing them is the fault; the page's other button rows do not, and
+// now neither does this one.
+function cWalkSetPicked() {
+  const ws = cWalksNow || [];
+  if (!ws.length) return null;
+  const want = String(cState.wSetPick || '');
+  const open = (cWalkSt && cWalkSt.saved) || null;
+  return ws.find((w) => w.id === want)
+    || (open ? ws.find((w) => w.id === open.id) : null)
+    || ws[0];
+}
 function cWalkSetsRow() {
   const ws = cWalksNow || [];
   const open = (cWalkSt && cWalkSt.saved) || null;
+  if (!ws.length) {
+    return '<p class="note">no walk set is on this box yet &mdash; every finished walk writes one, and it appears here to open again.</p>';
+  }
+  const sel = cWalkSetPicked();
   const mb = (b) => `${(Number(b || 0) / 1048576).toFixed(1)} MB`;
   const when = (t) => (t ? cWhen(new Date(t).toISOString()) : '?');
-  if (!ws.length) {
-    return '<p class="note">no walk set is on this box yet — every finished walk writes one, and it appears here to open again.</p>';
-  }
   return `<div class="row">
-      <label class="f" title="every finished walk on this box. Opening one puts its table on this screen exactly as a fresh walk would be, with the parameters it was run under.">walk sets on this box<select id="wSet" style="width:26rem">
-        ${ws.map((w) => `<option value="${esc(w.id)}"${open && open.id === w.id ? ' selected' : ''}>${esc(w.id)} · ${esc(String(w.name || ''))} · ${Number(w.rows || 0).toLocaleString()} rows · ${w.picked ? `${w.picked} picked · ` : ''}${mb(w.bytes)} · ${esc(when(w.finishedAt))} UTC · release ${esc(String(w.release || '?'))}</option>`).join('')}
+      <label class="f" title="every finished walk on this box, newest first. Opening one puts its table on this screen exactly as a fresh walk would be, with the parameters it was run under.">walk sets on this box<select id="wSet" style="width:18rem">
+        ${ws.map((w) => `<option value="${esc(w.id)}"${sel && sel.id === w.id ? ' selected' : ''}>${esc(w.id)} &middot; ${esc(String(w.name || ''))}</option>`).join('')}
       </select></label>
+    </div>
+    <div class="row">
       <button id="wSetOpen">Open this set</button>
       <button id="wSetName">Rename it</button>
       <button id="wSetDel" class="danger">Delete it</button>
-      <span id="wSetMsg" class="muted">${open ? esc(`${open.opened ? 'open' : 'written'}: ${open.id} · ${open.name}`) : ''}</span>
+      <span id="wSetMsg" class="muted">${open ? esc(`${open.opened ? 'This set is open' : 'Written'}: ${open.id}, ${open.name}`) : ''}</span>
     </div>
-    ${(cWalkSt && cWalkSt.saveError) ? `<p class="note warn">the last walk finished but could not be written down: ${esc(String(cWalkSt.saveError))} — the table above is still good, and it goes when the service restarts.</p>` : ''}`;
+    ${!sel ? '' : `<p class="note">${esc(sel.id)} holds <b>${Number(sel.rows || 0).toLocaleString()}</b> walked row(s)${sel.picked ? `, <b>${sel.picked}</b> of them picked` : ''},
+      takes ${esc(mb(sel.bytes))} on disk, finished ${esc(when(sel.finishedAt))} UTC, and was walked by release ${esc(String(sel.release || '?'))}.
+      ${sel.asked ? `Its window was ${esc(String(sel.asked.windowMonths))} month(s) with ${esc(String(sel.asked.warmUpMonths))} behind the first one, at band(s) ${esc(String((sel.asked.bands || []).join(', ')))}, ${esc(String(sel.asked.scrambles == null ? 10 : sel.asked.scrambles))} copies each way, and a floor of ${esc(String(sel.asked.floor))} trade(s) a window.` : ''}</p>`}
+    ${(cWalkSt && cWalkSt.saveError) ? `<p class="note warn">the last walk finished but could not be written down: ${esc(String(cWalkSt.saveError))} &mdash; the table above is still good, and it goes when the service restarts.</p>` : ''}`;
 }
-// OPEN, RENAME, DELETE (3.164.0). Delete follows the same two steps a record
-// set does -- the first press answers with what would go, and only the set's
-// own id typed back does it. Hours of compute cannot be got back from a
-// mis-click.
 function cWalkSetsBind() {
   const pick = () => { const el = $('#wSet'); return el ? el.value : ''; };
+  const sel = $('#wSet');
+  if (sel) sel.onchange = () => { cState.wSetPick = sel.value; cRemember(); cWalkRepaint(); };
   const say = (t, warn) => { const el = $('#wSetMsg'); if (el) el.innerHTML = warn ? `<b class="warn">${esc(t)}</b>` : esc(t); };
   const ob = $('#wSetOpen');
   if (ob) ob.onclick = async () => {
@@ -8855,6 +8886,11 @@ function cWalkSetsBind() {
     try {
       const got = await post(`api/coins/walks/${encodeURIComponent(id)}/open`, {});
       say(`open: ${got.id} · ${got.name} · ${Number(got.rows).toLocaleString()} rows`);
+      // NOTHING IS HIDDEN ON A SET YOU HAVE JUST OPENED. The filter boxes are
+      // remembered in this browser, so boxes typed for one set would otherwise
+      // carry onto the next one -- and a fresh set of thousands of rows would
+      // come up empty for something typed an hour ago on a different set.
+      cState.wF = {}; cShownFor = null; cRemember();
       cSplit = null;
       await cWalkTick();
     } catch (err) { say(String(err && err.message ? err.message : err), true); ob.disabled = false; }
@@ -8891,6 +8927,18 @@ function cWalkSetsBind() {
       await cWalkTick();
     } catch (err) { say(String(err && err.message ? err.message : err), true); }
   };
+}
+// ONE FILTER PASS PER DRAW. The count line, the empty-table notice and the
+// tbody all need the same answer, and walking 4,896 rows three times for it is
+// three times the work for one number.
+let cShownFor = null;
+let cShownWas = null;
+function cWalkShown(rows, shapes) {
+  const key = `${rows.length}|${JSON.stringify(cState.wF || {})}|${rows.length ? rows[0].coin : ''}`;
+  if (cShownFor === key && cShownWas) return cShownWas;
+  cShownWas = cWalkList({ rows, shapes });
+  cShownFor = key;
+  return cShownWas;
 }
 function cWalkFilterRow() {
   const f = cState.wF || {};
@@ -8964,6 +9012,7 @@ function cSplitPanel() {
     </div>
     <div class="row">
       <button id="sRun" class="pri">Choose early, read late</button>
+      <button id="ssClear">Clear the sort</button>
       <span id="sOut" class="muted">${s && s.none ? esc(String(s.why || '')) : ''}</span>
     </div>
     ${!s || s.none || !s.pairs ? '' : `
@@ -9013,8 +9062,7 @@ function cSplitPanel() {
     </tbody></table></div>
     <p class="note">${s.pairs.length} pair(s), each picked on its first ${esc(String(s.pairs[0] ? s.pairs[0].cut : '?'))} window(s) or thereabouts &mdash; a coin with fewer windows is cut in its own half.
       ${(cState.sSorts || []).length ? `Sorted by ${(cState.sSorts || []).map((x) => `${esc(x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ')}.` : 'Unsorted.'}
-      Every heading sorts: click to add it, again to flip it, once more to drop it.
-      <button id="ssClear">Clear the sort</button></p>`}
+      Every heading sorts: click to add it, again to flip it, once more to drop it.</p>`}
   </div>`;
 }
 async function cSplitAsk() {
@@ -9070,7 +9118,7 @@ function cWalkPanel() {
       could not have known at the time. Read the windows across: steady is a property of the coin, off-then-on is a
       phase, up and down is noise. <b>Nothing here trades, refuses or chooses.</b></p>
     ${cCollapseLine()}
-    <div class="row">
+    <div class="row" style="align-items:flex-end">
       <label class="f" title="how long one window is. Six months is a reasonable place to start: long enough to hold trades, short enough that a phase shows as a phase. Each chunk shape converts it to its own number of decisions.">window, months<input${off} id="wWindow" type="number" min="1" step="1" value="${esc(String(cState.wWindow))}" style="width:5rem"></label>
       <label class="f" title="how much history has to sit behind the first window before anything is priced. The signs are learned from it, so too little and the first windows are guesses.">history before the first window, months<input${off} id="wWarm" type="number" min="1" step="1" value="${esc(String(cState.wWarm))}" style="width:5rem"></label>
       <label class="f" title="how big a move has to be before it counts, as a percentage of the coin's usual move. Comma separated; every one of them is walked and every one is reported, never only the best.">bands to try<input${off} id="wBands" value="${esc(String(cState.wBands))}" style="width:11rem"></label>
@@ -9102,6 +9150,10 @@ function cWalkPanel() {
     ${(st && st.error) ? `<p class="note warn">the walk stopped: ${esc(st.error)}</p>` : ''}
     ${!rows ? (walking ? '' : '<p class="note">nothing walked yet — press <b>Walk it forward</b>, or open a set above</p>') : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
     ${cWalkFilterRow()}
+    ${cWalkShown(rows, shapes).length ? '' : `<p class="note warn" style="margin:.6rem 0"><b>All ${rows.length.toLocaleString()} row(s) of this walk are hidden by the filter boxes above.</b>
+      Nothing is wrong with the walk &mdash; the table is there. Empty a box to widen it, or clear them all:</p>
+      <div class="row" style="margin-bottom:.6rem"><button id="wfClear2" class="pri">Clear the filters</button></div>`}
+    ${!cWalkShown(rows, shapes).length ? '' : `
     <div class="cwbox"><table class="cgap cpassers"><thead><tr>
       <th></th>
       <th title="the coin">coin${cWalkSortBtn('coin', 'asc')}</th>
@@ -9117,12 +9169,12 @@ function cWalkPanel() {
       <th title="how many scrambled copies of this same coin did AT LEAST AS WELL. Low is the result; with hundreds of rows on this table, merely positive is not. Read it beside the column to its right, not on its own.">scrambles as good${cWalkSortBtn('asGood', 'asc')}</th>
       <th title="the same count against SLIDING copies. A sliding copy moves every outcome along by the same amount and wraps the tail round to the front, so each outcome keeps the outcomes it actually happened next to and the only thing cut is which reading it sat under. The column to the left deals them into a new order instead, which also destroys the run of the outcomes themselves &mdash; the stretches where a coin simply drifts one way. On a made-up coin that drifts, that makes the dealt copies far harder to beat than they should be, while the slid ones come out fair. Where the two disagree, trust this one.">slides as good${cWalkSortBtn('asGoodSlid', 'asc')}</th>
     </tr></thead>
-    <tbody>${cWalkSorted(cWalkList({ rows, shapes })).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
-    <p class="note">${(() => { const n = cWalkList({ rows, shapes }).length; return n === rows.length
-      ? `${rows.length} row(s), all of them shown`
-      : `<b>${n} of ${rows.length} row(s) shown</b> — ${rows.length - n} hidden by the filter boxes above`; })()}
+    <tbody>${cWalkSorted(cWalkShown(rows, shapes)).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
+    <p class="note">${(() => { const n = cWalkShown(rows, shapes).length; return n === rows.length
+      ? `${rows.length.toLocaleString()} row(s), all of them shown`
+      : `<b>${n.toLocaleString()} of ${rows.length.toLocaleString()} row(s) shown</b> — ${(rows.length - n).toLocaleString()} hidden by the filter boxes above`; })()}
       ${(cState.wSorts || []).length ? ` · sorted by ${(cState.wSorts || []).map((x) => `${esc(x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ')}` : ' · unsorted'}.
-      The headings stay put while the rows scroll under them; every one of them sorts.</p>`)}
+      The headings stay put while the rows scroll under them; every one of them sorts.</p>`})`)}
   </div>
   ${rows && rows.length ? cSplitPanel() : ''}`;
 }
@@ -9189,9 +9241,11 @@ function cWalkBind() {
   // a filter that waits for a button press is a filter nobody uses twice.
   for (const el of document.querySelectorAll('[id^="wf_"]')) {
     const key = el.id.slice(3);
-    el.oninput = () => { cState.wF = { ...(cState.wF || {}), [key]: el.value }; cRemember(); cWalkRepaint(); };
+    el.oninput = () => { cState.wF = { ...(cState.wF || {}), [key]: el.value }; cShownFor = null; cRemember(); cWalkRepaint(); };
   }
-  if ($('#wfClear')) $('#wfClear').onclick = () => { cState.wF = {}; cRemember(); cWalkRepaint(); };
+  const clearF = () => { cState.wF = {}; cShownFor = null; cRemember(); cWalkRepaint(); };
+  if ($('#wfClear')) $('#wfClear').onclick = clearF;
+  if ($('#wfClear2')) $('#wfClear2').onclick = clearF;
   if ($('#wsClear')) $('#wsClear').onclick = () => { cState.wSorts = []; cRemember(); cWalkRepaint(); };
   cWalkSetsBind();
   for (const b of document.querySelectorAll('[data-ssort]')) {
@@ -9270,6 +9324,8 @@ async function cWalkTick() {
   if (tab !== 'coins') return;
   if (!st) { cWalkPoll = setTimeout(cWalkTick, 2000); return; }
   const wasRunning = !!(cWalkSt && cWalkSt.running);
+  // and the same when a walk LANDS: a new table starts with nothing hidden
+  if (wasRunning && st && !st.running) { cState.wF = {}; cShownFor = null; cRemember(); }
   cWalkSt = st;
   if (st && Array.isArray(st.collapse)) cCollapse = st.collapse;
   if (st && Array.isArray(st.walks)) cWalksNow = st.walks;
@@ -9415,7 +9471,7 @@ async function drawCoins() {
       of that coin's median window move for the shape: at 50, a decision sits out when it moved less than half what
       the coin typically moves over that window. Change it and every bar recolours; nothing is read again. Sweep
       trains with this same number.</p>
-    <div class="row">
+    <div class="row" style="align-items:flex-end">
       <label class="f" title="which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep.">coins (blank = all ${d && d.downloaded != null ? d.downloaded : '—'} downloaded)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${esc(cState.coins || '')}" style="width:16rem"${off}></label>
       <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. Change it and every bar recolours at once; nothing is read again. Sweep trains with this same number.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
       <label class="f" title="the look-backs a reading stores, in hours, comma separated. The chunk shape decides the TRADE; a look-back decides what is LOOKED AT, and there is no reason they should be the same length. Measured from candles at read time, so a change only reaches the records when the coins are read again &mdash; which is why it lives here and not on Walk it forward.">look-backs to store, hours<input id="cBacks" value="${esc(((d && d.lookbacks && d.lookbacks.value) || []).join(','))}" style="width:26rem"${off}></label>

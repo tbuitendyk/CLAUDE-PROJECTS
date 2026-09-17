@@ -417,6 +417,46 @@ What that means concretely:
 - **When a defect like this is found, sweep for it.** Fix every instance of the
   pattern in the file, not only the one the owner happened to see.
 
+### RULE FOUR-A — a tick bottom-aligns to the fields beside it, ALWAYS (owner order, 2026-09-17)
+
+**Any row that holds a tick beside a field carries
+`style="align-items:flex-end"`.** Not sometimes, not when it looks off — always.
+
+The owner's words: "on the sweep page you put the check boxes bottom aligned
+with the fields next to them. on the coins page it's like you were trying to
+misalign everything to win an ugly award or something", and then: "fix the
+checkbox alignments to bottom align to fields beside them on coins like they
+should be ALWAYS".
+
+Why it happens, so it stops happening: `.row` is `align-items:center`, and a
+`<label class="f">` is a caption stacked over its box — two lines tall. A tick
+is one line. Centred, the tick floats against the middle of the pair instead of
+sitting on the box's own line, and every field beside it makes the mismatch
+more obvious. `flex-end` puts their bottoms together, which is the only
+alignment that reads as one control.
+
+**It was already the house pattern and I did not look.** Five rows on Sweep
+carried `align-items:flex-end` and every row on Coins carried nothing. The rule
+RULE FOUR already states — *match the pattern already on the page* — would have
+answered this if I had read the page before adding to it. Counting first is the
+whole job: 29 of the 31 mixed rows in `public/construct.js` were already
+aligned, which makes the two that were not a mistake, not a choice.
+
+- **A BUTTON IS THE EXCEPTION.** A button jammed against the bottom of a text
+  field is the thing the owner called ugly in the same conversation: "you're
+  sticking buttons onto the bottom of text entry fields as if that's good
+  design" — "trust me, it isn't ... it's actually ugly". **A button goes in a
+  row of its own**, with its own message beside it. Ticks bottom-align; buttons
+  get separated. Those are two different answers and applying either one to the
+  other is the fault.
+- **Check by counting, not by looking.** Walk every `<div class="row">` in the
+  file, and for each one ask whether it holds a `label.f` together with a
+  `label.c` or a `<button>`. A tick row without `flex-end` is a defect; a button
+  sharing a row with a field is a defect. This is a ten-line script and it
+  answers in a second, so there is no excuse for shipping either.
+- **`tests/test-coinscan.js` holds this for the Coins screen** and fails on
+  either fault, so a row added tomorrow cannot quietly be wrong.
+
 
 ## RULE FIVE — functionality targeted to the final system is never based on non-accessible
 data structures, data records, or code -- THE UI MUST EXPOSE ALL FUNCTIONALITY THAT THE

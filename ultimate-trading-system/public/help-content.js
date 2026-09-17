@@ -1025,6 +1025,8 @@ window.HELP = {
       wSetName: 'renames the chosen set. Names have to be different from each other, because a name is how you will recognise it in a month.',
       wSetDel: 'removes the chosen set from disk. Two steps, the way a record set is removed: the first press answers with what would go — how many rows, how many megabytes, how many picks — and only the set\'s own id typed back does it. It cannot be undone and the walk would have to be run again.',
       wfClear: 'empties every filter box at once, so the whole table is shown again.',
+      wfClear2: 'the same as Clear the filters above it. It appears where the table would be when the filters have hidden every row, because a table that has gone empty should carry the way back to it rather than make you scroll up looking for one.',
+      wfClear2: 'the same as Clear the filters above it. It appears where the table would be when the filters have hidden every row, because a table that has gone empty should carry the way back to it rather than make you scroll up to look for one.',
       wsClear: 'drops every column out of the sort. The table falls back to the order the walks landed in.',
       ssClear: 'drops every column out of the sort on this table.',
       wf_coin: 'show only rows whose coin contains one of these, comma separated. Blank shows every coin. The line under the table says how many rows are hidden.',
