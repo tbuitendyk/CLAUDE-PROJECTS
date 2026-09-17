@@ -8628,10 +8628,23 @@ function cWalkRow(r, shapes) {
   const shape = (shapes.find((s) => s.key === r.geometry) || {}).label || r.geometry;
   const pt = r.perTrade == null ? '—' : `${r.perTrade > 0 ? '+' : ''}${Number(r.perTrade).toFixed(3)}%`;
   const scr = r.asGood == null ? '—' : `${r.asGood} of ${r.copies}`;
-  const strip = !open ? '' : `<tr class="cwscan"><td colspan="11"><div class="cwstrip">${(r.scan || []).map((w) => {
+  // THE DATE GOES ABOVE ITS FIGURE, NOT BESIDE IT. Written beside it first,
+  // against a class that did not exist, and it rendered as one run of digits
+  // with no way to tell which date belonged to which number (owner,
+  // 2026-09-17). And the line above says how many windows there really are:
+  // a wide band leaves whole half-years with too few trades to count, so
+  // "8 of 8" is eight COUNTED windows and the rest are dashes.
+  const all = r.scan || [];
+  const blanks = all.filter((w) => w.thin || w.n === 0 || w.perTrade == null).length;
+  const says = `${all.length} window(s) in this coin's history · ${all.length - blanks} counted`
+    + `${blanks ? ` · ${blanks} had too few trades to count and show as a dash` : ''}`;
+  const strip = !open ? '' : `<tr class="cwscan"><td colspan="11">
+    <p class="cwsays">${esc(says)}</p>
+    <div class="cwstrip">${all.map((w) => {
     const v = w.perTrade;
-    const col = w.thin || v == null ? 'muted' : (v > 0 ? 'cr' : 'cf');
-    return `<span class="cwwin" title="${esc(cDay(w.ts))} onward · ${w.n} trade(s)${w.thin ? ' · too few to count' : ''}"><b class="${col}">${w.thin || v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}`}</b><i>${esc(cDay(w.ts)).slice(0, 7)}</i></span>`;
+    const dead = w.thin || v == null || !w.n;
+    const col = dead ? 'muted' : (v > 0 ? 'cr' : 'cf');
+    return `<span class="cwwin" title="the window starting ${esc(cDay(w.ts))} · ${w.n} trade(s)${dead ? ' · too few to count' : ` · ${v > 0 ? '+' : ''}${Number(v).toFixed(3)}% a trade`}"><i>${esc(cDay(w.ts)).slice(0, 7)}</i><b class="${col}">${dead ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}`}</b></span>`;
   }).join('')}</div></td></tr>`;
   return `<tr>
     <td><button class="cwopen" data-key="${esc(key)}" title="show or hide this row's windows, one after another in time">${open ? '▾' : '▸'}</button></td>
@@ -8663,12 +8676,21 @@ function cWalkSorted(rows, how) {
     trades: (r) => r.trades,
     perTrade: (r) => r.perTrade,
     windows: (r) => r.windows,
+    // WINDOWS UP IS A SHARE, AND MORE WINDOWS BEATS FEWER AT THE SAME SHARE
+    // (owner, 2026-09-17). A plain share put ADA Weekly 8-day's ONE window --
+    // six trades -- above LINK Daily 2-day's eight of eight, because both are
+    // 1.0 and the tie fell to the coin's name. Sixteen rows had every window
+    // up and fourteen of them sat on three windows or fewer, so the top of
+    // that column was the rows with almost nothing behind them.
     windowsUp: (r) => (r.windows ? r.windowsUp / r.windows : null),
     best: (r) => r.best,
     worst: (r) => r.worst,
     asGood: (r) => r.asGood,
   };
   const of = OF[how] || OF.asGood;
+  // the second key for the share, always more windows first whichever way the
+  // arrow points: more evidence ranks above less in both directions
+  const second = how === 'windowsUp' ? (r) => r.windows : null;
   // A ROW WITH NOTHING IN THAT COLUMN GOES LAST WHICHEVER WAY THE ARROW POINTS.
   // Sorting a missing figure as though it were a very small one puts the rows
   // that could not be read at the top of an ascending sort, which reads as a
@@ -8679,7 +8701,9 @@ function cWalkSorted(rows, how) {
     if (a == null) return 1;
     if (b == null) return -1;
     if (typeof a === 'string' || typeof b === 'string') return dir * String(a).localeCompare(String(b));
-    return dir * (a - b) || String(`${x.coin}${x.geometry}${x.band}`).localeCompare(`${y.coin}${y.geometry}${y.band}`);
+    if (a !== b) return dir * (a - b);
+    if (second) { const d = second(y) - second(x); if (d) return d; }
+    return String(`${x.coin}${x.geometry}${x.band}`).localeCompare(`${y.coin}${y.geometry}${y.band}`);
   });
 }
 // WHAT THE WALK IS DOING, IN ONE LINE. While it runs: how many of how many,
@@ -8749,7 +8773,7 @@ function cWalkPanel() {
       <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band${cWalkSortBtn('band', 'asc')}</th>
       <th title="how many trades the walk placed in total, across every window that met the floor">trades${cWalkSortBtn('trades', 'desc')}</th>
       <th title="what it made on each trade it placed, averaged over the whole walk. Before the round trip.">per trade${cWalkSortBtn('perTrade', 'desc')}</th>
-      <th title="how many windows met the floor and were counted">windows${cWalkSortBtn('windows', 'desc')}</th>
+      <th title="how many windows met the floor and were counted. NOT how many windows the coin has: a wide band leaves whole half-years with too few trades, and those are left out of this count and of windows up. Open the row to see the total and which ones were empty.">windows${cWalkSortBtn('windows', 'desc')}</th>
       <th title="how many of those windows made money. Half is what a coin with nothing in it looks like.">windows up${cWalkSortBtn('windowsUp', 'desc')}</th>
       <th title="the best single window">best window${cWalkSortBtn('best', 'desc')}</th>
       <th title="the worst single window">worst window${cWalkSortBtn('worst', 'desc')}</th>
@@ -8764,11 +8788,34 @@ function cWalkPanel() {
 // THE WALK'S CONTROLS. Repainting only this panel, never the whole screen: a
 // redraw re-asks for every record, which is four megabytes, and the walk's own
 // answer is held here anyway so a sort or an opened row costs nothing.
+// A REPAINT THAT LEAVES BOTH SCROLL BARS WHERE THEY ARE (owner, 2026-09-17:
+// "tables jumping around to the top, making it impossible to actually see what
+// you just opened"). There are TWO places to keep, and keeping only one is no
+// better than keeping neither: the page's own, and the rows' box, which has
+// its own bar since the headings were frozen. Both are taken BEFORE anything
+// is replaced -- the same order drawBoardsHoldingPlace uses, and for the same
+// reason: a rebuilt panel is briefly shorter, the browser clamps the page to
+// what is left, and a place read afterwards is the clamped one, not the
+// owner's. Told to the tab's own memory at the end so it does not overwrite
+// this with the clamped figure a moment later.
 function cWalkRepaint() {
   const wrap = $('#cWalkWrap');
   if (!wrap) return;
+  const y = window.scrollY;
+  const box = wrap.querySelector('.cwbox');
+  const top = box ? box.scrollTop : 0;
+  const left = box ? box.scrollLeft : 0;
   wrap.innerHTML = cWalkPanel();
   cWalkBind();
+  const put = () => {
+    const b = wrap.querySelector('.cwbox');
+    if (b) { b.scrollTop = top; b.scrollLeft = left; }
+    holdScrollMemory();
+    window.scrollTo(0, y);
+  };
+  put();
+  holdScrollMemory();
+  requestAnimationFrame(() => requestAnimationFrame(() => { put(); rememberScroll(tab); }));
 }
 function cWalkBind() {
   const keep = (id, field, num) => {

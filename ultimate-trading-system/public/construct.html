@@ -98,6 +98,17 @@
      line under the heading is a shadow for the same reason it is there: a
      collapsed border on a sticky cell scrolls away with its row. */
   div.cwbox { overflow:auto; max-height:24rem; }
+  /* THE WINDOW STRIP UNDER AN OPENED ROW (3.158.2). Written first against
+     classes that did not exist, so the date and the figure ran together into
+     one unreadable string -- the very fault RULE FOUR names. Each window is a
+     small block, its date above its figure, so which date belongs to which
+     number cannot be misread. */
+  div.cwstrip { display:flex; flex-wrap:wrap; gap:.15rem .5rem; padding:.3rem 0 .45rem 1.6rem; }
+  div.cwstrip span.cwwin { display:flex; flex-direction:column; align-items:flex-end;
+                           min-width:3.4rem; font-size:.7rem; line-height:1.15; }
+  div.cwstrip span.cwwin i { font-style:normal; color:var(--muted); font-size:.62rem; }
+  div.cwstrip span.cwwin b { font-weight:600; }
+  p.cwsays { margin:.1rem 0 .1rem 1.6rem; font-size:.68rem; color:var(--dim); }
   div.cwbox table thead th { position:sticky; top:0; background:var(--panel); z-index:2;
                              vertical-align:bottom; box-shadow:inset 0 -1px 0 var(--line); }
   tr.dim td { color:var(--muted); }

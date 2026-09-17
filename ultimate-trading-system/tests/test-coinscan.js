@@ -268,6 +268,61 @@ function theWalkTableKeepsItsHeadingsWhileTheRowsScroll() {
     'the line under the heading is a shadow -- a collapsed border on a sticky cell scrolls away with its row');
 }
 
+// WINDOWS UP ORDERS BY SHARE, AND MORE WINDOWS WINS A TIE (owner, 2026-09-17:
+// "ordering the table by WINDOWS UP ought to put 8/8 at the top ... higher
+// denominator beats lower"). A plain share put a ONE-window row of six trades
+// above eight of eight, because both are 1.0 and the tie fell to the coin's
+// name. Sixteen rows on the owner's run had every window up and fourteen sat
+// on three windows or fewer.
+function windowsUpOrdersByShareAndMoreWindowsWinsATie() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  assert(/const second = how === 'windowsUp' \? \(r\) => r\.windows : null;/.test(src),
+    'the share carries a second key, the count of windows');
+  assert(/if \(second\) \{ const d = second\(y\) - second\(x\); if \(d\) return d; \}/.test(src),
+    'and more windows ranks above fewer at the same share, in BOTH directions -- more evidence beats less whichever way the arrow points');
+  assert(/if \(a !== b\) return dir \* \(a - b\);/.test(src), 'the share is still the first key');
+}
+
+// OPENING A ROW DOES NOT THROW THE TABLE BACK TO THE TOP (owner, 2026-09-17).
+// Two scroll bars to keep since the headings were frozen: the page's and the
+// rows' box. Both are read BEFORE the panel is replaced, for the reason
+// drawBoardsHoldingPlace gives -- a place read after the rebuild is the one
+// the browser clamped to, not the owner's.
+function openingARowLeavesBothScrollBarsWhereTheyWere() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const fn = src.slice(src.indexOf('function cWalkRepaint()'), src.indexOf('function cWalkBind()'));
+  assert(/const y = window\.scrollY;/.test(fn), 'the page place is taken');
+  assert(/const top = box \? box\.scrollTop : 0;/.test(fn), 'and the rows box place');
+  assert(fn.indexOf('const top =') < fn.indexOf('wrap.innerHTML = cWalkPanel()'),
+    'both are taken BEFORE the panel is replaced, or the figure read is the clamped one');
+  assert(/b\.scrollTop = top; b\.scrollLeft = left;/.test(fn), 'the box is put back');
+  assert(/window\.scrollTo\(0, y\)/.test(fn), 'and the page');
+  assert(/holdScrollMemory\(\)/.test(fn), 'and the tab memory is held so it cannot overwrite it');
+  assert(/requestAnimationFrame\(\(\) => requestAnimationFrame\(/.test(fn), 'put back after the layout has settled, not during it');
+}
+
+// THE STRIP IS STYLED AGAINST CLASSES THAT EXIST, AND SAYS HOW MANY WINDOWS
+// WERE EMPTY (owner, 2026-09-17: "+2.062020-01+1.182020-07..."). The first
+// version used .cwstrip and .cwwin and defined neither, so every date and
+// figure ran together into one string of digits -- RULE FOUR's "never style
+// against a class that does not exist", walked into head first. And a wide
+// band leaves whole half-years with too few trades, so a row reading 8 of 8
+// is eight COUNTED windows out of thirteen and the owner could not see that.
+function theWindowStripIsReadableAndSaysWhatIsMissing() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+  for (const cls of ['div.cwstrip', 'div.cwstrip span.cwwin', 'div.cwstrip span.cwwin i', 'div.cwstrip span.cwwin b', 'p.cwsays']) {
+    assert(css.includes(`${cls} {`), `${cls} is styled, not used against nothing`);
+  }
+  assert(/div\.cwstrip span\.cwwin \{ display:flex; flex-direction:column;/.test(css),
+    'each window stacks its date over its figure, so which belongs to which cannot be misread');
+  assert(/<i>\$\{esc\(cDay\(w\.ts\)\)\.slice\(0, 7\)\}<\/i><b/.test(src), 'the date comes first, then the figure');
+  assert(/window\(s\) in this coin's history · \$\{all\.length - blanks\} counted/.test(src),
+    'the line above the strip says how many windows there are against how many counted');
+  assert(/had too few trades to count and show as a dash/.test(src), 'and says what a dash means');
+  assert(/NOT how many windows the coin has/.test(src), 'the windows column says what it does not count');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -284,4 +339,7 @@ module.exports = {
   theWalkSaysWhatItIsDoingAndSurvivesLeavingTheTab,
   everyColumnOfTheWalkTableSorts,
   theWalkTableKeepsItsHeadingsWhileTheRowsScroll,
+  windowsUpOrdersByShareAndMoreWindowsWinsATie,
+  openingARowLeavesBothScrollBarsWhereTheyWere,
+  theWindowStripIsReadableAndSaysWhatIsMissing,
 };
