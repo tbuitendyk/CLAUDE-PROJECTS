@@ -9,9 +9,15 @@
 //      through, not as a whole history that was always good
 //   3. a planted relationship beats its own scrambled copies; noise does not
 //   4. a tail too short for a whole window is dropped, never reported short
+//   5. a SLIDING copy cuts the link between reading and outcome just as
+//      completely as a dealt one -- a planted relationship beats both
+//   6. and on a coin that simply drifts one way and then the other, with the
+//      reading knowing nothing about the outcome, the DEALT copies come out
+//      far harder to beat than they should be and the SLID ones come out
+//      fair. Written down before this release shipped, on made-up coins.
 const { assert } = require('./helpers');
 const {
-  windowsOf, usualMoveAt, signsBefore, walk, scrambled, periodsForMonths,
+  windowsOf, usualMoveAt, signsBefore, walk, scrambled, slidOffsets, periodsForMonths,
   walkTask, walkTasksFor, rowOf,
 } = require('../lib/coinscan');
 const fs = require('fs');
@@ -210,6 +216,7 @@ async function theTaskWrapperGivesExactlyWhatTheArithmeticGives() {
     assert(Math.abs(viaTask.perTrade - direct.real.perTrade) < 1e-12, `band ${t.band}: money differs`);
     assert(viaTask.windows === direct.real.windows && viaTask.windowsUp === direct.real.windowsUp, `band ${t.band}: the window counts differ`);
     assert(viaTask.asGood === direct.asGood, `band ${t.band}: the scrambled count differs`);
+    assert(viaTask.asGoodSlid === direct.asGoodSlid, `band ${t.band}: the slid count differs`);
     assert(viaTask.scan.length === direct.real.rows.length, `band ${t.band}: the strip differs`);
     assert(viaTask.lookback === 'own', `band ${t.band}: a walk with no look-back asked for reads the shape's own`);
   }
@@ -255,7 +262,7 @@ function theWalkSaysWhatItIsDoingAndSurvivesLeavingTheTab() {
 function everyColumnOfTheWalkTableSorts() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   assert(!/<select id="wSort">/.test(src), 'the sort box is gone, not left beside the sorters');
-  for (const key of ['coin', 'geometry', 'band', 'trades', 'perTrade', 'windows', 'windowsUp', 'best', 'worst', 'asGood']) {
+  for (const key of ['coin', 'geometry', 'band', 'lookback', 'trades', 'perTrade', 'windows', 'windowsUp', 'best', 'worst', 'asGood', 'asGoodSlid']) {
     assert(new RegExp(`cWalkSortBtn\\('${key}'`).test(src), `the ${key} column has a sorter`);
   }
   assert(/data-wsort="\$\{key\}"/.test(src), 'each sorter names its column');
@@ -377,6 +384,102 @@ function bothLookBackBoxesAreOnScreenWhereTheyBelong() {
     'and setting them SAYS a read is needed, rather than looking as though it took effect');
   assert(/const RECORD_V = 9;/.test(run), 'the record shape moved, so a record written under the old reading is refused rather than mixed in');
   assert(/look-back\$\{cWalkSortBtn\('lookback', 'asc'\)\}/.test(src), 'the table has a look-back column and it sorts');
+  // OWNER, 2026-09-17: "make them both wider so that I can get a longer range
+  // of hours in and see the whole string." Both hold the same kind of string,
+  // so both are the same width, and a width that fits about a dozen entries.
+  const widthOf = (id) => {
+    const m = new RegExp(`id="${id}"[^>]*style="width:(\\d+)rem"`).exec(src)
+      || new RegExp(`id="${id}"[^>]*?style="width:(\\d+)rem"`).exec(src);
+    return m ? Number(m[1]) : null;
+  };
+  const a = widthOf('cBacks'); const b = widthOf('wBacks');
+  assert(a != null && b != null, `both look-back boxes state a width, got ${a} and ${b}`);
+  assert(a === b, `the two look-back boxes hold the same kind of string, so they are the same width: ${a}rem against ${b}rem`);
+  assert(a >= 24, `a long range of hours has to be readable in the box, and ${a}rem is not enough`);
+}
+
+// ONE OUTCOME'S NEIGHBOURS ARE THE ONES IT ACTUALLY HAD. A slid copy is the
+// whole outcome series moved along and wrapped round, so it holds every
+// outcome exactly once and every outcome keeps the outcome that followed it --
+// except at the single seam where the end meets the beginning.
+function aSlidCopyKeepsEveryOutcomeBesideTheOnesItHappenedBeside() {
+  const n = 500;
+  const out = []; for (let i = 0; i < n; i++) out.push(i);
+  const offsets = slidOffsets(n, 40, 12345);
+  assert(offsets.length === 40, `forty copies, forty offsets, got ${offsets.length}`);
+  assert(new Set(offsets).size === 40, 'no two copies of the same walk slide to the same place');
+  for (const k of offsets) assert(k >= 1 && k <= n - 1, `an offset of ${k} is either no slide at all or off the end`);
+  assert(JSON.stringify(slidOffsets(n, 40, 12345)) === JSON.stringify(offsets), 'the same seed gives the same offsets tomorrow');
+  assert(JSON.stringify(slidOffsets(n, 40, 999)) !== JSON.stringify(offsets), 'a different seed gives different ones');
+  for (const k of offsets.slice(0, 5)) {
+    const slid = []; for (let i = 0; i < n; i++) slid.push(out[(i + k) % n]);
+    assert(new Set(slid).size === n, `offset ${k}: every outcome is still there exactly once`);
+    let seams = 0;
+    for (let i = 0; i + 1 < n; i++) if (slid[i + 1] !== slid[i] + 1) seams++;
+    assert(seams <= 1, `offset ${k}: a slide has ONE seam where the end meets the beginning, got ${seams} breaks in the run`);
+  }
+  assert(slidOffsets(2, 10, 1).length === 0, 'a series too short to slide anywhere is not pretended to be slid');
+  assert(slidOffsets(500, 0, 1).length === 0, 'no copies asked for, none built');
+}
+
+// AND IT STILL CUTS THE THING THE COPY EXISTS TO CUT. A copy that kept the
+// link between reading and outcome would be no yardstick at all, and a slide
+// is a gentler operation than a deal -- so this is the guard that says the
+// gentler one is still enough.
+function aPlantedRelationshipBeatsItsSlidCopiesToo() {
+  const real = madeUpCoin(1800, 0);
+  const got = scrambled(real.move, real.out, BASE, 12, 'planted-slide');
+  assert(got.real.perTrade > 1, `the planted relationship pays, got ${got.real.perTrade}`);
+  assert(got.asGoodSlid === 0, `no slid copy should match a planted relationship, ${got.asGoodSlid} did`);
+  assert(got.asGood === 0, 'and neither should a dealt one');
+}
+
+// THE MEASUREMENT THIS RELEASE IS FOR, WRITTEN DOWN BEFORE IT SHIPPED. A coin
+// that simply drifts one way for a stretch and then the other, with the
+// reading knowing NOTHING about the outcome: there is no edge here and every
+// copy should be beaten about half the time. Dealing the outcomes into a new
+// order destroys the drift entirely, and the dealt copies come out far
+// stronger than fair -- about 80% of them as good as the real row, where 50%
+// is fair. Sliding keeps every run of drift intact and lands near fair.
+//
+// This is the OPPOSITE direction to what I told the owner it would show, and
+// it is left here in its own words so nobody re-derives the wrong story from
+// the shape of the fix (RULE SIX: hunt your own instrument).
+function theDealtCopiesAreUnfairOnADriftingCoinAndTheSlidOnesAreNot() {
+  const COINS = 10; const COPIES = 16; const N = 1400;
+  let dealt = 0; let slid = 0;
+  for (let seed = 1; seed <= COINS; seed++) {
+    let s = (seed * 2654435761) >>> 0 || 1;
+    const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const gauss = () => { let u = 0; let v = 0; while (!u) u = rnd(); while (!v) v = rnd(); return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v); };
+    const move = []; const out = []; let mu = 0; let left = 0;
+    for (let i = 0; i < N; i++) {
+      if (left <= 0) { mu = (rnd() < 0.5 ? 1 : -1) * 0.45; left = 150; }
+      left--;
+      move.push(gauss() * 10);          // the reading is disconnected from the outcome
+      out.push(mu + gauss() * 0.7);     // and the outcome drifts in runs
+    }
+    const g = scrambled(move, out, BASE, COPIES, `drift${seed}`);
+    dealt += g.asGood / COPIES; slid += g.asGoodSlid / COPIES;
+  }
+  const d = (dealt / COINS) * 100; const l = (slid / COINS) * 100;
+  assert(d >= 70, `dealing destroys the drift and flatters the copies: at least 70% of them should come out as good, got ${d.toFixed(1)}%`);
+  assert(l <= 68, `sliding keeps the drift, so the slid copies should land near the fair 50%, got ${l.toFixed(1)}%`);
+  assert(d - l >= 15, `the two nulls must disagree on a drifting coin, and they differ by only ${(d - l).toFixed(1)} points`);
+}
+
+// BOTH COUNTS REACH THE TABLE, side by side, and neither replaces the other:
+// the difference between them is the measurement.
+function bothCopyCountsAreOnTheTableSideBySide() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+  assert(/>scrambles as good\$\{cWalkSortBtn\('asGood', 'asc'\)\}/.test(src), 'the dealt count keeps its column');
+  assert(/>slides as good\$\{cWalkSortBtn\('asGoodSlid', 'asc'\)\}/.test(src), 'and the slid count has one beside it');
+  assert(/<td>\$\{scr\}<\/td><td>\$\{sld\}<\/td>/.test(src), 'both are drawn on every row');
+  assert(/const sld = r\.asGoodSlid == null \? '—'/.test(src), 'a row with no slid count shows a dash, not a nought');
+  assert(/<tr class="cwscan"><td colspan="13">/.test(src), 'the opened strip spans the table, which is one column wider than it was');
+  assert(/scrambled and \$\{a\.scrambles == null \? 10 : a\.scrambles\} sliding copies/.test(src), 'the finished line says both kinds were built');
+  assert(/Each copy is built two ways and BOTH are reported/.test(help), 'and Help says the one box builds both');
 }
 
 module.exports = {
@@ -400,4 +503,8 @@ module.exports = {
   theWindowStripIsReadableAndSaysWhatIsMissing,
   theLookBackIsItsOwnAxisAndOnlyWhatTheRecordCarries,
   bothLookBackBoxesAreOnScreenWhereTheyBelong,
+  aSlidCopyKeepsEveryOutcomeBesideTheOnesItHappenedBeside,
+  aPlantedRelationshipBeatsItsSlidCopiesToo,
+  theDealtCopiesAreUnfairOnADriftingCoinAndTheSlidOnesAreNot,
+  bothCopyCountsAreOnTheTableSideBySide,
 };

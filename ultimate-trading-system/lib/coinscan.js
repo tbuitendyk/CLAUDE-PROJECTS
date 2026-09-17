@@ -165,19 +165,77 @@ function walk(move, out, opts) {
 // hundred looks are being taken and a handful will shine for nothing. A row
 // that beats its own scrambles is saying something; a row that is merely
 // positive is not.
+// AND THE SAME WALK ON SLIDING COPIES, BESIDE THEM (owner, 2026-09-17:
+// "explain first of all what the whole point of this sliding copy is").
+//
+// Dealing the outcomes into a new order cuts TWO things where only one was
+// meant to go: the link to the reading, which is the whole point, and the
+// outcomes' OWN ORDER IN TIME, which was not. A SLIDING copy moves every
+// outcome along by the same offset and wraps the tail round to the front, so
+// each outcome keeps the outcomes it actually happened next to and the only
+// thing cut is which reading it sat under.
+//
+// WHAT I SAID THIS WOULD SHOW, AND WHAT IT ACTUALLY SHOWED. I told the owner
+// the dealt copies were probably flattering the real rows -- big moves arrive
+// in bunches, dealing spreads them evenly, so the copies would be a calmer
+// coin than the real one ever was -- and that this was the likely cause of 883
+// of 4,628 rows on the box beating all fifty copies against a chance figure of
+// 90.7. Three probes were run before any of this shipped and NONE of them
+// supports that (RULE SIX, hunt your own instrument):
+//
+//   * bunched MAGNITUDES, reading disconnected from outcome: dealt and slid
+//     are the same to within noise (22.7 and 22.9 of 50 as good, fair is 25).
+//     Size clustering on its own is not the problem.
+//   * PERSISTENT DIRECTION, reading disconnected from outcome -- a coin that
+//     simply drifts one way for a stretch, then the other: dealt copies come
+//     out at 41 to 45 of 50 as good where 25 is fair, and slid copies at 24 to
+//     29. So the dealt null IS badly unfair on a drifting coin -- but it is
+//     unfair AGAINST the real row, not for it, which is the wrong direction to
+//     explain an excess.
+//   * ONE PRICE PATH, the realistic shape, where the reading is the change
+//     into the decision and the outcome the change after it: dealt and slid
+//     are indistinguishable (24.8/24.8, 22.4/22.7, 22.5/22.5).
+//
+// So sliding is kept because it was never worse in any probe and is clearly
+// fairer in one, not because it is expected to collapse the count on the box.
+// The 883 most likely comes from somewhere else -- 4,628 rows are 13
+// look-backs by 4 bands by ninety coin-and-shape pairs, and the look-backs and
+// bands of one pair read almost the same thing, so "chance is 90.7" counts
+// draws that are not independent. That is reported to the owner, not acted on.
+//
+// BOTH COUNTS ARE KEPT, side by side, and neither replaces the other: the
+// difference between them is the measurement, and a measurement that is shown
+// can be argued with, where one that is asserted cannot.
+//
+// The offsets are a seeded order of 1..n-1, so no two copies of the same walk
+// share one until there are more copies than there are places to slide to.
+function slidOffsets(n, copies, seed) {
+  if (!(n > 2) || !(copies > 0)) return [];
+  const order = seededOrder(n - 1, seed);
+  const offsets = [];
+  for (let c = 0; c < copies; c++) offsets.push(order[c % order.length] + 1);
+  return offsets;
+}
 function scrambled(move, out, opts, copies, seedText) {
   const real = walk(move, out, opts);
-  if (!copies || real.perTrade == null) return { real, copies: copies || 0, asGood: null };
+  if (!copies || real.perTrade == null) return { real, copies: copies || 0, asGood: null, asGoodSlid: null };
   const n = Math.min(move.length, out.length);
+  const beatsIt = (w) => w.perTrade != null && w.perTrade >= real.perTrade - 1e-12;
   let asGood = 0;
   for (let c = 0; c < copies; c++) {
     const order = seededOrder(n, hashOf(`${seedText}|${c}`));
     const dealt = new Array(n);
     for (let i = 0; i < n; i++) dealt[i] = out[order[i]];
-    const w = walk(move, dealt, opts);
-    if (w.perTrade != null && w.perTrade >= real.perTrade - 1e-12) asGood++;
+    if (beatsIt(walk(move, dealt, opts))) asGood++;
   }
-  return { real, copies, asGood };
+  const offsets = slidOffsets(n, copies, hashOf(`${seedText}|slide`));
+  let asGoodSlid = offsets.length ? 0 : null;
+  for (const k of offsets) {
+    const slid = new Array(n);
+    for (let i = 0; i < n; i++) slid[i] = out[(i + k) % n];
+    if (beatsIt(walk(move, slid, opts))) asGoodSlid++;
+  }
+  return { real, copies, asGood, asGoodSlid };
 }
 
 
@@ -209,7 +267,7 @@ function walkTask({ move, out, opts, copies, seedText }) {
   return {
     trades: got.real.trades, perTrade: got.real.perTrade,
     windows: got.real.windows, windowsUp: got.real.windowsUp, windowsDown: got.real.windowsDown,
-    best: got.real.best, worst: got.real.worst, copies: got.copies, asGood: got.asGood,
+    best: got.real.best, worst: got.real.worst, copies: got.copies, asGood: got.asGood, asGoodSlid: got.asGoodSlid,
     scan: got.real.rows.map((r) => ({ from: r.from, to: r.to, n: r.n, perTrade: r.perTrade, thin: !!r.thin })),
   };
 }
@@ -274,13 +332,13 @@ function rowOf(task, got) {
     span: task.span, warmUp: task.warmUp,
     trades: got.trades, perTrade: got.perTrade,
     windows: got.windows, windowsUp: got.windowsUp, windowsDown: got.windowsDown,
-    best: got.best, worst: got.worst, copies: got.copies, asGood: got.asGood,
+    best: got.best, worst: got.worst, copies: got.copies, asGood: got.asGood, asGoodSlid: got.asGoodSlid,
     scan: (got.scan || []).map((w) => ({ ...w, ts: task.ts ? task.ts[w.from] : null })),
   };
 }
 
 module.exports = {
   BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID,
-  windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, periodsForMonths, HOURS_A_MONTH,
+  windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, slidOffsets, periodsForMonths, HOURS_A_MONTH,
   walkTask, walkTasksFor, rowOf,
 };

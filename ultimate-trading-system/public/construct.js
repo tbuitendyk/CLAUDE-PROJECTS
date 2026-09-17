@@ -8629,6 +8629,7 @@ function cWalkRow(r, shapes) {
   const shape = (shapes.find((s) => s.key === r.geometry) || {}).label || r.geometry;
   const pt = r.perTrade == null ? '—' : `${r.perTrade > 0 ? '+' : ''}${Number(r.perTrade).toFixed(3)}%`;
   const scr = r.asGood == null ? '—' : `${r.asGood} of ${r.copies}`;
+  const sld = r.asGoodSlid == null ? '—' : `${r.asGoodSlid} of ${r.copies}`;
   // THE DATE GOES ABOVE ITS FIGURE, NOT BESIDE IT. Written beside it first,
   // against a class that did not exist, and it rendered as one run of digits
   // with no way to tell which date belonged to which number (owner,
@@ -8639,7 +8640,7 @@ function cWalkRow(r, shapes) {
   const blanks = all.filter((w) => w.thin || w.n === 0 || w.perTrade == null).length;
   const says = `${all.length} window(s) in this coin's history · ${all.length - blanks} counted`
     + `${blanks ? ` · ${blanks} had too few trades to count and show as a dash` : ''}`;
-  const strip = !open ? '' : `<tr class="cwscan"><td colspan="12">
+  const strip = !open ? '' : `<tr class="cwscan"><td colspan="13">
     <p class="cwsays">${esc(says)}</p>
     <div class="cwstrip">${all.map((w) => {
     const v = w.perTrade;
@@ -8656,7 +8657,7 @@ function cWalkRow(r, shapes) {
     <td>${r.windows}</td><td>${r.windowsUp} of ${r.windows}</td>
     <td>${r.best == null ? '—' : `${r.best > 0 ? '+' : ''}${Number(r.best).toFixed(2)}%`}</td>
     <td>${r.worst == null ? '—' : `${r.worst > 0 ? '+' : ''}${Number(r.worst).toFixed(2)}%`}</td>
-    <td>${scr}</td>
+    <td>${scr}</td><td>${sld}</td>
   </tr>${strip}`;
 }
 // A SORTER ON EVERY COLUMN, the same one Boards has had all along -- a box
@@ -8689,6 +8690,7 @@ function cWalkSorted(rows, how) {
     best: (r) => r.best,
     worst: (r) => r.worst,
     asGood: (r) => r.asGood,
+    asGoodSlid: (r) => r.asGoodSlid,
   };
   const of = OF[how] || OF.asGood;
   // the second key for the share, always more windows first whichever way the
@@ -8727,7 +8729,7 @@ function cWalkLine() {
   return `${n} row(s) · finished ${esc(cWhen(new Date(st.finishedAt).toISOString()))} UTC · window ${a.windowMonths} month(s)`
     + ` · usual move ${a.usual === 'whole' ? 'over the whole history' : 'trailing'}`
     + ` · leaning ${a.signsMode === 'fixed' ? 'learned once on train' : 'learned before each window'}`
-    + ` · ${a.scrambles == null ? 10 : a.scrambles} scrambled copies`;
+    + ` · ${a.scrambles == null ? 10 : a.scrambles} scrambled and ${a.scrambles == null ? 10 : a.scrambles} sliding copies`;
 }
 function cWalkPanel() {
   const st = cWalkSt;
@@ -8746,7 +8748,7 @@ function cWalkPanel() {
       <label class="f" title="how long one window is. Six months is a reasonable place to start: long enough to hold trades, short enough that a phase shows as a phase. Each chunk shape converts it to its own number of decisions.">window, months<input${off} id="wWindow" type="number" min="1" step="1" value="${esc(String(cState.wWindow))}" style="width:5rem"></label>
       <label class="f" title="how much history has to sit behind the first window before anything is priced. The signs are learned from it, so too little and the first windows are guesses.">history before the first window, months<input${off} id="wWarm" type="number" min="1" step="1" value="${esc(String(cState.wWarm))}" style="width:5rem"></label>
       <label class="f" title="how big a move has to be before it counts, as a percentage of the coin's usual move. Comma separated; every one of them is walked and every one is reported, never only the best.">bands to try<input${off} id="wBands" value="${esc(String(cState.wBands))}" style="width:11rem"></label>
-      <label class="f" title="which look-backs to walk, in hours, comma separated. Blank walks only each shape&#39;s own span, which is what every reading did before this. A look-back the records do not carry is left out rather than guessed &mdash; read the coins again with it in the box above to add one.">look-backs to try, hours (blank = each shape&#39;s own)<input${off} id="wBacks" value="${esc(String(cState.wBacks || ''))}" placeholder="${esc((cBacksNow.inRecords || []).join(','))}" style="width:13rem"></label>
+      <label class="f" title="which look-backs to walk, in hours, comma separated. Blank walks only each shape&#39;s own span, which is what every reading did before this. A look-back the records do not carry is left out rather than guessed &mdash; read the coins again with it in the box above to add one.">look-backs to try, hours (blank = each shape&#39;s own)<input${off} id="wBacks" value="${esc(String(cState.wBacks || ''))}" placeholder="${esc((cBacksNow.inRecords || []).join(','))}" style="width:26rem"></label>
       <label class="c" title="also walk the band the reading above searched out for each unit. It is marked searched in the table because it was chosen across the whole history and the others were not."><input${off} id="wSpot" type="checkbox"${cState.wSpot ? ' checked' : ''}> also each unit's sweet spot band</label>
     </div>
     <div class="row">
@@ -8756,7 +8758,7 @@ function cWalkPanel() {
       <label class="f" title="learned before each window: what the walk would actually have made. learned once on train: whether the relationship itself holds still. They answer different questions.">which way it leans<select id="wSigns"${off}>
         <option value="rolled"${cState.wSigns === 'rolled' ? ' selected' : ''}>learned before each window</option>
         <option value="fixed"${cState.wSigns === 'fixed' ? ' selected' : ''}>learned once on train</option></select></label>
-      <label class="f" title="how many copies of the same coin to walk with its outcomes dealt into a new order. A row that beats its own copies is saying something; a row that is merely positive is not. Zero skips them and the walk is much faster.">scrambled copies<input${off} id="wScrambles" type="number" min="0" max="200" step="1" value="${esc(String(cState.wScrambles))}" style="width:5rem"></label>
+      <label class="f" title="how many copies of the same coin to walk. Each one is built twice and both are reported: once with its outcomes dealt into a new order, and once with them slid along and wrapped round. A row that beats its own copies is saying something; a row that is merely positive is not. Zero skips both, and the walk is well over twice as fast.">scrambled copies<input${off} id="wScrambles" type="number" min="0" max="200" step="1" value="${esc(String(cState.wScrambles))}" style="width:5rem"></label>
       <label class="f" title="a window with fewer trades than this is shown as a dash and left out of the totals, because a window of two trades is not a reading.">fewest trades a window must have<input${off} id="wFloor" type="number" min="0" step="1" value="${esc(String(cState.wFloor))}" style="width:5rem"></label>
     </div>
     <div class="row">
@@ -8782,7 +8784,8 @@ function cWalkPanel() {
       <th title="how many of those windows made money. Half is what a coin with nothing in it looks like.">windows up${cWalkSortBtn('windowsUp', 'desc')}</th>
       <th title="the best single window">best window${cWalkSortBtn('best', 'desc')}</th>
       <th title="the worst single window">worst window${cWalkSortBtn('worst', 'desc')}</th>
-      <th title="how many scrambled copies of this same coin did AT LEAST AS WELL. Low is the result; with hundreds of rows on this table, merely positive is not.">scrambles as good${cWalkSortBtn('asGood', 'asc')}</th>
+      <th title="how many scrambled copies of this same coin did AT LEAST AS WELL. Low is the result; with hundreds of rows on this table, merely positive is not. Read it beside the column to its right, not on its own.">scrambles as good${cWalkSortBtn('asGood', 'asc')}</th>
+      <th title="the same count against SLIDING copies. A sliding copy moves every outcome along by the same amount and wraps the tail round to the front, so each outcome keeps the outcomes it actually happened next to and the only thing cut is which reading it sat under. The column to the left deals them into a new order instead, which also destroys the run of the outcomes themselves &mdash; the stretches where a coin simply drifts one way. On a made-up coin that drifts, that makes the dealt copies far harder to beat than they should be, while the slid ones come out fair. Where the two disagree, trust this one.">slides as good${cWalkSortBtn('asGoodSlid', 'asc')}</th>
     </tr></thead>
     <tbody>${cWalkSorted(rows, cState.wSort).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
     <p class="note">${rows.length} row(s). The headings stay put while the rows scroll under them; every one of them sorts.</p>`)}
@@ -9056,7 +9059,7 @@ async function drawCoins() {
     <div class="row">
       <label class="f" title="which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep.">coins (blank = all ${d && d.downloaded != null ? d.downloaded : '—'} downloaded)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${esc(cState.coins || '')}" style="width:16rem"${off}></label>
       <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. Change it and every bar recolours at once; nothing is read again. Sweep trains with this same number.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
-      <label class="f" title="the look-backs a reading stores, in hours, comma separated. The chunk shape decides the TRADE; a look-back decides what is LOOKED AT, and there is no reason they should be the same length. Measured from candles at read time, so a change only reaches the records when the coins are read again &mdash; which is why it lives here and not on Walk it forward.">look-backs to store, hours<input id="cBacks" value="${esc(((d && d.lookbacks && d.lookbacks.value) || []).join(','))}" style="width:13rem"${off}></label>
+      <label class="f" title="the look-backs a reading stores, in hours, comma separated. The chunk shape decides the TRADE; a look-back decides what is LOOKED AT, and there is no reason they should be the same length. Measured from candles at read time, so a change only reaches the records when the coins are read again &mdash; which is why it lives here and not on Walk it forward.">look-backs to store, hours<input id="cBacks" value="${esc(((d && d.lookbacks && d.lookbacks.value) || []).join(','))}" style="width:26rem"${off}></label>
       <label class="c" title="ticked, every coin and shape is drawn at its own sweet spot: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. Nothing is read again either way."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own sweet spot</label>
     </div>
     <div class="row">
