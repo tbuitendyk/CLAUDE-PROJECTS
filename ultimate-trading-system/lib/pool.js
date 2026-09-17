@@ -38,6 +38,7 @@ const INLINE = {
   s3Tally: require('./stagework').s3TallyShardTask,
   hlTrain: require('./halflife').hlTrainTask,
   passTrain: require('./passes').passTrainTask,
+  coinWalk: require('./coinscan').walkTask,
   ping: async () => ({ priority: os.getPriority(), pid: process.pid, ...threadNice() }),
 };
 

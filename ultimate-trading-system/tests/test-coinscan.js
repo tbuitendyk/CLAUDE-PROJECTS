@@ -12,7 +12,10 @@
 const { assert } = require('./helpers');
 const {
   windowsOf, usualMoveAt, signsBefore, walk, scrambled, periodsForMonths,
+  walkTask, walkTasksFor, rowOf, walkEverything,
 } = require('../lib/coinscan');
+const fs = require('fs');
+const path = require('path');
 
 // A COIN MADE TO ORDER. `switchAt` is where the relationship starts: before
 // it the outcome ignores the move entirely, after it a big rise is always
@@ -160,6 +163,80 @@ function monthsBecomeDecisionsOnEachShapesOwnClock() {
   assert(periodsForMonths(0, 24) === 0, 'no months is no decisions rather than a crash');
 }
 
+// EVERY WALK IS LISTED BEFORE ANY OF IT RUNS, so the screen can say "0 of 450"
+// from the first second instead of one word that could mean anything.
+function everyWalkIsListedUpFrontOnePerCoinShapeAndBand() {
+  const { move, out } = madeUpCoin(900, 0);
+  const records = [
+    { coin: 'AAAUSDT', read: true, shapes: { 'daily-1d': { move, out, periods: 900, ts: move.map((_, i) => i) } } },
+    { coin: 'BBBUSDT', read: true, shapes: { 'daily-1d': { move, out, periods: 900, ts: move.map((_, i) => i) } } },
+    { coin: 'CCCUSDT', read: false, shapes: { 'daily-1d': { move, out, periods: 900 } } },
+  ];
+  const geos = { 'daily-1d': { stepHours: 24 } };
+  const plain = walkTasksFor(records, geos, { bands: [50, 100], sweetSpots: null, windowMonths: 6, warmUpMonths: 12 });
+  assert(plain.length === 4, `two coins read, two bands, so four walks, got ${plain.length}`);
+  assert(!plain.some((t) => t.coin === 'CCCUSDT'), 'a coin that could not be read is not walked');
+  assert(!plain.some((t) => t.searched), 'with no sweet spot given, no walk is marked searched');
+  const withSpot = walkTasksFor(records, geos, { bands: [50, 100], sweetSpots: { 'AAAUSDT|daily-1d': 175 }, windowMonths: 6, warmUpMonths: 12 });
+  assert(withSpot.length === 5, `the one sweet spot adds one walk, got ${withSpot.length}`);
+  const spot = withSpot.filter((t) => t.searched);
+  assert(spot.length === 1 && spot[0].band === 175 && spot[0].coin === 'AAAUSDT', 'exactly the sweet spot walk is marked searched');
+  // a sweet spot the owner already typed is not walked twice
+  const dup = walkTasksFor(records, geos, { bands: [50, 175], sweetSpots: { 'AAAUSDT|daily-1d': 175 }, windowMonths: 6, warmUpMonths: 12 });
+  assert(dup.length === 4, `a sweet spot already in the typed bands is not walked twice, got ${dup.length}`);
+}
+
+// THE WORKER PATH AND THE ONE-THREAD PATH MUST AGREE TO THE DIGIT. Four
+// hundred walks moved onto the pool in 3.158.0; if the two ever differ, a
+// number on the screen depends on how many cores the box has.
+async function theWorkerPathAndTheOneThreadPathGiveTheSameRows() {
+  const { move, out } = madeUpCoin(1200, 0);
+  const records = [{ coin: 'AAAUSDT', read: true, shapes: { 'daily-1d': { move, out, periods: 1200, ts: move.map((_, i) => 1000 + i) } } }];
+  const geos = { 'daily-1d': { stepHours: 24 } };
+  const opts = { bands: [100, 150], sweetSpots: null, windowMonths: 6, warmUpMonths: 12, scrambles: 4, floor: 5 };
+  const oneThread = await walkEverything(records, geos, opts, null);
+  const viaTasks = walkTasksFor(records, geos, opts).map((t) => rowOf(t, walkTask(t.payload)));
+  assert(oneThread.length === viaTasks.length, `the same number of rows, ${oneThread.length} against ${viaTasks.length}`);
+  for (let i = 0; i < oneThread.length; i++) {
+    assert(JSON.stringify(oneThread[i]) === JSON.stringify(viaTasks[i]),
+      `row ${i} differs between the two paths:\n  one thread: ${JSON.stringify(oneThread[i]).slice(0, 220)}\n  tasks:      ${JSON.stringify(viaTasks[i]).slice(0, 220)}`);
+  }
+}
+
+// THE POOL CAN ACTUALLY RUN IT. A task kind registered on one side and not the
+// other is how a walk would silently fall back to the main thread.
+function thePoolKnowsTheWalkOnBothItsPaths() {
+  const pool = fs.readFileSync(path.join(__dirname, '..', 'lib', 'pool.js'), 'utf8');
+  const worker = fs.readFileSync(path.join(__dirname, '..', 'lib', 'worker.js'), 'utf8');
+  assert(/coinWalk: require\('\.\/coinscan'\)\.walkTask,/.test(pool), 'the inline path runs the walk');
+  assert(/coinWalk: require\('\.\/coinscan'\)\.walkTask,/.test(worker), 'and so does a worker thread');
+}
+
+// THE SCREEN SAYS WHAT THE BOX IS DOING, AND KEEPS SAYING IT (owner,
+// 2026-09-17: "there's no indication it's working, and it looks like it's not
+// working"). The press starts a run and answers at once; the panel polls it,
+// counts it off with the box's busy share, offers Stop, and picks a running
+// walk back up when the tab is opened again.
+function theWalkSaysWhatItIsDoingAndSurvivesLeavingTheTab() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const srv = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
+  assert(/app\.post\('\/api\/coins\/walk'/.test(srv), 'the press has a door');
+  assert(/app\.get\('\/api\/coins\/walk'/.test(srv), 'and the count has one');
+  assert(/app\.post\('\/api\/coins\/walk\/stop'/.test(srv), 'and Stop has one');
+  assert(/walking · \$\{st\.done\} of \$\{st\.of\}/.test(src), 'the line counts the walks off');
+  assert(/\$\{fCpuWords\(st\.cpu\)\}/.test(src), 'and says how busy the box is, the same words every other progress line uses');
+  assert(/across \$\{st\.workers\} worker/.test(src), 'and how many workers it is across');
+  assert(/cWalkPoll = setTimeout\(cWalkTick, 1000\)/.test(src), 'it polls once a second while it runs');
+  assert(/if \(tab !== 'coins'\) return;/.test(src), 'and stops the moment the tab is left');
+  assert(/cWalkBind\(\);\n  cWalkTick\(\);/.test(src), 'opening the tab picks a running walk back up');
+  assert(/<button id="wStop">Stop<\/button>/.test(src), 'Stop is offered while it runs');
+  // RULE FOUR: the buttons sit in a row of their own, the way every other
+  // button on this screen does -- mixed in with the two-line labels they
+  // floated off the baseline of the boxes beside them.
+  const rowWithRun = /<div class="row">\s*<button id="wRun"[^>]*>Walk it forward<\/button>\s*\$\{walking \? '<button id="wStop">Stop<\/button>' : ''\}\s*<span id="wOut"/;
+  assert(rowWithRun.test(src), 'the buttons and the line share a row with no field in it');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -170,4 +247,8 @@ module.exports = {
   aWindowUnderTheFloorIsLeftOutOfTheTotalsAndSaysSo,
   anythingButTheTwoValuesEachBoxOffersFallsToItsSafeOne,
   monthsBecomeDecisionsOnEachShapesOwnClock,
+  everyWalkIsListedUpFrontOnePerCoinShapeAndBand,
+  theWorkerPathAndTheOneThreadPathGiveTheSameRows,
+  thePoolKnowsTheWalkOnBothItsPaths,
+  theWalkSaysWhatItIsDoingAndSurvivesLeavingTheTab,
 };

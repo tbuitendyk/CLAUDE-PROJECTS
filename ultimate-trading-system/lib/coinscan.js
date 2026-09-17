@@ -193,6 +193,74 @@ function periodsForMonths(months, stepHours) {
   return Number.isFinite(p) && p > 0 ? p : 0;
 }
 
+// ONE TASK, RUNNABLE ON A WORKER THREAD (3.158.0). The walk was a single
+// thread's job and the box has four; on ninety coin-and-shape pairs at five
+// bands that is four hundred and fifty independent walks that share nothing,
+// which is exactly the shape the pool was built for. The payload carries its
+// own moves and outcomes so the worker needs no files and no state.
+function walkTask({ move, out, opts, copies, seedText }) {
+  const got = scrambled(move, out, opts, copies, seedText);
+  return {
+    trades: got.real.trades, perTrade: got.real.perTrade,
+    windows: got.real.windows, windowsUp: got.real.windowsUp, windowsDown: got.real.windowsDown,
+    best: got.real.best, worst: got.real.worst, copies: got.copies, asGood: got.asGood,
+    scan: got.real.rows.map((r) => ({ from: r.from, to: r.to, n: r.n, perTrade: r.perTrade, thin: !!r.thin })),
+  };
+}
+
+// EVERY WALK THIS RUN WILL DO, listed before any of it starts, so the screen
+// can say "N of M" from the first second rather than counting as it goes.
+function walkTasksFor(records, geometries, opts) {
+  const {
+    windowMonths = 6, warmUpMonths = 12, bands = BANDS_WHEN_UNSAID, sweetSpots = null,
+    usual = 'trailing', signsMode = 'rolled', scrambles = SCRAMBLES_WHEN_UNSAID,
+    floor = 5, only = null, fixedUpTo = null,
+  } = opts || {};
+  const want = only && only.length ? new Set(only.map((c) => String(c).toUpperCase())) : null;
+  const tasks = [];
+  for (const rec of records || []) {
+    if (!rec || !rec.read) continue;
+    if (want && !want.has(String(rec.coin).toUpperCase())) continue;
+    for (const [key, geo] of Object.entries(geometries || {})) {
+      const sr = rec.shapes && rec.shapes[key];
+      if (!sr || !Array.isArray(sr.move) || !Array.isArray(sr.out) || !sr.move.length) continue;
+      const span = periodsForMonths(windowMonths, geo.stepHours);
+      const warmUp = periodsForMonths(warmUpMonths, geo.stepHours);
+      const spot = sweetSpots ? sweetSpots[`${rec.coin}|${key}`] : null;
+      const list = bands.slice();
+      if (spot != null && !list.includes(spot)) list.push(spot);
+      for (const band of list) {
+        tasks.push({
+          coin: rec.coin, geometry: key, band, searched: spot != null && band === spot, span, warmUp,
+          ts: Array.isArray(sr.ts) ? sr.ts : null,
+          payload: {
+            move: sr.move, out: sr.out, copies: scrambles,
+            seedText: `${rec.coin}|${key}|${band}|${usual}|${signsMode}|${span}`,
+            opts: {
+              band, span, warmUp, usual, signsMode, floor,
+              fixedUpTo: fixedUpTo && fixedUpTo[`${rec.coin}|${key}`] != null ? fixedUpTo[`${rec.coin}|${key}`] : warmUp,
+            },
+          },
+        });
+      }
+    }
+  }
+  return tasks;
+}
+
+// THE ROW A FINISHED TASK BECOMES. Kept here so the worker path and the
+// inline path build the same row and neither can drift.
+function rowOf(task, got) {
+  return {
+    coin: task.coin, geometry: task.geometry, band: task.band, searched: task.searched,
+    span: task.span, warmUp: task.warmUp,
+    trades: got.trades, perTrade: got.perTrade,
+    windows: got.windows, windowsUp: got.windowsUp, windowsDown: got.windowsDown,
+    best: got.best, worst: got.worst, copies: got.copies, asGood: got.asGood,
+    scan: (got.scan || []).map((w) => ({ ...w, ts: task.ts ? task.ts[w.from] : null })),
+  };
+}
+
 async function walkEverything(records, geometries, opts, yieldNow) {
   const {
     windowMonths = 6, warmUpMonths = 12, bands = BANDS_WHEN_UNSAID, sweetSpots = null,
@@ -240,4 +308,5 @@ async function walkEverything(records, geometries, opts, yieldNow) {
 module.exports = {
   BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID,
   windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, periodsForMonths, walkEverything, HOURS_A_MONTH,
+  walkTask, walkTasksFor, rowOf,
 };

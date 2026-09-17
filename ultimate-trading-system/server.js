@@ -230,13 +230,14 @@ app.post('/api/coins/band', (req, res) => {
     return res.json({ band: coinsrun.sitOutBand(), auto: coinsrun.bandAuto() });
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
-// THE WALK FORWARD'S ONE DOOR (3.157.0). Every coin and shape, at every band
-// the screen names, priced window by window knowing only what was behind each
-// window. Reports; changes nothing and stores nothing.
-app.post('/api/coins/walk', async (req, res) => {
+// THE WALK FORWARD'S DOORS (3.157.0; a background run, 3.158.0). The press
+// STARTS it and answers at once with how many walks there will be; the screen
+// polls the same path for the count, the box's busy share and, when it lands,
+// the rows. Reports; changes nothing and stores nothing.
+app.post('/api/coins/walk', (req, res) => {
   try {
     const b = req.body || {};
-    const out = await coinsrun.coinsWalk({
+    return res.json(coinsrun.coinsWalkStart({
       windowMonths: Number(b.windowMonths) || 6,
       warmUpMonths: Number(b.warmUpMonths) || 12,
       bands: Array.isArray(b.bands) ? b.bands.map(Number).filter((x) => Number.isFinite(x) && x >= 0) : undefined,
@@ -246,9 +247,23 @@ app.post('/api/coins/walk', async (req, res) => {
       scrambles: Number.isFinite(Number(b.scrambles)) ? Math.max(0, Math.min(200, Number(b.scrambles))) : undefined,
       floor: Number.isFinite(Number(b.floor)) ? Math.max(0, Number(b.floor)) : 5,
       only: Array.isArray(b.only) ? b.only : (b.only ? String(b.only).split(',').map((x) => x.trim()).filter(Boolean) : null),
-    });
-    return res.json(out);
+    }));
   } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.get('/api/coins/walk', (req, res) => {
+  try {
+    const body = JSON.stringify(coinsrun.coinsWalkStatus());
+    res.type('json');
+    if (/\bgzip\b/.test(String(req.headers['accept-encoding'] || ''))) {
+      res.set('Content-Encoding', 'gzip');
+      return res.send(require('zlib').gzipSync(body));
+    }
+    return res.send(body);
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/coins/walk/stop', (req, res) => {
+  try { return res.json(coinsrun.coinsWalkStop()); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
 });
 // THE PASSERS' ONE DOOR: the bar, and a row's tick. Both live beside the band.
 app.post('/api/coins/passers', (req, res) => {

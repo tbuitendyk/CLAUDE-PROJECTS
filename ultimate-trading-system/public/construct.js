@@ -8395,7 +8395,8 @@ const cRemember = () => { try { localStorage.setItem(C_KEY, JSON.stringify(cStat
 // choice, made here by looking, never made in code.
 let coinsPoll = null;
 let cWalkRows = null;     // the last walk's rows, kept so a sort or an open row does not walk again
-let cWalkNote = '';
+let cWalkSt = null;       // what the box says the walk is doing, so leaving the tab and coming back finds it
+let cWalkPoll = null;
 const cWalkOpen = new Set();
 let cLastDone = null;
 let cLastRecs = [];
@@ -8652,7 +8653,30 @@ function cWalkSorted(rows, how) {
   else a.sort((x, y) => (num(x.asGood, 999) - num(y.asGood, 999)) || (num(y.perTrade, -1e9) - num(x.perTrade, -1e9)));
   return a;
 }
+// WHAT THE WALK IS DOING, IN ONE LINE. While it runs: how many of how many,
+// across how many workers, and how busy the box is -- the owner went to look at
+// the processor and came back to a screen that said nothing at all (2026-09-17:
+// "there's no indication it's working, and it looks like it's not working").
+function cWalkLine() {
+  const st = cWalkSt;
+  if (!st) return '';
+  if (st.running) {
+    return `walking · ${st.done} of ${st.of}${st.workers ? ` · across ${st.workers} worker${st.workers === 1 ? '' : 's'}` : ''}`
+      + `${fCpuWords(st.cpu)}${st.stopping ? ' · stopping' : ''}`;
+  }
+  if (st.error) return '';
+  if (!st.finishedAt) return '';
+  const n = (st.rows || []).length;
+  const a = st.asked || {};
+  return `${n} row(s) · finished ${esc(cWhen(new Date(st.finishedAt).toISOString()))} UTC · window ${a.windowMonths} month(s)`
+    + ` · usual move ${a.usual === 'whole' ? 'over the whole history' : 'trailing'}`
+    + ` · leaning ${a.signsMode === 'fixed' ? 'learned once on train' : 'learned before each window'}`
+    + ` · ${a.scrambles == null ? 10 : a.scrambles} scrambled copies`;
+}
 function cWalkPanel() {
+  const st = cWalkSt;
+  const walking = !!(st && st.running);
+  const off = walking ? ' disabled' : '';
   const rows = (cWalkRows && cWalkRows.rows) || null;
   const shapes = (cWalkRows && cWalkRows.shapes) || [];
   return `<div class="panel">
@@ -8663,33 +8687,38 @@ function cWalkPanel() {
       could not have known at the time. Read the windows across: steady is a property of the coin, off-then-on is a
       phase, up and down is noise. <b>Nothing here trades, refuses or chooses.</b></p>
     <div class="row">
-      <label class="f" title="how long one window is. Six months is a reasonable place to start: long enough to hold trades, short enough that a phase shows as a phase. Each chunk shape converts it to its own number of decisions.">window, months<input id="wWindow" type="number" min="1" step="1" value="${esc(String(cState.wWindow))}" style="width:5rem"></label>
-      <label class="f" title="how much history has to sit behind the first window before anything is priced. The signs are learned from it, so too little and the first windows are guesses.">history before the first window, months<input id="wWarm" type="number" min="1" step="1" value="${esc(String(cState.wWarm))}" style="width:5rem"></label>
-      <label class="f" title="how big a move has to be before it counts, as a percentage of the coin's usual move. Comma separated; every one of them is walked and every one is reported, never only the best.">bands to try<input id="wBands" value="${esc(String(cState.wBands))}" style="width:11rem"></label>
-      <label class="c" title="also walk the band the reading above searched out for each unit. It is marked searched in the table because it was chosen across the whole history and the others were not."><input id="wSpot" type="checkbox"${cState.wSpot ? ' checked' : ''}> also each unit's sweet spot band</label>
+      <label class="f" title="how long one window is. Six months is a reasonable place to start: long enough to hold trades, short enough that a phase shows as a phase. Each chunk shape converts it to its own number of decisions.">window, months<input${off} id="wWindow" type="number" min="1" step="1" value="${esc(String(cState.wWindow))}" style="width:5rem"></label>
+      <label class="f" title="how much history has to sit behind the first window before anything is priced. The signs are learned from it, so too little and the first windows are guesses.">history before the first window, months<input${off} id="wWarm" type="number" min="1" step="1" value="${esc(String(cState.wWarm))}" style="width:5rem"></label>
+      <label class="f" title="how big a move has to be before it counts, as a percentage of the coin's usual move. Comma separated; every one of them is walked and every one is reported, never only the best.">bands to try<input${off} id="wBands" value="${esc(String(cState.wBands))}" style="width:11rem"></label>
+      <label class="c" title="also walk the band the reading above searched out for each unit. It is marked searched in the table because it was chosen across the whole history and the others were not."><input${off} id="wSpot" type="checkbox"${cState.wSpot ? ' checked' : ''}> also each unit's sweet spot band</label>
     </div>
     <div class="row">
-      <label class="f" title="trailing: worked out from everything before each window, which is what a run would have had in hand. whole history: one figure over the whole span, which is what the reading above uses.">the coin's usual move<select id="wUsual">
+      <label class="f" title="trailing: worked out from everything before each window, which is what a run would have had in hand. whole history: one figure over the whole span, which is what the reading above uses.">the coin's usual move<select id="wUsual"${off}>
         <option value="trailing"${cState.wUsual === 'trailing' ? ' selected' : ''}>trailing</option>
         <option value="whole"${cState.wUsual === 'whole' ? ' selected' : ''}>whole history</option></select></label>
-      <label class="f" title="learned before each window: what the walk would actually have made. learned once on train: whether the relationship itself holds still. They answer different questions.">which way it leans<select id="wSigns">
+      <label class="f" title="learned before each window: what the walk would actually have made. learned once on train: whether the relationship itself holds still. They answer different questions.">which way it leans<select id="wSigns"${off}>
         <option value="rolled"${cState.wSigns === 'rolled' ? ' selected' : ''}>learned before each window</option>
         <option value="fixed"${cState.wSigns === 'fixed' ? ' selected' : ''}>learned once on train</option></select></label>
-      <label class="f" title="how many copies of the same coin to walk with its outcomes dealt into a new order. A row that beats its own copies is saying something; a row that is merely positive is not. Zero skips them and the walk is much faster.">scrambled copies<input id="wScrambles" type="number" min="0" max="200" step="1" value="${esc(String(cState.wScrambles))}" style="width:5rem"></label>
-      <label class="f" title="a window with fewer trades than this is shown as a dash and left out of the totals, because a window of two trades is not a reading.">fewest trades a window must have<input id="wFloor" type="number" min="0" step="1" value="${esc(String(cState.wFloor))}" style="width:5rem"></label>
+      <label class="f" title="how many copies of the same coin to walk with its outcomes dealt into a new order. A row that beats its own copies is saying something; a row that is merely positive is not. Zero skips them and the walk is much faster.">scrambled copies<input${off} id="wScrambles" type="number" min="0" max="200" step="1" value="${esc(String(cState.wScrambles))}" style="width:5rem"></label>
+      <label class="f" title="a window with fewer trades than this is shown as a dash and left out of the totals, because a window of two trades is not a reading.">fewest trades a window must have<input${off} id="wFloor" type="number" min="0" step="1" value="${esc(String(cState.wFloor))}" style="width:5rem"></label>
     </div>
     <div class="row">
-      <label class="f" title="which coins to walk, comma separated. Blank walks every coin that has been read.">coins to walk (blank = all)<input id="wCoins" value="${esc(String(cState.wCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:14rem"></label>
+      <label class="f" title="which coins to walk, comma separated. Blank walks every coin that has been read.">coins to walk (blank = all)<input id="wCoins" value="${esc(String(cState.wCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:14rem"${off}></label>
       <label class="f" title="which way to order the table">sort by<select id="wSort">
         <option value="scrambles"${cState.wSort === 'scrambles' ? ' selected' : ''}>fewest scrambles as good</option>
         <option value="perTrade"${cState.wSort === 'perTrade' ? ' selected' : ''}>most per trade</option>
         <option value="windowsUp"${cState.wSort === 'windowsUp' ? ' selected' : ''}>most windows up</option>
         <option value="trades"${cState.wSort === 'trades' ? ' selected' : ''}>most trades</option>
         <option value="coin"${cState.wSort === 'coin' ? ' selected' : ''}>coin and shape</option></select></label>
-      <button id="wRun" class="pri">Walk it forward</button>
-      <span id="wOut" class="muted">${esc(cWalkNote)}</span>
     </div>
-    ${!rows ? '<p class="note">nothing walked yet — press <b>Walk it forward</b></p>' : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
+    <div class="row">
+      <button id="wRun" class="pri"${off}>Walk it forward</button>
+      ${walking ? '<button id="wStop">Stop</button>' : ''}
+      <span id="wOut" class="muted">${cWalkLine()}</span>
+    </div>
+    ${walking ? `<p class="note">walking — the table appears when it lands. ${st.done} of ${st.of} done.</p>` : ''}
+    ${(st && st.error) ? `<p class="note warn">the walk stopped: ${esc(st.error)}</p>` : ''}
+    ${!rows ? (walking ? '' : '<p class="note">nothing walked yet — press <b>Walk it forward</b></p>') : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
     <table class="cgap cpassers"><thead><tr>
       <th></th>
       <th title="the coin">coin</th>
@@ -8746,12 +8775,18 @@ function cWalkBind() {
       cWalkRepaint();
     };
   }
+  const stop = $('#wStop');
+  if (stop) {
+    stop.onclick = async () => {
+      stop.disabled = true;
+      try { await post('api/coins/walk/stop', {}); } catch (_) { /* it may have just landed */ }
+      cWalkTick();
+    };
+  }
   const run = $('#wRun');
   if (!run) return;
   run.onclick = async () => {
     run.disabled = true;
-    cWalkNote = 'walking…';
-    if ($('#wOut')) $('#wOut').textContent = cWalkNote;
     const bands = String(cState.wBands || '').split(',').map((x) => Number(x.trim())).filter((x) => Number.isFinite(x) && x >= 0);
     let ans = null;
     try {
@@ -8763,17 +8798,47 @@ function cWalkBind() {
         only: String(cState.wCoins || '').trim() || null,
       });
     } catch (err) {
-      cWalkNote = '';
       run.disabled = false;
       if ($('#wOut')) $('#wOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
       return;
     }
-    cWalkRows = ans;
-    const n = (ans.rows || []).length;
-    cWalkNote = `${n} row(s) · window ${cState.wWindow} month(s) · ${cState.wUsual === 'whole' ? 'usual move over the whole history' : 'usual move trailing'} · ${cState.wSigns === 'fixed' ? 'leaning learned once on train' : 'leaning learned before each window'} · ${cState.wScrambles} scrambled copies`;
+    if (ans && ans.started === false) {
+      run.disabled = false;
+      if ($('#wOut')) $('#wOut').innerHTML = '<span class="warn">' + esc(ans.why || 'it did not start') + '</span>';
+      return;
+    }
+    // THE COUNT IS ON SCREEN BEFORE THE FIRST WALK LANDS. The press answers
+    // with how many there will be, so the line says "0 of 450" at once rather
+    // than one word that could mean anything (owner, 2026-09-17).
+    cWalkRows = null;
     cWalkOpen.clear();
+    cWalkSt = { running: true, done: 0, of: (ans && ans.of) || 0, workers: (ans && ans.workers) || null, cpu: null, asked: null, rows: null, finishedAt: null, error: null, stopping: false };
     cWalkRepaint();
+    cWalkTick();
   };
+}
+// THE POLL. It runs only while the walk does, stops the moment the tab is left,
+// and picks a running walk back up on the way in -- the owner went to look at
+// the processor and came back to a panel that had forgotten there was a walk.
+async function cWalkTick() {
+  if (cWalkPoll) { clearTimeout(cWalkPoll); cWalkPoll = null; }
+  if (tab !== 'coins') return;
+  let st = null;
+  try { st = await apiOr('api/coins/walk', null); } catch (_) { st = null; }
+  if (tab !== 'coins') return;
+  if (!st) { cWalkPoll = setTimeout(cWalkTick, 2000); return; }
+  const wasRunning = !!(cWalkSt && cWalkSt.running);
+  cWalkSt = st;
+  if (!st.running && st.rows) cWalkRows = { rows: st.rows, shapes: st.shapes || [] };
+  if (st.running) {
+    // while it runs only the one line moves, so an open row stays open and the
+    // page does not jump under a reading eye
+    const out = $('#wOut');
+    if (out && !wasRunning) cWalkRepaint(); else if (out) out.textContent = cWalkLine(); else cWalkRepaint();
+    cWalkPoll = setTimeout(cWalkTick, 1000);
+    return;
+  }
+  cWalkRepaint();
 }
 
 function cPassersPanel(pass) {
@@ -9006,6 +9071,7 @@ async function drawCoins() {
     };
   }
   cWalkBind();
+  cWalkTick();
   // THE STOP ANSWERS, and its answer is shown. The route replies with a reason
   // when there is nothing to stop; thrown away, pressing it did and said nothing.
   if ($('#cStop')) {

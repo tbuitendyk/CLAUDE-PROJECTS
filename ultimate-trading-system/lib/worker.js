@@ -38,6 +38,7 @@ const TASKS = {
   s3Tally: require('./stagework').s3TallyShardTask,
   hlTrain: require('./halflife').hlTrainTask,
   passTrain: require('./passes').passTrainTask,
+  coinWalk: require('./coinscan').walkTask,
   // Introspection, so the nice level above is a testable property rather than
   // a comment nobody can check.
   //

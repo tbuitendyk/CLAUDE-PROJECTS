@@ -527,16 +527,23 @@ function coinsRecords() {
   };
 }
 
-// WALKING EVERY COIN AND SHAPE FORWARD (3.157.0). The screen asks; this hands
-// the walker the records off disk, the shapes' own step rates, each unit's
-// sweet spot so the searched band can be put beside bands that were not
-// searched for, and where train ends on the sealed layout so "learned once"
-// means learned on train. It filters nothing: the passing test answers a
-// different question and is not consulted here.
-async function coinsWalk(opts = {}) {
-  const scan = require('./coinscan');
+// WALKING EVERY COIN AND SHAPE FORWARD (3.157.0; a background run across every
+// worker, 3.158.0). The screen asks; this hands the walker the records off
+// disk, the shapes' own step rates, each unit's sweet spot so the searched band
+// can be put beside bands that were not searched for, and where train ends on
+// the sealed layout so "learned once" means learned on train. It filters
+// nothing: the passing test answers a different question and is not consulted.
+//
+// IT RUNS IN THE BACKGROUND AND ACROSS EVERY WORKER (owner, 2026-09-17: "you've
+// only got it set to use one CPU. That's no good"). Four hundred and fifty
+// independent walks that share nothing is exactly what the pool is for, and a
+// press that holds the request open for twenty seconds tells the screen
+// nothing while it waits -- so the press starts a run, the screen polls it, and
+// leaving the tab and coming back finds it still going with its count intact.
+let walkRun = null;
+
+function walkPieces(opts) {
   const signal = require('./coinsignal');
-  const { GEOMETRIES } = require('./dataset');
   const { records } = scanRecords();
   const lays = layouts();
   const band = sitOutBand();
@@ -557,12 +564,73 @@ async function coinsWalk(opts = {}) {
       } catch (_) { /* a shape with nothing to read carries no sweet spot */ }
     }
   }
-  const rows = await scan.walkEverything(records, GEOMETRIES, {
-    ...opts,
-    sweetSpots: opts.sweetSpot === false ? null : sweetSpots,
-    fixedUpTo,
-  }, () => new Promise((resolve) => setImmediate(resolve)));
-  return { rows, asked: opts, shapes: coins.shapes().map((s) => ({ key: s.key, label: s.label })) };
+  return { records, sweetSpots: opts.sweetSpot === false ? null : sweetSpots, fixedUpTo };
+}
+
+function coinsWalkStatus() {
+  let cpu = { busy: null, cores: null };
+  try { cpu = require('./stages').cpuLoad(); } catch (_) { /* the reading is a nicety, never a reason to fail */ }
+  const r = walkRun;
+  if (!r) return { running: false, none: true, done: 0, of: 0, cpu, error: null, rows: null, asked: null, finishedAt: null, stopping: false, shapes: null, workers: null };
+  return {
+    running: !!r.running, none: false, done: r.done, of: r.of, cpu,
+    error: r.error, rows: r.running ? null : r.rows, asked: r.asked,
+    startedAt: r.startedAt, finishedAt: r.finishedAt, stopping: !!r.stop,
+    shapes: r.shapes, workers: r.workers,
+  };
+}
+
+function coinsWalkStop() {
+  if (!walkRun || !walkRun.running) return { stopping: false, why: 'nothing is walking' };
+  walkRun.stop = true;
+  if (walkRun.pool) { try { walkRun.pool.abort(); } catch (_) { /* already down */ } }
+  return { stopping: true };
+}
+
+function coinsWalkStart(opts = {}) {
+  if (walkRun && walkRun.running) return { started: false, why: 'a walk is already running -- stop it or wait for it' };
+  const scan = require('./coinscan');
+  const { GEOMETRIES } = require('./dataset');
+  const { createPool, configuredSize } = require('./pool');
+  const { records, sweetSpots, fixedUpTo } = walkPieces(opts);
+  const tasks = scan.walkTasksFor(records, GEOMETRIES, { ...opts, sweetSpots, fixedUpTo });
+  const shapes = coins.shapes().map((s) => ({ key: s.key, label: s.label }));
+  if (!tasks.length) {
+    walkRun = { running: false, done: 0, of: 0, rows: [], error: null, asked: opts, startedAt: Date.now(), finishedAt: Date.now(), stop: false, shapes, workers: 0, pool: null };
+    return { started: true, of: 0 };
+  }
+  const size = configuredSize();
+  const pool = createPool();
+  walkRun = { running: true, done: 0, of: tasks.length, rows: [], error: null, asked: opts, startedAt: Date.now(), finishedAt: null, stop: false, shapes, workers: size, pool };
+  const run = walkRun;
+  (async () => {
+    try {
+      // AS MANY IN FLIGHT AS THERE ARE WORKERS, and the next one starts the
+      // moment any of them lands -- a fixed batch would idle every worker that
+      // finished early waiting for the slowest of its batch.
+      let next = 0;
+      const lane = async () => {
+        for (;;) {
+          if (run.stop) return;
+          const i = next++;
+          if (i >= tasks.length) return;
+          const t = tasks[i];
+          const got = await pool.run('coinWalk', t.payload);
+          run.rows.push(scan.rowOf(t, got));
+          run.done++;
+        }
+      };
+      await Promise.all(Array.from({ length: Math.max(1, size) }, () => lane()));
+    } catch (err) {
+      if (!run.stop) run.error = String(err && err.message ? err.message : err);
+    } finally {
+      try { pool.abort(); } catch (_) { /* already down */ }
+      run.pool = null;
+      run.running = false;
+      run.finishedAt = Date.now();
+    }
+  })();
+  return { started: true, of: tasks.length, workers: size };
 }
 
 module.exports = {
@@ -571,5 +639,6 @@ module.exports = {
   passBar, setPassBar, passersOff, setPasserTicked, passingUnits, passersCached, passerLeans,
   readOneCoin, normalise, busyWhy, removeOlderFilesFor,
   coinsRunStart, coinsRunStatus, coinsRunStop,
-  readRecord, scanRecords, coinsRecords, coinsCleanup, coinsWalk,
+  readRecord, scanRecords, coinsRecords, coinsCleanup,
+  coinsWalkStart, coinsWalkStatus, coinsWalkStop,
 };
