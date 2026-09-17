@@ -840,8 +840,8 @@ function anEmptyFilterBoxHidesNothingAtAll() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   assert(/All \$\{rows\.length\.toLocaleString\(\)\} row\(s\) of this walk are hidden by the filter boxes above/.test(src),
     'an empty table says so WHERE THE TABLE WOULD BE, not in a note under a blank space');
-  assert(/<button id="wfClear2" class="pri">Clear the filters<\/button>/.test(src),
-    'and the way back is right there');
+  assert(/<button id="wfClear2" class="pri">Clear filters<\/button>/.test(src),
+    'and the way back is right there, in the same words as everywhere else');
   // a set opened, or a walk landing, starts with nothing hidden -- the boxes are
   // remembered in the browser, so filters typed for one set would otherwise
   // carry onto the next and hide a fresh table for reasons set up hours before
@@ -947,6 +947,46 @@ function theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow()
   }
 }
 
+// ONE FORMAT AND ONE SET OF WORDS FOR ONE CONTROL (3.164.3, owner: "'apply each
+// box as you leave it' on coins, 'auto-apply settings' on boards -- can't you
+// just pick one and BE CONSISTENT for a change?!?" and "look at your filter
+// field formatting on boards ... why make up a completely different format on
+// coins").
+//
+// Boards had filters first. Coins takes its words AND its layout, rather than
+// the reverse: renaming a control somebody has used for weeks is the more
+// expensive of the two fixes. div.filters is the two-column grid, span.frow
+// carries the buttons, and all three words are Boards'.
+function theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+  const fn = src.slice(src.indexOf('function cWalkFilterRow() {'), src.indexOf('\n}\n', src.indexOf('function cWalkFilterRow() {')));
+  // the layout, and every class it leans on is one the stylesheet defines
+  assert(/<div class="filters">/.test(fn), 'the filters are the grid Boards uses, not rows of stacked labels');
+  assert(/<span class="fname">/.test(fn) && /<span class="fbox">/.test(fn), 'a name against its box, the way that grid is built');
+  assert(/<span class="frow">/.test(fn), 'and the buttons cross both columns in an frow');
+  for (const cls of ['filters', 'fname', 'fbox', 'frow']) {
+    assert(new RegExp(`\\.${cls}\\b`).test(css), `RULE FOUR: .${cls} is defined in the stylesheet`);
+  }
+  assert(!/label class="f"/.test(fn), 'and none of the old caption-above-box labels is left in it');
+  assert(!/style="width:/.test(fn), 'no widths typed here either: .filters .fbox input is 8rem, once, in the stylesheet');
+  // the three words, and they are the ones Boards says
+  for (const word of ['auto-apply settings', '>Apply settings<', '>Clear filters<']) {
+    assert(src.split(word).length - 1 >= 2,
+      `${JSON.stringify(word)} has to be on BOTH screens — it is on ${src.split(word).length - 1}`);
+  }
+  assert(!/apply each box as you leave it/.test(src), 'the second name for the tick is gone');
+  assert(!/>Apply the filters</.test(src), 'and the second name for the button');
+  assert(!/>Clear the filters</.test(src), 'and the second name for the clear');
+  // and Help does not describe one control twice, which is silent because a
+  // repeated key in an object literal just wins last
+  const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+  for (const k of ['wfApply', 'wfAuto', 'wfClear', 'wfClear2']) {
+    const n = (help.match(new RegExp(`^\\s*${k}:`, 'gm')) || []).length;
+    assert(n === 1, `Help describes ${k} ${n} time(s) — a repeated key wins last and nothing complains`);
+  }
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -974,6 +1014,7 @@ module.exports = {
   bothCopyCountsAreOnTheTableSideBySide,
   anEmptyFilterBoxHidesNothingAtAll,
   theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow,
+  theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout,
   everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow,
   theWalkTableHeadingsSitOverTheirOwnFigures,
   theTwoShapesThatCollapseREALLYAreTheSameTrade,

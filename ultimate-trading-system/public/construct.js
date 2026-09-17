@@ -9053,34 +9053,44 @@ function cApplyFilters() {
 }
 function cWalkFilterRow() {
   const f = cState.wF || {};
-  return `<div class="row">
-      <label class="f" title="show only rows whose coin contains one of these, comma separated. Blank shows every coin.">coins<input id="wf_coin" value="${esc(String(f.coin || ''))}" style="width:11rem"></label>
-      <label class="f" title="show only rows whose chunk shape contains one of these, comma separated &mdash; daily, weekly, 3-day all work. Blank shows every shape.">chunk shapes<input id="wf_shape" value="${esc(String(f.shape || ''))}" style="width:11rem"></label>
-      <label class="f" title="show only these look-backs, comma separated, in hours &mdash; or own. Blank shows every one.">look-backs<input id="wf_back" value="${esc(String(f.back || ''))}" style="width:11rem"></label>
-      <label class="f" title="show only these bands, comma separated. Blank shows every band.">bands<input id="wf_band" value="${esc(String(f.band || ''))}" style="width:9rem"></label>
-    </div>
-    <div class="row">
-      <label class="f" title="hide rows that placed fewer trades than this in total.">fewest trades<input id="wf_minTrades" type="number" step="any" value="${esc(String(f.minTrades == null ? '' : f.minTrades))}" style="width:6rem"></label>
-      <label class="f" title="hide rows that made less than this a trade. Before the round trip.">least per trade, %<input id="wf_minPer" type="number" step="any" value="${esc(String(f.minPer == null ? '' : f.minPer))}" style="width:7rem"></label>
-      <label class="f" title="hide rows with fewer counted windows than this. A wide band leaves whole half-years with too few trades to count.">fewest windows<input id="wf_minWindows" type="number" step="any" value="${esc(String(f.minWindows == null ? '' : f.minWindows))}" style="width:6rem"></label>
-      <label class="f" title="hide rows where fewer than this share of their counted windows made money.">least windows up, %<input id="wf_minUp" type="number" step="any" value="${esc(String(f.minUp == null ? '' : f.minUp))}" style="width:7rem"></label>
-      <label class="f" title="hide rows whose best single window made less than this.">least best window, %<input id="wf_minBest" type="number" step="any" value="${esc(String(f.minBest == null ? '' : f.minBest))}" style="width:7rem"></label>
-      <label class="f" title="hide rows whose worst single window made less than this. Set it at nought to keep only the rows that never had a losing half-year.">least worst window, %<input id="wf_minWorst" type="number" step="any" value="${esc(String(f.minWorst == null ? '' : f.minWorst))}" style="width:7rem"></label>
-    </div>
-    <div class="row">
-      <label class="f" title="hide rows whose best window is further than this above their worst one. Small keeps the tight rows &mdash; the ones whose half-years all paid about the same.">most spread, %<input id="wf_maxSpread" type="number" step="any" value="${esc(String(f.maxSpread == null ? '' : f.maxSpread))}" style="width:7rem"></label>
-      <label class="f" title="hide rows that pay less than this for every point of scatter between their best half-year and their worst. This is the one box that asks for high money AND tight windows at once.">least per trade per spread<input id="wf_minPerSpread" type="number" step="any" value="${esc(String(f.minPerSpread == null ? '' : f.minPerSpread))}" style="width:7rem"></label>
-      <label class="f" title="hide rows that more than this many scrambled copies matched.">most scrambles as good<input id="wf_maxGood" type="number" step="any" value="${esc(String(f.maxGood == null ? '' : f.maxGood))}" style="width:7rem"></label>
-      <label class="f" title="hide rows that more than this many sliding copies matched.">most slides as good<input id="wf_maxSlid" type="number" step="any" value="${esc(String(f.maxSlid == null ? '' : f.maxSlid))}" style="width:7rem"></label>
-    </div>
-    <div class="row" style="align-items:flex-end">
-      <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply the filters &mdash; one wait for the whole set of boxes rather than one wait per box."><input type="checkbox" id="wfAuto"${cState.wAuto ? ' checked' : ''}> apply each box as you leave it</label>
-    </div>
-    <div class="row">
-      <button id="wfApply" class="pri" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type the old value back.">Apply the filters</button>
-      <button id="wfClear" title="empties every filter box and shows the whole table again">Clear the filters</button>
-      <button id="wsClear" title="drops every column out of the sort">Clear the sort</button>
-    </div>`;
+  // DRAWN THE WAY BOARDS DRAWS ITS FILTERS (3.164.3, owner: "look at your
+  // filter field formatting on boards ... why make up a completely different
+  // format on coins. looks like this was written by a maniac").
+  //
+  // div.filters is a two-column grid -- the name right-aligned against its box
+  // -- and span.frow carries the buttons across both columns. It has been in
+  // the stylesheet since Boards had filters. I built rows of caption-above-box
+  // labels beside it instead, which is a second convention on one page, and
+  // RULE FOUR says match the pattern already there.
+  //
+  // EVERY ID IS WRITTEN OUT, not built in a loop. The Help tab's own check
+  // reads this file for `id="..."` and a control whose id is assembled from a
+  // variable is one it cannot see -- so it would be described on Help and found
+  // nowhere, which is the opposite fault to the one it guards.
+  //
+  // No widths here either: .filters .fbox input is 8rem, once, in the
+  // stylesheet.
+  const v = (k) => esc(String(f[k] == null ? '' : f[k]));
+  return `<div class="filters">
+    <label title="show only rows whose coin contains one of these, comma separated. Blank shows every coin."><span class="fname">coins</span><span class="fbox"><input id="wf_coin" value="${v('coin')}"></span></label>
+    <label title="show only rows whose chunk shape contains one of these, comma separated &mdash; daily, weekly, 3-day all work. Blank shows every shape."><span class="fname">chunk shapes</span><span class="fbox"><input id="wf_shape" value="${v('shape')}"></span></label>
+    <label title="show only these look-backs, comma separated, in hours &mdash; or own. Blank shows every one."><span class="fname">look-backs</span><span class="fbox"><input id="wf_back" value="${v('back')}"></span></label>
+    <label title="show only these bands, comma separated. Blank shows every band."><span class="fname">bands</span><span class="fbox"><input id="wf_band" value="${v('band')}"></span></label>
+    <label title="hide rows that placed fewer trades than this in total."><span class="fname">fewest trades</span><span class="fbox"><input id="wf_minTrades" type="number" step="any" value="${v('minTrades')}"></span></label>
+    <label title="hide rows that made less than this a trade. Before the round trip."><span class="fname">least per trade, %</span><span class="fbox"><input id="wf_minPer" type="number" step="any" value="${v('minPer')}"></span></label>
+    <label title="hide rows with fewer counted windows than this. A wide band leaves whole half-years with too few trades to count."><span class="fname">fewest windows</span><span class="fbox"><input id="wf_minWindows" type="number" step="any" value="${v('minWindows')}"></span></label>
+    <label title="hide rows where fewer than this share of their counted windows made money."><span class="fname">least windows up, %</span><span class="fbox"><input id="wf_minUp" type="number" step="any" value="${v('minUp')}"></span></label>
+    <label title="hide rows whose best single window made less than this."><span class="fname">least best window, %</span><span class="fbox"><input id="wf_minBest" type="number" step="any" value="${v('minBest')}"></span></label>
+    <label title="hide rows whose worst single window made less than this. Set it at nought to keep only the rows that never had a losing half-year."><span class="fname">least worst window, %</span><span class="fbox"><input id="wf_minWorst" type="number" step="any" value="${v('minWorst')}"></span></label>
+    <label title="hide rows whose best window is further than this above their worst one. Small keeps the tight rows &mdash; the ones whose half-years all paid about the same."><span class="fname">most spread, %</span><span class="fbox"><input id="wf_maxSpread" type="number" step="any" value="${v('maxSpread')}"></span></label>
+    <label title="hide rows that pay less than this for every point of scatter between their best half-year and their worst. This is the one box that asks for high money AND tight windows at once."><span class="fname">least per trade per spread</span><span class="fbox"><input id="wf_minPerSpread" type="number" step="any" value="${v('minPerSpread')}"></span></label>
+    <label title="hide rows that more than this many scrambled copies matched."><span class="fname">most scrambles as good</span><span class="fbox"><input id="wf_maxGood" type="number" step="any" value="${v('maxGood')}"></span></label>
+    <label title="hide rows that more than this many sliding copies matched."><span class="fname">most slides as good</span><span class="fbox"><input id="wf_maxSlid" type="number" step="any" value="${v('maxSlid')}"></span></label>
+    <span class="frow"><button id="wfApply" class="pri" disabled title="puts every box above on at once. Greyed out until a box says something different from what the table is already showing, and greyed out again if you type it back. Not needed while auto-apply settings is ticked.">Apply settings</button>
+    <label class="c" title="ticked, each box goes on the moment you leave it. Unticked, nothing goes on until you press Apply settings &mdash; one wait for the whole set of boxes rather than one wait per box. The same control, and the same words, as the filters on Boards."><input type="checkbox" id="wfAuto"${cState.wAuto ? ' checked' : ''}> auto-apply settings</label>
+    <button id="wfClear" title="empties every filter above and shows the whole table again">Clear filters</button>
+    <button id="wsClear" title="drops every column out of the sort">Clear the sort</button></span>
+  </div>`;
 }
 // WHAT THE WALK IS DOING, IN ONE LINE. While it runs: how many of how many,
 // across how many workers, and how busy the box is -- the owner went to look at
@@ -9269,7 +9279,7 @@ function cWalkPanel() {
     ${cWalkFilterRow()}
     ${cWalkShown(rows, shapes).length ? '' : `<p class="note warn" style="margin:.6rem 0"><b>All ${rows.length.toLocaleString()} row(s) of this walk are hidden by the filter boxes above.</b>
       Nothing is wrong with the walk &mdash; the table is there. Empty a box to widen it, or clear them all:</p>
-      <div class="row" style="margin-bottom:.6rem"><button id="wfClear2" class="pri">Clear the filters</button></div>`}
+      <div class="row" style="margin-bottom:.6rem"><button id="wfClear2" class="pri">Clear filters</button></div>`}
     ${!cWalkShown(rows, shapes).length ? '' : `
     <div class="cwbox"><table class="cgap cpassers"><thead><tr>
       <th></th>
