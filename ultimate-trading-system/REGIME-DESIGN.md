@@ -607,5 +607,53 @@ finely: with no skill in the choosing, a pick lands at about 50.
 says the choosing carried something across that stretch; it does not say the
 same look-backs will be the right ones in five years.
 
-**What was measured.** Recorded below the pass mark once the run landed, never
-above it.
+**What was measured.** The run was started with the owner's own parameters,
+read back off the box before the deploy that carried this code: window 6
+months, 12 months behind the first window, bands 200/250/300/350, no
+sweet-spot band, usual move trailing, leaning learned before each window, 100
+copies each way, floor 3, every coin, look-backs 24h to 504h in 24s. 7,920
+rows, finished 2026-09-17 08:55 UTC. Read at `minTrades` 30 and the cut at
+half.
+
+**PASS.** 76 of the 90 coin-and-shape pairs had 30 trades in both halves. The
+picks beat picking blind on **56 of 76** (chance 38; the bar scales with the
+readable count, which was written into the code before the run, and came to
+51). Pooled late money **+0.874%** a trade, **+0.624%** after the 0.25% round
+trip. 55 of 76 picks pay after that round trip. The average pick landed at the
+**65.8th** percentile of its own rows on the late windows, where 50 is no
+skill. 32 of 76 chose a look-back of 240 hours or more.
+
+**And the pass survives the one thing that could have killed it.** Once a
+look-back is given in HOURS, a chunk shape's own span no longer decides what is
+looked at; all that is left of the shape is when the trade opens and closes,
+and those coincide in pairs. `daily-1d` opens 25 hours into its chunk and
+closes at 42; `daily-2d` at 49 and 66 — exactly one 24-hour step later, so its
+chunk *i* is `daily-1d`'s chunk *i+1*. `daily-3d` (73, 114) and `daily-4d`
+(97, 138) are the same pairing. So the four daily shapes are **two units seen
+twice**, and 90 pairs are about 45.
+
+Collapsed by hold length — 17 hours, 41 hours, and the weekly shape's 60 — the
+76 pairs become **40 units**, and the same pass mark still passes: **29 of 40**
+beat picking blind against a bar of 27, pooled late unchanged at +0.874%,
+average percentile 66.8. It is a pass by two units, not a comfortable one.
+
+Measured rather than assumed: of the 36 units where both twins were readable,
+12 agreed to within 0.02% and the widest disagreement was 2.585%. They are
+heavily overlapping, not identical — the divergence is mostly where the early
+half chose a different look-back for each twin.
+
+**What is weak in it, found before anybody asked:**
+
+- **The pass is narrow on the honest count** — 29 of 40 against a bar of 27.
+- **The late half is thin.** 377 late windows across 40 units, about nine each,
+  and some rest on far fewer: TRX at the 17-hour hold reads the 96th percentile
+  on **two** late windows, and XRP at 60 hours on three. Those are noise
+  wearing a score.
+- **Picking blind already paid.** Median blind late money was +0.436% a trade —
+  above the round trip on its own. So of the +0.874% pooled, only about a
+  quarter of a point is the CHOOSING; the rest is the whole family of rows
+  being positive on this history. The lead column is the part this test earned.
+- **One epoch**, cut once: early is roughly 2019–2022, late 2022–2026.
+- **It is not one coin.** The best picks are XLM, ZEC, XRP and ATOM; LTC is
+  fifth and seventh. The earlier every-window-up filter put LTC in ten of its
+  eleven rows, which was a different question and a different answer.
