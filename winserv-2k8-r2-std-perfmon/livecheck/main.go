@@ -64,7 +64,9 @@ type sample struct {
 	rdyQ       float64
 	ctxSw      float64
 	availMB    float64
+	cacheMB    float64
 	pages      float64
+	pagesIn    float64
 	rdMs       float64
 	wrMs       float64
 	diskQ      float64
@@ -218,7 +220,9 @@ func takeSample(now, prev time.Time, n int, pdh *query, procs *procTable, cal ca
 	s.rdyQ = pdh.val("rdy_queue")
 	s.ctxSw = pdh.val("ctx_switches")
 	s.availMB = pdh.val("avail_mb")
+	s.cacheMB = pdh.val("cache_bytes") / (1 << 20)
 	s.pages = pdh.val("pages_sec")
+	s.pagesIn = pdh.val("pages_input")
 	s.rdMs = pdh.val("disk_read_sec") * 1000
 	s.wrMs = pdh.val("disk_write_sec") * 1000
 	s.diskQ = pdh.val("disk_queue")
@@ -333,7 +337,7 @@ func (s sample) line() string {
 
 func csvHeader() []string {
 	return []string{"time", "loop_gap_ms", "cpu_pct", "max_core_pct", "max_core_idx", "ready_queue", "ctx_switches_sec",
-		"avail_mb", "pages_sec", "disk_read_ms", "disk_write_ms", "disk_queue", "disk_iops",
+		"avail_mb", "cache_mb", "pages_sec", "pages_input_sec", "disk_read_ms", "disk_write_ms", "disk_queue", "disk_iops",
 		"smb_files_open", "smb_sessions", "smb_work_item_shortages", "smb_work_queue",
 		"vm_balloon_mb", "vm_swapped_mb", "vm_effective_mhz", "vm_host_mhz",
 		"cpu_steal_ratio", "cpu_on_cpu_ratio", "probe_ms", "probe_err",
@@ -344,7 +348,7 @@ func (s sample) csvRow() []string {
 	f := func(v float64) string { return strconv.FormatFloat(v, 'f', 3, 64) }
 	return []string{
 		s.t.Format("2006-01-02 15:04:05"), f(s.gapMs), f(s.cpu), f(s.maxCore), strconv.Itoa(s.maxCoreIdx),
-		f(s.rdyQ), f(s.ctxSw), f(s.availMB), f(s.pages),
+		f(s.rdyQ), f(s.ctxSw), f(s.availMB), f(s.cacheMB), f(s.pages), f(s.pagesIn),
 		f(s.rdMs), f(s.wrMs), f(s.diskQ), f(s.iops),
 		f(s.files), f(s.sessions), f(s.shortages), f(s.smbQ),
 		f(s.vmBalloon), f(s.vmSwapped), f(s.vmEffMHz), f(s.vmHostMHz),
@@ -385,6 +389,9 @@ func summarize(ss []sample, cal calibration) {
 	if *probePath != "" {
 		stat("file probe", func(s sample) float64 { return s.probeMs }, "ms  ("+*probePath+")")
 	}
+	stat("free memory", func(s sample) float64 { return s.availMB }, "MB")
+	stat("file cache", func(s sample) float64 { return s.cacheMB }, "MB  (tiny on a VM host = guest reads hit the spindles)")
+	stat("hard faults", func(s sample) float64 { return s.pagesIn }, "pages read from disk/sec")
 	stat("SMB files open", func(s sample) float64 { return s.files }, "")
 	stat("loop lag", func(s sample) float64 { return s.gapMs / 1000 }, "s between samples (asked for "+interval.String()+")")
 

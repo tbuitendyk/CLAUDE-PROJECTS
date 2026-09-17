@@ -59,6 +59,11 @@ func newQuery() (*query, error) {
 		{"ctx_switches", `\System\Context Switches/sec`},
 		{"avail_mb", `\Memory\Available MBytes`},
 		{"pages_sec", `\Memory\Pages/sec`},
+		// Hard-fault rate and file-cache size. Decisive when run on a VM HOST:
+		// a starved cache turns a guest's ordinary reads into physical spindle
+		// seeks even when the host itself looks idle.
+		{"pages_input", `\Memory\Pages Input/sec`},
+		{"cache_bytes", `\Memory\Cache Bytes`},
 		// latency, not queue length — queue stayed ~0 through every logged incident
 		{"disk_read_sec", `\PhysicalDisk(_Total)\Avg. Disk sec/Read`},
 		{"disk_write_sec", `\PhysicalDisk(_Total)\Avg. Disk sec/Write`},

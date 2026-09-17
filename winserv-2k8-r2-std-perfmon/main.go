@@ -286,9 +286,10 @@ func run() error {
 			if probeOK {
 				probeTxt = fmt.Sprintf(" | probe %.1fms", probeMsVal)
 			}
-			lg.Printf("HEARTBEAT cpu %.1f%% (busiest core %d at %.0f%%) | mem %d%% used, %dMB avail | diskq %.2f, read %.1fms, write %.1fms | pages/s %.0f%s | procs %d",
-				busy, pdhS.maxCoreIdx, pdhS.maxCore, mem.MemoryLoad, availMB,
-				pdhS.diskQueue, pdhS.diskReadMs, pdhS.diskWrMs, pdhS.pagesSec, probeTxt, len(samples))
+			lg.Printf("HEARTBEAT cpu %.1f%% (busiest core %d at %.0f%%) | mem %d%% used, %dMB avail, cache %.0fMB | diskq %.2f, read %.1fms, write %.1fms | pages/s %.0f, hard-in/s %.0f%s | procs %d",
+				busy, pdhS.maxCoreIdx, pdhS.maxCore, mem.MemoryLoad, availMB, pdhS.cacheMB,
+				pdhS.diskQueue, pdhS.diskReadMs, pdhS.diskWrMs, pdhS.pagesSec, pdhS.pagesIn,
+				probeTxt, len(samples))
 		}
 	}
 }

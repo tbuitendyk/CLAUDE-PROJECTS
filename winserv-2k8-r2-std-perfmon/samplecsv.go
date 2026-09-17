@@ -31,8 +31,8 @@ func newSampleWriter(path string) (*sampleWriter, error) {
 	sw := &sampleWriter{f: f, w: csv.NewWriter(f)}
 	if statErr != nil || st.Size() == 0 {
 		sw.w.Write([]string{"time", "gap_s", "cpu_pct", "max_core_pct", "max_core_idx",
-			"mem_load_pct", "avail_mb", "disk_queue", "disk_read_ms", "disk_write_ms",
-			"pages_sec", "probe_ms", "procs", "top_cpu", "top_io"})
+			"mem_load_pct", "avail_mb", "cache_mb", "disk_queue", "disk_read_ms", "disk_write_ms",
+			"pages_sec", "pages_input_sec", "probe_ms", "procs", "top_cpu", "top_io"})
 		sw.w.Flush()
 	}
 	return sw, nil
@@ -52,10 +52,12 @@ func (s *sampleWriter) add(t time.Time, gap time.Duration, cpu float64, p pdhSam
 		strconv.Itoa(p.maxCoreIdx),
 		strconv.FormatUint(uint64(memLoad), 10),
 		strconv.FormatUint(availMB, 10),
+		f(p.cacheMB),
 		f(p.diskQueue),
 		f(p.diskReadMs),
 		f(p.diskWrMs),
 		f(p.pagesSec),
+		f(p.pagesIn),
 		f(probeMs),
 		strconv.Itoa(procs),
 		topCPU,

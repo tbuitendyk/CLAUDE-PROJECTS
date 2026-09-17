@@ -52,6 +52,8 @@ type pdhQuery struct {
 type pdhSample struct {
 	diskQueue  float64
 	pagesSec   float64
+	pagesIn    float64 // Pages Input/sec — hard faults that reached the disk
+	cacheMB    float64 // RAM available to the OS file cache
 	diskReadMs float64 // Avg. Disk sec/Read, converted to ms
 	diskWrMs   float64 // Avg. Disk sec/Write, converted to ms
 	maxCore    float64 // busiest single core
@@ -72,6 +74,13 @@ func newPdhQuery() (*pdhQuery, error) {
 	// threshold can sit through a slowdown users are shouting about.
 	q.add("disk_read_sec", `\PhysicalDisk(_Total)\Avg. Disk sec/Read`)
 	q.add("disk_write_sec", `\PhysicalDisk(_Total)\Avg. Disk sec/Write`)
+	// Pages Input/sec is the real hard-fault rate: memory reads that had to go
+	// to disk. Cache Bytes is how much RAM the OS has left for the file cache.
+	// Both matter most when this runs on a VM HOST, where a starved cache turns
+	// a guest's ordinary disk reads into physical spindle seeks — the 2026-09-17
+	// finding. Pages/sec alone cannot distinguish the two.
+	q.add("pages_input", `\Memory\Pages Input/sec`)
+	q.add("cache_bytes", `\Memory\Cache Bytes`)
 
 	// Per-core, because one pegged core is only 1/N of the all-core average.
 	for i := 0; i < runtime.NumCPU(); i++ {
@@ -116,6 +125,8 @@ func (q *pdhQuery) collect() pdhSample {
 	s := pdhSample{
 		diskQueue:  q.val("disk_queue"),
 		pagesSec:   q.val("pages_sec"),
+		pagesIn:    q.val("pages_input"),
+		cacheMB:    q.val("cache_bytes") / (1 << 20),
 		diskReadMs: q.val("disk_read_sec") * 1000,
 		diskWrMs:   q.val("disk_write_sec") * 1000,
 		maxCoreIdx: -1,
