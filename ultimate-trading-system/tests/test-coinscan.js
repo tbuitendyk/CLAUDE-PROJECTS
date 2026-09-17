@@ -237,6 +237,37 @@ function theWalkSaysWhatItIsDoingAndSurvivesLeavingTheTab() {
   assert(rowWithRun.test(src), 'the buttons and the line share a row with no field in it');
 }
 
+// EVERY COLUMN SORTS, THE WAY BOARDS ALREADY DID (owner, 2026-09-17). A box
+// beside the table was a second way of doing something this screen does one
+// way, and it could not sort half the columns at all.
+function everyColumnOfTheWalkTableSorts() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  assert(!/<select id="wSort">/.test(src), 'the sort box is gone, not left beside the sorters');
+  for (const key of ['coin', 'geometry', 'band', 'trades', 'perTrade', 'windows', 'windowsUp', 'best', 'worst', 'asGood']) {
+    assert(new RegExp(`cWalkSortBtn\\('${key}'`).test(src), `the ${key} column has a sorter`);
+  }
+  assert(/data-wsort="\$\{key\}"/.test(src), 'each sorter names its column');
+  assert(/cState\.wDir = cState\.wDir === 'asc' \? 'desc' : 'asc';/.test(src), 'a second click flips it');
+  assert(/if \(cState\.wSort !== key\) \{ cState\.wSort = key; cState\.wDir = first; \}/.test(src), 'a different column starts at its own first direction');
+  assert(/if \(a == null\) return 1;\s*\n\s*if \(b == null\) return -1;/.test(src),
+    'a row with nothing in the sorted column goes last whichever way the arrow points -- sorting a missing figure as a very small one would put unreadable rows at the top of an ascending sort and read as a result');
+}
+
+// THE HEADINGS STAY PUT WHILE THE ROWS SCROLL (owner, 2026-09-17). Four
+// hundred rows with the headings off the top of the screen is a table you
+// cannot read. Built the same way the Stage 4 table already does it, not a
+// second way.
+function theWalkTableKeepsItsHeadingsWhileTheRowsScroll() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+  assert(/<div class="cwbox"><table class="cgap cpassers">/.test(src), 'the rows sit in their own box');
+  assert(/<\/table><\/div>/.test(src), 'and the box closes after the table');
+  assert(/div\.cwbox \{ overflow:auto; max-height:24rem; \}/.test(css), 'the box scrolls and is about fifteen rows deep');
+  assert(/div\.cwbox table thead th \{ position:sticky; top:0;/.test(css), 'the headings are stuck to the top of that box');
+  assert(/box-shadow:inset 0 -1px 0 var\(--line\)/.test(css.slice(css.indexOf('div.cwbox'))),
+    'the line under the heading is a shadow -- a collapsed border on a sticky cell scrolls away with its row');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -251,4 +282,6 @@ module.exports = {
   theWorkerPathAndTheOneThreadPathGiveTheSameRows,
   thePoolKnowsTheWalkOnBothItsPaths,
   theWalkSaysWhatItIsDoingAndSurvivesLeavingTheTab,
+  everyColumnOfTheWalkTableSorts,
+  theWalkTableKeepsItsHeadingsWhileTheRowsScroll,
 };

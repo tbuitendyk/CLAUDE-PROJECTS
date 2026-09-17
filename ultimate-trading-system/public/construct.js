@@ -8374,7 +8374,8 @@ const cState = (() => {
   const d = {
     coins: '',
     wWindow: 6, wWarm: 12, wBands: '50,100,150,200', wSpot: true,
-    wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '', wSort: 'scrambles',
+    wUsual: 'trailing', wSigns: 'rolled', wScrambles: 10, wFloor: 5, wCoins: '',
+    wSort: 'asGood', wDir: 'asc',
   };
   try { return { ...d, ...(JSON.parse(localStorage.getItem(C_KEY) || 'null') || {}) }; } catch (_) { return d; }
 })();
@@ -8643,15 +8644,43 @@ function cWalkRow(r, shapes) {
     <td>${scr}</td>
   </tr>${strip}`;
 }
+// A SORTER ON EVERY COLUMN, the same one Boards has had all along -- a box
+// beside the table was a second way of doing a thing this screen already does
+// one way (owner, 2026-09-17). Click to sort, click again to flip it. One
+// column at a time, and it is remembered.
+function cWalkSortBtn(key, firstDir) {
+  const on = cState.wSort === key;
+  const state = !on ? '·' : (cState.wDir === 'desc' ? '↓' : '↑');
+  return ` <button data-wsort="${key}" data-wdir="${firstDir}" style="min-width:1.6rem;padding:0 .25rem"
+    title="click to sort the table by this column${firstDir === 'desc' ? ' (high to low first)' : ' (low to high first)'}; click again to flip it. One column at a time.">${state}</button>`;
+}
 function cWalkSorted(rows, how) {
-  const a = rows.slice();
-  const num = (v, d) => (v == null ? d : v);
-  if (how === 'perTrade') a.sort((x, y) => num(y.perTrade, -1e9) - num(x.perTrade, -1e9));
-  else if (how === 'windowsUp') a.sort((x, y) => (y.windowsUp / Math.max(1, y.windows)) - (x.windowsUp / Math.max(1, x.windows)));
-  else if (how === 'trades') a.sort((x, y) => y.trades - x.trades);
-  else if (how === 'coin') a.sort((x, y) => `${x.coin}${x.geometry}${x.band}`.localeCompare(`${y.coin}${y.geometry}${y.band}`));
-  else a.sort((x, y) => (num(x.asGood, 999) - num(y.asGood, 999)) || (num(y.perTrade, -1e9) - num(x.perTrade, -1e9)));
-  return a;
+  const dir = cState.wDir === 'desc' ? -1 : 1;
+  const OF = {
+    coin: (r) => `${r.coin} ${r.geometry}`,
+    geometry: (r) => `${r.geometry} ${r.coin}`,
+    band: (r) => r.band,
+    trades: (r) => r.trades,
+    perTrade: (r) => r.perTrade,
+    windows: (r) => r.windows,
+    windowsUp: (r) => (r.windows ? r.windowsUp / r.windows : null),
+    best: (r) => r.best,
+    worst: (r) => r.worst,
+    asGood: (r) => r.asGood,
+  };
+  const of = OF[how] || OF.asGood;
+  // A ROW WITH NOTHING IN THAT COLUMN GOES LAST WHICHEVER WAY THE ARROW POINTS.
+  // Sorting a missing figure as though it were a very small one puts the rows
+  // that could not be read at the top of an ascending sort, which reads as a
+  // result and is not one.
+  return rows.slice().sort((x, y) => {
+    const a = of(x); const b = of(y);
+    if (a == null && b == null) return 0;
+    if (a == null) return 1;
+    if (b == null) return -1;
+    if (typeof a === 'string' || typeof b === 'string') return dir * String(a).localeCompare(String(b));
+    return dir * (a - b) || String(`${x.coin}${x.geometry}${x.band}`).localeCompare(`${y.coin}${y.geometry}${y.band}`);
+  });
 }
 // WHAT THE WALK IS DOING, IN ONE LINE. While it runs: how many of how many,
 // across how many workers, and how busy the box is -- the owner went to look at
@@ -8704,12 +8733,6 @@ function cWalkPanel() {
     </div>
     <div class="row">
       <label class="f" title="which coins to walk, comma separated. Blank walks every coin that has been read.">coins to walk (blank = all)<input id="wCoins" value="${esc(String(cState.wCoins || ''))}" placeholder="LTCUSDT,BCHUSDT" style="width:14rem"${off}></label>
-      <label class="f" title="which way to order the table">sort by<select id="wSort">
-        <option value="scrambles"${cState.wSort === 'scrambles' ? ' selected' : ''}>fewest scrambles as good</option>
-        <option value="perTrade"${cState.wSort === 'perTrade' ? ' selected' : ''}>most per trade</option>
-        <option value="windowsUp"${cState.wSort === 'windowsUp' ? ' selected' : ''}>most windows up</option>
-        <option value="trades"${cState.wSort === 'trades' ? ' selected' : ''}>most trades</option>
-        <option value="coin"${cState.wSort === 'coin' ? ' selected' : ''}>coin and shape</option></select></label>
     </div>
     <div class="row">
       <button id="wRun" class="pri"${off}>Walk it forward</button>
@@ -8719,20 +8742,21 @@ function cWalkPanel() {
     ${walking ? `<p class="note">walking — the table appears when it lands. ${st.done} of ${st.of} done.</p>` : ''}
     ${(st && st.error) ? `<p class="note warn">the walk stopped: ${esc(st.error)}</p>` : ''}
     ${!rows ? (walking ? '' : '<p class="note">nothing walked yet — press <b>Walk it forward</b></p>') : (!rows.length ? '<p class="note">no coin and shape had enough history for a window this long</p>' : `
-    <table class="cgap cpassers"><thead><tr>
+    <div class="cwbox"><table class="cgap cpassers"><thead><tr>
       <th></th>
-      <th title="the coin">coin</th>
-      <th title="the chunk shape">chunk shape</th>
-      <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band</th>
-      <th title="how many trades the walk placed in total, across every window that met the floor">trades</th>
-      <th title="what it made on each trade it placed, averaged over the whole walk. Before the round trip.">per trade</th>
-      <th title="how many windows met the floor and were counted">windows</th>
-      <th title="how many of those windows made money. Half is what a coin with nothing in it looks like.">windows up</th>
-      <th title="the best single window">best window</th>
-      <th title="the worst single window">worst window</th>
-      <th title="how many scrambled copies of this same coin did AT LEAST AS WELL. Low is the result; with hundreds of rows on this table, merely positive is not.">scrambles as good</th>
+      <th title="the coin">coin${cWalkSortBtn('coin', 'asc')}</th>
+      <th title="the chunk shape">chunk shape${cWalkSortBtn('geometry', 'asc')}</th>
+      <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band${cWalkSortBtn('band', 'asc')}</th>
+      <th title="how many trades the walk placed in total, across every window that met the floor">trades${cWalkSortBtn('trades', 'desc')}</th>
+      <th title="what it made on each trade it placed, averaged over the whole walk. Before the round trip.">per trade${cWalkSortBtn('perTrade', 'desc')}</th>
+      <th title="how many windows met the floor and were counted">windows${cWalkSortBtn('windows', 'desc')}</th>
+      <th title="how many of those windows made money. Half is what a coin with nothing in it looks like.">windows up${cWalkSortBtn('windowsUp', 'desc')}</th>
+      <th title="the best single window">best window${cWalkSortBtn('best', 'desc')}</th>
+      <th title="the worst single window">worst window${cWalkSortBtn('worst', 'desc')}</th>
+      <th title="how many scrambled copies of this same coin did AT LEAST AS WELL. Low is the result; with hundreds of rows on this table, merely positive is not.">scrambles as good${cWalkSortBtn('asGood', 'asc')}</th>
     </tr></thead>
-    <tbody>${cWalkSorted(rows, cState.wSort).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table>`)}
+    <tbody>${cWalkSorted(rows, cState.wSort).map((r) => cWalkRow(r, shapes)).join('')}</tbody></table></div>
+    <p class="note">${rows.length} row(s). The headings stay put while the rows scroll under them; every one of them sorts.</p>`)}
   </div>`;
 }
 
@@ -8766,8 +8790,16 @@ function cWalkBind() {
   keep('#wScrambles', 'wScrambles', true);
   keep('#wFloor', 'wFloor', true);
   keep('#wCoins', 'wCoins', false);
-  const sort = $('#wSort');
-  if (sort) sort.onchange = () => { cState.wSort = sort.value; cRemember(); cWalkRepaint(); };
+  for (const b of document.querySelectorAll('[data-wsort]')) {
+    b.onclick = () => {
+      const key = b.dataset.wsort;
+      const first = b.dataset.wdir === 'desc' ? 'desc' : 'asc';
+      if (cState.wSort !== key) { cState.wSort = key; cState.wDir = first; }
+      else cState.wDir = cState.wDir === 'asc' ? 'desc' : 'asc';
+      cRemember();
+      cWalkRepaint();
+    };
+  }
   for (const b of document.querySelectorAll('.cwopen')) {
     b.onclick = () => {
       const k = b.getAttribute('data-key');

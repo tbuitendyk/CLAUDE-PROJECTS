@@ -89,6 +89,17 @@
   table.s4 tr.s4hold td { border-bottom:2px solid var(--line); }
   table.s4 td.s4tag { text-align:left; padding-left:1.6rem; color:var(--dim);
                       text-transform:uppercase; font-size:.66rem; letter-spacing:.04em; }
+  /* WALK IT FORWARD'S TABLE GETS ITS OWN BOX AND ITS OWN SCROLL BAR (3.158.1,
+     owner order: "freeze the headings ... maybe about fifteen rows high with
+     scroll bars and fixed headings"). Same shape as the Stage 4 box above it,
+     because two scrolling tables on one system should behave the same way.
+     max-height rather than height, so a walk of one coin does not sit in a
+     mostly empty box; with more rows than fit it is about fifteen deep. The
+     line under the heading is a shadow for the same reason it is there: a
+     collapsed border on a sticky cell scrolls away with its row. */
+  div.cwbox { overflow:auto; max-height:24rem; }
+  div.cwbox table thead th { position:sticky; top:0; background:var(--panel); z-index:2;
+                             vertical-align:bottom; box-shadow:inset 0 -1px 0 var(--line); }
   tr.dim td { color:var(--muted); }
   tr.selected td { background:var(--tile); box-shadow: inset 3px 0 0 var(--accent); }
   .tile { background:var(--tile); border:1px solid var(--line); border-radius:8px; padding:.55rem .7rem; }

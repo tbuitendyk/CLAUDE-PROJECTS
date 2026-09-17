@@ -317,14 +317,14 @@ module.exports = {
       // (aStageFourSetThatWillNotOpenStillDrawsThePicker and
       // theFunnelOffersTheStageFourSetsCutFromTheCoinAndShape) hold both.
       'fCutPick',
-      // WALK IT FORWARD's three boxes (3.157.0). wSort never leaves the page --
-      // it orders the table in hand and is sent nowhere. wUsual and wSigns do
-      // go to the box, and lib/coinscan.js is their allow-list: anything that
-      // is not 'whole' reads trailing and anything that is not 'fixed' rolls,
-      // so an unknown value cannot make the walk do something it does not
-      // offer. test-coinscan.js (anythingButTheTwoValuesEachBoxOffersFallsToItsSafeOne)
+      // WALK IT FORWARD's two boxes (3.157.0; the sort box became a sorter on
+      // every column in 3.158.1, so it is no longer a select at all).
+      // lib/coinscan.js is these two's allow-list: anything that is not 'whole'
+      // reads trailing and anything that is not 'fixed' rolls, so an unknown
+      // value cannot make the walk do something it does not offer.
+      // test-coinscan.js (anythingButTheTwoValuesEachBoxOffersFallsToItsSafeOne)
       // holds the library to exactly that.
-      'wUsual', 'wSigns', 'wSort']);
+      'wUsual', 'wSigns']);
     const withValues = [...SWEEP.matchAll(/<select id="([\w-]+)"[^>]*>((?:(?!<\/select>)[\s\S])*?)<\/select>/g)]
       .filter((m) => /<option value="/.test(m[2])).map((m) => m[1]);
     const unlisted = withValues.filter((id) => !known.has(id));
