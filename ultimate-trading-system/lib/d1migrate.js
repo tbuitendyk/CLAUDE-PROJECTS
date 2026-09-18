@@ -90,17 +90,32 @@ function planFor(id) {
   };
 }
 
-// EVERY SET ON THE BOX THAT STILL CARRIES A ROW THE DIAL WAS NOT OFF FOR.
+// EVERY SET THAT WAS LAUNCHED WITH THE DIAL PERMUTED, AND IT IS A CHEAP READ.
+//
+// This is asked on every draw of Boards, so it may not touch the rows. The
+// first version called planFor() on every stage 3 set -- every block of every
+// one of them, a hundred thousand rows on the big ones -- and the endpoint
+// timed out on the box the first time it was asked. That is exactly the cost
+// RULE TEN names: a repair that reads something on every screen draw, one of
+// which "walked every record of the owner's set to decide whether to offer a
+// button nobody would ever press again". Caught by running it, not by reading
+// it.
+//
+// The document already knows: `permuteConfirm` is what made the set carry
+// three rows per setting, and the migration turns it off. So the notice is a
+// read of the set documents, and the COUNTS come from the preview press, which
+// is one set at a time and asked for.
+//
 // `listSets` is handed in rather than required, because requiring stages.js
 // from here would make the repair part of the thing it repairs.
 function needs(listSets) {
   const out = [];
   for (const doc of listSets()) {
     if (doc.stage !== 3) continue;
-    let p = null;
-    try { p = planFor(doc.id); } catch (_) { continue; }
-    if (!p || !p.drop) continue;
-    out.push({ id: doc.id, name: doc.name, ...p });
+    if (!doc.params || doc.params.permuteConfirm !== true) continue;
+    let rows = null;
+    try { rows = rowstore.count(doc.id, 'records'); } catch (_) { /* the sidecar is a forty-byte read */ }
+    out.push({ id: doc.id, name: doc.name, rows });
   }
   return out;
 }

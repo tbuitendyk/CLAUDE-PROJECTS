@@ -154,7 +154,9 @@ module.exports = {
     });
   },
 
-  // AND A SET THAT NEVER CARRIED THE DIAL IS NOT OFFERED ONE.
+  // AND A SET THAT NEVER CARRIED THE DIAL IS NOT OFFERED ONE. The document says
+  // which were launched with it permuted, and the migration turns that off, so
+  // this is the same question read from the cheap end.
   aSetThatIsAlreadyRightIsNotListedAsNeedingAnything() {
     withScratch(({ rowstore, d1 }) => {
       const w = rowstore.writer('d1-clean', 'records', { manualBlocks: true });
@@ -162,13 +164,41 @@ module.exports = {
       w.close();
       buildSet(rowstore, 'd1-dirty', 2);
       const list = d1.needs(() => ([
-        { id: 'd1-clean', name: 'already right', stage: 3 },
-        { id: 'd1-dirty', name: 'three per setting', stage: 3 },
-        { id: 'd1-dirty', name: 'not stage 3', stage: 2 },
+        { id: 'd1-clean', name: 'already right', stage: 3, params: { permuteConfirm: false } },
+        { id: 'd1-dirty', name: 'three per setting', stage: 3, params: { permuteConfirm: true } },
+        { id: 'd1-other', name: 'not stage 3', stage: 2, params: { permuteConfirm: true } },
+        { id: 'd1-old', name: 'never had the dial', stage: 3, params: {} },
       ]));
       assert.strictEqual(list.length, 1, `one set needs it, got ${list.map((x) => x.id).join(', ')}`);
       assert.strictEqual(list[0].id, 'd1-dirty');
-      assert.strictEqual(list[0].drop, 4, `two units times two dropped rows, got ${list[0].drop}`);
+      assert.strictEqual(list[0].rows, 6, `two units times three rows, got ${list[0].rows}`);
+    });
+  },
+
+  // AND ASKING COSTS A READ OF THE DOCUMENTS, NOT OF THE ROWS.
+  //
+  // This is asked on every draw of Boards. The first version called planFor()
+  // on every stage 3 set -- every block of every one of them -- and the
+  // endpoint timed out the first time the box was asked. RULE TEN names that
+  // cost exactly: a repair that reads something on every screen draw, one of
+  // which walked every record of the owner's set to decide whether to offer a
+  // button nobody would press again.
+  //
+  // Watched failing: putting planFor() back inside needs() reads the blocks and
+  // this counts them.
+  askingWhatNeedsItNeverReadsARow() {
+    withScratch(({ rowstore, d1 }) => {
+      buildSet(rowstore, 'd1-big', 40);           // 120 blocks, 120 rows
+      let blockReads = 0;
+      const real = rowstore.readBlocks;
+      rowstore.readBlocks = (...a) => { blockReads++; return real(...a); };
+      try {
+        const list = d1.needs(() => ([{ id: 'd1-big', name: 'big', stage: 3, params: { permuteConfirm: true } }]));
+        assert.strictEqual(list.length, 1, 'the set is listed');
+        assert.strictEqual(list[0].rows, 120, `and its row count comes off the sidecar, got ${list[0].rows}`);
+      } finally { rowstore.readBlocks = real; }
+      assert.strictEqual(blockReads, 0,
+        `asking what needs migrating read ${blockReads} block(s) — on every draw of Boards, for every set on the box`);
     });
   },
 

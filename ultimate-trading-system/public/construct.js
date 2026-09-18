@@ -3983,7 +3983,28 @@ async function drawBoards() {
       el.onclick = async () => {
         const id = el.dataset.set;
         const say = el.nextElementSibling;
-        if (bD1Armed !== id) { bD1Armed = id; draw(); return; }
+        if (bD1Armed !== id) {
+          // THE FIRST PRESS ASKS. The notice is a cheap read of the documents,
+          // so the counts are not in it; this is where they come from, one set
+          // at a time and only because the owner asked for them.
+          el.disabled = true; el.textContent = 'reading…';
+          try {
+            const p = await post('api/d1/migrate', { id });
+            bD1Armed = id;
+            el.disabled = false; el.textContent = 'Press again to do it';
+            if (say) {
+              say.innerHTML = `<b>${esc(p.name || id)}</b> &mdash; ${Number(p.rows).toLocaleString()} rows in ${p.blocks} blocks; `
+                + `<b>${Number(p.keep).toLocaleString()} stay, ${Number(p.drop).toLocaleString()} go</b>`
+                + `${p.emptied ? `, and ${p.emptied} block(s) keep nothing and stay as empty blocks so the ones after them do not move` : ''}. `
+                + `${p.can ? 'Press again to do it.' : `<span class="warn">${esc(p.why || 'this one cannot be done here')}</span>`}`;
+            }
+            if (!p.can) { bD1Armed = null; el.disabled = true; }
+          } catch (err) {
+            el.disabled = false; el.textContent = 'What would go?';
+            if (say) say.innerHTML = `<span class="warn">${esc(err.message)}</span>`;
+          }
+          return;
+        }
         el.disabled = true; el.textContent = 'rewriting…';
         try {
           const out = await post('api/d1/migrate', { id, confirm: id });
@@ -4010,16 +4031,14 @@ async function drawBoards() {
       parent puts the child selections away. Each box offers only the record sets that came out of what is picked
       above it. Each section can be put away and comes back as you left it.</p>
     ${running ? `<p class="note"><b>${esc(running.name)}</b> is going: ${esc(running.progress || '…')}</p>` : ''}
-    ${d1.length ? `<p class="note warn"><b>${d1.length} record set(s) hold three rows for every setting</b> &mdash; one priced with the
-      confirmation dial off, one with it confirmed only, one with it sized. The press below keeps the row the dial was off for and
-      drops the other two, so the set holds one row per setting like every other. The rows are rewritten beside the set, checked
-      against it row by row, and only then moved into place, so a set that does not come out right is left exactly as it is;
-      the totals are thrown away and built again from what is left.</p>
+    ${d1.length ? `<p class="note warn"><b>${d1.length} record set(s) were run with the confirmation dial permuted</b>, so they hold three rows for
+      every setting &mdash; one priced with the dial off, one with it confirmed only, one with it sized. The press below keeps the row
+      the dial was off for and drops the other two, so the set holds one row per setting like every other. The first press only says
+      what would go. The rows are rewritten beside the set, checked against it row by row, and only then moved into place, so a set
+      that does not come out right is left exactly as it is; the totals are thrown away and built again from what is left.</p>
       ${d1.map((x) => `<div class="row">
-        <button class="bd1" data-set="${esc(x.id)}"${x.can ? '' : ' disabled'}>${bD1Armed === x.id ? 'Press again to do it' : 'Keep the rows the dial was off for…'}</button>
-        <span class="muted"><b>${esc(x.name)}</b> &mdash; ${x.rows.toLocaleString()} rows in ${x.blocks} blocks;
-          ${x.keep.toLocaleString()} stay, <b>${x.drop.toLocaleString()} go</b>${x.emptied ? `, and ${x.emptied} block(s) keep nothing and stay as empty blocks so the ones after them do not move` : ''}.
-          ${x.can ? '' : `<span class="warn">${esc(x.why || 'this one cannot be done here')}</span>`}</span>
+        <button class="bd1" data-set="${esc(x.id)}">${bD1Armed === x.id ? 'Press again to do it' : 'What would go?'}</button>
+        <span class="muted" id="bd1say-${esc(x.id)}"><b>${esc(x.name)}</b>${x.rows == null ? '' : ` &mdash; ${x.rows.toLocaleString()} rows`}</span>
       </div>`).join('')}` : ''}
   </div>
   <div class="panel">
