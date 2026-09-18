@@ -1243,6 +1243,67 @@ function theSplitsVerdictIsMarkedOnTheRowItChoseAndNowhereElse() {
   assert(/wf_bothOnly: '/.test(help), 'and Help says what it does');
 }
 
+
+// EVERY CONTROL BESIDE THE THING IT CHANGES (owner order, 2026-09-18: "if the
+// read these coins section does not need most of these controls or some of
+// these controls and the walk it forward section does, just organize the
+// controls properly and don't leave bits and pieces lying around in different
+// sections that don't apply properly").
+//
+// TRACED, NOT GUESSED, before this moved anything:
+//   * `sit-out band` and `each shape at its own sweet spot` are read by
+//     coinsRecords() and used ONLY on the per-coin bars. The passers take
+//     their band and their lean from the sweet spot unconditionally, and
+//     walkPieces() never reads the tick at all. So both belong with the bars.
+//   * `look-backs to store, hours` has one productive reader -- the reading --
+//     and what it writes is read by the walk and nothing else. It cannot live
+//     on the walk, because the moves are measured from candles at read time.
+//     So it stays with the press that measures them.
+function everyCoinsControlSitsBesideTheThingItChanges() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  const at = (id) => src.indexOf(`id="${id}"`);
+  const read = at('cRun');
+  const bars = src.indexOf('>How each coin reads<');
+  // THE WALK IS DRAWN BY ITS OWN FUNCTION, defined ABOVE the reading in this
+  // file, so source order says nothing about where it lands on the screen.
+  // Whether a control is IN it is what matters, and that is read by slicing it.
+  const walkFn = src.slice(src.indexOf('function cWalkPanel()'), src.indexOf('function cWalkRepaint()'));
+  assert(read > 0 && bars > 0 && walkFn.length > 2000, 'the three sections are all there');
+
+  // the reading keeps the coins box and the look-backs it MEASURES, and nothing else
+  assert(at('cCoins') < read, 'the coins box is with the press that reads them');
+  assert(at('cBacks') < read, 'and so is look-backs to store, hours — the only press that measures a look-back from the candles');
+
+  // the two that only change a picture are with the picture
+  assert(at('cBand') > bars, 'sit-out band moved to the bars, which is the only thing it changes');
+  assert(at('cAuto') > bars, 'and so did each shape at its own sweet spot');
+  assert(!/id="cBand"/.test(walkFn) && !/id="cAuto"/.test(walkFn), 'neither drifted into Walk it forward');
+  assert(!/id="cBacks"/.test(walkFn), 'and look-backs to store did not either — the walk has its own look-back box');
+
+  // and the bars are in a window, not a mile of page
+  assert(/<div class="cbarwrap">/.test(src), 'the bars are in a scrolling window');
+  assert(src.indexOf('<div class="cbarwrap">') < src.indexOf('<div id="cWalkWrap">'),
+    'which sits ABOVE Walk it forward, so the walk is a short scroll away rather than eighteen coins down');
+  const css = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.html'), 'utf8');
+  assert(/\.cbarwrap \{[^}]*overflow-y:auto/.test(css), 'the window scrolls');
+  assert(/\.cbarwrap \{[^}]*max-height:/.test(css), 'and it is bounded, or it is not a window');
+
+  // THE PRESS THAT FILLS THE WALK'S BOX FROM WHAT THE RECORDS CARRY
+  assert(/id="wBacksAll"/.test(src), 'the press is on the walk');
+  assert(/id="wBacksAll"/.test(walkFn), 'inside Walk it forward, beside look-backs to try');
+  assert(walkFn.indexOf('id="wBacks"') < walkFn.indexOf('id="wBacksAll"'), 'and under the box it fills');
+  assert(/el\.value = \(cBacksNow\.inRecords \|\| \[\]\)\.join\(','\);/.test(src),
+    'it fills the box from what the records actually carry, never from what the setting says');
+  assert(/\(cBacksNow\.inRecords \|\| \[\]\)\.length \? '' : ' disabled'/.test(src),
+    'and it is greyed when the records carry none, rather than emptying the box');
+  // RULE FOUR-A: a button gets a row of its own
+  const seg = walkFn.slice(walkFn.indexOf('id="wSpot"'), walkFn.indexOf('id="wBacksAll"'));
+  assert(/<\/div>\s*\n\s*<div class="row">/.test(seg),
+    'the tick row is closed and the press opens a row of its own — a press stuck on the bottom of a field is the thing the owner called ugly');
+  const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+  assert(/wBacksAll: '/.test(help), 'and Help says what it does');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -1274,6 +1335,7 @@ module.exports = {
   theLateReadingCarriesWhatItPaidAndItsWorstWindow,
   oneSettingWinningBothHalvesIsTheSameRowNotTheSameNumber,
   theSplitsVerdictIsMarkedOnTheRowItChoseAndNowhereElse,
+  everyCoinsControlSitsBesideTheThingItChanges,
   theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout,
   everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow,
   theWalkTableHeadingsSitOverTheirOwnFigures,

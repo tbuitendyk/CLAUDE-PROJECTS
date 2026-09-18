@@ -79,6 +79,63 @@ No other reading of that number is allowed after the fact.
   `lead` and `best on both halves`; every other row of that pair reads a dash.
   That is what makes the columns a MARK on the table rather than a second table.
 
+## A — measured, and the fault in my own pre-registration
+
+Read off **W-3** (`test-walk-3`, 15,912 rows, 3-month windows, 13 bands, 21
+look-backs, 100 copies) the moment step A was deployed.
+
+### The split reading itself: **PASS**
+
+| | |
+|---|---|
+| ahead of picking blind | **52 of 74** — bar 50, chance 37 |
+| pay after the round trip | 49 of 74 |
+| pooled late | +0.715%, **net +0.465%** |
+| mean percentile | 64.7 |
+
+That clears the rule written down in `REGIME-DESIGN.md` Part 7 before any of
+these numbers existed. **It is a declared second look, not a fished one**:
+8.6's D12 listed "more windows" as one of four allowed responses to the first
+reading's inconclusive, and the owner chose it. W-1 read 45 of 74; W-3 reads 52.
+
+### `best on both halves`: **11 of 74** — and my bar was wrong
+
+The pre-registered rule above said more than 3 is beyond chance, because I
+worked the chance rate off **286 rows per pair**. That was wrong, and the probe
+I wrote to hunt my own instrument is what caught it:
+
+> rows each pair chose among: smallest 2, **median 13**, largest 285
+
+Most pairs choose among **thirteen** rows, not 286 — a shape a fixed look-back
+does not walk has 13 bands and one look-back, full stop. At 1 in 13 over 74
+pairs the chance expectation is about **5.7**, not "well under one".
+
+**So 11 against 5.7 is roughly twice chance. Suggestive. Not the landslide the
+letter of my rule would have called it.** The rule is not rewritten after the
+fact — it said more than 3 and the answer is 11 — but the bar it set was
+derived from a wrong premise and banking the pass without saying so would be
+the exact fault RULE SIX's "hunt your own instrument" exists to stop.
+
+### And the structure of the eleven is the real finding
+
+**Ten of the eleven are at `own`.** Only ETCUSDT Daily 1-day at 48h is a fixed
+look-back. The pairs with 285 rows to choose among — the ones carrying all 21
+look-backs — produced essentially none.
+
+Where there were many look-backs to choose between, one setting almost never
+won both halves. Where there was only the shape's own span and 13 bands, it did
+— because 1 in 13 happens. **That is evidence against the look-back axis, not
+for it**, and it sits beside a split verdict that passed. Both are true and
+they are about different things: the split says choosing carried money; the
+both-halves count says the thing chosen did not hold still.
+
+Three of the eleven were choosing among four rows or fewer. Those yeses are
+cheap and the probe names them.
+
+**One column that looks like corroboration and is not.** Every one of the
+eleven shows percentile 100. That is tautological — a row that tops the late
+half is by definition at the top of its pair's late money — so it adds nothing.
+
 ## Found and left alone (RULE ZERO)
 
 - `cpassers` is used twice in `public/construct.js` and defined nowhere.

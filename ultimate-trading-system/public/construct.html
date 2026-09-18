@@ -51,6 +51,14 @@
   .passbox { background:var(--tile); border:1px solid var(--line); border-radius:6px; padding:.55rem .7rem .7rem; margin-top:.7rem; }
   .passname { font-size:.7rem; text-transform:uppercase; letter-spacing:.04em; color:var(--dim); margin-bottom:.5rem; }
   .passname b { color:var(--fg); font-weight:600; }
+  /* THE BARS IN A WINDOW TWO UNITS TALL (owner order, 2026-09-18: "that should
+     give a scrollable window section that shows two complete coin+shape
+     sections at a time so we don't have to scroll down a mile to get to the
+     other sections"). The WINDOW scrolls; the page does not, so Walk it
+     forward is always a short scroll away instead of eighteen coins down. */
+  .cbarwrap { max-height:34rem; overflow-y:auto; border:1px solid var(--line); border-radius:8px;
+              padding:.1rem .6rem; background:var(--bg); margin-bottom:1rem; }
+  .cbarwrap .panel.ccoin { margin-bottom:.6rem; }
   .hinge { background:var(--tile); border:1px solid var(--line); border-left:3px solid var(--accent);
            border-radius:0 6px 6px 0; padding:.5rem .7rem; margin:.55rem 0 0 1.4rem; }
   table { width:100%; border-collapse:collapse; font-size:.8rem; }

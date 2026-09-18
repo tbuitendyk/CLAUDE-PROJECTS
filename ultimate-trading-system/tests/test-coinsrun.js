@@ -527,8 +527,16 @@ module.exports = {
     // 3.157.0: Walk it forward sits between them, so the adjacency this used
     // to check is now passers -> walk -> the first coin. Checked as two links
     // rather than one, so neither can be moved without this failing.
-    assert.ok(/\$\{cPassersPanel\(d && d\.passers\)\}\n  <div id="cWalkWrap">\$\{cWalkPanel\(\)\}<\/div>/.test(src), 'the passers panel sits after the controls, with Walk it forward under it');
-    assert.ok(/<div id="cWalkWrap">\$\{cWalkPanel\(\)\}<\/div>\n  \$\{!recs\.length \?/.test(src), 'and Walk it forward sits before the first coin');
+    // 3.168.0, owner order: every control beside the thing it changes, and the
+    // bars in a window two units tall rather than eighteen coins of page. The
+    // order down the screen is now: the passers, the bars and their own two
+    // controls, then Walk it forward -- which is why the walk no longer sits
+    // above the first coin.
+    assert.ok(/\$\{cPassersPanel\(d && d\.passers\)\}\n  <div class="panel">\n    <h3 style="margin-top:0">How each coin reads<\/h3>/.test(src),
+      'the passers panel sits after the reading, with the bars and their controls under it');
+    assert.ok(/<div class="cbarwrap">\n  \$\{!recs\.length \?/.test(src), 'the coins are drawn inside the window');
+    assert.ok(/\n  <\/div>\n  <div id="cWalkWrap">\$\{cWalkPanel\(\)\}<\/div>`;/.test(src),
+      'and Walk it forward sits under the window, a short scroll away rather than a mile');
     assert.ok(/<b>coins and shapes that pass<\/b>/.test(src) && /<input id="cPassBar" type="number" min="0" max="\$\{pass\.trials\}"/.test(src), 'the bar box sits in the sentence');
     assert.ok(/no coin and shape passes at this bar/.test(src), 'and an empty list says so');
     assert.ok(/<input type="checkbox" class="cpass" data-coin="\$\{esc\(r\.coin\)\}" data-shape="\$\{esc\(r\.geometry\)\}"\$\{r\.ticked \? ' checked' : ''\}/.test(src), 'one tick per row, showing what the service holds');

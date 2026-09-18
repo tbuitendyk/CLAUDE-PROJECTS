@@ -9371,6 +9371,10 @@ function cWalkPanel() {
       <label class="c" title="also walk the band the reading above searched out for each unit. It is marked searched in the table because it was chosen across the whole history and the others were not."><input${off} id="wSpot" type="checkbox"${cState.wSpot ? ' checked' : ''}> also each unit's sweet spot band</label>
     </div>
     <div class="row">
+      <button id="wBacksAll"${off}${(cBacksNow.inRecords || []).length ? '' : ' disabled'} title="puts every look-back the records actually carry into the box above, so you can see what is there and trim it. A look-back the records do NOT carry cannot be walked at all — to add one, put it in look-backs to store, hours and press Read these coins first.">Take the ${(cBacksNow.inRecords || []).length} the records carry</button>
+      <span class="note">the records carry <b>${(cBacksNow.inRecords || []).length ? esc((cBacksNow.inRecords || []).join(', ')) : 'none but each shape&rsquo;s own span'}</b>.
+        A look-back not among them is left out of the walk rather than guessed.</span>
+    <div class="row">
       <label class="f" title="trailing: worked out from everything before each window, which is what a run would have had in hand. whole history: one figure over the whole span, which is what the reading above uses.">the coin's usual move<select id="wUsual"${off}>
         <option value="trailing"${cState.wUsual === 'trailing' ? ' selected' : ''}>trailing</option>
         <option value="whole"${cState.wUsual === 'whole' ? ' selected' : ''}>whole history</option></select></label>
@@ -9479,6 +9483,19 @@ function cWalkBind() {
   keep('#wBands', 'wBands', false);
   keep('#wBacks', 'wBacks', false);
   keep('#wSpot', 'wSpot', false);
+  // FILL THE BOX FROM WHAT THE RECORDS ACTUALLY CARRY (owner order,
+  // 2026-09-18). The placeholder has shown that list all along, but a
+  // placeholder cannot be taken and trimmed -- this puts it in the box.
+  if ($('#wBacksAll')) {
+    $('#wBacksAll').onclick = () => {
+      const el = $('#wBacks');
+      if (!el) return;
+      el.value = (cBacksNow.inRecords || []).join(',');
+      cState.wBacks = el.value;
+      cRemember();
+      el.focus();
+    };
+  }
   keep('#wUsual', 'wUsual', false);
   keep('#wSigns', 'wSigns', false);
   keep('#wScrambles', 'wScrambles', true);
@@ -9734,15 +9751,9 @@ async function drawCoins() {
       decision's own window, <span class="cf">red</span> where it fell, <span class="cs">black</span> where it moved
       too little either way and would sit out. Above each bar, ${esc(cLayoutLabel(layouts[0]))}: train, test, held.
       Below it, ${esc(cLayoutLabel(layouts[1]))}: train, test, held, reserve. <b>Nothing here refuses a coin.</b></p>
-    <p class="note"><b>The sit-out band is one number for every coin, read on each coin's own scale.</b> It is a share
-      of that coin's median window move for the shape: at 50, a decision sits out when it moved less than half what
-      the coin typically moves over that window. Change it and every bar recolours; nothing is read again. Sweep
-      trains with this same number.</p>
     <div class="row" style="align-items:flex-end">
       <label class="f" title="which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep.">coins (blank = all ${d && d.downloaded != null ? d.downloaded : '—'} downloaded)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${esc(cState.coins || '')}" style="width:16rem"${off}></label>
-      <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. Change it and every bar recolours at once; nothing is read again. Sweep trains with this same number.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
       <label class="f" title="the look-backs a reading stores, in hours, comma separated. The chunk shape decides the TRADE; a look-back decides what is LOOKED AT, and there is no reason they should be the same length. Measured from candles at read time, so a change only reaches the records when the coins are read again &mdash; which is why it lives here and not on Walk it forward.">look-backs to store, hours<input id="cBacks" value="${esc(((d && d.lookbacks && d.lookbacks.value) || []).join(','))}" style="width:36.4rem"${off}></label>
-      <label class="c" title="ticked, every coin and shape is drawn at its own sweet spot: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. Nothing is read again either way."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own sweet spot</label>
     </div>
     <div class="row">
       <button id="cRun" class="pri"${off || (cBusyNow ? ' disabled' : '')}${cBusyNow && !running ? ` title="${esc(String(cBusyNow))} — one heavy job at a time. The button wakes when it lands."` : ''}>Read these coins</button>
@@ -9755,7 +9766,18 @@ async function drawCoins() {
     <div class="row"><button id="cClean" class="danger"${off}>Remove these files</button><span id="cCleanOut" class="muted">removes exactly the ${unreadable.length} file(s) named above and nothing else</span></div>` : ''}
   </div>
   ${cPassersPanel(d && d.passers)}
-  <div id="cWalkWrap">${cWalkPanel()}</div>
+  <div class="panel">
+    <h3 style="margin-top:0">How each coin reads</h3>
+    <p class="note"><b>The sit-out band is one number for every coin, read on each coin's own scale.</b> It is a share
+      of that coin's median window move for the shape: at 50, a decision sits out when it moved less than half what
+      the coin typically moves over that window. Change it and every bar recolours; nothing is read again. Sweep
+      trains with this same number.</p>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="how small a window move counts as sit out, as a percentage of the coin's median window move for that shape. One number for every coin, read on each coin's own scale. Change it and every bar recolours at once; nothing is read again. Sweep trains with this same number.">sit-out band, % of the median window move<input id="cBand" type="number" min="0" step="1" value="${esc(String(band.value))}" style="width:6rem"></label>
+      <label class="c" title="ticked, every coin and shape is drawn at its own sweet spot: the band inside its plateau that keeps the most edge per decision. Where no band beats chance for three steps together the typed band applies, and the bar's heading says which. Unticked, the typed band applies everywhere. Nothing is read again either way."><input id="cAuto" type="checkbox"${band.auto ? ' checked' : ''}> each shape at its own sweet spot</label>
+    </div>
+  </div>
+  <div class="cbarwrap">
   ${!recs.length ? `<div class="panel"><p class="note">no coin has been read${unreadable.length ? ' that this release can draw' : ''} — press <b>Read these coins</b> above</p></div>` : recs.map((r) => {
     const grew = behind(r);
     const p = r.provenance || {};
@@ -9763,7 +9785,9 @@ async function drawCoins() {
       <h3 style="margin-top:0">${esc(r.coin)} <span class="muted" style="font-weight:normal;font-size:.74rem">read ${esc(cWhen(p.capturedAt))} UTC · release ${esc(String(p.release || '—'))} · ${p.candles || 0} candles${grew ? ` · <span class="warn">${grew} more month(s) cached since</span>` : ''}</span></h3>
       ${r.read ? shapes.map((sh) => cShapeBlock(r.coin, sh, r.shapes && r.shapes[sh.key], layouts)).join('') : `<p class="note warn">${esc(r.why || 'could not be read')}</p>`}
     </div>`;
-  }).join('')}`;
+  }).join('')}
+  </div>
+  <div id="cWalkWrap">${cWalkPanel()}</div>`;
 
   cLastRecs = recs;
   cPaintBars(recs);
