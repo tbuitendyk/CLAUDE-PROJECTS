@@ -155,7 +155,8 @@ it changes the question the owner answered.
 
 - **Four sets hold three rows per setting** — one at each value of the dial.
   Migrating those means KEEPING the `off` rows and DELETING the other two
-  thirds: 17,900 rows go. That is a real migration, because an `off` row is
+  thirds: **13,450 rows go** (this said 17,900 when it was written, which was
+  wrong arithmetic; the run came back at 13,450). That is a real migration, because an `off` row is
   arithmetically what a run with no dial would have produced.
 - **Two sets hold nothing but `sized` rows.** Every row of #3b and #3c was
   priced WITH the lean applied. There is no `off` row to keep. Migrating them
@@ -235,6 +236,9 @@ failure:
 | 3.170.0 | C — the list at the top, both sources, one promotion door, references not copies | deployed |
 | 3.171.0 | D first half — the walk's lean kept, and stage 3 reads its look-back | deployed |
 | 3.172.0 | the design followed: `Candidates for Sweep` opens the screen; no sideways scroll bars; the missing `</div>` | deployed |
+| 3.173.0 | the plateau grid is the owner's, on screen; the D1 repair built | deployed |
+| 3.173.1 | asking what needs migrating must not read a row | deployed |
+| 3.173.2 | the repair's press has one name the word list can read | deployed |
 
 Parked, each with its reason above and its cost measured: **D1**, **D's second
 half**, **E**.
@@ -306,6 +310,116 @@ manifests. None of the owner's 33 record sets was touched.
 2026-09-15 at the owner's word. It is recaptured now and `SCREEN-WORDS.md`
 regenerated from it — 11 tabs, 1202 control labels, 97 options — which takes in
 every label moved from 3.149.0 through 3.172.0, not only today's.
+
+## D1 DONE — the owner decided, and it is carried out
+
+The owner, 2026-09-18: **"delete #3b and #3c, migrate the other four"**, then
+**"proceed with the D1 migration AND PUT THAT GRID ONSCREEN AS A CONTROL. ONE
+GO. DO BOTH!"**
+
+### A figure I gave them was wrong
+
+I said **17,900 rows** would go from the four. It is **13,450** — two thirds of
+3 + 20,124 + 3 + 45 = 20,175. It changed neither which rows go nor the decision,
+but it was wrong when it was said, it was wrong in the PARKED section above, and
+the run came back at exactly 13,450.
+
+### And my own pre-registration was wrong, restated BEFORE the run
+
+The D1 pre-registration says **"Same row count, exactly"**. That was written
+when this looked like stripping a FIELD off every row. It drops two rows in
+three, so the clause was impossible. Restated before anything was touched, and
+it is the clause that carries the same protection:
+
+- **Same BLOCK count**, and every surviving row under the block index it already
+  had. Block indexes are recorded away from the rows, so a block that vanished
+  moves every one after it.
+- **Every kept row unchanged, field for field.**
+- **No row the dial was not off for survives.**
+- **Everything downstream deleted, not migrated.**
+- **A set that fails any of these is left alone** — and the set must be exactly
+  as it was, with nothing standing beside it.
+
+### The probe that changed the method
+
+Asked of the box before a line was written: if the non-`off` rows go, does any
+BLOCK come out empty? **Yes** — of the four, one loses none, two lose two of
+three, and **#3a loses thirty of forty-five**. The row store's writer cannot
+write an empty block at all: `flush()` with nothing buffered writes none. Without
+this the rewrite silently renumbers every block after the first hole — which is
+the fault the row store's own comment records from 2026-09-01, 5,312 blocks
+written against 3,658.
+
+So `rowstore` gained one guarded line: under `manualBlocks` on a squashed store,
+`flush(true)` writes a header-only block. An ordinary run cannot reach it and a
+test proves an ordinary store still writes nothing on an empty flush.
+
+### What was done, measured on the box afterwards
+
+| set | name | blocks | rows before | kept | dropped | empty blocks |
+|---|---|---|---|---|---|---|
+| s3-mu0ud8sd-4 | S3-Pasers#1a | 3 → 3 | 3 | 1 | 2 | 2 |
+| s3-mu0vq8jl-5 | S3-Pasers#1b | 39 → 39 | 20,124 | 6,708 | 13,416 | 0 |
+| s3-mu0yp5zl-6 | S3-Pasers#2a | 3 → 3 | 3 | 1 | 2 | 2 |
+| s3-mu0z1opj-7 | S3-Pasers#3a | 45 → 45 | 45 | 15 | 30 | 30 |
+
+**13,450 dropped, every block count held, `loosened 0` on all four** — no field
+even changed its way of writing "nothing". Walked block by block afterwards: the
+sidecar agrees with a real walk, only `off` rows survive, every document says
+`permuteConfirm: false`, the totals and agreement tables are gone, and nothing
+is left standing beside any of them.
+
+**Deleted, through the service's own door, previewed first:** `S3-Pasers#3b`
+(45,732 rows, 12.8 MB) and `S3-Pasers#3c` (103,028 rows, 26.0 MB) — 148,760 rows
+— and before them the Stage 4 set standing on #3c, `S4-Pasers#3c - Funnel -
+S3-Pasers#3c - LTCUSDT alongside ATOMUSDT and DOTUSDT daily-3d`, which the delete
+door refuses to orphan. That order is the system's, not a choice made here. The
+owner was told that Stage 4 set was part of the cost before they said delete.
+**29 record sets on the box now.**
+
+### The defect I shipped, and found by running it
+
+The first thing 3.173.0 did on the box was **time out**. `needs()` called the
+full plan on every stage 3 set — every block of every one, a hundred thousand
+rows on the big ones — and Boards asks it on every draw. That is RULE TEN's own
+warning, word for word: *"one walked every record of the owner's set to decide
+whether to offer a button nobody would ever press again."* I built it and
+shipped it inside ten minutes of quoting the rule.
+
+3.173.1 reads the documents instead — `permuteConfirm` is the cheap signal and
+the migration turns it off — and the counts come from the first press, one set
+at a time and only because it was asked for. `askingWhatNeedsItNeverReadsARow`
+counts block reads and requires zero; putting the old version back reads 120 on
+the fixture and the test says so. The endpoint answers in under three seconds
+now.
+
+### And a word-list hole I opened
+
+The press read `What would go?` or `Press again to do it` by ternary inside
+`${...}`, which the generator throws away — two buttons on the owner's screen on
+no list. One fixed label now, `Keep the row the dial was off for…`, and it is on
+the Boards list. Worth knowing generally: **the generator's reach stops at the
+renderer and the helpers it draws with**, so prose a click writes into a span is
+invisible to it. That is structural and predates this work.
+
+## RULE TEN — the repair can be retired, and that is the owner's word
+
+`needs()` came back **empty** on the box, with nothing running, straight after
+the run. That is the evidence RULE TEN asks for and nothing else counts as it.
+
+**It is not retired, because the owner authorised the migration and not the
+retirement** (RULE ZERO: permission is per task and does not carry over). What
+would go, all in one cut: `lib/d1migrate.js`, `d1Needs`/`d1Migrate` in
+`lib/stages.js`, the two endpoints, the notice and the press on Boards,
+`tests/test-d1migrate.js`, and the three `uts-d1-*` scripts. The one line in
+`lib/rowstore.js` STAYS — it is a capability of the store, not a repair, and it
+is covered by its own tests.
+
+**The one thing that argues against retiring it today:** the confirmation dial
+is still in the engine, so a stage 3 run launched with it permuted would make
+another such set tomorrow. RULE TEN answers that directly — *"not 'once more
+sets exist'"* — so the rule says go. It is still the owner's word, and it is one
+word.
 
 ## Found and left alone (RULE ZERO)
 
