@@ -267,9 +267,37 @@ function periodsForMonths(months, stepHours) {
 // bands that is four hundred and fifty independent walks that share nothing,
 // which is exactly the shape the pool was built for. The payload carries its
 // own moves and outcomes so the worker needs no files and no state.
+// THE ROW'S OWN LEAN, KEPT (3.171.0, owner order 2026-09-18: "how can the
+// signals be encoded onto those records and read by the stage three sweep").
+//
+// The walk has computed this all along and thrown it away: signsBefore returns
+// +1, -1 or 0 for a rising window and the same for a falling one, which is
+// exactly the shape of the lean a passer already hands stage 3. walkTask used
+// to map the strip down to five fields and the two signs went with the rest.
+//
+// IT IS THE WHOLE HISTORY'S, at this row's own look-back and band. The owner
+// settled that: "we're trying to analyze the entire field of data available on
+// each coin to see what kind of signal can be extracted that we're just going
+// to use". A rolled lean is a different answer every window and cannot ride on
+// a record as one pair of numbers; this one can.
+//
+// ZERO IS A REAL ANSWER and it means take no trade after that colour -- which
+// is a third state the passers' lean has never had.
+function leanOver(move, out, band) {
+  const yard = medianAbsMove(move);
+  if (yard == null || !(yard > 0)) return null;
+  const threshold = yard * (band / 100);
+  const n = Math.min(move.length, out.length);
+  const s = signsBefore(move, out, n, threshold);
+  return {
+    rising: s.r, falling: s.f, yardstick: yard, threshold,
+    afterRising: s.nr, afterFalling: s.nf,
+  };
+}
 function walkTask({ move, out, opts, copies, seedText }) {
   const got = scrambled(move, out, opts, copies, seedText);
   return {
+    lean: leanOver(move, out, opts.band),
     trades: got.real.trades, perTrade: got.real.perTrade,
     windows: got.real.windows, windowsUp: got.real.windowsUp, windowsDown: got.real.windowsDown,
     best: got.real.best, worst: got.real.worst, copies: got.copies, asGood: got.asGood, asGoodSlid: got.asGoodSlid,
@@ -406,6 +434,9 @@ function walkTasksFor(records, geometries, opts) {
 function rowOf(task, got) {
   return {
     coin: task.coin, geometry: task.geometry, band: task.band, lookback: task.lookback || 'own', searched: task.searched,
+    // the two signs this row's whole history gives, at its own look-back and
+    // band -- what stage 3 reads if the row is promoted
+    lean: got.lean || null,
     span: task.span, warmUp: task.warmUp,
     trades: got.trades, perTrade: got.perTrade,
     windows: got.windows, windowsUp: got.windowsUp, windowsDown: got.windowsDown,
@@ -599,5 +630,5 @@ module.exports = {
   BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID, ROUND_TRIP, chooseThenRead, moneyOver,
   forwardHoursOf, oneShapePerForwardTime,
   windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, slidOffsets, periodsForMonths, HOURS_A_MONTH,
-  walkTask, walkTasksFor, rowOf,
+  walkTask, walkTasksFor, rowOf, leanOver,
 };

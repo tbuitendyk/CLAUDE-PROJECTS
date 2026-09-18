@@ -558,7 +558,14 @@ module.exports = {
         // says what Sweep runs and the lean is a fact about the coin
         const leans = runner.passerLeans();
         assert.ok(row.yardstick > 0, 'the row carries the median window move the band is a share of');
-        assert.deepStrictEqual(leans['ZZZPASSAUSDT|daily-3d'], { band: row.band, yardstick: row.yardstick, rising: row.lean.rising, falling: row.lean.falling }, 'the passer\'s lean, as the row carries it, with the yardstick');
+        // 3.171.0: AND IT SAYS WHICH LOOK-BACK IT IS AT. A passer's is always
+        // the shape's own span -- its band comes off the plateau, which is
+        // searched on the shape's own window move. Saying so rather than
+        // leaving it unsaid is what lets a promoted row say something else.
+        assert.deepStrictEqual(leans['ZZZPASSAUSDT|daily-3d'], {
+          band: row.band, yardstick: row.yardstick, rising: row.lean.rising, falling: row.lean.falling,
+          lookback: 'own', from: { source: 'passer' },
+        }, 'the passer\'s lean, as the row carries it, with the yardstick and the look-back it is read at');
         assert.strictEqual(leans['ZZZPASSBUSDT|daily-3d'], undefined, 'a coin and shape above the bar carries none');
         runner.setPasserTicked('ZZZPASSAUSDT', 'daily-3d', false);
         assert.ok(runner.passerLeans()['ZZZPASSAUSDT|daily-3d'], 'un-ticking changes what Sweep runs, not the lean');

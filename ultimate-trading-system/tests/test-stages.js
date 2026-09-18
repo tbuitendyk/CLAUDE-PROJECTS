@@ -843,8 +843,15 @@ module.exports = {
     assert.ok(task.includes("confirm: st.confirm || 'off',") && task.includes('lean: tPriced.parts ? {') && task.includes('verdict: tPriced.parts ? {'),
       'every record carries the dial, and a record with a lean carries its six numbers and its word');
     // the signs come from the same arithmetic Coins reads the windows with
-    assert.ok(task.includes('windowLib.windowMoves(tradeMap, geometry)') && task.includes('windowLib.readingsUnderBand(wm.move, task.lean.band, task.lean.yardstick)'),
-      'the lean is read at the unit\'s band and at Coins\' own yardstick by the one window arithmetic (lib/windowmove.js), not a copy of it');
+    // 3.171.0: AND AT THE LEAN'S OWN LOOK-BACK. windowMoves has taken a list of
+    // look-backs since 2026-09-17 and this called it with none, so every lean
+    // coloured its windows at the chunk shape's own span -- 24 hours on Daily
+    // 1-day -- while the walk found coins alive at 240 and above.
+    assert.ok(task.includes('windowLib.windowMoves(tradeMap, geometry, back ? [back] : [])')
+      && task.includes('windowLib.readingsUnderBand(series, task.lean.band, task.lean.yardstick)'),
+      'the lean is read at the unit\'s band, at Coins\' own yardstick, and at ITS OWN LOOK-BACK, by the one window arithmetic (lib/windowmove.js), not a copy of it');
+    assert.ok(task.includes("task.lean.lookback == null || task.lean.lookback === 'own' ? null : Number(task.lean.lookback)"),
+      "and `own` is a real value here -- the shape's own span -- so a lean that names no look-back reads exactly as it always did");
     assert.ok(!/require\('\.\/coins'\)/.test(sw), 'the worker must not reach lib/coins.js: through the vocabulary it would reach the orchestrator');
     const fn = sw.slice(sw.indexOf('function priceLeanWindow('), sw.indexOf('function partsCents('));
     assert.ok(fn.includes("if (!signs || confirm === 'off') return { res: bracketLib.simCell(cell, ch, calls, tradeMap, geo, bandPct, fee), parts: null };"),

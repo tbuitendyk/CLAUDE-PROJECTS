@@ -1304,6 +1304,62 @@ function everyCoinsControlSitsBesideTheThingItChanges() {
   assert(/wBacksAll: '/.test(help), 'and Help says what it does');
 }
 
+
+// THE WALK'S OWN SIGNAL, KEPT AND CARRIED (3.171.0, owner order 2026-09-18:
+// "how can the signals be encoded onto those records and read by the stage
+// three sweep to add value to the decision making at that point").
+//
+// The answer turned out to be that the walk already SPEAKS the lean's language
+// and was throwing it away. signsBefore returns +1, -1 or 0 after a rising
+// window and the same after a falling one -- exactly `after a rising window -1,
+// after a falling window 1` on the four passers. walkTask mapped the strip down
+// to five fields and the two signs went with the rest.
+function theWalksOwnLeanIsKeptAndSpeaksTheSameLanguageAsAPassers() {
+  const { leanOver } = require('../lib/coinscan');
+  // a reverting coin: a big rise is followed by a fall and a big fall by a rise
+  const move = []; const out = [];
+  for (let i = 0; i < 200; i++) { const m = ((i * 37) % 11) - 5; move.push(m); out.push(m > 2 ? -1.5 : (m < -2 ? 1.5 : 0.1)); }
+  const l = leanOver(move, out, 100);
+  assert(l.rising === -1 && l.falling === 1, `a reverting coin leans down after a rise and up after a fall, got ${l.rising}/${l.falling}`);
+  assert(l.yardstick > 0 && l.threshold > 0, 'and it carries the yardstick its band is a share of, so stage 3 reads the same scale Coins did');
+  assert(l.afterRising > 0 && l.afterFalling > 0, 'with how many decisions each side was learned from');
+
+  // A TRENDING COIN LEANS THE OTHER WAY, or the sign means nothing
+  const up = []; const uo = [];
+  for (let i = 0; i < 200; i++) { const m = ((i * 37) % 11) - 5; up.push(m); uo.push(m > 2 ? 1.5 : (m < -2 ? -1.5 : 0.1)); }
+  const t = leanOver(up, uo, 100);
+  assert(t.rising === 1 && t.falling === -1, `a trending coin is the mirror of it, got ${t.rising}/${t.falling}`);
+
+  // ZERO IS A REAL ANSWER -- take no trade after that colour. The passers' lean
+  // has never had that third state.
+  const flat = leanOver(move, move.map(() => 0), 100);
+  assert(flat.rising === 0 && flat.falling === 0, 'a coin whose outcomes are nought leans neither way');
+
+  // AND A COIN WITH NO SCALE HAS NO LEAN, rather than one worked out by
+  // dividing by nothing
+  assert(leanOver([0, 0, 0, 0], [1, 1, 1, 1], 100) === null, 'a coin that never moves has no yardstick and so no lean');
+
+  // IT RIDES ON EVERY ROW the walk writes
+  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinscan.js'), 'utf8');
+  assert(/lean: leanOver\(move, out, opts\.band\),/.test(src), 'the task works it out');
+  assert(/lean: got\.lean \|\| null,/.test(src), 'and the row keeps it');
+
+  // AND STAGE 3 READS IT AT THE ROW'S OWN LOOK-BACK, which is the whole point
+  const work = fs.readFileSync(path.join(__dirname, '..', 'lib', 'stagework.js'), 'utf8');
+  assert(/windowLib\.windowMoves\(tradeMap, geometry, back \? \[back\] : \[\]\)/.test(work),
+    'the lean\'s look-back reaches windowMoves, which has taken one since 2026-09-17 and was never given it');
+  assert(/task\.lean\.lookback == null \|\| task\.lean\.lookback === 'own' \? null : Number\(task\.lean\.lookback\)/.test(work),
+    "`own` is a real value here — the shape's own span — so a lean without one reads exactly as it always did");
+  assert(/\.some\(\(v\) => v != null\) \? wm\.moves\[String\(back\)\] : wm\.move/.test(work),
+    'and a look-back the candles cannot reach falls back to the shape\'s own span rather than colouring every window from nulls');
+
+  // ONE KEY, ONE LEAN, AND NOTHING SILENT ABOUT IT
+  const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
+  assert(/lookback: 'own', from: \{ source: 'passer' \}/.test(run), "a passer's lean says it is at the shape's own span");
+  assert(/a passer already holds this coin and chunk shape/.test(run),
+    'and a promoted row passed over for one is named, never dropped in silence');
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -1336,6 +1392,7 @@ module.exports = {
   oneSettingWinningBothHalvesIsTheSameRowNotTheSameNumber,
   theSplitsVerdictIsMarkedOnTheRowItChoseAndNowhereElse,
   everyCoinsControlSitsBesideTheThingItChanges,
+  theWalksOwnLeanIsKeptAndSpeaksTheSameLanguageAsAPassers,
   theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout,
   everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow,
   theWalkTableHeadingsSitOverTheirOwnFigures,

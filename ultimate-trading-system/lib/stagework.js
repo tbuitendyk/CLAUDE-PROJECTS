@@ -1048,8 +1048,24 @@ async function s3UnitTask(task) {
   // from one pass over the trades actually taken.
   const leanSignsFor = (chunksArr, tradeMap) => {
     if (!task.lean || !chunksArr.length) return null;
-    const wm = windowLib.windowMoves(tradeMap, geometry);
-    const { reading } = windowLib.readingsUnderBand(wm.move, task.lean.band, task.lean.yardstick);
+    // THE LEAN'S OWN LOOK-BACK (3.171.0, owner order). windowMoves has taken a
+    // list of look-backs since 2026-09-17 and this called it with none, so
+    // every lean coloured its windows at the chunk shape's own span -- 24
+    // hours on Daily 1-day, while the walk found coins alive at 240 and above.
+    //
+    // `own` IS A REAL VALUE in this vocabulary, not a missing one: it is the
+    // shape's own span, which is exactly what wm.move is. So a lean that does
+    // not name a look-back is an `own` lean and reads as it always did. That
+    // is a default, not a branch for old records.
+    const back = task.lean.lookback == null || task.lean.lookback === 'own' ? null : Number(task.lean.lookback);
+    const wm = windowLib.windowMoves(tradeMap, geometry, back ? [back] : []);
+    // A LOOK-BACK THE CANDLES CANNOT REACH IS NOT GUESSED. windowMoves leaves a
+    // null where a decision has no candle that far behind it, and a whole
+    // column of nulls means this unit cannot be read at that distance -- so it
+    // falls back to the shape's own span and the run says which it used.
+    const series = back && wm.moves && Array.isArray(wm.moves[String(back)])
+      && wm.moves[String(back)].some((v) => v != null) ? wm.moves[String(back)] : wm.move;
+    const { reading } = windowLib.readingsUnderBand(series, task.lean.band, task.lean.yardstick);
     const byTs = new Map();
     for (let i = 0; i < wm.ts.length; i++) byTs.set(wm.ts[i], reading[i]);
     return confirmLib.leanSigns(chunksArr.map((c) => byTs.get(c.startTs) || 's'), task.lean);

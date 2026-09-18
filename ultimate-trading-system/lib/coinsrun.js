@@ -453,8 +453,35 @@ function passerLeans() {
   const out = {};
   for (const r of passersCached()) {
     if (!r.lean || !(r.lean.rising || r.lean.falling)) continue;
-    out[`${r.coin}|${r.geometry}`] = { band: r.band, yardstick: r.yardstick ?? null, rising: r.lean.rising || 0, falling: r.lean.falling || 0 };
+    // A PASSER'S LEAN IS AT THE SHAPE'S OWN SPAN, always: its band comes off
+    // the plateau, which is searched on the shape's own window move. Saying so
+    // rather than leaving it unsaid is what lets a promoted row say something
+    // different (3.171.0).
+    out[`${r.coin}|${r.geometry}`] = {
+      band: r.band, yardstick: r.yardstick ?? null,
+      rising: r.lean.rising || 0, falling: r.lean.falling || 0,
+      lookback: 'own', from: { source: 'passer' },
+    };
   }
+  // AND EVERY TICKED PROMOTED ROW BRINGS ITS OWN, at its own look-back
+  // (3.171.0, owner order: "how can the signals be encoded onto those records
+  // and read by the stage three sweep to add value to the decision making").
+  //
+  // A PASSER HOLDS ITS KEY. Where a coin and shape is in both lists the
+  // passer's lean is the one stage 3 reads, because that is what it reads
+  // today and changing it quietly would move the money an existing sweep
+  // prices. The promoted row is not lost -- it is named in `passedOver`, and
+  // the two become separate units the day a unit can tell them apart.
+  let passedOver = [];
+  try {
+    const w = require('./walkset').promotedLeans();
+    passedOver = w.passedOver || [];
+    for (const [k, lean] of Object.entries(w.leans || {})) {
+      if (out[k]) { passedOver.push({ coin: k.split('|')[0], geometry: k.split('|')[1], why: 'a passer already holds this coin and chunk shape', ...lean }); continue; }
+      out[k] = lean;
+    }
+  } catch (_) { /* no walk sets is not a fault */ }
+  Object.defineProperty(out, '__passedOver', { value: passedOver, enumerable: false });
   return out;
 }
 

@@ -136,6 +136,69 @@ cheap and the probe names them.
 eleven shows percentile 100. That is tautological — a row that tops the late
 half is by definition at the top of its pair's late money — so it adds nothing.
 
+## PARKED — D1, and why "migrate" does not mean what it looked like
+
+**Surveyed before touching anything.** The six sets R2 named are on the box and
+they are exactly the six. But the shape of the rows is not what R2 assumed, and
+it changes the question the owner answered.
+
+| set | name | launched at | rows | `confirm` on the rows |
+|---|---|---|---|---|
+| s3-mu0ud8sd-4 | S3-Pasers#1a | off | 3 | off=1, confirmed only=1, sized=1 |
+| s3-mu0vq8jl-5 | S3-Pasers#1b | off | 20,124 | off=6,708, confirmed only=6,708, sized=6,708 |
+| s3-mu0yp5zl-6 | S3-Pasers#2a | off | 3 | off=1, confirmed only=1, sized=1 |
+| s3-mu0z1opj-7 | S3-Pasers#3a | off | 45 | off=15, confirmed only=15, sized=15 |
+| s3-mu0zlurh-8 | S3-Pasers#3b | sized | 45,732 | **sized=45,732** |
+| s3-mu1ikjw9-9 | S3-Pasers#3c | sized | 103,028 | **sized=103,028** |
+
+**168,935 rows, not the ~65,000 R2 estimated.** And two different situations:
+
+- **Four sets hold three rows per setting** — one at each value of the dial.
+  Migrating those means KEEPING the `off` rows and DELETING the other two
+  thirds: 17,900 rows go. That is a real migration, because an `off` row is
+  arithmetically what a run with no dial would have produced.
+- **Two sets hold nothing but `sized` rows.** Every row of #3b and #3c was
+  priced WITH the lean applied. There is no `off` row to keep. Migrating them
+  does not mean stripping a column — it means **deleting both sets entirely**,
+  148,760 rows, and the Stage 4 set standing on #3c.
+
+**So for two of the six, migrate and delete are the same act.** The owner chose
+"migrate, do not delete" between two options that turn out not to exist
+separately here.
+
+RULE SIX says a conflict with something the owner has written down is PARKED,
+not argued with, and RULE NINE says the choice between migrating and deleting a
+set is the owner's and never a session's. **Nothing was touched. All six sets
+are exactly as they were.**
+
+What the owner has to decide, with the numbers above in front of them:
+
+1. **#1a, #1b, #2a, #3a** — keep the `off` third, drop the rest. Unambiguous.
+2. **#3b and #3c** — there is no third to keep. Either both go, or R2 does not
+   ship, because R2 needs all six clear before the dial can be cut out whole.
+
+## PARKED — the second half of D, and what it would cost
+
+Step D split when it was measured. One half shipped as 3.171.0; the other is a
+different size of change and is left alone.
+
+- **Shipped.** The lean carries a look-back, and stage 3 reads it. `own` is a
+  real value in this vocabulary, so a lean naming none is an `own` lean and
+  reads exactly as it always did — a default, not a branch for old records.
+  And the walk's rows now KEEP the two signs the walk has been computing and
+  discarding all along.
+- **Parked: two rows of one coin and shape becoming two units.** A unit is
+  `` `${u.trade}|${u.ctx1||''}|${u.ctx2||''}|${u.geometry}` `` — `unitKeyOf`,
+  `lib/stages.js:540`. That key is written into every stage 3 set on disk and
+  read by twelve files, the whole live path among them. Changing it is R8's
+  bill arriving from another direction, not a second digit, and RULE ONE-C says
+  the owner reads what it costs before it moves.
+
+  **Until then: where a coin and chunk shape is in BOTH lists, the passer's
+  lean is the one stage 3 reads.** That is what it reads today, and changing it
+  quietly would move the money an existing sweep prices. The promoted row is
+  not lost — it is named in `passedOver` — but it is not in force.
+
 ## Found and left alone (RULE ZERO)
 
 - `cpassers` is used twice in `public/construct.js` and defined nowhere.

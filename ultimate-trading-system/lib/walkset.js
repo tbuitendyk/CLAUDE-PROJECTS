@@ -216,6 +216,9 @@ function promoted() {
         copies: r.copies,
         asGood: r.asGood,
         asGoodSlid: r.asGoodSlid,
+        // the two signs this row's whole history gives, at its own look-back
+        // and band -- null on a set walked before 3.171.0 kept them
+        lean: r.lean || null,
         scan: r.scan || [],
         ticked: !off.has(k),
       });
@@ -223,6 +226,38 @@ function promoted() {
     if (rows.length) out.push({ id: doc.id, name: doc.name, release: doc.release, finishedAt: doc.finishedAt, rows });
   }
   return out;
+}
+
+// THE LEAN EACH TICKED PROMOTED ROW CARRIES, keyed by coin and shape -- the
+// shape stage 3's confirm dial already takes, with the row's own LOOK-BACK
+// beside its band. A row from a set walked before 3.171.0 has no lean and is
+// left out rather than given one.
+//
+// ONE KEY, ONE LEAN, FOR NOW. Two promoted rows on the same coin and chunk
+// shape are two different readings of it and the owner's call is that they
+// become two units -- but a unit is `trade|ctx1|ctx2|geometry` today
+// (lib/stages.js:540) and that key is on disk in every stage 3 set. So until
+// that changes the first ticked row of a coin and shape holds the key, and
+// promotedLeans says how many were passed over so nothing is silent.
+function promotedLeans() {
+  const out = {};
+  const passedOver = [];
+  for (const set of promoted()) {
+    for (const r of set.rows) {
+      if (!r.ticked || !r.lean || !(r.lean.rising || r.lean.falling)) continue;
+      const k = `${r.coin}|${r.geometry}`;
+      if (out[k]) { passedOver.push({ ...r, set: set.id, setName: set.name }); continue; }
+      out[k] = {
+        band: r.band,
+        yardstick: r.lean.yardstick ?? null,
+        rising: r.lean.rising || 0,
+        falling: r.lean.falling || 0,
+        lookback: r.lookback == null ? 'own' : r.lookback,
+        from: { set: set.id, name: set.name, key: r.key },
+      };
+    }
+  }
+  return { leans: out, passedOver };
 }
 
 // EVERY TICKED PROMOTED ROW AS COIN AND SHAPE, deduplicated across every set --
@@ -261,5 +296,5 @@ function deleteWalk(id, confirm) {
 
 module.exports = {
   V, DIR, walkFile, rowKey, nextId, nextName, saveWalk, listWalks, readWalk, renameWalk,
-  setPicked, setRowOff, pickedUnits, promoted, promotedUnits, deleteWalk,
+  setPicked, setRowOff, pickedUnits, promoted, promotedUnits, promotedLeans, deleteWalk,
 };
