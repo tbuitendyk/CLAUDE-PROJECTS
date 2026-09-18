@@ -1,16 +1,16 @@
 {
   "note": "WHAT THE BOX IS SERVING. The closed word list is generated from this commit, not from the working tree, because between a commit and its deploy those describe different screens and the list is the only vocabulary permitted about a screen. Only the two scripts are hashed: since 3.137.0 the engine stamps EVERY page it serves with the release it was served under (a meta line in the head, so a page older than the box is refused and reloads itself), on top of the cache marker it has always stamped into construct.html — so no .html file's served bytes equal its source, by design, and hashing one would be a check that can only ever fail. The screen labels all live in construct.js and help-content.js, which are served byte for byte. Captured by vps-access/scripts/uts-served-fingerprint.sh after every deploy, then `node tests/sweep-words.js --write`.",
-  "commit": "cfac4511308dac2e31bfdc34d8952be2913f4e0f",
-  "subject": "3.148.0: the reserve board -- every setting of a unit priced on the reserve window and kept beside the stage 3 set, read by every Reserve reading; the press, the dropped settings, the other units and the ride price nothing",
-  "capturedAt": "2026-09-15T21:33:18Z",
+  "commit": "a878e150706d3811c175676b43900f40dd68e06f",
+  "subject": "3.172.0: Candidates for Sweep opens the Coins screen; no sideways scroll bars",
+  "capturedAt": "2026-09-18T07:00:37Z",
   "files": {
     "public/construct.js": {
-      "sha256": "fde4fbf9b790f9331b2e603249372a5d0d8a7440d82b972c872c1f58855b297e",
-      "bytes": 633144
+      "sha256": "a7636cd32a61f5576f0cc1c667ee07a9b97b651f81703683cacc3f62d4d3d320",
+      "bytes": 731903
     },
     "public/help-content.js": {
-      "sha256": "ef90fb64f014ad9e1cd5582c286f8da1e275646c2ea3990beefb2ddb13dfe7e4",
-      "bytes": 118423
+      "sha256": "2a98552052c5cf3ce99aa97b48cf7fb67ce48aec73deef6d29c776db4ba88e4f",
+      "bytes": 137538
     }
   },
   "htmlNotVerified": "public/construct.html, public/trade.html and public/setup.html are served with the release stamped into the head (3.137.0) and, for construct.html, the cache markers rewritten to the content hash of each script, so their served bytes never equal their stored bytes. Nothing is generated from them."
