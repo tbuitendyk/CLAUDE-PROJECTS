@@ -22,7 +22,7 @@ const ALL=FOUR.concat(GOING);
 
 for(const id of ALL){
   const dir=path.join(D,id+".rows");
-  const meta=path.join(dir,"records.meta.json");
+  const meta=path.join(dir,"records.jsonl.gz.meta.json");
   let m=null; try{m=JSON.parse(fs.readFileSync(meta,"utf8"))}catch(e){}
   const gz=path.join(dir,"records.jsonl.gz");
   console.log("\n===== "+id+(FOUR.includes(id)?"   (MIGRATE)":"   (DELETE)"));
@@ -64,7 +64,7 @@ console.log("\n===== every set whose standsOn names one of the six =====");
 for(const f of fs.readdirSync(S)){
   if(!f.endsWith(".json"))continue;
   let d=null; try{d=JSON.parse(fs.readFileSync(path.join(S,f),"utf8"))}catch(e){continue}
-  const so=d.standsOn&&d.standsOn.id, par=d.parent||d.from||d.stage2||null;
+  const so=d.standsOn&&d.standsOn.id, par=(d.parent&&d.parent.id)||(d.params&&d.params.from)||null;
   for(const id of ALL){
     if(so===id)console.log("  "+f+"  name="+JSON.stringify(d.name)+"  standsOn "+id);
     else if(par===id)console.log("  "+f+"  name="+JSON.stringify(d.name)+"  parent "+id);
