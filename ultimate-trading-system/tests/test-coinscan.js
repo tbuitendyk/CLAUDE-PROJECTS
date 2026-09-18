@@ -803,12 +803,14 @@ function theRealWalkFilter(wF) {
   // by the cells, the sorters and the filters alike
   const sp = /const cSpread = [^\n]*\n/.exec(src);
   const ps = /const cPerSpread = \(r\) => \{[\s\S]*?\n\};/.exec(src);
-  const rt = /const C_ROUND_TRIP = [^\n]*\n/.exec(src);
-  const pd = /const cPaid = \(r\) => [\s\S]*?\n[^\n]*\), 0\);\n/.exec(src);
+  const rt = /const cRoundTrip = [^\n]*\n/.exec(src);
+  const pd = /const cPaid = \(r\) => \{[\s\S]*?\n\};/.exec(src);
   assert(sp && ps, 'the spread and the ratio are defined once, where the filter can see them');
   assert(rt && pd, 'and so are the round trip and the count of windows that cleared it');
+  // cFeeNow is the answer the box sends; 0.25% the round trip is what the
+  // built-in works out to, so these fixtures read the way the screen does
   // eslint-disable-next-line no-new-func
-  return new Function('cState', `${sp[0]}${ps[0]}${rt[0]}${pd[0]}\n${m[0]}; return cWalkList;`)({ wF });
+  return new Function('cState', 'cFeeNow', `${sp[0]}${ps[0]}\n${rt[0]}${pd[0]}\n${m[0]}; return cWalkList;`)({ wF }, { set: true, feePerLeg: 0.00125, roundTripPct: 0.25, from: 'a test' });
 }
 function anEmptyFilterBoxHidesNothingAtAll() {
   const shapes = [{ key: 'daily-1d', label: 'Daily 1-day' }, { key: 'daily-3d', label: 'Daily 3-day' }];
@@ -1029,13 +1031,18 @@ function theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout() {
 // and two counters that disagree is worse than one that is wrong.
 function aWindowCountsAsPaidOnlyIfItCLEARSTheRoundTripAndBothSidesAgree() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
-  // the two figures are the SAME figure, or the two tables disagree about what
-  // paid means while both using the word
-  const m = /const C_ROUND_TRIP = ([\d.]+);/.exec(src);
-  assert(m, 'the screen names the round trip in one place');
-  assert(Number(m[1]) === ROUND_TRIP,
-    `the screen's round trip is ${m[1]} and the engine's is ${ROUND_TRIP} -- one number, or the two tables mean different things by paid`);
-  assert(Math.abs(ROUND_TRIP - 0.25) < 1e-12, `and it is 0.25%, twice the fee a leg, got ${ROUND_TRIP}`);
+  // 3.166.0, owner order: "make sure that your new column that makes an
+  // earnings claim is referencing the user value". The screen may not hold a
+  // round trip of its own AT ALL -- for one release it did, as a literal, and
+  // that is the fault this guards. It reads the figure off the answer, which
+  // the box fills from the Account tab.
+  assert(!/const C_ROUND_TRIP/.test(src), 'the screen keeps no round trip of its own');
+  assert(!/0\.25/.test(src), 'and no figure on this screen is typed — every one of them follows the setting');
+  assert(/const cRoundTrip = \(\) => \(cFeeNow && cFeeNow\.roundTripPct != null \? Number\(cFeeNow\.roundTripPct\) : null\);/.test(src),
+    'it comes off the answer, and NOT KNOWN is a real answer rather than a guess');
+  assert(/if \(st && st\.fee\) cFeeNow = st\.fee;/.test(src) && /if \(d && d\.fee\) cFeeNow = d\.fee;/.test(src),
+    'and both answers this screen reads carry it, so it is right before a walk and after one');
+  assert(Math.abs(ROUND_TRIP - 0.25) < 1e-12, `the engine's built-in is 0.25%, twice the fee a leg, got ${ROUND_TRIP}`);
 
   // THE ENGINE SIDE: strictly above, at the boundary, in both directions
   const w = (perTrade) => ({ n: 10, perTrade, thin: false });
@@ -1050,18 +1057,27 @@ function aWindowCountsAsPaidOnlyIfItCLEARSTheRoundTripAndBothSidesAgree() {
   // and a different cost is honoured, so the reading and its own bar cannot drift
   assert(moneyOver([w(0.5), w(2)], 0, 2, 1).windowsPaid === 1, 'the cost the caller names is the cost that is used');
 
-  // THE SCREEN SIDE: the same boundary, run for real out of the page
-  const rt = /const C_ROUND_TRIP = [^\n]*\n/.exec(src);
-  const pd = /const cPaid = \(r\) => [\s\S]*?\n[^\n]*\), 0\);\n/.exec(src);
+  // THE SCREEN SIDE: the same boundary, run for real out of the page, against
+  // a fee handed in the way the box hands one in
+  const rt = /const cRoundTrip = [^\n]*\n/.exec(src);
+  const pd = /const cPaid = \(r\) => \{[\s\S]*?\n\};/.exec(src);
   assert(rt && pd, 'the screen defines both, once');
   // eslint-disable-next-line no-new-func
-  const cPaid = new Function(`${rt[0]}${pd[0]}\nreturn cPaid;`)();
+  const make = (fee) => new Function('cFeeNow', `${rt[0]}${pd[0]}\nreturn cPaid;`)(fee);
+  const cPaid = make({ set: true, feePerLeg: 0.00125, roundTripPct: 0.25, from: 'a test' });
   assert(cPaid({ scan: [w(0.2499), w(0.25), w(0.2501), w(1)] }) === 2,
     'the screen counts strictly above too, or the table and the reading disagree at the boundary');
   assert(cPaid({ scan: [{ n: 4, perTrade: 99, thin: true }] }) === 0, 'and a thin window never paid');
   assert(cPaid({ scan: [{ n: 0, perTrade: 99, thin: false }] }) === 0, 'nor an empty one');
   assert(cPaid({ scan: [{ n: 9, perTrade: null, thin: false }] }) === 0, 'nor an unreadable one');
   assert(cPaid({}) === 0, 'and a row with no strip at all reads nought rather than throwing');
+  // THE OWNER'S FEE MOVES THE COLUMN, which is the whole point of 3.166.0
+  const dear = make({ set: true, feePerLeg: 0.005, roundTripPct: 1, from: 'a dear venue' });
+  assert(dear({ scan: [w(0.5), w(0.99), w(1), w(1.01), w(3)] }) === 2,
+    'at a 1% round trip only the windows above 1% paid -- the same rows, a different answer, because the cost is the owner\'s');
+  // AND AN UNKNOWN COST MAKES NO CLAIM AT ALL
+  assert(make(null)({ scan: [w(9), w(9)] }) === null,
+    'with no fee in the answer the column reads a dash rather than counting against a number nobody can name');
 
   // IT IS WORKED OUT FROM THE STRIP, not stored, so a set saved before this
   // release shows the column without being walked again
@@ -1070,7 +1086,8 @@ function aWindowCountsAsPaidOnlyIfItCLEARSTheRoundTripAndBothSidesAgree() {
 
   // ON BOTH TABLES, which is what the owner asked for
   assert(/>windows paid\$\{cWalkSortBtn\('paid', 'desc'\)\}/.test(src), 'the walk table has the column and sorts it high-first');
-  assert(/<td>\$\{cPaid\(r\)\} of \$\{r\.windows\}<\/td>/.test(src), 'and draws it as a count out of the counted windows');
+  assert(/<td>\$\{cPaid\(r\) == null \? '—' : `\$\{cPaid\(r\)\} of \$\{r\.windows\}`\}<\/td>/.test(src),
+    'and draws it as a count out of the counted windows, or a dash when the cost is not known');
   assert(/>late windows paid\$\{cSortBtn\('sSorts', 'ssort', 'latePaid', 'desc'\)\}/.test(src),
     'choose early, read late has it on its late windows');
   assert(/<td>\$\{p\.lateWindowsPaid\} of \$\{p\.lateWindows\}<\/td>/.test(src), 'and draws it the same way');

@@ -591,6 +591,11 @@ function coinsRecords() {
     // GEOMETRIES so a shape added or changed tomorrow reads correctly with
     // nobody remembering to update a list (RULE FIVE: the screen says it).
     collapse: require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
+    // WHAT IT COSTS TO GET IN AND OUT, and whether that is the owner's figure
+    // or the built-in standing in for one (3.166.0, owner order). Every claim
+    // about money on this screen is measured against it, so it travels with
+    // the answer rather than being a number the page happens to know.
+    fee: (() => { try { return require('./account').systemFee(); } catch (_) { return null; } })(),
     // WHAT HOLDS THE BOX, so this screen's own two presses sleep when
     // something else is going instead of refusing after they are pressed
     // (3.163.0). The one predicate, which now names the walk and the reading.
@@ -654,6 +659,7 @@ function coinsWalkStatus() {
       running: false, none: true, done: 0, of: 0, cpu, error: null, rows: null, asked: null,
       finishedAt: null, stopping: false, shapes: null, workers: null,
       collapse: require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
+      fee: (() => { try { return require('./account').systemFee(); } catch (_) { return null; } })(),
       saved: null, saveError: null,
       walks: (() => { try { return require('./walkset').listWalks(); } catch (_) { return []; } })(),
       nextName: (() => { try { return require('./walkset').nextName(); } catch (_) { return ''; } })(),
@@ -665,6 +671,10 @@ function coinsWalkStatus() {
     startedAt: r.startedAt, finishedAt: r.finishedAt, stopping: !!r.stop,
     shapes: r.shapes, workers: r.workers,
     collapse: r.collapse || require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
+    // READ FRESH ON EVERY ASK, never off the run. The cost is a setting, not a
+    // measurement: change it on Account and the table says so on the next
+    // draw, without the walk being run again.
+    fee: (() => { try { return require('./account').systemFee(); } catch (_) { return null; } })(),
     // what this run wrote down, why it could not, and every set on the box
     saved: r.saved || null, saveError: r.saveError || null,
     walks: (() => { try { return require('./walkset').listWalks(); } catch (_) { return []; } })(),
@@ -675,6 +685,18 @@ function coinsWalkStatus() {
 // THE CHOICE, PUT TO THE TEST (3.161.0). Read only -- it re-reads the walk
 // already in hand and re-prices nothing, so it costs a fraction of a second on
 // eight thousand rows and can be asked again with a different cut.
+// THE COST IS THE ACCOUNT'S, AND THE SERVER DECIDES IT (3.166.0, owner order:
+// "make sure that your new column that makes an earnings claim is referencing
+// the user value"). It is set in one place, on the Account tab, so the page
+// does not get to name it here -- an opts.cost arriving from a browser would
+// be a second way to set the same thing, and two ways is how they disagree.
+function feeNow() {
+  try { return require('./account').systemFee(); } catch (_) { return null; }
+}
+function splitOpts(opts) {
+  const f = feeNow();
+  return { ...(opts || {}), cost: f ? f.roundTripPct : undefined };
+}
 function coinsWalkSplit(opts = {}) {
   // A SAVED SET READS EXACTLY AS THE ONE IN HAND DOES (3.164.0). Without this
   // the early/late reading could only ever be taken on the walk this life of
@@ -684,14 +706,14 @@ function coinsWalkSplit(opts = {}) {
     const doc = require('./walkset').readWalk(opts.setId);
     if (!doc) return { none: true, why: `there is no walk ${JSON.stringify(String(opts.setId))} on this box` };
     const scan = require('./coinscan');
-    return { none: false, ...scan.chooseThenRead(doc.rows || [], opts), asked: doc.asked, shapes: doc.shapes, setId: doc.id, setName: doc.name };
+    return { none: false, ...scan.chooseThenRead(doc.rows || [], splitOpts(opts)), fee: feeNow(), asked: doc.asked, shapes: doc.shapes, setId: doc.id, setName: doc.name };
   }
   const r = walkRun;
   if (!r || r.running || !Array.isArray(r.rows) || !r.rows.length) {
     return { none: true, why: 'no finished walk is in hand -- open a saved walk below, or press Walk it forward' };
   }
   const scan = require('./coinscan');
-  return { none: false, ...scan.chooseThenRead(r.rows, opts), asked: r.asked, shapes: r.shapes };
+  return { none: false, ...scan.chooseThenRead(r.rows, splitOpts(opts)), fee: feeNow(), asked: r.asked, shapes: r.shapes };
 }
 
 // OPENING ONE PUTS IT WHERE A FRESH WALK WOULD BE, so every control on the

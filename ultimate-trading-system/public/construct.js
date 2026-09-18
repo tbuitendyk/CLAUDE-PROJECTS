@@ -8464,6 +8464,14 @@ let cBacksNow = { value: [], default: [], inRecords: [] };  // the look-backs se
 let cCollapse = [];    // which shape a fixed look-back walks per forward time, and which stand down
 let cShapesNow = [];   // the chunk shapes and their screen labels, off the same answer, so a label is never rebuilt here
 let cBusyNow = null;   // what else is holding the box, so this screen's own presses sleep rather than refuse after the press
+// WHAT IT COSTS TO GET IN AND OUT, as the box reports it (3.166.0, owner
+// order: "make sure that your new column that makes an earnings claim is
+// referencing the user value"). It is the owner's number, entered under the
+// exchange on Setup's Account tab, and it arrives with every answer rather
+// than being a figure this file knows. NOT KNOWN IS A REAL STATE and reads as
+// a dash -- a claim about money measured against a cost nobody can name is
+// exactly the claim this screen must not make.
+let cFeeNow = null;
 let cWalksNow = [];    // the walk sets on disk, headers only
 let cWalkNextName = '';
 // THE COLOURS ARE THE OWNER'S: "red, green, and black for sit out". The bar is
@@ -8718,7 +8726,7 @@ function cWalkRow(r, shapes) {
     <td>${r.band}${r.searched ? ' <span class="warn" title="this band was SEARCHED FOR across the whole history, so it is not comparable with the bands beside it, which were not">searched</span>' : ''}</td>
     <td>${r.trades}</td><td>${pt}</td>
     <td>${r.windows}</td><td>${r.windowsUp} of ${r.windows}</td>
-    <td>${cPaid(r)} of ${r.windows}</td>
+    <td>${cPaid(r) == null ? '—' : `${cPaid(r)} of ${r.windows}`}</td>
     <td>${r.best == null ? '—' : `${r.best > 0 ? '+' : ''}${Number(r.best).toFixed(2)}%`}</td>
     <td>${r.worst == null ? '—' : `${r.worst > 0 ? '+' : ''}${Number(r.worst).toFixed(2)}%`}</td>
     <td>${cSpread(r) == null ? '—' : `${Number(cSpread(r)).toFixed(2)}%`}</td>
@@ -8755,7 +8763,7 @@ const C_WALK_OF = {
   // up and fourteen of them sat on three windows or fewer, so the top of
   // that column was the rows with almost nothing behind them.
   windowsUp: (r) => (r.windows ? r.windowsUp / r.windows : null),
-  paid: (r) => (r.windows ? cPaid(r) / r.windows : null),
+  paid: (r) => (r.windows && cPaid(r) != null ? cPaid(r) / r.windows : null),
   best: (r) => r.best,
   worst: (r) => r.worst,
   spread: (r) => cSpread(r),
@@ -8879,7 +8887,7 @@ function cWalkList(matches) {
     if (!atLeast(r.perTrade, f.minPer)) return false;
     if (!atLeast(r.windows, f.minWindows)) return false;
     if (!atLeast(r.windows ? (r.windowsUp / r.windows) * 100 : null, f.minUp)) return false;
-    if (!atLeast(r.windows ? (cPaid(r) / r.windows) * 100 : null, f.minPaid)) return false;
+    if (cPaid(r) != null && !atLeast(r.windows ? (cPaid(r) / r.windows) * 100 : null, f.minPaid)) return false;
     if (!atLeast(r.best, f.minBest)) return false;
     if (!atLeast(r.worst, f.minWorst)) return false;
     if (!atMost(cSpread(r), f.maxSpread)) return false;
@@ -9029,11 +9037,20 @@ const cSpread = (r) => (r.best == null || r.worst == null || !(r.windows > 1) ? 
 // WORKED OUT FROM THE STRIP EVERY ROW ALREADY CARRIES, so a walk set saved
 // before this release shows the column without being walked again.
 //
-// The round trip is the same figure lib/coinscan.js prices the early/late
-// reading against, and tests/test-coinscan.js fails if the two ever differ.
-const C_ROUND_TRIP = 0.25;
-const cPaid = (r) => (r.scan || []).reduce((a, w) => (
-  !w.thin && w.n && w.perTrade != null && w.perTrade > C_ROUND_TRIP ? a + 1 : a), 0);
+// THE COST IS THE OWNER'S, NOT A CONSTANT (3.166.0). It was a literal here
+// for one release and that was the fault: this column makes a claim about
+// money, and the figure it measures against was one the owner could not
+// reach. It now comes off the answer, set on Setup's Account tab under the
+// exchange it belongs to, and the early/late reading is priced against the
+// very same number on the box -- one figure, one place to type it.
+const cRoundTrip = () => (cFeeNow && cFeeNow.roundTripPct != null ? Number(cFeeNow.roundTripPct) : null);
+const cTripPc = () => (cRoundTrip() == null ? 'the round trip' : `${cRoundTrip().toFixed(3)}%`);
+const cPaid = (r) => {
+  const trip = cRoundTrip();
+  if (trip == null) return null;
+  return (r.scan || []).reduce((a, w) => (
+    !w.thin && w.n && w.perTrade != null && w.perTrade > trip ? a + 1 : a), 0);
+};
 const cPerSpread = (r) => {
   const sp = cSpread(r);
   if (sp == null || r.perTrade == null || !(sp > 1e-9)) return null;
@@ -9119,7 +9136,7 @@ function cWalkFilterRow() {
     <label title="hide rows that made less than this a trade. Before the round trip."><span class="fname">least per trade, %</span><span class="fbox"><input id="wf_minPer" type="number" step="any" value="${v('minPer')}"></span></label>
     <label title="hide rows with fewer counted windows than this. A wide band leaves whole half-years with too few trades to count."><span class="fname">fewest windows</span><span class="fbox"><input id="wf_minWindows" type="number" step="any" value="${v('minWindows')}"></span></label>
     <label title="hide rows where fewer than this share of their counted windows made money."><span class="fname">least windows up, %</span><span class="fbox"><input id="wf_minUp" type="number" step="any" value="${v('minUp')}"></span></label>
-    <label title="hide rows where fewer than this share of their counted windows cleared the round trip &mdash; made more than the 0.25% it costs to get in and out."><span class="fname">least windows paid, %</span><span class="fbox"><input id="wf_minPaid" type="number" step="any" value="${v('minPaid')}"></span></label>
+    <label title="hide rows where fewer than this share of their counted windows cleared the round trip &mdash; made more than the ${cTripPc()} it costs to get in and out, which is set on Setup&#39;s Account tab."><span class="fname">least windows paid, %</span><span class="fbox"><input id="wf_minPaid" type="number" step="any" value="${v('minPaid')}"></span></label>
     <label title="hide rows whose best single window made less than this."><span class="fname">least best window, %</span><span class="fbox"><input id="wf_minBest" type="number" step="any" value="${v('minBest')}"></span></label>
     <label title="hide rows whose worst single window made less than this. Set it at nought to keep only the rows that never had a losing half-year."><span class="fname">least worst window, %</span><span class="fbox"><input id="wf_minWorst" type="number" step="any" value="${v('minWorst')}"></span></label>
     <label title="hide rows whose best window is further than this above their worst one. Small keeps the tight rows &mdash; the ones whose half-years all paid about the same."><span class="fname">most spread, %</span><span class="fbox"><input id="wf_maxSpread" type="number" step="any" value="${v('maxSpread')}"></span></label>
@@ -9172,7 +9189,7 @@ function cSplitPanel() {
       choosing never saw &mdash; is what is reported. The test is whether the pick beats what taking a row
       at random from the same coin and shape would have paid on those same late windows.
       <b>Written down before the numbers: a pass needs the picks ahead on at least 60 of 90, and the
-      pooled late money above the 0.25% round trip.</b></p>
+      pooled late money above the ${cTripPc()} round trip.</b></p>
     <div class="row">
       <label class="f" title="how many of the earliest windows the choosing may see. Blank cuts each coin and shape in half. A bigger number leaves fewer windows to read the answer on.">windows to choose on (blank = half)<input id="sCut" value="${esc(String(cState.sCut || ''))}" placeholder="half" style="width:7rem"></label>
       <label class="f" title="a coin and shape whose row placed fewer trades than this in either half is left out, because a handful of trades is not a choice and not a reading either.">fewest trades each half must have<input id="sMin" type="number" min="0" step="1" value="${esc(String(cState.sMin))}" style="width:6rem"></label>
@@ -9206,7 +9223,7 @@ function cSplitPanel() {
       <th title="what a row taken at random from this coin and shape would have paid on the same late windows">picking blind${cSortBtn('sSorts', 'ssort', 'blind', 'desc')}</th>
       <th title="late money less picking blind. Above nought means the choosing carried something.">lead${cSortBtn('sSorts', 'ssort', 'lead', 'desc')}</th>
       <th title="the late windows this pick made money on">late windows up${cSortBtn('sSorts', 'ssort', 'lateWindowsUp', 'desc')}</th>
-      <th title="the late windows this pick cleared the round trip on &mdash; made MORE than the 0.25% it costs to get in and out. Made money and paid are not the same thing, and this is the one that matters. At the same share more windows sorts above fewer.">late windows paid${cSortBtn('sSorts', 'ssort', 'latePaid', 'desc')}</th>
+      <th title="the late windows this pick cleared the round trip on &mdash; made MORE than the ${cTripPc()} it costs to get in and out, which is your own figure, set on Setup&#39;s Account tab. Made money and paid are not the same thing, and this is the one that matters. At the same share more windows sorts above fewer.">late windows paid${cSortBtn('sSorts', 'ssort', 'latePaid', 'desc')}</th>
       <th title="the worst single late window. Beside the column to its left it is the whole question: as many late windows as possible paying, and no bad ones. Neither figure can be carried by one spectacular window the way late money can.">worst late window${cSortBtn('sSorts', 'ssort', 'lateWorst', 'desc')}</th>
       <th title="where the pick ranked among its own coin and shape's rows on the late windows. 50 is the middle, which is where no skill lands.">percentile${cSortBtn('sSorts', 'ssort', 'percentile', 'desc')}</th>
       <th title="the look-back the WHOLE history chooses for this coin and shape &mdash; which is the one to tune with. The early/late columns to the left only say whether the choosing is worth anything; they are not the setting to trade, because they throw away half the history to stay honest.">whole look-back${cSortBtn('sSorts', 'ssort', 'wholeLookback', 'asc')}</th>
@@ -9288,6 +9305,11 @@ function cWalkPanel() {
       behind that window and then held still while the window is priced</b>, so no number here knew anything it
       could not have known at the time. Read the windows across: steady is a property of the coin, off-then-on is a
       phase, up and down is noise. <b>Nothing here trades, refuses or chooses.</b></p>
+    <p class="note">Every figure below is <b>before cost</b>. Getting in and out costs
+      <b>${cTripPc()}</b>${cFeeNow ? ` (${Number(100 * cFeeNow.feePerLeg).toFixed(3)}% each way, from ${esc(String(cFeeNow.from))})` : ''}, and
+      <b>windows paid</b> counts only the windows that cleared it.
+      ${cFeeNow && cFeeNow.set ? 'Change it under the exchange on Setup&#39;s Account tab.'
+    : '<span class="warn">No exchange on Setup&#39;s Account tab is ticked as the system default yet, so the built-in figure is standing in. Enter what your venue actually charges and tick it.</span>'}</p>
     ${cCollapseLine()}
     <div class="row" style="align-items:flex-end">
       <label class="f" title="how long one window is. Six months is a reasonable place to start: long enough to hold trades, short enough that a phase shows as a phase. Each chunk shape converts it to its own number of decisions.">window, months<input${off} id="wWindow" type="number" min="1" step="1" value="${esc(String(cState.wWindow))}" style="width:5rem"></label>
@@ -9335,7 +9357,7 @@ function cWalkPanel() {
       <th title="what it made on each trade it placed, averaged over the whole walk. Before the round trip.">per trade${cWalkSortBtn('perTrade', 'desc')}</th>
       <th title="how many windows met the floor and were counted. NOT how many windows the coin has: a wide band leaves whole half-years with too few trades, and those are left out of this count and of windows up. Open the row to see the total and which ones were empty.">windows${cWalkSortBtn('windows', 'desc')}</th>
       <th title="how many of those windows made money. Half is what a coin with nothing in it looks like.">windows up${cWalkSortBtn('windowsUp', 'desc')}</th>
-      <th title="how many of those windows cleared the round trip &mdash; made MORE than the 0.25% it costs to get in and out. Made money and paid are not the same thing, and this is the one that matters. It cannot be carried by a single spectacular window the way per trade and per trade per spread both can, and at the same share more windows sorts above fewer. Read it beside least worst window, %: as many windows as possible paying, and no bad ones.">windows paid${cWalkSortBtn('paid', 'desc')}</th>
+      <th title="how many of those windows cleared the round trip &mdash; made MORE than the ${cTripPc()} it costs to get in and out, which is your own figure, set on Setup&#39;s Account tab under the exchange it belongs to. Made money and paid are not the same thing, and this is the one that matters. It cannot be carried by a single spectacular window the way per trade and per trade per spread both can, and at the same share more windows sorts above fewer. Read it beside least worst window, %: as many windows as possible paying, and no bad ones.">windows paid${cWalkSortBtn('paid', 'desc')}</th>
       <th title="the best single window">best window${cWalkSortBtn('best', 'desc')}</th>
       <th title="the worst single window">worst window${cWalkSortBtn('worst', 'desc')}</th>
       <th title="the best single window less the worst one, in the same units as per trade. TIGHT IS SMALL: a row whose half-years all paid about the same has a small spread, and one carried by a single spectacular window has a large one. A row with only one counted window has no spread and reads as a dash.">spread${cWalkSortBtn('spread', 'asc')}</th>
@@ -9515,6 +9537,7 @@ async function cWalkTick() {
   // and the same when a walk LANDS: a new table starts with nothing hidden
   if (wasRunning && st && !st.running) { cState.wF = {}; cShownFor = null; cRemember(); }
   cWalkSt = st;
+  if (st && st.fee) cFeeNow = st.fee;
   if (st && Array.isArray(st.collapse)) cCollapse = st.collapse;
   if (st && Array.isArray(st.walks)) cWalksNow = st.walks;
   if (st && st.nextName) cWalkNextName = st.nextName;
@@ -9638,6 +9661,7 @@ async function drawCoins() {
   if (d && Array.isArray(d.collapse)) cCollapse = d.collapse;
   if (d && Array.isArray(d.shapes)) cShapesNow = d.shapes;
   cBusyNow = (d && d.busy) || null;
+  if (d && d.fee) cFeeNow = d.fee;
   const running = !!(st && st.running);
   cLastDone = running ? st.done : null;
   const off = running ? ' disabled' : '';

@@ -194,6 +194,8 @@ let cLoads = null;           // last reading from the small always-up program
 let cCfg = null;             // last reading from the trading service
 let cErrLoads = null;
 let cErrCfg = null;
+let aAcc = null;             // the account's exchange records, and which fee is the system default
+let aErr = null;             // why they could not be read, when they could not
 let vTimer = null;           // the five-second re-read, armed only while Version shows
 let vSg = null;              // last reading of the stage-engine check
 let vErr = null;             // why the check could not be read, when it could not
@@ -201,10 +203,91 @@ let vErr = null;             // why the check could not be read, when it could n
 const mb = (b) => b == null ? '—' : b >= 1073741824 ? (b / 1073741824).toFixed(2) + ' GB' : Math.round(b / 1048576) + ' MB';
 const age = (s) => s == null ? '—' : s < 90 ? s + 's' : s < 5400 ? Math.round(s / 60) + 'm' : s < 172800 ? (s / 3600).toFixed(1) + 'h' : (s / 86400).toFixed(1) + 'd';
 
+// ---- Account (owner order, 2026-09-18) -------------------------------------
+// WHAT THIS ACCOUNT PAYS TO TRADE. The owner's words: the Account tab is "the
+// source of the FEE_PER_LEG constant that's NOT in code but given by the user",
+// and "the exchange record under Account needs to indicate at least a basic
+// Binance trading profile, and under that the Binance FEE_PER_LEG with the
+// option to use as the system default".
+//
+// The list of exchanges comes from the trading service, never from here, so
+// the day a second one is supported it appears on this screen with nobody
+// editing this file (RULE FIVE).
+async function loadAccount() {
+  try { aAcc = await getJson('api/account'); aErr = null; }
+  catch (e) { aAcc = null; aErr = e.message; }
+}
+
+const pc3 = (v) => (v == null ? '—' : Number(v).toFixed(3) + '%');
+
 function drawAccount() {
-  $('#view').innerHTML = '<div class="panel"><div class="empty">Settings that belong to the whole account '
-    + '&mdash; who you are, where alerts are sent, defaults &mdash; will live here. Settings that '
+  const rows = !aAcc ? '' : aAcc.exchanges.map((e) => {
+    // A TICK BOTTOM-ALIGNS TO THE FIELD BESIDE IT, and the button goes in a
+    // row of its own with its message beside it (RULE FOUR-A). The caption
+    // sits above its box here, which makes the pair two lines tall; centred,
+    // a one-line tick floats against the middle of it instead of sitting on
+    // the box's own line.
+    return '<div class="panel" style="margin-bottom:.7rem">'
+      + '<div class="row" style="align-items:baseline"><b>' + esc(e.label) + '</b>'
+      + '<span class="note">' + (e.feePerLeg == null ? 'no fee entered yet'
+        : 'costs ' + pc3(e.roundTripPct) + ' the round trip') + '</span></div>'
+      + '<div class="row" style="align-items:flex-end; margin-top:.4rem">'
+      + '<label class="f" title="what this venue charges this account to trade, as a percent of the money in the position. It is charged EACH WAY — once going in and once coming out — so 0.125 here costs 0.250% over the whole trade.">fee each way, %'
+      + '<input id="acFee_' + esc(e.id) + '" type="number" min="0" max="5" step="0.005" value="'
+      + (e.feePerLeg == null ? '' : (100 * e.feePerLeg)) + '" placeholder="e.g. 0.125" style="width:7rem"></label>'
+      + '<label class="c" title="makes this the fee the whole system charges itself. It is what every figure on the Coins screens is measured against, and what windows paid counts a window as having cleared."><input id="acDef_' + esc(e.id) + '" type="checkbox"'
+      + (e.isDefault ? ' checked' : '') + '> use as the system default</label>'
+      + '</div>'
+      + '<div class="row" style="margin-top:.5rem"><button id="acSave_' + esc(e.id) + '" class="pri">Save ' + esc(e.label) + '</button>'
+      + '<span id="acOut_' + esc(e.id) + '" class="note"></span></div>'
+      + '</div>';
+  }).join('');
+
+  const inForce = !aAcc ? '' : '<div class="panel"><h3 style="margin-top:0">What the system charges itself</h3>'
+    + '<p class="note">Every figure on the <b>Coins</b> screens is measured before this cost, and '
+    + '<b>windows paid</b> counts only the windows that cleared it. It is also shown on the '
+    + '<b>Compute</b> tab, which is where the rest of the system-wide settings are.</p>'
+    + '<div class="row"><span class="k">in force</span><b>' + pc3(aAcc.fee.roundTripPct) + ' the round trip</b>'
+    + '<span class="note">' + pc3(100 * aAcc.fee.feePerLeg) + ' each way, from ' + esc(aAcc.fee.from) + '</span></div>'
+    + (aAcc.fee.set ? '' : '<p class="note warn" style="margin-top:.4rem">Nothing here has been ticked as the system default yet, '
+      + 'so the built-in figure is standing in. Enter what your venue actually charges and tick it.</p>')
+    + '</div>';
+
+  $('#view').innerHTML = (aErr
+    ? '<div class="panel"><p class="note neg">the trading service did not answer, so the account cannot be shown — ' + esc(aErr) + '</p></div>'
+    : '')
+    + inForce
+    + (aAcc ? '<div class="panel" style="padding-bottom:.2rem"><h3 style="margin-top:0">Where this account trades</h3>'
+      + '<p class="note">One exchange record for each venue this account trades on. Only Binance is supported today, '
+      + 'and more appear here on their own when they are.</p></div>' + rows : '')
+    + '<div class="panel"><div class="empty">The rest of the settings that belong to the whole account '
+    + '&mdash; who you are, where alerts are sent &mdash; will live here. Settings that '
     + 'belong to one trading configuration live with that configuration, under <b>Trade</b>.</div></div>';
+
+  if (!aAcc) return;
+  for (const e of aAcc.exchanges) {
+    const b = $('#acSave_' + e.id);
+    if (!b) continue;
+    b.onclick = async () => {
+      const out = $('#acOut_' + e.id);
+      b.disabled = true;
+      out.innerHTML = 'saving…';
+      try {
+        const got = await postJson('api/account/exchange', {
+          id: e.id,
+          feePct: $('#acFee_' + e.id).value,
+          isDefault: $('#acDef_' + e.id).checked,
+        });
+        await loadAccount();
+        drawAccount();
+        const o2 = $('#acOut_' + e.id);
+        if (o2) o2.innerHTML = '<span class="pos">saved — ' + pc3(got.fee.roundTripPct) + ' the round trip is what the system now charges itself</span>';
+      } catch (err) {
+        out.innerHTML = '<span class="neg">not saved — ' + esc(err.message) + '</span>';
+        b.disabled = false;
+      }
+    };
+  }
 }
 
 // ---- Compute (owner design, 2026-08-25) ------------------------------------
@@ -273,6 +356,16 @@ function drawCompute() {
     + '<div class="row" style="margin:.3rem 0"><b style="min-width:11rem">trading platform</b>'
     + '<span class="note">chosen on each trading setup on the Trade tab — every setup names its own, '
     + 'so two setups can trade in two places. Nothing about it is set here.</span></div>'
+    + '</div>'
+
+    + '<div class="panel"><h3 style="margin-top:0">What it costs to trade</h3>'
+    + (cCfg && cCfg.fee ? '<div class="row"><span class="k">in force</span>'
+      + '<b>' + (cCfg.fee.roundTripPct == null ? '—' : Number(cCfg.fee.roundTripPct).toFixed(3) + '%') + ' the round trip</b>'
+      + '<span class="note">' + (cCfg.fee.feePerLeg == null ? '—' : (100 * cCfg.fee.feePerLeg).toFixed(3) + '%') + ' each way, from ' + esc(cCfg.fee.from) + '</span></div>'
+      + (cCfg.fee.set
+        ? '<p class="note">Set on the <b>Account</b> tab, under the exchange it belongs to. It is entered in one place only, so this cannot disagree with that.</p>'
+        : '<p class="note warn">No exchange on the <b>Account</b> tab is ticked as the system default yet, so the built-in figure is standing in. Every claim about money on the <b>Coins</b> screens is measured against this.</p>')
+      : '<p class="note neg">the trading service did not answer, so this cannot be shown' + (cErrCfg ? ' — ' + esc(cErrCfg) : '') + '</p>')
     + '</div>'
 
     + '<div class="panel"><h3 style="margin-top:0">This machine</h3>'
@@ -468,7 +561,8 @@ function draw() {
     // every five seconds while this tab is open, so a running check is followed without a reload
     vTimer = setInterval(() => refreshVersion(false), 5000);
   } else {
-    drawAccount();
+    $('#view').innerHTML = '<div class="panel"><span class="muted">reading…</span></div>';
+    loadAccount().then(() => { if (tab === 'account') drawAccount(); });
   }
 }
 document.querySelectorAll('.tab').forEach((t) => {

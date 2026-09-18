@@ -54,7 +54,53 @@ async function withBandRestored(fn) {
 const rm = (f) => { try { fs.unlinkSync(f); } catch (_) { /* gone */ } };
 const until = async (pred, ms = 20000) => { const t = Date.now(); while (!pred()) { if (Date.now() - t > ms) throw new Error('timed out waiting'); await new Promise((r) => setTimeout(r, 25)); } };
 
+
+// A CLAIM ABOUT MONEY CARRIES THE COST IT WAS MEASURED AGAINST (3.166.0, owner
+// order: "make sure that your new column that makes an earnings claim is
+// referencing the user value").
+//
+// windows paid and the early/late reading both say what cleared the cost of
+// trading. Until this release that cost was a constant in lib/paper.js that
+// nothing on any screen could move. It is the account's now, and the guard is
+// that the SERVER decides it -- not the page. An opts.cost arriving from a
+// browser would be a second way to set the same thing.
+const theFeeRidesWithEveryAnswerAndTheServerDecidesIt = () => {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
+  // both answers the Coins screen reads carry it
+  const carries = src.match(/fee: \(\(\) => \{ try \{ return require\('\.\/account'\)\.systemFee\(\); \} catch \(_\) \{ return null; \} \}\)\(\),/g) || [];
+  assert.ok(carries.length >= 3,
+    `the records answer and BOTH branches of the walk status carry the fee — found ${carries.length}`);
+  // and the early/late reading is priced against it, on the saved set and the
+  // one in hand alike
+  const split = src.slice(src.indexOf('function coinsWalkSplit('), src.indexOf('function coinsWalkOpen('));
+  const priced = split.match(/chooseThenRead\([^,]+, splitOpts\(opts\)\)/g) || [];
+  assert.strictEqual(priced.length, 2, 'a saved set and the walk in hand are both priced against the account\'s cost');
+  assert.ok(/function splitOpts\(opts\) \{[\s\S]*?cost: f \? f\.roundTripPct : undefined/.test(src),
+    'and the cost comes from the account, never from the request body');
+  assert.ok(!/opts\.cost/.test(split), 'the page does not get to name the cost — one setting, one place');
+
+  // IT IS READ FRESH, never stored on the run: change it on Account and the
+  // table says so on the next draw, with no walk being run again
+  const status = src.slice(src.indexOf('function coinsWalkStatus('), src.indexOf('// THE CHOICE, PUT TO THE TEST'));
+  assert.ok(!/fee: r\.fee/.test(status), 'the status never serves a fee remembered from when the walk ran');
+
+  // AND THE ARITHMETIC HONOURS A COST IT IS HANDED. Without this the wiring
+  // above would be a setting nothing reads.
+  const scan = require('../lib/coinscan');
+  const win = (perTrade) => ({ n: 50, perTrade, thin: false });
+  const rows = [
+    { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: 'own', band: 100, scan: [win(9), win(9), win(0.5), win(0.5)] },
+    { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: '48', band: 200, scan: [win(1), win(1), win(0.5), win(0.5)] },
+  ];
+  const cheap = scan.chooseThenRead(rows, { minTrades: 10, cost: 0.25 }).pairs[0];
+  const dear = scan.chooseThenRead(rows, { minTrades: 10, cost: 1 }).pairs[0];
+  assert.strictEqual(cheap.lateWindowsPaid, 2, 'at a 0.25% round trip both late windows paid');
+  assert.strictEqual(dear.lateWindowsPaid, 0, 'at a 1% round trip neither did — the same rows, the owner\'s cost');
+  assert.strictEqual(cheap.latePerTrade, dear.latePerTrade, 'and the money itself is untouched: only what counts as paid moved');
+};
+
 module.exports = {
+  theFeeRidesWithEveryAnswerAndTheServerDecidesIt,
   // THE ONE THAT WOULD HAVE CAUGHT IT. Candles in, a reading out, at every
   // chunk shape, with nothing asked for to make that happen.
   async aCoinWithCachedPricesActuallyGetsARead() {

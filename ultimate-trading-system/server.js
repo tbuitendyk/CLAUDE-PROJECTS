@@ -137,6 +137,11 @@ app.get('/api/compute-config', (req, res) => {
       inForce: configuredSize(),
       max: require('os').cpus().length },
       pct: throttle.currentCpuPct(),
+      // WHAT THIS ACCOUNT PAYS TO TRADE, shown here because it is a
+      // system-wide setting and this is where they are read (3.166.0). It is
+      // ENTERED on Account, under the exchange it belongs to, and this tab
+      // offers no box of its own -- one number, one place to type it.
+      fee: (() => { try { return require('./lib/account').systemFee(); } catch (_) { return null; } })(),
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -165,6 +170,42 @@ app.post('/api/compute-config', (req, res) => {
     }
     if (body.pct != null) out.pct = throttle.setCpuPct(body.pct);
     res.json(out);
+  } catch (err) { res.status(400).json({ error: err.message }); }
+});
+
+// ---- Account (owner order, 2026-09-18) --------------------------------------
+// WHAT THIS ACCOUNT PAYS TO TRADE. The fee used to be a constant in
+// lib/paper.js that nothing on any screen could move, while the Coins screens
+// measured every figure against it — RULE FIVE exactly. It is the account's
+// now: entered once, under the exchange it belongs to, and read by everything
+// that makes a claim about money. The page fills its list of exchanges from
+// this reply and holds none of its own.
+app.get('/api/account', (req, res) => {
+  try {
+    const acc = require('./lib/account');
+    res.json({ exchanges: acc.exchanges(), offered: acc.EXCHANGES, fee: acc.systemFee() });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.post('/api/account/exchange', (req, res) => {
+  const body = req.body || {};
+  try {
+    const acc = require('./lib/account');
+    // THE PERCENT IS WHAT THE OWNER TYPES; THE FRACTION IS WHAT IS STORED.
+    // Every fee inside this system is a fraction of the position, and a
+    // percent typed straight into that field is the hundred-times mistake
+    // paper.feeRate exists to refuse. Converting here, in one place, is what
+    // keeps the box on the screen readable in the unit a venue quotes.
+    let feePerLeg = null;
+    if (body.feePct != null && String(body.feePct).trim() !== '') {
+      const pct = Number(body.feePct);
+      if (!Number.isFinite(pct) || pct < 0) {
+        return res.status(400).json({ error: `the fee each way must be a real percent — got ${JSON.stringify(body.feePct)}` });
+      }
+      feePerLeg = pct / 100;
+    }
+    const out = acc.setExchange(String(body.id || ''), { feePerLeg, isDefault: body.isDefault === true ? true : (body.isDefault === false ? false : undefined) });
+    res.json({ exchange: out, fee: acc.systemFee() });
   } catch (err) { res.status(400).json({ error: err.message }); }
 });
 
