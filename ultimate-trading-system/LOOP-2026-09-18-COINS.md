@@ -199,6 +199,48 @@ different size of change and is left alone.
   quietly would move the money an existing sweep prices. The promoted row is
   not lost — it is named in `passedOver` — but it is not in force.
 
+## PARKED — E, and it is blocked, not skipped
+
+E was written as "once D lands the live path has a reading of the lean and the
+refusal goes". **D's second half did not land**, and that makes E's premise
+false rather than merely inconvenient.
+
+`lib/live/greenlight.js:70` refuses a survivor priced with `confirm` past `off`
+because *"the live path has no reading of the coin's own lean yet — it cannot
+trade what was priced"*. **That sentence is still true.** 3.171.0 gave the
+STAGE 3 worker the look-back; it gave the live path nothing. Taking the refusal
+out now would put a false statement in place of a true one, on the path that
+arms real money.
+
+And building the live reading now would build the wrong thing. While a passer
+holds its key (D's parked half), a promoted row's lean may not be the one stage
+3 actually priced with — so a live path reading "the unit's lean" could read a
+lean the record was never priced under. That has to be unambiguous before the
+live path is taught to read it.
+
+**So: the refusal STAYS, nothing on the live path was touched, and E waits on
+D's second half.** RULE SIX's real-money clause is not the reason — correctness
+is — but it points the same way.
+
+## Where the loop ended
+
+Shipped and deployed, each with the suite green but for the one pre-existing
+failure:
+
+| | | |
+|---|---|---|
+| 3.167.0 | A — `late`, `lead`, `best on both halves`, and the tick | deployed |
+| 3.168.0 | B — every control beside the thing it changes; the bars in a window; `Take the N the records carry` | deployed |
+| 3.169.0 | the band grid reaches 500, and a check says which grid it came from | deployed |
+| 3.170.0 | C — the list at the top, both sources, one promotion door, references not copies | deployed |
+| 3.171.0 | D first half — the walk's lean kept, and stage 3 reads its look-back | deployed |
+
+Parked, each with its reason above and its cost measured: **D1**, **D's second
+half**, **E**.
+
+**The loop ends here, because everything left is parked.** Three decisions are
+the owner's and none of them is one a session may take.
+
 ## Found and left alone (RULE ZERO)
 
 - `cpassers` is used twice in `public/construct.js` and defined nowhere.
