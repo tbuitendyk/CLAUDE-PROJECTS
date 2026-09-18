@@ -407,15 +407,17 @@ function bothLookBackBoxesAreOnScreenWhereTheyBelong() {
   // OWNER, 2026-09-17: "make them both wider so that I can get a longer range
   // of hours in and see the whole string." Both hold the same kind of string,
   // so both are the same width, and a width that fits about a dozen entries.
+  // A WIDTH NEED NOT BE A WHOLE NUMBER. 3.166.1 widened both by 40% on the
+  // owner's word, which took 26rem to 36.4rem, and a guard that could only
+  // read whole rems would have read those as missing.
   const widthOf = (id) => {
-    const m = new RegExp(`id="${id}"[^>]*style="width:(\\d+)rem"`).exec(src)
-      || new RegExp(`id="${id}"[^>]*?style="width:(\\d+)rem"`).exec(src);
+    const m = new RegExp(`id="${id}"[^>]*?style="width:([\\d.]+)rem"`).exec(src);
     return m ? Number(m[1]) : null;
   };
   const a = widthOf('cBacks'); const b = widthOf('wBacks');
   assert(a != null && b != null, `both look-back boxes state a width, got ${a} and ${b}`);
   assert(a === b, `the two look-back boxes hold the same kind of string, so they are the same width: ${a}rem against ${b}rem`);
-  assert(a >= 24, `a long range of hours has to be readable in the box, and ${a}rem is not enough`);
+  assert(a >= 36.4, `a long range of hours has to be readable in the box, and ${a}rem is not enough (the owner widened these by 40% on 2026-09-18, from 26rem)`);
 }
 
 // ONE OUTCOME'S NEIGHBOURS ARE THE ONES IT ACTUALLY HAD. A slid copy is the
