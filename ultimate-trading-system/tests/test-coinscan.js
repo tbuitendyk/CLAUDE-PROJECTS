@@ -18,7 +18,7 @@
 const { assert } = require('./helpers');
 const {
   windowsOf, usualMoveAt, signsBefore, walk, scrambled, slidOffsets, periodsForMonths,
-  walkTask, walkTasksFor, rowOf, chooseThenRead, moneyOver,
+  walkTask, walkTasksFor, rowOf, chooseThenRead, moneyOver, ROUND_TRIP,
   forwardHoursOf, oneShapePerForwardTime,
 } = require('../lib/coinscan');
 const fs = require('fs');
@@ -263,7 +263,7 @@ function theWalkSaysWhatItIsDoingAndSurvivesLeavingTheTab() {
 function everyColumnOfTheWalkTableSorts() {
   const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
   assert(!/<select id="wSort">/.test(src), 'the sort box is gone, not left beside the sorters');
-  for (const key of ['coin', 'geometry', 'band', 'lookback', 'trades', 'perTrade', 'windows', 'windowsUp', 'best', 'worst', 'asGood', 'asGoodSlid']) {
+  for (const key of ['coin', 'geometry', 'band', 'lookback', 'trades', 'perTrade', 'windows', 'windowsUp', 'paid', 'best', 'worst', 'asGood', 'asGoodSlid']) {
     assert(new RegExp(`cWalkSortBtn\\('${key}'`).test(src), `the ${key} column has a sorter`);
   }
   // 3.164.0: one sorting mechanism, two tables -- the walk's own button is a
@@ -307,8 +307,18 @@ function windowsUpOrdersByShareAndMoreWindowsWinsATie() {
   // inside the loop that walks it. Same rule, same both-directions guarantee.
   assert(/windowsUp: \(r\) => \(r\.windows \? r\.windowsUp \/ r\.windows : null\),/.test(src),
     'the share carries a second key, the count of windows');
-  assert(/if \(s\.key === 'windowsUp'\) \{ const d = y\.windows - x\.windows; if \(d\) return d; \}/.test(src),
+  // 3.165.0: the sorter no longer tests for the one key it happened to know
+  // about -- each table hands it a map of which columns are shares and what
+  // sits behind them, so a share column added later cannot be left without a
+  // second key by nobody remembering to add one.
+  assert(/const deep = DEPTH && DEPTH\[s\.key\];\s*\n\s*if \(deep\) \{ const d = deep\(y\) - deep\(x\); if \(d\) return d; \}/.test(src),
     'and more windows ranks above fewer at the same share, in BOTH directions -- more evidence beats less whichever way the arrow points');
+  assert(/const C_WALK_DEPTH = \{ windowsUp: \(r\) => r\.windows, paid: \(r\) => r\.windows \};/.test(src),
+    'the walk names BOTH of its shares there, or the new column ranks a row of three windows above a row of fifteen');
+  assert(/function cWalkSorted\(rows\) \{ return cSortRows\(rows, cState\.wSorts, C_WALK_OF, cWalkTie, C_WALK_DEPTH\); \}/.test(src),
+    'and the map actually reaches the sorter');
+  assert(/function cSplitSorted\(pairs\) \{ return cSortRows\(pairs, cState\.sSorts, C_SPLIT_OF, cSplitTie, C_SPLIT_DEPTH\); \}/.test(src),
+    'the same on choose early, read late');
   assert(/if \(a !== b\) return dir \* \(a - b\);/.test(src), 'the share is still the first key');
 }
 
@@ -487,7 +497,7 @@ function bothCopyCountsAreOnTheTableSideBySide() {
   assert(/>slides as good\$\{cWalkSortBtn\('asGoodSlid', 'asc'\)\}/.test(src), 'and the slid count has one beside it');
   assert(/<td>\$\{scr\}<\/td><td>\$\{sld\}<\/td>/.test(src), 'both are drawn on every row');
   assert(/const sld = r\.asGoodSlid == null \? '—'/.test(src), 'a row with no slid count shows a dash, not a nought');
-  assert(/<tr class="cwscan"><td colspan="15">/.test(src), 'the opened strip spans the table, which is as wide as the table is');
+  assert(/<tr class="cwscan"><td colspan="16">/.test(src), 'the opened strip spans the table, which is as wide as the table is');
   assert(/scrambled and \$\{a\.scrambles == null \? 10 : a\.scrambles\} sliding copies/.test(src), 'the finished line says both kinds were built');
   assert(/Each copy is built two ways and BOTH are reported/.test(help), 'and Help says the one box builds both');
 }
@@ -747,6 +757,7 @@ function theWalkTableHeadingsSitOverTheirOwnFigures() {
     ['perTrade', '${pt}'],
     ['windows', '<td>${r.windows}</td>'],
     ['windowsUp', '${r.windowsUp} of'],
+    ['paid', '${cPaid(r)} of'],
     ['best', 'r.best == null'],
     ['worst', 'r.worst == null'],
     ['spread', "cSpread(r) == null ? '—'"],
@@ -792,24 +803,35 @@ function theRealWalkFilter(wF) {
   // by the cells, the sorters and the filters alike
   const sp = /const cSpread = [^\n]*\n/.exec(src);
   const ps = /const cPerSpread = \(r\) => \{[\s\S]*?\n\};/.exec(src);
+  const rt = /const C_ROUND_TRIP = [^\n]*\n/.exec(src);
+  const pd = /const cPaid = \(r\) => [\s\S]*?\n[^\n]*\), 0\);\n/.exec(src);
   assert(sp && ps, 'the spread and the ratio are defined once, where the filter can see them');
+  assert(rt && pd, 'and so are the round trip and the count of windows that cleared it');
   // eslint-disable-next-line no-new-func
-  return new Function('cState', `${sp[0]}${ps[0]}\n${m[0]}; return cWalkList;`)({ wF });
+  return new Function('cState', `${sp[0]}${ps[0]}${rt[0]}${pd[0]}\n${m[0]}; return cWalkList;`)({ wF });
 }
 function anEmptyFilterBoxHidesNothingAtAll() {
   const shapes = [{ key: 'daily-1d', label: 'Daily 1-day' }, { key: 'daily-3d', label: 'Daily 3-day' }];
   // best and worst are on every row on purpose: the four range boxes read them,
   // and a fixture without them made every one of those filters hide everything
   // -- which the guard caught, which is the point of running the real function.
+  // A WINDOW STRIP ON EVERY ROW, for the same reason best and worst are on
+  // every row: least windows paid, % counts the strip, and a fixture without
+  // one would let that box hide everything without the guard noticing.
+  const strip = (paid, counted) => {
+    const out = [];
+    for (let i = 0; i < counted; i++) out.push({ n: 20, perTrade: i < paid ? 1.5 : -1, thin: false });
+    return out;
+  };
   const rows = [
-    { coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '312', band: 200, trades: 370, perTrade: 0.879, windows: 15, windowsUp: 15, best: 3.96, worst: 0.15, asGood: 0, asGoodSlid: 0 },
-    { coin: 'XLMUSDT', geometry: 'daily-3d', lookback: 'own', band: 350, trades: 40, perTrade: -0.2, windows: 6, windowsUp: 2, best: 2, worst: -3, asGood: 90, asGoodSlid: 88 },
-    { coin: 'BTCUSDT', geometry: 'daily-1d', lookback: '48', band: 250, trades: 500, perTrade: 0.1, windows: 12, windowsUp: 7, best: 1, worst: 0, asGood: 44, asGoodSlid: 46 },
+    { coin: 'LTCUSDT', geometry: 'daily-1d', lookback: '312', band: 200, trades: 370, perTrade: 0.879, windows: 15, windowsUp: 15, best: 3.96, worst: 0.15, asGood: 0, asGoodSlid: 0, scan: strip(15, 15) },
+    { coin: 'XLMUSDT', geometry: 'daily-3d', lookback: 'own', band: 350, trades: 40, perTrade: -0.2, windows: 6, windowsUp: 2, best: 2, worst: -3, asGood: 90, asGoodSlid: 88, scan: strip(2, 6) },
+    { coin: 'BTCUSDT', geometry: 'daily-1d', lookback: '48', band: 250, trades: 500, perTrade: 0.1, windows: 12, windowsUp: 7, best: 1, worst: 0, asGood: 44, asGoodSlid: 46, scan: strip(6, 12) },
   ];
   // EVERY BOX EMPTY, THE WAY THE SCREEN OPENS. Nothing may be hidden.
-  for (const wF of [{}, { coin: '', shape: '', back: '', band: '', minTrades: '', minPer: '', minWindows: '', minUp: '', maxGood: '', maxSlid: '' },
+  for (const wF of [{}, { coin: '', shape: '', back: '', band: '', minTrades: '', minPer: '', minWindows: '', minUp: '', minPaid: '', maxGood: '', maxSlid: '' },
     { band: '' }, { band: '   ' }, { band: ' , ' }, { minTrades: '' }, { maxGood: '' },
-    { minBest: '' }, { minWorst: '' }, { maxSpread: '' }, { minPerSpread: '' }]) {
+    { minBest: '' }, { minWorst: '' }, { maxSpread: '' }, { minPerSpread: '' }, { minPaid: '' }]) {
     const got = theRealWalkFilter(wF)({ rows, shapes });
     assert(got.length === rows.length,
       `with ${JSON.stringify(wF)} nothing may be hidden, and ${rows.length - got.length} of ${rows.length} row(s) were`);
@@ -827,6 +849,8 @@ function anEmptyFilterBoxHidesNothingAtAll() {
   assert.deepStrictEqual(f({ minPer: '0.5' }), ['LTCUSDT'], 'least per trade filters');
   assert.deepStrictEqual(f({ minWindows: '13' }), ['LTCUSDT'], 'fewest windows filters');
   assert.deepStrictEqual(f({ minUp: '90' }), ['LTCUSDT'], 'least windows up filters, as a share');
+  assert.deepStrictEqual(f({ minPaid: '90' }), ['LTCUSDT'], 'least windows paid filters, as a share');
+  assert.deepStrictEqual(f({ minPaid: '50' }), ['LTCUSDT', 'BTCUSDT'], 'and half of them is half of them, not half of the windows the coin has');
   assert.deepStrictEqual(f({ maxGood: '0' }), ['LTCUSDT'], 'most scrambles as good filters, and nought is a real answer');
   assert.deepStrictEqual(f({ maxSlid: '50' }), ['LTCUSDT', 'BTCUSDT'], 'most slides as good filters');
   // and the four that answer the range question
@@ -940,7 +964,7 @@ function theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow()
   assert(/>per trade per spread\$\{cWalkSortBtn\('perSpread', 'desc'\)\}/.test(src), 'the ratio is a column and sorts high-first');
   assert(/spread: \(r\) => cSpread\(r\),/.test(src) && /perSpread: \(r\) => cPerSpread\(r\),/.test(src),
     'and the sorter reads the SAME two functions the cells and the filters do, not a second copy');
-  assert(/<tr class="cwscan"><td colspan="15">/.test(src), 'the opened strip spans the table, which is two columns wider than it was');
+  assert(/<tr class="cwscan"><td colspan="16">/.test(src), 'the opened strip spans the table, and the table has gained columns since');
   // the four boxes that answer the question, and the two the owner asked for
   for (const id of ['wf_minBest', 'wf_minWorst', 'wf_maxSpread', 'wf_minPerSpread']) {
     assert(new RegExp(`id="${id}"`).test(src), `${id} is on the screen`);
@@ -987,6 +1011,117 @@ function theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout() {
   }
 }
 
+
+// MADE MONEY AND PAID ARE NOT THE SAME THING (3.165.0, owner: "the PER TRADE
+// PER SPREAD number ... i'm trying to get a fix on good numbers on as many
+// windows as possible without a large spread ... is there a better metric?").
+//
+// per trade per spread has two faults. It reads only the two EXTREME windows,
+// so everything between them is thrown away; and it ignores how many windows
+// there are, so three and fifteen score alike -- the fault windows up already
+// had and had fixed. Counting the windows that cleared the round trip answers
+// both: it cannot be carried by one window, and it grows with the evidence.
+//
+// THE BOUNDARY IS THE WHOLE POINT. A window that made back exactly what it
+// cost to trade paid nothing. Counting it says otherwise, and that is the
+// mistake this guards -- on both sides of the wire, because the engine counts
+// it for the early/late reading and the screen counts it for the walk table,
+// and two counters that disagree is worse than one that is wrong.
+function aWindowCountsAsPaidOnlyIfItCLEARSTheRoundTripAndBothSidesAgree() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+  // the two figures are the SAME figure, or the two tables disagree about what
+  // paid means while both using the word
+  const m = /const C_ROUND_TRIP = ([\d.]+);/.exec(src);
+  assert(m, 'the screen names the round trip in one place');
+  assert(Number(m[1]) === ROUND_TRIP,
+    `the screen's round trip is ${m[1]} and the engine's is ${ROUND_TRIP} -- one number, or the two tables mean different things by paid`);
+  assert(Math.abs(ROUND_TRIP - 0.25) < 1e-12, `and it is 0.25%, twice the fee a leg, got ${ROUND_TRIP}`);
+
+  // THE ENGINE SIDE: strictly above, at the boundary, in both directions
+  const w = (perTrade) => ({ n: 10, perTrade, thin: false });
+  const got = moneyOver([w(0.2499), w(0.25), w(0.2501), w(1), w(0), w(-9)], 0, 6);
+  assert(got.windowsPaid === 2, `only the two windows ABOVE the round trip paid, got ${got.windowsPaid}`);
+  assert(got.windowsUp === 4, `four of them made money, which is the other column, got ${got.windowsUp}`);
+  assert(got.worst === -9, `and the worst of them is the worst of them, got ${got.worst}`);
+  // a thin window is not paid, not up, and not the worst
+  const thin = moneyOver([{ n: 4, perTrade: 99, thin: true }, { n: 4, perTrade: -99, thin: true }, w(1)], 0, 3);
+  assert(thin.windowsPaid === 1 && thin.windows === 1 && thin.worst === 1,
+    'a window under the floor is counted nowhere, including in the worst');
+  // and a different cost is honoured, so the reading and its own bar cannot drift
+  assert(moneyOver([w(0.5), w(2)], 0, 2, 1).windowsPaid === 1, 'the cost the caller names is the cost that is used');
+
+  // THE SCREEN SIDE: the same boundary, run for real out of the page
+  const rt = /const C_ROUND_TRIP = [^\n]*\n/.exec(src);
+  const pd = /const cPaid = \(r\) => [\s\S]*?\n[^\n]*\), 0\);\n/.exec(src);
+  assert(rt && pd, 'the screen defines both, once');
+  // eslint-disable-next-line no-new-func
+  const cPaid = new Function(`${rt[0]}${pd[0]}\nreturn cPaid;`)();
+  assert(cPaid({ scan: [w(0.2499), w(0.25), w(0.2501), w(1)] }) === 2,
+    'the screen counts strictly above too, or the table and the reading disagree at the boundary');
+  assert(cPaid({ scan: [{ n: 4, perTrade: 99, thin: true }] }) === 0, 'and a thin window never paid');
+  assert(cPaid({ scan: [{ n: 0, perTrade: 99, thin: false }] }) === 0, 'nor an empty one');
+  assert(cPaid({ scan: [{ n: 9, perTrade: null, thin: false }] }) === 0, 'nor an unreadable one');
+  assert(cPaid({}) === 0, 'and a row with no strip at all reads nought rather than throwing');
+
+  // IT IS WORKED OUT FROM THE STRIP, not stored, so a set saved before this
+  // release shows the column without being walked again
+  assert(/\(r\.scan \|\| \[\]\)\.reduce/.test(pd[0]),
+    'the count comes off the strip every row already carries -- storing it would leave every saved walk set showing a dash');
+
+  // ON BOTH TABLES, which is what the owner asked for
+  assert(/>windows paid\$\{cWalkSortBtn\('paid', 'desc'\)\}/.test(src), 'the walk table has the column and sorts it high-first');
+  assert(/<td>\$\{cPaid\(r\)\} of \$\{r\.windows\}<\/td>/.test(src), 'and draws it as a count out of the counted windows');
+  assert(/>late windows paid\$\{cSortBtn\('sSorts', 'ssort', 'latePaid', 'desc'\)\}/.test(src),
+    'choose early, read late has it on its late windows');
+  assert(/<td>\$\{p\.lateWindowsPaid\} of \$\{p\.lateWindows\}<\/td>/.test(src), 'and draws it the same way');
+  // AND THE OTHER HALF OF THE SENTENCE beside it on both: no bad windows
+  assert(/id="wf_minWorst"/.test(src) && /id="wf_minPaid"/.test(src),
+    'the walk table can be filtered on both halves at once: as many paying windows as possible, and no bad ones');
+  assert(/>worst late window\$\{cSortBtn\('sSorts', 'ssort', 'lateWorst', 'desc'\)\}/.test(src),
+    'and the late reading shows its worst window, which it never did');
+  assert(/<td class="\$\{cls\(p\.lateWorst\)\}">\$\{pc\(p\.lateWorst\)\}<\/td>/.test(src), 'drawn in money, coloured like money');
+  // the new box is in the same grid and the same words as the ones beside it
+  assert(/<span class="fname">least windows paid, %<\/span><span class="fbox"><input id="wf_minPaid" type="number" step="any" value="\$\{v\('minPaid'\)\}">/.test(src),
+    'the filter box uses the layout every other filter box on this screen uses');
+  const help = fs.readFileSync(path.join(__dirname, '..', 'public', 'help-content.js'), 'utf8');
+  assert(/wf_minPaid: '/.test(help), 'and Help says what it does');
+}
+
+// THE LATE READING CARRIES BOTH FIGURES, and they are ITS OWN -- the pick's
+// late windows, not the pack's and not the whole history's. Hand-built so the
+// two rows disagree about everything: if the wrong row's figures were reported
+// or the early half leaked in, every number below comes out different.
+function theLateReadingCarriesWhatItPaidAndItsWorstWindow() {
+  const win = (perTrade, n = 50) => ({ n, perTrade, thin: false });
+  const rows = [
+    // best on the early windows; afterwards it pays on two of four and has one bad one
+    { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: 'own', band: 100,
+      scan: [win(9), win(9), win(9), win(9), win(3), win(3), win(0.25), win(-2)] },
+    // worse early, better late -- it must not be the one reported
+    { coin: 'AAAUSDT', geometry: 'daily-1d', lookback: '336', band: 200,
+      scan: [win(1), win(1), win(1), win(1), win(8), win(8), win(8), win(8)] },
+  ];
+  const p = chooseThenRead(rows, { minTrades: 10 }).pairs[0];
+  assert(p.lookback === 'own', `the early winner is the row reported, got ${p.lookback}`);
+  assert(p.lateWindows === 4, `four late windows, got ${p.lateWindows}`);
+  assert(p.lateWindowsUp === 3, `three of them made money, got ${p.lateWindowsUp}`);
+  assert(p.lateWindowsPaid === 2, `but only two CLEARED the round trip -- the 0.25% one made back exactly what it cost and paid nothing, got ${p.lateWindowsPaid}`);
+  assert(p.lateWorst === -2, `and the worst late window is its own, got ${p.lateWorst}`);
+  // the other row's figures must be nowhere in the answer
+  assert(p.lateWorst !== 8 && p.lateWindowsPaid !== 4, 'the better late row is not the one being reported');
+  // A LATE HALF THAT MADE MONEY AND STILL PAID NOTHING is the case the whole
+  // column exists for: nought paid is a real answer, not a missing one, and
+  // the worst window is still reported beside it.
+  const thin = chooseThenRead([
+    { coin: 'BBBUSDT', geometry: 'daily-1d', lookback: 'own', band: 100, scan: [win(5), win(5), win(0.1), win(-0.5)] },
+    { coin: 'BBBUSDT', geometry: 'daily-1d', lookback: '48', band: 200, scan: [win(1), win(1), win(4), win(4)] },
+  ], { minTrades: 10 }).pairs[0];
+  assert(thin.lookback === 'own', 'the early winner again');
+  assert(thin.lateWindowsUp === 1, `one late window made money, got ${thin.lateWindowsUp}`);
+  assert(thin.lateWindowsPaid === 0, `and none of them cleared the round trip, got ${thin.lateWindowsPaid}`);
+  assert(thin.lateWorst === -0.5, `the worst late window is still reported, got ${thin.lateWorst}`);
+}
+
 module.exports = {
   theWindowsStartAfterTheWarmUpAndTheShortTailIsDropped,
   theUsualMoveTrailingSeesOnlyWhatIsBehindIt,
@@ -1014,6 +1149,8 @@ module.exports = {
   bothCopyCountsAreOnTheTableSideBySide,
   anEmptyFilterBoxHidesNothingAtAll,
   theSpreadAndWhatARowPaysForItAreOnTheTableAndCannotBeGamedByOneWindow,
+  aWindowCountsAsPaidOnlyIfItCLEARSTheRoundTripAndBothSidesAgree,
+  theLateReadingCarriesWhatItPaidAndItsWorstWindow,
   theCoinsFiltersUseBoardsOwnWordsAndBoardsOwnLayout,
   everyTickOnCoinsBottomAlignsToItsFieldsAndNoButtonSharesTheirRow,
   theWalkTableHeadingsSitOverTheirOwnFigures,

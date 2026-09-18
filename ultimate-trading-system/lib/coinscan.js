@@ -33,6 +33,11 @@ const { medianAbsMove } = require('./windowmove');
 // box offers when the screen sends nothing, and the screen can send anything.
 const BANDS_WHEN_UNSAID = [50, 100, 150, 200];
 const SCRAMBLES_WHEN_UNSAID = 10;
+// WHAT IT COSTS TO GET IN AND OUT ONCE, in the same units as every figure the
+// walk prints: percent of the position. It is DERIVED from the one fee the
+// system trades at rather than typed here, because a second copy of a number
+// is a second number the day one of them moves.
+const ROUND_TRIP = require('./paper').FEE_ROUND_TRIP * 100;
 
 // A DETERMINISTIC SHUFFLE, so a scrambled reading is the same one tomorrow.
 // The seed rides on the coin, the shape, the band and the copy's number, so no
@@ -443,17 +448,36 @@ function halfOf(rows) {
   for (const r of rows) most = Math.max(most, (r.scan || []).length);
   return Math.floor(most / 2);
 }
-function moneyOver(scan, from, to) {
-  let n = 0; let s = 0; let up = 0; let counted = 0;
+// MADE MONEY AND PAID ARE NOT THE SAME THING (3.165.0, owner: "i'm trying to
+// get a fix on good numbers on as many windows as possible without a large
+// spread ... is there a better metric?").
+//
+// windowsUp counts a window that made anything at all; windowsPaid counts one
+// that cleared the round trip, which is the only kind worth having. STRICTLY
+// ABOVE, never equal: a window that made back exactly what it cost to trade
+// paid nothing, and counting it says otherwise.
+//
+// worst is the lowest counted window over the same stretch. The two together
+// are the owner's sentence in full -- as many windows as possible paying, and
+// no bad ones -- and neither can be carried by a single spectacular window the
+// way per trade and per trade per spread both can.
+function moneyOver(scan, from, to, cost = ROUND_TRIP) {
+  let n = 0; let s = 0; let up = 0; let counted = 0; let paid = 0; let worst = null;
   for (let i = from; i < to && i < scan.length; i++) {
     const w = scan[i];
     if (!w || w.thin || !w.n || w.perTrade == null) continue;
-    n += w.n; s += w.perTrade * w.n; counted++; if (w.perTrade > 0) up++;
+    n += w.n; s += w.perTrade * w.n; counted++;
+    if (w.perTrade > 0) up++;
+    if (w.perTrade > cost) paid++;
+    if (worst == null || w.perTrade < worst) worst = w.perTrade;
   }
-  return { trades: n, perTrade: n ? s / n : null, windows: counted, windowsUp: up };
+  return {
+    trades: n, perTrade: n ? s / n : null, windows: counted, windowsUp: up,
+    windowsPaid: paid, worst,
+  };
 }
 function chooseThenRead(rows, opts = {}) {
-  const { firstWindows = null, minTrades = 30, cost = 0.25 } = opts || {};
+  const { firstWindows = null, minTrades = 30, cost = ROUND_TRIP } = opts || {};
   const byPair = new Map();
   for (const r of rows || []) {
     if (!r || !Array.isArray(r.scan) || !r.scan.length) continue;
@@ -467,8 +491,8 @@ function chooseThenRead(rows, opts = {}) {
     if (!(cut > 0)) continue;
     const scored = [];
     for (const r of group) {
-      const early = moneyOver(r.scan, 0, cut);
-      const late = moneyOver(r.scan, cut, r.scan.length);
+      const early = moneyOver(r.scan, 0, cut, cost);
+      const late = moneyOver(r.scan, cut, r.scan.length, cost);
       if (early.trades < minTrades || late.trades < minTrades) continue;
       scored.push({ row: r, early, late });
     }
@@ -504,6 +528,7 @@ function chooseThenRead(rows, opts = {}) {
       earlyPerTrade: pick.early.perTrade, earlyTrades: pick.early.trades,
       latePerTrade: pick.late.perTrade, lateTrades: pick.late.trades,
       lateWindows: pick.late.windows, lateWindowsUp: pick.late.windowsUp,
+      lateWindowsPaid: pick.late.windowsPaid, lateWorst: pick.late.worst,
       blind, lead: pick.late.perTrade - blind,
       bestPossible: sorted[sorted.length - 1],
       percentile: scored.length > 1 ? (below / (scored.length - 1)) * 100 : 50,
@@ -542,7 +567,7 @@ function chooseThenRead(rows, opts = {}) {
 }
 
 module.exports = {
-  BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID, chooseThenRead, moneyOver,
+  BANDS_WHEN_UNSAID, SCRAMBLES_WHEN_UNSAID, ROUND_TRIP, chooseThenRead, moneyOver,
   forwardHoursOf, oneShapePerForwardTime,
   windowsOf, usualMoveAt, signsBefore, priceWindow, walk, scrambled, seededOrder, slidOffsets, periodsForMonths, HOURS_A_MONTH,
   walkTask, walkTasksFor, rowOf,
