@@ -643,6 +643,18 @@ function coinsRecords() {
     // GEOMETRIES so a shape added or changed tomorrow reads correctly with
     // nobody remembering to update a list (RULE FIVE: the screen says it).
     collapse: require('./coinscan').oneShapePerForwardTime(require('./dataset').GEOMETRIES),
+    // THE BANDS THE PLATEAU IS SEARCHED OVER (3.173.0, owner order: "PUT THAT
+    // GRID ONSCREEN AS A CONTROL"). It sets the range `sweet spot band` can
+    // take, so the screen has to be able to say it and to set it. The built-in
+    // travels with it, the way the band's and the look-backs' do, so the screen
+    // can say what it would go back to.
+    grid: (() => {
+      try {
+        const sg = require('./coinsignal');
+        const g = sg.bandGridNow();
+        return { value: g, default: { ...sg.BUILT_IN_GRID }, points: sg.gridPoints(g), most: sg.MAX_GRID_POINTS };
+      } catch (_) { return null; }
+    })(),
     // WHAT IT COSTS TO GET IN AND OUT, and whether that is the owner's figure
     // or the built-in standing in for one (3.166.0, owner order). Every claim
     // about money on this screen is measured against it, so it travels with

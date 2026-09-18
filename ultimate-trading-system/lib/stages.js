@@ -4748,6 +4748,56 @@ function deleteSet(id, confirm) {
   return { deleted: true, id: doc.id, name: doc.name, rows, bytes };
 }
 
+// ---- THE D1 REPAIR'S ONE DOOR INTO THIS FILE (RULE TEN: it is deleted the
+// day lib/d1migrate.js is, and it is here in one block so that is one cut).
+//
+// The rewrite itself lives in lib/d1migrate.js and knows nothing about record
+// sets. This is the part that only stages.js can do: refuse while anything is
+// being written, throw away what was DERIVED from the rows (RULE NINE -- totals
+// are rebuilt from the migrated records, never migrated themselves), and make
+// the document say what the set now is rather than what it was launched as.
+function d1Needs() { return require('./d1migrate').needs(listSets); }
+function d1Migrate(id, confirm) {
+  const doc = getSet(String(id || ''));
+  if (!doc) throw new Error(`no record set called "${id}"`);
+  if (activeSet) throw new Error(`${activeSet.name || activeSet.id} is being written right now — nothing is rewritten while a stage run is going`);
+  if (tallyRun && !tallyRun.error && tallyRun.id === doc.id) {
+    throw new Error(`the tables of ${doc.name} are totalling right now — nothing is rewritten while its records are being read`);
+  }
+  const plan = require('./d1migrate').planFor(doc.id);
+  if (String(confirm || '') !== doc.id) {
+    return { preview: true, id: doc.id, name: doc.name, confirmWith: doc.id, ...plan };
+  }
+  const out = require('./d1migrate').migrate(doc.id, {
+    after: (setId) => {
+      const gone = [];
+      // EVERYTHING DOWNSTREAM IS DELETED, NOT MIGRATED. Both are rebuilt from
+      // the rows on the next read, and migrating either would be a second
+      // chance to get the same translation wrong.
+      for (const [what, f] of [['the totals', tallyFile(setId)], ['the agreement table', agreedFile(setId)]]) {
+        try { if (fs.existsSync(f)) { fs.rmSync(f, { force: true }); gone.push(what); } } catch (_) { /* not there */ }
+      }
+      if (tallyInHand.id === setId) { tallyInHand.id = null; tallyInHand.tally = null; }
+      if (tallyInHand.staleId === setId) { tallyInHand.staleId = null; }
+      if (recordsInHand.id === setId) { recordsInHand.id = null; recordsInHand.rows = null; }
+      // AND THE DOCUMENT SAYS WHAT THE SET IS NOW. It was launched with the
+      // dial permuted and it no longer holds those rows, so a document still
+      // claiming three values is the two-vocabularies-on-disk that RULE NINE
+      // forbids -- and the chain check reads these params to decide whether the
+      // box matches the set.
+      const d = getSet(setId);
+      if (d && d.params && d.params.permuteConfirm) {
+        d.params.permuteConfirm = false;
+        d.params.confirm = 'off';
+        saveSet(d);
+        gone.push('the document now says the dial was off, because that is all it holds');
+      }
+      return gone;
+    },
+  });
+  return { ...out, name: doc.name };
+}
+
 // POST-RUN NOTES, the same contract the runs have (owner order, 2026-08-04;
 // carried to record sets 2026-08-27): freely editable once the set has
 // landed, refused while it is being written — the orchestrator saves the doc
@@ -9671,6 +9721,7 @@ module.exports = {
   sortValue,
   coinsFingerprinted, manifestComplaint, sameEngineLine, stageBusy, claimOrRefuse, foldSameTradeSettings, heldOnFor, pricingsOf, stampUnitSettingsFromRows, SAME_TRADE_TOLERANCE,
   listSets, getSet, chainOf, stageRunning, cancelStage, markInterrupted,
+  d1Needs, d1Migrate,   // RULE TEN: these two go the day lib/d1migrate.js does
   startStage1, startStage2, startStage3,
   missingUnitsOf, unitFillRefusal, fillMissingUnitsStart, fillMissingUnitsStatus, rebuildRanking,
   stage1Table, stage2Table, stage3Ranked, stage3Coins, stage3CoinRows,

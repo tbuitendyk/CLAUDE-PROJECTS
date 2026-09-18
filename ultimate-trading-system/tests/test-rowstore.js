@@ -369,4 +369,70 @@ module.exports = {
     });
   },
 
+  // A BLOCK THAT KEPT NOTHING IS STILL A BLOCK (3.173.0, for the D1 migration).
+  //
+  // Block indexes are recorded away from the store -- per unit on the set
+  // document, per coin in the totals -- so a rewrite that drops rows must keep
+  // the same block COUNT and the same order or every index after a vanished
+  // block points somewhere else. Measured on the box before this was written:
+  // of the four sets being migrated one loses no block, two lose two of three,
+  // and one loses thirty of forty-five. flush() with nothing buffered writes no
+  // block at all, so without this the rewrite silently renumbers them.
+  //
+  // Watched failing: dropping the `force` branch writes 2 blocks instead of 5
+  // and the kept rows land under the wrong indexes.
+  aBlockThatKeptNoRowsIsStillWrittenSoTheOnesAfterItKeepTheirIndex() {
+    withScratch(({ rowstore }) => {
+      // five source blocks; only the first and the last keep anything
+      const keep = [true, false, false, false, true];
+      const w = rowstore.writer('holes', 'records', { manualBlocks: true });
+      const marks = [];
+      for (let b = 0; b < keep.length; b++) {
+        const before = w.blockCount;
+        if (keep[b]) w.push({ b, tag: `block ${b} kept` });
+        w.flush(true);
+        marks.push([before, w.blockCount]);
+      }
+      w.close();
+
+      const blocks = rowstore.blocksOf('holes', 'records');
+      assert.strictEqual(blocks.length, 5, `every source block is still a block, got ${blocks.length}`);
+      assert.strictEqual(rowstore.count('holes', 'records'), 2, 'and only the kept rows are rows');
+      for (let b = 0; b < 5; b++) {
+        assert.deepStrictEqual(marks[b], [b, b + 1], `block ${b} landed at index ${marks[b]}`);
+      }
+      // the row that was in source block 4 is still read at block index 4
+      const last = rowstore.readBlocks('holes', 'records', [4]);
+      assert.strictEqual(last.length, 1, `block 4 served ${last.length} row(s)`);
+      assert.strictEqual(last[0].row.tag, 'block 4 kept', 'and it is the row that was there');
+      // an empty one serves nothing rather than throwing or serving a neighbour
+      for (const b of [1, 2, 3]) {
+        assert.strictEqual(rowstore.readBlocks('holes', 'records', [b]).length, 0,
+          `block ${b} kept nothing and must serve nothing`);
+      }
+      // and a straight walk sees the two rows in order, with the right positions
+      const all = [];
+      rowstore.each('holes', 'records', (row, at) => { all.push([at, row.b]); });
+      assert.deepStrictEqual(all, [[0, 0], [1, 4]], `the walk read ${JSON.stringify(all)}`);
+    });
+  },
+
+  // AND NO ORDINARY RUN CAN REACH IT: force is ignored unless the caller owns
+  // every boundary, so a stage store that flushes per unit never grows a hole.
+  anEmptyFlushOnAnOrdinaryStoreStillWritesNoBlock() {
+    withScratch(({ rowstore }) => {
+      const w = rowstore.writer('noholes', 'records');
+      w.push({ a: 1 });
+      w.flush();
+      w.flush(true);          // asked for, but this writer does not own boundaries
+      w.flush(true);
+      w.push({ a: 2 });
+      w.flush();
+      w.close();
+      assert.strictEqual(rowstore.blocksOf('noholes', 'records').length, 2,
+        'an ordinary store writes one block per non-empty flush and nothing else');
+      assert.strictEqual(rowstore.count('noholes', 'records'), 2, 'and keeps both rows');
+    });
+  },
+
 };

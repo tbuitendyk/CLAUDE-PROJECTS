@@ -152,14 +152,17 @@ module.exports = {
   // That is a refusal to guess, not a translation of an old record (RULE NINE).
   async aCheckTakenOnAnotherBandGridDoesNotAdmitAPasser() {
     const sig = require('../lib/coinsignal');
-    assert.strictEqual(sig.BAND_GRID.to, 500, 'the grid reaches the bands the walk can try');
-    assert.strictEqual(sig.BAND_GRID.from, 0);
-    assert.strictEqual(sig.BAND_GRID.step, 10);
+    // THE BUILT-IN reaches the bands the walk can try; since 3.173.0 the owner
+    // can set their own on Coins, and everything downstream reads the one in
+    // force rather than this.
+    assert.strictEqual(sig.BUILT_IN_GRID.to, 500, 'the built-in grid reaches the bands the walk can try');
+    assert.strictEqual(sig.BUILT_IN_GRID.from, 0);
+    assert.strictEqual(sig.BUILT_IN_GRID.step, 10);
 
     const plateau = { points: 3, meanRatio: 1.2 };
     const base = { trials: 50, found: 1, strengths: [1.0] };
     const worth = (lc) => sig.linkCutWorth(plateau, lc);
-    assert.strictEqual(worth({ ...base, grid: { ...sig.BAND_GRID } }).onGrid, true,
+    assert.strictEqual(worth({ ...base, grid: { ...sig.bandGridNow() } }).onGrid, true,
       'a check taken on this grid is this plateau\'s check');
     assert.strictEqual(worth({ ...base, grid: { from: 0, to: 300, step: 10 } }).onGrid, false,
       'one taken on the narrower grid is not');
@@ -528,7 +531,7 @@ module.exports = {
       // reading writes it. Without it this record is one from before the grid
       // reached 500 and is correctly NOT called a passer -- which is what
       // aCheckTakenOnAnotherBandGridDoesNotAdmitAPasser proves next door.
-      linkCut: { trials: 50, found: strengths.length, strengths, meanRatioWhenFound: null, grid: { ...require('../lib/coinsignal').BAND_GRID } } };
+      linkCut: { trials: 50, found: strengths.length, strengths, meanRatioWhenFound: null, grid: { ...require('../lib/coinsignal').bandGridNow() } } };
       return { v: runner.RECORD_V, coin, read: true, why: null, provenance: { release: require('../package.json').version, capturedAt: '2026-09-14T00:00:00Z', cachedMonths: 60, candles: 1800 * 24 }, shapes };
     };
     const files = { ZZZPASSAUSDT: runner.recordFile('ZZZPASSAUSDT'), ZZZPASSBUSDT: runner.recordFile('ZZZPASSBUSDT') };

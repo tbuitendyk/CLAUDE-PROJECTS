@@ -3835,6 +3835,10 @@ async function drawSweep() {
 // away and back lands on the same view.
 const BOARDS_VIEW_KEY = 'cx-boards-view';
 let bTallyPoll = null;   // asks again while a set's tables are totalling
+// WHICH SET'S PRESS IS ARMED (RULE TEN: goes with lib/d1migrate.js). Two-step,
+// like deleting a set: the first press says what would go, the second does it.
+// A dialog would be the other way to ask, and this screen does not use them.
+let bD1Armed = null;
 // THE EVERY-FEW-SECONDS ASK REDRAWS QUIETLY. It repaints the same progress
 // line over and over for as long as the work runs — hours, on a big set — and
 // a wait box popping up every four seconds for hours is not information, it is
@@ -3908,6 +3912,10 @@ async function drawBoards() {
   if (!HELPVOCAB) HELPVOCAB = await apiOr('api/vocabulary', {});
   const st = await apiOr('api/stagesets', ({ running: null, sets: [] }));
   const sets = st.sets || [];
+  // A SET THAT IS BEHIND SAYS SO ON THE SCREEN (RULE NINE), and the press that
+  // brings it up to date is beside the saying. RULE TEN: this block, its two
+  // state variables and its wiring go the day lib/d1migrate.js does.
+  const d1 = (await apiOr('api/d1/needs', { sets: [] })).sets || [];
   const view = bView();
   const rowOf = (id) => sets.find((x) => x.id === id) || null;
   const parentOf = (id) => { const r = rowOf(id); return r && r.parent ? r.parent.id : null; };
@@ -3969,6 +3977,31 @@ async function drawBoards() {
     return head + list.map((x) => `<option value="${esc(x.id)}"${x.id === sel ? ' selected' : ''}>${esc(x.name)} — ${esc(x.status)} — ${esc((x.createdAt || '').slice(0, 10))}${x.desc ? ` — ${esc(x.desc.slice(0, 40))}` : ''}</option>`).join('');
   };
   const foldBtn = (stage) => putAwayBtn('bfold', stage, fold[stage], "this stage's table");
+  // THE REPAIR'S PRESS (RULE TEN: this function goes with lib/d1migrate.js).
+  const bD1Wire = () => {
+    for (const el of document.querySelectorAll('#view button.bd1')) {
+      el.onclick = async () => {
+        const id = el.dataset.set;
+        const say = el.nextElementSibling;
+        if (bD1Armed !== id) { bD1Armed = id; draw(); return; }
+        el.disabled = true; el.textContent = 'rewriting…';
+        try {
+          const out = await post('api/d1/migrate', { id, confirm: id });
+          bD1Armed = null;
+          if (say) {
+            say.innerHTML = `<b>${esc(out.name || id)}</b> — ${Number(out.kept).toLocaleString()} row(s) kept, `
+              + `${Number(out.dropped).toLocaleString()} gone, ${out.blocks} block(s) still ${out.blocks}. `
+              + `${(out.derived || []).length ? `Thrown away and built again: ${(out.derived || []).map(esc).join('; ')}.` : ''}`;
+          }
+          setTimeout(draw, 1200);
+        } catch (err) {
+          bD1Armed = null;
+          el.disabled = false;
+          if (say) say.innerHTML = `<span class="warn">${esc(err.message)}</span>`;
+        }
+      };
+    }
+  };
 
   $('#view').innerHTML = `<div class="panel">
     <h3 style="margin-top:0">Boards — the record sets, and what each stage wrote</h3>
@@ -3977,6 +4010,17 @@ async function drawBoards() {
       parent puts the child selections away. Each box offers only the record sets that came out of what is picked
       above it. Each section can be put away and comes back as you left it.</p>
     ${running ? `<p class="note"><b>${esc(running.name)}</b> is going: ${esc(running.progress || '…')}</p>` : ''}
+    ${d1.length ? `<p class="note warn"><b>${d1.length} record set(s) hold three rows for every setting</b> &mdash; one priced with the
+      confirmation dial off, one with it confirmed only, one with it sized. The press below keeps the row the dial was off for and
+      drops the other two, so the set holds one row per setting like every other. The rows are rewritten beside the set, checked
+      against it row by row, and only then moved into place, so a set that does not come out right is left exactly as it is;
+      the totals are thrown away and built again from what is left.</p>
+      ${d1.map((x) => `<div class="row">
+        <button class="bd1" data-set="${esc(x.id)}"${x.can ? '' : ' disabled'}>${bD1Armed === x.id ? 'Press again to do it' : 'Keep the rows the dial was off for…'}</button>
+        <span class="muted"><b>${esc(x.name)}</b> &mdash; ${x.rows.toLocaleString()} rows in ${x.blocks} blocks;
+          ${x.keep.toLocaleString()} stay, <b>${x.drop.toLocaleString()} go</b>${x.emptied ? `, and ${x.emptied} block(s) keep nothing and stay as empty blocks so the ones after them do not move` : ''}.
+          ${x.can ? '' : `<span class="warn">${esc(x.why || 'this one cannot be done here')}</span>`}</span>
+      </div>`).join('')}` : ''}
   </div>
   <div class="panel">
     <div class="row" style="align-items:flex-end">
@@ -4018,6 +4062,7 @@ async function drawBoards() {
     <div id="bS3"></div>
   </div>`;
 
+  bD1Wire();   // RULE TEN: this call goes with lib/d1migrate.js
   for (const stage of [1, 2, 3]) {
     const pick = $(`#bPick${stage}`);
     if (pick) {
@@ -8480,6 +8525,10 @@ let cBusyNow = null;   // what else is holding the box, so this screen's own pre
 // a dash -- a claim about money measured against a cost nobody can name is
 // exactly the claim this screen must not make.
 let cFeeNow = null;
+// THE BANDS THE PLATEAU IS SEARCHED OVER (3.173.0). Served with every records
+// answer, never known by this file: the built-in stands in only until the first
+// answer lands, so the screen never shows a range the box is not using.
+let cGridNow = { value: { from: 0, to: 500, step: 10 }, default: { from: 0, to: 500, step: 10 }, points: 51, most: 200 };
 let cWalksNow = [];    // the walk sets on disk, headers only
 let cWalkNextName = '';
 // THE COLOURS ARE THE OWNER'S: "red, green, and black for sit out". The bar is
@@ -9872,6 +9921,7 @@ async function drawCoins() {
   if (d && Array.isArray(d.shapes)) cShapesNow = d.shapes;
   cBusyNow = (d && d.busy) || null;
   if (d && d.fee) cFeeNow = d.fee;
+  if (d && d.grid) cGridNow = d.grid;
   const running = !!(st && st.running);
   cLastDone = running ? st.done : null;
   const off = running ? ' disabled' : '';
@@ -9891,6 +9941,12 @@ async function drawCoins() {
     <div class="row" style="align-items:flex-end">
       <label class="f" title="which coins to read, comma separated. Blank reads every coin whose prices are downloaded on this box, the same as a blank box on Sweep.">coins (blank = all ${d && d.downloaded != null ? d.downloaded : '—'} downloaded)<input id="cCoins" placeholder="LTCUSDT,XRPUSDT" value="${esc(cState.coins || '')}" style="width:16rem"${off}></label>
       <label class="f" title="the look-backs a reading stores, in hours, comma separated. The chunk shape decides the TRADE; a look-back decides what is LOOKED AT, and there is no reason they should be the same length. Measured from candles at read time, so a change only reaches the records when the coins are read again &mdash; which is why it lives here and not on Walk it forward.">look-backs to store, hours<input id="cBacks" value="${esc(((d && d.lookbacks && d.lookbacks.value) || []).join(','))}" style="width:36.4rem"${off}></label>
+    </div>
+    <div class="row" style="align-items:flex-end">
+      <label class="f" title="the lowest band the plateau is searched from. The plateau is the run of bands that beat chance together; sweet spot band is picked inside it, so these three boxes set the whole range that column can take. Measured at read time, like the look-backs, so a change only reaches the readings when the coins are read again.">lowest band<input id="cGridFrom" type="number" min="0" step="1" value="${esc(String(cGridNow.value.from))}" style="width:6rem"${off}></label>
+      <label class="f" title="the highest band the plateau is searched to. A band above this one can never be the sweet spot band, however well it would have read &mdash; so it wants to reach at least as high as bands to try on Walk it forward.">highest band<input id="cGridTo" type="number" min="1" step="1" value="${esc(String(cGridNow.value.to))}" style="width:6rem"${off}></label>
+      <label class="f" title="how far apart the bands are. A smaller step finds a narrower plateau and costs proportionally more, because every band is scored on every coin and every chunk shape on every reading.">step<input id="cGridStep" type="number" min="1" step="1" value="${esc(String(cGridNow.value.step))}" style="width:6rem"${off}></label>
+      <span id="cGridOut" class="muted">the bands the plateau is searched over &mdash; <b>${cGridNow.points}</b> of them, at most ${cGridNow.most} &middot; built in: ${cGridNow.default.from} to ${cGridNow.default.to} in steps of ${cGridNow.default.step}</span>
     </div>
     <div class="row">
       <button id="cRun" class="pri"${off || (cBusyNow ? ' disabled' : '')}${cBusyNow && !running ? ` title="${esc(String(cBusyNow))} — one heavy job at a time. The button wakes when it lands."` : ''}>Read these coins</button>
@@ -9943,6 +9999,28 @@ async function drawCoins() {
   // of a reading, so it is never disabled while one runs.
   // THE BAR AND THE ROW TICKS ARE SET THE MOMENT THEY CHANGE, through the
   // passers' one door; the screen redraws from what the service now holds.
+  // THE PLATEAU GRID goes through its own door the moment any of the three
+  // changes, the way the bar and the band do -- there is no Apply on this
+  // screen and adding one for three numbers would be a second convention. A
+  // refusal is SHOWN beside the boxes and the old figures are put back, because
+  // a box left holding a number the box refused is a box that lies.
+  for (const id of ['cGridFrom', 'cGridTo', 'cGridStep']) {
+    const el = $(`#${id}`);
+    if (!el) continue;
+    el.onchange = async () => {
+      const grid = {
+        from: Number($('#cGridFrom').value), to: Number($('#cGridTo').value), step: Number($('#cGridStep').value),
+      };
+      try { await post('api/coins/grid', { grid }); } catch (err) {
+        $('#cGridOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`;
+        $('#cGridFrom').value = cGridNow.value.from;
+        $('#cGridTo').value = cGridNow.value.to;
+        $('#cGridStep').value = cGridNow.value.step;
+        return;
+      }
+      draw();
+    };
+  }
   if ($('#cPassBar')) {
     $('#cPassBar').onchange = async () => {
       try { await post('api/coins/passers', { bar: Number($('#cPassBar').value) }); } catch (err) {

@@ -29,6 +29,8 @@
 // beats chance.
 //
 // Pure arithmetic, no I/O. lib/coinsrun.js serves it beside each bar.
+const fs = require('fs');
+const path = require('path');
 const coins = require('./coins');
 const { GEOMETRIES } = require('./dataset');
 
@@ -40,10 +42,62 @@ const { GEOMETRIES } = require('./dataset');
 // band the walk could walk was one the plateau could never choose, and the two
 // halves of the Coins screen were searching different spaces. 51 points now
 // instead of 31, at the same step, which is 1.65x the sweep on a reading.
-const BAND_GRID = Object.freeze({ from: 0, to: 500, step: 10 });
+//
+// AND IT IS THE OWNER'S TO SET (owner order, 2026-09-18: "PUT THAT GRID
+// ONSCREEN AS A CONTROL"). It was three numbers frozen in this file, reachable
+// from no screen, and the range `sweet spot band` can take was therefore one
+// the owner could neither see nor originate -- RULE FIVE. The figures below are
+// the BUILT-IN, used only until the owner sets their own; everything that reads
+// the grid reads `bandGridNow()`, never the constant, so there is one home for
+// the answer and the screen is it.
+const BUILT_IN_GRID = Object.freeze({ from: 0, to: 500, step: 10 });
+const GRID_KEY = 'coins_plateau_grid';
+// A CEILING, not a curation: the sweep is run per coin per chunk shape on every
+// reading, so a mistyped step of 0.1 is a job that never lands. 200 points is
+// about four times what the built-in asks for, and the refusal says the number
+// so the owner is never guessing at it.
+const MAX_GRID_POINTS = 200;
+const SETTINGS_FILE = path.join(__dirname, '..', 'data', 'settings.json');
+function readSettings() {
+  try { return JSON.parse(fs.readFileSync(SETTINGS_FILE, 'utf8')); } catch (_) { return {}; }
+}
+function gridPoints(g) { return Math.floor((g.to - g.from) / g.step) + 1; }
+// ONE PLACE SAYS WHETHER A GRID IS A GRID, and it is used by the setter and by
+// the reader both, so a value that could never be set can never be read either.
+function gridOrRefuse(raw) {
+  const g = raw && typeof raw === 'object' ? raw : {};
+  const from = Number(g.from); const to = Number(g.to); const step = Number(g.step);
+  if (!Number.isFinite(from) || from < 0) throw new Error(`the lowest band is 0 or more — not ${JSON.stringify(g.from)}`);
+  if (!Number.isFinite(to) || to <= from) throw new Error(`the highest band is above the lowest (${from}) — not ${JSON.stringify(g.to)}`);
+  if (!Number.isFinite(step) || step <= 0) throw new Error(`the step is above zero — not ${JSON.stringify(g.step)}`);
+  const n = gridPoints({ from, to, step });
+  if (n > MAX_GRID_POINTS) {
+    throw new Error(`that is ${n} bands to search on every coin and chunk shape, and ${MAX_GRID_POINTS} is the most — widen the step, or narrow the range`);
+  }
+  return { from, to, step };
+}
+// THE GRID IN FORCE. A stored value that does not pass the same check the
+// setter applies is ignored rather than obeyed -- a settings file edited by
+// hand cannot start a sweep the screen would have refused.
+function bandGridNow() {
+  const raw = readSettings()[GRID_KEY];
+  if (raw === undefined || raw === null) return BUILT_IN_GRID;
+  try { return Object.freeze(gridOrRefuse(raw)); } catch (_) { return BUILT_IN_GRID; }
+}
+function setBandGrid(raw) {
+  const g = gridOrRefuse(raw);
+  const settings = readSettings();
+  settings[GRID_KEY] = g;
+  const tmp = `${SETTINGS_FILE}.tmp${process.pid}`;
+  fs.mkdirSync(path.dirname(SETTINGS_FILE), { recursive: true });
+  fs.writeFileSync(tmp, JSON.stringify(settings, null, 1));
+  fs.renameSync(tmp, SETTINGS_FILE);
+  return { grid: g, points: gridPoints(g), note: 'read the coins again for this to reach the readings' };
+}
 function bandGrid() {
+  const g = bandGridNow();
   const out = [];
-  for (let b = BAND_GRID.from; b <= BAND_GRID.to; b += BAND_GRID.step) out.push(b);
+  for (let b = g.from; b <= g.to; b += g.step) out.push(b);
   return out;
 }
 // the least a plateau can be (B3): one point above the bar is a spike, two is
@@ -284,7 +338,7 @@ function signalSummary(shapeRec, geometryKey, layouts, currentBand, { dealt = fa
   const k = dealt ? 1 : overlapFactor(geometryKey);
   const grid = bandGrid();
   if (!n || out.length !== n) {
-    return { grid: BAND_GRID, k, sweep: [], plateau: null, sweetSpot: null, traits: null, atCurrent: null, why: 'no decisions to read' };
+    return { grid: bandGridNow(), k, sweep: [], plateau: null, sweetSpot: null, traits: null, atCurrent: null, why: 'no decisions to read' };
   }
   const rec = { move, out };
   const sweep = grid.map((b) => readBand(rec, b, k, lays, trainLayout));
@@ -296,7 +350,7 @@ function signalSummary(shapeRec, geometryKey, layouts, currentBand, { dealt = fa
   const cur = grid.includes(currentBand) ? sweep[grid.indexOf(currentBand)] : readBand(rec, currentBand, k, lays, trainLayout);
   const anyRatio = sweep.some((s) => s.ratio != null);
   return {
-    grid: BAND_GRID,
+    grid: bandGridNow(),
     k,
     trainLayout,
     sweep: sweep.map((s) => ({ band: s.band, called: s.called, ratio: s.ratio, smoothed: s.smoothed, edge: s.edge, chance: s.chance, perDecision: s.perDecision, judged: s.judged, same: s.same })),
@@ -382,7 +436,7 @@ function tallyDeals(trials, plateaus) {
   return { trials, found, meanRatioWhenFound: ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null, strengths };
 }
 function plateauFalseAlarms(shapeRec, geometryKey, layouts, currentBand, trials = 50) {
-  return { ...tallyDeals(trials, [...dealtPlateaus(shapeRec, geometryKey, layouts, currentBand, trials)]), grid: { ...BAND_GRID } };
+  return { ...tallyDeals(trials, [...dealtPlateaus(shapeRec, geometryKey, layouts, currentBand, trials)]), grid: { ...bandGridNow() } };
 }
 // THE SAME CHECK WITH CONTROL HANDED BACK BETWEEN DEALS (B16). A coin's read
 // runs inside the service, and fifty deals on five shapes held it for six
@@ -397,7 +451,7 @@ async function plateauFalseAlarmsYielding(shapeRec, geometryKey, layouts, curren
     plateaus.push(p);
     await new Promise((resolve) => setImmediate(resolve));
   }
-  return { ...tallyDeals(trials, plateaus), grid: { ...BAND_GRID } };
+  return { ...tallyDeals(trials, plateaus), grid: { ...bandGridNow() } };
 }
 // WHAT THE REAL PLATEAU IS WORTH against the stored shuffles: how many of them
 // produced a plateau at least this strong. Null when there is no real plateau
@@ -411,18 +465,19 @@ function linkCutWorth(plateau, linkCut) {
   // translation of it -- the answer is to read the coins again, and the screen
   // says so. A record from before the grid was stamped carries no grid at all
   // and is named the same way.
-  const onGrid = !!(linkCut.grid && linkCut.grid.from === BAND_GRID.from
-    && linkCut.grid.to === BAND_GRID.to && linkCut.grid.step === BAND_GRID.step);
+  const now = bandGridNow();
+  const onGrid = !!(linkCut.grid && linkCut.grid.from === now.from
+    && linkCut.grid.to === now.to && linkCut.grid.step === now.step);
   const strength = plateauStrength(plateau);
   const asStrong = strength == null ? null : linkCut.strengths.filter((w) => w >= strength - 1e-9).length;
   return {
     trials: linkCut.trials, found: linkCut.found, strength, asStrong, onGrid,
-    grid: linkCut.grid || null, wantGrid: { ...BAND_GRID },
+    grid: linkCut.grid || null, wantGrid: { ...now },
   };
 }
 
 module.exports = {
-  BAND_GRID, PLATEAU_MIN_POINTS, CHANCE_BAR, TRAIT_WORDS,
+  BUILT_IN_GRID, MAX_GRID_POINTS, bandGridNow, setBandGrid, gridPoints, PLATEAU_MIN_POINTS, CHANCE_BAR, TRAIT_WORDS,
   bandGrid, overlapFactor, leansOn, edgeOn, readBand, smooth3, findPlateau,
   holdingOf, traitsAt, trainLayoutOf, signalSummary, atBand, shuffledCopy, shuffledWithin,
   plateauFalseAlarms, plateauFalseAlarmsYielding, plateauStrength, linkCutWorth,

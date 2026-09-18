@@ -269,6 +269,32 @@ app.post('/api/coins/lookbacks', (req, res) => {
   try { return res.json(coinsrun.setLookbacks((req.body || {}).lookbacks)); }
   catch (err) { return res.status(400).json({ error: err.message }); }
 });
+// ---- THE D1 REPAIR'S TWO DOORS (RULE TEN: deleted the day the repair is).
+// A set launched with the confirmation dial permuted holds three rows per
+// setting; the owner's decision on 2026-09-18 keeps the one the dial was off
+// for. Two-step like deleting a set: asked without the set's own id typed back
+// it only reports what would go.
+app.get('/api/d1/needs', (req, res) => {
+  try { return res.json({ sets: stages.d1Needs() }); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
+app.post('/api/d1/migrate', (req, res) => {
+  try {
+    const b = req.body || {};
+    return res.json(stages.d1Migrate(b.id, b.confirm));
+  } catch (err) { return res.status(409).json({ error: err.message }); }
+});
+
+// THE PLATEAU GRID'S ONE DOOR (3.173.0). The bands the plateau is searched
+// over were three numbers in lib/coinsignal.js that no screen could reach, so
+// the range `sweet spot band` can take was one the owner could not originate
+// (RULE FIVE). Same shape as the look-backs' door and for the same reason: the
+// sweep runs at read time, so changing it says so rather than pretending an
+// existing reading will pick it up.
+app.post('/api/coins/grid', (req, res) => {
+  try { return res.json(require('./lib/coinsignal').setBandGrid((req.body || {}).grid)); }
+  catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.post('/api/coins/band', (req, res) => {
   try {
     const body = req.body || {};
