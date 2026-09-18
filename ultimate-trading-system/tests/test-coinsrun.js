@@ -100,6 +100,51 @@ const theFeeRidesWithEveryAnswerAndTheServerDecidesIt = () => {
 };
 
 module.exports = {
+  // A CHECK TAKEN ON ANOTHER BAND GRID DOES NOT ADMIT A PASSER (3.169.0, owner
+  // decision: "yes, grid should reach").
+  //
+  // The plateau is searched on a fixed grid. It stopped at 300 while `bands to
+  // try` on Walk it forward takes anything and the owner has been running up to
+  // 500, so a band the walk could walk was one the plateau could never choose.
+  // Widening it moves where a plateau is found -- but the deals a record was
+  // checked against were plateaued over the OLD grid and are sitting on disk.
+  // Grading the new plateau against the old deals is two measurements read as
+  // one, and nothing on the screen would have said so.
+  //
+  // So the check records its grid, a reading whose grid does not match is NOT
+  // called a passer, and the panel names it and says to read the coins again.
+  // That is a refusal to guess, not a translation of an old record (RULE NINE).
+  async aCheckTakenOnAnotherBandGridDoesNotAdmitAPasser() {
+    const sig = require('../lib/coinsignal');
+    assert.strictEqual(sig.BAND_GRID.to, 500, 'the grid reaches the bands the walk can try');
+    assert.strictEqual(sig.BAND_GRID.from, 0);
+    assert.strictEqual(sig.BAND_GRID.step, 10);
+
+    const plateau = { points: 3, meanRatio: 1.2 };
+    const base = { trials: 50, found: 1, strengths: [1.0] };
+    const worth = (lc) => sig.linkCutWorth(plateau, lc);
+    assert.strictEqual(worth({ ...base, grid: { ...sig.BAND_GRID } }).onGrid, true,
+      'a check taken on this grid is this plateau\'s check');
+    assert.strictEqual(worth({ ...base, grid: { from: 0, to: 300, step: 10 } }).onGrid, false,
+      'one taken on the narrower grid is not');
+    assert.strictEqual(worth({ ...base, grid: { from: 0, to: 500, step: 25 } }).onGrid, false,
+      'nor one at a different step, even reaching the same distance');
+    assert.strictEqual(worth(base).onGrid, false,
+      'and a record from before the grid was stamped carries none, which is named the same way rather than assumed');
+    assert.ok(worth(base).wantGrid.to === 500, 'the reading says which grid it wanted, so the screen can explain itself');
+
+    // and the screen says so where the passers are listed, with what to press
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    assert.ok(/pass\.behindGrid/.test(src), 'the panel reads the list of readings left out');
+    assert.ok(/their check was taken on a different band grid/.test(src), 'and says why they are left out');
+    assert.ok(/Press <b>Read these coins<\/b> to take the check again/.test(src), 'and what to press about it');
+    const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
+    assert.ok(/lc && lc\.onGrid !== false && lc\.asStrong != null/.test(run),
+      'and no passer is admitted on a check taken elsewhere');
+    assert.ok(/if \(lc && lc\.onGrid === false\) behindGrid\.push/.test(run),
+      'while every one left out is counted rather than vanishing silently');
+  },
+
   theFeeRidesWithEveryAnswerAndTheServerDecidesIt,
   // THE ONE THAT WOULD HAVE CAUGHT IT. Candles in, a reading out, at every
   // chunk shape, with nothing asked for to make that happen.
@@ -443,7 +488,11 @@ module.exports = {
       const strength = S.plateauStrength(real.plateau);
       // `asStrongCount` dealt plateaus at least this strong, the rest weaker
       const strengths = [...Array(asStrongCount).fill(strength + 1), ...Array(6).fill(strength / 4)];
-      shapes['daily-3d'] = { periods: 1800, span: { fromTs: ts[0], toTs: ts[1799] }, skipped: 0, ts, move, out, linkCut: { trials: 50, found: strengths.length, strengths, meanRatioWhenFound: null } };
+      shapes['daily-3d'] = { periods: 1800, span: { fromTs: ts[0], toTs: ts[1799] }, skipped: 0, ts, move, out, // A CHECK CARRIES THE BAND GRID IT WAS TAKEN ON (3.169.0), the way a real
+      // reading writes it. Without it this record is one from before the grid
+      // reached 500 and is correctly NOT called a passer -- which is what
+      // aCheckTakenOnAnotherBandGridDoesNotAdmitAPasser proves next door.
+      linkCut: { trials: 50, found: strengths.length, strengths, meanRatioWhenFound: null, grid: { ...require('../lib/coinsignal').BAND_GRID } } };
       return { v: runner.RECORD_V, coin, read: true, why: null, provenance: { release: require('../package.json').version, capturedAt: '2026-09-14T00:00:00Z', cachedMonths: 60, candles: 1800 * 24 }, shapes };
     };
     const files = { ZZZPASSAUSDT: runner.recordFile('ZZZPASSAUSDT'), ZZZPASSBUSDT: runner.recordFile('ZZZPASSBUSDT') };

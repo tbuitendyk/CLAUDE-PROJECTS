@@ -9630,7 +9630,11 @@ function cPassersPanel(pass) {
   const rows = pass.rows || [];
   const head = `<p class="note"><b>coins and shapes that pass</b> — the check with the link cut found a plateau at least this strong in at most
       <input id="cPassBar" type="number" min="0" max="${pass.trials}" step="1" value="${esc(String(pass.bar))}" style="width:4rem" title="the bar: a coin and shape passes when, of the deals with the link cut, at most this many produced a plateau at least as strong as the real one. 0 is the strictest; the default is ${pass.default}. It has one home, beside the band."> of ${pass.trials} deals.
-      Ticked rows are what Sweep runs when its own tick is on.</p>`;
+      Ticked rows are what Sweep runs when its own tick is on.</p>
+    ${(pass.behindGrid || []).length ? `<p class="note warn"><b>${pass.behindGrid.length} coin and shape reading(s) are not listed here because their check was taken on a different band grid.</b>
+      The grid the plateau is searched on now reaches 500, because that is what <b>bands to try</b> on Walk it forward can reach. A plateau found over the
+      new grid, graded against deals checked over the old one, is two measurements read as one &mdash; so they are left out rather than counted.
+      Press <b>Read these coins</b> to take the check again: ${pass.behindGrid.slice(0, 12).map((x) => `<b>${esc(x.coin)}</b> ${esc(x.shape)}`).join(', ')}${pass.behindGrid.length > 12 ? ` and ${pass.behindGrid.length - 12} more` : ''}.</p>` : ''}`;
   if (!rows.length) return `<div class="panel">${head}<p class="note">no coin and shape passes at this bar</p></div>`;
   return `<div class="panel">${head}
     <table class="cgap cpassers"><thead><tr>

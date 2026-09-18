@@ -528,6 +528,9 @@ function coinsRecords() {
   const lays = layouts();
   const rows = [];
   const passers = [];
+  // every coin and shape whose stored check was taken on a band grid this
+  // release no longer uses, so the screen can say so instead of pretending
+  const behindGrid = [];
   const { records, unreadable } = scanRecords();
   for (const rec of records) {
     const shapesOut = {};
@@ -552,7 +555,14 @@ function coinsRecords() {
       // A PASSER: a plateau the check matched in at most `bar` of the deals.
       // Its numbers are read at its own sweet spot whatever the box holds.
       const lc = sig.linkCut;
-      if (sig.plateau && sig.sweetSpot && lc && lc.asStrong != null && lc.asStrong <= bar) {
+      // A CHECK TAKEN ON ANOTHER BAND GRID DOES NOT ADMIT A PASSER (3.169.0).
+      // The grid now reaches 500 because the walk's bands do; a plateau found
+      // over the new grid graded against deals checked over the old one is two
+      // measurements read as one. The coin is not refused and nothing is
+      // hidden -- it is simply not called a passer until it is read again, and
+      // the panel says how many are waiting and why.
+      if (lc && lc.onGrid === false) behindGrid.push({ coin: rec.coin, geometry: s.key, shape: s.label });
+      if (sig.plateau && sig.sweetSpot && lc && lc.onGrid !== false && lc.asStrong != null && lc.asStrong <= bar) {
         const spot = sig.sweep.find((p) => p.band === sig.sweetSpot.band) || {};
         const at = signal.atBand(sr, s.key, lays, sig.sweetSpot.band);
         passers.push({
@@ -600,7 +610,7 @@ function coinsRecords() {
     // something else is going instead of refusing after they are pressed
     // (3.163.0). The one predicate, which now names the walk and the reading.
     busy: (() => { try { return require('./stages').stageBusy(); } catch (_) { return null; } })(),
-    passers: { bar, default: DEFAULTS.passBar, trials: LINK_CUT_TRIALS, rows: passers },
+    passers: { bar, default: DEFAULTS.passBar, trials: LINK_CUT_TRIALS, rows: passers, behindGrid },
     // what a blank coin box means, as a count, so the label can say it without
     // the number being typed anywhere
     downloaded: defaultCoins().length,

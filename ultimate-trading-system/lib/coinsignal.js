@@ -34,7 +34,13 @@ const { GEOMETRIES } = require('./dataset');
 
 // THE BAND GRID, one home, served to the screen (B1). Fine enough that three
 // consecutive points is a plateau and not the whole axis.
-const BAND_GRID = Object.freeze({ from: 0, to: 300, step: 10 });
+// THE GRID REACHES THE BANDS THE WALK CAN TRY (owner decision, 2026-09-18:
+// "yes, grid should reach"). It stopped at 300 while `bands to try` on Walk it
+// forward takes anything, and the owner has been running 200 to 500 -- so a
+// band the walk could walk was one the plateau could never choose, and the two
+// halves of the Coins screen were searching different spaces. 51 points now
+// instead of 31, at the same step, which is 1.65x the sweep on a reading.
+const BAND_GRID = Object.freeze({ from: 0, to: 500, step: 10 });
 function bandGrid() {
   const out = [];
   for (let b = BAND_GRID.from; b <= BAND_GRID.to; b += BAND_GRID.step) out.push(b);
@@ -376,7 +382,7 @@ function tallyDeals(trials, plateaus) {
   return { trials, found, meanRatioWhenFound: ratios.length ? ratios.reduce((a, b) => a + b, 0) / ratios.length : null, strengths };
 }
 function plateauFalseAlarms(shapeRec, geometryKey, layouts, currentBand, trials = 50) {
-  return tallyDeals(trials, [...dealtPlateaus(shapeRec, geometryKey, layouts, currentBand, trials)]);
+  return { ...tallyDeals(trials, [...dealtPlateaus(shapeRec, geometryKey, layouts, currentBand, trials)]), grid: { ...BAND_GRID } };
 }
 // THE SAME CHECK WITH CONTROL HANDED BACK BETWEEN DEALS (B16). A coin's read
 // runs inside the service, and fifty deals on five shapes held it for six
@@ -391,16 +397,28 @@ async function plateauFalseAlarmsYielding(shapeRec, geometryKey, layouts, curren
     plateaus.push(p);
     await new Promise((resolve) => setImmediate(resolve));
   }
-  return tallyDeals(trials, plateaus);
+  return { ...tallyDeals(trials, plateaus), grid: { ...BAND_GRID } };
 }
 // WHAT THE REAL PLATEAU IS WORTH against the stored shuffles: how many of them
 // produced a plateau at least this strong. Null when there is no real plateau
 // (then `found` alone is the reading) or no check was stored.
 function linkCutWorth(plateau, linkCut) {
   if (!linkCut || !Array.isArray(linkCut.strengths)) return null;
+  // A CHECK TAKEN ON A DIFFERENT GRID IS NOT THIS PLATEAU'S CHECK (3.169.0).
+  // The deals are re-plateaued over whatever grid was in force when the coin
+  // was read; widen the grid and the real plateau moves while the stored deals
+  // do not. Saying which grid a check came from is a refusal to guess, not a
+  // translation of it -- the answer is to read the coins again, and the screen
+  // says so. A record from before the grid was stamped carries no grid at all
+  // and is named the same way.
+  const onGrid = !!(linkCut.grid && linkCut.grid.from === BAND_GRID.from
+    && linkCut.grid.to === BAND_GRID.to && linkCut.grid.step === BAND_GRID.step);
   const strength = plateauStrength(plateau);
   const asStrong = strength == null ? null : linkCut.strengths.filter((w) => w >= strength - 1e-9).length;
-  return { trials: linkCut.trials, found: linkCut.found, strength, asStrong };
+  return {
+    trials: linkCut.trials, found: linkCut.found, strength, asStrong, onGrid,
+    grid: linkCut.grid || null, wantGrid: { ...BAND_GRID },
+  };
 }
 
 module.exports = {
