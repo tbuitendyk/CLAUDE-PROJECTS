@@ -3506,7 +3506,7 @@ async function drawSweep() {
     <div class="row" style="align-items:flex-end">
       <label class="f" title="the coins this run actually buys and sells. Blank means every coin whose prices are downloaded on this box.">trade coins (blank = all ${swDefaultCoins.length} downloaded)<input id="swUni" placeholder="LTCUSDT,XRPUSDT,BCHUSDT" style="width:16rem"></label>
       <span id="swGrpCompare"><label class="f" title="the coins each traded coin is READ AGAINST — context only, never bought or sold. Blank means every coin downloaded on this box, the same as the box beside it, so one coin typed into trade coins with nothing here is that coin against everything. Only doubles and triples read this: singles is a coin on its own price history alone, so with only singles ticked this box is greyed and nothing reads it.">compare coins (blank = all ${swDefaultCoins.length} downloaded)<input id="swCompare" placeholder="BTCUSDT,ETHUSDT,SOLUSDT" style="width:16rem"></label></span>
-      <label class="c" title="run only the coins and shapes ticked on Coins, in the table of coins and shapes that pass. With it on, trade coins, chunk shape and permute are greyed: the run's units are those pairs, each at its own shape. Compare coins still applies to doubles and triples."><input type="checkbox" id="swPassers"> only the coins and shapes ticked on Coins</label>
+      <label class="c" title="run only what is ticked at the top of Coins &mdash; the coins and shapes that pass, AND every row promoted out of a walk set. A promoted row carries a look-back and a band of its own, so what is ticked there is more than a coin and a chunk shape. With it on, trade coins, chunk shape and permute are greyed: the run's units are those pairs, each at its own shape. Compare coins still applies to doubles and triples."><input type="checkbox" id="swPassers"> only what is ticked on Coins</label>
       <label class="c"><input type="checkbox" id="swSingles" checked> singles</label>
       <label class="c"><input type="checkbox" id="swDoubles"> doubles</label>
       <label class="c"><input type="checkbox" id="swTriples"> triples</label>
@@ -8456,6 +8456,10 @@ let cWalkRows = null;     // the last walk's rows, kept so a sort or an open row
 let cWalkSt = null;       // what the box says the walk is doing, so leaving the tab and coming back finds it
 let cWalkPoll = null;
 const cWalkOpen = new Set();
+// ROWS TICKED FOR PROMOTION, in the browser only until the press is made. The
+// promotion itself lives on the walk set (lib/walkset.js), which is what makes
+// it a reference rather than a copy.
+const cWalkPick = new Set();
 let cSplit = null;   // the answer to choosing on the early windows, kept here so a repaint costs nothing
 let cLastDone = null;
 let cLastRecs = [];
@@ -8711,7 +8715,7 @@ function cWalkRow(r, shapes) {
   const blanks = all.filter((w) => w.thin || w.n === 0 || w.perTrade == null).length;
   const says = `${all.length} window(s) in this coin's history · ${all.length - blanks} counted`
     + `${blanks ? ` · ${blanks} had too few trades to count and show as a dash` : ''}`;
-  const strip = !open ? '' : `<tr class="cwscan"><td colspan="19">
+  const strip = !open ? '' : `<tr class="cwscan"><td colspan="20">
     <p class="cwsays">${esc(says)}</p>
     <div class="cwstrip">${all.map((w) => {
     const v = w.perTrade;
@@ -8720,6 +8724,7 @@ function cWalkRow(r, shapes) {
     return `<span class="cwwin" title="the window starting ${esc(cDay(w.ts))} · ${w.n} trade(s)${dead ? ' · too few to count' : ` · ${v > 0 ? '+' : ''}${Number(v).toFixed(3)}% a trade`}"><i>${esc(cDay(w.ts)).slice(0, 7)}</i><b class="${col}">${dead ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(2)}`}</b></span>`;
   }).join('')}</div></td></tr>`;
   return `<tr>
+    <td><input type="checkbox" class="cwpick" data-key="${esc(key)}"${cWalkPick.has(key) ? ' checked' : ''} title="tick to promote this row into the list at the top of Coins, then press Promote the ticked rows below"></td>
     <td><button class="cwopen" data-key="${esc(key)}" title="show or hide this row's windows, one after another in time">${open ? '▾' : '▸'}</button></td>
     <td>${esc(r.coin)}</td><td>${esc(shape)}</td>
     <td>${r.lookback === 'own' ? 'own' : `${r.lookback}h`}</td>
@@ -9405,6 +9410,7 @@ function cWalkPanel() {
     ${!cWalkShown(rows, shapes).length ? '' : `
     <div class="cwbox"><table class="cgap cpassers"><thead><tr>
       <th></th>
+      <th></th>
       <th title="the coin">coin${cWalkSortBtn('coin', 'asc')}</th>
       <th title="the chunk shape">chunk shape${cWalkSortBtn('geometry', 'asc')}</th>
       <th title="how far back the move was measured from, ending at the decision. own is the chunk shape&#39;s own span, which is what every reading did before look-backs existed.">look-back${cWalkSortBtn('lookback', 'asc')}</th>
@@ -9429,7 +9435,14 @@ function cWalkPanel() {
       ? `${rows.length.toLocaleString()} row(s), all of them shown`
       : `<b>${n.toLocaleString()} of ${rows.length.toLocaleString()} row(s) shown</b> — ${(rows.length - n).toLocaleString()} hidden by the filter boxes above`; })()}
       ${(cState.wSorts || []).length ? ` · sorted by ${(cState.wSorts || []).map((x) => `${esc(x.key)} ${x.dir === 'desc' ? 'high to low' : 'low to high'}`).join(', then ')}` : ' · unsorted'}.
-      The headings stay put while the rows scroll under them; every one of them sorts.</p>`}`)}
+      The headings stay put while the rows scroll under them; every one of them sorts.</p>
+    <div class="row">
+      <button id="wPromote" class="pri"${cWalkPick.size && st && st.saved && st.saved.id ? '' : ' disabled'}>Promote the ticked rows</button>
+      <span id="wPromoteOut" class="note">${!(st && st.saved && st.saved.id)
+    ? 'a walk has to be saved before a row of it can be promoted — the list at the top holds a REFERENCE to the set, never a copy'
+    : cWalkPick.size ? `${cWalkPick.size} ticked · they will appear at the top under <b>${esc(st.saved.name || st.saved.id)}</b>`
+      : 'tick the rows worth carrying, in the leftmost column'}</span>
+    </div>`}`)}
   </div>
   ${rows && rows.length ? cSplitPanel() : ''}`;
 }
@@ -9545,6 +9558,42 @@ function cWalkBind() {
       cWalkRepaint();
     };
   }
+  for (const el of document.querySelectorAll('input.cwpick')) {
+    el.onchange = () => {
+      const k = el.getAttribute('data-key');
+      if (el.checked) cWalkPick.add(k); else cWalkPick.delete(k);
+      // only the press line and the press itself move; repainting the table
+      // here would throw the owner's place away on every tick
+      const b = $('#wPromote'); const out = $('#wPromoteOut');
+      const saved = cWalkSt && cWalkSt.saved && cWalkSt.saved.id;
+      if (b) b.disabled = !(cWalkPick.size && saved);
+      if (out && saved) {
+        out.innerHTML = cWalkPick.size
+          ? `${cWalkPick.size} ticked · they will appear at the top under <b>${esc(cWalkSt.saved.name || cWalkSt.saved.id)}</b>`
+          : 'tick the rows worth carrying, in the leftmost column';
+      }
+    };
+  }
+  if ($('#wPromote')) {
+    $('#wPromote').onclick = async () => {
+      const b = $('#wPromote'); const out = $('#wPromoteOut');
+      const id = cWalkSt && cWalkSt.saved && cWalkSt.saved.id;
+      if (!id || !cWalkPick.size) return;
+      b.disabled = true;
+      out.textContent = 'promoting…';
+      const keys = [...cWalkPick];
+      try {
+        for (const key of keys) await post(`api/coins/walks/${encodeURIComponent(id)}/pick`, { key, picked: true });
+      } catch (err) {
+        out.innerHTML = `<span class="warn">${esc(err.message)}</span>`;
+        b.disabled = false;
+        return;
+      }
+      cWalkPick.clear();
+      out.innerHTML = `<span class="pos">${keys.length} row(s) promoted — they are in the list at the top</span>`;
+      draw();
+    };
+  }
   for (const b of document.querySelectorAll('.cwopen')) {
     b.onclick = () => {
       const k = b.getAttribute('data-key');
@@ -9625,6 +9674,65 @@ async function cWalkTick() {
   cWalkRepaint();
 }
 
+// THE ROWS PROMOTED OUT OF A WALK SET (3.170.0, owner order 2026-09-18:
+// "select records that look promising, bring them up into that set at the top
+// ... and just select the ones we want and then bring them in and use them to
+// inform the decisions"). One box per walk set they came from, which is the
+// provenance the owner asked for, and a tick on each row.
+//
+// IT IS A REFERENCE, NOT A COPY (owner's decision). Every row here is read
+// back off its own walk set, so deleting the set takes these with it and
+// nothing here can go stale against a re-walk.
+//
+// WHAT A ROW IS, NOT WHAT A READING SAID ABOUT IT. late, lead and best on both
+// halves are worked out afresh on every press of Choose early, read late and
+// move with its two boxes; printing them here would freeze one reading's
+// answer and show it as a property of the row.
+function cPromotedPanel(sets) {
+  const groups = sets || [];
+  if (!groups.length) return '';
+  const n = groups.reduce((a, g) => a + g.rows.length, 0);
+  const on = groups.reduce((a, g) => a + g.rows.filter((r) => r.ticked).length, 0);
+  const pc3 = (v, d = 3) => (v == null ? '—' : `${v > 0 ? '+' : ''}${Number(v).toFixed(d)}%`);
+  const cls = (v) => (v == null ? 'muted' : (v > 0 ? 'cr' : 'cf'));
+  return `<div class="panel">
+    <p class="note"><b>promoted from a walk</b> — <b>${on} of ${n}</b> ticked. Ticked rows are what Sweep runs when its own tick is on,
+      alongside the ticked rows above. A coin and chunk shape can be in both lists at once: they are different readings of the same coin and
+      they go forward together.
+      Each row belongs to the walk set it came from &mdash; <b>delete that set and its rows here go with it</b>.</p>
+    ${groups.map((g) => `<div class="passbox">
+      <div class="passname">from <b>${esc(g.name)}</b> <span class="muted">${esc(g.id)} · ${g.rows.length} promoted · release ${esc(String(g.release || '—'))}</span></div>
+      <div class="cwbox"><table class="cgap cpassers"><thead><tr>
+        <th></th><th title="the coin">coin</th><th title="the chunk shape">chunk shape</th>
+        <th title="how far back the move was measured from, ending at the decision">look-back</th>
+        <th title="how big a move had to be before it counted, as a percentage of the coin's usual move">band</th>
+        <th title="how many trades the walk placed">trades</th>
+        <th title="what it made on each trade, before the round trip">per trade</th>
+        <th title="how many counted windows made money">windows up</th>
+        <th title="how many cleared the round trip">windows paid</th>
+        <th title="the worst single window">worst window</th>
+        <th title="how many scrambled copies did at least as well">scrambles as good</th>
+        <th title="how many sliding copies did at least as well">slides as good</th>
+        <th></th>
+      </tr></thead><tbody>
+      ${g.rows.map((r) => `<tr>
+        <td><input type="checkbox" class="cprom" data-set="${esc(g.id)}" data-key="${esc(r.key)}"${r.ticked ? ' checked' : ''}></td>
+        <td>${esc(r.coin)}</td><td>${esc(shapeLabelOf(r.geometry))}</td>
+        <td>${r.lookback === 'own' ? 'own' : `${esc(String(r.lookback))}h`}</td><td>${r.band}</td>
+        <td>${r.trades}</td><td class="${cls(r.perTrade)}">${pc3(r.perTrade)}</td>
+        <td>${r.windowsUp} of ${r.windows}</td>
+        <td>${cPaid(r) == null ? '—' : `${cPaid(r)} of ${r.windows}`}</td>
+        <td class="${cls(r.worst)}">${pc3(r.worst, 2)}</td>
+        <td>${r.asGood == null ? '—' : `${r.asGood} of ${r.copies}`}</td>
+        <td>${r.asGoodSlid == null ? '—' : `${r.asGoodSlid} of ${r.copies}`}</td>
+        <td><button class="cunprom" data-set="${esc(g.id)}" data-key="${esc(r.key)}" title="takes this row back off the list. The walk set keeps it; only the promotion goes.">Remove</button></td>
+      </tr>`).join('')}
+      </tbody></table></div>
+    </div>`).join('')}
+  </div>`;
+}
+// the chunk shape's screen label, off the same answer every other table reads
+const shapeLabelOf = (k) => (cShapesNow.find((x) => x.key === k) || {}).label || k;
 function cPassersPanel(pass) {
   if (!pass) return '';
   const rows = pass.rows || [];
@@ -9770,6 +9878,7 @@ async function drawCoins() {
     <div class="row"><button id="cClean" class="danger"${off}>Remove these files</button><span id="cCleanOut" class="muted">removes exactly the ${unreadable.length} file(s) named above and nothing else</span></div>` : ''}
   </div>
   ${cPassersPanel(d && d.passers)}
+  ${cPromotedPanel(d && d.promoted)}
   <div class="panel">
     <h3 style="margin-top:0">How each coin reads</h3>
     <p class="note"><b>The sit-out band is one number for every coin, read on each coin's own scale.</b> It is a share
@@ -9811,6 +9920,25 @@ async function drawCoins() {
         $('#cOut').innerHTML = '<span class="warn">' + esc(err.message) + '</span>';
         return;
       }
+      draw();
+    };
+  }
+  // THE PROMOTED ROWS' TICKS AND THEIR REMOVE PRESSES, through the walk set's
+  // own doors -- the row lives there, so that is where its state is kept.
+  for (const el of document.querySelectorAll('#view input.cprom')) {
+    el.onchange = async () => {
+      try {
+        await post(`api/coins/walks/${encodeURIComponent(el.dataset.set)}/tick`, { key: el.dataset.key, ticked: el.checked });
+      } catch (err) { $('#cOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; }
+      draw();
+    };
+  }
+  for (const b of document.querySelectorAll('#view button.cunprom')) {
+    b.onclick = async () => {
+      b.disabled = true;
+      try {
+        await post(`api/coins/walks/${encodeURIComponent(b.dataset.set)}/pick`, { key: b.dataset.key, picked: false });
+      } catch (err) { $('#cOut').innerHTML = `<span class="warn">${esc(err.message)}</span>`; b.disabled = false; return; }
       draw();
     };
   }

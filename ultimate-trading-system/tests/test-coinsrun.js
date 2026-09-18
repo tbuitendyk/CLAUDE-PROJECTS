@@ -100,6 +100,40 @@ const theFeeRidesWithEveryAnswerAndTheServerDecidesIt = () => {
 };
 
 module.exports = {
+  // SWEEP'S TICK RUNS BOTH LISTS (3.170.0, owner order 2026-09-18: "we have, at
+  // the very top of the coins screen, an area where we have coins that we're
+  // possibly promoting ... broken into the top section as it is now, coins and
+  // shapes that pass, and into a bottom section, which is basically a
+  // subsection for each walk set").
+  //
+  // The reading's passers as always, and every TICKED row promoted out of a
+  // walk set. A coin and shape arriving from both is not a clash -- the owner's
+  // call, "they become different units" -- and until the lean rides on the unit
+  // they fold to one coin and shape here, which is the shape unitsForPassers
+  // has always taken.
+  theTickAtTheTopRunsBothListsAndTheScreenSaysSo() {
+    const run = fs.readFileSync(path.join(__dirname, '..', 'lib', 'coinsrun.js'), 'utf8');
+    const fn = run.slice(run.indexOf('function passingUnits()'), run.indexOf('function passerLeans()'));
+    assert.ok(/passersCached\(\)\.filter\(\(r\) => r\.ticked\)/.test(fn), 'the passers, as always');
+    assert.ok(/require\('\.\/walkset'\)\.promotedUnits\(\)/.test(fn), 'and every ticked promoted row');
+    assert.ok(/if \(seen\.has\(k\)\) continue;/.test(fn), 'a coin and shape in both lists is one unit, not two entries');
+    assert.ok(/promoted: \(\(\) => \{ try \{ return require\('\.\/walkset'\)\.promoted\(\); \}/.test(run),
+      'and the answer carries the promoted rows, grouped per walk set, for the screen to draw');
+
+    const src = fs.readFileSync(path.join(__dirname, '..', 'public', 'construct.js'), 'utf8');
+    // one box per walk set, headed by the set — the provenance the owner asked for
+    assert.ok(/function cPromotedPanel\(sets\) \{/.test(src), 'the screen draws the promoted rows');
+    assert.ok(/<div class="passname">from <b>\$\{esc\(g\.name\)\}<\/b>/.test(src), 'one box per walk set, headed by the set it came from');
+    assert.ok(/delete that set and its rows here go with it/.test(src), 'and says plainly that they are a reference, not a copy');
+    assert.ok(/class="cprom"/.test(src) && /class="cunprom"/.test(src), 'with a tick and a way back off the list on every row');
+    // ONE PROMOTION DOOR (owner's decision), and it is the walk table
+    assert.ok(/id="wPromote"/.test(src), 'the one promotion press is on the walk table');
+    assert.strictEqual((src.match(/id="wPromote"/g) || []).length, 1, 'and there is exactly one of it — two doors into one list drift apart');
+    assert.ok(/a walk has to be saved before a row of it can be promoted/.test(src),
+      'a walk with no set behind it cannot be promoted from, and the line says why');
+    assert.ok(/class="cwpick"/.test(src), 'the rows are ticked in the walk table itself');
+  },
+
   // A CHECK TAKEN ON ANOTHER BAND GRID DOES NOT ADMIT A PASSER (3.169.0, owner
   // decision: "yes, grid should reach").
   //
@@ -581,8 +615,10 @@ module.exports = {
     // order down the screen is now: the passers, the bars and their own two
     // controls, then Walk it forward -- which is why the walk no longer sits
     // above the first coin.
-    assert.ok(/\$\{cPassersPanel\(d && d\.passers\)\}\n  <div class="panel">\n    <h3 style="margin-top:0">How each coin reads<\/h3>/.test(src),
-      'the passers panel sits after the reading, with the bars and their controls under it');
+    // 3.170.0: and the rows promoted out of a walk set sit between them, so the
+    // list at the top of Coins is BOTH sources one under the other.
+    assert.ok(/\$\{cPassersPanel\(d && d\.passers\)\}\n  \$\{cPromotedPanel\(d && d\.promoted\)\}\n  <div class="panel">\n    <h3 style="margin-top:0">How each coin reads<\/h3>/.test(src),
+      'the passers panel, then the promoted rows, then the bars and their own two controls');
     assert.ok(/<div class="cbarwrap">\n  \$\{!recs\.length \?/.test(src), 'the coins are drawn inside the window');
     assert.ok(/\n  <\/div>\n  <div id="cWalkWrap">\$\{cWalkPanel\(\)\}<\/div>`;/.test(src),
       'and Walk it forward sits under the window, a short scroll away rather than a mile');
@@ -591,7 +627,10 @@ module.exports = {
     assert.ok(/<input type="checkbox" class="cpass" data-coin="\$\{esc\(r\.coin\)\}" data-shape="\$\{esc\(r\.geometry\)\}"\$\{r\.ticked \? ' checked' : ''\}/.test(src), 'one tick per row, showing what the service holds');
     assert.ok(/post\('api\/coins\/passers', \{ bar: Number\(\$\('#cPassBar'\)\.value\) \}\)/.test(src), 'the bar goes through the passers\' door');
     assert.ok(/post\('api\/coins\/passers', \{ coin: el\.dataset\.coin, shape: el\.dataset\.shape, ticked: el\.checked \}\)/.test(src), 'and so does a row\'s tick');
-    assert.ok(/<input type="checkbox" id="swPassers"> only the coins and shapes ticked on Coins<\/label>/.test(src), 'Sweep\'s tick, labelled');
+    // ITS LABEL MOVED WITH THE FEATURE (3.170.0). What is ticked on Coins is no
+    // longer only coins and shapes: a promoted row carries a look-back and a
+    // band of its own, and a label that still said otherwise would be false.
+    assert.ok(/<input type="checkbox" id="swPassers"> only what is ticked on Coins<\/label>/.test(src), 'Sweep\'s tick, labelled for what it now runs');
     assert.strictEqual((src.match(/passers: !!\(\$\('#swPassers'\) && \$\('#swPassers'\)\.checked\),/g) || []).length, 2, 'the tick rides both the count and the launch');
     assert.ok(/for \(const id of \['swUni', 'swGeom', 'swPermGeom'\]\) if \(\$\(`#\$\{id\}`\)\) \$\(`#\$\{id\}`\)\.disabled = on;/.test(src), 'with it on, trade coins, chunk shape and permute are greyed');
   },

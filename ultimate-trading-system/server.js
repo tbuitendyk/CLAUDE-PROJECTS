@@ -344,6 +344,15 @@ app.post('/api/coins/walks/:id/pick', (req, res) => {
     return res.json(require('./lib/walkset').setPicked(req.params.id, b.key, b.picked === true));
   } catch (err) { return res.status(400).json({ error: err.message }); }
 });
+// PROMOTED AND TICKED ARE TWO DIFFERENT THINGS (3.170.0). `pick` above puts a
+// row in the list at the top of Coins; this says whether one already there is
+// to run just now. A promoted row is ticked until it is unticked.
+app.post('/api/coins/walks/:id/tick', (req, res) => {
+  try {
+    const b = req.body || {};
+    return res.json(require('./lib/walkset').setRowOff(req.params.id, b.key, b.ticked !== true));
+  } catch (err) { return res.status(400).json({ error: err.message }); }
+});
 app.post('/api/coins/walks/:id/delete', (req, res) => {
   try { return res.json(require('./lib/walkset').deleteWalk(req.params.id, (req.body || {}).confirm)); }
   catch (err) { return res.status(400).json({ error: err.message }); }

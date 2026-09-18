@@ -427,9 +427,24 @@ function passersCached() {
   return rows;
 }
 
-// THE TICKED PASSERS AS UNITS OF A LAUNCH: what Sweep's own tick runs.
+// WHAT SWEEP'S OWN TICK RUNS: every ticked candidate, from BOTH sources
+// (3.170.0, owner order 2026-09-18). The passers, as always, and every ticked
+// row promoted out of a walk set. A coin and shape can legitimately arrive
+// from both -- the owner's call: "they become different units" -- and until
+// the lean rides on the unit they fold to the same coin and shape here, which
+// is exactly what unitsForPassers has always taken.
 function passingUnits() {
-  return passersCached().filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry }));
+  const out = passersCached().filter((r) => r.ticked).map((r) => ({ coin: r.coin, geometry: r.geometry }));
+  const seen = new Set(out.map((u) => `${u.coin}|${u.geometry}`));
+  let fromWalks = [];
+  try { fromWalks = require('./walkset').promotedUnits(); } catch (_) { fromWalks = []; }
+  for (const u of fromWalks) {
+    const k = `${u.coin}|${u.geometry}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(u);
+  }
+  return out;
 }
 // THE LEAN EACH PASSER CARRIES, keyed by coin and shape: what stage 3's
 // confirm dial prices with (COINS.md section 11). Listed at the bar, ticked
@@ -611,6 +626,10 @@ function coinsRecords() {
     // (3.163.0). The one predicate, which now names the walk and the reading.
     busy: (() => { try { return require('./stages').stageBusy(); } catch (_) { return null; } })(),
     passers: { bar, default: DEFAULTS.passBar, trials: LINK_CUT_TRIALS, rows: passers, behindGrid },
+    // THE OTHER HALF OF THE LIST AT THE TOP: every row promoted out of a walk
+    // set, one group per set, read back off the set itself so a deleted set
+    // takes its promoted rows with it.
+    promoted: (() => { try { return require('./walkset').promoted(); } catch (_) { return []; } })(),
     // what a blank coin box means, as a count, so the label can say it without
     // the number being typed anywhere
     downloaded: defaultCoins().length,

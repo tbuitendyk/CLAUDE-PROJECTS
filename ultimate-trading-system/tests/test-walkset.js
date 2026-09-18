@@ -21,6 +21,70 @@ const aRow = (over = {}) => ({
 });
 
 module.exports = {
+  // PROMOTED IS A REFERENCE, NOT A COPY (owner decision, 2026-09-18: "reference
+  // the walk set, not copy"). Every row in the list at the top of Coins is read
+  // back off its own walk set, so deleting the set takes them with it and
+  // nothing up there can go stale against a re-walk.
+  //
+  // AND PROMOTED AND TICKED ARE TWO DIFFERENT THINGS. Promoting says a row is
+  // worth carrying; the tick says whether to run it just now. A promoted row
+  // is TICKED until it is unticked, the same way a passer is, so promoting
+  // does not then need a second press to use.
+  aPromotedRowIsAReferenceToItsWalkSetAndIsTickedUntilUnticked() {
+    const ws = require('../lib/walkset');
+    const rows = [
+      aRow(),
+      aRow({ coin: 'XLMUSDT', lookback: 'own', band: 250 }),
+      aRow({ coin: 'LTCUSDT', lookback: '504', band: 300 }),
+    ];
+    const got = ws.saveWalk({ asked: {}, shapes: [], collapse: [], rows, startedAt: 1, finishedAt: 2, name: 'promo set' });
+    const k = (r) => ws.rowKey(r);
+    try {
+      assert.deepStrictEqual(ws.promoted(), ws.promoted().filter((g) => g.id !== got.id),
+        'a set with nothing promoted is not listed at all — an empty box on the screen is noise');
+
+      ws.setPicked(got.id, k(rows[0]), true);
+      ws.setPicked(got.id, k(rows[2]), true);
+      const group = ws.promoted().find((g) => g.id === got.id);
+      assert(group, 'the set appears once something is promoted from it');
+      assert(group.name === 'promo set' && group.release, 'headed by the set it came from, which is the provenance');
+      assert(group.rows.length === 2, `two rows promoted, got ${group.rows.length}`);
+      assert(group.rows.every((r) => r.ticked), 'and both arrive TICKED');
+      // it carries what the ROW is
+      const one = group.rows.find((r) => r.lookback === '504');
+      assert(one && Number(one.band) === 300 && one.trades === 370, 'with its own look-back, band and figures');
+      assert(Array.isArray(one.scan) && one.scan.length, 'and its window strip, so windows paid can be counted on it');
+
+      // UNTICKING KEEPS THE PROMOTION
+      ws.setRowOff(got.id, k(rows[0]), true);
+      const after = ws.promoted().find((g) => g.id === got.id);
+      assert(after.rows.length === 2, 'unticking does not un-promote');
+      assert(after.rows.filter((r) => r.ticked).length === 1, 'but only one is ticked now');
+      assert.deepStrictEqual(ws.promotedUnits(), [{ coin: 'LTCUSDT', geometry: 'daily-1d' }],
+        'and only the ticked one goes forward as a unit');
+      ws.setRowOff(got.id, k(rows[0]), false);
+      assert(ws.promoted().find((g) => g.id === got.id).rows.every((r) => r.ticked), 'ticking it back on restores it');
+
+      // TWO ROWS OF ONE COIN AND SHAPE FOLD TO ONE UNIT here, because that is
+      // the shape unitsForPassers takes. Telling them apart is what step D is
+      // for; until then they are the same coin and the same chunk shape.
+      assert.deepStrictEqual(ws.promotedUnits(), [{ coin: 'LTCUSDT', geometry: 'daily-1d' }],
+        'two promoted rows on one coin and shape are one unit for now');
+
+      // A ROW THAT IS NOT PROMOTED CANNOT BE TICKED
+      assert.throws(() => ws.setRowOff(got.id, k(rows[1]), true), /is not promoted from/,
+        'ticking something that was never promoted is refused by name');
+      assert.throws(() => ws.setPicked(got.id, 'NOTAROW|x|y|z', true), /is not a row of/,
+        'and promoting something that is not a row of this set is refused too');
+    } finally { try { ws.deleteWalk(got.id, got.id); } catch (_) { /* already gone */ } }
+
+    // AND THE REFERENCE DIES WITH THE SET, which is the whole of the owner's
+    // choice: nothing is copied, so nothing is left behind pointing at a walk
+    // that is gone.
+    assert(!ws.promoted().some((g) => g.name === 'promo set'),
+      'deleting the walk set takes its promoted rows with it');
+  },
+
   // A FINISHED WALK IS ON DISK AND READS BACK THE SAME. Every figure the table
   // draws has to survive the round trip, including the per-window strip -- an
   // opened set that lost its windows would draw a row that cannot be opened.

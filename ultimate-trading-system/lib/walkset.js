@@ -156,6 +156,92 @@ function pickedUnits(id) {
   return out;
 }
 
+// PROMOTED AND TICKED ARE TWO DIFFERENT THINGS (3.170.0, owner order
+// 2026-09-18: "select records that look promising, bring them up into that set
+// at the top ... and just select the ones we want").
+//
+// `picked` is promoted -- the owner said this row is worth carrying. `off` is
+// which of those are not to run just now. A promoted row is TICKED until it is
+// unticked, the same way a passer is, so promoting something does not then
+// require a second press to use it.
+function setRowOff(id, key, off) {
+  const doc = readWalk(id);
+  if (!doc) throw new Error(`there is no walk ${JSON.stringify(id)} on this box`);
+  if (typeof off !== 'boolean') throw new Error(`a row is ticked or not — not ${JSON.stringify(off)}`);
+  const k = String(key || '');
+  if (!(doc.picked || []).includes(k)) throw new Error(`${JSON.stringify(k)} is not promoted from ${doc.id}`);
+  const have = new Set(doc.off || []);
+  if (off) have.add(k); else have.delete(k);
+  doc.off = [...have].sort();
+  writeBack(doc);
+  return { id: doc.id, off: doc.off.length };
+}
+
+// EVERY PROMOTED ROW ON THE BOX, one group per walk set, for the list at the
+// top of Coins.
+//
+// A PROMOTED ROW IS A REFERENCE, NOT A COPY (owner decision, 2026-09-18:
+// "reference the walk set, not copy"). It lives on its set and it is read back
+// off its set's own rows, so deleting the set takes its promoted rows with it
+// and nothing can go stale against a re-walk. That is why this reads the rows
+// rather than keeping a second store beside them.
+//
+// AND IT CARRIES WHAT THE ROW IS, NEVER WHAT A READING SAID ABOUT IT. late,
+// lead and best on both halves are worked out on every draw of Choose early,
+// read late and can change with its two boxes; writing them onto the list at
+// the top would freeze one reading's answer and call it a property of the row.
+function promoted() {
+  const out = [];
+  for (const head of listWalks()) {
+    const doc = readWalk(head.id);
+    if (!doc || !(doc.picked || []).length) continue;
+    const want = new Set(doc.picked);
+    const off = new Set(doc.off || []);
+    const rows = [];
+    for (const r of doc.rows || []) {
+      const k = rowKey(r);
+      if (!want.has(k)) continue;
+      rows.push({
+        key: k,
+        coin: r.coin,
+        geometry: r.geometry,
+        lookback: r.lookback == null ? 'own' : r.lookback,
+        band: r.band,
+        trades: r.trades,
+        perTrade: r.perTrade,
+        windows: r.windows,
+        windowsUp: r.windowsUp,
+        best: r.best,
+        worst: r.worst,
+        copies: r.copies,
+        asGood: r.asGood,
+        asGoodSlid: r.asGoodSlid,
+        scan: r.scan || [],
+        ticked: !off.has(k),
+      });
+    }
+    if (rows.length) out.push({ id: doc.id, name: doc.name, release: doc.release, finishedAt: doc.finishedAt, rows });
+  }
+  return out;
+}
+
+// EVERY TICKED PROMOTED ROW AS COIN AND SHAPE, deduplicated across every set --
+// the shape lib/stages.js unitsForPassers already takes.
+function promotedUnits() {
+  const seen = new Set();
+  const out = [];
+  for (const set of promoted()) {
+    for (const r of set.rows) {
+      if (!r.ticked) continue;
+      const k = `${r.coin}|${r.geometry}`;
+      if (seen.has(k)) continue;
+      seen.add(k);
+      out.push({ coin: r.coin, geometry: r.geometry });
+    }
+  }
+  return out;
+}
+
 // DELETING ONE FOLLOWS THE SAME TWO STEPS AS A RECORD SET: the first press
 // answers with what would go, and only the set's own id typed back does it.
 // Hours of compute cannot be got back from a mis-click.
@@ -173,4 +259,7 @@ function deleteWalk(id, confirm) {
   return { deleted: true, id: doc.id, name: doc.name, rows, bytes, picked };
 }
 
-module.exports = { V, DIR, walkFile, rowKey, nextId, nextName, saveWalk, listWalks, readWalk, renameWalk, setPicked, pickedUnits, deleteWalk };
+module.exports = {
+  V, DIR, walkFile, rowKey, nextId, nextName, saveWalk, listWalks, readWalk, renameWalk,
+  setPicked, setRowOff, pickedUnits, promoted, promotedUnits, deleteWalk,
+};
