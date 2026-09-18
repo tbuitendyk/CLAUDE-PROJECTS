@@ -172,6 +172,48 @@ function theAccountTicksBottomAlignAndItsButtonHasItsOwnRow() {
   assert(/<span id="acOut_/.test(account), 'with its message beside it, which is where saved, or why not, is said');
 }
 
+
+// TEXT AT DIFFERENT SIZES SITS ON ONE BASELINE (owner, 2026-09-18: "not bottom
+// aligning text like this on setup | account and setup | compute looks sloppy:
+// 'IN FORCE 0.250% the round trip 0.125% each way, from Binance'").
+//
+// .row is align-items:center. .k is .66rem, .note is .74rem and a plain <b> is
+// full size, so three sizes centred sit on three different lines and none of
+// them line up with any other. Baseline puts them on one. The page's own
+// heading strip had already worked this out and said so in a comment; I added
+// two more rows without reading it.
+//
+// COUNTED, NOT LOOKED AT (RULE FOUR-A). Walking every row is a few lines and
+// answers in a second, so a row added tomorrow cannot quietly be wrong. A row
+// holding a FORM CONTROL is a different case and keeps centre — except a tick
+// beside a field, which bottom-aligns, and which the guard above covers.
+function everyRowOfMixedSizeTextOnSetupSitsOnOneBaseline() {
+  const page = fs.readFileSync(path.join(__dirname, '..', 'public', 'setup.html'), 'utf8');
+  const SIZED = [/<span class="k">/, /class="note"/, /<b[ >]/, /class="muted"/];
+  const wrong = [];
+  let mixed = 0;
+  let i = 0;
+  for (;;) {
+    i = page.indexOf('<div class="row"', i + 1);
+    if (i < 0) break;
+    const end = page.indexOf('</div>', i);
+    const body = page.slice(i, end < 0 ? i + 900 : end);
+    const open = body.slice(0, body.indexOf('>') + 1);
+    const inner = body.slice(open.length);
+    const kinds = SIZED.filter((re) => re.test(inner)).length;
+    if (kinds < 2) continue;
+    if (/<input|<select|<button|<textarea/.test(body)) continue;
+    mixed++;
+    if (!/align-items:baseline/.test(open)) wrong.push(page.slice(0, i).split('\n').length);
+  }
+  assert(mixed >= 5, `there are rows of mixed-size text on this page to check — found ${mixed}`);
+  assert(wrong.length === 0,
+    `a row of text at different sizes must carry align-items:baseline, or the sizes sit on different lines and look sloppy. Line(s): ${wrong.join(', ')}`);
+  // and the rule is written down beside .row, where the next one gets added
+  assert(/A ROW OF TEXT AT DIFFERENT SIZES CARRIES align-items:baseline/.test(page),
+    'the rule is stated in the stylesheet, not only in a test nobody reads while writing a row');
+}
+
 module.exports = {
   anUnsetFeeSaysItIsUnsetRatherThanLookingChosen,
   theFeeTheOwnerEntersIsTheFeeTheSystemCharges,
@@ -179,4 +221,5 @@ module.exports = {
   theScreenFillsItselfFromTheListAndHoldsNoneOfItsOwn,
   theFeeIsTypedOnAccountAndOnlyShownOnCompute,
   theAccountTicksBottomAlignAndItsButtonHasItsOwnRow,
+  everyRowOfMixedSizeTextOnSetupSitsOnOneBaseline,
 };

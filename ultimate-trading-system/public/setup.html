@@ -27,6 +27,14 @@
   h3 { font-size:.95rem; margin:.8rem 0 .3rem; }
   .sub { color:var(--dim); font-size:.8rem; margin-bottom:.9rem; }
   a { color:var(--accent); }
+  /* A ROW OF TEXT AT DIFFERENT SIZES CARRIES align-items:baseline (owner,
+     2026-09-18: "not bottom aligning text like this on setup | account and
+     setup | compute looks sloppy"). .k is .66rem, .note is .74rem and a plain
+     <b> is full size; centred, three sizes sit on three different lines and
+     none of them line up. Baseline puts them on one. The same reason the
+     heading strip below already does it.
+     A row holding a FORM CONTROL is a different case and keeps centre, except
+     a tick beside a field, which bottom-aligns (RULE FOUR-A). */
   .row { display:flex; align-items:center; gap:.8rem; flex-wrap:wrap; }
   .spacer { flex:1; }
   .muted { color:var(--muted); } .pos{color:var(--pos);} .neg{color:var(--neg);} .warn{color:var(--warn);}
@@ -247,7 +255,7 @@ function drawAccount() {
     + '<p class="note">Every figure on the <b>Coins</b> screens is measured before this cost, and '
     + '<b>windows paid</b> counts only the windows that cleared it. It is also shown on the '
     + '<b>Compute</b> tab, which is where the rest of the system-wide settings are.</p>'
-    + '<div class="row"><span class="k">in force</span><b>' + pc3(aAcc.fee.roundTripPct) + ' the round trip</b>'
+    + '<div class="row" style="align-items:baseline"><span class="k">in force</span><b>' + pc3(aAcc.fee.roundTripPct) + ' the round trip</b>'
     + '<span class="note">' + pc3(100 * aAcc.fee.feePerLeg) + ' each way, from ' + esc(aAcc.fee.from) + '</span></div>'
     + (aAcc.fee.set ? '' : '<p class="note warn" style="margin-top:.4rem">Nothing here has been ticked as the system default yet, '
       + 'so the built-in figure is standing in. Enter what your venue actually charges and tick it.</p>')
@@ -312,8 +320,8 @@ function svcCard(u) {
   const barPct = u.cpuPct == null ? 0 : Math.min(100, quota ? (u.cpuPct / quota) * 100 : u.cpuPct);
   const short = u.unit.replace(/\.service$/, '');
   return '<div class="tile" style="margin-bottom:.55rem">'
-    + '<div class="row"><b>' + esc(short) + '</b><span class="note">' + esc(u.description) + '</span><span class="spacer"></span>' + state + '<span class="muted">up ' + age(u.upSeconds) + '</span></div>'
-    + '<div class="row" style="margin-top:.35rem; gap:1.2rem">'
+    + '<div class="row" style="align-items:baseline"><b>' + esc(short) + '</b><span class="note">' + esc(u.description) + '</span><span class="spacer"></span>' + state + '<span class="muted">up ' + age(u.upSeconds) + '</span></div>'
+    + '<div class="row" style="align-items:baseline; margin-top:.35rem; gap:1.2rem">'
     + '<span title="processor time this service used over the last two seconds of measuring, as a share of one processor. 100 is one whole processor."><span class="k">using now</span> <b>' + (u.cpuPct == null ? '—' : u.cpuPct + '%') + '</b></span>'
     + '<span title="the most processor this service is allowed, as a share of one processor — 300 is three processors&#39; worth. Set with the box to the right."><span class="k">allowed</span> <b>' + (quota == null ? 'no ceiling' : quota + '%') + '</b></span>'
     + '<span title="memory this service is holding right now"><span class="k">memory</span> <b>' + mb(u.memoryBytes) + '</b></span>'
@@ -353,13 +361,13 @@ function drawCompute() {
 
     + '<div class="panel"><h3 style="margin-top:0">Where each part runs</h3>'
     + roles
-    + '<div class="row" style="margin:.3rem 0"><b style="min-width:11rem">trading platform</b>'
+    + '<div class="row" style="align-items:baseline; margin:.3rem 0"><b style="min-width:11rem">trading platform</b>'
     + '<span class="note">chosen on each trading setup on the Trade tab — every setup names its own, '
     + 'so two setups can trade in two places. Nothing about it is set here.</span></div>'
     + '</div>'
 
     + '<div class="panel"><h3 style="margin-top:0">What it costs to trade</h3>'
-    + (cCfg && cCfg.fee ? '<div class="row"><span class="k">in force</span>'
+    + (cCfg && cCfg.fee ? '<div class="row" style="align-items:baseline"><span class="k">in force</span>'
       + '<b>' + (cCfg.fee.roundTripPct == null ? '—' : Number(cCfg.fee.roundTripPct).toFixed(3) + '%') + ' the round trip</b>'
       + '<span class="note">' + (cCfg.fee.feePerLeg == null ? '—' : (100 * cCfg.fee.feePerLeg).toFixed(3) + '%') + ' each way, from ' + esc(cCfg.fee.from) + '</span></div>'
       + (cCfg.fee.set
